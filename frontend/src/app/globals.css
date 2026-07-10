@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  color: var(--foreground);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(60rem 60rem at 100% -10%, rgba(16, 185, 129, 0.06), transparent 60%),
+    radial-gradient(50rem 50rem at -10% 10%, rgba(15, 23, 42, 0.04), transparent 55%),
+    var(--background);
+  min-height: 100dvh;
+}
+
+/* ---- Sala Real: entrada desde el fundido oscuro ---- */
+.real-room {
+  animation: real-fade-in 480ms ease-out;
+}
+@keyframes real-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

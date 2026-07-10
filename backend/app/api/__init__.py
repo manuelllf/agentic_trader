@@ -1,0 +1,1 @@
+"""Capa API (FastAPI routers)."""

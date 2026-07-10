@@ -1,0 +1,43 @@
+# Levanta el stack completo con `docker compose up --build`.
+# DB: por defecto SQLite en un volumen (clona-y-corre). En prod se apunta DATABASE_URL
+# a Supabase (Postgres) vía variables de entorno.
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      - DATABASE_URL=sqlite:////data/agentic_trader.db
+      - CORS_ORIGINS=http://localhost:3000
+      - ENABLE_SCHEDULER=true
+      - SCAN_INTERVAL_MINUTES=15
+      - DRY_RUN=true
+    volumes:
+      - backend_data:/data
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  # --- RUTA ALTERNATIVA (Hito 2): IB Gateway headless en tu propia máquina ---
+  # Solo si usas el adaptador ib_async en vez del Web API OAuth. Descomenta y rellena
+  # credenciales. En hosting (Railway) NO se usa: allí va el Web API OAuth (headless).
+  #
+  # ib-gateway:
+  #   image: ghcr.io/gnzsnz/ib-gateway:latest
+  #   environment:
+  #     - TWS_USERID=${TWS_USERID}
+  #     - TWS_PASSWORD=${TWS_PASSWORD}
+  #     - TRADING_MODE=live        # live | paper
+  #     - READ_ONLY_API=no
+  #   ports:
+  #     - "4001:4003"              # puerto del socket para ib_async
+
+volumes:
+  backend_data:
