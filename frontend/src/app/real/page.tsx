@@ -16,11 +16,12 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  allocateReal, approveTrade, getApprovals, getConfig, getPersonal, getPushKey, getReal,
-  reconcileApprovals, rejectTrade, subscribePush, syncPersonal, testPush,
+  allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getPersonal, getPushKey,
+  getReal, reconcileApprovals, rejectTrade, runDemo, subscribePush, syncPersonal, testPush,
 } from "@/lib/api";
+import AuthGate from "@/components/AuthGate";
 import type {
-  AppConfig, Approval, ApprovalsResponse, PersonalSummary, RealSummary, TradeAction,
+  AppConfig, Approval, ApprovalsResponse, DemoStatus, PersonalSummary, RealSummary, TradeAction,
 } from "@/lib/types";
 
 /* ---------- tokens (paleta de referencia validada, modo dark) ---------- */
@@ -71,17 +72,22 @@ export default function SalaReal() {
   const [loading, setLoading] = useState(true);
   const [leaving, setLeaving] = useState(false);
   const [pushOn, setPushOn] = useState<boolean | null>(null);
+  const [scanStatus, setScanStatus] = useState<DemoStatus | null>(null);
+  const [running, setRunning] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [s, a, c, pp] = await Promise.all([
+      const [s, a, c, pp, st] = await Promise.all([
         getReal(), getApprovals(), getConfig().catch(() => null), getPersonal().catch(() => null),
+        getDemoStatus().catch(() => null),
       ]);
       setSummary(s);
       setApprovals(a);
       if (c) setCfg(c);
       if (pp) setPersonal(pp);
+      if (st) setScanStatus(st);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
@@ -93,8 +99,39 @@ export default function SalaReal() {
   useEffect(() => {
     load();
     pollRef.current = setInterval(load, 60_000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (scanTimer.current) clearTimeout(scanTimer.current);
+    };
   }, [load]);
+
+  // Escaneo bajo demanda: el agente puntúa el universo, propone la cartera real (a tu Sí/No) y
+  // ejecuta sola la sombra. Se sondea el estado mientras corre, igual que hacía la Sala Sombra.
+  const pollScan = useCallback(async () => {
+    try {
+      const s = await getDemoStatus();
+      setScanStatus(s);
+      if (s.status === "running") { scanTimer.current = setTimeout(pollScan, 4000); return; }
+      setRunning(false);
+      if (s.status === "error") setError(s.error ?? "Fallo en el análisis.");
+      else if (s.status === "done") setFlash("Análisis completado.");
+      await load();
+    } catch {
+      scanTimer.current = setTimeout(pollScan, 6000);
+    }
+  }, [load]);
+
+  const handleRunScan = async () => {
+    setError("");
+    try {
+      await runDemo();
+      setRunning(true);
+      setFlash("Análisis en marcha…");
+      pollScan();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo lanzar el análisis.");
+    }
+  };
 
   useEffect(() => {
     if (!flash) return;
@@ -199,10 +236,14 @@ export default function SalaReal() {
   const equity = summary ? Number(summary.equity) : 0;
   const uPnl = summary ? Number(summary.unrealized_pnl) : 0;
   const rPnl = summary ? Number(summary.realized_pnl) : 0;
+  // Escaneo en curso: por el clic local (running) o detectado en el sondeo periódico (otra
+  // pestaña, el cron semanal) — el botón se deshabilita en ambos casos.
+  const isScanning = running || scanStatus?.status === "running";
 
   return (
-    <div className="real-room min-h-[100dvh] pb-8 text-[13px] antialiased"
-         style={{ background: T.page, color: T.ink2 }}>
+    <AuthGate>
+      <div className="real-room min-h-[100dvh] pb-8 text-[13px] antialiased"
+           style={{ background: T.page, color: T.ink2 }}>
 
       {/* Scroll INTEGRADO en toda la sala (incluida la barra del documento): fino, tono panel,
           sin flechas. El <style> vive solo mientras esta página está montada. */}
@@ -551,8 +592,38 @@ export default function SalaReal() {
           </div>
           <div className="xl:col-span-5">
             <Panel title="Controles">
-              {/* capital */}
+              {/* escaneo */}
               <div className="px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+                    Escaneo del mercado
+                  </p>
+                  {scanStatus?.result?.cost != null && (
+                    <span className="text-[10.5px]" style={{ color: T.muted }}>
+                      ${scanStatus.result.cost.cost_usd.toFixed(3)} · {scanStatus.result.cost.calls} llamadas
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center gap-3">
+                  <button onClick={handleRunScan} disabled={isScanning}
+                          className="shrink-0 rounded px-3 py-1.5 text-[11.5px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                          style={{ background: T.buy }}>
+                    {isScanning ? "Analizando…" : "Analizar mercado"}
+                  </button>
+                  <p className="text-[10.5px] leading-snug" style={{ color: T.muted }}>
+                    {isScanning
+                      ? "Puntuando el universo y construyendo la cartera…"
+                      : "Puntúa el universo, propone la cartera real (a tu Sí/No) y ejecuta sola la sombra."}
+                  </p>
+                </div>
+                {!isScanning && scanStatus?.finished_at && (
+                  <p className="mt-1.5 text-[10.5px]" style={{ color: T.muted }}>
+                    Último análisis: {fmtTime(scanStatus.finished_at)}
+                  </p>
+                )}
+              </div>
+              {/* capital */}
+              <div className="border-t px-4 py-3" style={{ borderColor: T.grid }}>
                 <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
                   Capital del sleeve
                 </p>
@@ -626,6 +697,7 @@ export default function SalaReal() {
       <div aria-hidden
            className={`pointer-events-none fixed inset-0 z-[100] bg-slate-100 transition-opacity duration-[420ms] ease-in ${leaving ? "opacity-100" : "opacity-0"}`} />
     </div>
+    </AuthGate>
   );
 }
 

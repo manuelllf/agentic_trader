@@ -7,6 +7,9 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
+// Flag en localStorage: el aviso de instalación se muestra UNA sola vez por navegador.
+const SEEN_KEY = "pwa_install_seen";
+
 export default function PwaInstall() {
   const [prompt, setPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [visible, setVisible] = useState(false);
@@ -17,12 +20,16 @@ export default function PwaInstall() {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
 
-    // Capturar el evento de instalación y mostrar el aviso 5 segundos.
+    // Si ya se enseñó una vez, no volver a registrarlo (Chrome relanza el evento en cada navegación).
+    if (localStorage.getItem(SEEN_KEY)) return;
+
+    // Capturar el evento de instalación, marcarlo como visto y mostrar el aviso unos segundos.
     const onPrompt = (e: Event) => {
       e.preventDefault();
+      localStorage.setItem(SEEN_KEY, "1"); // marcado: no volverá a aparecer nunca más
       setPrompt(e as BeforeInstallPromptEvent);
       setVisible(true);
-      setTimeout(() => setVisible(false), 5000);
+      setTimeout(() => setVisible(false), 6000);
     };
     window.addEventListener("beforeinstallprompt", onPrompt);
     return () => window.removeEventListener("beforeinstallprompt", onPrompt);

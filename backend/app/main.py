@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.api.routes import router
+from app.api.routes import public_router, router
 from app.auth import auth_enabled, login, require_auth
 from app.config import settings
 from app.db import init_db
@@ -62,7 +62,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# TODA la API de negocio exige token (require_auth). Público solo: /health, /, /auth/login.
+# Lecturas y teaser de portada (public_router): sin token. Todo lo que muta estado o expone
+# la Sala Real/personal (router) exige token vía require_auth. Público además: /health, /, /auth/login.
+app.include_router(public_router)
 app.include_router(router, dependencies=[Depends(require_auth)])
 
 

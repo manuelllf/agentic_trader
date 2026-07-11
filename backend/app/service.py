@@ -268,7 +268,16 @@ def run_scan_and_store(db: Session, sample_size: int | None = None) -> dict:
     ))
     db.commit()
 
-    # 8) Sala Real: cada trade propuesto queda PENDIENTE de tu Sí/No (push best-effort).
+    # 8) Sala Sombra: se ejecuta SOLA, sin botones — dinero simulado, cero riesgo. Ventas antes
+    #    que compras (execute_proposal_all lo garantiza) para que la caja se libere primero.
+    #    Un fallo aquí NUNCA debe tirar el escaneo (los datos ya están persistidos y a salvo).
+    try:
+        exec_result = execute_proposal_all(db)
+        logger.info("Auto-ejecución sombra: %s", exec_result["message"])
+    except Exception:
+        logger.exception("Fallo en la auto-ejecución del libro sombra (no aborta el escaneo).")
+
+    # 9) Sala Real: cada trade propuesto queda PENDIENTE de tu Sí/No (push best-effort).
     #    El agente jamás ejecuta solo — ni siquiera en dry-run.
     try:
         from app import approvals as approvals_mod
@@ -547,18 +556,25 @@ def execute_proposal_item(db: Session, ticker: str) -> dict:
     }
 
 
+_SELL_ACTIONS = {"vender", "recortar"}  # las que liberan caja; deben ir antes que las compras
+
+
 def execute_proposal_all(db: Session) -> dict:
     """Ejecuta TODOS los items accionables de la última propuesta en el libro sombra.
 
-    Best-effort: los que no caben o ya están cubiertos se saltan y se reportan; no aborta el resto.
+    Orden EXPLÍCITO (no el de la propuesta, que depende del LLM): ventas/recortes primero para
+    liberar caja, compras/ampliaciones después — así una compra nunca falla por falta de caja
+    que una venta de la MISMA propuesta iba a liberar. Best-effort: los que no caben o ya están
+    cubiertos se saltan y se reportan; no aborta el resto. Idempotente (ver `execute_proposal_item`
+    y `size_to_weight`: reintentar un item ya al objetivo cae en `skipped`, no revienta).
     """
     prop = _latest_proposal(db)
     if prop is None:
         raise LookupError("No hay ninguna propuesta que ejecutar.")
+    actionable = [it for it in (prop.items or []) if it.get("action") not in (None, "", "mantener")]
+    actionable.sort(key=lambda it: 0 if it.get("action") in _SELL_ACTIONS else 1)
     done, skipped = [], []
-    for it in (prop.items or []):
-        if it.get("action") in (None, "", "mantener"):
-            continue
+    for it in actionable:
         try:
             res = execute_proposal_item(db, it["ticker"])
             done.append(res["message"])

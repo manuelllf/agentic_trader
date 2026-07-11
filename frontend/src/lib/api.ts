@@ -1,7 +1,7 @@
 // Cliente HTTP hacia el backend FastAPI.
 import type {
   AppConfig, Approval, ApprovalsResponse, DemoStatus, ExecuteResult, LedgerSnapshot, Macro,
-  Performance, PersonalSummary, Proposal, RealSummary, ScoreRow, WatchItem,
+  Overview, Performance, PersonalSummary, Proposal, RealSummary, ScoreRow, WatchItem,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -125,6 +125,7 @@ export const getScores = () => get<ScoreRow[]>("/scores?limit=25");
 export const getProposal = () => get<Proposal | null>("/proposal");
 export const getWatchlist = () => get<WatchItem[]>("/watchlist");
 export const getPerformance = () => get<Performance>("/performance");
+export const getOverview = () => get<Overview>("/overview");
 
 // Ejecuta un item de la propuesta en el libro sombra (botón Comprar/Vender).
 export const executeProposalItem = (ticker: string) =>

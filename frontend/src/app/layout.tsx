@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import AuthGate from "@/components/AuthGate";
 import PwaInstall from "@/components/PwaInstall";
 
 export const metadata: Metadata = {
@@ -30,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body>
-        <AuthGate>{children}</AuthGate>
+        {children}
         <PwaInstall />
       </body>
     </html>

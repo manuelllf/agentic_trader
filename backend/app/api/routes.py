@@ -1,14 +1,19 @@
 """Endpoints de la API.
 
-- GET  /health
-- GET  /macro                → régimen macro (barato, determinista)
-- GET  /ledger               → foto del sleeve (caja, posiciones, equity)
-- POST /ledger/allocate      → asignar/retirar fondos
-- POST /demo/run             → lanza el escaneo (muestra 250 → scores → cartera ≤4)
-- GET  /demo/status          → estado del escaneo
-- GET  /scores               → leaderboard (mejores scores del último escaneo)
-- GET  /proposal             → cartera objetivo + trades del último escaneo
-- GET  /watchlist            → nombres vigilados
+Dos routers: `public_router` (sin token, lecturas/teaser de la portada) y `router`
+(exige `require_auth` — se engancha en main.py) para todo lo que muta estado o expone
+la Sala Real/personal. Ver el reparto exacto donde se declara cada `@router`/`@public_router`.
+
+- GET  /health                (público, en main.py)
+- GET  /macro                → régimen macro (barato, determinista)               [público]
+- GET  /overview              → teaser de la portada (sombra completo + real solo %) [público]
+- GET  /ledger               → foto del sleeve (caja, posiciones, equity)          [público]
+- POST /ledger/allocate      → asignar/retirar fondos                             [protegido]
+- POST /demo/run             → lanza el escaneo (muestra 250 → scores → cartera ≤4) [protegido]
+- GET  /demo/status          → estado del escaneo                                  [público]
+- GET  /scores               → leaderboard (mejores scores del último escaneo)     [público]
+- GET  /proposal             → cartera objetivo + trades del último escaneo        [público]
+- GET  /watchlist            → nombres vigilados                                   [público]
 """
 
 from __future__ import annotations
@@ -29,7 +34,8 @@ from app.ledger import service as ledger
 from app.models import Proposal, Score, Watchlist
 from app.schemas import ProposalOut, ScoreOut, WatchlistOut
 
-router = APIRouter()
+public_router = APIRouter()   # sin token: lecturas y teaser de la portada
+router = APIRouter()          # exige require_auth (dependencies=[...] en main.py)
 
 
 class AllocateIn(BaseModel):
@@ -41,7 +47,7 @@ def _money(x: Decimal) -> str:
     return str(x)
 
 
-@router.get("/config")
+@public_router.get("/config")
 def config() -> dict:
     """Parámetros de cartera para el frontend (evita hardcodear el máximo de posiciones, etc.)."""
     return {
@@ -53,7 +59,7 @@ def config() -> dict:
     }
 
 
-@router.get("/macro")
+@public_router.get("/macro")
 def macro() -> dict:
     from app.screener.macro import get_macro_regime
 
@@ -62,7 +68,7 @@ def macro() -> dict:
 
 # ---- Libro de capital -------------------------------------------------------
 
-@router.get("/ledger")
+@public_router.get("/ledger")
 def ledger_snapshot(db: Session = Depends(get_db)) -> dict:
     from app import tracking
     prices = tracking.live_prices([p.ticker for p in ledger.open_positions(db)])
@@ -87,11 +93,39 @@ def ledger_allocate(body: AllocateIn, db: Session = Depends(get_db)) -> dict:
     return ledger_snapshot(db)
 
 
-@router.get("/performance")
+@public_router.get("/performance")
 def performance(db: Session = Depends(get_db)) -> dict:
     """Seguimiento gratis: rentabilidad de la cartera (precio vivo) vs S&P 500 desde la entrada."""
     from app import tracking
     return tracking.performance(db)
+
+
+@public_router.get("/overview")
+def overview(db: Session = Depends(get_db)) -> dict:
+    """Teaser público de la portada: sombra completa (viene de /performance) + real SOLO el
+    % de P&L no realizado (nunca importes, tickers ni nº de posiciones — eso es privado)."""
+    from app import tracking
+    from app.models import BOOK_REAL
+
+    perf = tracking.performance(db)
+    shadow = {
+        "return_pct": perf["portfolio_return_pct"] if perf["positions"] else None,
+        "spy_pct": perf["spy_return_pct"],
+        "alpha_pct": perf["alpha_pct"],
+        "since": perf["since"],
+        "positions": len(perf["positions"]),
+    }
+
+    real_pct: float | None = None
+    real_positions = ledger.open_positions(db, BOOK_REAL)
+    if real_positions:
+        prices = tracking.live_prices([p.ticker for p in real_positions])
+        snap = ledger.snapshot(db, price_lookup=lambda t: prices.get(t), book=BOOK_REAL)
+        cost_basis = snap.positions_value - snap.unrealized_pnl  # Decimal, cent-exacto
+        if cost_basis > 0:
+            real_pct = float((snap.unrealized_pnl / cost_basis * 100).quantize(Decimal("0.01")))
+
+    return {"shadow": shadow, "real": {"unrealized_pct": real_pct}}
 
 
 # ---- Escaneo ----------------------------------------------------------------
@@ -104,7 +138,7 @@ def demo_run(sample_size: int | None = None) -> dict:
     return {"started": started, **pipeline.get_status()}
 
 
-@router.get("/demo/status")
+@public_router.get("/demo/status")
 def demo_status() -> dict:
     return pipeline.get_status()
 
@@ -137,7 +171,7 @@ def redeep(db: Session = Depends(get_db)) -> dict:
 
 # ---- Lecturas ---------------------------------------------------------------
 
-@router.get("/scores", response_model=list[ScoreOut])
+@public_router.get("/scores", response_model=list[ScoreOut])
 def scores(limit: int = 30, db: Session = Depends(get_db)) -> list[Score]:
     # Solo los ANALIZADOS A FONDO (tienen informe). Los pre-cribados de Flash son triaje interno.
     stmt = (select(Score).where(Score.report != "")
@@ -145,7 +179,7 @@ def scores(limit: int = 30, db: Session = Depends(get_db)) -> list[Score]:
     return list(db.scalars(stmt).all())
 
 
-@router.get("/proposal", response_model=ProposalOut | None)
+@public_router.get("/proposal", response_model=ProposalOut | None)
 def proposal(db: Session = Depends(get_db)) -> Proposal | None:
     stmt = select(Proposal).order_by(Proposal.created_at.desc()).limit(1)
     return db.scalars(stmt).first()
@@ -171,7 +205,7 @@ def proposal_execute_all(db: Session = Depends(get_db)) -> dict:
     return {**res, "ledger": ledger_snapshot(db)}
 
 
-@router.get("/watchlist", response_model=list[WatchlistOut])
+@public_router.get("/watchlist", response_model=list[WatchlistOut])
 def watchlist(db: Session = Depends(get_db)) -> list[Watchlist]:
     stmt = select(Watchlist).order_by(Watchlist.score.desc())
     return list(db.scalars(stmt).all())

@@ -190,6 +190,21 @@ export interface PersonalSummary {
   positions: PersonalPosition[];
 }
 
+// ---- Portada pública (teaser de ambas salas) ----
+
+export interface Overview {
+  shadow: {
+    return_pct: number | null;
+    spy_pct: number | null;
+    alpha_pct: number | null;
+    since: string | null;
+    positions: number;
+  };
+  real: {
+    unrealized_pct: number | null;
+  };
+}
+
 export interface DemoStatus {
   status: "idle" | "running" | "done" | "error";
   started_at: string | null;
