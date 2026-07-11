@@ -6,6 +6,7 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const TIMEOUT_MS = 15_000;
+const TOKEN_KEY = "agentic_token";
 
 /** Error de red tipado: el backend no respondió (caído, CORS, timeout). */
 export class ApiError extends Error {
@@ -15,13 +16,28 @@ export class ApiError extends Error {
   }
 }
 
-const OFFLINE = "No hay conexión con el backend. Comprueba que está en marcha (localhost:8000).";
+const OFFLINE = "No hay conexión con el servidor. Reintenta en unos segundos.";
+
+/* ---- token de sesión (login) ---- */
+const getToken = () => (typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null);
+export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
+export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+/** 401 en cualquier llamada → sesión caducada: limpia el token y avisa al AuthGate. */
+function onUnauthorized() {
+  clearToken();
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("agentic-unauthorized"));
+}
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const token = getToken();
+  const headers = {
+    ...(init?.headers as Record<string, string> | undefined),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
   try {
-    return await fetch(`${API_URL}${path}`, { cache: "no-store", signal: ctrl.signal, ...init });
+    return await fetch(`${API_URL}${path}`, { cache: "no-store", signal: ctrl.signal, ...init, headers });
   } catch (e) {
     // fetch rechaza con TypeError (backend caído/CORS) o AbortError (timeout).
     const msg = e instanceof DOMException && e.name === "AbortError"
@@ -35,6 +51,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 
 async function get<T>(path: string): Promise<T> {
   const res = await request(path);
+  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
   if (!res.ok) throw new ApiError(`No se pudo leer ${path} (${res.status}).`, "http", res.status);
   return res.json() as Promise<T>;
 }
@@ -45,6 +62,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new ApiError(
@@ -53,6 +71,45 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     );
   }
   return res.json() as Promise<T>;
+}
+
+/* ---- login / sesión ---- */
+
+/** Inicia sesión con la contraseña. Guarda el token si es correcta; lanza si no. */
+export async function login(password: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/auth/login`, {
+      method: "POST", cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+  } catch {
+    throw new ApiError(OFFLINE, "network");
+  }
+  if (res.status === 401) throw new ApiError("Contraseña incorrecta.", "http", 401);
+  if (!res.ok) throw new ApiError(`No se pudo iniciar sesión (${res.status}).`, "http", res.status);
+  const data = (await res.json()) as { token: string };
+  setToken(data.token);
+}
+
+/** Comprueba el token guardado. true = sesión válida (o backend caído → no bloquea con login). */
+export async function checkAuth(): Promise<boolean> {
+  const token = getToken();
+  try {
+    const res = await fetch(`${API_URL}/auth/check`, {
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    return res.status !== 401;   // 401 → hay que loguear; cualquier otra cosa → deja pasar
+  } catch {
+    return true;                 // backend inalcanzable: la app mostrará su banner de conexión
+  }
+}
+
+export function logout() {
+  clearToken();
+  if (typeof window !== "undefined") window.location.reload();
 }
 
 export const getLedger = () => get<LedgerSnapshot>("/ledger");

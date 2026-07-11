@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # CORS: orígenes permitidos del frontend, separados por coma.
     cors_origins: str = "http://localhost:3000"
 
+    # Login de acceso. Contraseña única (env APP_PASSWORD en Railway). VACÍA = auth DESACTIVADA
+    # (dev local sin candado). Con valor → toda la API (menos /health y /auth/login) exige un
+    # token firmado que se obtiene en /auth/login con esta contraseña.
+    app_password: str = ""
+    auth_token_days: int = 0     # validez del token de sesión en días; 0 = NO caduca nunca
+                                 # (sesión permanente en el navegador; revocable cambiando la contraseña)
+
     # LLM. Método = ranker fundamental (whitepaper DeepSeek): V4-Pro razonador en TODO
     # (scorer por nombre + outlook macro + construcción). enable_llm=False → escaneo no falla.
     enable_llm: bool = False

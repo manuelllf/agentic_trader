@@ -11,10 +11,12 @@ import logging
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from app.api.routes import router
+from app.auth import auth_enabled, login, require_auth
 from app.config import settings
 from app.db import init_db
 from app.scheduler import start_scheduler, stop_scheduler
@@ -60,9 +62,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(router)
+# TODA la API de negocio exige token (require_auth). Público solo: /health, /, /auth/login.
+app.include_router(router, dependencies=[Depends(require_auth)])
 
+
+# ---- Público (sin token) ----------------------------------------------------
 
 @app.get("/")
 def root() -> dict[str, str]:
     return {"name": "Agentic Trader API", "docs": "/docs"}
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Público: lo usa el healthcheck de Railway (nunca detrás del login)."""
+    return {"status": "ok"}
+
+
+class LoginIn(BaseModel):
+    password: str
+
+
+@app.post("/auth/login")
+def auth_login(body: LoginIn) -> dict:
+    """Devuelve un token de sesión si la contraseña es correcta."""
+    token = login(body.password)
+    if token is None:
+        raise HTTPException(status_code=401, detail="Contraseña incorrecta.")
+    return {"token": token, "auth_enabled": auth_enabled()}
+
+
+@app.get("/auth/check", dependencies=[Depends(require_auth)])
+def auth_check() -> dict:
+    """Valida el token guardado en el navegador (200 si vale, 401 si no)."""
+    return {"ok": True}

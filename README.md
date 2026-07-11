@@ -7,6 +7,8 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 > Proyecto personal. No es asesoramiento financiero. Por defecto funciona en simulación
 > (`DRY_RUN`): no envía órdenes al bróker.
 
+**En producción:** <https://agentic-trader-manuelllf.vercel.app> · acceso privado (login).
+
 ## Cómo funciona
 
 Un escaneo programado recorre el universo de acciones y las puntúa en dos pasos: un cribado

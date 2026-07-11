@@ -14,6 +14,7 @@ import {
   getWatchlist,
   runDemo,
 } from "@/lib/api";
+import Logo from "@/components/Logo";
 import type {
   AppConfig,
   DemoStatus,
@@ -166,11 +167,7 @@ export default function Dashboard() {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 17l6-6 4 4 7-7" /><path d="M17 8h4v4" />
-              </svg>
-            </div>
+            <Logo size={36} className="shrink-0" />
             <div className="leading-tight">
               <h1 className="text-[15px] font-semibold tracking-tight">Agentic Trader</h1>
               <p className="text-[11px] tracking-wide text-slate-400">Gestión sistemática asistida por IA</p>

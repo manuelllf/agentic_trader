@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import AuthGate from "@/components/AuthGate";
 import PwaInstall from "@/components/PwaInstall";
 
 export const metadata: Metadata = {
@@ -7,7 +8,13 @@ export const metadata: Metadata = {
   description: "Cazador autónomo de ineficiencias en small/mid caps US",
   manifest: "/manifest.json",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "Agentic" },
-  icons: { apple: "/icon-192.png" },
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
@@ -23,7 +30,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body>
-        {children}
+        <AuthGate>{children}</AuthGate>
         <PwaInstall />
       </body>
     </html>

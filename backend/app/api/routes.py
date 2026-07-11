@@ -41,11 +41,6 @@ def _money(x: Decimal) -> str:
     return str(x)
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
 @router.get("/config")
 def config() -> dict:
     """Parámetros de cartera para el frontend (evita hardcodear el máximo de posiciones, etc.)."""
