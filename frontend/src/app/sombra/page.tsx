@@ -11,6 +11,7 @@ import {
   getProposal,
   getScores,
   getWatchlist,
+  hasToken,
 } from "@/lib/api";
 import Logo from "@/components/Logo";
 import type {
@@ -66,22 +67,33 @@ export default function SombraDashboard() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"cartera" | "ranking">("cartera");
   const [detail, setDetail] = useState<PerfPosition | null>(null);   // modal detalle por acción
+  const [authed, setAuthed] = useState(false);   // sesión detectada en el último refresco
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       // El ledger es crítico (define la conexión); el resto degrada con gracia si falla.
       const l = await getLedger();
-      const [p, s, w, m, pf, cf, st] = await Promise.all([
-        getProposal().catch(() => null),
-        getScores().catch(() => []),
-        getWatchlist().catch(() => []),
+      const [m, pf, cf, st] = await Promise.all([
         getMacro().catch(() => null),
         getPerformance().catch(() => null),
         getConfig().catch(() => null),
         getDemoStatus().catch(() => null),
       ]);
+      // Sin sesión, ni se piden: scores/propuesta/watchlist son del método — evita 401 al aire.
+      const withSession = hasToken();
+      let p: Proposal | null = null;
+      let s: ScoreRow[] = [];
+      let w: WatchItem[] = [];
+      if (withSession) {
+        [p, s, w] = await Promise.all([
+          getProposal().catch(() => null),
+          getScores().catch(() => []),
+          getWatchlist().catch(() => []),
+        ]);
+      }
       setLedger(l); setProposal(p); setScores(s); setWatch(w); setMacro(m); setPerf(pf); setCfg(cf); setStatus(st);
+      setAuthed(withSession);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo contactar con el backend.");
@@ -104,6 +116,9 @@ export default function SombraDashboard() {
   const targets = items.filter((i) => i.action !== "vender");
   const trades = items.filter((i) => i.action !== "mantener");
   const running = status?.status === "running";
+  // Vista anónima: sin sesión, o si el backend ya vino anonimizado (token caducado en esta
+  // pestaña) — la propia forma del dato manda, no solo el token guardado.
+  const anon = !authed || (!!perf && perf.positions.length > 0 && !perf.positions[0].ticker);
 
   return (
     <div className="min-h-[100dvh] bg-slate-100/70 text-slate-900">
@@ -194,26 +209,41 @@ export default function SombraDashboard() {
                     </p>
                   )}
                   <div className="mt-3 space-y-0.5">
-                    <p className="mb-1 text-[9px] uppercase tracking-wide text-slate-300">Pincha una acción para el detalle</p>
-                    {perf.positions.map((p) => {
+                    <p className="mb-1 text-[9px] uppercase tracking-wide text-slate-300">
+                      {anon ? "Detalle por posición — acceso privado" : "Pincha una acción para el detalle"}
+                    </p>
+                    {perf.positions.map((p, i) => {
                       const up = Number(p.unrealized_pnl);
-                      return (
-                        <button
-                          key={p.ticker} onClick={() => setDetail(p)}
-                          className="group -mx-1.5 flex w-[calc(100%+0.75rem)] items-center justify-between rounded-md px-1.5 py-1 text-xs transition hover:bg-slate-50"
-                        >
+                      const pct = p.pnl_pct ?? p.unrealized_pct ?? 0;
+                      const label = anon ? (p.label ?? `Posición ${i + 1}`) : p.ticker;
+                      const row = (
+                        <>
                           <span className="flex items-center gap-1.5 font-medium text-slate-600">
-                            {p.ticker}
-                            <svg viewBox="0 0 24 24" className="h-3 w-3 text-slate-300 opacity-0 transition group-hover:opacity-100" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            {label}
+                            {!anon && (
+                              <svg viewBox="0 0 24 24" className="h-3 w-3 text-slate-300 opacity-0 transition group-hover:opacity-100" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            )}
                           </span>
                           <span className="flex items-center gap-2 tabular-nums">
                             <span className={`text-[10px] ${up >= 0 ? "text-emerald-500/70" : "text-rose-400/70"}`}>
                               {up >= 0 ? "+" : "−"}${money(Math.abs(up))}
                             </span>
-                            <span className={`font-semibold ${p.pnl_pct >= 0 ? "text-emerald-600" : "text-rose-500"}`}>
-                              {p.pnl_pct > 0 ? "+" : ""}{p.pnl_pct}%
+                            <span className={`font-semibold ${pct >= 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                              {pct > 0 ? "+" : ""}{pct}%
                             </span>
                           </span>
+                        </>
+                      );
+                      return anon ? (
+                        <div key={`pos-${i}`} className="flex w-full items-center justify-between rounded-md px-1.5 py-1 text-xs">
+                          {row}
+                        </div>
+                      ) : (
+                        <button
+                          key={p.ticker} onClick={() => setDetail(p)}
+                          className="group -mx-1.5 flex w-[calc(100%+0.75rem)] items-center justify-between rounded-md px-1.5 py-1 text-xs transition hover:bg-slate-50"
+                        >
+                          {row}
                         </button>
                       );
                     })}
@@ -259,6 +289,18 @@ export default function SombraDashboard() {
 
           {/* Main */}
           <main>
+            {anon ? (
+              /* Sin sesión: ni se pide /scores /proposal /watchlist — solo un aviso sobrio. */
+              <section className={`${CARD} flex min-h-[40vh] flex-col items-center justify-center gap-3 border-dashed p-10 text-center`}>
+                <svg viewBox="0 0 24 24" className="h-8 w-8 text-slate-300" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <p className="max-w-xs text-sm text-slate-400">
+                  Cartera propuesta, ranking y watchlist — acceso privado
+                </p>
+              </section>
+            ) : (
+              <>
             {/* Tabs */}
             <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
               <TabBtn active={tab === "cartera"} onClick={() => setTab("cartera")}>
@@ -316,6 +358,8 @@ export default function SombraDashboard() {
                   </div>
                 )}
               </section>
+            )}
+              </>
             )}
           </main>
         </div>
@@ -478,10 +522,13 @@ function PositionDetailModal({ pos, onClose }: { pos: PerfPosition; onClose: () 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const shares = Number(pos.quantity);
+  // Este modal solo se abre con sesión (chips no clicables sin ella), así que el dato viene
+  // siempre completo — los `?? 0` son solo para que el tipo (compartido con la vista anónima) cierre.
+  const shares = Number(pos.quantity ?? 0);
   const uPnl = Number(pos.unrealized_pnl);
-  const rPnl = Number(pos.realized_pnl);
-  const up = pos.pnl_pct >= 0;
+  const rPnl = Number(pos.realized_pnl ?? 0);
+  const pct = pos.pnl_pct ?? pos.unrealized_pct ?? 0;
+  const up = pct >= 0;
   const fmtShares = shares.toLocaleString("en-US", { maximumFractionDigits: 4 });
 
   return (
@@ -496,7 +543,7 @@ function PositionDetailModal({ pos, onClose }: { pos: PerfPosition; onClose: () 
         {/* Cabecera */}
         <div className="flex items-start justify-between border-b border-slate-100 bg-slate-50 px-5 py-4">
           <div>
-            <h3 className="text-lg font-bold tracking-tight text-slate-900">{pos.ticker}</h3>
+            <h3 className="text-lg font-bold tracking-tight text-slate-900">{pos.ticker ?? "—"}</h3>
             <p className="text-xs text-slate-400">{fmtShares} acciones · seguimiento sombra</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600" aria-label="Cerrar">
@@ -509,17 +556,17 @@ function PositionDetailModal({ pos, onClose }: { pos: PerfPosition; onClose: () 
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">P&L abierto</p>
           <p className={`mt-0.5 text-2xl font-bold tabular-nums ${up ? "text-emerald-600" : "text-rose-600"}`}>
             {uPnl >= 0 ? "+" : "−"}${money(Math.abs(uPnl))}
-            <span className="ml-2 text-base font-semibold">{up ? "+" : ""}{pos.pnl_pct}%</span>
+            <span className="ml-2 text-base font-semibold">{up ? "+" : ""}{pct}%</span>
           </p>
         </div>
 
         {/* Rejilla de métricas */}
         <div className="grid grid-cols-2 gap-px bg-slate-100">
           <ModalStat label="Acciones" value={fmtShares} />
-          <ModalStat label="Valor de mercado" value={`$${money(pos.value)}`} />
-          <ModalStat label="Coste medio" value={`$${money(pos.avg_cost)}`} />
-          <ModalStat label="Precio actual" value={`$${money(pos.price)}`} />
-          <ModalStat label="Coste base" value={`$${money(pos.cost_basis)}`} />
+          <ModalStat label="Valor de mercado" value={`$${money(pos.value ?? 0)}`} />
+          <ModalStat label="Coste medio" value={`$${money(pos.avg_cost ?? 0)}`} />
+          <ModalStat label="Precio actual" value={`$${money(pos.price ?? 0)}`} />
+          <ModalStat label="Coste base" value={`$${money(pos.cost_basis ?? 0)}`} />
           <ModalStat
             label="P&L realizado"
             value={`${rPnl >= 0 ? "+" : "−"}$${money(Math.abs(rPnl))}`}
@@ -527,7 +574,7 @@ function PositionDetailModal({ pos, onClose }: { pos: PerfPosition; onClose: () 
           />
         </div>
         <p className="px-5 py-3 text-center text-[10px] text-slate-400">
-          Coste medio ${money(pos.avg_cost)} → actual ${money(pos.price)} · pincha fuera o Esc para cerrar
+          Coste medio ${money(pos.avg_cost ?? 0)} → actual ${money(pos.price ?? 0)} · pincha fuera o Esc para cerrar
         </p>
       </div>
     </div>

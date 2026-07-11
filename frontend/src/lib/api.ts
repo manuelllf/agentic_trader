@@ -22,6 +22,8 @@ const OFFLINE = "No hay conexión con el servidor. Reintenta en unos segundos.";
 const getToken = () => (typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null);
 export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+/** true si hay un token guardado (no valida que siga vigente — eso lo decide el backend). */
+export const hasToken = () => !!getToken();
 /** 401 en cualquier llamada → sesión caducada: limpia el token y avisa al AuthGate. */
 function onUnauthorized() {
   clearToken();

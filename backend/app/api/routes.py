@@ -1,19 +1,25 @@
 """Endpoints de la API.
 
 Dos routers: `public_router` (sin token, lecturas/teaser de la portada) y `router`
-(exige `require_auth` — se engancha en main.py) para todo lo que muta estado o expone
-la Sala Real/personal. Ver el reparto exacto donde se declara cada `@router`/`@public_router`.
+(exige `require_auth` — se engancha en main.py) para todo lo que muta estado, revela las
+picks del método (tickers, tesis, scores) o expone la Sala Real/personal. Ver el reparto
+exacto donde se declara cada `@router`/`@public_router`.
+
+Dos endpoints son de DOBLE NIVEL vía `auth_optional` (nunca dan 401: sin sesión devuelven
+agregados/datos anonimizados; con sesión, el detalle completo de siempre) — así la portada
+pública puede presumir de rendimiento sin regalar la cartera:
+- GET  /ledger               → sin sesión: agregados + `positions: []`; con sesión: completo.
+- GET  /performance          → sin sesión: posiciones anonimizadas (sin ticker); con sesión: completo.
 
 - GET  /health                (público, en main.py)
 - GET  /macro                → régimen macro (barato, determinista)               [público]
 - GET  /overview              → teaser de la portada (sombra completo + real solo %) [público]
-- GET  /ledger               → foto del sleeve (caja, posiciones, equity)          [público]
 - POST /ledger/allocate      → asignar/retirar fondos                             [protegido]
 - POST /demo/run             → lanza el escaneo (muestra 250 → scores → cartera ≤4) [protegido]
 - GET  /demo/status          → estado del escaneo                                  [público]
-- GET  /scores               → leaderboard (mejores scores del último escaneo)     [público]
-- GET  /proposal             → cartera objetivo + trades del último escaneo        [público]
-- GET  /watchlist            → nombres vigilados                                   [público]
+- GET  /scores               → leaderboard (mejores scores del último escaneo)     [protegido]
+- GET  /proposal             → cartera objetivo + trades del último escaneo        [protegido]
+- GET  /watchlist            → nombres vigilados                                   [protegido]
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ from sqlalchemy.orm import Session
 from app import pipeline
 from app import service as scan_service
 from app import watchlist as watchlist_mod
+from app.auth import auth_optional
 from app.config import settings
 from app.db import get_db
 from app.ledger import service as ledger
@@ -68,8 +75,9 @@ def macro() -> dict:
 
 # ---- Libro de capital -------------------------------------------------------
 
-@public_router.get("/ledger")
-def ledger_snapshot(db: Session = Depends(get_db)) -> dict:
+def ledger_snapshot(db: Session) -> dict:
+    """Foto COMPLETA del sleeve sombra (función interna, no es ruta): la usan los endpoints
+    protegidos que necesitan el detalle siempre entero (allocate, ejecutar propuesta...)."""
     from app import tracking
     prices = tracking.live_prices([p.ticker for p in ledger.open_positions(db)])
     snap = ledger.snapshot(db, price_lookup=lambda t: prices.get(t))  # valor a precio VIVO
@@ -87,17 +95,42 @@ def ledger_snapshot(db: Session = Depends(get_db)) -> dict:
     }
 
 
+@public_router.get("/ledger")
+def ledger_view(db: Session = Depends(get_db), authed: bool = Depends(auth_optional)) -> dict:
+    """Doble nivel: los agregados (caja, equity, P&L...) se ven siempre — son cifras ficticias
+    de un sleeve virtual —, pero la identidad de la cartera (qué tickers, con qué peso) es del
+    método y solo se revela con sesión: sin token, `positions` va vacío."""
+    out = ledger_snapshot(db)
+    if not authed:
+        out = {**out, "positions": []}
+    return out
+
+
 @router.post("/ledger/allocate")
 def ledger_allocate(body: AllocateIn, db: Session = Depends(get_db)) -> dict:
     ledger.allocate(db, body.amount, body.note)
     return ledger_snapshot(db)
 
 
+def _anonymize_positions(rows: list[dict]) -> list[dict]:
+    """Quita la identidad de cada posición (ticker, cantidad, coste...) dejando solo el P&L
+    relativo, para que el rendimiento se pueda presumir sin regalar la cartera del método."""
+    return [
+        {"label": f"Posición {i}", "unrealized_pnl": r["unrealized_pnl"], "unrealized_pct": r["pnl_pct"]}
+        for i, r in enumerate(rows, start=1)
+    ]
+
+
 @public_router.get("/performance")
-def performance(db: Session = Depends(get_db)) -> dict:
-    """Seguimiento gratis: rentabilidad de la cartera (precio vivo) vs S&P 500 desde la entrada."""
+def performance(db: Session = Depends(get_db), authed: bool = Depends(auth_optional)) -> dict:
+    """Seguimiento gratis: rentabilidad de la cartera (precio vivo) vs S&P 500 desde la entrada.
+    Doble nivel: los agregados (rentabilidad, alpha...) se ven siempre; el detalle por posición
+    solo con sesión — sin token llega anonimizado (sin ticker ni cantidades)."""
     from app import tracking
-    return tracking.performance(db)
+    perf = tracking.performance(db)
+    if not authed:
+        perf = {**perf, "positions": _anonymize_positions(perf["positions"])}
+    return perf
 
 
 @public_router.get("/overview")
@@ -171,7 +204,7 @@ def redeep(db: Session = Depends(get_db)) -> dict:
 
 # ---- Lecturas ---------------------------------------------------------------
 
-@public_router.get("/scores", response_model=list[ScoreOut])
+@router.get("/scores", response_model=list[ScoreOut])
 def scores(limit: int = 30, db: Session = Depends(get_db)) -> list[Score]:
     # Solo los ANALIZADOS A FONDO (tienen informe). Los pre-cribados de Flash son triaje interno.
     stmt = (select(Score).where(Score.report != "")
@@ -179,7 +212,7 @@ def scores(limit: int = 30, db: Session = Depends(get_db)) -> list[Score]:
     return list(db.scalars(stmt).all())
 
 
-@public_router.get("/proposal", response_model=ProposalOut | None)
+@router.get("/proposal", response_model=ProposalOut | None)
 def proposal(db: Session = Depends(get_db)) -> Proposal | None:
     stmt = select(Proposal).order_by(Proposal.created_at.desc()).limit(1)
     return db.scalars(stmt).first()
@@ -205,7 +238,7 @@ def proposal_execute_all(db: Session = Depends(get_db)) -> dict:
     return {**res, "ledger": ledger_snapshot(db)}
 
 
-@public_router.get("/watchlist", response_model=list[WatchlistOut])
+@router.get("/watchlist", response_model=list[WatchlistOut])
 def watchlist(db: Session = Depends(get_db)) -> list[Watchlist]:
     stmt = select(Watchlist).order_by(Watchlist.score.desc())
     return list(db.scalars(stmt).all())

@@ -67,3 +67,13 @@ def require_auth(authorization: str = Header(default="")) -> None:
     token = authorization.removeprefix("Bearer ").strip()
     if not verify_token(token):
         raise HTTPException(status_code=401, detail="No autorizado. Inicia sesión.")
+
+
+def auth_optional(authorization: str = Header(default="")) -> bool:
+    """Dependencia FastAPI para endpoints de doble nivel (públicos con extra si hay sesión):
+    NUNCA bloquea la petición. Devuelve True si la auth está desactivada o el token es válido;
+    False si no hay token o es inválido — el propio endpoint decide qué ocultar con ese booleano."""
+    if not auth_enabled():
+        return True
+    token = authorization.removeprefix("Bearer ").strip()
+    return verify_token(token)

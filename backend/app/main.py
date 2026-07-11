@@ -62,8 +62,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Lecturas y teaser de portada (public_router): sin token. Todo lo que muta estado o expone
-# la Sala Real/personal (router) exige token vía require_auth. Público además: /health, /, /auth/login.
+# Lecturas y teaser de portada (public_router): sin token. Todo lo que muta estado, revela las
+# picks del método o expone la Sala Real/personal (router) exige token vía require_auth. /ledger
+# y /performance son de doble nivel (auth_optional dentro del propio endpoint). Público además:
+# /health, /, /auth/login.
 app.include_router(public_router)
 app.include_router(router, dependencies=[Depends(require_auth)])
 

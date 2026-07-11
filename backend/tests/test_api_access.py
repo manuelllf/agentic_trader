@@ -61,8 +61,7 @@ def token(client) -> str:
 # ---- reparto público / protegido --------------------------------------------
 
 PUBLIC_GET_PATHS = [
-    "/overview", "/ledger", "/scores", "/performance", "/proposal",
-    "/watchlist", "/macro", "/config", "/demo/status",
+    "/overview", "/ledger", "/performance", "/macro", "/config", "/demo/status",
 ]
 
 
@@ -82,6 +81,9 @@ PROTECTED_CALLS = [
     ("get", "/approvals", None),
     ("get", "/personal", None),
     ("get", "/push/key", None),
+    ("get", "/scores", None),
+    ("get", "/proposal", None),
+    ("get", "/watchlist", None),
 ]
 
 
@@ -109,6 +111,9 @@ def test_protected_endpoints_work_with_token(client, token) -> None:
     assert client.get("/approvals", headers=headers).status_code == 200
     assert client.get("/personal", headers=headers).status_code == 200
     assert client.get("/push/key", headers=headers).status_code == 200
+    assert client.get("/scores", headers=headers).status_code == 200
+    assert client.get("/proposal", headers=headers).status_code == 200
+    assert client.get("/watchlist", headers=headers).status_code == 200
     assert client.post("/ledger/allocate", json={"amount": 100}, headers=headers).status_code == 200
 
 
@@ -163,6 +168,81 @@ def test_overview_shadow_reuses_performance(db, client, monkeypatch) -> None:
     assert body["shadow"]["alpha_pct"] == perf["alpha_pct"]
     assert body["shadow"]["since"] == perf["since"]
     assert body["shadow"]["positions"] == 1
+
+
+# ---- /ledger y /performance: doble nivel (auth_optional) ---------------------
+
+def test_ledger_without_token_hides_positions_but_keeps_aggregates(db, client, monkeypatch) -> None:
+    """Sin sesión: los agregados (cifras de un sleeve virtual) se ven, pero `positions` viene
+    vacío — no se puede reconstruir la cartera del método desde fuera."""
+    from app import tracking
+    from app.ledger import service as ledger
+
+    monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {"AAA": 110.0})
+    ledger.allocate(db, 1000)
+    ledger.record_buy(db, "AAA", 10, 100, "seed")
+
+    res = client.get("/ledger")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["positions"] == []
+    assert body["cash"] is not None and body["equity"] is not None
+    assert "AAA" not in res.text
+
+
+def test_ledger_with_token_shows_full_positions(db, client, monkeypatch, token) -> None:
+    """Con sesión: el detalle completo de siempre, con ticker por posición."""
+    from app import tracking
+    from app.ledger import service as ledger
+
+    monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {"AAA": 110.0})
+    ledger.allocate(db, 1000)
+    ledger.record_buy(db, "AAA", 10, 100, "seed")
+
+    res = client.get("/ledger", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body["positions"]) == 1
+    assert body["positions"][0]["ticker"] == "AAA"
+
+
+def test_performance_without_token_anonymizes_positions(db, client, monkeypatch) -> None:
+    """Sin sesión: cada posición pierde ticker/cantidad/coste — solo queda un label genérico y
+    el P&L relativo. Los agregados (rentabilidad, alpha...) siguen intactos."""
+    from app import tracking
+    from app.ledger import service as ledger
+
+    monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {"AAA": 110.0})
+    monkeypatch.setattr(tracking, "_spy_reference", lambda *a, **k: None)  # sin red para el SPY
+    ledger.allocate(db, 1000)
+    ledger.record_buy(db, "AAA", 10, 100, "seed")
+
+    res = client.get("/performance")
+    assert res.status_code == 200
+    assert "AAA" not in res.text
+    assert '"ticker"' not in res.text
+    body = res.json()
+    assert body["portfolio_return_pct"] == 10.0  # (110-100)/100 * 100
+    assert len(body["positions"]) == 1
+    pos = body["positions"][0]
+    assert set(pos.keys()) == {"label", "unrealized_pnl", "unrealized_pct"}
+    assert pos["label"] == "Posición 1"
+
+
+def test_performance_with_token_shows_tickers(db, client, monkeypatch, token) -> None:
+    """Con sesión: la respuesta completa de siempre, con ticker por posición."""
+    from app import tracking
+    from app.ledger import service as ledger
+
+    monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {"AAA": 110.0})
+    monkeypatch.setattr(tracking, "_spy_reference", lambda *a, **k: None)
+    ledger.allocate(db, 1000)
+    ledger.record_buy(db, "AAA", 10, 100, "seed")
+
+    res = client.get("/performance", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["positions"][0]["ticker"] == "AAA"
 
 
 def test_config_does_not_leak_sensitive_fields(client) -> None:

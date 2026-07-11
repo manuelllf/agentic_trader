@@ -70,16 +70,20 @@ export interface Proposal {
   items: ProposalItem[];
 }
 
+// Sin sesión, el backend anonimiza cada posición (label + P&L, sin ticker ni importes) para no
+// regalar la cartera del método — de ahí que casi todo aquí sea opcional según haya sesión o no.
 export interface PerfPosition {
-  ticker: string;
-  quantity: string;
-  avg_cost: string;
-  price: string;
-  value: string;
-  cost_basis: string;
+  ticker?: string;
+  label?: string;
+  quantity?: string;
+  avg_cost?: string;
+  price?: string;
+  value?: string;
+  cost_basis?: string;
   unrealized_pnl: string;
-  realized_pnl: string;
-  pnl_pct: number;
+  realized_pnl?: string;
+  pnl_pct?: number;
+  unrealized_pct?: number;
 }
 
 export interface Performance {
