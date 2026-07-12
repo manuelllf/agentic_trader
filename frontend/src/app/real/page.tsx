@@ -21,11 +21,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getMemoryStatus,
-  getPerformance, getPersonal, getPushKey, getReal, reconcileApprovals, rejectTrade, runDemo,
-  seedDatabase, seedMemory, subscribePush, syncPersonal, testPush,
+  allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getPerformance,
+  getPersonal, getPushKey, getReal, reconcileApprovals, rejectTrade, runDemo,
+  subscribePush, syncPersonal, testPush,
 } from "@/lib/api";
-import type { MemoryStatus } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
 import type {
   AppConfig, Approval, ApprovalsResponse, DemoStatus, Performance, PersonalSummary, RealSummary,
@@ -66,25 +65,6 @@ const fmtPct = (v: number | null | undefined) => (v != null ? `${v > 0 ? "+" : "
 const isBuy = (a: TradeAction) => a === "comprar" || a === "ampliar";
 const NUMS = "tabular-nums";
 
-/* Estado abierto/cerrado de una sección, recordado en localStorage (sin libs de animación). */
-function useCollapsible(storageKey: string, defaultOpen: boolean) {
-  const [open, setOpen] = useState(defaultOpen);
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved != null) setOpen(saved === "1");
-    } catch { /* localStorage no disponible: se queda en el valor por defecto */ }
-  }, [storageKey]);
-  const toggle = useCallback(() => {
-    setOpen((prev) => {
-      const next = !prev;
-      try { localStorage.setItem(storageKey, next ? "1" : "0"); } catch { /* noop */ }
-      return next;
-    });
-  }, [storageKey]);
-  return [open, toggle] as const;
-}
-
 /* ============================== página ============================== */
 
 export default function SalaReal() {
@@ -94,7 +74,8 @@ export default function SalaReal() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [personal, setPersonal] = useState<PersonalSummary | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [amount, setAmount] = useState("");
+  const [fx, setFx] = useState<number | null>(null);      // EURUSD indicativo (frontera €/$)
+  const [capOpen, setCapOpen] = useState(false);          // formulario aportar/retirar (libro andando)
   const [error, setError] = useState("");
   const [flash, setFlash] = useState("");
   const [loading, setLoading] = useState(true);
@@ -105,15 +86,13 @@ export default function SalaReal() {
   const [shadowPerf, setShadowPerf] = useState<Performance | null>(null);   // sombra en paralelo
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Secciones secundarias, colapsadas por defecto y recordadas por dispositivo.
-  const [personalOpen, togglePersonal] = useCollapsible("real_sec_personal", false);
-  const [detailOpen, toggleDetail] = useCollapsible("real_sec_detail", false);
 
   const load = useCallback(async () => {
     try {
-      const [s, a, c, pp, st, sp] = await Promise.all([
+      const [s, a, c, pp, st, sp, fxr] = await Promise.all([
         getReal(), getApprovals(), getConfig().catch(() => null), getPersonal().catch(() => null),
         getDemoStatus().catch(() => null), getPerformance().catch(() => null),
+        getFx().catch(() => null),
       ]);
       setSummary(s);
       setApprovals(a);
@@ -121,6 +100,7 @@ export default function SalaReal() {
       if (pp) setPersonal(pp);
       if (st) setScanStatus(st);
       setShadowPerf(sp);
+      if (fxr?.rate) setFx(fxr.rate);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
@@ -202,18 +182,6 @@ export default function SalaReal() {
     }
   };
 
-  const doAllocate = async () => {
-    const v = parseFloat(amount);
-    if (!Number.isFinite(v) || v === 0) return;
-    try {
-      setSummary(await allocateReal(v, "asignación sala real"));
-      setAmount("");
-      setFlash(`Capital real actualizado: ${v > 0 ? "+" : ""}$${money(v)}.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error asignando capital.");
-    }
-  };
-
   const decide = async (id: number, yes: boolean) => {
     try {
       const out = yes ? await approveTrade(id) : await rejectTrade(id);
@@ -272,6 +240,8 @@ export default function SalaReal() {
   // Escaneo en curso: por el clic local (running) o detectado en el sondeo periódico (otra
   // pestaña, el cron semanal) — el botón se deshabilita en ambos casos.
   const isScanning = running || scanStatus?.status === "running";
+  // Máquina de estados de la sala: sin capital → hero de puesta en marcha; con capital → libro.
+  const hasCapital = equity > 0 || (summary?.positions.length ?? 0) > 0;
 
   return (
     <AuthGate>
@@ -383,26 +353,7 @@ export default function SalaReal() {
           </div>
         )}
 
-        {/* ---------- KPIs ---------- */}
-        <section className="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border md:grid-cols-3 xl:grid-cols-6"
-                 style={{ borderColor: T.ring, background: T.grid }}>
-          <Kpi big label="Patrimonio" value={summary ? `$${money(summary.equity)}` : "—"} />
-          <Kpi label="Caja" value={summary ? `$${money(summary.cash)}` : "—"}
-               sub={summary ? `de $${money(equity)} gestionados` : undefined} />
-          <Kpi label="Invertido" value={summary ? `$${money(summary.positions_value)}` : "—"}
-               sub={summary ? `${summary.positions.length}/${cfg?.max_positions ?? 5} posiciones` : undefined} />
-          <Kpi label="P&L abierto" value={summary ? signMoney(uPnl) : "—"}
-               tone={uPnl > 0 ? "good" : uPnl < 0 ? "bad" : undefined}
-               sub={summary && equity > 0 ? `${((uPnl / equity) * 100).toFixed(2)}% del patrimonio` : undefined} />
-          <Kpi label="P&L realizado" value={summary ? signMoney(rPnl) : "—"}
-               tone={rPnl > 0 ? "good" : rPnl < 0 ? "bad" : undefined} sub="ventas cerradas" />
-          <Kpi label="Alpha vs S&P 500"
-               value={perf?.alpha_pct != null ? `${perf.alpha_pct > 0 ? "+" : ""}${perf.alpha_pct}%` : "—"}
-               tone={perf?.alpha_pct != null ? (perf.alpha_pct >= 0 ? "good" : "bad") : undefined}
-               sub={perf?.since ? `desde ${perf.since}` : "sin posiciones aún"} />
-        </section>
-
-        {/* ---------- LEVEL 2: requiere decisión (propuestas + órdenes en curso) ---------- */}
+        {/* ---------- 1 · requiere decisión: cuando existe, SIEMPRE lo más alto ---------- */}
         {(pending.length > 0 || working.length > 0) && (
           <div className="mb-4 space-y-4">
             <div className="flex items-center gap-2 px-0.5">
@@ -462,15 +413,90 @@ export default function SalaReal() {
           </div>
         )}
 
-        {/* ---------- LEVEL 3: libro del agente, permanente ---------- */}
+        {/* ---------- 2a · libro vacío → puesta en marcha (la primera aportación vive aquí) ---------- */}
+        {summary && !hasCapital && (
+          <div className="mb-4">
+            <Panel title="Ponlo en marcha">
+              <p className="px-4 pt-3 text-[12px] leading-relaxed" style={{ color: T.muted }}>
+                Dos pasos. El agente propone; cada orden esperará tu Sí o tu No
+                {dry ? " — y ahora mismo en simulación: nada llega a IBKR." : "."}
+              </p>
+              <div className="grid gap-3 p-4 md:grid-cols-2">
+                <div className="rounded-lg border p-3.5" style={{ borderColor: T.grid }}>
+                  <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+                    <b style={{ color: T.ink2 }}>1</b> · capital del agente
+                  </p>
+                  <CapitalForm fx={fx} onDone={(s, msg) => { setSummary(s); setFlash(msg); }} onError={setError} />
+                </div>
+                <div className="rounded-lg border p-3.5" style={{ borderColor: T.grid }}>
+                  <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+                    <b style={{ color: T.ink2 }}>2</b> · análisis
+                  </p>
+                  <p className="text-[12.5px] leading-relaxed" style={{ color: T.ink2 }}>
+                    Automático cada martes a las 10:15 (hora del mercado US), o cuando quieras con
+                    «Analizar mercado» arriba.
+                  </p>
+                  <p className="mt-1.5 text-[11px]" style={{ color: T.muted }}>
+                    {scanStatus?.finished_at ? `Último análisis: ${fmtTime(scanStatus.finished_at)}.` : "Aún sin análisis."}
+                  </p>
+                </div>
+              </div>
+            </Panel>
+          </div>
+        )}
+
+        {/* ---------- 2b · libro con capital → KPIs + aportar/retirar ---------- */}
+        {(!summary || hasCapital) && (
+          <>
+            <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border md:grid-cols-3 xl:grid-cols-6"
+                     style={{ borderColor: T.ring, background: T.grid }}>
+              <Kpi big label="Patrimonio" value={summary ? `$${money(summary.equity)}` : "—"}
+                   sub={summary && fx && equity > 0 ? `≈ €${money(equity / fx, 0)}` : undefined} />
+              <Kpi label="Caja" value={summary ? `$${money(summary.cash)}` : "—"}
+                   sub={summary ? `de $${money(equity)} gestionados` : undefined} />
+              <Kpi label="Invertido" value={summary ? `$${money(summary.positions_value)}` : "—"}
+                   sub={summary ? `${summary.positions.length}/${cfg?.max_positions ?? 5} posiciones` : undefined} />
+              <Kpi label="P&L abierto" value={summary ? signMoney(uPnl) : "—"}
+                   tone={uPnl > 0 ? "good" : uPnl < 0 ? "bad" : undefined}
+                   sub={summary && equity > 0 ? `${((uPnl / equity) * 100).toFixed(2)}% del patrimonio` : undefined} />
+              <Kpi label="P&L realizado" value={summary ? signMoney(rPnl) : "—"}
+                   tone={rPnl > 0 ? "good" : rPnl < 0 ? "bad" : undefined} sub="ventas cerradas" />
+              <Kpi label="Alpha vs S&P 500"
+                   value={perf?.alpha_pct != null ? `${perf.alpha_pct > 0 ? "+" : ""}${perf.alpha_pct}%` : "—"}
+                   tone={perf?.alpha_pct != null ? (perf.alpha_pct >= 0 ? "good" : "bad") : undefined}
+                   sub={perf?.since ? `desde ${perf.since}` : "sin posiciones aún"} />
+            </section>
+            <div className="mb-3 mt-1.5 flex justify-end px-0.5">
+              <button onClick={() => setCapOpen(!capOpen)}
+                      className="text-[11px] font-semibold transition-colors hover:underline"
+                      style={{ color: capOpen ? T.muted : T.buy }}>
+                {capOpen ? "✕ cerrar" : "± aportar / retirar capital"}
+              </button>
+            </div>
+            {capOpen && (
+              <div className="mb-4 max-w-[520px] rounded-xl border px-4 py-3"
+                   style={{ borderColor: T.ring, background: T.panel }}>
+                <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+                  Aportar o retirar capital del agente
+                </p>
+                <CapitalForm fx={fx}
+                             onDone={(s, msg) => { setSummary(s); setFlash(msg); setCapOpen(false); }}
+                             onError={setError} />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ---------- 3 · libro del agente (solo cuando hay capital) ---------- */}
+        {(!summary || hasCapital) && (
         <Panel title={`Posiciones del agente · ${summary?.positions.length ?? 0}/${cfg?.max_positions ?? 5}`}
                right={summary && Number(summary.positions_value) > 0
                  ? <span className={`text-[12px] font-bold ${NUMS}`} style={{ color: T.ink }}>
                      ${money(summary.positions_value)}
                    </span> : undefined}>
           {!summary || summary.positions.length === 0 ? (
-            <Empty>El libro real está vacío: cuando apruebes una compra, la posición aparecerá aquí con
-              su distribución, coste y P&L en vivo.</Empty>
+            <Empty>Caja lista{summary ? ` ($${money(summary.cash)})` : ""}. Cuando el agente proponga y
+              apruebes una compra, la posición aparecerá aquí con su distribución, coste y P&L en vivo.</Empty>
           ) : (
             <>
               <Distribution summary={summary} equity={equity} />
@@ -509,9 +535,27 @@ export default function SalaReal() {
                   </tbody>
                 </table>
               </div>
+              {/* pie del panel: rendimiento vs S&P integrado (antes vivía en un desplegable aparte) */}
+              {perf && perf.positions.length > 0 && (
+                <div className="border-t px-4 pb-3 pt-2" style={{ borderColor: T.grid }}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]" style={{ color: T.muted }}>
+                    <span>Rendimiento desde {perf.since ?? "—"}</span>
+                    <span className={NUMS}>
+                      coste ${money(perf.cost_basis)} → valor ${money(perf.market_value)}
+                    </span>
+                  </div>
+                  <CompareBars
+                    rows={[
+                      { label: "Cartera", value: perf.portfolio_return_pct, color: T.buy },
+                      { label: "S&P 500", value: perf.spy_return_pct ?? 0, color: T.base },
+                    ]}
+                  />
+                </div>
+              )}
             </>
           )}
         </Panel>
+        )}
 
         {/* mini-franja: sombra en paralelo vs libro real vs S&P — un vistazo, sin repetir el detalle */}
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border px-4 py-2.5 text-[12px]"
@@ -527,12 +571,12 @@ export default function SalaReal() {
           </Link>
         </div>
 
-        {/* ---------- secciones secundarias, colapsables (recuerdan su estado por dispositivo) ---------- */}
+        {/* ---------- 4 · tu dinero real, siempre a la vista (el agente no lo toca) ---------- */}
         <div className="mt-4 space-y-4">
-          <CollapsibleSection title="Cartera personal IBKR" open={personalOpen} onToggle={togglePersonal}
-                               right={personal?.synced_at
-                                 ? <span className="text-[11px]" style={{ color: T.muted }}>sync {fmtTime(personal.synced_at)}</span>
-                                 : undefined}>
+          <Panel title="Cartera personal IBKR"
+                 right={personal?.synced_at
+                   ? <span className="text-[11px]" style={{ color: T.muted }}>sync {fmtTime(personal.synced_at)}</span>
+                   : undefined}>
             {!personal || personal.positions.length === 0 ? (
               <Empty>Tus posiciones propias de IBKR, separadas del agente. Sincroniza para guardar el snapshot.</Empty>
             ) : (
@@ -543,6 +587,12 @@ export default function SalaReal() {
                     <div className={`text-[20px] font-bold leading-tight ${NUMS}`} style={{ color: T.ink }}>
                       ${money(personal.total_value)}
                     </div>
+                    {fx && (
+                      <div className={`text-[10.5px] ${NUMS}`} style={{ color: T.muted }}
+                           title="al cambio EURUSD indicativo — como te lo consolida IBKR">
+                        ≈ €{money(Number(personal.total_value) / fx, 0)}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <div className="text-[10.5px] uppercase tracking-wider" style={{ color: T.muted }}>P&L abierto</div>
@@ -613,133 +663,52 @@ export default function SalaReal() {
                 tuyo, en IBKR se suman pero aquí siguen separados.
               </p>
             </div>
-          </CollapsibleSection>
+          </Panel>
 
-          <CollapsibleSection title="Comparativas y detalle" open={detailOpen} onToggle={toggleDetail}>
-            <div className="grid gap-4 p-4 xl:grid-cols-12">
-              <div className="xl:col-span-5">
-                <Panel title={`Rendimiento vs S&P 500${perf?.since ? ` · desde ${perf.since}` : ""}`}>
-                  {!perf || perf.positions.length === 0 ? (
-                    <Empty>Cuando el libro tenga posiciones, aquí verás la rentabilidad del agente contra el
-                      S&P 500 desde la entrada.</Empty>
-                  ) : (
-                    <div className="p-4">
-                      <div className="flex items-end justify-between">
-                        <div>
-                          <div className="text-[11px] uppercase tracking-wider" style={{ color: T.muted }}>Alpha</div>
-                          <div className={`text-[24px] font-bold leading-none ${NUMS}`}
-                               style={{ color: (perf.alpha_pct ?? 0) >= 0 ? T.good : T.bad }}>
-                            {perf.alpha_pct != null ? `${perf.alpha_pct > 0 ? "+" : ""}${perf.alpha_pct}%` : "—"}
-                          </div>
-                        </div>
-                        <div className="text-right text-[11.5px]" style={{ color: T.muted }}>
-                          <div>Coste base <b className={NUMS} style={{ color: T.ink2 }}>${money(perf.cost_basis)}</b></div>
-                          <div>Valor actual <b className={NUMS} style={{ color: T.ink2 }}>${money(perf.market_value)}</b></div>
-                        </div>
-                      </div>
-                      <CompareBars
-                        rows={[
-                          { label: "Cartera", value: perf.portfolio_return_pct, color: T.buy },
-                          { label: "S&P 500", value: perf.spy_return_pct ?? 0, color: T.base },
-                        ]}
-                      />
-                    </div>
-                  )}
-                </Panel>
+          {/* actividad: solo existe si hay decisiones tomadas — sin panel vacío de relleno */}
+          {history.length > 0 && (
+            <Panel title={`Actividad · ${history.length} decisión(es)`}>
+              <div className="max-h-[340px] overflow-y-auto">
+                <table className="w-full border-collapse text-[12.5px]">
+                  <tbody>
+                    {history.map((h) => <HistoryRow key={h.id} h={h} />)}
+                  </tbody>
+                </table>
               </div>
-              <div className="xl:col-span-7">
-                <Panel title={`Historial de decisiones · ${history.length}`}>
-                  {history.length === 0 ? (
-                    <Empty>Aún sin decisiones. Cada Sí/No que tomes queda registrado aquí con su resultado.</Empty>
-                  ) : (
-                    <div className="max-h-[340px] overflow-y-auto">
-                      <table className="w-full border-collapse text-[12.5px]">
-                        <tbody>
-                          {history.map((h) => <HistoryRow key={h.id} h={h} />)}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </Panel>
-              </div>
-            </div>
-          </CollapsibleSection>
+            </Panel>
+          )}
         </div>
 
-        {/* ---------- controles: capital / alertas / conexión (utilidad siempre visible) ---------- */}
-        <div className="mt-4">
-          <Panel title="Controles">
-            {/* capital */}
-            <div className="px-4 py-3">
-              <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-                Capital del sleeve
-              </p>
-              <div className="flex gap-2">
-                <input value={amount} onChange={(e) => setAmount(e.target.value)}
-                       onKeyDown={(e) => e.key === "Enter" && doAllocate()}
-                       placeholder="0.00" inputMode="decimal"
-                       className={`w-full rounded border bg-transparent px-3 py-1.5 text-[13px] outline-none ${NUMS}`}
-                       style={{ borderColor: T.grid, color: T.ink }}
-                       onFocus={(e) => (e.currentTarget.style.borderColor = T.buy)}
-                       onBlur={(e) => (e.currentTarget.style.borderColor = T.grid)} />
-                <button onClick={doAllocate}
-                        className="shrink-0 rounded px-4 py-1.5 text-[12px] font-bold text-white transition-opacity hover:opacity-90"
-                        style={{ background: T.buy }}>
-                  Asignar
-                </button>
-              </div>
-              <p className="mt-1.5 text-[10.5px]" style={{ color: T.muted }}>
-                Parte de tu cuenta gestionada por el agente. Negativo = retirar. Ninguna orden puede gastar
-                más de lo asignado.
-              </p>
-            </div>
-            {/* alertas */}
-            <div className="border-t px-4 py-3" style={{ borderColor: T.grid }}>
-              <div className="flex items-center justify-between">
-                <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-                  Alertas push · este dispositivo
-                </p>
-                <span className="text-[11.5px] font-bold" style={{ color: pushOn ? T.good : T.muted }}>
-                  {pushOn == null ? "…" : pushOn ? "ACTIVAS" : "INACTIVAS"}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center gap-3">
-                {!pushOn ? (
-                  <button onClick={enablePush}
-                          className="shrink-0 rounded px-3 py-1.5 text-[11.5px] font-bold text-white transition-opacity hover:opacity-90"
-                          style={{ background: T.buy }}>
-                    Activar alertas
-                  </button>
-                ) : (
-                  <button onClick={async () => setFlash(`Prueba enviada a ${(await testPush()).sent} dispositivo(s).`)}
-                          className="shrink-0 rounded border px-3 py-1.5 text-[11.5px] transition-colors hover:bg-white/5"
-                          style={{ borderColor: T.ring, color: T.ink2 }}>
-                    Enviar prueba
-                  </button>
-                )}
-                <p className="text-[10.5px] leading-snug" style={{ color: T.muted }}>
-                  Suena cuando el agente propone. En iPhone: instala la app en pantalla de inicio.
-                </p>
-              </div>
-            </div>
-            {/* conexión */}
-            <div className="border-t px-4 py-3" style={{ borderColor: T.grid }}>
-              <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-                Conexión
-              </p>
-              <p className="text-[12px] leading-relaxed" style={{ color: T.ink2 }}>
-                {summary?.broker.detail ?? "—"}
-              </p>
-              <p className="mt-1 text-[10.5px]" style={{ color: T.muted }}>
-                El agente nunca ejecuta solo: cada orden requiere tu confirmación. Órdenes SIEMPRE a
-                límite (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado.
-              </p>
-            </div>
-            {/* mantenimiento: volcado de base de datos (local → nube) */}
-            <div className="border-t px-4 py-3" style={{ borderColor: T.grid }}>
-              <SeedControl />
-            </div>
-          </Panel>
+        {/* ---------- 5 · pie de ajustes: una línea discreta, sin panel ---------- */}
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border px-4 py-2.5 text-[11.5px]"
+             style={{ borderColor: T.ring, background: T.panel }}>
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+            Ajustes
+          </span>
+          <span style={{ color: T.ink2 }}>
+            alertas push{" "}
+            <b style={{ color: pushOn ? T.good : T.muted }}>
+              {pushOn == null ? "…" : pushOn ? "activas" : "inactivas"}
+            </b>
+          </span>
+          {!pushOn ? (
+            <button onClick={enablePush}
+                    className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90"
+                    style={{ background: T.buy }}
+                    title="Suena cuando el agente propone. En iPhone: instala la app en pantalla de inicio.">
+              Activar alertas
+            </button>
+          ) : (
+            <button onClick={async () => setFlash(`Prueba enviada a ${(await testPush()).sent} dispositivo(s).`)}
+                    className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                    style={{ borderColor: T.ring, color: T.ink2 }}>
+              Enviar prueba
+            </button>
+          )}
+          <span className="ml-auto text-right" style={{ color: T.muted }} title={summary?.broker.detail}>
+            {dry ? "simulación" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a límite
+            (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado
+          </span>
         </div>
       </div>
 
@@ -752,154 +721,6 @@ export default function SalaReal() {
 }
 
 /* ============================== piezas ============================== */
-
-/* Volcado de base de datos: subes el snapshot JSON de local y REEMPLAZA toda la DB de la nube.
-   Destructivo → doble paso (elegir fichero → confirmar). El backend exige token igualmente. */
-function SeedControl() {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<{ name: string; snapshot: unknown; rows: number } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [err, setErr] = useState("");
-  const memRef = useRef<HTMLInputElement>(null);
-  const [memBusy, setMemBusy] = useState(false);
-  const [memMsg, setMemMsg] = useState("");
-  const [memErr, setMemErr] = useState("");
-  const [memStat, setMemStat] = useState<MemoryStatus | null>(null);
-  const [memStatBusy, setMemStatBusy] = useState(false);
-
-  const checkMem = async () => {
-    setMemStatBusy(true);
-    try {
-      setMemStat(await getMemoryStatus());
-    } catch {
-      setMemStat(null);
-    } finally {
-      setMemStatBusy(false);
-    }
-  };
-
-  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    setErr(""); setMsg("");
-    const f = e.target.files?.[0];
-    e.target.value = "";                       // permite volver a elegir el mismo fichero
-    if (!f) return;
-    try {
-      const snap = JSON.parse(await f.text());
-      const tables = (snap as { tables?: unknown })?.tables;
-      if (!tables || typeof tables !== "object") throw new Error("no contiene 'tables'");
-      const rows = Object.values(tables as Record<string, unknown>)
-        .reduce<number>((n, r) => n + (Array.isArray(r) ? r.length : 0), 0);
-      if (!rows) throw new Error("el snapshot está vacío");
-      setFile({ name: f.name, snapshot: snap, rows });
-    } catch (e2) {
-      setErr(`Fichero inválido: ${e2 instanceof Error ? e2.message : "no es un snapshot JSON"}.`);
-    }
-  };
-
-  const confirm = async () => {
-    if (!file) return;
-    setBusy(true); setErr("");
-    try {
-      const out = await seedDatabase(file.snapshot);
-      setMsg(`Volcado correcto · ${out.total} filas cargadas en la nube.`);
-      setFile(null);
-    } catch (e2) {
-      setErr(e2 instanceof Error ? e2.message : "Falló el volcado.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onMemFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    setMemMsg(""); setMemErr("");
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    setMemBusy(true);
-    try {
-      const out = await seedMemory(await f.arrayBuffer());
-      setMemMsg(`Memoria subida · ${Math.round(out.bytes / 1024)} KB.`);
-      void checkMem();                            // refresca el recuento tras subir
-    } catch (e2) {
-      setMemErr(e2 instanceof Error ? e2.message : "No se pudo subir la memoria.");
-    } finally {
-      setMemBusy(false);
-    }
-  };
-
-  return (
-    <div>
-      <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-        Mantenimiento · base de datos
-      </p>
-      <input ref={inputRef} type="file" accept="application/json,.json" onChange={onFile} className="hidden" />
-      {!file ? (
-        <button onClick={() => inputRef.current?.click()} disabled={busy}
-                className="rounded border px-3 py-1.5 text-[11.5px] transition-colors hover:bg-white/5 disabled:opacity-50"
-                style={{ borderColor: T.ring, color: T.ink2 }}>
-          Volcar base de datos local…
-        </button>
-      ) : (
-        <div className="rounded border p-2.5" style={{ borderColor: "rgba(250,178,25,0.4)", background: "rgba(250,178,25,0.06)" }}>
-          <p className="text-[11.5px]" style={{ color: T.ink2 }}>
-            <b style={{ color: T.warn }}>Reemplaza TODA</b> la base de datos de la nube por{" "}
-            <span className={NUMS} style={{ color: T.ink }}>{file.name}</span> ({file.rows} filas). No se puede deshacer.
-          </p>
-          <div className="mt-2 flex gap-2">
-            <button onClick={confirm} disabled={busy}
-                    className="rounded px-3 py-1.5 text-[11.5px] font-bold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
-                    style={{ background: T.warn }}>
-              {busy ? "Volcando…" : "Confirmar volcado"}
-            </button>
-            <button onClick={() => setFile(null)} disabled={busy}
-                    className="rounded border px-3 py-1.5 text-[11.5px] transition-colors hover:bg-white/5 disabled:opacity-50"
-                    style={{ borderColor: T.ring, color: T.muted }}>
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-      {msg && <p className="mt-1.5 text-[11px]" style={{ color: T.good }}>{msg}</p>}
-      {err && <p className="mt-1.5 text-[11px]" style={{ color: T.bad }}>{err}</p>}
-      <p className="mt-1.5 text-[10.5px] leading-snug" style={{ color: T.muted }}>
-        Sube el fichero <span className={NUMS}>db_snapshot.json</span> generado en local para clonar
-        aquí la imagen completa (sombra, real, personal, macro…).
-      </p>
-
-      <div className="mt-3 border-t pt-2.5" style={{ borderColor: T.grid }}>
-        <input ref={memRef} type="file" accept=".db,application/octet-stream,application/x-sqlite3"
-               onChange={onMemFile} className="hidden" />
-        <button onClick={() => memRef.current?.click()} disabled={memBusy}
-                className="rounded border px-3 py-1.5 text-[11.5px] transition-colors hover:bg-white/5 disabled:opacity-50"
-                style={{ borderColor: T.ring, color: T.ink2 }}>
-          {memBusy ? "Subiendo memoria…" : "Subir memoria vectorial (.db)…"}
-        </button>
-        {memMsg && <p className="mt-1.5 text-[11px]" style={{ color: T.good }}>{memMsg}</p>}
-        {memErr && <p className="mt-1.5 text-[11px]" style={{ color: T.bad }}>{memErr}</p>}
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button onClick={checkMem} disabled={memStatBusy}
-                  className="rounded border px-2.5 py-1 text-[10.5px] transition-colors hover:bg-white/5 disabled:opacity-50"
-                  style={{ borderColor: T.ring, color: T.muted }}>
-            {memStatBusy ? "Comprobando…" : "Comprobar estado"}
-          </button>
-          {memStat && (
-            <span className={`text-[11px] ${NUMS}`}
-                  style={{ color: memStat.available ? T.good : T.warn }}>
-              {memStat.exists
-                ? `${memStat.count} recuerdo${memStat.count === 1 ? "" : "s"} · deps ${memStat.deps ? "ok" : "no"} · ${memStat.available ? "activa" : "inactiva"}`
-                : "sin fichero de memoria en el servidor"}
-            </span>
-          )}
-        </div>
-        <p className="mt-1.5 text-[10.5px] leading-snug" style={{ color: T.muted }}>
-          Sube <span className={NUMS}>agent_memory.db</span> tal cual (los recuerdos con sus vectores).
-          «Comprobar estado» cuenta los recuerdos en el servidor sin cargar el modelo.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 function Kpi({ label, value, sub, tone, big }: {
   label: string; value: string; sub?: string; tone?: "good" | "bad"; big?: boolean;
@@ -934,27 +755,74 @@ function Panel({ title, right, accent, children }: {
   );
 }
 
-/* Sección secundaria plegable: mismo lenguaje visual que Panel, pero la cabecera es un botón
-   que alterna abierto/cerrado (estado recordado en localStorage vía useCollapsible). */
-function CollapsibleSection({ title, open, onToggle, right, children }: {
-  title: string; open: boolean; onToggle: () => void; right?: React.ReactNode; children: React.ReactNode;
+/* Aportar / retirar capital del agente. El libro habla DÓLARES y ese es el contrato duro (tope
+   de gasto exacto al céntimo). Manuel aporta EUROS sin convertir: IBKR cambia €→$ al ejecutar
+   cada compra, así que los € exactos que cueste el presupuesto se fijan entonces (deriva ~1%
+   del cálculo indicativo; solo afecta al dinero nuevo — el ciclo interno venta→compra es USD). */
+function CapitalForm({ fx, onDone, onError }: {
+  fx: number | null;
+  onDone: (s: RealSummary, msg: string) => void;
+  onError: (msg: string) => void;
 }) {
+  const [amount, setAmount] = useState("");
+  const [cur, setCur] = useState<"EUR" | "USD">("EUR");
+  const [busy, setBusy] = useState(false);
+  const v = parseFloat(amount);
+  const valid = Number.isFinite(v) && v !== 0;
+  const usd = !valid ? null : cur === "USD" ? v : fx ? v * fx : null;
+
+  const submit = async () => {
+    if (!valid || busy) return;
+    if (usd == null) return onError("Sin cambio EUR/USD ahora mismo — usa $ o reintenta en un minuto.");
+    const usdC = Math.round(usd * 100) / 100;              // el libro es cent-exacto
+    setBusy(true);
+    try {
+      const note = cur === "EUR" ? `aportación ${v} EUR @ ${fx?.toFixed(4)}` : "aportación sala real";
+      const s = await allocateReal(usdC, note);
+      onDone(s, `Capital del agente actualizado: ${usdC > 0 ? "+" : ""}$${money(usdC)}`
+        + (cur === "EUR" ? ` (${v > 0 ? "+" : ""}${money(v)} €)` : "") + ".");
+      setAmount("");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Error asignando capital.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <section className="overflow-hidden rounded-xl border" style={{ borderColor: T.ring, background: T.panel }}>
-      <button onClick={onToggle}
-              className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left transition-colors hover:bg-white/[0.03]"
-              style={{ background: T.panel2, borderBottom: open ? `1px solid ${T.grid}` : "1px solid transparent" }}>
-        <span className="flex items-center gap-2 text-[12px] font-bold tracking-wide" style={{ color: T.ink2 }}>
-          <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0" style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)" }}
-               fill="none" stroke="currentColor" strokeWidth="3">
-            <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          {title}
-        </span>
-        {right}
-      </button>
-      {open && children}
-    </section>
+    <div>
+      <div className="flex gap-2">
+        <input value={amount} onChange={(e) => setAmount(e.target.value)}
+               onKeyDown={(e) => e.key === "Enter" && submit()}
+               placeholder="0.00" inputMode="decimal"
+               className={`w-full rounded border bg-transparent px-3 py-1.5 text-[13px] outline-none ${NUMS}`}
+               style={{ borderColor: T.grid, color: T.ink }}
+               onFocus={(e) => (e.currentTarget.style.borderColor = T.buy)}
+               onBlur={(e) => (e.currentTarget.style.borderColor = T.grid)} />
+        <div className="flex shrink-0 overflow-hidden rounded border" style={{ borderColor: T.grid }}>
+          {(["EUR", "USD"] as const).map((c) => (
+            <button key={c} onClick={() => setCur(c)}
+                    className="px-2.5 text-[12px] font-bold transition-colors"
+                    style={cur === c ? { background: T.base, color: T.ink } : { color: T.muted }}>
+              {c === "EUR" ? "€" : "$"}
+            </button>
+          ))}
+        </div>
+        <button onClick={submit} disabled={busy || !valid}
+                className="shrink-0 rounded px-4 py-1.5 text-[12px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: T.buy }}>
+          {busy ? "…" : "Aportar"}
+        </button>
+      </div>
+      <p className={`mt-1.5 text-[10.5px] leading-snug ${NUMS}`} style={{ color: T.muted }}>
+        {cur === "EUR" && valid && usd != null
+          ? `el agente queda autorizado a ${usd >= 0 ? "" : "−"}$${money(Math.abs(usd))} (EURUSD ${fx?.toFixed(4)});
+             ese tope en $ es EXACTO — los € que cuesten los fija IBKR al ejecutar cada compra (deriva ~1%)`
+          : cur === "EUR" && valid && usd == null
+            ? "cambio EUR/USD no disponible — prueba en $"
+            : "negativo = retirar · ninguna orden puede gastar más de lo asignado"}
+      </p>
+    </div>
   );
 }
 

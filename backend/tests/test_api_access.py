@@ -48,6 +48,9 @@ def client(db, monkeypatch, tmp_path):
         "app.screener.macro.get_macro_regime",
         lambda: {"regime": "neutral", "spy_above_ma200": True, "vix": 15.0},
     )
+    # /fx también iría a yfinance — cambio fijo de mentira (los tests que necesiten precios
+    # concretos re-monkeypatchean live_prices por encima).
+    monkeypatch.setattr("app.tracking.live_prices", lambda _t: {"EURUSD=X": 1.09})
     app = FastAPI()
     app.include_router(public_router)
     app.include_router(router, dependencies=[Depends(auth.require_auth)])
@@ -90,6 +93,7 @@ PROTECTED_CALLS = [
     ("post", "/admin/seed", {"version": 1, "tables": {"meta": [{"key": "x", "value": "y"}]}}),
     ("post", "/admin/seed-memory", {"anything": True}),
     ("get", "/admin/memory-status", None),
+    ("get", "/fx", None),
 ]
 
 

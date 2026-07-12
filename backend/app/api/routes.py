@@ -73,6 +73,19 @@ def macro() -> dict:
     return get_macro_regime()
 
 
+@router.get("/fx")
+def fx_eurusd() -> dict:
+    """Cambio EUR→USD INDICATIVO para la frontera de aportaciones (el libro vive en USD; el FX
+    real lo hace IBKR al suyo). yfinance `EURUSD=X`, cacheado 60s en tracking.live_prices."""
+    from datetime import UTC, datetime
+
+    from app import tracking
+
+    rate = tracking.live_prices(["EURUSD=X"]).get("EURUSD=X")
+    return {"pair": "EURUSD", "rate": rate,
+            "asof": datetime.now(UTC).isoformat() if rate else None}
+
+
 # ---- Libro de capital -------------------------------------------------------
 
 def ledger_snapshot(db: Session) -> dict:

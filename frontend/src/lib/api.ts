@@ -139,6 +139,8 @@ export const executeProposalAll = () =>
 
 // ---- Sala Real ----
 export const getReal = () => get<RealSummary>("/real");
+/** Cambio EUR→USD indicativo (el libro vive en USD; tú aportas en €). */
+export const getFx = () => get<{ pair: string; rate: number | null; asof: string | null }>("/fx");
 export const allocateReal = (amount: number, note = "") =>
   post<RealSummary>("/real/allocate", { amount, note });
 export const getApprovals = () => get<ApprovalsResponse>("/approvals");
