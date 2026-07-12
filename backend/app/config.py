@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Base de datos: SQLite en local, Postgres (Supabase) en prod.
     database_url: str = "sqlite:///./agentic_trader.db"
 
+    # Memoria vectorial (sqlite-vec): RUTA de fichero pelada (NO una URL SQLAlchemy — la abre
+    # sqlite3 crudo). Local: junto al backend; en Railway: en el volumen → /data/agent_memory.db.
+    memory_db_path: str = "agent_memory.db"
+
     # Scheduler de escaneo. Cron semanal anclado a la hora del MERCADO (no UTC ni España) para
     # que sobreviva a los cambios de horario de verano: martes 10:15 ET = ~30 min tras la apertura,
     # ajustado al retraso de 15 min de yfinance → la foto cae sobre el mercado ya asentado (~10:00 ET).

@@ -146,6 +146,28 @@ export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/app
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
 export const reconcileApprovals = () => post<{ reconciled: number }>("/approvals/reconcile");
 
+// ---- Mantenimiento: volcado de base de datos (local → nube) ----
+export const seedDatabase = (snapshot: unknown) =>
+  post<{ ok: boolean; loaded: Record<string, number>; total: number }>("/admin/seed", snapshot);
+
+/** Sube el fichero de memoria vectorial (binario) TAL CUAL a la ruta configurada en el backend. */
+export async function seedMemory(bytes: ArrayBuffer): Promise<{ ok: boolean; bytes: number; path: string }> {
+  const token = getToken();
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/admin/seed-memory`, {
+      method: "POST", cache: "no-store",
+      headers: { "Content-Type": "application/octet-stream", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: bytes,
+    });
+  } catch {
+    throw new ApiError(OFFLINE, "network");
+  }
+  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
+  if (!res.ok) throw new ApiError(`No se pudo subir la memoria (${res.status}).`, "http", res.status);
+  return res.json() as Promise<{ ok: boolean; bytes: number; path: string }>;
+}
+
 // ---- Cartera personal IBKR (read-only, intocable para el agente) ----
 export const getPersonal = () => get<PersonalSummary>("/personal");
 export const syncPersonal = () => post<PersonalSummary & { synced: number }>("/personal/sync");

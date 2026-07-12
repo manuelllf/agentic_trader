@@ -37,9 +37,14 @@ class MemoryStore:
     # -- inicialización perezosa ------------------------------------------------
     def _embed(self, text: str):  # noqa: ANN001
         if self._embedder is None:
+            import os
+
             from fastembed import TextEmbedding  # import perezoso
 
-            self._embedder = TextEmbedding(model_name=self._model_name)
+            # Cache del modelo JUNTO a la DB de memoria → en Railway cae en el volumen y se
+            # descarga una sola vez (no en cada deploy).
+            cache = os.path.join(os.path.dirname(self._db_path) or ".", "fastembed_cache")
+            self._embedder = TextEmbedding(model_name=self._model_name, cache_dir=cache)
         return list(self._embedder.embed([text]))[0]
 
     def _connect(self) -> sqlite3.Connection:

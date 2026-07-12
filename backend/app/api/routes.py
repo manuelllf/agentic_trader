@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -200,6 +200,50 @@ def redeep(db: Session = Depends(get_db)) -> dict:
         return _redeep(db)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+# ---- Mantenimiento: volcado de base de datos (local → nube) -----------------
+
+class SeedIn(BaseModel):
+    version: int | None = None
+    tables: dict[str, list[dict]]
+
+
+@router.post("/admin/seed")
+def admin_seed(body: SeedIn, db: Session = Depends(get_db)) -> dict:
+    """DESTRUCTIVO: reemplaza TODA la base de datos por el snapshot subido (mismo esquema).
+
+    Protegido por token (require_auth) y transaccional sobre la conexión de la sesión: si algo
+    falla, rollback y la DB queda intacta. Migra de un tirón la imagen local a la nube.
+    """
+    from app import dbdump
+    try:
+        out = dbdump.import_all(db.connection(), body.model_dump())
+        db.commit()
+        return out
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(422, str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/admin/seed-memory")
+def admin_seed_memory(body: bytes = Body(...)) -> dict:
+    """Sube el fichero de memoria vectorial (agent_memory.db) TAL CUAL y lo escribe en la ruta
+    configurada (en Railway, el volumen). Copia literal del SQLite con sus vectores — NO re-embebe.
+    """
+    import pathlib
+
+    from app import memory
+    if not body:
+        raise HTTPException(422, "Fichero de memoria vacío.")
+    memory.reset_store()                        # cierra la conexión si estaba abierta (evita lock)
+    path = pathlib.Path(settings.memory_db_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+    return {"ok": True, "bytes": len(body), "path": str(path)}
 
 
 # ---- Lecturas ---------------------------------------------------------------

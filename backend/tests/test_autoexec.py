@@ -143,6 +143,7 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
 
     fake_llm = FakeLLM(_FAKE_REPLY)
     monkeypatch.setattr(service, "get_llm", lambda *a, **k: fake_llm)
+    monkeypatch.setattr(service, "_memory_store", lambda: None)  # memoria fuera del test (embeddings)
     monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
     monkeypatch.setattr(fund_mod, "gather", lambda t: NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
@@ -194,6 +195,7 @@ def test_scan_failure_in_autoexec_never_fails_the_scan(db, monkeypatch) -> None:
 
     fake_llm = FakeLLM(_FAKE_REPLY)
     monkeypatch.setattr(service, "get_llm", lambda *a, **k: fake_llm)
+    monkeypatch.setattr(service, "_memory_store", lambda: None)  # memoria fuera del test (embeddings)
     monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
     monkeypatch.setattr(fund_mod, "gather", lambda t: NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,

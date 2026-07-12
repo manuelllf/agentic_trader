@@ -14,7 +14,7 @@ COPY app ./app
 # Instala EXACTAMENTE lo del lockfile (build reproducible), sin dev.
 # --extra postgres: el driver psycopg va SIEMPRE en la imagen → cambiar de SQLite a
 # Supabase/Postgres es solo cambiar DATABASE_URL, sin tocar el build.
-RUN uv sync --frozen --no-dev --extra postgres
+RUN uv sync --frozen --no-dev --extra postgres --extra memory
 
 EXPOSE 8000
 # Forma shell (no exec) para que ${PORT} se expanda: Railway inyecta su propio puerto.

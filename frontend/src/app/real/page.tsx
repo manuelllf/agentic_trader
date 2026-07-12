@@ -22,7 +22,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getPerformance, getPersonal,
-  getPushKey, getReal, reconcileApprovals, rejectTrade, runDemo, subscribePush, syncPersonal, testPush,
+  getPushKey, getReal, reconcileApprovals, rejectTrade, runDemo, seedDatabase, seedMemory,
+  subscribePush, syncPersonal, testPush,
 } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
 import type {
@@ -733,6 +734,10 @@ export default function SalaReal() {
                 límite (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado.
               </p>
             </div>
+            {/* mantenimiento: volcado de base de datos (local → nube) */}
+            <div className="border-t px-4 py-3" style={{ borderColor: T.grid }}>
+              <SeedControl />
+            </div>
           </Panel>
         </div>
       </div>
@@ -746,6 +751,125 @@ export default function SalaReal() {
 }
 
 /* ============================== piezas ============================== */
+
+/* Volcado de base de datos: subes el snapshot JSON de local y REEMPLAZA toda la DB de la nube.
+   Destructivo → doble paso (elegir fichero → confirmar). El backend exige token igualmente. */
+function SeedControl() {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<{ name: string; snapshot: unknown; rows: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const memRef = useRef<HTMLInputElement>(null);
+  const [memBusy, setMemBusy] = useState(false);
+  const [memMsg, setMemMsg] = useState("");
+  const [memErr, setMemErr] = useState("");
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setErr(""); setMsg("");
+    const f = e.target.files?.[0];
+    e.target.value = "";                       // permite volver a elegir el mismo fichero
+    if (!f) return;
+    try {
+      const snap = JSON.parse(await f.text());
+      const tables = (snap as { tables?: unknown })?.tables;
+      if (!tables || typeof tables !== "object") throw new Error("no contiene 'tables'");
+      const rows = Object.values(tables as Record<string, unknown>)
+        .reduce<number>((n, r) => n + (Array.isArray(r) ? r.length : 0), 0);
+      if (!rows) throw new Error("el snapshot está vacío");
+      setFile({ name: f.name, snapshot: snap, rows });
+    } catch (e2) {
+      setErr(`Fichero inválido: ${e2 instanceof Error ? e2.message : "no es un snapshot JSON"}.`);
+    }
+  };
+
+  const confirm = async () => {
+    if (!file) return;
+    setBusy(true); setErr("");
+    try {
+      const out = await seedDatabase(file.snapshot);
+      setMsg(`Volcado correcto · ${out.total} filas cargadas en la nube.`);
+      setFile(null);
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : "Falló el volcado.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onMemFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMemMsg(""); setMemErr("");
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setMemBusy(true);
+    try {
+      const out = await seedMemory(await f.arrayBuffer());
+      setMemMsg(`Memoria subida · ${Math.round(out.bytes / 1024)} KB.`);
+    } catch (e2) {
+      setMemErr(e2 instanceof Error ? e2.message : "No se pudo subir la memoria.");
+    } finally {
+      setMemBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+        Mantenimiento · base de datos
+      </p>
+      <input ref={inputRef} type="file" accept="application/json,.json" onChange={onFile} className="hidden" />
+      {!file ? (
+        <button onClick={() => inputRef.current?.click()} disabled={busy}
+                className="rounded border px-3 py-1.5 text-[11.5px] transition-colors hover:bg-white/5 disabled:opacity-50"
+                style={{ borderColor: T.ring, color: T.ink2 }}>
+          Volcar base de datos local…
+        </button>
+      ) : (
+        <div className="rounded border p-2.5" style={{ borderColor: "rgba(250,178,25,0.4)", background: "rgba(250,178,25,0.06)" }}>
+          <p className="text-[11.5px]" style={{ color: T.ink2 }}>
+            <b style={{ color: T.warn }}>Reemplaza TODA</b> la base de datos de la nube por{" "}
+            <span className={NUMS} style={{ color: T.ink }}>{file.name}</span> ({file.rows} filas). No se puede deshacer.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button onClick={confirm} disabled={busy}
+                    className="rounded px-3 py-1.5 text-[11.5px] font-bold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+                    style={{ background: T.warn }}>
+              {busy ? "Volcando…" : "Confirmar volcado"}
+            </button>
+            <button onClick={() => setFile(null)} disabled={busy}
+                    className="rounded border px-3 py-1.5 text-[11.5px] transition-colors hover:bg-white/5 disabled:opacity-50"
+                    style={{ borderColor: T.ring, color: T.muted }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+      {msg && <p className="mt-1.5 text-[11px]" style={{ color: T.good }}>{msg}</p>}
+      {err && <p className="mt-1.5 text-[11px]" style={{ color: T.bad }}>{err}</p>}
+      <p className="mt-1.5 text-[10.5px] leading-snug" style={{ color: T.muted }}>
+        Sube el fichero <span className={NUMS}>db_snapshot.json</span> generado en local para clonar
+        aquí la imagen completa (sombra, real, personal, macro…).
+      </p>
+
+      <div className="mt-3 border-t pt-2.5" style={{ borderColor: T.grid }}>
+        <input ref={memRef} type="file" accept=".db,application/octet-stream,application/x-sqlite3"
+               onChange={onMemFile} className="hidden" />
+        <button onClick={() => memRef.current?.click()} disabled={memBusy}
+                className="rounded border px-3 py-1.5 text-[11.5px] transition-colors hover:bg-white/5 disabled:opacity-50"
+                style={{ borderColor: T.ring, color: T.ink2 }}>
+          {memBusy ? "Subiendo memoria…" : "Subir memoria vectorial (.db)…"}
+        </button>
+        {memMsg && <p className="mt-1.5 text-[11px]" style={{ color: T.good }}>{memMsg}</p>}
+        {memErr && <p className="mt-1.5 text-[11px]" style={{ color: T.bad }}>{memErr}</p>}
+        <p className="mt-1.5 text-[10.5px] leading-snug" style={{ color: T.muted }}>
+          Sube <span className={NUMS}>agent_memory.db</span> tal cual (los 34 recuerdos con sus vectores).
+          Solo aplica si la memoria está activa en el backend.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function Kpi({ label, value, sub, tone, big }: {
   label: string; value: string; sub?: string; tone?: "good" | "bad"; big?: boolean;

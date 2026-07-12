@@ -26,6 +26,9 @@ service-account*.json
 *.db-shm
 *.sqlite
 *.sqlite3
+# Caché del modelo de embeddings (fastembed) — ~130 MB, nunca al repo
+fastembed_cache/
+**/fastembed_cache/
 *.dump
 *.bak
 data/

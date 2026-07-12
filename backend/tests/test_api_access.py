@@ -38,8 +38,11 @@ def db():
 
 
 @pytest.fixture
-def client(db, monkeypatch):
+def client(db, monkeypatch, tmp_path):
     monkeypatch.setattr(auth.settings, "app_password", PASSWORD)
+    # Aísla la ruta de la memoria vectorial en un tmp: /admin/seed-memory escribe a fichero,
+    # jamás debe tocar el agent_memory.db real durante los tests.
+    monkeypatch.setattr(auth.settings, "memory_db_path", str(tmp_path / "mem.db"))
     # /macro llamaría a yfinance; en tests no hay red — régimen determinista de mentira.
     monkeypatch.setattr(
         "app.screener.macro.get_macro_regime",
@@ -84,6 +87,8 @@ PROTECTED_CALLS = [
     ("get", "/scores", None),
     ("get", "/proposal", None),
     ("get", "/watchlist", None),
+    ("post", "/admin/seed", {"version": 1, "tables": {"meta": [{"key": "x", "value": "y"}]}}),
+    ("post", "/admin/seed-memory", {"anything": True}),
 ]
 
 
