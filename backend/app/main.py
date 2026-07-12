@@ -26,6 +26,7 @@ logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    _materialize_ibkr_pems()   # antes que nada: el reconcile de abajo ya puede tocar el broker
     init_db()
     _reconcile_on_startup()
     start_scheduler()
@@ -33,6 +34,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         stop_scheduler()
+
+
+def _materialize_ibkr_pems() -> None:
+    """En la nube, las claves PEM de IBKR llegan por env en base64 → volcarlas a fichero."""
+    from app.brokers.ibkr_web import materialize_pems
+
+    try:
+        materialize_pems()
+    except Exception:
+        logging.getLogger(__name__).exception("Bootstrap de claves IBKR falló (broker simulado).")
 
 
 def _reconcile_on_startup() -> None:

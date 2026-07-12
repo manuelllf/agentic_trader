@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     ibkr_oauth_signature_key_path: str = ""        # private_signature.pem
     ibkr_oauth_encryption_key_path: str = ""       # private_encryption.pem
     ibkr_oauth_dh_prime: str = ""                  # hex del dhparam.pem
+    # Cloud (Railway): los .pem no viajan por git — se suben en BASE64 como env vars y al
+    # arrancar `materialize_pems()` los vuelca a ficheros temporales y apunta los *_key_path.
+    # En local se dejan vacías (se usan las rutas de arriba directamente).
+    ibkr_pem_signature_b64: str = ""
+    ibkr_pem_encryption_b64: str = ""
 
     # Web Push (VAPID) — notificaciones gratis, sin Firebase ni terceros.
     vapid_public_key: str = ""

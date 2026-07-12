@@ -44,6 +44,46 @@ def credentials_present() -> bool:
     ])
 
 
+def materialize_pems(dest_dir: str | None = None) -> bool:
+    """Vuelca las claves PEM subidas en BASE64 (env, para la nube) a ficheros y apunta las rutas.
+
+    En Railway los `.pem` no existen en disco (no viajan por git): van como env vars en base64
+    (`IBKR_PEM_*_B64`). Al arrancar, esto los escribe en un directorio temporal con permisos
+    restrictivos y sobrescribe `ibkr_oauth_*_key_path` para que ibind los encuentre. Best-effort:
+    si algo falla, log y False — el broker cae en DryRun por la cascada de seguridad, nunca
+    tumba el arranque. En local (sin B64) es un no-op y se usan las rutas del .env.
+    """
+    import base64
+    import pathlib
+    import tempfile
+
+    pairs = [
+        (settings.ibkr_pem_signature_b64, "private_signature.pem",
+         "ibkr_oauth_signature_key_path"),
+        (settings.ibkr_pem_encryption_b64, "private_encryption.pem",
+         "ibkr_oauth_encryption_key_path"),
+    ]
+    if not any(b64 for b64, _f, _a in pairs):
+        return False                                    # local: no hay nada que materializar
+    try:
+        out = (pathlib.Path(dest_dir) if dest_dir
+               else pathlib.Path(tempfile.gettempdir()) / "ibkr_keys")
+        out.mkdir(parents=True, exist_ok=True)
+        os.chmod(out, 0o700)
+        for b64, fname, attr in pairs:
+            if not b64:
+                continue
+            path = out / fname
+            path.write_bytes(base64.b64decode(b64, validate=True))
+            os.chmod(path, 0o600)
+            setattr(settings, attr, str(path))
+        logger.info("Claves IBKR materializadas desde env en %s", out)
+        return True
+    except Exception:
+        logger.exception("No se pudieron materializar las claves IBKR (broker quedará simulado).")
+        return False
+
+
 def _export_env() -> None:
     """Vuelca la config tipada a las env vars IBIND_* que lee ibind."""
     os.environ["IBIND_USE_OAUTH"] = "True"
