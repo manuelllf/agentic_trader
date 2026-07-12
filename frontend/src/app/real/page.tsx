@@ -433,7 +433,8 @@ export default function SalaReal() {
                     <b style={{ color: T.ink2 }}>2</b> · análisis
                   </p>
                   <p className="text-[12.5px] leading-relaxed" style={{ color: T.ink2 }}>
-                    Automático cada martes a las 10:15 (hora del mercado US), o cuando quieras con
+                    La sombra se recalibra cada martes a las 10:15 (hora del mercado US); esta
+                    cartera recibe propuestas el primer martes del mes — o al momento con
                     «Analizar mercado» arriba.
                   </p>
                   <p className="mt-1.5 text-[11px]" style={{ color: T.muted }}>

@@ -76,8 +76,14 @@ def _recall(store, ticker: str, hint: str) -> str | None:
         return None
 
 
-def run_scan_and_store(db: Session, sample_size: int | None = None) -> dict:
-    """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume."""
+def run_scan_and_store(db: Session, sample_size: int | None = None,
+                       real_proposals: bool = True) -> dict:
+    """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
+
+    `real_proposals`: si False, el escaneo recalibra SOLO la sombra (scores + propuesta +
+    auto-ejecución) sin crear aprobaciones para la sala real — es el modo del cron semanal
+    entre calibrados mensuales de la real (ver `real_proposals_monthly` en config).
+    """
     deep_llm = get_llm()                              # V4-Pro: informe + target + construcción
     prescore_llm = get_llm(settings.prescore_model)   # Flash: ranking rápido de todo el universo
     # sample_size explícito (pruebas) manda; si no, TODO el universo salvo que se desactive.
@@ -211,18 +217,23 @@ def run_scan_and_store(db: Session, sample_size: int | None = None) -> dict:
         logger.exception("Fallo en la auto-ejecución del libro sombra (no aborta el escaneo).")
 
     # 9) Sala Real: cada trade propuesto queda PENDIENTE de tu Sí/No (push best-effort).
-    #    El agente jamás ejecuta solo — ni siquiera en dry-run.
-    try:
-        from app import approvals as approvals_mod
-        approvals_mod.create_from_items(db, items, macro_line)
-    except Exception:
-        logger.exception("No se pudieron crear las aprobaciones del modo real.")
+    #    El agente jamás ejecuta solo — ni siquiera en dry-run. En los escaneos de recalibrado
+    #    sombra (cadencia real mensual) este paso se omite entero.
+    if real_proposals:
+        try:
+            from app import approvals as approvals_mod
+            approvals_mod.create_from_items(db, items, macro_line)
+        except Exception:
+            logger.exception("No se pudieron crear las aprobaciones del modo real.")
+    else:
+        logger.info("Recalibrado sombra: sin propuestas para la sala real (cadencia mensual).")
 
     return {
         "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
         "watchlist": len(watchlist_mod.tickers(db)),
         "proposed": len([i for i in items if i["action"] != "mantener"]),
         "positions": len(construction.positions),
+        "real_proposals": real_proposals,
         "cost": _llm_usage(prescore_llm, deep_llm),  # coste REAL del escaneo (Flash + V4-Pro)
     }
 

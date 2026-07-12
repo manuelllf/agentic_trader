@@ -9,6 +9,8 @@ Se puede desactivar con ENABLE_SCHEDULER=false (tests, o escaneos solo bajo dema
 from __future__ import annotations
 
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -21,10 +23,23 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler(timezone="UTC")
 
 
+def real_proposals_due(now: datetime | None = None) -> bool:
+    """¿Le toca proponer a la sala REAL en este escaneo programado?
+
+    Cadencia doble: la sombra se recalibra cada semana, la real solo en el PRIMER escaneo
+    programado del mes — la primera aparición de un día de semana cae siempre en día 1-7.
+    Con `real_proposals_monthly=False`, todos los escaneos proponen (cadencia única).
+    """
+    if not settings.real_proposals_monthly:
+        return True
+    now = now or datetime.now(ZoneInfo(settings.scan_timezone))
+    return now.day <= 7
+
+
 def _scan_job() -> None:
     db = SessionLocal()
     try:
-        result = run_scan_and_store(db)
+        result = run_scan_and_store(db, real_proposals=real_proposals_due())
         logger.info("Escaneo completado: %s", result)
     except Exception:
         logger.exception("Fallo en el job de escaneo")

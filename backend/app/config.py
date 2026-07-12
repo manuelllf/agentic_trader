@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     scan_cron_hour: int = 10
     scan_cron_minute: int = 15
     scan_timezone: str = "America/New_York"    # ancla a la bolsa US (sobrevive al horario de verano)
+    # Cadencia doble: la SOMBRA se recalibra en cada escaneo del cron (semanal, gratis, más datos),
+    # pero la sala REAL solo recibe propuestas en el PRIMER escaneo programado del mes — la señal
+    # del scorer es mensual y así se evita churn de ruido con dinero real. Los escaneos MANUALES
+    # (botón «Analizar mercado») siempre proponen. False = proponer en todos los escaneos.
+    real_proposals_monthly: bool = True
 
     # CORS: orígenes permitidos del frontend, separados por coma.
     cors_origins: str = "http://localhost:3000"
