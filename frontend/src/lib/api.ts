@@ -1,7 +1,8 @@
 // Cliente HTTP hacia el backend FastAPI.
 import type {
-  AppConfig, Approval, ApprovalsResponse, DemoStatus, ExecuteResult, LedgerSnapshot, Macro,
-  Overview, Performance, PersonalSummary, Proposal, RealSummary, ScoreRow, WatchItem,
+  AppConfig, Approval, ApprovalsResponse, DemoStatus, EquityHistory, ExecuteResult,
+  LedgerSnapshot, Macro, Overview, Performance, PersonalSummary, Proposal, RealSummary,
+  ScoreRow, WatchItem,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -128,6 +129,9 @@ export const getProposal = () => get<Proposal | null>("/proposal");
 export const getWatchlist = () => get<WatchItem[]>("/watchlist");
 export const getPerformance = () => get<Performance>("/performance");
 export const getOverview = () => get<Overview>("/overview");
+/** Curva histórica (cierres diarios). La sombra es pública; la real sin sesión llega sin equity. */
+export const getHistory = (book: "shadow" | "real" = "shadow") =>
+  get<EquityHistory>(`/history?book=${book}`);
 
 // Ejecuta un item de la propuesta en el libro sombra (botón Comprar/Vender).
 export const executeProposalItem = (ticker: string) =>

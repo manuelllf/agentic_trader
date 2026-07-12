@@ -6,9 +6,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getOverview } from "@/lib/api";
+import { getHistory, getOverview } from "@/lib/api";
+import HistoryChart from "@/components/HistoryChart";
 import Logo from "@/components/Logo";
-import type { Overview } from "@/lib/types";
+import type { HistoryPoint, Overview } from "@/lib/types";
 
 const fmtPct = (v: number | null) => (v == null ? "—" : `${v > 0 ? "+" : ""}${v}%`);
 const pctTone = (v: number | null, dark = false) =>
@@ -18,6 +19,9 @@ const pctTone = (v: number | null, dark = false) =>
 export default function Landing() {
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
+  // Mini-curvas (públicas): la real llega sin equity — solo fechas y %, como el teaser.
+  const [shadowHist, setShadowHist] = useState<HistoryPoint[]>([]);
+  const [realHist, setRealHist] = useState<HistoryPoint[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -25,6 +29,8 @@ export default function Landing() {
       .then((o) => { if (alive) setData(o); })
       .catch(() => { /* backend caído: se queda en "—", sin romper ni pedir login aquí */ })
       .finally(() => { if (alive) setLoading(false); });
+    getHistory("shadow").then((h) => { if (alive) setShadowHist(h.series); }).catch(() => {});
+    getHistory("real").then((h) => { if (alive) setRealHist(h.series); }).catch(() => {});
     return () => { alive = false; };
   }, []);
 
@@ -57,6 +63,11 @@ export default function Landing() {
             <p className="mt-2 text-xs text-slate-500">
               vs S&amp;P 500: alpha {fmtPct(shadow?.alpha_pct ?? null)}
             </p>
+            {shadowHist.length >= 2 && (
+              <div className="mt-2">
+                <HistoryChart points={shadowHist} mini />
+              </div>
+            )}
             <p className="mt-1 text-[11px] text-slate-400">
               {shadow?.since ? `desde ${shadow.since} · ${shadow.positions} posiciones` : "todavía sin cartera"}
             </p>
@@ -87,6 +98,11 @@ export default function Landing() {
               </span>
             )}
             <p className="mt-2 text-xs" style={{ color: "#898781" }}>P&amp;L no realizado</p>
+            {realHist.length >= 2 && (
+              <div className="mt-2">
+                <HistoryChart points={realHist} mini dark />
+              </div>
+            )}
             <p className="mt-1 text-[11px]" style={{ color: "#898781" }}>Acceso privado</p>
             <span
               className="mt-5 inline-flex w-fit items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-white transition group-hover:opacity-90"

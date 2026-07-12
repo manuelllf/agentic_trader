@@ -194,6 +194,20 @@ export interface PersonalSummary {
   positions: PersonalPosition[];
 }
 
+// ---- Curva histórica (cierres diarios; índice base 100 ponderado por tiempo) ----
+
+export interface HistoryPoint {
+  date: string;             // YYYY-MM-DD (día de mercado)
+  equity?: string;          // ausente en la curva real sin sesión (doble nivel)
+  index: number;            // cartera, base 100 — los flujos no cuentan como rentabilidad
+  spy_index: number | null; // S&P 500, base 100 el mismo día
+}
+
+export interface EquityHistory {
+  book: "shadow" | "real";
+  series: HistoryPoint[];
+}
+
 // ---- Portada pública (teaser de ambas salas) ----
 
 export interface Overview {

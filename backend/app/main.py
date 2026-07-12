@@ -29,6 +29,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _materialize_ibkr_pems()   # antes que nada: el reconcile de abajo ya puede tocar el broker
     init_db()
     _reconcile_on_startup()
+    _backfill_curve_on_startup()
     start_scheduler()
     try:
         yield
@@ -44,6 +45,30 @@ def _materialize_ibkr_pems() -> None:
         materialize_pems()
     except Exception:
         logging.getLogger(__name__).exception("Bootstrap de claves IBKR falló (broker simulado).")
+
+
+def _backfill_curve_on_startup() -> None:
+    """Rellena la curva histórica nada más arrancar, en un hilo aparte: yfinance tarda unos
+    segundos y no debe retrasar el healthcheck. Cubre el hueco entre el deploy y el primer
+    job de las 16:30 ET (y cualquier día que el backend pasara apagado)."""
+    import threading
+
+    def run() -> None:
+        from app import history
+        from app.db import SessionLocal
+
+        db = SessionLocal()
+        try:
+            n = history.record_snapshots(db)
+            if n:
+                logging.getLogger(__name__).info(
+                    "Curva histórica al arrancar: %s cierre(s) apuntado(s).", n)
+        except Exception:
+            logging.getLogger(__name__).exception("Backfill de la curva falló (se reintentará)")
+        finally:
+            db.close()
+
+    threading.Thread(target=run, daemon=True, name="curve-backfill").start()
 
 
 def _reconcile_on_startup() -> None:

@@ -47,6 +47,24 @@ def _scan_job() -> None:
         db.close()
 
 
+def _snapshot_job() -> None:
+    """Apunta el cierre diario de la curva histórica (equity por libro + SPY).
+
+    Corre tras el cierre US (16:00 ET) con margen para el retraso de ~15 min de yfinance.
+    Si un día no corrió (deploy, caída), el siguiente rellena los huecos solo."""
+    from app import history
+
+    db = SessionLocal()
+    try:
+        n = history.record_snapshots(db)
+        if n:
+            logger.info("Curva histórica: %s cierre(s) apuntado(s).", n)
+    except Exception:
+        logger.exception("Fallo en el job de snapshot de la curva")
+    finally:
+        db.close()
+
+
 def _reconcile_job() -> None:
     """Reconcilia fills de órdenes límite 'working' SIN depender de que la web esté abierta.
 
@@ -77,6 +95,12 @@ def start_scheduler() -> None:
         timezone=settings.scan_timezone,
     )
     scheduler.add_job(_scan_job, trigger=trigger, id="weekly_scan", replace_existing=True)
+    # Cierre diario de la curva histórica: lun-vie 16:30 ET (cierre + retraso de yfinance).
+    scheduler.add_job(
+        _snapshot_job,
+        CronTrigger(day_of_week="mon-fri", hour=16, minute=30, timezone=settings.scan_timezone),
+        id="equity_snapshot", replace_existing=True,
+    )
     # Reconciliación de órdenes working cada 2 min (no-op sin órdenes vivas; ver _reconcile_job).
     scheduler.add_job(_reconcile_job, "interval", minutes=2, id="reconcile_working",
                       replace_existing=True)

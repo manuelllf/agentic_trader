@@ -10,11 +10,11 @@ Estado del agente en 4 capas:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from decimal import Decimal
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Date, DateTime, Float, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -166,6 +166,24 @@ class Approval(Base):
     quantity: Mapped[Decimal | None] = mapped_column(DecimalStr(32))    # acciones YA ejecutadas (acumulado)
     fill_price: Mapped[Decimal | None] = mapped_column(DecimalStr(32))  # precio medio de ejecución
     result_msg: Mapped[str] = mapped_column(String, default="")
+
+
+class EquitySnapshot(Base):
+    """Cierre diario del patrimonio de un libro + cierre del SPY (la curva histórica).
+
+    Una fila por (día de mercado, libro). El job diario upserta el día en curso y RELLENA los
+    huecos reproduciendo el log inmutable (asignaciones + trades) con cierres históricos de
+    yfinance — un backend caído un día no agujerea la curva. Ver `app/history.py`.
+    """
+
+    __tablename__ = "equity_snapshots"
+    __table_args__ = (UniqueConstraint("day", "book", name="uq_snapshot_day_book"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    book: Mapped[str] = mapped_column(String(8), index=True)
+    equity: Mapped[Decimal] = mapped_column(DecimalStr(32))   # caja + posiciones al cierre
+    spy_close: Mapped[float | None] = mapped_column(Float)    # benchmark del mismo día
 
 
 class Meta(Base):

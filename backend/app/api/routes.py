@@ -148,6 +148,24 @@ def performance(db: Session = Depends(get_db), authed: bool = Depends(auth_optio
     return perf
 
 
+@public_router.get("/history")
+def history_series(
+    book: str = "shadow", db: Session = Depends(get_db), authed: bool = Depends(auth_optional),
+) -> dict:
+    """Curva histórica (cierres diarios, índice base 100 vs S&P 500). Doble nivel: la sombra es
+    pública entera (cifras de un sleeve virtual); la real sin sesión pierde el equity — quedan
+    fechas y % (lo mismo que ya presume la portada), nunca importes."""
+    from app import history as history_mod
+    from app.models import BOOK_REAL, BOOK_SHADOW
+
+    if book not in (BOOK_SHADOW, BOOK_REAL):
+        raise HTTPException(status_code=422, detail="book debe ser 'shadow' o 'real'.")
+    out = history_mod.series(db, book)
+    if book == BOOK_REAL and not authed:
+        out["series"] = [{k: v for k, v in p.items() if k != "equity"} for p in out["series"]]
+    return out
+
+
 @public_router.get("/overview")
 def overview(db: Session = Depends(get_db)) -> dict:
     """Teaser público de la portada: sombra completa (viene de /performance) + real SOLO el

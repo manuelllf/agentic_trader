@@ -68,6 +68,7 @@ def token(client) -> str:
 
 PUBLIC_GET_PATHS = [
     "/overview", "/ledger", "/performance", "/macro", "/config", "/demo/status",
+    "/history", "/history?book=real",
 ]
 
 
@@ -297,6 +298,41 @@ def test_memory_status_counts_after_seed_without_loading_model(client, token, tm
     assert after["exists"] is True
     assert after["count"] == 3
     assert "deps" in after                                        # se informa si las deps están
+
+
+# ---- /history: doble nivel (la curva real sin sesión pierde el equity) -------
+
+def _seed_real_history(db) -> None:
+    from datetime import date
+
+    from app.models import BOOK_REAL, EquitySnapshot
+
+    db.add_all([
+        EquitySnapshot(day=date(2026, 7, 8), book=BOOK_REAL, equity=1000, spy_close=500.0),
+        EquitySnapshot(day=date(2026, 7, 9), book=BOOK_REAL, equity=1050, spy_close=505.0),
+    ])
+    db.commit()
+
+
+def test_history_real_without_token_hides_equity(db, client) -> None:
+    """Sin sesión: fechas e índices (el % que la portada ya presume), jamás importes."""
+    _seed_real_history(db)
+    res = client.get("/history?book=real")
+    assert res.status_code == 200
+    pts = res.json()["series"]
+    assert len(pts) == 2
+    assert all("equity" not in p for p in pts)
+    assert pts[1]["index"] == 105.0
+
+
+def test_history_real_with_token_shows_equity(db, client, token) -> None:
+    _seed_real_history(db)
+    res = client.get("/history?book=real", headers={"Authorization": f"Bearer {token}"})
+    assert [p["equity"] for p in res.json()["series"]] == ["1000", "1050"]
+
+
+def test_history_rejects_unknown_book(client) -> None:
+    assert client.get("/history?book=personal").status_code == 422
 
 
 # ---- aportaciones con divisa: el libro vive en USD, Manuel aporta EUR ---------

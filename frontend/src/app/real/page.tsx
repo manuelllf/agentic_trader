@@ -21,14 +21,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getPerformance,
-  getPersonal, getPushKey, getReal, reconcileApprovals, rejectTrade, runDemo,
+  allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getHistory,
+  getPerformance, getPersonal, getPushKey, getReal, reconcileApprovals, rejectTrade, runDemo,
   subscribePush, syncPersonal, testPush,
 } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
+import HistoryChart from "@/components/HistoryChart";
 import type {
-  AppConfig, Approval, ApprovalsResponse, DemoStatus, Performance, PersonalSummary, RealSummary,
-  TradeAction,
+  AppConfig, Approval, ApprovalsResponse, DemoStatus, HistoryPoint, Performance,
+  PersonalSummary, RealSummary, TradeAction,
 } from "@/lib/types";
 
 /* ---------- tokens (paleta de referencia validada, modo dark) ---------- */
@@ -84,15 +85,16 @@ export default function SalaReal() {
   const [scanStatus, setScanStatus] = useState<DemoStatus | null>(null);
   const [running, setRunning] = useState(false);
   const [shadowPerf, setShadowPerf] = useState<Performance | null>(null);   // sombra en paralelo
+  const [hist, setHist] = useState<HistoryPoint[]>([]);   // curva del libro real (cierres diarios)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [s, a, c, pp, st, sp, fxr] = await Promise.all([
+      const [s, a, c, pp, st, sp, fxr, hs] = await Promise.all([
         getReal(), getApprovals(), getConfig().catch(() => null), getPersonal().catch(() => null),
         getDemoStatus().catch(() => null), getPerformance().catch(() => null),
-        getFx().catch(() => null),
+        getFx().catch(() => null), getHistory("real").catch(() => null),
       ]);
       setSummary(s);
       setApprovals(a);
@@ -101,6 +103,7 @@ export default function SalaReal() {
       if (st) setScanStatus(st);
       setShadowPerf(sp);
       if (fxr?.rate) setFx(fxr.rate);
+      if (hs) setHist(hs.series);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
@@ -556,6 +559,20 @@ export default function SalaReal() {
             </>
           )}
         </Panel>
+        )}
+
+        {/* curva histórica del libro real: solo cuando existen cierres (tras la primera compra) */}
+        {hist.length >= 2 && (
+          <div className="mt-4">
+            <Panel title="Tu curva vs S&P 500"
+                   right={<span className="text-[11px]" style={{ color: T.muted }}>
+                            las aportaciones no cuentan como rentabilidad
+                          </span>}>
+              <div className="px-4 py-3">
+                <HistoryChart points={hist} dark />
+              </div>
+            </Panel>
+          </div>
         )}
 
         {/* mini-franja: sombra en paralelo vs libro real vs S&P — un vistazo, sin repetir el detalle */}

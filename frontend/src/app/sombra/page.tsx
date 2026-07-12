@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getConfig,
   getDemoStatus,
+  getHistory,
   getLedger,
   getMacro,
   getPerformance,
@@ -13,10 +14,12 @@ import {
   getWatchlist,
   hasToken,
 } from "@/lib/api";
+import HistoryChart from "@/components/HistoryChart";
 import Logo from "@/components/Logo";
 import type {
   AppConfig,
   DemoStatus,
+  HistoryPoint,
   LedgerSnapshot,
   Macro,
   Performance,
@@ -60,6 +63,7 @@ export default function SombraDashboard() {
   const [scores, setScores] = useState<ScoreRow[]>([]);
   const [watch, setWatch] = useState<WatchItem[]>([]);
   const [perf, setPerf] = useState<Performance | null>(null);
+  const [hist, setHist] = useState<HistoryPoint[]>([]);
   const [macro, setMacro] = useState<Macro | null>(null);
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [status, setStatus] = useState<DemoStatus | null>(null);
@@ -74,11 +78,12 @@ export default function SombraDashboard() {
     try {
       // El ledger es crítico (define la conexión); el resto degrada con gracia si falla.
       const l = await getLedger();
-      const [m, pf, cf, st] = await Promise.all([
+      const [m, pf, cf, st, hs] = await Promise.all([
         getMacro().catch(() => null),
         getPerformance().catch(() => null),
         getConfig().catch(() => null),
         getDemoStatus().catch(() => null),
+        getHistory("shadow").catch(() => null),
       ]);
       // Sin sesión, ni se piden: scores/propuesta/watchlist son del método — evita 401 al aire.
       const withSession = hasToken();
@@ -93,6 +98,7 @@ export default function SombraDashboard() {
         ]);
       }
       setLedger(l); setProposal(p); setScores(s); setWatch(w); setMacro(m); setPerf(pf); setCfg(cf); setStatus(st);
+      if (hs) setHist(hs.series);
       setAuthed(withSession);
       setError(null);
     } catch (e) {
@@ -183,6 +189,21 @@ export default function SombraDashboard() {
                tone={perf?.alpha_pct != null ? (perf.alpha_pct >= 0 ? "pos" : "neg") : undefined} />
           <Kpi label="Régimen" value={macro?.regime ?? "—"} sub={macro?.vix != null ? `VIX ${macro.vix}` : ""} />
         </section>
+
+        {/* Curva histórica: cierre diario de la cartera vs S&P 500 (índice base 100) */}
+        {hist.length >= 2 && (
+          <section className={`mb-6 ${CARD}`}>
+            <CardHead>
+              Cartera vs S&amp;P 500
+              <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
+                cierre diario · base 100 en la primera compra
+              </span>
+            </CardHead>
+            <div className="p-4">
+              <HistoryChart points={hist} />
+            </div>
+          </section>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
           {/* Sidebar */}
