@@ -43,13 +43,13 @@ class Settings(BaseSettings):
     enable_llm: bool = False
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # Embudo en 2 pasos: pre-score RÁPIDO (Flash) de toda la muestra → informe PROFUNDO
+    # Embudo en 2 pasos: pre-score RÁPIDO (Flash) de todo el universo → informe PROFUNDO
     # (V4-Pro razonador) + price target + construcción solo sobre los finalistas.
     llm_model: str = "deepseek/deepseek-v4-pro"          # profundo: informe + target + construcción
-    prescore_model: str = "deepseek/deepseek-v4-flash"   # rápido: ranking 1-100 de toda la muestra
+    prescore_model: str = "deepseek/deepseek-v4-flash"   # rápido: ranking 1-100 de todo el universo
     deep_finalists: int = 15                             # top-N por pre-score que pasan al profundo
     deep_watchlist: int = 5                              # + mejores de la watchlist (continuidad)
-    # (+ las posiciones en cartera, siempre) → profundo acotado a ~15+5+4 = 24 nombres
+    # (+ las posiciones en cartera, siempre) → profundo acotado a ~15+5+5 = 25 nombres
     llm_temperature: float = 0.3
 
     # Guardarraíles del sleeve (LOCKED).
@@ -68,7 +68,8 @@ class Settings(BaseSettings):
     leaderboard_size: int = 20      # cuántos muestra el panel además de la cartera
     min_buy_score: int = 0          # 0 = SIN suelo (fiel al paper: entra por score, sin nota mínima)
 
-    # Watchlist relacional — nunca perder un score alto pese al muestreo random.
+    # Watchlist relacional — memoria de scores altos: entran siempre al escaneo y sus mejores
+    # pasan al análisis profundo (continuidad entre escaneos).
     watchlist_entry_score: int = 85  # entra si score >=
     watchlist_evict_score: int = 70  # sale si al re-analizar cae por debajo de
     watchlist_max: int = 50          # tope de nombres (protege la exploración random)

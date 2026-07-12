@@ -10,6 +10,10 @@ falla, el que llama debe tolerarlo (la memoria es una mejora, no un requisito de
 
 from __future__ import annotations
 
+import importlib.util
+import sqlite3
+from pathlib import Path
+
 from app.config import settings
 from app.memory.store import Memory, MemoryStore
 
@@ -31,4 +35,32 @@ def reset_store() -> None:
         _store = None
 
 
-__all__ = ["Memory", "MemoryStore", "get_store", "reset_store"]
+def status() -> dict:
+    """Diagnóstico READ-ONLY de la memoria vectorial SIN cargar el modelo de embeddings.
+
+    Abre el fichero con sqlite3 crudo y cuenta los recuerdos; comprueba con `find_spec` (sin
+    importar nada pesado) si las deps de vectores están instaladas. Sirve para confirmar que el
+    volcado llegó al volumen y que un `recall` funcionaría, sin disparar fastembed (~130 MB).
+    """
+    path = settings.memory_db_path
+    deps = bool(importlib.util.find_spec("fastembed") and importlib.util.find_spec("sqlite_vec"))
+    if not Path(path).exists():
+        return {"available": False, "exists": False, "count": 0, "deps": deps, "path": path}
+    try:
+        conn = sqlite3.connect(path)
+        try:
+            has_table = conn.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='memories'"
+            ).fetchone()[0]
+            count = conn.execute("SELECT count(*) FROM memories").fetchone()[0] if has_table else 0
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001 — un fichero corrupto no debe tirar el diagnóstico
+        return {"available": False, "exists": True, "count": 0, "deps": deps,
+                "path": path, "error": str(exc)}
+    # Utilizable = fichero con recuerdos Y deps instaladas (recall real funcionaría).
+    return {"available": bool(count and deps), "exists": True, "count": count,
+            "deps": deps, "path": path}
+
+
+__all__ = ["Memory", "MemoryStore", "get_store", "reset_store", "status"]

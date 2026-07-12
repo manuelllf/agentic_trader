@@ -137,25 +137,25 @@ class _Row:
 
 
 def test_select_top_n_by_score_then_marketcap() -> None:
-    from app.service import _select
+    from app.portfolio_service import select_top
     rows = [_Row("A", 80), _Row("B", 90), _Row("C", 90), _Row("D", 70)]
     mcap = {"A": 5e9, "B": 3e9, "C": 8e9, "D": 20e9}
-    sel = _select(rows, mcap, floor=0, n=2)
+    sel = select_top(rows, mcap, floor=0, n=2)
     # empate a 90 entre B y C → desempata market cap: C (8B) antes que B (3B)
     assert [r.ticker for r in sel] == ["C", "B"]
 
 
 def test_select_respects_floor_when_set() -> None:
-    from app.service import _select
+    from app.portfolio_service import select_top
     rows = [_Row("A", 80), _Row("B", 60)]
-    assert [r.ticker for r in _select(rows, {}, floor=72, n=4)] == ["A"]   # B cae por el suelo
-    assert [r.ticker for r in _select(rows, {}, floor=0, n=4)] == ["A", "B"]  # sin suelo, ambos
+    assert [r.ticker for r in select_top(rows, {}, floor=72, n=4)] == ["A"]   # B cae por el suelo
+    assert [r.ticker for r in select_top(rows, {}, floor=0, n=4)] == ["A", "B"]  # sin suelo, ambos
 
 
 # ---- 100% invertido (water-filling con tope por posición) ----
 
 def test_full_invest_sums_to_100_and_respects_cap() -> None:
-    from app.service import _full_invest
+    from app.portfolio_service import _full_invest
     # el LLM da 50/30/20 pero el tope es 35 → clava el 50 y reparte
     w = _full_invest([50.0, 30.0, 20.0], cap=35.0)
     assert abs(sum(w) - 100.0) < 0.01           # 100% invertido
@@ -164,6 +164,6 @@ def test_full_invest_sums_to_100_and_respects_cap() -> None:
 
 
 def test_full_invest_five_equal() -> None:
-    from app.service import _full_invest
+    from app.portfolio_service import _full_invest
     w = _full_invest([1, 1, 1, 1, 1], cap=35.0)
     assert abs(sum(w) - 100.0) < 0.01 and all(abs(x - 20.0) < 0.01 for x in w)

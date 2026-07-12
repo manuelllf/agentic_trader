@@ -15,8 +15,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app import execution_service, scan_service
 from app import models  # noqa: F401  (registra las tablas)
-from app import service
 from app.db import Base
 from app.ledger import service as ledger
 from app.models import BOOK_SHADOW, Proposal, Trade
@@ -69,7 +69,7 @@ def test_execute_proposal_all_sells_before_buys(db, monkeypatch) -> None:
          "thesis": "", "edge": "", "risk": ""},
     ])
 
-    res = service.execute_proposal_all(db)
+    res = execution_service.execute_proposal_all(db)
     assert res["skipped"] == [], res["skipped"]         # nada se saltó: la venta abrió paso
     assert len(res["executed"]) == 2
 
@@ -97,12 +97,12 @@ def test_execute_proposal_all_rerun_is_noop(db, monkeypatch) -> None:
          "thesis": "", "edge": "", "risk": ""},
     ])
 
-    first = service.execute_proposal_all(db)
+    first = execution_service.execute_proposal_all(db)
     assert len(first["executed"]) == 1 and first["skipped"] == []
     cash_after = ledger.available_cash(db, BOOK_SHADOW)
     positions_after = [(p.ticker, p.quantity) for p in ledger.open_positions(db, BOOK_SHADOW)]
 
-    second = service.execute_proposal_all(db)
+    second = execution_service.execute_proposal_all(db)
     assert second["executed"] == []                      # nada que ejecutar de nuevo
     assert len(second["skipped"]) == 1                    # AAA: "ya cubre el peso objetivo"
     assert ledger.available_cash(db, BOOK_SHADOW) == cash_after
@@ -115,7 +115,7 @@ def test_execute_proposal_all_skips_mantener(db) -> None:
          "price": "100", "target_price": None, "upside_pct": None,
          "thesis": "", "edge": "", "risk": ""},
     ])
-    res = service.execute_proposal_all(db)
+    res = execution_service.execute_proposal_all(db)
     assert res == {"ok": True, "executed": [], "skipped": [],
                    "message": "0 ejecutada(s), 0 saltada(s)."}
 
@@ -142,8 +142,8 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
     from app.screener.fundamentals import NameData
 
     fake_llm = FakeLLM(_FAKE_REPLY)
-    monkeypatch.setattr(service, "get_llm", lambda *a, **k: fake_llm)
-    monkeypatch.setattr(service, "_memory_store", lambda: None)  # memoria fuera del test (embeddings)
+    monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: fake_llm)
+    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)  # memoria fuera del test (embeddings)
     monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
     monkeypatch.setattr(fund_mod, "gather", lambda t: NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
@@ -155,13 +155,13 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
     })
     monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {"OLD": 100.0, "AAA": 100.0})
     # Sin caja/tope artificial: 1 sola posición al 100%, para que el resultado sea determinista.
-    monkeypatch.setattr(service.settings, "max_position_pct", 100.0)
-    monkeypatch.setattr(service.settings, "min_positions", 1)
+    monkeypatch.setattr(scan_service.settings, "max_position_pct", 100.0)
+    monkeypatch.setattr(scan_service.settings, "min_positions", 1)
 
     ledger.allocate(db, 1000)
     ledger.record_buy(db, "OLD", 10, 50, "seed")   # coste 500 → caja libre 500, equity vivo 1500
 
-    result = service.run_scan_and_store(db, sample_size=5)
+    result = scan_service.run_scan_and_store(db, sample_size=5)
     assert result["positions"] == 1                # la cartera objetivo: solo AAA
 
     pos = {p.ticker: p for p in ledger.open_positions(db, BOOK_SHADOW)}
@@ -176,7 +176,7 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
     assert sides == ["sell", "buy"]  # la venta de OLD corrió ANTES que la compra de AAA
 
     # Re-lanzar la ejecución sobre la MISMA propuesta no mueve nada más (idempotente).
-    again = service.execute_proposal_all(db)
+    again = execution_service.execute_proposal_all(db)
     assert again["executed"] == []
     assert ledger.available_cash(db, BOOK_SHADOW) == Decimal("0.00")
     assert [(p.ticker, p.quantity) for p in ledger.open_positions(db, BOOK_SHADOW)] == \
@@ -194,8 +194,8 @@ def test_scan_failure_in_autoexec_never_fails_the_scan(db, monkeypatch) -> None:
     from app.models import Score
 
     fake_llm = FakeLLM(_FAKE_REPLY)
-    monkeypatch.setattr(service, "get_llm", lambda *a, **k: fake_llm)
-    monkeypatch.setattr(service, "_memory_store", lambda: None)  # memoria fuera del test (embeddings)
+    monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: fake_llm)
+    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)  # memoria fuera del test (embeddings)
     monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
     monkeypatch.setattr(fund_mod, "gather", lambda t: NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
@@ -210,9 +210,9 @@ def test_scan_failure_in_autoexec_never_fails_the_scan(db, monkeypatch) -> None:
     def _boom(_db):
         raise RuntimeError("libro sombra roto")
 
-    monkeypatch.setattr(service, "execute_proposal_all", _boom)
+    monkeypatch.setattr(execution_service, "execute_proposal_all", _boom)
 
-    result = service.run_scan_and_store(db, sample_size=5)  # no debe lanzar
+    result = scan_service.run_scan_and_store(db, sample_size=5)  # no debe lanzar
     assert result["positions"] == 1
     assert db.query(Proposal).count() == 1
     assert db.query(Score).count() >= 1

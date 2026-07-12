@@ -1,4 +1,4 @@
-"""Watchlist relacional — los scores altos que el muestreo random NO debe perder.
+"""Watchlist relacional — memoria de scores altos entre escaneos (sus mejores van al profundo).
 
 Reglas (config): entra si score >= `watchlist_entry_score`; sale si al re-analizarla cae por
 debajo de `watchlist_evict_score`, o si lleva > `watchlist_stale_days` sin volver a puntuar

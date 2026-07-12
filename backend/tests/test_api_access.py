@@ -89,6 +89,7 @@ PROTECTED_CALLS = [
     ("get", "/watchlist", None),
     ("post", "/admin/seed", {"version": 1, "tables": {"meta": [{"key": "x", "value": "y"}]}}),
     ("post", "/admin/seed-memory", {"anything": True}),
+    ("get", "/admin/memory-status", None),
 ]
 
 
@@ -259,3 +260,36 @@ def test_config_does_not_leak_sensitive_fields(client) -> None:
     assert set(body.keys()) == {
         "max_positions", "min_positions", "max_position_pct", "dry_run", "limit_buffer_pct",
     }
+
+
+# ---- /admin/memory-status: diagnóstico de la memoria vectorial ---------------
+
+def test_memory_status_counts_after_seed_without_loading_model(client, token, tmp_path) -> None:
+    """El diagnóstico cuenta los recuerdos del fichero subido leyéndolo con sqlite3 crudo (sin
+    cargar el modelo de embeddings). El `client` ya apuntó memory_db_path a este mismo tmp_path."""
+    import sqlite3
+
+    # agent_memory.db mínimo: tabla `memories` con 3 filas (sin vectores; status() no los usa).
+    src = tmp_path / "source.db"
+    conn = sqlite3.connect(src)
+    conn.execute("CREATE TABLE memories(id INTEGER PRIMARY KEY, kind TEXT, ticker TEXT, "
+                 "text TEXT, created_at TEXT)")
+    conn.executemany(
+        "INSERT INTO memories(kind, ticker, text, created_at) VALUES (?, ?, ?, ?)",
+        [("thesis", t, f"tesis {t}", "now") for t in ("AAA", "BBB", "CCC")],
+    )
+    conn.commit()
+    conn.close()
+
+    headers = {"Authorization": f"Bearer {token}"}
+    before = client.get("/admin/memory-status", headers=headers).json()
+    assert before["exists"] is False and before["count"] == 0   # aún no se subió nada
+
+    up = client.post("/admin/seed-memory", content=src.read_bytes(),
+                     headers={**headers, "Content-Type": "application/octet-stream"})
+    assert up.status_code == 200 and up.json()["bytes"] > 0
+
+    after = client.get("/admin/memory-status", headers=headers).json()
+    assert after["exists"] is True
+    assert after["count"] == 3
+    assert "deps" in after                                        # se informa si las deps están

@@ -21,10 +21,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getPerformance, getPersonal,
-  getPushKey, getReal, reconcileApprovals, rejectTrade, runDemo, seedDatabase, seedMemory,
-  subscribePush, syncPersonal, testPush,
+  allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getMemoryStatus,
+  getPerformance, getPersonal, getPushKey, getReal, reconcileApprovals, rejectTrade, runDemo,
+  seedDatabase, seedMemory, subscribePush, syncPersonal, testPush,
 } from "@/lib/api";
+import type { MemoryStatus } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
 import type {
   AppConfig, Approval, ApprovalsResponse, DemoStatus, Performance, PersonalSummary, RealSummary,
@@ -764,6 +765,19 @@ function SeedControl() {
   const [memBusy, setMemBusy] = useState(false);
   const [memMsg, setMemMsg] = useState("");
   const [memErr, setMemErr] = useState("");
+  const [memStat, setMemStat] = useState<MemoryStatus | null>(null);
+  const [memStatBusy, setMemStatBusy] = useState(false);
+
+  const checkMem = async () => {
+    setMemStatBusy(true);
+    try {
+      setMemStat(await getMemoryStatus());
+    } catch {
+      setMemStat(null);
+    } finally {
+      setMemStatBusy(false);
+    }
+  };
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setErr(""); setMsg("");
@@ -806,6 +820,7 @@ function SeedControl() {
     try {
       const out = await seedMemory(await f.arrayBuffer());
       setMemMsg(`Memoria subida · ${Math.round(out.bytes / 1024)} KB.`);
+      void checkMem();                            // refresca el recuento tras subir
     } catch (e2) {
       setMemErr(e2 instanceof Error ? e2.message : "No se pudo subir la memoria.");
     } finally {
@@ -862,9 +877,24 @@ function SeedControl() {
         </button>
         {memMsg && <p className="mt-1.5 text-[11px]" style={{ color: T.good }}>{memMsg}</p>}
         {memErr && <p className="mt-1.5 text-[11px]" style={{ color: T.bad }}>{memErr}</p>}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button onClick={checkMem} disabled={memStatBusy}
+                  className="rounded border px-2.5 py-1 text-[10.5px] transition-colors hover:bg-white/5 disabled:opacity-50"
+                  style={{ borderColor: T.ring, color: T.muted }}>
+            {memStatBusy ? "Comprobando…" : "Comprobar estado"}
+          </button>
+          {memStat && (
+            <span className={`text-[11px] ${NUMS}`}
+                  style={{ color: memStat.available ? T.good : T.warn }}>
+              {memStat.exists
+                ? `${memStat.count} recuerdo${memStat.count === 1 ? "" : "s"} · deps ${memStat.deps ? "ok" : "no"} · ${memStat.available ? "activa" : "inactiva"}`
+                : "sin fichero de memoria en el servidor"}
+            </span>
+          )}
+        </div>
         <p className="mt-1.5 text-[10.5px] leading-snug" style={{ color: T.muted }}>
-          Sube <span className={NUMS}>agent_memory.db</span> tal cual (los 34 recuerdos con sus vectores).
-          Solo aplica si la memoria está activa en el backend.
+          Sube <span className={NUMS}>agent_memory.db</span> tal cual (los recuerdos con sus vectores).
+          «Comprobar estado» cuenta los recuerdos en el servidor sin cargar el modelo.
         </p>
       </div>
     </div>

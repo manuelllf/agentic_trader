@@ -3,7 +3,7 @@
 Estado del agente en 4 capas:
 - Ledger (Allocation/Trade/Position): lo que POSEE (dinero exacto, Decimal). Cada fila lleva
   `book`: 'shadow' (cartera virtual de seguimiento) o 'real' (cuenta IBKR del usuario).
-- Watchlist: scores altos que no quiere perder pese al muestreo random (lo que VIGILA).
+- Watchlist: memoria de scores altos entre escaneos (lo que VIGILA).
 - Score/Proposal: salida de cada escaneo (informe + score por nombre, y la cartera objetivo).
 - Approval/PushSubscription: modo real — el agente PROPONE, el usuario aprueba (Sí/No) vía push.
 """
@@ -29,7 +29,7 @@ def _utcnow() -> datetime:
 
 
 class Watchlist(Base):
-    """Nombres de score alto que se re-analizan SIEMPRE (no se pierden en el muestreo random)."""
+    """Nombres de score alto que se re-analizan SIEMPRE y aportan continuidad entre escaneos."""
 
     __tablename__ = "watchlist"
 
@@ -62,7 +62,7 @@ class Score(Base):
 
 
 class Proposal(Base):
-    """Cartera objetivo + trades que propone el constructor en un escaneo (≤4 posiciones)."""
+    """Cartera objetivo + trades que propone el constructor en un escaneo (3-5 posiciones)."""
 
     __tablename__ = "proposals"
 

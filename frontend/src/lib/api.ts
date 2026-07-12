@@ -168,6 +168,19 @@ export async function seedMemory(bytes: ArrayBuffer): Promise<{ ok: boolean; byt
   return res.json() as Promise<{ ok: boolean; bytes: number; path: string }>;
 }
 
+export interface MemoryStatus {
+  available: boolean;   // hay recuerdos Y deps instaladas (un recall real funcionaría)
+  exists: boolean;      // el fichero de memoria existe en la ruta configurada
+  count: number;        // nº de recuerdos guardados
+  deps: boolean;        // fastembed + sqlite-vec instaladas
+  path: string;
+  error?: string;
+}
+
+/** Diagnóstico read-only de la memoria vectorial (no carga el modelo): confirma que el volcado
+ * llegó al volumen contando los recuerdos. */
+export const getMemoryStatus = () => get<MemoryStatus>("/admin/memory-status");
+
 // ---- Cartera personal IBKR (read-only, intocable para el agente) ----
 export const getPersonal = () => get<PersonalSummary>("/personal");
 export const syncPersonal = () => post<PersonalSummary & { synced: number }>("/personal/sync");

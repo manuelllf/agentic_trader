@@ -15,7 +15,7 @@ pública puede presumir de rendimiento sin regalar la cartera:
 - GET  /macro                → régimen macro (barato, determinista)               [público]
 - GET  /overview              → teaser de la portada (sombra completo + real solo %) [público]
 - POST /ledger/allocate      → asignar/retirar fondos                             [protegido]
-- POST /demo/run             → lanza el escaneo (muestra 250 → scores → cartera ≤4) [protegido]
+- POST /demo/run             → lanza el escaneo (universo entero → scores → cartera 3-5) [protegido]
 - GET  /demo/status          → estado del escaneo                                  [público]
 - GET  /scores               → leaderboard (mejores scores del último escaneo)     [protegido]
 - GET  /proposal             → cartera objetivo + trades del último escaneo        [protegido]
@@ -31,8 +31,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import execution_service
 from app import pipeline
-from app import service as scan_service
 from app import watchlist as watchlist_mod
 from app.auth import auth_optional
 from app.config import settings
@@ -182,7 +182,7 @@ def recheck(db: Session = Depends(get_db)) -> dict:
     con el suelo actual, SIN re-escanear el universo (instantáneo)."""
     if not settings.enable_llm or not settings.openrouter_api_key:
         raise HTTPException(503, "Configura ENABLE_LLM=true y OPENROUTER_API_KEY.")
-    from app.service import recheck as _recheck
+    from app.scan_service import recheck as _recheck
     try:
         return _recheck(db)
     except ValueError as exc:
@@ -195,7 +195,7 @@ def redeep(db: Session = Depends(get_db)) -> dict:
     re-escanear el universo. Para refrescar tras corregir un dato macro. Barato (~$0.03-0.05)."""
     if not settings.enable_llm or not settings.openrouter_api_key:
         raise HTTPException(503, "Configura ENABLE_LLM=true y OPENROUTER_API_KEY.")
-    from app.service import redeep as _redeep
+    from app.scan_service import redeep as _redeep
     try:
         return _redeep(db)
     except ValueError as exc:
@@ -246,6 +246,16 @@ def admin_seed_memory(body: bytes = Body(...)) -> dict:
     return {"ok": True, "bytes": len(body), "path": str(path)}
 
 
+@router.get("/admin/memory-status")
+def admin_memory_status() -> dict:
+    """Diagnóstico read-only de la memoria vectorial: ruta, nº de recuerdos y si las deps están
+    instaladas. NO carga el modelo de embeddings — solo abre el fichero y cuenta. Confirma que el
+    volcado llegó al volumen sin esperar a ver un `recall` en los logs del próximo escaneo."""
+    from app import memory
+
+    return memory.status()
+
+
 # ---- Lecturas ---------------------------------------------------------------
 
 @router.get("/scores", response_model=list[ScoreOut])
@@ -266,7 +276,7 @@ def proposal(db: Session = Depends(get_db)) -> Proposal | None:
 def proposal_execute_item(ticker: str, db: Session = Depends(get_db)) -> dict:
     """Ejecuta el item de la propuesta actual (botón Comprar/Vender de la Sala Sombra)."""
     try:
-        res = scan_service.execute_proposal_item(db, ticker.upper())
+        res = execution_service.execute_proposal_item(db, ticker.upper())
     except (LookupError, ValueError, ledger.InsufficientFunds, ledger.InsufficientShares) as e:
         raise HTTPException(400, str(e))
     return {**res, "ledger": ledger_snapshot(db)}
@@ -276,7 +286,7 @@ def proposal_execute_item(ticker: str, db: Session = Depends(get_db)) -> dict:
 def proposal_execute_all(db: Session = Depends(get_db)) -> dict:
     """Ejecuta de golpe todos los items accionables de la propuesta en el libro sombra."""
     try:
-        res = scan_service.execute_proposal_all(db)
+        res = execution_service.execute_proposal_all(db)
     except LookupError as e:
         raise HTTPException(400, str(e))
     return {**res, "ledger": ledger_snapshot(db)}

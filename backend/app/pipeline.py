@@ -1,8 +1,8 @@
 """Runner del escaneo en segundo plano.
 
-El escaneo (250 nombres × 1 llamada razonada V4-Pro + construcción) tarda varios minutos →
-se ejecuta en un hilo aparte y la web consulta el estado. El propio servicio borra scores/
-propuesta previos y persiste la foto nueva.
+El escaneo (pre-score Flash del universo entero + informe V4-Pro en los finalistas) tarda
+~15 min → se ejecuta en un hilo aparte y la web consulta el estado. El propio servicio borra
+scores/propuesta previos y persiste la foto nueva.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import threading
 from datetime import UTC, datetime
 
 from app.db import SessionLocal
-from app.service import run_scan_and_store
+from app.scan_service import run_scan_and_store
 
 _state: dict = {
     "status": "idle",       # idle | running | done | error
