@@ -44,6 +44,22 @@ class DryRunBroker:
         return BrokerResult(ok=True, fill_price=None, simulated=True, status="filled",
                             message="dry-run: sin orden real que reconciliar.")
 
+    def convert_currency(self, eur: Decimal) -> BrokerResult:
+        """Conversión EUR→USD simulada al cambio indicativo (sin comisiones inventadas)."""
+        from app import tracking
+
+        rate = tracking.live_prices(["EURUSD=X"]).get("EURUSD=X")
+        if not rate:
+            return BrokerResult(ok=False, fill_price=None, simulated=True, status="rejected",
+                                message="Sin cambio EUR/USD ahora mismo — conversión no ejecutada.")
+        px = D(str(rate))                              # el cambio conserva sus decimales (no céntimos)
+        usd = to_cents(D(str(eur)) * px)
+        return BrokerResult(
+            ok=True, fill_price=px, simulated=True, status="filled",
+            filled_quantity=D(str(eur)),
+            message=f"SIMULADO: {eur} EUR → ${usd} @ {px} (dry-run, sin conversión real).",
+        )
+
     def status(self) -> dict:
         return {
             "mode": "dry-run",

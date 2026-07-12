@@ -266,6 +266,102 @@ class IbkrWebBroker:
             message=f"IBKR orden {order_id}: {label}{detail}.",
         )
 
+    # --- Conversión de divisa (aportaciones) -----------------------------------
+
+    _EURUSD_CONID = 12087792  # par cash EUR.USD en IDEALPRO (constante pública de IBKR)
+
+    def _fx_reference(self) -> Decimal | None:
+        """Último cambio EUR.USD como referencia (precisión FX completa, NO céntimos)."""
+        try:
+            hist = self._client.marketdata_history_by_conid(
+                str(self._EURUSD_CONID), period="1d", bar="1d", outside_rth=True
+            ).data
+            bars = hist.get("data") if isinstance(hist, dict) else hist
+            if bars:
+                px = bars[-1].get("c") if isinstance(bars[-1], dict) else None
+                if px is not None:
+                    return Decimal(str(px))
+        except Exception:
+            logger.warning("Sin cotización EUR.USD de referencia")
+        return None
+
+    def _cancel_order(self, order_id: str) -> None:
+        """Cancela best-effort (firma de ibind varía entre versiones)."""
+        fn = getattr(self._client, "cancel_order", None)
+        if fn is None:
+            return
+        for args in ((order_id, self._account), (self._account, order_id), (order_id,)):
+            try:
+                fn(*args)
+                return
+            except TypeError:
+                continue
+            except Exception:  # noqa: BLE001
+                logger.warning("No se pudo cancelar la orden FX %s (revísala en IBKR)", order_id)
+                return
+
+    def convert_currency(self, eur: Decimal) -> BrokerResult:
+        """Vende EUR.USD a LÍMITE ejecutable (ref − buffer) para convertir EUR→USD al aportar.
+
+        La imagen final (cambio real) la pone IBKR; aquí no se estima comisión alguna. Si no
+        ejecuta dentro del sondeo (p. ej. FX cerrado el fin de semana), se CANCELA la orden
+        — nada puede llenar más tarde sin quedar apuntado — y el llamador no anota nada.
+        """
+        try:
+            from ibind import QuestionType
+            from ibind.client.ibkr_utils import OrderRequest
+
+            reference = self._fx_reference()
+            if reference is None:
+                return BrokerResult(ok=False, fill_price=None, simulated=False, status="rejected",
+                                    message="Sin cotización EUR.USD; no se envía la conversión.")
+            # Mismo colchón que el resto de órdenes, pero a precisión FX (5 decimales).
+            factor = Decimal(str(settings.limit_buffer_pct)) / 100
+            limit = (reference * (Decimal(1) - factor)).quantize(Decimal("0.00001"))
+            order = OrderRequest(
+                conid=self._EURUSD_CONID,
+                side="SELL",                        # vender EUR = recibir USD
+                quantity=float(eur),                # cantidad en divisa base (EUR)
+                order_type="LMT",
+                price=float(limit),
+                tif="DAY",
+                acct_id=self._account,
+                coid=f"AT-FX-{uuid.uuid4().hex[:8]}",
+            )
+            answers = {
+                QuestionType.PRICE_PERCENTAGE_CONSTRAINT: True,
+                QuestionType.ORDER_VALUE_LIMIT: True,
+            }
+            resp = self._client.place_order(order, answers, self._account).data
+            order_id = ""
+            if resp and isinstance(resp, list) and isinstance(resp[0], dict):
+                order_id = str(resp[0].get("order_id") or resp[0].get("orderId") or "")
+
+            deadline = time.time() + max(0, settings.order_poll_seconds)
+            last: BrokerResult | None = None
+            while order_id and time.time() < deadline:
+                last = self.poll_order(order_id)
+                if last.status in ("filled", "rejected"):
+                    break
+                time.sleep(1.5)
+
+            if last is not None and last.status == "filled":
+                return last                          # cambio real confirmado por IBKR
+            # No ejecutó a tiempo (FX cerrado, límite no tocado…) → cancelar y no apuntar nada.
+            if order_id:
+                self._cancel_order(order_id)
+            detail = last.message if last is not None else "sin respuesta de IBKR"
+            return BrokerResult(
+                ok=False, fill_price=None, simulated=False, status="rejected",
+                order_id=order_id or None,
+                message=f"Conversión EUR→USD no ejecutada (orden cancelada): {detail} "
+                        "¿Mercado FX cerrado? Reintenta en horario o aporta en $.",
+            )
+        except Exception as exc:  # noqa: BLE001 — el motivo debe llegar legible al panel
+            logger.exception("Fallo en la conversión EUR→USD")
+            return BrokerResult(ok=False, fill_price=None, simulated=False, status="rejected",
+                                message=f"IBKR error en conversión: {exc}")
+
     def raw_positions(self) -> list[dict]:
         """Posiciones BRUTAS de la cuenta IBKR (read-only, incluye las personales del usuario).
 

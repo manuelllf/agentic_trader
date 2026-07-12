@@ -71,6 +71,16 @@ class Broker(Protocol):
         """Estado ACTUAL de una orden ya enviada (para reconciliar fills de órdenes 'working')."""
         ...
 
+    def convert_currency(self, eur: Decimal) -> BrokerResult:
+        """Convierte EUR→USD en la cuenta (venta del par EUR.USD a LÍMITE ejecutable, ±buffer).
+
+        SOLO la inicia el usuario al aportar (su click es la aprobación). La imagen final la
+        pone el broker — aquí NO se estima ninguna comisión: `fill_price` = cambio real del
+        fill y `filled_quantity` = EUR convertidos; USD resultantes = cantidad × cambio.
+        Si no ejecuta (p. ej. FX cerrado), el llamador NO debe apuntar nada en el libro.
+        """
+        ...
+
     def status(self) -> dict:
         """Estado de la conexión para el panel (modo, cuenta, detalle)."""
         ...

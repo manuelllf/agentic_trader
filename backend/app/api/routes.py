@@ -38,6 +38,7 @@ from app.auth import auth_optional
 from app.config import settings
 from app.db import get_db
 from app.ledger import service as ledger
+from app.ledger.money import D, to_cents
 from app.models import Proposal, Score, Watchlist
 from app.schemas import ProposalOut, ScoreOut, WatchlistOut
 
@@ -48,6 +49,7 @@ router = APIRouter()          # exige require_auth (dependencies=[...] en main.p
 class AllocateIn(BaseModel):
     amount: float
     note: str = ""
+    currency: str = "USD"   # "USD" = apunte directo · "EUR" = el broker convierte primero (real)
 
 
 def _money(x: Decimal) -> str:
@@ -368,7 +370,29 @@ def real_summary(db: Session = Depends(get_db)) -> dict:
 
 @router.post("/real/allocate")
 def real_allocate(body: AllocateIn, db: Session = Depends(get_db)) -> dict:
+    """Aportar/retirar capital del agente. En $, apunte directo (dólares que ya existen).
+    En €, el broker CONVIERTE primero (límite ±buffer; simulado en dry-run) y se apunta la
+    imagen final que devuelva — jamás una estimación, jamás nada si la conversión no ejecutó."""
     from app.models import BOOK_REAL
+
+    if body.currency.upper() == "EUR":
+        from app.brokers import get_broker
+
+        if body.amount <= 0:
+            raise HTTPException(422, "Las retiradas se hacen en $ — el libro vive en dólares.")
+        res = get_broker().convert_currency(D(str(body.amount)))
+        if (not res.ok or res.status != "filled"
+                or res.fill_price is None or res.filled_quantity is None):
+            raise HTTPException(409, f"No se apunta nada. {res.message}")
+        usd = to_cents(res.filled_quantity * res.fill_price)
+        note = (f"aportación {body.amount} EUR → ${usd} @ {res.fill_price}"
+                + (" (sim)" if res.simulated else "")
+                + (f" · {body.note}" if body.note else ""))
+        ledger.allocate(db, float(usd), note, book=BOOK_REAL)
+        out = real_summary(db)
+        out["allocated"] = {"currency": "EUR", "eur": body.amount, "usd": str(usd),
+                            "rate": str(res.fill_price), "simulated": res.simulated}
+        return out
 
     ledger.allocate(db, body.amount, body.note, book=BOOK_REAL)
     return real_summary(db)

@@ -297,3 +297,45 @@ def test_memory_status_counts_after_seed_without_loading_model(client, token, tm
     assert after["exists"] is True
     assert after["count"] == 3
     assert "deps" in after                                        # se informa si las deps están
+
+
+# ---- aportaciones con divisa: el libro vive en USD, Manuel aporta EUR ---------
+
+def test_allocate_eur_converts_via_broker_and_books_actual_usd(db, client, token) -> None:
+    """Aportación en €: el broker (dry-run) convierte al cambio del fixture (1.09) y se apunta
+    la imagen final — 100 EUR → $109.00 en caja, con la trazabilidad en la respuesta."""
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.post("/real/allocate", json={"amount": 100, "currency": "EUR"}, headers=headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["cash"] == "109.00"                    # neto REAL apuntado, no el input
+    assert body["allocated"]["usd"] == "109.00"
+    assert body["allocated"]["rate"] == "1.09"
+    assert body["allocated"]["simulated"] is True      # dry-run: conversión simulada
+
+
+def test_allocate_eur_without_rate_books_nothing(db, client, token, monkeypatch) -> None:
+    """Si la conversión no ejecuta (sin cotización → FX cerrado), el libro NO se toca."""
+    monkeypatch.setattr("app.tracking.live_prices", lambda _t: {})
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.post("/real/allocate", json={"amount": 100, "currency": "EUR"}, headers=headers)
+    assert res.status_code == 409
+    monkeypatch.setattr("app.tracking.live_prices", lambda _t: {"EURUSD=X": 1.09})
+    assert client.get("/real", headers=headers).json()["cash"] == "0.00"   # ni un céntimo apuntado
+
+
+def test_allocate_eur_withdrawal_rejected(client, token) -> None:
+    """Retiradas solo en $ (el libro vive en dólares): aportación negativa en € → 422."""
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.post("/real/allocate", json={"amount": -50, "currency": "EUR"}, headers=headers)
+    assert res.status_code == 422
+
+
+def test_allocate_usd_direct_unchanged(db, client, token) -> None:
+    """Modo $ (default): apunte directo sin conversión, como siempre."""
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.post("/real/allocate", json={"amount": 150}, headers=headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["cash"] == "150.00"
+    assert "allocated" not in body                     # sin conversión no hay traza FX
