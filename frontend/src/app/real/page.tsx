@@ -22,8 +22,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getHistory,
-  getPerformance, getPersonal, getPushKey, getReal, reconcileApprovals, rejectTrade, runDemo,
-  subscribePush, syncPersonal, testPush,
+  getPerformance, getPersonal, getPushKey, getReal, logout, reconcileApprovals, rejectTrade,
+  runDemo, subscribePush, syncPersonal, testPush,
 } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
 import HistoryChart from "@/components/HistoryChart";
@@ -69,6 +69,17 @@ const NUMS = "tabular-nums";
 /* ============================== página ============================== */
 
 export default function SalaReal() {
+  // El candado envuelve DESDE FUERA: si la sala montara antes del login, su primer load()
+  // saldría sin token → 401 → banner "Sesión caducada" nada más entrar. Así, la sala (y sus
+  // efectos de carga) solo existen cuando AuthGate ya validó la sesión.
+  return (
+    <AuthGate>
+      <SalaRealRoom />
+    </AuthGate>
+  );
+}
+
+function SalaRealRoom() {
   const router = useRouter();
   const [summary, setSummary] = useState<RealSummary | null>(null);
   const [approvals, setApprovals] = useState<ApprovalsResponse | null>(null);
@@ -247,7 +258,6 @@ export default function SalaReal() {
   const hasCapital = equity > 0 || (summary?.positions.length ?? 0) > 0;
 
   return (
-    <AuthGate>
       <div className="real-room min-h-[100dvh] pb-8 text-[13px] antialiased"
            style={{ background: T.page, color: T.ink2 }}>
 
@@ -274,7 +284,7 @@ export default function SalaReal() {
         <div className="mx-auto flex h-11 max-w-[1500px] items-center justify-between gap-4 px-4 lg:px-6">
           <div className="flex items-center gap-3">
             <button onClick={exit} className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
-              ← Sombra
+              ← Portada
             </button>
             <span className="h-4 w-px" style={{ background: T.grid }} />
             <span className="inline-flex items-center gap-2 text-[14px] font-bold tracking-tight" style={{ color: T.ink }}>
@@ -397,7 +407,10 @@ export default function SalaReal() {
               </Panel>
             )}
             {pending.length > 0 && (
-              <Panel title={`Propuestas del agente · ${pending.length} esperando tu decisión`}>
+              <Panel title={`Propuestas del agente · ${pending.length} esperando tu decisión`}
+                     right={<span className="text-[11px]" style={{ color: T.muted }}>
+                              caducan a los {cfg?.approval_expiry_days ?? 3} días sin decidir
+                            </span>}>
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse whitespace-nowrap text-[13px]">
                     <thead>
@@ -407,7 +420,10 @@ export default function SalaReal() {
                       </tr>
                     </thead>
                     <tbody>
-                      {pending.map((a) => <OrderRow key={a.id} a={a} dry={dry} onDecide={decide} />)}
+                      {pending.map((a) => (
+                        <OrderRow key={a.id} a={a} dry={dry} onDecide={decide}
+                                  expiryDays={cfg?.approval_expiry_days ?? 3} />
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -723,6 +739,12 @@ export default function SalaReal() {
               Enviar prueba
             </button>
           )}
+          <button onClick={logout}
+                  className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5"
+                  style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}
+                  title="Borra el token de sesión de este navegador y vuelve al login.">
+            Cerrar sesión
+          </button>
           <span className="ml-auto text-right" style={{ color: T.muted }} title={summary?.broker.detail}>
             {dry ? "simulación" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a límite
             (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado
@@ -730,11 +752,10 @@ export default function SalaReal() {
         </div>
       </div>
 
-      {/* velo de salida hacia la sala sombra */}
+      {/* velo de salida hacia la portada */}
       <div aria-hidden
            className={`pointer-events-none fixed inset-0 z-[100] bg-slate-100 transition-opacity duration-[420ms] ease-in ${leaving ? "opacity-100" : "opacity-0"}`} />
     </div>
-    </AuthGate>
   );
 }
 
@@ -985,8 +1006,9 @@ function CompareBars({ rows }: { rows: { label: string; value: number; color: st
   );
 }
 
-function OrderRow({ a, dry, onDecide }: {
+function OrderRow({ a, dry, onDecide, expiryDays }: {
   a: Approval; dry: boolean; onDecide: (id: number, yes: boolean) => Promise<void>;
+  expiryDays: number;
 }) {
   const [open, setOpen] = useState(false);
   const [armed, setArmed] = useState(false);
@@ -1064,7 +1086,10 @@ function OrderRow({ a, dry, onDecide }: {
               {a.risk && <DetailLine k="Riesgo" v={a.risk} color={T.warn} />}
               {a.macro_summary && <DetailLine k="Macro" v={a.macro_summary} dim />}
               <p className="text-[11px]" style={{ color: T.muted }}>
-                Propuesta {fmtTime(a.created_at)} · caduca a los 3 días sin decisión
+                Propuesta {fmtTime(a.created_at)} · caduca{" "}
+                {a.created_at
+                  ? fmtTime(new Date(new Date(a.created_at).getTime() + expiryDays * 86_400_000).toISOString())
+                  : `a los ${expiryDays} días`}
               </p>
             </div>
           </Td>

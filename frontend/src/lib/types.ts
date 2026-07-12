@@ -28,6 +28,7 @@ export interface AppConfig {
   max_position_pct: number;
   dry_run: boolean;
   limit_buffer_pct: number;
+  approval_expiry_days: number;   // una propuesta sin decidir caduca a los N días
 }
 
 export interface ScoreRow {

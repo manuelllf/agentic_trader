@@ -65,6 +65,7 @@ def config() -> dict:
         "max_position_pct": settings.max_position_pct,
         "dry_run": settings.dry_run,
         "limit_buffer_pct": settings.limit_buffer_pct,
+        "approval_expiry_days": settings.approval_expiry_days,
     }
 
 

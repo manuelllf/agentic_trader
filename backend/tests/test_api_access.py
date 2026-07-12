@@ -264,6 +264,7 @@ def test_config_does_not_leak_sensitive_fields(client) -> None:
     assert not (leaky_keys & set(body.keys()))
     assert set(body.keys()) == {
         "max_positions", "min_positions", "max_position_pct", "dry_run", "limit_buffer_pct",
+        "approval_expiry_days",
     }
 
 
