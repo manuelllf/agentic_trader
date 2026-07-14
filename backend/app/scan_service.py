@@ -23,11 +23,13 @@ Este módulo solo ORQUESTA. La matemática de cartera (selección, pesos, diff a
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy.orm import Session
 
-from app import execution_service
+from app import execution_service, scan_audit
+from app import instruments as instruments_mod
 from app import portfolio_service as portfolio
 from app import watchlist as watchlist_mod
 from app.agents import constructor as constructor_mod
@@ -35,7 +37,7 @@ from app.agents import scorer as scorer_mod
 from app.config import settings
 from app.ledger import service as ledger
 from app.llm import get_llm
-from app.models import Proposal, Score
+from app.models import Meta, Proposal, Score
 from app.screener import fundamentals as fund_mod
 from app.screener import macro as macro_mod
 from app.screener import universe as universe_mod
@@ -43,6 +45,26 @@ from app.screener import universe as universe_mod
 logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 12
+_CURSOR_KEY = "scan_cursor"   # offset persistido de la ventana rotatoria del semanal
+
+
+def _scan_cursor(db: Session) -> int:
+    """Offset actual de la ventana rotatoria (0 si aún no existe o está corrupto)."""
+    row = db.get(Meta, _CURSOR_KEY)
+    try:
+        return int(row.value) if row else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _advance_scan_cursor(db: Session, step: int) -> None:
+    """Avanza el offset `step` posiciones para que el próximo semanal teja el siguiente tramo."""
+    row = db.get(Meta, _CURSOR_KEY)
+    if row:
+        row.value = str(_scan_cursor(db) + step)
+    else:
+        db.add(Meta(key=_CURSOR_KEY, value=str(step)))
+    db.commit()
 
 
 def _memory_store():
@@ -76,6 +98,39 @@ def _recall(store, ticker: str, hint: str) -> str | None:
         return None
 
 
+def _sector(data_by_t: dict, ticker: str) -> str:
+    """Sector de un ticker (o 'UCITS' si es un instrumento del allowlist, que no se puntúa)."""
+    d = data_by_t.get(ticker)
+    return d.sector if d else "UCITS"
+
+
+def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, finalists: list,
+                data_by_t: dict, selected: list, construction, instr_prices: dict) -> None:
+    """Traza legible del embudo en los logs (Railway/consola): permite ver de un vistazo que el
+    corte ya no colapsa en un sector, y si algo va raro saber en qué paso. Best-effort."""
+    try:
+        def top(counter: Counter, k: int = 6) -> str:
+            return ", ".join(f"{s}:{n}" for s, n in counter.most_common(k)) or "n/d"
+
+        fin_sectors = Counter(_sector(data_by_t, t) for t in finalists)
+        logger.info("── EMBUDO (%s) ──────────────────────────────", cadence)
+        logger.info("  muestra=%d · pre-scoreados=%d · sin datos=%d · finalistas=%d en %d sectores",
+                    len(sample), len(prescored), len(failed), len(finalists), len(fin_sectors))
+        logger.info("  pre-score por sector: %s", top(Counter(d.sector for _p, d in prescored)))
+        logger.info("  finalistas por sector: %s", top(fin_sectors))
+        sel = ", ".join(f"{r.ticker}[{_sector(data_by_t, r.ticker)}]={r.score}" for r in selected)
+        logger.info("  seleccionados (top-%d): %s", len(selected), sel or "ninguno")
+        cartera = ", ".join(f"{p.ticker} {p.weight_pct:.0f}%[{_sector(data_by_t, p.ticker)}]"
+                            for p in construction.positions) or "vacía"
+        logger.info("  CARTERA: %s", cartera)
+        if instr_prices:
+            usados = [p.ticker for p in construction.positions if p.ticker in instr_prices]
+            logger.info("  UCITS disponibles=%d · usados=%s", len(instr_prices), usados or "—")
+        logger.info("──────────────────────────────────────────────")
+    except Exception:
+        logger.exception("No se pudo emitir la traza del embudo (no aborta el escaneo).")
+
+
 def run_scan_and_store(db: Session, sample_size: int | None = None,
                        real_proposals: bool = True) -> dict:
     """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
@@ -98,7 +153,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     held = {p.ticker: p for p in ledger.open_positions(db)}
     watch = set(watchlist_mod.tickers(db))
     always = list(held.keys()) + [t for t in watch if t not in held]
-    sample = universe_mod.sample_for_scan(always, n)
+    # Muestra semanal = ventana ROTATORIA (offset persistido) para tejer el universo sin repetir;
+    # el mensual (n=None) coge el universo entero y no mueve el cursor.
+    sample = universe_mod.sample_for_scan(always, n, _scan_cursor(db))
+    if n is not None:
+        _advance_scan_cursor(db, n)
 
     # 2) Outlook macro forward (V4-Pro, 1 llamada).
     macro = macro_mod.get_macro_outlook(deep_llm)
@@ -112,19 +171,19 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             return None
         return scorer_mod.prescore(prescore_llm, data, macro_block), data
 
-    prescored: list[tuple[scorer_mod.PrescoreResult, fund_mod.NameData]] = []
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
-        for out in ex.map(_pre, sample):
-            if out is not None and out[0].score > 0:
-                prescored.append(out)
+        results = list(ex.map(_pre, sample))          # orden preservado → zip con `sample`
+    prescored = [r for r in results if r is not None and r[0].score > 0]
     prescored.sort(key=lambda x: -x[0].score)
+    failed = [t for t, r in zip(sample, results, strict=True) if r is None]  # gather sin datos
 
-    # Finalistas al profundo = top N por pre-score + top-K watchlist + posiciones (acotado).
+    # Finalistas al profundo: top-2/sector (amplitud) ∪ top-15 global + posiciones + watchlist,
+    # truncado a un tope duro. El corte YA NO es ciego al macro (el prescore lo ve entero), así
+    # que deja de colapsar en defensivo-value.
     data_by_t = {d.ticker: d for _p, d in prescored}
-    top_pre = [p.ticker for p, _d in prescored[: settings.deep_finalists]]
-    wl_top = [t for t in watchlist_mod.top(db, settings.deep_watchlist) if t in data_by_t]
-    held_present = [t for t in held if t in data_by_t]
-    finalists = list(dict.fromkeys(top_pre + wl_top + held_present))
+    finalists = portfolio.select_finalists(
+        prescored, set(held), watchlist_mod.top(db, settings.deep_watchlist),
+        settings.deep_per_sector, settings.deep_finalists, settings.deep_finalists_cap)
 
     # 4) PASO 2 — informe PROFUNDO (V4-Pro) + price target solo en los finalistas.
     # Memoria vectorial: recall EN EL HILO PRINCIPAL (sqlite no es thread-safe entre workers).
@@ -141,6 +200,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             deep[res.ticker] = res
 
     price_map = {d.ticker: d.price for _p, d in prescored if d.price}
+    instr_prices = instruments_mod.prices()        # {} si el allowlist UCITS está vacío
+    price_map.update(instr_prices)
     mcap_map = {t: (data_by_t[t].market_cap or 0.0) for t in deep}
     # score_map: deep (int) para finalistas; prescore redondeado para el resto (watchlist/display).
     # El CORTE de finalistas usa el prescore decimal fino (prescored ya está ordenado por él).
@@ -173,7 +234,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # 6) SELECCIÓN fiel al paper: top-N por SCORE PROFUNDO, desempate por MARKET CAP.
     #    (La convicción del constructor solo pondera; no re-selecciona.)
     selected = portfolio.select_top(
-        list(deep.values()), mcap_map, settings.min_buy_score, settings.max_positions)
+        list(deep.values()), mcap_map, settings.min_buy_score, settings.select_count)
     portfolio_text = portfolio.portfolio_text(db, held, price_map)
     if not selected and not held:
         floor = settings.min_buy_score
@@ -188,7 +249,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             f"cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B: {r.headline}"
             for r in selected
         ) or "(sin candidatos)"
-        valid = {r.ticker for r in selected}
+        candidates_text += instruments_mod.prompt_block(instr_prices)  # UCITS ('' si vacío)
+        valid = {r.ticker for r in selected} | set(instr_prices)
         construction = constructor_mod.construct(
             deep_llm, portfolio_text, candidates_text, macro_block,
             settings.max_positions, settings.max_position_pct, valid, settings.min_positions,
@@ -206,6 +268,17 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         items=items,
     ))
     db.commit()
+
+    # Traza de auditoría del embudo (diagnóstico; nunca debe tirar el escaneo).
+    try:
+        scan_audit.record(db, prescored=prescored, failed=failed, finalists=finalists,
+                          deep=deep, selected=selected, construction=construction)
+    except Exception:
+        logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
+
+    cadence = "mensual/full" if n is None else f"semanal/muestra {n}"
+    _log_funnel(cadence, sample, prescored, failed, finalists, data_by_t, selected,
+                construction, instr_prices)
 
     # 8) Sala Sombra: se ejecuta SOLA, sin botones — dinero simulado, cero riesgo. Ventas antes
     #    que compras (execute_proposal_all lo garantiza) para que la caja se libere primero.
@@ -253,7 +326,7 @@ def recheck(db: Session) -> dict:
     mcap_map = {r.ticker: (r.market_cap or 0.0) for r in deep}
     score_map = {r.ticker: r.score for r in deep}
     target_map = {r.ticker: r.target_price for r in deep}
-    selected = portfolio.select_top(deep, mcap_map, floor, settings.max_positions)
+    selected = portfolio.select_top(deep, mcap_map, floor, settings.select_count)
     last = db.query(Proposal).order_by(Proposal.created_at.desc()).first()
     macro_block = (last.macro_summary if last else "") or "n/d"
     portfolio_text = portfolio.portfolio_text(db, held, price_map)
@@ -337,7 +410,7 @@ def redeep(db: Session) -> dict:
     score_map = {t: r.score for t, r in results.items()}
     target_map = {t: r.target_price for t, r in results.items()}
     selected = portfolio.select_top(
-        list(results.values()), mcap_map, settings.min_buy_score, settings.max_positions)
+        list(results.values()), mcap_map, settings.min_buy_score, settings.select_count)
     portfolio_text = portfolio.portfolio_text(db, held, price_map)
     if not selected and not held:
         construction = constructor_mod.ConstructionResult(

@@ -11,7 +11,6 @@ Fallback: si NASDAQ falla (red), un SEED offline mínimo solo para no bloquear l
 from __future__ import annotations
 
 import logging
-import random
 import re
 from datetime import date
 
@@ -128,17 +127,23 @@ def build_universe(force_refresh: bool = False) -> list[str]:
     return list(_SEED_FALLBACK)
 
 
-def sample_for_scan(always_include: list[str], n: int | None) -> list[str]:
+def sample_for_scan(always_include: list[str], n: int | None, offset: int = 0) -> list[str]:
     """Nombres a analizar en un escaneo.
 
     `always_include` (posiciones + watchlist, SIEMPRE dentro) + el universo. Si `n` es None (o
-    ≥ tamaño total) → TODO el universo (cobertura completa, sin sorteo). Si `n` es un número →
-    relleno RANDOM hasta `n` (barajado: evita sesgo alfabético/por-cap, explora con el tiempo).
+    ≥ tamaño total) → TODO el universo (cobertura completa). Si `n` es un número → ventana
+    ROTATORIA de tamaño n a partir de `offset` (envuelve al final del universo ordenado), para que
+    semanas consecutivas tejan el universo SIN REPETIR. El caller persiste `offset` (0 = desde el
+    inicio). El universo llega ordenado, así que cada ventana es un tramo estable y disjunto.
     """
     always = list(dict.fromkeys(t.upper() for t in always_include if t))  # dedup, mantiene orden
     universe = build_universe()
     pool = [t for t in universe if t not in set(always)]
     if n is None or n >= len(always) + len(pool):
         return always + pool                       # universo entero
-    random.shuffle(pool)
-    return always + pool[: max(0, n - len(always))]
+    take = max(0, n - len(always))
+    if not pool or take == 0:
+        return always
+    off = offset % len(pool)
+    window = (pool[off:] + pool[:off])[:take]      # ventana rotatoria (envuelve)
+    return always + window

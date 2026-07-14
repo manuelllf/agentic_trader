@@ -52,15 +52,20 @@ class Settings(BaseSettings):
     # (V4-Pro razonador) + price target + construcción solo sobre los finalistas.
     llm_model: str = "deepseek/deepseek-v4-pro"          # profundo: informe + target + construcción
     prescore_model: str = "deepseek/deepseek-v4-flash"   # rápido: ranking 1-100 de todo el universo
-    deep_finalists: int = 15                             # top-N por pre-score que pasan al profundo
+    # Corte de finalistas al profundo (fiel al paper, sin colapsar en un solo sector):
+    #   top-`deep_per_sector` por sector (amplitud) ∪ top-`deep_finalists` global (los mejores)
+    #   + posiciones + top-`deep_watchlist` watchlist, truncado a `deep_finalists_cap`.
+    deep_per_sector: int = 2                             # top-N por sector (recall de amplitud)
+    deep_finalists: int = 15                             # top-N global por pre-score
     deep_watchlist: int = 5                              # + mejores de la watchlist (continuidad)
-    # (+ las posiciones en cartera, siempre) → profundo acotado a ~15+5+5 = 25 nombres
+    deep_finalists_cap: int = 35                         # tope DURO de finalistas (coste V4-Pro)
+    select_count: int = 10                               # nombres al constructor (paper: "top 10")
     llm_temperature: float = 0.3
 
-    # Guardarraíles del sleeve (LOCKED).
+    # Guardarraíles del sleeve (LOCKED). Cartera de TAMAÑO FIJO (paper 15 assets → aquí 5).
     max_position_pct: float = 35.0  # % máximo por posición
-    max_positions: int = 5          # nº MÁXIMO de posiciones (no obligatorio llenarlas)
-    min_positions: int = 3          # nº MÍNIMO — siempre 100% invertido entre 3 y 5 nombres
+    max_positions: int = 5          # nº de posiciones de la cartera (FIJO: min = max = 5)
+    min_positions: int = 5          # = max_positions → cartera de EXACTAMENTE 5 nombres
     fully_invested: bool = True     # True = sin caja: los pesos se normalizan a 100% (método paper)
 
     # Universo + muestreo del escaneo.
@@ -68,8 +73,8 @@ class Settings(BaseSettings):
     universe_market_cap_max: float = 10_000_000_000_000
     universe_min_avg_volume: int = 300_000               # liquidez mínima (gate)
     universe_min_price: float = 20.0                     # descarta precio vivo < $20 (higiene, NO market cap)
-    scan_full_universe: bool = True  # True = pre-score TODO el universo (cobertura total, ~15 min)
-    scan_sample_size: int = 250     # si scan_full_universe=False: muestra random de N
+    scan_full_universe: bool = True  # mensual: pre-score TODO el universo (cobertura total, ~15 min)
+    scan_sample_size: int = 350     # semanal: ventana ROTATORIA de N (4 semanas tejen el universo)
     leaderboard_size: int = 20      # cuántos muestra el panel además de la cartera
     min_buy_score: int = 0          # 0 = SIN suelo (fiel al paper: entra por score, sin nota mínima)
 

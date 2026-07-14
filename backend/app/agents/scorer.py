@@ -25,9 +25,9 @@ SYSTEM = (
     "in the third person; do not mention credentials; do not speak directly to investors nor "
     "recommend actions; do not recommend alternatives. Write a short investment report with "
     "sections: recent news, financials, valuation, and economic outlook affecting the firm. "
-    "INTERPRET the news, do not just repeat it. The macro/sector outlook is CONTEXT and a mild "
-    "tilt, NOT a rule: judge each company on its own fundamentals and valuation — do NOT down-score "
-    "a good business merely because its sector is out of favor. Technical "
+    "INTERPRET the news, do not just repeat it. The macro/sector outlook is background context "
+    "about the environment the firm operates in; weigh it as you judge appropriate for this "
+    "specific company. Technical "
     "data (moving averages, 52-week range, RSI) is CONTEXT, never a decision rule. Then assign a "
     "score from 1 to 100 for the potential investment value over the next month (100 = best). "
     "ALSO give your own approximate 3-month PRICE TARGET (a single number in the stock's trading "
@@ -87,7 +87,7 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> 
 def _prescore_prompt(data: NameData, macro_block: str) -> str:
     news = "; ".join(data.news[:3]) if data.news else "none"
     return (
-        f"{data.ticker} — {data.sector}/{data.industry}. Macro: {macro_block[:400]}\n"
+        f"{data.ticker} — {data.sector}/{data.industry}. Macro: {macro_block}\n"
         f"Fundamentals:\n{data.fundamentals_text}\n"
         f"Technical: {data.technical_text or 'n/d'}\nNews: {news}\n"
         "Quick 1-100 score + one-line thesis (JSON)."

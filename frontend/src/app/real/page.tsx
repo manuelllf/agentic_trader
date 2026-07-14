@@ -23,7 +23,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getHistory,
   getPerformance, getPersonal, getPushKey, getReal, logout, reconcileApprovals, rejectTrade,
-  runDemo, subscribePush, syncPersonal, testPush,
+  resetShadow, runDemo, subscribePush, syncPersonal, testPush,
 } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
 import HistoryChart from "@/components/HistoryChart";
@@ -97,6 +97,8 @@ function SalaRealRoom() {
   const [running, setRunning] = useState(false);
   const [shadowPerf, setShadowPerf] = useState<Performance | null>(null);   // sombra en paralelo
   const [hist, setHist] = useState<HistoryPoint[]>([]);   // curva del libro real (cierres diarios)
+  const [resetArmed, setResetArmed] = useState(false);    // armar→confirmar el reinicio del sombra
+  const [resetting, setResetting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -122,6 +124,21 @@ function SalaRealRoom() {
       setLoading(false);
     }
   }, []);
+
+  async function doResetShadow() {
+    setResetting(true);
+    try {
+      const r = await resetShadow();
+      setResetArmed(false);
+      setFlash(`Libro sombra reiniciado (${r.deleted.positions} posiciones, ${r.deleted.trades} `
+        + `operaciones). Caja: $${r.cash_after}. Lanza un escaneo para redesplegarla.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo reiniciar el libro sombra.");
+    } finally {
+      setResetting(false);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -749,6 +766,43 @@ function SalaRealRoom() {
             {dry ? "simulación" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a límite
             (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado
           </span>
+        </div>
+
+        {/* ---------- 6 · mantenimiento: reinicio del libro sombra (destructivo) ---------- */}
+        <div className="mt-4 rounded-lg border px-4 py-3 text-[11.5px]"
+             style={{ borderColor: T.ring, background: T.panel }}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+              Mantenimiento
+            </span>
+            <span style={{ color: T.ink2 }}>
+              Reiniciar el libro <b>sombra</b>: borra posiciones, operaciones y curva; <b>conserva tu capital</b>.
+            </span>
+            {!resetArmed ? (
+              <button onClick={() => setResetArmed(true)}
+                      className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5"
+                      style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
+                Reiniciar sombra
+              </button>
+            ) : (
+              <span className="flex items-center gap-2">
+                <button onClick={doResetShadow} disabled={resetting}
+                        className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                        style={{ background: T.bad }}>
+                  {resetting ? "Reiniciando…" : "Confirmar borrado"}
+                </button>
+                <button onClick={() => setResetArmed(false)} disabled={resetting}
+                        className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                        style={{ borderColor: T.ring, color: T.ink2 }}>
+                  Cancelar
+                </button>
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 text-[10.5px]" style={{ color: T.muted }}>
+            Solo el libro sombra (escaparate). No toca el libro real ni tu cartera personal. El próximo
+            escaneo redespliega la caja en la cartera nueva.
+          </p>
         </div>
       </div>
 

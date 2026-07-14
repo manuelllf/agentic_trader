@@ -5,7 +5,8 @@ desempate por market cap). Este agente NO re-selecciona: recibe los nombres YA E
 estado real de la cartera + el outlook macro, y solo **asigna pesos** (con tesis, edge y riesgo
 por posición). La convicción vive en los PESOS, no en la selección — como en el paper.
 
-Tope 35% por posición, 100% invertido (sin caja, normalizado en el servicio), SOLO acciones.
+Tope 35% por posición, 100% invertido (sin caja, normalizado en el servicio). Además de las
+acciones seleccionadas puede usar instrumentos UCITS del allowlist (`app.instruments`), si lo hay.
 El DINERO exacto (acciones, importes) lo calcula el código en el servicio (nunca el LLM).
 """
 
@@ -22,15 +23,14 @@ logger = logging.getLogger(__name__)
 SYSTEM = (
     "You are a portfolio manager doing the ALLOCATION step — the stocks were ALREADY SELECTED by "
     "score. You receive the fund's CURRENT state (positions, cost, cash, P&L, weights), the "
-    "SELECTED stocks with their theses and scores, and a macro outlook. Assign each SELECTED stock "
-    "a target weight to beat the S&P 500 over the next month. "
-    "HARD RULES: allocate ONLY among the selected stocks (do NOT add any other ticker); each weight "
-    "0-{max_pct}%; STOCKS ONLY; be FULLY INVESTED — the weights MUST sum to 100% (NO cash). Fund "
-    "between {min_pos} and {max_pos} names: use all {max_pos} unless conviction is concentrated, in "
-    "which case you may drop the weakest down to as few as {min_pos}. "
-    "Weight by CONVICTION: stronger fundamentals + macro fit + thesis strength get more weight; a "
-    "name whose thesis is clearly broken may get dropped. Keep the weights of existing "
-    "holdings stable unless their thesis changed (LOW TURNOVER — a scan does not force a trade). "
+    "SELECTED stocks with their theses and scores, and a macro outlook. Build a portfolio of "
+    "EXACTLY {max_pos} names to perform well over the next month versus the S&P 500. "
+    "HARD RULES: allocate ONLY among the listed candidates below (the selected stocks, plus any "
+    "instruments shown); do NOT add any ticker that is not listed; each weight 0-{max_pct}%; be "
+    "FULLY INVESTED — the weights MUST sum to 100% (NO cash); pick EXACTLY {max_pos} of them. "
+    "Weight each chosen name by your conviction, reading its fundamentals, valuation, macro "
+    "context and thesis on their own merits. Keep existing holdings' weights stable unless their "
+    "thesis has changed (LOW TURNOVER — a scan does not force a trade). "
     "For each position give a thesis, an edge (why it beats the market) and a risk. "
     "Respond ONLY in JSON: "
     '{"cash_pct": <0-100>, "positions": [{"ticker": "XXX", "weight_pct": <0-{max_pct}>, '
@@ -59,7 +59,7 @@ def _user_prompt(portfolio_text: str, candidates_text: str, macro_block: str) ->
     return (
         f"Macro & sector outlook:\n{macro_block}\n\n"
         f"Current portfolio (the agent's own sleeve):\n{portfolio_text}\n\n"
-        f"SELECTED stocks (already chosen by score — allocate weights among THESE only):\n"
+        f"Candidates (already chosen — allocate weights among THESE only):\n"
         f"{candidates_text}\n\n"
         "Assign the target weights now (JSON)."
     )

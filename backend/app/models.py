@@ -11,7 +11,6 @@ Estado del agente en 4 capas:
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
-
 from decimal import Decimal
 
 from sqlalchemy import JSON, Date, DateTime, Float, Integer, String, UniqueConstraint
@@ -62,7 +61,7 @@ class Score(Base):
 
 
 class Proposal(Base):
-    """Cartera objetivo + trades que propone el constructor en un escaneo (3-5 posiciones)."""
+    """Cartera objetivo + trades que propone el constructor en un escaneo (5 posiciones fijas)."""
 
     __tablename__ = "proposals"
 
@@ -72,6 +71,29 @@ class Proposal(Base):
     macro_summary: Mapped[str] = mapped_column(String, default="")
     # items: [{ticker, action, target_weight_pct, shares, est_value, thesis, edge, risk, score}]
     items: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class ScanAudit(Base):
+    """Traza del embudo del ÚLTIMO escaneo (diagnóstico, sin dinero). Una fila por ticker con
+    hasta dónde llegó: pre-score → finalista (profundo) → seleccionado → en cartera, y su peso.
+
+    Se REEMPLAZA en cada escaneo (no es histórico). Sirve para ver de un vistazo que el corte de
+    finalistas ya no colapsa en un solo sector. Ver `app/scan_audit.py` y `scripts/scan_funnel.py`.
+    """
+
+    __tablename__ = "scan_audit"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scan_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    ticker: Mapped[str] = mapped_column(String(16), index=True)
+    sector: Mapped[str] = mapped_column(String(48), default="")
+    prescore: Mapped[float | None] = mapped_column(Float)     # None si no se llegó a pre-scorear
+    reached_deep: Mapped[bool] = mapped_column(default=False)  # ¿pasó el corte al profundo?
+    deep_score: Mapped[int | None] = mapped_column(Integer)
+    selected: Mapped[bool] = mapped_column(default=False)      # ¿top-10 al constructor?
+    funded: Mapped[bool] = mapped_column(default=False)        # ¿acabó en la cartera?
+    weight_pct: Mapped[float | None] = mapped_column(Float)
+    stage: Mapped[str] = mapped_column(String(16), default="")  # etapa alcanzada (datos…cartera)
 
 
 # ---------------------------------------------------------------------------

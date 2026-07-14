@@ -39,7 +39,10 @@ def real_proposals_due(now: datetime | None = None) -> bool:
 def _scan_job() -> None:
     db = SessionLocal()
     try:
-        result = run_scan_and_store(db, real_proposals=real_proposals_due())
+        due = real_proposals_due()
+        # Mensual (le toca la real) → universo entero; semanal → muestra rotatoria (más barato).
+        sample = None if due else settings.scan_sample_size
+        result = run_scan_and_store(db, sample_size=sample, real_proposals=due)
         logger.info("Escaneo completado: %s", result)
     except Exception:
         logger.exception("Fallo en el job de escaneo")

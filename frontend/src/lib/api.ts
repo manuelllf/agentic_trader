@@ -196,6 +196,15 @@ export interface MemoryStatus {
  * llegó al volumen contando los recuerdos. */
 export const getMemoryStatus = () => get<MemoryStatus>("/admin/memory-status");
 
+export interface ShadowReset {
+  ok: boolean;
+  deleted: { positions: number; trades: number; snapshots: number };
+  cash_after: string;   // caja del sombra tras el reinicio (= capital conservado)
+}
+
+/** DESTRUCTIVO (solo libro sombra): borra posiciones/operaciones/curva; conserva el capital. */
+export const resetShadow = () => post<ShadowReset>("/admin/reset-shadow");
+
 // ---- Cartera personal IBKR (read-only, intocable para el agente) ----
 export const getPersonal = () => get<PersonalSummary>("/personal");
 export const syncPersonal = () => post<PersonalSummary & { synced: number }>("/personal/sync");

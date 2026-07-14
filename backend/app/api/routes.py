@@ -280,6 +280,14 @@ def admin_seed_memory(body: bytes = Body(...)) -> dict:
     return {"ok": True, "bytes": len(body), "path": str(path)}
 
 
+@router.post("/admin/reset-shadow")
+def admin_reset_shadow(db: Session = Depends(get_db)) -> dict:
+    """DESTRUCTIVO — SOLO libro SOMBRA (escaparate). Vacía holdings/operaciones/curva del sombra
+    conservando el capital (queda en caja); NO toca el libro real ni la cartera personal. Para
+    descartar la salida de un escaneo defectuoso. Protegido por token."""
+    return ledger.reset_shadow_book(db)
+
+
 @router.get("/admin/memory-status")
 def admin_memory_status() -> dict:
     """Diagnóstico read-only de la memoria vectorial: ruta, nº de recuerdos y si las deps están

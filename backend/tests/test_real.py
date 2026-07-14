@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -47,6 +48,30 @@ def test_books_are_independent(db) -> None:
     # mismo ticker en ambos libros a la vez
     ledger.record_buy(db, "HIG", "2", "100", "R-REF", book=BOOK_REAL)
     assert len(ledger.open_positions(db)) == 1
+    assert len(ledger.open_positions(db, BOOK_REAL)) == 1
+
+
+def test_reset_shadow_keeps_capital_and_leaves_real_untouched(db) -> None:
+    from app.models import BOOK_SHADOW, EquitySnapshot, Meta, Position, Trade
+
+    ledger.allocate(db, 2000, book=BOOK_SHADOW)
+    ledger.record_buy(db, "HIG", "5", "100", "S-REF", book=BOOK_SHADOW)   # sombra: caja 1500 + posición
+    ledger.allocate(db, 500, book=BOOK_REAL)
+    ledger.record_buy(db, "CP", "3", "50", "R-REF", book=BOOK_REAL)       # real: no debe tocarse
+    db.add(EquitySnapshot(day=date(2026, 7, 14), book=BOOK_SHADOW,
+                          equity=Decimal("2000.00"), spy_close=750.0))
+    db.add(Meta(key="spy_ref:shadow:1", value="750.0"))
+    db.commit()
+
+    out = ledger.reset_shadow_book(db)
+
+    assert out["ok"] and out["deleted"]["positions"] == 1 and out["deleted"]["trades"] == 1
+    assert ledger.available_cash(db, BOOK_SHADOW) == Decimal("2000.00")   # capital conservado (todo en caja)
+    assert ledger.open_positions(db, BOOK_SHADOW) == []                   # sin holdings
+    assert db.query(EquitySnapshot).filter(EquitySnapshot.book == BOOK_SHADOW).count() == 0
+    assert db.query(Meta).filter(Meta.key.like("spy_ref:shadow:%")).count() == 0
+    # el libro REAL intacto
+    assert ledger.available_cash(db, BOOK_REAL) == Decimal("350.00")
     assert len(ledger.open_positions(db, BOOK_REAL)) == 1
 
 
