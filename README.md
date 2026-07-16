@@ -57,7 +57,7 @@ uv sync                                   # https://docs.astral.sh/uv/
 uv run uvicorn app.main:app --reload
 ```
 
-API en http://localhost:8000 · documentación OpenAPI en http://localhost:8000/docs
+Documentación OpenAPI en URL_PROD/docs
 
 Variables de entorno en `backend/.env` (no versionado). Para el escaneo con LLM hace falta
 `OPENROUTER_API_KEY`; para la sala real, las credenciales OAuth de IBKR. Sin ellas, el
@@ -71,8 +71,6 @@ cd frontend
 npm install
 npm run dev
 ```
-
-Interfaz en http://localhost:3000
 
 ## Modelo de seguridad
 
