@@ -183,7 +183,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     data_by_t = {d.ticker: d for _p, d in prescored}
     finalists = portfolio.select_finalists(
         prescored, set(held), watchlist_mod.top(db, settings.deep_watchlist),
-        settings.deep_per_sector, settings.deep_finalists, settings.deep_finalists_cap)
+        settings.deep_per_sector, settings.deep_finalists, settings.deep_finalists_cap,
+        top_caps=settings.deep_top_caps)
 
     # 4) PASO 2 — informe PROFUNDO (V4-Pro) + price target solo en los finalistas.
     # Memoria vectorial: recall EN EL HILO PRINCIPAL (sqlite no es thread-safe entre workers).
@@ -227,9 +228,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 store.remember(f"{d.headline} {d.report[:400]}", kind="thesis", ticker=t)
             except Exception:
                 pass
-    watchlist_mod.update(db, [(p.ticker, score_map[p.ticker],
-                               (deep[p.ticker].headline if p.ticker in deep else p.headline))
-                              for p, _d in prescored])
+    # A la watchlist SOLO entran scores PROFUNDOS: los pre-scores de Flash no están verificados
+    # (calibran mal) y contaminaban la memoria entre escaneos con notas infladas.
+    watchlist_mod.update(db, [(t, r.score, r.headline) for t, r in deep.items()])
 
     # 6) SELECCIÓN fiel al paper: top-N por SCORE PROFUNDO, desempate por MARKET CAP.
     #    (La convicción del constructor solo pondera; no re-selecciona.)

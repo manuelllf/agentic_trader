@@ -56,9 +56,10 @@ class Settings(BaseSettings):
     #   top-`deep_per_sector` por sector (amplitud) ∪ top-`deep_finalists` global (los mejores)
     #   + posiciones + top-`deep_watchlist` watchlist, truncado a `deep_finalists_cap`.
     deep_per_sector: int = 2                             # top-N por sector (recall de amplitud)
-    deep_finalists: int = 15                             # top-N global por pre-score
+    deep_finalists: int = 25                             # top-N global por pre-score
     deep_watchlist: int = 5                              # + mejores de la watchlist (continuidad)
-    deep_finalists_cap: int = 35                         # tope DURO de finalistas (coste V4-Pro)
+    deep_top_caps: int = 10                              # las N mayores caps SIEMPRE al profundo
+    deep_finalists_cap: int = 50                         # tope DURO de finalistas (coste V4-Pro)
     select_count: int = 10                               # nombres al constructor (paper: "top 10")
     llm_temperature: float = 0.3
 
@@ -69,18 +70,18 @@ class Settings(BaseSettings):
     fully_invested: bool = True     # True = sin caja: los pesos se normalizan a 100% (método paper)
 
     # Universo + muestreo del escaneo.
-    universe_market_cap_min: float = 3_000_000_000       # suelo $3B (deja pasar mid/small asimétricos)
+    universe_market_cap_min: float = 0                   # SIN suelo de cap: todo el mercado US
     universe_market_cap_max: float = 10_000_000_000_000
     universe_min_avg_volume: int = 300_000               # liquidez mínima (gate)
-    universe_min_price: float = 20.0                     # descarta precio vivo < $20 (higiene, NO market cap)
+    universe_min_price: float = 5.0                      # descarta penny stocks < $5 (higiene)
     scan_full_universe: bool = True  # mensual: pre-score TODO el universo (cobertura total, ~15 min)
-    scan_sample_size: int = 350     # semanal: ventana ROTATORIA de N (4 semanas tejen el universo)
+    scan_sample_size: int = 500     # semanal: ventana ROTATORIA de N (~5 semanas tejen el universo)
     leaderboard_size: int = 20      # cuántos muestra el panel además de la cartera
     min_buy_score: int = 0          # 0 = SIN suelo (fiel al paper: entra por score, sin nota mínima)
 
     # Watchlist relacional — memoria de scores altos: entran siempre al escaneo y sus mejores
     # pasan al análisis profundo (continuidad entre escaneos).
-    watchlist_entry_score: int = 85  # entra si score >=
+    watchlist_entry_score: int = 80  # entra si score PROFUNDO >= (solo guarda scores profundos)
     watchlist_evict_score: int = 70  # sale si al re-analizar cae por debajo de
     watchlist_max: int = 50          # tope de nombres (protege la exploración random)
     watchlist_stale_days: int = 28   # caduca si no vuelve a puntuar alto en N días

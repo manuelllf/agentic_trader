@@ -74,6 +74,20 @@ def _company_key(name: str, symbol: str) -> str:
     return s or symbol.lower()
 
 
+_SYMBOL_RE = re.compile(r"^[A-Z]+(/[A-Z])?$")  # acción común, con clase opcional (BRK/B)
+
+
+def _norm_symbol(symbol: str) -> str | None:
+    """Ticker del screener → formato yfinance, o None si no es acción común.
+
+    Acepta letras y clases con barra (BRK/B → BRK-B); descarta preferentes/series ('^'),
+    warrants, units y símbolos raros.
+    """
+    if not _SYMBOL_RE.match(symbol):
+        return None
+    return symbol.replace("/", "-")
+
+
 def _from_nasdaq() -> list[str]:
     params = {"tableonly": "true", "limit": "0", "download": "true"}
     with httpx.Client(timeout=30.0, headers=_NASDAQ_HEADERS) as client:
@@ -88,8 +102,8 @@ def _from_nasdaq() -> list[str]:
     # Dedup de clases: por empresa, nos quedamos con la más LÍQUIDA → {company_key: (symbol, vol)}
     best: dict[str, tuple[str, float]] = {}
     for row in rows:
-        symbol = (row.get("symbol") or "").strip().upper()
-        if not symbol or not symbol.isalpha():  # descarta warrants/units/tickers raros
+        symbol = _norm_symbol((row.get("symbol") or "").strip().upper())
+        if symbol is None:
             continue
         cap = _parse_market_cap(row.get("marketCap", ""))
         if cap is None or not (cap_min <= cap <= cap_max):

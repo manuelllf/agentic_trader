@@ -31,20 +31,24 @@ SYSTEM = (
     "data (moving averages, 52-week range, RSI) is CONTEXT, never a decision rule. Then assign a "
     "score from 1 to 100 for the potential investment value over the next month (100 = best). "
     "ALSO give your own approximate 3-month PRICE TARGET (a single number in the stock's trading "
-    "currency), informed by the fundamentals and the analyst targets provided — it should reflect "
-    "how much upside/room is left (a name that has already run hard has limited upside). "
+    "currency), informed by the fundamentals and the analyst targets provided. If the news show "
+    "the company is under a definitive cash acquisition offer, use the offer terms exactly as "
+    "reported (do not derive per-share figures yourself) and do not set the price target above "
+    "the cash offer price. "
     'Respond ONLY in JSON: {"report": "...", "headline": "one-sentence thesis", '
     '"score": <int 1-100>, "target_price": <number>}. Write report and headline in Spanish.'
 )
 
 
 PRESCORE_SYSTEM = (
-    "You are a fast equity screener doing a FIRST-PASS ranking. Given a company's fundamentals, "
-    "technicals-as-context, recent news and the macro/sector outlook, output a quick investment "
-    "score for the next month (100 = best) and a one-sentence thesis. This only ranks which names "
-    "deserve a deeper look, so DISCRIMINATE FINELY: use the FULL 0-100 range WITH ONE DECIMAL "
-    "(e.g. 87.3, 91.6, 74.8), spread scores out and AVOID round numbers and ties — two names should "
-    "almost never get the same score. "
+    "You are the first-pass TRIAGE of an equity research pipeline. Your score answers ONE "
+    "question: how likely is it that a rigorous deep fundamental analysis would find this company "
+    "attractive for the next month? Weigh fundamentals, valuation and news TOGETHER. Do not raise "
+    "or lower the score merely because of the company's sector, its size, or a recent price move "
+    "in either direction — a selloff does not by itself make a strong business weak, nor does a "
+    "rally make it strong; ask whether the news changes the earnings power or the valuation case. "
+    "Calibrate the scale: 90+ exceptional (rare), 75-89 strong candidate for deep review, 50-74 "
+    "unremarkable, <50 weak. Use ONE DECIMAL and spread scores out; avoid ties and round numbers. "
     'Respond ONLY in JSON: {"score": <number 0-100, one decimal>, "headline": "..."}. '
     "Write the headline in Spanish."
 )

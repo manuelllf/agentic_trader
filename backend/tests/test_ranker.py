@@ -122,7 +122,7 @@ def test_watchlist_staleness(db) -> None:
     old = datetime.now(UTC) - timedelta(days=40)
     db.add(Watchlist(ticker="OLD", score=88, thesis="t", first_seen=old, last_seen=old, last_high=old))
     db.commit()
-    wl.update(db, [("OLD", 80, "sigue ok")])  # 80: sobre evict pero bajo entry → last_high NO se refresca
+    wl.update(db, [("OLD", 78, "sigue ok")])  # 78: sobre evict pero bajo entry → last_high NO se refresca
     assert wl.tickers(db) == []               # caduca por antigüedad (>28d sin puntuar alto)
 
 
@@ -256,3 +256,26 @@ def test_full_invest_five_equal() -> None:
     from app.portfolio_service import _full_invest
     w = _full_invest([1, 1, 1, 1, 1], cap=35.0)
     assert abs(sum(w) - 100.0) < 0.01 and all(abs(x - 20.0) < 0.01 for x in w)
+
+
+def test_select_finalists_rescata_mayores_caps() -> None:
+    from app.portfolio_service import select_finalists
+    # MEGA prescorea fatal, pero es la mayor cap → el carril de rescate la mete al profundo.
+    prescored = [_pn("A", "Tech", 90), _pn("B", "Health", 80), _pn("MEGA", "Tech", 5)]
+    prescored[0][1].market_cap = 1e9
+    prescored[1][1].market_cap = 2e9
+    prescored[2][1].market_cap = 3e12
+    sin = select_finalists(prescored, held=set(), watch=[], per_sector=1, global_n=1, cap=10)
+    con = select_finalists(prescored, held=set(), watch=[], per_sector=1, global_n=1, cap=10,
+                           top_caps=1)
+    assert "MEGA" not in sin
+    assert "MEGA" in con
+
+
+def test_norm_symbol_clases_y_preferentes() -> None:
+    from app.screener.universe import _norm_symbol
+    assert _norm_symbol("AAPL") == "AAPL"
+    assert _norm_symbol("BRK/B") == "BRK-B"      # clase con barra → formato yfinance
+    assert _norm_symbol("WRB^H") is None         # preferente/serie
+    assert _norm_symbol("XYZ/WS") is None        # warrant (dos letras tras la barra)
+    assert _norm_symbol("") is None

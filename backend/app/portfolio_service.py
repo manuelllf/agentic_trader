@@ -34,15 +34,17 @@ def select_top(rows: list, mcap: dict, floor: int, n: int) -> list:
 
 
 def select_finalists(prescored: list, held: set, watch: list,
-                     per_sector: int, global_n: int, cap: int) -> list[str]:
+                     per_sector: int, global_n: int, cap: int, top_caps: int = 0) -> list[str]:
     """Corte de finalistas al profundo: amplitud por sector + mejores globales, con tope duro.
 
     `prescored` = [(PrescoreResult, NameData)] YA ordenado por pre-score descendente. El corte
     combina top-`per_sector` por sector (para que el profundo VEA cada sector, no un mandato de
-    diversificar) ∪ top-`global_n` global. La selección FINAL de cartera sigue siendo puro score.
+    diversificar) ∪ top-`global_n` global ∪ las `top_caps` mayores capitalizaciones (carril de
+    rescate OBJETIVO: en el paper el modelo grande puntúa todos los grandes; el pre-score barato
+    no puede vetarlos). La selección FINAL de cartera sigue siendo puro score.
 
     Prioridad al truncar a `cap`: posiciones → núcleo por sector → extras del top global →
-    watchlist. Se recorta desde abajo; núcleo (≤11·per_sector) + posiciones nunca se sacrifican.
+    mayores caps → watchlist. Se recorta desde abajo; núcleo + posiciones nunca se sacrifican.
     """
     ranked = [p.ticker for p, _d in prescored]          # ya viene por score desc
     sector = {p.ticker: d.sector for p, d in prescored}
@@ -57,10 +59,12 @@ def select_finalists(prescored: list, held: set, watch: list,
             per[s] = per.get(s, 0) + 1
     global_top = ranked[:global_n]
     held_in = [t for t in ranked if t in held]          # solo las presentes, en orden de score
+    by_cap = sorted(prescored, key=lambda pd: -(pd[1].market_cap or 0.0))
+    caps_in = [p.ticker for p, _d in by_cap[:top_caps]]
     watch_in = [t for t in watch if t in present]
 
     ordered: list[str] = []
-    for group in (held_in, core, global_top, watch_in):
+    for group in (held_in, core, global_top, caps_in, watch_in):
         for t in group:
             if t not in ordered:
                 ordered.append(t)
