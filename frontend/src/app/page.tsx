@@ -9,9 +9,9 @@ import { useEffect, useState } from "react";
 import { getHistory, getOverview } from "@/lib/api";
 import HistoryChart from "@/components/HistoryChart";
 import Logo from "@/components/Logo";
+import { fmtPct } from "@/lib/format";
 import type { HistoryPoint, Overview } from "@/lib/types";
 
-const fmtPct = (v: number | null) => (v == null ? "—" : `${v > 0 ? "+" : ""}${v}%`);
 const pctTone = (v: number | null, dark = false) =>
   v == null || v === 0 ? "text-slate-400" : v > 0 ? (dark ? "text-emerald-400" : "text-emerald-600")
                                                     : (dark ? "text-rose-400" : "text-rose-600");

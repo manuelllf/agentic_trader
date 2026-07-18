@@ -31,11 +31,9 @@ import type {
   WatchItem,
 } from "@/lib/types";
 import RealDoor from "@/components/RealDoor";
+import { fmtTime, money } from "@/lib/format";
 
 /* ---------- helpers ---------- */
-const money = (x: string | number, dec = 2) =>
-  Number(x).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
-
 const ACTION: Record<TradeAction, { badge: string; label: string }> = {
   comprar: { badge: "bg-emerald-600 text-white", label: "Comprar" },
   ampliar: { badge: "bg-teal-600 text-white", label: "Ampliar" },
@@ -53,8 +51,6 @@ const POS_COLOR = ["bg-emerald-500", "bg-teal-500", "bg-sky-500", "bg-indigo-500
 const scoreColor = (s: number) =>
   s >= 80 ? "bg-emerald-500" : s >= 65 ? "bg-teal-500" : s >= 50 ? "bg-amber-400" : "bg-slate-300";
 const CARD = "rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_16px_rgba(15,23,42,0.06)]";
-const fmtTime = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 
 /* ---------- page ---------- */
 export default function SombraDashboard() {
@@ -75,6 +71,7 @@ export default function SombraDashboard() {
   const [sectorF, setSectorF] = useState<string | null>(null);       // filtro de sector del ranking
   const [authed, setAuthed] = useState(false);   // sesión detectada en el último refresco
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const alive = useRef(true);                    // guard de desmontaje (mismo patrón que portada)
 
   const refresh = useCallback(async () => {
     try {
@@ -99,23 +96,28 @@ export default function SombraDashboard() {
           getWatchlist().catch(() => []),
         ]);
       }
+      if (!alive.current) return;   // la página ya no está montada: un GET lento no pinta nada
       setLedger(l); setProposal(p); setScores(s); setWatch(w); setMacro(m); setPerf(pf); setCfg(cf); setStatus(st);
       if (hs) setHist(hs.series);
       setAuthed(withSession);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo contactar con el backend.");
+      if (alive.current) setError(e instanceof Error ? e.message : "No se pudo contactar con el backend.");
     } finally {
-      setLoading(false);
+      if (alive.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    alive.current = true;
     refresh();
     // Solo lectura: el escaneo se lanza desde la Sala Real (o el cron semanal), así que aquí nos
     // limitamos a refrescar cada poco para reflejarlo en cuanto termine, sin ningún botón.
     timer.current = setInterval(refresh, 45_000);
-    return () => { if (timer.current) clearInterval(timer.current); };
+    return () => {
+      alive.current = false;
+      if (timer.current) clearInterval(timer.current);
+    };
   }, [refresh]);
 
   const equity = ledger ? Number(ledger.equity) : 0;
@@ -390,6 +392,7 @@ export default function SombraDashboard() {
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       <input
                         value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ticker o tesis…"
+                        aria-label="Buscar ticker o tesis"
                         className="h-8 w-44 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none placeholder:text-slate-300 focus:ring-2 focus:ring-emerald-500/30"
                       />
                       <div className="flex flex-wrap gap-1">
@@ -476,11 +479,11 @@ function Empty({ running }: { running: boolean }) {
   );
 }
 
-function Kpi({ label, value, sub, accent, tone, className = "" }: {
-  label: string; value: string; sub?: string; accent?: boolean; tone?: "pos" | "neg"; className?: string;
+function Kpi({ label, value, sub, accent, tone }: {
+  label: string; value: string; sub?: string; accent?: boolean; tone?: "pos" | "neg";
 }) {
   return (
-    <div className={`bg-white px-4 py-3.5 ${className}`}>
+    <div className="bg-white px-4 py-3.5">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
       <p className={`mt-1 text-xl font-bold tabular-nums tracking-tight ${
         accent ? "text-slate-900" : tone === "pos" ? "text-emerald-600" : tone === "neg" ? "text-rose-600" : "text-slate-800"
@@ -606,6 +609,7 @@ function PositionDetailModal({ pos, onClose }: { pos: PerfPosition; onClose: () 
       onClick={onClose}
     >
       <div
+        role="dialog" aria-modal="true" aria-label={`Detalle de ${pos.ticker ?? "posición"}`}
         className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

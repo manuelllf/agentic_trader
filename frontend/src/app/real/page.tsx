@@ -27,6 +27,7 @@ import {
 } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
 import HistoryChart from "@/components/HistoryChart";
+import { fmtPct, fmtTime, money, qty4, signMoney } from "@/lib/format";
 import type {
   AppConfig, Approval, ApprovalsResponse, DemoStatus, HistoryPoint, Performance,
   PersonalSummary, RealSummary, TradeAction,
@@ -51,18 +52,6 @@ const T = {
 /* Serie categórica (orden fijo, validado): posiciones 1..5. El verde queda RESERVADO al P&L. */
 const SERIES = ["#3987e5", "#199e70", "#c98500", "#9085e9", "#d55181"];
 
-const money = (x: string | number, dec = 2) =>
-  Number(x).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
-const qty4 = (x: string | number) =>
-  Number(x).toLocaleString("en-US", { maximumFractionDigits: 4 });
-const signMoney = (x: string | number) => {
-  const n = Number(x);
-  if (n === 0) return "$0.00";           // el cero es neutro: sin signo
-  return `${n > 0 ? "+" : "−"}$${money(Math.abs(n))}`;
-};
-const fmtTime = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-const fmtPct = (v: number | null | undefined) => (v != null ? `${v > 0 ? "+" : ""}${v}%` : "—");
 const isBuy = (a: TradeAction) => a === "comprar" || a === "ampliar";
 const NUMS = "tabular-nums";
 
@@ -101,6 +90,7 @@ function SalaRealRoom() {
   const [resetting, setResetting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
 
   const load = useCallback(async () => {
     try {
@@ -109,6 +99,7 @@ function SalaRealRoom() {
         getDemoStatus().catch(() => null), getPerformance().catch(() => null),
         getFx().catch(() => null), getHistory("real").catch(() => null),
       ]);
+      if (!alive.current) return;   // desmontada: un GET lento no debe pintar nada
       setSummary(s);
       setApprovals(a);
       if (c) setCfg(c);
@@ -119,9 +110,9 @@ function SalaRealRoom() {
       if (hs) setHist(hs.series);
       setError("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
+      if (alive.current) setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
     } finally {
-      setLoading(false);
+      if (alive.current) setLoading(false);
     }
   }, []);
 
@@ -141,9 +132,11 @@ function SalaRealRoom() {
   }
 
   useEffect(() => {
+    alive.current = true;
     load();
     pollRef.current = setInterval(load, 60_000);
     return () => {
+      alive.current = false;
       if (pollRef.current) clearInterval(pollRef.current);
       if (scanTimer.current) clearTimeout(scanTimer.current);
     };
@@ -273,6 +266,8 @@ function SalaRealRoom() {
   const isScanning = running || scanStatus?.status === "running";
   // Máquina de estados de la sala: sin capital → hero de puesta en marcha; con capital → libro.
   const hasCapital = equity > 0 || (summary?.positions.length ?? 0) > 0;
+  // Escala común de las barras de P&L por posición (una vez, no dentro del map por fila).
+  const maxAbs = Math.max(1e-9, ...(perf?.positions ?? []).map((x) => Math.abs(Number(x.unrealized_pnl))));
 
   return (
       <div className="real-room min-h-[100dvh] pb-8 text-[13px] antialiased"
@@ -371,7 +366,7 @@ function SalaRealRoom() {
           <div className="mb-3 flex items-center justify-between rounded-lg border px-4 py-2 text-[12.5px]"
                style={{ borderColor: T.ring, background: T.panel, color: T.ink2 }}>
             <span>{flash}</span>
-            <button onClick={() => setFlash("")} className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
+            <button onClick={() => setFlash("")} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
           </div>
         )}
         {loading && !summary && !error && (
@@ -551,7 +546,6 @@ function SalaRealRoom() {
                       const pr = perf?.positions.find((x) => x.ticker === p.ticker);
                       const pnl = pr ? Number(pr.unrealized_pnl) : null;
                       const pnlPct = pr?.pnl_pct ?? null;
-                      const maxAbs = Math.max(1e-9, ...(perf?.positions ?? []).map((x) => Math.abs(Number(x.unrealized_pnl))));
                       const w = equity > 0 ? (Number(p.value) / equity) * 100 : 0;
                       return (
                         <tr key={p.ticker} className="border-t" style={{ borderColor: T.grid }}>
@@ -903,7 +897,7 @@ function CapitalForm({ fx, onDone, onError }: {
         <input value={amount}
                onChange={(e) => { setAmount(e.target.value); setArmed(false); }}
                onKeyDown={(e) => e.key === "Enter" && submit()}
-               placeholder="0.00" inputMode="decimal"
+               placeholder="0.00" inputMode="decimal" aria-label="Importe"
                className={`w-full rounded border bg-transparent px-3 py-1.5 text-[13px] outline-none ${NUMS}`}
                style={{ borderColor: T.grid, color: T.ink }}
                onFocus={(e) => (e.currentTarget.style.borderColor = T.buy)}
@@ -1092,7 +1086,11 @@ function OrderRow({ a, dry, onDecide, expiryDays }: {
   return (
     <>
       <tr onClick={() => setOpen(!open)}
-          className="cursor-pointer border-t transition-colors hover:bg-white/[0.03]"
+          role="button" tabIndex={0} aria-expanded={open}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); }
+          }}
+          className="cursor-pointer border-t transition-colors hover:bg-white/[0.03] focus-visible:bg-white/[0.05] focus-visible:outline-none"
           style={{ borderColor: T.grid }}>
         <Td><SideTag action={a.action} /></Td>
         <Td>

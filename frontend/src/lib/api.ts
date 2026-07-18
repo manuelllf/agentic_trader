@@ -1,6 +1,6 @@
 // Cliente HTTP hacia el backend FastAPI.
 import type {
-  AppConfig, Approval, ApprovalsResponse, DemoStatus, EquityHistory, ExecuteResult,
+  AppConfig, Approval, ApprovalsResponse, DemoStatus, EquityHistory,
   LedgerSnapshot, Macro, Overview, Performance, PersonalSummary, Proposal, RealSummary,
   ScoreRow, WatchItem,
 } from "./types";
@@ -78,18 +78,15 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 
 /* ---- login / sesión ---- */
 
-/** Inicia sesión con la contraseña. Guarda el token si es correcta; lanza si no. */
+/** Inicia sesión con la contraseña. Guarda el token si es correcta; lanza si no.
+ *  Va por `request()`: mismo timeout de 15 s y mismo mapeo de red que el resto — un backend
+ *  colgado ya no deja el botón en "Entrando…" hasta el timeout del navegador. */
 export async function login(password: string): Promise<void> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}/auth/login`, {
-      method: "POST", cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-  } catch {
-    throw new ApiError(OFFLINE, "network");
-  }
+  const res = await request("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
   if (res.status === 401) throw new ApiError("Contraseña incorrecta.", "http", 401);
   if (res.status === 429)
     throw new ApiError("Demasiados intentos fallidos. Espera unos minutos.", "http", 429);
@@ -100,12 +97,8 @@ export async function login(password: string): Promise<void> {
 
 /** Comprueba el token guardado. true = sesión válida (o backend caído → no bloquea con login). */
 export async function checkAuth(): Promise<boolean> {
-  const token = getToken();
   try {
-    const res = await fetch(`${API_URL}/auth/check`, {
-      cache: "no-store",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res = await request("/auth/check");   // request() ya añade el Authorization
     return res.status !== 401;   // 401 → hay que loguear; cualquier otra cosa → deja pasar
   } catch {
     return true;                 // backend inalcanzable: la app mostrará su banner de conexión
@@ -118,8 +111,6 @@ export function logout() {
 }
 
 export const getLedger = () => get<LedgerSnapshot>("/ledger");
-export const allocate = (amount: number, note = "") =>
-  post<LedgerSnapshot>("/ledger/allocate", { amount, note });
 
 export const runDemo = () => post<DemoStatus & { started: boolean }>("/demo/run");
 export const getDemoStatus = () => get<DemoStatus>("/demo/status");
@@ -134,14 +125,6 @@ export const getOverview = () => get<Overview>("/overview");
 /** Curva histórica (cierres diarios). La sombra es pública; la real sin sesión llega sin equity. */
 export const getHistory = (book: "shadow" | "real" = "shadow") =>
   get<EquityHistory>(`/history?book=${book}`);
-
-// Ejecuta un item de la propuesta en el libro sombra (botón Comprar/Vender).
-export const executeProposalItem = (ticker: string) =>
-  post<ExecuteResult>(`/proposal/execute/${ticker}`);
-export const executeProposalAll = () =>
-  post<{ ok: boolean; executed: string[]; skipped: string[]; message: string; ledger: LedgerSnapshot }>(
-    "/proposal/execute",
-  );
 
 // ---- Sala Real ----
 export const getReal = () => get<RealSummary>("/real");
@@ -163,40 +146,9 @@ export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/app
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
 export const reconcileApprovals = () => post<{ reconciled: number }>("/approvals/reconcile");
 
-// ---- Mantenimiento: volcado de base de datos (local → nube) ----
-export const seedDatabase = (snapshot: unknown) =>
-  post<{ ok: boolean; loaded: Record<string, number>; total: number }>("/admin/seed", snapshot);
-
-/** Sube el fichero de memoria vectorial (binario) TAL CUAL a la ruta configurada en el backend. */
-export async function seedMemory(bytes: ArrayBuffer): Promise<{ ok: boolean; bytes: number; path: string }> {
-  const token = getToken();
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}/admin/seed-memory`, {
-      method: "POST", cache: "no-store",
-      headers: { "Content-Type": "application/octet-stream", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: bytes,
-    });
-  } catch {
-    throw new ApiError(OFFLINE, "network");
-  }
-  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
-  if (!res.ok) throw new ApiError(`No se pudo subir la memoria (${res.status}).`, "http", res.status);
-  return res.json() as Promise<{ ok: boolean; bytes: number; path: string }>;
-}
-
-export interface MemoryStatus {
-  available: boolean;   // hay recuerdos Y deps instaladas (un recall real funcionaría)
-  exists: boolean;      // el fichero de memoria existe en la ruta configurada
-  count: number;        // nº de recuerdos guardados
-  deps: boolean;        // fastembed + sqlite-vec instaladas
-  path: string;
-  error?: string;
-}
-
-/** Diagnóstico read-only de la memoria vectorial (no carga el modelo): confirma que el volcado
- * llegó al volumen contando los recuerdos. */
-export const getMemoryStatus = () => get<MemoryStatus>("/admin/memory-status");
+// Los endpoints de mantenimiento del backend (/admin/seed, /admin/seed-memory,
+// /admin/memory-status) siguen vivos, pero se usan a mano (migración puntual por consola):
+// la UI ya no los llama y sus clientes se retiraron de aquí.
 
 export interface ShadowReset {
   ok: boolean;
@@ -215,6 +167,4 @@ export const syncPersonal = () => post<PersonalSummary & { synced: number }>("/p
 export const getPushKey = () => get<{ key: string }>("/push/key");
 export const subscribePush = (sub: PushSubscriptionJSON) =>
   post<{ ok: boolean }>("/push/subscribe", sub);
-export const unsubscribePush = (endpoint: string) =>
-  post<{ ok: boolean }>("/push/unsubscribe", { endpoint, keys: {} });
 export const testPush = () => post<{ sent: number }>("/push/test");

@@ -63,7 +63,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           <form onSubmit={submit} className="space-y-2.5">
             <input
               type="password" value={pw} onChange={(e) => setPw(e.target.value)}
-              placeholder="Contraseña" autoFocus autoComplete="current-password"
+              placeholder="Contraseña" aria-label="Contraseña" autoFocus autoComplete="current-password"
               className="w-full rounded-lg px-3 py-2.5 text-[13px] outline-none"
               style={{ background: "#1a1a19", border: "1px solid #2c2c2a", color: "#fff" }}
               onFocus={(e) => (e.currentTarget.style.borderColor = "#3987e5")}

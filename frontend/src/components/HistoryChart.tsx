@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { money } from "@/lib/format";
 import type { HistoryPoint } from "@/lib/types";
 
 const RANGES = [
@@ -36,9 +37,8 @@ const fmtDay = (iso: string, withYear = false) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("es-ES", {
     day: "numeric", month: "short", ...(withYear ? { year: "2-digit" } : {}),
   });
+// fmtPct PROPIO del chart (no el compartido): deltas del índice base 100, siempre a 1 decimal.
 const fmtPct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
-const money = (x: string) =>
-  Number(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function HistoryChart({ points, dark = false, mini = false }: {
   points: HistoryPoint[];
