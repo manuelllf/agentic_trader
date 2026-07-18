@@ -1,9 +1,29 @@
+# ---- Secretos / credenciales (NUNCA en la imagen; espejo del .gitignore) ----
+**/secrets
+**/.env
+**/.env.*
+**/*.env
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.crt
+**/*.cer
+**/*.der
+**/credentials*.json
+**/service-account*.json
+.git
+
+# ---- Datos / caches locales (no viajan al build) ----
+**/*.db
+**/*.sqlite3
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
+**/fastembed_cache
 .venv/
 __pycache__/
-*.db
-*.sqlite3
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 tests/
-.env

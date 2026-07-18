@@ -1,4 +1,13 @@
+# ---- Secretos / credenciales (NUNCA en la imagen; espejo del .gitignore) ----
+**/.env
+**/.env.*
+**/*.env
+**/*.pem
+**/*.key
+**/credentials*.json
+.git
+
+# ---- Dependencias / build / caches ----
 node_modules/
 .next/
-.env.local
 npm-debug.log*
