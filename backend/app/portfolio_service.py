@@ -74,7 +74,8 @@ def select_finalists(prescored: list, held: set, watch: list,
 def _full_invest(weights: list[float], cap: float, total: float = 100.0) -> list[float]:
     """Reparte `total`% entre las posiciones respetando el tope `cap` por posición (water-filling).
 
-    Usa `weights` como prioridades. Requiere len*cap >= total (garantizado con min 3 y cap 35).
+    Usa `weights` como prioridades. Requiere len*cap >= total (garantizado por config:
+    min_positions × max_position_pct ≥ 100 — hoy 5 × 35).
     """
     n = len(weights)
     if n == 0:

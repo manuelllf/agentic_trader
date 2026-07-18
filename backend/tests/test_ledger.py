@@ -82,13 +82,11 @@ def test_snapshot_equity(db) -> None:
     assert snap.equity == Decimal("1200.00")
 
 
-def test_cent_exact_five_weight_allocation(db, monkeypatch) -> None:
+def test_cent_exact_five_weight_allocation(db) -> None:
     """El escenario EXACTO que falló: 5 pesos 25/25/20/15/15 sobre $2000 con precios que no
     dividen limpio. Con floor de acciones a 4 decimales NUNCA se sobrepasa la caja (el bug de
     JAZZ: 1.243·241.43=$300.10 > slice $300) y caja+invertido cuadra al céntimo."""
-    from app import tracking
-    monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {})  # sin red en tests
-    service.allocate(db, 2000)
+    service.allocate(db, 2000)   # sin live_prices inyectado, el sizing valora a coste (cero red)
     plan = [("RGA", "229.85", 25), ("SSRM", "28.795", 25), ("HIG", "138.16", 20),
             ("DXCM", "74.69", 15), ("JAZZ", "241.43", 15)]
     for tk, px, w in plan:
@@ -103,11 +101,9 @@ def test_cent_exact_five_weight_allocation(db, monkeypatch) -> None:
     assert snap.equity == Decimal("2000.00")                          # dinero conservado
 
 
-def test_size_to_weight_clamps_to_cash(db, monkeypatch) -> None:
+def test_size_to_weight_clamps_to_cash(db) -> None:
     """Comprar al 100% con un precio que no divide exacto: floor de acciones → coste ≤ caja,
     y reintentar una posición ya cubierta da error claro (idempotente)."""
-    from app import tracking
-    monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {})
     service.allocate(db, 100)
     qty, side = service.size_to_weight(db, models.BOOK_SHADOW, "AAA", "comprar", 100, Decimal("30.01"))
     service.record_buy(db, "AAA", qty, Decimal("30.01"), order_ref="t", book=models.BOOK_SHADOW)

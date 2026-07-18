@@ -97,7 +97,12 @@ def start_scheduler() -> None:
         minute=settings.scan_cron_minute,
         timezone=settings.scan_timezone,
     )
-    scheduler.add_job(_scan_job, trigger=trigger, id="weekly_scan", replace_existing=True)
+    # Gracia de misfire: con el default (~1 s), un proceso ocupado/reiniciándose justo a la hora
+    # del cron SALTARÍA el escaneo en silencio hasta la semana siguiente (snapshot y reconcile
+    # se auto-curan huecos; el escaneo no). Una hora de margen lo cubre; coalesce=True evita
+    # ejecutarlo dos veces si se acumularan varios misfires.
+    scheduler.add_job(_scan_job, trigger=trigger, id="weekly_scan", replace_existing=True,
+                      misfire_grace_time=3600, coalesce=True)
     # Cierre diario de la curva histórica: lun-vie 16:30 ET (cierre + retraso de yfinance).
     scheduler.add_job(
         _snapshot_job,

@@ -13,9 +13,9 @@ Dos libros paralelos e independientes (`book`):
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, Decimal
-from typing import Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -208,22 +208,10 @@ def snapshot(
 _SHARES = Decimal("0.0001")  # IBKR soporta fraccionales: 4 decimales de acción
 
 
-def _live_equity(db: Session, book: str, positions: list[Position], cash: Decimal) -> Decimal:
-    """Patrimonio del libro a precio VIVO (caja + valor de posiciones). Cae al coste sin precio."""
-    from app import tracking  # import perezoso: tracking importa este módulo
-
-    prices = tracking.live_prices([p.ticker for p in positions])
-    val = sum(
-        (p.quantity * (D(prices[p.ticker]) if p.ticker in prices else p.avg_cost)
-         for p in positions),
-        ZERO,
-    )
-    return cash + val
-
-
 def size_to_weight(
     db: Session, book: str, ticker: str, action: str, target_weight_pct, price,  # noqa: ANN001
     cash_reserved: Decimal = ZERO, shares_reserved: Decimal = ZERO,
+    live_prices: Callable[[list[str]], dict] | None = None,
 ) -> tuple[Decimal, str]:
     """(cantidad, lado) cent-exactos para llevar `ticker` a `target_weight_pct` en `book`.
 
@@ -231,7 +219,9 @@ def size_to_weight(
     - Compras: acciones = floor(peso·patrimonio / precio) a 4 decimales → el coste NUNCA supera
       el slice; y si aun así no cabe en la caja, se recorta a floor(caja / precio). Jamás falla.
     - Ventas: toda la posición. Recortes: hasta el delta (sin pasarse de lo que se tiene).
-    El patrimonio se mide a precio vivo en el momento de ejecutar (no con datos del escaneo).
+    El patrimonio se mide con `live_prices` inyectado por el caller (aprobaciones y sombra pasan
+    el precio vivo del momento de ejecutar); sin él —o sin cotización— cada posición se valora
+    a su coste medio. Este módulo no conoce la capa de datos de mercado (igual que `snapshot`).
 
     Reservas (órdenes límite 'working' aún sin fill, solo libro real): `cash_reserved` resta de
     la caja gastable y `shares_reserved` (de ESTE ticker) de lo vendible → imposible el doble
@@ -242,7 +232,12 @@ def size_to_weight(
         raise InsufficientFunds(f"Precio inválido para {ticker}.")
     positions = open_positions(db, book)
     cash = available_cash(db, book)
-    equity = _live_equity(db, book, positions, cash)
+    quotes = live_prices([p.ticker for p in positions]) if live_prices else {}
+    equity = cash + sum(
+        (p.quantity * (D(quotes[p.ticker]) if p.ticker in quotes else p.avg_cost)
+         for p in positions),
+        ZERO,
+    )
     if equity <= ZERO:
         raise InsufficientFunds("El libro no tiene capital. Asigna fondos primero.")
     spendable = max(ZERO, cash - to_cents(cash_reserved))

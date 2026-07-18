@@ -261,6 +261,57 @@ def test_filled_without_quantity_uses_requested(db, fixed_prices, monkeypatch) -
     assert ledger.available_cash(db, BOOK_REAL) == Decimal("700.00")
 
 
+def test_reconcile_un_fallo_no_deshace_fills_anteriores(db, fixed_prices, monkeypatch) -> None:
+    """Dos órdenes working: la 1ª llena y el sondeo de la 2ª revienta. El fill de la 1ª debe
+    quedar persistido ENTERO (estado incluido): el commit va por-aprobación, así el rollback
+    del fallo de la 2ª no le revierte el estado a la 1ª (que mentiría 'working' un ciclo)."""
+    items = [
+        {"ticker": "HIG", "action": "comprar", "score": 85, "target_weight_pct": 30.0,
+         "price": "100", "target_price": None, "upside_pct": None,
+         "thesis": "t", "edge": "e", "risk": "r"},
+        {"ticker": "CP", "action": "comprar", "score": 80, "target_weight_pct": 20.0,
+         "price": "50", "target_price": None, "upside_pct": None,
+         "thesis": "t", "edge": "e", "risk": "r"},
+    ]
+    ledger.allocate(db, 1000, book=BOOK_REAL)
+    approvals_mod.create_from_items(db, items, "m")
+
+    class _Fake(_FakeBroker):
+        def __init__(self) -> None:
+            super().__init__()
+            self._orders = 0
+
+        def place_order(self, ticker, side, quantity, order_ref=""):  # noqa: ANN001
+            from app.brokers.base import BrokerResult
+            self._orders += 1
+            return BrokerResult(ok=True, fill_price=None, simulated=False, status="working",
+                                order_id=f"OID{self._orders}", filled_quantity=None,
+                                message="enviada")
+
+        def poll_order(self, order_id):  # noqa: ANN001
+            if order_id == "OID2":
+                raise RuntimeError("IBKR no responde")
+            from app.brokers.base import BrokerResult
+            return BrokerResult(ok=True, fill_price=Decimal("100"), simulated=False,
+                                status="filled", order_id=order_id,
+                                filled_quantity=Decimal("3"), message="filled")
+
+    fake = _Fake()
+    monkeypatch.setattr(approvals_mod, "get_broker", lambda: fake)
+    a1, a2 = approvals_mod.pending(db)
+    approvals_mod.approve(db, a1.id)                                 # HIG → OID1
+    approvals_mod.approve(db, a2.id)                                 # CP → OID2
+    assert db.get(Approval, a1.id).status == "working"
+    assert db.get(Approval, a2.id).status == "working"
+
+    assert approvals_mod.reconcile_working(db) == 1                  # solo la 1ª cambió
+
+    ok = db.get(Approval, a1.id)
+    assert ok.status == "executed" and ok.quantity == Decimal("3")   # persistida ENTERA
+    assert ledger.available_cash(db, BOOK_REAL) == Decimal("700.00")  # 1000 − 3×100
+    assert db.get(Approval, a2.id).status == "working"               # la fallida sigue viva
+
+
 def test_working_buy_reserves_cash(db, fixed_prices, monkeypatch) -> None:
     """Compra 'working' (orden límite viva en IBKR, sin fill) → su caja queda COMPROMETIDA:
     una segunda compra solo puede usar la caja libre. Sin esto: doble gasto."""

@@ -151,20 +151,21 @@ def reconcile_working(db: Session) -> int:
             continue
         if i:  # ritmo suave entre sondeos: lejos del rate limit de IBKR
             time.sleep(0.3)
-        # Cada aprobación es independiente: un fallo (red, datos raros) NO aborta las demás.
+        # Cada aprobación es independiente Y se persiste sola (commit DENTRO del bucle): el
+        # rollback de un fallo posterior (red, datos raros) no puede deshacer el estado de un
+        # fill anterior ya aplicado.
         try:
             result = broker.poll_order(a.broker_order_id)
             before = a.status
             _apply_result(db, a, _side_of(a.action), result,
                           requested=a.requested_quantity or a.quantity or ZERO)
+            db.commit()
             if a.status != before or result.status in ("filled", "partial"):
                 changed += 1
         except Exception:  # noqa: BLE001 — un fallo puntual no debe tumbar el refresco
             logger.warning("No se pudo reconciliar la orden %s", a.broker_order_id)
             db.rollback()   # descarta cualquier cambio a medias de ESTA aprobación
             continue
-    if changed:
-        db.commit()
     return changed
 
 
@@ -277,4 +278,5 @@ def _sizing(db: Session, a: Approval) -> tuple[Decimal, str]:
     return ledger.size_to_weight(
         db, BOOK_REAL, a.ticker, a.action, a.target_weight_pct, _live_price(a),
         cash_reserved=cash_reserved, shares_reserved=shares_reserved,
+        live_prices=tracking.live_prices,
     )

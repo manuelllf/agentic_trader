@@ -48,7 +48,8 @@ def execute_proposal_item(db: Session, ticker: str) -> dict:
         raise ValueError(f"Sin precio de mercado para {ticker}.")
 
     qty, side = ledger.size_to_weight(
-        db, BOOK_SHADOW, ticker, action, item.get("target_weight_pct") or 0.0, price)
+        db, BOOK_SHADOW, ticker, action, item.get("target_weight_pct") or 0.0, price,
+        live_prices=tracking.live_prices)
     ref = f"shadow-prop{prop.id}"
     if side == "buy":
         ledger.record_buy(db, ticker, qty, price, ref, book=BOOK_SHADOW)

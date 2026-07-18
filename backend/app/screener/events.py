@@ -4,8 +4,8 @@ El paper alimenta el macro con noticias + páginas de Wikipedia de eventos actua
 eso, gratis y keyless, y filtrando a lo que mueve el mercado:
 
 - `wikipedia_current_events`: portal diario de los últimos N días, quedándonos SOLO con las
-  secciones macro-relevantes (economía, política, relaciones internacionales, desastres) y
-  tirando el ruido (deportes, sucesos, etc.). Fresco y fiable.
+  secciones de contexto geopolítico y macroeconómico (conflictos armados, economía, política,
+  relaciones internacionales) y tirando el ruido (deportes, sucesos, etc.). Fresco y fiable.
 - `wikipedia_scheduled_events`: sección "Predicted and scheduled events" de la página del año
   → calendario FUTURO de eventos (justo lo que pide el Exhibit 2D: timeline a 3 meses).
 - `gdelt_headlines`: titulares macro de GDELT (keyless, PERO muy rate-limitado → best-effort).
@@ -22,14 +22,19 @@ import re
 import httpx
 
 logger = logging.getLogger(__name__)
-_UA = {"User-Agent": "AgenticTrader/1.0 (personal portfolio research)"}
+# La política de User-Agent de Wikimedia exige identificar al cliente CON una vía de contacto;
+# sin ella responden 403 ("robot policy") y los eventos llegan vacíos. Al resto de fuentes
+# el contacto les da igual.
+_UA = {"User-Agent": "AgenticTrader/1.0 (personal portfolio research; "
+                     "contact: agentictraderfr@gmail.com)"}
 _API = "https://en.wikipedia.org/w/api.php"
 
-# Secciones del portal diario que SÍ mueven mercados (el resto —deportes, sucesos, crímenes,
-# accidentes locales— es ruido). Los shocks reales (petróleo por guerra, etc.) ya caen en
-# "business and economy" por su impacto económico, así que no hace falta "armed conflicts".
+# Secciones del portal diario que dan contexto GEOPOLÍTICO y MACROECONÓMICO — lo único que se
+# inyecta al LLM; el resto (deportes, sucesos, ciencia, crímenes locales) es ruido. Solo
+# contexto y sin sesgo: el filtro elige SECCIONES enteras, nunca titulares concretos.
 _MACRO_SECTIONS = (
-    "business and economy", "politics and elections", "international relations",
+    "armed conflicts", "business and economy", "politics and elections",
+    "international relations",
 )
 
 
@@ -43,6 +48,9 @@ def _fetch_wikitext(page: str, timeout: float = 15.0) -> str:
         )
         if r.status_code == 200:
             return r.json().get("parse", {}).get("wikitext", "")
+        # Un 4xx aquí NO es excepción: sin este log, un bloqueo (p.ej. 403 por el User-Agent)
+        # deja el macro sin eventos EN SILENCIO durante semanas.
+        logger.warning("Wikipedia devolvió %s para %s", r.status_code, page)
     except Exception:
         logger.warning("Wikipedia fetch falló para %s", page)
     return ""
@@ -75,7 +83,7 @@ def _macro_sections_only(wt: str) -> str:
     return "\n".join(kept)
 
 
-def wikipedia_current_events(days: int = 7, max_chars: int = 8000) -> str:
+def wikipedia_current_events(days: int = 7, max_chars: int = 12000) -> str:
     """Eventos macro-relevantes de los últimos `days` días (portal diario, keyless, fiable)."""
     out: list[str] = []
     today = datetime.date.today()
@@ -104,11 +112,15 @@ def wikipedia_scheduled_events(year: int | None = None, max_chars: int = 3000) -
 
 
 def gdelt_headlines(
-    query: str = '("Federal Reserve" OR inflation OR "US economy" OR "stock market")',
+    query: str = ('("Federal Reserve" OR inflation OR "US economy" OR "stock market")'
+                  " sourcelang:eng"),
     max_records: int = 8, retries: int = 2, timeout: float = 20.0,
 ) -> list[str]:
-    """Titulares macro recientes de GDELT (keyless). Best-effort: [] si rate-limit/fallo."""
+    """Titulares macro recientes de GDELT (keyless). Best-effort: [] si rate-limit/fallo.
+
+    `sourcelang:eng` en la query: sin él GDELT mezcla titulares en cualquier idioma."""
     import time
+    last: int | None = None
     for attempt in range(retries):
         try:
             r = httpx.get(
@@ -117,6 +129,7 @@ def gdelt_headlines(
                         "format": "json", "sort": "datedesc", "timespan": "3d"},
                 headers=_UA, timeout=timeout,
             )
+            last = r.status_code
             if r.status_code == 200 and r.content:
                 arts = r.json().get("articles", [])
                 seen: set[str] = set()
@@ -131,4 +144,8 @@ def gdelt_headlines(
                 time.sleep(3)
         except Exception:
             logger.warning("GDELT falló (intento %d)", attempt + 1)
+    if last is not None and last != 200:
+        # Mismo criterio que Wikipedia: un rate-limit/bloqueo NO es excepción y sin este log
+        # el macro se quedaría sin titulares en silencio.
+        logger.warning("GDELT devolvió %s: escaneo sin sus titulares", last)
     return []

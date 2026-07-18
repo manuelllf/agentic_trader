@@ -87,20 +87,25 @@ def import_all(conn: Connection, payload: dict) -> dict:
     _validate(conn, tables, existing)           # todo o nada: si algo está mal, ni un DELETE
 
     conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-    for t in existing:                          # vaciar TODO (también lo que no venga en el snapshot)
-        conn.exec_driver_sql(f'DELETE FROM "{t}"')
+    try:
+        for t in existing:              # vaciar TODO (también lo que no venga en el snapshot)
+            conn.exec_driver_sql(f'DELETE FROM "{t}"')
 
-    loaded: dict[str, int] = {}
-    for t, rows in tables.items():
-        if t not in existing or not rows:
-            loaded[t] = 0
-            continue
-        cols = list(rows[0].keys())
-        collist = ",".join(f'"{c}"' for c in cols)
-        ph = ",".join("?" * len(cols))
-        conn.exec_driver_sql(
-            f'INSERT INTO "{t}" ({collist}) VALUES ({ph})',
-            [tuple(r.get(c) for c in cols) for r in rows],
-        )
-        loaded[t] = len(rows)
-    return {"ok": True, "loaded": loaded, "total": sum(loaded.values())}
+        loaded: dict[str, int] = {}
+        for t, rows in tables.items():
+            if t not in existing or not rows:
+                loaded[t] = 0
+                continue
+            cols = list(rows[0].keys())
+            collist = ",".join(f'"{c}"' for c in cols)
+            ph = ",".join("?" * len(cols))
+            conn.exec_driver_sql(
+                f'INSERT INTO "{t}" ({collist}) VALUES ({ph})',
+                [tuple(r.get(c) for c in cols) for r in rows],
+            )
+            loaded[t] = len(rows)
+        return {"ok": True, "loaded": loaded, "total": sum(loaded.values())}
+    finally:
+        # La conexión vuelve al pool: no se le deja el PRAGMA cambiado (aunque hoy SQLAlchemy
+        # no active el enforce de FKs en SQLite, un estado alterado filtrándose es deuda).
+        conn.exec_driver_sql("PRAGMA foreign_keys=ON")
