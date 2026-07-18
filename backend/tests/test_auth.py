@@ -79,6 +79,51 @@ def test_local_sin_password_arranca(monkeypatch) -> None:
     main_mod._require_password_in_prod()          # dev local sin candado: ok
 
 
+# ---- fail-closed del volumen: sin escritura en la BD no se arranca -----------
+
+def test_bd_escribible_arranca(tmp_path, monkeypatch) -> None:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app import db as db_mod
+    from app import main as main_mod
+
+    ruta = tmp_path / "w.db"
+    eng = create_engine(f"sqlite:///{ruta}")
+    eng.connect().close()                                 # crea el fichero
+    monkeypatch.setattr(main_mod.settings, "database_url", f"sqlite:///{ruta}")
+    monkeypatch.setattr(db_mod, "SessionLocal", sessionmaker(bind=eng))
+    main_mod._verify_db_writable()                        # no lanza
+
+
+def test_bd_solo_lectura_revienta_el_arranque(tmp_path, monkeypatch) -> None:
+    """Contra una BD abierta en solo lectura (mode=ro, como un volumen sin permisos), el
+    write-lock falla → el boot debe caer (deploy fallido y rollback en Railway, en vez de
+    una app que lee pero no apunta)."""
+    import sqlite3
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import OperationalError
+    from sqlalchemy.orm import sessionmaker
+
+    from app import db as db_mod
+    from app import main as main_mod
+
+    ruta = tmp_path / "ro.db"
+    rw = create_engine(f"sqlite:///{ruta}")
+    rw.connect().close()                                  # crea el fichero
+    rw.dispose()
+
+    # `creator` abre sqlite3 en solo lectura DIRECTO (sin parseo de URL de SQLAlchemy):
+    # el write-lock de _verify_db_writable debe fallar contra esta conexión.
+    ro_conn = f"file:///{ruta.as_posix()}?mode=ro"
+    eng_ro = create_engine("sqlite://", creator=lambda: sqlite3.connect(ro_conn, uri=True))
+    monkeypatch.setattr(main_mod.settings, "database_url", f"sqlite:///{ruta}")
+    monkeypatch.setattr(db_mod, "SessionLocal", sessionmaker(bind=eng_ro))
+    with pytest.raises(OperationalError):
+        main_mod._verify_db_writable()
+
+
 # ---- rate-limit del login: solo fallos, por IP + tope global -----------------
 
 def test_login_endpoint_bloquea_tras_5_fallos(monkeypatch) -> None:

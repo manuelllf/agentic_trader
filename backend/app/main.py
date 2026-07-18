@@ -46,11 +46,36 @@ def _require_password_in_prod() -> None:
         raise RuntimeError("APP_PASSWORD obligatoria en producción.")
 
 
+def _verify_db_writable() -> None:
+    """Fail-closed del volumen: /health no toca la BD, así que un fallo de permisos en /data
+    (p.ej. con el proceso ya sin privilegios) pasaría el healthcheck y rompería solo al primer
+    apunte. Al bootear se hace una escritura REAL e inocua — re-escribir user_version con su
+    propio valor (verificado: en solo-lectura revienta; el journal se crea en el directorio,
+    así que prueba fichero Y volumen). Si falla, el arranque cae → el deploy no pasa el
+    healthcheck y Railway conserva la versión anterior."""
+    if not settings.database_url.startswith("sqlite"):
+        return
+    from sqlalchemy import text
+
+    from app.db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        v = int(db.execute(text("PRAGMA user_version")).scalar() or 0)
+        db.execute(text(f"PRAGMA user_version = {v}"))     # escritura real, valor intacto
+        db.commit()
+    finally:
+        db.close()
+    uid = os.getuid() if hasattr(os, "getuid") else "?"    # en Windows no hay getuid
+    logging.getLogger(__name__).info("BD y volumen escribibles al arrancar (uid=%s).", uid)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _require_password_in_prod()  # lo primero: sin candado en la nube, no se arranca
     _materialize_ibkr_pems()   # antes que nada: el reconcile de abajo ya puede tocar el broker
     init_db()
+    _verify_db_writable()      # sin escritura en /data no se arranca (ver docstring)
     _reconcile_on_startup()
     _backfill_curve_on_startup()
     start_scheduler()
