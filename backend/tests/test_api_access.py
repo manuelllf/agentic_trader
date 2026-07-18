@@ -54,6 +54,11 @@ def client(db, monkeypatch, tmp_path):
     app = FastAPI()
     app.include_router(public_router)
     app.include_router(router, dependencies=[Depends(auth.require_auth)])
+    # El mismo handler 422 de la app real: el eco de inf/nan debe sanearse también aquí.
+    from fastapi.exceptions import RequestValidationError
+
+    from app.main import _validation_422
+    app.add_exception_handler(RequestValidationError, _validation_422)
     app.dependency_overrides[get_db] = lambda: db
     return TestClient(app)
 
@@ -376,3 +381,63 @@ def test_allocate_usd_direct_unchanged(db, client, token) -> None:
     body = res.json()
     assert body["cash"] == "150.00"
     assert "allocated" not in body                     # sin conversión no hay traza FX
+
+
+# ---- higiene de API: caps y validación de entrada ----------------------------
+
+def test_scores_limit_capped(client, token) -> None:
+    """El `limit` de /scores tiene tope duro: ni 0 ni más de 200."""
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/scores?limit=1000", headers=headers).status_code == 422
+    assert client.get("/scores?limit=0", headers=headers).status_code == 422
+    assert client.get("/scores?limit=200", headers=headers).status_code == 200
+
+
+def test_allocate_rejects_nan_and_infinity(client, token) -> None:
+    """`1e999`/NaN/Infinity pasan el json.loads de serie — deben morir en la validación (422),
+    no como un 500 al convertir a Decimal en el libro."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    for bad in ("1e999", "-1e999", "NaN", "Infinity"):
+        res = client.post("/ledger/allocate", content=f'{{"amount": {bad}}}', headers=headers)
+        assert res.status_code == 422, f"amount={bad} debería dar 422 (dio {res.status_code})"
+
+
+def test_allocate_negative_withdrawal_still_works(db, client, token) -> None:
+    """La validación nueva no rompe las retiradas: un negativo razonable sigue pasando."""
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.post("/ledger/allocate", json={"amount": 100}, headers=headers).status_code == 200
+    res = client.post("/ledger/allocate", json={"amount": -40}, headers=headers)
+    assert res.status_code == 200
+    assert res.json()["cash"] == "60.00"
+
+
+def test_seed_memory_size_cap(client, token, monkeypatch, tmp_path) -> None:
+    """Por encima del tope de bytes → 413 y NO se escribe nada en la ruta de memoria."""
+    import app.api.routes as routes_mod
+
+    monkeypatch.setattr(routes_mod, "_SEED_MEMORY_MAX_BYTES", 8)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/octet-stream"}
+    res = client.post("/admin/seed-memory", content=b"123456789", headers=headers)
+    assert res.status_code == 413
+    assert not (tmp_path / "mem.db").exists()
+
+
+def test_docs_disabled_with_password() -> None:
+    """Con APP_PASSWORD puesta (= prod), /docs, /redoc y /openapi.json no existen (404) y la
+    raíz no los anuncia. Reconstruye la app real de main.py con la contraseña activa."""
+    import importlib
+
+    from app import main as main_mod
+    from app.config import settings as cfg
+
+    old = cfg.app_password
+    try:
+        cfg.app_password = "clave-prod"
+        m = importlib.reload(main_mod)
+        c = TestClient(m.app)   # sin `with`: no arranca el lifespan (ni scheduler ni init_db)
+        for path in ("/docs", "/redoc", "/openapi.json"):
+            assert c.get(path).status_code == 404, f"{path} debería estar apagado en prod"
+        assert "docs" not in c.get("/").json()
+    finally:
+        cfg.app_password = old
+        importlib.reload(main_mod)  # deja el módulo como estaba para el resto de tests

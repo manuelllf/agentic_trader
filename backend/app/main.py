@@ -8,11 +8,15 @@
 from __future__ import annotations
 
 import logging
+import math
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.api.routes import public_router, router
@@ -89,7 +93,16 @@ def _reconcile_on_startup() -> None:
         db.close()
 
 
-app = FastAPI(title="Agentic Trader API", version="0.1.0", lifespan=lifespan)
+# Con contraseña puesta (= prod), la superficie de exploración (docs/redoc/openapi) se apaga:
+# el esquema entero de la API no se regala a quien pase por ahí. En dev local (sin APP_PASSWORD)
+# /docs sigue disponible.
+_HIDE_DOCS = bool(settings.app_password)
+app = FastAPI(
+    title="Agentic Trader API", version="0.1.0", lifespan=lifespan,
+    docs_url=None if _HIDE_DOCS else "/docs",
+    redoc_url=None if _HIDE_DOCS else "/redoc",
+    openapi_url=None if _HIDE_DOCS else "/openapi.json",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -97,6 +110,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _sin_flotantes_no_finitos(x):  # noqa: ANN001, ANN202 — estructura arbitraria del detalle
+    if isinstance(x, float) and not math.isfinite(x):
+        return repr(x)
+    if isinstance(x, dict):
+        return {k: _sin_flotantes_no_finitos(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_sin_flotantes_no_finitos(v) for v in x]
+    return x
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_422(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    """422 estándar pero serializable SIEMPRE: un `amount=1e999` llega como Infinity, pydantic
+    lo rechaza bien… y el eco del input en el detalle rompería json.dumps (500). Se sanea."""
+    detail = _sin_flotantes_no_finitos(jsonable_encoder({"detail": exc.errors()}))
+    return JSONResponse(status_code=422, content=detail)
 
 # Lecturas y teaser de portada (public_router): sin token. Todo lo que muta estado, revela las
 # picks del método o expone la Sala Real/personal (router) exige token vía require_auth. /ledger
@@ -110,7 +141,10 @@ app.include_router(router, dependencies=[Depends(require_auth)])
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"name": "Agentic Trader API", "docs": "/docs"}
+    out = {"name": "Agentic Trader API"}
+    if not _HIDE_DOCS:
+        out["docs"] = "/docs"
+    return out
 
 
 @app.get("/health")

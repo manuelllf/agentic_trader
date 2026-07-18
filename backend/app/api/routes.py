@@ -26,8 +26,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Body, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -47,7 +47,9 @@ router = APIRouter()          # exige require_auth (dependencies=[...] en main.p
 
 
 class AllocateIn(BaseModel):
-    amount: float
+    # allow_inf_nan=False: un "1e999" en el JSON llega como Infinity y reventaría el Decimal
+    # del libro con un 500; mejor 422 aquí. Bounds holgados (±$1.000M) — negativo = retirada.
+    amount: float = Field(allow_inf_nan=False, gt=-1e9, lt=1e9)
     note: str = ""
     currency: str = "USD"   # "USD" = apunte directo · "EUR" = el broker convierte primero (real)
 
@@ -263,6 +265,9 @@ def admin_seed(body: SeedIn, db: Session = Depends(get_db)) -> dict:
         raise
 
 
+_SEED_MEMORY_MAX_BYTES = 100 * 1024 * 1024   # el fichero real ronda pocos MB; esto es anti-DoS
+
+
 @router.post("/admin/seed-memory")
 def admin_seed_memory(body: bytes = Body(...)) -> dict:
     """Sube el fichero de memoria vectorial (agent_memory.db) TAL CUAL y lo escribe en la ruta
@@ -273,6 +278,8 @@ def admin_seed_memory(body: bytes = Body(...)) -> dict:
     from app import memory
     if not body:
         raise HTTPException(422, "Fichero de memoria vacío.")
+    if len(body) > _SEED_MEMORY_MAX_BYTES:
+        raise HTTPException(413, "Fichero de memoria demasiado grande (tope 100 MB).")
     memory.reset_store()                        # cierra la conexión si estaba abierta (evita lock)
     path = pathlib.Path(settings.memory_db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -301,7 +308,7 @@ def admin_memory_status() -> dict:
 # ---- Lecturas ---------------------------------------------------------------
 
 @router.get("/scores", response_model=list[ScoreOut])
-def scores(limit: int = 60, db: Session = Depends(get_db)) -> list[Score]:
+def scores(limit: int = Query(60, ge=1, le=200), db: Session = Depends(get_db)) -> list[Score]:
     # Solo los ANALIZADOS A FONDO (tienen informe). Los pre-cribados de Flash son triaje interno.
     stmt = (select(Score).where(Score.report != "")
             .order_by(Score.score.desc()).limit(limit))
