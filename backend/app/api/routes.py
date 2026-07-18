@@ -301,7 +301,7 @@ def admin_memory_status() -> dict:
 # ---- Lecturas ---------------------------------------------------------------
 
 @router.get("/scores", response_model=list[ScoreOut])
-def scores(limit: int = 30, db: Session = Depends(get_db)) -> list[Score]:
+def scores(limit: int = 60, db: Session = Depends(get_db)) -> list[Score]:
     # Solo los ANALIZADOS A FONDO (tienen informe). Los pre-cribados de Flash son triaje interno.
     stmt = (select(Score).where(Score.report != "")
             .order_by(Score.score.desc()).limit(limit))

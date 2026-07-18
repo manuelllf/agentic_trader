@@ -279,3 +279,9 @@ def test_norm_symbol_clases_y_preferentes() -> None:
     assert _norm_symbol("WRB^H") is None         # preferente/serie
     assert _norm_symbol("XYZ/WS") is None        # warrant (dos letras tras la barra)
     assert _norm_symbol("") is None
+
+
+def test_watchlist_drop_saca_posiciones(db) -> None:
+    wl.update(db, [("AAA", 90, "t"), ("BBB", 88, "t")])
+    wl.drop(db, {"AAA"})
+    assert wl.tickers(db) == ["BBB"]

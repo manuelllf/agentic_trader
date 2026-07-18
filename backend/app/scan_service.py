@@ -289,6 +289,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         logger.info("Auto-ejecución sombra: %s", exec_result["message"])
     except Exception:
         logger.exception("Fallo en la auto-ejecución del libro sombra (no aborta el escaneo).")
+    # La watchlist es "lo que VIGILO y no tengo": lo que acaba de pasar a POSICIÓN sale de ella.
+    watchlist_mod.drop(db, {p.ticker for p in ledger.open_positions(db)})
 
     # 9) Sala Real: cada trade propuesto queda PENDIENTE de tu Sí/No (push best-effort).
     #    El agente jamás ejecuta solo — ni siquiera en dry-run. En los escaneos de recalibrado

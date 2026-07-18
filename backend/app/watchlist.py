@@ -41,6 +41,15 @@ def thesis_for(db: Session, ticker: str) -> str | None:
     return w.thesis if w else None
 
 
+def drop(db: Session, tickers: set[str]) -> None:
+    """Saca de la watchlist los tickers dados (p.ej. los que ya son POSICIÓN)."""
+    if not tickers:
+        return
+    for w in db.scalars(select(Watchlist).where(Watchlist.ticker.in_(tickers))).all():
+        db.delete(w)
+    db.commit()
+
+
 def update(db: Session, scored: list[tuple[str, int, str]]) -> None:
     """Aplica los scores de un escaneo a la watchlist. `scored` = [(ticker, score, thesis)]."""
     entry = settings.watchlist_entry_score

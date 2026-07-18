@@ -71,6 +71,8 @@ export default function SombraDashboard() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"cartera" | "ranking">("cartera");
   const [detail, setDetail] = useState<PerfPosition | null>(null);   // modal detalle por acción
+  const [q, setQ] = useState("");                                    // buscador del ranking
+  const [sectorF, setSectorF] = useState<string | null>(null);       // filtro de sector del ranking
   const [authed, setAuthed] = useState(false);   // sesión detectada en el último refresco
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -125,6 +127,12 @@ export default function SombraDashboard() {
   // Vista anónima: sin sesión, o si el backend ya vino anonimizado (token caducado en esta
   // pestaña) — la propia forma del dato manda, no solo el token guardado.
   const anon = !authed || (!!perf && perf.positions.length > 0 && !perf.positions[0].ticker);
+  // Ranking navegable: filtro por sector + búsqueda por ticker/tesis (50 profundos son muchos).
+  const sectors = Array.from(new Set(scores.map((s) => s.sector).filter(Boolean))).sort();
+  const qn = q.trim().toUpperCase();
+  const scoresView = scores.filter((s) =>
+    (!sectorF || s.sector === sectorF) &&
+    (!qn || s.ticker.toUpperCase().includes(qn) || (s.headline ?? "").toUpperCase().includes(qn)));
 
   return (
     <div className="min-h-[100dvh] bg-slate-100/70 text-slate-900">
@@ -207,7 +215,7 @@ export default function SombraDashboard() {
 
         <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
           {/* Sidebar */}
-          <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+          <aside className="order-2 space-y-4 lg:order-1 lg:sticky lg:top-20 lg:self-start">
             {/* Seguimiento vs S&P (arriba: es lo primero que quieres ver) */}
             {perf && perf.positions.length > 0 && (
               <section className={CARD}>
@@ -299,17 +307,21 @@ export default function SombraDashboard() {
                 <CardHead>En seguimiento · {watch.length}</CardHead>
                 <div className="flex flex-wrap gap-1.5 p-4">
                   {watch.map((w) => (
-                    <span key={w.ticker} title={w.thesis} className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
+                    <button
+                      key={w.ticker} title={w.thesis}
+                      onClick={() => { setTab("ranking"); setSectorF(null); setQ(w.ticker); }}
+                      className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200 transition hover:bg-white hover:ring-slate-300"
+                    >
                       {w.ticker}<span className="tabular-nums text-slate-400">{w.score}</span>
-                    </span>
+                    </button>
                   ))}
                 </div>
               </section>
             )}
           </aside>
 
-          {/* Main */}
-          <main>
+          {/* Main (en móvil va PRIMERO: la cartera es lo que se viene a ver) */}
+          <main className="order-1 lg:order-2">
             {anon ? (
               /* Sin sesión: ni se pide /scores /proposal /watchlist — solo un aviso sobrio. */
               <section className={`${CARD} flex min-h-[40vh] flex-col items-center justify-center gap-3 border-dashed p-10 text-center`}>
@@ -322,8 +334,8 @@ export default function SombraDashboard() {
               </section>
             ) : (
               <>
-            {/* Tabs */}
-            <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+            {/* Tabs — pegajosas: la navegación no se pierde al bajar por 50 informes */}
+            <div className="sticky top-[61px] z-30 mb-4 flex w-fit rounded-xl border border-slate-200 bg-white p-1 shadow-md">
               <TabBtn active={tab === "cartera"} onClick={() => setTab("cartera")}>
                 Cartera propuesta{items.length ? ` · ${targets.length}` : ""}
               </TabBtn>
@@ -374,9 +386,32 @@ export default function SombraDashboard() {
                 {scores.length === 0 ? (
                   <Empty running={running} />
                 ) : (
-                  <div className="divide-y divide-slate-100">
-                    {scores.map((s) => <ScoreRowItem key={s.id} row={s} />)}
-                  </div>
+                  <>
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <input
+                        value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ticker o tesis…"
+                        className="h-8 w-44 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none placeholder:text-slate-300 focus:ring-2 focus:ring-emerald-500/30"
+                      />
+                      <div className="flex flex-wrap gap-1">
+                        <SectorChip active={!sectorF} onClick={() => setSectorF(null)}>Todos</SectorChip>
+                        {sectors.map((sec) => (
+                          <SectorChip key={sec} active={sectorF === sec}
+                                      onClick={() => setSectorF(sectorF === sec ? null : sec)}>
+                            {sec}
+                          </SectorChip>
+                        ))}
+                      </div>
+                    </div>
+                    {scoresView.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-8 text-center text-sm text-slate-400">
+                        Nada coincide con ese filtro.
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {scoresView.map((s) => <ScoreRowItem key={s.id} row={s} />)}
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
             )}
@@ -401,6 +436,19 @@ function CardHead({ children }: { children: React.ReactNode }) {
     <div className="border-b border-slate-100 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
       {children}
     </div>
+  );
+}
+
+function SectorChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset transition ${
+        active ? "bg-slate-900 text-white ring-slate-900" : "bg-white text-slate-500 ring-slate-200 hover:ring-slate-300"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
