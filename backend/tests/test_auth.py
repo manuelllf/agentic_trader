@@ -5,9 +5,9 @@ from __future__ import annotations
 import time
 
 import pytest
+from fastapi import HTTPException
 
 from app import auth
-from fastapi import HTTPException
 
 
 def test_auth_disabled_without_password(monkeypatch) -> None:
@@ -48,3 +48,32 @@ def test_token_not_forgeable(monkeypatch) -> None:
     # cambiar la contraseña invalida los tokens viejos (la firma ya no cuadra)
     monkeypatch.setattr(auth.settings, "app_password", "pw-B")
     assert auth.verify_token(token) is False
+
+
+# ---- fail-closed: en la nube, sin contraseña NO se arranca -------------------
+
+def test_prod_sin_password_no_arranca(monkeypatch) -> None:
+    """Railway + APP_PASSWORD vacía = API pública → el arranque debe reventar a propósito."""
+    from app import main as main_mod
+
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    monkeypatch.setattr(main_mod.settings, "app_password", "")
+    with pytest.raises(RuntimeError):
+        main_mod._require_password_in_prod()
+
+
+def test_prod_con_password_arranca(monkeypatch) -> None:
+    from app import main as main_mod
+
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    monkeypatch.setattr(main_mod.settings, "app_password", "pw")
+    main_mod._require_password_in_prod()          # no lanza
+
+
+def test_local_sin_password_arranca(monkeypatch) -> None:
+    """Dev local (sin var de Railway): sin candado sigue siendo válido — no bloquea."""
+    from app import main as main_mod
+
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+    monkeypatch.setattr(main_mod.settings, "app_password", "")
+    main_mod._require_password_in_prod()          # dev local sin candado: ok

@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import logging
 import math
-from contextlib import asynccontextmanager
+import os
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -28,8 +29,19 @@ from app.scheduler import start_scheduler, stop_scheduler
 logging.basicConfig(level=logging.INFO)
 
 
+def _require_password_in_prod() -> None:
+    """Fail-closed: en la nube (Railway) sin APP_PASSWORD la auth queda DESACTIVADA y la API
+    entera sería pública — incluido /admin/seed, que reemplaza la BD. Mejor no arrancar."""
+    if os.getenv("RAILWAY_ENVIRONMENT_NAME") and not settings.app_password:
+        logging.getLogger(__name__).critical(
+            "APP_PASSWORD vacía en producción: la API quedaría PÚBLICA. "
+            "El backend se niega a arrancar (auth fail-closed).")
+        raise RuntimeError("APP_PASSWORD obligatoria en producción.")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    _require_password_in_prod()  # lo primero: sin candado en la nube, no se arranca
     _materialize_ibkr_pems()   # antes que nada: el reconcile de abajo ya puede tocar el broker
     init_db()
     _reconcile_on_startup()
