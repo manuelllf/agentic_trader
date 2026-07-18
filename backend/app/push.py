@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+from urllib.parse import urlparse
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,6 +21,27 @@ from app.config import settings
 from app.models import PushSubscription
 
 logger = logging.getLogger(__name__)
+
+# Anti-SSRF: el endpoint lo genera el NAVEGADOR al suscribirse y siempre apunta al servicio
+# push de su fabricante. Cualquier otro host haría que nuestro servidor POSTee donde diga el
+# cliente (metadata interna, servicios de Railway...). Allowlist de los 4 servicios reales.
+_PUSH_HOSTS_EXACT = {"fcm.googleapis.com"}                # Chrome/Edge/Android (FCM)
+_PUSH_HOST_SUFFIXES = (
+    ".push.apple.com",                                    # Safari/iOS
+    ".notify.windows.com",                                # Edge/Windows (WNS)
+    ".push.services.mozilla.com",                         # Firefox (autopush)
+)
+
+
+def _valid_push_endpoint(endpoint: str) -> bool:
+    try:
+        u = urlparse(endpoint)
+    except ValueError:
+        return False
+    if u.scheme != "https" or not u.hostname:
+        return False
+    host = u.hostname.lower()
+    return host in _PUSH_HOSTS_EXACT or host.endswith(_PUSH_HOST_SUFFIXES)
 
 
 def vapid_public_key() -> str:
@@ -32,6 +54,8 @@ def subscribe(db: Session, sub: dict) -> None:
     keys = sub.get("keys", {})
     if not endpoint or not keys.get("p256dh") or not keys.get("auth"):
         raise ValueError("Suscripción push incompleta (endpoint/p256dh/auth).")
+    if not _valid_push_endpoint(endpoint):
+        raise ValueError("Endpoint de push no reconocido (solo servicios oficiales de navegador).")
     row = db.scalar(select(PushSubscription).where(PushSubscription.endpoint == endpoint))
     if row is None:
         db.add(PushSubscription(endpoint=endpoint, p256dh=keys["p256dh"], auth=keys["auth"]))
@@ -62,6 +86,9 @@ def send_to_all(db: Session, title: str, body: str, url: str = "/real") -> int:
     payload = json.dumps({"title": title, "body": body, "url": url})
     sent = 0
     for s in subs:
+        if not _valid_push_endpoint(s.endpoint):     # defensa extra: jamás POSTear fuera
+            logger.warning("Push omitido: endpoint no reconocido (%s).", s.endpoint)
+            continue
         try:
             webpush(
                 subscription_info={
