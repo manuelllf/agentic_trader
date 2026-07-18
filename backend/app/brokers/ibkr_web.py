@@ -103,13 +103,11 @@ class IbkrWebBroker:
         _export_env()
         from ibind import IbkrClient  # lazy: solo si hay credenciales
 
-        # cacert: por defecto False (sin verificación) — coherente con el problema de TLS de
-        # Avast en esta máquina. Para verificar, exporta IBIND_CACERT con la ruta del bundle.
-        cacert = os.getenv("IBIND_CACERT", "false")
-        cacert = False if str(cacert).lower() in ("false", "0", "") else cacert
+        # cacert=True → requests verifica el certificado con el bundle CA de serie, SIEMPRE:
+        # este canal lee la cuenta y (en live) coloca órdenes; sin verificación sería MITM-able.
         # timeout/max_retries EXPLÍCITOS: ninguna llamada REST puede colgarse — peor caso
         # ~8s×2 por llamada. Con el deadline del sondeo, ningún método del broker se cuelga.
-        self._client = IbkrClient(cacert=cacert, use_oauth=True, timeout=8, max_retries=2)
+        self._client = IbkrClient(cacert=True, use_oauth=True, timeout=8, max_retries=2)
         self._account = settings.ibkr_account_id
 
     def _conid(self, ticker: str) -> int:

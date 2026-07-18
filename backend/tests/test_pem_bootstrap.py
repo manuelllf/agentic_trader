@@ -48,3 +48,24 @@ def test_corrupt_base64_never_raises(tmp_path, monkeypatch) -> None:
 
     assert ibkr_web.materialize_pems(dest_dir=str(tmp_path)) is False
     assert s.ibkr_oauth_signature_key_path == ""        # sin ruta → cascada: DryRunBroker
+
+
+def test_broker_verifica_tls_siempre(monkeypatch) -> None:
+    """El cliente IBKR se construye con cacert=True (certificado verificado) SIEMPRE — sin
+    variable de entorno que lo apague: este canal lee la cuenta y en live coloca órdenes."""
+    import ibind
+
+    for campo in ("ibkr_oauth_consumer_key", "ibkr_oauth_access_token",
+                  "ibkr_oauth_access_token_secret", "ibkr_oauth_signature_key_path",
+                  "ibkr_oauth_encryption_key_path", "ibkr_oauth_dh_prime"):
+        monkeypatch.setattr(ibkr_web.settings, campo, "x")   # credenciales de mentira
+
+    capturado: dict = {}
+
+    class ClienteFalso:
+        def __init__(self, **kwargs) -> None:
+            capturado.update(kwargs)
+
+    monkeypatch.setattr(ibind, "IbkrClient", ClienteFalso)
+    ibkr_web.IbkrWebBroker()
+    assert capturado["cacert"] is True
