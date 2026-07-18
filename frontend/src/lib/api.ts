@@ -124,7 +124,7 @@ export const getDemoStatus = () => get<DemoStatus>("/demo/status");
 
 export const getMacro = () => get<Macro>("/macro");
 export const getConfig = () => get<AppConfig>("/config");
-export const getScores = () => get<ScoreRow[]>("/scores?limit=25");
+export const getScores = () => get<ScoreRow[]>("/scores");  // default del backend: TODO lo profundo
 export const getProposal = () => get<Proposal | null>("/proposal");
 export const getWatchlist = () => get<WatchItem[]>("/watchlist");
 export const getPerformance = () => get<Performance>("/performance");
