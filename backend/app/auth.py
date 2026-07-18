@@ -15,11 +15,15 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
+import threading
 import time
 
 from fastapi import Header, HTTPException
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def auth_enabled() -> bool:
@@ -77,3 +81,57 @@ def auth_optional(authorization: str = Header(default="")) -> bool:
         return True
     token = authorization.removeprefix("Bearer ").strip()
     return verify_token(token)
+
+
+# ---- Rate-limit del login (in-process, sin dependencias) ---------------------
+# Frena la fuerza bruta contra la contraseña única: solo cuentan los FALLOS — 5 por IP en
+# 15 min, o 30 globales como respaldo (el X-Forwarded-For lo puede falsificar el cliente,
+# así que el tope por IP solo no bastaría). Un login correcto limpia el contador de su IP.
+# Estado en memoria del proceso: un único worker en Railway, y reiniciar = perdonar — bien.
+
+_WINDOW_SECONDS = 15 * 60
+_MAX_FAILS_PER_IP = 5
+_MAX_FAILS_GLOBAL = 30
+
+_fails: dict[str, list[float]] = {}     # ip → timestamps de fallos dentro de la ventana
+_fails_lock = threading.Lock()
+
+
+def _prune_fails(now: float) -> None:
+    cutoff = now - _WINDOW_SECONDS
+    for ip in list(_fails):
+        vivos = [t for t in _fails[ip] if t > cutoff]
+        if vivos:
+            _fails[ip] = vivos
+        else:
+            del _fails[ip]
+
+
+def login_blocked(ip: str) -> int:
+    """Segundos de bloqueo que le quedan a esta IP (0 = puede intentarlo)."""
+    now = time.time()
+    with _fails_lock:
+        _prune_fails(now)
+        propios = _fails.get(ip, [])
+        if len(propios) >= _MAX_FAILS_PER_IP:
+            return max(1, int(propios[0] + _WINDOW_SECONDS - now) + 1)
+        total = sum(len(v) for v in _fails.values())
+        if total >= _MAX_FAILS_GLOBAL:
+            mas_viejo = min(t for v in _fails.values() for t in v)
+            return max(1, int(mas_viejo + _WINDOW_SECONDS - now) + 1)
+    return 0
+
+
+def register_login_failure(ip: str) -> None:
+    now = time.time()
+    with _fails_lock:
+        _prune_fails(now)
+        _fails.setdefault(ip, []).append(now)
+        if len(_fails[ip]) == _MAX_FAILS_PER_IP:
+            logger.warning("Rate-limit de login alcanzado para %s (%s fallos en %s min).",
+                           ip, _MAX_FAILS_PER_IP, _WINDOW_SECONDS // 60)
+
+
+def clear_login_failures(ip: str) -> None:
+    with _fails_lock:
+        _fails.pop(ip, None)

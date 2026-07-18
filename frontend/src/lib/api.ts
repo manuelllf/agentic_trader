@@ -91,6 +91,8 @@ export async function login(password: string): Promise<void> {
     throw new ApiError(OFFLINE, "network");
   }
   if (res.status === 401) throw new ApiError("Contraseña incorrecta.", "http", 401);
+  if (res.status === 429)
+    throw new ApiError("Demasiados intentos fallidos. Espera unos minutos.", "http", 429);
   if (!res.ok) throw new ApiError(`No se pudo iniciar sesión (${res.status}).`, "http", res.status);
   const data = (await res.json()) as { token: string };
   setToken(data.token);

@@ -77,3 +77,52 @@ def test_local_sin_password_arranca(monkeypatch) -> None:
     monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
     monkeypatch.setattr(main_mod.settings, "app_password", "")
     main_mod._require_password_in_prod()          # dev local sin candado: ok
+
+
+# ---- rate-limit del login: solo fallos, por IP + tope global -----------------
+
+def test_login_endpoint_bloquea_tras_5_fallos(monkeypatch) -> None:
+    """5 contraseñas malas → la 6ª da 429 con Retry-After, INCLUSO con la contraseña buena."""
+    from fastapi.testclient import TestClient
+
+    from app import main as main_mod
+
+    monkeypatch.setattr(auth, "_fails", {})
+    monkeypatch.setattr(auth.settings, "app_password", "la-buena")
+    c = TestClient(main_mod.app)
+    for _ in range(5):
+        assert c.post("/auth/login", json={"password": "mala"}).status_code == 401
+    res = c.post("/auth/login", json={"password": "mala"})
+    assert res.status_code == 429
+    assert int(res.headers["Retry-After"]) > 0
+    assert c.post("/auth/login", json={"password": "la-buena"}).status_code == 429
+
+
+def test_login_correcto_no_consume_y_limpia(monkeypatch) -> None:
+    """Los aciertos no cuentan: con 4 fallos previos, el login bueno entra y limpia su IP."""
+    from fastapi.testclient import TestClient
+
+    from app import main as main_mod
+
+    monkeypatch.setattr(auth, "_fails", {})
+    monkeypatch.setattr(auth.settings, "app_password", "la-buena")
+    c = TestClient(main_mod.app)
+    for _ in range(4):
+        c.post("/auth/login", json={"password": "mala"})
+    assert c.post("/auth/login", json={"password": "la-buena"}).status_code == 200
+    assert auth._fails == {}                       # el acierto limpió el contador de su IP
+
+
+def test_tope_global_contra_ips_falsificadas(monkeypatch) -> None:
+    """30 fallos repartidos en 30 IPs (X-Forwarded-For falsificado) → bloqueo global igual."""
+    monkeypatch.setattr(auth, "_fails", {})
+    for i in range(30):
+        auth.register_login_failure(f"ip-{i}")
+    assert auth.login_blocked("ip-nueva-sin-fallos") > 0
+
+
+def test_fallos_viejos_expiran(monkeypatch) -> None:
+    """Fallos de hace más de 15 min no cuentan (la ventana desliza sola)."""
+    viejo = time.time() - auth._WINDOW_SECONDS - 60
+    monkeypatch.setattr(auth, "_fails", {"1.1.1.1": [viejo] * 5})
+    assert auth.login_blocked("1.1.1.1") == 0

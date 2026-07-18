@@ -21,7 +21,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.api.routes import public_router, router
-from app.auth import auth_enabled, login, require_auth
+from app.auth import (
+    auth_enabled,
+    clear_login_failures,
+    login,
+    login_blocked,
+    register_login_failure,
+    require_auth,
+)
 from app.config import settings
 from app.db import init_db
 from app.scheduler import start_scheduler, stop_scheduler
@@ -169,12 +176,30 @@ class LoginIn(BaseModel):
     password: str
 
 
+def _client_ip(request: Request) -> str:
+    """IP del cliente para el rate-limit: primer salto del X-Forwarded-For (lo pone el edge
+    de Railway) o la conexión directa. Falsificable por el cliente — por eso el limitador
+    lleva también un tope GLOBAL de respaldo."""
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "?"
+
+
 @app.post("/auth/login")
-def auth_login(body: LoginIn) -> dict:
-    """Devuelve un token de sesión si la contraseña es correcta."""
+def auth_login(body: LoginIn, request: Request) -> dict:
+    """Devuelve un token de sesión si la contraseña es correcta. Solo los FALLOS consumen
+    rate-limit; demasiados → 429 con Retry-After (frena la fuerza bruta)."""
+    ip = _client_ip(request)
+    wait = login_blocked(ip)
+    if wait:
+        raise HTTPException(429, "Demasiados intentos fallidos. Vuelve a intentarlo en un rato.",
+                            headers={"Retry-After": str(wait)})
     token = login(body.password)
     if token is None:
+        register_login_failure(ip)
         raise HTTPException(status_code=401, detail="Contraseña incorrecta.")
+    clear_login_failures(ip)
     return {"token": token, "auth_enabled": auth_enabled()}
 
 
