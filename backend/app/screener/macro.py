@@ -149,6 +149,10 @@ def get_macro_outlook(llm: LLMProvider) -> dict:
         "favored_sectors": [],
         "avoided_sectors": [],
         "snapshot": snapshot,
+        # Qué trajo cada fuente de eventos (chars/títulos): el informe del escaneo lo usa para
+        # avisar de fuentes caídas — un 403/rate-limit aquí es best-effort y no rompe nada,
+        # pero debe VERSE (estuvo semanas mudo).
+        "events": {"wiki": len(wiki_events), "sched": len(wiki_scheduled), "gdelt": len(gdelt)},
     }
     try:
         all_headlines = headlines + gdelt

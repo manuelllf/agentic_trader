@@ -4,6 +4,7 @@ del mes o en los escaneos manuales."""
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -126,3 +127,51 @@ def test_decision_due_only_first_scheduled_week(monkeypatch) -> None:
     # Cadencia única (flag apagado): todos los escaneos deciden.
     monkeypatch.setattr(scheduler.settings, "real_proposals_monthly", False)
     assert scheduler.decision_due(datetime(2026, 7, 14, 10, 15, tzinfo=_ET)) is True
+
+
+# ---- informe persistido del escaneo (panel de errores) -----------------------
+
+def _last_report(db) -> dict:
+    return json.loads(db.get(models.Meta, "last_scan_report").value)
+
+
+def test_scan_writes_persistent_report(db, monkeypatch) -> None:
+    """Cada escaneo (observatorio y decisión) deja su informe en Meta con modo y contadores;
+    con el pipeline stubeado, cero incidencias."""
+    _stub_scan(monkeypatch)
+    ledger.allocate(db, 1000)
+
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
+    rep = _last_report(db)
+    assert rep["mode"] == "observatorio" and rep["error"] is None
+    assert rep["issues"] == [] and rep["deep"] == 1
+
+    scan_service.run_scan_and_store(db, sample_size=5)
+    rep = _last_report(db)
+    assert rep["mode"] == "decisión" and rep["error"] is None
+
+
+def test_scan_report_records_issues(db, monkeypatch) -> None:
+    """Un nombre sin datos de mercado queda anotado como incidencia (antes: solo en logs)."""
+    from app.screener import fundamentals as fund_mod
+    from app.screener import universe as universe_mod
+    from app.screener.fundamentals import NameData
+
+    _stub_scan(monkeypatch)
+    monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA", "BBB"])
+    monkeypatch.setattr(fund_mod, "gather", lambda t: None if t == "BBB" else NameData(
+        ticker=t, sector="Technology", industry="Software", price=100.0,
+        fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
+    ))
+    ledger.allocate(db, 1000)
+
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
+    assert any("BBB" in i and "sin datos" in i for i in _last_report(db)["issues"])
+
+
+def test_scan_failure_writes_report(db) -> None:
+    """Si el escaneo revienta entero, el envoltorio deja el informe con el error — antes,
+    un cron caído era invisible en la web (seguía enseñando datos viejos sin señal)."""
+    scan_service.write_scan_failure(db, RuntimeError("boom"))
+    rep = _last_report(db)
+    assert rep["error"] == "boom" and rep["mode"] is None and rep["issues"] == []

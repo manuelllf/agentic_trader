@@ -22,8 +22,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getHistory,
-  getPerformance, getPersonal, getPushKey, getReal, logout, reconcileApprovals, rejectTrade,
-  resetShadow, runDemo, subscribePush, syncPersonal, testPush,
+  getPerformance, getPersonal, getPushKey, getReal, getScanReport, logout, reconcileApprovals,
+  rejectTrade, resetShadow, runDemo, subscribePush, syncPersonal, testPush, type ScanReport,
 } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
 import HistoryChart from "@/components/HistoryChart";
@@ -86,6 +86,7 @@ function SalaRealRoom() {
   const [running, setRunning] = useState(false);
   const [shadowPerf, setShadowPerf] = useState<Performance | null>(null);   // sombra en paralelo
   const [hist, setHist] = useState<HistoryPoint[]>([]);   // curva del libro real (cierres diarios)
+  const [report, setReport] = useState<ScanReport | null>(null);   // informe del último escaneo
   const [resetArmed, setResetArmed] = useState(false);    // armar→confirmar el reinicio del sombra
   const [resetting, setResetting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -94,10 +95,11 @@ function SalaRealRoom() {
 
   const load = useCallback(async () => {
     try {
-      const [s, a, c, pp, st, sp, fxr, hs] = await Promise.all([
+      const [s, a, c, pp, st, sp, fxr, hs, sr] = await Promise.all([
         getReal(), getApprovals(), getConfig().catch(() => null), getPersonal().catch(() => null),
         getDemoStatus().catch(() => null), getPerformance().catch(() => null),
         getFx().catch(() => null), getHistory("real").catch(() => null),
+        getScanReport().catch(() => null),
       ]);
       if (!alive.current) return;   // desmontada: un GET lento no debe pintar nada
       setSummary(s);
@@ -108,6 +110,7 @@ function SalaRealRoom() {
       setShadowPerf(sp);
       if (fxr?.rate) setFx(fxr.rate);
       if (hs) setHist(hs.series);
+      if (sr) setReport(sr.report);
       setError("");
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
@@ -616,6 +619,14 @@ function SalaRealRoom() {
             Ver sombra →
           </Link>
         </div>
+
+        {/* salud del último escaneo (cron o manual): persistido en el backend — sobrevive a
+            reinicios y también lo escribe el cron del martes. Solo existe si hay informe. */}
+        {report && (
+          <div className="mt-4">
+            <ScanReportPanel r={report} />
+          </div>
+        )}
 
         {/* ---------- 4 · tu dinero real, siempre a la vista (el agente no lo toca) ---------- */}
         <div className="mt-4 space-y-4">
@@ -1160,6 +1171,53 @@ function DetailLine({ k, v, color, dim }: { k: string; v: string; color?: string
     </p>
   );
 }
+
+/* Informe del último escaneo: una línea si fue sano; lista ámbar de incidencias; rojo si
+   reventó entero. Fuente: /scan/report (persistido), no el estado en memoria del runner. */
+function ScanReportPanel({ r }: { r: ScanReport }) {
+  const failed = !!r.error;
+  const issues = r.issues ?? [];
+  const clean = !failed && issues.length === 0;
+  return (
+    <Panel title="Último escaneo"
+           accent={failed ? T.bad : issues.length ? T.warn : undefined}
+           right={<span className="text-[11px]" style={{ color: T.muted }}>{fmtTime(r.at)}</span>}>
+      <div className="px-4 py-2.5 text-[12px]">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span style={{ color: T.ink2 }}>
+            modo <b style={{ color: T.ink }}>{r.mode ?? "—"}</b>
+          </span>
+          {r.prescored != null && (
+            <span className={NUMS} style={{ color: T.ink2 }}>
+              {r.prescored} puntuados · {r.deep ?? 0} a fondo
+            </span>
+          )}
+          {r.cost && (
+            <span className={NUMS} style={{ color: T.muted }}>
+              ${r.cost.cost_usd.toFixed(3)} · {r.cost.calls} llamadas
+            </span>
+          )}
+          {clean && <span className="font-bold" style={{ color: T.good }}>✓ sin incidencias</span>}
+        </div>
+        {failed && (
+          <p className="mt-1.5 font-semibold" style={{ color: "#e66767" }}>
+            El escaneo FALLÓ: {r.error}
+          </p>
+        )}
+        {issues.length > 0 && (
+          <ul className="mt-1.5 space-y-0.5">
+            {issues.map((it) => (
+              <li key={it} style={{ color: T.ink2 }}>
+                <span className="mr-1.5" style={{ color: T.warn }} aria-hidden>▲</span>{it}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 
 const HIST_STATUS: Record<string, { label: string; color: string }> = {
   executed: { label: "Ejecutada", color: T.good },

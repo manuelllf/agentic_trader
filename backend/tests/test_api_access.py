@@ -100,6 +100,7 @@ PROTECTED_CALLS = [
     ("post", "/admin/seed-memory", {"anything": True}),
     ("get", "/admin/memory-status", None),
     ("get", "/fx", None),
+    ("get", "/scan/report", None),
 ]
 
 
@@ -114,6 +115,20 @@ def test_protected_endpoints_reject_without_token(client) -> None:
     for method, path, body in PROTECTED_CALLS:
         res = _call(client, method, path, body)
         assert res.status_code == 401, f"{method.upper()} {path} debería exigir token"
+
+
+def test_scan_report_shape(client, token, db) -> None:
+    """Sin informe → {"report": null}; con informe en Meta → lo devuelve tal cual."""
+    from app.models import Meta
+
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/scan/report", headers=headers).json() == {"report": None}
+
+    db.merge(Meta(key="last_scan_report",
+                  value='{"mode": "observatorio", "error": null, "issues": []}'))
+    db.commit()
+    rep = client.get("/scan/report", headers=headers).json()["report"]
+    assert rep["mode"] == "observatorio" and rep["issues"] == []
 
 
 def test_protected_endpoints_work_with_token(client, token) -> None:

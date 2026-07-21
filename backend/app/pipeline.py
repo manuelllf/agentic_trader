@@ -11,7 +11,7 @@ import threading
 from datetime import UTC, datetime
 
 from app.db import SessionLocal
-from app.scan_service import run_scan_and_store
+from app.scan_service import run_scan_and_store, write_scan_failure
 
 _state: dict = {
     "status": "idle",       # idle | running | done | error
@@ -39,6 +39,10 @@ def _run(sample_size: int | None) -> None:
         with _lock:
             _state.update(status="error", error=str(exc),
                           finished_at=datetime.now(UTC).isoformat())
+        try:
+            write_scan_failure(db, exc)   # el informe persistido sí sobrevive a reinicios
+        except Exception:
+            pass
     finally:
         db.close()
 

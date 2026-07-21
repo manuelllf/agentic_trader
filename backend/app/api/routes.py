@@ -17,6 +17,7 @@ pública puede presumir de rendimiento sin regalar la cartera:
 - POST /ledger/allocate      → asignar/retirar fondos                             [protegido]
 - POST /demo/run             → lanza el escaneo (universo entero → scores → cartera 3-5) [protegido]
 - GET  /demo/status          → estado del escaneo                                  [público]
+- GET  /scan/report          → informe persistido del último escaneo (incidencias) [protegido]
 - GET  /scores               → leaderboard (mejores scores del último escaneo)     [protegido]
 - GET  /proposal             → cartera objetivo + trades del último escaneo        [protegido]
 - GET  /watchlist            → nombres vigilados                                   [protegido]
@@ -24,6 +25,7 @@ pública puede presumir de rendimiento sin regalar la cartera:
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -31,15 +33,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import execution_service
-from app import pipeline
+from app import execution_service, pipeline
 from app import watchlist as watchlist_mod
 from app.auth import auth_optional
 from app.config import settings
 from app.db import get_db
 from app.ledger import service as ledger
 from app.ledger.money import D, to_cents
-from app.models import Proposal, Score, Watchlist
+from app.models import Meta, Proposal, Score, Watchlist
 from app.schemas import ProposalOut, ScoreOut, WatchlistOut
 
 public_router = APIRouter()   # sin token: lecturas y teaser de la portada
@@ -210,6 +211,20 @@ def demo_run(sample_size: int | None = None) -> dict:
 @public_router.get("/demo/status")
 def demo_status() -> dict:
     return pipeline.get_status()
+
+
+@router.get("/scan/report")
+def scan_report(db: Session = Depends(get_db)) -> dict:
+    """Informe del ÚLTIMO escaneo (cron o manual), persistido en la BD: modo, contadores,
+    coste e incidencias — o el error si reventó entero. A diferencia de /demo/status (estado
+    en memoria del runner manual), esto sobrevive a reinicios y también lo escribe el cron."""
+    row = db.get(Meta, "last_scan_report")
+    if row is None:
+        return {"report": None}
+    try:
+        return {"report": json.loads(row.value)}
+    except ValueError:
+        return {"report": None}
 
 
 @router.post("/recheck")

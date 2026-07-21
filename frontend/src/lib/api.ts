@@ -142,6 +142,21 @@ export interface FxAllocated {
 export const allocateReal = (amount: number, note = "", currency: "USD" | "EUR" = "USD") =>
   post<RealSummary & { allocated?: FxAllocated }>("/real/allocate", { amount, note, currency });
 export const getApprovals = () => get<ApprovalsResponse>("/approvals");
+
+/** Informe PERSISTIDO del último escaneo (cron o manual): modo, contadores, coste e
+ * incidencias — o el error si reventó entero. A diferencia de /demo/status (memoria del
+ * runner), sobrevive a reinicios y también lo escribe el cron del martes. */
+export interface ScanReport {
+  at: string;
+  mode: "decisión" | "observatorio" | null;   // null = falló antes de saberse el modo
+  error: string | null;                        // != null → el escaneo entero falló
+  issues: string[];
+  scanned: number | null;
+  prescored: number | null;
+  deep: number | null;
+  cost: { calls: number; cost_usd: number } | null;
+}
+export const getScanReport = () => get<{ report: ScanReport | null }>("/scan/report");
 export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
 export const reconcileApprovals = () => post<{ reconciled: number }>("/approvals/reconcile");

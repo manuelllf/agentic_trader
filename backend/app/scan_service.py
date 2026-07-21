@@ -24,9 +24,11 @@ Este módulo solo ORQUESTA. La matemática de cartera (selección, pesos, diff a
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -48,6 +50,29 @@ logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 12
 _CURSOR_KEY = "scan_cursor"   # offset persistido de la ventana rotatoria del semanal
+_REPORT_KEY = "last_scan_report"   # informe del último escaneo (JSON en Meta; ver /scan/report)
+
+
+def _write_scan_report(db: Session, *, mode: str | None, result: dict | None,
+                       issues: list[str], error: str | None = None) -> None:
+    """Persiste el informe del último escaneo en Meta. Es la fuente de verdad de la web:
+    el estado en memoria del runner manual no sobrevive a un reinicio y el cron ni lo toca."""
+    r = result or {}
+    report = {
+        "at": datetime.now(UTC).isoformat(),
+        "mode": mode, "error": error, "issues": issues,
+        "scanned": r.get("scanned"), "prescored": r.get("prescored"), "deep": r.get("deep"),
+        "cost": r.get("cost"),
+    }
+    db.merge(Meta(key=_REPORT_KEY, value=json.dumps(report, ensure_ascii=False)))
+    db.commit()
+
+
+def write_scan_failure(db: Session, exc: Exception) -> None:
+    """Informe de un escaneo que REVENTÓ entero (lo llaman los envoltorios cron/manual).
+    Sin esto, un cron caído es invisible en la web: se verían scores viejos sin señal alguna."""
+    db.rollback()   # la sesión puede venir sucia del fallo a mitad
+    _write_scan_report(db, mode=None, result=None, issues=[], error=str(exc))
 
 
 def _scan_cursor(db: Session) -> int:
@@ -169,6 +194,18 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     macro_block = macro_mod.outlook_prompt_block(macro)
     prior = {t: watchlist_mod.thesis_for(db, t) for t in always}
 
+    # Incidencias para el informe persistido: los fallos PARCIALES que hasta ahora solo se
+    # veían leyendo los logs de Railway (fuentes caídas, LLM no parseable, nombres sin datos).
+    issues: list[str] = []
+    ev = macro.get("events")
+    if ev is not None:
+        if not ev.get("wiki") and not ev.get("sched"):
+            issues.append("Eventos macro: Wikipedia sin contenido (¿bloqueo del User-Agent?).")
+        if not ev.get("gdelt"):
+            issues.append("Eventos macro: GDELT sin titulares (rate-limit habitual).")
+    if not macro.get("outlook"):
+        issues.append("Outlook macro del LLM caído — se usó solo el régimen determinista.")
+
     # 3) PASO 1 — pre-score rápido (Flash) de todos los nombres, en paralelo.
     def _pre(ticker: str):
         data = fund_mod.gather(ticker)
@@ -181,6 +218,15 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     prescored = [r for r in results if r is not None and r[0].score > 0]
     prescored.sort(key=lambda x: -x[0].score)
     failed = [t for t, r in zip(sample, results, strict=True) if r is None]  # gather sin datos
+    if failed:
+        lista = ", ".join(failed[:8]) + ("…" if len(failed) > 8 else "")
+        issues.append(f"{len(failed)} nombre(s) sin datos de mercado: {lista}")
+    # Fallo de prescore = score 0 Y headline vacía (una opinión real de 0 traería tesis).
+    pre_caidos = [p.ticker for p, _d in (r for r in results if r)
+                  if p.score == 0 and not p.headline]
+    if pre_caidos:
+        lista = ", ".join(pre_caidos[:8]) + ("…" if len(pre_caidos) > 8 else "")
+        issues.append(f"{len(pre_caidos)} pre-score(s) fallidos (LLM no parseable): {lista}")
 
     # Finalistas al profundo: top-2/sector (amplitud) ∪ top-15 global + posiciones + watchlist,
     # truncado a un tope duro. El corte YA NO es ciego al macro (el prescore lo ve entero), así
@@ -204,6 +250,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
         for res in ex.map(_deep, finalists):
             deep[res.ticker] = res
+    deep_caidos = [t for t, r in deep.items() if r.score == 0 and not r.report]
+    if deep_caidos:
+        issues.append(f"Informe profundo fallido (LLM) en: {', '.join(deep_caidos)}")
 
     price_map = {d.ticker: d.price for _p, d in prescored if d.price}
     instr_prices = instruments_mod.prices()        # {} si el allowlist UCITS está vacío
@@ -298,15 +347,18 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         try:
             exec_result = execution_service.execute_proposal_all(db)
             logger.info("Auto-ejecución sombra: %s", exec_result["message"])
-        except Exception:
+            issues.extend(f"Sombra, item saltado: {s}" for s in exec_result["skipped"])
+        except Exception as exc:  # noqa: BLE001 — el motivo va al informe del escaneo
             logger.exception("Fallo en la auto-ejecución del libro sombra (no aborta el escaneo).")
+            issues.append(f"Auto-ejecución del libro sombra falló: {exc}")
         # Real: cada trade propuesto queda PENDIENTE de tu Sí/No (push best-effort). El agente
         # jamás ejecuta solo — ni siquiera en dry-run.
         try:
             from app import approvals as approvals_mod
             approvals_mod.create_from_items(db, items, macro_line)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — el motivo va al informe del escaneo
             logger.exception("No se pudieron crear las aprobaciones del modo real.")
+            issues.append(f"No se pudieron crear las aprobaciones de la sala real: {exc}")
     else:
         logger.info("Escaneo observatorio: ranking, watchlist y memoria al día; la cartera "
                     "(sombra y real) no se toca — la decisión es mensual.")
@@ -314,7 +366,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # del paso 5 pudo re-meter posiciones re-analizadas; tras decidir, también lo recién comprado).
     watchlist_mod.drop(db, {p.ticker for p in ledger.open_positions(db)})
 
-    return {
+    result = {
         "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
         "watchlist": len(watchlist_mod.tickers(db)),
         "proposed": len([i for i in items if i["action"] != "mantener"]),
@@ -322,6 +374,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         "decided": decide,
         "cost": _llm_usage(prescore_llm, deep_llm),  # coste REAL del escaneo (Flash + V4-Pro)
     }
+    try:   # el informe jamás debe tirar un escaneo ya completado
+        _write_scan_report(db, mode=modo, result=result, issues=issues)
+    except Exception:
+        logger.exception("No se pudo persistir el informe del escaneo.")
+    return result
 
 
 def recheck(db: Session) -> dict:

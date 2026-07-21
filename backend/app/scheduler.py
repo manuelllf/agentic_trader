@@ -17,7 +17,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app.config import settings
 from app.db import SessionLocal
-from app.scan_service import run_scan_and_store
+from app.scan_service import run_scan_and_store, write_scan_failure
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler(timezone="UTC")
@@ -45,8 +45,12 @@ def _scan_job() -> None:
         sample = None if due else settings.scan_sample_size
         result = run_scan_and_store(db, sample_size=sample, decide=due)
         logger.info("Escaneo completado: %s", result)
-    except Exception:
+    except Exception as exc:
         logger.exception("Fallo en el job de escaneo")
+        try:
+            write_scan_failure(db, exc)   # sin esto, un cron caído es invisible en la web
+        except Exception:
+            logger.exception("Tampoco se pudo persistir el informe del fallo.")
     finally:
         db.close()
 
