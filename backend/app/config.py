@@ -27,10 +27,12 @@ class Settings(BaseSettings):
     scan_cron_hour: int = 10
     scan_cron_minute: int = 15
     scan_timezone: str = "America/New_York"    # ancla a la bolsa US (sobrevive al horario de verano)
-    # Cadencia doble: la SOMBRA se recalibra en cada escaneo del cron (semanal, gratis, más datos),
-    # pero la sala REAL solo recibe propuestas en el PRIMER escaneo programado del mes — la señal
-    # del scorer es mensual y así se evita churn de ruido con dinero real. Los escaneos MANUALES
-    # (botón «Analizar mercado») siempre proponen. False = proponer en todos los escaneos.
+    # Cadencia de DECISIÓN: la cartera (sombra Y propuestas a la real) solo se decide en el
+    # PRIMER escaneo programado del mes — la señal del scorer es mensual ("próximo mes") y
+    # rebalancear cada semana sería operar el ruido del LLM, además de impedir ver si cada
+    # elección funciona (no vive su mes). Los escaneos semanales restantes son OBSERVATORIO:
+    # ranking, watchlist, memoria y auditoría al día, sin tocar ningún libro. Los MANUALES
+    # (botón «Analizar mercado») siempre deciden. False = todos los escaneos deciden.
     real_proposals_monthly: bool = True
 
     # CORS: orígenes permitidos del frontend, separados por coma.

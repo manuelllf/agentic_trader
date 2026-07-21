@@ -464,8 +464,9 @@ function SalaRealRoom() {
                     <b style={{ color: T.ink2 }}>2</b> · análisis
                   </p>
                   <p className="text-[12.5px] leading-relaxed" style={{ color: T.ink2 }}>
-                    La sombra se recalibra cada martes a las 10:15 (hora del mercado US); esta
-                    cartera recibe propuestas el primer martes del mes — o al momento con
+                    El agente escanea cada martes a las 10:15 (hora del mercado US) para
+                    aprender — ranking, watchlist y memoria. La decisión de cartera (sombra y
+                    propuestas aquí) llega el primer martes del mes — o al momento con
                     «Analizar mercado» arriba.
                   </p>
                   <p className="mt-1.5 text-[11px]" style={{ color: T.muted }}>

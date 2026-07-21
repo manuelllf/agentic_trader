@@ -23,12 +23,13 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler(timezone="UTC")
 
 
-def real_proposals_due(now: datetime | None = None) -> bool:
-    """¿Le toca proponer a la sala REAL en este escaneo programado?
+def decision_due(now: datetime | None = None) -> bool:
+    """¿Le toca DECIDIR cartera (ejecutar sombra + proponer a la real) a este escaneo programado?
 
-    Cadencia doble: la sombra se recalibra cada semana, la real solo en el PRIMER escaneo
-    programado del mes — la primera aparición de un día de semana cae siempre en día 1-7.
-    Con `real_proposals_monthly=False`, todos los escaneos proponen (cadencia única).
+    La decisión es mensual: solo el PRIMER escaneo programado del mes — la primera aparición
+    de un día de semana cae siempre en día 1-7. El resto de semanales son observatorio (la
+    señal del scorer es a un mes; ver `real_proposals_monthly` en config).
+    Con `real_proposals_monthly=False`, todos los escaneos deciden (cadencia única).
     """
     if not settings.real_proposals_monthly:
         return True
@@ -39,10 +40,10 @@ def real_proposals_due(now: datetime | None = None) -> bool:
 def _scan_job() -> None:
     db = SessionLocal()
     try:
-        due = real_proposals_due()
-        # Mensual (le toca la real) → universo entero; semanal → muestra rotatoria (más barato).
+        due = decision_due()
+        # Decisión (mensual) → universo entero; observatorio (semanal) → muestra rotatoria.
         sample = None if due else settings.scan_sample_size
-        result = run_scan_and_store(db, sample_size=sample, real_proposals=due)
+        result = run_scan_and_store(db, sample_size=sample, decide=due)
         logger.info("Escaneo completado: %s", result)
     except Exception:
         logger.exception("Fallo en el job de escaneo")

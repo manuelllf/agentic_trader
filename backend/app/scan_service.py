@@ -10,7 +10,9 @@ Embudo en 2 pasos para ir rápido y barato sin perder profundidad donde importa:
      analizados a fondo
   6. SELECCIÓN fiel al paper (código): top-N por score PROFUNDO, desempate por market cap →
      el constructor (V4-Pro) solo ASIGNA PESOS a los ya seleccionados (Exhibit 2E)
-  7. traduce a trades con aritmética EXACTA (Decimal, nunca el LLM) + persiste la propuesta
+  7. traduce a trades con aritmética EXACTA (Decimal, nunca el LLM); SOLO si el escaneo DECIDE
+     (mensual o manual) persiste la propuesta, ejecuta la sombra y propone a la real — el
+     semanal restante es OBSERVATORIO: aprende (ranking/watchlist/memoria) sin tocar libros
 
 El dinero lo calcula el código; el LLM solo decide los pesos. El coste REAL de cada
 escaneo (Flash prescoring de todo el universo + V4-Pro en finalistas, incl. tokens de razonamiento)
@@ -132,12 +134,15 @@ def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, final
 
 
 def run_scan_and_store(db: Session, sample_size: int | None = None,
-                       real_proposals: bool = True) -> dict:
+                       decide: bool = True) -> dict:
     """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
 
-    `real_proposals`: si False, el escaneo recalibra SOLO la sombra (scores + propuesta +
-    auto-ejecución) sin crear aprobaciones para la sala real — es el modo del cron semanal
-    entre calibrados mensuales de la real (ver `real_proposals_monthly` en config).
+    `decide=False` → escaneo OBSERVATORIO (el cron semanal entre decisiones): puntúa el
+    universo y refresca ranking, watchlist, memoria vectorial y auditoría — el conocimiento —
+    pero NO pisa la propuesta vigente, NO toca el libro sombra y NO crea aprobaciones para la
+    real. La DECISIÓN de cartera (ambos libros) es mensual (`real_proposals_monthly`): la señal
+    del scorer es a un mes y así cada elección vive su mes y la curva mide la selección, no el
+    ruido semanal del LLM. Los escaneos manuales van con `decide=True` (ciclo completo).
     """
     deep_llm = get_llm()                              # V4-Pro: informe + target + construcción
     prescore_llm = get_llm(settings.prescore_model)   # Flash: ranking rápido de todo el universo
@@ -211,8 +216,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     target_map = {t: r.target_price for t, r in deep.items()}
 
     # 5) Persistir el leaderboard: SOLO los analizados a fondo (el pre-score vive en la watchlist).
+    #    La Proposal vigente NO se borra aquí: solo un escaneo con decisión la reemplaza (paso 8).
     db.query(Score).delete()
-    db.query(Proposal).delete()
     for ticker, d in deep.items():
         data = data_by_t[ticker]
         db.add(Score(
@@ -260,15 +265,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             construction, selected, settings.min_positions, settings.max_positions,
             settings.max_position_pct)
 
-    # 7) Trades con aritmética exacta + persistir la propuesta.
+    # 7) Trades con aritmética exacta (la cartera que PROPONDRÍA hoy; solo se persiste al decidir).
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
     macro_line = macro.get("outlook", "") or construction.summary
-    db.add(Proposal(
-        cash_target_pct=construction.cash_pct,
-        macro_summary=macro_line,
-        items=items,
-    ))
-    db.commit()
 
     # Traza de auditoría del embudo (diagnóstico; nunca debe tirar el escaneo).
     try:
@@ -277,39 +276,50 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
 
-    cadence = "mensual/full" if n is None else f"semanal/muestra {n}"
+    modo = "decisión" if decide else "observatorio"
+    cadence = f"{modo}/full" if n is None else f"{modo}/muestra {n}"
     _log_funnel(cadence, sample, prescored, failed, finalists, data_by_t, selected,
                 construction, instr_prices)
 
-    # 8) Sala Sombra: se ejecuta SOLA, sin botones — dinero simulado, cero riesgo. Ventas antes
-    #    que compras (execute_proposal_all lo garantiza) para que la caja se libere primero.
-    #    Un fallo aquí NUNCA debe tirar el escaneo (los datos ya están persistidos y a salvo).
-    try:
-        exec_result = execution_service.execute_proposal_all(db)
-        logger.info("Auto-ejecución sombra: %s", exec_result["message"])
-    except Exception:
-        logger.exception("Fallo en la auto-ejecución del libro sombra (no aborta el escaneo).")
-    # La watchlist es "lo que VIGILO y no tengo": lo que acaba de pasar a POSICIÓN sale de ella.
-    watchlist_mod.drop(db, {p.ticker for p in ledger.open_positions(db)})
-
-    # 9) Sala Real: cada trade propuesto queda PENDIENTE de tu Sí/No (push best-effort).
-    #    El agente jamás ejecuta solo — ni siquiera en dry-run. En los escaneos de recalibrado
-    #    sombra (cadencia real mensual) este paso se omite entero.
-    if real_proposals:
+    # 8) DECISIÓN (mensual o manual): persistir la propuesta, ejecutar la sombra y proponer a
+    #    la real. El escaneo observatorio termina antes de este bloque: el libro conserva la
+    #    cartera del último decidido para que cada elección viva su mes entero.
+    if decide:
+        db.query(Proposal).delete()
+        db.add(Proposal(
+            cash_target_pct=construction.cash_pct,
+            macro_summary=macro_line,
+            items=items,
+        ))
+        db.commit()
+        # Sombra: se ejecuta SOLA, sin botones — dinero simulado, cero riesgo. Ventas antes que
+        # compras (execute_proposal_all lo garantiza) para que la caja se libere primero. Un
+        # fallo aquí NUNCA debe tirar el escaneo (los datos ya están persistidos y a salvo).
+        try:
+            exec_result = execution_service.execute_proposal_all(db)
+            logger.info("Auto-ejecución sombra: %s", exec_result["message"])
+        except Exception:
+            logger.exception("Fallo en la auto-ejecución del libro sombra (no aborta el escaneo).")
+        # Real: cada trade propuesto queda PENDIENTE de tu Sí/No (push best-effort). El agente
+        # jamás ejecuta solo — ni siquiera en dry-run.
         try:
             from app import approvals as approvals_mod
             approvals_mod.create_from_items(db, items, macro_line)
         except Exception:
             logger.exception("No se pudieron crear las aprobaciones del modo real.")
     else:
-        logger.info("Recalibrado sombra: sin propuestas para la sala real (cadencia mensual).")
+        logger.info("Escaneo observatorio: ranking, watchlist y memoria al día; la cartera "
+                    "(sombra y real) no se toca — la decisión es mensual.")
+    # La watchlist es "lo que VIGILO y no tengo": lo que esté en cartera sale de ella (el update
+    # del paso 5 pudo re-meter posiciones re-analizadas; tras decidir, también lo recién comprado).
+    watchlist_mod.drop(db, {p.ticker for p in ledger.open_positions(db)})
 
     return {
         "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
         "watchlist": len(watchlist_mod.tickers(db)),
         "proposed": len([i for i in items if i["action"] != "mantener"]),
         "positions": len(construction.positions),
-        "real_proposals": real_proposals,
+        "decided": decide,
         "cost": _llm_usage(prescore_llm, deep_llm),  # coste REAL del escaneo (Flash + V4-Pro)
     }
 

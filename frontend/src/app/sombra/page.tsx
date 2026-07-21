@@ -473,7 +473,7 @@ function Empty({ running }: { running: boolean }) {
       <p className="mt-3 max-w-sm text-sm text-slate-500">
         {running
           ? "El agente puntúa el universo y construye la cartera…"
-          : "El agente escanea el mercado cada semana (o cuando se lanza desde la Sala Real). En cuanto termine, aquí aparece la cartera propuesta — y ya ejecutada en el libro sombra."}
+          : "El agente escanea el mercado cada semana para aprender (ranking y watchlist) y decide cartera el primer martes del mes — o al lanzarlo desde la Sala Real. Cuando decida, aquí aparece la cartera propuesta, ya ejecutada en el libro sombra."}
       </p>
     </div>
   );

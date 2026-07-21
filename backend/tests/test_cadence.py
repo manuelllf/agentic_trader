@@ -1,5 +1,6 @@
-"""Cadencia doble: la sombra se recalibra en cada escaneo; la sala real solo recibe
-propuestas en el primer escaneo programado del mes (o en escaneos manuales)."""
+"""Cadencia de decisión: el escaneo semanal es OBSERVATORIO (aprende sin tocar libros);
+la cartera —sombra y propuestas a la real— solo se decide en el primer escaneo programado
+del mes o en los escaneos manuales."""
 
 from __future__ import annotations
 
@@ -71,38 +72,57 @@ def _stub_scan(monkeypatch) -> None:
     monkeypatch.setattr(scan_service.settings, "min_positions", 1)
 
 
-def test_shadow_recalibration_scan_creates_no_approvals(db, monkeypatch) -> None:
-    """real_proposals=False: la sombra se ejecuta sola IGUAL, pero la real no recibe nada."""
+def test_observatory_scan_learns_without_touching_books(db, monkeypatch) -> None:
+    """decide=False: refresca el conocimiento (ranking) pero NO inventa propuesta, NO toca la
+    sombra y NO crea aprobaciones para la real."""
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
 
-    result = scan_service.run_scan_and_store(db, sample_size=5, real_proposals=False)
+    result = scan_service.run_scan_and_store(db, sample_size=5, decide=False)
 
-    assert result["real_proposals"] is False
+    assert result["decided"] is False
+    assert db.query(models.Score).count() >= 1                   # el ranking SÍ se refrescó
+    assert db.query(Proposal).count() == 0                       # sin propuesta nueva
     assert db.query(Approval).count() == 0                       # cero propuestas a la real
-    assert db.query(Proposal).count() == 1                       # la propuesta persiste (sombra)
-    pos = {p.ticker for p in ledger.open_positions(db, BOOK_SHADOW)}
-    assert pos == {"AAA"}                                        # y la sombra se auto-ejecutó
+    assert ledger.open_positions(db, BOOK_SHADOW) == []          # la sombra ni se ejecutó
 
 
-def test_default_scan_still_creates_approvals(db, monkeypatch) -> None:
-    """Sin argumento (escaneo manual / cadencia única): la real recibe sus propuestas."""
+def test_observatory_scan_preserves_decided_portfolio(db, monkeypatch) -> None:
+    """Un observatorio DESPUÉS de una decisión no pisa nada: la cartera sombra y la propuesta
+    decidida sobreviven intactas (cada elección vive su mes)."""
+    _stub_scan(monkeypatch)
+    ledger.allocate(db, 1000)
+    scan_service.run_scan_and_store(db, sample_size=5)           # decisión: compra AAA
+    pos_before = {p.ticker for p in ledger.open_positions(db, BOOK_SHADOW)}
+    prop_id = db.query(Proposal).one().id
+    assert pos_before == {"AAA"}
+
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
+
+    assert {p.ticker for p in ledger.open_positions(db, BOOK_SHADOW)} == pos_before
+    assert db.query(Proposal).one().id == prop_id                # la propuesta decidida sigue
+
+
+def test_default_scan_decides_both_books(db, monkeypatch) -> None:
+    """Sin argumento (escaneo manual / cadencia única): ciclo completo — la sombra se ejecuta
+    y la real recibe sus propuestas."""
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
 
     result = scan_service.run_scan_and_store(db, sample_size=5)
 
-    assert result["real_proposals"] is True
+    assert result["decided"] is True
     assert db.query(Approval).count() >= 1
+    assert {p.ticker for p in ledger.open_positions(db, BOOK_SHADOW)} == {"AAA"}
 
 
-def test_real_proposals_due_only_first_scheduled_week(monkeypatch) -> None:
-    """El primer escaneo programado del mes cae siempre en día 1-7; el resto, no propone."""
+def test_decision_due_only_first_scheduled_week(monkeypatch) -> None:
+    """El primer escaneo programado del mes cae siempre en día 1-7; el resto, observatorio."""
     monkeypatch.setattr(scheduler.settings, "real_proposals_monthly", True)
-    assert scheduler.real_proposals_due(datetime(2026, 7, 7, 10, 15, tzinfo=_ET)) is True
-    assert scheduler.real_proposals_due(datetime(2026, 7, 14, 10, 15, tzinfo=_ET)) is False
-    assert scheduler.real_proposals_due(datetime(2026, 7, 28, 10, 15, tzinfo=_ET)) is False
+    assert scheduler.decision_due(datetime(2026, 7, 7, 10, 15, tzinfo=_ET)) is True
+    assert scheduler.decision_due(datetime(2026, 7, 14, 10, 15, tzinfo=_ET)) is False
+    assert scheduler.decision_due(datetime(2026, 7, 28, 10, 15, tzinfo=_ET)) is False
 
-    # Cadencia única (flag apagado): todos los escaneos proponen.
+    # Cadencia única (flag apagado): todos los escaneos deciden.
     monkeypatch.setattr(scheduler.settings, "real_proposals_monthly", False)
-    assert scheduler.real_proposals_due(datetime(2026, 7, 14, 10, 15, tzinfo=_ET)) is True
+    assert scheduler.decision_due(datetime(2026, 7, 14, 10, 15, tzinfo=_ET)) is True
