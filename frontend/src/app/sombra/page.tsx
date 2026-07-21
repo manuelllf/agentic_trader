@@ -564,7 +564,9 @@ function PositionRows({ anon, color, label, sector, pos, weightPct, up, pct, ope
       </tr>
       {open && (
         <tr className="border-t border-slate-50 bg-slate-50/50">
-          <td colSpan={7} className="px-3 py-2 text-[11.5px] leading-relaxed text-slate-500">
+          {/* whitespace-normal: la tabla es nowrap (columnas numéricas), pero la tesis debe
+              ENVOLVER — si no, una línea larga estira la tabla y fuerza scroll horizontal. */}
+          <td colSpan={7} className="whitespace-normal px-3 py-2 text-[11.5px] leading-relaxed text-slate-500">
             {srow?.headline
               ? <><span className="font-semibold text-slate-600">Tesis</span> · {srow.headline}
                   <span className="ml-1 text-slate-400">
