@@ -21,7 +21,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  allocateReal, approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getHistory,
+  approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getHistory,
   getPerformance, getPersonal, getPushKey, getReal, getScanReport, logout, reconcileApprovals,
   rejectTrade, resetShadow, runDemo, subscribePush, syncPersonal, testPush, type ScanReport,
 } from "@/lib/api";
@@ -30,30 +30,12 @@ import HistoryChart from "@/components/HistoryChart";
 import { fmtPct, fmtTime, money, qty4, signMoney } from "@/lib/format";
 import type {
   AppConfig, Approval, ApprovalsResponse, DemoStatus, HistoryPoint, Performance,
-  PersonalSummary, RealSummary, TradeAction,
+  PersonalSummary, RealSummary,
 } from "@/lib/types";
-
-/* ---------- tokens (paleta de referencia validada, modo dark) ---------- */
-const T = {
-  page: "#0d0d0d",        // plano de página
-  panel: "#1a1a19",       // superficie de panel/gráfica
-  panel2: "#202020",      // franja de cabecera de panel
-  ring: "rgba(255,255,255,0.10)",
-  grid: "#2c2c2a",        // hairline interior
-  base: "#383835",        // baseline / neutro (caja)
-  ink: "#ffffff",
-  ink2: "#c3c2b7",
-  muted: "#898781",
-  good: "#0ca30c",        // P&L positivo (reservado)
-  bad: "#d03b3b",         // P&L negativo / venta / crítico
-  warn: "#fab219",        // órdenes trabajando / simulación
-  buy: "#3987e5",         // compra (slot azul)
-};
-/* Serie categórica (orden fijo, validado): posiciones 1..5. El verde queda RESERVADO al P&L. */
-const SERIES = ["#3987e5", "#199e70", "#c98500", "#9085e9", "#d55181"];
-
-const isBuy = (a: TradeAction) => a === "comprar" || a === "ampliar";
-const NUMS = "tabular-nums";
+import { CapitalForm } from "./CapitalForm";
+import { OrderRow } from "./OrderRow";
+import { NUMS, SERIES, T } from "./tokens";
+import { Empty, Field, Kpi, Panel, SideTag, Td, Th } from "./ui";
 
 /* ============================== página ============================== */
 
@@ -89,6 +71,7 @@ function SalaRealRoom() {
   const [report, setReport] = useState<ScanReport | null>(null);   // informe del último escaneo
   const [resetArmed, setResetArmed] = useState(false);    // armar→confirmar el reinicio del sombra
   const [resetting, setResetting] = useState(false);
+  const [mantOpen, setMantOpen] = useState(false);        // mantenimiento plegado (destructivo)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
@@ -313,15 +296,17 @@ function SalaRealRoom() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {/* Estado del último escaneo: compacto, siempre visible en la barra de mando. */}
+            {/* Estado del último escaneo: el "analizando…" vive del sondeo; el resto bebe del
+                INFORME PERSISTIDO (/scan/report) — la memoria del runner muere en cada deploy
+                y el cron ni la escribe, así cabecera y panel «Último escaneo» nunca discrepan. */}
             <span className="hidden items-center rounded px-2.5 py-1 text-[11px] font-semibold sm:inline-flex"
                   style={{ background: "rgba(255,255,255,0.05)", color: T.muted }}
                   title="Puntúa el universo, propone la cartera real (a tu Sí/No) y ejecuta sola la sombra.">
               {isScanning
                 ? "analizando…"
-                : scanStatus?.finished_at
-                  ? `último análisis ${fmtTime(scanStatus.finished_at)}${
-                      scanStatus.result?.cost ? ` · $${scanStatus.result.cost.cost_usd.toFixed(3)}` : ""
+                : report
+                  ? `último análisis ${fmtTime(report.at)}${
+                      report.cost ? ` · $${report.cost.cost_usd.toFixed(3)}` : ""
                     }`
                   : "sin análisis previo"}
             </span>
@@ -473,7 +458,7 @@ function SalaRealRoom() {
                     «Analizar mercado» arriba.
                   </p>
                   <p className="mt-1.5 text-[11px]" style={{ color: T.muted }}>
-                    {scanStatus?.finished_at ? `Último análisis: ${fmtTime(scanStatus.finished_at)}.` : "Aún sin análisis."}
+                    {report ? `Último análisis: ${fmtTime(report.at)}.` : "Aún sin análisis."}
                   </p>
                 </div>
               </div>
@@ -570,21 +555,16 @@ function SalaRealRoom() {
                   </tbody>
                 </table>
               </div>
-              {/* pie del panel: rendimiento vs S&P integrado (antes vivía en un desplegable aparte) */}
+              {/* pie del panel: solo el dato (coste → valor). El vs-S&P vive en el KPI Alpha
+                  (número), la curva (historia) y la mini-franja (comparación con la sombra) —
+                  una cuarta copia en barras no contaba nada nuevo. */}
               {perf && perf.positions.length > 0 && (
-                <div className="border-t px-4 pb-3 pt-2" style={{ borderColor: T.grid }}>
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]" style={{ color: T.muted }}>
-                    <span>Rendimiento desde {perf.since ?? "—"}</span>
-                    <span className={NUMS}>
-                      coste ${money(perf.cost_basis)} → valor ${money(perf.market_value)}
-                    </span>
-                  </div>
-                  <CompareBars
-                    rows={[
-                      { label: "Cartera", value: perf.portfolio_return_pct, color: T.buy },
-                      { label: "S&P 500", value: perf.spy_return_pct ?? 0, color: T.base },
-                    ]}
-                  />
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2 text-[11px]"
+                     style={{ borderColor: T.grid, color: T.muted }}>
+                  <span>Rendimiento desde {perf.since ?? "—"}</span>
+                  <span className={NUMS}>
+                    coste ${money(perf.cost_basis)} → valor ${money(perf.market_value)}
+                  </span>
                 </div>
               )}
             </>
@@ -768,13 +748,21 @@ function SalaRealRoom() {
                   title="Borra el token de sesión de este navegador y vuelve al login.">
             Cerrar sesión
           </button>
+          <button onClick={() => { setMantOpen(!mantOpen); setResetArmed(false); }}
+                  aria-expanded={mantOpen}
+                  className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                  style={{ borderColor: T.ring, color: mantOpen ? T.ink2 : T.muted }}>
+            mantenimiento {mantOpen ? "▴" : "▾"}
+          </button>
           <span className="ml-auto text-right" style={{ color: T.muted }} title={summary?.broker.detail}>
             {dry ? "simulación" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a límite
             (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado
           </span>
         </div>
 
-        {/* ---------- 6 · mantenimiento: reinicio del libro sombra (destructivo) ---------- */}
+        {/* ---------- 6 · mantenimiento: PLEGADO tras Ajustes — un botón destructivo que se usa
+            una vez al mes no merece pantalla permanente. Armar→confirmar intacto. ---------- */}
+        {mantOpen && (
         <div className="mt-4 rounded-lg border px-4 py-3 text-[11.5px]"
              style={{ borderColor: T.ring, background: T.panel }}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -810,6 +798,7 @@ function SalaRealRoom() {
             escaneo redespliega la caja en la cartera nueva.
           </p>
         </div>
+        )}
       </div>
 
       {/* velo de salida hacia la portada */}
@@ -819,166 +808,9 @@ function SalaRealRoom() {
   );
 }
 
-/* ============================== piezas ============================== */
-
-function Kpi({ label, value, sub, tone, big }: {
-  label: string; value: string; sub?: string; tone?: "good" | "bad"; big?: boolean;
-}) {
-  return (
-    <div className="px-4 py-3" style={{ background: T.panel }}>
-      <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>{label}</p>
-      <p className={`mt-1 font-bold leading-none ${NUMS} ${big ? "text-[25px]" : "text-[20px]"}`}
-         style={{ color: tone === "good" ? T.good : tone === "bad" ? T.bad : T.ink }}>
-        {value}
-      </p>
-      {sub && <p className="mt-1 text-[10.5px]" style={{ color: T.muted }}>{sub}</p>}
-    </div>
-  );
-}
-
-function Panel({ title, right, accent, children }: {
-  title: string; right?: React.ReactNode; accent?: string; children: React.ReactNode;
-}) {
-  // h-full + flex-col: en una fila de la rejilla, los dos paneles miden lo mismo
-  // (el vacío se centra en vez de dejar un hueco negro debajo).
-  return (
-    <section className="flex h-full flex-col overflow-hidden rounded-xl border"
-             style={{ borderColor: accent ? `${accent}55` : T.ring, background: T.panel }}>
-      <div className="flex shrink-0 items-center justify-between border-b px-4 py-2"
-           style={{ borderColor: T.grid, background: T.panel2 }}>
-        <h2 className="text-[12px] font-bold tracking-wide" style={{ color: accent ?? T.ink2 }}>{title}</h2>
-        {right}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-/* Aportar / retirar capital del agente. El libro habla DÓLARES (tope de gasto exacto).
-   Modo €: el broker CONVIERTE al aportar (límite ±buffer; simulado en dry-run) y se apunta la
-   imagen final que devuelva — nunca una estimación. Modo $: apunte directo (dólares que ya
-   existen en la cuenta, p. ej. residuales de ventas propias). Retiradas: solo en $. */
-function CapitalForm({ fx, onDone, onError }: {
-  fx: number | null;
-  onDone: (s: RealSummary, msg: string) => void;
-  onError: (msg: string) => void;
-}) {
-  const [amount, setAmount] = useState("");
-  const [cur, setCur] = useState<"EUR" | "USD">("EUR");
-  const [busy, setBusy] = useState(false);
-  const [armed, setArmed] = useState(false);       // modo €: armar → confirmar (conversión real)
-  const v = parseFloat(amount);
-  const valid = Number.isFinite(v) && v !== 0;
-  const est = cur === "EUR" && valid && v > 0 && fx ? v * fx : null;   // SOLO informativo
-
-  useEffect(() => {
-    if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 6000);   // 6 s para arrepentirse
-    return () => clearTimeout(t);
-  }, [armed]);
-
-  const submit = async () => {
-    if (!valid || busy) return;
-    if (cur === "EUR") {
-      if (v <= 0) return onError("En € solo aportaciones positivas — para retirar usa $.");
-      if (!armed) return setArmed(true);           // 1er click: pedir confirmación
-    }
-    setBusy(true);
-    try {
-      const res = cur === "EUR"
-        ? await allocateReal(v, "", "EUR")
-        : await allocateReal(v, "aportación sala real", "USD");
-      const msg = res.allocated
-        ? `Convertidos ${money(v)} € → $${money(res.allocated.usd)} @ ${res.allocated.rate}`
-          + (res.allocated.simulated ? " (simulado)." : ".")
-        : `Capital del agente actualizado: ${v > 0 ? "+" : ""}$${money(v)}.`;
-      onDone(res, msg);
-      setAmount("");
-      setArmed(false);
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Error asignando capital.");
-      setArmed(false);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div>
-      <div className="flex gap-2">
-        <input value={amount}
-               onChange={(e) => { setAmount(e.target.value); setArmed(false); }}
-               onKeyDown={(e) => e.key === "Enter" && submit()}
-               placeholder="0.00" inputMode="decimal" aria-label="Importe"
-               className={`w-full rounded border bg-transparent px-3 py-1.5 text-[13px] outline-none ${NUMS}`}
-               style={{ borderColor: T.grid, color: T.ink }}
-               onFocus={(e) => (e.currentTarget.style.borderColor = T.buy)}
-               onBlur={(e) => (e.currentTarget.style.borderColor = T.grid)} />
-        <div className="flex shrink-0 overflow-hidden rounded border" style={{ borderColor: T.grid }}>
-          {(["EUR", "USD"] as const).map((c) => (
-            <button key={c} onClick={() => { setCur(c); setArmed(false); }}
-                    className="px-2.5 text-[12px] font-bold transition-colors"
-                    style={cur === c ? { background: T.base, color: T.ink } : { color: T.muted }}>
-              {c === "EUR" ? "€" : "$"}
-            </button>
-          ))}
-        </div>
-        <button onClick={submit} disabled={busy || !valid}
-                className="shrink-0 rounded px-4 py-1.5 text-[12px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                style={{ background: armed ? "#66a5f2" : T.buy }}>
-          {busy ? "…" : cur === "EUR" ? (armed ? "Confirmar" : "Convertir y aportar") : "Aportar"}
-        </button>
-      </div>
-      <p className={`mt-1.5 text-[10.5px] leading-snug ${NUMS}`} style={{ color: T.muted }}>
-        {armed && est != null
-          ? `se venderán ${money(v)} € ≈ $${money(est)} (límite al cambio actual) — se apuntará la
-             imagen final que devuelva el broker, comisión incluida`
-          : cur === "EUR" && valid && v > 0
-            ? `se convertirá en el broker al aportar${est != null ? ` · ahora ≈ $${money(est)} (EURUSD ${fx?.toFixed(4)})` : ""}
-               — el libro apunta los $ exactos del fill, no esta estimación`
-            : cur === "EUR"
-              ? "aportaciones en € (positivas) · para retirar usa $"
-              : "negativo = retirar · ninguna orden puede gastar más de lo asignado"}
-      </p>
-    </div>
-  );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="my-auto px-4 py-6 text-center text-[12.5px] leading-relaxed" style={{ color: T.muted }}>
-      {children}
-    </p>
-  );
-}
-
-function Field({ k, v }: { k: string; v: string }) {
-  return (
-    <span className="text-[12px]">
-      <span style={{ color: T.muted }}>{k} </span>
-      <span className={`font-semibold ${NUMS}`} style={{ color: T.ink2 }}>{v}</span>
-    </span>
-  );
-}
-
-function Th({ children, right }: { children: React.ReactNode; right?: boolean }) {
-  return <th className={`px-3 py-1.5 font-semibold ${right ? "text-right" : "text-left"}`}>{children}</th>;
-}
-
-function Td({ children, right, colSpan }: { children: React.ReactNode; right?: boolean; colSpan?: number }) {
-  return <td colSpan={colSpan} className={`px-3 py-2 ${right ? "text-right" : ""}`}>{children}</td>;
-}
-
-function SideTag({ action }: { action: TradeAction }) {
-  const buy = isBuy(action);
-  return (
-    <span className="inline-flex h-[20px] min-w-[20px] items-center justify-center rounded px-1 text-[10.5px] font-bold text-white"
-          style={{ background: buy ? T.buy : T.bad }}
-          title={buy ? `compra (${action})` : `venta (${action})`}>
-      {buy ? "C" : "V"}
-    </span>
-  );
-}
+/* ========================= piezas propias de la página =========================
+   (Panel/Kpi/Empty/Field/Th/Td/SideTag viven en ./ui; CapitalForm y OrderRow — las máquinas
+   armar→confirmar — en sus propios ficheros para poder testearlas en aislamiento.) */
 
 /* Distribución de la cartera: barra apilada (huecos de 2px) + leyenda con etiquetas directas. */
 function Distribution({ summary, equity }: { summary: RealSummary; equity: number }) {
@@ -1036,139 +868,6 @@ function PnlBar({ value, maxAbs, pct }: { value: number | null; maxAbs: number; 
         </span>
       )}
     </span>
-  );
-}
-
-/* Comparativa cartera vs S&P: barras horizontales con signo, escala común, etiqueta directa. */
-function CompareBars({ rows }: { rows: { label: string; value: number; color: string }[] }) {
-  const maxAbs = Math.max(0.01, ...rows.map((r) => Math.abs(r.value)));
-  return (
-    <div className="mt-3 space-y-2">
-      {rows.map((r) => {
-        const w = (Math.abs(r.value) / maxAbs) * 100;
-        return (
-          <div key={r.label} className="flex items-center gap-2 text-[11.5px]">
-            <span className="w-14 shrink-0" style={{ color: T.ink2 }}>{r.label}</span>
-            <span className="relative h-[10px] flex-1 overflow-hidden rounded" style={{ background: T.grid }}>
-              <span className="absolute inset-y-0 left-1/2 w-px" style={{ background: T.base }} />
-              <span className="absolute inset-y-0 rounded"
-                    style={r.value >= 0
-                      ? { left: "50%", width: `${w / 2}%`, background: r.color }
-                      : { right: "50%", width: `${w / 2}%`, background: r.color }} />
-            </span>
-            <span className={`w-14 shrink-0 text-right font-semibold ${NUMS}`} style={{ color: T.ink }}>
-              {r.value > 0 ? "+" : ""}{r.value}%
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function OrderRow({ a, dry, onDecide, expiryDays }: {
-  a: Approval; dry: boolean; onDecide: (id: number, yes: boolean) => Promise<void>;
-  expiryDays: number;
-}) {
-  const [open, setOpen] = useState(false);
-  const [armed, setArmed] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  // el Sí exige doble clic: armar → confirmar (5 s para arrepentirse)
-  useEffect(() => {
-    if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 5000);
-    return () => clearTimeout(t);
-  }, [armed]);
-
-  const yes = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!armed) return setArmed(true);
-    setBusy(true);
-    await onDecide(a.id, true);
-    setBusy(false);
-  };
-  const no = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setBusy(true);
-    await onDecide(a.id, false);
-    setBusy(false);
-  };
-
-  return (
-    <>
-      <tr onClick={() => setOpen(!open)}
-          role="button" tabIndex={0} aria-expanded={open}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); }
-          }}
-          className="cursor-pointer border-t transition-colors hover:bg-white/[0.03] focus-visible:bg-white/[0.05] focus-visible:outline-none"
-          style={{ borderColor: T.grid }}>
-        <Td><SideTag action={a.action} /></Td>
-        <Td>
-          <b className="text-[14px]" style={{ color: T.ink }}>{a.ticker}</b>
-          <span className="ml-2 text-[11px]" style={{ color: T.muted }}>
-            {a.action}{a.sector ? ` · ${a.sector}` : ""}
-          </span>
-        </Td>
-        <Td right><span className={NUMS}>{a.target_weight_pct}%</span></Td>
-        <Td right><span className={NUMS}>{a.est_price ? `$${money(a.est_price)}` : "—"}</span></Td>
-        <Td right><span className={NUMS}>{a.target_price ? `$${money(a.target_price)}` : "—"}</span></Td>
-        <Td right>
-          <span className={`font-semibold ${NUMS}`}
-                style={{ color: a.upside_pct == null ? T.muted : a.upside_pct >= 0 ? T.good : T.bad }}>
-            {a.upside_pct != null ? `${a.upside_pct > 0 ? "+" : ""}${a.upside_pct}%` : "—"}
-          </span>
-        </Td>
-        <Td right>
-          <span className={`inline-block min-w-[30px] rounded px-1.5 py-0.5 text-center text-[11.5px] font-bold ${NUMS}`}
-                style={{ background: T.base, color: T.ink }}>
-            {a.score ?? "—"}
-          </span>
-        </Td>
-        <Td right>
-          <span className="inline-flex gap-1.5">
-            <button onClick={no} disabled={busy}
-                    className="rounded border px-3 py-1.5 text-[11.5px] font-bold transition-colors hover:bg-white/5 disabled:opacity-40"
-                    style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
-              No
-            </button>
-            <button onClick={yes} disabled={busy}
-                    className="rounded px-3 py-1.5 text-[11.5px] font-bold text-white transition-opacity disabled:opacity-40"
-                    style={{ background: armed ? "#66a5f2" : T.buy, minWidth: armed ? undefined : 38 }}>
-              {busy ? "…" : armed ? `Confirmar${dry ? " (sim)" : ""}` : "Sí"}
-            </button>
-          </span>
-        </Td>
-      </tr>
-      {open && (
-        <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-          <Td colSpan={8}>
-            <div className="max-w-[900px] space-y-1.5 whitespace-normal py-1 text-[12.5px] leading-relaxed">
-              {a.thesis && <DetailLine k="Tesis" v={a.thesis} />}
-              {a.edge && <DetailLine k="Ventaja" v={a.edge} />}
-              {a.risk && <DetailLine k="Riesgo" v={a.risk} color={T.warn} />}
-              {a.macro_summary && <DetailLine k="Macro" v={a.macro_summary} dim />}
-              <p className="text-[11px]" style={{ color: T.muted }}>
-                Propuesta {fmtTime(a.created_at)} · caduca{" "}
-                {a.created_at
-                  ? fmtTime(new Date(new Date(a.created_at).getTime() + expiryDays * 86_400_000).toISOString())
-                  : `a los ${expiryDays} días`}
-              </p>
-            </div>
-          </Td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-function DetailLine({ k, v, color, dim }: { k: string; v: string; color?: string; dim?: boolean }) {
-  return (
-    <p style={{ color: dim ? T.muted : T.ink2 }}>
-      <span className="mr-1.5 font-bold" style={{ color: color ?? T.ink }}>{k}:</span>
-      {v}
-    </p>
   );
 }
 
