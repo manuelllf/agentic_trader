@@ -2,8 +2,9 @@
 
 Fuente: **API pública de screener de NASDAQ** (gratis, SIN key) — devuelve TODO el mercado US
 (NYSE+NASDAQ+AMEX, no solo NASDAQ) con market cap, precio y sector en una llamada. Filtramos
-localmente por elegibilidad OBJETIVA (no opinión, fiel al paper): cap, volumen, precio vivo ≥$20
-y dedup de clases de acción (GOOGL/GOOG → la más líquida). Cero listas a mano, cero sesgo.
+localmente por elegibilidad OBJETIVA (no opinión, fiel al paper): volumen ≥300k, precio ≥$5,
+SIN suelo de capitalización, y dedup de clases de acción (GOOGL/GOOG → la más líquida).
+Resultado: ~2.600 nombres. Cero listas a mano, cero sesgo.
 
 Fallback: si NASDAQ falla (red), un SEED offline mínimo solo para no bloquear la maquinaria.
 """
@@ -111,7 +112,7 @@ def _from_nasdaq() -> list[str]:
         vol = _parse_market_cap(row.get("volume", ""))  # mismo parser (número plano)
         if vol is not None and vol < vol_min:
             continue
-        # Precio vivo reciente (lastsale): sin precio → fuera; suelo $20 (higiene, no market cap).
+        # Precio vivo reciente (lastsale): sin precio → fuera; suelo de config (higiene anti-penny).
         price = _parse_market_cap(row.get("lastsale", ""))  # el parser ya quita el '$'
         if price is None or price < price_min:
             continue
@@ -122,7 +123,7 @@ def _from_nasdaq() -> list[str]:
 
 
 def build_universe(force_refresh: bool = False) -> list[str]:
-    """Genera el universo desde NASDAQ (todo el mercado US, filtro objetivo por cap).
+    """Genera el universo desde NASDAQ (todo el mercado US, filtro objetivo de volumen y precio).
 
     Se cachea por día: el primer escaneo de la jornada lo pide a NASDAQ, el resto reutiliza.
     """

@@ -151,6 +151,7 @@ export interface ScanReport {
   mode: "decisión" | "observatorio" | null;   // null = falló antes de saberse el modo
   error: string | null;                        // != null → el escaneo entero falló
   issues: string[];
+  changes?: string[];                          // novedades vs el escaneo anterior (ranking/watchlist)
   scanned: number | null;
   prescored: number | null;
   deep: number | null;

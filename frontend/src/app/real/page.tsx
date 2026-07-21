@@ -898,6 +898,15 @@ function ScanReportPanel({ r }: { r: ScanReport }) {
           )}
           {clean && <span className="font-bold" style={{ color: T.good }}>✓ sin incidencias</span>}
         </div>
+        {(r.changes ?? []).length > 0 && (
+          <ul className="mt-1.5 space-y-0.5">
+            {(r.changes ?? []).map((c) => (
+              <li key={c} style={{ color: T.ink2 }}>
+                <span className="mr-1.5" style={{ color: T.buy }} aria-hidden>›</span>{c}
+              </li>
+            ))}
+          </ul>
+        )}
         {failed && (
           <p className="mt-1.5 font-semibold" style={{ color: "#e66767" }}>
             El escaneo FALLÓ: {r.error}

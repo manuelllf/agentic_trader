@@ -1,8 +1,9 @@
 """Orquestación del escaneo (ranker fundamental híbrido, método whitepaper DeepSeek).
 
 Embudo en 2 pasos para ir rápido y barato sin perder profundidad donde importa:
-  1. universo ENTERO (~1.400 nombres ≥$3B del screener de NASDAQ) — posiciones y watchlist
-     siempre dentro; muestra random de N solo si se desactiva `scan_full_universe` (o en tests)
+  1. universo ENTERO (~2.600 nombres elegibles del screener de NASDAQ: precio ≥$5 y volumen
+     ≥300k, SIN suelo de capitalización) — posiciones y watchlist siempre dentro; el semanal
+     usa una muestra ROTATORIA de N (`scan_sample_size`)
   2. outlook macro forward (1 llamada V4-Pro)
   3. PASO 1 — pre-score RÁPIDO (Flash) de todo el universo en paralelo → ranking 1-100
   4. PASO 2 — informe PROFUNDO (V4-Pro) + price target solo en el top ~20 finalistas
@@ -16,7 +17,8 @@ Embudo en 2 pasos para ir rápido y barato sin perder profundidad donde importa:
 
 El dinero lo calcula el código; el LLM solo decide los pesos. El coste REAL de cada
 escaneo (Flash prescoring de todo el universo + V4-Pro en finalistas, incl. tokens de razonamiento)
-se acumula desde el `usage` de OpenRouter y se devuelve en result["cost"] — ~$0.3-0.5/escaneo full.
+se acumula desde el `usage` de OpenRouter y se devuelve en result["cost"] — ~$1 el full
+(medido: $0.97 con ~2.600 nombres); el semanal (muestra de 500), bastante menos.
 
 Este módulo solo ORQUESTA. La matemática de cartera (selección, pesos, diff a trades) vive en
 `app.portfolio_service`; la ejecución del libro sombra, en `app.execution_service`.
@@ -54,13 +56,14 @@ _REPORT_KEY = "last_scan_report"   # informe del último escaneo (JSON en Meta; 
 
 
 def _write_scan_report(db: Session, *, mode: str | None, result: dict | None,
-                       issues: list[str], error: str | None = None) -> None:
+                       issues: list[str], error: str | None = None,
+                       changes: list[str] | None = None) -> None:
     """Persiste el informe del último escaneo en Meta. Es la fuente de verdad de la web:
     el estado en memoria del runner manual no sobrevive a un reinicio y el cron ni lo toca."""
     r = result or {}
     report = {
         "at": datetime.now(UTC).isoformat(),
-        "mode": mode, "error": error, "issues": issues,
+        "mode": mode, "error": error, "issues": issues, "changes": changes or [],
         "scanned": r.get("scanned"), "prescored": r.get("prescored"), "deep": r.get("deep"),
         "cost": r.get("cost"),
     }
@@ -129,6 +132,11 @@ def _sector(data_by_t: dict, ticker: str) -> str:
     """Sector de un ticker (o 'UCITS' si es un instrumento del allowlist, que no se puntúa)."""
     d = data_by_t.get(ticker)
     return d.sector if d else "UCITS"
+
+
+def _lista(ts: list[str], n: int = 10) -> str:
+    """Lista de tickers legible y acotada: 'A, B, C y 4 más'."""
+    return ", ".join(ts[:n]) + (f" y {len(ts) - n} más" if len(ts) > n else "")
 
 
 def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, finalists: list,
@@ -266,6 +274,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
 
     # 5) Persistir el leaderboard: SOLO los analizados a fondo (el pre-score vive en la watchlist).
     #    La Proposal vigente NO se borra aquí: solo un escaneo con decisión la reemplaza (paso 8).
+    #    Antes de borrar, foto del ranking/watchlist previos: el reemplazo es total y sin este
+    #    diff las NOVEDADES (qué entra, qué sale) serían invisibles en el informe.
+    prev_ranking = {s.ticker for s in db.query(Score).all()}
+    prev_watch = set(watchlist_mod.tickers(db))
     db.query(Score).delete()
     for ticker, d in deep.items():
         data = data_by_t[ticker]
@@ -366,6 +378,22 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # del paso 5 pudo re-meter posiciones re-analizadas; tras decidir, también lo recién comprado).
     watchlist_mod.drop(db, {p.ticker for p in ledger.open_positions(db)})
 
+    # Novedades vs el escaneo anterior — van al informe (el panel las pinta en su línea).
+    changes: list[str] = []
+    entran = sorted(set(deep) - prev_ranking)
+    salen = sorted(prev_ranking - set(deep))
+    if entran or salen:
+        partes = ([f"entran {_lista(entran)}"] if entran else []) \
+            + ([f"salen {_lista(salen)}"] if salen else [])
+        changes.append(f"Ranking ({len(deep)} a fondo): " + " · ".join(partes))
+    watch_now = set(watchlist_mod.tickers(db))
+    w_in = sorted(watch_now - prev_watch)
+    w_out = sorted(prev_watch - watch_now)
+    if w_in or w_out:
+        partes = ([f"entra {_lista(w_in)}"] if w_in else []) \
+            + ([f"sale {_lista(w_out)}"] if w_out else [])
+        changes.append(f"Watchlist ({len(watch_now)} vigilados): " + " · ".join(partes))
+
     result = {
         "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
         "watchlist": len(watchlist_mod.tickers(db)),
@@ -375,7 +403,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         "cost": _llm_usage(prescore_llm, deep_llm),  # coste REAL del escaneo (Flash + V4-Pro)
     }
     try:   # el informe jamás debe tirar un escaneo ya completado
-        _write_scan_report(db, mode=modo, result=result, issues=issues)
+        _write_scan_report(db, mode=modo, result=result, issues=issues, changes=changes)
     except Exception:
         logger.exception("No se pudo persistir el informe del escaneo.")
     return result

@@ -136,8 +136,8 @@ def _last_report(db) -> dict:
 
 
 def test_scan_writes_persistent_report(db, monkeypatch) -> None:
-    """Cada escaneo (observatorio y decisión) deja su informe en Meta con modo y contadores;
-    con el pipeline stubeado, cero incidencias."""
+    """Cada escaneo (observatorio y decisión) deja su informe en Meta con modo, contadores y
+    novedades; con el pipeline stubeado, cero incidencias."""
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
 
@@ -145,10 +145,13 @@ def test_scan_writes_persistent_report(db, monkeypatch) -> None:
     rep = _last_report(db)
     assert rep["mode"] == "observatorio" and rep["error"] is None
     assert rep["issues"] == [] and rep["deep"] == 1
+    assert any("entran AAA" in c for c in rep["changes"])   # primer ranking: AAA es novedad
 
     scan_service.run_scan_and_store(db, sample_size=5)
     rep = _last_report(db)
     assert rep["mode"] == "decisión" and rep["error"] is None
+    # la decisión compró AAA → sale de la watchlist ("lo que vigilo y no tengo")
+    assert any("Watchlist" in c and "sale AAA" in c for c in rep["changes"])
 
 
 def test_scan_report_records_issues(db, monkeypatch) -> None:
@@ -167,6 +170,24 @@ def test_scan_report_records_issues(db, monkeypatch) -> None:
 
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)
     assert any("BBB" in i and "sin datos" in i for i in _last_report(db)["issues"])
+
+
+def test_scan_report_registra_novedades_del_ranking(db, monkeypatch) -> None:
+    """Entre dos escaneos, el informe dice qué ENTRA y qué SALE del ranking — el reemplazo
+    de la tabla Score era mudo y las novedades invisibles."""
+    from app import watchlist as watchlist_mod
+    from app.screener import universe as universe_mod
+
+    _stub_scan(monkeypatch)
+    ledger.allocate(db, 1000)
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)     # ranking = {AAA}
+    watchlist_mod.drop(db, {"AAA"})          # fuera de vigilancia → el 2º escaneo no la arrastra
+
+    monkeypatch.setattr(universe_mod, "build_universe", lambda: ["BBB"])
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)     # ranking = {BBB}
+
+    texto = " ".join(_last_report(db)["changes"])
+    assert "entran BBB" in texto and "salen AAA" in texto
 
 
 def test_scan_failure_writes_report(db) -> None:
