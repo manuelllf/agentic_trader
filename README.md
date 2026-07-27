@@ -25,13 +25,13 @@ y rebalancear cada semana sería operar su propio ruido.
 Dos modos, con libros de capital separados:
 
 - **Sala sombra** — cartera simulada de seguimiento; mide el método frente al S&P 500 sin
-  dinero real.
+  dinero real, neto de comisiones simuladas.
 - **Sala real** — conectada a Interactive Brokers. El agente *propone*; el usuario decide
   (Sí / No) cada orden. Órdenes a límite y, por defecto, en modo simulación.
 
 ## Decisiones de diseño
 
-Las cuatro que más forma le dan al sistema:
+Las que más forma le dan al sistema:
 
 - **El universo se fotografía con la bolsa cerrada.** El volumen que publica un screener
   durante la sesión es el *acumulado del día en curso*, no una media: filtrar en caliente 45
@@ -48,6 +48,14 @@ Las cuatro que más forma le dan al sistema:
 - **Cada escaneo deja traza.** Una tabla de auditoría guarda por qué cada nombre llegó hasta
   donde llegó y a qué precio, con 90 días de retención. Es telemetría para evaluación offline
   y **nunca vuelve a un prompt**: almacenar no es inyectar.
+- **La simulación paga comisiones.** El libro simulado descuenta la comisión de cada compra y
+  la incorpora al coste medio, igual que hace el bróker. Sin eso, la rentabilidad simulada
+  está inflada y cualquier comparación entre operar más o menos a menudo sale sesgada a favor
+  de operar más — que es justo el sesgo que un simulador no se puede permitir.
+- **La API tiene dos caras.** El mismo endpoint responde distinto con sesión y sin ella, según
+  una regla única: *cómo se comporta el sistema es público; qué nombres elige, no*. Cuántas
+  acciones sobreviven a cada etapa, por sector, es comportamiento; un ticker con su score
+  sería un feed de señales. Las posiciones sin sesión salen anonimizadas.
 
 ## Stack
 
@@ -83,7 +91,8 @@ uv sync                                   # https://docs.astral.sh/uv/
 uv run uvicorn app.main:app --reload
 ```
 
-Documentación OpenAPI en URL_PROD/docs
+La documentación OpenAPI (`/docs`, `/redoc`, `/openapi.json`) solo se sirve en desarrollo: con
+`APP_PASSWORD` definida queda desactivada, para no publicar la superficie de la API.
 
 Variables de entorno en `backend/.env` (no versionado). Para el escaneo con LLM hace falta
 `OPENROUTER_API_KEY`; para la sala real, las credenciales OAuth de IBKR. Sin ellas, el
