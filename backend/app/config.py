@@ -96,6 +96,15 @@ class Settings(BaseSettings):
     watchlist_max: int = 50          # tope de nombres (protege la exploración random)
     watchlist_stale_days: int = 28   # caduca si no vuelve a puntuar alto en N días
 
+    # Comisión SIMULADA (tarifa fija de IBKR para acciones US). Solo la cobran los libros
+    # simulados — sombra y real-en-dry-run —; con bróker en vivo se apunta la de IBKR, no esta.
+    # Sin ella, la curva que se publica mediría una rentabilidad bruta que nadie puede obtener:
+    # a ~$2.000 y ~10 operaciones por rebalanceo, el suelo por orden ya pesa ~0,5% al mes.
+    # Poner per_share y min a 0 desactiva el modelo. Ver `app/commissions.py`.
+    commission_per_share: float = 0.005   # $/acción
+    commission_min: float = 1.0           # suelo por orden
+    commission_max_pct: float = 1.0       # techo: % del importe de la orden
+
     # Ejecución en la cuenta REAL. DRY_RUN por defecto: simula el fill, no envía órdenes.
     # NADA se ejecuta sin la aprobación explícita del usuario (Sí/No) — ni en dry-run.
     dry_run: bool = True

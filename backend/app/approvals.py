@@ -183,7 +183,7 @@ def _apply_result(db: Session, a: Approval, side: str, result, requested: Decima
         total = result.filled_quantity
         if total is None:
             total = requested if status == "filled" else ZERO
-        _record_fill(db, a, side, D(total), result.fill_price)
+        _record_fill(db, a, side, D(total), result.fill_price, getattr(result, "fees", None))
         a.status = "executed" if status == "filled" else "working"
         a.result_msg = result.message
     elif status == "working":
@@ -194,12 +194,17 @@ def _apply_result(db: Session, a: Approval, side: str, result, requested: Decima
         a.result_msg = result.message
 
 
-def _record_fill(db: Session, a: Approval, side: str, total_filled: Decimal, avg_price) -> None:  # noqa: ANN001
+def _record_fill(db: Session, a: Approval, side: str, total_filled: Decimal, avg_price,  # noqa: ANN001
+                 fees=None) -> None:  # noqa: ANN001
     """Registra en el libro real SOLO el delta de acciones nuevo. Idempotente y cent-exacto.
 
     IBKR reporta el precio medio ACUMULADO de la orden. Si ya registramos `already` acciones
     a un medio anterior, el delta se registra al precio que deja nuestro coste total IGUAL al
     de IBKR: (total·avg_nuevo − already·avg_previo) / delta. Así el libro cuadra al céntimo.
+
+    `fees` viene del bróker: en dry-run es la comisión SIMULADA; en vivo, None mientras IBKR
+    no la devuelva (no se inventa la comisión de una cuenta real). Se apunta una sola vez,
+    en el primer trade de la orden: la tarifa fija es POR ORDEN, no por fill parcial.
 
     Atomicidad: el contador (a.quantity) se actualiza ANTES de record_buy/sell — misma sesión,
     mismo commit. O se persisten trade+contador juntos, o ninguno (el rollback del caller
@@ -219,12 +224,13 @@ def _record_fill(db: Session, a: Approval, side: str, total_filled: Decimal, avg
     else:
         px = avg_new
 
+    fee = D(fees) if (fees is not None and already <= ZERO) else ZERO   # una vez por orden
     a.quantity = total_filled
     a.fill_price = to_cents(avg_new)   # medio acumulado (lo que el usuario espera ver)
     if side == "buy":
-        ledger.record_buy(db, a.ticker, delta, px, a.order_ref, book=BOOK_REAL)
+        ledger.record_buy(db, a.ticker, delta, px, a.order_ref, fees=fee, book=BOOK_REAL)
     else:
-        ledger.record_sell(db, a.ticker, delta, px, a.order_ref, book=BOOK_REAL)
+        ledger.record_sell(db, a.ticker, delta, px, a.order_ref, fees=fee, book=BOOK_REAL)
 
 
 def _get_pending(db: Session, approval_id: int) -> Approval:

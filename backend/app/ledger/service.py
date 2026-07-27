@@ -20,6 +20,7 @@ from decimal import ROUND_DOWN, Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import commissions
 from app.ledger.money import D, to_cents
 from app.models import BOOK_SHADOW, Allocation, Position, Trade
 
@@ -116,12 +117,18 @@ def record_buy(
                   order_ref=order_ref, book=book)
     db.add(trade)
 
+    # Coste medio CON la comisión dentro, igual que IBKR: la comisión forma parte del coste de
+    # adquisición (también el fiscal), no es un cargo suelto. Si se dejara fuera, la comisión
+    # de compra saldría de la caja pero no aparecería en ningún P&L: recién comprada la posición
+    # marcaría 0 cuando en realidad se está por debajo justo en lo que costó entrar.
+    lote = qty * px + fee
     pos = _position(db, ticker, book)
     if pos is None:
-        db.add(Position(ticker=ticker, quantity=qty, avg_cost=px, order_ref=order_ref, book=book))
+        db.add(Position(ticker=ticker, quantity=qty, avg_cost=lote / qty,
+                        order_ref=order_ref, book=book))
     else:
         new_qty = pos.quantity + qty
-        pos.avg_cost = (pos.quantity * pos.avg_cost + qty * px) / new_qty  # coste medio ponderado
+        pos.avg_cost = (pos.quantity * pos.avg_cost + lote) / new_qty   # medio ponderado
         pos.quantity = new_qty
     db.commit()
     db.refresh(trade)
@@ -259,12 +266,19 @@ def size_to_weight(
     delta = tgt_qty - cur_qty
 
     if action in ("comprar", "ampliar"):
-        if delta <= ZERO:
+        # "Ya cubre el objetivo" con la tolerancia de UNA comisión: cobrando fees el peso exacto
+        # es inalcanzable —lo que falta para el objetivo es justamente lo que costó operar—, y
+        # sin esta tolerancia reejecutar una propuesta perseguiría ese pico una y otra vez.
+        if delta <= ZERO or to_cents(delta * price) <= commissions.commission(tgt_qty, price, book):
             raise InsufficientFunds(
                 f"{ticker}: la posición ya cubre el peso objetivo ({target_weight_pct}%)."
             )
-        if to_cents(delta * price) > spendable:  # recorta a la caja LIBRE (no comprometida)
-            delta = (spendable / price).quantize(_SHARES, rounding=ROUND_DOWN)
+        # Techo por caja LIBRE (no comprometida) CON su comisión reservada. Se aplica siempre,
+        # no solo cuando el objetivo se pasa: al 100% invertido el objetivo cae JUSTO en la caja
+        # y la comisión la desbordaba por céntimos, tumbando la compra entera.
+        cabe = commissions.afford_quantity(spendable, price, _SHARES, book)
+        if delta > cabe:
+            delta = cabe
             if delta <= ZERO:
                 raise InsufficientFunds(
                     f"Caja insuficiente para comprar {ticker}"

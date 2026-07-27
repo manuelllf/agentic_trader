@@ -13,6 +13,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import commissions
 from app.ledger import service as ledger
 from app.ledger.money import D, to_cents
 from app.models import BOOK_SHADOW, Proposal
@@ -51,16 +52,20 @@ def execute_proposal_item(db: Session, ticker: str) -> dict:
         db, BOOK_SHADOW, ticker, action, item.get("target_weight_pct") or 0.0, price,
         live_prices=tracking.live_prices)
     ref = f"shadow-prop{prop.id}"
+    # La sombra no tiene bróker que le cobre, así que la comisión la pone el simulador: sin
+    # ella la curva que se publica sería bruta y ninguna cartera real podría replicarla.
+    fee = commissions.commission(qty, price)
     if side == "buy":
-        ledger.record_buy(db, ticker, qty, price, ref, book=BOOK_SHADOW)
+        ledger.record_buy(db, ticker, qty, price, ref, fees=fee, book=BOOK_SHADOW)
     else:
-        ledger.record_sell(db, ticker, qty, price, ref, book=BOOK_SHADOW)
+        ledger.record_sell(db, ticker, qty, price, ref, fees=fee, book=BOOK_SHADOW)
 
     verb = "Compra" if side == "buy" else "Venta"
     return {
         "ok": True, "ticker": ticker, "side": side,
-        "quantity": str(qty), "price": str(to_cents(price)),
-        "message": f"{verb} {qty} {ticker} @ ${to_cents(price)} (sombra).",
+        "quantity": str(qty), "price": str(to_cents(price)), "fees": str(fee),
+        "message": f"{verb} {qty} {ticker} @ ${to_cents(price)} (sombra"
+                   + (f", comisión ${fee})." if fee else ")."),
     }
 
 

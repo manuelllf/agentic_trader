@@ -75,7 +75,10 @@ def test_execute_proposal_all_sells_before_buys(db, monkeypatch) -> None:
 
     pos = {p.ticker: p for p in ledger.open_positions(db, BOOK_SHADOW)}
     assert set(pos) == {"NEW"}
-    assert pos["NEW"].quantity == Decimal("15.0000")     # 1500 / 100
+    # 14,98 y no 15: la sombra COBRA comisión ($1 de suelo por orden), así que la venta deja
+    # 1499 de caja y la compra tiene que reservar su propio dólar. Un libro que operase gratis
+    # publicaría una rentabilidad que ninguna cuenta puede replicar.
+    assert pos["NEW"].quantity == Decimal("14.9800")
     assert ledger.available_cash(db, BOOK_SHADOW) == Decimal("0.00")  # sin céntimos sueltos
 
     # La venta quedó registrada ANTES que la compra (orden explícito, no el de la propuesta).
@@ -168,7 +171,7 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
 
     pos = {p.ticker: p for p in ledger.open_positions(db, BOOK_SHADOW)}
     assert set(pos) == {"AAA"}                      # OLD se vendió sola, AAA se compró sola
-    assert pos["AAA"].quantity == Decimal("15.0000")  # 1500 (equity con OLD a 100) / 100
+    assert pos["AAA"].quantity == Decimal("14.9800")  # 1500 − las 2 comisiones de $1, / 100
     assert ledger.available_cash(db, BOOK_SHADOW) == Decimal("0.00")
 
     # order_ref filtra el trade semilla (la compra inicial de OLD, previa al escaneo).
@@ -182,7 +185,7 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
     assert again["executed"] == []
     assert ledger.available_cash(db, BOOK_SHADOW) == Decimal("0.00")
     assert [(p.ticker, p.quantity) for p in ledger.open_positions(db, BOOK_SHADOW)] == \
-        [("AAA", Decimal("15.0000"))]
+        [("AAA", Decimal("14.9800"))]
 
 
 def test_scan_failure_in_autoexec_never_fails_the_scan(db, monkeypatch) -> None:

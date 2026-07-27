@@ -31,6 +31,9 @@ class DryRunBroker:
             )
         px = to_cents(D(prices[ticker]))
         limit = marketable_limit(px, side, settings.limit_buffer_pct)
+        # SIN comisión simulada a propósito: este broker mueve el libro REAL, cuya cuenta está
+        # en plan TIERED. Ponerle la tarifa fija del simulador apuntaría un coste que esa cuenta
+        # no paga. `fees` se queda en None hasta que el tiered (o el propio IBKR) lo llene.
         # En simulación el fill es instantáneo y completo al precio de referencia (~el toque).
         return BrokerResult(
             ok=True, fill_price=px, simulated=True, status="filled",

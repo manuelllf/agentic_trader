@@ -110,3 +110,77 @@ def test_size_to_weight_clamps_to_cash(db) -> None:
     assert service.available_cash(db, models.BOOK_SHADOW) >= Decimal("0.00")
     with pytest.raises(InsufficientFunds):   # ya cubre el peso objetivo
         service.size_to_weight(db, models.BOOK_SHADOW, "AAA", "comprar", 100, Decimal("30.01"))
+
+
+# ---- comisión simulada (solo libro sombra) ----------------------------------
+
+def test_comision_sigue_la_tarifa_fija_de_ibkr() -> None:
+    """$0,005/acción con suelo de $1 y TECHO del 1% del importe. El techo manda sobre el suelo:
+    el propio tarifario de IBKR pone de ejemplo 10 acciones a $0,20 → $0,02, no $1."""
+    from app import commissions
+
+    assert commissions.commission(10, Decimal("0.20")) == Decimal("0.02")   # techo 1% gana
+    assert commissions.commission(10, Decimal("100")) == Decimal("1.00")    # suelo de $1
+    assert commissions.commission(1000, Decimal("100")) == Decimal("5.00")  # 0,005 × 1000
+    assert commissions.commission(0, Decimal("100")) == Decimal("0")
+
+
+def test_el_libro_real_no_lleva_comision_simulada() -> None:
+    """La cuenta real va en plan TIERED: ponerle la tarifa fija apuntaría un coste que esa
+    cuenta no paga. Su comisión llegará del bróker, no de este modelo."""
+    from app import commissions
+
+    assert commissions.commission(10, Decimal("100"), models.BOOK_SHADOW) == Decimal("1.00")
+    assert commissions.commission(10, Decimal("100"), models.BOOK_REAL) == Decimal("0")
+
+
+def test_la_compra_reserva_su_comision_y_no_revienta(db) -> None:
+    """Al 100% invertido el objetivo cae JUSTO en la caja libre; si el sizing no reservase la
+    comisión, `record_buy` rechazaría la compra entera por céntimos."""
+    service.allocate(db, 1000)
+    qty, side = service.size_to_weight(db, models.BOOK_SHADOW, "AAA", "comprar", 100, Decimal("100"))
+    assert side == "buy" and qty == Decimal("9.9900")          # 999 / 100, con $1 reservado
+
+    from app import commissions
+    fee = commissions.commission(qty, Decimal("100"))
+    service.record_buy(db, "AAA", qty, Decimal("100"), order_ref="t", fees=fee,
+                       book=models.BOOK_SHADOW)
+    assert service.available_cash(db, models.BOOK_SHADOW) == Decimal("0.00")
+
+
+def test_no_persigue_el_pico_que_deja_la_comision(db) -> None:
+    """Tras comprar, la posición queda por debajo del objetivo EXACTAMENTE en lo que costó
+    operar. Reintentar no debe comprar ese pico: sería perseguir la propia comisión."""
+    from app import commissions
+
+    service.allocate(db, 1000)
+    qty, _ = service.size_to_weight(db, models.BOOK_SHADOW, "AAA", "comprar", 100, Decimal("100"))
+    service.record_buy(db, "AAA", qty, Decimal("100"), order_ref="t",
+                       fees=commissions.commission(qty, Decimal("100")), book=models.BOOK_SHADOW)
+
+    with pytest.raises(InsufficientFunds):
+        service.size_to_weight(db, models.BOOK_SHADOW, "AAA", "comprar", 100, Decimal("100"))
+
+
+def test_el_coste_medio_lleva_la_comision_dentro_como_ibkr(db) -> None:
+    """15 acciones a $70 = $1.050 de acciones + $1 de comisión → salen $1.051 de caja y el coste
+    medio queda en $70,0667, no en $70. Es la convención de IBKR (la comisión forma parte del
+    coste de adquisición): sin ella, la comisión saldría de la caja y no aparecería en ningún
+    P&L — recién comprada la posición marcaría 0 estando por debajo justo en lo que costó."""
+    from app import commissions
+
+    service.allocate(db, 2000)
+    fee = commissions.commission(15, Decimal("70"))
+    assert fee == Decimal("1.00")                      # suelo por orden (0,005×15 = $0,075)
+
+    service.record_buy(db, "ASTS", 15, Decimal("70"), order_ref="t", fees=fee,
+                       book=models.BOOK_SHADOW)
+    pos = service.open_positions(db, models.BOOK_SHADOW)[0]
+    assert service.available_cash(db, models.BOOK_SHADOW) == Decimal("949.00")   # 2000 − 1051
+    assert pos.avg_cost.quantize(Decimal("0.0001")) == Decimal("70.0667")
+
+    # Y al vender al mismo precio se pierde EXACTAMENTE las dos comisiones, no cero.
+    fee_venta = commissions.commission(15, Decimal("70"))
+    service.record_sell(db, "ASTS", 15, Decimal("70"), order_ref="t2", fees=fee_venta,
+                        book=models.BOOK_SHADOW)
+    assert service.snapshot(db, models.BOOK_SHADOW).realized_pnl == Decimal("-2.00")

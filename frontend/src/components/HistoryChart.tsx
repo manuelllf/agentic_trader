@@ -4,10 +4,13 @@
  * Curva histórica: cartera vs S&P 500 en índice base 100 (los flujos no cuentan como
  * rentabilidad — lo descuenta el backend). SVG propio, sin dependencias.
  *
- * Un solo eje: ambas series re-basadas a 100 al inicio de la ventana elegida (1M/3M/6M/Todo),
+ * Un solo eje: ambas series re-basadas a 100 al inicio de la ventana elegida (1S/1M/Todo),
  * así el rango corto compara "desde entonces" y no arrastra niveles de la inauguración.
  * El S&P va en gris DISCONTINUO a propósito (referencia, no una serie par): identidad por
  * trazo + etiqueta directa + leyenda, nunca solo por color.
+ *
+ * Los rangos llegan hasta 1 mes y ya: el libro nació el 18-jul-2026, así que un YTD, un anual
+ * o un 6M no medirían nada — enseñarían meses vacíos con pinta de resultado.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -15,9 +18,8 @@ import { money } from "@/lib/format";
 import type { HistoryPoint } from "@/lib/types";
 
 const RANGES = [
+  { key: "1S", days: 7 },
   { key: "1M", days: 31 },
-  { key: "3M", days: 92 },
-  { key: "6M", days: 183 },
   { key: "Todo", days: Infinity },
 ] as const;
 

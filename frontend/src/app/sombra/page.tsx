@@ -99,6 +99,8 @@ export default function SombraDashboard() {
   const [q, setQ] = useState("");                                // buscador del ranking
   const [sectorF, setSectorF] = useState<string | null>(null);   // filtro de sector del ranking
   const [authed, setAuthed] = useState(false);   // sesión detectada en el último refresco
+  const chartBox = useRef<HTMLDivElement | null>(null);   // contenedor del SVG que se exporta
+  const [exportMsg, setExportMsg] = useState("");
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const alive = useRef(true);                    // guard de desmontaje (mismo patrón que portada)
 
@@ -152,6 +154,41 @@ export default function SombraDashboard() {
       if (timer.current) clearInterval(timer.current);
     };
   }, [refresh]);
+
+  /** Descarga la curva como TARJETA: cabecera + gráfica + pie legal, en una sola imagen. El
+   *  descargo tiene que viajar DENTRO del PNG — en el texto del post se pierde al reenviarlo. */
+  const exportarTarjeta = useCallback(async (preset: "x" | "linkedin") => {
+    const svg = chartBox.current?.querySelector("svg");
+    if (!svg) return;
+    setExportMsg("Componiendo…");
+    try {
+      const { downloadChartCard } = await import("@/lib/exportCard");
+      const hoy = new Date();
+      await downloadChartCard({
+        svg: svg as SVGSVGElement,
+        preset,
+        title: "Agentic Trader · cartera sombra vs S&P 500",
+        subtitle: perf?.since
+          ? `desde el ${fmtDay(perf.since)} · datos a ${fmtDay(hoy.toISOString().slice(0, 10))}`
+          : `datos a ${fmtDay(hoy.toISOString().slice(0, 10))}`,
+        stats: [
+          { label: "CARTERA", value: `${sign(perf?.portfolio_return_pct ?? 0)}${perf?.portfolio_return_pct ?? 0}%`,
+            color: (perf?.portfolio_return_pct ?? 0) >= 0 ? "#059669" : "#e11d48" },
+          { label: "S&P 500", value: `${sign(perf?.spy_return_pct ?? 0)}${perf?.spy_return_pct ?? 0}%`,
+            color: "#64748b" },
+          ...(perf?.alpha_pct != null
+            ? [{ label: "ALPHA", value: `${sign(perf.alpha_pct)}${perf.alpha_pct} pp`,
+                 color: perf.alpha_pct >= 0 ? "#059669" : "#e11d48" }]
+            : []),
+        ],
+        footer: "No constituye recomendación de inversión · operaciones simuladas, sin dinero real · rentabilidad neta de comisiones simuladas",
+        filename: `agentic-trader-${hoy.toISOString().slice(0, 10)}`,
+      });
+      setExportMsg("");
+    } catch (e) {
+      setExportMsg(e instanceof Error ? e.message : "No se pudo exportar.");
+    }
+  }, [perf]);
 
   const equity = ledger ? Number(ledger.equity) : 0;
   const heldSet = new Set((ledger?.positions ?? []).map((p) => p.ticker));
@@ -265,7 +302,29 @@ export default function SombraDashboard() {
               )}
               {hist.length >= 2 && (
                 <div className="mt-3">
-                  <HistoryChart points={hist} />
+                  <div ref={chartBox}>
+                    <HistoryChart points={hist} />
+                  </div>
+                  {/* Un formato por red: cada una recorta a su ratio, y lo que no puede
+                      perderse en el recorte es justamente la cabecera y el pie legal. */}
+                  <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+                    {exportMsg && <span className="mr-auto text-[11px] text-slate-400">{exportMsg}</span>}
+                    <span className="text-[11px] text-slate-400">Exportar tarjeta</span>
+                    {([["x", "X", "16:9 · 1600×900"], ["linkedin", "LinkedIn", "1,91:1 · 1200×627"]] as const)
+                      .map(([key, label, ratio]) => (
+                        <button
+                          key={key} onClick={() => exportarTarjeta(key)}
+                          title={`PNG ${ratio}, con cabecera, cifras y descargo legal dentro de la imagen`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+                                  strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          {label}
+                        </button>
+                      ))}
+                  </div>
                 </div>
               )}
             </div>

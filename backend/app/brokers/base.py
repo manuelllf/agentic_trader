@@ -39,6 +39,10 @@ class BrokerResult:
     status: str = "filled"       # filled | partial | working | rejected
     order_id: str | None = None  # id de la orden en IBKR (para reconciliar después)
     filled_quantity: Decimal | None = None  # cantidad realmente ejecutada (acumulada)
+    # Comisión REAL de la orden, la que cobra el bróker. None mientras no la devuelva: la
+    # cuenta va en plan TIERED y no se estima (la fija de `app.commissions` es del libro
+    # SOMBRA, que es simulado; ver la cabecera de ese módulo).
+    fees: Decimal | None = None
 
 
 def marketable_limit(reference: Decimal, side: str, buffer_pct: float) -> Decimal:
