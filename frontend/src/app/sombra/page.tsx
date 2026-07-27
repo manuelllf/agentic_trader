@@ -453,6 +453,23 @@ export default function SombraDashboard() {
                   {proposal != null && (
                     <p className="mt-2 tabular-nums text-slate-400">objetivo en caja {proposal.cash_target_pct}%</p>
                   )}
+                  {(proposal?.omitted ?? []).length > 0 && (
+                    // Los que se quedaron fuera del top-10. Fondear 5 de 10 obliga a descartar
+                    // 5, así que el interés no es el "no" sino el motivo escrito.
+                    <details className="mt-2 border-t border-slate-100 pt-2">
+                      <summary className="cursor-pointer list-none text-[11px] text-slate-400 hover:text-slate-600">
+                        se quedaron fuera {proposal?.omitted?.length} de los seleccionados ▾
+                      </summary>
+                      <div className="mt-1.5 space-y-1">
+                        {(proposal?.omitted ?? []).map((o) => (
+                          <p key={o.ticker} className="text-[11.5px] leading-relaxed text-slate-500">
+                            <b className="font-semibold text-slate-700">{o.ticker}</b>
+                            {o.reason ? ` — ${o.reason}` : ""}
+                          </p>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                   {proposal?.macro_summary && (
                     <p className="mt-2 border-t border-slate-100 pt-2 text-[11.5px] italic leading-relaxed text-slate-500">
                       “{proposal.macro_summary}”

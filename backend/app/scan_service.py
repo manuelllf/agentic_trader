@@ -219,7 +219,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # aunque el escaneo reventase a mitad, y esos nombres no volvían hasta la siguiente vuelta.
 
     # 2) Outlook macro forward (V4-Pro, 1 llamada).
-    macro = macro_mod.get_macro_outlook(deep_llm)
+    macro = macro_mod.get_macro_outlook(deep_llm, db)
     macro_block = macro_mod.outlook_prompt_block(macro)
     prior = {t: watchlist_mod.thesis_for(db, t) for t in always}
 
@@ -397,6 +397,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             cash_target_pct=construction.cash_pct,
             macro_summary=macro_line,
             items=items,
+            omitted=[{"ticker": o.ticker, "reason": o.reason} for o in construction.omitted],
         ))
         db.commit()
         # Sombra: se ejecuta SOLA, sin botones — dinero simulado, cero riesgo. Ventas antes que
@@ -507,8 +508,10 @@ def recheck(db: Session) -> dict:
 
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
     db.query(Proposal).delete()
-    db.add(Proposal(cash_target_pct=construction.cash_pct,
-                    macro_summary=macro_block, items=items))
+    db.add(Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_block,
+                    items=items,
+                    omitted=[{"ticker": o.ticker, "reason": o.reason}
+                             for o in construction.omitted]))
     db.commit()
     try:
         from app import approvals as approvals_mod
@@ -535,7 +538,7 @@ def redeep(db: Session) -> dict:
     watch = set(watchlist_mod.tickers(db))
 
     deep_llm = get_llm()
-    macro = macro_mod.get_macro_outlook(deep_llm)            # macro recién calculado
+    macro = macro_mod.get_macro_outlook(deep_llm, db)         # macro recién calculado
     macro_block = macro_mod.outlook_prompt_block(macro)
 
     def _one(ticker: str):

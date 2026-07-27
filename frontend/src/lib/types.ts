@@ -69,6 +69,9 @@ export interface Proposal {
   cash_target_pct: number;
   macro_summary: string;
   items: ProposalItem[];
+  /** Candidatos seleccionados que el constructor NO fondeó, con el motivo en una línea.
+   *  Fondear 5 de 10 obliga a dejar 5 fuera: esto distingue criterio de pattern-matching. */
+  omitted?: { ticker: string; reason: string }[];
 }
 
 // Sin sesión, el backend anonimiza cada posición (label + P&L, sin ticker ni importes) para no

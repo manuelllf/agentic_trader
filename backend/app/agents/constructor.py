@@ -32,10 +32,15 @@ SYSTEM = (
     "context and thesis on their own merits. Keep existing holdings' weights stable unless their "
     "thesis has changed (LOW TURNOVER — a scan does not force a trade). "
     "For each position give a thesis, an edge (why it beats the market) and a risk. "
+    "Funding exactly {max_pos} of the listed candidates necessarily leaves the others out; for "
+    "each one left out, state in one line what made you prefer the funded ones. That is a record "
+    "of your reasoning, not a verdict on those companies, and it does not change how many you "
+    "fund. "
     "Respond ONLY in JSON: "
     '{"cash_pct": <0-100>, "positions": [{"ticker": "XXX", "weight_pct": <0-{max_pct}>, '
-    '"thesis": "...", "edge": "...", "risk": "..."}], "summary": "..."}. '
-    "Write thesis, edge, risk and summary in Spanish."
+    '"thesis": "...", "edge": "...", "risk": "..."}], '
+    '"omitted": [{"ticker": "YYY", "reason": "..."}], "summary": "..."}. '
+    "Write thesis, edge, risk, reason and summary in Spanish."
 )
 
 
@@ -49,10 +54,24 @@ class TargetPosition:
 
 
 @dataclass
+class OmittedName:
+    """Un candidato que quedó fuera de la cartera, con el motivo en una línea.
+
+    Es TELEMETRÍA: el constructor fondea 5 de los 10 seleccionados, así que omitir es
+    obligatorio, no una opinión. Sirve para distinguir criterio de pattern-matching cuando se
+    revisa un escaneo a posteriori — nunca vuelve a entrar a un prompt.
+    """
+
+    ticker: str
+    reason: str
+
+
+@dataclass
 class ConstructionResult:
     cash_pct: float
     positions: list[TargetPosition] = field(default_factory=list)
     summary: str = ""
+    omitted: list[OmittedName] = field(default_factory=list)
 
 
 def _user_prompt(portfolio_text: str, candidates_text: str, macro_block: str) -> str:
@@ -107,4 +126,15 @@ def construct(
             p.weight_pct = round(p.weight_pct * 100.0 / total, 2)
         total = 100.0
     cash_pct = round(max(0.0, 100.0 - total), 2)
-    return ConstructionResult(cash_pct=cash_pct, positions=positions, summary=str(data.get("summary", "")).strip())
+
+    # Omitidos: mismo filtro anti-alucinación que las posiciones, y sin colar como "descartado"
+    # a uno que sí se fondeó (el modelo a veces repite un nombre en las dos listas).
+    fondeados = {p.ticker for p in positions}
+    omitted: list[OmittedName] = []
+    for o in data.get("omitted", []) or []:
+        tk = str(o.get("ticker", "")).strip().upper()
+        if tk and tk in valid_tickers and tk not in fondeados:
+            omitted.append(OmittedName(ticker=tk, reason=str(o.get("reason", "")).strip()))
+
+    return ConstructionResult(cash_pct=cash_pct, positions=positions, omitted=omitted,
+                              summary=str(data.get("summary", "")).strip())

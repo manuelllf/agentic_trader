@@ -61,7 +61,12 @@ def get_macro_regime() -> dict:
 def _snapshot_text() -> tuple[str, list[str]]:
     """Texto legible del estado de mercado + ranking de sectores por retorno ~3m (gratis)."""
     lines: list[str] = []
-    tickers = ["SPY", "QQQ", "IWM", "^VIX", "^TNX", "UUP", "GLD", "USO", *_SECTOR_ETFS]
+    # ^IRX (letra a 13 semanas) y HYG (crédito high yield) entran como DATO CRUDO, igual que el
+    # resto: el 10 años solo no deja ver la pendiente de la curva, y no había ninguna referencia
+    # de crédito. Se dan los dos números y ya — sin etiquetas del tipo "apetito de riesgo" ni
+    # "suele girar antes": eso sería colarle al modelo una conclusión escrita por nosotros.
+    tickers = ["SPY", "QQQ", "IWM", "^VIX", "^TNX", "^IRX", "UUP", "GLD", "USO", "HYG",
+               *_SECTOR_ETFS]
     try:
         df = yf.download(tickers, period="1y", interval="1d", auto_adjust=True,
                          group_by="ticker", threads=True, progress=False)
@@ -84,12 +89,14 @@ def _snapshot_text() -> tuple[str, list[str]]:
     vix = close("^VIX")
     if vix is not None:
         lines.append(f"VIX: {float(vix.iloc[-1]):.1f}")
-    tnx = close("^TNX")
-    if tnx is not None:
-        # ^TNX ya viene en % (4.54 = 4.54%), NO multiplicado por 10. Nada de dividir.
-        lines.append(f"10y yield: {float(tnx.iloc[-1]):.2f}% "
-                     f"({ta.pct_change_ndays(tnx, 21):+.1f}% 1m)")
-    for tk, label in (("UUP", "USD"), ("GLD", "Gold"), ("USO", "Oil")):
+    # ^TNX y ^IRX ya vienen en % (4.54 = 4.54%), NO multiplicados por 10. Nada de dividir.
+    for tk, label in (("^IRX", "3m T-bill yield"), ("^TNX", "10y yield")):
+        c = close(tk)
+        if c is not None:
+            lines.append(f"{label}: {float(c.iloc[-1]):.2f}% "
+                         f"({ta.pct_change_ndays(c, 21):+.1f}% 1m)")
+    for tk, label in (("UUP", "USD"), ("GLD", "Gold"), ("USO", "Oil"),
+                      ("HYG", "High yield credit")):
         c = close(tk)
         if c is not None:
             lines.append(f"{label}: {ta.pct_change_ndays(c, 63):+.1f}% 3m")
@@ -128,8 +135,12 @@ _SYSTEM = (
 )
 
 
-def get_macro_outlook(llm: LLMProvider) -> dict:
-    """Outlook forward a 3 meses + tilt sectorial (1 llamada V4-Pro). Cacheado por escaneo."""
+def get_macro_outlook(llm: LLMProvider, db=None) -> dict:  # noqa: ANN001
+    """Outlook forward a 3 meses + tilt sectorial (1 llamada V4-Pro). Cacheado por escaneo.
+
+    `db` solo lo usan las fuentes de eventos para su caché persistente (ver `events.py`): sin
+    sesión funciona igual, pero cada escaneo vuelve a pedirle a Wikipedia los 7 días enteros.
+    """
     global _outlook_cache
     now = time.time()
     if _outlook_cache is not None and now - _outlook_cache[0] < _TTL:
@@ -139,9 +150,9 @@ def get_macro_outlook(llm: LLMProvider) -> dict:
     snapshot, headlines = _snapshot_text()
     # Eventos/noticias GRATIS y keyless (fiel al Exhibit 2C/2D). Best-effort: si caen, se omiten.
     from app.screener import events as events_mod
-    wiki_events = events_mod.wikipedia_current_events(days=7)      # eventos recientes macro
-    wiki_scheduled = events_mod.wikipedia_scheduled_events()       # calendario FUTURO (Exhibit 2D)
-    gdelt = events_mod.gdelt_headlines()
+    wiki_events = events_mod.wikipedia_current_events(days=7, db=db)   # eventos recientes macro
+    wiki_scheduled = events_mod.wikipedia_scheduled_events(db=db)      # calendario FUTURO (2D)
+    gdelt = events_mod.gdelt_headlines(db=db)
     result = {
         "regime": regime.get("regime"),
         "vix": regime.get("vix"),

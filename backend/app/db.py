@@ -79,6 +79,11 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
     sa = cols("scan_audit")
     if sa and "price" not in sa:
         conn.execute(text("ALTER TABLE scan_audit ADD COLUMN price FLOAT"))
+    # proposals.omitted: qué candidatos NO fondeó el constructor y por qué. Las propuestas ya
+    # guardadas se quedan con '[]' — no había forma de saberlo entonces.
+    pr = cols("proposals")
+    if pr and "omitted" not in pr:
+        conn.execute(text("ALTER TABLE proposals ADD COLUMN omitted JSON DEFAULT '[]'"))
     conn.commit()
 
 

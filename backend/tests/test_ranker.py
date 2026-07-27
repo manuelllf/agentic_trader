@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -411,3 +412,34 @@ def test_watchlist_drop_saca_posiciones(db) -> None:
     wl.update(db, [("AAA", 90, "t"), ("BBB", 88, "t")])
     wl.drop(db, {"AAA"})
     assert wl.tickers(db) == ["BBB"]
+
+
+# ---- omitidos del constructor (telemetría, nunca vuelve al prompt) -----------
+
+def test_constructor_registra_por_que_dejo_fuera_a_los_demas() -> None:
+    """Fondear 5 de 10 obliga a dejar 5 fuera; guardar el motivo permite distinguir DESPUÉS
+    criterio de pattern-matching. Se filtra igual que las posiciones: fuera los tickers que no
+    estaban entre los candidatos y fuera los que sí se fondearon (el modelo a veces los repite)."""
+    reply = json.dumps({
+        "cash_pct": 0,
+        "positions": [{"ticker": "AAA", "weight_pct": 100, "thesis": "t", "edge": "e", "risk": "r"}],
+        "omitted": [
+            {"ticker": "BBB", "reason": "Menor recorrido al objetivo."},
+            {"ticker": "AAA", "reason": "contradictorio: AAA sí se fondeó"},
+            {"ticker": "ZZZ", "reason": "alucinado: no estaba entre los candidatos"},
+        ],
+        "summary": "s",
+    })
+    res = constructor_mod.construct(FakeLLM(reply), "cartera", "candidatos", "macro",
+                                    1, 100.0, {"AAA", "BBB"})
+    assert [(o.ticker, o.reason) for o in res.omitted] == [("BBB", "Menor recorrido al objetivo.")]
+
+
+def test_constructor_sin_omitidos_no_revienta() -> None:
+    """Un modelo que no devuelva la lista (o la devuelva nula) no debe tirar la construcción:
+    los omitidos son telemetría, no parte del contrato de la cartera."""
+    reply = json.dumps({"cash_pct": 0, "omitted": None, "summary": "s",
+                        "positions": [{"ticker": "AAA", "weight_pct": 100,
+                                       "thesis": "t", "edge": "e", "risk": "r"}]})
+    res = constructor_mod.construct(FakeLLM(reply), "c", "c", "m", 1, 100.0, {"AAA"})
+    assert res.omitted == [] and len(res.positions) == 1

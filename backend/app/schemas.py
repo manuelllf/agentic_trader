@@ -31,6 +31,9 @@ class ProposalOut(BaseModel):
     cash_target_pct: float
     macro_summary: str
     items: list
+    # [{ticker, reason}] — candidatos seleccionados que el constructor NO fondeó. La ruta
+    # /proposal ya exige sesión (nombra tickers), así que no necesita capa pública aparte.
+    omitted: list = []
 
 
 class WatchlistOut(BaseModel):

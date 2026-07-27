@@ -71,6 +71,10 @@ class Proposal(Base):
     macro_summary: Mapped[str] = mapped_column(String, default="")
     # items: [{ticker, action, target_weight_pct, shares, est_value, thesis, edge, risk, score}]
     items: Mapped[list] = mapped_column(JSON, default=list)
+    # omitted: [{ticker, reason}] — los seleccionados que el constructor NO fondeó. Fondear 5 de
+    # 10 obliga a dejar 5 fuera; guardar el motivo permite distinguir después criterio de
+    # pattern-matching. Telemetría: no vuelve a entrar a ningún prompt.
+    omitted: Mapped[list] = mapped_column(JSON, default=list)
 
 
 class ScanAudit(Base):
