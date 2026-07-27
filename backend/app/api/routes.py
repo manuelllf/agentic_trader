@@ -5,11 +5,17 @@ Dos routers: `public_router` (sin token, lecturas/teaser de la portada) y `route
 picks del método (tickers, tesis, scores) o expone la Sala Real/personal. Ver el reparto
 exacto donde se declara cada `@router`/`@public_router`.
 
-Dos endpoints son de DOBLE NIVEL vía `auth_optional` (nunca dan 401: sin sesión devuelven
+Cuatro endpoints son de DOBLE NIVEL vía `auth_optional` (nunca dan 401: sin sesión devuelven
 agregados/datos anonimizados; con sesión, el detalle completo de siempre) — así la portada
-pública puede presumir de rendimiento sin regalar la cartera:
+pública puede presumir de rendimiento, y contar cómo funciona el embudo, sin regalar la cartera:
 - GET  /ledger               → sin sesión: agregados + `positions: []`; con sesión: completo.
-- GET  /performance          → sin sesión: posiciones anonimizadas (sin ticker); con sesión: completo.
+- GET  /performance          → sin sesión: posiciones anonimizadas (sin ticker); con sesión: todo.
+- GET  /scan/report          → sin sesión: sin `changes` (nombran tickers); con sesión: completo.
+- GET  /scan/funnel          → sin sesión: solo agregados por etapa/sector; con sesión: + detalle.
+
+La regla que separa las dos caras: **cómo se comporta el sistema es público; QUÉ nombres elige,
+no.** Cuántos sobreviven a cada etapa y por sector es comportamiento; un ticker con su score es
+un feed de señales.
 
 - GET  /health                (público, en main.py)
 - GET  /macro                → régimen macro (barato, determinista)               [público]
@@ -17,7 +23,8 @@ pública puede presumir de rendimiento sin regalar la cartera:
 - POST /ledger/allocate      → asignar/retirar fondos                             [protegido]
 - POST /demo/run             → lanza el escaneo (universo entero → scores → cartera 3-5) [protegido]
 - GET  /demo/status          → estado del escaneo                                  [público]
-- GET  /scan/report          → informe persistido del último escaneo (incidencias) [protegido]
+- GET  /scan/report          → informe persistido del último escaneo (incidencias) [doble nivel]
+- GET  /scan/funnel          → embudo de los últimos escaneos por etapa y sector   [doble nivel]
 - GET  /scores               → leaderboard (mejores scores del último escaneo)     [protegido]
 - GET  /proposal             → cartera objetivo + trades del último escaneo        [protegido]
 - GET  /watchlist            → nombres vigilados                                   [protegido]
@@ -33,7 +40,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import execution_service, pipeline
+from app import execution_service, pipeline, scan_audit
 from app import watchlist as watchlist_mod
 from app.auth import auth_optional
 from app.config import settings
@@ -213,18 +220,39 @@ def demo_status() -> dict:
     return pipeline.get_status()
 
 
-@router.get("/scan/report")
-def scan_report(db: Session = Depends(get_db)) -> dict:
-    """Informe del ÚLTIMO escaneo (cron o manual), persistido en la BD: modo, contadores,
-    coste e incidencias — o el error si reventó entero. A diferencia de /demo/status (estado
-    en memoria del runner manual), esto sobrevive a reinicios y también lo escribe el cron."""
+@public_router.get("/scan/report")
+def scan_report(db: Session = Depends(get_db), authed: bool = Depends(auth_optional)) -> dict:
+    """Informe del ÚLTIMO escaneo (cron o manual), persistido en la BD: modo, universo,
+    contadores, coste e incidencias — o el error si reventó entero. A diferencia de
+    /demo/status (estado en memoria del runner manual), esto sobrevive a reinicios y también
+    lo escribe el cron.
+
+    DOBLE NIVEL: cómo se comportó el sistema es público, pero `changes` nombra los tickers que
+    entran y salen del ranking — eso es la cartera del método y solo se ve con sesión.
+    """
     row = db.get(Meta, "last_scan_report")
     if row is None:
         return {"report": None}
     try:
-        return {"report": json.loads(row.value)}
+        report = json.loads(row.value)
     except ValueError:
         return {"report": None}
+    if not authed:
+        report = {**report, "changes": []}
+    return {"report": report}
+
+
+@public_router.get("/scan/funnel")
+def scan_funnel(limit: int = Query(8, ge=1, le=30), db: Session = Depends(get_db),
+                authed: bool = Depends(auth_optional)) -> dict:
+    """Embudo de los últimos escaneos desde la traza de auditoría: cuántos nombres sobreviven a
+    cada etapa (pre-score → profundo → seleccionado → en cartera) y su reparto por sector.
+
+    DOBLE NIVEL: los agregados describen el COMPORTAMIENTO del sistema y no identifican a nadie
+    → públicos. El detalle nombre a nombre es el ranking con sus scores → solo con sesión, y
+    solo del escaneo más reciente (ver `scan_audit.funnel`).
+    """
+    return {"scans": scan_audit.funnel(db, limit=limit, detail=authed)}
 
 
 @router.post("/recheck")

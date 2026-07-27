@@ -73,7 +73,7 @@ def token(client) -> str:
 
 PUBLIC_GET_PATHS = [
     "/overview", "/ledger", "/performance", "/macro", "/config", "/demo/status",
-    "/history", "/history?book=real",
+    "/history", "/history?book=real", "/scan/report", "/scan/funnel",
 ]
 
 
@@ -100,7 +100,6 @@ PROTECTED_CALLS = [
     ("post", "/admin/seed-memory", {"anything": True}),
     ("get", "/admin/memory-status", None),
     ("get", "/fx", None),
-    ("get", "/scan/report", None),
 ]
 
 
@@ -456,3 +455,75 @@ def test_docs_disabled_with_password() -> None:
     finally:
         cfg.app_password = old
         importlib.reload(main_mod)  # deja el módulo como estaba para el resto de tests
+
+
+# ---- embudo del escaneo: agregado público, detalle con sesión ----------------
+
+def _sembrar_embudo(db) -> None:
+    """Traza de un escaneo: 3 nombres puntuados, 2 al profundo, 1 en cartera, 1 sin datos."""
+    from datetime import UTC, datetime
+
+    from app.models import ScanAudit
+
+    at = datetime(2026, 7, 28, 14, 15, tzinfo=UTC)
+    db.add_all([
+        ScanAudit(scan_at=at, ticker="AAA", sector="Technology", prescore=91.2, price=100.0,
+                  reached_deep=True, deep_score=84, selected=True, funded=True, weight_pct=35.0,
+                  stage="cartera"),
+        ScanAudit(scan_at=at, ticker="BBB", sector="Technology", prescore=88.4, price=50.0,
+                  reached_deep=True, deep_score=61, stage="finalista"),
+        ScanAudit(scan_at=at, ticker="CCC", sector="Finance", prescore=42.0, price=20.0,
+                  stage="prescore"),
+        ScanAudit(scan_at=at, ticker="DDD", stage="datos"),
+    ])
+    db.commit()
+
+
+def test_funnel_publico_cuenta_etapas_sin_revelar_tickers(client, db) -> None:
+    """Sin sesión, el embudo describe el COMPORTAMIENTO (cuántos por etapa y sector) y no
+    identifica a nadie: es lo que puede acompañar a un post sin ser un feed de señales."""
+    _sembrar_embudo(db)
+    body = client.get("/scan/funnel").json()
+    scan = body["scans"][0]
+
+    assert (scan["pre"], scan["deep"], scan["sel"], scan["funded"]) == (3, 2, 1, 1)
+    assert scan["sin_datos"] == 1
+    assert {s["sector"] for s in scan["sectores"]} == {"Technology", "Finance"}
+    assert scan["sectores"][0] == {"sector": "Technology", "pre": 2, "deep": 2, "sel": 1,
+                                   "funded": 1}          # ordenado por nº de pre-scoreados
+    assert "nombres" not in scan, "sin sesión NO puede viajar el detalle por ticker"
+    assert "AAA" not in client.get("/scan/funnel").text
+
+
+def test_funnel_con_sesion_anade_el_detalle(client, db, token) -> None:
+    """Con sesión sí: nombre a nombre, con los que llegaron al profundo primero (la frontera
+    del corte es justo lo que no se puede reconstruir mirando solo a los ganadores)."""
+    _sembrar_embudo(db)
+    scan = client.get("/scan/funnel",
+                      headers={"Authorization": f"Bearer {token}"}).json()["scans"][0]
+
+    tickers = [n["ticker"] for n in scan["nombres"]]
+    assert tickers[:2] == ["AAA", "BBB"]          # los profundos, antes que el resto
+    assert "CCC" in tickers                        # la descartada también deja rastro
+    assert scan["nombres"][0]["deep_score"] == 84
+
+
+def test_report_publico_oculta_las_novedades_del_ranking(client, db, token) -> None:
+    """`changes` dice qué tickers entran y salen del ranking: eso es la cartera del método."""
+    import json
+
+    from app.models import Meta
+
+    db.add(Meta(key="last_scan_report", value=json.dumps(
+        {"at": "2026-07-28T14:15:00+00:00", "mode": "observatorio", "error": None,
+         "issues": ["algo"], "changes": ["entran ZZZ", "salen AAA"],
+         "universe": {"fuente": "cierre", "size": 2600}, "scanned": 2601,
+         "prescored": 2600, "deep": 50, "cost": None})))
+    db.commit()
+
+    anon = client.get("/scan/report").json()["report"]
+    assert anon["changes"] == [] and "ZZZ" not in client.get("/scan/report").text
+    assert anon["prescored"] == 2600 and anon["issues"] == ["algo"]   # el resto sí se ve
+
+    con = client.get("/scan/report", headers={"Authorization": f"Bearer {token}"}).json()["report"]
+    assert con["changes"] == ["entran ZZZ", "salen AAA"]

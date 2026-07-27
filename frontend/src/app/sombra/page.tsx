@@ -21,9 +21,12 @@ import {
   getMacro,
   getPerformance,
   getProposal,
+  getScanFunnel,
+  getScanReport,
   getScores,
   getWatchlist,
   hasToken,
+  type ScanReport,
 } from "@/lib/api";
 import HistoryChart from "@/components/HistoryChart";
 import Logo from "@/components/Logo";
@@ -40,6 +43,9 @@ import type {
 } from "@/lib/types";
 import RealDoor from "@/components/RealDoor";
 import { fmtTime, money } from "@/lib/format";
+import {
+  cascada, fmtNum, fmtScanCost, sectoresTop, universoLinea, type FunnelScan,
+} from "@/lib/scan";
 
 /* ---------- helpers ---------- */
 const ACTION_LABEL: Record<TradeAction, string> = {
@@ -83,6 +89,10 @@ export default function SombraDashboard() {
   const [hist, setHist] = useState<HistoryPoint[]>([]);
   const [macro, setMacro] = useState<Macro | null>(null);
   const [status, setStatus] = useState<DemoStatus | null>(null);
+  // Informe y embudo PERSISTIDOS: `status` es la memoria del runner manual y muere en cada
+  // deploy (el cron del martes ni la escribe), así que el observatorio no puede colgar de él.
+  const [report, setReport] = useState<ScanReport | null>(null);
+  const [funnel, setFunnel] = useState<FunnelScan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [openPos, setOpenPos] = useState<string | null>(null);   // fila de cartera expandida
@@ -96,11 +106,14 @@ export default function SombraDashboard() {
     try {
       // El ledger es crítico (define la conexión); el resto degrada con gracia si falla.
       const l = await getLedger();
-      const [m, pf, st, hs] = await Promise.all([
+      const [m, pf, st, hs, sr, fn] = await Promise.all([
         getMacro().catch(() => null),
         getPerformance().catch(() => null),
         getDemoStatus().catch(() => null),
         getHistory("shadow").catch(() => null),
+        // Ambos son de doble nivel: sin sesión llegan igual, pero sin tickers ni scores.
+        getScanReport().catch(() => null),
+        getScanFunnel(1).catch(() => null),
       ]);
       // Sin sesión, ni se piden: scores/propuesta/watchlist son del método — evita 401 al aire.
       const withSession = hasToken();
@@ -117,6 +130,8 @@ export default function SombraDashboard() {
       if (!alive.current) return;   // la página ya no está montada: un GET lento no pinta nada
       setLedger(l); setProposal(p); setScores(s); setWatch(w); setMacro(m); setPerf(pf); setStatus(st);
       if (hs) setHist(hs.series);
+      if (sr) setReport(sr.report);
+      if (fn) setFunnel(fn.scans[0] ?? null);
       setAuthed(withSession);
       setError(null);
     } catch (e) {
@@ -314,15 +329,34 @@ export default function SombraDashboard() {
         </section>
 
         {anon ? (
-          /* Sin sesión: decisión, observatorio y ranking son del método — candado sobrio. */
-          <section className={`${CARD} flex min-h-[26vh] flex-col items-center justify-center gap-3 border-dashed p-10 text-center`}>
-            <svg viewBox="0 0 24 24" className="h-8 w-8 text-slate-300" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M7 11V7a5 5 0 0 1 10 0v4M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <p className="max-w-xs text-sm text-slate-400">
-              Decisión mensual, observatorio y ranking — acceso privado
-            </p>
-          </section>
+          /* Sin sesión: QUÉ nombres elige el método es privado, pero CÓMO se comporta el
+             embudo no identifica a nadie y es lo que da contexto a quien llega de fuera. */
+          <div className="mb-6 grid gap-6 md:grid-cols-2">
+            <section className={CARD}>
+              <CardHead>
+                El embudo del último escaneo
+                {report?.at && (
+                  <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
+                    {fmtTime(report.at)}
+                  </span>
+                )}
+              </CardHead>
+              <div className="p-4 text-xs leading-relaxed text-slate-600">
+                <FunnelCascade report={report} scan={funnel} />
+                <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
+                  cada martes se estudia el mercado entero; la cartera solo se decide una vez al mes
+                </p>
+              </div>
+            </section>
+            <section className={`${CARD} flex flex-col items-center justify-center gap-3 border-dashed p-10 text-center`}>
+              <svg viewBox="0 0 24 24" className="h-8 w-8 text-slate-300" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M7 11V7a5 5 0 0 1 10 0v4M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <p className="max-w-xs text-sm text-slate-400">
+                Qué nombres elige — decisión mensual y ranking — es acceso privado
+              </p>
+            </section>
+          </div>
         ) : (
           <>
             {/* 3 · Decisión mensual + 4 · Observatorio semanal */}
@@ -371,21 +405,16 @@ export default function SombraDashboard() {
               <section className={CARD}>
                 <CardHead>
                   Observatorio semanal
-                  {status?.finished_at && (
+                  {report?.at && (
                     <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
-                      {fmtTime(status.finished_at)}
+                      {fmtTime(report.at)}
                     </span>
                   )}
                 </CardHead>
                 <div className="p-4 text-xs leading-relaxed text-slate-600">
-                  <p className="tabular-nums">
-                    {status?.result
-                      ? <>{status.result.prescored} nombres estudiados · {status.result.deep} a fondo
-                          {status.result.cost ? ` · $${status.result.cost.cost_usd.toFixed(3)}` : ""}</>
-                      : "Cada martes el agente estudia el universo entero para aprender."}
-                  </p>
+                  <FunnelCascade report={report} scan={funnel} />
                   {scores.length > 0 && (
-                    <p className="mt-1.5">
+                    <p className="mt-2.5">
                       top del ranking:{" "}
                       {scores.slice(0, 3).map((s, i) => (
                         <span key={s.ticker}>
@@ -422,8 +451,13 @@ export default function SombraDashboard() {
             <section className={`mb-6 ${CARD} p-5`}>
               <div className="mb-3 flex items-baseline justify-between">
                 <h2 className="text-sm font-semibold tracking-tight">Ranking a fondo</h2>
-                <span className="text-[11px] text-slate-400">
-                  {scores.length} analizados{status?.result?.prescored ? ` · ${status.result.prescored} pre-cribados` : ""}
+                {/* Los profundos REALES vienen de la traza; `scores.length` son las filas que
+                    se muestran, que es otra cosa (de ahí el viejo "25 a fondo" que no cuadraba). */}
+                <span className="text-[11px] tabular-nums text-slate-400">
+                  {funnel?.deep ?? report?.deep ?? scores.length} analizados a fondo
+                  {(funnel?.pre ?? report?.prescored)
+                    ? ` · ${fmtNum(funnel?.pre ?? report?.prescored ?? 0)} pre-cribados`
+                    : ""}
                 </span>
               </div>
               {scores.length === 0 ? (
@@ -470,6 +504,76 @@ export default function SombraDashboard() {
 }
 
 /* ---------- components ---------- */
+
+/** El embudo del escaneo: de todo el mercado mirado a los cinco que acaban en cartera.
+ *  Es PÚBLICO a propósito — cuenta cómo se comporta el sistema sin nombrar a nadie, que es
+ *  justo la línea que separa "así funciona" de un feed de señales. */
+function FunnelCascade({ report, scan }: { report: ScanReport | null; scan: FunnelScan | null }) {
+  const pasos = cascada(report, scan);
+  const universo = universoLinea(report);
+  const sectores = sectoresTop(scan, 4);
+  const coste = fmtScanCost(report?.cost ?? null);
+
+  if (!pasos.length) {
+    return (
+      <p className="text-slate-400">
+        Cada martes el agente estudia el mercado entero para aprender. Aún no hay traza del
+        último escaneo.
+      </p>
+    );
+  }
+  return (
+    <>
+      {universo && (
+        <p className={universo.tone === "ok" ? "text-slate-500" : "font-medium text-amber-600"}>
+          universo <b className="tabular-nums font-semibold text-slate-800">{universo.texto}</b>
+          <span className="text-slate-400"> · {universo.detalle}</span>
+        </p>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-2">
+        {pasos.map((p, i) => (
+          <div key={p.label} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-slate-300" aria-hidden>→</span>}
+            <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 ring-1 ring-inset ring-slate-200"
+                 title={p.hint}>
+              <p className="text-[15px] font-semibold leading-none tabular-nums text-slate-800">
+                {fmtNum(p.value)}
+              </p>
+              <p className="mt-0.5 text-[10.5px] leading-none text-slate-400">
+                {p.label}
+                {p.pctOfPrev != null && (
+                  <span className="tabular-nums">
+                    {" · "}{p.pctOfPrev < 1 ? p.pctOfPrev.toFixed(1) : Math.round(p.pctOfPrev)}%
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+      {sectores.length > 0 && (
+        <p className="mt-2 text-[11px] text-slate-500">
+          a fondo por sector:{" "}
+          {sectores.map((s, i) => (
+            <span key={s.sector} className="tabular-nums">
+              {i > 0 && " · "}{s.sector} <b className="font-semibold text-slate-700">{s.deep}</b>
+              <span className="text-slate-400">/{fmtNum(s.pre)}</span>
+            </span>
+          ))}
+        </p>
+      )}
+      {coste && <p className="mt-1 text-[11px] tabular-nums text-slate-400">coste del escaneo {coste}</p>}
+      {(report?.issues ?? []).length > 0 && (
+        <ul className="mt-2 space-y-0.5 text-[11px] text-amber-700">
+          {(report?.issues ?? []).map((it) => (
+            <li key={it}><span className="mr-1" aria-hidden>▲</span>{it}</li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
 function CardHead({ children }: { children: React.ReactNode }) {
   return (
     <div className="border-b border-slate-100 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">

@@ -1,4 +1,5 @@
 // Cliente HTTP hacia el backend FastAPI.
+import type { FunnelScan } from "./scan";
 import type {
   AppConfig, Approval, ApprovalsResponse, DemoStatus, EquityHistory,
   LedgerSnapshot, Macro, Overview, Performance, PersonalSummary, Proposal, RealSummary,
@@ -152,12 +153,27 @@ export interface ScanReport {
   error: string | null;                        // != null → el escaneo entero falló
   issues: string[];
   changes?: string[];                          // novedades vs el escaneo anterior (ranking/watchlist)
+  /** Con qué universo se trabajó. `fuente`: "cierre" = la foto del último cierre (lo normal),
+   *  "vivo" = sin foto, pedido con el mercado abierto (sale recortado), "seed" = emergencia.
+   *  `sobre_suelo` > `size` significa que mordió el tope de nombres. */
+  universe?: {
+    fuente: "cierre" | "vivo" | "seed";
+    at: string | null;
+    dias: number | null;
+    size: number;
+    sobre_suelo?: number;
+  } | null;
   scanned: number | null;
   prescored: number | null;
   deep: number | null;
   cost: { calls: number; cost_usd: number } | null;
 }
 export const getScanReport = () => get<{ report: ScanReport | null }>("/scan/report");
+
+/** Embudo de los últimos escaneos (traza de auditoría). Doble nivel: sin sesión llegan solo
+ *  los agregados por etapa y sector — cómo se comporta el sistema, sin decir qué nombres. */
+export const getScanFunnel = (limit = 8) =>
+  get<{ scans: FunnelScan[] }>(`/scan/funnel?limit=${limit}`);
 export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
 export const reconcileApprovals = () => post<{ reconciled: number }>("/approvals/reconcile");

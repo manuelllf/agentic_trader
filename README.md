@@ -11,11 +11,16 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 
 ## Cómo funciona
 
-Un escaneo programado recorre el universo de acciones y las puntúa en dos pasos: un cribado
-rápido y barato sobre todo el universo, y un análisis profundo (informe + score + precio
-objetivo) sobre los finalistas. Con esos scores se selecciona una cartera objetivo; el
-reparto de pesos lo decide el LLM sobre los nombres ya seleccionados. Todo el dinero
-(tamaños, caja, P&L) lo calcula el código con aritmética exacta en `Decimal` — nunca el LLM.
+Un escaneo programado recorre **~2.600 acciones cotizadas en EE. UU.** (ADRs incluidos) y las
+puntúa en dos pasos: un cribado rápido y barato sobre todo el universo, y un análisis profundo
+(informe + score 1-100 + precio objetivo) sobre unos 50 finalistas. La selección final es
+**determinista y vive en el código** —top-N por score, desempate por capitalización—; el LLM
+solo reparte los pesos entre los ya seleccionados. Todo el dinero (tamaños, caja, P&L) lo
+calcula el código con aritmética exacta en `Decimal` — nunca el LLM.
+
+El escaneo semanal es un **observatorio**: refresca ranking, watchlist y memoria sin tocar
+ningún libro. La **decisión** de cartera es mensual, porque el análisis razona a un mes vista
+y rebalancear cada semana sería operar su propio ruido.
 
 Dos modos, con libros de capital separados:
 
@@ -24,6 +29,26 @@ Dos modos, con libros de capital separados:
 - **Sala real** — conectada a Interactive Brokers. El agente *propone*; el usuario decide
   (Sí / No) cada orden. Órdenes a límite y, por defecto, en modo simulación.
 
+## Decisiones de diseño
+
+Las cuatro que más forma le dan al sistema:
+
+- **El universo se fotografía con la bolsa cerrada.** El volumen que publica un screener
+  durante la sesión es el *acumulado del día en curso*, no una media: filtrar en caliente 45
+  minutos después de la apertura devolvía una fracción del mercado y, peor, sesgada hacia lo
+  que estuviera moviéndose esa mañana. Un job diario toma la foto tras el cierre y los escaneos
+  leen esa foto; sin ella, una decisión mensual se aborta en lugar de elegir a ciegas.
+- **La liquidez se mide en dólares, no en acciones.** Un mínimo de acciones negociadas castiga
+  a los valores caros y deja pasar a los baratos ilíquidos. Además del suelo hay un **tope de
+  nombres**: como el cribado gasta una llamada por acción, el coste no puede depender de lo
+  movida que estuviera la sesión.
+- **Elegir y ponderar son pasos distintos.** Que el modelo hiciera las dos cosas hacía
+  imposible saber si un acierto venía del análisis o del reparto. Ahora la selección es
+  aritmética reproducible y el criterio del LLM queda confinado al peso.
+- **Cada escaneo deja traza.** Una tabla de auditoría guarda por qué cada nombre llegó hasta
+  donde llegó y a qué precio, con 90 días de retención. Es telemetría para evaluación offline
+  y **nunca vuelve a un prompt**: almacenar no es inyectar.
+
 ## Stack
 
 | Área      | Tecnología                                                    |
@@ -31,9 +56,10 @@ Dos modos, con libros de capital separados:
 | Backend   | Python 3.12 · FastAPI · SQLAlchemy 2 · Pydantic v2            |
 | Datos     | yfinance · screener público de NASDAQ                        |
 | LLM       | DeepSeek vía OpenRouter (capa de proveedor intercambiable)   |
+| Memoria   | sqlite-vec + fastembed (embeddings locales, sin coste)       |
 | Bróker    | IBKR Web API (OAuth 1.0a headless, `ibind`)                  |
 | Scheduler | APScheduler                                                  |
-| DB        | SQLite (local) · Postgres/Supabase (opcional en producción)  |
+| DB        | SQLite sobre volumen persistente (driver Postgres incluido)  |
 | Frontend  | Next.js 15 · React 19 · TypeScript · Tailwind v4             |
 | Deploy    | Railway (backend) · Vercel (frontend)                        |
 

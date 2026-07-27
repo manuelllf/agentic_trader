@@ -74,7 +74,15 @@ class Settings(BaseSettings):
     # Universo + muestreo del escaneo.
     universe_market_cap_min: float = 0                   # SIN suelo de cap: todo el mercado US
     universe_market_cap_max: float = 10_000_000_000_000
-    universe_min_avg_volume: int = 300_000               # liquidez mínima (gate)
+    # Liquidez en DÓLARES negociados al día (precio × volumen), no en número de acciones:
+    # contar acciones castiga a los caros (PLMR mueve $41M/día y no llegaba a 300k acciones).
+    universe_min_dollar_volume: float = 3_000_000
+    # Tope DURO de nombres (los de MÁS dinero negociado). El suelo solo no basta: con umbral
+    # fijo, el tamaño del universo lo decide lo movida que estuviera la sesión de la foto —
+    # la misma descarga da 2.317 o 2.731 nombres según cuánto llevaba negociado el mercado.
+    # Como el pre-scorer gasta UNA llamada por nombre, eso es dejar el coste al azar. Con tope,
+    # el gasto está acotado por diseño y el recorte cae donde debe: en los menos negociados.
+    universe_max_names: int = 2_600
     universe_min_price: float = 5.0                      # descarta penny stocks < $5 (higiene)
     scan_full_universe: bool = True  # mensual: pre-score TODO el universo (cobertura total, ~15 min)
     scan_sample_size: int = 500     # semanal: ventana ROTATORIA de N (~5 semanas tejen el universo)

@@ -161,6 +161,86 @@ def test_sample_rotates_without_repeat(monkeypatch) -> None:
     assert set(w0) | set(w1) | set(w2) == {f"U{i}" for i in range(10)}  # 3 ventanas tejen el universo
 
 
+# ---- universo: liquidez en dólares y foto del cierre ----
+
+def test_liquidez_se_mide_en_dolares_no_en_acciones(monkeypatch) -> None:
+    """Contar acciones castiga a los caros: PLMR mueve $41M al día y se quedaba fuera por no
+    llegar a 300k acciones, mientras un valor de $6 con 300k acciones ($1,8M) sí entraba."""
+    monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 5_000_000)
+    monkeypatch.setattr(universe_mod.settings, "universe_max_names", 2_600)
+    filas = [
+        ("CARO", 138.59, 299_570),      # $41,5M al día: líquido de verdad, pocas acciones
+        ("BARATO", 6.0, 300_000),       # $1,8M al día: pasaba el corte de acciones y no debía
+        ("JUSTO", 10.0, 500_000),       # $5,0M exactos: entra
+    ]
+    assert universe_mod._liquidos(filas) == ["CARO", "JUSTO"]
+
+
+def test_el_tope_recorta_por_volumen_y_devuelve_alfabetico(monkeypatch) -> None:
+    """El suelo solo deja el tamaño del universo (y el coste, que es 1 llamada de Flash por
+    nombre) a merced de lo movida que estuviera la sesión fotografiada. Con tope, se escanean
+    los N de más dinero negociado y el resto espera — pero la lista sale ALFABÉTICA, porque la
+    ventana rotatoria necesita un orden estable entre escaneos."""
+    monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 1_000_000)
+    monkeypatch.setattr(universe_mod.settings, "universe_max_names", 2)
+    filas = [
+        ("ZZZ", 10.0, 900_000),         # $9M   → el que más mueve, pero último alfabéticamente
+        ("AAA", 10.0, 800_000),         # $8M
+        ("MMM", 10.0, 700_000),         # $7M   → se cae por el tope, no por iliquidez
+    ]
+    assert universe_mod._liquidos(filas) == ["AAA", "ZZZ"]
+
+
+def test_el_informe_lleva_cuanto_recorto_el_tope(db, monkeypatch) -> None:
+    """`sobre_suelo` > `size` = el tope recortó. El número viaja SIEMPRE en el informe; el aviso
+    de incidencia solo salta si el recorte es grande (ver `scan_service`), porque un recorte
+    pequeño es el funcionamiento normal y no una avería."""
+    monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 1_000_000)
+    monkeypatch.setattr(universe_mod.settings, "universe_max_names", 2)
+    monkeypatch.setattr(universe_mod, "_from_nasdaq", lambda: [
+        ("AAA", 10.0, 900_000), ("BBB", 10.0, 800_000), ("CCC", 10.0, 700_000),
+    ])
+    _symbols, info = universe_mod.universe_for_scan(db)
+    assert info["size"] == 2 and info["sobre_suelo"] == 3
+
+
+def test_foto_del_universo_se_guarda_y_se_relee(db, monkeypatch) -> None:
+    """El universo se fotografía con la bolsa cerrada y los escaneos leen esa foto: el `volume`
+    de NASDAQ es el ACUMULADO DE LA SESIÓN, así que pedirlo a media mañana daba un mercado
+    recortado (426 nombres el 21-jul en vez de ~2.600) y sesgado hacia lo que se movía ese día."""
+    monkeypatch.setattr(universe_mod, "_from_nasdaq",
+                        lambda: [("AAA", 100.0, 1_000_000), ("ILIQ", 1.0, 1_000)])
+
+    assert universe_mod.refresh_snapshot(db) == 2
+
+    def _no_llamar():
+        raise AssertionError("con foto guardada no se debe llamar a NASDAQ")
+
+    monkeypatch.setattr(universe_mod, "_from_nasdaq", _no_llamar)
+    symbols, info = universe_mod.universe_for_scan(db)
+    assert symbols == ["AAA"]                     # ILIQ no llega al mínimo en dólares
+    assert info["fuente"] == "cierre" and info["dias"] == 0
+
+
+def test_sin_foto_avisa_de_que_va_en_vivo(db, monkeypatch) -> None:
+    """Sin foto se sigue escaneando (en vivo), pero la procedencia viaja al informe para que un
+    universo recortado no pase por normal."""
+    monkeypatch.setattr(universe_mod, "_from_nasdaq", lambda: [("AAA", 100.0, 1_000_000)])
+    _symbols, info = universe_mod.universe_for_scan(db)
+    assert info["fuente"] == "vivo"
+
+
+def test_sin_foto_y_sin_nasdaq_cae_al_seed_marcado(db, monkeypatch) -> None:
+    """Último recurso: el SEED de emergencia, SIEMPRE etiquetado (el escaneo lo usa para
+    abortar en vez de puntuar 40 nombres como si fueran el mercado)."""
+    def _falla():
+        raise RuntimeError("NASDAQ no responde")
+
+    monkeypatch.setattr(universe_mod, "_from_nasdaq", _falla)
+    symbols, info = universe_mod.universe_for_scan(db)
+    assert info["fuente"] == "seed" and symbols == list(universe_mod._SEED_FALLBACK)
+
+
 # ---- selección fiel al paper (top-N por score, desempate por market cap) ----
 
 class _Row:

@@ -49,17 +49,27 @@ _FAKE_REPLY = (
 )
 
 
+def _stub_universo(monkeypatch, symbols: list[str]) -> None:
+    """Universo fijo, como si viniera de la foto del último cierre."""
+    from app.screener import universe as universe_mod
+
+    monkeypatch.setattr(universe_mod, "build_universe", lambda: list(symbols))
+    monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
+        list(symbols),
+        {"fuente": "cierre", "at": "2026-07-27T20:30:00+00:00", "dias": 0, "size": len(symbols)},
+    ))
+
+
 def _stub_scan(monkeypatch) -> None:
     """El pipeline entero baratamente stubeado (mismo patrón que test_autoexec)."""
     from app import tracking
     from app.screener import fundamentals as fund_mod
     from app.screener import macro as macro_mod
-    from app.screener import universe as universe_mod
     from app.screener.fundamentals import NameData
 
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: FakeLLM(_FAKE_REPLY))
     monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
-    monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
+    _stub_universo(monkeypatch, ["AAA"])
     monkeypatch.setattr(fund_mod, "gather", lambda t: NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
@@ -157,11 +167,10 @@ def test_scan_writes_persistent_report(db, monkeypatch) -> None:
 def test_scan_report_records_issues(db, monkeypatch) -> None:
     """Un nombre sin datos de mercado queda anotado como incidencia (antes: solo en logs)."""
     from app.screener import fundamentals as fund_mod
-    from app.screener import universe as universe_mod
     from app.screener.fundamentals import NameData
 
     _stub_scan(monkeypatch)
-    monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA", "BBB"])
+    _stub_universo(monkeypatch, ["AAA", "BBB"])
     monkeypatch.setattr(fund_mod, "gather", lambda t: None if t == "BBB" else NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
@@ -176,18 +185,51 @@ def test_scan_report_registra_novedades_del_ranking(db, monkeypatch) -> None:
     """Entre dos escaneos, el informe dice qué ENTRA y qué SALE del ranking — el reemplazo
     de la tabla Score era mudo y las novedades invisibles."""
     from app import watchlist as watchlist_mod
-    from app.screener import universe as universe_mod
 
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)     # ranking = {AAA}
     watchlist_mod.drop(db, {"AAA"})          # fuera de vigilancia → el 2º escaneo no la arrastra
 
-    monkeypatch.setattr(universe_mod, "build_universe", lambda: ["BBB"])
+    _stub_universo(monkeypatch, ["BBB"])
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)     # ranking = {BBB}
 
     texto = " ".join(_last_report(db)["changes"])
     assert "entran BBB" in texto and "salen AAA" in texto
+
+
+# ---- universo: sin foto del cierre no se decide ------------------------------
+
+def test_decision_se_aborta_sin_foto_del_universo(db, monkeypatch) -> None:
+    """Con el mercado abierto, NASDAQ solo ha contado medio día de volumen y el universo sale
+    recortado. Un observatorio así avisa y sigue; una DECISIÓN mensual se aborta: elegir la
+    cartera del mes mirando una fracción del mercado no es una decisión, es un accidente."""
+    from app.screener import universe as universe_mod
+
+    _stub_scan(monkeypatch)
+    ledger.allocate(db, 1000)
+    monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
+        ["AAA"], {"fuente": "vivo", "at": None, "dias": None, "size": 1}))
+
+    with pytest.raises(RuntimeError, match="Decisión abortada"):
+        scan_service.run_scan_and_store(db, sample_size=5, decide=True)
+
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)   # observatorio sí corre
+    assert any("EN VIVO" in i for i in _last_report(db)["issues"])
+
+
+def test_escaneo_se_aborta_con_universo_de_emergencia(db, monkeypatch) -> None:
+    """40 nombres de SEED no son un mercado: mejor un fallo visible en el panel que un ranking
+    con pinta de normal."""
+    from app.screener import universe as universe_mod
+
+    _stub_scan(monkeypatch)
+    ledger.allocate(db, 1000)
+    monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
+        ["AAA"], {"fuente": "seed", "at": None, "dias": None, "size": 40}))
+
+    with pytest.raises(RuntimeError, match="Sin universo"):
+        scan_service.run_scan_and_store(db, sample_size=5, decide=False)
 
 
 # ---- memoria del embudo: badge, profundos no parseables y cursor rotatorio ----

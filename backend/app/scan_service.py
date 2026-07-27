@@ -64,6 +64,7 @@ def _write_scan_report(db: Session, *, mode: str | None, result: dict | None,
     report = {
         "at": datetime.now(UTC).isoformat(),
         "mode": mode, "error": error, "issues": issues, "changes": changes or [],
+        "universe": r.get("universe"),
         "scanned": r.get("scanned"), "prescored": r.get("prescored"), "deep": r.get("deep"),
         "cost": r.get("cost"),
     }
@@ -193,8 +194,28 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     always = list(held.keys()) + [t for t in watch if t not in held]
     # Muestra semanal = ventana ROTATORIA (offset persistido) para tejer el universo sin repetir;
     # el mensual (n=None) coge el universo entero y no mueve el cursor.
-    sample = universe_mod.sample_for_scan(always, n, _scan_cursor(db))
-    # OJO: el cursor NO avanza aquí sino al final (paso 9). Avanzarlo ahora consumía la franja
+    # El universo sale de la FOTO del último cierre: el volumen de NASDAQ es el acumulado de la
+    # sesión en curso, así que filtrar en caliente a las 10:15 ET dejaba fuera casi todo el
+    # mercado y colaba justo lo que tenía actividad anormal esa mañana.
+    universo, universo_info = universe_mod.universe_for_scan(db)
+    if universo_info["fuente"] == "seed":
+        # Fallar RUIDOSAMENTE es mejor que escanear: un ranking salido de 40 nombres de
+        # emergencia parecería normal en la web y no lo es.
+        raise RuntimeError(
+            f"Sin universo: NASDAQ no responde y no hay foto del cierre guardada. El escaneo se "
+            f"aborta antes de gastar nada (solo había {universo_info['size']} nombres de "
+            f"emergencia). Se reintenta en el próximo cierre o a mano."
+        )
+    if decide and universo_info["fuente"] != "cierre":
+        # Un observatorio con el universo a medias es un mal menor (avisa y aprende); una
+        # DECISIÓN que elige la cartera del mes con medio mercado mirado, no.
+        raise RuntimeError(
+            "Decisión abortada: no hay foto del universo del último cierre y en vivo el mercado "
+            f"sale a medias ({universo_info['size']} nombres). Elegir la cartera del mes así "
+            "sería mirar una fracción del mercado. Repite cuando exista la foto."
+        )
+    sample = universe_mod.sample_for_scan(always, n, _scan_cursor(db), universe=universo)
+    # OJO: el cursor NO avanza aquí sino al final. Avanzarlo ahora consumía la franja
     # aunque el escaneo reventase a mitad, y esos nombres no volvían hasta la siguiente vuelta.
 
     # 2) Outlook macro forward (V4-Pro, 1 llamada).
@@ -205,6 +226,23 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Incidencias para el informe persistido: los fallos PARCIALES que hasta ahora solo se
     # veían leyendo los logs de Railway (fuentes caídas, LLM no parseable, nombres sin datos).
     issues: list[str] = []
+    # Con qué universo se trabajó: si algún día son 40 nombres (SEED) o una foto rancia, tiene
+    # que verse en el panel. Antes, un universo degradado pasaba por un escaneo normal.
+    if universo_info["fuente"] == "vivo":
+        issues.append(f"Universo tomado EN VIVO ({universo_info['size']} nombres): no había foto "
+                      "del cierre. Con el mercado abierto el volumen va a medias y el universo "
+                      "sale recortado.")
+    elif (universo_info["dias"] or 0) > 4:
+        issues.append(f"La foto del universo tiene {universo_info['dias']} días "
+                      "(¿el job del cierre no está corriendo?).")
+    sobre_suelo = universo_info.get("sobre_suelo") or universo_info["size"]
+    if sobre_suelo > universo_info["size"] * 1.15:
+        # Que el tope recorte algo es lo normal y no es noticia (el número exacto viaja igual en
+        # `universe.sobre_suelo`). Solo es incidencia cuando recorta MUCHO: ahí lo que dice es
+        # que el suelo de liquidez se quedó corto y el tope está eligiendo por él.
+        issues.append(f"El tope está recortando fuerte: {sobre_suelo} nombres pasaban el suelo "
+                      f"de liquidez y solo se escanearon los {universo_info['size']} de más "
+                      "volumen. Conviene subir el suelo en dólares.")
     ev = macro.get("events")
     if ev is not None:
         if not ev.get("wiki") and not ev.get("sched"):
@@ -415,6 +453,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         _advance_scan_cursor(db, n)
 
     result = {
+        "universe": universo_info,
         "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
         "watchlist": len(watchlist_mod.tickers(db)),
         "proposed": len([i for i in items if i["action"] != "mantener"]),
