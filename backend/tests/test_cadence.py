@@ -190,6 +190,62 @@ def test_scan_report_registra_novedades_del_ranking(db, monkeypatch) -> None:
     assert "entran BBB" in texto and "salen AAA" in texto
 
 
+# ---- memoria del embudo: badge, profundos no parseables y cursor rotatorio ----
+
+def test_badge_de_seguimiento_dice_la_verdad_del_final(db, monkeypatch) -> None:
+    """El badge se estampaba ANTES de actualizar la watchlist, así que iba un escaneo por
+    detrás. Ahora se re-sella al final: AAA entra a la watchlist EN este escaneo y sale
+    marcada; cuando la decisión la compra, deja de estarlo ("vigilo lo que NO tengo")."""
+    _stub_scan(monkeypatch)
+    ledger.allocate(db, 1000)
+
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
+    assert db.query(models.Score).one().on_watchlist is True
+
+    scan_service.run_scan_and_store(db, sample_size=5)        # decide → compra AAA
+    assert db.query(models.Score).one().on_watchlist is False
+
+
+def test_profundo_no_parseable_ni_puntua_ni_borra_watchlist(db, monkeypatch) -> None:
+    """El scorer profundo va de 1 a 100: un 0 solo puede ser fallo de parseo. Se quedaba en el
+    ranking como puntuación legítima Y, por debajo del umbral de expulsión, echaba al nombre de
+    la watchlist — un fallo del LLM borraba memoria del agente."""
+    _stub_scan(monkeypatch)
+    ledger.allocate(db, 1000)
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)   # AAA entra a vigilancia
+    from app import watchlist as watchlist_mod
+    assert watchlist_mod.tickers(db) == ["AAA"]
+
+    # Solo falla el PROFUNDO: get_llm() sin argumentos es el caro; con modelo, el del pre-score.
+    cero = _FAKE_REPLY.replace('"score": 90', '"score": 0')
+    monkeypatch.setattr(scan_service, "get_llm",
+                        lambda *a, **k: FakeLLM(_FAKE_REPLY if a else cero))
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
+
+    assert db.query(models.Score).count() == 0                 # fuera del ranking
+    assert watchlist_mod.tickers(db) == ["AAA"]                # la memoria sobrevive al fallo
+    assert any("no parseable" in i and "AAA" in i for i in _last_report(db)["issues"])
+
+
+def test_cursor_rotatorio_no_avanza_si_el_escaneo_revienta(db, monkeypatch) -> None:
+    """Avanzaba nada más construir la muestra: un escaneo que reventaba a mitad quemaba su
+    franja del universo y esos nombres no volvían hasta la siguiente vuelta entera."""
+    from app.screener import macro as macro_mod
+
+    _stub_scan(monkeypatch)
+    ledger.allocate(db, 1000)
+    monkeypatch.setattr(macro_mod, "get_macro_outlook",
+                        lambda llm: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    with pytest.raises(RuntimeError):
+        scan_service.run_scan_and_store(db, sample_size=5, decide=False)
+    assert scan_service._scan_cursor(db) == 0                  # la franja no se consumió
+
+    _stub_scan(monkeypatch)                                    # el macro vuelve a funcionar
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
+    assert scan_service._scan_cursor(db) == 5                  # escaneo completo → sí avanza
+
+
 def test_scan_failure_writes_report(db) -> None:
     """Si el escaneo revienta entero, el envoltorio deja el informe con el error — antes,
     un cron caído era invisible en la web (seguía enseñando datos viejos sin señal)."""

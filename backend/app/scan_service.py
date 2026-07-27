@@ -194,8 +194,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Muestra semanal = ventana ROTATORIA (offset persistido) para tejer el universo sin repetir;
     # el mensual (n=None) coge el universo entero y no mueve el cursor.
     sample = universe_mod.sample_for_scan(always, n, _scan_cursor(db))
-    if n is not None:
-        _advance_scan_cursor(db, n)
+    # OJO: el cursor NO avanza aquí sino al final (paso 9). Avanzarlo ahora consumía la franja
+    # aunque el escaneo reventase a mitad, y esos nombres no volvían hasta la siguiente vuelta.
 
     # 2) Outlook macro forward (V4-Pro, 1 llamada).
     macro = macro_mod.get_macro_outlook(deep_llm)
@@ -230,11 +230,13 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         lista = ", ".join(failed[:8]) + ("…" if len(failed) > 8 else "")
         issues.append(f"{len(failed)} nombre(s) sin datos de mercado: {lista}")
     # Fallo de prescore = score 0 Y headline vacía (una opinión real de 0 traería tesis).
-    pre_caidos = [p.ticker for p, _d in (r for r in results if r)
-                  if p.score == 0 and not p.headline]
-    if pre_caidos:
-        lista = ", ".join(pre_caidos[:8]) + ("…" if len(pre_caidos) > 8 else "")
-        issues.append(f"{len(pre_caidos)} pre-score(s) fallidos (LLM no parseable): {lista}")
+    # Van a la auditoría con stage="prescore_error": si no, desaparecen del embudo sin rastro
+    # (no están en `prescored`, ni en `failed`, ni en el ranking).
+    pre_errors = [(p, d) for p, d in (r for r in results if r) if p.score == 0 and not p.headline]
+    if pre_errors:
+        caidos = [p.ticker for p, _d in pre_errors]
+        lista = ", ".join(caidos[:8]) + ("…" if len(caidos) > 8 else "")
+        issues.append(f"{len(caidos)} pre-score(s) fallidos (LLM no parseable): {lista}")
 
     # Finalistas al profundo: top-2/sector (amplitud) ∪ top-15 global + posiciones + watchlist,
     # truncado a un tope duro. El corte YA NO es ciego al macro (el prescore lo ve entero), así
@@ -254,13 +256,18 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         extra = "\n".join(x for x in (prior.get(ticker), mem_by_t.get(ticker)) if x) or None
         return scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, extra)
 
-    deep: dict[str, scorer_mod.ScoreResult] = {}
+    analizados: dict[str, scorer_mod.ScoreResult] = {}
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
         for res in ex.map(_deep, finalists):
-            deep[res.ticker] = res
-    deep_caidos = [t for t, r in deep.items() if r.score == 0 and not r.report]
+            analizados[res.ticker] = res
+    # El scorer profundo puntúa de 1 a 100, así que un 0 SOLO puede ser fallo de parseo. Se cae
+    # del ranking (se pintaba como un 0 legítimo) y NO llega a la watchlist, donde al estar por
+    # debajo del umbral de expulsión hacía que un fallo del LLM borrase memoria del agente.
+    deep = {t: r for t, r in analizados.items() if r.score > 0}
+    deep_caidos = sorted(set(analizados) - set(deep))
     if deep_caidos:
-        issues.append(f"Informe profundo fallido (LLM) en: {', '.join(deep_caidos)}")
+        issues.append("Informe profundo no parseable (fuera del ranking): "
+                      + ", ".join(deep_caidos))
 
     price_map = {d.ticker: d.price for _p, d in prescored if d.price}
     instr_prices = instruments_mod.prices()        # {} si el allowlist UCITS está vacío
@@ -285,7 +292,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             ticker=ticker, sector=data.sector, score=d.score,
             headline=d.headline, report=d.report,
             price=data.price, market_cap=data.market_cap, target_price=d.target_price,
-            held=ticker in held, on_watchlist=ticker in watch,
+            held=ticker in held, on_watchlist=ticker in watch,  # provisional: se re-sella al final
         ))
     db.commit()
     if store:                                      # guarda las tesis nuevas para recordarlas luego
@@ -333,7 +340,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Traza de auditoría del embudo (diagnóstico; nunca debe tirar el escaneo).
     try:
         scan_audit.record(db, prescored=prescored, failed=failed, finalists=finalists,
-                          deep=deep, selected=selected, construction=construction)
+                          deep=deep, selected=selected, construction=construction,
+                          pre_errors=pre_errors)
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
 
@@ -387,12 +395,24 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             + ([f"salen {_lista(salen)}"] if salen else [])
         changes.append(f"Ranking ({len(deep)} a fondo): " + " · ".join(partes))
     watch_now = set(watchlist_mod.tickers(db))
+    # El badge del ranking se estampó ANTES de actualizar y limpiar la watchlist, así que iba un
+    # escaneo por detrás (marcaba en seguimiento nombres ya comprados o ya caducados). Se re-sella
+    # contra la watchlist REAL de después.
+    for s in db.query(Score).all():
+        s.on_watchlist = s.ticker in watch_now
+    db.commit()
+
     w_in = sorted(watch_now - prev_watch)
     w_out = sorted(prev_watch - watch_now)
     if w_in or w_out:
         partes = ([f"entra {_lista(w_in)}"] if w_in else []) \
             + ([f"sale {_lista(w_out)}"] if w_out else [])
         changes.append(f"Watchlist ({len(watch_now)} vigilados): " + " · ".join(partes))
+
+    # La ventana rotatoria avanza AL FINAL, con el escaneo ya analizado, auditado y decidido: si
+    # revienta a mitad, esta franja no se consume y le vuelve a tocar en la siguiente pasada.
+    if n is not None:
+        _advance_scan_cursor(db, n)
 
     result = {
         "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),

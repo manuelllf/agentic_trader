@@ -74,6 +74,11 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
         conn.execute(text("ALTER TABLE approvals ADD COLUMN broker_order_id VARCHAR(48)"))
     if ap and "requested_quantity" not in ap:
         conn.execute(text("ALTER TABLE approvals ADD COLUMN requested_quantity VARCHAR(32)"))
+    # scan_audit.price: la traza pasó a ser histórica y sin precio no se puede medir a posteriori
+    # qué hicieron las descartadas. ADD COLUMN no toca las filas ya guardadas (quedan a NULL).
+    sa = cols("scan_audit")
+    if sa and "price" not in sa:
+        conn.execute(text("ALTER TABLE scan_audit ADD COLUMN price FLOAT"))
     conn.commit()
 
 

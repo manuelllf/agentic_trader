@@ -239,6 +239,52 @@ def test_scan_audit_records_each_stage(db) -> None:
     assert rows["B"].stage == "finalista" and rows["B"].reached_deep and not rows["B"].selected
     assert rows["C"].stage == "prescore" and not rows["C"].reached_deep
     assert rows["X"].stage == "datos" and rows["X"].prescore is None
+    # El precio del día: sin él no se puede medir DESPUÉS qué hicieron las descartadas.
+    assert rows["C"].price == 1.0
+
+
+def test_scan_audit_es_historico_y_poda_lo_viejo(db, monkeypatch) -> None:
+    """Cada escaneo AÑADE su traza (antes borraba la anterior: cada escaneo destruía la
+    evidencia del previo) y solo se cae lo que pasa de la retención."""
+    from app import scan_audit
+    from app.models import ScanAudit
+
+    class _Constr:
+        positions: list = []
+
+    ahora = datetime.now(UTC)
+    db.add(ScanAudit(scan_at=ahora - timedelta(days=scan_audit.RETENTION_DAYS + 1),
+                     ticker="OLD", stage="prescore"))
+    db.commit()
+
+    # Relojes fijos (en Windows dos llamadas seguidas caen en el mismo tick de ~15 ms).
+    for ticker, cuando in (("A", ahora - timedelta(days=7)), ("B", ahora)):
+        monkeypatch.setattr(scan_audit, "_utcnow", lambda c=cuando: c)
+        scan_audit.record(db, prescored=[_pn(ticker, "Tech", 90)], failed=[], finalists=[],
+                          deep={}, selected=[], construction=_Constr())
+
+    rows = db.query(ScanAudit).all()
+    assert {r.ticker for r in rows} == {"A", "B"}      # los dos escaneos conviven
+    assert "OLD" not in {r.ticker for r in rows}       # el de hace 91 días, podado
+    assert db.query(ScanAudit.scan_at).distinct().count() == 2   # scan_at = id de escaneo
+
+
+def test_scan_audit_registra_los_prescores_fallidos(db) -> None:
+    """Un pre-score que no parsea desaparecía del embudo sin rastro (ni en failed, ni en la
+    auditoría, ni en el ranking): ahora queda con su etapa propia."""
+    from app import scan_audit
+    from app.models import ScanAudit
+
+    class _Constr:
+        positions: list = []
+
+    scan_audit.record(db, prescored=[_pn("A", "Tech", 90)], failed=[], finalists=[], deep={},
+                      selected=[], construction=_Constr(), pre_errors=[_pn("E", "Energy", 0)])
+
+    row = db.query(ScanAudit).filter(ScanAudit.ticker == "E").one()
+    assert row.stage == "prescore_error"
+    assert row.prescore is None            # no hubo puntuación: hubo fallo (no cuenta como pre)
+    assert row.sector == "Energy"
 
 
 # ---- 100% invertido (water-filling con tope por posición) ----

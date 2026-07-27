@@ -74,11 +74,13 @@ class Proposal(Base):
 
 
 class ScanAudit(Base):
-    """Traza del embudo del ÚLTIMO escaneo (diagnóstico, sin dinero). Una fila por ticker con
-    hasta dónde llegó: pre-score → finalista (profundo) → seleccionado → en cartera, y su peso.
+    """Traza HISTÓRICA del embudo de cada escaneo (diagnóstico, sin dinero). Una fila por ticker
+    con hasta dónde llegó: pre-score → finalista (profundo) → seleccionado → en cartera, su peso
+    y el precio del día.
 
-    Se REEMPLAZA en cada escaneo (no es histórico). Sirve para ver de un vistazo que el corte de
-    finalistas ya no colapsa en un solo sector. Ver `app/scan_audit.py` y `scripts/scan_funnel.py`.
+    Es histórico: `scan_at` (idéntico en todas las filas de un escaneo) hace de identificador de
+    escaneo, y se poda lo que pasa de 90 días. Telemetría para evaluación OFFLINE — nunca se
+    inyecta al LLM. Ver `app/scan_audit.py` y `scripts/scan_funnel.py`.
     """
 
     __tablename__ = "scan_audit"
@@ -88,6 +90,8 @@ class ScanAudit(Base):
     ticker: Mapped[str] = mapped_column(String(16), index=True)
     sector: Mapped[str] = mapped_column(String(48), default="")
     prescore: Mapped[float | None] = mapped_column(Float)     # None si no se llegó a pre-scorear
+    price: Mapped[float | None] = mapped_column(Float)        # precio del día (sin él no se puede
+    # medir DESPUÉS si las descartadas lo hicieron mejor que las compradas)
     reached_deep: Mapped[bool] = mapped_column(default=False)  # ¿pasó el corte al profundo?
     deep_score: Mapped[int | None] = mapped_column(Integer)
     selected: Mapped[bool] = mapped_column(default=False)      # ¿top-10 al constructor?
