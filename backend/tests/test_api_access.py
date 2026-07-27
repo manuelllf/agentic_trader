@@ -517,13 +517,17 @@ def test_report_publico_oculta_las_novedades_del_ranking(client, db, token) -> N
     db.add(Meta(key="last_scan_report", value=json.dumps(
         {"at": "2026-07-28T14:15:00+00:00", "mode": "observatorio", "error": None,
          "issues": ["algo"], "changes": ["entran ZZZ", "salen AAA"],
+         "outlook": "Veo rotación desde WWW hacia defensivos.",
          "universe": {"fuente": "cierre", "size": 2600}, "scanned": 2601,
          "prescored": 2600, "deep": 50, "cost": None})))
     db.commit()
 
     anon = client.get("/scan/report").json()["report"]
     assert anon["changes"] == [] and "ZZZ" not in client.get("/scan/report").text
+    # La tesis es texto libre del modelo y puede citar nombres: mismo lado que `changes`.
+    assert anon["outlook"] is None and "WWW" not in client.get("/scan/report").text
     assert anon["prescored"] == 2600 and anon["issues"] == ["algo"]   # el resto sí se ve
 
     con = client.get("/scan/report", headers={"Authorization": f"Bearer {token}"}).json()["report"]
     assert con["changes"] == ["entran ZZZ", "salen AAA"]
+    assert con["outlook"].startswith("Veo rotación")

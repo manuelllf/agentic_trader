@@ -10,7 +10,7 @@ agregados/datos anonimizados; con sesión, el detalle completo de siempre) — a
 pública puede presumir de rendimiento, y contar cómo funciona el embudo, sin regalar la cartera:
 - GET  /ledger               → sin sesión: agregados + `positions: []`; con sesión: completo.
 - GET  /performance          → sin sesión: posiciones anonimizadas (sin ticker); con sesión: todo.
-- GET  /scan/report          → sin sesión: sin `changes` (nombran tickers); con sesión: completo.
+- GET  /scan/report          → sin sesión: sin `changes` ni `outlook`; con sesión: completo.
 - GET  /scan/funnel          → sin sesión: solo agregados por etapa/sector; con sesión: + detalle.
 
 La regla que separa las dos caras: **cómo se comporta el sistema es público; QUÉ nombres elige,
@@ -228,7 +228,9 @@ def scan_report(db: Session = Depends(get_db), authed: bool = Depends(auth_optio
     lo escribe el cron.
 
     DOBLE NIVEL: cómo se comportó el sistema es público, pero `changes` nombra los tickers que
-    entran y salen del ranking — eso es la cartera del método y solo se ve con sesión.
+    entran y salen del ranking — eso es la cartera del método y solo se ve con sesión. `outlook`
+    (la tesis macro del escaneo) va por el mismo lado: es texto libre del modelo y puede citar
+    nombres, así que no se regala a puerta abierta aunque acabe publicado en una tarjeta.
     """
     row = db.get(Meta, "last_scan_report")
     if row is None:
@@ -238,7 +240,7 @@ def scan_report(db: Session = Depends(get_db), authed: bool = Depends(auth_optio
     except ValueError:
         return {"report": None}
     if not authed:
-        report = {**report, "changes": []}
+        report = {**report, "changes": [], "outlook": None}
     return {"report": report}
 
 

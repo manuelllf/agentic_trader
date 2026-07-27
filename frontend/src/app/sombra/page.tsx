@@ -101,6 +101,7 @@ export default function SombraDashboard() {
   const [authed, setAuthed] = useState(false);   // sesión detectada en el último refresco
   const chartBox = useRef<HTMLDivElement | null>(null);   // contenedor del SVG que se exporta
   const [exportMsg, setExportMsg] = useState("");
+  const [exportEmbudoMsg, setExportEmbudoMsg] = useState("");
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const alive = useRef(true);                    // guard de desmontaje (mismo patrón que portada)
 
@@ -165,22 +166,28 @@ export default function SombraDashboard() {
       const { downloadChartCard } = await import("@/lib/exportCard");
       const hoy = new Date();
       await downloadChartCard({
-        svg: svg as SVGSVGElement,
         preset,
-        title: "Agentic Trader · cartera sombra vs S&P 500",
-        subtitle: perf?.since
-          ? `desde el ${fmtDay(perf.since)} · datos a ${fmtDay(hoy.toISOString().slice(0, 10))}`
-          : `datos a ${fmtDay(hoy.toISOString().slice(0, 10))}`,
-        stats: [
-          { label: "CARTERA", value: `${sign(perf?.portfolio_return_pct ?? 0)}${perf?.portfolio_return_pct ?? 0}%`,
-            color: (perf?.portfolio_return_pct ?? 0) >= 0 ? "#059669" : "#e11d48" },
-          { label: "S&P 500", value: `${sign(perf?.spy_return_pct ?? 0)}${perf?.spy_return_pct ?? 0}%`,
-            color: "#64748b" },
-          ...(perf?.alpha_pct != null
-            ? [{ label: "ALPHA", value: `${sign(perf.alpha_pct)}${perf.alpha_pct} pp`,
-                 color: perf.alpha_pct >= 0 ? "#059669" : "#e11d48" }]
-            : []),
+        title: "¿Bate al mercado?",
+        subtitle: "Agentic Trader · ranker fundamental sistemático",
+        badges: [
+          ...(perf?.since ? [{ text: `desde el ${fmtDay(perf.since)}` }] : []),
+          { text: `datos a ${fmtDay(hoy.toISOString().slice(0, 10))}` },
         ],
+        panels: [{
+          label: "CARTERA SOMBRA VS S&P 500",
+          note: "índice base 100 · las aportaciones no cuentan como rentabilidad",
+          stats: [
+            { label: "CARTERA", value: `${sign(perf?.portfolio_return_pct ?? 0)}${perf?.portfolio_return_pct ?? 0}%`,
+              color: (perf?.portfolio_return_pct ?? 0) >= 0 ? "#059669" : "#e11d48" },
+            { label: "S&P 500", value: `${sign(perf?.spy_return_pct ?? 0)}${perf?.spy_return_pct ?? 0}%`,
+              color: "#64748b" },
+            ...(perf?.alpha_pct != null
+              ? [{ label: "ALPHA", value: `${sign(perf.alpha_pct)}${perf.alpha_pct} pp`,
+                   color: perf.alpha_pct >= 0 ? "#059669" : "#e11d48" }]
+              : []),
+          ],
+          body: svg as SVGSVGElement,
+        }],
         footer: "No constituye recomendación de inversión · operaciones simuladas, sin dinero real · rentabilidad neta de comisiones simuladas",
         filename: `agentic-trader-${hoy.toISOString().slice(0, 10)}`,
       });
@@ -189,6 +196,65 @@ export default function SombraDashboard() {
       setExportMsg(e instanceof Error ? e.message : "No se pudo exportar.");
     }
   }, [perf]);
+
+  /** El embudo como tarjeta. Es la imagen del martes: el escaneo semanal no mueve la cartera,
+   *  así que lo publicable de ese día es cuánto se miró y por dónde se fue cayendo. */
+  const exportarEmbudo = useCallback(async (preset: "x" | "linkedin") => {
+    setExportEmbudoMsg("Componiendo…");
+    try {
+      const [{ downloadChartCard, quoteSvg }, { funnelCascadeSvg, funnelPie }] = await Promise.all([
+        import("@/lib/exportCard"),
+        import("@/lib/funnelCard"),
+      ]);
+      const u = universoLinea(report);
+      const coste = fmtScanCost(report?.cost ?? null);
+      const dia = fmtDay(report?.at ?? new Date().toISOString());
+      const pasos = cascada(report, funnel);
+      // La tesis DE ESTE escaneo manda; la de la última decisión es el respaldo para informes
+      // viejos (anteriores a que el observatorio guardase la suya).
+      const tesis = report?.outlook?.trim() || proposal?.macro_summary?.trim();
+      const tesisPropia = !!report?.outlook?.trim();
+      await downloadChartCard({
+        preset,
+        title: "El embudo del escaneo",
+        subtitle: "Agentic Trader · ranker fundamental sistemático",
+        badges: [
+          { text: `${report?.mode === "decisión" ? "decisión mensual" : "observatorio semanal"} · ${dia}` },
+          ...(macro ? [{ text: `${macro.regime}${macro.vix != null ? ` · VIX ${macro.vix}` : ""}`,
+                         tone: macro.regime === "risk-off" ? ("amber" as const) : ("green" as const) }] : []),
+          ...(coste ? [{ text: coste.split(" · ")[0] + " de coste" }] : []),
+        ],
+        panels: [
+          {
+            // Rótulo corto a propósito: la apostilla de al lado se recorta al ancho del panel,
+            // y el universo (lo que de verdad da la escala) importa más que un rótulo bonito.
+            label: "EL EMBUDO",
+            // Solo el primer tramo del detalle: la apostilla es contexto, no la línea entera.
+            note: u ? `${u.texto} · ${u.detalle.split(" · ")[0]}` : undefined,
+            weight: tesis ? 0.85 : 1,
+            body: funnelCascadeSvg(pasos, funnelPie(pasos, sectoresTop(funnel, 3),
+              (funnel?.sin_datos ?? 0) + (funnel?.prescore_error ?? 0))),
+          },
+          // Los números solos no concluyen nada: la tesis es el marco que los interpreta, y va
+          // ÍNTEGRA y con su autoría — es del sistema, no mía.
+          ...(tesis
+            ? [{ label: "SU TESIS MACRO",
+                 // Si la tesis no es de este escaneo, la tarjeta lo dice: emparejar el embudo
+                 // del martes con un contexto de hace semanas sin avisar sería mentir.
+                 note: tesisPropia
+                   ? "íntegra, escrita por el propio sistema en este escaneo"
+                   : `íntegra, de la decisión del ${fmtDay(proposal?.created_at ?? null)}`,
+                 weight: 1.15, body: quoteSvg(tesis) }]
+            : []),
+        ],
+        footer: "No constituye recomendación de inversión · agregados por etapa y sector, sin nombres · operaciones simuladas, sin dinero real",
+        filename: `agentic-trader-embudo-${(report?.at ?? new Date().toISOString()).slice(0, 10)}`,
+      });
+      setExportEmbudoMsg("");
+    } catch (e) {
+      setExportEmbudoMsg(e instanceof Error ? e.message : "No se pudo exportar.");
+    }
+  }, [report, funnel, proposal, macro]);
 
   const equity = ledger ? Number(ledger.equity) : 0;
   const heldSet = new Set((ledger?.positions ?? []).map((p) => p.ticker));
@@ -305,26 +371,7 @@ export default function SombraDashboard() {
                   <div ref={chartBox}>
                     <HistoryChart points={hist} />
                   </div>
-                  {/* Un formato por red: cada una recorta a su ratio, y lo que no puede
-                      perderse en el recorte es justamente la cabecera y el pie legal. */}
-                  <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
-                    {exportMsg && <span className="mr-auto text-[11px] text-slate-400">{exportMsg}</span>}
-                    <span className="text-[11px] text-slate-400">Exportar tarjeta</span>
-                    {([["x", "X", "16:9 · 1600×900"], ["linkedin", "LinkedIn", "1,91:1 · 1200×627"]] as const)
-                      .map(([key, label, ratio]) => (
-                        <button
-                          key={key} onClick={() => exportarTarjeta(key)}
-                          title={`PNG ${ratio}, con cabecera, cifras y descargo legal dentro de la imagen`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-                        >
-                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
-                                  strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                          {label}
-                        </button>
-                      ))}
-                  </div>
+                  <ExportButtons onExport={exportarTarjeta} msg={exportMsg} />
                 </div>
               )}
             </div>
@@ -405,6 +452,7 @@ export default function SombraDashboard() {
                 <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
                   cada martes se estudia el mercado entero; la cartera solo se decide una vez al mes
                 </p>
+                <ExportButtons onExport={exportarEmbudo} msg={exportEmbudoMsg} />
               </div>
             </section>
             <section className={`${CARD} flex flex-col items-center justify-center gap-3 border-dashed p-10 text-center`}>
@@ -519,6 +567,7 @@ export default function SombraDashboard() {
                   <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
                     la cartera no se toca hasta la decisión mensual (o un análisis manual)
                   </p>
+                  <ExportButtons onExport={exportarEmbudo} msg={exportEmbudoMsg} />
                 </div>
               </section>
             </div>
@@ -647,6 +696,33 @@ function FunnelCascade({ report, scan }: { report: ScanReport | null; scan: Funn
         </ul>
       )}
     </>
+  );
+}
+
+/** Un formato por red: cada una recorta a su ratio, y lo que no puede perderse en el recorte
+ *  es justamente la cabecera y el pie legal — de ahí que se exporte ya al tamaño de destino. */
+function ExportButtons({ onExport, msg }: {
+  onExport: (preset: "x" | "linkedin") => void; msg: string;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+      {msg && <span className="mr-auto text-[11px] text-slate-400">{msg}</span>}
+      <span className="text-[11px] text-slate-400">Exportar tarjeta</span>
+      {([["x", "X", "16:9 · 1600×900"], ["linkedin", "LinkedIn", "1,91:1 · 1200×627"]] as const)
+        .map(([key, label, ratio]) => (
+          <button
+            key={key} onClick={() => onExport(key)}
+            title={`PNG ${ratio}, con cabecera, cifras y descargo legal dentro de la imagen`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+                    strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {label}
+          </button>
+        ))}
+    </div>
   );
 }
 

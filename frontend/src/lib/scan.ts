@@ -75,7 +75,7 @@ export function universoLinea(report: ScanReport | null):
   const sobra = u.sobre_suelo && u.sobre_suelo > u.size
     ? ` · ${fmtNum(u.sobre_suelo)} pasaban el suelo de liquidez, se escanean los de más volumen`
     : "";
-  return { texto: `${u.size} nombres`, detalle: cuando + sobra,
+  return { texto: `${fmtNum(u.size)} nombres`, detalle: cuando + sobra,
            tone: dias > 4 ? "warn" : "ok" };
 }
 

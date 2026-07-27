@@ -153,6 +153,7 @@ export interface ScanReport {
   error: string | null;                        // != null → el escaneo entero falló
   issues: string[];
   changes?: string[];                          // novedades vs el escaneo anterior (ranking/watchlist)
+  outlook?: string | null;                      // tesis macro DE ESTE escaneo (solo con sesión)
   /** Con qué universo se trabajó. `fuente`: "cierre" = la foto del último cierre (lo normal),
    *  "vivo" = sin foto, pedido con el mercado abierto (sale recortado), "seed" = emergencia.
    *  `sobre_suelo` > `size` significa que mordió el tope de nombres. */

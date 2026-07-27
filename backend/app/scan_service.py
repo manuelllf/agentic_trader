@@ -67,6 +67,10 @@ def _write_scan_report(db: Session, *, mode: str | None, result: dict | None,
         "universe": r.get("universe"),
         "scanned": r.get("scanned"), "prescored": r.get("prescored"), "deep": r.get("deep"),
         "cost": r.get("cost"),
+        # La tesis macro de ESTE escaneo. Hasta ahora el observatorio la calculaba y la tiraba:
+        # la única visible era la de la última DECISIÓN, así que la lectura del martes acababa
+        # emparejada con un contexto de hace semanas.
+        "outlook": r.get("outlook"),
     }
     db.merge(Meta(key=_REPORT_KEY, value=json.dumps(report, ensure_ascii=False)))
     db.commit()
@@ -461,6 +465,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         "positions": len(construction.positions),
         "decided": decide,
         "cost": _llm_usage(prescore_llm, deep_llm),  # coste REAL del escaneo (Flash + V4-Pro)
+        "outlook": macro.get("outlook") or "",
     }
     try:   # el informe jamás debe tirar un escaneo ya completado
         _write_scan_report(db, mode=modo, result=result, issues=issues, changes=changes)
