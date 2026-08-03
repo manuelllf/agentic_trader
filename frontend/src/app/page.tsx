@@ -60,8 +60,11 @@ export default function Landing() {
                 {fmtPct(shadow?.return_pct ?? null)}
               </span>
             )}
-            <p className="mt-2 text-xs text-slate-500">
-              vs S&amp;P 500: alpha {fmtPct(shadow?.alpha_pct ?? null)}
+            {/* El número grande es LA CARTERA y su etiqueta lo dice; la comparación con el
+                índice baja un escalón — es contexto, no el titular. */}
+            <p className="mt-2 text-xs text-slate-500">rentabilidad de la cartera simulada</p>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              alpha vs S&amp;P 500: {fmtPct(shadow?.alpha_pct ?? null)}
             </p>
             {shadowHist.length >= 2 && (
               <div className="mt-2">

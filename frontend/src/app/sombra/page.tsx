@@ -62,6 +62,12 @@ const MACRO_STYLE: Record<string, string> = {
   desconocido: "bg-slate-50 text-slate-400 ring-slate-400/20",
 };
 const POS_COLOR = ["bg-emerald-500", "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500"];
+/** Hasta dónde llegó cada nombre en el embudo, de más lejos a más cerca del prescore: el orden
+ *  de lectura del ranking semanal (dentro de cada tramo se ordena por score). */
+const STAGE_ORDEN: Record<string, number> = {
+  cartera: 0, seleccionado: 1, finalista: 2, deep_error: 3, prescore: 4,
+  prescore_error: 5, datos: 6,
+};
 const scoreColor = (s: number) =>
   s >= 80 ? "bg-emerald-500" : s >= 65 ? "bg-teal-500" : s >= 50 ? "bg-amber-400" : "bg-slate-300";
 const CARD = "rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_16px_rgba(15,23,42,0.06)]";
@@ -203,13 +209,15 @@ export default function SombraDashboard() {
           label: "CARTERA SOMBRA VS S&P 500",
           note: "índice base 100 · las aportaciones no cuentan como rentabilidad",
           stats: [
+            // El titular del PNG es la cartera; índice y alpha, secundarios (mismo criterio
+            // que en la web: la comparación acompaña, no compite).
             { label: "CARTERA", value: `${sign(perf?.portfolio_return_pct ?? 0)}${perf?.portfolio_return_pct ?? 0}%`,
               color: (perf?.portfolio_return_pct ?? 0) >= 0 ? theme.accent : theme.bad },
             { label: "S&P 500", value: `${sign(perf?.spy_return_pct ?? 0)}${perf?.spy_return_pct ?? 0}%`,
-              color: theme.ink2 },
+              color: theme.ink2, secondary: true },
             ...(perf?.alpha_pct != null
-              ? [{ label: "ALPHA", value: `${sign(perf.alpha_pct)}${perf.alpha_pct} pp`,
-                   color: perf.alpha_pct >= 0 ? theme.accent : theme.bad }]
+              ? [{ label: "ALPHA", value: `${sign(perf.alpha_pct)}${perf.alpha_pct}%`,
+                   color: perf.alpha_pct >= 0 ? theme.accent : theme.bad, secondary: true }]
               : []),
           ],
           body: svg as SVGSVGElement,
@@ -441,12 +449,15 @@ export default function SombraDashboard() {
           <Kpi label="P&L abierto" value={`$${money(ledger?.unrealized_pnl ?? 0)}`}
                tone={Number(ledger?.unrealized_pnl ?? 0) >= 0 ? "pos" : "neg"}
                sub={`realizado $${money(ledger?.realized_pnl ?? 0)}`} />
-          <Kpi label="vs S&P 500"
-               value={perf?.alpha_pct != null ? `${sign(perf.alpha_pct)}${perf.alpha_pct}%` : "—"}
+          {/* El titular es LO QUE LLEVA LA CARTERA; el índice y el alpha son el contexto y
+              van en la línea pequeña — la comparación nunca por delante del resultado. */}
+          <Kpi label="Rentabilidad"
+               value={perf ? `${sign(perf.portfolio_return_pct)}${perf.portfolio_return_pct}%` : "—"}
                sub={perf?.spy_return_pct != null
-                 ? `cart ${sign(perf.portfolio_return_pct)}${perf.portfolio_return_pct}% · S&P ${sign(perf.spy_return_pct)}${perf.spy_return_pct}%`
+                 ? `S&P ${sign(perf.spy_return_pct)}${perf.spy_return_pct}%${perf.alpha_pct != null
+                     ? ` · alpha ${sign(perf.alpha_pct)}${perf.alpha_pct}%` : ""}`
                  : "sin cartera"}
-               tone={perf?.alpha_pct != null ? (perf.alpha_pct >= 0 ? "pos" : "neg") : undefined} />
+               tone={perf ? (perf.portfolio_return_pct >= 0 ? "pos" : "neg") : undefined} />
           <Kpi label="Régimen" value={macro?.regime ?? "—"} sub={macro?.vix != null ? `VIX ${macro.vix}` : ""} />
         </section>
 
@@ -465,16 +476,18 @@ export default function SombraDashboard() {
                     </span>
                     <span className="ml-1.5 text-xs text-slate-500">cartera</span>
                   </span>
+                  {/* Un escalón claro por debajo de la cartera: la referencia acompaña, no
+                      compite — mismo criterio que en la landing y en los KPI. */}
                   <span>
-                    <span className="text-xl font-bold text-slate-500">{sign(perf.spy_return_pct)}{perf.spy_return_pct}%</span>
-                    <span className="ml-1.5 text-xs text-slate-500">S&amp;P 500</span>
+                    <span className="text-sm font-semibold text-slate-500">{sign(perf.spy_return_pct)}{perf.spy_return_pct}%</span>
+                    <span className="ml-1.5 text-xs text-slate-400">S&amp;P 500</span>
                   </span>
                   {perf.alpha_pct != null && (
                     <span>
-                      <span className={`text-xl font-bold ${perf.alpha_pct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                        {sign(perf.alpha_pct)}{perf.alpha_pct} pp
+                      <span className={`text-sm font-semibold ${perf.alpha_pct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                        {sign(perf.alpha_pct)}{perf.alpha_pct}%
                       </span>
-                      <span className="ml-1.5 text-xs text-slate-500">alpha</span>
+                      <span className="ml-1.5 text-xs text-slate-400">alpha</span>
                     </span>
                   )}
                 </div>
@@ -818,7 +831,15 @@ export default function SombraDashboard() {
                   </p>
                 )}
                 <div className="divide-y divide-slate-100">
-                  {funnel.nombres.map((n) => (
+                  {/* Orden de lectura, no de llegada: primero hasta dónde llegó cada nombre
+                      (cartera → seleccionado → finalista → profundo fallido → prescore) y,
+                      dentro de cada tramo, su score de mayor a menor. */}
+                  {[...funnel.nombres]
+                    .sort((a, b) =>
+                      (STAGE_ORDEN[a.stage] ?? 9) - (STAGE_ORDEN[b.stage] ?? 9)
+                      || (b.deep_score ?? -1) - (a.deep_score ?? -1)
+                      || (b.prescore ?? -1) - (a.prescore ?? -1))
+                    .map((n) => (
                     <div key={n.ticker} className="flex items-center gap-3 py-1.5 tabular-nums">
                       <span className="w-16 shrink-0 font-semibold text-slate-800">{n.ticker}</span>
                       <span className="flex-1 truncate text-slate-400">{n.sector}</span>
@@ -941,8 +962,10 @@ function OutcomesRead({ scans, onExportGrupos, msgGrupos, onExportScore, msgScor
     <section className={`mb-6 ${CARD}`}>
       <CardHead>
         La auditoría, leída
+        {/* La referencia de cada % tiene que estar EN la cabecera, no en la letra pequeña:
+            sin "de su escaneo a hoy" la tabla eran números sin origen ni ventana. */}
         <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
-          qué hizo después cada grupo que tocó el embudo
+          cuánto ha subido o bajado cada grupo de nombres desde su escaneo hasta hoy
         </span>
       </CardHead>
       <div className="p-4 text-xs leading-relaxed text-slate-600">
@@ -950,11 +973,11 @@ function OutcomesRead({ scans, onExportGrupos, msgGrupos, onExportScore, msgScor
           <table className="w-full border-collapse whitespace-nowrap tabular-nums">
             <thead>
               <tr className="text-left text-[10px] uppercase tracking-wider text-slate-400">
-                <th className="py-1.5 pr-3 font-semibold">Escaneo</th>
-                <th className="px-3 py-1.5 text-right font-semibold">En cartera</th>
-                <th className="px-3 py-1.5 text-right font-semibold">Elegidos s/fondear</th>
-                <th className="px-3 py-1.5 text-right font-semibold">Descartados</th>
-                <th className="px-3 py-1.5 text-right font-semibold">S&P 500</th>
+                <th className="py-1.5 pr-3 font-semibold">Escaneo → hoy</th>
+                <th className="px-3 py-1.5 text-right font-semibold" title="media del grupo desde el precio del día del escaneo; entre paréntesis, cuántos nombres">En cartera</th>
+                <th className="px-3 py-1.5 text-right font-semibold" title="los del top-10 que el constructor dejó sin peso">Elegidos s/fondear</th>
+                <th className="px-3 py-1.5 text-right font-semibold" title="analizados a fondo y no seleccionados">Descartados</th>
+                <th className="px-3 py-1.5 text-right font-semibold" title="el índice en la misma ventana: la vara de medir">S&P 500</th>
                 <th className="px-3 py-1.5 text-right font-semibold" title="los 10 mejores pre-scores que no llegaron al profundo vs los 10 peores que sí entraron">
                   Corte: fuera / dentro
                 </th>
@@ -964,8 +987,8 @@ function OutcomesRead({ scans, onExportGrupos, msgGrupos, onExportScore, msgScor
               {scans.map((s) => (
                 <tr key={s.at} className="border-t border-slate-100">
                   <td className="py-1.5 pr-3">
-                    {fmtDay(s.at)}
-                    <span className="text-slate-400"> · {s.mode} · hace {s.days} d</span>
+                    del {fmtDay(s.at)} a hoy
+                    <span className="text-slate-400"> · {s.days} d · {s.mode}</span>
                   </td>
                   <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.cartera} /></td>
                   <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.seleccionados} /></td>

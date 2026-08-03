@@ -327,12 +327,23 @@ def test_select_finalists_stratifies_by_sector() -> None:
     assert "T4" not in fin        # 4º de Tech: ni top-2 de su sector ni top-3 global
 
 
-def test_select_finalists_cap_never_drops_held_or_core() -> None:
+def test_select_finalists_cap_prioriza_los_carriles_garantizados() -> None:
+    """Al truncar, los carriles GARANTIZADOS (posición → watchlist → caps) van por delante de
+    los grupos del pre-score de esta semana: la watchlist es señal ya validada por el modelo
+    caro y las caps son la promesa de que Flash no veta a los grandes. Hasta el 4-ago el orden
+    era el inverso y la watchlist caía primero justo en los mensuales, donde el tope muerde."""
     from app.portfolio_service import select_finalists
     prescored = [_pn(f"N{i}", "Tech", 100 - i) for i in range(10)]  # N0 mejor … N9 peor
     fin = select_finalists(prescored, held={"N9"}, watch=["N5"], per_sector=2, global_n=2, cap=3)
     assert len(fin) == 3                    # tope duro
-    assert set(fin) == {"N9", "N0", "N1"}   # posición (N9) + núcleo top-2; watchlist (N5) fuera
+    assert set(fin) == {"N9", "N5", "N0"}   # posición → watchlist → primer hueco al núcleo
+
+    # Con sitio, entran todos los grupos; el carril de caps rescata al de mayor capitalización
+    # aunque su pre-score sea el peor (aquí N8, que sin carril quedaría fuera con global_n=2).
+    prescored[8][1].market_cap = 9e12
+    fin = select_finalists(prescored, held=set(), watch=[], per_sector=2, global_n=2,
+                           cap=3, top_caps=1)
+    assert "N8" in fin                      # el gigante entra por caps, no por pre-score
 
 
 # ---- traza de auditoría del embudo (diagnóstico) ----

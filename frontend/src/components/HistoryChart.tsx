@@ -161,12 +161,14 @@ export default function HistoryChart({ points, dark = false, mini = false }: {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-4 text-[12px]" style={{ color: C.ink }}>
-          <span className="inline-flex items-center gap-1.5">
+        {/* La cartera es el titular de la leyenda; el S&P acompaña un cuerpo por debajo y en
+            el tono del eje — la línea ya era discontinua, la leyenda ahora también lo dice. */}
+        <div className="flex items-baseline gap-4" style={{ color: C.ink }}>
+          <span className="inline-flex items-center gap-1.5 text-[13px]">
             <span className="h-2 w-2 rounded-full" style={{ background: C.line }} />
-            Cartera <b className="tabular-nums font-semibold">{fmtPct(last.v - 100)}</b>
+            Cartera <b className="tabular-nums font-bold">{fmtPct(last.v - 100)}</b>
           </span>
-          <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: C.axis }}>
             <span className="inline-block h-0 w-3 border-t-2 border-dashed" style={{ borderColor: C.spy }} />
             S&amp;P 500 <b className="tabular-nums font-semibold">{fmtPct(last.s - 100)}</b>
           </span>

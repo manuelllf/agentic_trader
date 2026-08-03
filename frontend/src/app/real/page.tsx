@@ -515,10 +515,15 @@ function SalaRealRoom() {
                    sub={summary && equity > 0 ? `${((uPnl / equity) * 100).toFixed(2)}% del patrimonio` : undefined} />
               <Kpi label="P&L realizado" value={summary ? signMoney(rPnl) : "—"}
                    tone={rPnl > 0 ? "good" : rPnl < 0 ? "bad" : undefined} sub="ventas cerradas" />
-              <Kpi label="Alpha vs S&P 500"
-                   value={perf?.alpha_pct != null ? `${perf.alpha_pct > 0 ? "+" : ""}${perf.alpha_pct}%` : "—"}
-                   tone={perf?.alpha_pct != null ? (perf.alpha_pct >= 0 ? "good" : "bad") : undefined}
-                   sub={perf?.since ? `desde ${perf.since}` : "sin posiciones aún"} />
+              {/* Primero lo que hace TU libro; el índice y el alpha, de contexto en la línea
+                  pequeña — la comparación nunca por delante del resultado. */}
+              <Kpi label="Rentabilidad"
+                   value={perf ? `${perf.portfolio_return_pct > 0 ? "+" : ""}${perf.portfolio_return_pct}%` : "—"}
+                   tone={perf ? (perf.portfolio_return_pct >= 0 ? "good" : "bad") : undefined}
+                   sub={perf?.spy_return_pct != null
+                     ? `S&P ${perf.spy_return_pct > 0 ? "+" : ""}${perf.spy_return_pct}%${perf.alpha_pct != null
+                         ? ` · alpha ${perf.alpha_pct > 0 ? "+" : ""}${perf.alpha_pct}%` : ""}`
+                     : perf?.since ? `desde ${perf.since}` : "sin posiciones aún"} />
             </section>
             <div className="mb-3 mt-1.5 flex justify-end px-0.5">
               <button onClick={() => setCapOpen(!capOpen)}

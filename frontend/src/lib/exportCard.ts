@@ -36,6 +36,9 @@ export interface CardStat {
   label: string;
   value: string;
   color?: string;
+  /** Un escalón por debajo del stat principal (la referencia: S&P, alpha…). En una tarjeta
+   *  el titular es siempre lo que lleva la cartera; la comparación acompaña, no compite. */
+  secondary?: boolean;
 }
 
 export interface CardPanel {
@@ -273,11 +276,14 @@ function panelSvg(p: CardPanel, x: number, y: number, w: number, h: number, pale
     cursor += 28;
     let sx = x + IN;
     for (const st of p.stats) {
+      // Los secundarios (S&P, alpha) van un cuerpo por debajo y alineados a la MISMA base
+      // que el principal: se leen como contexto del titular, no como tres titulares iguales.
+      const fs = st.secondary ? 25 : 36;
       partes.push(`<g transform="translate(${sx},${cursor})">
-    <text font-size="14" font-weight="600" letter-spacing="0.7" fill="${palette.ink2}">${esc(st.label)}</text>
-    <text y="36" font-size="36" font-weight="700" fill="${st.color ?? palette.ink}">${esc(st.value)}</text>
+    <text font-size="${st.secondary ? 12.5 : 14}" font-weight="600" letter-spacing="0.7" fill="${palette.ink2}">${esc(st.label)}</text>
+    <text y="36" font-size="${fs}" font-weight="700" fill="${st.color ?? palette.ink}">${esc(st.value)}</text>
   </g>`);
-      sx += Math.max(160, textW(st.value, 36) + 48);
+      sx += Math.max(st.secondary ? 120 : 160, textW(st.value, fs) + (st.secondary ? 36 : 48));
     }
     cursor += 52;
   }

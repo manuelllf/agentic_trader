@@ -43,8 +43,14 @@ def select_finalists(prescored: list, held: set, watch: list,
     rescate OBJETIVO: en el paper el modelo grande puntúa todos los grandes; el pre-score barato
     no puede vetarlos). La selección FINAL de cartera sigue siendo puro score.
 
-    Prioridad al truncar a `cap`: posiciones → núcleo por sector → extras del top global →
-    mayores caps → watchlist. Se recorta desde abajo; núcleo + posiciones nunca se sacrifican.
+    Prioridad al truncar a `cap`: posiciones → watchlist → mayores caps → núcleo por sector →
+    extras del top global. Los carriles GARANTIZADOS van primero: la watchlist es la única
+    señal ya validada por el modelo caro en escaneos previos y el carril de caps es la promesa
+    de que Flash no veta a los grandes — ninguno puede caer por culpa de los grupos que salen
+    del pre-score de ESTA semana. Lo primero que se recorta son los extras del top global que
+    no son top de su sector ("el tercer mejor de un sector caliente"): la señal más redundante.
+    (Hasta el 4-ago el orden era el inverso — la watchlist caía primero, contradiciendo el
+    "SIEMPRE al profundo" de la config justo en los mensuales, donde el tope sí muerde.)
     """
     ranked = [p.ticker for p, _d in prescored]          # ya viene por score desc
     sector = {p.ticker: d.sector for p, d in prescored}
@@ -64,7 +70,7 @@ def select_finalists(prescored: list, held: set, watch: list,
     watch_in = [t for t in watch if t in present]
 
     ordered: list[str] = []
-    for group in (held_in, core, global_top, caps_in, watch_in):
+    for group in (held_in, watch_in, caps_in, core, global_top):
         for t in group:
             if t not in ordered:
                 ordered.append(t)
