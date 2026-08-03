@@ -81,7 +81,10 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> 
         f"Company: {data.ticker} — sector {data.sector} / {data.industry}.\n"
         f"Macro & sector outlook:\n{macro_block}\n\n"
         f"Latest fundamentals:\n{data.fundamentals_text}\n\n"
-        f"Technical context: {data.technical_text or 'n/d'}\n\n"
+        f"Technical context: {data.technical_text or 'n/d'}\n"
+        # Fecha de resultados como dato más del contexto, SIN regla de qué hacer con ella
+        # (decisión pública del post de AXS: dato sí, instrucción no). Solo en el profundo.
+        f"Earnings calendar: {data.earnings_text or 'n/d'}\n\n"
         f"Recent news:\n{news}\n"
         f"{prior}\n"
         "Write the investment report (JSON) and the 1-100 score."

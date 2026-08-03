@@ -153,6 +153,9 @@ def get_macro_outlook(llm: LLMProvider, db=None) -> dict:  # noqa: ANN001
     wiki_events = events_mod.wikipedia_current_events(days=7, db=db)   # eventos recientes macro
     wiki_scheduled = events_mod.wikipedia_scheduled_events(db=db)      # calendario FUTURO (2D)
     gdelt = events_mod.gdelt_headlines(db=db)
+    # GDELT vacío es lo habitual (rate-limit agresivo): Google News RSS cubre el hueco con el
+    # mismo contrato keyless/best-effort. Solo se pide si hace falta.
+    gnews = events_mod.google_news_headlines(db=db) if not gdelt else []
     result = {
         "regime": regime.get("regime"),
         "vix": regime.get("vix"),
@@ -163,10 +166,11 @@ def get_macro_outlook(llm: LLMProvider, db=None) -> dict:  # noqa: ANN001
         # Qué trajo cada fuente de eventos (chars/títulos): el informe del escaneo lo usa para
         # avisar de fuentes caídas — un 403/rate-limit aquí es best-effort y no rompe nada,
         # pero debe VERSE (estuvo semanas mudo).
-        "events": {"wiki": len(wiki_events), "sched": len(wiki_scheduled), "gdelt": len(gdelt)},
+        "events": {"wiki": len(wiki_events), "sched": len(wiki_scheduled), "gdelt": len(gdelt),
+                   "gnews": len(gnews)},
     }
     try:
-        all_headlines = headlines + gdelt
+        all_headlines = headlines + gdelt + gnews
         user = (
             f"Market snapshot:\n{snapshot}\n\n"
             f"Recent market headlines:\n" + "\n".join(f"- {h}" for h in all_headlines) + "\n\n"

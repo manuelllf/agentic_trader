@@ -57,6 +57,45 @@ def test_scorer_bad_json_is_zero() -> None:
     assert r.score == 0  # queda fuera del embudo
 
 
+# ---- fecha de resultados (dato del contexto del profundo; decisión pública: dato sí, regla no)
+
+def test_earnings_text_fecha_ventana_y_pasado() -> None:
+    from app.screener import fundamentals as fund_mod
+
+    hoy = datetime.now(UTC)
+    en_10d = (hoy + timedelta(days=10)).timestamp()
+    en_12d = (hoy + timedelta(days=12)).timestamp()
+
+    # Fecha única confirmada y futura.
+    txt = fund_mod._earnings_text(
+        {"earningsTimestampStart": en_10d, "earningsTimestampEnd": en_10d})
+    assert txt.startswith("next earnings report: ") and "unconfirmed" not in txt
+
+    # Ventana estimada → se declara la estimación, no se vende como confirmada.
+    txt = fund_mod._earnings_text(
+        {"earningsTimestampStart": en_10d, "earningsTimestampEnd": en_12d,
+         "isEarningsDateEstimate": True})
+    assert " to " in txt and "estimated (unconfirmed)" in txt
+
+    # Recién publicados (yfinance tarda días en apuntar al siguiente trimestre): se etiqueta
+    # como "last" en vez de ocultarse — que acaba de reportar también es dato.
+    hace_5d = (hoy - timedelta(days=5)).timestamp()
+    assert fund_mod._earnings_text({"earningsTimestampStart": hace_5d}).startswith("last earnings")
+
+    assert fund_mod._earnings_text({}) == ""           # sin dato → el prompt pinta n/d
+
+
+def test_earnings_entra_al_profundo_y_no_al_prescore() -> None:
+    data = _name()
+    data.earnings_text = "next earnings report: 2026-08-12"
+    assert "Earnings calendar: next earnings report: 2026-08-12" in (
+        scorer_mod._user_prompt(data, "macro", None))
+    assert "Earnings calendar" not in scorer_mod._prescore_prompt(data, "macro")
+
+    data.earnings_text = ""
+    assert "Earnings calendar: n/d" in scorer_mod._user_prompt(data, "macro", None)
+
+
 # ---- constructor ----
 
 def test_constructor_enforces_rules() -> None:

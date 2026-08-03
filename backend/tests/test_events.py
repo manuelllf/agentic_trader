@@ -140,6 +140,42 @@ def test_un_403_no_se_reintenta(monkeypatch) -> None:
     assert len(intentos) == events._RETRIES
 
 
+def test_google_news_parsea_rss_deduplica_y_cachea(monkeypatch) -> None:
+    """El fallback de GDELT: título del canal fuera, CDATA/entidades limpiadas, duplicados y
+    vacíos tirados, cacheado 6 h igual que GDELT, y con `when:` en la query — sin él el feed
+    ordena por relevancia y cuela titulares de años atrás (pasó en la primera prueba)."""
+    db = _db_memoria()
+    llamadas: list[int] = []
+    captured: dict = {}
+
+    rss = (
+        "<?xml version='1.0'?><rss><channel>"
+        "<title>Google News</title>"
+        "<item><title>Fed holds rates - Reuters</title></item>"
+        "<item><title><![CDATA[Oil &amp; gas spike - WSJ]]></title></item>"
+        "<item><title>Fed holds rates - Reuters</title></item>"
+        "<item><title></title></item>"
+        "</channel></rss>"
+    )
+
+    class _R:
+        status_code = 200
+        content = rss.encode()
+        text = rss
+
+    def fake_get(url, params=None, **kw):  # noqa: ANN001, ANN003
+        llamadas.append(1)
+        captured.update(params or {})
+        return _R()
+
+    monkeypatch.setattr(events.httpx, "get", fake_get)
+    out = events.google_news_headlines(db=db)
+    assert "when:" in captured["q"]                    # ventana de frescura, no archivo
+    assert out == ["Fed holds rates - Reuters", "Oil & gas spike - WSJ"]
+    assert events.google_news_headlines(db=db) == out
+    assert len(llamadas) == 1                          # la segunda salió de la caché
+
+
 def test_gdelt_se_cachea_y_no_machaca_su_api(monkeypatch) -> None:
     """Su API gratuita va muy rate-limitada: pedirla en cada escaneo era la forma más segura
     de no obtener nada."""

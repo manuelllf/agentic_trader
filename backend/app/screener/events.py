@@ -9,6 +9,8 @@ eso, gratis y keyless, y filtrando a lo que mueve el mercado:
 - `wikipedia_scheduled_events`: sección "Predicted and scheduled events" de la página del año
   → calendario FUTURO de eventos (justo lo que pide el Exhibit 2D: timeline a 3 meses).
 - `gdelt_headlines`: titulares macro de GDELT (keyless, PERO muy rate-limitado → best-effort).
+- `google_news_headlines`: titulares macro del RSS de Google News (keyless, muy estable) —
+  el FALLBACK para cuando GDELT vuelve vacío, que es lo habitual.
 
 Todo best-effort: si una fuente cae, el macro degrada sin romperse.
 
@@ -26,6 +28,7 @@ error de red): un 403 es un bloqueo por política y reintentarlo es regalar minu
 from __future__ import annotations
 
 import datetime
+import html
 import json
 import logging
 import random
@@ -267,4 +270,60 @@ def gdelt_headlines(
         # Mismo criterio que Wikipedia: un rate-limit/bloqueo NO es excepción y sin este log
         # el macro se quedaría sin titulares en silencio.
         logger.warning("GDELT devolvió %s: escaneo sin sus titulares", last)
+    return []
+
+
+def google_news_headlines(
+    query: str = '"Federal Reserve" OR inflation OR "US economy" OR "stock market" when:3d',
+    max_records: int = 8, timeout: float = 15.0, db=None,  # noqa: ANN001
+) -> list[str]:
+    """Titulares macro del RSS de Google News (keyless): fallback para cuando GDELT no trae nada.
+
+    `when:3d` en la query: sin él el feed ordena por RELEVANCIA y cuela documentos de años
+    atrás (en la primera prueba salió el Inflation Reduction Act de 2022). Con él replica la
+    ventana de 3 días que ya usa GDELT (`timespan=3d`): titulares frescos, no un archivo.
+    Mismo contrato que `gdelt_headlines` (best-effort, caché 6 h, reintentos solo transitorios).
+    El feed es XML plano; el título llega como "Titular - Medio" y así va al prompt, que el medio
+    también es información. Se parsea con regex como el resto del módulo: para extraer `<title>`
+    de un feed conocido no hace falta un parser XML entero.
+    """
+    cache = _cache_load(db)
+    guardado = _cached(cache, "gnews", 6.0)
+    if guardado is not None:
+        return list(guardado)
+
+    last: int | None = None
+    for intento in range(_RETRIES):
+        try:
+            r = httpx.get(
+                "https://news.google.com/rss/search",
+                params={"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"},
+                headers=_UA, timeout=timeout, follow_redirects=True,
+            )
+            last = r.status_code
+            if r.status_code == 200 and r.content:
+                # Solo títulos DENTRO de <item> (el primero del feed es el nombre del canal).
+                brutos = re.findall(r"<item>.*?<title>(.*?)</title>", r.text, flags=re.S)
+                seen: set[str] = set()
+                titles: list[str] = []
+                for t in brutos:
+                    t = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", t, flags=re.S)
+                    t = html.unescape(t).strip()
+                    if t and t not in seen:
+                        seen.add(t)
+                        titles.append(t)
+                    if len(titles) >= max_records:
+                        break
+                if titles:
+                    _store(cache, "gnews", titles)
+                    _cache_save(db, cache)
+                return titles
+            if r.status_code not in _TRANSITORIO:
+                break
+        except Exception:
+            logger.warning("Google News falló (intento %d)", intento + 1)
+        if intento + 1 < _RETRIES:
+            time.sleep(_BACKOFF * (2 ** intento) * (0.5 + random.random()))  # noqa: S311
+    if last is not None and last != 200:
+        logger.warning("Google News devolvió %s: fallback sin titulares", last)
     return []

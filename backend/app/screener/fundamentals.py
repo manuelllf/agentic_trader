@@ -3,7 +3,8 @@
 Junta lo que el paper mete en el prompt de puntuación: los fundamentales de yfinance `.info`
 (las ~97 variables SON este dict: valoración, márgenes, crecimiento, balance, short interest,
 targets de analistas, propiedad, riesgo de gobernanza), técnicos SOLO como contexto
-(MA50/200, 52 semanas, RSI, beta) y titulares recientes. Todo gratis (yfinance).
+(MA50/200, 52 semanas, RSI, beta), la próxima fecha de resultados (dato, no regla) y
+titulares recientes. Todo gratis (yfinance).
 
 Tolerante a huecos: como el paper, "usamos la información más reciente disponible" — lo que
 falte va como `n/d` y el LLM lo maneja (nada de excluir por dato incompleto).
@@ -12,6 +13,7 @@ falte va como `n/d` y el LLM lo maneja (nada de excluir por dato incompleto).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import yfinance as yf
 
@@ -90,6 +92,7 @@ class NameData:
     technical_text: str
     market_cap: float | None = None   # para el desempate por market cap (método del paper)
     news: list[str] = field(default_factory=list)
+    earnings_text: str = ""           # próxima fecha de resultados — dato para el PROFUNDO
 
 
 def _fmt(value: object, kind: str) -> str | None:
@@ -159,6 +162,28 @@ def _technical_text(info: dict, hist) -> str:
     return " · ".join(parts)
 
 
+def _earnings_text(info: dict) -> str:
+    """Próxima fecha de resultados, como DATO neutro y sin instrucción (dato sí, regla no).
+
+    `.info` ya trae la ventana (`earningsTimestampStart/End`, unix) — cero llamadas extra.
+    Tras publicar resultados, yfinance apunta ya al trimestre siguiente, así que la fecha puede
+    ser pasada unos días: se etiqueta como "last" en vez de ocultarla, que también es dato.
+    """
+    start = info.get("earningsTimestampStart") or info.get("earningsTimestamp")
+    if not start:
+        return ""
+    try:
+        d1 = datetime.fromtimestamp(float(start), tz=UTC).date()
+        end = info.get("earningsTimestampEnd")
+        d2 = datetime.fromtimestamp(float(end), tz=UTC).date() if end else d1
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ""
+    cuando = d1.isoformat() if d2 <= d1 else f"{d1.isoformat()} to {d2.isoformat()}"
+    etiqueta = "next" if d2 >= datetime.now(UTC).date() else "last"
+    estimado = ", estimated (unconfirmed)" if info.get("isEarningsDateEstimate") else ""
+    return f"{etiqueta} earnings report: {cuando}{estimado}"
+
+
 def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
     out: list[str] = []
     try:
@@ -196,6 +221,7 @@ def gather(ticker: str) -> NameData | None:
             technical_text=_technical_text(info, hist),
             market_cap=float(mcap) if mcap else None,
             news=_news(yt),
+            earnings_text=_earnings_text(info),
         )
     except Exception:
         return None

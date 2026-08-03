@@ -252,7 +252,12 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         if not ev.get("wiki") and not ev.get("sched"):
             issues.append("Eventos macro: Wikipedia sin contenido (¿bloqueo del User-Agent?).")
         if not ev.get("gdelt"):
-            issues.append("Eventos macro: GDELT sin titulares (rate-limit habitual).")
+            if ev.get("gnews"):
+                issues.append("Eventos macro: GDELT sin titulares; cubrió el fallback "
+                              "de Google News.")
+            else:
+                issues.append("Eventos macro: sin titulares — GDELT (rate-limit habitual) "
+                              "y su fallback de Google News cayeron a la vez.")
     if not macro.get("outlook"):
         issues.append("Outlook macro del LLM caído — se usó solo el régimen determinista.")
 
