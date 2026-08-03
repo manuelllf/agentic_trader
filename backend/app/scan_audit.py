@@ -33,19 +33,23 @@ def _stage(reached_deep: bool, selected: bool, funded: bool) -> str:
 
 
 def record(db, *, prescored: list, failed: list[str], finalists: list[str],
-           deep: dict, selected: list, construction, pre_errors: list | None = None) -> None:
+           deep: dict, selected: list, construction, pre_errors: list | None = None,
+           deep_errors: list[str] | None = None) -> None:
     """Añade la traza del embudo de ESTE escaneo (no borra las anteriores) y poda las viejas.
 
     `prescored` = [(PrescoreResult, NameData)]; `failed` = tickers sin datos; `deep` = {ticker:
     ScoreResult} (solo los VÁLIDOS: un profundo no parseable no tiene score que guardar);
     `selected` = filas top-10; `construction.positions` = la cartera final con pesos;
     `pre_errors` = [(PrescoreResult, NameData)] cuyo pre-score no parseó (si no se registran,
-    desaparecen del embudo sin dejar rastro).
+    desaparecen del embudo sin dejar rastro); `deep_errors` = finalistas cuyo informe PROFUNDO
+    no parseó — sin su etapa propia quedaban como "finalista" cualquiera y no se podía contar
+    cuántas veces falla un mismo ticker (MS y CNC solo existían como aviso del informe).
     Best-effort: el caller lo envuelve en try (un fallo aquí nunca debe tirar el escaneo).
     """
     finalist_set = set(finalists)
     selected_set = {r.ticker for r in selected}
     funded = {p.ticker: p.weight_pct for p in construction.positions}
+    deep_err_set = set(deep_errors or [])
     now = _utcnow()
 
     rows: list[ScanAudit] = []
@@ -56,7 +60,8 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
             scan_at=now, ticker=t, sector=d.sector, prescore=p.score, price=d.price,
             reached_deep=in_deep, deep_score=deep[t].score if t in deep else None,
             selected=is_sel, funded=is_fund, weight_pct=funded.get(t),
-            stage=_stage(in_deep, is_sel, is_fund),
+            # Un profundo ilegible LLEGÓ al profundo (reached_deep se conserva) pero falló ahí.
+            stage="deep_error" if t in deep_err_set else _stage(in_deep, is_sel, is_fund),
         ))
     for p, d in (pre_errors or []):
         # prescore=None a propósito: no hubo puntuación, hubo fallo (no cuenta como pre-scoreado).
@@ -105,12 +110,14 @@ def funnel(db, *, limit: int = 8, detail: bool = False) -> list[dict]:  # noqa: 
             _cuenta(ScanAudit.funded.is_(True)).label("fund"),
             _cuenta(ScanAudit.stage == "datos").label("sin_datos"),
             _cuenta(ScanAudit.stage == "prescore_error").label("pre_error"),
+            _cuenta(ScanAudit.stage == "deep_error").label("deep_error"),
         )
         .where(ScanAudit.scan_at.in_(fechas))
         .group_by(ScanAudit.scan_at, ScanAudit.sector)
     )
     por_escaneo: dict = defaultdict(lambda: {"sectores": [], "pre": 0, "deep": 0, "sel": 0,
-                                             "funded": 0, "sin_datos": 0, "prescore_error": 0})
+                                             "funded": 0, "sin_datos": 0, "prescore_error": 0,
+                                             "deep_error": 0})
     for r in db.execute(stmt):
         e = por_escaneo[r.scan_at]
         e["pre"] += r.pre or 0
@@ -119,6 +126,7 @@ def funnel(db, *, limit: int = 8, detail: bool = False) -> list[dict]:  # noqa: 
         e["funded"] += r.fund or 0
         e["sin_datos"] += r.sin_datos or 0
         e["prescore_error"] += r.pre_error or 0
+        e["deep_error"] += r.deep_error or 0
         if r.sector and (r.pre or 0):        # las filas sin sector son las que ni se puntuaron
             e["sectores"].append({"sector": r.sector, "pre": r.pre or 0, "deep": r.deep or 0,
                                   "sel": r.sel or 0, "funded": r.fund or 0})
@@ -126,7 +134,7 @@ def funnel(db, *, limit: int = 8, detail: bool = False) -> list[dict]:  # noqa: 
     salida = []
     for at in fechas:
         e = por_escaneo.get(at) or {"sectores": [], "pre": 0, "deep": 0, "sel": 0, "funded": 0,
-                                    "sin_datos": 0, "prescore_error": 0}
+                                    "sin_datos": 0, "prescore_error": 0, "deep_error": 0}
         e["sectores"].sort(key=lambda s: -s["pre"])
         salida.append({"at": at.isoformat(), **e})
 

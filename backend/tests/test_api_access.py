@@ -51,6 +51,12 @@ def client(db, monkeypatch, tmp_path):
     # /fx también iría a yfinance — cambio fijo de mentira (los tests que necesiten precios
     # concretos re-monkeypatchean live_prices por encima).
     monkeypatch.setattr("app.tracking.live_prices", lambda _t: {"EURUSD=X": 1.09})
+    # /admin/universe-snapshot llamaría a NASDAQ; en tests no hay red — foto fija de mentira
+    # (los tests que necesiten un resultado concreto re-monkeypatchean por encima).
+    monkeypatch.setattr(
+        "app.screener.universe.refresh_snapshot_and_report",
+        lambda db: {"at": "2026-07-28T20:30:00+00:00", "size": 123},
+    )
     app = FastAPI()
     app.include_router(public_router)
     app.include_router(router, dependencies=[Depends(auth.require_auth)])
@@ -73,7 +79,7 @@ def token(client) -> str:
 
 PUBLIC_GET_PATHS = [
     "/overview", "/ledger", "/performance", "/macro", "/config", "/demo/status",
-    "/history", "/history?book=real", "/scan/report", "/scan/funnel",
+    "/history", "/history?book=real", "/scan/report", "/scan/funnel", "/scan/outcomes",
 ]
 
 
@@ -99,6 +105,7 @@ PROTECTED_CALLS = [
     ("post", "/admin/seed", {"version": 1, "tables": {"meta": [{"key": "x", "value": "y"}]}}),
     ("post", "/admin/seed-memory", {"anything": True}),
     ("get", "/admin/memory-status", None),
+    ("post", "/admin/universe-snapshot", None),
     ("get", "/fx", None),
 ]
 
@@ -320,6 +327,38 @@ def test_memory_status_counts_after_seed_without_loading_model(client, token, tm
     assert "deps" in after                                        # se informa si las deps están
 
 
+# ---- /admin/universe-snapshot: relanzar a mano la foto del universo ---------
+
+def test_universe_snapshot_requires_token(client) -> None:
+    assert client.post("/admin/universe-snapshot").status_code == 401
+
+
+def test_universe_snapshot_ok_with_size(client, token, monkeypatch) -> None:
+    """Con la función de universo monkeypatcheada (sin red), responde ok con la foto y su
+    tamaño — el mismo trabajo que hace el job de las 16:30 ET, disparado a mano."""
+    monkeypatch.setattr(
+        "app.screener.universe.refresh_snapshot_and_report",
+        lambda db: {"at": "2026-08-03T20:30:00+00:00", "size": 2600},
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.post("/admin/universe-snapshot", headers=headers)
+    assert res.status_code == 200
+    assert res.json() == {"ok": True, "at": "2026-08-03T20:30:00+00:00", "size": 2600}
+
+
+def test_universe_snapshot_reports_failure_without_500(client, token, monkeypatch) -> None:
+    """Si NASDAQ falla (fuente externa, no del backend), responde 200 con ok:false — nunca
+    revienta con un 500."""
+    def _boom(db):  # noqa: ANN001, ARG001
+        raise RuntimeError("NASDAQ no devolvió listado en 4 intentos")
+
+    monkeypatch.setattr("app.screener.universe.refresh_snapshot_and_report", _boom)
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.post("/admin/universe-snapshot", headers=headers)
+    assert res.status_code == 200
+    assert res.json() == {"ok": False, "error": "NASDAQ no devolvió listado en 4 intentos"}
+
+
 # ---- /history: doble nivel (la curva real sin sesión pierde el equity) -------
 
 def _seed_real_history(db) -> None:
@@ -531,3 +570,73 @@ def test_report_publico_oculta_las_novedades_del_ranking(client, db, token) -> N
     con = client.get("/scan/report", headers={"Authorization": f"Bearer {token}"}).json()["report"]
     assert con["changes"] == ["entran ZZZ", "salen AAA"]
     assert con["outlook"].startswith("Veo rotación")
+
+
+# ---- la traza LEÍDA: /scan/outcomes y /scan/audit/{ticker} -------------------
+
+def _siembra_cohorte(db) -> None:
+    """Una cohorte con las cuatro suertes: fondeado, seleccionado sin fondear, descartado,
+    fuera del corte — y un profundo ilegible que NO debe contar como descarte del criterio."""
+    from datetime import UTC, datetime
+
+    from app.models import ScanAudit
+
+    at = datetime.now(UTC).replace(tzinfo=None)
+    db.add_all([
+        ScanAudit(scan_at=at, ticker="AAA", sector="Tech", prescore=90, price=100.0,
+                  reached_deep=True, deep_score=88, selected=True, funded=True,
+                  weight_pct=40.0, stage="cartera"),
+        ScanAudit(scan_at=at, ticker="BBB", sector="Tech", prescore=80, price=100.0,
+                  reached_deep=True, deep_score=85, selected=True, stage="seleccionado"),
+        ScanAudit(scan_at=at, ticker="CCC", sector="Energy", prescore=70, price=50.0,
+                  reached_deep=True, deep_score=60, stage="finalista"),
+        ScanAudit(scan_at=at, ticker="DDD", sector="Health", prescore=65, price=200.0,
+                  stage="prescore"),
+        ScanAudit(scan_at=at, ticker="EEE", sector="Tech", prescore=60, price=10.0,
+                  reached_deep=True, stage="deep_error"),
+    ])
+    db.commit()
+
+
+def test_outcomes_mide_grupos_y_oculta_nombres_sin_sesion(client, db, token, monkeypatch) -> None:
+    """La pregunta central del experimento, con la regla de siempre: el retorno POR GRUPO es
+    comportamiento (público); un ticker con su score y su retorno es un feed de señales."""
+    from app import scan_outcomes, tracking
+
+    _siembra_cohorte(db)
+    monkeypatch.setattr(tracking, "live_prices",
+                        lambda _t: {"AAA": 110.0, "BBB": 95.0, "CCC": 60.0,
+                                    "DDD": 210.0, "EEE": 11.0})
+    monkeypatch.setattr(scan_outcomes, "_spy_ret_since", lambda _d: 1.5)
+
+    anon = client.get("/scan/outcomes").json()["scans"][0]
+    g = anon["groups"]
+    assert g["cartera"] == {"n": 1, "avg": 10.0, "median": 10.0}        # 100 → 110
+    assert g["seleccionados"]["avg"] == -5.0                            # 100 → 95
+    assert g["descartados"]["avg"] == 20.0                              # 50 → 60
+    assert g["spy"] == 1.5
+    assert anon["mode"] == "decisión"
+    # El profundo ilegible (EEE) no es un descarte del criterio: fuera de grupos y pares.
+    assert {p["score"] for p in anon["pairs"]} == {88, 85, 60}
+    assert all("ticker" not in p for p in anon["pairs"])                # sin nombres
+    assert "nombres" not in anon["corte"]["fuera"] and "nombres" not in anon["corte"]["dentro"]
+    assert "AAA" not in client.get("/scan/outcomes").text
+
+    con = client.get("/scan/outcomes",
+                     headers={"Authorization": f"Bearer {token}"}).json()["scans"][0]
+    assert {p["ticker"] for p in con["pairs"]} == {"AAA", "BBB", "CCC"}
+    assert con["corte"]["fuera"]["nombres"][0]["ticker"] == "DDD"       # el mejor que quedó fuera
+    assert con["corte"]["fuera"]["avg"] == 5.0                          # 200 → 210
+
+
+def test_historia_de_un_ticker_es_privada(client, db, token) -> None:
+    """La historia de un ticker (¿es estable el criterio?) lleva nombre y scores: sin cara
+    pública. Con sesión devuelve los escaneos del más reciente al más viejo."""
+    _siembra_cohorte(db)
+    assert client.get("/scan/audit/AAA").status_code == 401
+
+    res = client.get("/scan/audit/aaa", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["ticker"] == "AAA"
+    assert body["scans"][0]["deep_score"] == 88 and body["scans"][0]["stage"] == "cartera"

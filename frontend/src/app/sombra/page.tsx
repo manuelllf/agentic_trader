@@ -22,10 +22,13 @@ import {
   getPerformance,
   getProposal,
   getScanFunnel,
+  getScanOutcomes,
   getScanReport,
   getScores,
   getWatchlist,
   hasToken,
+  type OutcomeScan,
+  type OutcomeStats,
   type ScanReport,
 } from "@/lib/api";
 import HistoryChart from "@/components/HistoryChart";
@@ -93,15 +96,23 @@ export default function SombraDashboard() {
   // deploy (el cron del martes ni la escribe), así que el observatorio no puede colgar de él.
   const [report, setReport] = useState<ScanReport | null>(null);
   const [funnel, setFunnel] = useState<FunnelScan | null>(null);
+  const [outcomes, setOutcomes] = useState<OutcomeScan[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [openPos, setOpenPos] = useState<string | null>(null);   // fila de cartera expandida
   const [q, setQ] = useState("");                                // buscador del ranking
   const [sectorF, setSectorF] = useState<string | null>(null);   // filtro de sector del ranking
   const [authed, setAuthed] = useState(false);   // sesión detectada en el último refresco
-  const chartBox = useRef<HTMLDivElement | null>(null);   // contenedor del SVG que se exporta
+  const chartBox = useRef<HTMLDivElement | null>(null);   // contenedor del SVG claro que se exporta
+  // El mismo HistoryChart, montado en variante OSCURA pero fuera de pantalla: la tarjeta de X
+  // (tema dark) no puede clonar el SVG claro que se ve en la página, así que existe un segundo
+  // gráfico invisible solo para eso. `display: contents` no vale (el SVG mide 0 sin caja propia).
+  const darkChartBox = useRef<HTMLDivElement | null>(null);
   const [exportMsg, setExportMsg] = useState("");
   const [exportEmbudoMsg, setExportEmbudoMsg] = useState("");
+  const [exportGruposMsg, setExportGruposMsg] = useState("");   // tarjeta "¿eligió bien?"
+  const [exportScoreMsg, setExportScoreMsg] = useState("");     // tarjeta "¿el score predice?"
+  const [rankingOpen, setRankingOpen] = useState(false);   // overlay del ranking semanal (privado)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const alive = useRef(true);                    // guard de desmontaje (mismo patrón que portada)
 
@@ -109,14 +120,15 @@ export default function SombraDashboard() {
     try {
       // El ledger es crítico (define la conexión); el resto degrada con gracia si falla.
       const l = await getLedger();
-      const [m, pf, st, hs, sr, fn] = await Promise.all([
+      const [m, pf, st, hs, sr, fn, oc] = await Promise.all([
         getMacro().catch(() => null),
         getPerformance().catch(() => null),
         getDemoStatus().catch(() => null),
         getHistory("shadow").catch(() => null),
-        // Ambos son de doble nivel: sin sesión llegan igual, pero sin tickers ni scores.
+        // Los tres son de doble nivel: sin sesión llegan igual, pero sin tickers ni scores.
         getScanReport().catch(() => null),
         getScanFunnel(1).catch(() => null),
+        getScanOutcomes(6).catch(() => null),
       ]);
       // Sin sesión, ni se piden: scores/propuesta/watchlist son del método — evita 401 al aire.
       const withSession = hasToken();
@@ -135,6 +147,7 @@ export default function SombraDashboard() {
       if (hs) setHist(hs.series);
       if (sr) setReport(sr.report);
       if (fn) setFunnel(fn.scans[0] ?? null);
+      if (oc) setOutcomes(oc.scans);
       setAuthed(withSession);
       setError(null);
     } catch (e) {
@@ -156,14 +169,27 @@ export default function SombraDashboard() {
     };
   }, [refresh]);
 
+  // El overlay del ranking cierra con Escape, además del backdrop y el botón — un modal sin
+  // salida por teclado es una trampa para quien navega sin ratón.
+  useEffect(() => {
+    if (!rankingOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setRankingOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [rankingOpen]);
+
   /** Descarga la curva como TARJETA: cabecera + gráfica + pie legal, en una sola imagen. El
    *  descargo tiene que viajar DENTRO del PNG — en el texto del post se pierde al reenviarlo. */
   const exportarTarjeta = useCallback(async (preset: "x" | "linkedin") => {
-    const svg = chartBox.current?.querySelector("svg");
+    // X (dark) clona el gráfico oscuro OCULTO; LinkedIn (claro) sigue clonando el visible — un
+    // gráfico claro dentro de una tarjeta dark quedaría fuera de lugar (y viceversa).
+    const box = preset === "x" ? darkChartBox.current : chartBox.current;
+    const svg = box?.querySelector("svg");
     if (!svg) return;
     setExportMsg("Componiendo…");
     try {
-      const { downloadChartCard } = await import("@/lib/exportCard");
+      const { downloadChartCard, CARD_THEMES, themeForPreset } = await import("@/lib/exportCard");
+      const theme = CARD_THEMES[themeForPreset(preset)];
       const hoy = new Date();
       await downloadChartCard({
         preset,
@@ -178,12 +204,12 @@ export default function SombraDashboard() {
           note: "índice base 100 · las aportaciones no cuentan como rentabilidad",
           stats: [
             { label: "CARTERA", value: `${sign(perf?.portfolio_return_pct ?? 0)}${perf?.portfolio_return_pct ?? 0}%`,
-              color: (perf?.portfolio_return_pct ?? 0) >= 0 ? "#059669" : "#e11d48" },
+              color: (perf?.portfolio_return_pct ?? 0) >= 0 ? theme.accent : theme.bad },
             { label: "S&P 500", value: `${sign(perf?.spy_return_pct ?? 0)}${perf?.spy_return_pct ?? 0}%`,
-              color: "#64748b" },
+              color: theme.ink2 },
             ...(perf?.alpha_pct != null
               ? [{ label: "ALPHA", value: `${sign(perf.alpha_pct)}${perf.alpha_pct} pp`,
-                   color: perf.alpha_pct >= 0 ? "#059669" : "#e11d48" }]
+                   color: perf.alpha_pct >= 0 ? theme.accent : theme.bad }]
               : []),
           ],
           body: svg as SVGSVGElement,
@@ -202,10 +228,11 @@ export default function SombraDashboard() {
   const exportarEmbudo = useCallback(async (preset: "x" | "linkedin") => {
     setExportEmbudoMsg("Componiendo…");
     try {
-      const [{ downloadChartCard, quoteSvg }, { funnelCascadeSvg, funnelPie }] = await Promise.all([
+      const [{ downloadChartCard, quoteSvg, CARD_THEMES, themeForPreset }, { funnelCascadeSvg, funnelPie }] = await Promise.all([
         import("@/lib/exportCard"),
         import("@/lib/funnelCard"),
       ]);
+      const theme = CARD_THEMES[themeForPreset(preset)];
       const u = universoLinea(report);
       const coste = fmtScanCost(report?.cost ?? null);
       const dia = fmtDay(report?.at ?? new Date().toISOString());
@@ -232,7 +259,7 @@ export default function SombraDashboard() {
             // Solo el primer tramo del detalle: la apostilla es contexto, no la línea entera.
             note: u ? `${u.texto} · ${u.detalle.split(" · ")[0]}` : undefined,
             weight: tesis ? 0.85 : 1,
-            body: funnelCascadeSvg(pasos, funnelPie(pasos, sectoresTop(funnel, 3),
+            body: funnelCascadeSvg(pasos, theme, funnelPie(pasos, sectoresTop(funnel, 3),
               (funnel?.sin_datos ?? 0) + (funnel?.prescore_error ?? 0))),
           },
           // Los números solos no concluyen nada: la tesis es el marco que los interpreta, y va
@@ -244,7 +271,7 @@ export default function SombraDashboard() {
                  note: tesisPropia
                    ? "íntegra, escrita por el propio sistema en este escaneo"
                    : `íntegra, de la decisión del ${fmtDay(proposal?.created_at ?? null)}`,
-                 weight: 1.15, body: quoteSvg(tesis) }]
+                 weight: 1.15, body: quoteSvg(tesis, theme) }]
             : []),
         ],
         footer: "No constituye recomendación de inversión · agregados por etapa y sector, sin nombres · operaciones simuladas, sin dinero real",
@@ -255,6 +282,92 @@ export default function SombraDashboard() {
       setExportEmbudoMsg(e instanceof Error ? e.message : "No se pudo exportar.");
     }
   }, [report, funnel, proposal, macro]);
+
+  /** "¿Eligió bien?": retorno medio por grupo (cartera · elegidos sin fondear · descartados ·
+   *  S&P) y la frontera del corte en el pie. Requiere una cohorte con cartera fondeada y con
+   *  al menos 5 días de mercado encima — antes de eso el retorno es ruido, no lectura, y una
+   *  tarjeta con ~0% en todo no diría nada. Sin esa cohorte, NO se descarga nada: mejor un
+   *  botón que avisa que una imagen vacía. */
+  const exportarOutcomesGrupos = useCallback(async (preset: "x" | "linkedin") => {
+    const c = outcomes.find((s) => s.groups.cartera.n > 0 && s.days >= 5);
+    if (!c) { setExportGruposMsg("No disponible aún: sin decisiones con historial suficiente"); return; }
+    setExportGruposMsg("Componiendo…");
+    try {
+      const [{ downloadChartCard, CARD_THEMES, themeForPreset }, { groupBarsSvg }] = await Promise.all([
+        import("@/lib/exportCard"),
+        import("@/lib/outcomesCard"),
+      ]);
+      const theme = CARD_THEMES[themeForPreset(preset)];
+      const pct = (v: number | null) => (v == null ? "—" : `${sign(v)}${v.toFixed(1)}%`);
+      const g = c.groups;
+      const barras = [
+        ...(g.cartera.n ? [{ label: "en cartera", value: g.cartera.avg ?? 0,
+                             n: g.cartera.n, kind: "acento" as const }] : []),
+        ...(g.seleccionados.n ? [{ label: "elegidos sin fondear", value: g.seleccionados.avg ?? 0,
+                                   n: g.seleccionados.n }] : []),
+        ...(g.descartados.n ? [{ label: "descartados", value: g.descartados.avg ?? 0,
+                                 n: g.descartados.n }] : []),
+        ...(g.spy != null ? [{ label: "S&P 500", value: g.spy, kind: "indice" as const }] : []),
+      ];
+      const frontera = c.corte.fuera.n && c.corte.dentro.n
+        ? `la frontera del corte: los ${c.corte.fuera.n} mejores que quedaron fuera ${pct(c.corte.fuera.avg)} · los ${c.corte.dentro.n} peores que entraron ${pct(c.corte.dentro.avg)}`
+        : "";
+      await downloadChartCard({
+        preset,
+        title: "¿Eligió bien?",
+        subtitle: "Agentic Trader · ranker fundamental sistemático",
+        badges: [
+          { text: `${c.mode} del ${fmtDay(c.at)}` },
+          { text: `${c.days} día${c.days === 1 ? "" : "s"} de mercado después` },
+        ],
+        panels: [{
+          label: "RETORNO MEDIO POR GRUPO",
+          note: "a igual peso dentro de cada grupo · desde el precio del día del escaneo",
+          body: groupBarsSvg(barras, theme, frontera),
+        }],
+        footer: "No constituye recomendación de inversión · agregados de la traza de auditoría, sin nombres · operaciones simuladas, sin dinero real",
+        filename: `agentic-trader-eligio-bien-${c.at.slice(0, 10)}`,
+      });
+      setExportGruposMsg("");
+    } catch (e) {
+      setExportGruposMsg(e instanceof Error ? e.message : "No se pudo exportar.");
+    }
+  }, [outcomes]);
+
+  /** "¿El score predice?": la nube score↔retorno, un punto por análisis a fondo. Requiere
+   *  alguna cohorte con 5+ días de mercado Y pares que dibujar; sin eso, guard igual que arriba. */
+  const exportarOutcomesScore = useCallback(async (preset: "x" | "linkedin") => {
+    const c = outcomes.find((s) => s.days >= 5 && s.pairs.length > 0);
+    if (!c) { setExportScoreMsg("No disponible aún: sin cohortes con historial suficiente"); return; }
+    setExportScoreMsg("Componiendo…");
+    try {
+      const [{ downloadChartCard, CARD_THEMES, themeForPreset }, { scatterSvg }] = await Promise.all([
+        import("@/lib/exportCard"),
+        import("@/lib/outcomesCard"),
+      ]);
+      const theme = CARD_THEMES[themeForPreset(preset)];
+      await downloadChartCard({
+        preset,
+        title: "¿El score predice?",
+        subtitle: "Agentic Trader · ranker fundamental sistemático",
+        badges: [
+          { text: `${c.mode} del ${fmtDay(c.at)}` },
+          { text: `${c.days} día${c.days === 1 ? "" : "s"} de mercado después` },
+          { text: `${c.pairs.length} análisis a fondo`, tone: "green" as const },
+        ],
+        panels: [{
+          label: "SCORE VS RETORNO",
+          note: "cada punto, un análisis a fondo, sin identificar · en verde, los del libro",
+          body: scatterSvg(c.pairs.map((p) => ({ score: p.score, ret: p.ret, funded: p.funded })), theme),
+        }],
+        footer: "No constituye recomendación de inversión · agregados de la traza de auditoría, sin nombres · operaciones simuladas, sin dinero real",
+        filename: `agentic-trader-score-predice-${c.at.slice(0, 10)}`,
+      });
+      setExportScoreMsg("");
+    } catch (e) {
+      setExportScoreMsg(e instanceof Error ? e.message : "No se pudo exportar.");
+    }
+  }, [outcomes]);
 
   const equity = ledger ? Number(ledger.equity) : 0;
   const heldSet = new Set((ledger?.positions ?? []).map((p) => p.ticker));
@@ -371,6 +484,12 @@ export default function SombraDashboard() {
                   <div ref={chartBox}>
                     <HistoryChart points={hist} />
                   </div>
+                  {/* Gemelo oscuro del mismo gráfico, fuera de pantalla: la tarjeta de X (dark)
+                      clona ESTE SVG, no el claro de arriba. `dark` es la misma prop que usa la
+                      Sala Real. Sigue en el documento (no display:none) para que el SVG mida algo. */}
+                  <div ref={darkChartBox} aria-hidden className="pointer-events-none fixed -left-[10000px] top-0 w-[660px]">
+                    <HistoryChart points={hist} dark />
+                  </div>
                   <ExportButtons onExport={exportarTarjeta} msg={exportMsg} />
                 </div>
               )}
@@ -437,6 +556,7 @@ export default function SombraDashboard() {
         {anon ? (
           /* Sin sesión: QUÉ nombres elige el método es privado, pero CÓMO se comporta el
              embudo no identifica a nadie y es lo que da contexto a quien llega de fuera. */
+          <>
           <div className="mb-6 grid gap-6 md:grid-cols-2">
             <section className={CARD}>
               <CardHead>
@@ -464,6 +584,10 @@ export default function SombraDashboard() {
               </p>
             </section>
           </div>
+          <OutcomesRead scans={outcomes}
+                        onExportGrupos={exportarOutcomesGrupos} msgGrupos={exportGruposMsg}
+                        onExportScore={exportarOutcomesScore} msgScore={exportScoreMsg} />
+          </>
         ) : (
           <>
             {/* 3 · Decisión mensual + 4 · Observatorio semanal */}
@@ -548,6 +672,16 @@ export default function SombraDashboard() {
                       ))}
                     </p>
                   )}
+                  {/* Vista PRIVADA a propósito: el ranking completo con tickers no lleva botón
+                      de exportar — publicarlo sería un feed de señales, no "así funciona". */}
+                  {!!funnel?.nombres?.length && (
+                    <button
+                      onClick={() => setRankingOpen(true)}
+                      className="mt-1.5 text-[11px] font-medium text-slate-400 underline decoration-slate-200 underline-offset-2 transition hover:text-slate-600"
+                    >
+                      ver el ranking de este observatorio
+                    </button>
+                  )}
                   {watchTop.length > 0 && (
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       {watchTop.slice(0, 10).map((w) => (
@@ -564,6 +698,20 @@ export default function SombraDashboard() {
                       )}
                     </div>
                   )}
+                  {report?.outlook && (
+                    // La tesis macro DE ESTE escaneo: se paga una llamada al modelo grande por
+                    // ella y solo se veía al exportar la tarjeta. Plegada y etiquetada como
+                    // lectura semanal — la que justificó la cartera vive en la tarjeta de la
+                    // decisión, y confundirlas sería mezclar dos fechas distintas.
+                    <details className="mt-2 border-t border-slate-100 pt-2">
+                      <summary className="cursor-pointer list-none text-[11px] text-slate-400 hover:text-slate-600">
+                        su lectura macro de esta semana ▾
+                      </summary>
+                      <p className="mt-1.5 text-[11.5px] italic leading-relaxed text-slate-500">
+                        “{report.outlook}”
+                      </p>
+                    </details>
+                  )}
                   <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
                     la cartera no se toca hasta la decisión mensual (o un análisis manual)
                   </p>
@@ -572,10 +720,26 @@ export default function SombraDashboard() {
               </section>
             </div>
 
+            {/* 4b · La traza leída: compradas vs descartadas vs índice, por cohorte */}
+            <OutcomesRead scans={outcomes}
+                          onExportGrupos={exportarOutcomesGrupos} msgGrupos={exportGruposMsg}
+                          onExportScore={exportarOutcomesScore} msgScore={exportScoreMsg} />
+
             {/* 5 · Ranking a fondo — sección propia, con buscador y filtro por sector */}
             <section className={`mb-6 ${CARD} p-5`}>
               <div className="mb-3 flex items-baseline justify-between">
-                <h2 className="text-sm font-semibold tracking-tight">Ranking a fondo</h2>
+                <h2 className="text-sm font-semibold tracking-tight">
+                  Ranking a fondo
+                  {/* El ranking visible es el de la DECISIÓN (el semanal ya no lo pisa, solo
+                      refresca coincidencias): sin esta etiqueta parecería la foto del último
+                      escaneo, que es justo lo que dejó de ser. */}
+                  <span className="ml-2 text-[11px] font-normal tracking-normal text-slate-400">
+                    {proposal?.created_at ? `decisión del ${fmtDay(proposal.created_at)}` : ""}
+                    {report?.mode === "observatorio" && (report?.refreshed ?? 0) > 0
+                      ? ` · ${report?.refreshed} refrescados el ${fmtDay(report?.at ?? null)}`
+                      : ""}
+                  </span>
+                </h2>
                 {/* Los profundos REALES vienen de la traza; `scores.length` son las filas que
                     se muestran, que es otra cosa (de ahí el viejo "25 a fondo" que no cuadraba). */}
                 <span className="text-[11px] tabular-nums text-slate-400">
@@ -623,6 +787,54 @@ export default function SombraDashboard() {
         <footer className="mt-10 border-t border-slate-200 pt-4 text-center text-[11px] text-slate-400">
           No constituye recomendación de inversión · sala sombra · operaciones simuladas, sin dinero real · metodología tipo whitepaper DeepSeek
         </footer>
+
+        {/* Overlay del ranking semanal: vista PRIVADA, sin export — un ranking con tickers
+            publicado sería un feed de señales, justo lo que separa "así funciona" de "qué comprar". */}
+        {rankingOpen && !!funnel?.nombres?.length && (
+          <div
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 px-4 py-10 backdrop-blur-sm"
+            onClick={() => setRankingOpen(false)}
+          >
+            <div
+              className={`w-full max-w-lg ${CARD} max-h-[80vh] overflow-y-auto`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white/95 px-4 py-2.5 backdrop-blur">
+                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Ranking de este observatorio
+                </h2>
+                <button
+                  onClick={() => setRankingOpen(false)}
+                  aria-label="Cerrar"
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-4 text-xs leading-relaxed text-slate-600">
+                {report?.outlook && (
+                  <p className="mb-3 border-b border-slate-100 pb-3 italic text-slate-500">
+                    “{report.outlook}”
+                  </p>
+                )}
+                <div className="divide-y divide-slate-100">
+                  {funnel.nombres.map((n) => (
+                    <div key={n.ticker} className="flex items-center gap-3 py-1.5 tabular-nums">
+                      <span className="w-16 shrink-0 font-semibold text-slate-800">{n.ticker}</span>
+                      <span className="flex-1 truncate text-slate-400">{n.sector}</span>
+                      <span className="w-10 shrink-0 text-right font-semibold text-slate-700">
+                        {n.deep_score ?? n.prescore ?? "—"}
+                      </span>
+                      <span className="w-24 shrink-0 text-right text-[10px] uppercase tracking-wide text-slate-400">
+                        {n.stage}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -699,17 +911,102 @@ function FunnelCascade({ report, scan }: { report: ScanReport | null; scan: Funn
   );
 }
 
+/** Un retorno medio de grupo, coloreado por signo y con el tamaño del grupo al lado. */
+function OutPct({ s }: { s: OutcomeStats }) {
+  if (!s.n || s.avg == null) return <span className="text-slate-300">—</span>;
+  return (
+    <>
+      <span className={s.avg >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-rose-600"}>
+        {sign(s.avg)}{s.avg.toFixed(1)}%
+      </span>
+      <span className="text-slate-400"> ({s.n})</span>
+    </>
+  );
+}
+
+/** La traza LEÍDA: qué hizo después cada grupo de cada cohorte. Son agregados puros —
+ *  visibles también sin sesión, como el embudo: comportamiento sí, nombres no. Cada fila es
+ *  un escaneo; el retorno va desde el precio del día del escaneo hasta hoy, a igual peso.
+ *  Dos tarjetas, dos preguntas: "¿eligió bien?" (barras por grupo) y "¿el score predice?"
+ *  (la nube score↔retorno) — cada una con su propio guard de "aún sin historial suficiente". */
+function OutcomesRead({ scans, onExportGrupos, msgGrupos, onExportScore, msgScore }: {
+  scans: OutcomeScan[];
+  onExportGrupos: (p: "x" | "linkedin") => void; msgGrupos: string;
+  onExportScore: (p: "x" | "linkedin") => void; msgScore: string;
+}) {
+  if (!scans.length) return null;
+  const pct = (v: number | null) => (v == null ? "—" : `${sign(v)}${v.toFixed(1)}%`);
+  const masVieja = Math.max(...scans.map((s) => s.days));
+  return (
+    <section className={`mb-6 ${CARD}`}>
+      <CardHead>
+        La auditoría, leída
+        <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
+          qué hizo después cada grupo que tocó el embudo
+        </span>
+      </CardHead>
+      <div className="p-4 text-xs leading-relaxed text-slate-600">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse whitespace-nowrap tabular-nums">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wider text-slate-400">
+                <th className="py-1.5 pr-3 font-semibold">Escaneo</th>
+                <th className="px-3 py-1.5 text-right font-semibold">En cartera</th>
+                <th className="px-3 py-1.5 text-right font-semibold">Elegidos s/fondear</th>
+                <th className="px-3 py-1.5 text-right font-semibold">Descartados</th>
+                <th className="px-3 py-1.5 text-right font-semibold">S&P 500</th>
+                <th className="px-3 py-1.5 text-right font-semibold" title="los 10 mejores pre-scores que no llegaron al profundo vs los 10 peores que sí entraron">
+                  Corte: fuera / dentro
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {scans.map((s) => (
+                <tr key={s.at} className="border-t border-slate-100">
+                  <td className="py-1.5 pr-3">
+                    {fmtDay(s.at)}
+                    <span className="text-slate-400"> · {s.mode} · hace {s.days} d</span>
+                  </td>
+                  <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.cartera} /></td>
+                  <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.seleccionados} /></td>
+                  <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.descartados} /></td>
+                  <td className="px-3 py-1.5 text-right">
+                    {s.groups.spy == null ? "—" : `${sign(s.groups.spy)}${s.groups.spy.toFixed(1)}%`}
+                  </td>
+                  <td className="px-3 py-1.5 text-right text-slate-500">
+                    {s.corte.fuera.n ? `${pct(s.corte.fuera.avg)} / ${pct(s.corte.dentro.avg)}` : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
+          retorno simple desde el precio del día del escaneo, a igual peso dentro de cada grupo ·
+          un profundo ilegible no cuenta como descarte
+          {masVieja < 14 &&
+            ` · la cohorte más vieja tiene ${masVieja} día${masVieja === 1 ? "" : "s"}: aún es ruido, la lectura seria llega con semanas`}
+        </p>
+        <ExportButtons onExport={onExportGrupos} msg={msgGrupos} label="¿Eligió bien?" />
+        <ExportButtons onExport={onExportScore} msg={msgScore} label="¿El score predice?" />
+      </div>
+    </section>
+  );
+}
+
 /** Un formato por red: cada una recorta a su ratio, y lo que no puede perderse en el recorte
- *  es justamente la cabecera y el pie legal — de ahí que se exporte ya al tamaño de destino. */
-function ExportButtons({ onExport, msg }: {
-  onExport: (preset: "x" | "linkedin") => void; msg: string;
+ *  es justamente la cabecera y el pie legal — de ahí que se exporte ya al tamaño de destino.
+ *  `label` distingue qué tarjeta exporta este grupo de botones cuando un mismo panel ofrece
+ *  varias (la lectura de la auditoría, con "¿eligió bien?" y "¿el score predice?"). */
+function ExportButtons({ onExport, msg, label }: {
+  onExport: (preset: "x" | "linkedin") => void; msg: string; label?: string;
 }) {
   return (
     <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
       {msg && <span className="mr-auto text-[11px] text-slate-400">{msg}</span>}
-      <span className="text-[11px] text-slate-400">Exportar tarjeta</span>
+      <span className="text-[11px] text-slate-400">{label ? `${label} · exportar tarjeta` : "Exportar tarjeta"}</span>
       {([["x", "X", "16:9 · 1600×900"], ["linkedin", "LinkedIn", "1,91:1 · 1200×627"]] as const)
-        .map(([key, label, ratio]) => (
+        .map(([key, netLabel, ratio]) => (
           <button
             key={key} onClick={() => onExport(key)}
             title={`PNG ${ratio}, con cabecera, cifras y descargo legal dentro de la imagen`}
@@ -719,7 +1016,7 @@ function ExportButtons({ onExport, msg }: {
               <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
                     strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            {label}
+            {netLabel}
           </button>
         ))}
     </div>

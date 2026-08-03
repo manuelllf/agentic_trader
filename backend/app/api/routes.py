@@ -5,13 +5,14 @@ Dos routers: `public_router` (sin token, lecturas/teaser de la portada) y `route
 picks del método (tickers, tesis, scores) o expone la Sala Real/personal. Ver el reparto
 exacto donde se declara cada `@router`/`@public_router`.
 
-Cuatro endpoints son de DOBLE NIVEL vía `auth_optional` (nunca dan 401: sin sesión devuelven
+Cinco endpoints son de DOBLE NIVEL vía `auth_optional` (nunca dan 401: sin sesión devuelven
 agregados/datos anonimizados; con sesión, el detalle completo de siempre) — así la portada
 pública puede presumir de rendimiento, y contar cómo funciona el embudo, sin regalar la cartera:
 - GET  /ledger               → sin sesión: agregados + `positions: []`; con sesión: completo.
 - GET  /performance          → sin sesión: posiciones anonimizadas (sin ticker); con sesión: todo.
 - GET  /scan/report          → sin sesión: sin `changes` ni `outlook`; con sesión: completo.
 - GET  /scan/funnel          → sin sesión: solo agregados por etapa/sector; con sesión: + detalle.
+- GET  /scan/outcomes        → sin sesión: agregados por grupo; con sesión: + nombres.
 
 La regla que separa las dos caras: **cómo se comporta el sistema es público; QUÉ nombres elige,
 no.** Cuántos sobreviven a cada etapa y por sector es comportamiento; un ticker con su score es
@@ -22,9 +23,12 @@ un feed de señales.
 - GET  /overview              → teaser de la portada (sombra completo + real solo %) [público]
 - POST /ledger/allocate      → asignar/retirar fondos                             [protegido]
 - POST /demo/run             → lanza el escaneo (universo entero → scores → cartera 3-5) [protegido]
+- POST /admin/universe-snapshot → relanza a mano la foto del universo (si el cron falló) [protegido]
 - GET  /demo/status          → estado del escaneo                                  [público]
 - GET  /scan/report          → informe persistido del último escaneo (incidencias) [doble nivel]
 - GET  /scan/funnel          → embudo de los últimos escaneos por etapa y sector   [doble nivel]
+- GET  /scan/outcomes        → la traza LEÍDA: retorno por grupo vs SPY, score↔retorno [doble nivel]
+- GET  /scan/audit/{ticker}  → historia de un ticker a través de los escaneos      [protegido]
 - GET  /scores               → leaderboard (mejores scores del último escaneo)     [protegido]
 - GET  /proposal             → cartera objetivo + trades del último escaneo        [protegido]
 - GET  /watchlist            → nombres vigilados                                   [protegido]
@@ -257,6 +261,38 @@ def scan_funnel(limit: int = Query(8, ge=1, le=30), db: Session = Depends(get_db
     return {"scans": scan_audit.funnel(db, limit=limit, detail=authed)}
 
 
+@public_router.get("/scan/outcomes")
+def scan_outcomes_view(limit: int = Query(8, ge=1, le=30), db: Session = Depends(get_db),
+                       authed: bool = Depends(auth_optional)) -> dict:
+    """La traza LEÍDA: retorno a hoy de cada grupo de cada cohorte (cartera · seleccionados
+    sin fondear · descartados del profundo · SPY), los pares score↔retorno y la frontera del
+    corte. Es la respuesta a "¿lo que compró lo hizo mejor que lo que descartó?".
+
+    DOBLE NIVEL: los agregados por grupo son comportamiento → públicos. Un ticker con su
+    score y su retorno es un feed de señales → los nombres (en `pairs` y en la frontera)
+    solo con sesión.
+    """
+    from app import scan_outcomes
+
+    scans = scan_outcomes.outcomes(db, limit=limit)
+    if not authed:
+        scans = [{**s,
+                  "pairs": [{k: v for k, v in p.items() if k != "ticker"} for p in s["pairs"]],
+                  "corte": {lado: {k: v for k, v in datos.items() if k != "nombres"}
+                            for lado, datos in s["corte"].items()}}
+                 for s in scans]
+    return {"scans": scans}
+
+
+@router.get("/scan/audit/{ticker}")
+def scan_ticker_history(ticker: str, db: Session = Depends(get_db)) -> dict:
+    """Historia de UN ticker a través de los escaneos (¿es estable el criterio?). Nombre con
+    sus scores → protegido entero, sin cara pública."""
+    from app import scan_outcomes
+
+    return {"ticker": ticker.upper(), "scans": scan_outcomes.ticker_history(db, ticker)}
+
+
 @router.post("/recheck")
 def recheck(db: Session = Depends(get_db)) -> dict:
     """Re-comprobación del top: re-construye la cartera sobre los ya analizados a fondo,
@@ -338,6 +374,25 @@ def admin_reset_shadow(db: Session = Depends(get_db)) -> dict:
     conservando el capital (queda en caja); NO toca el libro real ni la cartera personal. Para
     descartar la salida de un escaneo defectuoso. Protegido por token."""
     return ledger.reset_shadow_book(db)
+
+
+@router.post("/admin/universe-snapshot")
+def admin_universe_snapshot(db: Session = Depends(get_db)) -> dict:
+    """Relanza a mano la foto del universo (la misma toma de datos que corre el job de las
+    16:30 ET): si una noche NASDAQ no respondió y el cron se quedó sin foto, el dueño la repite
+    desde la web antes del escaneo del martes, sin esperar a los reintentos automáticos.
+
+    La fuente externa (NASDAQ) falla de mil maneras (timeouts, 200 con cuerpo vacío...) y eso
+    NO es un error del backend: se atrapa aquí y viaja como `{"ok": false, "error": ...}` con
+    200, no como un 500.
+    """
+    from app.screener import universe as universe_mod
+
+    try:
+        info = universe_mod.refresh_snapshot_and_report(db)
+        return {"ok": True, **info}
+    except Exception as exc:  # noqa: BLE001 — el motivo legible es lo que necesita el panel
+        return {"ok": False, "error": str(exc)}
 
 
 @router.get("/admin/memory-status")

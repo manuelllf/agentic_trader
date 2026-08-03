@@ -407,6 +407,32 @@ def test_scan_audit_registra_los_prescores_fallidos(db) -> None:
     assert row.sector == "Energy"
 
 
+def test_scan_audit_registra_los_profundos_ilegibles(db) -> None:
+    """Un informe profundo no parseable quedaba como "finalista" cualquiera: en dos meses no se
+    podía contar cuántas veces falló un mismo ticker (MS/CNC solo eran un aviso del informe).
+    Ahora tiene etapa propia, conserva que SÍ llegó al profundo, y el embudo lo cuenta."""
+    from app import scan_audit
+    from app.agents.scorer import ScoreResult
+    from app.models import ScanAudit
+
+    class _Constr:
+        positions: list = []
+
+    prescored = [_pn("A", "Tech", 90), _pn("MS", "Financial", 85)]
+    scan_audit.record(db, prescored=prescored, failed=[], finalists=["A", "MS"],
+                      deep={"A": ScoreResult("A", 88, "h", "r")}, selected=[],
+                      construction=_Constr(), deep_errors=["MS"])
+
+    row = db.query(ScanAudit).filter(ScanAudit.ticker == "MS").one()
+    assert row.stage == "deep_error"
+    assert row.reached_deep is True        # llegó al profundo; falló AHÍ, no antes
+    assert row.deep_score is None          # no hay score que guardar: no parseó
+
+    f = scan_audit.funnel(db, limit=1)[0]
+    assert f["deep_error"] == 1
+    assert f["deep"] == 2                  # ambos cuentan como llegados al profundo
+
+
 # ---- 100% invertido (water-filling con tope por posición) ----
 
 def test_full_invest_sums_to_100_and_respects_cap() -> None:

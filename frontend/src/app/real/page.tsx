@@ -23,7 +23,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getHistory,
   getPerformance, getPersonal, getPushKey, getReal, getScanFunnel, getScanReport, logout,
-  reconcileApprovals, rejectTrade, resetShadow, runDemo, subscribePush, syncPersonal, testPush,
+  reconcileApprovals, rejectTrade, resetShadow, runDemo, snapshotUniverse, subscribePush,
+  syncPersonal, testPush,
   type ScanReport,
 } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
@@ -77,6 +78,10 @@ function SalaRealRoom() {
   const [resetArmed, setResetArmed] = useState(false);    // armar→confirmar el reinicio del sombra
   const [resetting, setResetting] = useState(false);
   const [mantOpen, setMantOpen] = useState(false);        // mantenimiento plegado (destructivo)
+  const [snapping, setSnapping] = useState(false);
+  // Resultado de rehacer la foto del universo: éxito en tono neutro, error en ámbar — no hay
+  // paso intermedio armar→confirmar porque no es destructivo (solo refresca una foto de lectura).
+  const [snapMsg, setSnapMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
@@ -120,6 +125,28 @@ function SalaRealRoom() {
       setError(e instanceof Error ? e.message : "No se pudo reiniciar el libro sombra.");
     } finally {
       setResetting(false);
+    }
+  }
+
+  /** Rehace la foto del universo bajo demanda, sin esperar al cron del cierre. El backend puede
+   *  responder 200 con `ok: false` (p.ej. NASDAQ no respondió) — no es un fallo de red, así que
+   *  se lee del cuerpo, no del catch. */
+  async function doSnapshotUniverse() {
+    setSnapping(true);
+    try {
+      const r = await snapshotUniverse();
+      if (r.ok) {
+        const hhmm = r.at
+          ? new Date(r.at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
+          : "—";
+        setSnapMsg({ text: `foto rehecha: ${r.size != null ? fmtNum(r.size) : "—"} nombres · ${hhmm}` });
+      } else {
+        setSnapMsg({ text: r.error ?? "No se pudo rehacer la foto del universo.", bad: true });
+      }
+    } catch (e) {
+      setSnapMsg({ text: e instanceof Error ? e.message : "No se pudo rehacer la foto del universo.", bad: true });
+    } finally {
+      setSnapping(false);
     }
   }
 
@@ -803,6 +830,27 @@ function SalaRealRoom() {
             Solo el libro sombra (escaparate). No toca el libro real ni tu cartera personal. El próximo
             escaneo redespliega la caja en la cartera nueva.
           </p>
+
+          {/* Foto del universo: la lista NASDAQ que arranca cada escaneo. Rehacerla a mano vale
+              para no esperar al cron del cierre si hace falta un escaneo ya con datos frescos. */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t pt-3" style={{ borderColor: T.grid }}>
+            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+              Universo
+            </span>
+            <span style={{ color: T.ink2 }}>
+              Rehacer la foto del universo NASDAQ al cierre (la que arranca el próximo escaneo).
+            </span>
+            <button onClick={doSnapshotUniverse} disabled={snapping}
+                    className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                    style={{ borderColor: T.ring, color: T.ink2 }}>
+              {snapping ? "Rehaciendo…" : "Rehacer foto del universo"}
+            </button>
+            {snapMsg && (
+              <span className="text-[10.5px]" style={{ color: snapMsg.bad ? T.warn : T.muted }}>
+                {snapMsg.text}
+              </span>
+            )}
+          </div>
         </div>
         )}
       </div>
@@ -926,9 +974,9 @@ function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan | null }
                 </div>
               </div>
             ))}
-            {(scan?.sin_datos || scan?.prescore_error) ? (
+            {(scan?.sin_datos || scan?.prescore_error || scan?.deep_error) ? (
               <span className={`self-center text-[10.5px] ${NUMS}`} style={{ color: T.muted }}>
-                ({scan.sin_datos} sin datos{scan.prescore_error ? ` · ${scan.prescore_error} fallos de pre-score` : ""})
+                ({scan.sin_datos} sin datos{scan.prescore_error ? ` · ${scan.prescore_error} fallos de pre-score` : ""}{scan.deep_error ? ` · ${scan.deep_error} profundos ilegibles` : ""})
               </span>
             ) : null}
           </div>

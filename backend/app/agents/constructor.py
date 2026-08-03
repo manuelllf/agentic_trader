@@ -37,7 +37,7 @@ SYSTEM = (
     "of your reasoning, not a verdict on those companies, and it does not change how many you "
     "fund. "
     "Respond ONLY in JSON: "
-    '{"cash_pct": <0-100>, "positions": [{"ticker": "XXX", "weight_pct": <0-{max_pct}>, '
+    '{"positions": [{"ticker": "XXX", "weight_pct": <0-{max_pct}>, '
     '"thesis": "...", "edge": "...", "risk": "..."}], '
     '"omitted": [{"ticker": "YYY", "reason": "..."}], "summary": "..."}. '
     "Write thesis, edge, risk, reason and summary in Spanish."

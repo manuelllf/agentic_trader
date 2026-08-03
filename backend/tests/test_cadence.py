@@ -88,11 +88,15 @@ def test_observatory_scan_learns_without_touching_books(db, monkeypatch) -> None
     sombra y NO crea aprobaciones para la real."""
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
+    # El ranking visible es el de la última DECISIÓN: sin una previa no hay qué refrescar, así
+    # que se siembra una fila (como si viniera de un escaneo decidido anterior).
+    db.add(models.Score(ticker="AAA", sector="Technology", score=1))
+    db.commit()
 
     result = scan_service.run_scan_and_store(db, sample_size=5, decide=False)
 
     assert result["decided"] is False
-    assert db.query(models.Score).count() >= 1                   # el ranking SÍ se refrescó
+    assert db.query(models.Score).one().score == 90               # el ranking SÍ se refrescó
     assert db.query(Proposal).count() == 0                       # sin propuesta nueva
     assert db.query(Approval).count() == 0                       # cero propuestas a la real
     assert ledger.open_positions(db, BOOK_SHADOW) == []          # la sombra ni se ejecutó
@@ -112,6 +116,46 @@ def test_observatory_scan_preserves_decided_portfolio(db, monkeypatch) -> None:
 
     assert {p.ticker for p in ledger.open_positions(db, BOOK_SHADOW)} == pos_before
     assert db.query(Proposal).one().id == prop_id                # la propuesta decidida sigue
+
+
+def test_observatorio_actualiza_coincidencia_sin_borrar_el_resto(db, monkeypatch) -> None:
+    """El observatorio ya NO pisa el ranking de la última decisión: los nombres que hoy no se
+    re-analizan sobreviven intactos, y el que sí coincide se refresca con los datos nuevos."""
+    from app import watchlist as watchlist_mod
+
+    _stub_scan(monkeypatch)
+    _stub_universo(monkeypatch, ["AAA", "BBB"])
+    ledger.allocate(db, 1000)
+    scan_service.run_scan_and_store(db, sample_size=5)          # decisión: ranking = {AAA, BBB}
+    assert {s.ticker for s in db.query(models.Score).all()} == {"AAA", "BBB"}
+    watchlist_mod.drop(db, {"BBB"})   # BBB deja de arrastrarse: el próximo escaneo no la re-analiza
+
+    _stub_universo(monkeypatch, ["AAA"])
+    otra_reply = _FAKE_REPLY.replace('"score": 90', '"score": 77')
+    monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: FakeLLM(otra_reply))
+    result = scan_service.run_scan_and_store(db, sample_size=5, decide=False)
+
+    rows = {s.ticker: s for s in db.query(models.Score).all()}
+    assert set(rows) == {"AAA", "BBB"}          # BBB sigue en el ranking, intacta
+    assert rows["BBB"].score == 90              # no se tocó: no coincidió con los profundos de hoy
+    assert rows["AAA"].score == 77              # sí se refrescó
+    assert result["refreshed"] == 1
+
+
+def test_decision_sigue_reemplazando_el_ranking_entero(db, monkeypatch) -> None:
+    """Una DECISIÓN conserva el comportamiento de siempre: borra la tabla Score entera y la
+    reescribe solo con los profundos de ESTE escaneo — a diferencia del observatorio, que
+    conserva lo que no coincide."""
+    _stub_scan(monkeypatch)
+    ledger.allocate(db, 1000)
+    # Fila de un escaneo previo que ya no aparece en el universo de este escaneo.
+    db.add(models.Score(ticker="ZZZ", sector="Old", score=50))
+    db.commit()
+
+    result = scan_service.run_scan_and_store(db, sample_size=5)     # decisión: universo = {AAA}
+
+    assert {s.ticker for s in db.query(models.Score).all()} == {"AAA"}   # ZZZ desapareció
+    assert result["refreshed"] is None            # no aplica: fue reemplazo total, no refresco
 
 
 def test_default_scan_decides_both_books(db, monkeypatch) -> None:
@@ -155,12 +199,18 @@ def test_scan_writes_persistent_report(db, monkeypatch) -> None:
     rep = _last_report(db)
     assert rep["mode"] == "observatorio" and rep["error"] is None
     assert rep["issues"] == [] and rep["deep"] == 1
-    assert any("entran AAA" in c for c in rep["changes"])   # primer ranking: AAA es novedad
+    # Sin decisión previa no hay ranking que coincida: nada se refresca y el ranking no lleva
+    # novedades (el observatorio no lo puebla); pero SÍ aprende — AAA entra a la watchlist.
+    assert rep["refreshed"] == 0
+    assert not any(c.startswith("Ranking") for c in rep["changes"])
+    assert any("Watchlist" in c and "entra AAA" in c for c in rep["changes"])
 
     scan_service.run_scan_and_store(db, sample_size=5)
     rep = _last_report(db)
     assert rep["mode"] == "decisión" and rep["error"] is None
-    # la decisión compró AAA → sale de la watchlist ("lo que vigilo y no tengo")
+    assert rep["refreshed"] is None
+    # la decisión SÍ puebla el ranking (reemplazo total) y compra AAA → sale de la watchlist
+    assert any("Ranking" in c and "entran AAA" in c for c in rep["changes"])
     assert any("Watchlist" in c and "sale AAA" in c for c in rep["changes"])
 
 
@@ -182,17 +232,17 @@ def test_scan_report_records_issues(db, monkeypatch) -> None:
 
 
 def test_scan_report_registra_novedades_del_ranking(db, monkeypatch) -> None:
-    """Entre dos escaneos, el informe dice qué ENTRA y qué SALE del ranking — el reemplazo
-    de la tabla Score era mudo y las novedades invisibles."""
-    from app import watchlist as watchlist_mod
-
+    """Entre dos DECISIONES con distinto universo, el informe dice qué ENTRA y qué SALE del
+    ranking — el reemplazo de la tabla Score era mudo y las novedades invisibles. (El
+    observatorio ya no reemplaza la tabla entera, así que esta novedad solo se ve cuando el
+    conjunto del ranking cambia de verdad: una decisión.)"""
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
-    scan_service.run_scan_and_store(db, sample_size=5, decide=False)     # ranking = {AAA}
-    watchlist_mod.drop(db, {"AAA"})          # fuera de vigilancia → el 2º escaneo no la arrastra
+    scan_service.run_scan_and_store(db, sample_size=5)          # decisión: ranking = {AAA} (compra)
+    ledger.reset_shadow_book(db)   # libera la posición: el 2º escaneo no arrastra AAA por "held"
 
     _stub_universo(monkeypatch, ["BBB"])
-    scan_service.run_scan_and_store(db, sample_size=5, decide=False)     # ranking = {BBB}
+    scan_service.run_scan_and_store(db, sample_size=5)          # decisión: ranking = {BBB}
 
     texto = " ".join(_last_report(db)["changes"])
     assert "entran BBB" in texto and "salen AAA" in texto
@@ -236,13 +286,16 @@ def test_escaneo_se_aborta_con_universo_de_emergencia(db, monkeypatch) -> None:
 
 def test_badge_de_seguimiento_dice_la_verdad_del_final(db, monkeypatch) -> None:
     """El badge se estampaba ANTES de actualizar la watchlist, así que iba un escaneo por
-    detrás. Ahora se re-sella al final: AAA entra a la watchlist EN este escaneo y sale
-    marcada; cuando la decisión la compra, deja de estarlo ("vigilo lo que NO tengo")."""
+    detrás. Ahora se re-sella al final contra la watchlist REAL de después — también en
+    observatorio, que solo actualiza filas existentes (no las crea)."""
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
+    # Fila de una decisión previa (AAA analizada, sin comprar esa vez).
+    db.add(models.Score(ticker="AAA", sector="Technology", score=1, on_watchlist=False))
+    db.commit()
 
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)
-    assert db.query(models.Score).one().on_watchlist is True
+    assert db.query(models.Score).one().on_watchlist is True    # AAA entra a vigilancia hoy
 
     scan_service.run_scan_and_store(db, sample_size=5)        # decide → compra AAA
     assert db.query(models.Score).one().on_watchlist is False

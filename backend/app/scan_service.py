@@ -66,6 +66,9 @@ def _write_scan_report(db: Session, *, mode: str | None, result: dict | None,
         "mode": mode, "error": error, "issues": issues, "changes": changes or [],
         "universe": r.get("universe"),
         "scanned": r.get("scanned"), "prescored": r.get("prescored"), "deep": r.get("deep"),
+        # Solo tiene sentido en observatorio (la decisión reemplaza el ranking entero, no
+        # "refresca" nada); None en decisión para no sugerir que 0 nombres se actualizaron.
+        "refreshed": r.get("refreshed"),
         "cost": r.get("cost"),
         # La tesis macro de ESTE escaneo. Hasta ahora el observatorio la calculaba y la tiraba:
         # la única visible era la de la última DECISIÓN, así que la lectura del martes acababa
@@ -326,21 +329,38 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                  for p, _d in prescored}
     target_map = {t: r.target_price for t, r in deep.items()}
 
-    # 5) Persistir el leaderboard: SOLO los analizados a fondo (el pre-score vive en la watchlist).
-    #    La Proposal vigente NO se borra aquí: solo un escaneo con decisión la reemplaza (paso 8).
-    #    Antes de borrar, foto del ranking/watchlist previos: el reemplazo es total y sin este
-    #    diff las NOVEDADES (qué entra, qué sale) serían invisibles en el informe.
+    # 5) Persistir el leaderboard. DECISIÓN: reemplazo total (borra y reescribe) — el ranking
+    #    visible pasa a ser el de la cartera recién fijada, como siempre. OBSERVATORIO: el
+    #    ranking visible sigue siendo el de la última DECISIÓN; este escaneo solo REFRESCA
+    #    (score, tesis, informe, precio, cap y sector) las filas cuyo ticker coincide con los
+    #    profundos de HOY. Los nombres nuevos del semanal no entran al ranking (ya viven en
+    #    watchlist y en la traza de auditoría) y los que no coinciden hoy se quedan tal cual.
+    #    Antes de tocar nada, foto del ranking/watchlist previos: sin este diff las NOVEDADES
+    #    (qué entra, qué sale) serían invisibles en el informe.
     prev_ranking = {s.ticker for s in db.query(Score).all()}
     prev_watch = set(watchlist_mod.tickers(db))
-    db.query(Score).delete()
-    for ticker, d in deep.items():
-        data = data_by_t[ticker]
-        db.add(Score(
-            ticker=ticker, sector=data.sector, score=d.score,
-            headline=d.headline, report=d.report,
-            price=data.price, market_cap=data.market_cap, target_price=d.target_price,
-            held=ticker in held, on_watchlist=ticker in watch,  # provisional: se re-sella al final
-        ))
+    refreshed = 0
+    if decide:
+        db.query(Score).delete()
+        for ticker, d in deep.items():
+            data = data_by_t[ticker]
+            db.add(Score(
+                ticker=ticker, sector=data.sector, score=d.score,
+                headline=d.headline, report=d.report,
+                price=data.price, market_cap=data.market_cap, target_price=d.target_price,
+                held=ticker in held, on_watchlist=ticker in watch,  # provisional: resella al final
+            ))
+    else:
+        existing = {s.ticker: s for s in db.query(Score).all()}
+        for ticker, d in deep.items():
+            row = existing.get(ticker)
+            if row is None:
+                continue                       # nombre nuevo del semanal: no entra al ranking
+            data = data_by_t[ticker]
+            row.score, row.headline, row.report = d.score, d.headline, d.report
+            row.price, row.market_cap = data.price, data.market_cap
+            row.target_price, row.sector = d.target_price, data.sector
+            refreshed += 1
     db.commit()
     if store:                                      # guarda las tesis nuevas para recordarlas luego
         for t, d in deep.items():
@@ -388,7 +408,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     try:
         scan_audit.record(db, prescored=prescored, failed=failed, finalists=finalists,
                           deep=deep, selected=selected, construction=construction,
-                          pre_errors=pre_errors)
+                          pre_errors=pre_errors, deep_errors=deep_caidos)
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
 
@@ -435,9 +455,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     watchlist_mod.drop(db, {p.ticker for p in ledger.open_positions(db)})
 
     # Novedades vs el escaneo anterior — van al informe (el panel las pinta en su línea).
+    # OJO: se compara contra la composición FINAL de la tabla (no contra `deep`): en
+    # observatorio el conjunto de tickers no cambia (solo se refrescan valores de filas ya
+    # existentes), así que sale vacío de forma natural. Comparar contra `deep` habría anunciado
+    # "entra/sale" para nombres que en realidad ni se añadieron ni se borraron de Score.
     changes: list[str] = []
-    entran = sorted(set(deep) - prev_ranking)
-    salen = sorted(prev_ranking - set(deep))
+    final_ranking = {s.ticker for s in db.query(Score).all()}
+    entran = sorted(final_ranking - prev_ranking)
+    salen = sorted(prev_ranking - final_ranking)
     if entran or salen:
         partes = ([f"entran {_lista(entran)}"] if entran else []) \
             + ([f"salen {_lista(salen)}"] if salen else [])
@@ -465,6 +490,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     result = {
         "universe": universo_info,
         "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
+        # Solo cuenta en observatorio; en decisión el ranking se reemplaza entero (None).
+        "refreshed": None if decide else refreshed,
         "watchlist": len(watchlist_mod.tickers(db)),
         "proposed": len([i for i in items if i["action"] != "mantener"]),
         "positions": len(construction.positions),

@@ -15,6 +15,8 @@ export interface FunnelScan {
   funded: number;
   sin_datos: number;
   prescore_error: number;
+  /** Finalistas cuyo informe profundo no parseó: llegaron al profundo y fallaron AHÍ. */
+  deep_error: number;
   sectores: { sector: string; pre: number; deep: number; sel: number; funded: number }[];
   nombres?: {
     ticker: string; sector: string; prescore: number | null; deep_score: number | null;

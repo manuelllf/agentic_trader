@@ -240,6 +240,24 @@ def refresh_snapshot(db) -> int:  # noqa: ANN001
     return len(filas)
 
 
+def refresh_snapshot_and_report(db) -> dict:  # noqa: ANN001
+    """Relanza la foto A MANO (misma toma de datos que `refresh_snapshot`, la que llama el job
+    de las 16:30 ET) y devuelve `{"at": iso, "size": n}` listo para la API.
+
+    Pensado para el botón manual de la web: si una noche NASDAQ no respondió y el cron se quedó
+    sin foto, el dueño la repite antes del escaneo del martes sin esperar a los reintentos
+    automáticos de las 18:30/20:30/22:30 ET. NO comprueba si ya hay foto de hoy (a diferencia
+    del job): un clic manual siempre fuerza la descarga.
+    """
+    from app.models import Meta
+
+    refresh_snapshot(db)                     # descarga y persiste; si falla, la excepción sube
+    row = db.get(Meta, _SNAPSHOT_KEY)
+    data = json.loads(row.value)
+    filas = [(s, float(px), float(vol)) for s, px, vol in data.get("rows", [])]
+    return {"at": data.get("at"), "size": len(_liquidos(filas))}
+
+
 def universe_for_scan(db) -> tuple[list[str], dict]:  # noqa: ANN001
     """(símbolos, procedencia) para un escaneo. Prefiere la foto del último cierre.
 

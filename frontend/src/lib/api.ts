@@ -154,6 +154,8 @@ export interface ScanReport {
   issues: string[];
   changes?: string[];                          // novedades vs el escaneo anterior (ranking/watchlist)
   outlook?: string | null;                      // tesis macro DE ESTE escaneo (solo con sesión)
+  /** Solo observatorio: nombres del ranking de la decisión refrescados por este escaneo. */
+  refreshed?: number | null;
   /** Con qué universo se trabajó. `fuente`: "cierre" = la foto del último cierre (lo normal),
    *  "vivo" = sin foto, pedido con el mercado abierto (sale recortado), "seed" = emergencia.
    *  `sobre_suelo` > `size` significa que mordió el tope de nombres. */
@@ -175,6 +177,38 @@ export const getScanReport = () => get<{ report: ScanReport | null }>("/scan/rep
  *  los agregados por etapa y sector — cómo se comporta el sistema, sin decir qué nombres. */
 export const getScanFunnel = (limit = 8) =>
   get<{ scans: FunnelScan[] }>(`/scan/funnel?limit=${limit}`);
+
+/** La traza LEÍDA: retorno a hoy por grupo de cada cohorte (cartera · elegidos sin fondear ·
+ *  descartados · S&P), pares score↔retorno y la frontera del corte. Doble nivel: sin sesión
+ *  los pares llegan sin ticker y la frontera sin nombres. */
+export interface OutcomeStats {
+  n: number;
+  avg: number | null;
+  median: number | null;
+}
+export interface OutcomeName {
+  ticker: string;
+  prescore: number | null;
+  ret: number | null;
+}
+export interface OutcomeScan {
+  at: string;
+  mode: "decisión" | "observatorio";
+  days: number;
+  groups: {
+    cartera: OutcomeStats;
+    seleccionados: OutcomeStats;
+    descartados: OutcomeStats;
+    spy: number | null;
+  };
+  pairs: { ticker?: string; score: number; ret: number; funded: boolean }[];
+  corte: {
+    fuera: OutcomeStats & { nombres?: OutcomeName[] };
+    dentro: OutcomeStats & { nombres?: OutcomeName[] };
+  };
+}
+export const getScanOutcomes = (limit = 8) =>
+  get<{ scans: OutcomeScan[] }>(`/scan/outcomes?limit=${limit}`);
 export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
 export const reconcileApprovals = () => post<{ reconciled: number }>("/approvals/reconcile");
@@ -191,6 +225,17 @@ export interface ShadowReset {
 
 /** DESTRUCTIVO (solo libro sombra): borra posiciones/operaciones/curva; conserva el capital. */
 export const resetShadow = () => post<ShadowReset>("/admin/reset-shadow");
+
+export interface UniverseSnapshotResult {
+  ok: boolean;
+  at: string | null;
+  size: number | null;
+  error?: string;
+}
+
+/** Rehace la foto del universo NASDAQ al cierre (la que usa el próximo escaneo) bajo demanda,
+ *  en vez de esperar al cron. No toca posiciones ni operaciones de ningún libro. */
+export const snapshotUniverse = () => post<UniverseSnapshotResult>("/admin/universe-snapshot");
 
 // ---- Cartera personal IBKR (read-only, intocable para el agente) ----
 export const getPersonal = () => get<PersonalSummary>("/personal");

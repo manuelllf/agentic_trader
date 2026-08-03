@@ -12,24 +12,25 @@
 //    significaba nada; ahora el verde marca solo lo que acabó en el libro y el resto es neutro.
 //  · SIN "% del anterior". Un 11% suelto no dice si eso es mucho o poco; la barra ya cuenta la
 //    proporción, y el pie la traduce a lenguaje humano ("1 de cada 85").
+//
+// El color ya no vive aquí: X pinta en dark y LinkedIn en claro, y esta función no sabe (ni le
+// importa) para cuál de las dos se está dibujando — recibe la paleta ya resuelta (`CardPalette`,
+// ver `exportCard.ts`) y solo decide QUÉ campo de esa paleta usa cada trazo.
 
 import { fmtNum, type Step } from "./scan";
-import { wrapLines } from "./exportCard";
+import { wrapLines, type CardPalette } from "./exportCard";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-const CARRIL = "#f1f5f9";
-const NEUTRO = "#cbd5e1";
-const ACENTO = "#059669";
-
 /** La cascada del embudo. `pie` es la lectura en una frase (ratio final, sectores más mirados). */
-export function funnelCascadeSvg(pasos: Step[], pie = ""): string {
+export function funnelCascadeSvg(pasos: Step[], palette: CardPalette, pie = ""): string {
   if (!pasos.length) return "";
   const W = 440;
   const H = 400;
-  const lineas = pie ? wrapLines(pie, W, 14) : [];
-  const pieH = lineas.length ? lineas.length * 20 + 16 : 0;
+  // 16px, no 14: el pie es la LECTURA del embudo y en el móvil del timeline era lo ilegible.
+  const lineas = pie ? wrapLines(pie, W, 16) : [];
+  const pieH = lineas.length ? lineas.length * 22 + 16 : 0;
   const util = H - pieH;
 
   const max = Math.max(...pasos.map((p) => p.value), 1);
@@ -40,19 +41,19 @@ export function funnelCascadeSvg(pasos: Step[], pie = ""): string {
     .map((p, i) => {
       const y = top + i * rowH;
       const w = Math.max(9, Math.round((p.value / max) * W));
-      // El verde es del libro: solo el último peldaño de una decisión se lo lleva.
-      const fill = p.label === "en cartera" ? ACENTO : NEUTRO;
+      // El acento es del libro: solo el último peldaño de una decisión se lo lleva.
+      const fill = p.label === "en cartera" ? palette.accent : palette.neutral;
       return `<g>
-    <text x="0" y="${y + 24}" font-size="18" fill="#64748b">${esc(p.label)}</text>
-    <text x="${W}" y="${y + 28}" text-anchor="end" font-size="36" font-weight="700" fill="#0f172a">${fmtNum(p.value)}</text>
-    <rect x="0" y="${y + 42}" width="${W}" height="11" rx="5.5" fill="${CARRIL}"/>
+    <text x="0" y="${y + 24}" font-size="18" fill="${palette.ink2}">${esc(p.label)}</text>
+    <text x="${W}" y="${y + 28}" text-anchor="end" font-size="36" font-weight="700" fill="${palette.ink}">${fmtNum(p.value)}</text>
+    <rect x="0" y="${y + 42}" width="${W}" height="11" rx="5.5" fill="${palette.carril}"/>
     <rect x="0" y="${y + 42}" width="${w}" height="11" rx="5.5" fill="${fill}"/>
   </g>`;
     })
     .join("\n");
 
   const pieSvg = lineas
-    .map((l, i) => `<text x="0" y="${util + 22 + i * 20}" font-size="14" fill="#94a3b8">${esc(l)}</text>`)
+    .map((l, i) => `<text x="0" y="${util + 22 + i * 22}" font-size="16" fill="${palette.ink2}">${esc(l)}</text>`)
     .join("\n");
 
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${filas}${pieSvg}</svg>`;
