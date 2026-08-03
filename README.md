@@ -45,9 +45,11 @@ Las que más forma le dan al sistema:
 - **Elegir y ponderar son pasos distintos.** Que el modelo hiciera las dos cosas hacía
   imposible saber si un acierto venía del análisis o del reparto. Ahora la selección es
   aritmética reproducible y el criterio del LLM queda confinado al peso.
-- **Cada escaneo deja traza.** Una tabla de auditoría guarda por qué cada nombre llegó hasta
-  donde llegó y a qué precio, con 90 días de retención. Es telemetría para evaluación offline
-  y **nunca vuelve a un prompt**: almacenar no es inyectar.
+- **Cada escaneo deja traza — y la traza se lee.** Una tabla de auditoría guarda por qué cada
+  nombre llegó hasta donde llegó y a qué precio, con 90 días de retención, y la web la
+  convierte en respuesta: cuánto rindió después cada grupo (cartera, elegidos sin fondear,
+  descartados) frente al S&P 500, como agregados sin nombres. Es evaluación offline y
+  **nunca vuelve a un prompt**: almacenar no es inyectar.
 - **La simulación paga comisiones.** El libro simulado descuenta la comisión de cada compra y
   la incorpora al coste medio, igual que hace el bróker. Sin eso, la rentabilidad simulada
   está inflada y cualquier comparación entre operar más o menos a menudo sale sesgada a favor
