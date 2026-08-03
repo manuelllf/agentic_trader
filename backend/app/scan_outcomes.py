@@ -141,7 +141,10 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
 
         salida.append({
             "at": at.isoformat(),
-            "mode": "decisión" if cartera else "observatorio",
+            # Del flag de la traza, no inferido de "hay cartera": la construcción se registra
+            # también en los observatorios (es su cartera HIPOTÉTICA) y la inferencia vieja
+            # etiquetaba todo como decisión. NULL (filas pre-columna) = observatorio.
+            "mode": "decisión" if any(r.decide for r in cohorte) else "observatorio",
             "days": max(0, (hoy - at.replace(tzinfo=None)).days),
             "groups": {
                 "cartera": _grupo(cartera),
@@ -153,6 +156,32 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
             "corte": {"fuera": _lado(fuera), "dentro": _lado(dentro)},
         })
     return salida
+
+
+def book_row(db) -> dict | None:  # noqa: ANN001
+    """La fila de LO REAL: el libro sombra vigente desde su compra, a valor de mercado.
+
+    La traza no alcanza a la decisión que compró la cartera actual (18-jul: el comportamiento
+    pre-histórico la borró), así que esta fila sale del LEDGER — precios de compra reales,
+    retorno a valor de mercado (no a igual peso: aquí sí importa el libro, no el criterio) y
+    el S&P desde el mismo minuto de la primera compra (la referencia persistida del tracking).
+    Redundante con la curva a propósito: pone la imagen real donde se leen las cohortes.
+    """
+    try:
+        from app.tracking import performance
+
+        perf = performance(db)
+        if not perf.get("positions"):
+            return None
+        return {
+            "since": perf.get("since"),
+            "ret": perf.get("portfolio_return_pct"),
+            "spy": perf.get("spy_return_pct"),
+            "n": len(perf["positions"]),
+        }
+    except Exception:
+        logger.warning("Fila del libro real no disponible para outcomes.")
+        return None
 
 
 def ticker_history(db, ticker: str, limit: int = 26) -> list[dict]:  # noqa: ANN001

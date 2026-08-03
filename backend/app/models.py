@@ -100,6 +100,10 @@ class ScanAudit(Base):
     deep_score: Mapped[int | None] = mapped_column(Integer)
     selected: Mapped[bool] = mapped_column(default=False)      # ¿top-10 al constructor?
     funded: Mapped[bool] = mapped_column(default=False)        # ¿acabó en la cartera?
+    # ¿El escaneo DECIDÍA cartera? La construcción se calcula (y se registra) también en los
+    # observatorios, así que sin este flag "funded" parece libro real cuando solo es la cartera
+    # HIPOTÉTICA de ese martes. NULL = fila anterior a la columna (todas eran observatorios).
+    decide: Mapped[bool | None] = mapped_column(default=None)
     weight_pct: Mapped[float | None] = mapped_column(Float)
     stage: Mapped[str] = mapped_column(String(16), default="")  # etapa alcanzada (datos…cartera)
 

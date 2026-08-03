@@ -207,8 +207,16 @@ export interface OutcomeScan {
     dentro: OutcomeStats & { nombres?: OutcomeName[] };
   };
 }
+/** La fila de LO REAL: el libro vigente desde su compra (ledger, a valor de mercado) + S&P
+ *  en la misma ventana. Viaja aparte porque la traza no alcanza a la decisión que lo compró. */
+export interface OutcomeBook {
+  since: string | null;
+  ret: number | null;
+  spy: number | null;
+  n: number;
+}
 export const getScanOutcomes = (limit = 8) =>
-  get<{ scans: OutcomeScan[] }>(`/scan/outcomes?limit=${limit}`);
+  get<{ scans: OutcomeScan[]; book: OutcomeBook | null }>(`/scan/outcomes?limit=${limit}`);
 export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
 export const reconcileApprovals = () => post<{ reconciled: number }>("/approvals/reconcile");

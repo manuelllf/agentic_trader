@@ -79,6 +79,11 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
     sa = cols("scan_audit")
     if sa and "price" not in sa:
         conn.execute(text("ALTER TABLE scan_audit ADD COLUMN price FLOAT"))
+    # scan_audit.decide: sin él, la cartera HIPOTÉTICA de un observatorio se confunde con una
+    # decisión real. Las filas viejas quedan a NULL = observatorio (las dos cohortes de julio
+    # que sobreviven en la traza lo eran; la decisión real del 18-jul ni siquiera está).
+    if sa and "decide" not in sa:
+        conn.execute(text("ALTER TABLE scan_audit ADD COLUMN decide BOOLEAN"))
     # proposals.omitted: qué candidatos NO fondeó el constructor y por qué. Las propuestas ya
     # guardadas se quedan con '[]' — no había forma de saberlo entonces.
     pr = cols("proposals")

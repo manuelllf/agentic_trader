@@ -27,6 +27,7 @@ import {
   getScores,
   getWatchlist,
   hasToken,
+  type OutcomeBook,
   type OutcomeScan,
   type OutcomeStats,
   type ScanReport,
@@ -103,6 +104,7 @@ export default function SombraDashboard() {
   const [report, setReport] = useState<ScanReport | null>(null);
   const [funnel, setFunnel] = useState<FunnelScan | null>(null);
   const [outcomes, setOutcomes] = useState<OutcomeScan[]>([]);
+  const [outBook, setOutBook] = useState<OutcomeBook | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [openPos, setOpenPos] = useState<string | null>(null);   // fila de cartera expandida
@@ -153,7 +155,7 @@ export default function SombraDashboard() {
       if (hs) setHist(hs.series);
       if (sr) setReport(sr.report);
       if (fn) setFunnel(fn.scans[0] ?? null);
-      if (oc) setOutcomes(oc.scans);
+      if (oc) { setOutcomes(oc.scans); setOutBook(oc.book ?? null); }
       setAuthed(withSession);
       setError(null);
     } catch (e) {
@@ -297,7 +299,9 @@ export default function SombraDashboard() {
    *  tarjeta con ~0% en todo no diría nada. Sin esa cohorte, NO se descarga nada: mejor un
    *  botón que avisa que una imagen vacía. */
   const exportarOutcomesGrupos = useCallback(async (preset: "x" | "linkedin") => {
-    const c = outcomes.find((s) => s.groups.cartera.n > 0 && s.days >= 5);
+    // Solo DECISIONES reales: la cartera de un observatorio es la construcción hipotética de
+    // ese martes, y venderla como "¿eligió bien?" en la tarjeta insignia sería mentir.
+    const c = outcomes.find((s) => s.mode === "decisión" && s.groups.cartera.n > 0 && s.days >= 5);
     if (!c) { setExportGruposMsg("No disponible aún: sin decisiones con historial suficiente"); return; }
     setExportGruposMsg("Componiendo…");
     try {
@@ -597,7 +601,7 @@ export default function SombraDashboard() {
               </p>
             </section>
           </div>
-          <OutcomesRead scans={outcomes}
+          <OutcomesRead scans={outcomes} book={outBook}
                         onExportGrupos={exportarOutcomesGrupos} msgGrupos={exportGruposMsg}
                         onExportScore={exportarOutcomesScore} msgScore={exportScoreMsg} />
           </>
@@ -734,7 +738,7 @@ export default function SombraDashboard() {
             </div>
 
             {/* 4b · La traza leída: compradas vs descartadas vs índice, por cohorte */}
-            <OutcomesRead scans={outcomes}
+            <OutcomesRead scans={outcomes} book={outBook}
                           onExportGrupos={exportarOutcomesGrupos} msgGrupos={exportGruposMsg}
                           onExportScore={exportarOutcomesScore} msgScore={exportScoreMsg} />
 
@@ -945,19 +949,51 @@ function OutPct({ s }: { s: OutcomeStats }) {
   );
 }
 
+/** Una cohorte de la traza como fila de la tabla. En los observatorios, "en cartera" es la
+ *  construcción HIPOTÉTICA de ese martes (nada se compró); el pie de la tabla lo aclara. */
+function OutRow({ s, pct }: { s: OutcomeScan; pct: (v: number | null) => string }) {
+  return (
+    <tr className="border-t border-slate-100">
+      <td className="py-1.5 pr-3">
+        del {fmtDay(s.at)} a hoy
+        <span className="text-slate-400"> · {s.days} d · {s.mode}</span>
+      </td>
+      <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.cartera} /></td>
+      <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.seleccionados} /></td>
+      <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.descartados} /></td>
+      <td className="px-3 py-1.5 text-right">
+        {s.groups.spy == null ? "—" : `${sign(s.groups.spy)}${s.groups.spy.toFixed(1)}%`}
+      </td>
+      <td className="px-3 py-1.5 text-right text-slate-500">
+        {s.corte.fuera.n ? `${pct(s.corte.fuera.avg)} / ${pct(s.corte.dentro.avg)}` : "—"}
+      </td>
+    </tr>
+  );
+}
+
 /** La traza LEÍDA: qué hizo después cada grupo de cada cohorte. Son agregados puros —
  *  visibles también sin sesión, como el embudo: comportamiento sí, nombres no. Cada fila es
  *  un escaneo; el retorno va desde el precio del día del escaneo hasta hoy, a igual peso.
  *  Dos tarjetas, dos preguntas: "¿eligió bien?" (barras por grupo) y "¿el score predice?"
  *  (la nube score↔retorno) — cada una con su propio guard de "aún sin historial suficiente". */
-function OutcomesRead({ scans, onExportGrupos, msgGrupos, onExportScore, msgScore }: {
-  scans: OutcomeScan[];
+function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportScore, msgScore }: {
+  scans: OutcomeScan[]; book: OutcomeBook | null;
   onExportGrupos: (p: "x" | "linkedin") => void; msgGrupos: string;
   onExportScore: (p: "x" | "linkedin") => void; msgScore: string;
 }) {
-  if (!scans.length) return null;
+  // Por defecto solo DECISIONES (mezclar filas semanales y mensuales invita a compararlas
+  // entre sí, y el semanal analiza otra franja); los observatorios quedan tras un toggle —
+  // siguen alimentando "¿el score predice?", tirarlos del todo sería desperdiciar señal.
+  const [verObs, setVerObs] = useState(false);
+  if (!scans.length && !book) return null;
   const pct = (v: number | null) => (v == null ? "—" : `${sign(v)}${v.toFixed(1)}%`);
-  const masVieja = Math.max(...scans.map((s) => s.days));
+  const decisiones = scans.filter((s) => s.mode === "decisión");
+  const observatorios = scans.filter((s) => s.mode !== "decisión");
+  const mostrarObs = verObs || (!book && decisiones.length === 0);
+  const masVieja = scans.length ? Math.max(...scans.map((s) => s.days)) : 0;
+  const diasLibro = book?.since
+    ? Math.max(0, Math.floor((Date.now() - new Date(book.since).getTime()) / 86_400_000))
+    : null;
   return (
     <section className={`mb-6 ${CARD}`}>
       <CardHead>
@@ -984,30 +1020,56 @@ function OutcomesRead({ scans, onExportGrupos, msgGrupos, onExportScore, msgScor
               </tr>
             </thead>
             <tbody>
-              {scans.map((s) => (
-                <tr key={s.at} className="border-t border-slate-100">
+              {/* LO REAL primero: el libro vigente desde su compra (ledger, a valor de
+                  mercado). La traza no alcanza a la decisión que lo compró, así que esta
+                  fila es la única imagen real hasta que las cohortes nuevas maduren. */}
+              {book && (
+                <tr className="border-t border-slate-100"
+                    title="libro real a valor de mercado — anterior al inicio de la traza; el resto de columnas no puede reconstruirse">
                   <td className="py-1.5 pr-3">
-                    del {fmtDay(s.at)} a hoy
-                    <span className="text-slate-400"> · {s.days} d · {s.mode}</span>
+                    cartera vigente{book.since ? ` · desde el ${fmtDay(book.since)}` : ""}
+                    {diasLibro != null && <span className="text-slate-400"> · {diasLibro} d</span>}
                   </td>
-                  <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.cartera} /></td>
-                  <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.seleccionados} /></td>
-                  <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.descartados} /></td>
                   <td className="px-3 py-1.5 text-right">
-                    {s.groups.spy == null ? "—" : `${sign(s.groups.spy)}${s.groups.spy.toFixed(1)}%`}
+                    {book.ret == null ? "—" : (
+                      <>
+                        <span className={book.ret >= 0 ? "font-semibold text-emerald-600" : "font-semibold text-rose-600"}>
+                          {sign(book.ret)}{book.ret.toFixed(1)}%
+                        </span>
+                        <span className="text-slate-400"> ({book.n})</span>
+                      </>
+                    )}
                   </td>
-                  <td className="px-3 py-1.5 text-right text-slate-500">
-                    {s.corte.fuera.n ? `${pct(s.corte.fuera.avg)} / ${pct(s.corte.dentro.avg)}` : "—"}
+                  <td className="px-3 py-1.5 text-right text-slate-300">—</td>
+                  <td className="px-3 py-1.5 text-right text-slate-300">—</td>
+                  <td className="px-3 py-1.5 text-right">
+                    {book.spy == null ? "—" : `${sign(book.spy)}${book.spy.toFixed(1)}%`}
+                  </td>
+                  <td className="px-3 py-1.5 text-right text-slate-300">—</td>
+                </tr>
+              )}
+              {decisiones.map((s) => <OutRow key={s.at} s={s} pct={pct} />)}
+              {observatorios.length > 0 && (
+                <tr className="border-t border-slate-100">
+                  <td colSpan={6} className="py-1.5">
+                    <button onClick={() => setVerObs(!verObs)}
+                            className="text-[11px] text-slate-400 hover:text-slate-600">
+                      {mostrarObs ? "▴ ocultar" : "▾ ver"} observatorios ({observatorios.length})
+                      {mostrarObs ? "" : " — su «en cartera» es hipotético"}
+                    </button>
                   </td>
                 </tr>
-              ))}
+              )}
+              {mostrarObs && observatorios.map((s) => <OutRow key={s.at} s={s} pct={pct} />)}
             </tbody>
           </table>
         </div>
         <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
           retorno simple desde el precio del día del escaneo, a igual peso dentro de cada grupo ·
           un profundo ilegible no cuenta como descarte
-          {masVieja < 14 &&
+          {observatorios.length > 0 &&
+            " · en los observatorios, «en cartera» es la construcción hipotética de ese martes, no el libro"}
+          {masVieja > 0 && masVieja < 14 &&
             ` · la cohorte más vieja tiene ${masVieja} día${masVieja === 1 ? "" : "s"}: aún es ruido, la lectura seria llega con semanas`}
         </p>
         <ExportButtons onExport={onExportGrupos} msg={msgGrupos} label="¿Eligió bien?" />

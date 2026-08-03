@@ -585,15 +585,16 @@ def _siembra_cohorte(db) -> None:
     db.add_all([
         ScanAudit(scan_at=at, ticker="AAA", sector="Tech", prescore=90, price=100.0,
                   reached_deep=True, deep_score=88, selected=True, funded=True,
-                  weight_pct=40.0, stage="cartera"),
+                  weight_pct=40.0, stage="cartera", decide=True),
         ScanAudit(scan_at=at, ticker="BBB", sector="Tech", prescore=80, price=100.0,
-                  reached_deep=True, deep_score=85, selected=True, stage="seleccionado"),
+                  reached_deep=True, deep_score=85, selected=True, stage="seleccionado",
+                  decide=True),
         ScanAudit(scan_at=at, ticker="CCC", sector="Energy", prescore=70, price=50.0,
-                  reached_deep=True, deep_score=60, stage="finalista"),
+                  reached_deep=True, deep_score=60, stage="finalista", decide=True),
         ScanAudit(scan_at=at, ticker="DDD", sector="Health", prescore=65, price=200.0,
-                  stage="prescore"),
+                  stage="prescore", decide=True),
         ScanAudit(scan_at=at, ticker="EEE", sector="Tech", prescore=60, price=10.0,
-                  reached_deep=True, stage="deep_error"),
+                  reached_deep=True, stage="deep_error", decide=True),
     ])
     db.commit()
 
@@ -627,6 +628,32 @@ def test_outcomes_mide_grupos_y_oculta_nombres_sin_sesion(client, db, token, mon
     assert {p["ticker"] for p in con["pairs"]} == {"AAA", "BBB", "CCC"}
     assert con["corte"]["fuera"]["nombres"][0]["ticker"] == "DDD"       # el mejor que quedó fuera
     assert con["corte"]["fuera"]["avg"] == 5.0                          # 200 → 210
+
+
+def test_outcomes_modo_honesto_y_fila_del_libro(client, db, monkeypatch) -> None:
+    """Dos cosas que la primera versión confundía: (1) la cartera de un OBSERVATORIO es la
+    construcción hipotética de ese martes — con el flag `decide` a NULL/False la cohorte ya no
+    se disfraza de decisión; (2) la fila del libro REAL (desde el ledger, a valor de mercado)
+    viaja aparte en `book`, porque la traza no alcanza a la decisión que compró la cartera."""
+    from datetime import UTC, datetime
+
+    from app import scan_outcomes, tracking
+    from app.models import ScanAudit
+
+    # Cohorte SIN flag (como las filas de julio, anteriores a la columna) → observatorio.
+    at = datetime.now(UTC).replace(tzinfo=None)
+    db.add(ScanAudit(scan_at=at, ticker="AAA", sector="Tech", prescore=90, price=100.0,
+                     reached_deep=True, deep_score=88, selected=True, funded=True,
+                     weight_pct=40.0, stage="cartera"))
+    db.commit()
+    monkeypatch.setattr(tracking, "live_prices", lambda _t: {"AAA": 110.0})
+    monkeypatch.setattr(scan_outcomes, "_spy_ret_since", lambda _d: 1.0)
+    monkeypatch.setattr(scan_outcomes, "book_row",
+                        lambda _db: {"since": "2026-07-18", "ret": 4.2, "spy": 2.0, "n": 5})
+
+    body = client.get("/scan/outcomes").json()
+    assert body["scans"][0]["mode"] == "observatorio"   # cartera hipotética, no decisión
+    assert body["book"] == {"since": "2026-07-18", "ret": 4.2, "spy": 2.0, "n": 5}
 
 
 def test_historia_de_un_ticker_es_privada(client, db, token) -> None:

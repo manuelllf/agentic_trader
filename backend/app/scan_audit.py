@@ -34,7 +34,7 @@ def _stage(reached_deep: bool, selected: bool, funded: bool) -> str:
 
 def record(db, *, prescored: list, failed: list[str], finalists: list[str],
            deep: dict, selected: list, construction, pre_errors: list | None = None,
-           deep_errors: list[str] | None = None) -> None:
+           deep_errors: list[str] | None = None, decide: bool | None = None) -> None:
     """Añade la traza del embudo de ESTE escaneo (no borra las anteriores) y poda las viejas.
 
     `prescored` = [(PrescoreResult, NameData)]; `failed` = tickers sin datos; `deep` = {ticker:
@@ -43,7 +43,9 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
     `pre_errors` = [(PrescoreResult, NameData)] cuyo pre-score no parseó (si no se registran,
     desaparecen del embudo sin dejar rastro); `deep_errors` = finalistas cuyo informe PROFUNDO
     no parseó — sin su etapa propia quedaban como "finalista" cualquiera y no se podía contar
-    cuántas veces falla un mismo ticker (MS y CNC solo existían como aviso del informe).
+    cuántas veces falla un mismo ticker (MS y CNC solo existían como aviso del informe);
+    `decide` = si el escaneo decidía cartera — la construcción se registra también en los
+    observatorios y sin el flag su cartera hipotética se confunde con el libro real.
     Best-effort: el caller lo envuelve en try (un fallo aquí nunca debe tirar el escaneo).
     """
     finalist_set = set(finalists)
@@ -59,16 +61,16 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
         rows.append(ScanAudit(
             scan_at=now, ticker=t, sector=d.sector, prescore=p.score, price=d.price,
             reached_deep=in_deep, deep_score=deep[t].score if t in deep else None,
-            selected=is_sel, funded=is_fund, weight_pct=funded.get(t),
+            selected=is_sel, funded=is_fund, weight_pct=funded.get(t), decide=decide,
             # Un profundo ilegible LLEGÓ al profundo (reached_deep se conserva) pero falló ahí.
             stage="deep_error" if t in deep_err_set else _stage(in_deep, is_sel, is_fund),
         ))
     for p, d in (pre_errors or []):
         # prescore=None a propósito: no hubo puntuación, hubo fallo (no cuenta como pre-scoreado).
         rows.append(ScanAudit(scan_at=now, ticker=p.ticker, sector=d.sector, price=d.price,
-                              stage="prescore_error"))
+                              stage="prescore_error", decide=decide))
     for t in failed:
-        rows.append(ScanAudit(scan_at=now, ticker=t, stage="datos"))
+        rows.append(ScanAudit(scan_at=now, ticker=t, stage="datos", decide=decide))
     db.add_all(rows)
 
     db.query(ScanAudit).filter(ScanAudit.scan_at < now - timedelta(days=RETENTION_DAYS)).delete()

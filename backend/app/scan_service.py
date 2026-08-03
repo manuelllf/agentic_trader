@@ -408,7 +408,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     try:
         scan_audit.record(db, prescored=prescored, failed=failed, finalists=finalists,
                           deep=deep, selected=selected, construction=construction,
-                          pre_errors=pre_errors, deep_errors=deep_caidos)
+                          pre_errors=pre_errors, deep_errors=deep_caidos, decide=decide)
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
 

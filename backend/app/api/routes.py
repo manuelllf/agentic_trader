@@ -281,7 +281,9 @@ def scan_outcomes_view(limit: int = Query(8, ge=1, le=30), db: Session = Depends
                   "corte": {lado: {k: v for k, v in datos.items() if k != "nombres"}
                             for lado, datos in s["corte"].items()}}
                  for s in scans]
-    return {"scans": scans}
+    # La fila del libro real es agregado puro (retorno, S&P, nº posiciones): pública entera,
+    # igual que /performance sin sesión.
+    return {"scans": scans, "book": scan_outcomes.book_row(db)}
 
 
 @router.get("/scan/audit/{ticker}")
