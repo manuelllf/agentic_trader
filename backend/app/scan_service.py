@@ -6,6 +6,9 @@ Embudo en 2 pasos para ir rápido y barato sin perder profundidad donde importa:
      usa una muestra ROTATORIA de N (`scan_sample_size`)
   2. outlook macro forward (1 llamada V4-Pro)
   3. PASO 1 — pre-score RÁPIDO (Flash) de todo el universo en paralelo → ranking 1-100
+  3b. capa media (opcional, `mid_layer`): repuntúa los mejores de cada sector con un modelo
+     mejor que Flash — el carril "global" del corte a finalistas sale de esa segunda opinión
+     en vez de la frontera ruidosa del pre-score barato
   4. PASO 2 — informe PROFUNDO (V4-Pro) + price target solo en el top ~20 finalistas
   5. actualiza la watchlist (con el pre-score de todos); el leaderboard persiste SOLO los
      analizados a fondo
@@ -28,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import unicodedata
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -43,14 +47,14 @@ from app.agents import scorer as scorer_mod
 from app.config import settings
 from app.ledger import service as ledger
 from app.llm import get_llm
-from app.models import Meta, Proposal, Score
+from app.models import Meta, Proposal, ScanRun, Score
 from app.screener import fundamentals as fund_mod
 from app.screener import macro as macro_mod
 from app.screener import universe as universe_mod
 
 logger = logging.getLogger(__name__)
 
-_MAX_WORKERS = 12
+_MAX_WORKERS = 20
 _CURSOR_KEY = "scan_cursor"   # offset persistido de la ventana rotatoria del semanal
 _REPORT_KEY = "last_scan_report"   # informe del último escaneo (JSON en Meta; ver /scan/report)
 
@@ -116,24 +120,26 @@ def _memory_store():
 
 
 def _llm_usage(*llms) -> dict:
-    """Suma el uso (llamadas/tokens/coste) de varios proveedores. Tolera FakeLLM (sin `usage`)."""
-    total = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0}
+    """Suma el uso (llamadas/tokens/coste) de varios proveedores. Tolera FakeLLM (sin `usage`).
+
+    `by_model` desglosa el mismo total por modelo (Flash del prescore vs V4-Pro del profundo):
+    sin él, ScanRun.cost solo diría cuánto costó el escaneo, no en qué paso se fue el dinero.
+    """
+    total = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0,
+             "by_model": {}}
+    campos = ("calls", "prompt_tokens", "completion_tokens", "cost_usd")
     for llm in llms:
         u = getattr(llm, "usage", None)
-        if isinstance(u, dict):
-            for k in total:
-                total[k] += u.get(k, 0)
+        if not isinstance(u, dict):
+            continue
+        for k in campos:
+            total[k] += u.get(k, 0)
+        for modelo, stats in (u.get("by_model") or {}).items():
+            acc = total["by_model"].setdefault(modelo, dict.fromkeys(campos, 0))
+            for k in campos:
+                acc[k] += stats.get(k, 0)
     total["cost_usd"] = round(total["cost_usd"], 4)
     return total
-
-
-def _recall(store, ticker: str, hint: str) -> str | None:
-    """Recuerdos semánticos previos de un ticker (para inyectar en su informe profundo)."""
-    try:
-        mems = store.recall(f"{ticker} {hint}", k=3, ticker=ticker)
-        return " | ".join(m.text for m in mems) or None
-    except Exception:
-        return None
 
 
 def _sector(data_by_t: dict, ticker: str) -> str:
@@ -145,6 +151,50 @@ def _sector(data_by_t: dict, ticker: str) -> str:
 def _lista(ts: list[str], n: int = 10) -> str:
     """Lista de tickers legible y acotada: 'A, B, C y 4 más'."""
     return ", ".join(ts[:n]) + (f" y {len(ts) - n} más" if len(ts) > n else "")
+
+
+# Guardarraíl de operación corporativa (caso real 4-ago: una opa que rondaba los 95 el modelo
+# la leyó como 112,53 mezclando enterprise value ($3.800M) con precio por acción, pese a que la
+# regla que lo prohíbe lleva tres semanas en el prompt. Como el prompt ya falló, esto va en
+# código. Los términos van sin acentos porque el informe se compara ya normalizado (ver
+# `_sin_acentos`), así valen tanto "fusión" como "fusion" que pueda escribir el modelo.
+_CORP_DEAL_TERMS = ("adquisicion", "adquirir", "opa", "oferta en efectivo", "fusion",
+                    "merger", "takeover", "absorcion")
+
+
+def _sin_acentos(texto: str) -> str:
+    """Quita acentos/diacríticos para que la búsqueda de términos no dependa de cómo los escriba
+    el modelo (el informe viene en español, con o sin tildes según el caso)."""
+    return "".join(c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c))
+
+
+def _flag_corporate_deal_targets(
+    deep: dict, data_by_t: dict, issues: list[str],
+) -> tuple[dict, set]:
+    """Corrige en sitio `r.target_price` cuando el informe habla de una operación corporativa en
+    efectivo Y el objetivo del modelo supera el máximo del consenso en más de un 5%: ahí el
+    target_price del código pasa a ser el consenso, no el número (probablemente mal calculado)
+    del LLM. Sin `target_high` no se hace nada (no se inventa un techo). Devuelve
+    (target_raw, target_flagged) para que el caller los guarde en `Score`."""
+    target_raw: dict[str, float] = {}
+    target_flagged: set[str] = set()
+    for ticker, r in deep.items():
+        data = data_by_t[ticker]
+        if r.target_price is None or not data.target_high:
+            continue
+        if r.target_price <= data.target_high * 1.05:
+            continue
+        texto = _sin_acentos((r.report or "").lower())
+        if not any(term in texto for term in _CORP_DEAL_TERMS):
+            continue
+        target_raw[ticker] = r.target_price
+        target_flagged.add(ticker)
+        issues.append(
+            f"{ticker}: el informe menciona una operación corporativa en efectivo y puso el "
+            f"objetivo en {r.target_price:.2f} frente al máximo del consenso de analistas "
+            f"({data.target_high:.2f}); se usa el consenso como objetivo efectivo.")
+        r.target_price = data.target_high
+    return target_raw, target_flagged
 
 
 def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, finalists: list,
@@ -187,6 +237,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     """
     deep_llm = get_llm()                              # V4-Pro: informe + target + construcción
     prescore_llm = get_llm(settings.prescore_model)   # Flash: ranking rápido de todo el universo
+    # Capa media (opcional): repuntúa los mejores de cada sector con un modelo mejor que Flash
+    # antes del corte a finalistas. Se crea aquí (como los otros dos) para que su coste entre en
+    # `_llm_usage` aunque no llegue a usarse ninguna vez si `mid_layer` está desactivado.
+    mid_llm = get_llm(settings.mid_model) if settings.mid_layer else None
     # sample_size explícito (pruebas) manda; si no, TODO el universo salvo que se desactive.
     if sample_size is not None:
         n = sample_size
@@ -269,42 +323,86 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         data = fund_mod.gather(ticker)
         if data is None:
             return None
-        return scorer_mod.prescore(prescore_llm, data, macro_block), data
+        p = scorer_mod.prescore(prescore_llm, data, macro_block)
+        if p.error:   # un 429 de transporte y un JSON roto son indistinguibles a priori — un
+            p = scorer_mod.prescore(prescore_llm, data, macro_block)   # reintento basta
+        return p, data
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
         results = list(ex.map(_pre, sample))          # orden preservado → zip con `sample`
     prescored = [r for r in results if r is not None and r[0].score > 0]
-    prescored.sort(key=lambda x: -x[0].score)
+    # Desempate por capitalización, el mismo criterio del paper que ya usan `select_top` y
+    # `select_finalists`: si no, un empate de pre-score lo rompe el orden de llegada de la
+    # muestra (el 4-ago había 7 nombres empatados en 84,5 disputándose 2 plazas).
+    prescored.sort(key=lambda x: (-x[0].score, -(x[1].market_cap or 0.0)))
     failed = [t for t, r in zip(sample, results, strict=True) if r is None]  # gather sin datos
     if failed:
         lista = ", ".join(failed[:8]) + ("…" if len(failed) > 8 else "")
         issues.append(f"{len(failed)} nombre(s) sin datos de mercado: {lista}")
-    # Fallo de prescore = score 0 Y headline vacía (una opinión real de 0 traería tesis).
-    # Van a la auditoría con stage="prescore_error": si no, desaparecen del embudo sin rastro
-    # (no están en `prescored`, ni en `failed`, ni en el ranking).
-    pre_errors = [(p, d) for p, d in (r for r in results if r) if p.score == 0 and not p.headline]
+    # Fallo de prescore = `p.error` (el LLM lo marca al no parsear ni tras el reintento). Van a
+    # la auditoría con stage="prescore_error": si no, desaparecen del embudo sin rastro (no
+    # están en `prescored`, ni en `failed`, ni en el ranking) — y un nombre de cartera caído
+    # aquí saldría del embudo entero sin que se notase por qué.
+    pre_errors = [(p, d) for p, d in (r for r in results if r) if p.error]
     if pre_errors:
-        caidos = [p.ticker for p, _d in pre_errors]
-        lista = ", ".join(caidos[:8]) + ("…" if len(caidos) > 8 else "")
-        issues.append(f"{len(caidos)} pre-score(s) fallidos (LLM no parseable): {lista}")
+        detalle = ", ".join(f"{p.ticker}[{p.error.split(':')[0]}]" for p, _d in pre_errors[:8])
+        extra = "…" if len(pre_errors) > 8 else ""
+        issues.append(f"{len(pre_errors)} pre-score(s) fallidos tras reintento: {detalle}{extra}")
 
     # Finalistas al profundo: top-2/sector (amplitud) ∪ top-15 global + posiciones + watchlist,
     # truncado a un tope duro. El corte YA NO es ciego al macro (el prescore lo ve entero), así
     # que deja de colapsar en defensivo-value.
     data_by_t = {d.ticker: d for _p, d in prescored}
-    finalists = portfolio.select_finalists(
+
+    # Capa media estratificada: coge los `mid_per_sector` mejores de CADA sector (excluye "n/d")
+    # y los repuntúa con el MISMO prompt del prescore pero un modelo mejor. Motivo (medido el
+    # 4-ago): 2.594 nombres repartidos en solo 287 valores de Flash — un 100/100 que el profundo
+    # puntuó 48. El carril "global" de `select_finalists` sale de esta segunda opinión en vez de
+    # la frontera ruidosa de Flash; los demás carriles (posición/watchlist/caps/sector) no cambian.
+    # Solo en los escaneos que DECIDEN: el observatorio semanal no toca ningún libro, así que
+    # pagar el modelo caro para afinar un ranking que no se ejecuta no compra nada.
+    mid_scores: dict[str, float] | None = None
+    if settings.mid_layer and decide:
+        mid_candidates = portfolio.top_por_sector(prescored, settings.mid_per_sector)
+
+        def _mid(ticker: str):
+            p = scorer_mod.prescore(mid_llm, data_by_t[ticker], macro_block)
+            if p.error:   # mismo criterio que el prescore: un reintento antes de rendirse
+                p = scorer_mod.prescore(mid_llm, data_by_t[ticker], macro_block)
+            return p
+
+        with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
+            mid_results = list(ex.map(_mid, mid_candidates))
+        # Si la segunda opinión falla, el nombre CONSERVA su pre-score en vez de caer a 0: un
+        # error de transporte no es un veredicto, y un 0 lo expulsaría del carril global después
+        # de haberse ganado el sitio como mejor de su sector.
+        crudo = {p.ticker: p.score for p, _d in prescored}
+        mid_scores = {p.ticker: (crudo.get(p.ticker, 0.0) if p.error else p.score)
+                      for p in mid_results}
+
+    # Sin capa media (el semanal), el carril sectorial sigue valiendo 2: es la única garantía de
+    # que el profundo vea cada sector. Bajarlo a 1 solo se justifica cuando un modelo mejor ya ha
+    # puntuado el top-10 de cada uno.
+    per_sector = settings.deep_per_sector_mid if mid_scores else settings.deep_per_sector
+    finalists, lanes = portfolio.select_finalists(
         prescored, set(held), watchlist_mod.top(db, settings.deep_watchlist),
-        settings.deep_per_sector, settings.deep_finalists, settings.deep_finalists_cap,
-        top_caps=settings.deep_top_caps)
+        per_sector, settings.deep_finalists, settings.deep_finalists_cap,
+        top_caps=settings.deep_top_caps, mid_scores=mid_scores)
 
     # 4) PASO 2 — informe PROFUNDO (V4-Pro) + price target solo en los finalistas.
-    # Memoria vectorial: recall EN EL HILO PRINCIPAL (sqlite no es thread-safe entre workers).
+    # Memoria vectorial: `store` solo alimenta `remember()` al final del escaneo (el buscador
+    # web). El recall que antes se inyectaba aquí como "tesis previa" se midió: llegaba a 19 de
+    # 50 finalistas y a 12 de ESOS con recuerdo real el k=3 se lo tapaba — un tratamiento que
+    # caía al azar. La tesis previa del prompt viene AHORA solo de `prior` (watchlist/cartera).
     store = _memory_store()
-    mem_by_t = {t: _recall(store, t, data_by_t[t].sector) for t in finalists} if store else {}
+    had_prior = {t for t in finalists if prior.get(t)}
 
     def _deep(ticker: str):
-        extra = "\n".join(x for x in (prior.get(ticker), mem_by_t.get(ticker)) if x) or None
-        return scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, extra)
+        extra = prior.get(ticker)
+        r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, extra)
+        if r.error:   # mismo criterio que el prescore: un reintento antes de darlo por perdido
+            r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, extra)
+        return r
 
     analizados: dict[str, scorer_mod.ScoreResult] = {}
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
@@ -316,8 +414,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     deep = {t: r for t, r in analizados.items() if r.score > 0}
     deep_caidos = sorted(set(analizados) - set(deep))
     if deep_caidos:
-        issues.append("Informe profundo no parseable (fuera del ranking): "
-                      + ", ".join(deep_caidos))
+        detalle = ", ".join(
+            f"{t}[{(analizados[t].error or '?').split(':')[0]}]" for t in deep_caidos)
+        issues.append("Informe profundo no parseable tras reintento (fuera del ranking): "
+                      + detalle)
+
+    # Guardarraíl de operación corporativa: corrige `target_price` EN SITIO antes de que nada
+    # aguas abajo (mapa de objetivos, upside, selección) lo use. Ver docstring de la función.
+    target_raw, target_flagged = _flag_corporate_deal_targets(deep, data_by_t, issues)
 
     price_map = {d.ticker: d.price for _p, d in prescored if d.price}
     instr_prices = instruments_mod.prices()        # {} si el allowlist UCITS está vacío
@@ -349,6 +453,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 headline=d.headline, report=d.report,
                 price=data.price, market_cap=data.market_cap, target_price=d.target_price,
                 held=ticker in held, on_watchlist=ticker in watch,  # provisional: resella al final
+                # Copia CONGELADA de las noticias que ENTRARON al prompt de este nombre: las
+                # noticias son un endpoint en vivo, al día siguiente ya no se pueden reconstruir.
+                news_used=list(data.news) if data.news is not None else None,
+                target_raw=target_raw.get(ticker), target_flagged=ticker in target_flagged,
             ))
     else:
         existing = {s.ticker: s for s in db.query(Score).all()}
@@ -360,6 +468,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             row.score, row.headline, row.report = d.score, d.headline, d.report
             row.price, row.market_cap = data.price, data.market_cap
             row.target_price, row.sector = d.target_price, data.sector
+            row.target_raw = target_raw.get(ticker)
+            row.target_flagged = ticker in target_flagged
             refreshed += 1
     db.commit()
     if store:                                      # guarda las tesis nuevas para recordarlas luego
@@ -408,7 +518,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     try:
         scan_audit.record(db, prescored=prescored, failed=failed, finalists=finalists,
                           deep=deep, selected=selected, construction=construction,
-                          pre_errors=pre_errors, deep_errors=deep_caidos, decide=decide)
+                          pre_errors=pre_errors, deep_errors=deep_caidos, decide=decide,
+                          lanes=lanes, had_prior=had_prior)
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
 
@@ -421,7 +532,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     #    la real. El escaneo observatorio termina antes de este bloque: el libro conserva la
     #    cartera del último decidido para que cada elección viva su mes entero.
     if decide:
-        db.query(Proposal).delete()
         db.add(Proposal(
             cash_target_pct=construction.cash_pct,
             macro_summary=macro_line,
@@ -496,13 +606,37 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         "proposed": len([i for i in items if i["action"] != "mantener"]),
         "positions": len(construction.positions),
         "decided": decide,
-        "cost": _llm_usage(prescore_llm, deep_llm),  # coste REAL del escaneo (Flash + V4-Pro)
+        # coste REAL del escaneo (Flash + capa media si está activa + V4-Pro); `mid_llm` puede
+        # ser None (desactivada) — `_llm_usage` lo tolera igual que a un FakeLLM sin `usage`.
+        "cost": _llm_usage(prescore_llm, mid_llm, deep_llm),
         "outlook": macro.get("outlook") or "",
     }
     try:   # el informe jamás debe tirar un escaneo ya completado
         _write_scan_report(db, mode=modo, result=result, issues=issues, changes=changes)
     except Exception:
         logger.exception("No se pudo persistir el informe del escaneo.")
+    try:
+        # Fila HISTÓRICA (nunca se pisa): la inclinación sectorial del macro hasta ahora se
+        # calculaba, movía el escaneo entero y se tiraba — aquí queda fijada para comprobar
+        # después si acertó. `by_model` va dentro de `cost` (ya lo trae `_llm_usage`).
+        db.add(ScanRun(
+            cadence=cadence, decide=decide, regime=macro.get("regime") or "",
+            vix=macro.get("vix"), favored_sectors=macro.get("favored_sectors") or [],
+            avoided_sectors=macro.get("avoided_sectors") or [], outlook=macro.get("outlook") or "",
+            universe=universo_info,
+            counters={"scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
+                     "selected": len(selected), "positions": len(construction.positions)},
+            cost=result["cost"], issues=issues,
+            failures=(
+                [{"ticker": p.ticker, "etapa": "prescore", "error": p.error, "raw": p.raw}
+                 for p, _d in pre_errors]
+                + [{"ticker": t, "etapa": "profundo", "error": analizados[t].error,
+                    "raw": analizados[t].raw} for t in deep_caidos]
+            ),
+        ))
+        db.commit()
+    except Exception:
+        logger.exception("No se pudo persistir ScanRun (no aborta el escaneo).")
     return result
 
 
@@ -544,7 +678,6 @@ def recheck(db: Session) -> dict:
             settings.max_position_pct)
 
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
-    db.query(Proposal).delete()
     db.add(Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_block,
                     items=items,
                     omitted=[{"ticker": o.ticker, "reason": o.reason}
@@ -594,12 +727,12 @@ def redeep(db: Session) -> dict:
                 results[res.ticker] = res
 
     db.query(Score).delete()
-    db.query(Proposal).delete()
     for t, r in results.items():
         d = data_by_t[t]
         db.add(Score(ticker=t, sector=d.sector, score=r.score, headline=r.headline,
                      report=r.report, price=d.price, market_cap=d.market_cap,
-                     target_price=r.target_price, held=t in held, on_watchlist=t in watch))
+                     target_price=r.target_price, held=t in held, on_watchlist=t in watch,
+                     news_used=list(d.news) if d.news is not None else None))
     db.commit()
 
     mcap_map = {t: (data_by_t[t].market_cap or 0.0) for t in results}

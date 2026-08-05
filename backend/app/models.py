@@ -58,6 +58,13 @@ class Score(Base):
     target_price: Mapped[float | None] = mapped_column(Float)  # objetivo 3m del LLM
     held: Mapped[bool] = mapped_column(default=False)          # ¿está en cartera?
     on_watchlist: Mapped[bool] = mapped_column(default=False)
+    # copia CONGELADA de los titulares que entraron al prompt: las noticias son un endpoint en
+    # vivo, al día siguiente ya no se pueden reconstruir. Telemetría: nunca vuelve a un prompt.
+    news_used: Mapped[list | None] = mapped_column(JSON, default=None)
+    # target_raw/target_flagged: el objetivo TAL CUAL lo dijo el modelo cuando un guardarrail
+    # lo corrige después. Telemetría para auditar el guardarrail, nunca vuelve a un prompt.
+    target_raw: Mapped[float | None] = mapped_column(Float)
+    target_flagged: Mapped[bool] = mapped_column(default=False)
 
 
 class Proposal(Base):
@@ -106,6 +113,44 @@ class ScanAudit(Base):
     decide: Mapped[bool | None] = mapped_column(default=None)
     weight_pct: Mapped[float | None] = mapped_column(Float)
     stage: Mapped[str] = mapped_column(String(16), default="")  # etapa alcanzada (datos…cartera)
+    # ¿por qué CARRIL entró este finalista al profundo (posición/watchlist/caps/sector/global)?
+    # Sin saberlo no se puede evaluar si un carril aporta valor o solo ocupa hueco de otro mejor.
+    # NULL = fila anterior a la columna.
+    entry_lane: Mapped[str | None] = mapped_column(String(12), default=None)
+    # ¿se puntuó con tesis previa (memoria de un escaneo anterior) o en frío? Sin este dato no se
+    # puede medir si esa memoria ayuda o simplemente ancla al modelo. NULL = fila anterior.
+    had_prior_thesis: Mapped[bool | None] = mapped_column(default=None)
+
+
+class ScanRun(Base):
+    """Una fila por escaneo, que NUNCA se sobrescribe.
+
+    Hoy el informe macro vive en `Meta.last_scan_report` y cada escaneo pisa al anterior, así
+    que la tesis macro de los escaneos previos se pierde sin dejar rastro. Aquí queda fijada:
+    `favored_sectors`/`avoided_sectors` es la INCLINACIÓN SECTORIAL que el macro emitió ese día
+    y que hasta ahora se calculaba, movía el escaneo entero y se tiraba — así era imposible
+    comprobar después si esa inclinación acertó.
+    """
+
+    __tablename__ = "scan_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scan_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    cadence: Mapped[str] = mapped_column(String(16), default="")
+    decide: Mapped[bool] = mapped_column(default=False)
+    regime: Mapped[str] = mapped_column(String(16), default="")
+    vix: Mapped[float | None] = mapped_column(Float)
+    favored_sectors: Mapped[list] = mapped_column(JSON, default=list)
+    avoided_sectors: Mapped[list] = mapped_column(JSON, default=list)
+    outlook: Mapped[str] = mapped_column(String, default="")
+    universe: Mapped[dict] = mapped_column(JSON, default=dict)
+    counters: Mapped[dict] = mapped_column(JSON, default=dict)
+    cost: Mapped[dict] = mapped_column(JSON, default=dict)
+    issues: Mapped[list] = mapped_column(JSON, default=list)
+    # Forense de los fallos del LLM: [{ticker, etapa, error, raw}]. `issues` es el texto que se
+    # lee en el panel y tiene que caber; esto es el detalle para saber DESPUÉS por qué falló un
+    # nombre — los logs de Railway caducan y el fallo se descubre al leer el informe, más tarde.
+    failures: Mapped[list] = mapped_column(JSON, default=list)
 
 
 # ---------------------------------------------------------------------------

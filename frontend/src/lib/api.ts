@@ -217,6 +217,26 @@ export interface OutcomeBook {
 }
 export const getScanOutcomes = (limit = 8) =>
   get<{ scans: OutcomeScan[]; book: OutcomeBook | null }>(`/scan/outcomes?limit=${limit}`);
+/** Un recuerdo guardado: la tesis que el LLM escribió sobre un ticker en un escaneo pasado.
+ *  `distance` solo llega en modo semántico (menor = más parecido); en modo ticker no aplica. */
+export interface MemoryItem {
+  ticker: string;
+  kind: string;
+  text: string;
+  created_at: string;
+  distance?: number;
+}
+export interface MemorySearchResult {
+  mode: "ticker" | "semantic" | "vacio";
+  items: MemoryItem[];
+  error?: string;
+}
+/** Buscador de la memoria: un ticker exacto trae su historia cronológica, texto libre trae las
+ *  tesis parecidas. Es lo único que queda de escaneos pasados — la tabla de scores se reescribe
+ *  en cada decisión mensual. */
+export const searchMemory = (q: string, limit = 20) =>
+  get<MemorySearchResult>(`/memory/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+
 export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
 export const reconcileApprovals = () => post<{ reconciled: number }>("/approvals/reconcile");

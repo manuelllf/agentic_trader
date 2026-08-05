@@ -128,9 +128,10 @@ _SYSTEM = (
     "You are a macro strategist. From the market snapshot, recent market headlines, and recent "
     "real-world economic & political events, write a concise 3-month forward outlook for US "
     "equities: your expectation for interest rates, inflation, the key upcoming economic/political "
-    "events and their likely market impact, and risk appetite; and WHICH SECTORS you favor vs "
-    "avoid for the next 1-3 months. Give your own view, not just what the market expects. Be brief "
-    "and decisive. Respond ONLY in JSON: "
+    "events and their likely market impact, and risk appetite. Keep the outlook text about these "
+    "conditions; put your sector view ONLY in the favored_sectors/avoided_sectors fields below, "
+    "not in the outlook text. Give your own view, not just what the market expects. Be brief. "
+    "Respond ONLY in JSON: "
     '{"regime": "risk-on|neutral|risk-off", "outlook": "...", "favored_sectors": ["..."], '
     '"avoided_sectors": ["..."]}. Write the outlook text in Spanish.'
 )
@@ -229,13 +230,16 @@ def get_macro_outlook(llm: LLMProvider, db=None) -> dict:  # noqa: ANN001
 
 
 def outlook_prompt_block(macro: dict) -> str:
-    """Compacta el macro para inyectarlo en cada prompt de scoring."""
+    """Compacta el macro para inyectarlo en cada prompt de scoring.
+
+    Solo régimen + VIX + texto del outlook. El whitepaper pasa el macro como "some macro-economic
+    data for context"; favored_sectors/avoided_sectors se siguen calculando y quedan fijados en
+    `ScanRun` como telemetría, pero NO se inyectan aquí — sería contradictorio pedirle al scorer
+    que no puntúe por sector y, en la misma frase, darle la lista de sectores buenos y malos.
+    """
     if not macro:
         return "n/d"
-    fav = ", ".join(macro.get("favored_sectors", [])) or "n/d"
-    avoid = ", ".join(macro.get("avoided_sectors", [])) or "n/d"
     return (
-        f"Regime: {macro.get('regime', 'n/d')} (VIX {macro.get('vix', 'n/d')}). "
-        f"Sector backdrop (CONTEXT, not a mandate) — tailwinds: {fav}; headwinds: {avoid}.\n"
+        f"Regime: {macro.get('regime', 'n/d')} (VIX {macro.get('vix', 'n/d')}).\n"
         f"{macro.get('outlook', '')}"
     )

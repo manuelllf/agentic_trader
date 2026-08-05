@@ -7,6 +7,7 @@ Pedimos `response_format=json_object` porque los agentes esperan JSON estructura
 
 from __future__ import annotations
 
+import copy
 import json
 
 import httpx
@@ -16,8 +17,9 @@ import httpx
 # de lo que "se ve". Solo se usan como respaldo: si la respuesta trae el coste real, mandan.
 _PRICING: dict[str, tuple[float, float]] = {
     "deepseek/deepseek-v4-pro": (0.435, 0.87),
-    "deepseek/deepseek-v4-flash": (0.09, 0.18),
-    "deepseek/deepseek-v3.2": (0.2288, 0.3432),
+    "deepseek/deepseek-v4-flash": (0.14, 0.28),
+    "deepseek/deepseek-v4-flash-0731": (0.09, 0.18),
+    "deepseek/deepseek-v3.2": (0.269, 0.40),
     "deepseek/deepseek-r1": (0.70, 2.50),
 }
 
@@ -41,12 +43,21 @@ class OpenRouterProvider:
             "X-Title": "Agentic Trader",
         }
         # Uso acumulado de ESTE proveedor (el escaneo suma el de Flash + el de V4-Pro).
-        self._usage = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0}
+        # "by_model" desglosa el mismo total por modelo: un escaneo mezcla un modelo barato
+        # en miles de llamadas con uno caro en decenas; sin separar no se puede saber dónde
+        # se va el dinero ni cuánto costaría ampliar el universo.
+        self._usage = {
+            "calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "cost_usd": 0.0,
+            "by_model": {},
+        }
 
     @property
     def usage(self) -> dict:
-        """Copia del acumulado: nº llamadas, tokens in/out y coste USD."""
-        return dict(self._usage)
+        """Copia profunda del acumulado (mutar el resultado no toca el acumulador)."""
+        return copy.deepcopy(self._usage)
 
     def _account(self, usage: dict | None) -> None:
         """Suma el `usage` de una respuesta. Coste real de OpenRouter si viene; si no, estima."""
@@ -58,10 +69,18 @@ class OpenRouterProvider:
         if cost is None:
             pin, pout = _PRICING.get(self._model, (0.0, 0.0))
             cost = (pt * pin + ct * pout) / 1_000_000
+        cost = float(cost)
         self._usage["calls"] += 1
         self._usage["prompt_tokens"] += pt
         self._usage["completion_tokens"] += ct
-        self._usage["cost_usd"] += float(cost)
+        self._usage["cost_usd"] += cost
+        by_model = self._usage["by_model"].setdefault(
+            self._model, {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0}
+        )
+        by_model["calls"] += 1
+        by_model["prompt_tokens"] += pt
+        by_model["completion_tokens"] += ct
+        by_model["cost_usd"] += cost
 
     def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
         payload = {

@@ -93,6 +93,9 @@ class NameData:
     market_cap: float | None = None   # para el desempate por market cap (método del paper)
     news: list[str] = field(default_factory=list)
     earnings_text: str = ""           # próxima fecha de resultados — dato para el PROFUNDO
+    name: str = ""                      # nombre corto de la empresa
+    target_high: float | None = None    # objetivo máximo del consenso de analistas, como NUMERO
+    # (ya viaja como texto dentro de fundamentals_text; esto es para el guardarrail determinista)
 
 
 def _fmt(value: object, kind: str) -> str | None:
@@ -212,6 +215,7 @@ def gather(ticker: str) -> NameData | None:
             hist = None
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         mcap = info.get("marketCap")
+        target_high = info.get("targetHighPrice")
         return NameData(
             ticker=ticker,
             sector=info.get("sector", "n/d"),
@@ -222,6 +226,8 @@ def gather(ticker: str) -> NameData | None:
             market_cap=float(mcap) if mcap else None,
             news=_news(yt),
             earnings_text=_earnings_text(info),
+            name=info.get("shortName", ""),
+            target_high=float(target_high) if target_high else None,
         )
     except Exception:
         return None

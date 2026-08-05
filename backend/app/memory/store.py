@@ -24,6 +24,7 @@ class Memory:
     ticker: str
     text: str
     distance: float | None = None
+    created_at: str = ""
 
 
 class MemoryStore:
@@ -31,6 +32,7 @@ class MemoryStore:
         self._db_path = db_path
         self._model_name = model_name
         self._conn: sqlite3.Connection | None = None
+        self._sql_conn: sqlite3.Connection | None = None
         self._embedder = None
         self._dim: int | None = None
 
@@ -71,6 +73,25 @@ class MemoryStore:
         self._conn = conn
         return conn
 
+    def _connect_sql_only(self) -> sqlite3.Connection:
+        """Conexión SQL pura, sin `sqlite-vec` ni el embedder: para consultas exactas.
+
+        Si `_connect()` ya se ejecutó (recall/remember previos), reutiliza esa conexión —
+        ya tiene la tabla `memories`. Si no, abre una conexión ligera propia y crea solo la
+        tabla `memories` (nunca `vec_memories`, que exige conocer la dimensión del embedder).
+        """
+        if self._conn is not None:
+            return self._conn
+        if self._sql_conn is None:
+            conn = sqlite3.connect(self._db_path)
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS memories("
+                "id INTEGER PRIMARY KEY, kind TEXT, ticker TEXT, text TEXT, created_at TEXT)"
+            )
+            conn.commit()
+            self._sql_conn = conn
+        return self._sql_conn
+
     # -- API --------------------------------------------------------------------
     def remember(self, text: str, kind: str = "", ticker: str = "") -> int:
         """Guarda un recuerdo (tesis, decisión, observación) y su embedding."""
@@ -90,28 +111,94 @@ class MemoryStore:
         conn.commit()
         return int(rowid)
 
-    def recall(self, query: str, k: int = 5, ticker: str | None = None) -> list[Memory]:
-        """Recupera los k recuerdos más parecidos por significado."""
+    def _knn(self, emb, k: int, rowids: list[int] | None = None) -> list[Memory]:
+        """KNN sobre `vec_memories`, opcionalmente restringido a un subconjunto de rowids.
+
+        El filtro por rowid se aplica ANTES del `k` (dentro de la propia consulta MATCH), no
+        después en Python: pedir los k vecinos de TODA la base y filtrar luego deja fuera
+        recuerdos reales cuando la tesis de un nombre se parece a las de sus vecinos. Medido
+        sobre 268 recuerdos: de 31 nombres con recuerdo guardado, 12 recibían lista vacía — y
+        los más afectados eran los más trillados, justo los que más historial tenían.
+        """
         import sqlite_vec
 
         conn = self._connect()
+        if rowids is not None:
+            if not rowids:
+                return []
+            placeholders = ",".join("?" * len(rowids))
+            sql = (
+                "SELECT m.id, m.kind, m.ticker, m.text, m.created_at, v.distance "
+                "FROM vec_memories v JOIN memories m ON m.id = v.rowid "
+                f"WHERE v.embedding MATCH ? AND k = ? AND v.rowid IN ({placeholders}) "
+                "ORDER BY v.distance"
+            )
+            params = (sqlite_vec.serialize_float32(emb), k, *rowids)
+        else:
+            sql = (
+                "SELECT m.id, m.kind, m.ticker, m.text, m.created_at, v.distance "
+                "FROM vec_memories v JOIN memories m ON m.id = v.rowid "
+                "WHERE v.embedding MATCH ? AND k = ? "
+                "ORDER BY v.distance"
+            )
+            params = (sqlite_vec.serialize_float32(emb), k)
+        rows = conn.execute(sql, params).fetchall()
+        return [
+            Memory(id=r[0], kind=r[1], ticker=r[2], text=r[3], created_at=r[4], distance=r[5])
+            for r in rows
+        ]
+
+    def recall(self, query: str, k: int = 5, ticker: str | None = None) -> list[Memory]:
+        """Recupera los k recuerdos más parecidos por significado, de un ticker si se indica.
+
+        Cuando se pide `ticker`, la búsqueda vectorial se restringe a los rowids de ese ticker
+        ANTES de quedarse con los k mejores (ver `_knn`), no después.
+        """
+        conn = self._connect()
         emb = self._embed(query)
-        rows = conn.execute(
-            "SELECT m.id, m.kind, m.ticker, m.text, v.distance "
-            "FROM vec_memories v JOIN memories m ON m.id = v.rowid "
-            "WHERE v.embedding MATCH ? AND k = ? "
-            "ORDER BY v.distance",
-            (sqlite_vec.serialize_float32(emb), k),
-        ).fetchall()
-        results = [Memory(id=r[0], kind=r[1], ticker=r[2], text=r[3], distance=r[4]) for r in rows]
         if ticker:
-            results = [m for m in results if m.ticker == ticker]
-        return results
+            ids = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT id FROM memories WHERE ticker = ?", (ticker,)
+                ).fetchall()
+            ]
+            return self._knn(emb, k, rowids=ids)
+        return self._knn(emb, k)
+
+    def search(self, query: str, k: int = 10) -> list[Memory]:
+        """Búsqueda semántica pura sobre todos los recuerdos, sin filtro de ticker.
+
+        Pensada para alimentar un buscador general (web), a diferencia de `recall`, que acota
+        el juicio del agente a un ticker concreto.
+        """
+        emb = self._embed(query)
+        return self._knn(emb, k)
+
+    def history_for(self, ticker: str, limit: int = 20) -> list[Memory]:
+        """Recuerdos de un ticker en orden cronológico inverso, por SQL puro (sin embeddings).
+
+        "Qué dijo el sistema de NVDA" es una consulta exacta por ticker+fecha, no una búsqueda
+        por parecido semántico: usar el índice vectorial para esto sería la herramienta
+        equivocada. Por eso este método NO llama a `_embed` ni fuerza la carga del modelo.
+        """
+        conn = self._connect_sql_only()
+        rows = conn.execute(
+            "SELECT id, kind, ticker, text, created_at FROM memories "
+            "WHERE ticker = ? ORDER BY created_at DESC LIMIT ?",
+            (ticker, limit),
+        ).fetchall()
+        return [
+            Memory(id=r[0], kind=r[1], ticker=r[2], text=r[3], created_at=r[4]) for r in rows
+        ]
 
     def close(self) -> None:
         if self._conn is not None:
             self._conn.close()
             self._conn = None
+        if self._sql_conn is not None:
+            self._sql_conn.close()
+            self._sql_conn = None
 
     def __enter__(self) -> "MemoryStore":
         return self

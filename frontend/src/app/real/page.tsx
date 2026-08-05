@@ -38,6 +38,7 @@ import type {
   PersonalSummary, RealSummary,
 } from "@/lib/types";
 import { CapitalForm } from "./CapitalForm";
+import { MemorySearch } from "./MemorySearch";
 import { OrderRow } from "./OrderRow";
 import { NUMS, SERIES, T } from "./tokens";
 import { Empty, Field, Kpi, Panel, SideTag, Td, Th } from "./ui";
@@ -856,6 +857,8 @@ function SalaRealRoom() {
               </span>
             )}
           </div>
+
+          <MemorySearch />
         </div>
         )}
       </div>

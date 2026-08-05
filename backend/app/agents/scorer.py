@@ -27,7 +27,11 @@ SYSTEM = (
     "sections: recent news, financials, valuation, and economic outlook affecting the firm. "
     "INTERPRET the news, do not just repeat it. The macro/sector outlook is background context "
     "about the environment the firm operates in; weigh it as you judge appropriate for this "
-    "specific company. Technical "
+    "specific company. Do not raise or lower the score merely because of the company's sector, "
+    "its market size, or a recent price move in either direction - ask whether the news and "
+    "figures change the earnings power or the valuation case. Company size and liquidity remain "
+    "legitimate risk considerations; by themselves they are not a reason for a higher or a lower "
+    "score. Technical "
     "data (moving averages, 52-week range, RSI) is CONTEXT, never a decision rule. Then assign a "
     "score from 1 to 100 for the potential investment value over the next month (100 = best). "
     "ALSO give your own approximate 3-month PRICE TARGET (a single number in the stock's trading "
@@ -59,6 +63,10 @@ class PrescoreResult:
     ticker: str
     score: float
     headline: str
+    # error/raw: solo si falló. `error` distingue transporte (429, timeout…) de un JSON roto;
+    # `raw` guarda ~300 chars de la respuesta cruda. El caller decide si reintenta con `error`.
+    error: str | None = None
+    raw: str | None = None
 
 
 @dataclass
@@ -68,6 +76,8 @@ class ScoreResult:
     headline: str
     report: str
     target_price: float | None = None
+    error: str | None = None
+    raw: str | None = None
 
 
 def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> str:
@@ -92,31 +102,58 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> 
 
 
 def _prescore_prompt(data: NameData, macro_block: str) -> str:
-    news = "; ".join(data.news[:3]) if data.news else "none"
+    # Todos los titulares, no solo los 3 primeros: el prescore decide quién llega al análisis
+    # caro viendo un tercio de las noticias. En un escaneo real dio 100/100 a un nombre —el
+    # único ≥90 de 2.594— y el profundo le puso 48 en cuanto vio la noticia que lo hundía (venta
+    # de acciones por directivos), fuera del top-3. El triaje no es un profundo barato: es otro juez.
+    news = "; ".join(data.news) if data.news else "none"
+    name = f" ({data.name})" if data.name else ""
     return (
-        f"{data.ticker} — {data.sector}/{data.industry}. Macro: {macro_block}\n"
+        f"{data.ticker}{name} — {data.sector}/{data.industry}. Macro: {macro_block}\n"
         f"Fundamentals:\n{data.fundamentals_text}\n"
         f"Technical: {data.technical_text or 'n/d'}\nNews: {news}\n"
         "Quick 1-100 score + one-line thesis (JSON)."
     )
 
 
+_RAW_MAX = 1500          # se persiste en ScanRun.failures: unas decenas de KB al mes, nada
+
+
+def _recorte(raw: str) -> str:
+    """Respuesta cruda para el diagnóstico de un fallo: principio Y final.
+
+    El principio dice si el modelo devolvió prosa en vez de JSON; el FINAL dice si se cortó a
+    medias, que es la sospecha principal cuando un informe largo no parsea. Quedarse solo con
+    la cabecera deja fuera justo la prueba que hace falta.
+    """
+    if len(raw) <= _RAW_MAX:
+        return raw
+    mitad = _RAW_MAX // 2
+    return f"{raw[:mitad]}\n…[recortado {len(raw) - _RAW_MAX} chars]…\n{raw[-mitad:]}"
+
+
 def prescore(llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 0.2) -> PrescoreResult:
-    """Ranking de primera pasada (modelo rápido/barato). Best-effort: 0 si falla."""
+    """Ranking de primera pasada (modelo rápido/barato). Best-effort: 0 si falla, con `error`/
+    `raw` para que el caller sepa POR QUÉ (transporte vs JSON roto) y decida si reintenta."""
+    raw = ""
     try:
         raw = llm.chat(PRESCORE_SYSTEM, _prescore_prompt(data, macro_block), temperature=temperature)
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 1)))
         return PrescoreResult(data.ticker, sc, str(obj.get("headline", "")).strip())
-    except Exception:
-        return PrescoreResult(data.ticker, 0.0, "")
+    except Exception as exc:
+        logger.warning("Prescore no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
+        return PrescoreResult(data.ticker, 0.0, "", error=f"{type(exc).__name__}: {exc}",
+                              raw=_recorte(raw))
 
 
 def score(
     llm: LLMProvider, data: NameData, macro_block: str, prior_thesis: str | None = None,
     temperature: float = 0.3,
 ) -> ScoreResult:
-    """Puntúa un nombre. Best-effort: si el LLM falla/no parsea, score 0 (queda fuera)."""
+    """Puntúa un nombre. Best-effort: si el LLM falla/no parsea, score 0 (queda fuera), con
+    `error`/`raw` para que el caller sepa POR QUÉ y decida si reintenta."""
+    raw = ""
     try:
         raw = llm.chat(SYSTEM, _user_prompt(data, macro_block, prior_thesis), temperature=temperature)
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
@@ -134,6 +171,7 @@ def score(
             report=str(obj.get("report", "")).strip(),
             target_price=tp,
         )
-    except Exception:
-        logger.warning("Scorer no parseable para %s", data.ticker)
-        return ScoreResult(ticker=data.ticker, score=0, headline="", report="")
+    except Exception as exc:
+        logger.warning("Scorer no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
+        return ScoreResult(ticker=data.ticker, score=0, headline="", report="",
+                           error=f"{type(exc).__name__}: {exc}", raw=_recorte(raw))

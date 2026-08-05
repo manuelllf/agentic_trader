@@ -34,7 +34,8 @@ def _stage(reached_deep: bool, selected: bool, funded: bool) -> str:
 
 def record(db, *, prescored: list, failed: list[str], finalists: list[str],
            deep: dict, selected: list, construction, pre_errors: list | None = None,
-           deep_errors: list[str] | None = None, decide: bool | None = None) -> None:
+           deep_errors: list[str] | None = None, decide: bool | None = None,
+           lanes: dict[str, str] | None = None, had_prior: set[str] | None = None) -> None:
     """Añade la traza del embudo de ESTE escaneo (no borra las anteriores) y poda las viejas.
 
     `prescored` = [(PrescoreResult, NameData)]; `failed` = tickers sin datos; `deep` = {ticker:
@@ -46,12 +47,19 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
     cuántas veces falla un mismo ticker (MS y CNC solo existían como aviso del informe);
     `decide` = si el escaneo decidía cartera — la construcción se registra también en los
     observatorios y sin el flag su cartera hipotética se confunde con el libro real.
+    `lanes` = {ticker: carril} devuelto por `select_finalists` (posición/watchlist/caps/sector/
+    global) — sin saber por qué carril entró un finalista no se puede evaluar si ese carril
+    aporta valor o solo ocupa hueco de otro mejor. `had_prior` = finalistas cuyo prompt del
+    profundo llevaba tesis previa (watchlist/cartera) — sin este dato no se puede medir si esa
+    memoria ayuda o solo ancla al modelo.
     Best-effort: el caller lo envuelve en try (un fallo aquí nunca debe tirar el escaneo).
     """
     finalist_set = set(finalists)
     selected_set = {r.ticker for r in selected}
     funded = {p.ticker: p.weight_pct for p in construction.positions}
     deep_err_set = set(deep_errors or [])
+    lanes = lanes or {}
+    had_prior_set = had_prior or set()
     now = _utcnow()
 
     rows: list[ScanAudit] = []
@@ -64,6 +72,8 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
             selected=is_sel, funded=is_fund, weight_pct=funded.get(t), decide=decide,
             # Un profundo ilegible LLEGÓ al profundo (reached_deep se conserva) pero falló ahí.
             stage="deep_error" if t in deep_err_set else _stage(in_deep, is_sel, is_fund),
+            entry_lane=lanes.get(t) if in_deep else None,
+            had_prior_thesis=(t in had_prior_set) if in_deep else None,
         ))
     for p, d in (pre_errors or []):
         # prescore=None a propósito: no hubo puntuación, hubo fallo (no cuenta como pre-scoreado).

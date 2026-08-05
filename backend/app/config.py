@@ -53,11 +53,24 @@ class Settings(BaseSettings):
     # Embudo en 2 pasos: pre-score RÁPIDO (Flash) de todo el universo → informe PROFUNDO
     # (V4-Pro razonador) + price target + construcción solo sobre los finalistas.
     llm_model: str = "deepseek/deepseek-v4-pro"          # profundo: informe + target + construcción
-    prescore_model: str = "deepseek/deepseek-v4-flash"   # rápido: ranking 1-100 de todo el universo
+    # Alias fijado a fecha (0731) y no el genérico: el genérico apunta a un snapshot MÁS VIEJO
+    # y cuesta 0,14/0,28 por millón, mientras el 0731 es más reciente y cuesta 0,09/0,18. Se fija
+    # a propósito: si el modelo cambiara solo entre escaneos, los scores dejarían de ser
+    # comparables y la auditoría histórica perdería sentido.
+    prescore_model: str = "deepseek/deepseek-v4-flash-0731"  # rápido: ranking 1-100 del universo
+    # Capa media: repuntúa los mejores de cada sector entre el pre-score y el profundo
+    # (implementación en otro módulo; aquí solo se declara la config).
+    mid_layer: bool = True          # capa media: repuntúa los mejores de cada sector
+    mid_per_sector: int = 10        # cuántos por sector entran a la capa media
+    mid_model: str = "deepseek/deepseek-v4-pro"
     # Corte de finalistas al profundo (fiel al paper, sin colapsar en un solo sector):
     #   top-`deep_per_sector` por sector (amplitud) ∪ top-`deep_finalists` global (los mejores)
     #   + posiciones + top-`deep_watchlist` watchlist, truncado a `deep_finalists_cap`.
+    # El carril sectorial vale 2 cuando NO hay capa media (el semanal): es la única garantía de
+    # que el profundo vea cada sector. Cuando la capa media corre (el mensual), un modelo bueno
+    # ya ha puntuado el top-10 de CADA sector, así que basta 1 como red de seguridad.
     deep_per_sector: int = 2                             # top-N por sector (recall de amplitud)
+    deep_per_sector_mid: int = 1                         # ídem cuando hubo capa media
     deep_finalists: int = 25                             # top-N global por pre-score
     deep_watchlist: int = 5                              # + mejores de la watchlist (continuidad)
     deep_top_caps: int = 10                              # las N mayores caps SIEMPRE al profundo
@@ -82,7 +95,10 @@ class Settings(BaseSettings):
     # la misma descarga da 2.317 o 2.731 nombres según cuánto llevaba negociado el mercado.
     # Como el pre-scorer gasta UNA llamada por nombre, eso es dejar el coste al azar. Con tope,
     # el gasto está acotado por diseño y el recorte cae donde debe: en los menos negociados.
-    universe_max_names: int = 2_600
+    # 3.000: con el tope en 2.600, la foto del 4-ago dejó fuera 433 nombres que SÍ pasaban el
+    # suelo de liquidez, y el recorte los ordena por volumen — el mismo sesgo hacia "lo que se
+    # estaba moviendo" que la foto al cierre venía a evitar, colándose por la puerta del tope.
+    universe_max_names: int = 3_000
     universe_min_price: float = 5.0                      # descarta penny stocks < $5 (higiene)
     scan_full_universe: bool = True  # mensual: pre-score TODO el universo (cobertura total, ~15 min)
     scan_sample_size: int = 500     # semanal: ventana ROTATORIA de N (~5 semanas tejen el universo)

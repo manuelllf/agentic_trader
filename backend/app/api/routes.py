@@ -32,11 +32,13 @@ un feed de señales.
 - GET  /scores               → leaderboard (mejores scores del último escaneo)     [protegido]
 - GET  /proposal             → cartera objetivo + trades del último escaneo        [protegido]
 - GET  /watchlist            → nombres vigilados                                   [protegido]
+- GET  /memory/search        → buscador sobre la memoria semántica (ticker o texto) [protegido]
 """
 
 from __future__ import annotations
 
 import json
+import re
 from decimal import Decimal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -293,6 +295,48 @@ def scan_ticker_history(ticker: str, db: Session = Depends(get_db)) -> dict:
     from app import scan_outcomes
 
     return {"ticker": ticker.upper(), "scans": scan_outcomes.ticker_history(db, ticker)}
+
+
+_TICKER_LIKE = re.compile(r"^[A-Za-z0-9]{1,6}$")
+
+
+def _memory_out(m) -> dict:  # noqa: ANN001 — `Memory` es un dataclass de app.memory.store
+    out = {"ticker": m.ticker, "kind": m.kind, "text": m.text, "created_at": m.created_at}
+    if m.distance is not None:
+        out["distance"] = m.distance
+    return out
+
+
+@router.get("/memory/search")
+def memory_search(q: str = Query(..., min_length=1), limit: int = Query(20, ge=1, le=100)) -> dict:
+    """Buscador sobre la memoria semántica: ticker exacto (historia cronológica) o texto libre
+    (parecido semántico). Protegido entero, igual que `/scan/audit/{ticker}`: devuelve nombres
+    con su tesis, y la regla de esta API es que el COMPORTAMIENTO es público pero QUÉ nombres
+    elige el método no lo es. La memoria es telemetría que se lee — nunca vuelve a un prompt.
+    """
+    from app import memory
+
+    try:
+        store = memory.get_store()
+    except Exception:  # noqa: BLE001 — deps opcionales (fastembed/sqlite-vec) pueden faltar
+        store = None
+    if store is None:
+        return {"mode": "vacio", "items": [], "error": "memoria vectorial no disponible"}
+
+    q = q.strip()
+    if _TICKER_LIKE.match(q):
+        try:
+            hist = store.history_for(q.upper(), limit=limit)
+        except Exception:  # noqa: BLE001 — fichero ausente/corrupto no debe tirar el endpoint
+            hist = []
+        if hist:
+            return {"mode": "ticker", "items": [_memory_out(m) for m in hist]}
+
+    try:
+        results = store.search(q, k=limit)
+    except Exception as exc:  # noqa: BLE001 — típicamente fastembed/sqlite-vec no instalados
+        return {"mode": "vacio", "items": [], "error": str(exc)}
+    return {"mode": "semantic", "items": [_memory_out(m) for m in results]}
 
 
 @router.post("/recheck")

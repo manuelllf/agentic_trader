@@ -33,15 +33,49 @@ def select_top(rows: list, mcap: dict, floor: int, n: int) -> list:
     return eligible[:n]
 
 
-def select_finalists(prescored: list, held: set, watch: list,
-                     per_sector: int, global_n: int, cap: int, top_caps: int = 0) -> list[str]:
+def top_por_sector(prescored: list, n: int) -> list[str]:
+    """Los `n` mejores de cada sector, EXCLUYENDO sector vacío o "n/d".
+
+    Sin la exclusión, "n/d" actúa como un sector más y le regala plazas al análisis profundo
+    a nombres que no se pudieron clasificar (el 4-ago, 2 de 4 nombres sin sector llegaron al
+    profundo — 50%, frente al 1,9% del resto). No hay carril de rescate para lo indefinido.
+
+    No asume que `prescored` venga ordenado: itera en el orden recibido, así que quien llama
+    decide el criterio (score, mid-score, lo que sea). Reutilizable fuera de `select_finalists`
+    (la capa media la llama directamente con n=10).
+    """
+    per: dict[str, int] = {}
+    out: list[str] = []
+    for p, d in prescored:
+        s = (d.sector or "").strip()
+        if not s or s.lower() == "n/d":
+            continue
+        if per.get(s, 0) < n:
+            out.append(p.ticker)
+            per[s] = per.get(s, 0) + 1
+    return out
+
+
+def select_finalists(
+    prescored: list, held: set, watch: list, per_sector: int, global_n: int,
+    cap: int, top_caps: int = 0, mid_scores: dict[str, float] | None = None,
+) -> tuple[list[str], dict[str, str]]:
     """Corte de finalistas al profundo: amplitud por sector + mejores globales, con tope duro.
 
-    `prescored` = [(PrescoreResult, NameData)] YA ordenado por pre-score descendente. El corte
-    combina top-`per_sector` por sector (para que el profundo VEA cada sector, no un mandato de
+    `prescored` = [(PrescoreResult, NameData)] SIN ordenar de antemano: aquí mismo se reordena
+    por (-score, -market_cap), igual que `select_top`, para que un empate de pre-score lo rompa
+    la mayor capitalización y no el orden de llegada de la muestra (fiel al paper; el 4-ago había
+    7 nombres empatados en 84,5 disputando 2 plazas). El corte combina top-`per_sector` por
+    sector vía `top_por_sector` (para que el profundo VEA cada sector, no un mandato de
     diversificar) ∪ top-`global_n` global ∪ las `top_caps` mayores capitalizaciones (carril de
     rescate OBJETIVO: en el paper el modelo grande puntúa todos los grandes; el pre-score barato
     no puede vetarlos). La selección FINAL de cartera sigue siendo puro score.
+
+    `mid_scores`, si viene, sustituye el criterio del carril GLOBAL: se ordena por ese diccionario
+    (desempate por market cap) y solo entran tickers presentes en él. Motivo: el prescore barato
+    tiene una frontera ruidosa; cuando un modelo mejor repuntúa a los mejores de cada sector, el
+    carril de "los mejores globales" debe salir de esa segunda opinión, no de la primera. Los
+    demás carriles (posición, watchlist, caps, sector) no cambian.
 
     Prioridad al truncar a `cap`: posiciones → watchlist → mayores caps → núcleo por sector →
     extras del top global. Los carriles GARANTIZADOS van primero: la watchlist es la única
@@ -51,30 +85,38 @@ def select_finalists(prescored: list, held: set, watch: list,
     no son top de su sector ("el tercer mejor de un sector caliente"): la señal más redundante.
     (Hasta el 4-ago el orden era el inverso — la watchlist caía primero, contradiciendo el
     "SIEMPRE al profundo" de la config justo en los mensuales, donde el tope sí muerde.)
+
+    Devuelve (finalistas, carriles) donde `carriles[ticker]` es el PRIMER grupo que lo metió:
+    "posicion", "watchlist", "caps", "sector" o "global".
     """
-    ranked = [p.ticker for p, _d in prescored]          # ya viene por score desc
-    sector = {p.ticker: d.sector for p, d in prescored}
+    prescored = sorted(prescored, key=lambda pd: (-pd[0].score, -(pd[1].market_cap or 0.0)))
+    ranked = [p.ticker for p, _d in prescored]
     present = set(ranked)
 
-    core: list[str] = []
-    per: dict[str, int] = {}
-    for t in ranked:
-        s = sector[t]
-        if per.get(s, 0) < per_sector:
-            core.append(t)
-            per[s] = per.get(s, 0) + 1
-    global_top = ranked[:global_n]
+    core = top_por_sector(prescored, per_sector)
+
+    if mid_scores:
+        mid_present = [(p, d) for p, d in prescored if p.ticker in mid_scores]
+        mid_present.sort(key=lambda pd: (-mid_scores[pd[0].ticker], -(pd[1].market_cap or 0.0)))
+        global_top = [p.ticker for p, _d in mid_present[:global_n]]
+    else:
+        global_top = ranked[:global_n]
+
     held_in = [t for t in ranked if t in held]          # solo las presentes, en orden de score
     by_cap = sorted(prescored, key=lambda pd: -(pd[1].market_cap or 0.0))
     caps_in = [p.ticker for p, _d in by_cap[:top_caps]]
     watch_in = [t for t in watch if t in present]
 
+    carriles: dict[str, str] = {}
     ordered: list[str] = []
-    for group in (held_in, watch_in, caps_in, core, global_top):
+    for nombre, group in (("posicion", held_in), ("watchlist", watch_in), ("caps", caps_in),
+                          ("sector", core), ("global", global_top)):
         for t in group:
             if t not in ordered:
                 ordered.append(t)
-    return ordered[:cap]
+                carriles[t] = nombre
+    finalistas = ordered[:cap]
+    return finalistas, {t: g for t, g in carriles.items() if t in finalistas}
 
 
 def _full_invest(weights: list[float], cap: float, total: float = 100.0) -> list[float]:

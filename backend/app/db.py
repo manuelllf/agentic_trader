@@ -89,6 +89,23 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
     pr = cols("proposals")
     if pr and "omitted" not in pr:
         conn.execute(text("ALTER TABLE proposals ADD COLUMN omitted JSON DEFAULT '[]'"))
+    # scan_audit.entry_lane/had_prior_thesis: carril de entrada al profundo y si se puntuó con
+    # tesis previa. Filas viejas quedan a NULL — no se registraba entonces.
+    if sa and "entry_lane" not in sa:
+        conn.execute(text("ALTER TABLE scan_audit ADD COLUMN entry_lane VARCHAR(12)"))
+    if sa and "had_prior_thesis" not in sa:
+        conn.execute(text("ALTER TABLE scan_audit ADD COLUMN had_prior_thesis BOOLEAN"))
+    # scores.news_used/target_raw/target_flagged: telemetría congelada del prompt (noticias) y
+    # del guardarrail de precio objetivo. Filas viejas quedan a NULL/False — no había forma de
+    # reconstruirlas después.
+    if sc and "news_used" not in sc:
+        conn.execute(text("ALTER TABLE scores ADD COLUMN news_used JSON"))
+    if sc and "target_raw" not in sc:
+        conn.execute(text("ALTER TABLE scores ADD COLUMN target_raw FLOAT"))
+    if sc and "target_flagged" not in sc:
+        conn.execute(text(
+            "ALTER TABLE scores ADD COLUMN target_flagged BOOLEAN NOT NULL DEFAULT 0"
+        ))
     conn.commit()
 
 
@@ -106,7 +123,13 @@ def _copy_positions_old(conn) -> None:  # noqa: ANN001
 
 
 def init_db() -> None:
-    """Crea las tablas si no existen (para dev; en prod se usa Alembic)."""
+    """Prepara el esquema AL ARRANCAR la app (lo llama el lifespan de `main.py`).
+
+    No hay Alembic: `_migrate_books` hace los ALTER TABLE a mano —cada uno comprobando antes si
+    la columna ya existe, así que es idempotente— y `create_all` añade las tablas nuevas. En
+    producción esto corre solo, al bootear el contenedor tras cada despliegue: no hay script que
+    lanzar ni paso manual. Si fallase, el arranque falla y Railway conserva la versión anterior.
+    """
     from app import models  # noqa: F401  (registra los modelos en la metadata)
 
     with engine.connect() as conn:

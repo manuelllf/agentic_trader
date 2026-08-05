@@ -321,7 +321,8 @@ def test_select_finalists_stratifies_by_sector() -> None:
         _pn("E1", "Energy", 60), _pn("E2", "Energy", 59),
         _pn("H1", "Health", 40),
     ]
-    fin = select_finalists(prescored, held=set(), watch=[], per_sector=2, global_n=3, cap=35)
+    fin, _carriles = select_finalists(prescored, held=set(), watch=[], per_sector=2, global_n=3,
+                                      cap=35)
     # top-2/sector = {T1,T2,E1,E2,H1} ∪ top-3 global = {T1,T2,T3} → +T3
     assert set(fin) == {"T1", "T2", "T3", "E1", "E2", "H1"}
     assert "T4" not in fin        # 4º de Tech: ni top-2 de su sector ni top-3 global
@@ -334,15 +335,16 @@ def test_select_finalists_cap_prioriza_los_carriles_garantizados() -> None:
     era el inverso y la watchlist caía primero justo en los mensuales, donde el tope muerde."""
     from app.portfolio_service import select_finalists
     prescored = [_pn(f"N{i}", "Tech", 100 - i) for i in range(10)]  # N0 mejor … N9 peor
-    fin = select_finalists(prescored, held={"N9"}, watch=["N5"], per_sector=2, global_n=2, cap=3)
+    fin, _carriles = select_finalists(prescored, held={"N9"}, watch=["N5"], per_sector=2,
+                                      global_n=2, cap=3)
     assert len(fin) == 3                    # tope duro
     assert set(fin) == {"N9", "N5", "N0"}   # posición → watchlist → primer hueco al núcleo
 
     # Con sitio, entran todos los grupos; el carril de caps rescata al de mayor capitalización
     # aunque su pre-score sea el peor (aquí N8, que sin carril quedaría fuera con global_n=2).
     prescored[8][1].market_cap = 9e12
-    fin = select_finalists(prescored, held=set(), watch=[], per_sector=2, global_n=2,
-                           cap=3, top_caps=1)
+    fin, _carriles = select_finalists(prescored, held=set(), watch=[], per_sector=2, global_n=2,
+                                      cap=3, top_caps=1)
     assert "N8" in fin                      # el gigante entra por caps, no por pre-score
 
 
@@ -468,9 +470,10 @@ def test_select_finalists_rescata_mayores_caps() -> None:
     prescored[0][1].market_cap = 1e9
     prescored[1][1].market_cap = 2e9
     prescored[2][1].market_cap = 3e12
-    sin = select_finalists(prescored, held=set(), watch=[], per_sector=1, global_n=1, cap=10)
-    con = select_finalists(prescored, held=set(), watch=[], per_sector=1, global_n=1, cap=10,
-                           top_caps=1)
+    sin, _carriles = select_finalists(prescored, held=set(), watch=[], per_sector=1, global_n=1,
+                                      cap=10)
+    con, _carriles = select_finalists(prescored, held=set(), watch=[], per_sector=1, global_n=1,
+                                      cap=10, top_caps=1)
     assert "MEGA" not in sin
     assert "MEGA" in con
 
