@@ -19,6 +19,7 @@
 
 import { fmtNum, type Step } from "./scan";
 import { wrapLines, type CardPalette } from "./exportCard";
+import type { ProposalItem, TradeAction } from "./types";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -82,4 +83,94 @@ export function funnelPie(pasos: Step[],
     partes.push("más mirados: " + top.map((s) => `${s.sector} ${s.deep}`).join(" · "));
   }
   return partes.join(" · ");
+}
+
+const ROTATION_LABEL: Record<TradeAction, string> = {
+  comprar: "nueva", ampliar: "amplía", mantener: "se mantiene",
+  recortar: "recorta", vender: "sale",
+};
+
+/** El embudo es una constante estructural (el mismo hoy que en enero); lo que cambia mes a mes
+ *  es ESTO. Se traduce a "X mirados · Y a fondo · Z al constructor" y se omite "en cartera": ese
+ *  dato ya son las filas de arriba, repetirlo en el pie sería la misma cifra dos veces. */
+function miniFunnelLine(pasos: Step[]): string {
+  const etiqueta: Record<string, string> = {
+    estudiados: "mirados", "a fondo": "a fondo", finalistas: "al constructor",
+  };
+  return pasos
+    .filter((p) => p.label !== "en cartera")
+    .map((p) => `${fmtNum(p.value)} ${etiqueta[p.label] ?? p.label}`)
+    .join(" · ");
+}
+
+/** El panel de una DECISIÓN mensual: no el embudo (constante mes a mes) sino la rotación —
+ *  qué entra, qué sale, qué se amplía, qué se mantiene. Con nombres a propósito: esta tarjeta
+ *  se publica para explicar la decisión, no para enseñar el método (eso ya lo hace la del
+ *  martes). El embudo no desaparece, baja a una línea de contexto al pie.
+ *
+ *  `items` es la propuesta completa (incluye los "vender", que son las salidas); `pasos` es la
+ *  misma cascada que dibuja `funnelCascadeSvg`, reutilizada tal cual para el pie. */
+export function rotationSvg(items: ProposalItem[], pasos: Step[], palette: CardPalette): string {
+  const cartera = items.filter((i) => i.action !== "vender");
+  const salidas = items.filter((i) => i.action === "vender");
+  if (!cartera.length && !salidas.length) return "";
+
+  const W = 440;
+  const H = 400;
+  const contexto = pasos.length ? miniFunnelLine(pasos) : "";
+  const lineas = contexto ? wrapLines(contexto, W, 13) : [];
+  const pieH = lineas.length ? lineas.length * 17 + 12 : 0;
+
+  // La línea de salidas ENVUELVE: con cuatro ventas cabe, pero un mes de seis con símbolos
+  // largos se salía del panel (el resto del texto de la tarjeta ya pasaba por `wrapLines`).
+  const salidasLineas = salidas.length
+    ? wrapLines(`salen: ${salidas.map((s) => s.ticker).join(" · ")}`, W, 13)
+    : [];
+  const HEAD_H = 60;
+  const SAL_H = salidasLineas.length ? salidasLineas.length * 17 + 13 : 0;
+  const util = Math.max(0, H - HEAD_H - SAL_H - pieH);
+  const rowH = cartera.length ? Math.min(58, util / cartera.length) : util;
+  const top = HEAD_H + Math.max(0, (util - rowH * cartera.length) / 2);
+
+  // Cuántas de las posiciones objetivo son estreno frente al mes anterior: la cifra que se
+  // entiende de un vistazo, sin tener que leer las cinco filas.
+  // Un mes sin estrenos NO es un mes sin decisión: "0 nuevas de 5" se lee como si no hubiera
+  // pasado nada, cuando sostener la cartera entera es justamente lo que se decidió.
+  const nuevas = cartera.filter((i) => i.action === "comprar").length;
+  const titular = nuevas
+    ? `${nuevas} nueva${nuevas === 1 ? "" : "s"} de ${cartera.length}`
+    : `las ${cartera.length} se mantienen`;
+  const cabecera = `<text x="0" y="18" font-size="13" font-weight="700" letter-spacing="1.1" fill="${palette.ink2}">ROTACIÓN DE LA CARTERA</text>
+    <text x="0" y="50" font-size="30" font-weight="700" fill="${palette.accent}">${esc(titular)}</text>`;
+
+  const colorAccion = (a: TradeAction) =>
+    a === "comprar" || a === "ampliar" ? palette.accent
+    : a === "recortar" ? palette.bad
+    : palette.ink2;
+
+  const filas = cartera
+    .map((it, i) => {
+      const y = top + i * rowH;
+      const linea = i < cartera.length - 1
+        ? `<rect x="0" y="${(y + rowH - 1).toFixed(1)}" width="${W}" height="1" fill="${palette.carril}"/>`
+        : "";
+      return `<g>
+    <text x="0" y="${y + 24}" font-size="19" font-weight="700" fill="${palette.ink}">${esc(it.ticker)}</text>
+    <text x="0" y="${y + 41}" font-size="12.5" fill="${colorAccion(it.action)}">${esc(ROTATION_LABEL[it.action])}</text>
+    <text x="${W}" y="${y + 31}" text-anchor="end" font-size="23" font-weight="700" fill="${palette.ink}">${it.target_weight_pct}%</text>
+    ${linea}
+  </g>`;
+    })
+    .join("\n");
+
+  const salidasY = top + cartera.length * rowH + 20;
+  const salidasSvg = salidasLineas
+    .map((l, i) => `<text x="0" y="${salidasY + i * 17}" font-size="13" fill="${palette.bad}">${esc(l)}</text>`)
+    .join("\n");
+
+  const pieSvg = lineas
+    .map((l, i) => `<text x="0" y="${H - pieH + 15 + i * 17}" font-size="13" fill="${palette.faint}">${esc(l)}</text>`)
+    .join("\n");
+
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${cabecera}${filas}${salidasSvg}${pieSvg}</svg>`;
 }

@@ -101,7 +101,9 @@ class Settings(BaseSettings):
     universe_max_names: int = 3_000
     universe_min_price: float = 5.0                      # descarta penny stocks < $5 (higiene)
     scan_full_universe: bool = True  # mensual: pre-score TODO el universo (cobertura total, ~15 min)
-    scan_sample_size: int = 500     # semanal: ventana ROTATORIA de N (~5 semanas tejen el universo)
+    # semanal: ventana ROTATORIA de N. Con el universo en 3.000 nombres, 500 tejía el universo
+    # entero en 6 semanas; con 750 lo teje en 4 — coste extra: ~4,5 céntimos más por escaneo.
+    scan_sample_size: int = 750
     leaderboard_size: int = 20      # cuántos muestra el panel además de la cartera
     min_buy_score: int = 0          # 0 = SIN suelo (fiel al paper: entra por score, sin nota mínima)
 

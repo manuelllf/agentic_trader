@@ -233,16 +233,20 @@ export default function SombraDashboard() {
     }
   }, [perf]);
 
-  /** El embudo como tarjeta. Es la imagen del martes: el escaneo semanal no mueve la cartera,
-   *  así que lo publicable de ese día es cuánto se miró y por dónde se fue cayendo. */
+  /** La tarjeta del escaneo. El embudo es el método y es SIEMPRE el mismo (el martes de enero
+   *  y el de agosto sacan números parecidos): eso se explica una vez, en el observatorio. En
+   *  una DECISIÓN mensual lo que hay que contar es otra cosa — qué cambió en la cartera —, así
+   *  que ahí el panel principal pasa a ser la rotación y el embudo baja a una línea al pie. */
   const exportarEmbudo = useCallback(async (preset: "x" | "linkedin") => {
     setExportEmbudoMsg("Componiendo…");
     try {
-      const [{ downloadChartCard, quoteSvg, CARD_THEMES, themeForPreset }, { funnelCascadeSvg, funnelPie }] = await Promise.all([
+      const [{ downloadChartCard, quoteSvg, CARD_THEMES, themeForPreset },
+             { funnelCascadeSvg, funnelPie, rotationSvg }] = await Promise.all([
         import("@/lib/exportCard"),
         import("@/lib/funnelCard"),
       ]);
       const theme = CARD_THEMES[themeForPreset(preset)];
+      const esDecision = report?.mode === "decisión";
       const u = universoLinea(report);
       const coste = fmtScanCost(report?.cost ?? null);
       const dia = fmtDay(report?.at ?? new Date().toISOString());
@@ -251,18 +255,14 @@ export default function SombraDashboard() {
       // viejos (anteriores a que el observatorio guardase la suya).
       const tesis = report?.outlook?.trim() || proposal?.macro_summary?.trim();
       const tesisPropia = !!report?.outlook?.trim();
-      await downloadChartCard({
-        preset,
-        title: "El embudo del escaneo",
-        subtitle: "Agentic Trader · ranker fundamental sistemático",
-        badges: [
-          { text: `${report?.mode === "decisión" ? "decisión mensual" : "observatorio semanal"} · ${dia}` },
-          ...(macro ? [{ text: `${macro.regime}${macro.vix != null ? ` · VIX ${macro.vix}` : ""}`,
-                         tone: macro.regime === "risk-off" ? ("amber" as const) : ("green" as const) }] : []),
-          ...(coste ? [{ text: coste.split(" · ")[0] + " de coste" }] : []),
-        ],
-        panels: [
-          {
+      const panelPrincipal = esDecision
+        ? {
+            label: "LA ROTACIÓN",
+            note: u ? `${u.texto} · ${u.detalle.split(" · ")[0]}` : undefined,
+            weight: tesis ? 1.15 : 1,
+            body: rotationSvg(proposal?.items ?? [], pasos, theme),
+          }
+        : {
             // Rótulo corto a propósito: la apostilla de al lado se recorta al ancho del panel,
             // y el universo (lo que de verdad da la escala) importa más que un rótulo bonito.
             label: "EL EMBUDO",
@@ -271,21 +271,35 @@ export default function SombraDashboard() {
             weight: tesis ? 0.85 : 1,
             body: funnelCascadeSvg(pasos, theme, funnelPie(pasos, sectoresTop(funnel, 3),
               (funnel?.sin_datos ?? 0) + (funnel?.prescore_error ?? 0))),
-          },
+          };
+      await downloadChartCard({
+        preset,
+        title: esDecision ? "La rotación de la cartera" : "El embudo del escaneo",
+        subtitle: "Agentic Trader · ranker fundamental sistemático",
+        badges: [
+          { text: `${esDecision ? "decisión mensual" : "observatorio semanal"} · ${dia}` },
+          ...(macro ? [{ text: `${macro.regime}${macro.vix != null ? ` · VIX ${macro.vix}` : ""}`,
+                         tone: macro.regime === "risk-off" ? ("amber" as const) : ("green" as const) }] : []),
+          ...(coste ? [{ text: coste.split(" · ")[0] + " de coste" }] : []),
+        ],
+        panels: [
+          panelPrincipal,
           // Los números solos no concluyen nada: la tesis es el marco que los interpreta, y va
           // ÍNTEGRA y con su autoría — es del sistema, no mía.
           ...(tesis
             ? [{ label: "SU TESIS MACRO",
-                 // Si la tesis no es de este escaneo, la tarjeta lo dice: emparejar el embudo
-                 // del martes con un contexto de hace semanas sin avisar sería mentir.
+                 // Si la tesis no es de este escaneo, la tarjeta lo dice: emparejar la decisión
+                 // con un contexto de hace semanas sin avisar sería mentir.
                  note: tesisPropia
                    ? "íntegra, escrita por el propio sistema en este escaneo"
                    : `íntegra, de la decisión del ${fmtDay(proposal?.created_at ?? null)}`,
-                 weight: 1.15, body: quoteSvg(tesis, theme) }]
+                 weight: esDecision ? 0.85 : 1.15, body: quoteSvg(tesis, theme) }]
             : []),
         ],
-        footer: "No constituye recomendación de inversión · agregados por etapa y sector, sin nombres · operaciones simuladas, sin dinero real",
-        filename: `agentic-trader-embudo-${(report?.at ?? new Date().toISOString()).slice(0, 10)}`,
+        footer: esDecision
+          ? "No constituye recomendación de inversión · pesos objetivo, no ejecutados · operaciones simuladas, sin dinero real"
+          : "No constituye recomendación de inversión · agregados por etapa y sector, sin nombres · operaciones simuladas, sin dinero real",
+        filename: `agentic-trader-${esDecision ? "rotacion" : "embudo"}-${(report?.at ?? new Date().toISOString()).slice(0, 10)}`,
       });
       setExportEmbudoMsg("");
     } catch (e) {

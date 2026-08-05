@@ -218,13 +218,15 @@ export interface OutcomeBook {
 export const getScanOutcomes = (limit = 8) =>
   get<{ scans: OutcomeScan[]; book: OutcomeBook | null }>(`/scan/outcomes?limit=${limit}`);
 /** Un recuerdo guardado: la tesis que el LLM escribió sobre un ticker en un escaneo pasado.
- *  `distance` solo llega en modo semántico (menor = más parecido); en modo ticker no aplica. */
+ *  `distance` solo llega en modo semántico (menor = más parecido); en modo ticker no aplica.
+ *  `n_tesis` también solo en modo semántico: cuántas tesis guardadas tiene ESA empresa en total. */
 export interface MemoryItem {
   ticker: string;
   kind: string;
   text: string;
   created_at: string;
   distance?: number;
+  n_tesis?: number;
 }
 export interface MemorySearchResult {
   mode: "ticker" | "semantic" | "vacio";

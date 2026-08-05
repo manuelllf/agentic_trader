@@ -304,6 +304,8 @@ def _memory_out(m) -> dict:  # noqa: ANN001 — `Memory` es un dataclass de app.
     out = {"ticker": m.ticker, "kind": m.kind, "text": m.text, "created_at": m.created_at}
     if m.distance is not None:
         out["distance"] = m.distance
+    if m.n_tesis is not None:
+        out["n_tesis"] = m.n_tesis
     return out
 
 
@@ -327,8 +329,11 @@ def memory_search(q: str = Query(..., min_length=1), limit: int = Query(20, ge=1
     if _TICKER_LIKE.match(q):
         try:
             hist = store.history_for(q.upper(), limit=limit)
-        except Exception:  # noqa: BLE001 — fichero ausente/corrupto no debe tirar el endpoint
-            hist = []
+        except Exception as exc:  # noqa: BLE001 — fichero ausente/corrupto: se avisa, no se
+            # disfraza de búsqueda semántica. Bug real reproducido en producción: `history_for`
+            # reventaba por hilos (ver store._connect) y este `except` lo tragaba en silencio,
+            # cayendo al modo semántico sin avisar — parecía que la memoria "olvidaba" nombres.
+            return {"mode": "vacio", "items": [], "error": str(exc)}
         if hist:
             return {"mode": "ticker", "items": [_memory_out(m) for m in hist]}
 

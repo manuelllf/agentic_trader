@@ -74,6 +74,10 @@ class _FakeMemory:
     text: str
     distance: float | None = None
     created_at: str = "2026-08-01T00:00:00"
+    # Mismo campo que `Memory` (app.memory.store): por defecto None, solo se rellena tras
+    # deduplicar por ticker. `_memory_out` lo lee sin `getattr`, así que el doble de test debe
+    # tener el atributo aunque no lo use.
+    n_tesis: int | None = None
 
 
 class _FakeStore:

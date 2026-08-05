@@ -8,7 +8,10 @@ propiedad que se quiere garantizar (una consulta exacta no debe forzar el modelo
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
+import tempfile
+from collections.abc import Iterator
 
 import pytest
 
@@ -27,6 +30,26 @@ def _insert(db_path: str, kind: str, ticker: str, text: str, created_at: str) ->
     )
     conn.commit()
     conn.close()
+
+
+@pytest.fixture
+def short_tmpdir() -> Iterator[str]:
+    """Directorio temporal PLANO (no el `tmp_path` de pytest, anidado bajo
+    `pytest-of-<user>/pytest-NNN/<nombre-del-test>/`).
+
+    Los tests que cargan fastembed de verdad necesitan sitio para el modelo en disco: el nombre
+    del repo de HuggingFace (`models--qdrant--paraphrase-multilingual-MiniLM-L12-v2-onnx-Q`) más
+    el hash del blob (64 caracteres) y el sufijo `.incomplete` ya son largos de por sí. Sumados a
+    la ruta anidada de `tmp_path`, la ruta total supera los 260 caracteres de Windows (MAX_PATH)
+    y la descarga falla con `FileNotFoundError` al abrir el `.incomplete` — no es un fallo de
+    red ni del código, es el límite clásico de longitud de ruta de Windows. Reproducido de forma
+    determinista: 266 caracteres con `tmp_path`, 218 con este directorio plano.
+    """
+    d = tempfile.mkdtemp(prefix="fe")
+    try:
+        yield d
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def test_history_for_orden_cronologico_inverso_sin_embeddings(tmp_path) -> None:
@@ -85,14 +108,14 @@ def test_history_for_no_carga_el_embedder(tmp_path) -> None:
 
 
 @pytest.mark.parametrize("k", [3])
-def test_recall_filtra_por_ticker_antes_del_k(tmp_path, k) -> None:
+def test_recall_filtra_por_ticker_antes_del_k(short_tmpdir, k) -> None:
     """Reproduce el bug medido en producción: sin filtrar antes, un ticker con recuerdos
     reales podía recibir lista vacía porque sus vecinos más cercanos eran de otras empresas.
     """
     pytest.importorskip("fastembed")
     pytest.importorskip("sqlite_vec")
 
-    db_path = str(tmp_path / "memoria_vec.db")
+    db_path = f"{short_tmpdir}/memoria_vec.db"
     store = MemoryStore(db_path=db_path)
     try:
         # Muchos recuerdos parecidos de otro ticker "trillado" para copar los k globales.
@@ -109,11 +132,11 @@ def test_recall_filtra_por_ticker_antes_del_k(tmp_path, k) -> None:
         store.close()
 
 
-def test_search_no_filtra_por_ticker(tmp_path) -> None:
+def test_search_no_filtra_por_ticker(short_tmpdir) -> None:
     pytest.importorskip("fastembed")
     pytest.importorskip("sqlite_vec")
 
-    db_path = str(tmp_path / "memoria_vec.db")
+    db_path = f"{short_tmpdir}/memoria_vec.db"
     store = MemoryStore(db_path=db_path)
     try:
         store.remember("tesis de AAPL sobre márgenes", ticker="AAPL")

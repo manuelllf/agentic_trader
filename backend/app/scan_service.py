@@ -21,7 +21,7 @@ Embudo en 2 pasos para ir rápido y barato sin perder profundidad donde importa:
 El dinero lo calcula el código; el LLM solo decide los pesos. El coste REAL de cada
 escaneo (Flash prescoring de todo el universo + V4-Pro en finalistas, incl. tokens de razonamiento)
 se acumula desde el `usage` de OpenRouter y se devuelve en result["cost"] — ~$1 el full
-(medido: $0.97 con ~2.600 nombres); el semanal (muestra de 500), bastante menos.
+(medido: $0.97 con ~2.600 nombres); el semanal (muestra rotatoria de 750), bastante menos.
 
 Este módulo solo ORQUESTA. La matemática de cartera (selección, pesos, diff a trades) vive en
 `app.portfolio_service`; la ejecución del libro sombra, en `app.execution_service`.

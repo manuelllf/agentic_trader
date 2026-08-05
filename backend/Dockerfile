@@ -10,6 +10,10 @@ ENV UV_COMPILE_BYTECODE=1 \
 # Primero los metadatos para cachear la capa de dependencias.
 COPY pyproject.toml uv.lock ./
 COPY app ./app
+# Los scripts de mantenimiento también van a la imagen: alguno se ejecuta CONTRA producción por
+# `railway ssh` (re-embeber la memoria tras cambiar de modelo, conciliar el coste con
+# OpenRouter). Sin ellos dentro, el contenedor no tiene con qué arreglarse a sí mismo.
+COPY scripts ./scripts
 
 # Instala EXACTAMENTE lo del lockfile (build reproducible), sin dev.
 # --extra postgres: el driver psycopg va SIEMPRE en la imagen → cambiar de SQLite a
