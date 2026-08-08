@@ -168,6 +168,32 @@ def _sin_acentos(texto: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c))
 
 
+def _aparta_opadas(rows: list, issues: list[str]) -> list:
+    """Quita de la selección las empresas que el informe declara OPADAS (`under_acquisition`).
+
+    Con una oferta en efectivo sobre la mesa el precio queda clavado a ella: lo que queda por
+    ganar es el hueco hasta el cierre (caso real: ATKR cotizaba a 93,69 con oferta de 95 — un 1,4%)
+    a cambio de un riesgo binario de que la operación se caiga. No es la asimetría que busca la
+    estrategia, y el modelo le ponía 85 sobre 100 porque lee "incertidumbre eliminada" como algo
+    bueno. La fila del Score se queda con su nota y su informe: se aparta de la cartera, no se
+    borra de la traza.
+
+    `under_acquisition` a None NO es un "no": es que el modelo se saltó el campo (pasa en ~1 de
+    cada 10 respuestas de los modelos rápidos). Se avisa en vez de asumir, porque asumir el "no"
+    desactivaría el guardarraíl justo cuando falla. Sirve igual para `ScoreResult` que para filas
+    `Score` — ambas exponen `.ticker` y `.under_acquisition`.
+    """
+    opadas = [r.ticker for r in rows if getattr(r, "under_acquisition", None) is True]
+    if opadas:
+        issues.append("Fuera de la selección por oferta de adquisición en curso (lo declara el "
+                      "propio informe): " + _lista(opadas))
+    sin_respuesta = [r.ticker for r in rows if getattr(r, "under_acquisition", None) is None]
+    if sin_respuesta:
+        issues.append("Sin respuesta al campo de oferta de adquisición (no aparta a nadie): "
+                      + _lista(sin_respuesta))
+    return [r for r in rows if getattr(r, "under_acquisition", None) is not True]
+
+
 def _flag_corporate_deal_targets(
     deep: dict, data_by_t: dict, issues: list[str],
 ) -> tuple[dict, set]:
@@ -225,7 +251,7 @@ def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, final
 
 
 def run_scan_and_store(db: Session, sample_size: int | None = None,
-                       decide: bool = True) -> dict:
+                       decide: bool = True, force_mid_layer: bool = False) -> dict:
     """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
 
     `decide=False` → escaneo OBSERVATORIO (el cron semanal entre decisiones): puntúa el
@@ -308,13 +334,16 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     if ev is not None:
         if not ev.get("wiki") and not ev.get("sched"):
             issues.append("Eventos macro: Wikipedia sin contenido (¿bloqueo del User-Agent?).")
-        if not ev.get("gdelt"):
-            if ev.get("gnews"):
-                issues.append("Eventos macro: GDELT sin titulares; cubrió el fallback "
-                              "de Google News.")
+        # La fuente principal es Google News y GDELT la reserva (ver macro.py).
+        # Que GDELT no traiga nada dejó de ser noticia: lo raro —y lo que hay que avisar— es que
+        # falle la principal, o que fallen las dos.
+        if not ev.get("gnews"):
+            if ev.get("gdelt"):
+                issues.append("Eventos macro: Google News sin titulares; cubrió la reserva "
+                              "de GDELT.")
             else:
-                issues.append("Eventos macro: sin titulares — GDELT (rate-limit habitual) "
-                              "y su fallback de Google News cayeron a la vez.")
+                issues.append("Eventos macro: sin titulares — Google News y la reserva de "
+                              "GDELT cayeron a la vez.")
     if not macro.get("outlook"):
         issues.append("Outlook macro del LLM caído — se usó solo el régimen determinista.")
 
@@ -324,8 +353,18 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         if data is None:
             return None
         p = scorer_mod.prescore(prescore_llm, data, macro_block)
-        if p.error:   # un 429 de transporte y un JSON roto son indistinguibles a priori — un
-            p = scorer_mod.prescore(prescore_llm, data, macro_block)   # reintento basta
+        # DOS reintentos, no uno: sobre 49 finalistas de un mismo escaneo, ~6 de cada 49
+        # fallaron al primer intento con `deepseek-v4-flash-0731` — no solo `content` vacío, sino
+        # JSON cortado a media frase o bucles de repetición degenerados. Un 429 de transporte y
+        # eso son indistinguibles a priori, así que la respuesta no es "confiar más", es
+        # reintentar más: la probabilidad de fallar 3 veces seguidas es mucho menor que de
+        # fallar 2. Ver también `provider_ignore` más abajo — reintentar y excluir backends van
+        # de la mano, uno reduce la probabilidad de que TOQUE un backend malo, el otro evita que
+        # vuelva a tocar el mismo.
+        for _ in range(2):
+            if not p.error:
+                break
+            p = scorer_mod.prescore(prescore_llm, data, macro_block)
         return p, data
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
@@ -333,7 +372,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     prescored = [r for r in results if r is not None and r[0].score > 0]
     # Desempate por capitalización, el mismo criterio del paper que ya usan `select_top` y
     # `select_finalists`: si no, un empate de pre-score lo rompe el orden de llegada de la
-    # muestra (el 4-ago había 7 nombres empatados en 84,5 disputándose 2 plazas).
+    # muestra (se ha visto 7 nombres empatados en 84,5 disputándose 2 plazas).
     prescored.sort(key=lambda x: (-x[0].score, -(x[1].market_cap or 0.0)))
     failed = [t for t, r in zip(sample, results, strict=True) if r is None]  # gather sin datos
     if failed:
@@ -355,19 +394,32 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     data_by_t = {d.ticker: d for _p, d in prescored}
 
     # Capa media estratificada: coge los `mid_per_sector` mejores de CADA sector (excluye "n/d")
-    # y los repuntúa con el MISMO prompt del prescore pero un modelo mejor. Motivo (medido el
-    # 4-ago): 2.594 nombres repartidos en solo 287 valores de Flash — un 100/100 que el profundo
+    # y los repuntúa con el MISMO prompt del prescore pero un modelo mejor. Motivo (medido):
+    # 2.594 nombres repartidos en solo 287 valores de Flash — un 100/100 que el profundo
     # puntuó 48. El carril "global" de `select_finalists` sale de esta segunda opinión en vez de
     # la frontera ruidosa de Flash; los demás carriles (posición/watchlist/caps/sector) no cambian.
-    # Solo en los escaneos que DECIDEN: el observatorio semanal no toca ningún libro, así que
-    # pagar el modelo caro para afinar un ranking que no se ejecuta no compra nada.
+    # Por defecto solo en los escaneos que DECIDEN: el observatorio semanal no toca ningún
+    # libro, así que pagar el modelo caro para afinar un ranking que no se ejecuta no compra
+    # nada. `force_mid_layer` es la excepción explícita: el botón "simulación" de Sala
+    # Real quiere el circuito EXACTO de un mensual real —capa media incluida— para medir su
+    # coste sin tocar ninguna cartera. No se ató a `decide=False` en general porque eso habría
+    # subido también el coste del cron semanal automático, que nadie pidió.
     mid_scores: dict[str, float] | None = None
-    if settings.mid_layer and decide:
+    if settings.mid_layer and (decide or force_mid_layer):
         mid_candidates = portfolio.top_por_sector(prescored, settings.mid_per_sector)
+        if len(mid_candidates) > settings.mid_candidates_cap:
+            sectores = {(d.sector or "").strip() for _p, d in prescored}
+            issues.append(
+                f"capa media: {len(mid_candidates)} candidatos (más de "
+                f"{settings.mid_candidates_cap}); se recortan a los de mayor pre-score. "
+                f"Sectores distintos vistos: {len(sectores - {''})}.")
+            mid_candidates = mid_candidates[:settings.mid_candidates_cap]
 
         def _mid(ticker: str):
             p = scorer_mod.prescore(mid_llm, data_by_t[ticker], macro_block)
-            if p.error:   # mismo criterio que el prescore: un reintento antes de rendirse
+            for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
+                if not p.error:
+                    break
                 p = scorer_mod.prescore(mid_llm, data_by_t[ticker], macro_block)
             return p
 
@@ -400,7 +452,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     def _deep(ticker: str):
         extra = prior.get(ticker)
         r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, extra)
-        if r.error:   # mismo criterio que el prescore: un reintento antes de darlo por perdido
+        for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
+            if not r.error:
+                break
             r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, extra)
         return r
 
@@ -427,9 +481,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     instr_prices = instruments_mod.prices()        # {} si el allowlist UCITS está vacío
     price_map.update(instr_prices)
     mcap_map = {t: (data_by_t[t].market_cap or 0.0) for t in deep}
-    # score_map: deep (int) para finalistas; prescore redondeado para el resto (watchlist/display).
-    # El CORTE de finalistas usa el prescore decimal fino (prescored ya está ordenado por él).
-    score_map = {p.ticker: (deep[p.ticker].score if p.ticker in deep else int(round(p.score)))
+    # score_map: el profundo para los finalistas y el pre-score para el resto (watchlist/display),
+    # los dos con dos decimales. Antes el pre-score se redondeaba a entero aquí; ahora las dos
+    # notas viven en la misma escala, así que redondear solo mezclaba granularidades.
+    score_map = {p.ticker: (deep[p.ticker].score if p.ticker in deep else round(p.score, 2))
                  for p, _d in prescored}
     target_map = {t: r.target_price for t, r in deep.items()}
 
@@ -457,6 +512,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 # noticias son un endpoint en vivo, al día siguiente ya no se pueden reconstruir.
                 news_used=list(data.news) if data.news is not None else None,
                 target_raw=target_raw.get(ticker), target_flagged=ticker in target_flagged,
+                under_acquisition=d.under_acquisition,
             ))
     else:
         existing = {s.ticker: s for s in db.query(Score).all()}
@@ -470,6 +526,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             row.target_price, row.sector = d.target_price, data.sector
             row.target_raw = target_raw.get(ticker)
             row.target_flagged = ticker in target_flagged
+            row.under_acquisition = d.under_acquisition
             refreshed += 1
     db.commit()
     if store:                                      # guarda las tesis nuevas para recordarlas luego
@@ -484,8 +541,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
 
     # 6) SELECCIÓN fiel al paper: top-N por SCORE PROFUNDO, desempate por MARKET CAP.
     #    (La convicción del constructor solo pondera; no re-selecciona.)
+    #    Antes del corte se apartan las opadas (ver `_aparta_opadas`).
     selected = portfolio.select_top(
-        list(deep.values()), mcap_map, settings.min_buy_score, settings.select_count)
+        _aparta_opadas(list(deep.values()), issues),
+        mcap_map, settings.min_buy_score, settings.select_count)
     portfolio_text = portfolio.portfolio_text(db, held, price_map)
     if not selected and not held:
         floor = settings.min_buy_score
@@ -655,7 +714,12 @@ def recheck(db: Session) -> dict:
     mcap_map = {r.ticker: (r.market_cap or 0.0) for r in deep}
     score_map = {r.ticker: r.score for r in deep}
     target_map = {r.ticker: r.target_price for r in deep}
-    selected = portfolio.select_top(deep, mcap_map, floor, settings.select_count)
+    # El mismo guardarraíl que el escaneo: `recheck` reconstruye la cartera sobre informes ya
+    # guardados, así que sin esto una opada apartada el martes volvería a entrar el miércoles.
+    # Las filas anteriores al 7-ago tienen el campo a NULL y no las aparta nadie (no se sabe).
+    issues_recheck: list[str] = []
+    selected = portfolio.select_top(
+        _aparta_opadas(deep, issues_recheck), mcap_map, floor, settings.select_count)
     last = db.query(Proposal).order_by(Proposal.created_at.desc()).first()
     macro_block = (last.macro_summary if last else "") or "n/d"
     portfolio_text = portfolio.portfolio_text(db, held, price_map)
@@ -732,15 +796,18 @@ def redeep(db: Session) -> dict:
         db.add(Score(ticker=t, sector=d.sector, score=r.score, headline=r.headline,
                      report=r.report, price=d.price, market_cap=d.market_cap,
                      target_price=r.target_price, held=t in held, on_watchlist=t in watch,
-                     news_used=list(d.news) if d.news is not None else None))
+                     news_used=list(d.news) if d.news is not None else None,
+                     under_acquisition=r.under_acquisition))
     db.commit()
 
     mcap_map = {t: (data_by_t[t].market_cap or 0.0) for t in results}
     price_map = {t: data_by_t[t].price for t in results if data_by_t[t].price}
     score_map = {t: r.score for t, r in results.items()}
     target_map = {t: r.target_price for t, r in results.items()}
+    issues_redeep: list[str] = []
     selected = portfolio.select_top(
-        list(results.values()), mcap_map, settings.min_buy_score, settings.select_count)
+        _aparta_opadas(list(results.values()), issues_redeep),
+        mcap_map, settings.min_buy_score, settings.select_count)
     portfolio_text = portfolio.portfolio_text(db, held, price_map)
     if not selected and not held:
         construction = constructor_mod.ConstructionResult(

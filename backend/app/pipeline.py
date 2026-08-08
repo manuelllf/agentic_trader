@@ -28,10 +28,11 @@ def get_status() -> dict:
         return dict(_state)
 
 
-def _run(sample_size: int | None) -> None:
+def _run(sample_size: int | None, decide: bool, force_mid_layer: bool) -> None:
     db = SessionLocal()
     try:
-        result = run_scan_and_store(db, sample_size=sample_size)
+        result = run_scan_and_store(db, sample_size=sample_size, decide=decide,
+                                    force_mid_layer=force_mid_layer)
         with _lock:
             _state.update(status="done", result=result, error=None,
                           finished_at=datetime.now(UTC).isoformat())
@@ -47,12 +48,20 @@ def _run(sample_size: int | None) -> None:
         db.close()
 
 
-def start(sample_size: int | None = None) -> bool:
-    """Arranca el escaneo si no hay uno en marcha. Devuelve True si lo lanzó."""
+def start(sample_size: int | None = None, decide: bool = True,
+         force_mid_layer: bool = False) -> bool:
+    """Arranca el escaneo si no hay uno en marcha. Devuelve True si lo lanzó.
+
+    `decide=False` (botón "simulación" de Sala Real): universo completo, escanea y
+    persiste ranking/watchlist/memoria/traza — TODO menos tocar la cartera. `force_mid_layer`
+    hace que ese escaneo sea el circuito EXACTO de un mensual real (capa media incluida) sin
+    tocar el comportamiento del cron semanal automático. Ver `run_scan_and_store`.
+    """
     with _lock:
         if _state["status"] == "running":
             return False
         _state.update(status="running", started_at=datetime.now(UTC).isoformat(),
                       finished_at=None, result=None, error=None)
-    threading.Thread(target=_run, args=(sample_size,), daemon=True).start()
+    threading.Thread(target=_run, args=(sample_size, decide, force_mid_layer),
+                     daemon=True).start()
     return True

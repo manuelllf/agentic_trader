@@ -50,19 +50,36 @@ class Settings(BaseSettings):
     enable_llm: bool = False
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # Embudo en 2 pasos: pre-score RÁPIDO (Flash) de todo el universo → informe PROFUNDO
-    # (V4-Pro razonador) + price target + construcción solo sobre los finalistas.
-    llm_model: str = "deepseek/deepseek-v4-pro"          # profundo: informe + target + construcción
-    # Alias fijado a fecha (0731) y no el genérico: el genérico apunta a un snapshot MÁS VIEJO
-    # y cuesta 0,14/0,28 por millón, mientras el 0731 es más reciente y cuesta 0,09/0,18. Se fija
-    # a propósito: si el modelo cambiara solo entre escaneos, los scores dejarían de ser
-    # comparables y la auditoría histórica perdería sentido.
+    # "max" a propósito, para medir si el razonamiento extra compra algo — sube el razonamiento
+    # a ~95% de los tokens de la llamada, pero el razonamiento oculto YA se facturaba como
+    # completion tokens sin este campo (ver
+    # `_PRICING` en openrouter.py), así que esto es un multiplicador de coste REAL, no cosmético.
+    # Confirmado por API (GET /api/v1/models) que v4-pro, v4-flash y v4-flash-0731 declaran
+    # "reasoning" en supported_parameters antes de activarlo. None desactiva el campo entero.
+    reasoning_effort: str | None = "max"
+    # Circuito ÚNICO en flash-0731 — profundo, pre-score, capa media y constructor. V4-Pro
+    # descartado del todo. Alias fijado a fecha y no el genérico: el genérico apunta a un
+    # snapshot MÁS VIEJO y cuesta 0,14/0,28 por millón, mientras el 0731 es más reciente y
+    # cuesta 0,09/0,18. Se fija a propósito: si el modelo cambiara solo entre escaneos, los
+    # scores dejarían de ser comparables y la auditoría histórica perdería sentido.
+    llm_model: str = "deepseek/deepseek-v4-flash-0731"   # profundo: informe + target + construcción
     prescore_model: str = "deepseek/deepseek-v4-flash-0731"  # rápido: ranking 1-100 del universo
     # Capa media: repuntúa los mejores de cada sector entre el pre-score y el profundo
     # (implementación en otro módulo; aquí solo se declara la config).
     mid_layer: bool = True          # capa media: repuntúa los mejores de cada sector
     mid_per_sector: int = 10        # cuántos por sector entran a la capa media
-    mid_model: str = "deepseek/deepseek-v4-pro"
+    # Tope DURO, como el `deep_finalists_cap` del profundo. Sin él, la capa media es la única
+    # etapa cuyo tamaño lo decide un dato EXTERNO: 10 × (sectores que traiga yfinance ese día).
+    # Hoy son ~11 sectores (~110 llamadas), pero el número no lo fijamos nosotros — si el campo
+    # `sector` viniera sucio, cada valor raro abriría su propio cupo de 10 llamadas al modelo
+    # caro. 150 deja aire sobre las ~110 normales y convierte un fallo de datos en un recorte,
+    # no en una factura. Al truncar se conservan los de MAYOR pre-score (la lista llega ordenada).
+    mid_candidates_cap: int = 150
+    # Mismo modelo que el pre-score (0731 en todo el circuito): la capa media deja de ser una
+    # SEGUNDA OPINIÓN de un modelo mejor y pasa a ser un re-muestreo del mismo modelo sobre el
+    # mismo prompt corto. Sigue reduciendo ruido de una tirada suelta (promedia dos llamadas en
+    # vez de fiarse de una), pero ya no aporta el juicio de un modelo distinto.
+    mid_model: str = "deepseek/deepseek-v4-flash-0731"
     # Corte de finalistas al profundo (fiel al paper, sin colapsar en un solo sector):
     #   top-`deep_per_sector` por sector (amplitud) ∪ top-`deep_finalists` global (los mejores)
     #   + posiciones + top-`deep_watchlist` watchlist, truncado a `deep_finalists_cap`.
@@ -76,7 +93,6 @@ class Settings(BaseSettings):
     deep_top_caps: int = 10                              # las N mayores caps SIEMPRE al profundo
     deep_finalists_cap: int = 50                         # tope DURO de finalistas (coste V4-Pro)
     select_count: int = 10                               # nombres al constructor (paper: "top 10")
-    llm_temperature: float = 0.3
 
     # Guardarraíles del sleeve (LOCKED). Cartera de TAMAÑO FIJO (paper 15 assets → aquí 5).
     max_position_pct: float = 35.0  # % máximo por posición
@@ -95,7 +111,7 @@ class Settings(BaseSettings):
     # la misma descarga da 2.317 o 2.731 nombres según cuánto llevaba negociado el mercado.
     # Como el pre-scorer gasta UNA llamada por nombre, eso es dejar el coste al azar. Con tope,
     # el gasto está acotado por diseño y el recorte cae donde debe: en los menos negociados.
-    # 3.000: con el tope en 2.600, la foto del 4-ago dejó fuera 433 nombres que SÍ pasaban el
+    # 3.000: con el tope en 2.600, una foto real dejó fuera 433 nombres que SÍ pasaban el
     # suelo de liquidez, y el recorte los ordena por volumen — el mismo sesgo hacia "lo que se
     # estaba moviendo" que la foto al cierre venía a evitar, colándose por la puerta del tope.
     universe_max_names: int = 3_000

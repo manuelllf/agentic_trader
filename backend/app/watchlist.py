@@ -50,7 +50,7 @@ def drop(db: Session, tickers: set[str]) -> None:
     db.commit()
 
 
-def update(db: Session, scored: list[tuple[str, int, str]]) -> None:
+def update(db: Session, scored: list[tuple[str, float, str]]) -> None:
     """Aplica los scores de un escaneo a la watchlist. `scored` = [(ticker, score, thesis)]."""
     entry = settings.watchlist_entry_score
     evict = settings.watchlist_evict_score

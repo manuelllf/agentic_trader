@@ -46,7 +46,7 @@ import type {
   WatchItem,
 } from "@/lib/types";
 import RealDoor from "@/components/RealDoor";
-import { fmtTime, money } from "@/lib/format";
+import { fmtScore, fmtTime, money } from "@/lib/format";
 import {
   cascada, fmtNum, fmtScanCost, sectoresTop, universoLinea, type FunnelScan,
 } from "@/lib/scan";
@@ -647,7 +647,7 @@ export default function SombraDashboard() {
                             <span className={done ? "text-emerald-600" : "text-slate-300"}>{done ? "✓" : "○"}</span>{" "}
                             {ACTION_LABEL[it.action]} <b className="font-semibold text-slate-800">{it.ticker}</b>
                             {it.target_weight_pct ? ` · ${it.target_weight_pct}%` : ""}
-                            {it.score != null && <span className="text-slate-400"> · score {it.score}</span>}
+                            {it.score != null && <span className="text-slate-400"> · score {fmtScore(it.score)}</span>}
                           </p>
                         );
                       })}
@@ -698,7 +698,7 @@ export default function SombraDashboard() {
                       {scores.slice(0, 3).map((s, i) => (
                         <span key={s.ticker}>
                           {i > 0 && " · "}
-                          <b className="font-semibold text-slate-800">{s.ticker} {s.score}</b>
+                          <b className="font-semibold text-slate-800">{s.ticker} {fmtScore(s.score)}</b>
                         </span>
                       ))}
                     </p>
@@ -721,7 +721,7 @@ export default function SombraDashboard() {
                           onClick={() => { setSectorF(null); setQ(w.ticker); }}
                           className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200 transition hover:bg-white hover:ring-slate-300"
                         >
-                          {w.ticker}<span className="tabular-nums text-slate-400">{w.score}</span>
+                          {w.ticker}<span className="tabular-nums text-slate-400">{fmtScore(w.score)}</span>
                         </button>
                       ))}
                       {watchTop.length > 10 && (
@@ -862,7 +862,7 @@ export default function SombraDashboard() {
                       <span className="w-16 shrink-0 font-semibold text-slate-800">{n.ticker}</span>
                       <span className="flex-1 truncate text-slate-400">{n.sector}</span>
                       <span className="w-10 shrink-0 text-right font-semibold text-slate-700">
-                        {n.deep_score ?? n.prescore ?? "—"}
+                        {fmtScore(n.deep_score ?? n.prescore)}
                       </span>
                       <span className="w-24 shrink-0 text-right text-[10px] uppercase tracking-wide text-slate-400">
                         {n.stage}
@@ -1222,7 +1222,7 @@ function PositionRows({ anon, color, label, sector, pos, weightPct, up, pct, ope
             {srow?.headline
               ? <><span className="font-semibold text-slate-600">Tesis</span> · {srow.headline}
                   <span className="ml-1 text-slate-400">
-                    · score {srow.score}{srow.target_price != null ? ` · objetivo $${money(srow.target_price)}` : ""}
+                    · score {fmtScore(srow.score)}{srow.target_price != null ? ` · objetivo $${money(srow.target_price)}` : ""}
                   </span></>
               : "Sin tesis reciente para este nombre (saldrá en el próximo análisis a fondo)."}
           </td>
@@ -1241,7 +1241,8 @@ function ScoreRowItem({ row }: { row: ScoreRow }) {
         <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
           <span className={`absolute inset-y-0 left-0 rounded-full ${scoreColor(row.score)}`} style={{ width: `${row.score}%` }} />
         </span>
-        <span className="w-8 shrink-0 text-right text-sm font-bold tabular-nums text-slate-700">{row.score}</span>
+        {/* w-12, no w-8: la nota pasó a llevar un decimal en pantalla y "78.4" no cabía en 2rem. */}
+        <span className="w-12 shrink-0 text-right text-sm font-bold tabular-nums text-slate-700">{fmtScore(row.score)}</span>
         {row.held ? (
           <span className="shrink-0 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">EN CARTERA</span>
         ) : row.on_watchlist ? (

@@ -106,6 +106,49 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
         conn.execute(text(
             "ALTER TABLE scores ADD COLUMN target_flagged BOOLEAN NOT NULL DEFAULT 0"
         ))
+    # under_acquisition SIN default: NULL significa "el modelo no contestó al campo", que es
+    # exactamente lo que pasa con las filas anteriores a la columna. Ponerlas a 0 las haría pasar
+    # por un "no" comprobado que nadie comprobó.
+    if sc and "under_acquisition" not in sc:
+        conn.execute(text("ALTER TABLE scores ADD COLUMN under_acquisition BOOLEAN"))
+    conn.commit()
+    _migrate_score_decimal(conn)
+
+
+# Columnas que guardan una nota del scorer y que nacieron enteras (una por tabla).
+_COLUMNAS_NOTA = (("scores", "score"), ("watchlist", "score"),
+                  ("scan_audit", "deep_score"), ("approvals", "score"))
+
+
+def _migrate_score_decimal(conn) -> None:  # noqa: ANN001
+    """La nota pasa de entera a dos decimales → las columnas INTEGER tienen que ser reales.
+
+    Por qué importa el dialecto y no vale un solo camino:
+
+    · **SQLite** (desarrollo) no tiene `ALTER COLUMN`, pero tampoco lo necesita: su afinidad
+      INTEGER solo convierte a entero lo que quepa sin pérdida, así que un 78,37 se guarda tal
+      cual como REAL. No hay nada que migrar y el `create_all` posterior no toca tablas que ya
+      existen.
+    · **PostgreSQL** (producción) sí es estricto y —lo peligroso— *no falla*: al insertar 78,37 en
+      una columna INTEGER redondea a 78 en silencio. Sin este ALTER, el despliegue arrancaría bien,
+      los tests pasarían y las notas volverían a apelmazarse sin un solo error en los logs.
+
+    Idempotente: comprueba el tipo actual antes de tocar, así que puede correr en cada arranque.
+    Los ALTER no pierden datos (78 → 78.0) y Postgres reconstruye solo el índice de `scores.score`.
+    """
+    from sqlalchemy import Integer, inspect, text
+
+    if conn.dialect.name != "postgresql":
+        return
+    insp = inspect(conn)
+    for tabla, columna in _COLUMNAS_NOTA:
+        if not insp.has_table(tabla):
+            continue
+        for c in insp.get_columns(tabla):
+            if c["name"] == columna and isinstance(c["type"], Integer):
+                conn.execute(text(
+                    f"ALTER TABLE {tabla} ALTER COLUMN {columna} TYPE DOUBLE PRECISION"
+                ))
     conn.commit()
 
 

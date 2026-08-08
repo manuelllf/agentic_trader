@@ -11,9 +11,9 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 
 ## Cómo funciona
 
-Un escaneo programado recorre **~2.600 acciones cotizadas en EE. UU.** (ADRs incluidos) y las
+Un escaneo programado recorre **~3.000 acciones cotizadas en EE. UU.** (ADRs incluidos) y las
 puntúa en dos pasos: un cribado rápido y barato sobre todo el universo, y un análisis profundo
-(informe + score 1-100 + precio objetivo) sobre unos 50 finalistas. La selección final es
+(informe + score + precio objetivo) sobre unos 50 finalistas. La selección final es
 **determinista y vive en el código** —top-N por score, desempate por capitalización—; el LLM
 solo reparte los pesos entre los ya seleccionados. Todo el dinero (tamaños, caja, P&L) lo
 calcula el código con aritmética exacta en `Decimal` — nunca el LLM.

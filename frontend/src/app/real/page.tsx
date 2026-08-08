@@ -190,6 +190,21 @@ function SalaRealRoom() {
     }
   };
 
+  // Circuito EXACTO de un mensual real (universo completo + capa media) — pero decide=false:
+  // refresca ranking, watchlist, memoria y traza; no propone ni toca ninguna cartera (ni sombra
+  // ni real). Botón aparte, separado del de decisión para que no puedan confundirse por accidente.
+  const handleRunSimulation = async () => {
+    setError("");
+    try {
+      await runDemo({ decide: false, forceMidLayer: true });
+      setRunning(true);
+      setFlash("Simulación en marcha (no va a tocar ninguna cartera)…");
+      pollScan();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo lanzar la simulación.");
+    }
+  };
+
   useEffect(() => {
     if (!flash) return;
     const t = setTimeout(() => setFlash(""), 5000);
@@ -355,6 +370,17 @@ function SalaRealRoom() {
                 <path d="M18.83 17.86a9 9 0 1 0 -6.83 3.14" />
               </svg>
               {isScanning ? "Analizando…" : "Analizar mercado"}
+            </button>
+            {/* Simulación: universo completo, coste y modelo REALES, pero decide=false — no
+                propone ni toca ninguna cartera. Círculo aparte (no un pill con texto) a propósito:
+                que nunca se confunda al vuelo con el botón de decisión de al lado. Reutiliza 📡,
+                el mismo símbolo que ya usa la sala sombra para "observa, no decide". */}
+            <button onClick={handleRunSimulation} disabled={isScanning}
+                    title="Simulación: escanea el universo completo con el modelo y coste reales, pero NO propone ni toca ninguna cartera (ni sombra ni real) — solo refresca ranking, watchlist, memoria y traza."
+                    aria-label="Lanzar simulación de escaneo completo (no toca ninguna cartera)"
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] transition-opacity hover:opacity-90 disabled:opacity-50"
+                    style={{ background: T.bad }}>
+              <span className={isScanning ? "animate-pulse" : ""} aria-hidden>📡</span>
             </button>
             {summary && (
               <span title={summary.broker.detail}

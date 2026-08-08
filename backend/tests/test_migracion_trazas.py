@@ -103,3 +103,35 @@ def test_migracion_anade_columnas_y_conserva_datos(tmp_path):
 
     assert _cols(engine, "scan_audit") == sa_cols
     assert _cols(engine, "scores") == sc_cols
+
+    # La nota con dos decimales sobre el esquema VIEJO (columna declarada INTEGER): en SQLite la
+    # afinidad INTEGER solo convierte lo que quepa sin pérdida, así que 78,37 se guarda tal cual y
+    # no hay nada que migrar. Es exactamente por esto que `_migrate_score_decimal` no hace nada
+    # aquí — y por lo que en Postgres SÍ tiene que hacer algo (ver el test de abajo).
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO scores (id, ticker, score) VALUES (2, 'DEC', 78.37)"))
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT score FROM scores WHERE id=2")).scalar() == 78.37
+
+
+def test_las_columnas_de_nota_son_reales_en_el_orm() -> None:
+    """Guardarraíl del cambio a dos decimales, y el más importante de los dos.
+
+    En Postgres (producción) insertar 78,37 en una columna INTEGER **no falla**: redondea a 78 en
+    silencio. Si alguien devuelve cualquiera de estas cuatro columnas a Integer, el despliegue
+    arrancaría bien, los tests de prompts seguirían verdes y las notas volverían a apelmazarse sin
+    un solo error en los logs. Este test es lo único que lo cazaría.
+    """
+    from sqlalchemy import Float
+
+    from app.db import _COLUMNAS_NOTA
+    from app.models import Approval, ScanAudit, Score, Watchlist
+
+    tablas = {m.__tablename__: m for m in (Score, Watchlist, ScanAudit, Approval)}
+    assert set(_COLUMNAS_NOTA) == {
+        ("scores", "score"), ("watchlist", "score"),
+        ("scan_audit", "deep_score"), ("approvals", "score"),
+    }
+    for tabla, columna in _COLUMNAS_NOTA:
+        tipo = tablas[tabla].__table__.c[columna].type
+        assert isinstance(tipo, Float), f"{tabla}.{columna} debe ser Float, es {tipo!r}"

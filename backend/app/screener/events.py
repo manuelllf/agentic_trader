@@ -221,10 +221,24 @@ def wikipedia_scheduled_events(year: int | None = None, max_chars: int = 3000,
     return texto
 
 
+# Los TEMAS de la consulta macro, compartidos por Google News (principal) y GDELT (reserva)
+# para que la reserva no traiga otra visión del mundo. Regla: cada término nombra un ASUNTO,
+# nunca un ánimo — nada de "crash", "rally", "recession" ni "boom", que sería elegir nosotros el
+# sentimiento de las noticias que el modelo va a leer. Y equilibrados: antes eran solo
+# cuatro y uno de ellos ("inflation") era el único tema de preocupación, sin ningún término del
+# lado de la actividad o de los resultados empresariales — se pescaba escorado y luego se le
+# pedía neutralidad al modelo. "inflation" se queda: quitarlo sería el sesgo simétrico.
+_MACRO_TOPICS = (
+    '"Federal Reserve"', "inflation", '"US economy"', '"stock market"',
+    '"interest rates"', '"Treasury yields"', '"jobs report"', "GDP",
+    '"earnings season"', '"consumer spending"',
+)
+_MACRO_OR = " OR ".join(_MACRO_TOPICS)
+
+
 def gdelt_headlines(
-    query: str = ('("Federal Reserve" OR inflation OR "US economy" OR "stock market")'
-                  " sourcelang:eng"),
-    max_records: int = 8, timeout: float = 20.0, db=None,  # noqa: ANN001
+    query: str | None = None,
+    max_records: int = 15, timeout: float = 20.0, db=None,  # noqa: ANN001
 ) -> list[str]:
     """Titulares macro recientes de GDELT (keyless). Best-effort: [] si rate-limit/fallo.
 
@@ -232,6 +246,7 @@ def gdelt_headlines(
     6 h y con espera creciente entre reintentos: su API gratuita va muy rate-limitada y machacarla
     en cada escaneo era la forma más segura de no obtener nada.
     """
+    query = query or f"({_MACRO_OR}) sourcelang:eng"
     cache = _cache_load(db)
     guardado = _cached(cache, "gdelt", 6.0)
     if guardado is not None:
@@ -274,8 +289,8 @@ def gdelt_headlines(
 
 
 def google_news_headlines(
-    query: str = '"Federal Reserve" OR inflation OR "US economy" OR "stock market" when:3d',
-    max_records: int = 8, timeout: float = 15.0, db=None,  # noqa: ANN001
+    query: str | None = None,
+    max_records: int = 15, timeout: float = 15.0, db=None,  # noqa: ANN001
 ) -> list[str]:
     """Titulares macro del RSS de Google News (keyless): fallback para cuando GDELT no trae nada.
 
@@ -287,6 +302,7 @@ def google_news_headlines(
     también es información. Se parsea con regex como el resto del módulo: para extraer `<title>`
     de un feed conocido no hace falta un parser XML entero.
     """
+    query = query or f"{_MACRO_OR} when:3d"
     cache = _cache_load(db)
     guardado = _cached(cache, "gnews", 6.0)
     if guardado is not None:

@@ -56,9 +56,23 @@ _FUNDAMENTAL_FIELDS: list[tuple[str, str, str]] = [
     ("SandP52WeekChange", "S&P 500 52w change", "pct"),    # fuerza relativa vs índice
     ("fiveYearAvgDividendYield", "Div yield (5y avg)", "yld"),
     ("sharesOutstanding", "Shares outstanding", "cnt"),
+    # Volumen medio y float: campos 18-19 y 36 del Exhibit 2B, y eran los ÚNICOS de los 97 que
+    # miden LIQUIDEZ. Faltaban los cuatro. Se vio en un test real: el constructor descartó el
+    # nombre de mayor nota de los 49 (HAPN, 84,61) alegando "preferí nombres con mayor liquidez"
+    # y fondeó otro con la misma liquidez exacta (HAPN $38M/día vs VIPS $40M/día) — no por mal
+    # juicio, sino porque no tenía ni un dato de volumen delante y la objeción era incomprobable. El
+    # prompt del scorer ya dice que el tamaño y la liquidez son riesgos legítimos; ahora se pueden
+    # medir. (El campo 20 del paper es el mismo dato que el 19 en yfinance; no se duplica.)
+    ("floatShares", "Float shares", "cnt"),
+    ("averageVolume", "Avg volume (shares/day)", "cnt"),
+    ("averageVolume10days", "Avg volume 10d (shares/day)", "cnt"),
     ("sharesShort", "Shares short", "cnt"),
     ("sharesShortPriorMonth", "Shares short (prev month)", "cnt"),
-    ("debtToEquity", "Debt/Equity", "num"),
+    # yfinance da debtToEquity YA en porcentaje (991.21 = 991% = 9,9 veces). Sin la unidad en la
+    # etiqueta, un 991 pelado se puede leer como 991 VECES deuda sobre fondos propios, que sería
+    # una empresa quebrada en vez de una apalancada. Misma familia de bug de escala que el
+    # dividendYield y el ^TNX.
+    ("debtToEquity", "Debt/Equity (%)", "num"),
     ("currentRatio", "Current ratio", "num"),
     ("quickRatio", "Quick ratio", "num"),
     ("dividendYield", "Dividend yield", "yld"),
@@ -99,7 +113,10 @@ class NameData:
 
 
 def _fmt(value: object, kind: str) -> str | None:
-    if value is None or value == "":
+    # "none" es como yfinance dice "sin datos" en los campos de texto (`recommendationKey`), y
+    # escrito tal cual se lee como un veredicto: "Analyst reco: none" parece "los analistas no la
+    # recomiendan" cuando significa que no hay ninguno cubriéndola. Se trata como ausente.
+    if value is None or value == "" or (isinstance(value, str) and value.strip().lower() == "none"):
         return None
     try:
         if kind == "str":
@@ -129,10 +146,29 @@ def _fmt(value: object, kind: str) -> str | None:
 
 
 def _fundamentals_text(info: dict) -> str:
-    lines: list[str] = []
+    """Los campos SIN dato se omiten en vez de escribirse como "n/d".
+
+    Dos motivos. Uno, coste: son líneas que viajan en ~3.000 prompts por escaneo sin decir nada.
+    Dos, y más importante, "Analyst reco: none" no es neutro — "none" se lee como "los analistas
+    no la recomiendan" cuando en realidad significa "no hay dato". Un campo ausente no engaña;
+    uno que dice "none" sí puede.
+    """
+    lines = []
     for key, label, kind in _FUNDAMENTAL_FIELDS:
         s = _fmt(info.get(key), kind)
-        lines.append(f"- {label}: {s if s is not None else 'n/d'}")
+        if s is not None:
+            lines.append(f"- {label}: {s}")
+    # Volumen en DINERO, ya multiplicado. Aritmética sobre dos datos que ya damos, del mismo tipo
+    # que el "price vs analyst mean target" — no una conclusión nuestra. Va derivado porque el
+    # volumen en ACCIONES no es comparable entre nombres: 2M de acciones son $38M en una de $19 y
+    # $1.000M en una de $500, y esa diferencia es justo lo que decide si una posición se puede
+    # abrir o no.
+    vol, precio = info.get("averageVolume"), (info.get("currentPrice")
+                                              or info.get("regularMarketPrice"))
+    if vol and precio:
+        s = _fmt(float(vol) * float(precio), "cur")
+        if s is not None:
+            lines.append(f"- Avg dollar volume/day: {s}")
     return "\n".join(lines)
 
 
@@ -144,18 +180,30 @@ def _technical_text(info: dict, hist) -> str:
         if price is None:
             price = float(close.iloc[-1])
         parts.append(f"price ${float(close.iloc[-1]):.2f}")
-        parts.append(f"RSI {ta.rsi(close):.0f}")
+        # Solo lo que el paper pasa (Exhibit 2B): precio, medias de 50 y 200, rango de 52
+        # semanas, beta y cambio a 52 semanas. Fuera el RSI (no aparece ni una
+        # vez en el paper), el "% por debajo del máximo", el cambio a 5 días y el de ~6 meses:
+        # los cuatro los calculábamos NOSOTROS y se los servíamos masticados en una línea que se
+        # lee de un vistazo. El paper da el máximo y el precio y deja que el modelo saque la
+        # conclusión si quiere. Medido: las carteras salían a un 7-8% de máximos con una
+        # mediana del universo finalista del 11%, y estas cuatro métricas eran el canal más
+        # probable. Mismo criterio que el "fuerte→débil" de los sectores: dato sí, conclusión no.
         ma50, ma200 = ta.sma(close, 50), ta.sma(close, 200)
         if ma50 == ma50:
             parts.append(f"MA50 ${ma50:.2f}")
         if ma200 == ma200:
             parts.append(f"MA200 ${ma200:.2f}")
-        parts.append(f"{ta.pct_below_ath(close):.0f}% below 1y high")
-        parts.append(f"5d {ta.pct_change_ndays(close, 5):+.1f}%")
-        parts.append(f"~6m {ta.pct_change_ndays(close, 126):+.1f}%")
     lo, hi = info.get("fiftyTwoWeekLow"), info.get("fiftyTwoWeekHigh")
     if lo and hi:
         parts.append(f"52w range ${lo:.2f}-${hi:.2f}")
+    # Precio contra el objetivo medio del consenso, ya restado. Los dos números viajaban al
+    # prompt en secciones distintas (el objetivo entre 50 líneas de fundamentales, el precio
+    # aquí) y la resta quedaba a cargo del modelo. Es aritmética sobre datos que ya damos, del
+    # mismo tipo que "% below 1y high" — no una conclusión nuestra. El 7-ago un nombre cotizaba
+    # un 17% POR ENCIMA del objetivo medio y esa distancia no se veía en ninguna línea.
+    tgt = info.get("targetMeanPrice")
+    if tgt and price:
+        parts.append(f"price vs analyst mean target {((price / float(tgt)) - 1) * 100:+.0f}%")
     beta = info.get("beta")
     if beta is not None:
         parts.append(f"beta {beta:.2f}")

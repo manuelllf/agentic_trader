@@ -28,3 +28,12 @@ export const fmtTime = (iso: string | null) =>
 /** "+3.2%" / "-1.5%" / "—" si null. El número llega ya redondeado del backend; aquí no se toca. */
 export const fmtPct = (v: number | null | undefined) =>
   v != null ? `${v > 0 ? "+" : ""}${v}%` : "—";
+
+/** "78.4" — la nota con UN decimal (el backend la guarda con dos).
+ *
+ * Ni dos ni cero. Cero volvería a pintar como empatados a nombres que el ranking ya separa —el
+ * empate visual es justo lo que los decimales vinieron a arreglar—; dos no caben en la columna
+ * del ranking. Medido sobre los 49 finalistas del 4-ago: 38 notas distintas con dos decimales,
+ * 34 con uno, 19 con entero. Un decimal recupera casi toda la distinción y cabe. */
+export const fmtScore = (v: number | null | undefined) =>
+  v != null ? Number(v).toFixed(1) : "—";

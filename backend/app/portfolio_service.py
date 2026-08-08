@@ -37,7 +37,7 @@ def top_por_sector(prescored: list, n: int) -> list[str]:
     """Los `n` mejores de cada sector, EXCLUYENDO sector vacío o "n/d".
 
     Sin la exclusión, "n/d" actúa como un sector más y le regala plazas al análisis profundo
-    a nombres que no se pudieron clasificar (el 4-ago, 2 de 4 nombres sin sector llegaron al
+    a nombres que no se pudieron clasificar (medido: 2 de 4 nombres sin sector llegaron al
     profundo — 50%, frente al 1,9% del resto). No hay carril de rescate para lo indefinido.
 
     No asume que `prescored` venga ordenado: itera en el orden recibido, así que quien llama
@@ -64,7 +64,7 @@ def select_finalists(
 
     `prescored` = [(PrescoreResult, NameData)] SIN ordenar de antemano: aquí mismo se reordena
     por (-score, -market_cap), igual que `select_top`, para que un empate de pre-score lo rompa
-    la mayor capitalización y no el orden de llegada de la muestra (fiel al paper; el 4-ago había
+    la mayor capitalización y no el orden de llegada de la muestra (fiel al paper; se ha visto
     7 nombres empatados en 84,5 disputando 2 plazas). El corte combina top-`per_sector` por
     sector vía `top_por_sector` (para que el profundo VEA cada sector, no un mandato de
     diversificar) ∪ top-`global_n` global ∪ las `top_caps` mayores capitalizaciones (carril de
@@ -83,7 +83,7 @@ def select_finalists(
     de que Flash no veta a los grandes — ninguno puede caer por culpa de los grupos que salen
     del pre-score de ESTA semana. Lo primero que se recorta son los extras del top global que
     no son top de su sector ("el tercer mejor de un sector caliente"): la señal más redundante.
-    (Hasta el 4-ago el orden era el inverso — la watchlist caía primero, contradiciendo el
+    (Antes el orden era el inverso — la watchlist caía primero, contradiciendo el
     "SIEMPRE al profundo" de la config justo en los mensuales, donde el tope sí muerde.)
 
     Devuelve (finalistas, carriles) donde `carriles[ticker]` es el PRIMER grupo que lo metió:

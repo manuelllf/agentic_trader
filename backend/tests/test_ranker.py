@@ -308,7 +308,7 @@ def test_select_respects_floor_when_set() -> None:
 
 def _pn(ticker: str, sector: str, score: float):
     """(PrescoreResult, NameData) para armar un ranking de prueba."""
-    return (scorer_mod.PrescoreResult(ticker, score, ""),
+    return (scorer_mod.PrescoreResult(ticker, score),
             NameData(ticker=ticker, sector=sector, industry="x", price=1.0,
                      fundamentals_text="", technical_text="", news=[]))
 

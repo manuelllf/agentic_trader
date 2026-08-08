@@ -36,7 +36,7 @@ export interface ScoreRow {
   created_at: string;
   ticker: string;
   sector: string;
-  score: number; // 1-100
+  score: number; // 1,00-100,00 (dos decimales); en pantalla siempre vía `fmtScore`
   headline: string;
   report: string;
   price: number | null;

@@ -12,6 +12,19 @@ import json
 
 import httpx
 
+# `deepseek/deepseek-v4-flash-0731` no es UN backend: OpenRouter enruta la misma llamada entre
+# 24 proveedores distintos detrás del alias (consultado vía GET
+# /api/v1/models/.../endpoints). Medido: sobre 49 finalistas de un mismo escaneo, ~6
+# de cada 49 fallaban al primer intento — no solo `content` vacío, también JSON cortado a media
+# frase o bucles de repetición degenerados ("...con una nota de 100.00, con una de las notas de
+# 100.00..."). Los tres proveedores marcados `status != 0` (degradados) esa noche eran Together
+# (cuantización desconocida), Parasail y Mancer 2 (los DOS en fp8, no precisión completa —
+# causa técnica conocida de degeneración en generación autoregresiva, no solo mala suerte de
+# uptime). Se excluyen los tres. Lista estática: puede quedar desactualizada si OpenRouter
+# cambia su salud/composición — revisar `GET /api/v1/models/{modelo}/endpoints` si vuelve a
+# fallar mucho con esta lista puesta.
+_PROVEEDORES_EXCLUIDOS_0731 = ("together", "parasail", "mancer")
+
 # Precios OpenRouter en USD por 1M de tokens (input, output). El output de un modelo
 # razonador INCLUYE los tokens de razonamiento ocultos → por eso un escaneo cuesta más
 # de lo que "se ve". Solo se usan como respaldo: si la respuesta trae el coste real, mandan.
@@ -31,10 +44,22 @@ class OpenRouterProvider:
         model: str,
         base_url: str = "https://openrouter.ai/api/v1",
         timeout: float = 60.0,
+        reasoning_effort: str | None = None,
+        provider_ignore: tuple[str, ...] | None = None,
     ) -> None:
         self._model = model
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        # None = no se manda el campo (el proveedor decide su nivel por defecto).
+        # Confirmado vía GET /api/v1/models que deepseek-v4-pro, -flash y
+        # -flash-0731 declaran "reasoning" en supported_parameters, así que el campo no se
+        # ignora en silencio. Los tokens de razonamiento YA se facturaban como completion_tokens
+        # antes de esto (ver _PRICING más abajo); pedir más esfuerzo sube el coste real, no solo
+        # el aparente. Valores válidos de OpenRouter: none/minimal/low/medium/high/xhigh/max.
+        self._reasoning_effort = reasoning_effort
+        # Ver `_PROVEEDORES_EXCLUIDOS_0731` arriba: slugs de proveedor a excluir del enrutado de
+        # OpenRouter para ESTE alias de modelo (`provider.ignore` en el payload).
+        self._provider_ignore = provider_ignore
         self._headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -94,6 +119,10 @@ class OpenRouterProvider:
             # Pide a OpenRouter que incluya el coste REAL facturado en la respuesta.
             "usage": {"include": True},
         }
+        if self._reasoning_effort:
+            payload["reasoning"] = {"effort": self._reasoning_effort}
+        if self._provider_ignore:
+            payload["provider"] = {"ignore": list(self._provider_ignore)}
         with httpx.Client(timeout=self._timeout) as client:
             resp = client.post(
                 f"{self._base_url}/chat/completions",
@@ -105,4 +134,8 @@ class OpenRouterProvider:
             # (el español salía "interÃ©s"). Decodificamos los bytes crudos como UTF-8.
             data = json.loads(resp.content.decode("utf-8"))
         self._account(data.get("usage"))
-        return data["choices"][0]["message"]["content"]
+        # `content` puede venir a NULL en una respuesta por lo demás válida (visto con
+        # v4-pro). Devolver None hacía que el `except` del scorer petara al recortar la respuesta
+        # cruda, y como el scoring va en un ThreadPoolExecutor esa excepción tumbaba el escaneo
+        # entero. Se normaliza a cadena vacía: el caller ya sabe tratar un JSON no parseable.
+        return data["choices"][0]["message"]["content"] or ""

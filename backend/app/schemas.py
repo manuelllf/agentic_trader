@@ -14,7 +14,7 @@ class ScoreOut(BaseModel):
     created_at: datetime
     ticker: str
     sector: str
-    score: int
+    score: float          # dos decimales (ver scorer.SYSTEM); la web la redondea al pintarla
     headline: str
     report: str
     price: float | None
@@ -40,6 +40,6 @@ class WatchlistOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     ticker: str
-    score: int
+    score: float
     thesis: str
     last_seen: datetime

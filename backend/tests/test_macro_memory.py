@@ -52,7 +52,7 @@ def _sin_red(monkeypatch):
     del mismo minuto reutilizaría el resultado cacheado del primero."""
     monkeypatch.setattr(macro_mod, "get_macro_regime",
                         lambda: {"regime": "neutral", "spy_above_ma200": True, "vix": 15.0})
-    monkeypatch.setattr(macro_mod, "_snapshot_text", lambda: ("n/d", []))
+    monkeypatch.setattr(macro_mod, "_snapshot_text", lambda: ("n/d", [], ""))
     monkeypatch.setattr(events_mod, "wikipedia_current_events", lambda *a, **k: "")
     monkeypatch.setattr(events_mod, "wikipedia_scheduled_events", lambda *a, **k: "")
     monkeypatch.setattr(events_mod, "gdelt_headlines", lambda *a, **k: [])

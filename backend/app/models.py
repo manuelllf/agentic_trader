@@ -13,7 +13,15 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Date, DateTime, Float, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -34,7 +42,7 @@ class Watchlist(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ticker: Mapped[str] = mapped_column(String(16), unique=True, index=True)
-    score: Mapped[int] = mapped_column(Integer)              # último score (1-100)
+    score: Mapped[float] = mapped_column(Float)              # último score profundo (1,00-100,00)
     thesis: Mapped[str] = mapped_column(String, default="")  # tesis de una línea
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
@@ -50,7 +58,11 @@ class Score(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     ticker: Mapped[str] = mapped_column(String(16), index=True)
     sector: Mapped[str] = mapped_column(String(48), default="")
-    score: Mapped[int] = mapped_column(Integer, index=True)   # 1-100
+    # Float y no Integer: la nota del scorer lleva dos decimales. Con nota entera,
+    # el desempate por market cap (fiel al paper, pensado como caso raro) repartía la mitad del
+    # top-10 —diez nombres empatados a 78 para cinco plazas— y se lo llevaban siempre los cinco
+    # mayores. El decimal es lo que hace que decida el análisis y no el tamaño.
+    score: Mapped[float] = mapped_column(Float, index=True)   # 1,00-100,00
     headline: Mapped[str] = mapped_column(String, default="")  # tesis de una línea
     report: Mapped[str] = mapped_column(String, default="")    # Investment Report completo
     price: Mapped[float | None] = mapped_column(Float)         # precio al escanear
@@ -65,6 +77,10 @@ class Score(Base):
     # lo corrige después. Telemetría para auditar el guardarrail, nunca vuelve a un prompt.
     target_raw: Mapped[float | None] = mapped_column(Float)
     target_flagged: Mapped[bool] = mapped_column(default=False)
+    # ¿el informe declara que ESTA empresa está siendo comprada? Aparta de la selección (no del
+    # ranking). NULL = el modelo no contestó al campo, que NO es lo mismo que un "no" — por eso
+    # es nullable y no un booleano con default False.
+    under_acquisition: Mapped[bool | None] = mapped_column(Boolean, default=None)
 
 
 class Proposal(Base):
@@ -104,7 +120,7 @@ class ScanAudit(Base):
     price: Mapped[float | None] = mapped_column(Float)        # precio del día (sin él no se puede
     # medir DESPUÉS si las descartadas lo hicieron mejor que las compradas)
     reached_deep: Mapped[bool] = mapped_column(default=False)  # ¿pasó el corte al profundo?
-    deep_score: Mapped[int | None] = mapped_column(Integer)
+    deep_score: Mapped[float | None] = mapped_column(Float)   # dos decimales, como `Score.score`
     selected: Mapped[bool] = mapped_column(default=False)      # ¿top-10 al constructor?
     funded: Mapped[bool] = mapped_column(default=False)        # ¿acabó en la cartera?
     # ¿El escaneo DECIDÍA cartera? La construcción se calcula (y se registra) también en los
@@ -229,7 +245,7 @@ class Approval(Base):
     sector: Mapped[str] = mapped_column(String(48), default="")
     action: Mapped[str] = mapped_column(String(10))            # comprar|ampliar|recortar|vender
     target_weight_pct: Mapped[float] = mapped_column(Float, default=0.0)
-    score: Mapped[int | None] = mapped_column(Integer)
+    score: Mapped[float | None] = mapped_column(Float)                  # dos decimales
     est_price: Mapped[Decimal | None] = mapped_column(DecimalStr(32))   # precio al proponer
     target_price: Mapped[float | None] = mapped_column(Float)           # objetivo 3m del LLM
     upside_pct: Mapped[float | None] = mapped_column(Float)

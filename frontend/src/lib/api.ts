@@ -113,7 +113,17 @@ export function logout() {
 
 export const getLedger = () => get<LedgerSnapshot>("/ledger");
 
-export const runDemo = () => post<DemoStatus & { started: boolean }>("/demo/run");
+// `sample_size`/`decide`/`force_mid_layer` son parámetros de query en FastAPI (escalares sin
+// modelo Pydantic), no cuerpo JSON. `decide=false` (8-ago): universo completo en producción
+// real, sin proponer ni tocar ninguna cartera. `force_mid_layer=true`: el circuito EXACTO de
+// un mensual (capa media incluida) sin tocar el cron semanal — botón "simulación" de Sala Real.
+export const runDemo = (opts?: { decide?: boolean; forceMidLayer?: boolean }) => {
+  const params = new URLSearchParams();
+  if (opts?.decide === false) params.set("decide", "false");
+  if (opts?.forceMidLayer) params.set("force_mid_layer", "true");
+  const qs = params.toString();
+  return post<DemoStatus & { started: boolean }>(`/demo/run${qs ? `?${qs}` : ""}`);
+};
 export const getDemoStatus = () => get<DemoStatus>("/demo/status");
 
 export const getMacro = () => get<Macro>("/macro");

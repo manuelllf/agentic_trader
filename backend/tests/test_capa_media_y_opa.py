@@ -17,7 +17,7 @@ from app import (
     scan_service,
 )
 from app.db import Base
-from app.models import ScanRun, Score
+from app.models import Proposal, ScanRun, Score
 
 
 @pytest.fixture
@@ -101,18 +101,20 @@ class DeepLLM:
 
 
 def _stub_llms(monkeypatch, prescore_scores: dict, mid_scores: dict, deep_replies: dict):
-    from app.config import settings as cfg
-
+    """Circuito único en un solo modelo (0731 en todo): `llm_model` == `prescore_model` ==
+    `mid_model`, así que ya no se puede distinguir la llamada por el string. Se distingue por
+    ORDEN, que es determinista en `run_scan_and_store`: deep_llm (1ª get_llm) → prescore_llm
+    (2ª) → mid_llm (3ª, solo si `mid_layer`)."""
     prescore_llm = ScoringLLM(prescore_scores)
     mid_llm = ScoringLLM(mid_scores)
     deep_llm = DeepLLM(deep_replies)
+    orden = [deep_llm, prescore_llm, mid_llm]
+    llamadas = {"n": 0}
 
     def fake_get_llm(model: str | None = None):
-        if model == cfg.mid_model:
-            return mid_llm
-        if model == cfg.prescore_model:
-            return prescore_llm
-        return deep_llm
+        llm = orden[min(llamadas["n"], len(orden) - 1)]
+        llamadas["n"] += 1
+        return llm
 
     monkeypatch.setattr(scan_service, "get_llm", fake_get_llm)
     return prescore_llm, mid_llm, deep_llm
@@ -196,6 +198,35 @@ def test_observatorio_no_paga_la_capa_media(db, monkeypatch) -> None:
     assert mid_llm.called == []
 
 
+def test_la_capa_media_tiene_tope_duro_de_candidatos(db, monkeypatch) -> None:
+    """La capa media era la ÚNICA etapa cuyo tamaño lo decidía un dato externo: `mid_per_sector`
+    × los sectores que trajera yfinance ese día. Con el campo `sector` sucio, cada valor raro
+    abriría su propio cupo de llamadas al modelo caro. El tope lo convierte en un recorte."""
+    sectores = {f"T{i}": f"Sector{i}" for i in range(6)}   # 6 sectores → 6 candidatos sin tope
+    prescore = {t: 90.0 - i for i, t in enumerate(sectores)}
+    _stub_common(monkeypatch)
+    _stub_universo(monkeypatch, list(sectores))
+    _gather_stub(monkeypatch, sectores)
+    _, mid_llm, _ = _stub_llms(monkeypatch, prescore, prescore, {"T0": _deep_ok("T0")})
+
+    monkeypatch.setattr(scan_service.settings, "mid_layer", True)
+    monkeypatch.setattr(scan_service.settings, "mid_per_sector", 1)
+    monkeypatch.setattr(scan_service.settings, "mid_candidates_cap", 2)
+    monkeypatch.setattr(scan_service.settings, "deep_per_sector", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_per_sector_mid", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_top_caps", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_watchlist", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_finalists", 1)
+
+    scan_service.run_scan_and_store(db, sample_size=6, decide=True)
+
+    # Se paga por 2, no por 6, y son los de MAYOR pre-score (la lista llega ordenada).
+    assert mid_llm.called == ["T0", "T1"]
+    # El recorte no es silencioso: queda en la traza del escaneo, que nunca se pisa.
+    run = db.query(ScanRun).one()
+    assert any("capa media" in i and "se recortan" in i for i in run.issues)
+
+
 # ---- (c)/(d) guardarraíl de operación corporativa ------------------------------
 
 _OPA_SECTORS = {"OPA1": "Industrials", "NORMAL": "Industrials"}
@@ -247,3 +278,69 @@ def test_informe_normal_con_target_alto_sin_texto_de_operacion_no_se_toca(db, mo
     assert normal.target_flagged is False
     assert normal.target_raw is None
     assert normal.target_price == 130.0               # el modelo manda, no se corrige
+
+
+# ---- (e) la opada se aparta de la CARTERA, no del ranking -----------------------
+
+_UA_SECTORS = {"OPADA": "Industrials", "LIBRE": "Industrials", "TERCERA": "Technology"}
+_UA_REPLIES = {
+    # La opada saca MÁS nota que las otras dos: si no se apartara, entraría ella.
+    "OPADA": {"score": 90, "headline": "opada", "report": "informe", "target_price": 95.0,
+              "under_acquisition": True},
+    "LIBRE": {"score": 70, "headline": "libre", "report": "informe", "target_price": 150.0,
+              "under_acquisition": False},
+    # Sin el campo: el modelo se lo saltó. No es un "no" — pero tampoco aparta a nadie.
+    "TERCERA": {"score": 60, "headline": "tercera", "report": "informe", "target_price": 130.0},
+}
+
+
+def _stub_opada(monkeypatch, db_unused=None) -> None:
+    _stub_common(monkeypatch)
+    _stub_universo(monkeypatch, list(_UA_SECTORS))
+    _gather_stub(monkeypatch, _UA_SECTORS)
+    _stub_llms(monkeypatch, {t: 80.0 for t in _UA_SECTORS}, {}, _UA_REPLIES)
+    monkeypatch.setattr(scan_service.settings, "mid_layer", False)
+    monkeypatch.setattr(scan_service.settings, "max_positions", 1)
+    monkeypatch.setattr(scan_service.settings, "min_positions", 1)
+
+
+def test_la_opada_no_entra_en_cartera_pero_sigue_en_el_ranking(db, monkeypatch) -> None:
+    """Con una oferta en efectivo encima el precio queda clavado a ella: el recorrido que queda
+    es el hueco hasta el cierre, con riesgo binario de que la operación se caiga. Se aparta de la
+    SELECCIÓN, no del ranking — su nota y su informe siguen visibles y auditables."""
+    _stub_opada(monkeypatch)
+
+    scan_service.run_scan_and_store(db, sample_size=3, decide=True)
+
+    assert {s.ticker for s in db.query(Score).all()} == {"OPADA", "LIBRE", "TERCERA"}
+    opada = db.query(Score).filter(Score.ticker == "OPADA").one()
+    assert opada.score == 90 and opada.under_acquisition is True    # nota intacta
+    propuesta = db.query(Proposal).one()
+    assert "OPADA" not in {i["ticker"] for i in propuesta.items}
+    run = db.query(ScanRun).one()
+    assert any("OPADA" in i and "adquisición" in i for i in run.issues)
+
+
+def test_el_hueco_de_la_opada_lo_ocupa_el_siguiente(db, monkeypatch) -> None:
+    """Apartarla no deja la plaza vacía: la cartera sigue siendo de tamaño fijo y entra el
+    siguiente por nota (LIBRE, 70), no se queda en caja lo que iba a ser de la opada."""
+    _stub_opada(monkeypatch)
+
+    scan_service.run_scan_and_store(db, sample_size=3, decide=True)
+
+    propuesta = db.query(Proposal).one()
+    assert [i["ticker"] for i in propuesta.items if i["action"] != "vender"] == ["LIBRE"]
+
+
+def test_sin_respuesta_al_campo_no_aparta_pero_queda_dicho(db, monkeypatch) -> None:
+    """`under_acquisition` a None es "el modelo no contestó", no un "no". No aparta a nadie
+    (sería inventarse un veredicto) pero se avisa: si un modelo deja de contestar el campo, el
+    guardarraíl queda desactivado y eso tiene que VERSE en la traza."""
+    _stub_opada(monkeypatch)
+
+    scan_service.run_scan_and_store(db, sample_size=3, decide=True)
+
+    tercera = db.query(Score).filter(Score.ticker == "TERCERA").one()
+    assert tercera.under_acquisition is None
+    run = db.query(ScanRun).one()
+    assert any("Sin respuesta" in i and "TERCERA" in i for i in run.issues)

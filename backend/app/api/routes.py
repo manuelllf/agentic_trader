@@ -214,10 +214,16 @@ def overview(db: Session = Depends(get_db)) -> dict:
 # ---- Escaneo ----------------------------------------------------------------
 
 @router.post("/demo/run")
-def demo_run(sample_size: int | None = None) -> dict:
+def demo_run(sample_size: int | None = None, decide: bool = True,
+            force_mid_layer: bool = False) -> dict:
+    # decide=False: escaneo de universo completo en producción real, con el modelo/coste
+    # de verdad, que NO propone ni toca ninguna cartera — solo refresca ranking, watchlist,
+    # memoria y traza. force_mid_layer=True lo hace el circuito EXACTO de un mensual (capa
+    # media incluida) sin tocar el cron semanal. Es el botón "simulación" de Sala Real.
     if not settings.enable_llm or not settings.openrouter_api_key:
         raise HTTPException(503, "Configura ENABLE_LLM=true y OPENROUTER_API_KEY.")
-    started = pipeline.start(sample_size=sample_size)
+    started = pipeline.start(sample_size=sample_size, decide=decide,
+                             force_mid_layer=force_mid_layer)
     return {"started": started, **pipeline.get_status()}
 
 

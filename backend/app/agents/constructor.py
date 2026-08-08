@@ -76,7 +76,9 @@ class ConstructionResult:
 
 def _user_prompt(portfolio_text: str, candidates_text: str, macro_block: str) -> str:
     return (
-        f"Macro & sector outlook:\n{macro_block}\n\n"
+        # Sin "& sector": el macro tiene PROHIBIDO nombrar sectores, así que la
+        # etiqueta anunciaba un contenido que ya no llega (ver el mismo cambio en scorer.py).
+        f"Macro outlook:\n{macro_block}\n\n"
         f"Current portfolio (the agent's own sleeve):\n{portfolio_text}\n\n"
         f"Candidates (already chosen — allocate weights among THESE only):\n"
         f"{candidates_text}\n\n"
@@ -87,37 +89,50 @@ def _user_prompt(portfolio_text: str, candidates_text: str, macro_block: str) ->
 def construct(
     llm: LLMProvider, portfolio_text: str, candidates_text: str, macro_block: str,
     max_positions: int, max_position_pct: float, valid_tickers: set[str],
-    min_positions: int = 1, temperature: float = 0.3,
+    min_positions: int = 1, temperature: float = 0.6,
 ) -> ConstructionResult:
     """Asigna pesos a los nombres YA SELECCIONADOS. Enforcea las reglas duras tras el LLM.
 
     La normalización final a 100% (si `fully_invested`) y el mínimo de posiciones los aplica
     el servicio (`_finalize_full_invest`), que conoce el orden de selección para rellenar.
+
+    REINTENTA hasta DOS veces (3 intentos en total). Aquí una llamada
+    mala no cuesta un nombre como en el scorer: cuesta la decisión ENTERA del mes. Con un solo
+    reintento pasó en un test real — OpenRouter devolvió `content` vacío, el JSON no parseó
+    y la función devolvió 100% caja con "Sin propuesta"; al relanzarla con exactamente los
+    mismos datos acertó a la primera, o sea que el fallo era de transporte y no del prompt. Subir
+    a dos reintentos vino de medir que sobre 49 finalistas de un escaneo
+    ~6 de cada 49 fallaban al primer intento con `deepseek-v4-flash-0731` — no solo `content`
+    vacío, también JSON cortado a media frase o bucles de repetición degenerados (ver
+    `provider_ignore` en `openrouter.py`: dos de los proveedores identificados como causa sirven
+    el modelo en fp8, no precisión completa). Con esa tasa, fallar 2 veces seguidas no es tan
+    raro; fallar 3 sí. Se reintenta también cuando el JSON es válido pero no deja ni una posición
+    utilizable: para el escaneo eso es igual de fatal que no parsear, porque `construct` solo se
+    llama cuando HAY candidatos.
     """
     system = (SYSTEM.replace("{max_pos}", str(max_positions))
               .replace("{min_pos}", str(min_positions))
               .replace("{max_pct}", str(int(max_position_pct))))
-    try:
-        raw = llm.chat(system, _user_prompt(portfolio_text, candidates_text, macro_block), temperature=temperature)
-        data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-    except Exception:
-        logger.exception("Constructor no parseable → cartera vacía (todo caja)")
-        return ConstructionResult(cash_pct=100.0, positions=[], summary="Sin propuesta (fallo del modelo).")
+    user = _user_prompt(portfolio_text, candidates_text, macro_block)
 
+    data: dict | None = None
     positions: list[TargetPosition] = []
-    for p in data.get("positions", []):
-        tk = str(p.get("ticker", "")).strip().upper()
-        if not tk or tk not in valid_tickers:      # ignora tickers no puntuados (anti-alucinación)
-            continue
-        w = max(0.0, min(float(max_position_pct), float(p.get("weight_pct", 0) or 0)))
-        positions.append(TargetPosition(
-            ticker=tk, weight_pct=w,
-            thesis=str(p.get("thesis", "")).strip(),
-            edge=str(p.get("edge", "")).strip(),
-            risk=str(p.get("risk", "")).strip(),
-        ))
-        if len(positions) >= max_positions:
-            break
+    for intento in (1, 2, 3):
+        try:
+            raw = llm.chat(system, user, temperature=temperature)
+            data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+        except Exception:
+            logger.warning("Constructor no parseable (intento %d/3)", intento, exc_info=True)
+            data = None
+        if data is not None:
+            positions = _parse_positions(data, valid_tickers, max_positions, max_position_pct)
+            if positions:
+                break
+            logger.warning("Constructor sin posiciones utilizables (intento %d/3)", intento)
+    if not positions:
+        logger.error("Constructor sin cartera tras 3 intentos → todo caja")
+        return ConstructionResult(cash_pct=100.0, positions=[],
+                                  summary="Sin propuesta (fallo del modelo).")
 
     # Renormaliza si la suma de pesos pasa de 100 (respetando el tope por posición).
     total = sum(p.weight_pct for p in positions)
@@ -131,10 +146,34 @@ def construct(
     # a uno que sí se fondeó (el modelo a veces repite un nombre en las dos listas).
     fondeados = {p.ticker for p in positions}
     omitted: list[OmittedName] = []
-    for o in data.get("omitted", []) or []:
+    for o in (data or {}).get("omitted", []) or []:
         tk = str(o.get("ticker", "")).strip().upper()
         if tk and tk in valid_tickers and tk not in fondeados:
             omitted.append(OmittedName(ticker=tk, reason=str(o.get("reason", "")).strip()))
 
     return ConstructionResult(cash_pct=cash_pct, positions=positions, omitted=omitted,
-                              summary=str(data.get("summary", "")).strip())
+                              summary=str((data or {}).get("summary", "")).strip())
+
+
+def _parse_positions(data: dict, valid_tickers: set[str], max_positions: int,
+                     max_position_pct: float) -> list[TargetPosition]:
+    """Posiciones utilizables de una respuesta ya parseada. Separado de `construct` para poder
+    reintentar la llamada entera sin duplicar el filtrado anti-alucinación."""
+    positions: list[TargetPosition] = []
+    for p in data.get("positions", []) or []:
+        tk = str(p.get("ticker", "")).strip().upper()
+        if not tk or tk not in valid_tickers:      # ignora tickers no puntuados (anti-alucinación)
+            continue
+        try:
+            w = max(0.0, min(float(max_position_pct), float(p.get("weight_pct", 0) or 0)))
+        except (TypeError, ValueError):
+            continue
+        positions.append(TargetPosition(
+            ticker=tk, weight_pct=w,
+            thesis=str(p.get("thesis", "")).strip(),
+            edge=str(p.get("edge", "")).strip(),
+            risk=str(p.get("risk", "")).strip(),
+        ))
+        if len(positions) >= max_positions:
+            break
+    return positions

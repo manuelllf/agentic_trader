@@ -43,6 +43,7 @@ class FakeLLM:
 
 _FAKE_REPLY = (
     '{"score": 90, "headline": "tesis", "report": "informe", "target_price": 150.0, '
+    '"under_acquisition": false, '
     '"cash_pct": 0, "positions": [{"ticker": "AAA", "weight_pct": 100, '
     '"thesis": "t", "edge": "e", "risk": "r"}], "summary": "cartera concentrada", '
     '"regime": "neutral", "outlook": "estable", "favored_sectors": [], "avoided_sectors": []}'

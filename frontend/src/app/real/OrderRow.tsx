@@ -5,7 +5,7 @@
 // ratón o teclado. El agente jamás ejecuta solo: este componente ES el contrato.
 
 import { useEffect, useState } from "react";
-import { fmtTime, money } from "@/lib/format";
+import { fmtScore, fmtTime, money } from "@/lib/format";
 import type { Approval } from "@/lib/types";
 import { NUMS, T } from "./tokens";
 import { DetailLine, SideTag, Td } from "./ui";
@@ -65,9 +65,9 @@ export function OrderRow({ a, dry, onDecide, expiryDays }: {
           </span>
         </Td>
         <Td right>
-          <span className={`inline-block min-w-[30px] rounded px-1.5 py-0.5 text-center text-[11.5px] font-bold ${NUMS}`}
+          <span className={`inline-block min-w-[42px] rounded px-1.5 py-0.5 text-center text-[11.5px] font-bold ${NUMS}`}
                 style={{ background: T.base, color: T.ink }}>
-            {a.score ?? "—"}
+            {fmtScore(a.score)}
           </span>
         </Td>
         <Td right>
