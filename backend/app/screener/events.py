@@ -228,10 +228,14 @@ def wikipedia_scheduled_events(year: int | None = None, max_chars: int = 3000,
 # cuatro y uno de ellos ("inflation") era el único tema de preocupación, sin ningún término del
 # lado de la actividad o de los resultados empresariales — se pescaba escorado y luego se le
 # pedía neutralidad al modelo. "inflation" se queda: quitarlo sería el sesgo simétrico.
+# "tariffs": el `_SYSTEM` de macro.py le pide explícitamente pronosticar aranceles (Exhibit 2D)
+# pero esta lista no traía ni un titular sobre el tema — el modelo escribía sobre aranceles
+# apoyado solo en su memoria de entrenamiento, sin nada real delante. Mismo principio que los
+# niveles de oro/petróleo: dato real en vez de recuerdo del modelo.
 _MACRO_TOPICS = (
     '"Federal Reserve"', "inflation", '"US economy"', '"stock market"',
     '"interest rates"', '"Treasury yields"', '"jobs report"', "GDP",
-    '"earnings season"', '"consumer spending"',
+    '"earnings season"', '"consumer spending"', "tariffs",
 )
 _MACRO_OR = " OR ".join(_MACRO_TOPICS)
 

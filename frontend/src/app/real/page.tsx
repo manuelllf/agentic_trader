@@ -39,6 +39,7 @@ import type {
 } from "@/lib/types";
 import { CapitalForm } from "./CapitalForm";
 import { MemorySearch } from "./MemorySearch";
+import { ScanFullButton } from "./ScanFullModal";
 import { OrderRow } from "./OrderRow";
 import { NUMS, SERIES, T } from "./tokens";
 import { Empty, Field, Kpi, Panel, SideTag, Td, Th } from "./ui";
@@ -973,7 +974,12 @@ function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan | null }
   return (
     <Panel title="Último escaneo"
            accent={failed ? T.bad : issues.length ? T.warn : undefined}
-           right={<span className="text-[11px]" style={{ color: T.muted }}>{fmtTime(r.at)}</span>}>
+           right={
+             <span className="flex items-center gap-2.5">
+               <ScanFullButton />
+               <span className="text-[11px]" style={{ color: T.muted }}>{fmtTime(r.at)}</span>
+             </span>
+           }>
       <div className="px-4 py-3 text-[12px]">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span style={{ color: T.ink2 }}>modo <b style={{ color: T.ink }}>{r.mode ?? "—"}</b></span>

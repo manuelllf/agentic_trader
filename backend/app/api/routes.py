@@ -29,6 +29,8 @@ un feed de señales.
 - GET  /scan/funnel          → embudo de los últimos escaneos por etapa y sector   [doble nivel]
 - GET  /scan/outcomes        → la traza LEÍDA: retorno por grupo vs SPY, score↔retorno [doble nivel]
 - GET  /scan/audit/{ticker}  → historia de un ticker a través de los escaneos      [protegido]
+- GET  /scan/full            → recuperación completa de un escaneo (macro, finalistas,
+                               cartera formada, omitted) — decida o no                [protegido]
 - GET  /scores               → leaderboard (mejores scores del último escaneo)     [protegido]
 - GET  /proposal             → cartera objetivo + trades del último escaneo        [protegido]
 - GET  /watchlist            → nombres vigilados                                   [protegido]
@@ -292,6 +294,33 @@ def scan_outcomes_view(limit: int = Query(8, ge=1, le=30), db: Session = Depends
     # La fila del libro real es agregado puro (retorno, S&P, nº posiciones): pública entera,
     # igual que /performance sin sesión.
     return {"scans": scans, "book": scan_outcomes.book_row(db)}
+
+
+@router.get("/scan/full")
+def scan_full(at: str | None = None, db: Session = Depends(get_db)) -> dict:
+    """Recuperación completa de UN escaneo (mensual decidido o semanal observatorio): tesis
+    macro, finalistas con su score/target, cartera formada con pesos y omitted. Vive entero en
+    `ScanRun` (una fila por escaneo, nunca se pisa) — protegido entero: revela tickers y tesis,
+    igual que `/scores` o `/proposal`.
+
+    `at` = `scan_at` ISO de un escaneo concreto (ver `/scan/funnel` para las fechas); sin él,
+    el más reciente.
+    """
+    from datetime import datetime
+
+    from app.models import ScanRun
+
+    q = db.query(ScanRun)
+    row = (q.filter(ScanRun.scan_at == datetime.fromisoformat(at)).first() if at
+           else q.order_by(ScanRun.scan_at.desc()).first())
+    if row is None:
+        return {"scan": None}
+    return {"scan": {
+        "at": row.scan_at.isoformat(), "cadence": row.cadence, "decide": row.decide,
+        "regime": row.regime, "vix": row.vix, "outlook": row.outlook,
+        "universe": row.universe, "counters": row.counters, "cost": row.cost,
+        "issues": row.issues, "finalists": row.finalists, "construction": row.construction,
+    }}
 
 
 @router.get("/scan/audit/{ticker}")

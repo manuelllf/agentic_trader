@@ -262,7 +262,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     ruido semanal del LLM. Los escaneos manuales van con `decide=True` (ciclo completo).
     """
     deep_llm = get_llm()                              # V4-Pro: informe + target + construcción
-    prescore_llm = get_llm(settings.prescore_model)   # Flash: ranking rápido de todo el universo
+    # reasoning_effort propio (PRIORIDAD 1): triaje barato de todo el universo, no compra nada
+    # razonando "max" y sí dobla el coste medido en producción.
+    prescore_llm = get_llm(settings.prescore_model,
+                           reasoning_effort=settings.prescore_reasoning_effort)
     # Capa media (opcional): repuntúa los mejores de cada sector con un modelo mejor que Flash
     # antes del corte a finalistas. Se crea aquí (como los otros dos) para que su coste entre en
     # `_llm_usage` aunque no llegue a usarse ninguna vez si `mid_layer` está desactivado.
@@ -678,6 +681,31 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         # Fila HISTÓRICA (nunca se pisa): la inclinación sectorial del macro hasta ahora se
         # calculaba, movía el escaneo entero y se tiraba — aquí queda fijada para comprobar
         # después si acertó. `by_model` va dentro de `cost` (ya lo trae `_llm_usage`).
+        # `finalists`/`construction`: recuperación completa del escaneo, decida o no —
+        # `Proposal` solo existe cuando decide=True, así que sin esto la cartera hipotética de
+        # un observatorio (y su tesis) se perdía en cuanto terminaba el proceso.
+        pre_map = {p.ticker: p.score for p, _d in prescored}
+        selected_set = {r.ticker for r in selected}
+        funded_map = {p.ticker: p.weight_pct for p in construction.positions}
+        finalists_detail = [
+            {
+                "ticker": t, "sector": data_by_t[t].sector,
+                "prescore": pre_map.get(t), "price": data_by_t[t].price,
+                "market_cap": data_by_t[t].market_cap,
+                "deep_score": deep[t].score if t in deep else None,
+                "headline": deep[t].headline if t in deep else None,
+                "target_price": deep[t].target_price if t in deep else None,
+                "selected": t in selected_set, "funded": t in funded_map,
+                "weight_pct": funded_map.get(t),
+                "error": analizados[t].error if t in deep_caidos else None,
+            }
+            for t in finalists
+        ]
+        construction_detail = {
+            "cash_pct": construction.cash_pct, "summary": construction.summary,
+            "items": items,
+            "omitted": [{"ticker": o.ticker, "reason": o.reason} for o in construction.omitted],
+        }
         db.add(ScanRun(
             cadence=cadence, decide=decide, regime=macro.get("regime") or "",
             vix=macro.get("vix"), favored_sectors=macro.get("favored_sectors") or [],
@@ -692,6 +720,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 + [{"ticker": t, "etapa": "profundo", "error": analizados[t].error,
                     "raw": analizados[t].raw} for t in deep_caidos]
             ),
+            finalists=finalists_detail, construction=construction_detail,
         ))
         db.commit()
     except Exception:

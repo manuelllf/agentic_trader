@@ -111,6 +111,14 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
     # por un "no" comprobado que nadie comprobó.
     if sc and "under_acquisition" not in sc:
         conn.execute(text("ALTER TABLE scores ADD COLUMN under_acquisition BOOLEAN"))
+    # scan_runs.finalists/construction: recuperación completa del escaneo (ver models.py). Las
+    # filas ya guardadas quedan con listas/dict vacíos — ese escaneo ya no es recuperable, pero
+    # los siguientes sí.
+    sr = cols("scan_runs")
+    if sr and "finalists" not in sr:
+        conn.execute(text("ALTER TABLE scan_runs ADD COLUMN finalists JSON DEFAULT '[]'"))
+    if sr and "construction" not in sr:
+        conn.execute(text("ALTER TABLE scan_runs ADD COLUMN construction JSON DEFAULT '{}'"))
     conn.commit()
     _migrate_score_decimal(conn)
 

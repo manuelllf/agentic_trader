@@ -167,6 +167,15 @@ class ScanRun(Base):
     # lee en el panel y tiene que caber; esto es el detalle para saber DESPUÉS por qué falló un
     # nombre — los logs de Railway caducan y el fallo se descubre al leer el informe, más tarde.
     failures: Mapped[list] = mapped_column(JSON, default=list)
+    # Recuperación completa del escaneo (mensual decidido U observatorio semanal): sin esto, la
+    # cartera hipotética de un observatorio —y su tesis— se perdía en cuanto terminaba el proceso,
+    # porque `Proposal` solo se escribe cuando `decide=True`. `finalists` = snapshot por ticker de
+    # los que llegaron al profundo (score, target, sector, precio, si se seleccionó/fondeó, su
+    # peso); `construction` = {cash_pct, summary, items, omitted} tal cual lo escribió el
+    # constructor. Mismo shape que `Proposal.items`/`omitted`, pero aquí vive SIEMPRE, no solo
+    # cuando se decide.
+    finalists: Mapped[list] = mapped_column(JSON, default=list)
+    construction: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 # ---------------------------------------------------------------------------

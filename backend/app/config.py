@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     # Confirmado por API (GET /api/v1/models) que v4-pro, v4-flash y v4-flash-0731 declaran
     # "reasoning" en supported_parameters antes de activarlo. None desactiva el campo entero.
     reasoning_effort: str | None = "max"
+    # PRIORIDAD 1 (medida en producción, escaneo del 8/9-ago): el pre-score con razonamiento
+    # "max" costó $2,6655 —el doble de lo estimado sin él— sobre ~3.000 llamadas de un triaje
+    # barato que no necesita razonar mucho. El profundo, la capa media y el constructor son
+    # decenas de llamadas, así que ahí el coste extra sí compra algo. None = sin el campo
+    # (el proveedor decide su nivel por defecto), igual que el resto del circuito antes de max.
+    prescore_reasoning_effort: str | None = None
     # Circuito ÚNICO en flash-0731 — profundo, pre-score, capa media y constructor. V4-Pro
     # descartado del todo. Alias fijado a fecha y no el genérico: el genérico apunta a un
     # snapshot MÁS VIEJO y cuesta 0,14/0,28 por millón, mientras el 0731 es más reciente y

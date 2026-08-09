@@ -217,6 +217,15 @@ def prescore(llm: LLMProvider, data: NameData, macro_block: str, temperature: fl
                        temperature=temperature) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
+        # Mismo guardarraíl que `score()` (ver su comentario): en una escala de 1 a 100, un 0
+        # SOLO puede ser un fallo de parseo (JSON válido sin la clave, o con nota 0). Sin esto
+        # `error` quedaba en None y el nombre desaparecía del embudo entero sin retry ni rastro
+        # — medido en un escaneo real: 118 de 3.000 nombres así, ninguno en `failed` ni en
+        # `pre_errors`, invisibles en la auditoría.
+        if sc <= 0:
+            return PrescoreResult(data.ticker, 0.0,
+                                  error="SinNota: JSON válido sin score utilizable",
+                                  raw=_recorte(raw))
         return PrescoreResult(data.ticker, sc)
     except Exception as exc:
         logger.warning("Prescore no parseable para %s (%s): %r", data.ticker, exc, raw[:400])

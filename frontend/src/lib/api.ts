@@ -188,6 +188,58 @@ export const getScanReport = () => get<{ report: ScanReport | null }>("/scan/rep
 export const getScanFunnel = (limit = 8) =>
   get<{ scans: FunnelScan[] }>(`/scan/funnel?limit=${limit}`);
 
+/** Recuperación COMPLETA de un escaneo (mensual decidido o semanal observatorio): vive entero
+ *  en `ScanRun`, no se pisa. A diferencia de /scan/report (contadores) esto trae la tesis macro,
+ *  los finalistas con su score/target y la cartera formada — la única fuente para reconstruir
+ *  una simulación después de que termine. Protegido entero (revela tickers y tesis). */
+export interface ScanFullFinalist {
+  ticker: string;
+  sector: string;
+  prescore: number | null;
+  price: number | null;
+  market_cap: number | null;
+  deep_score: number | null;
+  headline: string | null;
+  target_price: number | null;
+  selected: boolean;
+  funded: boolean;
+  weight_pct: number | null;
+  error: string | null;
+}
+export interface ScanFullPosition {
+  ticker: string;
+  action: string;
+  score?: number | null;
+  target_weight_pct?: number;
+  price?: string | null;
+  target_price?: number | null;
+  upside_pct?: number | null;
+  thesis?: string;
+  edge?: string;
+  risk?: string;
+}
+export interface ScanFull {
+  at: string;
+  cadence: string;
+  decide: boolean;
+  regime: string;
+  vix: number | null;
+  outlook: string;
+  universe: ScanReport["universe"];
+  counters: Record<string, number>;
+  cost: { calls: number; cost_usd: number } | null;
+  issues: string[];
+  finalists: ScanFullFinalist[];
+  construction: {
+    cash_pct: number;
+    summary: string;
+    items: ScanFullPosition[];
+    omitted: { ticker: string; reason: string }[];
+  };
+}
+export const getScanFull = (at?: string) =>
+  get<{ scan: ScanFull | null }>(`/scan/full${at ? `?at=${encodeURIComponent(at)}` : ""}`);
+
 /** La traza LEÍDA: retorno a hoy por grupo de cada cohorte (cartera · elegidos sin fondear ·
  *  descartados · S&P), pares score↔retorno y la frontera del corte. Doble nivel: sin sesión
  *  los pares llegan sin ticker y la frontera sin nombres. */

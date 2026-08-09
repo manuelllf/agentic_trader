@@ -111,7 +111,7 @@ def _stub_llms(monkeypatch, prescore_scores: dict, mid_scores: dict, deep_replie
     orden = [deep_llm, prescore_llm, mid_llm]
     llamadas = {"n": 0}
 
-    def fake_get_llm(model: str | None = None):
+    def fake_get_llm(model: str | None = None, **_kwargs):
         llm = orden[min(llamadas["n"], len(orden) - 1)]
         llamadas["n"] += 1
         return llm

@@ -12,8 +12,14 @@ from app.llm.base import LLMProvider
 from app.llm.openrouter import _PROVEEDORES_EXCLUIDOS_0731, OpenRouterProvider
 
 
-def get_llm(model: str | None = None) -> LLMProvider:
-    """Proveedor LLM (V4-Pro por defecto). Lanza si falta la key."""
+def get_llm(
+    model: str | None = None, reasoning_effort: str | None = settings.reasoning_effort
+) -> LLMProvider:
+    """Proveedor LLM (V4-Pro por defecto). Lanza si falta la key.
+
+    `reasoning_effort` por defecto es el global ("max"); el caller del pre-score lo
+    sobreescribe con `settings.prescore_reasoning_effort` (ver PRIORIDAD 1 en config.py).
+    """
     if not settings.openrouter_api_key:
         raise RuntimeError(
             "OPENROUTER_API_KEY no configurada. Ponla en backend/.env para usar el LLM."
@@ -27,6 +33,6 @@ def get_llm(model: str | None = None) -> LLMProvider:
         api_key=settings.openrouter_api_key,
         model=modelo,
         base_url=settings.openrouter_base_url,
-        reasoning_effort=settings.reasoning_effort,
+        reasoning_effort=reasoning_effort,
         provider_ignore=ignorar,
     )
