@@ -233,6 +233,120 @@ def prescore(llm: LLMProvider, data: NameData, macro_block: str, temperature: fl
                               raw=_recorte(raw))
 
 
+# ---------------------------------------------------------------------------------------------
+# Pre-score por LOTES — mismo juicio que `prescore()`, agrupando N tickers en una sola llamada.
+# Medido en vivo el 09/10-ago: la sobrecarga fija por llamada (cola del proveedor detrás del
+# alias, no generación — una sola empresa tardó de 2,5 a 49,5s) domina el reloj del pre-score
+# puro (~3.000 llamadas, ~85% del tiempo de un escaneo). Agrupar de 20 en 20 la amortiza: ~150
+# llamadas en vez de ~3.000, ~80-100s por lote limpio para 20 empresas.
+# ---------------------------------------------------------------------------------------------
+
+PRESCORE_BATCH_SYSTEM = (
+    "You are the first-pass TRIAGE of an equity research pipeline. You will be given SEVERAL "
+    "companies. For EACH one, INDEPENDENTLY, answer ONE question: how likely is it that a "
+    "rigorous deep fundamental analysis would find this company attractive for the next month? "
+    # Cláusula nueva frente al individual: el riesgo medido de agrupar varios nombres en un
+    # mismo prompt es que el juicio de uno "contamine" al siguiente (orden, comparación
+    # implícita) — se le pide EXPLÍCITAMENTE que no lo haga.
+    "Judge each company ONLY on its own fundamentals, valuation and news, weighed together. Do "
+    "NOT compare or rank the companies against each other, and do not let one company's news or "
+    "sector color your judgment of another. Do not raise or lower a score merely because of a "
+    "company's sector or its size; ask whether the news changes the earnings power or the "
+    "valuation case. A price move is not by itself a verdict in either direction: a fall does "
+    "not make a business weak, nor does a rally make it strong. Calibrate the scale: 90+ "
+    "exceptional (rare), 75-89 strong candidate for deep review, 50-74 unremarkable, <50 weak. "
+    "Use exactly two decimal places, and let those decimals carry real precision rather than "
+    "rounding to quarters or halves - e.g. 71.38, 84.61. "
+    'Respond ONLY in JSON: {"scores": [{"ticker": "<TICKER>", "score": <number 0-100, two '
+    'decimal places>}, ...]}. Example (illustrative tickers, NOT real data) for THREE '
+    "companies — respond the SAME way but for ALL companies listed below, one entry each, "
+    'omitting none: {"scores": [{"ticker": "ABCD", "score": 68.47}, {"ticker": "WXYZ", '
+    '"score": 91.02}, {"ticker": "QRST", "score": 34.19}]}.'
+)
+
+
+def _prescore_batch_prompt(items: list[NameData], macro_block: str) -> str:
+    partes = [f"Macro outlook: {macro_block}\n", "Companies (score each independently):\n"]
+    for i, d in enumerate(items, 1):
+        news = "; ".join(d.news) if d.news else "none"
+        name = f" ({d.name})" if d.name else ""
+        partes.append(
+            f"{i}. {d.ticker}{name} — {d.sector}/{d.industry}\n"
+            f"News: {news}\n"
+            f"Fundamentals:\n{d.fundamentals_text}\n"
+            f"Technical: {d.technical_text or 'n/d'}\n"
+        )
+    return "\n".join(partes)
+
+
+def _formato_degenerado(notas: list[float]) -> bool:
+    """True si ≥90% de las notas de un lote comparten el mismo patrón de UN SOLO decimal
+    (segundo decimal en cero) — estadísticamente casi imposible por azar si son notas de dos
+    decimales genuinas e independientes (≈10^-20 para 20/20). Medido en vivo el 09-ago: pasó en
+    1 de 2 lotes de prueba (20/20 con un solo decimal), justo el apelmazamiento que la migración
+    a dos decimales se hizo para evitar. Con menos de 5 notas el argumento estadístico no aplica."""
+    if len(notas) < 5:
+        return False
+    un_decimal = sum(1 for n in notas if round(n * 100) % 10 == 0)
+    return un_decimal / len(notas) >= 0.9
+
+
+def prescore_batch(
+    llm: LLMProvider, items: list[NameData], macro_block: str, temperature: float = 0.4,
+) -> dict[str, PrescoreResult]:
+    """Prescore de un LOTE en una sola llamada. Devuelve {ticker: PrescoreResult}.
+
+    A diferencia de `prescore()`/`score()`, el reintento vive AQUÍ DENTRO (hasta 2 extra, 3
+    intentos totales — mismo criterio que el resto) en vez de en el caller: la decisión de
+    reintentar depende de mirar el LOTE entero (JSON roto, tickers ausentes, formato degenerado),
+    no del error de un ticker suelto, así que no encaja en el patrón externo
+    `for _ in range(2): if not r.error: break` que usan las otras dos funciones. Si un ticker
+    concreto falta en una respuesta por lo demás válida, NO se reintenta el lote completo —
+    tirar 19 notas buenas por 1 ausente sale más caro que dejar esa sola con error.
+    """
+    wanted = {d.ticker for d in items}
+    user = _prescore_batch_prompt(items, macro_block)
+    raw = ""
+    notas: dict[str, float] = {}
+    for intento in range(3):
+        try:
+            raw = llm.chat(PRESCORE_BATCH_SYSTEM, user, temperature=temperature) or ""
+            obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+            filas = obj.get("scores")
+            if not isinstance(filas, list) or not filas:
+                raise ValueError("sin 'scores' o lista vacía")
+            notas = {}
+            for fila in filas:
+                t = str(fila.get("ticker", "")).strip().upper()
+                if t not in wanted or t in notas:
+                    continue
+                try:
+                    notas[t] = max(0.0, min(100.0, round(float(fila.get("score", 0)), 2)))
+                except (TypeError, ValueError):
+                    notas[t] = 0.0
+            if _formato_degenerado(list(notas.values())):
+                raise ValueError(f"formato degenerado: {len(notas)} notas, ≥90% con un solo "
+                                 "decimal — lote descartado y reintentado entero")
+            break
+        except Exception as exc:
+            logger.warning("Prescore por lote (%d empresas) intento %d/3 falló: %s (%r)",
+                           len(items), intento + 1, exc, raw[:400])
+            notas = {}
+    if not notas:
+        return {t: PrescoreResult(t, 0.0, error="lote no parseable/degenerado tras 3 intentos",
+                                  raw=_recorte(raw)) for t in wanted}
+
+    out: dict[str, PrescoreResult] = {}
+    for t in wanted:
+        if t not in notas:
+            out[t] = PrescoreResult(t, 0.0, error="ausente de la respuesta del lote")
+        elif notas[t] <= 0:
+            out[t] = PrescoreResult(t, 0.0, error="SinNota: score no utilizable en el lote")
+        else:
+            out[t] = PrescoreResult(t, notas[t])
+    return out
+
+
 def score(
     llm: LLMProvider, data: NameData, macro_block: str, prior_thesis: str | None = None,
     temperature: float = 0.6,

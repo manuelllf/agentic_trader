@@ -4,6 +4,9 @@ y test_autoexec.py) — nunca toca OpenRouter."""
 
 from __future__ import annotations
 
+import json
+import re
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -26,14 +29,26 @@ def db():
     session.close()
 
 
+def _scores_reply(user: str) -> str:
+    """Respuesta de prescore POR LOTE: extrae los tickers numerados del prompt
+    (`_prescore_batch_prompt`, líneas "N. TICKER ...") y les da nota fija. El prescore individual
+    ya no se usa en el pipeline principal, solo el profundo/capa media/constructor siguen
+    recibiendo `_FAKE_REPLY` tal cual."""
+    tickers = re.findall(r"^\d+\.\s+(\S+)", user, re.MULTILINE)
+    return json.dumps({"scores": [{"ticker": t, "score": 90.0} for t in tickers]})
+
+
 class FakeLLM:
-    """Una única respuesta JSON sirve a la vez de prescore, informe profundo, macro y
-    construcción — cada consumidor solo lee las claves que le importan (`dict.get`)."""
+    """Una única respuesta JSON sirve a la vez de informe profundo, macro y construcción — cada
+    consumidor solo lee las claves que le importan (`dict.get`). El prescore por lote se detecta
+    por el SYSTEM prompt (única llamada que menciona "SEVERAL companies") y responde aparte."""
 
     def __init__(self, reply: str) -> None:
         self._reply = reply
 
     def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+        if "SEVERAL companies" in system:
+            return _scores_reply(user)
         return self._reply
 
 
@@ -49,6 +64,8 @@ class FlakyLLM:
         self.calls += 1
         if self.calls == 1:
             return "esto no es json"
+        if "SEVERAL companies" in system:
+            return _scores_reply(user)
         return self._reply
 
 

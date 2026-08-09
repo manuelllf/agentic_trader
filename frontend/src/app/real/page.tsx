@@ -329,7 +329,7 @@ function SalaRealRoom() {
       {/* ---------- cabecera ---------- */}
       <header className="sticky top-0 z-40 border-b backdrop-blur"
               style={{ borderColor: T.ring, background: "rgba(13,13,13,0.92)" }}>
-        <div className="mx-auto flex h-11 max-w-[1500px] items-center justify-between gap-4 px-4 lg:px-6">
+        <div className="mx-auto flex h-auto max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:h-11 sm:flex-nowrap sm:py-0 lg:px-6">
           <div className="flex items-center gap-3">
             <button onClick={exit} className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
               ← Portada

@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime
 
 import yfinance as yf
 
@@ -212,36 +211,6 @@ _SYSTEM = (
 )
 
 
-def _previous_outlook_block(db) -> str:  # noqa: ANN001
-    """Bloque de memoria con la tesis macro del escaneo anterior (Meta "last_scan_report").
-
-    Hoy cada escaneo opinaba desde cero; con esto el modelo ve su propia tesis previa y se le
-    pide que diga qué cambió, igual que ya hace el scorer por nombre (`prior_thesis`). Best-effort
-    total: sin `db`, sin fila, con JSON roto, outlook vacío o fecha no parseable, el prompt debe
-    quedar EXACTAMENTE como sin memoria — nada de bloques vacíos ni "n/d" inventados.
-    """
-    if db is None:
-        return ""
-    from app.models import Meta
-
-    try:
-        row = db.get(Meta, "last_scan_report")
-        if not row:
-            return ""
-        prev = json.loads(row.value)
-        outlook = str(prev.get("outlook") or "").strip()
-        at = prev.get("at")
-        if not outlook or not at:
-            return ""
-        fecha = datetime.fromisoformat(at).date().isoformat()
-    except Exception:
-        return ""
-    return (
-        f"Your previous 3-month outlook, written on {fecha} (from our records):\n{outlook}\n\n"
-        "Assess explicitly what has changed since then."
-    )
-
-
 def get_macro_outlook(llm: LLMProvider, db=None) -> dict:  # noqa: ANN001
     """Outlook forward a 3 meses, con foco en el próximo (1 llamada V4-Pro). Cacheado por escaneo.
 
@@ -292,7 +261,6 @@ def get_macro_outlook(llm: LLMProvider, db=None) -> dict:  # noqa: ANN001
     }
     try:
         all_headlines = headlines + gdelt + gnews
-        prev_block = _previous_outlook_block(db)
         user = (
             f"Market snapshot:\n{snapshot}\n\n"
             f"Recent market headlines:\n" + "\n".join(f"- {h}" for h in all_headlines) + "\n\n"
@@ -300,7 +268,6 @@ def get_macro_outlook(llm: LLMProvider, db=None) -> dict:  # noqa: ANN001
             f"{wiki_events or 'n/d'}\n\n"
             f"Upcoming scheduled events (economic & political calendar):\n"
             f"{wiki_scheduled or 'n/d'}\n\n"
-            + (f"{prev_block}\n\n" if prev_block else "")
             + "Write the 3-month forward outlook, taking these events into account, with special "
               "attention to the next month."
         )

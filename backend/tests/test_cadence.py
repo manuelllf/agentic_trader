@@ -5,6 +5,7 @@ del mes o en los escaneos manuales."""
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -33,11 +34,19 @@ def db():
     session.close()
 
 
+def _scores_reply(user: str) -> str:
+    """Respuesta de prescore POR LOTE (ver mismo helper en test_escaneo_trazas.py)."""
+    tickers = re.findall(r"^\d+\.\s+(\S+)", user, re.MULTILINE)
+    return json.dumps({"scores": [{"ticker": t, "score": 90.0} for t in tickers]})
+
+
 class FakeLLM:
     def __init__(self, reply: str) -> None:
         self._reply = reply
 
     def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+        if "SEVERAL companies" in system:
+            return _scores_reply(user)
         return self._reply
 
 

@@ -9,14 +9,19 @@ Dos niveles:
 
 from __future__ import annotations
 
+import json
+import re
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app import execution_service, scan_service
-from app import models  # noqa: F401  (registra las tablas)
+from app import (
+    execution_service,
+    models,  # noqa: F401  (registra las tablas)
+    scan_service,
+)
 from app.db import Base
 from app.ledger import service as ledger
 from app.models import BOOK_SHADOW, Proposal, Trade
@@ -32,13 +37,17 @@ def db():
 
 
 class FakeLLM:
-    """Una única respuesta JSON que sirve a la vez de prescore, informe profundo, macro outlook
-    y construcción — cada consumidor solo lee las claves que le importan (`dict.get`)."""
+    """Una única respuesta JSON que sirve a la vez de informe profundo, macro outlook y
+    construcción — cada consumidor solo lee las claves que le importan (`dict.get`). El prescore
+    por lote se detecta por el SYSTEM prompt ("SEVERAL companies") y responde aparte."""
 
     def __init__(self, reply: str) -> None:
         self._reply = reply
 
     def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+        if "SEVERAL companies" in system:
+            tickers = re.findall(r"^\d+\.\s+(\S+)", user, re.MULTILINE)
+            return json.dumps({"scores": [{"ticker": t, "score": 90.0} for t in tickers]})
         return self._reply
 
 
@@ -192,11 +201,11 @@ def test_scan_failure_in_autoexec_never_fails_the_scan(db, monkeypatch) -> None:
     """Un fallo en la auto-ejecución (p. ej. el libro sombra revienta) no debe tirar el escaneo:
     los scores/propuesta ya persistidos siguen ahí."""
     from app import tracking
+    from app.models import Score
     from app.screener import fundamentals as fund_mod
     from app.screener import macro as macro_mod
     from app.screener import universe as universe_mod
     from app.screener.fundamentals import NameData
-    from app.models import Score
 
     fake_llm = FakeLLM(_FAKE_REPLY)
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: fake_llm)

@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     deep_top_caps: int = 10                              # las N mayores caps SIEMPRE al profundo
     deep_finalists_cap: int = 50                         # tope DURO de finalistas (coste V4-Pro)
     select_count: int = 10                               # nombres al constructor (paper: "top 10")
+    # Lote del pre-score (medido en vivo el 09/10-ago): agrupar N tickers en una sola llamada
+    # amortiza la sobrecarga fija por llamada (18,5-49s de una sola empresa, dominada por cola
+    # del proveedor detrás del alias, no por generación) entre las N — 2.997 llamadas individuales
+    # bajan a ~150 de 20. Probado en vivo con 20/20: limpio, sin JSON roto ni tickers ausentes.
+    # Riesgo medido y ya cubierto (ver `scorer.prescore_batch`): 1 de 2 lotes de prueba colapsó
+    # a un solo decimal en las 20 notas a la vez — guardarraíl estadístico + reintento del lote
+    # entero. Solo el pre-score puro; capa media y profundo se quedan individuales (muchas menos
+    # llamadas, no compensa la complejidad).
+    prescore_batch_size: int = 20
 
     # Guardarraíles del sleeve (LOCKED). Cartera de TAMAÑO FIJO (paper 15 assets → aquí 5).
     max_position_pct: float = 35.0  # % máximo por posición

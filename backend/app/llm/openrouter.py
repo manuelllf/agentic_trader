@@ -9,8 +9,20 @@ from __future__ import annotations
 
 import copy
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
+
+# Cinturón de seguridad AJENO a httpx, medido en vivo dos veces la noche del 09-ago (una llamada
+# individual y una de lote): el timeout de 60s de httpx (`self._timeout`, más abajo) NO SIEMPRE
+# SALTA — una llamada se quedó conectada a OpenRouter sin devolver nada 7+ minutos. Probable
+# goteo de keep-alive de alguno de los 24 proveedores detrás del alias, que resetea el reloj de
+# lectura de httpx sin completar nunca la respuesta. Este segundo reloj, por fuera de httpx y de
+# la librería, es el único que garantiza cortar la espera. 180s (no 60): un lote de 20 tickers
+# tarda ~80-100s limpio y NO hay reintento por ticker dentro de un lote — cortarlo demasiado
+# pronto tira 20 notas que iban a llegar bien. Si salta, cuenta como fallo de transporte normal
+# (el caller ya sabe reintentar), no bloquea nada.
+_HARD_TIMEOUT = 180.0
 
 # `deepseek/deepseek-v4-flash-0731` no es UN backend: OpenRouter enruta la misma llamada entre
 # 24 proveedores distintos detrás del alias (consultado vía GET
@@ -123,16 +135,37 @@ class OpenRouterProvider:
             payload["reasoning"] = {"effort": self._reasoning_effort}
         if self._provider_ignore:
             payload["provider"] = {"ignore": list(self._provider_ignore)}
-        with httpx.Client(timeout=self._timeout) as client:
-            resp = client.post(
-                f"{self._base_url}/chat/completions",
-                headers=self._headers,
-                json=payload,
-            )
-            resp.raise_for_status()
-            # Forzamos UTF-8: httpx a veces autodetecta cp1252 y destroza los acentos
-            # (el español salía "interÃ©s"). Decodificamos los bytes crudos como UTF-8.
-            data = json.loads(resp.content.decode("utf-8"))
+
+        def _pedir() -> bytes:
+            with httpx.Client(timeout=self._timeout) as client:
+                resp = client.post(
+                    f"{self._base_url}/chat/completions",
+                    headers=self._headers,
+                    json=payload,
+                )
+                resp.raise_for_status()
+                return resp.content
+
+        # Nada de `with ThreadPoolExecutor(...)`: su __exit__ hace shutdown(wait=True) y
+        # esperaría igualmente al hilo colgado, anulando el cinturón de seguridad. Se crea
+        # suelto; si `_HARD_TIMEOUT` salta, se abandona sin esperar a que termine.
+        ex = ThreadPoolExecutor(max_workers=1)
+        fut = ex.submit(_pedir)
+        try:
+            crudo = fut.result(timeout=_HARD_TIMEOUT)
+        except TimeoutError as exc:
+            ex.shutdown(wait=False)
+            raise TimeoutError(
+                f"Sin respuesta de OpenRouter en {_HARD_TIMEOUT:.0f}s (cinturón de seguridad, "
+                f"modelo {self._model})"
+            ) from exc
+        except Exception:
+            ex.shutdown(wait=False)
+            raise
+        ex.shutdown(wait=False)
+        # Forzamos UTF-8: httpx a veces autodetecta cp1252 y destroza los acentos
+        # (el español salía "interÃ©s"). Decodificamos los bytes crudos como UTF-8.
+        data = json.loads(crudo.decode("utf-8"))
         self._account(data.get("usage"))
         # `content` puede venir a NULL en una respuesta por lo demás válida (visto con
         # v4-pro). Devolver None hacía que el `except` del scorer petara al recortar la respuesta

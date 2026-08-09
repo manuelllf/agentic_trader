@@ -350,46 +350,48 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     if not macro.get("outlook"):
         issues.append("Outlook macro del LLM caído — se usó solo el régimen determinista.")
 
-    # 3) PASO 1 — pre-score rápido (Flash) de todos los nombres, en paralelo.
-    def _pre(ticker: str):
-        data = fund_mod.gather(ticker)
-        if data is None:
-            return None
-        p = scorer_mod.prescore(prescore_llm, data, macro_block)
-        # DOS reintentos, no uno: sobre 49 finalistas de un mismo escaneo, ~6 de cada 49
-        # fallaron al primer intento con `deepseek-v4-flash-0731` — no solo `content` vacío, sino
-        # JSON cortado a media frase o bucles de repetición degenerados. Un 429 de transporte y
-        # eso son indistinguibles a priori, así que la respuesta no es "confiar más", es
-        # reintentar más: la probabilidad de fallar 3 veces seguidas es mucho menor que de
-        # fallar 2. Ver también `provider_ignore` más abajo — reintentar y excluir backends van
-        # de la mano, uno reduce la probabilidad de que TOQUE un backend malo, el otro evita que
-        # vuelva a tocar el mismo.
-        for _ in range(2):
-            if not p.error:
-                break
-            p = scorer_mod.prescore(prescore_llm, data, macro_block)
-        return p, data
+    # 3) PASO 1 — pre-score rápido (Flash) de todos los nombres, en LOTES de
+    # `settings.prescore_batch_size` (antes: 1 llamada por ticker). Agrupar amortiza la
+    # sobrecarga fija por llamada (cola del proveedor detrás del alias, medida en vivo entre 2,5
+    # y 49,5s por UNA sola empresa) entre las N del lote — ~150 llamadas de 20 en vez de ~3.000
+    # sueltas. El reintento del lote (hasta 2 extra) vive DENTRO de `scorer.prescore_batch`, no
+    # aquí: la decisión de reintentar mira el lote entero (JSON roto, formato degenerado), no el
+    # error de un ticker suelto. Reunir los fundamentales sigue siendo 1 llamada por ticker
+    # (yfinance, gratis) — eso no se agrupa, solo las llamadas al LLM.
+    def _gather(ticker: str):
+        return ticker, fund_mod.gather(ticker)
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
-        results = list(ex.map(_pre, sample))          # orden preservado → zip con `sample`
-    prescored = [r for r in results if r is not None and r[0].score > 0]
+        gathered = list(ex.map(_gather, sample))
+    failed = [t for t, d in gathered if d is None]      # gather sin datos
+    if failed:
+        lista = ", ".join(failed[:8]) + ("…" if len(failed) > 8 else "")
+        issues.append(f"{len(failed)} nombre(s) sin datos de mercado: {lista}")
+    datos_ok = [d for _t, d in gathered if d is not None]
+
+    def _pre_lote(lote: list):
+        notas = scorer_mod.prescore_batch(prescore_llm, lote, macro_block)
+        return [(notas[d.ticker], d) for d in lote]
+
+    tam_lote = settings.prescore_batch_size
+    lotes = [datos_ok[i:i + tam_lote] for i in range(0, len(datos_ok), tam_lote)]
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
+        por_lote = list(ex.map(_pre_lote, lotes))
+    results = [par for lote_res in por_lote for par in lote_res]   # aplanado, 1 par por ticker
+
+    prescored = [r for r in results if r[0].score > 0]
     # Desempate por capitalización, el mismo criterio del paper que ya usan `select_top` y
     # `select_finalists`: si no, un empate de pre-score lo rompe el orden de llegada de la
     # muestra (se ha visto 7 nombres empatados en 84,5 disputándose 2 plazas).
     prescored.sort(key=lambda x: (-x[0].score, -(x[1].market_cap or 0.0)))
-    failed = [t for t, r in zip(sample, results, strict=True) if r is None]  # gather sin datos
-    if failed:
-        lista = ", ".join(failed[:8]) + ("…" if len(failed) > 8 else "")
-        issues.append(f"{len(failed)} nombre(s) sin datos de mercado: {lista}")
-    # Fallo de prescore = `p.error` (el LLM lo marca al no parsear ni tras el reintento). Van a
-    # la auditoría con stage="prescore_error": si no, desaparecen del embudo sin rastro (no
-    # están en `prescored`, ni en `failed`, ni en el ranking) — y un nombre de cartera caído
-    # aquí saldría del embudo entero sin que se notase por qué.
-    pre_errors = [(p, d) for p, d in (r for r in results if r) if p.error]
+    # Fallo de prescore = `p.error` (lote no parseable/degenerado tras 3 intentos, o ticker
+    # ausente en una respuesta por lo demás válida — ver `scorer.prescore_batch`). Van a la
+    # auditoría con stage="prescore_error": si no, desaparecen del embudo sin rastro.
+    pre_errors = [(p, d) for p, d in results if p.error]
     if pre_errors:
         detalle = ", ".join(f"{p.ticker}[{p.error.split(':')[0]}]" for p, _d in pre_errors[:8])
         extra = "…" if len(pre_errors) > 8 else ""
-        issues.append(f"{len(pre_errors)} pre-score(s) fallidos tras reintento: {detalle}{extra}")
+        issues.append(f"{len(pre_errors)} pre-score(s) fallidos: {detalle}{extra}")
 
     # Finalistas al profundo: top-2/sector (amplitud) ∪ top-15 global + posiciones + watchlist,
     # truncado a un tope duro. El corte YA NO es ciego al macro (el prescore lo ve entero), así
@@ -448,17 +450,21 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Memoria vectorial: `store` solo alimenta `remember()` al final del escaneo (el buscador
     # web). El recall que antes se inyectaba aquí como "tesis previa" se midió: llegaba a 19 de
     # 50 finalistas y a 12 de ESOS con recuerdo real el k=3 se lo tapaba — un tratamiento que
-    # caía al azar. La tesis previa del prompt viene AHORA solo de `prior` (watchlist/cartera).
+    # caía al azar.
+    # La tesis previa por nombre (watchlist/cartera) y el outlook macro anterior (ver `macro.py`)
+    # se quitaron del todo el 10-ago por fidelidad al paper: cada escaneo vuelve a juzgar desde
+    # cero, sin que su propia opinión anterior condicione la nueva. `prior`/`had_prior` se
+    # conservan solo como TELEMETRÍA de auditoría (`had_prior_thesis` en ScanAudit — "¿tenía
+    # tesis guardada disponible?", ya no "¿se usó?"); `Watchlist.thesis` sigue viva para la web.
     store = _memory_store()
     had_prior = {t for t in finalists if prior.get(t)}
 
     def _deep(ticker: str):
-        extra = prior.get(ticker)
-        r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, extra)
+        r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block)
         for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
             if not r.error:
                 break
-            r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, extra)
+            r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block)
         return r
 
     analizados: dict[str, scorer_mod.ScoreResult] = {}

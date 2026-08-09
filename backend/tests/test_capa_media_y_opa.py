@@ -68,14 +68,22 @@ def _gather_stub(monkeypatch, sectors: dict[str, str], target_high: dict[str, fl
 
 
 class ScoringLLM:
-    """Simula el prescore/capa-media: lee el ticker del prompt (primer token) y devuelve el
-    score que le corresponda. Registra qué tickers puntuó (para comprobar el carril de entrada)."""
+    """Simula el prescore/capa-media. La capa media (`mid_llm`) sigue siendo 1 ticker por
+    llamada (lee el primer token del prompt); el prescore puro (`prescore_llm`) ahora va por
+    LOTES — se detecta por el SYSTEM prompt ("SEVERAL companies") y responde con la lista
+    "scores" que espera `scorer.prescore_batch`. Registra qué tickers puntuó (para comprobar el
+    carril de entrada)."""
 
     def __init__(self, scores: dict[str, float]) -> None:
         self.scores = scores
         self.called: list[str] = []
 
     def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+        if "SEVERAL companies" in system:
+            tickers = re.findall(r"^\d+\.\s+(\S+)", user, re.MULTILINE)
+            self.called.extend(tickers)
+            return json.dumps({"scores": [{"ticker": t, "score": self.scores.get(t, 0)}
+                                          for t in tickers]})
         ticker = user.split()[0]
         self.called.append(ticker)
         return json.dumps({"score": self.scores.get(ticker, 0), "headline": f"pre-{ticker}"})
@@ -203,7 +211,9 @@ def test_la_capa_media_tiene_tope_duro_de_candidatos(db, monkeypatch) -> None:
     × los sectores que trajera yfinance ese día. Con el campo `sector` sucio, cada valor raro
     abriría su propio cupo de llamadas al modelo caro. El tope lo convierte en un recorte."""
     sectores = {f"T{i}": f"Sector{i}" for i in range(6)}   # 6 sectores → 6 candidatos sin tope
-    prescore = {t: 90.0 - i for i, t in enumerate(sectores)}
+    # Notas con decimales de verdad, no redondas: 6/6 en .0 dispara a propósito el guardarraíl
+    # de formato degenerado de `prescore_batch` (≥90% con un solo decimal se trata como fallo).
+    prescore = {t: round(89.87 - i * 1.13, 2) for i, t in enumerate(sectores)}
     _stub_common(monkeypatch)
     _stub_universo(monkeypatch, list(sectores))
     _gather_stub(monkeypatch, sectores)

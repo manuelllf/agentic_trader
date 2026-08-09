@@ -103,7 +103,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                   Cartera formada
                   {retornoPonderado != null && (
                     <span className="ml-2 font-normal normal-case" style={{ color: T.muted }}>
-                      · objetivo ponderado a 3 meses{" "}
+                      · objetivo ponderado a 1 mes{" "}
                       <b className={NUMS} style={{ color: retornoPonderado >= 0 ? T.good : T.bad }}>
                         {retornoPonderado >= 0 ? "+" : ""}{retornoPonderado.toFixed(1)}%
                       </b>
