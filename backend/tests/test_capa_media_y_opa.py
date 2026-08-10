@@ -62,7 +62,6 @@ def _gather_stub(monkeypatch, sectors: dict[str, str], target_high: dict[str, fl
     from app.screener.fundamentals import NameData
 
     th = target_high or {}
-    monkeypatch.setattr(fund_mod, "bulk_history", lambda tickers: {})
     monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None: (NameData(
         ticker=t, sector=sectors[t], industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9,

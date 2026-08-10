@@ -375,13 +375,12 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # en producción, el mismo ~82% de la muestra sin datos con 8 hilos que con 20. El bloqueo de
     # Yahoo depende del VOLUMEN de la ráfaga (~3 peticiones/ticker × toda la muestra en pocos
     # minutos), no de cuántas van a la vez, así que se vuelve a `_MAX_WORKERS` sin más — más
-    # rápido, mismo resultado. Histórico de precios agrupado aparte (`bulk_history`, abajo): es
-    # la única de las tres peticiones que SÍ se puede agrupar de verdad, quita un tercio del
-    # volumen total antes de que la ráfaga siquiera empiece.
-    hist_bulk = fund_mod.bulk_history(sample)
-
+    # rápido, mismo resultado. (`yf.download()` para agrupar el histórico se probó y se REVIRTIÓ
+    # el mismo día: su pool interno de hilos agotó el límite del contenedor —
+    # "getaddrinfo() thread failed to start" — y de todas formas Yahoo no tiene un endpoint de
+    # verdad agrupado para el histórico tampoco, solo paraleliza la misma cantidad de peticiones.)
     def _gather(ticker: str):
-        data, err = fund_mod.gather(ticker, db=db, hist=hist_bulk.get(ticker))
+        data, err = fund_mod.gather(ticker, db=db)
         return ticker, data, err
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
