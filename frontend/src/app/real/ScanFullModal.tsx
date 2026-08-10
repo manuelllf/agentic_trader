@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getScanFull, type ScanFull, type ScanFullFinalist } from "@/lib/api";
 import { fmtScore, fmtTime, money } from "@/lib/format";
+import { richText } from "@/lib/richText";
 import { NUMS, T } from "./tokens";
 
 export function ScanFullButton() {
@@ -87,14 +88,14 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
               {scan.outlook && (
                 <div className="mt-3">
                   <SectionTitle>Tesis macro</SectionTitle>
-                  <p className="mt-1 whitespace-pre-wrap leading-relaxed" style={{ color: T.ink2 }}>{scan.outlook}</p>
+                  <p className="mt-1 whitespace-pre-wrap leading-relaxed" style={{ color: T.ink2 }}>{richText(scan.outlook)}</p>
                 </div>
               )}
 
               {scan.construction.summary && (
                 <div className="mt-3">
                   <SectionTitle>Tesis del constructor</SectionTitle>
-                  <p className="mt-1 whitespace-pre-wrap leading-relaxed" style={{ color: T.ink2 }}>{scan.construction.summary}</p>
+                  <p className="mt-1 whitespace-pre-wrap leading-relaxed" style={{ color: T.ink2 }}>{richText(scan.construction.summary)}</p>
                 </div>
               )}
 
@@ -141,9 +142,9 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                 {posiciones.map((p) => (p.thesis || p.edge || p.risk) && (
                   <div key={`${p.ticker}-tesis`} className="mt-1.5 rounded border px-2.5 py-1.5" style={{ borderColor: T.grid }}>
                     <b style={{ color: T.ink }}>{p.ticker}</b>
-                    {p.thesis && <p className="mt-0.5" style={{ color: T.ink2 }}>{p.thesis}</p>}
-                    {p.edge && <p className="mt-0.5" style={{ color: T.muted }}><i>edge:</i> {p.edge}</p>}
-                    {p.risk && <p className="mt-0.5" style={{ color: T.muted }}><i>riesgo:</i> {p.risk}</p>}
+                    {p.thesis && <p className="mt-0.5" style={{ color: T.ink2 }}>{richText(p.thesis)}</p>}
+                    {p.edge && <p className="mt-0.5" style={{ color: T.muted }}><i>edge:</i> {richText(p.edge)}</p>}
+                    {p.risk && <p className="mt-0.5" style={{ color: T.muted }}><i>riesgo:</i> {richText(p.risk)}</p>}
                   </div>
                 ))}
                 <p className="mt-1 text-[10.5px]" style={{ color: T.muted }}>

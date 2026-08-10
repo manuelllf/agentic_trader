@@ -55,6 +55,9 @@ from app.screener import universe as universe_mod
 logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 20
+# Ver comentario en `_gather` (paso 3): separado de `_MAX_WORKERS` a propósito, es la palanca
+# contra el bloqueo del crumb de Yahoo, no contra la latencia del LLM.
+_GATHER_WORKERS = 8
 _CURSOR_KEY = "scan_cursor"   # offset persistido de la ventana rotatoria del semanal
 _REPORT_KEY = "last_scan_report"   # informe del último escaneo (JSON en Meta; ver /scan/report)
 
@@ -278,10 +281,17 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     else:
         n = settings.scan_sample_size
 
-    # 1) Nombres a analizar: posiciones + watchlist (siempre) + el universo (entero por defecto).
+    # 1) Nombres a analizar: posiciones + watchlist + cartera personal (siempre) + el universo
+    # (entero por defecto). La cartera personal (`always_deep_tickers`) es SOLO para que
+    # Manuel vea la opinión del sistema sobre sus tickers — entran garantizados a fondo (carril
+    # "seguimiento" en `select_finalists`) pero compiten en igualdad en la selección, sin veto ni
+    # ventaja; no implica nada sobre la cartera del AGENTE ni toca sus posiciones personales de
+    # IBKR (`PersonalPosition`, totalmente aparte).
     held = {p.ticker: p for p in ledger.open_positions(db)}
     watch = set(watchlist_mod.tickers(db))
-    always = list(held.keys()) + [t for t in watch if t not in held]
+    personal = list(settings.always_deep_tickers)
+    always = (list(held.keys()) + [t for t in watch if t not in held]
+             + [t for t in personal if t not in held and t not in watch])
     # Muestra semanal = ventana ROTATORIA (offset persistido) para tejer el universo sin repetir;
     # el mensual (n=None) coge el universo entero y no mueve el cursor.
     # El universo sale de la FOTO del último cierre: el volumen de NASDAQ es el acumulado de la
@@ -358,16 +368,24 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # aquí: la decisión de reintentar mira el lote entero (JSON roto, formato degenerado), no el
     # error de un ticker suelto. Reunir los fundamentales sigue siendo 1 llamada por ticker
     # (yfinance, gratis) — eso no se agrupa, solo las llamadas al LLM.
+    # Concurrencia PROPIA para el gather, más baja que `_MAX_WORKERS` (LLM): medido en dos
+    # escaneos reales, 20 hilos × 3 peticiones/ticker (`.info`+`.history`+`.news`) dispararon un
+    # bloqueo del crumb de autenticación de Yahoo (401 masivo, no rate-limit clásico) — 2.400-
+    # 2.500 de 3.000 nombres sin datos de golpe. Menos peticiones simultáneas, menos presión
+    # sobre ese bloqueo; a cambio, este paso tarda más.
     def _gather(ticker: str):
-        return ticker, fund_mod.gather(ticker)
+        data, err = fund_mod.gather(ticker, db=db)
+        return ticker, data, err
 
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
+    with ThreadPoolExecutor(max_workers=_GATHER_WORKERS) as ex:
         gathered = list(ex.map(_gather, sample))
-    failed = [t for t, d in gathered if d is None]      # gather sin datos
+    failed = [t for t, d, _e in gathered if d is None]      # gather sin datos
     if failed:
         lista = ", ".join(failed[:8]) + ("…" if len(failed) > 8 else "")
         issues.append(f"{len(failed)} nombre(s) sin datos de mercado: {lista}")
-    datos_ok = [d for _t, d in gathered if d is not None]
+    # Motivo real por ticker (antes se tragaba entero) — va a `ScanRun.failures` con el resto.
+    gather_errors = [(t, e) for t, d, e in gathered if d is None and e]
+    datos_ok = [d for _t, d, _e in gathered if d is not None]
 
     def _pre_lote(lote: list):
         notas = scorer_mod.prescore_batch(prescore_llm, lote, macro_block)
@@ -443,8 +461,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     per_sector = settings.deep_per_sector_mid if mid_scores else settings.deep_per_sector
     finalists, lanes = portfolio.select_finalists(
         prescored, set(held), watchlist_mod.top(db, settings.deep_watchlist),
-        per_sector, settings.deep_finalists, settings.deep_finalists_cap,
-        top_caps=settings.deep_top_caps, mid_scores=mid_scores)
+        per_sector, settings.deep_finalists_cap,
+        top_caps=settings.deep_top_caps, mid_scores=mid_scores, tracked=personal)
 
     # 4) PASO 2 — informe PROFUNDO (V4-Pro) + price target solo en los finalistas.
     # Memoria vectorial: `store` solo alimenta `remember()` al final del escaneo (el buscador
@@ -452,8 +470,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # 50 finalistas y a 12 de ESOS con recuerdo real el k=3 se lo tapaba — un tratamiento que
     # caía al azar.
     # La tesis previa por nombre (watchlist/cartera) y el outlook macro anterior (ver `macro.py`)
-    # se quitaron del todo el 10-ago por fidelidad al paper: cada escaneo vuelve a juzgar desde
-    # cero, sin que su propia opinión anterior condicione la nueva. `prior`/`had_prior` se
+    # se quitaron del todo por fidelidad al paper: cada escaneo vuelve a juzgar desde cero, sin
+    # que su propia opinión anterior condicione la nueva. `prior`/`had_prior` se
     # conservan solo como TELEMETRÍA de auditoría (`had_prior_thesis` en ScanAudit — "¿tenía
     # tesis guardada disponible?", ya no "¿se usó?"); `Watchlist.thesis` sigue viva para la web.
     store = _memory_store()
@@ -646,11 +664,15 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             + ([f"salen {_lista(salen)}"] if salen else [])
         changes.append(f"Ranking ({len(deep)} a fondo): " + " · ".join(partes))
     watch_now = set(watchlist_mod.tickers(db))
-    # El badge del ranking se estampó ANTES de actualizar y limpiar la watchlist, así que iba un
-    # escaneo por detrás (marcaba en seguimiento nombres ya comprados o ya caducados). Se re-sella
-    # contra la watchlist REAL de después.
+    # El badge del ranking (`held` y `on_watchlist`) se estampó ANTES de ejecutar los trades de
+    # este escaneo y de actualizar/limpiar la watchlist, así que iba un escaneo por detrás
+    # (marcaba en seguimiento nombres ya comprados o ya caducados, y no en cartera lo que este
+    # mismo escaneo acababa de comprar). Se re-sella contra el estado REAL de después: `held`
+    # llevaba el mismo desfase que `on_watchlist` y solo este último se corregía.
+    held_now = {p.ticker for p in ledger.open_positions(db)}
     for s in db.query(Score).all():
         s.on_watchlist = s.ticker in watch_now
+        s.held = s.ticker in held_now
     db.commit()
 
     w_in = sorted(watch_now - prev_watch)
@@ -721,8 +743,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                      "selected": len(selected), "positions": len(construction.positions)},
             cost=result["cost"], issues=issues,
             failures=(
-                [{"ticker": p.ticker, "etapa": "prescore", "error": p.error, "raw": p.raw}
-                 for p, _d in pre_errors]
+                [{"ticker": t, "etapa": "gather", "error": e, "raw": None}
+                 for t, e in gather_errors]
+                + [{"ticker": p.ticker, "etapa": "prescore", "error": p.error, "raw": p.raw}
+                   for p, _d in pre_errors]
                 + [{"ticker": t, "etapa": "profundo", "error": analizados[t].error,
                     "raw": analizados[t].raw} for t in deep_caidos]
             ),
@@ -811,7 +835,7 @@ def redeep(db: Session) -> dict:
     macro_block = macro_mod.outlook_prompt_block(macro)
 
     def _one(ticker: str):
-        data = fund_mod.gather(ticker)
+        data, _err = fund_mod.gather(ticker, db=db)
         if data is None:
             return None
         return data, scorer_mod.score(deep_llm, data, macro_block)   # re-eval limpia, sin prior

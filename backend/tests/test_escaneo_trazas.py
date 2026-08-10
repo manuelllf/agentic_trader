@@ -96,6 +96,10 @@ def _stub_common(monkeypatch, llm, symbols: list[str]) -> None:
 
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: llm)
     monkeypatch.setattr(scan_service, "_memory_store", lambda: None)  # memoria fuera (embeddings)
+    # Sin esto, los 4 tickers reales de `always_deep_tickers` (MSFT/HUMA/ASTS/BTC-USD, no
+    # mockeados) se comen el `sample_size` diminuto de estos tests y el ticker que el test SÍ
+    # controla desaparece de la muestra. Producción usa universos de miles, ahí no pasa.
+    monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])
     _stub_universo(monkeypatch, symbols)
     monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None: {
         "regime": "neutral", "vix": 15.0, "outlook": "estable",
@@ -110,11 +114,11 @@ def _gather_stub(monkeypatch, sector: str = "Technology", news: list | None = No
     from app.screener import fundamentals as fund_mod
     from app.screener.fundamentals import NameData
 
-    monkeypatch.setattr(fund_mod, "gather", lambda t: NameData(
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None: (NameData(
         ticker=t, sector=sector, industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9,
         news=news if news is not None else [],
-    ))
+    ), None))
 
 
 # ---- entry_lane + had_prior_thesis en la traza --------------------------------

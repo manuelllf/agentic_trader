@@ -57,8 +57,9 @@ def top_por_sector(prescored: list, n: int) -> list[str]:
 
 
 def select_finalists(
-    prescored: list, held: set, watch: list, per_sector: int, global_n: int,
+    prescored: list, held: set, watch: list, per_sector: int,
     cap: int, top_caps: int = 0, mid_scores: dict[str, float] | None = None,
+    tracked: list[str] | None = None,
 ) -> tuple[list[str], dict[str, str]]:
     """Corte de finalistas al profundo: amplitud por sector + mejores globales, con tope duro.
 
@@ -67,9 +68,17 @@ def select_finalists(
     la mayor capitalización y no el orden de llegada de la muestra (fiel al paper; se ha visto
     7 nombres empatados en 84,5 disputando 2 plazas). El corte combina top-`per_sector` por
     sector vía `top_por_sector` (para que el profundo VEA cada sector, no un mandato de
-    diversificar) ∪ top-`global_n` global ∪ las `top_caps` mayores capitalizaciones (carril de
-    rescate OBJETIVO: en el paper el modelo grande puntúa todos los grandes; el pre-score barato
-    no puede vetarlos). La selección FINAL de cartera sigue siendo puro score.
+    diversificar) ∪ el resto por orden de score (el carril "global") ∪ las `top_caps` mayores
+    capitalizaciones (carril de rescate OBJETIVO: en el paper el modelo grande puntúa todos los
+    grandes; el pre-score barato no puede vetarlos). La selección FINAL de cartera sigue siendo
+    puro score.
+
+    El carril "global" YA NO tiene un tope propio (existía `deep_finalists`, quitado): era
+    puramente redundante con `cap` — solo podía RECORTAR de más nunca ayudar, porque
+    cualquier valor por debajo de `cap` limitaba el global sin motivo y cualquier valor por
+    encima no hacía nada que `cap` no hiciera ya solo. Ahora el global aporta TODO lo que le
+    sobre de hueco tras los demás carriles, en orden de nota, hasta que `cap` corta — un único
+    número gobierna el tamaño del embudo, no dos que se pisaban.
 
     `mid_scores`, si viene, sustituye el criterio del carril GLOBAL: se ordena por ese diccionario
     (desempate por market cap) y solo entran tickers presentes en él. Motivo: el prescore barato
@@ -86,8 +95,14 @@ def select_finalists(
     (Antes el orden era el inverso — la watchlist caía primero, contradiciendo el
     "SIEMPRE al profundo" de la config justo en los mensuales, donde el tope sí muerde.)
 
+    `tracked`: tickers que SIEMPRE llegan al profundo por pedido explícito (hoy, la
+    cartera personal de Manuel — ver `settings.always_deep_tickers`) — no para tratarlos
+    distinto en la selección (compiten en igualdad en `select_top`, sin veto ni ventaja), solo
+    para GARANTIZAR que se analizan. Carril propio "seguimiento", justo detrás de "posicion":
+    igual de incondicional, la diferencia es el motivo por el que están garantizados.
+
     Devuelve (finalistas, carriles) donde `carriles[ticker]` es el PRIMER grupo que lo metió:
-    "posicion", "watchlist", "caps", "sector" o "global".
+    "posicion", "seguimiento", "watchlist", "caps", "sector" o "global".
     """
     prescored = sorted(prescored, key=lambda pd: (-pd[0].score, -(pd[1].market_cap or 0.0)))
     ranked = [p.ticker for p, _d in prescored]
@@ -98,20 +113,26 @@ def select_finalists(
     if mid_scores:
         mid_present = [(p, d) for p, d in prescored if p.ticker in mid_scores]
         mid_present.sort(key=lambda pd: (-mid_scores[pd[0].ticker], -(pd[1].market_cap or 0.0)))
-        global_top = [p.ticker for p, _d in mid_present[:global_n]]
+        global_top = [p.ticker for p, _d in mid_present]      # sin tope propio, ver docstring
     else:
-        global_top = ranked[:global_n]
+        global_top = ranked
 
     held_in = [t for t in ranked if t in held]          # solo las presentes, en orden de score
     by_cap = sorted(prescored, key=lambda pd: -(pd[1].market_cap or 0.0))
     caps_in = [p.ticker for p, _d in by_cap[:top_caps]]
     watch_in = [t for t in watch if t in present]
+    tracked_in = [t for t in (tracked or []) if t in present]
 
     carriles: dict[str, str] = {}
     ordered: list[str] = []
-    for nombre, group in (("posicion", held_in), ("watchlist", watch_in), ("caps", caps_in),
+    for nombre, group in (("posicion", held_in), ("seguimiento", tracked_in),
+                          ("watchlist", watch_in), ("caps", caps_in),
                           ("sector", core), ("global", global_top)):
+        if len(ordered) >= cap:
+            break   # "global" ya no trae su propio tope — puede ser el universo entero
         for t in group:
+            if len(ordered) >= cap:
+                break
             if t not in ordered:
                 ordered.append(t)
                 carriles[t] = nombre

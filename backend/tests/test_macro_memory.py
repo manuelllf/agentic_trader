@@ -1,8 +1,8 @@
-"""Restos del lote de cambios de prompts del 3-ago: el test del "cash_pct fuera del prompt del
+"""Restos de un lote de cambios de prompts: el test del "cash_pct fuera del prompt del
 constructor" vive aquí y no en test_ranker para que el commit que lo lleva sea autocontenido.
 
 La memoria macro (outlook anterior inyectado como "qué cambió desde entonces") se quitó del
-todo el 10-ago por fidelidad al paper — igual que la tesis previa por nombre en el scorer
+todo por fidelidad al paper — igual que la tesis previa por nombre en el scorer
 (ver `scan_service.py`). Sus tests vivían aquí; se retiraron con la propia función.
 """
 

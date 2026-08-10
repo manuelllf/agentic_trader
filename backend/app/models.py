@@ -49,6 +49,23 @@ class Watchlist(Base):
     last_high: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class FundamentalsCache(Base):
+    """Caché de `screener.fundamentals.gather()` — TTL 12h (ver `_FUND_CACHE_TTL_H`).
+
+    Motivo: dos escaneos completos del universo en la misma noche dispararon un 401
+    "Invalid Crumb" masivo de Yahoo (bloqueo de autenticación bajo carga, no rate-limit
+    clásico) — 2.400-2.500 de 3.000 nombres sin datos de golpe. Repetir tests el mismo día
+    multiplica la exposición. Con la caché, un segundo test dentro de las 12h reutiliza los
+    datos del primero en vez de volver a pedirle 9.000 peticiones a Yahoo (3 por ticker:
+    `.info`+`.history`+`.news`). No arregla la causa raíz, reduce cuánto se dispara."""
+
+    __tablename__ = "fundamentals_cache"
+
+    ticker: Mapped[str] = mapped_column(String(16), primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    data: Mapped[dict] = mapped_column(JSON)   # dataclasses.asdict(NameData), reconstruible
+
+
 class Score(Base):
     """Score de un nombre en un escaneo (para el leaderboard + drill-down del informe)."""
 

@@ -156,13 +156,14 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
     fake_llm = FakeLLM(_FAKE_REPLY)
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: fake_llm)
     monkeypatch.setattr(scan_service, "_memory_store", lambda: None)  # memoria fuera del test (embeddings)
+    monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
     monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
         ["AAA"], {"fuente": "cierre", "at": "2026-07-27T20:30:00+00:00", "dias": 0, "size": 1}))
-    monkeypatch.setattr(fund_mod, "gather", lambda t: NameData(
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None: (NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
-    ))
+    ), None))
     monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None: {
         "regime": "neutral", "vix": 15.0, "outlook": "estable",
         "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
@@ -210,13 +211,14 @@ def test_scan_failure_in_autoexec_never_fails_the_scan(db, monkeypatch) -> None:
     fake_llm = FakeLLM(_FAKE_REPLY)
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: fake_llm)
     monkeypatch.setattr(scan_service, "_memory_store", lambda: None)  # memoria fuera del test (embeddings)
+    monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
     monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
         ["AAA"], {"fuente": "cierre", "at": "2026-07-27T20:30:00+00:00", "dias": 0, "size": 1}))
-    monkeypatch.setattr(fund_mod, "gather", lambda t: NameData(
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None: (NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
-    ))
+    ), None))
     monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None: {
         "regime": "neutral", "vix": 15.0, "outlook": "estable",
         "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",

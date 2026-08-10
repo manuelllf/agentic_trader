@@ -53,6 +53,7 @@ def _stub_common(monkeypatch) -> None:
     monkeypatch.setattr(tracking, "live_prices", lambda tickers: dict.fromkeys(tickers, 100.0))
     monkeypatch.setattr(scan_service.settings, "max_position_pct", 100.0)
     monkeypatch.setattr(scan_service.settings, "min_positions", 1)
+    monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
 
 
 def _gather_stub(monkeypatch, sectors: dict[str, str], target_high: dict[str, float] | None = None):
@@ -60,11 +61,11 @@ def _gather_stub(monkeypatch, sectors: dict[str, str], target_high: dict[str, fl
     from app.screener.fundamentals import NameData
 
     th = target_high or {}
-    monkeypatch.setattr(fund_mod, "gather", lambda t: NameData(
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None: (NameData(
         ticker=t, sector=sectors[t], industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9,
         news=[], target_high=th.get(t),
-    ))
+    ), None))
 
 
 class ScoringLLM:
@@ -155,7 +156,7 @@ def test_capa_media_repuntua_top_por_sector_y_manda_en_el_carril_global(db, monk
     monkeypatch.setattr(scan_service.settings, "deep_per_sector_mid", 0)
     monkeypatch.setattr(scan_service.settings, "deep_top_caps", 0)
     monkeypatch.setattr(scan_service.settings, "deep_watchlist", 0)
-    monkeypatch.setattr(scan_service.settings, "deep_finalists", 1)
+    monkeypatch.setattr(scan_service.settings, "deep_finalists_cap", 1)
 
     result = scan_service.run_scan_and_store(db, sample_size=4, decide=True)
 
@@ -176,7 +177,7 @@ def test_capa_media_desactivada_usa_el_pre_score_crudo_como_antes(db, monkeypatc
     monkeypatch.setattr(scan_service.settings, "deep_per_sector", 0)
     monkeypatch.setattr(scan_service.settings, "deep_top_caps", 0)
     monkeypatch.setattr(scan_service.settings, "deep_watchlist", 0)
-    monkeypatch.setattr(scan_service.settings, "deep_finalists", 1)
+    monkeypatch.setattr(scan_service.settings, "deep_finalists_cap", 1)
 
     result = scan_service.run_scan_and_store(db, sample_size=4, decide=True)
 
@@ -199,7 +200,7 @@ def test_observatorio_no_paga_la_capa_media(db, monkeypatch) -> None:
     monkeypatch.setattr(scan_service.settings, "deep_per_sector", 0)
     monkeypatch.setattr(scan_service.settings, "deep_top_caps", 0)
     monkeypatch.setattr(scan_service.settings, "deep_watchlist", 0)
-    monkeypatch.setattr(scan_service.settings, "deep_finalists", 1)
+    monkeypatch.setattr(scan_service.settings, "deep_finalists_cap", 1)
 
     scan_service.run_scan_and_store(db, sample_size=4, decide=False)
 
@@ -226,7 +227,7 @@ def test_la_capa_media_tiene_tope_duro_de_candidatos(db, monkeypatch) -> None:
     monkeypatch.setattr(scan_service.settings, "deep_per_sector_mid", 0)
     monkeypatch.setattr(scan_service.settings, "deep_top_caps", 0)
     monkeypatch.setattr(scan_service.settings, "deep_watchlist", 0)
-    monkeypatch.setattr(scan_service.settings, "deep_finalists", 1)
+    monkeypatch.setattr(scan_service.settings, "deep_finalists_cap", 1)
 
     scan_service.run_scan_and_store(db, sample_size=6, decide=True)
 

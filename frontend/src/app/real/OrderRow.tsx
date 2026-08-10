@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { fmtScore, fmtTime, money } from "@/lib/format";
+import { richText } from "@/lib/richText";
 import type { Approval } from "@/lib/types";
 import { NUMS, T } from "./tokens";
 import { DetailLine, SideTag, Td } from "./ui";
@@ -89,10 +90,10 @@ export function OrderRow({ a, dry, onDecide, expiryDays }: {
         <tr style={{ background: "rgba(255,255,255,0.02)" }}>
           <Td colSpan={8}>
             <div className="max-w-[900px] space-y-1.5 whitespace-normal py-1 text-[12.5px] leading-relaxed">
-              {a.thesis && <DetailLine k="Tesis" v={a.thesis} />}
-              {a.edge && <DetailLine k="Ventaja" v={a.edge} />}
-              {a.risk && <DetailLine k="Riesgo" v={a.risk} color={T.warn} />}
-              {a.macro_summary && <DetailLine k="Macro" v={a.macro_summary} dim />}
+              {a.thesis && <DetailLine k="Tesis" v={richText(a.thesis)} />}
+              {a.edge && <DetailLine k="Ventaja" v={richText(a.edge)} />}
+              {a.risk && <DetailLine k="Riesgo" v={richText(a.risk)} color={T.warn} />}
+              {a.macro_summary && <DetailLine k="Macro" v={richText(a.macro_summary)} dim />}
               <p className="text-[11px]" style={{ color: T.muted }}>
                 Propuesta {fmtTime(a.created_at)} · caduca{" "}
                 {a.created_at

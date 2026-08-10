@@ -75,7 +75,7 @@ export function SideTag({ action }: { action: TradeAction }) {
   );
 }
 
-export function DetailLine({ k, v, color, dim }: { k: string; v: string; color?: string; dim?: boolean }) {
+export function DetailLine({ k, v, color, dim }: { k: string; v: React.ReactNode; color?: string; dim?: boolean }) {
   return (
     <p style={{ color: dim ? T.muted : T.ink2 }}>
       <span className="mr-1.5 font-bold" style={{ color: color ?? T.ink }}>{k}:</span>

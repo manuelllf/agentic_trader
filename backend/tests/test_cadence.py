@@ -79,11 +79,12 @@ def _stub_scan(monkeypatch) -> None:
 
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: FakeLLM(_FAKE_REPLY))
     monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
+    monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
     _stub_universo(monkeypatch, ["AAA"])
-    monkeypatch.setattr(fund_mod, "gather", lambda t: NameData(
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None: (NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
-    ))
+    ), None))
     monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None: {
         "regime": "neutral", "vix": 15.0, "outlook": "estable",
         "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
@@ -231,10 +232,12 @@ def test_scan_report_records_issues(db, monkeypatch) -> None:
 
     _stub_scan(monkeypatch)
     _stub_universo(monkeypatch, ["AAA", "BBB"])
-    monkeypatch.setattr(fund_mod, "gather", lambda t: None if t == "BBB" else NameData(
-        ticker=t, sector="Technology", industry="Software", price=100.0,
-        fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
-    ))
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None: (None, "sin datos") if t == "BBB"
+                        else (NameData(
+                            ticker=t, sector="Technology", industry="Software", price=100.0,
+                            fundamentals_text="- P/E: 20", technical_text="RSI 55",
+                            market_cap=5e9, news=[],
+                        ), None))
     ledger.allocate(db, 1000)
 
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)

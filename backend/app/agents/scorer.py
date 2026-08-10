@@ -235,7 +235,7 @@ def prescore(llm: LLMProvider, data: NameData, macro_block: str, temperature: fl
 
 # ---------------------------------------------------------------------------------------------
 # Pre-score por LOTES — mismo juicio que `prescore()`, agrupando N tickers en una sola llamada.
-# Medido en vivo el 09/10-ago: la sobrecarga fija por llamada (cola del proveedor detrás del
+# Medido en vivo: la sobrecarga fija por llamada (cola del proveedor detrás del
 # alias, no generación — una sola empresa tardó de 2,5 a 49,5s) domina el reloj del pre-score
 # puro (~3.000 llamadas, ~85% del tiempo de un escaneo). Agrupar de 20 en 20 la amortiza: ~150
 # llamadas en vez de ~3.000, ~80-100s por lote limpio para 20 empresas.
@@ -282,7 +282,7 @@ def _prescore_batch_prompt(items: list[NameData], macro_block: str) -> str:
 def _formato_degenerado(notas: list[float]) -> bool:
     """True si ≥90% de las notas de un lote comparten el mismo patrón de UN SOLO decimal
     (segundo decimal en cero) — estadísticamente casi imposible por azar si son notas de dos
-    decimales genuinas e independientes (≈10^-20 para 20/20). Medido en vivo el 09-ago: pasó en
+    decimales genuinas e independientes (≈10^-20 para 20/20). Medido en vivo: pasó en
     1 de 2 lotes de prueba (20/20 con un solo decimal), justo el apelmazamiento que la migración
     a dos decimales se hizo para evitar. Con menos de 5 notas el argumento estadístico no aplica."""
     if len(notas) < 5:
@@ -325,8 +325,16 @@ def prescore_batch(
                 except (TypeError, ValueError):
                     notas[t] = 0.0
             if _formato_degenerado(list(notas.values())):
-                raise ValueError(f"formato degenerado: {len(notas)} notas, ≥90% con un solo "
-                                 "decimal — lote descartado y reintentado entero")
+                # Medido en producción (dos escaneos reales): reintentar el lote NO arregla el
+                # formato de forma fiable — un mismo lote pasó de un decimal (intento
+                # 1) a un decimal otra vez (intento 2) a CERO decimales (intento 3), cada vez
+                # peor. El coste de reintentar (hasta ×3 llamadas) no compraba nada, y cuando los
+                # 3 intentos fallaban se perdían los 20 nombres enteros — peor que aceptar la
+                # nota con menos precisión. Se acepta y se avisa; ya no se descarta ni reintenta
+                # solo por esto. El desempate más grosero en el corte de finalistas (por market
+                # cap) es el mismo mecanismo que el paper ya prevé como caso raro.
+                logger.warning("Prescore por lote (%d empresas): formato degenerado (≥90%% con "
+                               "un solo decimal) — se acepta igual, no se reintenta", len(items))
             break
         except Exception as exc:
             logger.warning("Prescore por lote (%d empresas) intento %d/3 falló: %s (%r)",

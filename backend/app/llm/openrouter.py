@@ -13,8 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
-# Cinturón de seguridad AJENO a httpx, medido en vivo dos veces la noche del 09-ago (una llamada
-# individual y una de lote): el timeout de 60s de httpx (`self._timeout`, más abajo) NO SIEMPRE
+# Cinturón de seguridad AJENO a httpx, medido en vivo dos veces (una llamada individual y una
+# de lote): el timeout de 60s de httpx (`self._timeout`, más abajo) NO SIEMPRE
 # SALTA — una llamada se quedó conectada a OpenRouter sin devolver nada 7+ minutos. Probable
 # goteo de keep-alive de alguno de los 24 proveedores detrás del alias, que resetea el reloj de
 # lectura de httpx sin completar nunca la respuesta. Este segundo reloj, por fuera de httpx y de

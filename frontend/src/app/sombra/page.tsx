@@ -47,6 +47,7 @@ import type {
 } from "@/lib/types";
 import RealDoor from "@/components/RealDoor";
 import { fmtScore, fmtTime, money } from "@/lib/format";
+import { richText } from "@/lib/richText";
 import {
   cascada, fmtNum, fmtScanCost, sectoresTop, universoLinea, type FunnelScan,
 } from "@/lib/scan";
@@ -675,7 +676,7 @@ export default function SombraDashboard() {
                   )}
                   {proposal?.macro_summary && (
                     <p className="mt-2 border-t border-slate-100 pt-2 text-[11.5px] italic leading-relaxed text-slate-500">
-                      “{proposal.macro_summary}”
+                      “{richText(proposal.macro_summary)}”
                     </p>
                   )}
                 </div>
@@ -739,7 +740,7 @@ export default function SombraDashboard() {
                         su lectura macro de esta semana ▾
                       </summary>
                       <p className="mt-1.5 text-[11.5px] italic leading-relaxed text-slate-500">
-                        “{report.outlook}”
+                        “{richText(report.outlook)}”
                       </p>
                     </details>
                   )}
@@ -845,7 +846,7 @@ export default function SombraDashboard() {
               <div className="p-4 text-xs leading-relaxed text-slate-600">
                 {report?.outlook && (
                   <p className="mb-3 border-b border-slate-100 pb-3 italic text-slate-500">
-                    “{report.outlook}”
+                    “{richText(report.outlook)}”
                   </p>
                 )}
                 <div className="divide-y divide-slate-100">
@@ -1220,7 +1221,7 @@ function PositionRows({ anon, color, label, sector, pos, weightPct, up, pct, ope
               ENVOLVER — si no, una línea larga estira la tabla y fuerza scroll horizontal. */}
           <td colSpan={7} className="whitespace-normal px-3 py-2 text-[11.5px] leading-relaxed text-slate-500">
             {srow?.headline
-              ? <><span className="font-semibold text-slate-600">Tesis</span> · {srow.headline}
+              ? <><span className="font-semibold text-slate-600">Tesis</span> · {richText(srow.headline)}
                   <span className="ml-1 text-slate-400">
                     · score {fmtScore(srow.score)}{srow.target_price != null ? ` · objetivo $${money(srow.target_price)}` : ""}
                   </span></>
@@ -1263,8 +1264,8 @@ function ScoreRowItem({ row }: { row: ScoreRow }) {
           )}
         </p>
       )}
-      {row.headline && <p className="mt-2 pl-16 text-sm text-slate-600">{row.headline}</p>}
-      {row.report && <p className="mt-2 whitespace-pre-line pl-16 text-xs leading-relaxed text-slate-500">{row.report}</p>}
+      {row.headline && <p className="mt-2 pl-16 text-sm text-slate-600">{richText(row.headline)}</p>}
+      {row.report && <p className="mt-2 whitespace-pre-line pl-16 text-xs leading-relaxed text-slate-500">{richText(row.report)}</p>}
     </details>
   );
 }

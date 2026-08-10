@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # Confirmado por API (GET /api/v1/models) que v4-pro, v4-flash y v4-flash-0731 declaran
     # "reasoning" en supported_parameters antes de activarlo. None desactiva el campo entero.
     reasoning_effort: str | None = "max"
-    # PRIORIDAD 1 (medida en producción, escaneo del 8/9-ago): el pre-score con razonamiento
+    # Medido en producción: el pre-score con razonamiento
     # "max" costó $2,6655 —el doble de lo estimado sin él— sobre ~3.000 llamadas de un triaje
     # barato que no necesita razonar mucho. El profundo, la capa media y el constructor son
     # decenas de llamadas, así que ahí el coste extra sí compra algo. None = sin el campo
@@ -73,33 +73,63 @@ class Settings(BaseSettings):
     # Capa media: repuntúa los mejores de cada sector entre el pre-score y el profundo
     # (implementación en otro módulo; aquí solo se declara la config).
     mid_layer: bool = True          # capa media: repuntúa los mejores de cada sector
-    mid_per_sector: int = 10        # cuántos por sector entran a la capa media
+    # 10 → 15: medido en vivo que sectores grandes (Financial Services 541 nombres,
+    # Consumer Cyclical 309, sobre 2.997 pre-scoreados de un escaneo real) solo mandaban 10 a la
+    # capa media — un nombre genuinamente bueno pero #11-15 de su sector no tenía ni oportunidad
+    # de competir en el carril "global". Más candidatos con segunda opinión, mismo mecanismo.
+    mid_per_sector: int = 15        # cuántos por sector entran a la capa media
     # Tope DURO, como el `deep_finalists_cap` del profundo. Sin él, la capa media es la única
-    # etapa cuyo tamaño lo decide un dato EXTERNO: 10 × (sectores que traiga yfinance ese día).
-    # Hoy son ~11 sectores (~110 llamadas), pero el número no lo fijamos nosotros — si el campo
-    # `sector` viniera sucio, cada valor raro abriría su propio cupo de 10 llamadas al modelo
-    # caro. 150 deja aire sobre las ~110 normales y convierte un fallo de datos en un recorte,
-    # no en una factura. Al truncar se conservan los de MAYOR pre-score (la lista llega ordenada).
-    mid_candidates_cap: int = 150
+    # etapa cuyo tamaño lo decide un dato EXTERNO: mid_per_sector × (sectores que traiga
+    # yfinance ese día). Hoy son ~11 sectores (~165 llamadas con 15/sector), pero el número no
+    # lo fijamos nosotros — si el campo `sector` viniera sucio, cada valor raro abriría su
+    # propio cupo de llamadas al modelo caro. 200 (subido de 150 junto con
+    # `mid_per_sector`) deja aire sobre las ~165 normales y convierte un fallo de datos en un
+    # recorte, no en una factura. Al truncar se conservan los de MAYOR pre-score (lista ordenada).
+    mid_candidates_cap: int = 200
     # Mismo modelo que el pre-score (0731 en todo el circuito): la capa media deja de ser una
     # SEGUNDA OPINIÓN de un modelo mejor y pasa a ser un re-muestreo del mismo modelo sobre el
     # mismo prompt corto. Sigue reduciendo ruido de una tirada suelta (promedia dos llamadas en
     # vez de fiarse de una), pero ya no aporta el juicio de un modelo distinto.
     mid_model: str = "deepseek/deepseek-v4-flash-0731"
     # Corte de finalistas al profundo (fiel al paper, sin colapsar en un solo sector):
-    #   top-`deep_per_sector` por sector (amplitud) ∪ top-`deep_finalists` global (los mejores)
-    #   + posiciones + top-`deep_watchlist` watchlist, truncado a `deep_finalists_cap`.
+    #   top-`deep_per_sector` por sector (amplitud) ∪ posiciones ∪ seguimiento personal ∪
+    #   top-`deep_watchlist` watchlist ∪ `deep_top_caps` mayores caps ∪ el resto por score (el
+    #   carril "global"), TODO truncado a un único número: `deep_finalists_cap`.
     # El carril sectorial vale 2 cuando NO hay capa media (el semanal): es la única garantía de
     # que el profundo vea cada sector. Cuando la capa media corre (el mensual), un modelo bueno
     # ya ha puntuado el top-10 de CADA sector, así que basta 1 como red de seguridad.
     deep_per_sector: int = 2                             # top-N por sector (recall de amplitud)
     deep_per_sector_mid: int = 1                         # ídem cuando hubo capa media
-    deep_finalists: int = 25                             # top-N global por pre-score
     deep_watchlist: int = 5                              # + mejores de la watchlist (continuidad)
     deep_top_caps: int = 10                              # las N mayores caps SIEMPRE al profundo
-    deep_finalists_cap: int = 50                         # tope DURO de finalistas (coste V4-Pro)
-    select_count: int = 10                               # nombres al constructor (paper: "top 10")
-    # Lote del pre-score (medido en vivo el 09/10-ago): agrupar N tickers en una sola llamada
+    # 50 → 65. Hasta entonces el carril "global" tenía TAMBIÉN su propio tope
+    # (`deep_finalists=25`, quitado del todo — ver `select_finalists`): dos números para un solo
+    # trabajo, y el segundo solo podía recortar de más, nunca ayudar. Ahora manda uno solo. 65
+    # sale de la cuenta real con los 10 sectores distintos medidos en un escaneo real: posición(5)
+    # + seguimiento(4) + watchlist(5) + caps(10) + sector(10) = 34 en el peor caso (sin solapes)
+    # antes de que el carril "global" rellene lo que quede — 65 deja colchón real sobre esa
+    # cuenta. Sube el coste de la etapa más cara (informe completo por finalista), a propósito:
+    # no se salta a un número mayor sin ver antes cómo rinde esto con datos reales.
+    deep_finalists_cap: int = 65                         # tope DURO de finalistas (coste V4-Pro)
+    # 10 → 20: DESVIACIÓN explícita del paper (comentario original: "nombres al
+    # constructor (paper: 'top 10')"). Motivo: el corte a top-10 de `select_top` es código puro
+    # (score + desempate por market cap), ciego a matices — el mismo tipo de corte que dejó
+    # fuera a BKNG (rank #217 global, #11 en su sector) de cualquier análisis. Duplicar a 20 deja
+    # que el constructor, que SÍ lee tesis/edge/riesgo/macro, decida entre más candidatos reales
+    # en vez de que el código descarte 50 nombres solo por nota y tamaño antes de que nadie con
+    # más criterio los vea. `max_positions=5` (LOCKED) no cambia — sigue siendo una cartera de 5.
+    select_count: int = 20                               # nombres al constructor (antes: 10)
+    # Tickers que SIEMPRE llegan al profundo para que Manuel vea la opinión del sistema sobre su
+    # cartera PERSONAL (IBKR) — sin que eso implique nada sobre la cartera del AGENTE. Una vez
+    # en finalistas, compiten exactamente igual que cualquier otro nombre (sin restricción de
+    # selección): si la nota les da para el top-20 y el constructor los quiere, entran a la
+    # cartera real del agente sin veto — son posiciones NUEVAS del agente, nunca las acciones
+    # personales de Manuel en IBKR (esas siguen aparte, ver `PersonalPosition`). `BTC-USD` es
+    # best-effort: yfinance lo acepta como ticker, pero casi todos los ~60 campos de
+    # fundamentales le saldrán "n/d" — el sistema es tolerante a huecos, no se garantiza que la
+    # tesis tenga el mismo sentido que en una empresa real.
+    always_deep_tickers: list[str] = ["MSFT", "HUMA", "ASTS", "BTC-USD"]
+    # Lote del pre-score (medido en vivo): agrupar N tickers en una sola llamada
     # amortiza la sobrecarga fija por llamada (18,5-49s de una sola empresa, dominada por cola
     # del proveedor detrás del alias, no por generación) entre las N — 2.997 llamadas individuales
     # bajan a ~150 de 20. Probado en vivo con 20/20: limpio, sin JSON roto ni tickers ausentes.

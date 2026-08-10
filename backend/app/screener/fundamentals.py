@@ -12,12 +12,42 @@ falte va como `n/d` y el LLM lo maneja (nada de excluir por dato incompleto).
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import yfinance as yf
 
 from app.screener import technicals as ta
+
+_FUND_CACHE_TTL_H = 12.0   # ver `FundamentalsCache` en models.py para el motivo
+
+
+def _cache_get(db, ticker: str) -> NameData | None:  # noqa: ANN001
+    from app.models import FundamentalsCache
+
+    row = db.get(FundamentalsCache, ticker)
+    if not row:
+        return None
+    edad_h = (datetime.now(UTC) - row.at).total_seconds() / 3600
+    if edad_h >= _FUND_CACHE_TTL_H:
+        return None
+    try:
+        return NameData(**row.data)
+    except TypeError:
+        return None   # forma vieja del dataclass (campo añadido/quitado) — se ignora, no rompe
+
+
+def _cache_put(db, ticker: str, data: NameData) -> None:  # noqa: ANN001
+    from app.models import FundamentalsCache
+
+    payload = dataclasses.asdict(data)
+    row = db.get(FundamentalsCache, ticker)
+    if row:
+        row.at, row.data = datetime.now(UTC), payload
+    else:
+        db.add(FundamentalsCache(ticker=ticker, data=payload))
+    db.commit()
 
 # Variables fundamentales relevantes de .info (mapean a la lista del Exhibit 2B del paper).
 # (info_key, etiqueta, tipo) — tipo: pct (ratio 0-1→%), cur (grande→$B), num (tal cual).
@@ -247,13 +277,29 @@ def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
     return out
 
 
-def gather(ticker: str) -> NameData | None:
-    """Baja .info + histórico (para técnico) + noticias de un ticker. None si no hay datos."""
+def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa: ANN001
+    """Baja .info + histórico (para técnico) + noticias de un ticker.
+
+    Devuelve `(datos, motivo)`: `motivo` es texto corto (tipo de excepción + mensaje) SOLO si
+    `datos` es None — antes la excepción se tragaba entera (`except Exception: return None`) y
+    no quedaba ni rastro de POR QUÉ. Medido en dos escaneos reales: 2.400-2.500 de
+    3.000 nombres sin datos de golpe, causa real un 401 "Invalid Crumb" de Yahoo bajo carga
+    (bloqueo del crumb de autenticación, no un 429 de rate-limit clásico) — invisible hasta
+    entonces salvo bajando a mano a los logs de Railway.
+
+    `db`, si se pasa, cachea 12h (`FundamentalsCache`): un segundo escaneo/test el mismo día
+    reutiliza los datos del primero en vez de volver a pedirle 9.000 peticiones a Yahoo. Sin
+    `db` (tests, scripts sueltos) funciona exactamente igual que antes, sin caché.
+    """
+    if db is not None:
+        cached = _cache_get(db, ticker)
+        if cached is not None:
+            return cached, None
     try:
         yt = yf.Ticker(ticker)
         info = yt.info or {}
         if not (info.get("sector") or info.get("marketCap") or info.get("shortName")):
-            return None
+            return None, "sin sector/marketCap/shortName en .info (vacío o deslistado)"
         hist = None
         try:
             h = yt.history(period="1y", interval="1d", auto_adjust=True)
@@ -264,7 +310,7 @@ def gather(ticker: str) -> NameData | None:
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         mcap = info.get("marketCap")
         target_high = info.get("targetHighPrice")
-        return NameData(
+        data = NameData(
             ticker=ticker,
             sector=info.get("sector", "n/d"),
             industry=info.get("industry", "n/d"),
@@ -277,5 +323,8 @@ def gather(ticker: str) -> NameData | None:
             name=info.get("shortName", ""),
             target_high=float(target_high) if target_high else None,
         )
-    except Exception:
-        return None
+        if db is not None:
+            _cache_put(db, ticker, data)
+        return data, None
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"[:300]
