@@ -54,6 +54,7 @@ def _stub_common(monkeypatch) -> None:
     monkeypatch.setattr(scan_service.settings, "max_position_pct", 100.0)
     monkeypatch.setattr(scan_service.settings, "min_positions", 1)
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
+    monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)  # sin la pausa del reintento
 
 
 def _gather_stub(monkeypatch, sectors: dict[str, str], target_high: dict[str, float] | None = None):
@@ -61,7 +62,8 @@ def _gather_stub(monkeypatch, sectors: dict[str, str], target_high: dict[str, fl
     from app.screener.fundamentals import NameData
 
     th = target_high or {}
-    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None: (NameData(
+    monkeypatch.setattr(fund_mod, "bulk_history", lambda tickers: {})
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None: (NameData(
         ticker=t, sector=sectors[t], industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9,
         news=[], target_high=th.get(t),

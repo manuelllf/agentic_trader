@@ -17,16 +17,17 @@ import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+import pandas as pd
 import yfinance as yf
 
 from app.screener import technicals as ta
 
 _FUND_CACHE_TTL_H = 12.0   # ver `FundamentalsCache` en models.py para el motivo
 
-# `gather()` corre en los `_GATHER_WORKERS` hilos del scan_service, todos compartiendo LA MISMA
-# Session de SQLAlchemy — no es thread-safe, y sin este lock el acceso concurrente corrompía
-# la lectura de la columna JSON (json.loads sobre bytes a medio escribir de otro hilo,
-# "Expecting value: line 1 column 1 (char 0)"). Solo serializa la caché, no el resto del gather.
+# `gather()` corre en los hilos del gather del scan_service, todos compartiendo LA MISMA Session
+# de SQLAlchemy — no es thread-safe, y sin este lock el acceso concurrente corrompía la lectura
+# de la columna JSON (json.loads sobre bytes a medio escribir de otro hilo, "Expecting value:
+# line 1 column 1 (char 0)"). Solo serializa la caché, no el resto del gather.
 _CACHE_LOCK = threading.Lock()
 
 
@@ -289,15 +290,45 @@ def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
     return out
 
 
-def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa: ANN001
+def bulk_history(tickers: list[str]) -> dict[str, pd.DataFrame]:
+    """Histórico de precios (1y diario) para TODA la muestra en una sola llamada.
+
+    A diferencia de `.info` (yfinance no tiene un endpoint agrupado de verdad, confirmado en
+    `ranaroussi/yfinance#1647`), `.history` SÍ lo es — `yf.download()`, como ya usa `macro.py`.
+    Quita 1 de las 3 peticiones por ticker del gather (`.info`+`.history`+`.news`) ANTES de que
+    empiece la ráfaga, el tercio que más volumen suma sin necesidad de ir ticker a ticker.
+    Best-effort: si falla entera, `gather()` cae solo al `.history()` por ticker de siempre.
+    """
+    try:
+        df = yf.download(tickers, period="1y", interval="1d", auto_adjust=True,
+                         group_by="ticker", threads=True, progress=False)
+    except Exception:
+        return {}
+    out: dict[str, pd.DataFrame] = {}
+    for t in tickers:
+        try:
+            h = df[t]
+        except Exception:
+            continue
+        if h is not None and not h.empty:
+            out[t] = h
+    return out
+
+
+def gather(ticker: str, db=None, hist: pd.DataFrame | None = None) -> tuple[NameData | None, str | None]:  # noqa: ANN001, E501
     """Baja .info + histórico (para técnico) + noticias de un ticker.
 
     Devuelve `(datos, motivo)`: `motivo` es texto corto (tipo de excepción + mensaje) SOLO si
     `datos` es None — antes la excepción se tragaba entera (`except Exception: return None`) y
-    no quedaba ni rastro de POR QUÉ. Medido en dos escaneos reales: 2.400-2.500 de
-    3.000 nombres sin datos de golpe, causa real un 401 "Invalid Crumb" de Yahoo bajo carga
-    (bloqueo del crumb de autenticación, no un 429 de rate-limit clásico) — invisible hasta
-    entonces salvo bajando a mano a los logs de Railway.
+    no quedaba ni rastro de POR QUÉ. Medido en varios escaneos reales: hasta el 82% de la
+    muestra sin datos de golpe, causa real un 401 "Invalid Crumb" de Yahoo bajo la ráfaga del
+    gather (bloqueo del crumb de autenticación, no un 429 de rate-limit clásico) — invisible
+    hasta entonces salvo bajando a mano a los logs de Railway. Se recupera solo en minutos (no
+    es un baneo de IP persistente), de ahí el reintento en bloque del caller tras una pausa.
+
+    `hist`, si se pasa (ver `bulk_history`), evita la llamada individual a `.history()` — el
+    caller ya la agrupó para toda la muestra. Sin `hist` (tests, `redeep()` de un solo ticker)
+    cae al `.history()` de siempre, sin cambio de comportamiento.
 
     `db`, si se pasa, cachea 12h (`FundamentalsCache`): un segundo escaneo/test el mismo día
     reutiliza los datos del primero en vez de volver a pedirle 9.000 peticiones a Yahoo. Sin
@@ -312,13 +343,13 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
         info = yt.info or {}
         if not (info.get("sector") or info.get("marketCap") or info.get("shortName")):
             return None, "sin sector/marketCap/shortName en .info (vacío o deslistado)"
-        hist = None
-        try:
-            h = yt.history(period="1y", interval="1d", auto_adjust=True)
-            if h is not None and not h.empty:
-                hist = h.rename(columns=str.lower)
-        except Exception:
-            hist = None
+        h = hist
+        if h is None:
+            try:
+                h = yt.history(period="1y", interval="1d", auto_adjust=True)
+            except Exception:
+                h = None
+        hist = h.rename(columns=str.lower) if h is not None and not h.empty else None
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         mcap = info.get("marketCap")
         target_high = info.get("targetHighPrice")

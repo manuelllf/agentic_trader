@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import unicodedata
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -55,9 +56,11 @@ from app.screener import universe as universe_mod
 logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 20
-# Ver comentario en `_gather` (paso 3): separado de `_MAX_WORKERS` a propósito, es la palanca
-# contra el bloqueo del crumb de Yahoo, no contra la latencia del LLM.
-_GATHER_WORKERS = 8
+# Cuánto esperar tras la última petición a yfinance antes de reintentar en bloque los fallidos
+# del gather (ver comentario en el paso 3): medido en vivo, un 401 de Yahoo se recupera solo en
+# minutos, no en horas — una llamada suelta funcionó segundos después de una pasada con el 82%
+# de la muestra bloqueada.
+_GATHER_RETRY_COOLDOWN_S = 180.0
 _CURSOR_KEY = "scan_cursor"   # offset persistido de la ventana rotatoria del semanal
 _REPORT_KEY = "last_scan_report"   # informe del último escaneo (JSON en Meta; ver /scan/report)
 
@@ -368,18 +371,36 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # aquí: la decisión de reintentar mira el lote entero (JSON roto, formato degenerado), no el
     # error de un ticker suelto. Reunir los fundamentales sigue siendo 1 llamada por ticker
     # (yfinance, gratis) — eso no se agrupa, solo las llamadas al LLM.
-    # Concurrencia PROPIA para el gather, más baja que `_MAX_WORKERS` (LLM): medido en dos
-    # escaneos reales, 20 hilos × 3 peticiones/ticker (`.info`+`.history`+`.news`) dispararon un
-    # bloqueo del crumb de autenticación de Yahoo (401 masivo, no rate-limit clásico) — 2.400-
-    # 2.500 de 3.000 nombres sin datos de golpe. Menos peticiones simultáneas, menos presión
-    # sobre ese bloqueo; a cambio, este paso tarda más.
+    # Bajar la concurrencia del gather (probado: 8 hilos en vez de 20) NO protegió nada — medido
+    # en producción, el mismo ~82% de la muestra sin datos con 8 hilos que con 20. El bloqueo de
+    # Yahoo depende del VOLUMEN de la ráfaga (~3 peticiones/ticker × toda la muestra en pocos
+    # minutos), no de cuántas van a la vez, así que se vuelve a `_MAX_WORKERS` sin más — más
+    # rápido, mismo resultado. Histórico de precios agrupado aparte (`bulk_history`, abajo): es
+    # la única de las tres peticiones que SÍ se puede agrupar de verdad, quita un tercio del
+    # volumen total antes de que la ráfaga siquiera empiece.
+    hist_bulk = fund_mod.bulk_history(sample)
+
     def _gather(ticker: str):
-        data, err = fund_mod.gather(ticker, db=db)
+        data, err = fund_mod.gather(ticker, db=db, hist=hist_bulk.get(ticker))
         return ticker, data, err
 
-    with ThreadPoolExecutor(max_workers=_GATHER_WORKERS) as ex:
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
         gathered = list(ex.map(_gather, sample))
-    failed = [t for t, d, _e in gathered if d is None]      # gather sin datos
+    t_ultimo_gather = time.monotonic()
+
+    fallidos = [t for t, d, _e in gathered if d is None]
+    if fallidos:
+        # Reintento ÚNICO en bloque, no por ticker (con miles de fallidos, reintentar cada uno
+        # alargaría el escaneo sin límite). Espera lo que falte hasta `_GATHER_RETRY_COOLDOWN_S`
+        # desde la ÚLTIMA petición real a yfinance, no desde que empezó el paso.
+        espera = _GATHER_RETRY_COOLDOWN_S - (time.monotonic() - t_ultimo_gather)
+        if espera > 0:
+            time.sleep(espera)
+        with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
+            reintentados = {t: (t, d, e) for t, d, e in ex.map(_gather, fallidos)}
+        gathered = [reintentados.get(t, (t, d, e)) for t, d, e in gathered]
+
+    failed = [t for t, d, _e in gathered if d is None]      # gather sin datos, tras el reintento
     if failed:
         lista = ", ".join(failed[:8]) + ("…" if len(failed) > 8 else "")
         issues.append(f"{len(failed)} nombre(s) sin datos de mercado: {lista}")

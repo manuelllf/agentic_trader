@@ -108,13 +108,15 @@ def _stub_common(monkeypatch, llm, symbols: list[str]) -> None:
     monkeypatch.setattr(tracking, "live_prices", lambda tickers: dict.fromkeys(tickers, 100.0))
     monkeypatch.setattr(scan_service.settings, "max_position_pct", 100.0)
     monkeypatch.setattr(scan_service.settings, "min_positions", 1)
+    monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)  # sin la pausa del reintento
 
 
 def _gather_stub(monkeypatch, sector: str = "Technology", news: list | None = None):
     from app.screener import fundamentals as fund_mod
     from app.screener.fundamentals import NameData
 
-    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None: (NameData(
+    monkeypatch.setattr(fund_mod, "bulk_history", lambda tickers: {})
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None: (NameData(
         ticker=t, sector=sector, industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9,
         news=news if news is not None else [],
