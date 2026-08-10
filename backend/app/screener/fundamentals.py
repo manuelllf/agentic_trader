@@ -13,6 +13,7 @@ falte va como `n/d` y el LLM lo maneja (nada de excluir por dato incompleto).
 from __future__ import annotations
 
 import dataclasses
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -22,35 +23,43 @@ from app.screener import technicals as ta
 
 _FUND_CACHE_TTL_H = 12.0   # ver `FundamentalsCache` en models.py para el motivo
 
+# `gather()` corre en los `_GATHER_WORKERS` hilos del scan_service, todos compartiendo LA MISMA
+# Session de SQLAlchemy — no es thread-safe, y sin este lock el acceso concurrente corrompía
+# la lectura de la columna JSON (json.loads sobre bytes a medio escribir de otro hilo,
+# "Expecting value: line 1 column 1 (char 0)"). Solo serializa la caché, no el resto del gather.
+_CACHE_LOCK = threading.Lock()
+
 
 def _cache_get(db, ticker: str) -> NameData | None:  # noqa: ANN001
     from app.models import FundamentalsCache
 
-    row = db.get(FundamentalsCache, ticker)
-    if not row:
-        return None
-    # SQLite devuelve `row.at` naive pese a DateTime(timezone=True) — mismo patrón que
-    # watchlist.py::_aware().
-    at = row.at if row.at.tzinfo is not None else row.at.replace(tzinfo=UTC)
-    edad_h = (datetime.now(UTC) - at).total_seconds() / 3600
-    if edad_h >= _FUND_CACHE_TTL_H:
-        return None
-    try:
-        return NameData(**row.data)
-    except TypeError:
-        return None   # forma vieja del dataclass (campo añadido/quitado) — se ignora, no rompe
+    with _CACHE_LOCK:
+        row = db.get(FundamentalsCache, ticker)
+        if not row:
+            return None
+        # SQLite devuelve `row.at` naive pese a DateTime(timezone=True) — mismo patrón que
+        # watchlist.py::_aware().
+        at = row.at if row.at.tzinfo is not None else row.at.replace(tzinfo=UTC)
+        edad_h = (datetime.now(UTC) - at).total_seconds() / 3600
+        if edad_h >= _FUND_CACHE_TTL_H:
+            return None
+        try:
+            return NameData(**row.data)
+        except TypeError:
+            return None   # forma vieja del dataclass (campo añadido/quitado) — se ignora, no rompe
 
 
 def _cache_put(db, ticker: str, data: NameData) -> None:  # noqa: ANN001
     from app.models import FundamentalsCache
 
     payload = dataclasses.asdict(data)
-    row = db.get(FundamentalsCache, ticker)
-    if row:
-        row.at, row.data = datetime.now(UTC), payload
-    else:
-        db.add(FundamentalsCache(ticker=ticker, data=payload))
-    db.commit()
+    with _CACHE_LOCK:
+        row = db.get(FundamentalsCache, ticker)
+        if row:
+            row.at, row.data = datetime.now(UTC), payload
+        else:
+            db.add(FundamentalsCache(ticker=ticker, data=payload))
+        db.commit()
 
 # Variables fundamentales relevantes de .info (mapean a la lista del Exhibit 2B del paper).
 # (info_key, etiqueta, tipo) — tipo: pct (ratio 0-1→%), cur (grande→$B), num (tal cual).
