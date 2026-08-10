@@ -29,7 +29,10 @@ def _cache_get(db, ticker: str) -> NameData | None:  # noqa: ANN001
     row = db.get(FundamentalsCache, ticker)
     if not row:
         return None
-    edad_h = (datetime.now(UTC) - row.at).total_seconds() / 3600
+    # SQLite devuelve `row.at` naive pese a DateTime(timezone=True) — mismo patrón que
+    # watchlist.py::_aware().
+    at = row.at if row.at.tzinfo is not None else row.at.replace(tzinfo=UTC)
+    edad_h = (datetime.now(UTC) - at).total_seconds() / 3600
     if edad_h >= _FUND_CACHE_TTL_H:
         return None
     try:
