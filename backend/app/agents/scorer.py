@@ -96,10 +96,11 @@ SYSTEM = (
 )
 
 
-PRESCORE_SYSTEM = (
-    "You are the first-pass TRIAGE of an equity research pipeline. Your score answers ONE "
-    "question: how likely is it that a rigorous deep fundamental analysis would find this company "
-    "attractive for the next month? Weigh fundamentals, valuation and news TOGETHER. Do not raise "
+MID_SYSTEM = (
+    "You are the SECOND-OPINION triage of an equity research pipeline, reviewing companies that "
+    "a cheaper first pass already ranked highly. Your score answers ONE question: how likely is "
+    "it that a rigorous deep fundamental analysis would find this company attractive for the next "
+    "month? Weigh fundamentals, valuation and news TOGETHER. Do not raise "
     "or lower the score merely because of the company's sector or its size; ask whether the news "
     "changes the earnings power or the valuation case. "
     # La MISMA frase que el profundo, y por el mismo motivo (ver allí el detalle de lo medido):
@@ -174,11 +175,12 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> 
     )
 
 
-def _prescore_prompt(data: NameData, macro_block: str) -> str:
-    # Todos los titulares, no solo los 3 primeros: el prescore decide quién llega al análisis
+def _mid_prompt(data: NameData, macro_block: str) -> str:
+    # Todos los titulares, no solo los 3 primeros: la capa media decide quién llega al análisis
     # caro viendo un tercio de las noticias. En un escaneo real dio 100/100 a un nombre —el
     # único ≥90 de 2.594— y el profundo le puso 48 en cuanto vio la noticia que lo hundía (venta
-    # de acciones por directivos), fuera del top-3. El triaje no es un profundo barato: es otro juez.
+    # de acciones por directivos), fuera del top-3. La segunda opinión no es un profundo barato:
+    # es otro juez.
     news = "; ".join(data.news) if data.news else "none"
     name = f" ({data.name})" if data.name else ""
     # Las noticias van ANTES de los ~50 fundamentales, no detrás: el propio SYSTEM dice que se
@@ -188,6 +190,9 @@ def _prescore_prompt(data: NameData, macro_block: str) -> str:
         f"News: {news}\n"
         f"Fundamentals:\n{data.fundamentals_text}\n"
         f"Technical: {data.technical_text or 'n/d'}\n"
+        # Igual que en el lote barato (ver `_prescore_batch_prompt`): dato del calendario, sin
+        # regla de qué hacer con él.
+        f"Earnings: {data.earnings_text or 'n/d'}\n"
         "1.00-100.00 score (JSON)."
     )
 
@@ -208,12 +213,15 @@ def _recorte(raw: str) -> str:
     return f"{raw[:mitad]}\n…[recortado {len(raw) - _RAW_MAX} chars]…\n{raw[-mitad:]}"
 
 
-def prescore(llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 0.4) -> PrescoreResult:
-    """Ranking de primera pasada (modelo rápido/barato). Best-effort: 0 si falla, con `error`/
-    `raw` para que el caller sepa POR QUÉ (transporte vs JSON roto) y decida si reintenta."""
+def mid_prescore(
+    llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 0.4,
+) -> PrescoreResult:
+    """Segunda opinión de la capa media (modelo mejor que el triaje barato, 1 ticker por
+    llamada). Best-effort: 0 si falla, con `error`/`raw` para que el caller sepa POR QUÉ
+    (transporte vs JSON roto) y decida si reintenta."""
     raw = ""
     try:
-        raw = llm.chat(PRESCORE_SYSTEM, _prescore_prompt(data, macro_block),
+        raw = llm.chat(MID_SYSTEM, _mid_prompt(data, macro_block),
                        temperature=temperature) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
@@ -228,13 +236,13 @@ def prescore(llm: LLMProvider, data: NameData, macro_block: str, temperature: fl
                                   raw=_recorte(raw))
         return PrescoreResult(data.ticker, sc)
     except Exception as exc:
-        logger.warning("Prescore no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
+        logger.warning("Capa media no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
         return PrescoreResult(data.ticker, 0.0, error=f"{type(exc).__name__}: {exc}",
                               raw=_recorte(raw))
 
 
 # ---------------------------------------------------------------------------------------------
-# Pre-score por LOTES — mismo juicio que `prescore()`, agrupando N tickers en una sola llamada.
+# Pre-score por LOTES — triaje barato del universo, agrupando N tickers en una sola llamada.
 # Medido en vivo: la sobrecarga fija por llamada (cola del proveedor detrás del
 # alias, no generación — una sola empresa tardó de 2,5 a 49,5s) domina el reloj del pre-score
 # puro (~3.000 llamadas, ~85% del tiempo de un escaneo). Agrupar de 20 en 20 la amortiza: ~150
@@ -245,9 +253,10 @@ PRESCORE_BATCH_SYSTEM = (
     "You are the first-pass TRIAGE of an equity research pipeline. You will be given SEVERAL "
     "companies. For EACH one, INDEPENDENTLY, answer ONE question: how likely is it that a "
     "rigorous deep fundamental analysis would find this company attractive for the next month? "
-    # Cláusula nueva frente al individual: el riesgo medido de agrupar varios nombres en un
-    # mismo prompt es que el juicio de uno "contamine" al siguiente (orden, comparación
-    # implícita) — se le pide EXPLÍCITAMENTE que no lo haga.
+    # Cláusula propia de este nivel (no la necesita la capa media, que juzga 1 ticker por
+    # llamada): el riesgo medido de agrupar varios nombres en un mismo prompt es que el juicio
+    # de uno "contamine" al siguiente (orden, comparación implícita) — se le pide
+    # EXPLÍCITAMENTE que no lo haga.
     "Judge each company ONLY on its own fundamentals, valuation and news, weighed together. Do "
     "NOT compare or rank the companies against each other, and do not let one company's news or "
     "sector color your judgment of another. Do not raise or lower a score merely because of a "
@@ -265,16 +274,27 @@ PRESCORE_BATCH_SYSTEM = (
 )
 
 
+def _titulo(item: str) -> str:
+    """Del titular enriquecido "título — resumen" que ahora trae `data.news`, se queda solo con
+    el título: el triaje por lotes corre ~3.000 veces por escaneo y necesita quedarse barato, así
+    que aquí NO viaja el resumen (eso es exclusivo de la capa media, que hace ~150 llamadas)."""
+    return item.split(" — ", 1)[0]
+
+
 def _prescore_batch_prompt(items: list[NameData], macro_block: str) -> str:
     partes = [f"Macro outlook: {macro_block}\n", "Companies (score each independently):\n"]
     for i, d in enumerate(items, 1):
-        news = "; ".join(d.news) if d.news else "none"
+        news = "; ".join(_titulo(n) for n in d.news) if d.news else "none"
         name = f" ({d.name})" if d.name else ""
         partes.append(
             f"{i}. {d.ticker}{name} — {d.sector}/{d.industry}\n"
             f"News: {news}\n"
             f"Fundamentals:\n{d.fundamentals_text}\n"
             f"Technical: {d.technical_text or 'n/d'}\n"
+            # Dato del calendario, sin regla de qué hacer con él (misma decisión que en el
+            # profundo y en la capa media): aprobado explícitamente como la única vía legítima
+            # de enriquecer el triaje barato, sin meterle factores con nombre que induzcan sesgo.
+            f"Earnings: {d.earnings_text or 'n/d'}\n"
         )
     return "\n".join(partes)
 
@@ -296,7 +316,7 @@ def prescore_batch(
 ) -> dict[str, PrescoreResult]:
     """Prescore de un LOTE en una sola llamada. Devuelve {ticker: PrescoreResult}.
 
-    A diferencia de `prescore()`/`score()`, el reintento vive AQUÍ DENTRO (hasta 2 extra, 3
+    A diferencia de `mid_prescore()`/`score()`, el reintento vive AQUÍ DENTRO (hasta 2 extra, 3
     intentos totales — mismo criterio que el resto) en vez de en el caller: la decisión de
     reintentar depende de mirar el LOTE entero (JSON roto, tickers ausentes, formato degenerado),
     no del error de un ticker suelto, así que no encaja en el patrón externo

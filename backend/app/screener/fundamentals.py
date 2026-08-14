@@ -4,7 +4,7 @@ Junta lo que el paper mete en el prompt de puntuación: los fundamentales de yfi
 (las ~97 variables SON este dict: valoración, márgenes, crecimiento, balance, short interest,
 targets de analistas, propiedad, riesgo de gobernanza), técnicos SOLO como contexto
 (MA50/200, 52 semanas, RSI, beta), la próxima fecha de resultados (dato, no regla) y
-titulares recientes. Todo gratis (yfinance).
+titulares con su resumen. Todo gratis (yfinance).
 
 Tolerante a huecos: como el paper, "usamos la información más reciente disponible" — lo que
 falte va como `n/d` y el LLM lo maneja (nada de excluir por dato incompleto).
@@ -13,21 +13,59 @@ falte va como `n/d` y el LLM lo maneja (nada de excluir por dato incompleto).
 from __future__ import annotations
 
 import dataclasses
+import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import yfinance as yf
 
 from app.screener import technicals as ta
+from app.screener import yahoo_scraper
+
+logger = logging.getLogger(__name__)
 
 _FUND_CACHE_TTL_H = 12.0   # ver `FundamentalsCache` en models.py para el motivo
+
+# Pausa (segundos) que `gather()` respeta tras CADA petición al scraper de Yahoo. Deliberadamente
+# NO es un parámetro de `gather()`: la firma tiene que quedar IDÉNTICA a la de antes de este
+# cambio porque los tests existentes (`test_capa_media_y_opa.py` y compañía) sustituyen
+# `fund_mod.gather` entero por un lambda de firma fija — un kwarg nuevo en la llamada real
+# rompería esos stubs sin tocar ni una línea suya. `scan_service` (dueño de `_GATHER_WORKERS`/
+# `_GATHER_PACE_S`, la política de ritmo) la fija aquí antes de lanzar el paso de gather; 0.0 por
+# defecto = sin pausa, para scripts sueltos/tests que llaman a `gather()` sin pasar por el escaneo.
+_GATHER_PACE_S = 0.0
 
 # `gather()` corre en los hilos del gather del scan_service, todos compartiendo LA MISMA Session
 # de SQLAlchemy — no es thread-safe, y sin este lock el acceso concurrente corrompía la lectura
 # de la columna JSON (json.loads sobre bytes a medio escribir de otro hilo, "Expecting value:
 # line 1 column 1 (char 0)"). Solo serializa la caché, no el resto del gather.
 _CACHE_LOCK = threading.Lock()
+
+# (sesión, crumb) del scraper de Yahoo (ver `yahoo_scraper.py`), consentido UNA sola vez por
+# proceso — no por ticker, no por hilo. `_SCRAPER_CACHE` guarda tanto el éxito como el fallo
+# (clave "ok" presente = ya se intentó): si el consentimiento/crumb falla una vez, NINGÚN hilo
+# vuelve a reintentarlo dentro del mismo proceso, y el escaneo entero cae a yfinance puro,
+# exactamente el comportamiento de antes de este cambio.
+_SCRAPER_LOCK = threading.Lock()
+_SCRAPER_CACHE: dict[str, object] = {}
+
+
+def _scraper_session() -> tuple[yahoo_scraper.creq.Session, str] | None:
+    """(sesión, crumb) del scraper, o None si no se pudo establecer (todo el escaneo cae a
+    yfinance puro). Doble-check bajo lock: solo el primer hilo que llega paga el coste de
+    consentir; el resto solo lee la caché ya resuelta."""
+    if not _SCRAPER_CACHE:
+        with _SCRAPER_LOCK:
+            if not _SCRAPER_CACHE:
+                try:
+                    _SCRAPER_CACHE["ok"] = yahoo_scraper.consentir_y_crumb()
+                except Exception as exc:
+                    logger.warning("Scraper de Yahoo no disponible (%s): el escaneo entero cae "
+                                   "a yfinance puro.", exc)
+                    _SCRAPER_CACHE["ok"] = None
+    return _SCRAPER_CACHE.get("ok")  # type: ignore[return-value]
 
 
 def _cache_get(db, ticker: str) -> NameData | None:  # noqa: ANN001
@@ -277,13 +315,32 @@ def _earnings_text(info: dict) -> str:
     return f"{etiqueta} earnings report: {cuando}{estimado}"
 
 
+def _recorta_palabra(texto: str, max_chars: int) -> str:
+    """Recorta `texto` a `max_chars` sin partir una palabra por la mitad, añadiendo "…" si
+    hubo que cortar. Se separa de `_news()` para poder probarlo suelto."""
+    if len(texto) <= max_chars:
+        return texto
+    corte = texto[:max_chars].rsplit(" ", 1)[0]
+    return f"{corte}…"
+
+
 def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
+    """Titulares recientes CON su resumen, no solo el título: el Exhibit 2A del paper pide
+    "headlines with summaries", y un titular suelto (a veces una sola frase ambigua) es menos
+    informativo que titular + el resumen que yfinance ya trae en el mismo item. Se juntan con
+    " — " y se recorta a 300 caracteres por palabra completa (nunca a medias) para que no
+    infle el prompt — son hasta 8 por empresa y esto corre en ~3.000 llamadas del triaje barato.
+    """
     out: list[str] = []
     try:
         for item in (yt.news or [])[:max_items]:
-            title = item.get("title") or (item.get("content") or {}).get("title")
-            if title:
-                out.append(title.strip())
+            content = item.get("content") or {}
+            title = item.get("title") or content.get("title")
+            if not title:
+                continue
+            summary = item.get("summary") or content.get("summary")
+            texto = f"{title.strip()} — {summary.strip()}" if summary else title.strip()
+            out.append(_recorta_palabra(texto, 300))
     except Exception:
         pass
     return out
@@ -297,8 +354,21 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
     no quedaba ni rastro de POR QUÉ. Medido en varios escaneos reales: hasta el 82% de la
     muestra sin datos de golpe, causa real un 401 "Invalid Crumb" de Yahoo bajo la ráfaga del
     gather (bloqueo del crumb de autenticación, no un 429 de rate-limit clásico) — invisible
-    hasta entonces salvo bajando a mano a los logs de Railway. Se recupera solo en minutos (no
-    es un baneo de IP persistente), de ahí el reintento en bloque del caller tras una pausa.
+    hasta entonces salvo bajando a mano a los logs de Railway. Raíz real (comprobada en vivo, ver
+    `yahoo_scraper.py`): las IP de la UE caen al muro de consentimiento GDPR
+    (`consent.yahoo.com`) y yfinance nunca implementa ese flujo.
+
+    Motor PRIMARIO ahora es `yahoo_scraper.gather_scraper()` (consiente una vez, reutiliza el
+    crumb para todo el escaneo): si su sesión no se pudo establecer, o si el ticker da un fallo
+    de "sin datos" genuino (200 OK pero deslistado/vacío), se comporta igual que antes. Si el
+    scraper da un fallo de TRANSPORTE puntual (HTTP/red/JSON, crumb roto a mitad de escaneo), se
+    reintenta ESE ticker por yfinance puro (el bloque de abajo, sin tocar). Si el scraper no está
+    disponible en absoluto (falló al consentir), el escaneo entero cae a yfinance puro desde el
+    principio, en silencio — exactamente el comportamiento de antes de este cambio.
+
+    `_GATHER_PACE_S` (módulo, fijado por `scan_service` antes del paso de gather), si es >0,
+    pausa esa cantidad de segundos tras CADA petición al scraper — política de ritmo que decide
+    el caller, no este módulo (ver comentario junto a la constante).
 
     Se probó agrupar `.history()` con `yf.download()` para toda la muestra de una vez y se
     REVIRTIÓ el mismo día: su pool interno de hilos agotó el límite de hilos del contenedor en
@@ -313,11 +383,38 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
         cached = _cache_get(db, ticker)
         if cached is not None:
             return cached, None
+
+    scraper = _scraper_session()
+    if scraper is not None:
+        s, crumb = scraper
+        try:
+            data, motivo = yahoo_scraper.gather_scraper(s, crumb, ticker)
+        except yahoo_scraper.TransportError as exc:
+            if _GATHER_PACE_S:
+                time.sleep(_GATHER_PACE_S)
+            logger.warning("Scraper de Yahoo: fallo de transporte en %s (%s) — reintento vía "
+                           "yfinance.", ticker, exc)
+            # No hay `return` aquí a propósito: cae al bloque de yfinance puro de abajo, SIN
+            # tocarlo, para reintentar este mismo ticker.
+        else:
+            if _GATHER_PACE_S:
+                time.sleep(_GATHER_PACE_S)
+            if data is not None:
+                if db is not None:
+                    _cache_put(db, ticker, data)
+                return data, None
+            # "sin_datos" genuino (200 OK, ticker vacío/deslistado): NO se reintenta por
+            # yfinance — medido que los mismos tickers fallan igual en los dos sitios.
+            if motivo:
+                logger.warning("Gather sin datos para %s: %s", ticker, motivo)
+            return None, motivo
     try:
         yt = yf.Ticker(ticker)
         info = yt.info or {}
         if not (info.get("sector") or info.get("marketCap") or info.get("shortName")):
-            return None, "sin sector/marketCap/shortName en .info (vacío o deslistado)"
+            motivo = "sin sector/marketCap/shortName en .info (vacío o deslistado)"
+            logger.warning("Gather sin datos para %s: %s", ticker, motivo)
+            return None, motivo
         hist = None
         try:
             h = yt.history(period="1y", interval="1d", auto_adjust=True)
@@ -345,4 +442,6 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
             _cache_put(db, ticker, data)
         return data, None
     except Exception as exc:
-        return None, f"{type(exc).__name__}: {exc}"[:300]
+        motivo = f"{type(exc).__name__}: {exc}"[:300]
+        logger.warning("Gather sin datos para %s: %s", ticker, motivo)
+        return None, motivo

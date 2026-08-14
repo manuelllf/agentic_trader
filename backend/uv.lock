@@ -35,6 +35,7 @@ source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "apscheduler" },
+    { name = "curl-cffi" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "ibind" },
@@ -74,6 +75,7 @@ postgres = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.14" },
     { name = "apscheduler", specifier = ">=3.11" },
+    { name = "curl-cffi", specifier = ">=0.7" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "fastembed", marker = "extra == 'memory'", specifier = ">=0.4.0" },
     { name = "httpx", specifier = ">=0.27" },

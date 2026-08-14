@@ -34,6 +34,12 @@ from app.db import init_db
 from app.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO)
+# Dos fuentes de ruido de terceros confirmadas en producción, sin valor diagnóstico: httpx traza
+# CADA llamada a OpenRouter (decenas/cientos por escaneo) y apscheduler traza CADA ejecución de
+# `_reconcile_job` (cada 2 min, ajeno a que haya un escaneo largo en marcha o no). Solo estos
+# dos loggers de terceros — los propios (`app.*`) se quedan en INFO.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("apscheduler").setLevel(logging.WARNING)
 
 
 def _require_password_in_prod() -> None:

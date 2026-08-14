@@ -19,6 +19,9 @@ dependencies = [
     "ibind>=0.1.23",
     "pycryptodome>=3.23.0",
     "tzdata>=2025.3",
+    # Scraper primario de Yahoo Finance (`app/screener/yahoo_scraper.py`): impersona TLS de
+    # Chrome, necesario para que Yahoo no distinga estas peticiones de un navegador real.
+    "curl_cffi>=0.7",
 ]
 
 [project.optional-dependencies]

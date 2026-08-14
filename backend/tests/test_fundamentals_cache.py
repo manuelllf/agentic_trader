@@ -53,6 +53,11 @@ def test_cache_expira_a_las_12h(db) -> None:
 
 def test_gather_usa_la_cache_sin_tocar_yfinance(db, monkeypatch) -> None:
     """Segunda llamada dentro de las 12h no debe tocar yfinance en absoluto."""
+    # Este test ejerce `gather()` de verdad (no mockea la función entera, solo `yf.Ticker`), así
+    # que desde el scraper primario tocaría red real para consentir con Yahoo. Se fuerza "sesión
+    # no disponible" para aislarlo — sigue probando exactamente lo mismo que antes: la caché sobre
+    # el camino de yfinance puro.
+    monkeypatch.setattr(fund_mod, "_scraper_session", lambda: None)
     llamadas = {"n": 0}
 
     class _TickerFalso:

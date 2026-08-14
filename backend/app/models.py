@@ -179,6 +179,10 @@ class ScanRun(Base):
     universe: Mapped[dict] = mapped_column(JSON, default=dict)
     counters: Mapped[dict] = mapped_column(JSON, default=dict)
     cost: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Duración de cada fase en segundos ({"macro": 12.3, "gather": 145.2, ...} + "total"). Fase
+    # ausente = no corrió ese escaneo (ej. "mid" sin capa media), no que tardó 0s. Filas de antes
+    # de esta columna quedan con `{}` — no hay forma de reconstruir tiempos que no se midieron.
+    timings: Mapped[dict] = mapped_column(JSON, default=dict)
     issues: Mapped[list] = mapped_column(JSON, default=list)
     # Forense de los fallos del LLM: [{ticker, etapa, error, raw}]. `issues` es el texto que se
     # lee en el panel y tiene que caber; esto es el detalle para saber DESPUÉS por qué falló un

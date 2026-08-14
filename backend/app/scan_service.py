@@ -39,7 +39,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app import execution_service, scan_audit
+from app import execution_service, scan_audit, scan_progress
 from app import instruments as instruments_mod
 from app import portfolio_service as portfolio
 from app import watchlist as watchlist_mod
@@ -55,11 +55,29 @@ from app.screener import universe as universe_mod
 
 logger = logging.getLogger(__name__)
 
-_MAX_WORKERS = 20
+_MAX_WORKERS = 10        # prescore/capa media/profundo (OpenRouter) — con lotes de 20, 150
+# llamadas reales no necesitan 20 hilos; 10 basta y presiona menos al proveedor.
+# Gather: desde el scraper de Yahoo (`yahoo_scraper.py`, motor primario — ver `fundamentals.py`)
+# como PRIMARIO, MEDIDO en vivo contra Yahoo (no estimado): 2 hilos + 0,4s de pausa por hilo
+# dieron 3.000/3.000 (100%) en una tirada de tamaño de producción completa; 10 hilos con la MISMA
+# pausa se cayeron a 48,3%. Hay un techo real de concurrencia en algún punto entre 2 y 10 que no
+# se ha acotado más — 2 es el ÚNICO nivel validado seguro a volumen completo, así que se deja ahí
+# en vez de subir a ciegas. (Antes de este cambio, con yfinance puro, se había medido que 8 y 20
+# hilos daban el MISMO ~80% de fallo — ese hallazgo ya no aplica: el cuello de botella real
+# resultó estar en el crumb/consentimiento GDPR, no en el número de hilos por sí solo.)
+_GATHER_WORKERS = 2
+# Pausa (segundos) que cada hilo del gather respeta TRAS su propia petición al scraper de Yahoo
+# — no es opcional ni cosmética, es parte de lo que se validó en vivo junto con `_GATHER_WORKERS`.
+# Medido seguro tanto a 0,35s como a 0,4s; se deja en 0,4s por margen (la diferencia de 0,05s es
+# inmaterial al volumen de un escaneo completo). Se aplica dentro de `fundamentals.gather()`
+# (`pace_s=`), no en `yahoo_scraper.py`: ese módulo se deja limpio, solo hace peticiones HTTP, sin
+# política de ritmo — la política vive donde vive `_GATHER_WORKERS`.
+_GATHER_PACE_S = 0.4
 # Cuánto esperar tras la última petición a yfinance antes de reintentar en bloque los fallidos
-# del gather (ver comentario en el paso 3): medido en vivo, un 401 de Yahoo se recupera solo en
-# minutos, no en horas — una llamada suelta funcionó segundos después de una pasada con el 82%
-# de la muestra bloqueada.
+# del gather (ver comentario en el paso 3). OJO: medido en vivo que 180s NO alcanza — un
+# reintento real tras esa espera recuperó 0 de 2.377 fallidos. La ventana de recuperación de
+# Yahoo parece ser de horas (8h40 tampoco bastó en otra prueba), no de minutos; el reintento se
+# deja puesto como red de seguridad barata para fallos parciales, no como arreglo del bloqueo.
 _GATHER_RETRY_COOLDOWN_S = 180.0
 _CURSOR_KEY = "scan_cursor"   # offset persistido de la ventana rotatoria del semanal
 _REPORT_KEY = "last_scan_report"   # informe del último escaneo (JSON en Meta; ver /scan/report)
@@ -267,6 +285,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     del scorer es a un mes y así cada elección vive su mes y la curva mide la selección, no el
     ruido semanal del LLM. Los escaneos manuales van con `decide=True` (ciclo completo).
     """
+    scan_progress.reset()
+    t_scan_inicio = time.monotonic()
+    # Duración de cada fase (segundos, ver `ScanRun.timings`): una clave ausente significa que
+    # esa fase no llegó a correr (ej. "mid" sin capa media activa), no que tardó 0s.
+    timings: dict[str, float] = {}
     deep_llm = get_llm()                              # V4-Pro: informe + target + construcción
     # reasoning_effort propio (PRIORIDAD 1): triaje barato de todo el universo, no compra nada
     # razonando "max" y sí dobla el coste medido en producción.
@@ -322,8 +345,13 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # aunque el escaneo reventase a mitad, y esos nombres no volvían hasta la siguiente vuelta.
 
     # 2) Outlook macro forward (V4-Pro, 1 llamada).
+    scan_progress.set_stage("macro")
+    logger.info("Escaneo: iniciando MACRO.")
+    t0 = time.monotonic()
     macro = macro_mod.get_macro_outlook(deep_llm, db)
     macro_block = macro_mod.outlook_prompt_block(macro)
+    timings["macro"] = round(time.monotonic() - t0, 1)
+    logger.info("Escaneo: MACRO completado en %.1fs.", timings["macro"])
     prior = {t: watchlist_mod.thesis_for(db, t) for t in always}
 
     # Incidencias para el informe persistido: los fallos PARCIALES que hasta ahora solo se
@@ -371,21 +399,45 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # aquí: la decisión de reintentar mira el lote entero (JSON roto, formato degenerado), no el
     # error de un ticker suelto. Reunir los fundamentales sigue siendo 1 llamada por ticker
     # (yfinance, gratis) — eso no se agrupa, solo las llamadas al LLM.
-    # Bajar la concurrencia del gather (probado: 8 hilos en vez de 20) NO protegió nada — medido
-    # en producción, el mismo ~82% de la muestra sin datos con 8 hilos que con 20. El bloqueo de
-    # Yahoo depende del VOLUMEN de la ráfaga (~3 peticiones/ticker × toda la muestra en pocos
-    # minutos), no de cuántas van a la vez, así que se vuelve a `_MAX_WORKERS` sin más — más
-    # rápido, mismo resultado. (`yf.download()` para agrupar el histórico se probó y se REVIRTIÓ
-    # el mismo día: su pool interno de hilos agotó el límite del contenedor —
-    # "getaddrinfo() thread failed to start" — y de todas formas Yahoo no tiene un endpoint de
-    # verdad agrupado para el histórico tampoco, solo paraleliza la misma cantidad de peticiones.)
+    # `_GATHER_WORKERS`/`_GATHER_PACE_S` (ver comentario junto a su definición, arriba): el motor
+    # PRIMARIO del gather es ahora el scraper de Yahoo (`yahoo_scraper.py`, vía
+    # `fundamentals.gather()`), y son estos dos números — 2 hilos, 0,4s de pausa por hilo — los
+    # que se validaron en vivo para él. Se fija aquí, JUSTO antes de lanzar el paso de gather, el
+    # ritmo que `fundamentals.gather()` debe respetar tras cada petición al scraper: ver el
+    # comentario de `fund_mod._GATHER_PACE_S` sobre por qué es un ajuste de módulo y no un
+    # parámetro de la función. (`yf.download()` para agrupar el histórico se probó y se REVIRTIÓ
+    # el mismo día: su pool interno de hilos agotó el límite del contenedor — "getaddrinfo()
+    # thread failed to start" — y de todas formas Yahoo no tiene un endpoint de verdad agrupado
+    # para el histórico, solo paraleliza la misma cantidad de peticiones bajo el capó.)
+    fund_mod._GATHER_PACE_S = _GATHER_PACE_S
+
     def _gather(ticker: str):
         data, err = fund_mod.gather(ticker, db=db)
         return ticker, data, err
 
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
-        gathered = list(ex.map(_gather, sample))
-    t_ultimo_gather = time.monotonic()
+    def _run_gather(tickers: list[str]) -> list[tuple[str, object, str | None]]:
+        """Consume `ex.map(_gather, ...)` uno a uno (en vez de envolverlo en `list()` de golpe)
+        para poder marcar progreso por nombre — mismo orden y mismo bloqueo que antes, solo
+        cambia CÓMO se recoge el resultado."""
+        out: list[tuple[str, object, str | None]] = []
+        with ThreadPoolExecutor(max_workers=_GATHER_WORKERS) as ex:
+            for t, d, e in ex.map(_gather, tickers):
+                out.append((t, d, e))
+                razon = f"{t}: {e}" if d is None and e else None
+                scan_progress.tick(ok=d is not None, reason=razon)
+                if len(out) % 250 == 0:
+                    snap = scan_progress.snapshot()
+                    logger.info("gather %d/%d: %d ok, %d fallidos",
+                               len(out), len(tickers), snap["ok"], snap["fail"])
+        return out
+
+    scan_progress.set_stage("gather", total=len(sample), unit="tickers")
+    logger.info("Escaneo: iniciando GATHER (%d nombres).", len(sample))
+    t0 = time.monotonic()
+    gathered = _run_gather(sample)
+    t_ultimo_gather = time.monotonic()          # fin del gather Y arranque del reloj del cooldown
+    timings["gather"] = round(t_ultimo_gather - t0, 1)
+    logger.info("Escaneo: GATHER completado en %.1fs.", timings["gather"])
 
     fallidos = [t for t, d, _e in gathered if d is None]
     if fallidos:
@@ -395,26 +447,40 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         espera = _GATHER_RETRY_COOLDOWN_S - (time.monotonic() - t_ultimo_gather)
         if espera > 0:
             time.sleep(espera)
-        with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
-            reintentados = {t: (t, d, e) for t, d, e in ex.map(_gather, fallidos)}
+        scan_progress.set_stage("gather_retry", total=len(fallidos), unit="tickers")
+        logger.info("Escaneo: iniciando GATHER_RETRY (%d nombres).", len(fallidos))
+        t0 = time.monotonic()
+        reintentados = {t: (t, d, e) for t, d, e in _run_gather(fallidos)}
+        timings["gather_retry"] = round(time.monotonic() - t0, 1)
+        logger.info("Escaneo: GATHER_RETRY completado en %.1fs.", timings["gather_retry"])
         gathered = [reintentados.get(t, (t, d, e)) for t, d, e in gathered]
 
     failed = [t for t, d, _e in gathered if d is None]      # gather sin datos, tras el reintento
     if failed:
-        lista = ", ".join(failed[:8]) + ("…" if len(failed) > 8 else "")
-        issues.append(f"{len(failed)} nombre(s) sin datos de mercado: {lista}")
+        issues.append(f"{len(failed)} nombre(s) sin datos de mercado: " + ", ".join(failed))
     # Motivo real por ticker (antes se tragaba entero) — va a `ScanRun.failures` con el resto.
     gather_errors = [(t, e) for t, d, e in gathered if d is None and e]
     datos_ok = [d for _t, d, _e in gathered if d is not None]
 
     def _pre_lote(lote: list):
         notas = scorer_mod.prescore_batch(prescore_llm, lote, macro_block)
-        return [(notas[d.ticker], d) for d in lote]
+        par = [(notas[d.ticker], d) for d in lote]
+        # Fallo de lote = mismo criterio que `pre_errors` más abajo (`p.error`, lote no
+        # parseable/degenerado tras reintentos internos de `prescore_batch`).
+        errores = [p for p, _d in par if p.error]
+        scan_progress.tick(ok=not errores,
+                           reason=f"{errores[0].ticker}: {errores[0].error}" if errores else None)
+        return par
 
     tam_lote = settings.prescore_batch_size
     lotes = [datos_ok[i:i + tam_lote] for i in range(0, len(datos_ok), tam_lote)]
+    scan_progress.set_stage("prescore", total=len(lotes), unit="lotes")
+    logger.info("Escaneo: iniciando PRESCORE (%d lotes, %d nombres).", len(lotes), len(datos_ok))
+    t0 = time.monotonic()
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
         por_lote = list(ex.map(_pre_lote, lotes))
+    timings["prescore"] = round(time.monotonic() - t0, 1)
+    logger.info("Escaneo: PRESCORE completado en %.1fs.", timings["prescore"])
     results = [par for lote_res in por_lote for par in lote_res]   # aplanado, 1 par por ticker
 
     prescored = [r for r in results if r[0].score > 0]
@@ -427,9 +493,18 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # auditoría con stage="prescore_error": si no, desaparecen del embudo sin rastro.
     pre_errors = [(p, d) for p, d in results if p.error]
     if pre_errors:
-        detalle = ", ".join(f"{p.ticker}[{p.error.split(':')[0]}]" for p, _d in pre_errors[:8])
-        extra = "…" if len(pre_errors) > 8 else ""
-        issues.append(f"{len(pre_errors)} pre-score(s) fallidos: {detalle}{extra}")
+        # Agrupado por motivo, no un ticker tras otro repitiendo el mismo texto: un lote entero
+        # (hasta 20 tickers) comparte SIEMPRE el mismo `error`, y listarlo 20 veces no dice nada
+        # que no diga una vez ("20 pre-score(s) fallidos: TICKER1[motivo], TICKER1[motivo]...").
+        # Lista COMPLETA, sin recortar a los primeros N: un "…" que se come el resto no dice
+        # qué falló de verdad, y agrupado por motivo (no por ticket) el texto no se dispara de
+        # tamaño aunque fallen cientos — es una línea por motivo, no una por ticker.
+        por_motivo: dict[str, list[str]] = {}
+        for p, _d in pre_errors:
+            por_motivo.setdefault(p.error, []).append(p.ticker)
+        partes = [f"{motivo} ({len(tickers)}): {', '.join(tickers)}"
+                 for motivo, tickers in por_motivo.items()]
+        issues.append(f"{len(pre_errors)} pre-score(s) fallidos — " + " · ".join(partes))
 
     # Finalistas al profundo: top-2/sector (amplitud) ∪ top-15 global + posiciones + watchlist,
     # truncado a un tope duro. El corte YA NO es ciego al macro (el prescore lo ve entero), así
@@ -437,7 +512,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     data_by_t = {d.ticker: d for _p, d in prescored}
 
     # Capa media estratificada: coge los `mid_per_sector` mejores de CADA sector (excluye "n/d")
-    # y los repuntúa con el MISMO prompt del prescore pero un modelo mejor. Motivo (medido):
+    # y los repuntúa con su propio prompt de segunda opinión (`MID_SYSTEM`/`mid_prescore()`,
+    # noticias con resumen + calendario de resultados) y un modelo mejor. Motivo (medido):
     # 2.594 nombres repartidos en solo 287 valores de Flash — un 100/100 que el profundo
     # puntuó 48. El carril "global" de `select_finalists` sale de esta segunda opinión en vez de
     # la frontera ruidosa de Flash; los demás carriles (posición/watchlist/caps/sector) no cambian.
@@ -459,15 +535,21 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             mid_candidates = mid_candidates[:settings.mid_candidates_cap]
 
         def _mid(ticker: str):
-            p = scorer_mod.prescore(mid_llm, data_by_t[ticker], macro_block)
+            p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block)
             for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
                 if not p.error:
                     break
-                p = scorer_mod.prescore(mid_llm, data_by_t[ticker], macro_block)
+                p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block)
+            scan_progress.tick(ok=not p.error, reason=f"{ticker}: {p.error}" if p.error else None)
             return p
 
+        scan_progress.set_stage("mid", total=len(mid_candidates), unit="candidatos")
+        logger.info("Escaneo: iniciando MID (%d candidatos).", len(mid_candidates))
+        t0 = time.monotonic()
         with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
             mid_results = list(ex.map(_mid, mid_candidates))
+        timings["mid"] = round(time.monotonic() - t0, 1)
+        logger.info("Escaneo: MID completado en %.1fs.", timings["mid"])
         # Si la segunda opinión falla, el nombre CONSERVA su pre-score en vez de caer a 0: un
         # error de transporte no es un veredicto, y un 0 lo expulsaría del carril global después
         # de haberse ganado el sitio como mejor de su sector.
@@ -505,10 +587,19 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block)
         return r
 
+    scan_progress.set_stage("deep", total=len(finalists), unit="finalistas")
+    logger.info("Escaneo: iniciando DEEP (%d finalistas).", len(finalists))
+    t0 = time.monotonic()
     analizados: dict[str, scorer_mod.ScoreResult] = {}
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
         for res in ex.map(_deep, finalists):
             analizados[res.ticker] = res
+            # El scorer profundo puntúa 1-100: un 0 SOLO puede ser fallo de parseo (mismo
+            # criterio que `deep`/`deep_caidos` más abajo).
+            scan_progress.tick(ok=res.score > 0,
+                               reason=f"{res.ticker}: {res.error}" if res.error else None)
+    timings["deep"] = round(time.monotonic() - t0, 1)
+    logger.info("Escaneo: DEEP completado en %.1fs.", timings["deep"])
     # El scorer profundo puntúa de 1 a 100, así que un 0 SOLO puede ser fallo de parseo. Se cae
     # del ranking (se pintaba como un 0 legítimo) y NO llega a la watchlist, donde al estar por
     # debajo del umbral de expulsión hacía que un fallo del LLM borrase memoria del agente.
@@ -608,6 +699,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         ) or "(sin candidatos)"
         candidates_text += instruments_mod.prompt_block(instr_prices)  # UCITS ('' si vacío)
         valid = {r.ticker for r in selected} | set(instr_prices)
+        scan_progress.set_stage("constructor")
+        logger.info("Escaneo: iniciando CONSTRUCTOR (%d candidatos).", len(selected))
+        t0 = time.monotonic()
         construction = constructor_mod.construct(
             deep_llm, portfolio_text, candidates_text, macro_block,
             settings.max_positions, settings.max_position_pct, valid, settings.min_positions,
@@ -615,6 +709,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         construction = portfolio.finalize_full_invest(
             construction, selected, settings.min_positions, settings.max_positions,
             settings.max_position_pct)
+        timings["constructor"] = round(time.monotonic() - t0, 1)
+        logger.info("Escaneo: CONSTRUCTOR completado en %.1fs.", timings["constructor"])
 
     # 7) Trades con aritmética exacta (la cartera que PROPONDRÍA hoy; solo se persiste al decidir).
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
@@ -707,6 +803,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     if n is not None:
         _advance_scan_cursor(db, n)
 
+    timings["total"] = round(time.monotonic() - t_scan_inicio, 1)
+    logger.info("Escaneo: TOTAL %.1fs. Por fase: %s", timings["total"],
+               ", ".join(f"{fase}={dur}s" for fase, dur in timings.items() if fase != "total"))
     result = {
         "universe": universo_info,
         "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
@@ -720,6 +819,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         # ser None (desactivada) — `_llm_usage` lo tolera igual que a un FakeLLM sin `usage`.
         "cost": _llm_usage(prescore_llm, mid_llm, deep_llm),
         "outlook": macro.get("outlook") or "",
+        # Duración por fase, segundos (ver `timings` arriba) — clave ausente = fase no corrió.
+        "timings": timings,
     }
     try:   # el informe jamás debe tirar un escaneo ya completado
         _write_scan_report(db, mode=modo, result=result, issues=issues, changes=changes)
@@ -761,7 +862,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             universe=universo_info,
             counters={"scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
                      "selected": len(selected), "positions": len(construction.positions)},
-            cost=result["cost"], issues=issues,
+            cost=result["cost"], timings=timings, issues=issues,
             failures=(
                 [{"ticker": t, "etapa": "gather", "error": e, "raw": None}
                  for t, e in gather_errors]
@@ -775,6 +876,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         db.commit()
     except Exception:
         logger.exception("No se pudo persistir ScanRun (no aborta el escaneo).")
+    scan_progress.set_stage("done")
     return result
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import threading
 from datetime import UTC, datetime
 
+from app import scan_progress
 from app.db import SessionLocal
 from app.scan_service import run_scan_and_store, write_scan_failure
 
@@ -40,6 +41,7 @@ def _run(sample_size: int | None, decide: bool, force_mid_layer: bool) -> None:
         with _lock:
             _state.update(status="error", error=str(exc),
                           finished_at=datetime.now(UTC).isoformat())
+        scan_progress.set_stage("error")
         try:
             write_scan_failure(db, exc)   # el informe persistido sí sobrevive a reinicios
         except Exception:

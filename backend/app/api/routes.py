@@ -234,6 +234,20 @@ def demo_status() -> dict:
     return pipeline.get_status()
 
 
+@public_router.get("/scan/progress")
+def scan_progress_status(authed: bool = Depends(auth_optional)) -> dict:
+    """Progreso EN VIVO del escaneo que esté corriendo ahora mismo (manual o del cron) —
+    en memoria, no persiste. DOBLE NIVEL: los contadores son agregados y salen siempre, pero
+    `last_fail` puede llevar un ticker (ej. "ATKR: 401 Invalid Crumb") — se oculta sin sesión,
+    mismo criterio que `changes`/`outlook` en /scan/report."""
+    from app import scan_progress
+
+    snap = scan_progress.snapshot()
+    if not authed:
+        snap["last_fail"] = None
+    return snap
+
+
 @public_router.get("/scan/report")
 def scan_report(db: Session = Depends(get_db), authed: bool = Depends(auth_optional)) -> dict:
     """Informe del ÚLTIMO escaneo (cron o manual), persistido en la BD: modo, universo,

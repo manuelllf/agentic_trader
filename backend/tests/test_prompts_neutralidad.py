@@ -5,7 +5,7 @@ sectorial en el texto que se inyecta en cada scoring. Sin red, sin LLM real.
 
 from __future__ import annotations
 
-from app.agents.scorer import PRESCORE_SYSTEM, SYSTEM, _prescore_prompt, _user_prompt
+from app.agents.scorer import MID_SYSTEM, SYSTEM, _mid_prompt, _user_prompt
 from app.screener import macro as macro_mod
 from app.screener.fundamentals import NameData
 
@@ -22,7 +22,7 @@ def _name_data(**kwargs) -> NameData:
 def test_los_dos_jueces_cubren_sector_y_tamano() -> None:
     """Profundo y prescore deben decir lo MISMO sobre sector y tamaño: son dos jueces del mismo
     nombre, y si uno penaliza por sector y el otro no, el corte queda a medio criterio."""
-    for texto in (SYSTEM, PRESCORE_SYSTEM):
+    for texto in (SYSTEM, MID_SYSTEM):
         bajo = texto.lower()
         assert "sector" in bajo
         assert "size" in bajo
@@ -31,7 +31,7 @@ def test_los_dos_jueces_cubren_sector_y_tamano() -> None:
 def test_ningun_juez_prohibe_mirar_los_tecnicos() -> None:
     """El paper no menciona los técnicos en su prompt (pasa medias móviles y rango de 52 semanas
     entre otros 90 campos y se calla). Prohibir que decidan era invención nuestra."""
-    for texto in (SYSTEM, PRESCORE_SYSTEM):
+    for texto in (SYSTEM, MID_SYSTEM):
         bajo = texto.lower()
         assert "never a decision rule" not in bajo
         assert "rsi" not in bajo
@@ -45,7 +45,7 @@ def test_los_dos_jueces_dicen_lo_mismo_del_movimiento_de_precio() -> None:
     vuelve es la parte que impedía descontar lo ya subido."""
     frase = ("A price move is not by itself a verdict in either direction: a fall does not make "
              "a business weak, nor does a rally make it strong.")
-    for texto in (SYSTEM, PRESCORE_SYSTEM):
+    for texto in (SYSTEM, MID_SYSTEM):
         assert frase in texto
     # Sin dirección: nada que diga qué HACER con el movimiento, solo qué no concluir.
     for palabra in ("penalise", "penalize", "discount the score", "reduce the score"):
@@ -114,10 +114,10 @@ def test_el_snapshot_no_manda_retornos_por_sector() -> None:
     assert not hasattr(macro_mod, "_SECTOR_ETFS")
 
 
-def test_prescore_prompt_incluye_todos_los_titulares_y_el_nombre() -> None:
+def test_mid_prompt_incluye_todos_los_titulares_y_el_nombre() -> None:
     titulares = [f"Titular {i}" for i in range(5)]
     data = _name_data(name="Acme Corp", news=titulares)
-    prompt = _prescore_prompt(data, "Regime: neutral (VIX 15.0).")
+    prompt = _mid_prompt(data, "Regime: neutral (VIX 15.0).")
     assert "Acme Corp" in prompt
     for titular in titulares:
         assert titular in prompt
@@ -137,7 +137,7 @@ def test_una_respuesta_nula_no_tumba_el_escaneo() -> None:
     data = _name_data()
     r = scorer_mod.score(LLMNulo(), data, "VIX 15.0.")
     assert r.score == 0 and r.error                      # cae como fallo, no como excepción
-    p = scorer_mod.prescore(LLMNulo(), data, "VIX 15.0.")
+    p = scorer_mod.mid_prescore(LLMNulo(), data, "VIX 15.0.")
     assert p.score == 0.0 and p.error
 
 
@@ -194,13 +194,13 @@ def test_los_dos_jueces_piden_dos_decimales_con_la_misma_redaccion() -> None:
     rankings sean comparables."""
     frase = ("Use exactly two decimal places, and let those decimals carry real precision rather "
              "than rounding to quarters or halves")
-    for texto in (SYSTEM, PRESCORE_SYSTEM):
+    for texto in (SYSTEM, MID_SYSTEM):
         assert frase in texto
     # SUAVE a propósito: prohibirle los cuartos ("never end in .25") endureció el prompt y produjo
     # 3 respuestas degeneradas de 49. Con esta redacción: 0 fallos y 100% con decimal real.
     for duro in ("never", "must not", "forbidden"):
         assert duro not in SYSTEM.lower()
-    assert "one decimal" not in PRESCORE_SYSTEM.lower()
+    assert "one decimal" not in MID_SYSTEM.lower()
 
 
 def test_la_nota_conserva_los_dos_decimales_al_parsear() -> None:
@@ -218,7 +218,7 @@ def test_la_nota_conserva_los_dos_decimales_al_parsear() -> None:
 
     r = scorer_mod.score(LLMDecimal("78.37"), _name_data(), "VIX 15.0.")
     assert r.score == 78.37
-    p = scorer_mod.prescore(LLMDecimal("84.61"), _name_data(), "VIX 15.0.")
+    p = scorer_mod.mid_prescore(LLMDecimal("84.61"), _name_data(), "VIX 15.0.")
     assert p.score == 84.61
 
 

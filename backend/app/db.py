@@ -119,6 +119,10 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
         conn.execute(text("ALTER TABLE scan_runs ADD COLUMN finalists JSON DEFAULT '[]'"))
     if sr and "construction" not in sr:
         conn.execute(text("ALTER TABLE scan_runs ADD COLUMN construction JSON DEFAULT '{}'"))
+    # scan_runs.timings: duración por fase (ver models.py). Filas viejas quedan con '{}' — no
+    # se midió entonces, no hay forma de reconstruirlo después.
+    if sr and "timings" not in sr:
+        conn.execute(text("ALTER TABLE scan_runs ADD COLUMN timings JSON DEFAULT '{}'"))
     conn.commit()
     _migrate_score_decimal(conn)
 

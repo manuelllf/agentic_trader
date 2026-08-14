@@ -57,7 +57,7 @@ def test_scorer_bad_json_is_zero() -> None:
     assert r.score == 0  # queda fuera del embudo
 
 
-# ---- fecha de resultados (dato del contexto del profundo; decisión pública: dato sí, regla no)
+# ---- fecha de resultados (dato de contexto en los tres niveles, sin regla de qué hacer con él)
 
 def test_earnings_text_fecha_ventana_y_pasado() -> None:
     from app.screener import fundamentals as fund_mod
@@ -85,12 +85,18 @@ def test_earnings_text_fecha_ventana_y_pasado() -> None:
     assert fund_mod._earnings_text({}) == ""           # sin dato → el prompt pinta n/d
 
 
-def test_earnings_entra_al_profundo_y_no_al_prescore() -> None:
+def test_earnings_entra_en_los_tres_niveles() -> None:
+    """El calendario de resultados era solo del profundo; ahora también entra en la capa media
+    (`_mid_prompt`) y en el triaje barato por lotes (`_prescore_batch_prompt`), como dato sin
+    regla de qué hacer con él — la única vía aprobada de enriquecer el triaje sin meterle
+    factores con nombre que induzcan sesgo."""
     data = _name()
     data.earnings_text = "next earnings report: 2026-08-12"
     assert "Earnings calendar: next earnings report: 2026-08-12" in (
         scorer_mod._user_prompt(data, "macro", None))
-    assert "Earnings calendar" not in scorer_mod._prescore_prompt(data, "macro")
+    assert "Earnings: next earnings report: 2026-08-12" in scorer_mod._mid_prompt(data, "macro")
+    assert "Earnings: next earnings report: 2026-08-12" in (
+        scorer_mod._prescore_batch_prompt([data], "macro"))
 
     data.earnings_text = ""
     assert "Earnings calendar: n/d" in scorer_mod._user_prompt(data, "macro", None)
