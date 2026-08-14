@@ -13,7 +13,7 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 
 Un escaneo programado recorre **~3.000 acciones cotizadas en EE. UU.** (ADRs incluidos) y las
 puntúa en dos pasos: un cribado rápido y barato sobre todo el universo, y un análisis profundo
-(informe + score + precio objetivo) sobre unos 50 finalistas. La selección final es
+(informe + score + precio objetivo) sobre hasta 80 finalistas. La selección final es
 **determinista y vive en el código** —top-N por score, desempate por capitalización—; el LLM
 solo reparte los pesos entre los ya seleccionados. Todo el dinero (tamaños, caja, P&L) lo
 calcula el código con aritmética exacta en `Decimal` — nunca el LLM.
@@ -65,7 +65,7 @@ Las que más forma le dan al sistema:
 |-----------|---------------------------------------------------------------|
 | Backend   | Python 3.12 · FastAPI · SQLAlchemy 2 · Pydantic v2            |
 | Datos     | yfinance · screener público de NASDAQ                        |
-| LLM       | DeepSeek vía OpenRouter (capa de proveedor intercambiable)   |
+| LLM       | DeepSeek, API oficial directa (capa de proveedor intercambiable)   |
 | Memoria   | sqlite-vec + fastembed (embeddings locales, sin coste)       |
 | Bróker    | IBKR Web API (OAuth 1.0a headless, `ibind`)                  |
 | Scheduler | APScheduler                                                  |
@@ -97,9 +97,10 @@ La documentación OpenAPI (`/docs`, `/redoc`, `/openapi.json`) solo se sirve en 
 `APP_PASSWORD` definida queda desactivada, para no publicar la superficie de la API.
 
 Variables de entorno en `backend/.env` (no versionado). Para el escaneo con LLM hace falta
-`OPENROUTER_API_KEY`; para la sala real, las credenciales OAuth de IBKR. Sin ellas, el
-sistema funciona igualmente: el escaneo requiere la clave del LLM y el bróker cae a
-simulación.
+`DEEPSEEK_API_KEY` (proveedor por defecto; `OPENROUTER_API_KEY` es opcional, solo para pruebas
+puntuales locales con `LLM_PROVIDER=openrouter`); para la sala real, las credenciales OAuth de
+IBKR. Sin ellas, el sistema funciona igualmente: el escaneo requiere la clave del LLM y el
+bróker cae a simulación.
 
 ### Frontend
 
