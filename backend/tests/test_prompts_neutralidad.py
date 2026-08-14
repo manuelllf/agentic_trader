@@ -162,8 +162,10 @@ def test_el_objetivo_de_precio_va_al_mismo_horizonte_que_la_nota() -> None:
     assert "3-month PRICE TARGET" not in SYSTEM
     # Del horizonte de los objetivos de analistas se enuncia el HECHO, no el método: sin la nota
     # puede copiar un objetivo a doce meses como si fuera a uno; con "do not copy" o con
-    # "longer-horizon" a secas, sobrecorrige o hace una regla de tres.
-    assert "which are published for longer horizons" in SYSTEM
+    # "longer-horizon" a secas, sobrecorrige o hace una regla de tres. "12-18 month" es más
+    # concreto que "longer horizons" (medido: un 3,8% de los target_price en producción copiaban
+    # el consenso) pero sigue sin prescribir el método.
+    assert "typically published for a 12-18 month horizon" in SYSTEM
     for instruccion in ("do not copy", "scale", "divide"):
         assert instruccion not in SYSTEM.lower()
 

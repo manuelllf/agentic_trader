@@ -123,6 +123,14 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
     # se midió entonces, no hay forma de reconstruirlo después.
     if sr and "timings" not in sr:
         conn.execute(text("ALTER TABLE scan_runs ADD COLUMN timings JSON DEFAULT '{}'"))
+    # scores.target_consensus_mean/target_echoed_consensus: guardarraíl de ECO de consenso (ver
+    # models.py) — telemetría, filas viejas quedan a NULL/False, no había forma de reconstruirlo.
+    if sc and "target_consensus_mean" not in sc:
+        conn.execute(text("ALTER TABLE scores ADD COLUMN target_consensus_mean FLOAT"))
+    if sc and "target_echoed_consensus" not in sc:
+        conn.execute(text(
+            "ALTER TABLE scores ADD COLUMN target_echoed_consensus BOOLEAN NOT NULL DEFAULT 0"
+        ))
     conn.commit()
     _migrate_score_decimal(conn)
 

@@ -76,9 +76,19 @@ SYSTEM = (
     # un +20% a doce meses entre doce y llamarlo análisis). Callarlo del todo tiene el riesgo
     # opuesto: que copie un objetivo a doce meses como si fuera a uno e infle el potencial que
     # se enseña en la web. Se dice qué son y se le deja decidir.
+    #
+    # "longer horizons" resultó demasiado vago — medido en producción (10 escaneos, 495
+    # finalistas con consenso cacheado), un 3,8% de los target_price coincidían (<0,5%) con el
+    # consenso MEDIO de analistas, y no era ruido de un nombre suelto: ATKR, ALL, AMP y MGA
+    # repitieron la copia exacta en escaneos distintos. Precisar el horizonte a "12-18 month" en
+    # vez de "longer" es enunciar un HECHO más concreto, no un método nuevo — se evita a
+    # propósito añadir un "do not copy/derive" explícito, que es la frase que ya sobrecorregía
+    # antes. Guardarraíl de telemetría (sin corregir nada) para medir si esto basta:
+    # `_flag_consensus_echo` en scan_service.py.
     "ALSO give your own approximate PRICE TARGET for the same one-month horizon as the score (a "
     "single number in the stock's trading currency), informed by the fundamentals and the analyst "
-    "targets provided, which are published for longer horizons. If the news show "
+    "targets provided, which are typically published for a 12-18 month horizon - a much longer "
+    "call than the one-month target you are making here. If the news show "
     "the company is under a definitive cash acquisition offer, use the offer terms exactly as "
     "reported (do not derive per-share figures yourself) and do not set the price target above "
     "the cash offer price. "
@@ -158,12 +168,16 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> 
         if prior_thesis else ""
     )
     return (
-        f"Company: {data.ticker} — sector {data.sector} / {data.industry}.\n"
+        # Macro delante del ticker (antes iba detrás): el bloque macro es idéntico para TODAS
+        # las llamadas del profundo en un mismo escaneo — ponerlo primero deja el prefijo
+        # repetido más largo posible para la caché de disco de DeepSeek (ver `llm/deepseek.py`),
+        # sin cambiar ni una palabra del contenido.
+        f"Macro outlook:\n{macro_block}\n\n"
         # "Macro & SECTOR outlook" era un resto de cuando el macro traía tilt sectorial: ahora el
         # prompt del macro le PROHÍBE nombrar sectores, así que la etiqueta prometía algo que no
         # existe y colaba la palabra "sector" como marco en cada llamada. El sector de ESTA empresa
-        # sigue arriba, que es donde el paper lo pone.
-        f"Macro outlook:\n{macro_block}\n\n"
+        # sigue abajo, que es donde el paper lo pone.
+        f"Company: {data.ticker} — sector {data.sector} / {data.industry}.\n"
         f"Latest fundamentals:\n{data.fundamentals_text}\n\n"
         f"Technical context: {data.technical_text or 'n/d'}\n"
         # Fecha de resultados como dato más del contexto, SIN regla de qué hacer con ella
@@ -186,7 +200,10 @@ def _mid_prompt(data: NameData, macro_block: str) -> str:
     # Las noticias van ANTES de los ~50 fundamentales, no detrás: el propio SYSTEM dice que se
     # pesen "TOGETHER", y quedaban enterradas tras cincuenta líneas de números.
     return (
-        f"{data.ticker}{name} — {data.sector}/{data.industry}. Macro: {macro_block}\n"
+        # Macro delante (mismo motivo que en `_user_prompt`): prefijo idéntico entre las ~200
+        # llamadas de la capa media de un escaneo, cache-friendly sin tocar el contenido.
+        f"Macro: {macro_block}\n"
+        f"{data.ticker}{name} — {data.sector}/{data.industry}\n"
         f"News: {news}\n"
         f"Fundamentals:\n{data.fundamentals_text}\n"
         f"Technical: {data.technical_text or 'n/d'}\n"
@@ -242,7 +259,66 @@ def mid_prescore(
 
 
 # ---------------------------------------------------------------------------------------------
-# Pre-score por LOTES — triaje barato del universo, agrupando N tickers en una sola llamada.
+# Pre-score INDIVIDUAL — triaje barato del universo, 1 llamada por ticker. Circuito por
+# defecto con `llm_provider="deepseek"` (ver config.py): fiel al paper (1 llamada/ticker) y
+# apoyado en la caché de prefijo en disco de DeepSeek para que la llamada individual no salga
+# tan cara como sin ella — el bloque macro (idéntico en las ~3.000 llamadas de un escaneo) va
+# SIEMPRE delante del contenido variable del ticker, ver `_prescore_prompt`.
+# ---------------------------------------------------------------------------------------------
+
+PRESCORE_SYSTEM = (
+    "You are the first-pass TRIAGE of an equity research pipeline. For the company given, "
+    "answer ONE question: how likely is it that a rigorous deep fundamental analysis would find "
+    "this company attractive for the next month? Weigh fundamentals, valuation and news "
+    "TOGETHER. Do not raise or lower the score merely because of the company's sector or its "
+    "size; ask whether the news changes the earnings power or the valuation case. A price move "
+    "is not by itself a verdict in either direction: a fall does not make a business weak, nor "
+    "does a rally make it strong. Calibrate the scale: 90+ exceptional (rare), 75-89 strong "
+    "candidate for deep review, 50-74 unremarkable, <50 weak. Use exactly two decimal places, "
+    "and let those decimals carry real precision rather than rounding to quarters or halves - "
+    'e.g. 71.38, 84.61. Respond ONLY in JSON: {"score": <number 0-100, two decimal places>}.'
+)
+
+
+def _prescore_prompt(data: NameData, macro_block: str) -> str:
+    news = "; ".join(_titulo(n) for n in data.news) if data.news else "none"
+    name = f" ({data.name})" if data.name else ""
+    return (
+        f"Macro outlook: {macro_block}\n"
+        f"{data.ticker}{name} — {data.sector}/{data.industry}\n"
+        f"News: {news}\n"
+        f"Fundamentals:\n{data.fundamentals_text}\n"
+        f"Technical: {data.technical_text or 'n/d'}\n"
+        f"Earnings: {data.earnings_text or 'n/d'}\n"
+        "1.00-100.00 score (JSON)."
+    )
+
+
+def prescore_one(
+    llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 0.4,
+) -> PrescoreResult:
+    """Triaje de un ticker, 1 llamada. Mismo guardarraíl y forma de fallo que `mid_prescore`
+    (best-effort: 0 si falla, con `error`/`raw` para que el caller decida si reintenta)."""
+    raw = ""
+    try:
+        raw = llm.chat(PRESCORE_SYSTEM, _prescore_prompt(data, macro_block),
+                       temperature=temperature) or ""
+        obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+        sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
+        if sc <= 0:
+            return PrescoreResult(data.ticker, 0.0,
+                                  error="SinNota: JSON válido sin score utilizable",
+                                  raw=_recorte(raw))
+        return PrescoreResult(data.ticker, sc)
+    except Exception as exc:
+        logger.warning("Pre-score no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
+        return PrescoreResult(data.ticker, 0.0, error=f"{type(exc).__name__}: {exc}",
+                              raw=_recorte(raw))
+
+
+# ---------------------------------------------------------------------------------------------
+# Pre-score por LOTES — SOLO circuito OpenRouter (`llm_provider="openrouter"`, pruebas locales
+# puntuales). Agrupa N tickers en una sola llamada.
 # Medido en vivo: la sobrecarga fija por llamada (cola del proveedor detrás del
 # alias, no generación — una sola empresa tardó de 2,5 a 49,5s) domina el reloj del pre-score
 # puro (~3.000 llamadas, ~85% del tiempo de un escaneo). Agrupar de 20 en 20 la amortiza: ~150

@@ -173,6 +173,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                       <th className="pb-1 text-left font-semibold">ticker</th>
                       <th className="pb-1 text-left font-semibold">sector</th>
                       <th className="pb-1 text-right font-semibold">score</th>
+                      <th className="pb-1 text-right font-semibold">precio</th>
                       <th className="pb-1 text-right font-semibold">target</th>
                       <th className="pb-1 text-left font-semibold pl-2">estado</th>
                     </tr>
@@ -221,6 +222,7 @@ function FinalistRow({ f }: { f: ScanFullFinalist }) {
       <td className="py-1"><b style={{ color: T.ink }}>{f.ticker}</b></td>
       <td className="py-1" style={{ color: T.ink2 }}>{f.sector || "—"}</td>
       <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(f.deep_score ?? f.prescore)}</td>
+      <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.price != null ? `$${money(f.price)}` : "—"}</td>
       <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.target_price != null ? `$${money(f.target_price)}` : "—"}</td>
       <td className="py-1 pl-2 text-left font-semibold" style={{ color }}>{estado}</td>
     </tr>

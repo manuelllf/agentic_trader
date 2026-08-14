@@ -94,6 +94,14 @@ class Score(Base):
     # lo corrige después. Telemetría para auditar el guardarrail, nunca vuelve a un prompt.
     target_raw: Mapped[float | None] = mapped_column(Float)
     target_flagged: Mapped[bool] = mapped_column(default=False)
+    # target_consensus_mean/target_echoed_consensus: guardarraíl de ECO de consenso (ver
+    # `_flag_consensus_echo` en scan_service.py) — distinto del guardarraíl de arriba (oferta
+    # corporativa) y en columna propia porque no comparten motivo. A diferencia del de arriba,
+    # este NO corrige target_price: solo anota cuándo coincidió (<0,5%) con el consenso MEDIO de
+    # analistas (horizonte 12-18m) pese a pedirse a un mes, indicio de que lo copió en vez de
+    # razonar el horizonte corto. Telemetría, nunca vuelve a un prompt.
+    target_consensus_mean: Mapped[float | None] = mapped_column(Float)
+    target_echoed_consensus: Mapped[bool] = mapped_column(default=False)
     # ¿el informe declara que ESTA empresa está siendo comprada? Aparta de la selección (no del
     # ranking). NULL = el modelo no contestó al campo, que NO es lo mismo que un "no" — por eso
     # es nullable y no un booleano con default False.

@@ -55,8 +55,19 @@ from app.screener import universe as universe_mod
 
 logger = logging.getLogger(__name__)
 
-_MAX_WORKERS = 10        # prescore/capa media/profundo (OpenRouter) — con lotes de 20, 150
-# llamadas reales no necesitan 20 hilos; 10 basta y presiona menos al proveedor.
+# Concurrencia por etapa. Con `llm_provider="openrouter"` (pruebas locales puntuales) se queda
+# conservador: 10 hilos, presiona poco a un alias repartido entre ~28 proveedores desiguales.
+# Con "deepseek" (producción, circuito oficial): límites documentados en
+# api-docs.deepseek.com son 2.500 peticiones EN VUELO para Flash y 500 para Pro — arranque a
+# fracción de esos techos, no a ellos, y por medir en producción (no hay dato propio de rate
+# de 429 todavía, solo el límite oficial). Escalar según la tasa de error real, igual que se
+# hizo con `_GATHER_WORKERS` contra Yahoo.
+if settings.llm_provider == "deepseek":
+    _PRESCORE_WORKERS = 1000   # Flash, triaje (~3.000 llamadas/escaneo)
+    _MID_WORKERS = 100         # Pro, capa media (~200 candidatos)
+    _DEEP_WORKERS = 50         # Pro, profundo (hasta `deep_finalists_cap` finalistas)
+else:
+    _PRESCORE_WORKERS = _MID_WORKERS = _DEEP_WORKERS = 10
 # Gather: desde el scraper de Yahoo (`yahoo_scraper.py`, motor primario — ver `fundamentals.py`)
 # como PRIMARIO, MEDIDO en vivo contra Yahoo (no estimado): 2 hilos + 0,4s de pausa por hilo
 # dieron 3.000/3.000 (100%) en una tirada de tamaño de producción completa; 10 hilos con la MISMA
@@ -143,16 +154,20 @@ def _memory_store():
         return None
 
 
-def _llm_usage(*llms) -> dict:
-    """Suma el uso (llamadas/tokens/coste) de varios proveedores. Tolera FakeLLM (sin `usage`).
+def _llm_usage(**etapas) -> dict:
+    """Suma el uso (llamadas/tokens/coste) de varias etapas nombradas. Tolera `None`/FakeLLM
+    sin `usage` (capa media desactivada, tests).
 
-    `by_model` desglosa el mismo total por modelo (Flash del prescore vs V4-Pro del profundo):
-    sin él, ScanRun.cost solo diría cuánto costó el escaneo, no en qué paso se fue el dinero.
+    `by_model` desglosa por modelo (Flash del prescore vs V4-Pro del resto) y `by_stage` por
+    ETAPA — necesario aparte porque macro/profundo/constructor comparten el mismo modelo (V4-Pro)
+    desde que se dejó OpenRouter: sin `by_stage`, `by_model["deepseek-v4-pro"]` mezclaría las
+    tres y ScanRun.cost dejaría de decir en qué paso se fue el dinero, justo lo que `by_model`
+    existe para evitar.
     """
     total = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0,
-             "by_model": {}}
+             "by_model": {}, "by_stage": {}}
     campos = ("calls", "prompt_tokens", "completion_tokens", "cost_usd")
-    for llm in llms:
+    for etapa, llm in etapas.items():
         u = getattr(llm, "usage", None)
         if not isinstance(u, dict):
             continue
@@ -162,6 +177,7 @@ def _llm_usage(*llms) -> dict:
             acc = total["by_model"].setdefault(modelo, dict.fromkeys(campos, 0))
             for k in campos:
                 acc[k] += stats.get(k, 0)
+        total["by_stage"][etapa] = {k: u.get(k, 0) for k in campos}
     total["cost_usd"] = round(total["cost_usd"], 4)
     return total
 
@@ -247,6 +263,25 @@ def _flag_corporate_deal_targets(
     return target_raw, target_flagged
 
 
+def _flag_consensus_echo(deep: dict, data_by_t: dict) -> tuple[dict, set]:
+    """Detecta cuándo `target_price` coincide (<0,5%) con el consenso MEDIO de analistas
+    (publicado a 12-18 meses, no al mes que se le pide) — indicio de que el modelo copió el
+    número en vez de razonar el horizonte corto. A diferencia de `_flag_corporate_deal_targets`,
+    NO toca `target_price`: es puro telemetría para medir si el prompt mejora con el tiempo.
+    Devuelve (target_consensus_mean, target_echoed_consensus) para que el caller los guarde en
+    `Score`."""
+    target_consensus_mean: dict[str, float] = {}
+    echoed: set[str] = set()
+    for ticker, r in deep.items():
+        mean = data_by_t[ticker].target_mean
+        if r.target_price is None or not mean:
+            continue
+        if abs(r.target_price - mean) / mean < 0.005:
+            echoed.add(ticker)
+            target_consensus_mean[ticker] = mean
+    return target_consensus_mean, echoed
+
+
 def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, finalists: list,
                 data_by_t: dict, selected: list, construction, instr_prices: dict) -> None:
     """Traza legible del embudo en los logs (Railway/consola): permite ver de un vistazo que el
@@ -290,7 +325,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Duración de cada fase (segundos, ver `ScanRun.timings`): una clave ausente significa que
     # esa fase no llegó a correr (ej. "mid" sin capa media activa), no que tardó 0s.
     timings: dict[str, float] = {}
-    deep_llm = get_llm()                              # V4-Pro: informe + target + construcción
+    # Instancia PROPIA para el macro (antes compartía `deep_llm`): sin esto, su única llamada se
+    # mezclaba con las del profundo en `by_model` (ambos V4-Pro) y el desglose de coste por
+    # etapa de `_llm_usage` no podía separarlas.
+    macro_llm = get_llm()
+    deep_llm = get_llm()                              # V4-Pro: informe profundo, sin max
     # reasoning_effort propio (PRIORIDAD 1): triaje barato de todo el universo, no compra nada
     # razonando "max" y sí dobla el coste medido en producción.
     prescore_llm = get_llm(settings.prescore_model,
@@ -348,7 +387,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     scan_progress.set_stage("macro")
     logger.info("Escaneo: iniciando MACRO.")
     t0 = time.monotonic()
-    macro = macro_mod.get_macro_outlook(deep_llm, db)
+    macro = macro_mod.get_macro_outlook(macro_llm, db)
     macro_block = macro_mod.outlook_prompt_block(macro)
     timings["macro"] = round(time.monotonic() - t0, 1)
     logger.info("Escaneo: MACRO completado en %.1fs.", timings["macro"])
@@ -472,13 +511,30 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                            reason=f"{errores[0].ticker}: {errores[0].error}" if errores else None)
         return par
 
-    tam_lote = settings.prescore_batch_size
-    lotes = [datos_ok[i:i + tam_lote] for i in range(0, len(datos_ok), tam_lote)]
-    scan_progress.set_stage("prescore", total=len(lotes), unit="lotes")
-    logger.info("Escaneo: iniciando PRESCORE (%d lotes, %d nombres).", len(lotes), len(datos_ok))
+    def _pre_uno(d):
+        p = scorer_mod.prescore_one(prescore_llm, d, macro_block)
+        for _ in range(2):   # mismo criterio que capa media/profundo: DOS reintentos, no uno
+            if not p.error:
+                break
+            p = scorer_mod.prescore_one(prescore_llm, d, macro_block)
+        scan_progress.tick(ok=not p.error, reason=f"{p.ticker}: {p.error}" if p.error else None)
+        return [(p, d)]
+
+    # Individual por defecto (`llm_provider="deepseek"`, fiel al paper) — sin lotes. El batch
+    # solo se usa con OpenRouter (pruebas locales, ver `settings.prescore_batch_size`).
+    if settings.llm_provider == "deepseek":
+        tareas, correr, unidad = datos_ok, _pre_uno, "nombres"
+    else:
+        tam_lote = settings.prescore_batch_size
+        tareas = [datos_ok[i:i + tam_lote] for i in range(0, len(datos_ok), tam_lote)]
+        correr, unidad = _pre_lote, "lotes"
+
+    scan_progress.set_stage("prescore", total=len(tareas), unit=unidad)
+    logger.info("Escaneo: iniciando PRESCORE (%d %s, %d nombres).",
+               len(tareas), unidad, len(datos_ok))
     t0 = time.monotonic()
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
-        por_lote = list(ex.map(_pre_lote, lotes))
+    with ThreadPoolExecutor(max_workers=_PRESCORE_WORKERS) as ex:
+        por_lote = list(ex.map(correr, tareas))
     timings["prescore"] = round(time.monotonic() - t0, 1)
     logger.info("Escaneo: PRESCORE completado en %.1fs.", timings["prescore"])
     results = [par for lote_res in por_lote for par in lote_res]   # aplanado, 1 par por ticker
@@ -533,6 +589,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 f"{settings.mid_candidates_cap}); se recortan a los de mayor pre-score. "
                 f"Sectores distintos vistos: {len(sectores - {''})}.")
             mid_candidates = mid_candidates[:settings.mid_candidates_cap]
+        elif len(mid_candidates) < settings.mid_candidates_cap:
+            # Relleno hasta el tope con el top-prescore GLOBAL (prescored ya viene ordenado por
+            # -score/-market_cap), sin duplicar los que ya entraron por sector. Antes el cupo se
+            # quedaba corto si los sectores no daban para tanto (~165 de 200 en un escaneo real)
+            # sin que nada lo compensara.
+            ya = {t for t in mid_candidates}
+            relleno = [p.ticker for p, _d in prescored if p.ticker not in ya]
+            mid_candidates += relleno[:settings.mid_candidates_cap - len(mid_candidates)]
 
         def _mid(ticker: str):
             p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block)
@@ -546,7 +610,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         scan_progress.set_stage("mid", total=len(mid_candidates), unit="candidatos")
         logger.info("Escaneo: iniciando MID (%d candidatos).", len(mid_candidates))
         t0 = time.monotonic()
-        with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
+        with ThreadPoolExecutor(max_workers=_MID_WORKERS) as ex:
             mid_results = list(ex.map(_mid, mid_candidates))
         timings["mid"] = round(time.monotonic() - t0, 1)
         logger.info("Escaneo: MID completado en %.1fs.", timings["mid"])
@@ -591,7 +655,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     logger.info("Escaneo: iniciando DEEP (%d finalistas).", len(finalists))
     t0 = time.monotonic()
     analizados: dict[str, scorer_mod.ScoreResult] = {}
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
+    with ThreadPoolExecutor(max_workers=_DEEP_WORKERS) as ex:
         for res in ex.map(_deep, finalists):
             analizados[res.ticker] = res
             # El scorer profundo puntúa 1-100: un 0 SOLO puede ser fallo de parseo (mismo
@@ -614,6 +678,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Guardarraíl de operación corporativa: corrige `target_price` EN SITIO antes de que nada
     # aguas abajo (mapa de objetivos, upside, selección) lo use. Ver docstring de la función.
     target_raw, target_flagged = _flag_corporate_deal_targets(deep, data_by_t, issues)
+    # Guardarraíl de eco de consenso: se calcula DESPUÉS del de arriba, sobre el target_price ya
+    # corregido si aplicó — solo telemetría, no cambia nada aguas abajo.
+    target_consensus_mean, target_echoed = _flag_consensus_echo(deep, data_by_t)
 
     price_map = {d.ticker: d.price for _p, d in prescored if d.price}
     instr_prices = instruments_mod.prices()        # {} si el allowlist UCITS está vacío
@@ -650,6 +717,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 # noticias son un endpoint en vivo, al día siguiente ya no se pueden reconstruir.
                 news_used=list(data.news) if data.news is not None else None,
                 target_raw=target_raw.get(ticker), target_flagged=ticker in target_flagged,
+                target_consensus_mean=target_consensus_mean.get(ticker),
+                target_echoed_consensus=ticker in target_echoed,
                 under_acquisition=d.under_acquisition,
             ))
     else:
@@ -664,6 +733,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             row.target_price, row.sector = d.target_price, data.sector
             row.target_raw = target_raw.get(ticker)
             row.target_flagged = ticker in target_flagged
+            row.target_consensus_mean = target_consensus_mean.get(ticker)
+            row.target_echoed_consensus = ticker in target_echoed
             row.under_acquisition = d.under_acquisition
             refreshed += 1
     db.commit()
@@ -684,6 +755,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         _aparta_opadas(list(deep.values()), issues),
         mcap_map, settings.min_buy_score, settings.select_count)
     portfolio_text = portfolio.portfolio_text(db, held, price_map)
+    constructor_llm = None
     if not selected and not held:
         floor = settings.min_buy_score
         reason = (f"Ningún finalista alcanza el suelo de score ({floor})" if floor > 0
@@ -702,8 +774,13 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         scan_progress.set_stage("constructor")
         logger.info("Escaneo: iniciando CONSTRUCTOR (%d candidatos).", len(selected))
         t0 = time.monotonic()
+        # Instancia SEPARADA (no `deep_llm`): el constructor es la ÚNICA etapa con reasoning
+        # "max" (ver config.py) — una llamada por escaneo, coste extra asumible. Se crea aquí,
+        # justo antes de usarse, para no alterar el ORDEN de las llamadas a `get_llm()` que ya
+        # usan los tests para distinguir prescore/mid/deep sin mirar el string del modelo.
+        constructor_llm = get_llm(reasoning_effort=settings.reasoning_effort)
         construction = constructor_mod.construct(
-            deep_llm, portfolio_text, candidates_text, macro_block,
+            constructor_llm, portfolio_text, candidates_text, macro_block,
             settings.max_positions, settings.max_position_pct, valid, settings.min_positions,
         )
         construction = portfolio.finalize_full_invest(
@@ -815,9 +892,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         "proposed": len([i for i in items if i["action"] != "mantener"]),
         "positions": len(construction.positions),
         "decided": decide,
-        # coste REAL del escaneo (Flash + capa media si está activa + V4-Pro); `mid_llm` puede
-        # ser None (desactivada) — `_llm_usage` lo tolera igual que a un FakeLLM sin `usage`.
-        "cost": _llm_usage(prescore_llm, mid_llm, deep_llm),
+        # coste REAL del escaneo, con `by_stage` además de `by_model` (ver `_llm_usage`):
+        # `mid_llm` puede ser None (desactivada) — se tolera igual que a un FakeLLM sin `usage`.
+        "cost": _llm_usage(macro=macro_llm, prescore=prescore_llm, mid=mid_llm,
+                           profundo=deep_llm, constructor=constructor_llm),
         "outlook": macro.get("outlook") or "",
         # Duración por fase, segundos (ver `timings` arriba) — clave ausente = fase no corrió.
         "timings": timings,
@@ -884,7 +962,7 @@ def recheck(db: Session) -> dict:
     """Re-comprobación del top: re-corre SOLO la construcción sobre los nombres ya analizados a
     fondo (report != ''), reutilizando sus informes/scores/targets guardados y aplicando el suelo
     ACTUAL. No re-escanea el universo → instantáneo y casi gratis (1 llamada de construcción)."""
-    llm = get_llm()
+    llm = get_llm(reasoning_effort=settings.reasoning_effort)   # solo construcción → max
     deep = (db.query(Score).filter(Score.report != "").order_by(Score.score.desc()).all())
     if not deep:
         raise ValueError("No hay análisis profundo previo; lanza un escaneo primero.")
@@ -935,7 +1013,7 @@ def recheck(db: Session) -> dict:
         logger.exception("No se pudieron crear las aprobaciones del modo real.")
     return {"eligible": len(selected), "positions": len(construction.positions),
             "proposed": len([i for i in items if i["action"] != "mantener"]),
-            "cost": _llm_usage(llm)}  # coste de la re-comprobación (1 llamada de construcción)
+            "cost": _llm_usage(constructor=llm)}  # 1 llamada de construcción
 
 
 def redeep(db: Session) -> dict:
@@ -964,7 +1042,7 @@ def redeep(db: Session) -> dict:
 
     data_by_t: dict = {}
     results: dict = {}
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
+    with ThreadPoolExecutor(max_workers=_DEEP_WORKERS) as ex:
         for out in ex.map(_one, tickers):
             if out is not None:
                 data, res = out
@@ -990,6 +1068,7 @@ def redeep(db: Session) -> dict:
         _aparta_opadas(list(results.values()), issues_redeep),
         mcap_map, settings.min_buy_score, settings.select_count)
     portfolio_text = portfolio.portfolio_text(db, held, price_map)
+    constructor_llm = None
     if not selected and not held:
         construction = constructor_mod.ConstructionResult(
             cash_pct=100.0, positions=[], summary="Sin candidatos tras re-análisis — 100% caja.")
@@ -998,8 +1077,9 @@ def redeep(db: Session) -> dict:
             f"- {r.ticker} ({data_by_t[r.ticker].sector}) score={r.score}, "
             f"cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B: {r.headline}" for r in selected)
         valid = {r.ticker for r in selected}
+        constructor_llm = get_llm(reasoning_effort=settings.reasoning_effort)  # solo esto → max
         construction = constructor_mod.construct(
-            deep_llm, portfolio_text, candidates_text, macro_block,
+            constructor_llm, portfolio_text, candidates_text, macro_block,
             settings.max_positions, settings.max_position_pct, valid, settings.min_positions)
         construction = portfolio.finalize_full_invest(
             construction, selected, settings.min_positions, settings.max_positions,
@@ -1016,4 +1096,4 @@ def redeep(db: Session) -> dict:
         logger.exception("No se pudieron crear las aprobaciones del modo real.")
     return {"redeep": len(results), "positions": len(construction.positions),
             "proposed": len([i for i in items if i["action"] != "mantener"]),
-            "cost": _llm_usage(deep_llm)}
+            "cost": _llm_usage(macro_profundo=deep_llm, constructor=constructor_llm)}

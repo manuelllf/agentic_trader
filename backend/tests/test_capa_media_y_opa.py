@@ -70,11 +70,13 @@ def _gather_stub(monkeypatch, sectors: dict[str, str], target_high: dict[str, fl
 
 
 class ScoringLLM:
-    """Simula el prescore/capa-media. La capa media (`mid_llm`) sigue siendo 1 ticker por
-    llamada (lee el primer token del prompt); el prescore puro (`prescore_llm`) ahora va por
-    LOTES — se detecta por el SYSTEM prompt ("SEVERAL companies") y responde con la lista
-    "scores" que espera `scorer.prescore_batch`. Registra qué tickers puntuó (para comprobar el
-    carril de entrada)."""
+    """Simula el prescore/capa-media. Individual (capa media, y prescore con
+    `llm_provider="deepseek"`) es 1 ticker por llamada — la línea "TICKER — sector/industria" va
+    DETRÁS del bloque macro (orden cache-friendly, ver `scorer._mid_prompt`/`_prescore_prompt`),
+    así que el ticker se extrae por patrón, no por primer token. El prescore por LOTES
+    (`llm_provider="openrouter"`) se detecta por el SYSTEM prompt ("SEVERAL companies") y
+    responde con la lista "scores" que espera `scorer.prescore_batch`. Registra qué tickers
+    puntuó (para comprobar el carril de entrada)."""
 
     def __init__(self, scores: dict[str, float]) -> None:
         self.scores = scores
@@ -86,7 +88,8 @@ class ScoringLLM:
             self.called.extend(tickers)
             return json.dumps({"scores": [{"ticker": t, "score": self.scores.get(t, 0)}
                                           for t in tickers]})
-        ticker = user.split()[0]
+        m = re.search(r"^(\S+?)(?:\s\([^)]*\))?\s+—", user, re.MULTILINE)
+        ticker = m.group(1) if m else user.split()[0]
         self.called.append(ticker)
         return json.dumps({"score": self.scores.get(ticker, 0), "headline": f"pre-{ticker}"})
 
@@ -111,20 +114,20 @@ class DeepLLM:
 
 
 def _stub_llms(monkeypatch, prescore_scores: dict, mid_scores: dict, deep_replies: dict):
-    """Circuito único en un solo modelo (0731 en todo): `llm_model` == `prescore_model` ==
-    `mid_model`, así que ya no se puede distinguir la llamada por el string. Se distingue por
-    ORDEN, que es determinista en `run_scan_and_store`: deep_llm (1ª get_llm) → prescore_llm
-    (2ª) → mid_llm (3ª, solo si `mid_layer`)."""
+    """Se distingue por el MODELO pedido, no por orden de llamada: `mid_layer=False` se salta
+    la llamada a `mid_llm` del todo, y `deep_llm`/`constructor_llm` piden AMBOS sin `model`
+    (mismo prompt-shape, `DeepLLM` sirve a los dos) — contar posiciones fijas rompía en cuanto
+    faltaba una llamada de en medio."""
     prescore_llm = ScoringLLM(prescore_scores)
     mid_llm = ScoringLLM(mid_scores)
     deep_llm = DeepLLM(deep_replies)
-    orden = [deep_llm, prescore_llm, mid_llm]
-    llamadas = {"n": 0}
 
     def fake_get_llm(model: str | None = None, **_kwargs):
-        llm = orden[min(llamadas["n"], len(orden) - 1)]
-        llamadas["n"] += 1
-        return llm
+        if model == scan_service.settings.prescore_model:
+            return prescore_llm
+        if model == scan_service.settings.mid_model:
+            return mid_llm
+        return deep_llm   # sin model: macro, profundo y constructor
 
     monkeypatch.setattr(scan_service, "get_llm", fake_get_llm)
     return prescore_llm, mid_llm, deep_llm
@@ -151,6 +154,10 @@ def test_capa_media_repuntua_top_por_sector_y_manda_en_el_carril_global(db, monk
 
     monkeypatch.setattr(scan_service.settings, "mid_layer", True)
     monkeypatch.setattr(scan_service.settings, "mid_per_sector", 1)
+    # Tope = top-1/sector exacto (2): sin esto el relleno hasta `mid_candidates_cap` (200 por
+    # defecto) metería TAMBIÉN a TA2/HA1 en la capa media, que es justo lo que este test NO
+    # quiere medir.
+    monkeypatch.setattr(scan_service.settings, "mid_candidates_cap", 2)
     monkeypatch.setattr(scan_service.settings, "deep_per_sector", 0)
     # A 0 también el carril sectorial CON capa media: así el único finalista sale del carril
     # global y el test mide lo que dice medir (que manda el score de la capa media).

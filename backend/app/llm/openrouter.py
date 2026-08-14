@@ -25,17 +25,28 @@ import httpx
 _HARD_TIMEOUT = 180.0
 
 # `deepseek/deepseek-v4-flash-0731` no es UN backend: OpenRouter enruta la misma llamada entre
-# 24 proveedores distintos detrás del alias (consultado vía GET
-# /api/v1/models/.../endpoints). Medido: sobre 49 finalistas de un mismo escaneo, ~6
-# de cada 49 fallaban al primer intento — no solo `content` vacío, también JSON cortado a media
-# frase o bucles de repetición degenerados ("...con una nota de 100.00, con una de las notas de
-# 100.00..."). Los tres proveedores marcados `status != 0` (degradados) esa noche eran Together
-# (cuantización desconocida), Parasail y Mancer 2 (los DOS en fp8, no precisión completa —
-# causa técnica conocida de degeneración en generación autoregresiva, no solo mala suerte de
-# uptime). Se excluyen los tres. Lista estática: puede quedar desactualizada si OpenRouter
-# cambia su salud/composición — revisar `GET /api/v1/models/{modelo}/endpoints` si vuelve a
-# fallar mucho con esta lista puesta.
-_PROVEEDORES_EXCLUIDOS_0731 = ("together", "parasail", "mancer")
+# 28 proveedores distintos detrás del alias hoy (consultado vía GET
+# /api/v1/models/.../endpoints — eran 24 cuando se midió por primera vez, la lista de
+# proveedores de OpenRouter no es estática tampoco). Medido originalmente: sobre 49 finalistas
+# de un mismo escaneo, ~6 de cada 49 fallaban al primer intento — no solo `content` vacío,
+# también JSON cortado a media frase o bucles de repetición degenerados ("...con una nota de
+# 100.00, con una de las notas de 100.00..."). Los tres proveedores marcados `status != 0`
+# (degradados) esa noche eran Together (cuantización desconocida), Parasail y Mancer 2 (los DOS
+# en fp8, no precisión completa — causa técnica conocida de degeneración en generación
+# autoregresiva, no solo mala suerte de uptime). Se excluyeron los tres.
+#
+# Re-medido tras el primer escaneo real en producción con el scraper propio (mismo patrón de
+# JSON degenerado visto de nuevo pese a la exclusión ya puesta): re-consultado el endpoint en
+# vivo. Parasail (94,4%) y Mancer (94,6%) siguen bajos frente a la media (97-99%+ el resto), se
+# quedan excluidos. Together sigue en `status=-2` (degradado). Tres NUEVOS en `status=-2` que no
+# estaban la primera vez: OpenInference (fp4, 93,4% de uptime en 24h — el peor de los 28),
+# Ambient (fp4, 95,8%) y Morph (bf16, 96,1% — no es cuantización baja, así que el motivo aquí no
+# es el mismo que en Parasail/Mancer, pero el status degradado de OpenRouter es señal suficiente
+# por sí sola). Lista estática otra vez: sigue sin ser un arreglo permanente — revisar
+# `GET /api/v1/models/{modelo}/endpoints` si vuelve a fallar mucho con esta lista puesta.
+_PROVEEDORES_EXCLUIDOS_0731 = (
+    "together", "parasail", "mancer", "open-inference", "ambient", "morph",
+)
 
 # Precios OpenRouter en USD por 1M de tokens (input, output). El output de un modelo
 # razonador INCLUYE los tokens de razonamiento ocultos → por eso un escaneo cuesta más

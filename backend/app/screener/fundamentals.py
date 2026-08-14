@@ -190,6 +190,8 @@ class NameData:
     name: str = ""                      # nombre corto de la empresa
     target_high: float | None = None    # objetivo máximo del consenso de analistas, como NUMERO
     # (ya viaja como texto dentro de fundamentals_text; esto es para el guardarrail determinista)
+    target_mean: float | None = None    # objetivo MEDIO del consenso, como NUMERO (idem, para el
+    # guardarraíl de eco de consenso — ver `_flag_consensus_echo` en scan_service.py)
 
 
 def _fmt(value: object, kind: str) -> str | None:
@@ -425,6 +427,7 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         mcap = info.get("marketCap")
         target_high = info.get("targetHighPrice")
+        target_mean = info.get("targetMeanPrice")
         data = NameData(
             ticker=ticker,
             sector=info.get("sector", "n/d"),
@@ -437,6 +440,7 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
             earnings_text=_earnings_text(info),
             name=info.get("shortName", ""),
             target_high=float(target_high) if target_high else None,
+            target_mean=float(target_mean) if target_mean else None,
         )
         if db is not None:
             _cache_put(db, ticker, data)

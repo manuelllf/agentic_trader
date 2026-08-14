@@ -225,6 +225,7 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str) -> tuple[NameData |
     price = info.get("currentPrice") or info.get("regularMarketPrice")
     mcap = info.get("marketCap")
     target_high = info.get("targetHighPrice")
+    target_mean = info.get("targetMeanPrice")
     data = fund_mod.NameData(
         ticker=ticker,
         sector=info.get("sector", "n/d"),
@@ -237,5 +238,6 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str) -> tuple[NameData |
         earnings_text=fund_mod._earnings_text(info),
         name=info.get("shortName", ""),
         target_high=float(target_high) if target_high else None,
+        target_mean=float(target_mean) if target_mean else None,
     )
     return data, None

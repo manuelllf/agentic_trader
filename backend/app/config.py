@@ -48,28 +48,34 @@ class Settings(BaseSettings):
     # LLM. Método = ranker fundamental (whitepaper DeepSeek): V4-Pro razonador en TODO
     # (scorer por nombre + outlook macro + construcción). enable_llm=False → escaneo no falla.
     enable_llm: bool = False
+    # "deepseek" = API oficial de DeepSeek directa (producción real, sin OpenRouter de por
+    # medio). "openrouter" solo para pruebas puntuales locales de una funcionalidad concreta —
+    # NUNCA fallback automático: en producción no se toca esta variable, así que se comporta
+    # como si OpenRouter no existiera.
+    llm_provider: str = "deepseek"
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # "max" a propósito, para medir si el razonamiento extra compra algo — sube el razonamiento
-    # a ~95% de los tokens de la llamada, pero el razonamiento oculto YA se facturaba como
-    # completion tokens sin este campo (ver
-    # `_PRICING` en openrouter.py), así que esto es un multiplicador de coste REAL, no cosmético.
-    # Confirmado por API (GET /api/v1/models) que v4-pro, v4-flash y v4-flash-0731 declaran
-    # "reasoning" en supported_parameters antes de activarlo. None desactiva el campo entero.
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    # Solo el CONSTRUCTOR lleva razonamiento "max" (1 llamada/escaneo, coste asumible).
+    # Confirmado contra api-docs.deepseek.com/guides/thinking_mode: sin mandar el campo, el
+    # proveedor ya razona con su default documentado ("high") — no hace falta pedirlo a mano en
+    # macro/capa media/profundo, que son las etapas de volumen. Medido en su día con OpenRouter:
+    # max costó ×2 sobre el default en una llamada pareada — a esa escala (macro/mid/profundo son
+    # cientos-miles de llamadas, no una) no compensa.
     reasoning_effort: str | None = "max"
-    # Medido en producción: el pre-score con razonamiento
-    # "max" costó $2,6655 —el doble de lo estimado sin él— sobre ~3.000 llamadas de un triaje
-    # barato que no necesita razonar mucho. El profundo, la capa media y el constructor son
-    # decenas de llamadas, así que ahí el coste extra sí compra algo. None = sin el campo
-    # (el proveedor decide su nivel por defecto), igual que el resto del circuito antes de max.
+    # Redundante con dejar `reasoning_effort` en None para el resto del circuito (el default del
+    # proveedor ya es "high" sin mandar nada) — se mantiene explícito porque el prescore es el
+    # punto donde ya se midió el coste real de subirlo, y decirlo aquí deja constancia de que es
+    # una decisión, no un olvido.
     prescore_reasoning_effort: str | None = None
-    # Circuito ÚNICO en flash-0731 — profundo, pre-score, capa media y constructor. V4-Pro
-    # descartado del todo. Alias fijado a fecha y no el genérico: el genérico apunta a un
-    # snapshot MÁS VIEJO y cuesta 0,14/0,28 por millón, mientras el 0731 es más reciente y
-    # cuesta 0,09/0,18. Se fija a propósito: si el modelo cambiara solo entre escaneos, los
-    # scores dejarían de ser comparables y la auditoría histórica perdería sentido.
-    llm_model: str = "deepseek/deepseek-v4-flash-0731"   # profundo: informe + target + construcción
-    prescore_model: str = "deepseek/deepseek-v4-flash-0731"  # rápido: ranking 1-100 del universo
+    # Nombres de la API directa de DeepSeek (confirmado en api-docs.deepseek.com/quick_start/
+    # pricing): "deepseek-v4-pro"/"deepseek-v4-flash" son alias ROLLING, sin snapshot fechado
+    # invocable (a diferencia de OpenRouter, que sí exponía `deepseek/deepseek-v4-flash-0731`
+    # fijo). Se pierde la garantía de que el modelo no cambie solo entre escaneos — trade-off
+    # aceptado al dejar OpenRouter, no hay forma de pinnear en el circuito oficial.
+    llm_model: str = "deepseek-v4-pro"      # profundo + macro + constructor
+    prescore_model: str = "deepseek-v4-flash"  # triaje: ranking 1-100 del universo
     # Capa media: repuntúa los mejores de cada sector entre el pre-score y el profundo
     # (implementación en otro módulo; aquí solo se declara la config).
     mid_layer: bool = True          # capa media: repuntúa los mejores de cada sector
@@ -86,11 +92,10 @@ class Settings(BaseSettings):
     # `mid_per_sector`) deja aire sobre las ~165 normales y convierte un fallo de datos en un
     # recorte, no en una factura. Al truncar se conservan los de MAYOR pre-score (lista ordenada).
     mid_candidates_cap: int = 200
-    # Mismo modelo que el pre-score (0731 en todo el circuito): la capa media deja de ser una
-    # SEGUNDA OPINIÓN de un modelo mejor y pasa a ser un re-muestreo del mismo modelo sobre el
-    # mismo prompt corto. Sigue reduciendo ruido de una tirada suelta (promedia dos llamadas en
-    # vez de fiarse de una), pero ya no aporta el juicio de un modelo distinto.
-    mid_model: str = "deepseek/deepseek-v4-flash-0731"
+    # Antes en el mismo alias que el pre-score (0731): la capa media era un re-muestreo del
+    # mismo modelo sobre el mismo prompt corto, sin el juicio de un modelo distinto. V4-Pro
+    # directo recupera la segunda opinión real — motivo por el que se recupera Pro en general.
+    mid_model: str = "deepseek-v4-pro"
     # Corte de finalistas al profundo (fiel al paper, sin colapsar en un solo sector):
     #   top-`deep_per_sector` por sector (amplitud) ∪ posiciones ∪ seguimiento personal ∪
     #   top-`deep_watchlist` watchlist ∪ `deep_top_caps` mayores caps ∪ el resto por score (el
@@ -102,15 +107,15 @@ class Settings(BaseSettings):
     deep_per_sector_mid: int = 1                         # ídem cuando hubo capa media
     deep_watchlist: int = 5                              # + mejores de la watchlist (continuidad)
     deep_top_caps: int = 10                              # las N mayores caps SIEMPRE al profundo
-    # 50 → 65. Hasta entonces el carril "global" tenía TAMBIÉN su propio tope
+    # 50 → 65 → 80. Hasta 65 el carril "global" tenía TAMBIÉN su propio tope
     # (`deep_finalists=25`, quitado del todo — ver `select_finalists`): dos números para un solo
-    # trabajo, y el segundo solo podía recortar de más, nunca ayudar. Ahora manda uno solo. 65
-    # sale de la cuenta real con los 10 sectores distintos medidos en un escaneo real: posición(5)
-    # + seguimiento(4) + watchlist(5) + caps(10) + sector(10) = 34 en el peor caso (sin solapes)
-    # antes de que el carril "global" rellene lo que quede — 65 deja colchón real sobre esa
-    # cuenta. Sube el coste de la etapa más cara (informe completo por finalista), a propósito:
-    # no se salta a un número mayor sin ver antes cómo rinde esto con datos reales.
-    deep_finalists_cap: int = 65                         # tope DURO de finalistas (coste V4-Pro)
+    # trabajo, y el segundo solo podía recortar de más, nunca ayudar. Ahora manda uno solo. La
+    # cuenta real con los 10 sectores distintos medidos en un escaneo real: posición(5) +
+    # seguimiento(4) + watchlist(5) + caps(10) + sector(10) = 34 en el peor caso (sin solapes)
+    # antes de que el carril "global" rellene lo que quede. 80 con DeepSeek directo: sin
+    # OpenRouter de por medio y con concurrencia alta, el coste extra de la etapa más cara
+    # (informe completo por finalista) es asumible — más colchón sobre esa cuenta de 34.
+    deep_finalists_cap: int = 80                         # tope DURO de finalistas (coste V4-Pro)
     # 10 → 20: DESVIACIÓN explícita del paper (comentario original: "nombres al
     # constructor (paper: 'top 10')"). Motivo: el corte a top-10 de `select_top` es código puro
     # (score + desempate por market cap), ciego a matices — el mismo tipo de corte que dejó
@@ -129,14 +134,14 @@ class Settings(BaseSettings):
     # fundamentales le saldrán "n/d" — el sistema es tolerante a huecos, no se garantiza que la
     # tesis tenga el mismo sentido que en una empresa real.
     always_deep_tickers: list[str] = ["MSFT", "HUMA", "ASTS", "BTC-USD"]
-    # Lote del pre-score (medido en vivo): agrupar N tickers en una sola llamada
-    # amortiza la sobrecarga fija por llamada (18,5-49s de una sola empresa, dominada por cola
-    # del proveedor detrás del alias, no por generación) entre las N — 2.997 llamadas individuales
-    # bajan a ~150 de 20. Probado en vivo con 20/20: limpio, sin JSON roto ni tickers ausentes.
-    # Riesgo medido y ya cubierto (ver `scorer.prescore_batch`): 1 de 2 lotes de prueba colapsó
-    # a un solo decimal en las 20 notas a la vez — guardarraíl estadístico + reintento del lote
-    # entero. Solo el pre-score puro; capa media y profundo se quedan individuales (muchas menos
-    # llamadas, no compensa la complejidad).
+    # Lote del pre-score — SOLO se usa con `llm_provider="openrouter"` (pruebas puntuales
+    # locales). Con "deepseek" el prescore es 1 llamada/ticker, fiel al paper: proveedor propio +
+    # concurrencia alta + caché de prefijo en disco hacen asumible el coste extra de la llamada
+    # individual (ver `scorer.prescore_one`). El batch original medía sobre OpenRouter: agrupar N
+    # tickers en una sola llamada amortiza la sobrecarga fija por llamada (18,5-49s de una sola
+    # empresa, dominada por cola del proveedor detrás del alias, no por generación) entre las N.
+    # Riesgo medido y cubierto (ver `scorer.prescore_batch`): 1 de 2 lotes de prueba colapsó a un
+    # solo decimal en las 20 notas a la vez — guardarraíl estadístico + reintento del lote entero.
     prescore_batch_size: int = 20
 
     # Guardarraíles del sleeve (LOCKED). Cartera de TAMAÑO FIJO (paper 15 assets → aquí 5).
@@ -220,6 +225,14 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def llm_api_key_present(self) -> bool:
+        """La key del proveedor CONFIGURADO (`llm_provider`), no ambas — evita que un guard
+        exija OPENROUTER_API_KEY en producción cuando el circuito real es DeepSeek directo."""
+        if self.llm_provider == "openrouter":
+            return bool(self.openrouter_api_key)
+        return bool(self.deepseek_api_key)
 
 
 settings = Settings()

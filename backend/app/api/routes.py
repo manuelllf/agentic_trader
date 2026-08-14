@@ -222,8 +222,9 @@ def demo_run(sample_size: int | None = None, decide: bool = True,
     # de verdad, que NO propone ni toca ninguna cartera — solo refresca ranking, watchlist,
     # memoria y traza. force_mid_layer=True lo hace el circuito EXACTO de un mensual (capa
     # media incluida) sin tocar el cron semanal. Es el botón "simulación" de Sala Real.
-    if not settings.enable_llm or not settings.openrouter_api_key:
-        raise HTTPException(503, "Configura ENABLE_LLM=true y OPENROUTER_API_KEY.")
+    if not settings.enable_llm or not settings.llm_api_key_present:
+        raise HTTPException(503, "Configura ENABLE_LLM=true y la key del proveedor "
+                                 f"({settings.llm_provider.upper()}_API_KEY).")
     started = pipeline.start(sample_size=sample_size, decide=decide,
                              force_mid_layer=force_mid_layer)
     return {"started": started, **pipeline.get_status()}
@@ -397,8 +398,9 @@ def memory_search(q: str = Query(..., min_length=1), limit: int = Query(20, ge=1
 def recheck(db: Session = Depends(get_db)) -> dict:
     """Re-comprobación del top: re-construye la cartera sobre los ya analizados a fondo,
     con el suelo actual, SIN re-escanear el universo (instantáneo)."""
-    if not settings.enable_llm or not settings.openrouter_api_key:
-        raise HTTPException(503, "Configura ENABLE_LLM=true y OPENROUTER_API_KEY.")
+    if not settings.enable_llm or not settings.llm_api_key_present:
+        raise HTTPException(503, "Configura ENABLE_LLM=true y la key del proveedor "
+                                 f"({settings.llm_provider.upper()}_API_KEY).")
     from app.scan_service import recheck as _recheck
     try:
         return _recheck(db)
@@ -410,8 +412,9 @@ def recheck(db: Session = Depends(get_db)) -> dict:
 def redeep(db: Session = Depends(get_db)) -> dict:
     """Re-analiza a fondo (V4-Pro) los nombres ya profundizados con el macro ACTUAL, sin
     re-escanear el universo. Para refrescar tras corregir un dato macro. Barato (~$0.03-0.05)."""
-    if not settings.enable_llm or not settings.openrouter_api_key:
-        raise HTTPException(503, "Configura ENABLE_LLM=true y OPENROUTER_API_KEY.")
+    if not settings.enable_llm or not settings.llm_api_key_present:
+        raise HTTPException(503, "Configura ENABLE_LLM=true y la key del proveedor "
+                                 f"({settings.llm_provider.upper()}_API_KEY).")
     from app.scan_service import redeep as _redeep
     try:
         return _redeep(db)
