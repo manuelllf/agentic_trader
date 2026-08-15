@@ -14,14 +14,16 @@ from __future__ import annotations
 
 import copy
 import json
-from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
-# Mismo cinturón de seguridad que OpenRouterProvider (ver su comentario): el timeout de httpx
-# no siempre salta si el proveedor mantiene la conexión abierta sin devolver nada. Reutilizamos
-# el mismo umbral porque mide el mismo síntoma (goteo de keep-alive), no algo específico de
-# OpenRouter.
+# OpenRouterProvider envuelve la llamada en un ThreadPoolExecutor propio POR LLAMADA porque su
+# timeout de httpx no siempre saltaba (goteo de keep-alive de alguno de los ~28 proveedores
+# detrás del alias). AQUÍ NO se replica ese patrón — medido en vivo que es contraproducente:
+# con alta concurrencia (500 hilos de prescore) cada llamada abría OTRO hilo para el wrapper,
+# duplicando el pico real de hilos del proceso (hasta ~1.000, el tope del cgroup del contenedor)
+# y provocando un 98% de fallos por agotamiento de hilos, no por la API. DeepSeek directo es UN
+# proveedor, no 28 — se confía en el timeout normal de httpx, sin hilo extra.
 _HARD_TIMEOUT = 180.0
 
 # USD por 1M de tokens: (input cache-miss, input cache-hit, output). Confirmado en
@@ -41,12 +43,10 @@ class DeepSeekProvider:
         api_key: str,
         model: str,
         base_url: str = "https://api.deepseek.com",
-        timeout: float = 60.0,
         reasoning_effort: str | None = None,
     ) -> None:
         self._model = model
         self._base_url = base_url.rstrip("/")
-        self._timeout = timeout
         # None = no se manda el campo → el proveedor usa su default documentado ("high").
         # Valores válidos: low/high/max (confirmado en api-docs.deepseek.com/guides/thinking_mode,
         # "none" también existe para desactivar el razonamiento del todo, sin uso hoy).
@@ -101,32 +101,16 @@ class DeepSeekProvider:
         if self._reasoning_effort:
             payload["reasoning_effort"] = self._reasoning_effort
 
-        def _pedir() -> bytes:
-            with httpx.Client(timeout=self._timeout) as client:
-                resp = client.post(
-                    f"{self._base_url}/chat/completions",
-                    headers=self._headers,
-                    json=payload,
-                )
-                resp.raise_for_status()
-                return resp.content
-
-        # Ver OpenRouterProvider.chat: nada de `with ThreadPoolExecutor(...)`, su __exit__
-        # esperaría igual al hilo colgado y anularía el cinturón de seguridad.
-        ex = ThreadPoolExecutor(max_workers=1)
-        fut = ex.submit(_pedir)
-        try:
-            crudo = fut.result(timeout=_HARD_TIMEOUT)
-        except TimeoutError as exc:
-            ex.shutdown(wait=False)
-            raise TimeoutError(
-                f"Sin respuesta de DeepSeek en {_HARD_TIMEOUT:.0f}s (cinturón de seguridad, "
-                f"modelo {self._model})"
-            ) from exc
-        except Exception:
-            ex.shutdown(wait=False)
-            raise
-        ex.shutdown(wait=False)
+        # `timeout` de httpx aplica al connect Y al read — un `_HARD_TIMEOUT` generoso (180s)
+        # directamente en el cliente, sin hilo ni executor de por medio.
+        with httpx.Client(timeout=_HARD_TIMEOUT) as client:
+            resp = client.post(
+                f"{self._base_url}/chat/completions",
+                headers=self._headers,
+                json=payload,
+            )
+            resp.raise_for_status()
+            crudo = resp.content
         data = json.loads(crudo.decode("utf-8"))
         self._account(data.get("usage"))
         return data["choices"][0]["message"]["content"] or ""
