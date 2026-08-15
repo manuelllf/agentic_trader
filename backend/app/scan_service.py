@@ -57,15 +57,22 @@ logger = logging.getLogger(__name__)
 
 # Concurrencia por etapa. Con `llm_provider="openrouter"` (pruebas locales puntuales) se queda
 # conservador: 10 hilos, presiona poco a un alias repartido entre ~28 proveedores desiguales.
-# Con "deepseek" (producción, circuito oficial): límites documentados en
-# api-docs.deepseek.com son 2.500 peticiones EN VUELO para Flash y 500 para Pro — arranque a
-# fracción de esos techos, no a ellos, y por medir en producción (no hay dato propio de rate
-# de 429 todavía, solo el límite oficial). Escalar según la tasa de error real, igual que se
-# hizo con `_GATHER_WORKERS` contra Yahoo.
+# Con "deepseek" (producción, circuito oficial): el techo real NO es el límite de la API
+# (documentado en api-docs.deepseek.com: 2.500 peticiones en vuelo para Flash, 500 para Pro) —
+# es el propio contenedor. Medido en vivo (producción, `can't start new thread` a los ~550/3.001
+# del prescore con 1.000 hilos): el cgroup tiene `pids.max=1000`, tope DURO del número total de
+# hilos/procesos del contenedor ENTERO, uvicorn y demás incluidos. Las tres etapas NUNCA corren
+# a la vez (`with ThreadPoolExecutor(...) as ex:` cierra el pool de una etapa antes de que
+# empiece el siguiente), así que el pico real es el MAYOR de los tres números, no la suma — 500
+# dentro del prescore deja la mitad del tope libre para el resto del proceso (uvicorn, scheduler).
+# Un ThreadPoolExecutor mantiene sus N hilos vivos TODA la etapa (un hilo que acaba una tarea
+# coge la siguiente de la cola, no muere) — no hay "cascada" que reduzca el pico simultáneo
+# mientras queden más tareas que huecos; solo serviría para suavizar la RÁFAGA de creación
+# inicial, no el techo. Pendiente de medir si 500 aguanta sin repetir el crash antes de subir más.
 if settings.llm_provider == "deepseek":
-    _PRESCORE_WORKERS = 1000   # Flash, triaje (~3.000 llamadas/escaneo)
-    _MID_WORKERS = 100         # Pro, capa media (~200 candidatos)
-    _DEEP_WORKERS = 50         # Pro, profundo (hasta `deep_finalists_cap` finalistas)
+    _PRESCORE_WORKERS = 500   # Flash, triaje (~3.000 llamadas/escaneo)
+    _MID_WORKERS = 100        # Pro, capa media (~200 candidatos)
+    _DEEP_WORKERS = 50        # Pro, profundo (hasta `deep_finalists_cap` finalistas)
 else:
     _PRESCORE_WORKERS = _MID_WORKERS = _DEEP_WORKERS = 10
 # Gather: desde el scraper de Yahoo (`yahoo_scraper.py`, motor primario — ver `fundamentals.py`)
