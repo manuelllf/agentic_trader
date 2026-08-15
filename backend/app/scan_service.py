@@ -343,16 +343,15 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Instancia PROPIA para el macro (antes compartía `deep_llm`): sin esto, su única llamada se
     # mezclaba con las del profundo en `by_model` (ambos V4-Pro) y el desglose de coste por
     # etapa de `_llm_usage` no podía separarlas.
-    macro_llm = get_llm()
-    deep_llm = get_llm()                              # V4-Pro: informe profundo, sin max
-    # reasoning_effort propio (PRIORIDAD 1): triaje barato de todo el universo, no compra nada
-    # razonando "max" y sí dobla el coste medido en producción.
+    macro_llm = get_llm(reasoning_effort=settings.macro_reasoning_effort)
+    deep_llm = get_llm(reasoning_effort=settings.deep_reasoning_effort)
     prescore_llm = get_llm(settings.prescore_model,
                            reasoning_effort=settings.prescore_reasoning_effort)
     # Capa media (opcional): repuntúa los mejores de cada sector con un modelo mejor que Flash
     # antes del corte a finalistas. Se crea aquí (como los otros dos) para que su coste entre en
     # `_llm_usage` aunque no llegue a usarse ninguna vez si `mid_layer` está desactivado.
-    mid_llm = get_llm(settings.mid_model) if settings.mid_layer else None
+    mid_llm = (get_llm(settings.mid_model, reasoning_effort=settings.mid_reasoning_effort)
+              if settings.mid_layer else None)
     # sample_size explícito (pruebas) manda; si no, TODO el universo salvo que se desactive.
     if sample_size is not None:
         n = sample_size
@@ -1059,7 +1058,7 @@ def redeep(db: Session) -> dict:
     held = {p.ticker: p for p in ledger.open_positions(db)}
     watch = set(watchlist_mod.tickers(db))
 
-    deep_llm = get_llm()
+    deep_llm = get_llm(reasoning_effort=settings.deep_reasoning_effort)
     macro = macro_mod.get_macro_outlook(deep_llm, db)         # macro recién calculado
     macro_block = macro_mod.outlook_prompt_block(macro)
 

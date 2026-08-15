@@ -57,19 +57,22 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
-    # Reasoning del CONSTRUCTOR (única etapa que NO usa "none" — ver `get_llm()` en llm/__init__.py,
-    # cuyo default cambió a "none" para todo lo demás). None aquí = no se manda el campo = el
-    # proveedor cae a su default documentado ("high"). Antes era "max": medido en producción que
-    # "high" en TODAS las etapas de volumen (macro/prescore/capa media/profundo) costó varios
-    # dólares por escaneo, muy por encima de la estimación (~$0,35-0,55) — el razonamiento oculto
-    # se factura aunque la respuesta final sea un JSON minúsculo. El constructor es 1 llamada, así
-    # que el coste de dejarlo en "high" (no "none") es asumible; "max" ya no se usa en ningún sitio.
-    reasoning_effort: str | None = None
-    # Explícito a "none" (no solo None): con DeepSeek directo, omitir el campo cae al default
-    # documentado del proveedor ("high"), NO a un nivel bajo — hay que pedir "none" a propósito
-    # para desactivar el razonamiento de verdad. Medido: con "high" en las ~3.000 llamadas del
-    # triaje, el coste se disparaba muy por encima de lo estimado.
+    # Reasoning por ETAPA (`get_llm()` en llm/__init__.py por defecto manda "none" si no se
+    # pasa nada explícito). Reparto medido en producción con dos escaneos reales: "none" en TODO
+    # (macro/prescore/mid/profundo) bajó el coste de $3,85 a $0,68 estimado ($0,37 real, saldo
+    # DeepSeek antes/después) — pero deja sin razonamiento etapas donde SÍ puede aportar calidad.
+    # Reparto final: razonamiento caro solo donde hay POCAS llamadas (macro=1, constructor=1,
+    # profundo=80 — profundo con "high" ya midió solo $0,11 en 80 llamadas, barato); "none" solo
+    # en el triaje de volumen (prescore, ~3.000 llamadas, sin necesidad de juicio); "low" en la
+    # capa media como término medio (~200 llamadas, segunda opinión que sí debería razonar algo,
+    # sin llegar al coste de "high").
+    macro_reasoning_effort: str | None = "max"
     prescore_reasoning_effort: str | None = "none"
+    mid_reasoning_effort: str | None = "low"
+    deep_reasoning_effort: str | None = "high"
+    # Constructor: 1 llamada/escaneo, decide la cartera — el coste extra de "max" es trivial a
+    # esa escala.
+    reasoning_effort: str | None = "max"
     # Nombres de la API directa de DeepSeek (confirmado en api-docs.deepseek.com/quick_start/
     # pricing): "deepseek-v4-pro"/"deepseek-v4-flash" son alias ROLLING, sin snapshot fechado
     # invocable (a diferencia de OpenRouter, que sí exponía `deepseek/deepseek-v4-flash-0731`
