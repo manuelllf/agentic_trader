@@ -13,12 +13,15 @@ from app.llm.deepseek import DeepSeekProvider
 from app.llm.openrouter import _PROVEEDORES_EXCLUIDOS_0731, OpenRouterProvider
 
 
-def get_llm(model: str | None = None, reasoning_effort: str | None = None) -> LLMProvider:
+def get_llm(model: str | None = None, reasoning_effort: str | None = "none") -> LLMProvider:
     """Proveedor LLM. Lanza si falta la key del proveedor configurado.
 
-    `reasoning_effort` por defecto es `None` (el proveedor decide, "high" documentado en
-    DeepSeek) — el caller del constructor lo sobreescribe explícitamente con
-    `settings.reasoning_effort` ("max"), el único sitio que lo necesita hoy.
+    `reasoning_effort` por defecto es `"none"` (desactiva el razonamiento del todo) — medido en
+    producción que dejarlo sin mandar (el proveedor cae a su default documentado, "high") disparó
+    el coste muy por encima de lo estimado en las etapas de volumen (prescore, capa media,
+    profundo). El caller del constructor lo sobreescribe explícitamente a `None` (sin mandar el
+    campo → "high") con `settings.reasoning_effort` — la única etapa (1 llamada/escaneo) donde
+    se acepta el coste extra.
     """
     if settings.llm_provider == "openrouter":
         if not settings.openrouter_api_key:

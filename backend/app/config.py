@@ -57,18 +57,19 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
-    # Solo el CONSTRUCTOR lleva razonamiento "max" (1 llamada/escaneo, coste asumible).
-    # Confirmado contra api-docs.deepseek.com/guides/thinking_mode: sin mandar el campo, el
-    # proveedor ya razona con su default documentado ("high") — no hace falta pedirlo a mano en
-    # macro/capa media/profundo, que son las etapas de volumen. Medido en su día con OpenRouter:
-    # max costó ×2 sobre el default en una llamada pareada — a esa escala (macro/mid/profundo son
-    # cientos-miles de llamadas, no una) no compensa.
-    reasoning_effort: str | None = "max"
-    # Redundante con dejar `reasoning_effort` en None para el resto del circuito (el default del
-    # proveedor ya es "high" sin mandar nada) — se mantiene explícito porque el prescore es el
-    # punto donde ya se midió el coste real de subirlo, y decirlo aquí deja constancia de que es
-    # una decisión, no un olvido.
-    prescore_reasoning_effort: str | None = None
+    # Reasoning del CONSTRUCTOR (única etapa que NO usa "none" — ver `get_llm()` en llm/__init__.py,
+    # cuyo default cambió a "none" para todo lo demás). None aquí = no se manda el campo = el
+    # proveedor cae a su default documentado ("high"). Antes era "max": medido en producción que
+    # "high" en TODAS las etapas de volumen (macro/prescore/capa media/profundo) costó varios
+    # dólares por escaneo, muy por encima de la estimación (~$0,35-0,55) — el razonamiento oculto
+    # se factura aunque la respuesta final sea un JSON minúsculo. El constructor es 1 llamada, así
+    # que el coste de dejarlo en "high" (no "none") es asumible; "max" ya no se usa en ningún sitio.
+    reasoning_effort: str | None = None
+    # Explícito a "none" (no solo None): con DeepSeek directo, omitir el campo cae al default
+    # documentado del proveedor ("high"), NO a un nivel bajo — hay que pedir "none" a propósito
+    # para desactivar el razonamiento de verdad. Medido: con "high" en las ~3.000 llamadas del
+    # triaje, el coste se disparaba muy por encima de lo estimado.
+    prescore_reasoning_effort: str | None = "none"
     # Nombres de la API directa de DeepSeek (confirmado en api-docs.deepseek.com/quick_start/
     # pricing): "deepseek-v4-pro"/"deepseek-v4-flash" son alias ROLLING, sin snapshot fechado
     # invocable (a diferencia de OpenRouter, que sí exponía `deepseek/deepseek-v4-flash-0731`

@@ -48,6 +48,7 @@ from app.agents import scorer as scorer_mod
 from app.config import settings
 from app.ledger import service as ledger
 from app.llm import get_llm
+from app.llm import deepseek as deepseek_mod
 from app.models import Meta, Proposal, ScanRun, Score
 from app.screener import fundamentals as fund_mod
 from app.screener import macro as macro_mod
@@ -329,6 +330,13 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     """
     scan_progress.reset()
     t_scan_inicio = time.monotonic()
+    # Saldo REAL de DeepSeek antes del escaneo (no una estimación por tokens) — comparado con el
+    # de después da el coste real de esta tirada exacta. Solo aplica al circuito oficial; None
+    # con OpenRouter o si el endpoint de saldo falla (best-effort, no debe romper el escaneo).
+    saldo_antes = (
+        deepseek_mod.account_balance_usd(settings.deepseek_api_key, settings.deepseek_base_url)
+        if settings.llm_provider == "deepseek" and settings.deepseek_api_key else None
+    )
     # Duración de cada fase (segundos, ver `ScanRun.timings`): una clave ausente significa que
     # esa fase no llegó a correr (ej. "mid" sin capa media activa), no que tardó 0s.
     timings: dict[str, float] = {}
@@ -890,6 +898,20 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     timings["total"] = round(time.monotonic() - t_scan_inicio, 1)
     logger.info("Escaneo: TOTAL %.1fs. Por fase: %s", timings["total"],
                ", ".join(f"{fase}={dur}s" for fase, dur in timings.items() if fase != "total"))
+    coste = _llm_usage(macro=macro_llm, prescore=prescore_llm, mid=mid_llm,
+                       profundo=deep_llm, constructor=constructor_llm)
+    # Saldo real DESPUÉS: la diferencia con `saldo_antes` es el coste REAL de esta tirada exacta
+    # (facturación de verdad de DeepSeek), no la estimación por tokens de `_llm_usage`/`_PRICING`
+    # de arriba — se guardan las dos, la real manda si está disponible. None si algo del saldo
+    # falló (best-effort) o el escaneo usa OpenRouter (sin este endpoint).
+    saldo_despues = (
+        deepseek_mod.account_balance_usd(settings.deepseek_api_key, settings.deepseek_base_url)
+        if settings.llm_provider == "deepseek" and settings.deepseek_api_key else None
+    )
+    coste["real_usd_deepseek"] = (
+        round(saldo_antes - saldo_despues, 4)
+        if saldo_antes is not None and saldo_despues is not None else None
+    )
     result = {
         "universe": universo_info,
         "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
@@ -899,10 +921,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         "proposed": len([i for i in items if i["action"] != "mantener"]),
         "positions": len(construction.positions),
         "decided": decide,
-        # coste REAL del escaneo, con `by_stage` además de `by_model` (ver `_llm_usage`):
-        # `mid_llm` puede ser None (desactivada) — se tolera igual que a un FakeLLM sin `usage`.
-        "cost": _llm_usage(macro=macro_llm, prescore=prescore_llm, mid=mid_llm,
-                           profundo=deep_llm, constructor=constructor_llm),
+        # coste con `by_stage` además de `by_model` (ver `_llm_usage`) — `mid_llm` puede ser None
+        # (desactivada), se tolera igual que a un FakeLLM sin `usage`. `real_usd_deepseek`: saldo
+        # real antes/después, no una estimación (ver arriba).
+        "cost": coste,
         "outlook": macro.get("outlook") or "",
         # Duración por fase, segundos (ver `timings` arriba) — clave ausente = fase no corrió.
         "timings": timings,

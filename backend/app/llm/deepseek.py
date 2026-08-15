@@ -14,8 +14,11 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # OpenRouterProvider envuelve la llamada en un ThreadPoolExecutor propio POR LLAMADA porque su
 # timeout de httpx no siempre saltaba (goteo de keep-alive de alguno de los ~28 proveedores
@@ -114,3 +117,28 @@ class DeepSeekProvider:
         data = json.loads(crudo.decode("utf-8"))
         self._account(data.get("usage"))
         return data["choices"][0]["message"]["content"] or ""
+
+
+def account_balance_usd(api_key: str, base_url: str = "https://api.deepseek.com") -> float | None:
+    """Saldo REAL de la cuenta (USD), consultado en vivo — no una estimación por tokens.
+
+    `GET /user/balance`, endpoint aparte del de chat (confirmado en api-docs.deepseek.com): la
+    respuesta de una llamada de chat solo trae tokens, nunca un coste ya facturado (a diferencia
+    de OpenRouter con `usage.include`). Comparar el saldo antes/después de un escaneo da el coste
+    real de esa tirada sin depender de `_PRICING` (que es solo un respaldo para `ScanRun.cost`
+    mientras el escaneo corre). None si falla o no hay currency USD — best-effort, no debe
+    romper el escaneo por un fallo de este endpoint aparte.
+    """
+    try:
+        resp = httpx.get(
+            f"{base_url.rstrip('/')}/user/balance",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        for info in resp.json().get("balance_infos", []):
+            if info.get("currency") == "USD":
+                return float(info["total_balance"])
+    except Exception:
+        logger.warning("No se pudo consultar el saldo real de DeepSeek.", exc_info=True)
+    return None

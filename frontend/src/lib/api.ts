@@ -179,7 +179,7 @@ export interface ScanReport {
   scanned: number | null;
   prescored: number | null;
   deep: number | null;
-  cost: { calls: number; cost_usd: number } | null;
+  cost: { calls: number; cost_usd: number; real_usd_deepseek?: number | null } | null;
 }
 export const getScanReport = () => get<{ report: ScanReport | null }>("/scan/report");
 
@@ -227,7 +227,7 @@ export interface ScanFull {
   outlook: string;
   universe: ScanReport["universe"];
   counters: Record<string, number>;
-  cost: { calls: number; cost_usd: number } | null;
+  cost: { calls: number; cost_usd: number; real_usd_deepseek?: number | null } | null;
   issues: string[];
   finalists: ScanFullFinalist[];
   construction: {

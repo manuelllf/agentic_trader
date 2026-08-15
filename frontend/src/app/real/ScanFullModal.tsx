@@ -80,7 +80,10 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                 {scan.vix != null && <span className={NUMS}>VIX <b style={{ color: T.ink }}>{scan.vix}</b></span>}
                 {scan.cost && (
                   <span className={NUMS} style={{ color: T.muted }}>
-                    {scan.cost.calls} llamadas · ${money(scan.cost.cost_usd)}
+                    {scan.cost.calls} llamadas ·{" "}
+                    {scan.cost.real_usd_deepseek != null
+                      ? <>${money(scan.cost.real_usd_deepseek)} <span title="Saldo real de DeepSeek antes/después de este escaneo">real</span></>
+                      : <>${money(scan.cost.cost_usd)} <span title="Estimado por tokens, no el saldo real">est.</span></>}
                   </span>
                 )}
               </div>
