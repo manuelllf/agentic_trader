@@ -388,9 +388,6 @@ function SalaRealRoom() {
                     style={{ background: T.bad }}>
               <span className={isScanning ? "animate-pulse" : ""} aria-hidden>📡</span>
             </button>
-            {configOpen && (
-              <ScanConfigModal onClose={() => setConfigOpen(false)} onLaunch={handleLaunchSimulation} />
-            )}
             {summary && (
               <span title={summary.broker.detail}
                     className="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-bold tracking-wide"
@@ -404,6 +401,13 @@ function SalaRealRoom() {
           </div>
         </div>
       </header>
+
+      {/* Fuera del <header>: su `backdrop-blur` crea containing block para `position: fixed`
+          (mismo comportamiento que `transform`/`filter`) y recortaba el velo del modal al
+          tamaño de la cabecera en vez de cubrir toda la pantalla. */}
+      {configOpen && (
+        <ScanConfigModal onClose={() => setConfigOpen(false)} onLaunch={handleLaunchSimulation} />
+      )}
 
       <div className="mx-auto max-w-[1500px] px-4 pt-4 lg:px-6">
 

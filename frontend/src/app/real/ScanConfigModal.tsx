@@ -86,6 +86,22 @@ export function ScanConfigModal({ onClose, onLaunch }: {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
          onClick={onClose}>
+      {/* Los <select>/<input type=number> nativos ignoran el tema (flecha y spinner del SO,
+          casi siempre blancos) — sin esto el desplegable y los +/- de temperatura/top_p
+          desentonaban con el resto del panel, que es todo a medida. */}
+      {/* `jsx global` (no escopado): `.cfg-select`/`.cfg-num` los usan StageRow/NumberStepper,
+          componentes HIJOS — el escopado normal de styled-jsx solo añade su clase-hash a los
+          elementos del propio componente que declara el <style>, así que en un hijo la regla
+          nunca hacía match (comprobado: el <select> tenía la clase pero cero CSS aplicado). */}
+      <style jsx global>{`
+        .cfg-select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23898781'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+          background-repeat: no-repeat; background-position: right 6px center; background-size: 14px;
+          padding-right: 22px; }
+        .cfg-select option { background: ${T.panel2}; color: ${T.ink}; }
+        .cfg-num { appearance: textfield; }
+        .cfg-num::-webkit-inner-spin-button, .cfg-num::-webkit-outer-spin-button {
+          appearance: none; margin: 0; }
+      `}</style>
       <div role="dialog" aria-modal="true" aria-label="Configuración de la simulación de escaneo"
            className="w-full max-w-2xl rounded-lg border shadow-xl"
            style={{ borderColor: T.ring, background: T.panel }}
@@ -134,31 +150,53 @@ function StageRow({ stage, v, onChange }: {
       <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Field label="modelo">
           <select value={v.model} onChange={(e) => onChange({ model: e.target.value })}
-                  className="w-full rounded border bg-transparent px-1.5 py-1 text-[11px]"
-                  style={{ borderColor: T.ring, color: T.ink }}>
-            {MODELS.map((m) => <option key={m} value={m} style={{ color: "#0d0d0d" }}>{m}</option>)}
+                  className="cfg-select w-full rounded border px-1.5 py-1 text-[11px]"
+                  style={{ borderColor: T.ring, color: T.ink, background: T.panel2 }}>
+            {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </Field>
         <Field label="reasoning">
           <select value={v.reasoning_effort}
                   onChange={(e) => onChange({ reasoning_effort: e.target.value as ReasoningEffort })}
-                  className="w-full rounded border bg-transparent px-1.5 py-1 text-[11px]"
-                  style={{ borderColor: T.ring, color: T.ink }}>
-            {REASONINGS.map((r) => <option key={r} value={r} style={{ color: "#0d0d0d" }}>{r}</option>)}
+                  className="cfg-select w-full rounded border px-1.5 py-1 text-[11px]"
+                  style={{ borderColor: T.ring, color: T.ink, background: T.panel2 }}>
+            {REASONINGS.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
         </Field>
         <Field label="temperatura">
-          <input type="number" min={0} max={2} step={0.05} value={v.temperature}
-                 onChange={(e) => onChange({ temperature: Number(e.target.value) })}
-                 className={`w-full rounded border bg-transparent px-1.5 py-1 text-[11px] ${NUMS_CLASS}`}
-                 style={{ borderColor: T.ring, color: T.ink }} />
+          <NumberStepper value={v.temperature} min={0} max={2} step={0.05}
+                         onChange={(temperature) => onChange({ temperature })} />
         </Field>
         <Field label="top_p">
-          <input type="number" min={0.01} max={1} step={0.01} value={v.top_p}
-                 onChange={(e) => onChange({ top_p: Number(e.target.value) })}
-                 className={`w-full rounded border bg-transparent px-1.5 py-1 text-[11px] ${NUMS_CLASS}`}
-                 style={{ borderColor: T.ring, color: T.ink }} />
+          <NumberStepper value={v.top_p} min={0.01} max={1} step={0.01}
+                         onChange={(top_p) => onChange({ top_p })} />
         </Field>
+      </div>
+    </div>
+  );
+}
+
+// Sustituye el spinner nativo (blanco, fuera de tema) por dos botones ▲/▼ a medida — mismo
+// número de decimales que `step` para no acumular basura de coma flotante al pulsar.
+function NumberStepper({ value, min, max, step, onChange }: {
+  value: number; min: number; max: number; step: number; onChange: (v: number) => void;
+}) {
+  const decimals = (step.toString().split(".")[1] || "").length;
+  const clamp = (n: number) => Math.min(max, Math.max(min, Number(n.toFixed(decimals))));
+  const bump = (dir: 1 | -1) => onChange(clamp(value + dir * step));
+  return (
+    <div className="flex items-stretch overflow-hidden rounded border" style={{ borderColor: T.ring }}>
+      <input type="number" min={min} max={max} step={step} value={value}
+             onChange={(e) => onChange(e.target.value === "" ? min : clamp(Number(e.target.value)))}
+             className={`cfg-num w-full bg-transparent px-1.5 py-1 text-[11px] ${NUMS_CLASS}`}
+             style={{ color: T.ink }} />
+      <div className="flex flex-col border-l" style={{ borderColor: T.ring }}>
+        <button type="button" tabIndex={-1} aria-label="Subir" onClick={() => bump(1)}
+                className="flex h-[13px] w-5 items-center justify-center text-[8px] leading-none hover:opacity-70"
+                style={{ color: T.muted, background: T.panel2 }}>▲</button>
+        <button type="button" tabIndex={-1} aria-label="Bajar" onClick={() => bump(-1)}
+                className="flex h-[13px] w-5 items-center justify-center border-t text-[8px] leading-none hover:opacity-70"
+                style={{ color: T.muted, background: T.panel2, borderColor: T.ring }}>▼</button>
       </div>
     </div>
   );
