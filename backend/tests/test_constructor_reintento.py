@@ -24,7 +24,8 @@ class LLMGuion:
         self.respuestas = list(respuestas)
         self.llamadas = 0
 
-    def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
         r = self.respuestas[min(self.llamadas, len(self.respuestas) - 1)]
         self.llamadas += 1
         return r
@@ -81,7 +82,8 @@ def test_un_llm_que_revienta_tampoco_tumba_el_escaneo() -> None:
         def __init__(self) -> None:
             self.llamadas = 0
 
-        def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+        def chat(self, system: str, user: str, *, temperature: float = 0.3,
+                top_p: float | None = None) -> str:
             self.llamadas += 1
             raise RuntimeError("502 Bad Gateway")
 

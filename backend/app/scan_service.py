@@ -317,8 +317,56 @@ def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, final
         logger.exception("No se pudo emitir la traza del embudo (no aborta el escaneo).")
 
 
+DEFAULT_TEMPERATURE = 1.0
+DEFAULT_TOP_P = 0.95
+# Se mandan en TODAS las etapas, tengan o no razonamiento activo — decisión explícita: aunque
+# api-docs.deepseek.com/guides/thinking_mode diga que el modo razonamiento ignora
+# `temperature`/`top_p`, no cuesta nada mandarlos igual (el campo se ignora, no rompe la
+# llamada) y así el comportamiento no depende de qué reasoning tenga cada etapa hoy — si mañana
+# alguna pasa a "none", ya lleva puestos los mismos valores que el resto sin tocar nada aquí.
+
+
+def _stage_cfg(overrides: dict | None, stage: str, default_model: str,
+              default_reasoning: str | None) -> dict:
+    """Config efectiva de una etapa: lo que mande `overrides[stage]` gana, si no el default de
+    `settings` (modelo/reasoning) o `DEFAULT_TEMPERATURE`/`DEFAULT_TOP_P` (muestreo)."""
+    o = (overrides or {}).get(stage) or {}
+    return {
+        "model": o.get("model") or default_model,
+        "reasoning_effort": o.get("reasoning_effort", default_reasoning),
+        "temperature": o.get("temperature", DEFAULT_TEMPERATURE),
+        "top_p": o.get("top_p", DEFAULT_TOP_P),
+    }
+
+
+def _llm_for(cfg: dict):
+    """`get_llm()` con el `model` de la config, PERO solo como argumento posicional cuando hay
+    uno de verdad (override, o default de etapa como `prescore_model`/`mid_model`) — igual que
+    las llamadas de antes de este refactor. Sin esto, macro/deep/constructor (que antes NO
+    pasaban `model` en absoluto, cayendo al default interno de `get_llm()`) pasarían a llamarlo
+    siempre con un positional (aunque fuera `None`), cambiando la ARIDAD de la llamada — de lo
+    que dependen los fakes de test que distinguen la etapa mirando `*args` (ver
+    `test_cadence.py::test_profundo_no_parseable_...`)."""
+    if cfg["model"]:
+        return get_llm(cfg["model"], reasoning_effort=cfg["reasoning_effort"])
+    return get_llm(reasoning_effort=cfg["reasoning_effort"])
+
+
+def _sampling_kwargs(cfg: dict) -> dict:
+    """`temperature`/`top_p` de la config efectiva (override o `DEFAULT_TEMPERATURE`/
+    `DEFAULT_TOP_P`, ver `_stage_cfg`) — nunca None, así que siempre van al `llm.chat()` de la
+    etapa, tenga o no razonamiento activo."""
+    kw = {}
+    if cfg.get("temperature") is not None:
+        kw["temperature"] = cfg["temperature"]
+    if cfg.get("top_p") is not None:
+        kw["top_p"] = cfg["top_p"]
+    return kw
+
+
 def run_scan_and_store(db: Session, sample_size: int | None = None,
-                       decide: bool = True, force_mid_layer: bool = False) -> dict:
+                       decide: bool = True, force_mid_layer: bool = False,
+                       llm_overrides: dict | None = None) -> dict:
     """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
 
     `decide=False` → escaneo OBSERVATORIO (el cron semanal entre decisiones): puntúa el
@@ -327,6 +375,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     real. La DECISIÓN de cartera (ambos libros) es mensual (`real_proposals_monthly`): la señal
     del scorer es a un mes y así cada elección vive su mes y la curva mide la selección, no el
     ruido semanal del LLM. Los escaneos manuales van con `decide=True` (ciclo completo).
+
+    `llm_overrides`: {"macro"|"prescore"|"mid"|"deep"|"constructor": {"model", "reasoning_effort",
+    "temperature", "top_p"}} — SOLO para el botón "simulación" de Sala Real (banco de pruebas de
+    configuración con coste/modelo reales, sin tocar ninguna cartera). El cron y "Analizar
+    mercado" no mandan nada, así que se comportan exactamente como antes (defaults de `settings`).
     """
     scan_progress.reset()
     t_scan_inicio = time.monotonic()
@@ -340,18 +393,32 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Duración de cada fase (segundos, ver `ScanRun.timings`): una clave ausente significa que
     # esa fase no llegó a correr (ej. "mid" sin capa media activa), no que tardó 0s.
     timings: dict[str, float] = {}
+    # Config efectiva por etapa: override del caller (modal de "simulación") o default de
+    # `settings` si no hay nada. `constructor_cfg` se calcula ya aquí aunque su LLM se cree más
+    # tarde (lazy, ver más abajo) para no tener que releer `llm_overrides` en dos sitios.
+    # OJO con el default de "model" en macro/deep/constructor: se deja en `None` (no en
+    # `settings.llm_model` explícito) a propósito — sin override, `get_llm(None, ...)` cae
+    # DENTRO de `get_llm()` al mismo `settings.llm_model`, pero pasarlo aquí ya resuelto lo
+    # volvía indistinguible de `settings.mid_model` (mismo string, "deepseek-v4-pro") para
+    # cualquier caller que decida QUÉ etapa es mirando el modelo pasado a `get_llm()` (los tests
+    # de la capa media, ver `_stub_llms` en `test_capa_media_y_opa.py`).
+    macro_cfg = _stage_cfg(llm_overrides, "macro", None, settings.macro_reasoning_effort)
+    deep_cfg = _stage_cfg(llm_overrides, "deep", None, settings.deep_reasoning_effort)
+    prescore_cfg = _stage_cfg(llm_overrides, "prescore", settings.prescore_model,
+                              settings.prescore_reasoning_effort)
+    mid_cfg = _stage_cfg(llm_overrides, "mid", settings.mid_model, settings.mid_reasoning_effort)
+    constructor_cfg = _stage_cfg(llm_overrides, "constructor", None, settings.reasoning_effort)
+
     # Instancia PROPIA para el macro (antes compartía `deep_llm`): sin esto, su única llamada se
     # mezclaba con las del profundo en `by_model` (ambos V4-Pro) y el desglose de coste por
     # etapa de `_llm_usage` no podía separarlas.
-    macro_llm = get_llm(reasoning_effort=settings.macro_reasoning_effort)
-    deep_llm = get_llm(reasoning_effort=settings.deep_reasoning_effort)
-    prescore_llm = get_llm(settings.prescore_model,
-                           reasoning_effort=settings.prescore_reasoning_effort)
+    macro_llm = _llm_for(macro_cfg)
+    deep_llm = _llm_for(deep_cfg)
+    prescore_llm = _llm_for(prescore_cfg)
     # Capa media (opcional): repuntúa los mejores de cada sector con un modelo mejor que Flash
     # antes del corte a finalistas. Se crea aquí (como los otros dos) para que su coste entre en
     # `_llm_usage` aunque no llegue a usarse ninguna vez si `mid_layer` está desactivado.
-    mid_llm = (get_llm(settings.mid_model, reasoning_effort=settings.mid_reasoning_effort)
-              if settings.mid_layer else None)
+    mid_llm = _llm_for(mid_cfg) if settings.mid_layer else None
     # sample_size explícito (pruebas) manda; si no, TODO el universo salvo que se desactive.
     if sample_size is not None:
         n = sample_size
@@ -401,7 +468,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     scan_progress.set_stage("macro")
     logger.info("Escaneo: iniciando MACRO.")
     t0 = time.monotonic()
-    macro = macro_mod.get_macro_outlook(macro_llm, db)
+    macro = macro_mod.get_macro_outlook(macro_llm, db, **_sampling_kwargs(macro_cfg))
     macro_block = macro_mod.outlook_prompt_block(macro)
     timings["macro"] = round(time.monotonic() - t0, 1)
     logger.info("Escaneo: MACRO completado en %.1fs.", timings["macro"])
@@ -525,12 +592,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                            reason=f"{errores[0].ticker}: {errores[0].error}" if errores else None)
         return par
 
+    _prescore_kw = _sampling_kwargs(prescore_cfg)
+
     def _pre_uno(d):
-        p = scorer_mod.prescore_one(prescore_llm, d, macro_block)
+        p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
         for _ in range(2):   # mismo criterio que capa media/profundo: DOS reintentos, no uno
             if not p.error:
                 break
-            p = scorer_mod.prescore_one(prescore_llm, d, macro_block)
+            p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
         scan_progress.tick(ok=not p.error, reason=f"{p.ticker}: {p.error}" if p.error else None)
         return [(p, d)]
 
@@ -612,12 +681,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             relleno = [p.ticker for p, _d in prescored if p.ticker not in ya]
             mid_candidates += relleno[:settings.mid_candidates_cap - len(mid_candidates)]
 
+        _mid_kw = _sampling_kwargs(mid_cfg)
+
         def _mid(ticker: str):
-            p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block)
+            p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block, **_mid_kw)
             for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
                 if not p.error:
                     break
-                p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block)
+                p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block, **_mid_kw)
             scan_progress.tick(ok=not p.error, reason=f"{ticker}: {p.error}" if p.error else None)
             return p
 
@@ -657,12 +728,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     store = _memory_store()
     had_prior = {t for t in finalists if prior.get(t)}
 
+    _deep_kw = _sampling_kwargs(deep_cfg)
+
     def _deep(ticker: str):
-        r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block)
+        r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, **_deep_kw)
         for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
             if not r.error:
                 break
-            r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block)
+            r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, **_deep_kw)
         return r
 
     scan_progress.set_stage("deep", total=len(finalists), unit="finalistas")
@@ -792,10 +865,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         # "max" (ver config.py) — una llamada por escaneo, coste extra asumible. Se crea aquí,
         # justo antes de usarse, para no alterar el ORDEN de las llamadas a `get_llm()` que ya
         # usan los tests para distinguir prescore/mid/deep sin mirar el string del modelo.
-        constructor_llm = get_llm(reasoning_effort=settings.reasoning_effort)
+        constructor_llm = _llm_for(constructor_cfg)
         construction = constructor_mod.construct(
             constructor_llm, portfolio_text, candidates_text, macro_block,
             settings.max_positions, settings.max_position_pct, valid, settings.min_positions,
+            **_sampling_kwargs(constructor_cfg),
         )
         construction = portfolio.finalize_full_invest(
             construction, selected, settings.min_positions, settings.max_positions,

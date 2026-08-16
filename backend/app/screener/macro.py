@@ -211,7 +211,8 @@ _SYSTEM = (
 )
 
 
-def get_macro_outlook(llm: LLMProvider, db=None) -> dict:  # noqa: ANN001
+def get_macro_outlook(llm: LLMProvider, db=None, temperature: float = 1.0,
+                      top_p: float | None = 0.95) -> dict:  # noqa: ANN001
     """Outlook forward a 3 meses, con foco en el próximo (1 llamada V4-Pro). Cacheado por escaneo.
 
     `db` lo usan las fuentes de eventos para su caché persistente (ver `events.py`) y, ahora
@@ -271,7 +272,7 @@ def get_macro_outlook(llm: LLMProvider, db=None) -> dict:  # noqa: ANN001
             + "Write the 3-month forward outlook, taking these events into account, with special "
               "attention to the next month."
         )
-        raw = llm.chat(_SYSTEM, user, temperature=0.6)
+        raw = llm.chat(_SYSTEM, user, temperature=temperature, top_p=top_p)
         data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         # Si el modelo devolviera solo uno de los dos idiomas, cada campo cae al que haya: mejor
         # un prompt con el idioma "equivocado" que un macro vacío en ~3.000 llamadas.

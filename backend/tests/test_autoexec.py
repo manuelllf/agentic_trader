@@ -44,7 +44,8 @@ class FakeLLM:
     def __init__(self, reply: str) -> None:
         self._reply = reply
 
-    def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
         if "SEVERAL companies" in system:
             tickers = re.findall(r"^\d+\.\s+(\S+)", user, re.MULTILINE)
             return json.dumps({"scores": [{"ticker": t, "score": 90.0} for t in tickers]})
@@ -164,7 +165,7 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
     ), None))
-    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None: {
+    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
         "regime": "neutral", "vix": 15.0, "outlook": "estable",
         "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
     })
@@ -220,7 +221,7 @@ def test_scan_failure_in_autoexec_never_fails_the_scan(db, monkeypatch) -> None:
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
     ), None))
-    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None: {
+    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
         "regime": "neutral", "vix": 15.0, "outlook": "estable",
         "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
     })

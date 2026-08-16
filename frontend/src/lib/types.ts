@@ -22,6 +22,13 @@ export interface Macro {
   vix: number | null;
 }
 
+export type ReasoningEffort = "none" | "low" | "high" | "max";
+
+export interface LlmStageDefault {
+  model: string;
+  reasoning_effort: ReasoningEffort;
+}
+
 export interface AppConfig {
   max_positions: number;
   min_positions: number;
@@ -29,6 +36,30 @@ export interface AppConfig {
   dry_run: boolean;
   limit_buffer_pct: number;
   approval_expiry_days: number;   // una propuesta sin decidir caduca a los N días
+  llm_defaults: {
+    macro: LlmStageDefault;
+    prescore: LlmStageDefault;
+    mid: LlmStageDefault;
+    deep: LlmStageDefault;
+    constructor: LlmStageDefault;
+  };
+}
+
+/** Override de una etapa para el modal de configuración de la simulación (Sala Real). Todo
+ *  opcional: lo que no venga usa el default de producción (ver `AppConfig.llm_defaults`). */
+export interface StageLLMOverride {
+  model?: string;
+  reasoning_effort?: ReasoningEffort;
+  temperature?: number;
+  top_p?: number;
+}
+
+export interface DemoRunOverrides {
+  macro?: StageLLMOverride;
+  prescore?: StageLLMOverride;
+  mid?: StageLLMOverride;
+  deep?: StageLLMOverride;
+  constructor?: StageLLMOverride;
 }
 
 export interface ScoreRow {

@@ -46,7 +46,7 @@ def _stub_common(monkeypatch) -> None:
     from app.screener import macro as macro_mod
 
     monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
-    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None: {
+    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
         "regime": "neutral", "vix": 15.0, "outlook": "estable",
         "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
     })
@@ -82,7 +82,8 @@ class ScoringLLM:
         self.scores = scores
         self.called: list[str] = []
 
-    def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
         if "SEVERAL companies" in system:
             tickers = re.findall(r"^\d+\.\s+(\S+)", user, re.MULTILINE)
             self.called.extend(tickers)
@@ -101,7 +102,8 @@ class DeepLLM:
     def __init__(self, replies: dict[str, dict]) -> None:
         self.replies = replies
 
-    def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
         m = re.search(r"Company: (\S+)", user)
         if m and m.group(1) in self.replies:
             return json.dumps(self.replies[m.group(1)])
@@ -154,7 +156,7 @@ def test_capa_media_repuntua_top_por_sector_y_manda_en_el_carril_global(db, monk
 
     monkeypatch.setattr(scan_service.settings, "mid_layer", True)
     monkeypatch.setattr(scan_service.settings, "mid_per_sector", 1)
-    # Tope = top-1/sector exacto (2): sin esto el relleno hasta `mid_candidates_cap` (200 por
+    # Tope = top-1/sector exacto (2): sin esto el relleno hasta `mid_candidates_cap` (300 por
     # defecto) metería TAMBIÉN a TA2/HA1 en la capa media, que es justo lo que este test NO
     # quiere medir.
     monkeypatch.setattr(scan_service.settings, "mid_candidates_cap", 2)

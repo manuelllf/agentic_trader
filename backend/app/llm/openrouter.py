@@ -130,7 +130,8 @@ class OpenRouterProvider:
         by_model["completion_tokens"] += ct
         by_model["cost_usd"] += cost
 
-    def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
         payload = {
             "model": self._model,
             "messages": [
@@ -142,6 +143,8 @@ class OpenRouterProvider:
             # Pide a OpenRouter que incluya el coste REAL facturado en la respuesta.
             "usage": {"include": True},
         }
+        if top_p is not None:
+            payload["top_p"] = top_p
         if self._reasoning_effort:
             payload["reasoning"] = {"effort": self._reasoning_effort}
         if self._provider_ignore:

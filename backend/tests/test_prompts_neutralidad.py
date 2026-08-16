@@ -131,7 +131,8 @@ def test_una_respuesta_nula_no_tumba_el_escaneo() -> None:
     from app.agents import scorer as scorer_mod
 
     class LLMNulo:
-        def chat(self, system: str, user: str, *, temperature: float = 0.3):
+        def chat(self, system: str, user: str, *, temperature: float = 0.3,
+                top_p: float | None = None):
             return None
 
     data = _name_data()
@@ -214,7 +215,8 @@ def test_la_nota_conserva_los_dos_decimales_al_parsear() -> None:
         def __init__(self, nota: str) -> None:
             self.nota = nota
 
-        def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+        def chat(self, system: str, user: str, *, temperature: float = 0.3,
+                top_p: float | None = None) -> str:
             return ('{"report": "r", "headline": "h", "score": ' + self.nota
                     + ', "target_price": 10.0, "under_acquisition": false}')
 
@@ -339,7 +341,8 @@ def test_un_json_valido_sin_nota_cuenta_como_fallo_y_se_reintenta() -> None:
         def __init__(self) -> None:
             self.veces = 0
 
-        def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+        def chat(self, system: str, user: str, *, temperature: float = 0.3,
+                top_p: float | None = None) -> str:
             self.veces += 1
             return '{"report": "informe largo", "headline": "tesis", "target_price": 10.0}'
 

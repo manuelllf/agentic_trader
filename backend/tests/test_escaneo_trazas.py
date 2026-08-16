@@ -46,7 +46,8 @@ class FakeLLM:
     def __init__(self, reply: str) -> None:
         self._reply = reply
 
-    def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
         if "SEVERAL companies" in system:
             return _scores_reply(user)
         return self._reply
@@ -60,7 +61,8 @@ class FlakyLLM:
         self._reply = reply
         self.calls = 0
 
-    def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
         self.calls += 1
         if self.calls == 1:
             return "esto no es json"
@@ -101,7 +103,7 @@ def _stub_common(monkeypatch, llm, symbols: list[str]) -> None:
     # controla desaparece de la muestra. Producción usa universos de miles, ahí no pasa.
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])
     _stub_universo(monkeypatch, symbols)
-    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None: {
+    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
         "regime": "neutral", "vix": 15.0, "outlook": "estable",
         "favored_sectors": ["Technology"], "avoided_sectors": ["Energy"], "snapshot": "n/d",
     })

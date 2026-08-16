@@ -44,7 +44,8 @@ class FakeLLM:
     def __init__(self, reply: str) -> None:
         self._reply = reply
 
-    def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
         if "SEVERAL companies" in system:
             return _scores_reply(user)
         return self._reply
@@ -86,7 +87,7 @@ def _stub_scan(monkeypatch) -> None:
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
     ), None))
-    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None: {
+    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
         "regime": "neutral", "vix": 15.0, "outlook": "estable",
         "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
     })
@@ -344,7 +345,7 @@ def test_cursor_rotatorio_no_avanza_si_el_escaneo_revienta(db, monkeypatch) -> N
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
     monkeypatch.setattr(macro_mod, "get_macro_outlook",
-                        lambda llm, db=None: (_ for _ in ()).throw(RuntimeError("boom")))
+                        lambda llm, db=None, **_kw: (_ for _ in ()).throw(RuntimeError("boom")))
 
     with pytest.raises(RuntimeError):
         scan_service.run_scan_and_store(db, sample_size=5, decide=False)

@@ -32,7 +32,8 @@ class FakeLLM:
     def __init__(self, reply: str) -> None:
         self._reply = reply
 
-    def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
         return self._reply
 
 

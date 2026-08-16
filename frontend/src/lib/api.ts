@@ -1,7 +1,7 @@
 // Cliente HTTP hacia el backend FastAPI.
 import type { FunnelScan } from "./scan";
 import type {
-  AppConfig, Approval, ApprovalsResponse, DemoStatus, EquityHistory,
+  AppConfig, Approval, ApprovalsResponse, DemoRunOverrides, DemoStatus, EquityHistory,
   LedgerSnapshot, Macro, Overview, Performance, PersonalSummary, Proposal, RealSummary,
   ScoreRow, WatchItem,
 } from "./types";
@@ -117,12 +117,18 @@ export const getLedger = () => get<LedgerSnapshot>("/ledger");
 // modelo Pydantic), no cuerpo JSON. `decide=false` (8-ago): universo completo en producción
 // real, sin proponer ni tocar ninguna cartera. `force_mid_layer=true`: el circuito EXACTO de
 // un mensual (capa media incluida) sin tocar el cron semanal — botón "simulación" de Sala Real.
-export const runDemo = (opts?: { decide?: boolean; forceMidLayer?: boolean }) => {
+// `overrides` SÍ va en el cuerpo JSON (modal de configuración por etapa de la simulación):
+// "Analizar mercado" nunca lo manda, así que sigue usando los defaults de producción de siempre.
+export const runDemo = (opts?: {
+  decide?: boolean; forceMidLayer?: boolean; overrides?: DemoRunOverrides;
+}) => {
   const params = new URLSearchParams();
   if (opts?.decide === false) params.set("decide", "false");
   if (opts?.forceMidLayer) params.set("force_mid_layer", "true");
   const qs = params.toString();
-  return post<DemoStatus & { started: boolean }>(`/demo/run${qs ? `?${qs}` : ""}`);
+  return post<DemoStatus & { started: boolean }>(
+    `/demo/run${qs ? `?${qs}` : ""}`, opts?.overrides ? { overrides: opts.overrides } : undefined,
+  );
 };
 export const getDemoStatus = () => get<DemoStatus>("/demo/status");
 

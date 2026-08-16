@@ -231,7 +231,8 @@ def _recorte(raw: str) -> str:
 
 
 def mid_prescore(
-    llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 0.4,
+    llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
+    top_p: float | None = 0.95,
 ) -> PrescoreResult:
     """Segunda opinión de la capa media (modelo mejor que el triaje barato, 1 ticker por
     llamada). Best-effort: 0 si falla, con `error`/`raw` para que el caller sepa POR QUÉ
@@ -239,7 +240,7 @@ def mid_prescore(
     raw = ""
     try:
         raw = llm.chat(MID_SYSTEM, _mid_prompt(data, macro_block),
-                       temperature=temperature) or ""
+                       temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
         # Mismo guardarraíl que `score()` (ver su comentario): en una escala de 1 a 100, un 0
@@ -295,14 +296,25 @@ def _prescore_prompt(data: NameData, macro_block: str) -> str:
 
 
 def prescore_one(
-    llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 0.4,
+    llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
+    top_p: float | None = 0.95,
 ) -> PrescoreResult:
     """Triaje de un ticker, 1 llamada. Mismo guardarraíl y forma de fallo que `mid_prescore`
-    (best-effort: 0 si falla, con `error`/`raw` para que el caller decida si reintenta)."""
+    (best-effort: 0 si falla, con `error`/`raw` para que el caller decida si reintenta).
+
+    `temperature`/`top_p` van iguales en TODAS las etapas del escaneo (ver
+    `scan_service.DEFAULT_TEMPERATURE`/`DEFAULT_TOP_P`) aunque `api-docs.deepseek.com/guides/
+    thinking_mode` diga que el modo razonamiento los ignora — decisión explícita: mandarlos de
+    más no rompe nada, y así ninguna etapa depende de un valor especial que solo le cuadre a
+    ELLA por tener el reasoning que tiene hoy. Esta es la única función donde SÍ hay efecto
+    medible, porque `prescore_reasoning_effort` es "none" (ver config.py). 1.0 es lo que
+    DeepSeek recomienda para tareas de "análisis de datos" (no 0.0 de código ni 1.3+ de
+    conversación/creatividad) — puntuar una empresa es más lo primero que lo segundo.
+    """
     raw = ""
     try:
         raw = llm.chat(PRESCORE_SYSTEM, _prescore_prompt(data, macro_block),
-                       temperature=temperature) or ""
+                       temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
         if sc <= 0:
@@ -453,14 +465,14 @@ def prescore_batch(
 
 def score(
     llm: LLMProvider, data: NameData, macro_block: str, prior_thesis: str | None = None,
-    temperature: float = 0.6,
+    temperature: float = 1.0, top_p: float | None = 0.95,
 ) -> ScoreResult:
     """Puntúa un nombre. Best-effort: si el LLM falla/no parsea, score 0 (queda fuera), con
     `error`/`raw` para que el caller sepa POR QUÉ y decida si reintenta."""
     raw = ""
     try:
         raw = llm.chat(SYSTEM, _user_prompt(data, macro_block, prior_thesis),
-                       temperature=temperature) or ""
+                       temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
         tp = obj.get("target_price")

@@ -42,6 +42,7 @@ from __future__ import annotations
 import json
 import re
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -84,6 +85,17 @@ def config() -> dict:
         "dry_run": settings.dry_run,
         "limit_buffer_pct": settings.limit_buffer_pct,
         "approval_expiry_days": settings.approval_expiry_days,
+        # Defaults de LLM por etapa, para que el modal de configuración de la simulación
+        # (Sala Real) arranque con los valores REALES de producción en vez de copias a mano
+        # que se desincronizan del config.py el día que alguien lo cambie aquí y no allí.
+        "llm_defaults": {
+            "macro": {"model": settings.llm_model, "reasoning_effort": settings.macro_reasoning_effort},
+            "prescore": {"model": settings.prescore_model,
+                        "reasoning_effort": settings.prescore_reasoning_effort},
+            "mid": {"model": settings.mid_model, "reasoning_effort": settings.mid_reasoning_effort},
+            "deep": {"model": settings.llm_model, "reasoning_effort": settings.deep_reasoning_effort},
+            "constructor": {"model": settings.llm_model, "reasoning_effort": settings.reasoning_effort},
+        },
     }
 
 
@@ -215,18 +227,39 @@ def overview(db: Session = Depends(get_db)) -> dict:
 
 # ---- Escaneo ----------------------------------------------------------------
 
+class StageLLMOverride(BaseModel):
+    """Config de una etapa para el modal de la simulación. Todo opcional: lo que no venga usa
+    el default de `settings` (ver `scan_service._stage_cfg`)."""
+    model: str | None = None
+    reasoning_effort: Literal["none", "low", "high", "max"] | None = None
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    top_p: float | None = Field(default=None, gt=0.0, le=1.0)
+
+
+class DemoRunOverrides(BaseModel):
+    macro: StageLLMOverride | None = None
+    prescore: StageLLMOverride | None = None
+    mid: StageLLMOverride | None = None
+    deep: StageLLMOverride | None = None
+    constructor: StageLLMOverride | None = None
+
+
 @router.post("/demo/run")
 def demo_run(sample_size: int | None = None, decide: bool = True,
-            force_mid_layer: bool = False) -> dict:
+            force_mid_layer: bool = False,
+            overrides: DemoRunOverrides | None = Body(None)) -> dict:
     # decide=False: escaneo de universo completo en producción real, con el modelo/coste
     # de verdad, que NO propone ni toca ninguna cartera — solo refresca ranking, watchlist,
     # memoria y traza. force_mid_layer=True lo hace el circuito EXACTO de un mensual (capa
     # media incluida) sin tocar el cron semanal. Es el botón "simulación" de Sala Real.
+    # `overrides`: config por etapa del modal de la simulación — cuerpo JSON opcional, nunca lo
+    # manda "Analizar mercado" ni el cron, así que ambos siguen usando los defaults de siempre.
     if not settings.enable_llm or not settings.llm_api_key_present:
         raise HTTPException(503, "Configura ENABLE_LLM=true y la key del proveedor "
                                  f"({settings.llm_provider.upper()}_API_KEY).")
+    llm_overrides = (overrides.model_dump(exclude_none=True) if overrides else None) or None
     started = pipeline.start(sample_size=sample_size, decide=decide,
-                             force_mid_layer=force_mid_layer)
+                             force_mid_layer=force_mid_layer, llm_overrides=llm_overrides)
     return {"started": started, **pipeline.get_status()}
 
 

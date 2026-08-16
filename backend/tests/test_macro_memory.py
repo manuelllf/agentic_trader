@@ -21,7 +21,8 @@ def test_constructor_prompt_no_pide_cash_pct() -> None:
     captured: dict[str, str] = {}
 
     class _Capturing:
-        def chat(self, system: str, user: str, *, temperature: float = 0.3) -> str:
+        def chat(self, system: str, user: str, *, temperature: float = 0.3,
+                top_p: float | None = None) -> str:
             captured["system"] = system
             captured["user"] = user
             return json.dumps({"positions": [

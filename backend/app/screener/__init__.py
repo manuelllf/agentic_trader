@@ -1,6 +1,7 @@
-"""Capa 1 · Screener multi-señal (determinista, sin LLM).
+"""Capa 1 · Universo (determinista, sin LLM).
 
-Barre un universo US objetivo y saca los candidatos que cumplen la estrategia:
-momentum de calidad con entrada en pullback sobre small/mid caps asimétricas.
-El LLM (Capa 2) solo se ejecuta después, sobre los 3-5 finalistas.
+Barre el mercado US entero (sin suelo ni techo de capitalización — ver
+`config.py::universe_market_cap_min/max`) y aplica solo higiene de liquidez (precio, dólar-
+volumen, tope de nombres). El LLM (Capa 2, `agents/`) juzga después, sobre el universo entero
+en el pre-score y sobre los finalistas en el informe profundo.
 """

@@ -89,7 +89,7 @@ def _user_prompt(portfolio_text: str, candidates_text: str, macro_block: str) ->
 def construct(
     llm: LLMProvider, portfolio_text: str, candidates_text: str, macro_block: str,
     max_positions: int, max_position_pct: float, valid_tickers: set[str],
-    min_positions: int = 1, temperature: float = 0.6,
+    min_positions: int = 1, temperature: float = 1.0, top_p: float | None = 0.95,
 ) -> ConstructionResult:
     """Asigna pesos a los nombres YA SELECCIONADOS. Enforcea las reglas duras tras el LLM.
 
@@ -119,7 +119,7 @@ def construct(
     positions: list[TargetPosition] = []
     for intento in (1, 2, 3):
         try:
-            raw = llm.chat(system, user, temperature=temperature)
+            raw = llm.chat(system, user, temperature=temperature, top_p=top_p)
             data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         except Exception:
             logger.warning("Constructor no parseable (intento %d/3)", intento, exc_info=True)

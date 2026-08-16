@@ -34,11 +34,12 @@ import {
   cascada, fmtNum, fmtScanCost, sectoresTop, universoLinea, type FunnelScan,
 } from "@/lib/scan";
 import type {
-  AppConfig, Approval, ApprovalsResponse, DemoStatus, HistoryPoint, Performance,
+  AppConfig, Approval, ApprovalsResponse, DemoRunOverrides, DemoStatus, HistoryPoint, Performance,
   PersonalSummary, RealSummary,
 } from "@/lib/types";
 import { CapitalForm } from "./CapitalForm";
 import { MemorySearch } from "./MemorySearch";
+import { ScanConfigModal } from "./ScanConfigModal";
 import { ScanFullButton } from "./ScanFullModal";
 import { OrderRow } from "./OrderRow";
 import { NUMS, SERIES, T } from "./tokens";
@@ -73,6 +74,7 @@ function SalaRealRoom() {
   const [pushOn, setPushOn] = useState<boolean | null>(null);
   const [scanStatus, setScanStatus] = useState<DemoStatus | null>(null);
   const [running, setRunning] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);   // modal del botón 📡 (simulación)
   const [shadowPerf, setShadowPerf] = useState<Performance | null>(null);   // sombra en paralelo
   const [hist, setHist] = useState<HistoryPoint[]>([]);   // curva del libro real (cierres diarios)
   const [report, setReport] = useState<ScanReport | null>(null);   // informe del último escaneo
@@ -194,10 +196,13 @@ function SalaRealRoom() {
   // Circuito EXACTO de un mensual real (universo completo + capa media) — pero decide=false:
   // refresca ranking, watchlist, memoria y traza; no propone ni toca ninguna cartera (ni sombra
   // ni real). Botón aparte, separado del de decisión para que no puedan confundirse por accidente.
-  const handleRunSimulation = async () => {
+  // El clic abre el modal de configuración (modelo/reasoning/temperatura/top_p por etapa,
+  // ver ScanConfigModal) — el lanzamiento real ocurre en `handleLaunchSimulation`, al confirmar.
+  const handleLaunchSimulation = async (overrides: DemoRunOverrides) => {
+    setConfigOpen(false);
     setError("");
     try {
-      await runDemo({ decide: false, forceMidLayer: true });
+      await runDemo({ decide: false, forceMidLayer: true, overrides });
       setRunning(true);
       setFlash("Simulación en marcha (no va a tocar ninguna cartera)…");
       pollScan();
@@ -376,13 +381,16 @@ function SalaRealRoom() {
                 propone ni toca ninguna cartera. Círculo aparte (no un pill con texto) a propósito:
                 que nunca se confunda al vuelo con el botón de decisión de al lado. Reutiliza 📡,
                 el mismo símbolo que ya usa la sala sombra para "observa, no decide". */}
-            <button onClick={handleRunSimulation} disabled={isScanning}
-                    title="Simulación: escanea el universo completo con el modelo y coste reales, pero NO propone ni toca ninguna cartera (ni sombra ni real) — solo refresca ranking, watchlist, memoria y traza."
-                    aria-label="Lanzar simulación de escaneo completo (no toca ninguna cartera)"
+            <button onClick={() => setConfigOpen(true)} disabled={isScanning}
+                    title="Simulación: escanea el universo completo con el modelo y coste reales, pero NO propone ni toca ninguna cartera (ni sombra ni real) — solo refresca ranking, watchlist, memoria y traza. Abre un modal para configurar modelo/reasoning/temperatura/top_p por etapa antes de lanzar."
+                    aria-label="Configurar y lanzar simulación de escaneo completo (no toca ninguna cartera)"
                     className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] transition-opacity hover:opacity-90 disabled:opacity-50"
                     style={{ background: T.bad }}>
               <span className={isScanning ? "animate-pulse" : ""} aria-hidden>📡</span>
             </button>
+            {configOpen && (
+              <ScanConfigModal onClose={() => setConfigOpen(false)} onLaunch={handleLaunchSimulation} />
+            )}
             {summary && (
               <span title={summary.broker.detail}
                     className="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-bold tracking-wide"

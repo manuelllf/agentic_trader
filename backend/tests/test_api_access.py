@@ -290,8 +290,12 @@ def test_config_does_not_leak_sensitive_fields(client) -> None:
     assert not (leaky_keys & set(body.keys()))
     assert set(body.keys()) == {
         "max_positions", "min_positions", "max_position_pct", "dry_run", "limit_buffer_pct",
-        "approval_expiry_days",
+        "approval_expiry_days", "llm_defaults",
     }
+    # llm_defaults es modelo/reasoning por etapa (público, ver routes.py) — nunca temperature/
+    # top_p/api keys, que sí serían sensibles o ruido de implementación.
+    for etapa in body["llm_defaults"].values():
+        assert set(etapa.keys()) == {"model", "reasoning_effort"}
 
 
 # ---- /admin/memory-status: diagnóstico de la memoria vectorial ---------------

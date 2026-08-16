@@ -92,10 +92,13 @@ class Settings(BaseSettings):
     # etapa cuyo tamaño lo decide un dato EXTERNO: mid_per_sector × (sectores que traiga
     # yfinance ese día). Hoy son ~11 sectores (~165 llamadas con 15/sector), pero el número no
     # lo fijamos nosotros — si el campo `sector` viniera sucio, cada valor raro abriría su
-    # propio cupo de llamadas al modelo caro. 200 (subido de 150 junto con
-    # `mid_per_sector`) deja aire sobre las ~165 normales y convierte un fallo de datos en un
-    # recorte, no en una factura. Al truncar se conservan los de MAYOR pre-score (lista ordenada).
-    mid_candidates_cap: int = 200
+    # propio cupo de llamadas al modelo caro. 200 → 300: el coste de la capa media es lineal en
+    # nº de llamadas (medido: ~$0,0015/llamada con reasoning "low", sin economía de escala por
+    # el caché de prefijo), así que el tope no protege de una factura descontrolada — protege de
+    # un fallo de datos. Subirlo ensancha el carril "global" (relleno por top-prescore) sin tocar
+    # `mid_per_sector`, que sigue siendo la garantía POR sector. Al truncar se conservan los de
+    # MAYOR pre-score (lista ordenada).
+    mid_candidates_cap: int = 300
     # Antes en el mismo alias que el pre-score (0731): la capa media era un re-muestreo del
     # mismo modelo sobre el mismo prompt corto, sin el juicio de un modelo distinto. V4-Pro
     # directo recupera la segunda opinión real — motivo por el que se recupera Pro en general.
@@ -119,15 +122,19 @@ class Settings(BaseSettings):
     # antes de que el carril "global" rellene lo que quede. 80 con DeepSeek directo: sin
     # OpenRouter de por medio y con concurrencia alta, el coste extra de la etapa más cara
     # (informe completo por finalista) es asumible — más colchón sobre esa cuenta de 34.
-    deep_finalists_cap: int = 80                         # tope DURO de finalistas (coste V4-Pro)
-    # 10 → 20: DESVIACIÓN explícita del paper (comentario original: "nombres al
-    # constructor (paper: 'top 10')"). Motivo: el corte a top-10 de `select_top` es código puro
+    # 80 → 100: mismo argumento de coste lineal que `mid_candidates_cap` (medido: ~$0,004/llamada
+    # con reasoning "high") — el tope es para acotar el gasto por diseño, no porque 80 fuera un
+    # límite de calidad. Más finalistas = más candidatos reales para el corte de `select_count`.
+    deep_finalists_cap: int = 100                        # tope DURO de finalistas (coste V4-Pro)
+    # 10 → 20 → 30: DESVIACIÓN explícita del paper (comentario original: "nombres al
+    # constructor (paper: 'top 10')"). Motivo: el corte a top-N de `select_top` es código puro
     # (score + desempate por market cap), ciego a matices — el mismo tipo de corte que dejó
-    # fuera a BKNG (rank #217 global, #11 en su sector) de cualquier análisis. Duplicar a 20 deja
+    # fuera a BKNG (rank #217 global, #11 en su sector) de cualquier análisis. Más candidatos deja
     # que el constructor, que SÍ lee tesis/edge/riesgo/macro, decida entre más candidatos reales
-    # en vez de que el código descarte 50 nombres solo por nota y tamaño antes de que nadie con
-    # más criterio los vea. `max_positions=5` (LOCKED) no cambia — sigue siendo una cartera de 5.
-    select_count: int = 20                               # nombres al constructor (antes: 10)
+    # en vez de que el código descarte nombres solo por nota y tamaño antes de que nadie con más
+    # criterio los vea. Casi gratis: el constructor sigue siendo 1 sola llamada, solo con más
+    # texto en el prompt. `max_positions=5` (LOCKED) no cambia — sigue siendo una cartera de 5.
+    select_count: int = 30                               # nombres al constructor (antes: 10)
     # Tickers que SIEMPRE llegan al profundo para que Manuel vea la opinión del sistema sobre su
     # cartera PERSONAL (IBKR) — sin que eso implique nada sobre la cartera del AGENTE. Una vez
     # en finalistas, compiten exactamente igual que cualquier otro nombre (sin restricción de
