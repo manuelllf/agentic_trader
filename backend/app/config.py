@@ -67,7 +67,13 @@ class Settings(BaseSettings):
     # capa media como término medio (~200 llamadas, segunda opinión que sí debería razonar algo,
     # sin llegar al coste de "high").
     macro_reasoning_effort: str | None = "max"
-    prescore_reasoning_effort: str | None = "none"
+    # "low" fijo (16-ago-2026): dos escaneos reales con reasoning=low elegido a mano en el modal
+    # de simulación dieron completion_tokens de prescore IDÉNTICOS al baseline de "none" (24016),
+    # con la ventana de la emergente ya arreglada y el bundle desplegado confirmado — la causa no
+    # se pudo aislar (pestaña vieja sin refrescar / selección no efectiva). En vez de seguir
+    # confiando en que el modal mande el override correcto, el DEFAULT de producción pasa a "low"
+    # directamente aquí — así el prescore razona algo aunque el modal falle o no se toque.
+    prescore_reasoning_effort: str | None = "low"
     mid_reasoning_effort: str | None = "low"
     deep_reasoning_effort: str | None = "high"
     # Constructor: 1 llamada/escaneo, decide la cartera — el coste extra de "max" es trivial a

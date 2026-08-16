@@ -466,7 +466,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
 
     # 2) Outlook macro forward (V4-Pro, 1 llamada).
     scan_progress.set_stage("macro")
-    logger.info("Escaneo: iniciando MACRO.")
+    logger.info("Escaneo: iniciando MACRO (modelo=%s, reasoning=%s).",
+               macro_cfg["model"] or settings.llm_model, macro_cfg["reasoning_effort"])
     t0 = time.monotonic()
     macro = macro_mod.get_macro_outlook(macro_llm, db, **_sampling_kwargs(macro_cfg))
     macro_block = macro_mod.outlook_prompt_block(macro)
@@ -613,8 +614,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         correr, unidad = _pre_lote, "lotes"
 
     scan_progress.set_stage("prescore", total=len(tareas), unit=unidad)
-    logger.info("Escaneo: iniciando PRESCORE (%d %s, %d nombres).",
-               len(tareas), unidad, len(datos_ok))
+    logger.info("Escaneo: iniciando PRESCORE (%d %s, %d nombres, modelo=%s, reasoning=%s).",
+               len(tareas), unidad, len(datos_ok),
+               prescore_cfg["model"], prescore_cfg["reasoning_effort"])
     t0 = time.monotonic()
     with ThreadPoolExecutor(max_workers=_PRESCORE_WORKERS) as ex:
         por_lote = list(ex.map(correr, tareas))
@@ -693,7 +695,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             return p
 
         scan_progress.set_stage("mid", total=len(mid_candidates), unit="candidatos")
-        logger.info("Escaneo: iniciando MID (%d candidatos).", len(mid_candidates))
+        logger.info("Escaneo: iniciando MID (%d candidatos, modelo=%s, reasoning=%s).",
+                   len(mid_candidates), mid_cfg["model"], mid_cfg["reasoning_effort"])
         t0 = time.monotonic()
         with ThreadPoolExecutor(max_workers=_MID_WORKERS) as ex:
             mid_results = list(ex.map(_mid, mid_candidates))
@@ -739,7 +742,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         return r
 
     scan_progress.set_stage("deep", total=len(finalists), unit="finalistas")
-    logger.info("Escaneo: iniciando DEEP (%d finalistas).", len(finalists))
+    logger.info("Escaneo: iniciando DEEP (%d finalistas, modelo=%s, reasoning=%s).",
+               len(finalists), deep_cfg["model"] or settings.llm_model, deep_cfg["reasoning_effort"])
     t0 = time.monotonic()
     analizados: dict[str, scorer_mod.ScoreResult] = {}
     with ThreadPoolExecutor(max_workers=_DEEP_WORKERS) as ex:
@@ -859,7 +863,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         candidates_text += instruments_mod.prompt_block(instr_prices)  # UCITS ('' si vacío)
         valid = {r.ticker for r in selected} | set(instr_prices)
         scan_progress.set_stage("constructor")
-        logger.info("Escaneo: iniciando CONSTRUCTOR (%d candidatos).", len(selected))
+        logger.info("Escaneo: iniciando CONSTRUCTOR (%d candidatos, modelo=%s, reasoning=%s).",
+                   len(selected), constructor_cfg["model"] or settings.llm_model,
+                   constructor_cfg["reasoning_effort"])
         t0 = time.monotonic()
         # Instancia SEPARADA (no `deep_llm`): el constructor es la ÚNICA etapa con reasoning
         # "max" (ver config.py) — una llamada por escaneo, coste extra asumible. Se crea aquí,
