@@ -1,17 +1,7 @@
-"""Instrumentos UCITS que el constructor puede usar ADEMÁS de las acciones (Exhibit 2E del paper).
+"""Instrumentos UCITS (constructor elige libremente; no se puntúan).
 
-SOLO UCITS europeos (comprables desde España; los ETF US no lo son, PRIIPs/MiFID) y a propósito en
-USD (el libro habla USD → sin FX extra). El constructor elige LIBREMENTE de esta lista; NO se
-puntúan (no pasan por el scorer): se ofrecen como instrumentos siempre disponibles, igual que el
-menú de ETF/bonos/TIPS del prompt del paper. Precio vía yfinance con el símbolo de LSE (sufijo .L).
-
-Poblado (16-ago) con las categorías del Exhibit 2E ("market, sectors, TIPS, and long and short-
-term bonds") — precio USD verificado en vivo contra yfinance ese mismo día. OJO: el conid
-comprable en la cuenta IBKR EU sigue pendiente (backlog) — el broker actual solo resuelve acciones
-US, así que esto ya afecta a la sombra/observatorio (donde el constructor puede elegirlos) pero NO
-se podrá ejecutar de verdad en la cuenta real hasta que ese hueco se cierre. Si el constructor
-asigna peso a uno de estos en un escaneo que DECIDE, la aprobación de la cuenta real quedará mal
-hasta entonces — vigilar el primer escaneo que los use.
+UCITS europeos USD (sin FX extra). Exhibit 2E: market/sectores/TIPS/bonos.
+NOTA: conid IBKR pendiente (backlog) — ejecuta sombra, no cuenta real aún.
 """
 
 from __future__ import annotations

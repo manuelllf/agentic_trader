@@ -56,47 +56,22 @@ from app.screener import universe as universe_mod
 
 logger = logging.getLogger(__name__)
 
-# Concurrencia por etapa. Con `llm_provider="openrouter"` (pruebas locales puntuales) se queda
-# conservador: 10 hilos, presiona poco a un alias repartido entre ~28 proveedores desiguales.
-# Con "deepseek" (producción, circuito oficial): el techo real NO es el límite de la API
-# (documentado en api-docs.deepseek.com: 2.500 peticiones en vuelo para Flash, 500 para Pro) —
-# es el propio contenedor. Medido en vivo (producción, `can't start new thread` a los ~550/3.001
-# del prescore con 1.000 hilos): el cgroup tiene `pids.max=1000`, tope DURO del número total de
-# hilos/procesos del contenedor ENTERO, uvicorn y demás incluidos. Las tres etapas NUNCA corren
-# a la vez (`with ThreadPoolExecutor(...) as ex:` cierra el pool de una etapa antes de que
-# empiece el siguiente), así que el pico real es el MAYOR de los tres números, no la suma — 500
-# dentro del prescore deja la mitad del tope libre para el resto del proceso (uvicorn, scheduler).
-# Un ThreadPoolExecutor mantiene sus N hilos vivos TODA la etapa (un hilo que acaba una tarea
-# coge la siguiente de la cola, no muere) — no hay "cascada" que reduzca el pico simultáneo
-# mientras queden más tareas que huecos; solo serviría para suavizar la RÁFAGA de creación
-# inicial, no el techo. Pendiente de medir si 500 aguanta sin repetir el crash antes de subir más.
+# Concurrencia: OpenRouter=10 (local); DeepSeek=500/100/50 (producc).
+# Pico real = MAYOR de 3 (etapas seriales), no suma. Límite duro: cgroup pids.max=1000.
 if settings.llm_provider == "deepseek":
     _PRESCORE_WORKERS = 500   # Flash, triaje (~3.000 llamadas/escaneo)
     _MID_WORKERS = 100        # Pro, capa media (~200 candidatos)
     _DEEP_WORKERS = 50        # Pro, profundo (hasta `deep_finalists_cap` finalistas)
 else:
     _PRESCORE_WORKERS = _MID_WORKERS = _DEEP_WORKERS = 10
-# Gather: desde el scraper de Yahoo (`yahoo_scraper.py`, motor primario — ver `fundamentals.py`)
-# como PRIMARIO, MEDIDO en vivo contra Yahoo (no estimado): 2 hilos + 0,4s de pausa por hilo
-# dieron 3.000/3.000 (100%) en una tirada de tamaño de producción completa; 10 hilos con la MISMA
-# pausa se cayeron a 48,3%. Hay un techo real de concurrencia en algún punto entre 2 y 10 que no
-# se ha acotado más — 2 es el ÚNICO nivel validado seguro a volumen completo, así que se deja ahí
-# en vez de subir a ciegas. (Antes de este cambio, con yfinance puro, se había medido que 8 y 20
-# hilos daban el MISMO ~80% de fallo — ese hallazgo ya no aplica: el cuello de botella real
-# resultó estar en el crumb/consentimiento GDPR, no en el número de hilos por sí solo.)
+# Gather: 2 hilos vía yahoo_scraper (validado 100% a volumen production). 10 hilos caen a 48%.
+# Techo real entre 2-10; 2 es único nivel validado seguro, no se sube a ciegas.
 _GATHER_WORKERS = 2
-# Pausa (segundos) que cada hilo del gather respeta TRAS su propia petición al scraper de Yahoo
-# — no es opcional ni cosmética, es parte de lo que se validó en vivo junto con `_GATHER_WORKERS`.
-# Medido seguro tanto a 0,35s como a 0,4s; se deja en 0,4s por margen (la diferencia de 0,05s es
-# inmaterial al volumen de un escaneo completo). Se aplica dentro de `fundamentals.gather()`
-# (`pace_s=`), no en `yahoo_scraper.py`: ese módulo se deja limpio, solo hace peticiones HTTP, sin
-# política de ritmo — la política vive donde vive `_GATHER_WORKERS`.
+# Pausa/hilo (0,4s): validada en vivo junto con _GATHER_WORKERS.
+# Se aplica en fundamentals.gather(), no yahoo_scraper.py (módulo limpio, solo HTTP).
 _GATHER_PACE_S = 0.4
-# Cuánto esperar tras la última petición a yfinance antes de reintentar en bloque los fallidos
-# del gather (ver comentario en el paso 3). OJO: medido en vivo que 180s NO alcanza — un
-# reintento real tras esa espera recuperó 0 de 2.377 fallidos. La ventana de recuperación de
-# Yahoo parece ser de horas (8h40 tampoco bastó en otra prueba), no de minutos; el reintento se
-# deja puesto como red de seguridad barata para fallos parciales, no como arreglo del bloqueo.
+# 180s cooldown tras última petición: no alcanza (Yahoo bloquea horas, no minutos).
+# Red de seguridad para fallos parciales, no arreglo del bloqueo.
 _GATHER_RETRY_COOLDOWN_S = 180.0
 _CURSOR_KEY = "scan_cursor"   # offset persistido de la ventana rotatoria del semanal
 _REPORT_KEY = "last_scan_report"   # informe del último escaneo (JSON en Meta; ver /scan/report)
@@ -105,21 +80,17 @@ _REPORT_KEY = "last_scan_report"   # informe del último escaneo (JSON en Meta; 
 def _write_scan_report(db: Session, *, mode: str | None, result: dict | None,
                        issues: list[str], error: str | None = None,
                        changes: list[str] | None = None) -> None:
-    """Persiste el informe del último escaneo en Meta. Es la fuente de verdad de la web:
-    el estado en memoria del runner manual no sobrevive a un reinicio y el cron ni lo toca."""
+    """Persiste informe de último escaneo en Meta (fuente de verdad de la web)."""
     r = result or {}
     report = {
         "at": datetime.now(UTC).isoformat(),
         "mode": mode, "error": error, "issues": issues, "changes": changes or [],
         "universe": r.get("universe"),
         "scanned": r.get("scanned"), "prescored": r.get("prescored"), "deep": r.get("deep"),
-        # Solo tiene sentido en observatorio (la decisión reemplaza el ranking entero, no
-        # "refresca" nada); None en decisión para no sugerir que 0 nombres se actualizaron.
+        # Refreshed: solo observatorio (decisión reemplaza ranking entero, no refresca).
         "refreshed": r.get("refreshed"),
         "cost": r.get("cost"),
-        # La tesis macro de ESTE escaneo. Hasta ahora el observatorio la calculaba y la tiraba:
-        # la única visible era la de la última DECISIÓN, así que la lectura del martes acababa
-        # emparejada con un contexto de hace semanas.
+        # Outlook de este escaneo (antes observatorio lo descartaba; ahora siempre visible).
         "outlook": r.get("outlook"),
     }
     db.merge(Meta(key=_REPORT_KEY, value=json.dumps(report, ensure_ascii=False)))
@@ -127,8 +98,7 @@ def _write_scan_report(db: Session, *, mode: str | None, result: dict | None,
 
 
 def write_scan_failure(db: Session, exc: Exception) -> None:
-    """Informe de un escaneo que REVENTÓ entero (lo llaman los envoltorios cron/manual).
-    Sin esto, un cron caído es invisible en la web: se verían scores viejos sin señal alguna."""
+    """Marca escaneo fallido en Meta (sin esto, cron caído pasa invisible en web)."""
     db.rollback()   # la sesión puede venir sucia del fallo a mitad
     _write_scan_report(db, mode=None, result=None, issues=[], error=str(exc))
 
@@ -201,11 +171,8 @@ def _lista(ts: list[str], n: int = 10) -> str:
     return ", ".join(ts[:n]) + (f" y {len(ts) - n} más" if len(ts) > n else "")
 
 
-# Guardarraíl de operación corporativa (caso real 4-ago: una opa que rondaba los 95 el modelo
-# la leyó como 112,53 mezclando enterprise value ($3.800M) con precio por acción, pese a que la
-# regla que lo prohíbe lleva tres semanas en el prompt. Como el prompt ya falló, esto va en
-# código. Los términos van sin acentos porque el informe se compara ya normalizado (ver
-# `_sin_acentos`), así valen tanto "fusión" como "fusion" que pueda escribir el modelo.
+# Guardarraíl de operación corporativa en código: el prompt ya prohíbe mezclar enterprise value
+# con precio por acción y aun así falló una vez. Sin acentos porque el informe se normaliza antes.
 _CORP_DEAL_TERMS = ("adquisicion", "adquirir", "opa", "oferta en efectivo", "fusion",
                     "merger", "takeover", "absorcion")
 
@@ -512,24 +479,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     if not macro.get("outlook"):
         issues.append("Outlook macro del LLM caído — se usó solo el régimen determinista.")
 
-    # 3) PASO 1 — pre-score rápido (Flash) de todos los nombres, en LOTES de
-    # `settings.prescore_batch_size` (antes: 1 llamada por ticker). Agrupar amortiza la
-    # sobrecarga fija por llamada (cola del proveedor detrás del alias, medida en vivo entre 2,5
-    # y 49,5s por UNA sola empresa) entre las N del lote — ~150 llamadas de 20 en vez de ~3.000
-    # sueltas. El reintento del lote (hasta 2 extra) vive DENTRO de `scorer.prescore_batch`, no
-    # aquí: la decisión de reintentar mira el lote entero (JSON roto, formato degenerado), no el
-    # error de un ticker suelto. Reunir los fundamentales sigue siendo 1 llamada por ticker
-    # (yfinance, gratis) — eso no se agrupa, solo las llamadas al LLM.
-    # `_GATHER_WORKERS`/`_GATHER_PACE_S` (ver comentario junto a su definición, arriba): el motor
-    # PRIMARIO del gather es ahora el scraper de Yahoo (`yahoo_scraper.py`, vía
-    # `fundamentals.gather()`), y son estos dos números — 2 hilos, 0,4s de pausa por hilo — los
-    # que se validaron en vivo para él. Se fija aquí, JUSTO antes de lanzar el paso de gather, el
-    # ritmo que `fundamentals.gather()` debe respetar tras cada petición al scraper: ver el
-    # comentario de `fund_mod._GATHER_PACE_S` sobre por qué es un ajuste de módulo y no un
-    # parámetro de la función. (`yf.download()` para agrupar el histórico se probó y se REVIRTIÓ
-    # el mismo día: su pool interno de hilos agotó el límite del contenedor — "getaddrinfo()
-    # thread failed to start" — y de todas formas Yahoo no tiene un endpoint de verdad agrupado
-    # para el histórico, solo paraleliza la misma cantidad de peticiones bajo el capó.)
+    # 3) PASO 1 — prescore rápido (Flash) en lotes. Agrupa sobrecarga fija de llamadas.
+    # Reintento lote (hasta 2 extra) vive en scorer.prescore_batch(), no aquí.
+    # _GATHER_WORKERS/PACE_S: validados en vivo (2 hilos, 0,4s pausa) para yahoo_scraper.
     fund_mod._GATHER_PACE_S = _GATHER_PACE_S
 
     def _gather(ticker: str):
@@ -537,9 +489,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         return ticker, data, err
 
     def _run_gather(tickers: list[str]) -> list[tuple[str, object, str | None]]:
-        """Consume `ex.map(_gather, ...)` uno a uno (en vez de envolverlo en `list()` de golpe)
-        para poder marcar progreso por nombre — mismo orden y mismo bloqueo que antes, solo
-        cambia CÓMO se recoge el resultado."""
+        """Consume ex.map uno a uno para marcar progreso por nombre sin acumular en lista."""
         out: list[tuple[str, object, str | None]] = []
         with ThreadPoolExecutor(max_workers=_GATHER_WORKERS) as ex:
             for t, d, e in ex.map(_gather, tickers):
@@ -562,9 +512,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
 
     fallidos = [t for t, d, _e in gathered if d is None]
     if fallidos:
-        # Reintento ÚNICO en bloque, no por ticker (con miles de fallidos, reintentar cada uno
-        # alargaría el escaneo sin límite). Espera lo que falte hasta `_GATHER_RETRY_COOLDOWN_S`
-        # desde la ÚLTIMA petición real a yfinance, no desde que empezó el paso.
+        # Reintento en bloque (no por ticker): miles de reintentos alargaría escaneo sin límite.
         espera = _GATHER_RETRY_COOLDOWN_S - (time.monotonic() - t_ultimo_gather)
         if espera > 0:
             time.sleep(espera)
@@ -604,8 +552,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         scan_progress.tick(ok=not p.error, reason=f"{p.ticker}: {p.error}" if p.error else None)
         return [(p, d)]
 
-    # Individual por defecto (`llm_provider="deepseek"`, fiel al paper) — sin lotes. El batch
-    # solo se usa con OpenRouter (pruebas locales, ver `settings.prescore_batch_size`).
+    # Individual por defecto (DeepSeek, fiel al paper); batch solo con OpenRouter (local).
     if settings.llm_provider == "deepseek":
         tareas, correr, unidad = datos_ok, _pre_uno, "nombres"
     else:
@@ -625,21 +572,13 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     results = [par for lote_res in por_lote for par in lote_res]   # aplanado, 1 par por ticker
 
     prescored = [r for r in results if r[0].score > 0]
-    # Desempate por capitalización, el mismo criterio del paper que ya usan `select_top` y
-    # `select_finalists`: si no, un empate de pre-score lo rompe el orden de llegada de la
-    # muestra (se ha visto 7 nombres empatados en 84,5 disputándose 2 plazas).
+    # Desempate por market cap (criterio del paper): evita que orden de llegada decida frontera.
     prescored.sort(key=lambda x: (-x[0].score, -(x[1].market_cap or 0.0)))
-    # Fallo de prescore = `p.error` (lote no parseable/degenerado tras 3 intentos, o ticker
-    # ausente en una respuesta por lo demás válida — ver `scorer.prescore_batch`). Van a la
-    # auditoría con stage="prescore_error": si no, desaparecen del embudo sin rastro.
+    # Fallo prescore = p.error (lote no parseable/degenerado tras 3 intentos).
+    # Van a auditoría stage="prescore_error"; si no, desaparecen sin rastro.
     pre_errors = [(p, d) for p, d in results if p.error]
     if pre_errors:
-        # Agrupado por motivo, no un ticker tras otro repitiendo el mismo texto: un lote entero
-        # (hasta 20 tickers) comparte SIEMPRE el mismo `error`, y listarlo 20 veces no dice nada
-        # que no diga una vez ("20 pre-score(s) fallidos: TICKER1[motivo], TICKER1[motivo]...").
-        # Lista COMPLETA, sin recortar a los primeros N: un "…" que se come el resto no dice
-        # qué falló de verdad, y agrupado por motivo (no por ticket) el texto no se dispara de
-        # tamaño aunque fallen cientos — es una línea por motivo, no una por ticker.
+        # Agrupa por motivo: lote comparte error; listarlo 20x no suma info (1 línea/motivo).
         por_motivo: dict[str, list[str]] = {}
         for p, _d in pre_errors:
             por_motivo.setdefault(p.error, []).append(p.ticker)
@@ -652,18 +591,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # que deja de colapsar en defensivo-value.
     data_by_t = {d.ticker: d for _p, d in prescored}
 
-    # Capa media estratificada: coge los `mid_per_sector` mejores de CADA sector (excluye "n/d")
-    # y los repuntúa con su propio prompt de segunda opinión (`MID_SYSTEM`/`mid_prescore()`,
-    # noticias con resumen + calendario de resultados) y un modelo mejor. Motivo (medido):
-    # 2.594 nombres repartidos en solo 287 valores de Flash — un 100/100 que el profundo
-    # puntuó 48. El carril "global" de `select_finalists` sale de esta segunda opinión en vez de
-    # la frontera ruidosa de Flash; los demás carriles (posición/watchlist/caps/sector) no cambian.
-    # Por defecto solo en los escaneos que DECIDEN: el observatorio semanal no toca ningún
-    # libro, así que pagar el modelo caro para afinar un ranking que no se ejecuta no compra
-    # nada. `force_mid_layer` es la excepción explícita: el botón "simulación" de Sala
-    # Real quiere el circuito EXACTO de un mensual real —capa media incluida— para medir su
-    # coste sin tocar ninguna cartera. No se ató a `decide=False` en general porque eso habría
-    # subido también el coste del cron semanal automático, que nadie pidió.
+    # Capa media: top-N/sector repuntuados (segunda opinión, modelo mejor).
+    # Solo en decisiones (no semanal observatorio); force_mid_layer para simulación.
     mid_scores: dict[str, float] | None = None
     if settings.mid_layer and (decide or force_mid_layer):
         mid_candidates = portfolio.top_por_sector(prescored, settings.mid_per_sector)
@@ -675,10 +604,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 f"Sectores distintos vistos: {len(sectores - {''})}.")
             mid_candidates = mid_candidates[:settings.mid_candidates_cap]
         elif len(mid_candidates) < settings.mid_candidates_cap:
-            # Relleno hasta el tope con el top-prescore GLOBAL (prescored ya viene ordenado por
-            # -score/-market_cap), sin duplicar los que ya entraron por sector. Antes el cupo se
-            # quedaba corto si los sectores no daban para tanto (~165 de 200 en un escaneo real)
-            # sin que nada lo compensara.
+            # Relleno top-prescore global (sin duplicar ya entraron por sector).
             ya = {t for t in mid_candidates}
             relleno = [p.ticker for p, _d in prescored if p.ticker not in ya]
             mid_candidates += relleno[:settings.mid_candidates_cap - len(mid_candidates)]
@@ -702,32 +628,21 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             mid_results = list(ex.map(_mid, mid_candidates))
         timings["mid"] = round(time.monotonic() - t0, 1)
         logger.info("Escaneo: MID completado en %.1fs.", timings["mid"])
-        # Si la segunda opinión falla, el nombre CONSERVA su pre-score en vez de caer a 0: un
-        # error de transporte no es un veredicto, y un 0 lo expulsaría del carril global después
-        # de haberse ganado el sitio como mejor de su sector.
+        # Si falla: nombre conserva pre-score (error de transporte no es veredicto).
         crudo = {p.ticker: p.score for p, _d in prescored}
         mid_scores = {p.ticker: (crudo.get(p.ticker, 0.0) if p.error else p.score)
                       for p in mid_results}
 
-    # Sin capa media (el semanal), el carril sectorial sigue valiendo 2: es la única garantía de
-    # que el profundo vea cada sector. Bajarlo a 1 solo se justifica cuando un modelo mejor ya ha
-    # puntuado el top-10 de cada uno.
+    # Sin capa media (semanal): carril sectorial=2 (garantiza profundo ve cada sector).
     per_sector = settings.deep_per_sector_mid if mid_scores else settings.deep_per_sector
     finalists, lanes = portfolio.select_finalists(
         prescored, set(held), watchlist_mod.top(db, settings.deep_watchlist),
         per_sector, settings.deep_finalists_cap,
         top_caps=settings.deep_top_caps, mid_scores=mid_scores, tracked=personal)
 
-    # 4) PASO 2 — informe PROFUNDO (V4-Pro) + price target solo en los finalistas.
-    # Memoria vectorial: `store` solo alimenta `remember()` al final del escaneo (el buscador
-    # web). El recall que antes se inyectaba aquí como "tesis previa" se midió: llegaba a 19 de
-    # 50 finalistas y a 12 de ESOS con recuerdo real el k=3 se lo tapaba — un tratamiento que
-    # caía al azar.
-    # La tesis previa por nombre (watchlist/cartera) y el outlook macro anterior (ver `macro.py`)
-    # se quitaron del todo por fidelidad al paper: cada escaneo vuelve a juzgar desde cero, sin
-    # que su propia opinión anterior condicione la nueva. `prior`/`had_prior` se
-    # conservan solo como TELEMETRÍA de auditoría (`had_prior_thesis` en ScanAudit — "¿tenía
-    # tesis guardada disponible?", ya no "¿se usó?"); `Watchlist.thesis` sigue viva para la web.
+    # 4) PASO 2 — profundo (V4-Pro) + price target en finalistas.
+    # Memoria vectorial solo al final (remember). Tesis previa quitada: cada escaneo juzga desde cero.
+    # prior/had_prior conservadas solo como telemetría auditoría; Watchlist.thesis sigue para web.
     store = _memory_store()
     had_prior = {t for t in finalists if prior.get(t)}
 
@@ -749,15 +664,12 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     with ThreadPoolExecutor(max_workers=_DEEP_WORKERS) as ex:
         for res in ex.map(_deep, finalists):
             analizados[res.ticker] = res
-            # El scorer profundo puntúa 1-100: un 0 SOLO puede ser fallo de parseo (mismo
-            # criterio que `deep`/`deep_caidos` más abajo).
+            # Score 0 = fallo parseo (profundo puntúa 1-100).
             scan_progress.tick(ok=res.score > 0,
                                reason=f"{res.ticker}: {res.error}" if res.error else None)
     timings["deep"] = round(time.monotonic() - t0, 1)
     logger.info("Escaneo: DEEP completado en %.1fs.", timings["deep"])
-    # El scorer profundo puntúa de 1 a 100, así que un 0 SOLO puede ser fallo de parseo. Se cae
-    # del ranking (se pintaba como un 0 legítimo) y NO llega a la watchlist, donde al estar por
-    # debajo del umbral de expulsión hacía que un fallo del LLM borrase memoria del agente.
+    # Score 0 = fallo parseo. Cae del ranking y NO llega watchlist (guardarraíl memoria).
     deep = {t: r for t, r in analizados.items() if r.score > 0}
     deep_caidos = sorted(set(analizados) - set(deep))
     if deep_caidos:
@@ -777,21 +689,13 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     instr_prices = instruments_mod.prices()        # {} si el allowlist UCITS está vacío
     price_map.update(instr_prices)
     mcap_map = {t: (data_by_t[t].market_cap or 0.0) for t in deep}
-    # score_map: el profundo para los finalistas y el pre-score para el resto (watchlist/display),
-    # los dos con dos decimales. Antes el pre-score se redondeaba a entero aquí; ahora las dos
-    # notas viven en la misma escala, así que redondear solo mezclaba granularidades.
+    # score_map: profundo para finalistas, pre-score para resto (watchlist/display), ambos 2 decimales.
     score_map = {p.ticker: (deep[p.ticker].score if p.ticker in deep else round(p.score, 2))
                  for p, _d in prescored}
     target_map = {t: r.target_price for t, r in deep.items()}
 
-    # 5) Persistir el leaderboard. DECISIÓN: reemplazo total (borra y reescribe) — el ranking
-    #    visible pasa a ser el de la cartera recién fijada, como siempre. OBSERVATORIO: el
-    #    ranking visible sigue siendo el de la última DECISIÓN; este escaneo solo REFRESCA
-    #    (score, tesis, informe, precio, cap y sector) las filas cuyo ticker coincide con los
-    #    profundos de HOY. Los nombres nuevos del semanal no entran al ranking (ya viven en
-    #    watchlist y en la traza de auditoría) y los que no coinciden hoy se quedan tal cual.
-    #    Antes de tocar nada, foto del ranking/watchlist previos: sin este diff las NOVEDADES
-    #    (qué entra, qué sale) serían invisibles en el informe.
+    # 5) Leaderboard: DECISIÓN reemplaza total; OBSERVATORIO refresca solo hoy-profundos.
+    # Foto prev ranking/watchlist para detectar novedades (qué entra/sale) en informe.
     prev_ranking = {s.ticker for s in db.query(Score).all()}
     prev_watch = set(watchlist_mod.tickers(db))
     refreshed = 0
@@ -804,8 +708,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 headline=d.headline, report=d.report,
                 price=data.price, market_cap=data.market_cap, target_price=d.target_price,
                 held=ticker in held, on_watchlist=ticker in watch,  # provisional: resella al final
-                # Copia CONGELADA de las noticias que ENTRARON al prompt de este nombre: las
-                # noticias son un endpoint en vivo, al día siguiente ya no se pueden reconstruir.
+                # Noticias usadas congeladas: endpoint vivo, al día siguiente desaparecen.
                 news_used=list(data.news) if data.news is not None else None,
                 target_raw=target_raw.get(ticker), target_flagged=ticker in target_flagged,
                 target_consensus_mean=target_consensus_mean.get(ticker),
@@ -1081,9 +984,8 @@ def recheck(db: Session) -> dict:
     mcap_map = {r.ticker: (r.market_cap or 0.0) for r in deep}
     score_map = {r.ticker: r.score for r in deep}
     target_map = {r.ticker: r.target_price for r in deep}
-    # El mismo guardarraíl que el escaneo: `recheck` reconstruye la cartera sobre informes ya
-    # guardados, así que sin esto una opada apartada el martes volvería a entrar el miércoles.
-    # Las filas anteriores al 7-ago tienen el campo a NULL y no las aparta nadie (no se sabe).
+    # Mismo guardarraíl que el escaneo: `recheck` reconstruye sobre informes ya guardados, sin
+    # esto una opada apartada volvería a entrar. Filas antiguas con el campo a NULL no se apartan.
     issues_recheck: list[str] = []
     selected = portfolio.select_top(
         _aparta_opadas(deep, issues_recheck), mcap_map, floor, settings.select_count)

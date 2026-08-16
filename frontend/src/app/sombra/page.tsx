@@ -1,16 +1,7 @@
 "use client";
 
-/**
- * SALA SOMBRA — el escaparate del método (tema claro, alma propia; el dark es de la Real).
- *
- * La página responde CUATRO preguntas, en este orden (rediseño 2026-07-21):
- *  1. ¿Bate al mercado?  → veredicto grande + curva (una sola vez, aquí).
- *  2. ¿Qué tiene y cómo va?  → LA CARTERA como tabla densa; la tesis expande por fila.
- *  3. ¿Qué decidió y cuándo vuelve a decidir?  → decisión mensual compacta + próxima fecha.
- *  4. ¿Qué está aprendiendo?  → observatorio semanal + ranking a fondo (sección, no tab).
- * La tira de KPIs se conserva arriba como línea operativa. Sin cards de propuesta, sin modal,
- * sin tabs: tablas y secciones. Vista pública = veredicto + curva + KPIs + cartera anónima.
- */
+/** Shadow room display: performance vs index, portfolio, decisions, and observatory learning.
+ *  Public view shows results + KPIs + anonymous positions; logged-in view includes full details. */
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -64,8 +55,7 @@ const MACRO_STYLE: Record<string, string> = {
   desconocido: "bg-slate-50 text-slate-400 ring-slate-400/20",
 };
 const POS_COLOR = ["bg-emerald-500", "bg-teal-500", "bg-sky-500", "bg-indigo-500", "bg-violet-500"];
-/** Hasta dónde llegó cada nombre en el embudo, de más lejos a más cerca del prescore: el orden
- *  de lectura del ranking semanal (dentro de cada tramo se ordena por score). */
+/** Order of reading: how far each ticker reached in the funnel (cartera→prescore stages). */
 const STAGE_ORDEN: Record<string, number> = {
   cartera: 0, seleccionado: 1, finalista: 2, deep_error: 3, prescore: 4,
   prescore_error: 5, datos: 6,
@@ -100,8 +90,7 @@ export default function SombraDashboard() {
   const [hist, setHist] = useState<HistoryPoint[]>([]);
   const [macro, setMacro] = useState<Macro | null>(null);
   const [status, setStatus] = useState<DemoStatus | null>(null);
-  // Informe y embudo PERSISTIDOS: `status` es la memoria del runner manual y muere en cada
-  // deploy (el cron del martes ni la escribe), así que el observatorio no puede colgar de él.
+  // Report and funnel are persistent; status dies on deploy (cron doesn't write it).
   const [report, setReport] = useState<ScanReport | null>(null);
   const [funnel, setFunnel] = useState<FunnelScan | null>(null);
   const [outcomes, setOutcomes] = useState<OutcomeScan[]>([]);
@@ -112,10 +101,8 @@ export default function SombraDashboard() {
   const [q, setQ] = useState("");                                // buscador del ranking
   const [sectorF, setSectorF] = useState<string | null>(null);   // filtro de sector del ranking
   const [authed, setAuthed] = useState(false);   // sesión detectada en el último refresco
-  const chartBox = useRef<HTMLDivElement | null>(null);   // contenedor del SVG claro que se exporta
-  // El mismo HistoryChart, montado en variante OSCURA pero fuera de pantalla: la tarjeta de X
-  // (tema dark) no puede clonar el SVG claro que se ve en la página, así que existe un segundo
-  // gráfico invisible solo para eso. `display: contents` no vale (el SVG mide 0 sin caja propia).
+  const chartBox = useRef<HTMLDivElement | null>(null);   // container for light SVG export
+  // Dark-themed chart rendered off-screen for X card export; light chart above is for LinkedIn.
   const darkChartBox = useRef<HTMLDivElement | null>(null);
   const [exportMsg, setExportMsg] = useState("");
   const [exportEmbudoMsg, setExportEmbudoMsg] = useState("");
@@ -1242,8 +1229,8 @@ function ScoreRowItem({ row }: { row: ScoreRow }) {
         <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
           <span className={`absolute inset-y-0 left-0 rounded-full ${scoreColor(row.score)}`} style={{ width: `${row.score}%` }} />
         </span>
-        {/* w-12, no w-8: la nota pasó a llevar un decimal en pantalla y "78.4" no cabía en 2rem. */}
-        <span className="w-12 shrink-0 text-right text-sm font-bold tabular-nums text-slate-700">{fmtScore(row.score)}</span>
+        {/* w-14: la nota lleva dos decimales, "78.43" no cabe en 3rem. */}
+        <span className="w-14 shrink-0 text-right text-sm font-bold tabular-nums text-slate-700">{fmtScore(row.score)}</span>
         {row.held ? (
           <span className="shrink-0 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">EN CARTERA</span>
         ) : row.on_watchlist ? (

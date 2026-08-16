@@ -1,9 +1,7 @@
 """Capa de base de datos (SQLAlchemy 2.0).
 
-Motor síncrono a propósito: yfinance, pandas y APScheduler son síncronos, así que
-mantener todo síncrono es más simple de razonar y defender que mezclar async. FastAPI
-ejecuta los endpoints `def` en un threadpool, con lo que no bloqueamos el event loop.
-"""
+Motor síncrono a propósito: yfinance, pandas y APScheduler son síncronos. FastAPI ejecuta
+los endpoints `def` en un threadpool, así que no bloqueamos el event loop."""
 
 from __future__ import annotations
 
@@ -40,10 +38,7 @@ def get_db() -> Generator[Session, None, None]:
 def _migrate_books(conn) -> None:  # noqa: ANN001
     """Migración ligera para bases previas al libro real (columna `book`).
 
-    - allocations/trades: ADD COLUMN book DEFAULT 'shadow'.
-    - positions: tenía UNIQUE(ticker) global (impediría el mismo ticker en sombra Y real)
-      → se renombra, create_all crea la nueva con UNIQUE(ticker, book) y se copian los datos.
-    """
+    Renombra positions, crea tabla con UNIQUE(ticker, book) y copia datos."""
     from sqlalchemy import inspect, text
 
     insp = inspect(conn)
@@ -59,45 +54,38 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
             ))
     c = cols("positions")
     if c and "book" not in c:
-        # Los índices sobreviven al RENAME con su nombre viejo → chocan con create_all. Fuera.
+        # Índices renombrados chocan con create_all.
         for idx in insp.get_indexes("positions"):
             if idx.get("name"):
                 conn.execute(text(f"DROP INDEX IF EXISTS {idx['name']}"))
         conn.execute(text("ALTER TABLE positions RENAME TO positions_old"))
-    # scores.market_cap (desempate por market cap, fiel al paper).
+    # Tiebreaker por market cap.
     sc = cols("scores")
     if sc and "market_cap" not in sc:
         conn.execute(text("ALTER TABLE scores ADD COLUMN market_cap FLOAT"))
-    # approvals.broker_order_id / requested_quantity (reconciliación de fills reales).
+    # Reconciliación de fills reales.
     ap = cols("approvals")
     if ap and "broker_order_id" not in ap:
         conn.execute(text("ALTER TABLE approvals ADD COLUMN broker_order_id VARCHAR(48)"))
     if ap and "requested_quantity" not in ap:
         conn.execute(text("ALTER TABLE approvals ADD COLUMN requested_quantity VARCHAR(32)"))
-    # scan_audit.price: la traza pasó a ser histórica y sin precio no se puede medir a posteriori
-    # qué hicieron las descartadas. ADD COLUMN no toca las filas ya guardadas (quedan a NULL).
+    # Precio al escanear; mide retornos de descartadas post-hoc.
     sa = cols("scan_audit")
     if sa and "price" not in sa:
         conn.execute(text("ALTER TABLE scan_audit ADD COLUMN price FLOAT"))
-    # scan_audit.decide: sin él, la cartera HIPOTÉTICA de un observatorio se confunde con una
-    # decisión real. Las filas viejas quedan a NULL = observatorio (las dos cohortes de julio
-    # que sobreviven en la traza lo eran; la decisión real del 18-jul ni siquiera está).
+    # Cartera hipotética vs. decisión real; NULL = observatorio.
     if sa and "decide" not in sa:
         conn.execute(text("ALTER TABLE scan_audit ADD COLUMN decide BOOLEAN"))
-    # proposals.omitted: qué candidatos NO fondeó el constructor y por qué. Las propuestas ya
-    # guardadas se quedan con '[]' — no había forma de saberlo entonces.
+    # Candidatos no fondeados y motivos.
     pr = cols("proposals")
     if pr and "omitted" not in pr:
         conn.execute(text("ALTER TABLE proposals ADD COLUMN omitted JSON DEFAULT '[]'"))
-    # scan_audit.entry_lane/had_prior_thesis: carril de entrada al profundo y si se puntuó con
-    # tesis previa. Filas viejas quedan a NULL — no se registraba entonces.
+    # Carril de entrada y tesis previa.
     if sa and "entry_lane" not in sa:
         conn.execute(text("ALTER TABLE scan_audit ADD COLUMN entry_lane VARCHAR(12)"))
     if sa and "had_prior_thesis" not in sa:
         conn.execute(text("ALTER TABLE scan_audit ADD COLUMN had_prior_thesis BOOLEAN"))
-    # scores.news_used/target_raw/target_flagged: telemetría congelada del prompt (noticias) y
-    # del guardarrail de precio objetivo. Filas viejas quedan a NULL/False — no había forma de
-    # reconstruirlas después.
+    # Telemetría: noticias usadas y guardarraíl de precio.
     if sc and "news_used" not in sc:
         conn.execute(text("ALTER TABLE scores ADD COLUMN news_used JSON"))
     if sc and "target_raw" not in sc:
@@ -106,25 +94,19 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
         conn.execute(text(
             "ALTER TABLE scores ADD COLUMN target_flagged BOOLEAN NOT NULL DEFAULT 0"
         ))
-    # under_acquisition SIN default: NULL significa "el modelo no contestó al campo", que es
-    # exactamente lo que pasa con las filas anteriores a la columna. Ponerlas a 0 las haría pasar
-    # por un "no" comprobado que nadie comprobó.
+    # NULL = no respondió; 0 = verificado como falso.
     if sc and "under_acquisition" not in sc:
         conn.execute(text("ALTER TABLE scores ADD COLUMN under_acquisition BOOLEAN"))
-    # scan_runs.finalists/construction: recuperación completa del escaneo (ver models.py). Las
-    # filas ya guardadas quedan con listas/dict vacíos — ese escaneo ya no es recuperable, pero
-    # los siguientes sí.
+    # Recuperación completa del escaneo.
     sr = cols("scan_runs")
     if sr and "finalists" not in sr:
         conn.execute(text("ALTER TABLE scan_runs ADD COLUMN finalists JSON DEFAULT '[]'"))
     if sr and "construction" not in sr:
         conn.execute(text("ALTER TABLE scan_runs ADD COLUMN construction JSON DEFAULT '{}'"))
-    # scan_runs.timings: duración por fase (ver models.py). Filas viejas quedan con '{}' — no
-    # se midió entonces, no hay forma de reconstruirlo después.
+    # Duración por fase.
     if sr and "timings" not in sr:
         conn.execute(text("ALTER TABLE scan_runs ADD COLUMN timings JSON DEFAULT '{}'"))
-    # scores.target_consensus_mean/target_echoed_consensus: guardarraíl de ECO de consenso (ver
-    # models.py) — telemetría, filas viejas quedan a NULL/False, no había forma de reconstruirlo.
+    # Guardarraíl de precio objetivo.
     if sc and "target_consensus_mean" not in sc:
         conn.execute(text("ALTER TABLE scores ADD COLUMN target_consensus_mean FLOAT"))
     if sc and "target_echoed_consensus" not in sc:
@@ -135,7 +117,7 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
     _migrate_score_decimal(conn)
 
 
-# Columnas que guardan una nota del scorer y que nacieron enteras (una por tabla).
+# Score columns per table (originally INTEGER).
 _COLUMNAS_NOTA = (("scores", "score"), ("watchlist", "score"),
                   ("scan_audit", "deep_score"), ("approvals", "score"))
 
@@ -143,19 +125,7 @@ _COLUMNAS_NOTA = (("scores", "score"), ("watchlist", "score"),
 def _migrate_score_decimal(conn) -> None:  # noqa: ANN001
     """La nota pasa de entera a dos decimales → las columnas INTEGER tienen que ser reales.
 
-    Por qué importa el dialecto y no vale un solo camino:
-
-    · **SQLite** (desarrollo) no tiene `ALTER COLUMN`, pero tampoco lo necesita: su afinidad
-      INTEGER solo convierte a entero lo que quepa sin pérdida, así que un 78,37 se guarda tal
-      cual como REAL. No hay nada que migrar y el `create_all` posterior no toca tablas que ya
-      existen.
-    · **PostgreSQL** (producción) sí es estricto y —lo peligroso— *no falla*: al insertar 78,37 en
-      una columna INTEGER redondea a 78 en silencio. Sin este ALTER, el despliegue arrancaría bien,
-      los tests pasarían y las notas volverían a apelmazarse sin un solo error en los logs.
-
-    Idempotente: comprueba el tipo actual antes de tocar, así que puede correr en cada arranque.
-    Los ALTER no pierden datos (78 → 78.0) y Postgres reconstruye solo el índice de `scores.score`.
-    """
+    PostgreSQL redondea silenciosamente INTEGER; idempotente."""
     from sqlalchemy import Integer, inspect, text
 
     if conn.dialect.name != "postgresql":
@@ -188,11 +158,7 @@ def _copy_positions_old(conn) -> None:  # noqa: ANN001
 def init_db() -> None:
     """Prepara el esquema AL ARRANCAR la app (lo llama el lifespan de `main.py`).
 
-    No hay Alembic: `_migrate_books` hace los ALTER TABLE a mano —cada uno comprobando antes si
-    la columna ya existe, así que es idempotente— y `create_all` añade las tablas nuevas. En
-    producción esto corre solo, al bootear el contenedor tras cada despliegue: no hay script que
-    lanzar ni paso manual. Si fallase, el arranque falla y Railway conserva la versión anterior.
-    """
+    Sin Alembic: `_migrate_books` hace ALTER TABLE a mano; si falla, Railway conserva versión anterior."""
     from app import models  # noqa: F401  (registra los modelos en la metadata)
 
     with engine.connect() as conn:

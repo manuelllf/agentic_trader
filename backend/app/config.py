@@ -15,32 +15,25 @@ class Settings(BaseSettings):
     # Base de datos: SQLite en local, Postgres (Supabase) en prod.
     database_url: str = "sqlite:///./agentic_trader.db"
 
-    # Memoria vectorial (sqlite-vec): RUTA de fichero pelada (NO una URL SQLAlchemy — la abre
-    # sqlite3 crudo). Local: junto al backend; en Railway: en el volumen → /data/agent_memory.db.
+    # Ruta de fichero pelada (NO una URL SQLAlchemy — la abre sqlite3 crudo).
+    # En Railway vive en el volumen → /data/agent_memory.db.
     memory_db_path: str = "agent_memory.db"
 
-    # Scheduler de escaneo. Cron semanal anclado a la hora del MERCADO (no UTC ni España) para
-    # que sobreviva a los cambios de horario de verano: martes 10:15 ET = ~30 min tras la apertura,
-    # ajustado al retraso de 15 min de yfinance → la foto cae sobre el mercado ya asentado (~10:00 ET).
+    # Cron anclado a la hora del MERCADO (no UTC): sobrevive al cambio de horario y cae con la
+    # foto ya asentada tras el retraso de 15 min de yfinance.
     enable_scheduler: bool = True
     scan_cron_day: str = "tue"                 # día(s) de la semana (APScheduler: mon,tue,...)
     scan_cron_hour: int = 10
     scan_cron_minute: int = 15
     scan_timezone: str = "America/New_York"    # ancla a la bolsa US (sobrevive al horario de verano)
-    # Cadencia de DECISIÓN: la cartera (sombra Y propuestas a la real) solo se decide en el
-    # PRIMER escaneo programado del mes — la señal del scorer es mensual ("próximo mes") y
-    # rebalancear cada semana sería operar el ruido del LLM, además de impedir ver si cada
-    # elección funciona (no vive su mes). Los escaneos semanales restantes son OBSERVATORIO:
-    # ranking, watchlist, memoria y auditoría al día, sin tocar ningún libro. Los MANUALES
-    # (botón «Analizar mercado») siempre deciden. False = todos los escaneos deciden.
+    # La cartera solo se decide en el primer escaneo del mes (señal del scorer es mensual); el
+    # resto son observatorio: ranking/watchlist/auditoría al día, sin tocar ningún libro.
     real_proposals_monthly: bool = True
 
     # CORS: orígenes permitidos del frontend, separados por coma.
     cors_origins: str = "http://localhost:3000"
 
-    # Login de acceso. Contraseña única (env APP_PASSWORD en Railway). VACÍA = auth DESACTIVADA
-    # (dev local sin candado). Con valor → toda la API (menos /health y /auth/login) exige un
-    # token firmado que se obtiene en /auth/login con esta contraseña.
+    # Contraseña única (env APP_PASSWORD). Vacía = auth desactivada (dev local sin candado).
     app_password: str = ""
     auth_token_days: int = 0     # validez del token de sesión en días; 0 = NO caduca nunca
                                  # (sesión permanente en el navegador; revocable cambiando la contraseña)
@@ -48,114 +41,52 @@ class Settings(BaseSettings):
     # LLM. Método = ranker fundamental (whitepaper DeepSeek): V4-Pro razonador en TODO
     # (scorer por nombre + outlook macro + construcción). enable_llm=False → escaneo no falla.
     enable_llm: bool = False
-    # "deepseek" = API oficial de DeepSeek directa (producción real, sin OpenRouter de por
-    # medio). "openrouter" solo para pruebas puntuales locales de una funcionalidad concreta —
-    # NUNCA fallback automático: en producción no se toca esta variable, así que se comporta
-    # como si OpenRouter no existiera.
+    # "openrouter" solo para pruebas puntuales locales; nunca fallback automático en producción.
     llm_provider: str = "deepseek"
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
-    # Reasoning por ETAPA (`get_llm()` en llm/__init__.py por defecto manda "none" si no se
-    # pasa nada explícito). Reparto medido en producción con dos escaneos reales: "none" en TODO
-    # (macro/prescore/mid/profundo) bajó el coste de $3,85 a $0,68 estimado ($0,37 real, saldo
-    # DeepSeek antes/después) — pero deja sin razonamiento etapas donde SÍ puede aportar calidad.
-    # Reparto final: razonamiento caro solo donde hay POCAS llamadas (macro=1, constructor=1,
-    # profundo=80 — profundo con "high" ya midió solo $0,11 en 80 llamadas, barato); "none" solo
-    # en el triaje de volumen (prescore, ~3.000 llamadas, sin necesidad de juicio); "low" en la
-    # capa media como término medio (~200 llamadas, segunda opinión que sí debería razonar algo,
-    # sin llegar al coste de "high").
+    # Reasoning caro solo donde hay pocas llamadas (macro/constructor=1, profundo≤100); las
+    # etapas de volumen (prescore, capa media) se quedan en el escalón barato.
     macro_reasoning_effort: str | None = "max"
-    # "low" fijo (16-ago-2026): dos escaneos reales con reasoning=low elegido a mano en el modal
-    # de simulación dieron completion_tokens de prescore IDÉNTICOS al baseline de "none" (24016),
-    # con la ventana de la emergente ya arreglada y el bundle desplegado confirmado — la causa no
-    # se pudo aislar (pestaña vieja sin refrescar / selección no efectiva). En vez de seguir
-    # confiando en que el modal mande el override correcto, el DEFAULT de producción pasa a "low"
-    # directamente aquí — así el prescore razona algo aunque el modal falle o no se toque.
-    prescore_reasoning_effort: str | None = "low"
+    prescore_reasoning_effort: str | None = "none"
     mid_reasoning_effort: str | None = "low"
     deep_reasoning_effort: str | None = "high"
-    # Constructor: 1 llamada/escaneo, decide la cartera — el coste extra de "max" es trivial a
-    # esa escala.
+    # Constructor: 1 llamada/escaneo, decide la cartera — el coste extra de "max" es trivial.
     reasoning_effort: str | None = "max"
-    # Nombres de la API directa de DeepSeek (confirmado en api-docs.deepseek.com/quick_start/
-    # pricing): "deepseek-v4-pro"/"deepseek-v4-flash" son alias ROLLING, sin snapshot fechado
-    # invocable (a diferencia de OpenRouter, que sí exponía `deepseek/deepseek-v4-flash-0731`
-    # fijo). Se pierde la garantía de que el modelo no cambie solo entre escaneos — trade-off
-    # aceptado al dejar OpenRouter, no hay forma de pinnear en el circuito oficial.
+    # Alias ROLLING de la API directa de DeepSeek, sin snapshot fechado invocable: se pierde la
+    # garantía de que el modelo no cambie solo entre escaneos (no hay forma de pinnear).
     llm_model: str = "deepseek-v4-pro"      # profundo + macro + constructor
     prescore_model: str = "deepseek-v4-flash"  # triaje: ranking 1-100 del universo
-    # Capa media: repuntúa los mejores de cada sector entre el pre-score y el profundo
-    # (implementación en otro módulo; aquí solo se declara la config).
     mid_layer: bool = True          # capa media: repuntúa los mejores de cada sector
-    # 10 → 15: medido en vivo que sectores grandes (Financial Services 541 nombres,
-    # Consumer Cyclical 309, sobre 2.997 pre-scoreados de un escaneo real) solo mandaban 10 a la
-    # capa media — un nombre genuinamente bueno pero #11-15 de su sector no tenía ni oportunidad
-    # de competir en el carril "global". Más candidatos con segunda opinión, mismo mecanismo.
+    # Sectores grandes (Financial Services, Consumer Cyclical...) mandaban solo 10 a la capa
+    # media: un #11-15 genuinamente bueno no tenía oportunidad de competir en el carril global.
     mid_per_sector: int = 15        # cuántos por sector entran a la capa media
-    # Tope DURO, como el `deep_finalists_cap` del profundo. Sin él, la capa media es la única
-    # etapa cuyo tamaño lo decide un dato EXTERNO: mid_per_sector × (sectores que traiga
-    # yfinance ese día). Hoy son ~11 sectores (~165 llamadas con 15/sector), pero el número no
-    # lo fijamos nosotros — si el campo `sector` viniera sucio, cada valor raro abriría su
-    # propio cupo de llamadas al modelo caro. 200 → 300: el coste de la capa media es lineal en
-    # nº de llamadas (medido: ~$0,0015/llamada con reasoning "low", sin economía de escala por
-    # el caché de prefijo), así que el tope no protege de una factura descontrolada — protege de
-    # un fallo de datos. Subirlo ensancha el carril "global" (relleno por top-prescore) sin tocar
-    # `mid_per_sector`, que sigue siendo la garantía POR sector. Al truncar se conservan los de
-    # MAYOR pre-score (lista ordenada).
+    # Tope duro: sin él, el tamaño de la capa media lo decide un dato externo (sectores que trae
+    # yfinance ese día) — protege de un fallo de datos, no de una factura (coste ya es lineal).
     mid_candidates_cap: int = 300
-    # Antes en el mismo alias que el pre-score (0731): la capa media era un re-muestreo del
-    # mismo modelo sobre el mismo prompt corto, sin el juicio de un modelo distinto. V4-Pro
-    # directo recupera la segunda opinión real — motivo por el que se recupera Pro en general.
+    # V4-Pro directo (no el mismo alias que el pre-score): recupera el juicio de un modelo
+    # distinto en vez de un re-muestreo del mismo.
     mid_model: str = "deepseek-v4-pro"
-    # Corte de finalistas al profundo (fiel al paper, sin colapsar en un solo sector):
-    #   top-`deep_per_sector` por sector (amplitud) ∪ posiciones ∪ seguimiento personal ∪
-    #   top-`deep_watchlist` watchlist ∪ `deep_top_caps` mayores caps ∪ el resto por score (el
-    #   carril "global"), TODO truncado a un único número: `deep_finalists_cap`.
-    # El carril sectorial vale 2 cuando NO hay capa media (el semanal): es la única garantía de
-    # que el profundo vea cada sector. Cuando la capa media corre (el mensual), un modelo bueno
-    # ya ha puntuado el top-10 de CADA sector, así que basta 1 como red de seguridad.
+    # Corte de finalistas al profundo: top-`deep_per_sector` (amplitud) ∪ posiciones ∪ seguimiento
+    # personal ∪ watchlist ∪ mayores caps ∪ el resto por score, todo truncado a `deep_finalists_cap`.
+    # El carril sectorial vale 2 sin capa media (única garantía de ver cada sector); 1 con ella.
     deep_per_sector: int = 2                             # top-N por sector (recall de amplitud)
     deep_per_sector_mid: int = 1                         # ídem cuando hubo capa media
     deep_watchlist: int = 5                              # + mejores de la watchlist (continuidad)
     deep_top_caps: int = 10                              # las N mayores caps SIEMPRE al profundo
-    # 50 → 65 → 80. Hasta 65 el carril "global" tenía TAMBIÉN su propio tope
-    # (`deep_finalists=25`, quitado del todo — ver `select_finalists`): dos números para un solo
-    # trabajo, y el segundo solo podía recortar de más, nunca ayudar. Ahora manda uno solo. La
-    # cuenta real con los 10 sectores distintos medidos en un escaneo real: posición(5) +
-    # seguimiento(4) + watchlist(5) + caps(10) + sector(10) = 34 en el peor caso (sin solapes)
-    # antes de que el carril "global" rellene lo que quede. 80 con DeepSeek directo: sin
-    # OpenRouter de por medio y con concurrencia alta, el coste extra de la etapa más cara
-    # (informe completo por finalista) es asumible — más colchón sobre esa cuenta de 34.
-    # 80 → 100: mismo argumento de coste lineal que `mid_candidates_cap` (medido: ~$0,004/llamada
-    # con reasoning "high") — el tope es para acotar el gasto por diseño, no porque 80 fuera un
-    # límite de calidad. Más finalistas = más candidatos reales para el corte de `select_count`.
+    # Tope pensado para acotar gasto (coste lineal por llamada), no un límite de calidad — más
+    # finalistas es más candidatos reales para el corte de `select_count`.
     deep_finalists_cap: int = 100                        # tope DURO de finalistas (coste V4-Pro)
-    # 10 → 20 → 30 → 10: se probaron ampliaciones (el corte a top-10 de `select_top` es código
-    # puro, ciego a matices — dejó fuera a BKNG, rank #217 global/#11 en su sector, de cualquier
-    # análisis) pero la decisión final es volver al número LITERAL del paper (Exhibit 1:
-    # "Selection of top 10 companies based on the scores"). Manuel decide fidelidad al paper
-    # sobre la ampliación aquí.
+    # Literal del paper (Exhibit 1: "Selection of top 10 companies based on the scores") —
+    # fidelidad sobre ampliar el corte, aunque el código puro sea ciego a matices de frontera.
     select_count: int = 10                               # nombres al constructor (fiel al paper)
-    # Tickers que SIEMPRE llegan al profundo para que Manuel vea la opinión del sistema sobre su
-    # cartera PERSONAL (IBKR) — sin que eso implique nada sobre la cartera del AGENTE. Una vez
-    # en finalistas, compiten exactamente igual que cualquier otro nombre (sin restricción de
-    # selección): si la nota les da para el top-20 y el constructor los quiere, entran a la
-    # cartera real del agente sin veto — son posiciones NUEVAS del agente, nunca las acciones
-    # personales de Manuel en IBKR (esas siguen aparte, ver `PersonalPosition`). `BTC-USD` es
-    # best-effort: yfinance lo acepta como ticker, pero casi todos los ~60 campos de
-    # fundamentales le saldrán "n/d" — el sistema es tolerante a huecos, no se garantiza que la
-    # tesis tenga el mismo sentido que en una empresa real.
+    # Llegan SIEMPRE al profundo para ver la opinión del sistema sobre la cartera PERSONAL
+    # (IBKR) de Manuel; compiten en igualdad, sin veto — nunca implican nada sobre el agente.
     always_deep_tickers: list[str] = ["MSFT", "HUMA", "ASTS", "BTC-USD"]
-    # Lote del pre-score — SOLO se usa con `llm_provider="openrouter"` (pruebas puntuales
-    # locales). Con "deepseek" el prescore es 1 llamada/ticker, fiel al paper: proveedor propio +
-    # concurrencia alta + caché de prefijo en disco hacen asumible el coste extra de la llamada
-    # individual (ver `scorer.prescore_one`). El batch original medía sobre OpenRouter: agrupar N
-    # tickers en una sola llamada amortiza la sobrecarga fija por llamada (18,5-49s de una sola
-    # empresa, dominada por cola del proveedor detrás del alias, no por generación) entre las N.
-    # Riesgo medido y cubierto (ver `scorer.prescore_batch`): 1 de 2 lotes de prueba colapsó a un
-    # solo decimal en las 20 notas a la vez — guardarraíl estadístico + reintento del lote entero.
+    # Solo con `llm_provider="openrouter"` (pruebas locales); con "deepseek" el prescore es 1
+    # llamada/ticker, fiel al paper — proveedor propio + concurrencia + caché lo hacen asumible.
     prescore_batch_size: int = 20
 
     # Guardarraíles del sleeve (LOCKED). Cartera de TAMAÑO FIJO (paper 15 assets → aquí 5).
@@ -167,23 +98,14 @@ class Settings(BaseSettings):
     # Universo + muestreo del escaneo.
     universe_market_cap_min: float = 0                   # SIN suelo de cap: todo el mercado US
     universe_market_cap_max: float = 10_000_000_000_000
-    # Liquidez en DÓLARES negociados al día (precio × volumen), no en número de acciones:
-    # contar acciones castiga a los caros (PLMR mueve $41M/día y no llegaba a 300k acciones).
+    # Liquidez en DÓLARES negociados/día (no en acciones): contar acciones castiga a los caros.
     universe_min_dollar_volume: float = 3_000_000
-    # Tope DURO de nombres (los de MÁS dinero negociado). El suelo solo no basta: con umbral
-    # fijo, el tamaño del universo lo decide lo movida que estuviera la sesión de la foto —
-    # la misma descarga da 2.317 o 2.731 nombres según cuánto llevaba negociado el mercado.
-    # Como el pre-scorer gasta UNA llamada por nombre, eso es dejar el coste al azar. Con tope,
-    # el gasto está acotado por diseño y el recorte cae donde debe: en los menos negociados.
-    # 3.000: con el tope en 2.600, una foto real dejó fuera 433 nombres que SÍ pasaban el
-    # suelo de liquidez, y el recorte los ordena por volumen — el mismo sesgo hacia "lo que se
-    # estaba moviendo" que la foto al cierre venía a evitar, colándose por la puerta del tope.
+    # Tope duro por dinero negociado: sin él, el tamaño del universo (y el coste del pre-score,
+    # 1 llamada/nombre) queda al azar de lo movida que estuviera la sesión de la foto.
     universe_max_names: int = 3_000
     universe_min_price: float = 5.0                      # descarta penny stocks < $5 (higiene)
     scan_full_universe: bool = True  # mensual: pre-score TODO el universo (cobertura total, ~15 min)
-    # semanal: ventana ROTATORIA de N. Con el universo en 3.000 nombres, 500 tejía el universo
-    # entero en 6 semanas; con 750 lo teje en 4 — coste extra: ~4,5 céntimos más por escaneo.
-    scan_sample_size: int = 750
+    scan_sample_size: int = 750     # semanal: ventana rotatoria (teje el universo en varias semanas)
     leaderboard_size: int = 20      # cuántos muestra el panel además de la cartera
     min_buy_score: int = 0          # 0 = SIN suelo (fiel al paper: entra por score, sin nota mínima)
 
@@ -194,11 +116,8 @@ class Settings(BaseSettings):
     watchlist_max: int = 50          # tope de nombres (protege la exploración random)
     watchlist_stale_days: int = 28   # caduca si no vuelve a puntuar alto en N días
 
-    # Comisión SIMULADA (tarifa fija de IBKR para acciones US). Solo la cobran los libros
-    # simulados — sombra y real-en-dry-run —; con bróker en vivo se apunta la de IBKR, no esta.
-    # Sin ella, la curva que se publica mediría una rentabilidad bruta que nadie puede obtener:
-    # a ~$2.000 y ~10 operaciones por rebalanceo, el suelo por orden ya pesa ~0,5% al mes.
-    # Poner per_share y min a 0 desactiva el modelo. Ver `app/commissions.py`.
+    # Comisión SIMULADA (tarifa IBKR): solo la cobran sombra y real-en-dry-run — con bróker en
+    # vivo se apunta la de IBKR real. Sin ella la curva mediría rentabilidad bruta inobtenible.
     commission_per_share: float = 0.005   # $/acción
     commission_min: float = 1.0           # suelo por orden
     commission_max_pct: float = 1.0       # techo: % del importe de la orden
@@ -207,17 +126,15 @@ class Settings(BaseSettings):
     # NADA se ejecuta sin la aprobación explícita del usuario (Sí/No) — ni en dry-run.
     dry_run: bool = True
     approval_expiry_days: int = 3   # una propuesta sin decidir caduca (datos rancios)
-    # Órdenes SIEMPRE a LÍMITE (nunca a mercado): el límite = precio de referencia ± este
-    # colchón (buy: +%, sell: −%). Es un "límite ejecutable": entra ya al precio actual pero
-    # NUNCA peor que ref±buffer (protege de huecos/malos prints). 0.0 = límite estricto al ref.
+    # "Límite ejecutable": entra ya al precio actual pero nunca peor que ref±buffer (protege de
+    # huecos/malos prints). 0.0 = límite estricto al ref.
     limit_buffer_pct: float = 0.2
     # Al aprobar en vivo, cuánto se sondea el estado de la orden límite en IBKR esperando el fill
     # antes de dejarla como 'working' (se reconcilia después al refrescar la Sala Real).
     order_poll_seconds: int = 12
 
     # IBKR Web API OAuth 1.0a headless vía ibind (self-service portal, cuenta individual Pro).
-    # Se generan claves RSA locales, se suben las públicas al portal y se pegan aquí las rutas
-    # y tokens. Hasta entonces el broker es DryRunBroker (simulación).
+    # Hasta que estén todas rellenas, el broker es DryRunBroker (simulación).
     ibkr_account_id: str = ""
     ibkr_oauth_consumer_key: str = ""              # 9 caracteres A-Z del portal
     ibkr_oauth_access_token: str = ""
@@ -225,9 +142,8 @@ class Settings(BaseSettings):
     ibkr_oauth_signature_key_path: str = ""        # private_signature.pem
     ibkr_oauth_encryption_key_path: str = ""       # private_encryption.pem
     ibkr_oauth_dh_prime: str = ""                  # hex del dhparam.pem
-    # Cloud (Railway): los .pem no viajan por git — se suben en BASE64 como env vars y al
-    # arrancar `materialize_pems()` los vuelca a ficheros temporales y apunta los *_key_path.
-    # En local se dejan vacías (se usan las rutas de arriba directamente).
+    # Cloud (Railway): los .pem no viajan por git — van en BASE64 como env vars y
+    # `materialize_pems()` los vuelca a ficheros temporales al arrancar.
     ibkr_pem_signature_b64: str = ""
     ibkr_pem_encryption_b64: str = ""
 
@@ -242,8 +158,8 @@ class Settings(BaseSettings):
 
     @property
     def llm_api_key_present(self) -> bool:
-        """La key del proveedor CONFIGURADO (`llm_provider`), no ambas — evita que un guard
-        exija OPENROUTER_API_KEY en producción cuando el circuito real es DeepSeek directo."""
+        """La key del proveedor CONFIGURADO, no ambas — evita exigir OPENROUTER_API_KEY cuando
+        el circuito real es DeepSeek directo."""
         if self.llm_provider == "openrouter":
             return bool(self.openrouter_api_key)
         return bool(self.deepseek_api_key)

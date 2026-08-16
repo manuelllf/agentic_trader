@@ -1,10 +1,6 @@
-"""El constructor reintenta una vez. Sin red, sin LLM real.
+"""Constructor retry: transient LLM failures don't cost the monthly decision.
 
-Motivo (8-ago): en el retest, OpenRouter devolvió `content` vacío en la ÚNICA llamada del
-constructor. El JSON no parseó y la función devolvió 100% caja con "Sin propuesta". Al relanzarla
-con exactamente los mismos datos acertó a la primera → el fallo era de transporte, no del prompt.
-Aquí una llamada mala no cuesta un nombre como en el scorer: cuesta la decisión del mes entera.
-"""
+Fake LLM, no network."""
 
 from __future__ import annotations
 
@@ -18,7 +14,7 @@ VALIDOS = {"AAA", "BBB", "CCC"}
 
 
 class LLMGuion:
-    """Devuelve las respuestas del guion en orden y cuenta las llamadas."""
+    """Script LLM: returns responses in order and counts calls."""
 
     def __init__(self, *respuestas: str) -> None:
         self.respuestas = list(respuestas)
@@ -36,14 +32,12 @@ def _construye(llm):
 
 
 def test_una_respuesta_vacia_no_cuesta_la_cartera() -> None:
-    """El caso exacto del 8-ago: `content` vacío en la primera llamada."""
+    """Empty content in first call triggers retry."""
     llm = LLMGuion("", BUENA)
     r = _construye(llm)
     assert llm.llamadas == 2
     assert [p.ticker for p in r.positions] == ["AAA", "BBB"]
-    # 60 y 40 con tope de 35 → clampan a 35 y 35, así que quedan 30 de caja. El relleno hasta el
-    # 100% no es cosa de esta función: lo hace `_finalize_full_invest` en el servicio, que conoce
-    # el orden de selección. Aquí lo que importa es que el tope por posición se respeta.
+    # 60+40 with cap 35 clamp to 35+35=70, leaving 30% cash. Full invest rounding happens in service.
     assert [p.weight_pct for p in r.positions] == [35.0, 35.0]
     assert r.cash_pct == 30.0
     assert r.summary == "resumen"
@@ -51,8 +45,7 @@ def test_una_respuesta_vacia_no_cuesta_la_cartera() -> None:
 
 
 def test_tambien_reintenta_si_el_json_es_valido_pero_no_deja_posiciones() -> None:
-    """JSON perfecto y ni una posición utilizable (tickers alucinados) es tan fatal para el
-    escaneo como no parsear: `construct` solo se llama cuando HAY candidatos."""
+    """Valid JSON with no usable positions is as fatal as parsing failure."""
     llm = LLMGuion('{"positions": [{"ticker": "ZZZZ", "weight_pct": 50}], "summary": "s"}', BUENA)
     r = _construye(llm)
     assert llm.llamadas == 2
@@ -60,7 +53,7 @@ def test_tambien_reintenta_si_el_json_es_valido_pero_no_deja_posiciones() -> Non
 
 
 def test_no_reintenta_cuando_la_primera_va_bien() -> None:
-    """Un reintento que se dispara siempre duplicaría el coste de la llamada más cara del mes."""
+    """No retry on success; constructor is the month's most expensive call."""
     llm = LLMGuion(BUENA)
     r = _construye(llm)
     assert llm.llamadas == 1
@@ -68,8 +61,7 @@ def test_no_reintenta_cuando_la_primera_va_bien() -> None:
 
 
 def test_tres_fallos_seguidos_dejan_todo_en_caja_sin_petar() -> None:
-    """Se rinde al tercero (subido de 2 a 3 el 8-ago): mejor 100% caja declarada que una
-    excepción que tumbe el escaneo."""
+    """Three failures: surrender with 100% cash; better than scan crash."""
     llm = LLMGuion("", "no soy json", "")
     r = _construye(llm)
     assert llm.llamadas == 3

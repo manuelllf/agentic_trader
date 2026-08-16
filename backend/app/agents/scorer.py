@@ -1,12 +1,7 @@
 """Scorer por nombre (método whitepaper DeepSeek, Exhibit 1).
 
-Una llamada razonada (V4-Pro) por empresa: escribe un Investment Report (noticias, financials,
-valoración, outlook) e INTERPRETA (no repite) → devuelve un Score 1,00-100,00 (dos decimales,
-ver `SYSTEM`) para el próximo mes, medido contra el S&P 500. Los técnicos van como contexto más.
-Para nombres en cartera/watchlist se le inyecta la tesis previa ("la última vez opinaste X —
-¿qué ha cambiado?").
-
-Prompt en inglés (ahorra tokens); el informe y la tesis los devuelve en español.
+Una llamada razonada por empresa: informe (noticias, financials, valoración, outlook) e
+INTERPRETA → score 1.00-100.00 contra el S&P 500. Prompt en inglés; salida en español.
 """
 
 from __future__ import annotations
@@ -29,62 +24,18 @@ SYSTEM = (
     "INTERPRET the news, do not just repeat it. Do not describe the data as 'provided': call it "
     "recent or latest. The macro outlook is background context "
     "about the environment the firm operates in; weigh it as you judge appropriate for this "
-    "specific company. Do not raise or lower the score merely because of the company's sector or "
-    "its market size - ask whether the news and figures change the earnings power or the "
-    "valuation case. Company size and liquidity remain legitimate risk considerations; by "
-    "themselves they are not a reason for a higher or a lower score. "
-    # Esta frase sustituye a dos que había antes: "no subas ni bajes por un movimiento
-    # reciente del precio EN CUALQUIER DIRECCIÓN" y "los técnicos son CONTEXTO, nunca regla de
-    # decisión". Se quitaron y se MIDIÓ el efecto sobre 49 finalistas reales: con el
-    # modelo grande, las castigadas (RSI≤45) perdían 13,7 puntos de media y las calientes solo
-    # 5,5 — es decir, el trabajo real de aquella cláusula lo hacía en la dirección de BAJADA,
-    # protegiendo a las caídas de que se las penalizara por haber caído. Eso es justo lo que
-    # busca la estrategia (retroceso de un nombre fuerte), así que la protección vuelve; lo que
-    # no vuelve es la parte que impedía descontar lo ya subido ni la prohibición sobre los
-    # técnicos, que el paper tampoco tiene. Sin dirección: no dice qué hacer, dice qué NO es
-    # una conclusión por sí sola.
-    "A price move is not by itself a verdict in either direction: a fall does not make a "
-    "business weak, nor does a rally make it strong. "
-    # "potential investment value" es literal del Exhibit 1 y se queda. Lo que se añade es contra
-    # QUÉ se mide, y no es un adorno: el paper puntúa empresas DEL S&P 500, así que en su montaje
-    # ordenar por valor absoluto y ordenar por valor relativo al índice son la misma operación —el
-    # pool ES el índice—. Nuestro universo son ~3.000 nombres de 300M a 3B, donde las dos lecturas
-    # se separan: una opada con un +1,4% garantizado es buen "investment value" en absoluto y malo
-    # en relativo, y por eso la misma empresa salía 55 en una tirada y 88,63 en la siguiente
-    # (movimiento medio del resto: 4,7 puntos). "Beat the S&P 500" es además vocabulario del propio
-    # paper (Exhibit 2E). No añade una dirección: dice contra qué se compara.
+    "specific company. "
+    # Anti-sesgo explícito quitado: universo no es S&P 500, divergen absoluto y relativo.
+    # "Beat the S&P 500" fija referencia, no dirección.
     "Then assign a "
     "score from 1.00 to 100.00 for the potential investment value over the next month "
     "(100 = best): rank how likely this company is to outperform the S&P 500 over that month. "
-    # DOS DECIMALES. Motivo medido, no estético: con nota entera, sobre 49 finalistas reales
-    # la nota de corte del top-10 fue 78 con DIEZ nombres empatados en ella para CINCO
-    # plazas. Es decir, el desempate por market cap —que el paper prevé como caso raro— decidió la
-    # mitad del top-10, y se llevó a los cinco mayores (GOOGL, MSFT, TSM, AVGO, HIG) dejando fuera
-    # a las cinco pequeñas por tamaño y solo por tamaño. Un filtro de large caps silencioso en un
-    # sistema cuya estrategia son small/mid asimétricas. Con dos decimales el desempate pasó a
-    # repartir 1 plaza. El "carry real precision" está SUAVIZADO a propósito: prohibirle los
-    # cuartos endureció el prompt y produjo 3 respuestas degeneradas; así dio 38 notas distintas
-    # de 49, 100% con decimal real y 0 fallos.
+    # Dos decimales evitan que market cap decida a mitad del ranking (repartía 1 plaza antes de esto).
+    # No se prohíben cuartos explícitamente (produciría respuestas degeneradas).
     "Use exactly two decimal places, and let those decimals carry real precision rather than "
     "rounding to quarters or halves - e.g. 71.38, 84.61. "
-    # El objetivo era a TRES meses mientras la nota es a uno y la cartera se rebalancea cada mes:
-    # el "potencial" que se enseñaba en la web era de un horizonte que no existía en la decisión.
-    # Ahora los tres coinciden. (El precio objetivo no lo pide el paper: es añadido nuestro, y
-    # solo alimenta la pantalla — ni la selección ni los pesos lo miran.)
-    # Del horizonte de los objetivos de analistas se enuncia el HECHO y no el método. "Do not
-    # copy them" sobrecorregía y "those are longer-horizon" invitaba a la regla de tres (dividir
-    # un +20% a doce meses entre doce y llamarlo análisis). Callarlo del todo tiene el riesgo
-    # opuesto: que copie un objetivo a doce meses como si fuera a uno e infle el potencial que
-    # se enseña en la web. Se dice qué son y se le deja decidir.
-    #
-    # "longer horizons" resultó demasiado vago — medido en producción (10 escaneos, 495
-    # finalistas con consenso cacheado), un 3,8% de los target_price coincidían (<0,5%) con el
-    # consenso MEDIO de analistas, y no era ruido de un nombre suelto: ATKR, ALL, AMP y MGA
-    # repitieron la copia exacta en escaneos distintos. Precisar el horizonte a "12-18 month" en
-    # vez de "longer" es enunciar un HECHO más concreto, no un método nuevo — se evita a
-    # propósito añadir un "do not copy/derive" explícito, que es la frase que ya sobrecorregía
-    # antes. Guardarraíl de telemetría (sin corregir nada) para medir si esto basta:
-    # `_flag_consensus_echo` en scan_service.py.
+    # Horizonte de nota, precio objetivo y rebalanceo deben coincidir (un mes). "12-18 month"
+    # para los objetivos de analistas evita que target_price copie su consenso, sin decir "no copies", que sobrecorregía.
     "ALSO give your own approximate PRICE TARGET for the same one-month horizon as the score (a "
     "single number in the stock's trading currency), informed by the fundamentals and the analyst "
     "targets provided, which are typically published for a 12-18 month horizon - a much longer "
@@ -92,10 +43,8 @@ SYSTEM = (
     "the company is under a definitive cash acquisition offer, use the offer terms exactly as "
     "reported (do not derive per-share figures yourself) and do not set the price target above "
     "the cash offer price. "
-    # `under_acquisition` se le pregunta EXPLÍCITAMENTE en vez de deducirlo del texto del informe:
-    # buscar "adquisición" en la prosa no distingue quién compra de quién es comprado (una
-    # aseguradora que ADQUIRÍA una unidad de negocio salía marcada igual que la empresa opada).
-    # Medido con el caso real: el modelo acierta las dos direcciones cuando se le pregunta.
+    # under_acquisition preguntada explícitamente, no deducida: el modelo diferencia
+    # quién compra de quién es comprado cuando se le pregunta.
     "ALSO state whether THIS company is itself the TARGET of a definitive acquisition offer "
     "(someone is buying THIS company). It is false when this company is the one ACQUIRING "
     "another business. "
@@ -110,14 +59,9 @@ MID_SYSTEM = (
     "You are the SECOND-OPINION triage of an equity research pipeline, reviewing companies that "
     "a cheaper first pass already ranked highly. Your score answers ONE question: how likely is "
     "it that a rigorous deep fundamental analysis would find this company attractive for the next "
-    "month? Weigh fundamentals, valuation and news TOGETHER. Do not raise "
-    "or lower the score merely because of the company's sector or its size; ask whether the news "
-    "changes the earnings power or the valuation case. "
-    # La MISMA frase que el profundo, y por el mismo motivo (ver allí el detalle de lo medido):
-    # son dos jueces del mismo nombre y si miden distinto, el corte de finalistas queda a medio
-    # criterio. Lo que NO vuelve aquí tampoco es la prohibición sobre los técnicos.
-    "A price move is not by itself a verdict in either direction: a fall does not make a "
-    "business weak, nor does a rally make it strong. "
+    "month? Weigh fundamentals, valuation and news TOGETHER. "
+    # Mismas cláusulas quitadas que en el profundo (`SYSTEM`): los dos jueces del mismo nombre
+    # deben llevar la misma config, o el corte de finalistas queda a medio criterio.
     "Calibrate the scale: 90+ exceptional (rare), 75-89 strong candidate for deep review, 50-74 "
     # Pasa de UNO a DOS decimales, misma redacción que el profundo. Aquí el empate cuesta
     # más que allí: son ~3.000 nombres compitiendo por ~50 plazas de finalista, y el carril global
@@ -126,9 +70,7 @@ MID_SYSTEM = (
     # granularidad, además, hacen comparables sus dos rankings.
     "unremarkable, <50 weak. Use exactly two decimal places, and let those decimals carry real "
     "precision rather than rounding to quarters or halves - e.g. 71.38, 84.61. "
-    # El `headline` se pedía y NO lo consumía nadie: ni scan_service, ni la traza, ni la
-    # watchlist (que solo acepta scores profundos), ni la web. Eran ~20 tokens de salida y un
-    # cambio de idioma por llamada, en ~3.000 llamadas por escaneo y otra vez en la capa media.
+    # Headline se omite: no se consume (scan_service, traza, watchlist, web). ~20 tokens de salida sin uso.
     'Respond ONLY in JSON: {"score": <number 0-100, two decimal places>}.'
 )
 
@@ -218,12 +160,7 @@ _RAW_MAX = 1500          # se persiste en ScanRun.failures: unas decenas de KB a
 
 
 def _recorte(raw: str) -> str:
-    """Respuesta cruda para el diagnóstico de un fallo: principio Y final.
-
-    El principio dice si el modelo devolvió prosa en vez de JSON; el FINAL dice si se cortó a
-    medias, que es la sospecha principal cuando un informe largo no parsea. Quedarse solo con
-    la cabecera deja fuera justo la prueba que hace falta.
-    """
+    """Respuesta truncada para diagnóstico: principio (prosa vs JSON) y final (corte a medias)."""
     if len(raw) <= _RAW_MAX:
         return raw
     mitad = _RAW_MAX // 2
@@ -234,20 +171,15 @@ def mid_prescore(
     llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
     top_p: float | None = 0.95,
 ) -> PrescoreResult:
-    """Segunda opinión de la capa media (modelo mejor que el triaje barato, 1 ticker por
-    llamada). Best-effort: 0 si falla, con `error`/`raw` para que el caller sepa POR QUÉ
-    (transporte vs JSON roto) y decida si reintenta."""
+    """Segunda opinión: best-effort 0 si falla, con error/raw para decidir reintento."""
     raw = ""
     try:
         raw = llm.chat(MID_SYSTEM, _mid_prompt(data, macro_block),
                        temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
-        # Mismo guardarraíl que `score()` (ver su comentario): en una escala de 1 a 100, un 0
-        # SOLO puede ser un fallo de parseo (JSON válido sin la clave, o con nota 0). Sin esto
-        # `error` quedaba en None y el nombre desaparecía del embudo entero sin retry ni rastro
-        # — medido en un escaneo real: 118 de 3.000 nombres así, ninguno en `failed` ni en
-        # `pre_errors`, invisibles en la auditoría.
+        # Score 0 en escala 1-100 = fallo de parseo. Sin esto, nombres caen sin rastro.
+        # Medido: 118/3.000 invisibles sin este guardarraíl.
         if sc <= 0:
             return PrescoreResult(data.ticker, 0.0,
                                   error="SinNota: JSON válido sin score utilizable",
@@ -259,22 +191,16 @@ def mid_prescore(
                               raw=_recorte(raw))
 
 
-# ---------------------------------------------------------------------------------------------
-# Pre-score INDIVIDUAL — triaje barato del universo, 1 llamada por ticker. Circuito por
-# defecto con `llm_provider="deepseek"` (ver config.py): fiel al paper (1 llamada/ticker) y
-# apoyado en la caché de prefijo en disco de DeepSeek para que la llamada individual no salga
-# tan cara como sin ella — el bloque macro (idéntico en las ~3.000 llamadas de un escaneo) va
-# SIEMPRE delante del contenido variable del ticker, ver `_prescore_prompt`.
-# ---------------------------------------------------------------------------------------------
+# Pre-score INDIVIDUAL — triaje rápido del universo, 1 llamada/ticker (fiel al paper).
+# Macro va siempre delante para maximizar hit de caché de prefijo DeepSeek.
 
 PRESCORE_SYSTEM = (
     "You are the first-pass TRIAGE of an equity research pipeline. For the company given, "
     "answer ONE question: how likely is it that a rigorous deep fundamental analysis would find "
     "this company attractive for the next month? Weigh fundamentals, valuation and news "
-    "TOGETHER. Do not raise or lower the score merely because of the company's sector or its "
-    "size; ask whether the news changes the earnings power or the valuation case. A price move "
-    "is not by itself a verdict in either direction: a fall does not make a business weak, nor "
-    "does a rally make it strong. Calibrate the scale: 90+ exceptional (rare), 75-89 strong "
+    "TOGETHER. "
+    # Anti-sesgo quitado: consistente en todas las etapas (no solo profundo/media).
+    "Calibrate the scale: 90+ exceptional (rare), 75-89 strong "
     "candidate for deep review, 50-74 unremarkable, <50 weak. Use exactly two decimal places, "
     "and let those decimals carry real precision rather than rounding to quarters or halves - "
     'e.g. 71.38, 84.61. Respond ONLY in JSON: {"score": <number 0-100, two decimal places>}.'
@@ -299,18 +225,8 @@ def prescore_one(
     llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
     top_p: float | None = 0.95,
 ) -> PrescoreResult:
-    """Triaje de un ticker, 1 llamada. Mismo guardarraíl y forma de fallo que `mid_prescore`
-    (best-effort: 0 si falla, con `error`/`raw` para que el caller decida si reintenta).
-
-    `temperature`/`top_p` van iguales en TODAS las etapas del escaneo (ver
-    `scan_service.DEFAULT_TEMPERATURE`/`DEFAULT_TOP_P`) aunque `api-docs.deepseek.com/guides/
-    thinking_mode` diga que el modo razonamiento los ignora — decisión explícita: mandarlos de
-    más no rompe nada, y así ninguna etapa depende de un valor especial que solo le cuadre a
-    ELLA por tener el reasoning que tiene hoy. Esta es la única función donde SÍ hay efecto
-    medible, porque `prescore_reasoning_effort` es "none" (ver config.py). 1.0 es lo que
-    DeepSeek recomienda para tareas de "análisis de datos" (no 0.0 de código ni 1.3+ de
-    conversación/creatividad) — puntuar una empresa es más lo primero que lo segundo.
-    """
+    """Triaje de un ticker: best-effort 0 si falla. temperature=1.0 (DeepSeek para análisis).
+    temperature/top_p mandados en todas etapas aunque reasoning los ignore."""
     raw = ""
     try:
         raw = llm.chat(PRESCORE_SYSTEM, _prescore_prompt(data, macro_block),
@@ -347,10 +263,10 @@ PRESCORE_BATCH_SYSTEM = (
     # EXPLÍCITAMENTE que no lo haga.
     "Judge each company ONLY on its own fundamentals, valuation and news, weighed together. Do "
     "NOT compare or rank the companies against each other, and do not let one company's news or "
-    "sector color your judgment of another. Do not raise or lower a score merely because of a "
-    "company's sector or its size; ask whether the news changes the earnings power or the "
-    "valuation case. A price move is not by itself a verdict in either direction: a fall does "
-    "not make a business weak, nor does a rally make it strong. Calibrate the scale: 90+ "
+    "sector color your judgment of another. "
+    # Mismas cláusulas anti-sesgo quitadas que en el resto del scoring (ver `SYSTEM`) — este
+    # nivel solo corre con OpenRouter local, pero se mantiene consistente con producción.
+    "Calibrate the scale: 90+ "
     "exceptional (rare), 75-89 strong candidate for deep review, 50-74 unremarkable, <50 weak. "
     "Use exactly two decimal places, and let those decimals carry real precision rather than "
     "rounding to quarters or halves - e.g. 71.38, 84.61. "
@@ -388,11 +304,7 @@ def _prescore_batch_prompt(items: list[NameData], macro_block: str) -> str:
 
 
 def _formato_degenerado(notas: list[float]) -> bool:
-    """True si ≥90% de las notas de un lote comparten el mismo patrón de UN SOLO decimal
-    (segundo decimal en cero) — estadísticamente casi imposible por azar si son notas de dos
-    decimales genuinas e independientes (≈10^-20 para 20/20). Medido en vivo: pasó en
-    1 de 2 lotes de prueba (20/20 con un solo decimal), justo el apelmazamiento que la migración
-    a dos decimales se hizo para evitar. Con menos de 5 notas el argumento estadístico no aplica."""
+    """True si ≥90% comparten un solo decimal (segundo en cero): indica lote degenerado."""
     if len(notas) < 5:
         return False
     un_decimal = sum(1 for n in notas if round(n * 100) % 10 == 0)
@@ -402,16 +314,8 @@ def _formato_degenerado(notas: list[float]) -> bool:
 def prescore_batch(
     llm: LLMProvider, items: list[NameData], macro_block: str, temperature: float = 0.4,
 ) -> dict[str, PrescoreResult]:
-    """Prescore de un LOTE en una sola llamada. Devuelve {ticker: PrescoreResult}.
-
-    A diferencia de `mid_prescore()`/`score()`, el reintento vive AQUÍ DENTRO (hasta 2 extra, 3
-    intentos totales — mismo criterio que el resto) en vez de en el caller: la decisión de
-    reintentar depende de mirar el LOTE entero (JSON roto, tickers ausentes, formato degenerado),
-    no del error de un ticker suelto, así que no encaja en el patrón externo
-    `for _ in range(2): if not r.error: break` que usan las otras dos funciones. Si un ticker
-    concreto falta en una respuesta por lo demás válida, NO se reintenta el lote completo —
-    tirar 19 notas buenas por 1 ausente sale más caro que dejar esa sola con error.
-    """
+    """Prescore de un lote en una llamada. Reintento interno (hasta 3 total) por JSON roto/degenerado.
+    Si un ticker ausente en respuesta válida, NO se reintenta lote entero."""
     wanted = {d.ticker for d in items}
     user = _prescore_batch_prompt(items, macro_block)
     raw = ""
@@ -484,12 +388,8 @@ def score(
         # Solo un booleano de verdad cuenta: un "true" en texto o un 1 son respuestas que no
         # sabemos leer con seguridad, y aquí equivocarse cuesta una posición de la cartera.
         ua = ua if isinstance(ua, bool) else None
-        # Un 0 en una escala de 1 a 100 SOLO puede ser un fallo: el modelo devolvió JSON válido
-        # sin nota (o con nota 0). Antes eso salía con `error=None`, así que el reintento —que
-        # mira `error`— no se disparaba y el nombre se caía del ranking sin dejar rastro: tres
-        # nombres se perdieron así en una prueba real, uno de ellos la mayor del universo.
-        # Se marca como error Y se guarda la respuesta cruda, que es lo único que permite saber
-        # después qué contestó de verdad.
+        # Score 0 = fallo de parseo. Sin esto, nombre cae sin rastro (pasó con empresas grandes).
+        # Se marca error Y se guarda crudo para diagnóstico posterior.
         if sc <= 0:
             return ScoreResult(ticker=data.ticker, score=0.0, headline="", report="",
                                error="SinNota: JSON válido sin score utilizable",

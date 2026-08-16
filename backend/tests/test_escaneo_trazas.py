@@ -1,6 +1,6 @@
-"""Tests del escaneo (scan_service): traza de auditoría, memoria fuera del prompt, reintento de
-fallos del LLM, news_used congelado y ScanRun. LLM falso y DB en memoria (patrón de test_ranker.py
-y test_autoexec.py) — nunca toca OpenRouter."""
+"""Tests del escaneo: traza de auditoría, reintento de LLM, news_used congelado, ScanRun.
+
+Fake LLM, in-memory DB; never touches OpenRouter."""
 
 from __future__ import annotations
 
@@ -30,18 +30,15 @@ def db():
 
 
 def _scores_reply(user: str) -> str:
-    """Respuesta de prescore POR LOTE: extrae los tickers numerados del prompt
-    (`_prescore_batch_prompt`, líneas "N. TICKER ...") y les da nota fija. El prescore individual
-    ya no se usa en el pipeline principal, solo el profundo/capa media/constructor siguen
-    recibiendo `_FAKE_REPLY` tal cual."""
+    """Batch prescore reply: extracts numbered tickers and assigns fixed scores."""
     tickers = re.findall(r"^\d+\.\s+(\S+)", user, re.MULTILINE)
     return json.dumps({"scores": [{"ticker": t, "score": 90.0} for t in tickers]})
 
 
 class FakeLLM:
-    """Una única respuesta JSON sirve a la vez de informe profundo, macro y construcción — cada
-    consumidor solo lee las claves que le importan (`dict.get`). El prescore por lote se detecta
-    por el SYSTEM prompt (única llamada que menciona "SEVERAL companies") y responde aparte."""
+    """One JSON response serves deep/macro/construction; each consumer reads its keys.
+
+    Batch prescore detected by "SEVERAL companies" in SYSTEM prompt."""
 
     def __init__(self, reply: str) -> None:
         self._reply = reply
@@ -54,8 +51,7 @@ class FakeLLM:
 
 
 class FlakyLLM:
-    """Como FakeLLM, pero la PRIMERA llamada de toda su vida falla (JSON roto): simula el 429
-    de transporte o el JSON cortado del 4-ago, indistinguibles a priori."""
+    """Like FakeLLM; first call fails (broken JSON) to simulate transport errors."""
 
     def __init__(self, reply: str) -> None:
         self._reply = reply
@@ -81,7 +77,7 @@ _FAKE_REPLY = (
 
 
 def _stub_universo(monkeypatch, symbols: list[str]) -> None:
-    """Universo fijo, como si viniera de la foto del último cierre."""
+    """Fixed universe from last-close snapshot."""
     from app.screener import universe as universe_mod
 
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
@@ -91,16 +87,13 @@ def _stub_universo(monkeypatch, symbols: list[str]) -> None:
 
 
 def _stub_common(monkeypatch, llm, symbols: list[str]) -> None:
-    """El pipeline entero baratamente stubeado, salvo `fund_mod.gather` (lo pone cada test:
-    algunos necesitan controlar `news` para comprobar el congelado)."""
+    """Stub entire pipeline except fund_mod.gather (per-test control)."""
     from app import tracking
     from app.screener import macro as macro_mod
 
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: llm)
-    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)  # memoria fuera (embeddings)
-    # Sin esto, los 4 tickers reales de `always_deep_tickers` (MSFT/HUMA/ASTS/BTC-USD, no
-    # mockeados) se comen el `sample_size` diminuto de estos tests y el ticker que el test SÍ
-    # controla desaparece de la muestra. Producción usa universos de miles, ahí no pasa.
+    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
+    # Clear always_deep_tickers so test-controlled ticker doesn't vanish from sample.
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])
     _stub_universo(monkeypatch, symbols)
     monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
@@ -114,6 +107,7 @@ def _stub_common(monkeypatch, llm, symbols: list[str]) -> None:
 
 
 def _gather_stub(monkeypatch, sector: str = "Technology", news: list | None = None):
+    """Stub fundamentals.gather with fixed NameData."""
     from app.screener import fundamentals as fund_mod
     from app.screener.fundamentals import NameData
 
@@ -127,8 +121,7 @@ def _gather_stub(monkeypatch, sector: str = "Technology", news: list | None = No
 # ---- entry_lane + had_prior_thesis en la traza --------------------------------
 
 def test_entry_lane_y_had_prior_thesis_en_la_traza(db, monkeypatch) -> None:
-    """OLD entra por posición, WATCH por watchlist (con tesis previa) y NEW por el carril de
-    mayores caps (sin tesis previa, porque ni está en cartera ni en watchlist)."""
+    """Entry lanes: OLD (position), WATCH (watchlist+thesis), NEW (top caps)."""
     llm = FakeLLM(_FAKE_REPLY)
     _stub_common(monkeypatch, llm, ["NEW"])
     _gather_stub(monkeypatch)
@@ -152,8 +145,7 @@ def test_entry_lane_y_had_prior_thesis_en_la_traza(db, monkeypatch) -> None:
 # ---- news_used congelado -------------------------------------------------------
 
 def test_news_used_se_congela(db, monkeypatch) -> None:
-    """La copia persistida de las noticias que entraron al prompt no debe cambiar si alguien
-    muta la lista original después (las noticias son un endpoint en vivo)."""
+    """Persisted news snapshot immutable after scan (news endpoint is live)."""
     llm = FakeLLM(_FAKE_REPLY)
     _stub_common(monkeypatch, llm, ["AAA"])
     noticias = ["Titular uno", "Titular dos"]
@@ -172,8 +164,7 @@ def test_news_used_se_congela(db, monkeypatch) -> None:
 # ---- fallo del LLM: reintento y el nombre no se pierde -------------------------
 
 def test_fallo_llm_se_reintenta_y_el_nombre_no_se_pierde(db, monkeypatch) -> None:
-    """La primera llamada al LLM (del prescore de AAA) revienta; el reintento la salva y AAA
-    llega al ranking profundo con normalidad."""
+    """First LLM call fails; retry saves the ticker; reaches deep ranking."""
     flaky = FlakyLLM(_FAKE_REPLY)
     _stub_common(monkeypatch, flaky, ["AAA"])
     _gather_stub(monkeypatch)
@@ -207,8 +198,7 @@ def test_scan_run_registra_sectores_favorecidos_y_evitados(db, monkeypatch) -> N
 # ---- una propuesta anterior sobrevive a un escaneo nuevo -----------------------
 
 def test_propuesta_anterior_sobrevive_a_un_escaneo_nuevo(db, monkeypatch) -> None:
-    """La lectura ordena por created_at descendente: conservar el histórico no rompe nada y
-    permite ver después por qué el constructor dejó fuera a cada candidato."""
+    """Prior proposal persists; read orders by created_at desc."""
     llm = FakeLLM(_FAKE_REPLY)
     _stub_common(monkeypatch, llm, ["AAA"])
     _gather_stub(monkeypatch)

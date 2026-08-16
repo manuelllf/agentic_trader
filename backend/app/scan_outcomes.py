@@ -1,20 +1,6 @@
-"""Lectura de la traza de auditoría: qué hizo DESPUÉS cada grupo del embudo.
+"""Audit trace reader: compares returns by funnel group (cartera/seleccionados/descartados/SPY).
 
-La traza (ScanAudit) guarda quién llegó a qué etapa y a qué precio; esto la lee y le pone el
-precio de hoy delante para responder las preguntas del experimento: ¿lo que compró lo hizo
-mejor que lo que descartó? ¿puntuar más alto significa rendir mejor? ¿se pierden buenos
-nombres en el corte? «Almacenar ≠ inyectar» sigue intacto: esto es evaluación offline para
-humanos y NUNCA vuelve a un prompt.
-
-Cada cohorte (un `scan_at`) se mide A IGUAL PESO dentro del grupo: aquí se evalúa el CRITERIO
-(a quién eligió), no la construcción (qué peso le dio) — eso ya lo mide la curva del libro.
-Grupos: cartera (fondeados) · seleccionados sin fondear (top-N que el constructor dejó fuera)
-· descartados del profundo · SPY en la misma ventana como vara de medir.
-
-Aproximación asumida: el precio de entrada es el del momento del escaneo (intradía) y el
-actual es el último cierre de yfinance. Para comparar GRUPOS entre sí es irrelevante — todos
-miden con la misma regla — y contra SPY (cierre del día del escaneo) el desfase es de horas.
-"""
+Offline evaluation; never sent back to model."""
 
 from __future__ import annotations
 
@@ -30,14 +16,14 @@ from app.models import ScanAudit, _utcnow, utc_iso
 
 logger = logging.getLogger(__name__)
 
-CORTE_N = 10          # tamaño de la frontera: los N peores que entraron vs los N mejores fuera
+CORTE_N = 10  # Cut boundary: N worst admitted vs N best rejected.
 
 _SPY_TTL = 900
 _spy_cache: tuple[float, object] | None = None
 
 
 def _spy_closes():
-    """Cierres diarios del SPY (6 meses), cacheados: una serie para todas las cohortes."""
+    """Daily SPY closes (6mo) cached; one series for all cohorts."""
     global _spy_cache
     now = time.time()
     if _spy_cache and now - _spy_cache[0] < _SPY_TTL:
@@ -72,20 +58,16 @@ def _stats(rets: list[float]) -> dict:
 
 
 def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
-    """Las cohortes de la traza con su retorno a hoy, de la más reciente a la más vieja.
+    """Cohorts with returns (newest first); names always included.
 
-    Devuelve SIEMPRE los nombres (pairs y frontera con ticker): la ruta decide qué cara
-    enseña — los agregados por grupo son comportamiento (públicos); un ticker con su score
-    y su retorno es el feed de señales (solo con sesión).
-    """
+    Route determines visibility (public aggregate vs signals with session)."""
     from app.tracking import live_prices
 
     fechas = scan_audit.scan_dates(db, limit)
     if not fechas:
         return []
 
-    # Filas del profundo de todas las cohortes + la frontera de fuera (mejores pre-scores que
-    # NO llegaron al profundo, por cohorte). Dos consultas pequeñas, no un volcado de 2.600×N.
+    # Deep rows + cut boundary (best rejected pre-scores) per cohort; small queries.
     deep_rows = list(db.execute(
         select(ScanAudit).where(ScanAudit.scan_at.in_(fechas),
                                 ScanAudit.reached_deep.is_(True))).scalars())
@@ -107,12 +89,12 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
             return None
         return round((px / r.price - 1) * 100, 2)
 
-    # La BD guarda UTC naive (SQLite pierde el tz al leer); se resta naive contra naive.
+    # DB stores UTC naive; subtract naive from naive.
     hoy = _utcnow().replace(tzinfo=None)
     salida: list[dict] = []
     for at in fechas:
         cohorte = [r for r in deep_rows if r.scan_at == at]
-        # Un profundo ilegible no es un descarte del criterio: fue un fallo. Fuera de los grupos.
+        # Unreadable deep not a criterion reject; exclude from groups.
         validos = [r for r in cohorte if r.stage != "deep_error"]
 
         def _grupo(rows: list) -> dict:
@@ -122,14 +104,12 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
         selec = [r for r in validos if r.selected and not r.funded]
         descartados = [r for r in validos if not r.selected]
 
-        # `funded` viaja también sin sesión: que UN punto de la nube esté en el libro es
-        # comportamiento (cuántos y cómo rinden ya es público); su ticker sigue sin salir.
+        # funded travels even without session; portfolio membership is public behavior (holdings count).
         pares = [{"ticker": r.ticker, "score": r.deep_score, "ret": _ret(r),
                   "funded": bool(r.funded)}
                  for r in validos if r.deep_score is not None and _ret(r) is not None]
 
-        # La frontera del corte, medida con la MISMA vara a ambos lados (el pre-score): los N
-        # mejores que se quedaron fuera del profundo vs los N peores pre-scores que sí entraron.
+        # Cut boundary (same metric both sides: prescore); N best rejected vs N worst admitted.
         dentro = sorted((r for r in validos if r.prescore is not None),
                         key=lambda r: r.prescore)[:CORTE_N]
         fuera = fuera_by_scan.get(at, [])
@@ -141,9 +121,7 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
 
         salida.append({
             "at": utc_iso(at),
-            # Del flag de la traza, no inferido de "hay cartera": la construcción se registra
-            # también en los observatorios (es su cartera HIPOTÉTICA) y la inferencia vieja
-            # etiquetaba todo como decisión. NULL (filas pre-columna) = observatorio.
+            # From trace flag, not inferred; construction also recorded in observatories. NULL = observatory.
             "mode": "decisión" if any(r.decide for r in cohorte) else "observatorio",
             "days": max(0, (hoy - at.replace(tzinfo=None)).days),
             "groups": {
@@ -159,14 +137,9 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
 
 
 def book_row(db) -> dict | None:  # noqa: ANN001
-    """La fila de LO REAL: el libro sombra vigente desde su compra, a valor de mercado.
+    """Real book row: shadow book at current market price (not equal weight).
 
-    La traza no alcanza a la decisión que compró la cartera actual (18-jul: el comportamiento
-    pre-histórico la borró), así que esta fila sale del LEDGER — precios de compra reales,
-    retorno a valor de mercado (no a igual peso: aquí sí importa el libro, no el criterio) y
-    el S&P desde el mismo minuto de la primera compra (la referencia persistida del tracking).
-    Redundante con la curva a propósito: pone la imagen real donde se leen las cohortes.
-    """
+    Trace doesn't cover initial purchase decision; ledger provides actual costs."""
     try:
         from app.tracking import performance
 
@@ -185,10 +158,7 @@ def book_row(db) -> dict | None:  # noqa: ANN001
 
 
 def ticker_history(db, ticker: str, limit: int = 26) -> list[dict]:  # noqa: ANN001
-    """La historia de un ticker a través de los escaneos (¿es estable el criterio?).
-
-    Del más reciente al más viejo. Es el detalle con nombre: SOLO se sirve con sesión.
-    """
+    """Ticker history across scans (newest first); session-only detail."""
     stmt = (select(ScanAudit).where(ScanAudit.ticker == ticker.upper())
             .order_by(ScanAudit.scan_at.desc()).limit(limit))
     return [

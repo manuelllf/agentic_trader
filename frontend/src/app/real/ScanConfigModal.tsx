@@ -1,15 +1,7 @@
 "use client";
 
-// Configuración por etapa del botón "simulación" (📡): modelo, reasoning, temperatura y top_p
-// de macro/prescorer/capa media/scorer profundo/constructor, antes de lanzar. Mismo patrón de
-// emergente que ScanFullModal.tsx (velo + tarjeta + cerrar por X/Escape/click fuera). Se abre
-// SIEMPRE con los defaults REALES de producción (vía /config), nunca con lo último que se haya
-// configurado en una simulación anterior — no hay persistencia entre aperturas.
-//
-// Temperatura/top_p quedan editables en TODAS las etapas, tengan o no razonamiento activo:
-// api-docs.deepseek.com/guides/thinking_mode dice que el modo razonamiento las ignora, pero
-// mandarlas de más no rompe la llamada — se dejan siempre configurables en vez de deshabilitarlas
-// según el reasoning elegido (decisión explícita, ver `scan_service.DEFAULT_TEMPERATURE`).
+// Simulation button modal: configure model/reasoning/temperature/top_p per stage.
+// Always opens with production defaults from /config. Temperature/top_p editable on all stages.
 
 import { useEffect, useRef, useState } from "react";
 import { getConfig } from "@/lib/api";
@@ -47,12 +39,7 @@ export function ScanConfigModal({ onClose, onLaunch }: {
   onLaunch: (overrides: DemoRunOverrides) => void;
 }) {
   const [cfg, setCfg] = useState<Record<Stage, Required<StageLLMOverride>>>(FALLBACK);
-  // Hasta que /config resuelve, los controles quedan BLOQUEADOS (no solo pre-rellenados con
-  // FALLBACK). Sin esto había una carrera real: si el usuario tocaba un desplegable antes de que
-  // la respuesta de /config llegara, el .then() de más abajo pisaba su elección al aplicar los
-  // defaults — un "low" elegido a mano volvía a "none" sin que nadie lo pidiera, y el escaneo
-  // salía con el reasoning de siempre. Bloquear cierra la ventana por construcción en vez de
-  // intentar rastrear campo a campo qué tocó el usuario.
+  // Until /config resolves, controls are disabled to prevent race: user changes get overwritten by defaults.
   const [loaded, setLoaded] = useState(false);
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
@@ -94,13 +81,8 @@ export function ScanConfigModal({ onClose, onLaunch }: {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
          onClick={onClose}>
-      {/* Los <select>/<input type=number> nativos ignoran el tema (flecha y spinner del SO,
-          casi siempre blancos) — sin esto el desplegable y los +/- de temperatura/top_p
-          desentonaban con el resto del panel, que es todo a medida. */}
-      {/* `jsx global` (no escopado): `.cfg-select`/`.cfg-num` los usan StageRow/NumberStepper,
-          componentes HIJOS — el escopado normal de styled-jsx solo añade su clase-hash a los
-          elementos del propio componente que declara el <style>, así que en un hijo la regla
-          nunca hacía match (comprobado: el <select> tenía la clase pero cero CSS aplicado). */}
+      {/* Native select/input ignore theme (OS arrows/spinners are usually white); custom styled here. */}
+      {/* jsx global: scopes to child components StageRow/NumberStepper via .cfg-* classes. */}
       <style jsx global>{`
         .cfg-select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23898781'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
           background-repeat: no-repeat; background-position: right 6px center; background-size: 14px;

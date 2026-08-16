@@ -1,4 +1,4 @@
-"""Tests del ranker fundamental (scorer, constructor, watchlist, muestreo) con LLM falso."""
+"""Ranker tests (scorer, constructor, watchlist, sampling) with fake LLM."""
 
 from __future__ import annotations
 
@@ -61,36 +61,30 @@ def test_scorer_bad_json_is_zero() -> None:
 # ---- fecha de resultados (dato de contexto en los tres niveles, sin regla de qué hacer con él)
 
 def test_earnings_text_fecha_ventana_y_pasado() -> None:
+    """Earnings text labels dates/estimates correctly."""
     from app.screener import fundamentals as fund_mod
 
     hoy = datetime.now(UTC)
     en_10d = (hoy + timedelta(days=10)).timestamp()
     en_12d = (hoy + timedelta(days=12)).timestamp()
 
-    # Fecha única confirmada y futura.
     txt = fund_mod._earnings_text(
         {"earningsTimestampStart": en_10d, "earningsTimestampEnd": en_10d})
     assert txt.startswith("next earnings report: ") and "unconfirmed" not in txt
 
-    # Ventana estimada → se declara la estimación, no se vende como confirmada.
     txt = fund_mod._earnings_text(
         {"earningsTimestampStart": en_10d, "earningsTimestampEnd": en_12d,
          "isEarningsDateEstimate": True})
     assert " to " in txt and "estimated (unconfirmed)" in txt
 
-    # Recién publicados (yfinance tarda días en apuntar al siguiente trimestre): se etiqueta
-    # como "last" en vez de ocultarse — que acaba de reportar también es dato.
     hace_5d = (hoy - timedelta(days=5)).timestamp()
     assert fund_mod._earnings_text({"earningsTimestampStart": hace_5d}).startswith("last earnings")
 
-    assert fund_mod._earnings_text({}) == ""           # sin dato → el prompt pinta n/d
+    assert fund_mod._earnings_text({}) == ""
 
 
 def test_earnings_entra_en_los_tres_niveles() -> None:
-    """El calendario de resultados era solo del profundo; ahora también entra en la capa media
-    (`_mid_prompt`) y en el triaje barato por lotes (`_prescore_batch_prompt`), como dato sin
-    regla de qué hacer con él — la única vía aprobada de enriquecer el triaje sin meterle
-    factores con nombre que induzcan sesgo."""
+    """Earnings calendar in all three levels (mid, prescore_batch, scorer) as data."""
     data = _name()
     data.earnings_text = "next earnings report: 2026-08-12"
     assert "Earnings calendar: next earnings report: 2026-08-12" in (
@@ -185,11 +179,12 @@ def test_watchlist_cap(db, monkeypatch) -> None:
 # ---- muestreo ----
 
 def test_sample_includes_always_and_fills(monkeypatch) -> None:
+    """Sample: always_include first, fills from universe, no duplicates."""
     monkeypatch.setattr(universe_mod, "build_universe", lambda: [f"U{i}" for i in range(500)])
     sample = universe_mod.sample_for_scan(["HELD1", "HELD2"], n=50)
-    assert sample[:2] == ["HELD1", "HELD2"]                 # posiciones/watchlist siempre primero
+    assert sample[:2] == ["HELD1", "HELD2"]
     assert len(sample) == 50
-    assert len(set(sample)) == 50                           # sin duplicados
+    assert len(set(sample)) == 50
 
 
 def test_sample_dedups_always(monkeypatch) -> None:
@@ -199,20 +194,20 @@ def test_sample_dedups_always(monkeypatch) -> None:
 
 
 def test_sample_rotates_without_repeat(monkeypatch) -> None:
+    """Rotating windows cover universe without overlap; wraps at end."""
     monkeypatch.setattr(universe_mod, "build_universe", lambda: [f"U{i}" for i in range(10)])
     w0 = universe_mod.sample_for_scan([], n=4, offset=0)
     w1 = universe_mod.sample_for_scan([], n=4, offset=4)
-    assert set(w0).isdisjoint(w1)                        # semanas consecutivas no repiten
+    assert set(w0).isdisjoint(w1)
     w2 = universe_mod.sample_for_scan([], n=4, offset=8)
-    assert w2 == ["U8", "U9", "U0", "U1"]                # envuelve al final del universo
-    assert set(w0) | set(w1) | set(w2) == {f"U{i}" for i in range(10)}  # 3 ventanas tejen el universo
+    assert w2 == ["U8", "U9", "U0", "U1"]
+    assert set(w0) | set(w1) | set(w2) == {f"U{i}" for i in range(10)}
 
 
 # ---- universo: liquidez en dólares y foto del cierre ----
 
 def test_liquidez_se_mide_en_dolares_no_en_acciones(monkeypatch) -> None:
-    """Contar acciones castiga a los caros: PLMR mueve $41M al día y se quedaba fuera por no
-    llegar a 300k acciones, mientras un valor de $6 con 300k acciones ($1,8M) sí entraba."""
+    """Dollar volume, not share count; prevents cheap-stock bias."""
     monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 5_000_000)
     monkeypatch.setattr(universe_mod.settings, "universe_max_names", 2_600)
     filas = [
@@ -224,10 +219,7 @@ def test_liquidez_se_mide_en_dolares_no_en_acciones(monkeypatch) -> None:
 
 
 def test_el_tope_recorta_por_volumen_y_devuelve_alfabetico(monkeypatch) -> None:
-    """El suelo solo deja el tamaño del universo (y el coste, que es 1 llamada de Flash por
-    nombre) a merced de lo movida que estuviera la sesión fotografiada. Con tope, se escanean
-    los N de más dinero negociado y el resto espera — pero la lista sale ALFABÉTICA, porque la
-    ventana rotatoria necesita un orden estable entre escaneos."""
+    """Cap cuts by volume; returns alphabetical (stable for rotating window)."""
     monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 1_000_000)
     monkeypatch.setattr(universe_mod.settings, "universe_max_names", 2)
     filas = [
@@ -239,9 +231,7 @@ def test_el_tope_recorta_por_volumen_y_devuelve_alfabetico(monkeypatch) -> None:
 
 
 def test_el_informe_lleva_cuanto_recorto_el_tope(db, monkeypatch) -> None:
-    """`sobre_suelo` > `size` = el tope recortó. El número viaja SIEMPRE en el informe; el aviso
-    de incidencia solo salta si el recorte es grande (ver `scan_service`), porque un recorte
-    pequeño es el funcionamiento normal y no una avería."""
+    """Report includes sobre_suelo; cap bite measured for alerts."""
     monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 1_000_000)
     monkeypatch.setattr(universe_mod.settings, "universe_max_names", 2)
     monkeypatch.setattr(universe_mod, "_from_nasdaq", lambda: [
@@ -252,9 +242,7 @@ def test_el_informe_lleva_cuanto_recorto_el_tope(db, monkeypatch) -> None:
 
 
 def test_foto_del_universo_se_guarda_y_se_relee(db, monkeypatch) -> None:
-    """El universo se fotografía con la bolsa cerrada y los escaneos leen esa foto: el `volume`
-    de NASDAQ es el ACUMULADO DE LA SESIÓN, así que pedirlo a media mañana daba un mercado
-    recortado (426 nombres el 21-jul en vez de ~2.600) y sesgado hacia lo que se movía ese día."""
+    """Universe snapshot closed-market; avoids intra-day volume bias."""
     monkeypatch.setattr(universe_mod, "_from_nasdaq",
                         lambda: [("AAA", 100.0, 1_000_000), ("ILIQ", 1.0, 1_000)])
 
@@ -270,16 +258,14 @@ def test_foto_del_universo_se_guarda_y_se_relee(db, monkeypatch) -> None:
 
 
 def test_sin_foto_avisa_de_que_va_en_vivo(db, monkeypatch) -> None:
-    """Sin foto se sigue escaneando (en vivo), pero la procedencia viaja al informe para que un
-    universo recortado no pase por normal."""
+    """No snapshot: scans live; provenance marked in report."""
     monkeypatch.setattr(universe_mod, "_from_nasdaq", lambda: [("AAA", 100.0, 1_000_000)])
     _symbols, info = universe_mod.universe_for_scan(db)
     assert info["fuente"] == "vivo"
 
 
 def test_sin_foto_y_sin_nasdaq_cae_al_seed_marcado(db, monkeypatch) -> None:
-    """Último recurso: el SEED de emergencia, SIEMPRE etiquetado (el escaneo lo usa para
-    abortar en vez de puntuar 40 nombres como si fueran el mercado)."""
+    """No snapshot and NASDAQ down: fallback SEED always labeled."""
     def _falla():
         raise RuntimeError("NASDAQ no responde")
 
@@ -335,27 +321,24 @@ def test_select_finalists_stratifies_by_sector() -> None:
 
 
 def test_select_finalists_cap_prioriza_los_carriles_garantizados() -> None:
-    """Al truncar, los carriles GARANTIZADOS (posición → watchlist → caps) van por delante de
-    los grupos del pre-score de esta semana: la watchlist es señal ya validada por el modelo
-    caro y las caps son la promesa de que Flash no veta a los grandes. Hasta el 4-ago el orden
-    era el inverso y la watchlist caía primero justo en los mensuales, donde el tope muerde."""
+    """Truncation: guaranteed lanes (position/watchlist/caps) before prescore groups."""
     from app.portfolio_service import select_finalists
     prescored = [_pn(f"N{i}", "Tech", 100 - i) for i in range(10)]  # N0 mejor … N9 peor
     fin, _carriles = select_finalists(prescored, held={"N9"}, watch=["N5"], per_sector=2, cap=3)
     assert len(fin) == 3                    # tope duro
     assert set(fin) == {"N9", "N5", "N0"}   # posición → watchlist → primer hueco al núcleo
 
-    # Con sitio, entran todos los grupos; el carril de caps rescata al de mayor capitalización
-    # aunque su pre-score sea el peor (aquí N8, que sin carril quedaría fuera con el tope a 3).
+    # With room: caps lane rescues highest market cap despite low prescore.
     prescored[8][1].market_cap = 9e12
     fin, _carriles = select_finalists(prescored, held=set(), watch=[], per_sector=2,
                                       cap=3, top_caps=1)
-    assert "N8" in fin                      # el gigante entra por caps, no por pre-score
+    assert "N8" in fin
 
 
 # ---- traza de auditoría del embudo (diagnóstico) ----
 
 def test_scan_audit_records_each_stage(db) -> None:
+    """Audit trace records every stage and price for post-hoc performance."""
     from app import scan_audit
     from app.agents.scorer import ScoreResult
     from app.models import ScanAudit
@@ -377,13 +360,11 @@ def test_scan_audit_records_each_stage(db) -> None:
     assert rows["B"].stage == "finalista" and rows["B"].reached_deep and not rows["B"].selected
     assert rows["C"].stage == "prescore" and not rows["C"].reached_deep
     assert rows["X"].stage == "datos" and rows["X"].prescore is None
-    # El precio del día: sin él no se puede medir DESPUÉS qué hicieron las descartadas.
     assert rows["C"].price == 1.0
 
 
 def test_scan_audit_es_historico_y_poda_lo_viejo(db, monkeypatch) -> None:
-    """Cada escaneo AÑADE su traza (antes borraba la anterior: cada escaneo destruía la
-    evidencia del previo) y solo se cae lo que pasa de la retención."""
+    """Scans accumulate traces; retention-aged records pruned."""
     from app import scan_audit
     from app.models import ScanAudit
 
@@ -395,7 +376,7 @@ def test_scan_audit_es_historico_y_poda_lo_viejo(db, monkeypatch) -> None:
                      ticker="OLD", stage="prescore"))
     db.commit()
 
-    # Relojes fijos (en Windows dos llamadas seguidas caen en el mismo tick de ~15 ms).
+    # Fixed clocks for testing.
     for ticker, cuando in (("A", ahora - timedelta(days=7)), ("B", ahora)):
         monkeypatch.setattr(scan_audit, "_utcnow", lambda c=cuando: c)
         scan_audit.record(db, prescored=[_pn(ticker, "Tech", 90)], failed=[], finalists=[],
@@ -408,8 +389,7 @@ def test_scan_audit_es_historico_y_poda_lo_viejo(db, monkeypatch) -> None:
 
 
 def test_scan_audit_registra_los_prescores_fallidos(db) -> None:
-    """Un pre-score que no parsea desaparecía del embudo sin rastro (ni en failed, ni en la
-    auditoría, ni en el ranking): ahora queda con su etapa propia."""
+    """Failed prescore visible in audit; doesn't vanish silently."""
     from app import scan_audit
     from app.models import ScanAudit
 
@@ -426,9 +406,7 @@ def test_scan_audit_registra_los_prescores_fallidos(db) -> None:
 
 
 def test_scan_audit_registra_los_profundos_ilegibles(db) -> None:
-    """Un informe profundo no parseable quedaba como "finalista" cualquiera: en dos meses no se
-    podía contar cuántas veces falló un mismo ticker (MS/CNC solo eran un aviso del informe).
-    Ahora tiene etapa propia, conserva que SÍ llegó al profundo, y el embudo lo cuenta."""
+    """Failed deep score gets own stage; marks reached_deep=true for funnel."""
     from app import scan_audit
     from app.agents.scorer import ScoreResult
     from app.models import ScanAudit
@@ -454,12 +432,12 @@ def test_scan_audit_registra_los_profundos_ilegibles(db) -> None:
 # ---- 100% invertido (water-filling con tope por posición) ----
 
 def test_full_invest_sums_to_100_and_respects_cap() -> None:
+    """Full invest: 100% deployed, respects position cap."""
     from app.portfolio_service import _full_invest
-    # el LLM da 50/30/20 pero el tope es 35 → clava el 50 y reparte
     w = _full_invest([50.0, 30.0, 20.0], cap=35.0)
-    assert abs(sum(w) - 100.0) < 0.01           # 100% invertido
-    assert all(x <= 35.0 + 1e-6 for x in w)     # ninguno pasa el tope
-    assert w[0] == 35.0                          # el mayor queda clavado al tope
+    assert abs(sum(w) - 100.0) < 0.01
+    assert all(x <= 35.0 + 1e-6 for x in w)
+    assert w[0] == 35.0
 
 
 def test_full_invest_five_equal() -> None:
@@ -469,8 +447,8 @@ def test_full_invest_five_equal() -> None:
 
 
 def test_select_finalists_rescata_mayores_caps() -> None:
+    """Caps lane rescues top market-cap despite low prescore."""
     from app.portfolio_service import select_finalists
-    # MEGA prescorea fatal, pero es la mayor cap → el carril de rescate la mete al profundo.
     prescored = [_pn("A", "Tech", 90), _pn("B", "Health", 80), _pn("MEGA", "Tech", 5)]
     prescored[0][1].market_cap = 1e9
     prescored[1][1].market_cap = 2e9
@@ -500,9 +478,7 @@ def test_watchlist_drop_saca_posiciones(db) -> None:
 # ---- omitidos del constructor (telemetría, nunca vuelve al prompt) -----------
 
 def test_constructor_registra_por_que_dejo_fuera_a_los_demas() -> None:
-    """Fondear 5 de 10 obliga a dejar 5 fuera; guardar el motivo permite distinguir DESPUÉS
-    criterio de pattern-matching. Se filtra igual que las posiciones: fuera los tickers que no
-    estaban entre los candidatos y fuera los que sí se fondearon (el modelo a veces los repite)."""
+    """Omitted reasons recorded for later criterion auditing."""
     reply = json.dumps({
         "cash_pct": 0,
         "positions": [{"ticker": "AAA", "weight_pct": 100, "thesis": "t", "edge": "e", "risk": "r"}],
@@ -519,8 +495,7 @@ def test_constructor_registra_por_que_dejo_fuera_a_los_demas() -> None:
 
 
 def test_constructor_sin_omitidos_no_revienta() -> None:
-    """Un modelo que no devuelva la lista (o la devuelva nula) no debe tirar la construcción:
-    los omitidos son telemetría, no parte del contrato de la cartera."""
+    """Missing omitted field is graceful; telemetry, not contract."""
     reply = json.dumps({"cash_pct": 0, "omitted": None, "summary": "s",
                         "positions": [{"ticker": "AAA", "weight_pct": 100,
                                        "thesis": "t", "edge": "e", "risk": "r"}]})

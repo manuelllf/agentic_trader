@@ -113,12 +113,8 @@ export function logout() {
 
 export const getLedger = () => get<LedgerSnapshot>("/ledger");
 
-// `sample_size`/`decide`/`force_mid_layer` son parámetros de query en FastAPI (escalares sin
-// modelo Pydantic), no cuerpo JSON. `decide=false` (8-ago): universo completo en producción
-// real, sin proponer ni tocar ninguna cartera. `force_mid_layer=true`: el circuito EXACTO de
-// un mensual (capa media incluida) sin tocar el cron semanal — botón "simulación" de Sala Real.
-// `overrides` SÍ va en el cuerpo JSON (modal de configuración por etapa de la simulación):
-// "Analizar mercado" nunca lo manda, así que sigue usando los defaults de producción de siempre.
+// Query params: decide=false for full universe without proposing; force_mid_layer=true runs exact monthly circuit.
+// overrides in body only (simulation config); "Analyze" never sends it, always uses production defaults.
 export const runDemo = (opts?: {
   decide?: boolean; forceMidLayer?: boolean; overrides?: DemoRunOverrides;
 }) => {
@@ -160,9 +156,8 @@ export const allocateReal = (amount: number, note = "", currency: "USD" | "EUR" 
   post<RealSummary & { allocated?: FxAllocated }>("/real/allocate", { amount, note, currency });
 export const getApprovals = () => get<ApprovalsResponse>("/approvals");
 
-/** Informe PERSISTIDO del último escaneo (cron o manual): modo, contadores, coste e
- * incidencias — o el error si reventó entero. A diferencia de /demo/status (memoria del
- * runner), sobrevive a reinicios y también lo escribe el cron del martes. */
+/** Persistent scan report: mode, counters, cost, issues. Survives deploys unlike /demo/status.
+ *  Written by cron and manual scans. */
 export interface ScanReport {
   at: string;
   mode: "decisión" | "observatorio" | null;   // null = falló antes de saberse el modo
@@ -194,10 +189,8 @@ export const getScanReport = () => get<{ report: ScanReport | null }>("/scan/rep
 export const getScanFunnel = (limit = 8) =>
   get<{ scans: FunnelScan[] }>(`/scan/funnel?limit=${limit}`);
 
-/** Recuperación COMPLETA de un escaneo (mensual decidido o semanal observatorio): vive entero
- *  en `ScanRun`, no se pisa. A diferencia de /scan/report (contadores) esto trae la tesis macro,
- *  los finalistas con su score/target y la cartera formada — la única fuente para reconstruir
- *  una simulación después de que termine. Protegido entero (revela tickers y tesis). */
+/** Full scan record: thesis, finalists, and portfolio. Single source for reconstruction after completion.
+ *  Protected (reveals tickers and theses). Unlike /scan/report which only has counters. */
 export interface ScanFullFinalist {
   ticker: string;
   sector: string;
@@ -246,9 +239,8 @@ export interface ScanFull {
 export const getScanFull = (at?: string) =>
   get<{ scan: ScanFull | null }>(`/scan/full${at ? `?at=${encodeURIComponent(at)}` : ""}`);
 
-/** La traza LEÍDA: retorno a hoy por grupo de cada cohorte (cartera · elegidos sin fondear ·
- *  descartados · S&P), pares score↔retorno y la frontera del corte. Doble nivel: sin sesión
- *  los pares llegan sin ticker y la frontera sin nombres. */
+/** Outcomes by group (held, selected, discarded, S&P): returns, pairs, and cut frontier.
+ *  Without session: anonymized pairs and edges. */
 export interface OutcomeStats {
   n: number;
   avg: number | null;

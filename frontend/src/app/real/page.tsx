@@ -1,21 +1,7 @@
 "use client";
 
-/**
- * SALA REAL — panel de control de la cuenta real. El agente propone; tú decides.
- *
- * Sí → la orden LÍMITE se envía (o se simula en dry-run) y queda en el libro real.
- * No → se descarta sin más. Nada se mueve sin tu aprobación explícita.
- *
- * Jerarquía de la sala (mismo lenguaje visual T/SERIES, solo reorganizado):
- *  - Nivel 1, barra de mando (cabecera): título/nav + estado del último escaneo + botón Analizar.
- *  - Nivel 2, "Requiere decisión": propuestas pendientes + órdenes en curso — SOLO si hay algo.
- *  - Nivel 3, permanente: KPIs, posiciones/distribución/P&L del agente, franja de sombra en
- *    paralelo, y las secciones secundarias (cartera personal, comparativas/detalle) plegables
- *    y recordadas por dispositivo (localStorage) para no competir con lo operativo.
- * Legibilidad y claridad del dato por delante de todo, con MÍNIMO scroll. Jerarquía por tamaño y
- * peso tipográfico; color solo donde significa algo (P&L verde/rojo, working ámbar, compra
- * azul / venta roja). Paleta validada (CVD + contraste) sobre superficie dark.
- */
+/** Real room: control panel for live account. Agent proposes; you approve/reject orders.
+ *  Hierarchy: header (title, scan status, analyze button) → decisions → live book. */
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -193,11 +179,8 @@ function SalaRealRoom() {
     }
   };
 
-  // Circuito EXACTO de un mensual real (universo completo + capa media) — pero decide=false:
-  // refresca ranking, watchlist, memoria y traza; no propone ni toca ninguna cartera (ni sombra
-  // ni real). Botón aparte, separado del de decisión para que no puedan confundirse por accidente.
-  // El clic abre el modal de configuración (modelo/reasoning/temperatura/top_p por etapa,
-  // ver ScanConfigModal) — el lanzamiento real ocurre en `handleLaunchSimulation`, al confirmar.
+  // Full monthly circuit (universe + mid-layer) with decide=false: refreshes without touching any portfolio.
+  // Opens config modal to set model/reasoning per stage; actual launch happens on confirmation.
   const handleLaunchSimulation = async (overrides: DemoRunOverrides) => {
     setConfigOpen(false);
     setError("");
@@ -351,9 +334,7 @@ function SalaRealRoom() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {/* Estado del último escaneo: el "analizando…" vive del sondeo; el resto bebe del
-                INFORME PERSISTIDO (/scan/report) — la memoria del runner muere en cada deploy
-                y el cron ni la escribe, así cabecera y panel «Último escaneo» nunca discrepan. */}
+            {/* Last scan state: "analyzing…" from polling; rest from persistent report (/scan/report). */}
             <span className="hidden items-center rounded px-2.5 py-1 text-[11px] font-semibold sm:inline-flex"
                   style={{ background: "rgba(255,255,255,0.05)", color: T.muted }}
                   title="Puntúa el universo, propone la cartera real (a tu Sí/No) y ejecuta sola la sombra.">
@@ -402,9 +383,8 @@ function SalaRealRoom() {
         </div>
       </header>
 
-      {/* Fuera del <header>: su `backdrop-blur` crea containing block para `position: fixed`
-          (mismo comportamiento que `transform`/`filter`) y recortaba el velo del modal al
-          tamaño de la cabecera en vez de cubrir toda la pantalla. */}
+      {/* Outside header: header's backdrop-blur creates containing block for position:fixed,
+          clipping the modal veil; moved here to cover full screen. */}
       {configOpen && (
         <ScanConfigModal onClose={() => setConfigOpen(false)} onLaunch={handleLaunchSimulation} />
       )}
@@ -633,9 +613,7 @@ function SalaRealRoom() {
                   </tbody>
                 </table>
               </div>
-              {/* pie del panel: solo el dato (coste → valor). El vs-S&P vive en el KPI Alpha
-                  (número), la curva (historia) y la mini-franja (comparación con la sombra) —
-                  una cuarta copia en barras no contaba nada nuevo. */}
+              {/* Footer: cost → value only. S&P comparison lives in KPI + curve + mini-band. */}
               {perf && perf.positions.length > 0 && (
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2 text-[11px]"
                      style={{ borderColor: T.grid, color: T.muted }}>

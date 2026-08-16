@@ -1,33 +1,6 @@
-"""Universo de escaneo — se genera DINÁMICAMENTE sobre TODO el mercado US.
+"""Universo de escaneo: TODO el mercado US vía el screener público de NASDAQ (gratis).
 
-Fuente: **API pública de screener de NASDAQ** (gratis, SIN key) — devuelve TODO el mercado US
-(NYSE+NASDAQ+AMEX, no solo NASDAQ) con market cap, precio y volumen en una llamada. Filtramos
-localmente por elegibilidad OBJETIVA (no opinión): precio ≥$5, **volumen en DÓLARES ≥$3M**,
-SIN suelo de capitalización, dedup de clases de acción (GOOGL/GOOG → la más líquida) y **tope
-de 2.600 nombres por dinero negociado**. Cero listas a mano, cero sesgo.
-
-Tres decisiones que parecen detalles y no lo son:
-
-1. **SNAPSHOT DIARIO CON LA SESIÓN CERRADA.** El campo `volume` de NASDAQ es el volumen
-   ACUMULADO DE LA SESIÓN EN CURSO, no una media (verificado: AAPL marcaba 28,7M a mitad de
-   sesión con una media de 48,9M). Como el escaneo corre 45 min después de abrir, filtrar en
-   caliente dejaba fuera a casi todo el mercado (426 nombres el 21-jul frente a ~2.600) y, peor,
-   dejaba dentro justo a los que tenían actividad anormal esa mañana — un sesgo de "valores en
-   juego hoy" que nadie pidió. Por eso el universo se fotografía UNA VEZ AL DÍA con la bolsa
-   cerrada (`refresh_snapshot`, lo llama el job de las 16:30 ET) y los escaneos leen esa foto.
-2. **LIQUIDEZ EN DÓLARES, NO EN ACCIONES.** Contar acciones castiga a los valores caros: PLMR
-   mueve $41M al día y se quedaba fuera por no llegar a 300k acciones. Lo que importa para poder
-   entrar y salir es el dinero negociado.
-3. **TOPE DURO ADEMÁS DEL SUELO.** Un umbral fijo deja el tamaño del universo —y por tanto el
-   coste, que es una llamada de Flash por nombre— en manos de lo movida que estuviera la sesión
-   fotografiada: la misma descarga da 2.317 o 2.731 nombres según cuánto se hubiera negociado
-   ya. El tope de `universe_max_names` corta por dinero negociado, así que el gasto queda
-   acotado por diseño y lo que se cae son siempre los menos líquidos.
-
-Fallback: si no hay foto y NASDAQ falla, un SEED offline mínimo solo para no bloquear la
-maquinaria — pero eso se anuncia a gritos en el informe del escaneo (40 nombres no son un
-universo).
-"""
+Filtra por precio y liquidez en DÓLARES con tope duro; foto con bolsa CERRADA (volumen completo)."""
 
 from __future__ import annotations
 
@@ -44,11 +17,11 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Caché en memoria: el universo se refresca 1 vez al día (la composición cambia despacio).
+# In-memory cache; daily refresh (composition changes slowly).
 _cache: tuple[date, list[str]] | None = None
-_SNAPSHOT_KEY = "universe_snapshot"     # foto del universo del último cierre (tabla Meta)
+_SNAPSHOT_KEY = "universe_snapshot"
 _NASDAQ_RETRIES = 4
-_NASDAQ_BACKOFF = 20.0                  # segundos; se dobla en cada intento (20 · 40 · 80)
+_NASDAQ_BACKOFF = 20.0
 
 NASDAQ_SCREENER_URL = "https://api.nasdaq.com/api/screener/stocks"
 _NASDAQ_HEADERS = {
@@ -105,28 +78,21 @@ _SYMBOL_RE = re.compile(r"^[A-Z]+(/[A-Z])?$")  # acción común, con clase opcio
 
 
 def _norm_symbol(symbol: str) -> str | None:
-    """Ticker del screener → formato yfinance, o None si no es acción común.
+    """Screener ticker → yfinance format; filters out preferred/series/warrants.
 
-    Acepta letras y clases con barra (BRK/B → BRK-B); descarta preferentes/series ('^'),
-    warrants, units y símbolos raros.
-    """
+    Accepts letters and classes with slash (BRK/B → BRK-B)."""
     if not _SYMBOL_RE.match(symbol):
         return None
     return symbol.replace("/", "-")
 
 
 def _from_nasdaq() -> list[tuple[str, float, float]]:
-    """Filas elegibles del screener: [(símbolo, precio, volumen)], sin la puerta de liquidez.
+    """Eligible rows: [(symbol, price, volume)] without liquidity gate.
 
-    La liquidez se aplica al LEER (`_liquidos`) para poder mover el listón sin volver a pedir
-    nada a NASDAQ; aquí solo va la higiene que no depende de la hora (símbolo, cap, precio,
-    dedup de clases).
-    """
+    Liquidity filter applied at read time for dynamic threshold adjustments."""
     params = {"tableonly": "true", "limit": "0", "download": "true"}
     rows: list[dict] = []
-    # Reintentos con espera creciente: NASDAQ responde 200 con el cuerpo VACÍO cuando no le
-    # apetece servir (visto varias veces seguidas, y no es un bloqueo a nuestra IP). Como esto
-    # se pide una vez al día, esperar un par de minutos sale gratis y evita quedarnos sin foto.
+    # Retries with exponential backoff; NASDAQ sometimes returns 200 with empty body.
     for intento in range(_NASDAQ_RETRIES):
         try:
             with httpx.Client(timeout=30.0, headers=_NASDAQ_HEADERS) as client:
@@ -172,17 +138,9 @@ def _sobre_suelo(filas: list[tuple[str, float, float]]) -> list[tuple[str, float
 
 
 def _liquidos(filas: list[tuple[str, float, float]]) -> list[str]:
-    """Universo elegible: suelo de liquidez EN DÓLARES + tope duro por dinero negociado.
+    """Eligible universe: dollar-volume floor + hard cap on names scanned.
 
-    Son dos cortes porque hacen cosas distintas. El SUELO es higiene: por debajo de
-    `universe_min_dollar_volume` no hay mercado en el que entrar y salir. El TOPE es
-    PRESUPUESTO: el pre-scorer gasta una llamada por nombre, así que el universo no puede
-    depender de a qué hora se sacó la foto ni de si aquel viernes de agosto la sesión estuvo
-    muerta. En una sesión normal muerde el tope; en una floja, el suelo.
-
-    Se devuelve ALFABÉTICO, no por volumen: la ventana rotatoria de `sample_for_scan` necesita
-    un orden estable entre escaneos, y el ranking de volumen del día no lo es.
-    """
+    Returned alphabetically (not by volume) for stable rotation in sample_for_scan."""
     return sorted(sym for sym, _px, _vol in _sobre_suelo(filas)[:settings.universe_max_names])
 
 
@@ -222,8 +180,9 @@ def snapshot_date(db) -> date | None:  # noqa: ANN001
 
 
 def refresh_snapshot(db) -> int:  # noqa: ANN001
-    """Fotografía el universo y lo persiste. Se llama CON LA BOLSA CERRADA (job de 16:30 ET),
-    que es cuando el volumen del día ya está completo. Devuelve cuántas filas guardó."""
+    """Snapshot universe and persist. Called with market closed (daily volume complete).
+
+    Returns row count."""
     from app.models import Meta
 
     filas = _from_nasdaq()
@@ -241,14 +200,9 @@ def refresh_snapshot(db) -> int:  # noqa: ANN001
 
 
 def refresh_snapshot_and_report(db) -> dict:  # noqa: ANN001
-    """Relanza la foto A MANO (misma toma de datos que `refresh_snapshot`, la que llama el job
-    de las 16:30 ET) y devuelve `{"at": iso, "size": n}` listo para la API.
+    """Manual snapshot refresh; returns {"at": iso, "size": n} for API.
 
-    Pensado para el botón manual de la web: si una noche NASDAQ no respondió y el cron se quedó
-    sin foto, el dueño la repite antes del escaneo del martes sin esperar a los reintentos
-    automáticos de las 18:30/20:30/22:30 ET. NO comprueba si ya hay foto de hoy (a diferencia
-    del job): un clic manual siempre fuerza la descarga.
-    """
+    Always forces download (unlike scheduled job); no today-check."""
     from app.models import Meta
 
     refresh_snapshot(db)                     # descarga y persiste; si falla, la excepción sube
@@ -259,13 +213,9 @@ def refresh_snapshot_and_report(db) -> dict:  # noqa: ANN001
 
 
 def universe_for_scan(db) -> tuple[list[str], dict]:  # noqa: ANN001
-    """(símbolos, procedencia) para un escaneo. Prefiere la foto del último cierre.
+    """(symbols, provenance) for scan; prefers last-close snapshot.
 
-    `procedencia` = {"fuente": cierre|vivo|seed, "at": iso|None, "dias": int|None, "size": n,
-    "sobre_suelo": n} y viaja al informe del escaneo: si algún día se trabaja con 40 nombres, con
-    una foto de hace una semana o con un tope que se está comiendo media bolsa, tiene que verse
-    en la web, no en los logs. `sobre_suelo` > `size` significa que mordió el tope.
-    """
+    Provenance travels to report; sobre_suelo > size = cap bite."""
     from app.models import Meta
 
     row = db.get(Meta, _SNAPSHOT_KEY)
@@ -301,14 +251,9 @@ def universe_for_scan(db) -> tuple[list[str], dict]:  # noqa: ANN001
 
 def sample_for_scan(always_include: list[str], n: int | None, offset: int = 0,
                     universe: list[str] | None = None) -> list[str]:
-    """Nombres a analizar en un escaneo.
+    """Names to scan: always_include (positions/watchlist) + rotating universe window.
 
-    `always_include` (posiciones + watchlist, SIEMPRE dentro) + el universo. Si `n` es None (o
-    ≥ tamaño total) → TODO el universo (cobertura completa). Si `n` es un número → ventana
-    ROTATORIA de tamaño n a partir de `offset` (envuelve al final del universo ordenado), para que
-    semanas consecutivas tejan el universo SIN REPETIR. El caller persiste `offset` (0 = desde el
-    inicio). El universo llega ordenado, así que cada ventana es un tramo estable y disjunto.
-    """
+    If n is None: full universe. Else: rotating window (wraps) for weekly coverage without repeat."""
     always = list(dict.fromkeys(t.upper() for t in always_include if t))  # dedup, mantiene orden
     if universe is None:                       # sin universo dado, en vivo (tests y usos sueltos)
         universe = build_universe()

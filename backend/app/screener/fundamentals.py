@@ -28,34 +28,20 @@ logger = logging.getLogger(__name__)
 
 _FUND_CACHE_TTL_H = 12.0   # ver `FundamentalsCache` en models.py para el motivo
 
-# Pausa (segundos) que `gather()` respeta tras CADA petición al scraper de Yahoo. Deliberadamente
-# NO es un parámetro de `gather()`: la firma tiene que quedar IDÉNTICA a la de antes de este
-# cambio porque los tests existentes (`test_capa_media_y_opa.py` y compañía) sustituyen
-# `fund_mod.gather` entero por un lambda de firma fija — un kwarg nuevo en la llamada real
-# rompería esos stubs sin tocar ni una línea suya. `scan_service` (dueño de `_GATHER_WORKERS`/
-# `_GATHER_PACE_S`, la política de ritmo) la fija aquí antes de lanzar el paso de gather; 0.0 por
-# defecto = sin pausa, para scripts sueltos/tests que llaman a `gather()` sin pasar por el escaneo.
+# Pausa tras cada petición Yahoo (módulo, no parámetro gather): scan_service fija antes gather.
+# 0.0 defecto (sin pausa) para tests; no es kwarg para mantener firma estable ante stubs.
 _GATHER_PACE_S = 0.0
 
-# `gather()` corre en los hilos del gather del scan_service, todos compartiendo LA MISMA Session
-# de SQLAlchemy — no es thread-safe, y sin este lock el acceso concurrente corrompía la lectura
-# de la columna JSON (json.loads sobre bytes a medio escribir de otro hilo, "Expecting value:
-# line 1 column 1 (char 0)"). Solo serializa la caché, no el resto del gather.
+# _CACHE_LOCK serializa caché (SQLAlchemy no es thread-safe en JSON concurrente).
+# _SCRAPER_LOCK: consentimiento/crumb una sola vez/proceso; si falla, todo a yfinance puro.
 _CACHE_LOCK = threading.Lock()
-
-# (sesión, crumb) del scraper de Yahoo (ver `yahoo_scraper.py`), consentido UNA sola vez por
-# proceso — no por ticker, no por hilo. `_SCRAPER_CACHE` guarda tanto el éxito como el fallo
-# (clave "ok" presente = ya se intentó): si el consentimiento/crumb falla una vez, NINGÚN hilo
-# vuelve a reintentarlo dentro del mismo proceso, y el escaneo entero cae a yfinance puro,
-# exactamente el comportamiento de antes de este cambio.
 _SCRAPER_LOCK = threading.Lock()
 _SCRAPER_CACHE: dict[str, object] = {}
 
 
 def _scraper_session() -> tuple[yahoo_scraper.creq.Session, str] | None:
-    """(sesión, crumb) del scraper, o None si no se pudo establecer (todo el escaneo cae a
-    yfinance puro). Doble-check bajo lock: solo el primer hilo que llega paga el coste de
-    consentir; el resto solo lee la caché ya resuelta."""
+    """(sesión, crumb) del scraper, o None (todo cae a yfinance puro).
+    Doble-check bajo lock: primer hilo paga consentimiento, resto lee caché."""
     if not _SCRAPER_CACHE:
         with _SCRAPER_LOCK:
             if not _SCRAPER_CACHE:
@@ -173,12 +159,8 @@ _FUNDAMENTAL_FIELDS: list[tuple[str, str, str]] = [
     ("compensationRisk", "Comp risk (1-10)", "num"),
     ("shareHolderRightsRisk", "Shareholder-rights risk (1-10)", "num"),
     ("overallRisk", "Overall governance risk (1-10)", "num"),
-    # Completa el Exhibit 2B (16-ago): lo que quedaba fuera de la plantilla original no era un
-    # hueco de código, era ausencia real de dato en yfinance para nombres pequeños/extranjeros
-    # (medido: los 5 campos de riesgo de arriba, p.ej., vienen `None` en DAC pero completos en
-    # AAPL/MSFT). Estos 20 SÍ se verificaron fiables (8-9 de 9 tickers reales de la cartera y
-    # finalistas del 16-ago, split factor/date aparte — solo aplica a quien haya partido acciones
-    # alguna vez, 2/9 es lo esperable, no un fallo).
+    # Completa el Exhibit 2B: lo que faltaba no era un hueco de código, era ausencia real de dato
+    # en yfinance para nombres pequeños/extranjeros. Estos 20 se verificaron fiables.
     ("previousClose", "Previous close", "num"),
     ("open", "Today's open", "num"),
     ("dayLow", "Today's low", "num"),
@@ -199,11 +181,8 @@ _FUNDAMENTAL_FIELDS: list[tuple[str, str, str]] = [
     ("lastSplitFactor", "Last stock split factor", "str"),
     ("lastSplitDate", "Last stock split date", "date"),
     ("volume", "Today's volume (shares)", "cnt"),
-    # Últimos 12 del Exhibit 2B (16-ago), verificados fiables (9/9 tickers reales salvo
-    # `trailingPegRatio`, 4/9 — se completa igual, `_fmt` ya omite el campo cuando no hay dato).
-    # Las 4 variantes "Regular Market" y `averageDailyVolume10Day` casi siempre COINCIDEN con su
-    # par genérico ya listado arriba (el escaneo corre en sesión normal, nunca fuera de horario) —
-    # se listan de todas formas por fidelidad literal al 2B, no porque aporten un dato distinto.
+    # Últimos 12 del Exhibit 2B, verificados fiables contra tickers reales (`_fmt` omite el
+    # campo si no hay dato). Las variantes "Regular Market" se listan por fidelidad literal.
     ("regularMarketPreviousClose", "Previous close (regular mkt)", "num"),
     ("regularMarketOpen", "Today's open (regular mkt)", "num"),
     ("regularMarketDayLow", "Today's low (regular mkt)", "num"),
@@ -276,23 +255,13 @@ def _fmt(value: object, kind: str) -> str | None:
 
 
 def _fundamentals_text(info: dict) -> str:
-    """Los campos SIN dato se omiten en vez de escribirse como "n/d".
-
-    Dos motivos. Uno, coste: son líneas que viajan en ~3.000 prompts por escaneo sin decir nada.
-    Dos, y más importante, "Analyst reco: none" no es neutro — "none" se lee como "los analistas
-    no la recomiendan" cuando en realidad significa "no hay dato". Un campo ausente no engaña;
-    uno que dice "none" sí puede.
-    """
+    """Omite campos sin dato (no escribe "n/d"): "none" engaña; ausente no."""
     lines = []
     for key, label, kind in _FUNDAMENTAL_FIELDS:
         s = _fmt(info.get(key), kind)
         if s is not None:
             lines.append(f"- {label}: {s}")
-    # Volumen en DINERO, ya multiplicado. Aritmética sobre dos datos que ya damos, del mismo tipo
-    # que el "price vs analyst mean target" — no una conclusión nuestra. Va derivado porque el
-    # volumen en ACCIONES no es comparable entre nombres: 2M de acciones son $38M en una de $19 y
-    # $1.000M en una de $500, y esa diferencia es justo lo que decide si una posición se puede
-    # abrir o no.
+    # Volumen en dinero (multiplicado): aritmética sobre datos que ya damos, dato sí (no conclusión).
     vol, precio = info.get("averageVolume"), (info.get("currentPrice")
                                               or info.get("regularMarketPrice"))
     if vol and precio:
@@ -310,14 +279,8 @@ def _technical_text(info: dict, hist) -> str:
         if price is None:
             price = float(close.iloc[-1])
         parts.append(f"price ${float(close.iloc[-1]):.2f}")
-        # Solo lo que el paper pasa (Exhibit 2B): precio, medias de 50 y 200, rango de 52
-        # semanas, beta y cambio a 52 semanas. Fuera el RSI (no aparece ni una
-        # vez en el paper), el "% por debajo del máximo", el cambio a 5 días y el de ~6 meses:
-        # los cuatro los calculábamos NOSOTROS y se los servíamos masticados en una línea que se
-        # lee de un vistazo. El paper da el máximo y el precio y deja que el modelo saque la
-        # conclusión si quiere. Medido: las carteras salían a un 7-8% de máximos con una
-        # mediana del universo finalista del 11%, y estas cuatro métricas eran el canal más
-        # probable. Mismo criterio que el "fuerte→débil" de los sectores: dato sí, conclusión no.
+        # Solo lo que el paper pasa (Exhibit 2B): precio, MA50/200, 52w range, beta, 52w change.
+        # Sin conclusiones (RSI, "% below high", etc); dato sí, interpretación no.
         ma50, ma200 = ta.sma(close, 50), ta.sma(close, 200)
         if ma50 == ma50:
             parts.append(f"MA50 ${ma50:.2f}")
@@ -326,11 +289,7 @@ def _technical_text(info: dict, hist) -> str:
     lo, hi = info.get("fiftyTwoWeekLow"), info.get("fiftyTwoWeekHigh")
     if lo and hi:
         parts.append(f"52w range ${lo:.2f}-${hi:.2f}")
-    # Precio contra el objetivo medio del consenso, ya restado. Los dos números viajaban al
-    # prompt en secciones distintas (el objetivo entre 50 líneas de fundamentales, el precio
-    # aquí) y la resta quedaba a cargo del modelo. Es aritmética sobre datos que ya damos, del
-    # mismo tipo que "% below 1y high" — no una conclusión nuestra. El 7-ago un nombre cotizaba
-    # un 17% POR ENCIMA del objetivo medio y esa distancia no se veía en ninguna línea.
+    # Precio vs target medio: aritmética sobre dos datos que ya damos (dato sí, no conclusión).
     tgt = info.get("targetMeanPrice")
     if tgt and price:
         parts.append(f"price vs analyst mean target {((price / float(tgt)) - 1) * 100:+.0f}%")
@@ -344,12 +303,7 @@ def _technical_text(info: dict, hist) -> str:
 
 
 def _earnings_text(info: dict) -> str:
-    """Próxima fecha de resultados, como DATO neutro y sin instrucción (dato sí, regla no).
-
-    `.info` ya trae la ventana (`earningsTimestampStart/End`, unix) — cero llamadas extra.
-    Tras publicar resultados, yfinance apunta ya al trimestre siguiente, así que la fecha puede
-    ser pasada unos días: se etiqueta como "last" en vez de ocultarla, que también es dato.
-    """
+    """Próxima fecha de resultados: dato neutro. "last" si ya pasada (también es dato)."""
     start = info.get("earningsTimestampStart") or info.get("earningsTimestamp")
     if not start:
         return ""
@@ -366,8 +320,7 @@ def _earnings_text(info: dict) -> str:
 
 
 def _recorta_palabra(texto: str, max_chars: int) -> str:
-    """Recorta `texto` a `max_chars` sin partir una palabra por la mitad, añadiendo "…" si
-    hubo que cortar. Se separa de `_news()` para poder probarlo suelto."""
+    """Recorta texto sin partir palabra, añade "…" si hubo corte."""
     if len(texto) <= max_chars:
         return texto
     corte = texto[:max_chars].rsplit(" ", 1)[0]
@@ -375,12 +328,7 @@ def _recorta_palabra(texto: str, max_chars: int) -> str:
 
 
 def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
-    """Titulares recientes CON su resumen, no solo el título: el Exhibit 2A del paper pide
-    "headlines with summaries", y un titular suelto (a veces una sola frase ambigua) es menos
-    informativo que titular + el resumen que yfinance ya trae en el mismo item. Se juntan con
-    " — " y se recorta a 300 caracteres por palabra completa (nunca a medias) para que no
-    infle el prompt — son hasta 8 por empresa y esto corre en ~3.000 llamadas del triaje barato.
-    """
+    """Titulares + resumen (Exhibit 2A: "headlines with summaries"). Recortado a 300 chars/palabra."""
     out: list[str] = []
     try:
         for item in (yt.news or [])[:max_items]:
@@ -397,38 +345,8 @@ def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
 
 
 def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa: ANN001
-    """Baja .info + histórico (para técnico) + noticias de un ticker.
-
-    Devuelve `(datos, motivo)`: `motivo` es texto corto (tipo de excepción + mensaje) SOLO si
-    `datos` es None — antes la excepción se tragaba entera (`except Exception: return None`) y
-    no quedaba ni rastro de POR QUÉ. Medido en varios escaneos reales: hasta el 82% de la
-    muestra sin datos de golpe, causa real un 401 "Invalid Crumb" de Yahoo bajo la ráfaga del
-    gather (bloqueo del crumb de autenticación, no un 429 de rate-limit clásico) — invisible
-    hasta entonces salvo bajando a mano a los logs de Railway. Raíz real (comprobada en vivo, ver
-    `yahoo_scraper.py`): las IP de la UE caen al muro de consentimiento GDPR
-    (`consent.yahoo.com`) y yfinance nunca implementa ese flujo.
-
-    Motor PRIMARIO ahora es `yahoo_scraper.gather_scraper()` (consiente una vez, reutiliza el
-    crumb para todo el escaneo): si su sesión no se pudo establecer, o si el ticker da un fallo
-    de "sin datos" genuino (200 OK pero deslistado/vacío), se comporta igual que antes. Si el
-    scraper da un fallo de TRANSPORTE puntual (HTTP/red/JSON, crumb roto a mitad de escaneo), se
-    reintenta ESE ticker por yfinance puro (el bloque de abajo, sin tocar). Si el scraper no está
-    disponible en absoluto (falló al consentir), el escaneo entero cae a yfinance puro desde el
-    principio, en silencio — exactamente el comportamiento de antes de este cambio.
-
-    `_GATHER_PACE_S` (módulo, fijado por `scan_service` antes del paso de gather), si es >0,
-    pausa esa cantidad de segundos tras CADA petición al scraper — política de ritmo que decide
-    el caller, no este módulo (ver comentario junto a la constante).
-
-    Se probó agrupar `.history()` con `yf.download()` para toda la muestra de una vez y se
-    REVIRTIÓ el mismo día: su pool interno de hilos agotó el límite de hilos del contenedor en
-    producción ("getaddrinfo() thread failed to start") — y Yahoo tampoco tiene un endpoint de
-    verdad agrupado para esto, solo paraleliza la misma cantidad de peticiones bajo el capó.
-
-    `db`, si se pasa, cachea 12h (`FundamentalsCache`): un segundo escaneo/test el mismo día
-    reutiliza los datos del primero en vez de volver a pedirle 9.000 peticiones a Yahoo. Sin
-    `db` (tests, scripts sueltos) funciona exactamente igual que antes, sin caché.
-    """
+    """Baja .info + histórico + noticias: devuelve (datos, motivo_si_None) o (data, None).
+    Motor: yahoo_scraper primario; fallback yfinance. DB cachea 12h. PACE_S fijado por scan_service."""
     if db is not None:
         cached = _cache_get(db, ticker)
         if cached is not None:

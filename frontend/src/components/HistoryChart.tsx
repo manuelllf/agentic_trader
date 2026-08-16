@@ -1,17 +1,7 @@
 "use client";
 
-/**
- * Curva histórica: cartera vs S&P 500 en índice base 100 (los flujos no cuentan como
- * rentabilidad — lo descuenta el backend). SVG propio, sin dependencias.
- *
- * Un solo eje: ambas series re-basadas a 100 al inicio de la ventana elegida (1S/1M/Todo),
- * así el rango corto compara "desde entonces" y no arrastra niveles de la inauguración.
- * El S&P va en gris DISCONTINUO a propósito (referencia, no una serie par): identidad por
- * trazo + etiqueta directa + leyenda, nunca solo por color.
- *
- * Los rangos llegan hasta 1 mes y ya: el libro nació el 18-jul-2026, así que un YTD, un anual
- * o un 6M no medirían nada — enseñarían meses vacíos con pinta de resultado.
- */
+/** Historical equity curve: portfolio vs S&P 500 on base-100 index (flows excluded).
+ *  Single axis with two ranges selected (1W/1M/All). S&P dashed as reference, not peer series. */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { money } from "@/lib/format";
