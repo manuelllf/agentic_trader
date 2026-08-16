@@ -173,6 +173,49 @@ _FUNDAMENTAL_FIELDS: list[tuple[str, str, str]] = [
     ("compensationRisk", "Comp risk (1-10)", "num"),
     ("shareHolderRightsRisk", "Shareholder-rights risk (1-10)", "num"),
     ("overallRisk", "Overall governance risk (1-10)", "num"),
+    # Completa el Exhibit 2B (16-ago): lo que quedaba fuera de la plantilla original no era un
+    # hueco de código, era ausencia real de dato en yfinance para nombres pequeños/extranjeros
+    # (medido: los 5 campos de riesgo de arriba, p.ej., vienen `None` en DAC pero completos en
+    # AAPL/MSFT). Estos 20 SÍ se verificaron fiables (8-9 de 9 tickers reales de la cartera y
+    # finalistas del 16-ago, split factor/date aparte — solo aplica a quien haya partido acciones
+    # alguna vez, 2/9 es lo esperable, no un fallo).
+    ("previousClose", "Previous close", "num"),
+    ("open", "Today's open", "num"),
+    ("dayLow", "Today's low", "num"),
+    ("dayHigh", "Today's high", "num"),
+    ("bid", "Bid", "num"),
+    ("ask", "Ask", "num"),
+    ("bidSize", "Bid size (shares)", "cnt"),
+    ("askSize", "Ask size (shares)", "cnt"),
+    ("dividendRate", "Annual dividend rate", "num"),
+    ("lastDividendValue", "Last dividend value", "num"),
+    ("lastDividendDate", "Last dividend date", "date"),
+    ("impliedSharesOutstanding", "Implied shares outstanding", "cnt"),
+    ("currency", "Trading currency", "str"),
+    ("financialCurrency", "Financial currency", "str"),
+    ("lastFiscalYearEnd", "Last fiscal year end", "date"),
+    ("nextFiscalYearEnd", "Next fiscal year end", "date"),
+    ("mostRecentQuarter", "Most recent quarter", "date"),
+    ("lastSplitFactor", "Last stock split factor", "str"),
+    ("lastSplitDate", "Last stock split date", "date"),
+    ("volume", "Today's volume (shares)", "cnt"),
+    # Últimos 12 del Exhibit 2B (16-ago), verificados fiables (9/9 tickers reales salvo
+    # `trailingPegRatio`, 4/9 — se completa igual, `_fmt` ya omite el campo cuando no hay dato).
+    # Las 4 variantes "Regular Market" y `averageDailyVolume10Day` casi siempre COINCIDEN con su
+    # par genérico ya listado arriba (el escaneo corre en sesión normal, nunca fuera de horario) —
+    # se listan de todas formas por fidelidad literal al 2B, no porque aporten un dato distinto.
+    ("regularMarketPreviousClose", "Previous close (regular mkt)", "num"),
+    ("regularMarketOpen", "Today's open (regular mkt)", "num"),
+    ("regularMarketDayLow", "Today's low (regular mkt)", "num"),
+    ("regularMarketDayHigh", "Today's high (regular mkt)", "num"),
+    ("regularMarketVolume", "Today's volume, regular mkt (shares)", "cnt"),
+    ("averageDailyVolume10Day", "Avg daily volume 10d, alt (shares/day)", "cnt"),
+    ("trailingAnnualDividendRate", "Annual dividend rate (TTM)", "num"),
+    ("trailingAnnualDividendYield", "Dividend yield (TTM)", "yld"),
+    ("sharesShortPreviousMonthDate", "Short interest date (prev month)", "date"),
+    ("dateShortInterest", "Short interest date (most recent)", "date"),
+    ("targetMedianPrice", "Analyst target (median)", "num"),
+    ("trailingPegRatio", "PEG (trailing)", "num"),
 ]
 
 
@@ -224,6 +267,11 @@ def _fmt(value: object, kind: str) -> str | None:
             if abs(v) >= size:
                 return f"{v / size:.2f}{unit}"
         return f"{v:.0f}"
+    if kind == "date":  # yfinance da estos campos en unix epoch (segundos)
+        try:
+            return datetime.fromtimestamp(v, tz=UTC).strftime("%Y-%m-%d")
+        except (ValueError, OSError, OverflowError):
+            return None
     return f"{v:.2f}"
 
 

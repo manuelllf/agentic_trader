@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.brokers import ibkr_web
 from app.ledger.money import D, to_cents
-from app.models import PersonalPosition
+from app.models import PersonalPosition, utc_iso
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ def summary(db: Session) -> dict:
             "unrealized_pnl": str(pnl) if pnl is not None else None,
             "live": live is not None,
         })
-    synced = rows[0].synced_at.isoformat() if rows else None
+    synced = utc_iso(rows[0].synced_at) if rows else None
     return {"synced_at": synced, "total_value": str(to_cents(total_value)),
             "total_unrealized_pnl": str(to_cents(total_pnl)), "positions": out}
 

@@ -126,15 +126,12 @@ class Settings(BaseSettings):
     # con reasoning "high") — el tope es para acotar el gasto por diseño, no porque 80 fuera un
     # límite de calidad. Más finalistas = más candidatos reales para el corte de `select_count`.
     deep_finalists_cap: int = 100                        # tope DURO de finalistas (coste V4-Pro)
-    # 10 → 20 → 30: DESVIACIÓN explícita del paper (comentario original: "nombres al
-    # constructor (paper: 'top 10')"). Motivo: el corte a top-N de `select_top` es código puro
-    # (score + desempate por market cap), ciego a matices — el mismo tipo de corte que dejó
-    # fuera a BKNG (rank #217 global, #11 en su sector) de cualquier análisis. Más candidatos deja
-    # que el constructor, que SÍ lee tesis/edge/riesgo/macro, decida entre más candidatos reales
-    # en vez de que el código descarte nombres solo por nota y tamaño antes de que nadie con más
-    # criterio los vea. Casi gratis: el constructor sigue siendo 1 sola llamada, solo con más
-    # texto en el prompt. `max_positions=5` (LOCKED) no cambia — sigue siendo una cartera de 5.
-    select_count: int = 30                               # nombres al constructor (antes: 10)
+    # 10 → 20 → 30 → 10: se probaron ampliaciones (el corte a top-10 de `select_top` es código
+    # puro, ciego a matices — dejó fuera a BKNG, rank #217 global/#11 en su sector, de cualquier
+    # análisis) pero la decisión final es volver al número LITERAL del paper (Exhibit 1:
+    # "Selection of top 10 companies based on the scores"). Manuel decide fidelidad al paper
+    # sobre la ampliación aquí.
+    select_count: int = 10                               # nombres al constructor (fiel al paper)
     # Tickers que SIEMPRE llegan al profundo para que Manuel vea la opinión del sistema sobre su
     # cartera PERSONAL (IBKR) — sin que eso implique nada sobre la cartera del AGENTE. Una vez
     # en finalistas, compiten exactamente igual que cualquier otro nombre (sin restricción de

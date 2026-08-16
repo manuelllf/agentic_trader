@@ -26,7 +26,7 @@ import yfinance as yf
 from sqlalchemy import select
 
 from app import scan_audit
-from app.models import ScanAudit, _utcnow
+from app.models import ScanAudit, _utcnow, utc_iso
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
                                 for r in rows]}
 
         salida.append({
-            "at": at.isoformat(),
+            "at": utc_iso(at),
             # Del flag de la traza, no inferido de "hay cartera": la construcción se registra
             # también en los observatorios (es su cartera HIPOTÉTICA) y la inferencia vieja
             # etiquetaba todo como decisión. NULL (filas pre-columna) = observatorio.
@@ -192,7 +192,7 @@ def ticker_history(db, ticker: str, limit: int = 26) -> list[dict]:  # noqa: ANN
     stmt = (select(ScanAudit).where(ScanAudit.ticker == ticker.upper())
             .order_by(ScanAudit.scan_at.desc()).limit(limit))
     return [
-        {"at": r.scan_at.isoformat(), "stage": r.stage, "prescore": r.prescore,
+        {"at": utc_iso(r.scan_at), "stage": r.stage, "prescore": r.prescore,
          "deep_score": r.deep_score, "price": r.price, "weight_pct": r.weight_pct}
         for r in db.execute(stmt).scalars()
     ]

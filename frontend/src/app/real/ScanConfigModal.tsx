@@ -47,6 +47,13 @@ export function ScanConfigModal({ onClose, onLaunch }: {
   onLaunch: (overrides: DemoRunOverrides) => void;
 }) {
   const [cfg, setCfg] = useState<Record<Stage, Required<StageLLMOverride>>>(FALLBACK);
+  // Hasta que /config resuelve, los controles quedan BLOQUEADOS (no solo pre-rellenados con
+  // FALLBACK). Sin esto había una carrera real: si el usuario tocaba un desplegable antes de que
+  // la respuesta de /config llegara, el .then() de más abajo pisaba su elección al aplicar los
+  // defaults — un "low" elegido a mano volvía a "none" sin que nadie lo pidiera, y el escaneo
+  // salía con el reasoning de siempre. Bloquear cierra la ventana por construcción en vez de
+  // intentar rastrear campo a campo qué tocó el usuario.
+  const [loaded, setLoaded] = useState(false);
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -69,7 +76,8 @@ export function ScanConfigModal({ onClose, onLaunch }: {
           return next;
         });
       })
-      .catch(() => {}); // el modal sigue usable con los FALLBACK si /config no responde
+      .catch(() => {}) // el modal sigue usable con los FALLBACK si /config no responde
+      .finally(() => setLoaded(true));
   }, []);
 
   const patch = (s: Stage, p: Partial<StageLLMOverride>) =>
@@ -116,8 +124,11 @@ export function ScanConfigModal({ onClose, onLaunch }: {
           <button ref={closeRef} onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto px-4 py-3 text-[12px]">
-          <div className="space-y-2.5">
+        <div className="max-h-[70vh] overflow-y-auto px-4 py-3 text-[12px]" aria-busy={!loaded}>
+          {!loaded && (
+            <p className="mb-2 text-[11px]" style={{ color: T.muted }}>Cargando configuración real…</p>
+          )}
+          <div className={`space-y-2.5 ${loaded ? "" : "pointer-events-none opacity-50"}`}>
             {STAGES.map((s) => <StageRow key={s} stage={s} v={cfg[s]} onChange={(p) => patch(s, p)} />)}
           </div>
         </div>
@@ -128,8 +139,8 @@ export function ScanConfigModal({ onClose, onLaunch }: {
                   style={{ color: T.muted }}>
             Cancelar
           </button>
-          <button onClick={launch}
-                  className="rounded-full px-4 py-1.5 text-[11.5px] font-bold hover:opacity-90"
+          <button onClick={launch} disabled={!loaded}
+                  className="rounded-full px-4 py-1.5 text-[11.5px] font-bold hover:opacity-90 disabled:opacity-50"
                   style={{ background: T.warn, color: "#0d0d0d" }}>
             Lanzar simulación
           </button>

@@ -35,6 +35,22 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def utc_iso(dt: datetime | None) -> str | None:
+    """`.isoformat()` que SIEMPRE lleva el offset UTC explícito.
+
+    SQLite (motor en producción, ver `settings.database_url`) no tiene un tipo de columna con
+    zona horaria real: `DateTime(timezone=True)` escribe con `_utcnow()` (aware), pero SQLite lo
+    guarda como TEXTO plano y lo devuelve NAIVE al leerlo — el dato sigue siendo UTC, pierde solo
+    la etiqueta. `.isoformat()` sobre ese valor naive no lleva "+00:00", y `new Date(...)` en el
+    navegador interpreta un ISO SIN offset como hora LOCAL, no UTC: una fila de las 15:47 UTC
+    salía en pantalla como "15:47" en vez de convertirse a las 17:47 de España (CEST) — medido en
+    `/scan/full`, que serializaba `row.scan_at.isoformat()` a pelo. Repone la etiqueta que SQLite
+    se comió; con Postgres (o cualquier motor con tz real) sería un no-op."""
+    if dt is None:
+        return None
+    return (dt if dt.tzinfo else dt.replace(tzinfo=UTC)).isoformat()
+
+
 class Watchlist(Base):
     """Nombres de score alto que se re-analizan SIEMPRE y aportan continuidad entre escaneos."""
 

@@ -16,7 +16,7 @@ from datetime import timedelta
 
 from sqlalchemy import case, func, select
 
-from app.models import ScanAudit, _utcnow
+from app.models import ScanAudit, _utcnow, utc_iso
 
 RETENTION_DAYS = 90
 DETAIL_TOP = 120        # tope de nombres del detalle (ver `funnel`): la API no es el volcado
@@ -148,7 +148,7 @@ def funnel(db, *, limit: int = 8, detail: bool = False) -> list[dict]:  # noqa: 
         e = por_escaneo.get(at) or {"sectores": [], "pre": 0, "deep": 0, "sel": 0, "funded": 0,
                                     "sin_datos": 0, "prescore_error": 0, "deep_error": 0}
         e["sectores"].sort(key=lambda s: -s["pre"])
-        salida.append({"at": at.isoformat(), **e})
+        salida.append({"at": utc_iso(at), **e})
 
     if detail and salida:
         salida[0]["nombres"] = _detalle(db, fechas[0])

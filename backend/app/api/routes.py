@@ -56,7 +56,7 @@ from app.config import settings
 from app.db import get_db
 from app.ledger import service as ledger
 from app.ledger.money import D, to_cents
-from app.models import Meta, Proposal, Score, Watchlist
+from app.models import Meta, Proposal, Score, Watchlist, utc_iso
 from app.schemas import ProposalOut, ScoreOut, WatchlistOut
 
 public_router = APIRouter()   # sin token: lecturas y teaser de la portada
@@ -364,7 +364,7 @@ def scan_full(at: str | None = None, db: Session = Depends(get_db)) -> dict:
     if row is None:
         return {"scan": None}
     return {"scan": {
-        "at": row.scan_at.isoformat(), "cadence": row.cadence, "decide": row.decide,
+        "at": utc_iso(row.scan_at), "cadence": row.cadence, "decide": row.decide,
         "regime": row.regime, "vix": row.vix, "outlook": row.outlook,
         "universe": row.universe, "counters": row.counters, "cost": row.cost,
         "issues": row.issues, "finalists": row.finalists, "construction": row.construction,
@@ -588,8 +588,8 @@ def watchlist(db: Session = Depends(get_db)) -> list[Watchlist]:
 def _approval_out(a) -> dict:  # noqa: ANN001
     return {
         "id": a.id,
-        "created_at": a.created_at.isoformat() if a.created_at else None,
-        "decided_at": a.decided_at.isoformat() if a.decided_at else None,
+        "created_at": utc_iso(a.created_at),
+        "decided_at": utc_iso(a.decided_at),
         "status": a.status,
         "ticker": a.ticker, "sector": a.sector, "action": a.action,
         "target_weight_pct": a.target_weight_pct, "score": a.score,

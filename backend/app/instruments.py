@@ -5,18 +5,33 @@ USD (el libro habla USD → sin FX extra). El constructor elige LIBREMENTE de es
 puntúan (no pasan por el scorer): se ofrecen como instrumentos siempre disponibles, igual que el
 menú de ETF/bonos/TIPS del prompt del paper. Precio vía yfinance con el símbolo de LSE (sufijo .L).
 
-VACÍO por defecto = comportamiento actual (solo acciones). Rellenar SOLO con símbolos verificados:
-precio USD real en yfinance Y conid comprable en la cuenta IBKR EU — esto último hace falta para el
-LIVE (el broker actual resuelve solo acciones US, ver backlog). Candidatos verificados en yfinance
-(USD): CSPX.L (S&P 500), IDTL.L (Treasury 20+ años), IB01.L (Treasury 0-1 año, cuasi-liquidez).
+Poblado (16-ago) con las categorías del Exhibit 2E ("market, sectors, TIPS, and long and short-
+term bonds") — precio USD verificado en vivo contra yfinance ese mismo día. OJO: el conid
+comprable en la cuenta IBKR EU sigue pendiente (backlog) — el broker actual solo resuelve acciones
+US, así que esto ya afecta a la sombra/observatorio (donde el constructor puede elegirlos) pero NO
+se podrá ejecutar de verdad en la cuenta real hasta que ese hueco se cierre. Si el constructor
+asigna peso a uno de estos en un escaneo que DECIDE, la aprobación de la cuenta real quedará mal
+hasta entonces — vigilar el primer escaneo que los use.
 """
 
 from __future__ import annotations
 
 import yfinance as yf
 
-# symbol (yfinance, LSE .L) → etiqueta corta para el prompt. Vacío = desactivado.
-ALLOWLIST: dict[str, str] = {}
+# symbol (yfinance, LSE .L) → etiqueta corta para el prompt.
+ALLOWLIST: dict[str, str] = {
+    "CSPX.L": "S&P 500 (market)",
+    "IDTL.L": "Treasury 20+y (long bond)",
+    "IB01.L": "Treasury 0-1y (short bond, cuasi-liquidez)",
+    "TIP5.L": "TIPS 0-5y (inflation-linked)",
+    "IUIT.L": "S&P 500 Technology sector",
+    "IUFS.L": "S&P 500 Financials sector",
+    "IUHC.L": "S&P 500 Health Care sector",
+    "IUES.L": "S&P 500 Energy sector",
+    "IUCD.L": "S&P 500 Consumer Discretionary sector",
+    "IUCS.L": "S&P 500 Consumer Staples sector",
+    "IUUS.L": "S&P 500 Utilities sector",
+}
 
 
 def prices() -> dict[str, float]:
