@@ -662,9 +662,9 @@ export default function SombraDashboard() {
                     </details>
                   )}
                   {proposal?.macro_summary && (
-                    <p className="mt-2 border-t border-slate-100 pt-2 text-[11.5px] italic leading-relaxed text-slate-500">
+                    <div className="mt-2 border-t border-slate-100 pt-2 text-[11.5px] italic leading-relaxed text-slate-500">
                       “{richText(proposal.macro_summary)}”
-                    </p>
+                    </div>
                   )}
                 </div>
               </section>
@@ -726,9 +726,9 @@ export default function SombraDashboard() {
                       <summary className="cursor-pointer list-none text-[11px] text-slate-400 hover:text-slate-600">
                         su lectura macro de esta semana ▾
                       </summary>
-                      <p className="mt-1.5 text-[11.5px] italic leading-relaxed text-slate-500">
+                      <div className="mt-1.5 text-[11.5px] italic leading-relaxed text-slate-500">
                         “{richText(report.outlook)}”
-                      </p>
+                      </div>
                     </details>
                   )}
                   <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
@@ -832,9 +832,9 @@ export default function SombraDashboard() {
               </div>
               <div className="p-4 text-xs leading-relaxed text-slate-600">
                 {report?.outlook && (
-                  <p className="mb-3 border-b border-slate-100 pb-3 italic text-slate-500">
+                  <div className="mb-3 border-b border-slate-100 pb-3 italic text-slate-500">
                     “{richText(report.outlook)}”
-                  </p>
+                  </div>
                 )}
                 <div className="divide-y divide-slate-100">
                   {/* Orden de lectura, no de llegada: primero hasta dónde llegó cada nombre

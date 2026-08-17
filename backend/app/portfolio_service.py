@@ -212,21 +212,19 @@ def _equity(db: Session, held: dict, price_map: dict) -> tuple[Decimal, Decimal]
 
 
 def portfolio_text(db: Session, held: dict, price_map: dict) -> str:
-    """Foto de la cartera en texto (para el prompt del constructor)."""
-    cash, equity = _equity(db, held, price_map)
-    lines = [f"Cash ${cash} · Equity ${equity} · max {settings.max_positions} positions, "
-             f"max {settings.max_position_pct}% each."]
+    """Foto de la cartera para el constructor — fiel al paper: no ve caja, coste ni P&L (el
+    paper reconstruye el top-15 de cero cada mes, sin pasarle cartera alguna); nosotros sí le
+    enseñamos QUÉ tiene y con QUÉ peso, lo mínimo para que pueda decidir mantener o rotar bajo
+    LOW TURNOVER. El dinero exacto lo calcula el código, nunca el LLM (ver `SYSTEM`)."""
     if not held:
-        lines.append("No open positions (the sleeve is all cash).")
+        return "No open positions (the sleeve is all cash)."
+    cash, equity = _equity(db, held, price_map)
+    lines = []
     for tk, p in held.items():
         price = D(price_map[tk]) if price_map.get(tk) else p.avg_cost
         value = to_cents(p.quantity * price)
         weight = (value / equity * 100) if equity else ZERO
-        upnl = to_cents(p.quantity * (price - p.avg_cost))
-        lines.append(f"- {tk}: {p.quantity} sh @ ${p.avg_cost} (now ${price}), value ${value}, "
-                     f"weight {weight:.1f}%, unrealized P&L ${upnl}")
-    realized = ledger.snapshot(db).realized_pnl
-    lines.append(f"Realized P&L to date: ${realized}")
+        lines.append(f"- {tk}: {weight:.1f}% of the portfolio")
     return "\n".join(lines)
 
 

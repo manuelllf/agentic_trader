@@ -25,6 +25,10 @@ SYSTEM = (
     "recent or latest. The macro outlook is background context "
     "about the environment the firm operates in; weigh it as you judge appropriate for this "
     "specific company. "
+    # Medido sobre 49 finalistas: sin esta frase las castigadas (RSI≤45) perdían 13,7 puntos de
+    # media y las calientes 5,5 — protege a las caídas de que se las penalice por haber caído.
+    "A price move is not by itself a verdict in either direction: a fall does not make a "
+    "business weak, nor does a rally make it strong. "
     # Anti-sesgo explícito quitado: universo no es S&P 500, divergen absoluto y relativo.
     # "Beat the S&P 500" fija referencia, no dirección.
     "Then assign a "
@@ -60,8 +64,10 @@ MID_SYSTEM = (
     "a cheaper first pass already ranked highly. Your score answers ONE question: how likely is "
     "it that a rigorous deep fundamental analysis would find this company attractive for the next "
     "month? Weigh fundamentals, valuation and news TOGETHER. "
-    # Mismas cláusulas quitadas que en el profundo (`SYSTEM`): los dos jueces del mismo nombre
-    # deben llevar la misma config, o el corte de finalistas queda a medio criterio.
+    # Misma frase que el profundo y por el mismo motivo: los dos jueces del mismo nombre deben
+    # llevar la misma config, o el corte de finalistas queda a medio criterio.
+    "A price move is not by itself a verdict in either direction: a fall does not make a "
+    "business weak, nor does a rally make it strong. "
     "Calibrate the scale: 90+ exceptional (rare), 75-89 strong candidate for deep review, 50-74 "
     # Pasa de UNO a DOS decimales, misma redacción que el profundo. Aquí el empate cuesta
     # más que allí: son ~3.000 nombres compitiendo por ~50 plazas de finalista, y el carril global
@@ -203,7 +209,10 @@ PRESCORE_SYSTEM = (
     "answer ONE question: how likely is it that a rigorous deep fundamental analysis would find "
     "this company attractive for the next month? Weigh fundamentals, valuation and news "
     "TOGETHER. "
-    # Anti-sesgo quitado: consistente en todas las etapas (no solo profundo/media).
+    # Misma frase en las cinco etapas: si los jueces del mismo nombre miden distinto, el corte
+    # de finalistas queda a medio criterio.
+    "A price move is not by itself a verdict in either direction: a fall does not make a "
+    "business weak, nor does a rally make it strong. "
     "Calibrate the scale: 90+ exceptional (rare), 75-89 strong "
     "candidate for deep review, 50-74 unremarkable, <50 weak. Use exactly two decimal places, "
     "and let those decimals carry real precision rather than rounding to quarters or halves - "
@@ -250,6 +259,9 @@ def prescore_one(
             return PrescoreResult(data.ticker, 0.0,
                                   error="SinNota: JSON válido sin score utilizable",
                                   raw=_recorte(raw), confidence=confidence)
+        if confidence is not None and confidence < _LOW_CONFIDENCE:
+            logger.warning("Pre-score de %s: confianza baja (%.4f, token menos seguro) — "
+                           "se acepta igual, es solo aviso", data.ticker, confidence)
         return PrescoreResult(data.ticker, sc, confidence=confidence)
     except Exception as exc:
         logger.warning("Pre-score no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
@@ -277,8 +289,10 @@ PRESCORE_BATCH_SYSTEM = (
     "Judge each company ONLY on its own fundamentals, valuation and news, weighed together. Do "
     "NOT compare or rank the companies against each other, and do not let one company's news or "
     "sector color your judgment of another. "
-    # Mismas cláusulas anti-sesgo quitadas que en el resto del scoring (ver `SYSTEM`) — este
-    # nivel solo corre con OpenRouter local, pero se mantiene consistente con producción.
+    # Misma frase que el resto del scoring (ver `SYSTEM`) — este nivel solo corre con OpenRouter
+    # local, pero se mantiene consistente con producción.
+    "A price move is not by itself a verdict in either direction: a fall does not make a "
+    "business weak, nor does a rally make it strong. "
     "Calibrate the scale: 90+ "
     "exceptional (rare), 75-89 strong candidate for deep review, 50-74 unremarkable, <50 weak. "
     "Use exactly two decimal places, and let those decimals carry real precision rather than "

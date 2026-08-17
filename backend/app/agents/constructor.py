@@ -22,15 +22,19 @@ logger = logging.getLogger(__name__)
 
 SYSTEM = (
     "You are a portfolio manager doing the ALLOCATION step — the stocks were ALREADY SELECTED by "
-    "score. You receive the fund's CURRENT state (positions, cost, cash, P&L, weights), the "
-    "SELECTED stocks with their theses and scores, and a macro outlook. Build a portfolio of "
-    "EXACTLY {max_pos} names to perform well over the next month versus the S&P 500. "
+    "score. You receive the fund's CURRENT holdings and weights, the FULL reports of the "
+    "SELECTED stocks (news, financials, valuation, score) and a macro outlook. "
+    "Build a portfolio of EXACTLY {max_pos} names to perform well over the next month versus the "
+    "S&P 500. "
     "HARD RULES: allocate ONLY among the listed candidates below (the selected stocks, plus any "
     "instruments shown); do NOT add any ticker that is not listed; each weight 0-{max_pct}%; be "
     "FULLY INVESTED — the weights MUST sum to 100% (NO cash); pick EXACTLY {max_pos} of them. "
     "Weight each chosen name by your conviction, reading its fundamentals, valuation, macro "
-    "context and thesis on their own merits. Keep existing holdings' weights stable unless their "
-    "thesis has changed (LOW TURNOVER — a scan does not force a trade). "
+    "context and thesis on their own merits. "
+    # Misma frase que las cuatro etapas de scoring: aquí el juicio se convierte en PESO, así que
+    # sin ella el sesgo por movimiento reciente entra por la puerta de la convicción.
+    "A price move is not by itself a verdict in either direction: a fall does not make a "
+    "business weak, nor does a rally make it strong. "
     "For each position give a thesis, an edge (why it beats the market) and a risk. "
     "Funding exactly {max_pos} of the listed candidates necessarily leaves the others out; for "
     "each one left out, state in one line what made you prefer the funded ones. That is a record "

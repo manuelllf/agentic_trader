@@ -81,9 +81,13 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                 {scan.cost && (
                   <span className={NUMS} style={{ color: T.muted }}>
                     {scan.cost.calls} llamadas ·{" "}
-                    {scan.cost.real_usd_deepseek != null
-                      ? <>${money(scan.cost.real_usd_deepseek)} <span title="Saldo real de DeepSeek antes/después de este escaneo">real</span></>
-                      : <>${money(scan.cost.cost_usd)} <span title="Estimado por tokens, no el saldo real">est.</span></>}
+                    {/* cost_usd manda: no depende de que DeepSeek liquide el saldo (tarda,
+                        real_usd_deepseek se quedaba corto por consultarlo demasiado pronto). */}
+                    ${money(scan.cost.cost_usd)} <span title="Estimado por tokens de cada respuesta">est.</span>
+                    {scan.cost.real_usd_deepseek != null &&
+                      <span title="Saldo de DeepSeek antes/después de este escaneo — puede quedarse corto, la liquidación tarda">
+                        {" "}(saldo: ${money(scan.cost.real_usd_deepseek)})
+                      </span>}
                   </span>
                 )}
               </div>
@@ -91,14 +95,14 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
               {scan.outlook && (
                 <div className="mt-3">
                   <SectionTitle>Tesis macro</SectionTitle>
-                  <p className="mt-1 whitespace-pre-wrap leading-relaxed" style={{ color: T.ink2 }}>{richText(scan.outlook)}</p>
+                  <div className="mt-1 leading-relaxed" style={{ color: T.ink2 }}>{richText(scan.outlook)}</div>
                 </div>
               )}
 
               {scan.construction.summary && (
                 <div className="mt-3">
                   <SectionTitle>Tesis del constructor</SectionTitle>
-                  <p className="mt-1 whitespace-pre-wrap leading-relaxed" style={{ color: T.ink2 }}>{richText(scan.construction.summary)}</p>
+                  <div className="mt-1 leading-relaxed" style={{ color: T.ink2 }}>{richText(scan.construction.summary)}</div>
                 </div>
               )}
 

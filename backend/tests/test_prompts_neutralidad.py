@@ -39,12 +39,15 @@ def test_ningun_juez_prohibe_mirar_los_tecnicos() -> None:
         assert "rsi" not in bajo
 
 
-def test_los_dos_jueces_dicen_lo_mismo_del_movimiento_de_precio() -> None:
-    """Price-move neutrality clause removed; no directional language in scoring."""
+def test_las_cinco_etapas_dicen_lo_mismo_del_movimiento_de_precio() -> None:
+    """Price-move clause in ALL five prompts; measured to protect fallen names."""
+    from app.agents.constructor import SYSTEM as CONSTRUCTOR_SYSTEM
+
     frase = ("A price move is not by itself a verdict in either direction: a fall does not make "
              "a business weak, nor does a rally make it strong.")
-    for texto in (SYSTEM, MID_SYSTEM, PRESCORE_SYSTEM, PRESCORE_BATCH_SYSTEM):
-        assert frase not in texto
+    for texto in (SYSTEM, MID_SYSTEM, PRESCORE_SYSTEM, PRESCORE_BATCH_SYSTEM,
+                  CONSTRUCTOR_SYSTEM):
+        assert frase in texto
     # Sin dirección: nada que diga qué HACER con el movimiento, solo qué no concluir.
     for palabra in ("penalise", "penalize", "discount the score", "reduce the score"):
         assert palabra not in SYSTEM.lower()

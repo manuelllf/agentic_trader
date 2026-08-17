@@ -762,9 +762,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             cash_pct=100.0, positions=[], summary=f"{reason} — 100% en caja.",
         )
     else:
-        candidates_text = "\n".join(
-            f"- {r.ticker} ({data_by_t[r.ticker].sector}) score={r.score}, "
-            f"cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B: {r.headline}"
+        # Informe COMPLETO por candidato, no un titular — fiel a Exhibit 2E ("we have the
+        # following reports for the stocks that were scored the highest").
+        candidates_text = "\n\n".join(
+            f"{r.ticker} ({data_by_t[r.ticker].sector}, cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B) "
+            f"— score {r.score}:\n{r.report}"
             for r in selected
         ) or "(sin candidatos)"
         candidates_text += instruments_mod.prompt_block(instr_prices)  # UCITS ('' si vacío)
@@ -886,10 +888,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                ", ".join(f"{fase}={dur}s" for fase, dur in timings.items() if fase != "total"))
     coste = _llm_usage(macro=macro_llm, prescore=prescore_llm, mid=mid_llm,
                        profundo=deep_llm, constructor=constructor_llm)
-    # Saldo real DESPUÉS: la diferencia con `saldo_antes` es el coste REAL de esta tirada exacta
-    # (facturación de verdad de DeepSeek), no la estimación por tokens de `_llm_usage`/`_PRICING`
-    # de arriba — se guardan las dos, la real manda si está disponible. None si algo del saldo
-    # falló (best-effort) o el escaneo usa OpenRouter (sin este endpoint).
+    # Saldo real DESPUÉS: la liquidación de DeepSeek tarda, esta resta se queda corta
+    # sistemáticamente — `cost_usd` (por tokens) manda para mostrar, esto es solo referencia.
     saldo_despues = (
         deepseek_mod.account_balance_usd(settings.deepseek_api_key, settings.deepseek_base_url)
         if settings.llm_provider == "deepseek" and settings.deepseek_api_key else None
@@ -1003,9 +1003,9 @@ def recheck(db: Session) -> dict:
         construction = constructor_mod.ConstructionResult(
             cash_pct=100.0, positions=[], summary=f"{reason} — 100% en caja.")
     else:
-        candidates_text = "\n".join(
-            f"- {r.ticker} ({r.sector}) score={r.score}, "
-            f"cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B: {r.headline}" for r in selected)
+        candidates_text = "\n\n".join(
+            f"{r.ticker} ({r.sector}, cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B) "
+            f"— score {r.score}:\n{r.report}" for r in selected)
         valid = {r.ticker for r in selected}
         construction = constructor_mod.construct(
             llm, portfolio_text, candidates_text, macro_block,
@@ -1087,9 +1087,9 @@ def redeep(db: Session) -> dict:
         construction = constructor_mod.ConstructionResult(
             cash_pct=100.0, positions=[], summary="Sin candidatos tras re-análisis — 100% caja.")
     else:
-        candidates_text = "\n".join(
-            f"- {r.ticker} ({data_by_t[r.ticker].sector}) score={r.score}, "
-            f"cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B: {r.headline}" for r in selected)
+        candidates_text = "\n\n".join(
+            f"{r.ticker} ({data_by_t[r.ticker].sector}, cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B) "
+            f"— score {r.score}:\n{r.report}" for r in selected)
         valid = {r.ticker for r in selected}
         constructor_llm = get_llm(reasoning_effort=settings.reasoning_effort)  # solo esto → max
         construction = constructor_mod.construct(
