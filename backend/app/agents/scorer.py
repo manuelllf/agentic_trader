@@ -232,20 +232,29 @@ def prescore_one(
     """Triaje de un ticker: best-effort 0 si falla. temperature=1.0 (DeepSeek para análisis).
     temperature/top_p mandados en todas etapas aunque reasoning los ignore."""
     raw = ""
+    confidence: float | None = None
+    # chat_logprobs: solo DeepSeekProvider (duck-typing, ver prescore_batch). Individual = 1
+    # ticker por respuesta, así que aquí SÍ mapea limpio: la confianza es de ESE ticker.
+    chat_fn = getattr(llm, "chat_logprobs", None)
     try:
-        raw = llm.chat(PRESCORE_SYSTEM, _prescore_prompt(data, macro_block),
-                       temperature=temperature, top_p=top_p) or ""
+        if chat_fn is not None:
+            raw, confidence = chat_fn(PRESCORE_SYSTEM, _prescore_prompt(data, macro_block),
+                                      temperature=temperature, top_p=top_p)
+            raw = raw or ""
+        else:
+            raw = llm.chat(PRESCORE_SYSTEM, _prescore_prompt(data, macro_block),
+                           temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
         if sc <= 0:
             return PrescoreResult(data.ticker, 0.0,
                                   error="SinNota: JSON válido sin score utilizable",
-                                  raw=_recorte(raw))
-        return PrescoreResult(data.ticker, sc)
+                                  raw=_recorte(raw), confidence=confidence)
+        return PrescoreResult(data.ticker, sc, confidence=confidence)
     except Exception as exc:
         logger.warning("Pre-score no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
         return PrescoreResult(data.ticker, 0.0, error=f"{type(exc).__name__}: {exc}",
-                              raw=_recorte(raw))
+                              raw=_recorte(raw), confidence=confidence)
 
 
 # ---------------------------------------------------------------------------------------------

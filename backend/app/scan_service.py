@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # Concurrencia: OpenRouter=10 (local); DeepSeek=500/100/50 (producc).
 # Pico real = MAYOR de 3 (etapas seriales), no suma. Límite duro: cgroup pids.max=1000.
 if settings.llm_provider == "deepseek":
-    _PRESCORE_WORKERS = 155   # Flash, triaje por lotes de 20 (prueba: menos conexiones largas)
+    _PRESCORE_WORKERS = 500   # Flash, triaje individual (1 llamada/ticker, fiel al paper)
     _MID_WORKERS = 100        # Pro, capa media (~200 candidatos)
     _DEEP_WORKERS = 50        # Pro, profundo (hasta `deep_finalists_cap` finalistas)
 else:
@@ -533,6 +533,15 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
 
     _prescore_kw = _sampling_kwargs(prescore_cfg)
 
+    def _pre_uno(d):
+        p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
+        for _ in range(2):   # mismo criterio que capa media/profundo: DOS reintentos, no uno
+            if not p.error:
+                break
+            p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
+        scan_progress.tick(ok=not p.error, reason=f"{p.ticker}: {p.error}" if p.error else None)
+        return [(p, d)]
+
     def _pre_lote(lote: list):
         notas = scorer_mod.prescore_batch(prescore_llm, lote, macro_block, **_prescore_kw)
         par = [(notas[d.ticker], d) for d in lote]
@@ -543,11 +552,17 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                            reason=f"{errores[0].ticker}: {errores[0].error}" if errores else None)
         return par
 
-    # Prueba: lotes de `prescore_batch_size` en TODOS los proveedores (antes solo OpenRouter),
-    # a ver si el ahorro medido allí se replica en el circuito directo de DeepSeek.
-    tam_lote = settings.prescore_batch_size
-    tareas = [datos_ok[i:i + tam_lote] for i in range(0, len(datos_ok), tam_lote)]
-    correr, unidad = _pre_lote, "lotes"
+    # Individual (fiel al paper, 1 llamada/ticker, hasta 2 reintentos) — solo DeepSeek directo.
+    # Lotes SOLO con OpenRouter (pruebas locales): el overhead fijo por llamada detrás de su
+    # alias de ~28 proveedores sí lo justifica; en DeepSeek directo los lotes costaban MÁS (cada
+    # entrada repite el ticker en la respuesta) sin comprar nada a cambio.
+    if settings.llm_provider == "deepseek":
+        tareas = datos_ok
+        correr, unidad = _pre_uno, "nombres"
+    else:
+        tam_lote = settings.prescore_batch_size
+        tareas = [datos_ok[i:i + tam_lote] for i in range(0, len(datos_ok), tam_lote)]
+        correr, unidad = _pre_lote, "lotes"
 
     scan_progress.set_stage("prescore", total=len(tareas), unit=unidad)
     logger.info("Escaneo: iniciando PRESCORE (%d %s, %d nombres, modelo=%s, reasoning=%s).",
