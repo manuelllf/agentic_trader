@@ -15,6 +15,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+from datetime import UTC, datetime
 
 import httpx
 
@@ -29,15 +30,22 @@ logger = logging.getLogger(__name__)
 # proveedor, no 28 — se confía en el timeout normal de httpx, sin hilo extra.
 _HARD_TIMEOUT = 180.0
 
-# USD por 1M de tokens: (input cache-miss, input cache-hit, output). Confirmado en
-# api-docs.deepseek.com/quick_start/pricing. La caché de prefijo es automática (sin pedirla) —
-# el ahorro depende de que el prompt repita un prefijo idéntico entre llamadas (ver
-# `scorer.prescore_one`/`mid_prescore`/`score`, que ponen el bloque macro constante delante del
-# contenido variable del ticker).
-_PRICING: dict[str, tuple[float, float, float]] = {
-    "deepseek-v4-pro": (0.435, 0.003625, 0.87),
-    "deepseek-v4-flash": (0.14, 0.0028, 0.28),
+# USD por 1M de tokens: (input cache-miss, input cache-hit, output). Off-peak son la mitad del
+# peak (api-docs.deepseek.com/quick_start/pricing) — peak es 01:00-04:00 y 06:00-10:00 UTC.
+_PRICING_OFFPEAK: dict[str, tuple[float, float, float]] = {
+    "deepseek-v4-pro": (0.66, 0.022, 1.98),
+    "deepseek-v4-flash": (0.22, 0.007, 0.66),
 }
+_PRICING_PEAK: dict[str, tuple[float, float, float]] = {
+    "deepseek-v4-pro": (1.32, 0.044, 3.96),
+    "deepseek-v4-flash": (0.44, 0.014, 1.32),
+}
+
+
+def _pricing_now() -> dict[str, tuple[float, float, float]]:
+    h = datetime.now(UTC).hour
+    peak = (1 <= h < 4) or (6 <= h < 10)
+    return _PRICING_PEAK if peak else _PRICING_OFFPEAK
 
 
 class DeepSeekProvider:
@@ -77,7 +85,7 @@ class DeepSeekProvider:
         ct = int(usage.get("completion_tokens", 0) or 0)
         hit = int(usage.get("prompt_cache_hit_tokens", 0) or 0)
         miss = int(usage.get("prompt_cache_miss_tokens", 0) or pt - hit)
-        pin_miss, pin_hit, pout = _PRICING.get(self._model, (0.0, 0.0, 0.0))
+        pin_miss, pin_hit, pout = _pricing_now().get(self._model, (0.0, 0.0, 0.0))
         cost = (miss * pin_miss + hit * pin_hit + ct * pout) / 1_000_000
         self._usage["calls"] += 1
         self._usage["prompt_tokens"] += pt
@@ -128,9 +136,8 @@ def account_balance_usd(api_key: str, base_url: str = "https://api.deepseek.com"
     `GET /user/balance`, endpoint aparte del de chat (confirmado en api-docs.deepseek.com): la
     respuesta de una llamada de chat solo trae tokens, nunca un coste ya facturado (a diferencia
     de OpenRouter con `usage.include`). Comparar el saldo antes/después de un escaneo da el coste
-    real de esa tirada sin depender de `_PRICING` (que es solo un respaldo para `ScanRun.cost`
-    mientras el escaneo corre). None si falla o no hay currency USD — best-effort, no debe
-    romper el escaneo por un fallo de este endpoint aparte.
+    real de esa tirada sin depender de la tabla de precios (solo un respaldo para `ScanRun.cost`
+    mientras el escaneo corre). None si falla o no hay currency USD.
     """
     try:
         resp = httpx.get(
