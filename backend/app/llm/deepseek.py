@@ -15,6 +15,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import math
 from datetime import UTC, datetime
 
 import httpx
@@ -99,8 +100,8 @@ class DeepSeekProvider:
         by_model["completion_tokens"] += ct
         by_model["cost_usd"] += cost
 
-    def chat(self, system: str, user: str, *, temperature: float = 0.3,
-            top_p: float | None = None) -> str:
+    def _request(self, system: str, user: str, *, temperature: float,
+                top_p: float | None, logprobs: bool) -> dict:
         payload = {
             "model": self._model,
             "messages": [
@@ -114,6 +115,8 @@ class DeepSeekProvider:
             payload["top_p"] = top_p
         if self._reasoning_effort:
             payload["reasoning_effort"] = self._reasoning_effort
+        if logprobs:
+            payload["logprobs"] = True
 
         # `timeout` de httpx aplica al connect Y al read — un `_HARD_TIMEOUT` generoso (180s)
         # directamente en el cliente, sin hilo ni executor de por medio.
@@ -127,7 +130,26 @@ class DeepSeekProvider:
             crudo = resp.content
         data = json.loads(crudo.decode("utf-8"))
         self._account(data.get("usage"))
+        return data
+
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
+        data = self._request(system, user, temperature=temperature, top_p=top_p, logprobs=False)
         return data["choices"][0]["message"]["content"] or ""
+
+    def chat_logprobs(self, system: str, user: str, *, temperature: float = 0.3,
+                      top_p: float | None = None) -> tuple[str, float | None]:
+        """Como `chat()`, pero además devuelve la probabilidad del token MENOS seguro de la
+        respuesta. Confirmado en vivo: pedir logprobs no añade tokens facturables (mismo
+        prompt/completion_tokens con o sin el campo). Se usa el mínimo, no la media: la media
+        la diluyen los tokens triviales del esqueleto JSON (llaves, comillas, ticker copiado
+        del input), casi siempre con probabilidad ~1 — el mínimo es donde vive la incertidumbre
+        real del modelo (normalmente, el dígito de una nota)."""
+        data = self._request(system, user, temperature=temperature, top_p=top_p, logprobs=True)
+        content = data["choices"][0]["message"]["content"] or ""
+        tokens = (data["choices"][0].get("logprobs") or {}).get("content") or []
+        min_prob = math.exp(min(t["logprob"] for t in tokens)) if tokens else None
+        return content, min_prob
 
 
 def account_balance_usd(api_key: str, base_url: str = "https://api.deepseek.com") -> float | None:

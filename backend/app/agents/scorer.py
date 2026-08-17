@@ -83,6 +83,10 @@ class PrescoreResult:
     # `raw` guarda ~300 chars de la respuesta cruda. El caller decide si reintenta con `error`.
     error: str | None = None
     raw: str | None = None
+    # Probabilidad del token menos seguro del LOTE (no por ticker: no hay forma barata de mapear
+    # cada nota a sus tokens dentro de un JSON de 20 entradas). None si el proveedor no expone
+    # logprobs (FakeLLM en tests, OpenRouter).
+    confidence: float | None = None
 
 
 @dataclass
@@ -311,6 +315,12 @@ def _formato_degenerado(notas: list[float]) -> bool:
     return un_decimal / len(notas) >= 0.9
 
 
+# Umbral de aviso para `confidence` (probabilidad del token menos seguro del lote) — de momento
+# sin calibrar con datos reales: se avisa bajo, para no generar ruido hasta ver la distribución
+# real en producción y ajustar el corte.
+_LOW_CONFIDENCE = 0.05
+
+
 def prescore_batch(
     llm: LLMProvider, items: list[NameData], macro_block: str, temperature: float = 1.0,
     top_p: float | None = 0.95,
@@ -321,9 +331,19 @@ def prescore_batch(
     user = _prescore_batch_prompt(items, macro_block)
     raw = ""
     notas: dict[str, float] = {}
+    confidence: float | None = None
+    # chat_logprobs: solo DeepSeekProvider lo tiene (duck-typing, sin tocar el Protocol LLMProvider
+    # para no romper FakeLLM/OpenRouter en tests). Sin él, confidence se queda en None.
+    chat_fn = getattr(llm, "chat_logprobs", None)
     for intento in range(3):
         try:
-            raw = llm.chat(PRESCORE_BATCH_SYSTEM, user, temperature=temperature, top_p=top_p) or ""
+            if chat_fn is not None:
+                raw, confidence = chat_fn(PRESCORE_BATCH_SYSTEM, user, temperature=temperature,
+                                          top_p=top_p)
+                raw = raw or ""
+            else:
+                raw = llm.chat(PRESCORE_BATCH_SYSTEM, user, temperature=temperature,
+                               top_p=top_p) or ""
             obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
             filas = obj.get("scores")
             if not isinstance(filas, list) or not filas:
@@ -348,6 +368,10 @@ def prescore_batch(
                 # cap) es el mismo mecanismo que el paper ya prevé como caso raro.
                 logger.warning("Prescore por lote (%d empresas): formato degenerado (≥90%% con "
                                "un solo decimal) — se acepta igual, no se reintenta", len(items))
+            if confidence is not None and confidence < _LOW_CONFIDENCE:
+                logger.warning("Prescore por lote (%d empresas): confianza baja (%.4f, token "
+                               "menos seguro) — se acepta igual, es solo aviso", len(items),
+                               confidence)
             break
         except Exception as exc:
             logger.warning("Prescore por lote (%d empresas) intento %d/3 falló: %s (%r)",
@@ -355,16 +379,18 @@ def prescore_batch(
             notas = {}
     if not notas:
         return {t: PrescoreResult(t, 0.0, error="lote no parseable/degenerado tras 3 intentos",
-                                  raw=_recorte(raw)) for t in wanted}
+                                  raw=_recorte(raw), confidence=confidence) for t in wanted}
 
     out: dict[str, PrescoreResult] = {}
     for t in wanted:
         if t not in notas:
-            out[t] = PrescoreResult(t, 0.0, error="ausente de la respuesta del lote")
+            out[t] = PrescoreResult(t, 0.0, error="ausente de la respuesta del lote",
+                                    confidence=confidence)
         elif notas[t] <= 0:
-            out[t] = PrescoreResult(t, 0.0, error="SinNota: score no utilizable en el lote")
+            out[t] = PrescoreResult(t, 0.0, error="SinNota: score no utilizable en el lote",
+                                    confidence=confidence)
         else:
-            out[t] = PrescoreResult(t, notas[t])
+            out[t] = PrescoreResult(t, notas[t], confidence=confidence)
     return out
 
 

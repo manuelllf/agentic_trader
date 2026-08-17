@@ -1,7 +1,8 @@
 """Instrumentos UCITS (constructor elige libremente; no se puntúan).
 
-UCITS europeos USD (sin FX extra). Exhibit 2E: market/sectores/TIPS/bonos.
-NOTA: conid IBKR pendiente (backlog) — ejecuta sombra, no cuenta real aún.
+Vacío a propósito: el constructor solo elige entre las acciones puntuadas, sin ETFs/bonos
+de refugio — decisión de producto, no un límite técnico (`prices()`/`prompt_block()` ya
+toleraban un allowlist vacío).
 """
 
 from __future__ import annotations
@@ -9,19 +10,7 @@ from __future__ import annotations
 import yfinance as yf
 
 # symbol (yfinance, LSE .L) → etiqueta corta para el prompt.
-ALLOWLIST: dict[str, str] = {
-    "CSPX.L": "S&P 500 (market)",
-    "IDTL.L": "Treasury 20+y (long bond)",
-    "IB01.L": "Treasury 0-1y (short bond, cuasi-liquidez)",
-    "TIP5.L": "TIPS 0-5y (inflation-linked)",
-    "IUIT.L": "S&P 500 Technology sector",
-    "IUFS.L": "S&P 500 Financials sector",
-    "IUHC.L": "S&P 500 Health Care sector",
-    "IUES.L": "S&P 500 Energy sector",
-    "IUCD.L": "S&P 500 Consumer Discretionary sector",
-    "IUCS.L": "S&P 500 Consumer Staples sector",
-    "IUUS.L": "S&P 500 Utilities sector",
-}
+ALLOWLIST: dict[str, str] = {}
 
 
 def prices() -> dict[str, float]:
