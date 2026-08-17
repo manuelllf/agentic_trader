@@ -312,7 +312,8 @@ def _formato_degenerado(notas: list[float]) -> bool:
 
 
 def prescore_batch(
-    llm: LLMProvider, items: list[NameData], macro_block: str, temperature: float = 0.4,
+    llm: LLMProvider, items: list[NameData], macro_block: str, temperature: float = 1.0,
+    top_p: float | None = 0.95,
 ) -> dict[str, PrescoreResult]:
     """Prescore de un lote en una llamada. Reintento interno (hasta 3 total) por JSON roto/degenerado.
     Si un ticker ausente en respuesta válida, NO se reintenta lote entero."""
@@ -322,7 +323,7 @@ def prescore_batch(
     notas: dict[str, float] = {}
     for intento in range(3):
         try:
-            raw = llm.chat(PRESCORE_BATCH_SYSTEM, user, temperature=temperature) or ""
+            raw = llm.chat(PRESCORE_BATCH_SYSTEM, user, temperature=temperature, top_p=top_p) or ""
             obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
             filas = obj.get("scores")
             if not isinstance(filas, list) or not filas:

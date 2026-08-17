@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # Concurrencia: OpenRouter=10 (local); DeepSeek=500/100/50 (producc).
 # Pico real = MAYOR de 3 (etapas seriales), no suma. Límite duro: cgroup pids.max=1000.
 if settings.llm_provider == "deepseek":
-    _PRESCORE_WORKERS = 500   # Flash, triaje (~3.000 llamadas/escaneo)
+    _PRESCORE_WORKERS = 155   # Flash, triaje por lotes de 20 (prueba: menos conexiones largas)
     _MID_WORKERS = 100        # Pro, capa media (~200 candidatos)
     _DEEP_WORKERS = 50        # Pro, profundo (hasta `deep_finalists_cap` finalistas)
 else:
@@ -531,8 +531,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     gather_errors = [(t, e) for t, d, e in gathered if d is None and e]
     datos_ok = [d for _t, d, _e in gathered if d is not None]
 
+    _prescore_kw = _sampling_kwargs(prescore_cfg)
+
     def _pre_lote(lote: list):
-        notas = scorer_mod.prescore_batch(prescore_llm, lote, macro_block)
+        notas = scorer_mod.prescore_batch(prescore_llm, lote, macro_block, **_prescore_kw)
         par = [(notas[d.ticker], d) for d in lote]
         # Fallo de lote = mismo criterio que `pre_errors` más abajo (`p.error`, lote no
         # parseable/degenerado tras reintentos internos de `prescore_batch`).
@@ -541,24 +543,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                            reason=f"{errores[0].ticker}: {errores[0].error}" if errores else None)
         return par
 
-    _prescore_kw = _sampling_kwargs(prescore_cfg)
-
-    def _pre_uno(d):
-        p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
-        for _ in range(2):   # mismo criterio que capa media/profundo: DOS reintentos, no uno
-            if not p.error:
-                break
-            p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
-        scan_progress.tick(ok=not p.error, reason=f"{p.ticker}: {p.error}" if p.error else None)
-        return [(p, d)]
-
-    # Individual por defecto (DeepSeek, fiel al paper); batch solo con OpenRouter (local).
-    if settings.llm_provider == "deepseek":
-        tareas, correr, unidad = datos_ok, _pre_uno, "nombres"
-    else:
-        tam_lote = settings.prescore_batch_size
-        tareas = [datos_ok[i:i + tam_lote] for i in range(0, len(datos_ok), tam_lote)]
-        correr, unidad = _pre_lote, "lotes"
+    # Prueba: lotes de `prescore_batch_size` en TODOS los proveedores (antes solo OpenRouter),
+    # a ver si el ahorro medido allí se replica en el circuito directo de DeepSeek.
+    tam_lote = settings.prescore_batch_size
+    tareas = [datos_ok[i:i + tam_lote] for i in range(0, len(datos_ok), tam_lote)]
+    correr, unidad = _pre_lote, "lotes"
 
     scan_progress.set_stage("prescore", total=len(tareas), unit=unidad)
     logger.info("Escaneo: iniciando PRESCORE (%d %s, %d nombres, modelo=%s, reasoning=%s).",

@@ -47,10 +47,10 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
-    # Reasoning caro solo donde hay pocas llamadas (macro/constructor=1, profundo≤100); las
-    # etapas de volumen (prescore, capa media) se quedan en el escalón barato.
+    # Reasoning caro solo donde hay pocas llamadas (macro/constructor=1, profundo≤100). Prueba:
+    # prescore a "low" con lotes de 20 (menos llamadas caras) en vez de "none" 1 a 1.
     macro_reasoning_effort: str | None = "max"
-    prescore_reasoning_effort: str | None = "none"
+    prescore_reasoning_effort: str | None = "low"
     mid_reasoning_effort: str | None = "low"
     deep_reasoning_effort: str | None = "high"
     # Constructor: 1 llamada/escaneo, decide la cartera — el coste extra de "max" es trivial.
