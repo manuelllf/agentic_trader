@@ -2,8 +2,14 @@
 
 Fiel al paper: la SELECCIÓN de nombres ya está hecha en el servicio (top-N por score profundo,
 desempate por market cap). Este agente NO re-selecciona: recibe los nombres YA ELEGIDOS + el
-estado real de la cartera + el outlook macro, y solo **asigna pesos** (con tesis, edge y riesgo
-por posición). La convicción vive en los PESOS, no en la selección — como en el paper.
+outlook macro, y solo **asigna pesos** (con tesis, edge y riesgo por posición). La convicción
+vive en los PESOS, no en la selección — como en el paper.
+
+Sin cartera actual (19-ago, fidelidad al Exhibit 2E): el paper reconstruye el top-15 desde cero
+cada mes, sin pasarle qué tenía antes. Nosotros hacíamos lo mismo con ticker+peso — quitado
+porque el diff de trades es 100% mecánico en `build_trades()` (compara la lista nueva del LLM
+contra `Position` por conjunto de tickers), así que el LLM nunca necesitó ver la cartera vieja
+para que la rotación funcione.
 
 Tope 35% por posición, 100% invertido (sin caja, normalizado en el servicio). Además de las
 acciones seleccionadas puede usar instrumentos UCITS del allowlist (`app.instruments`), si lo hay.
@@ -22,8 +28,8 @@ logger = logging.getLogger(__name__)
 
 SYSTEM = (
     "You are a portfolio manager doing the ALLOCATION step — the stocks were ALREADY SELECTED by "
-    "score. You receive the fund's CURRENT holdings and weights, the FULL reports of the "
-    "SELECTED stocks (news, financials, valuation, score) and a macro outlook. "
+    "score. You receive the FULL reports of the SELECTED stocks (news, financials, valuation, "
+    "score) and a macro outlook. "
     "Build a portfolio of EXACTLY {max_pos} names to perform well over the next month versus the "
     "S&P 500. "
     "HARD RULES: allocate ONLY among the listed candidates below (the selected stocks, plus any "
@@ -78,12 +84,11 @@ class ConstructionResult:
     omitted: list[OmittedName] = field(default_factory=list)
 
 
-def _user_prompt(portfolio_text: str, candidates_text: str, macro_block: str) -> str:
+def _user_prompt(candidates_text: str, macro_block: str) -> str:
     return (
         # Sin "& sector": el macro tiene PROHIBIDO nombrar sectores, así que la
         # etiqueta anunciaba un contenido que ya no llega (ver el mismo cambio en scorer.py).
         f"Macro outlook:\n{macro_block}\n\n"
-        f"Current portfolio (the agent's own sleeve):\n{portfolio_text}\n\n"
         f"Candidates (already chosen — allocate weights among THESE only):\n"
         f"{candidates_text}\n\n"
         "Assign the target weights now (JSON)."
@@ -91,7 +96,7 @@ def _user_prompt(portfolio_text: str, candidates_text: str, macro_block: str) ->
 
 
 def construct(
-    llm: LLMProvider, portfolio_text: str, candidates_text: str, macro_block: str,
+    llm: LLMProvider, candidates_text: str, macro_block: str,
     max_positions: int, max_position_pct: float, valid_tickers: set[str],
     min_positions: int = 1, temperature: float = 1.0, top_p: float | None = 0.95,
 ) -> ConstructionResult:
@@ -117,7 +122,7 @@ def construct(
     system = (SYSTEM.replace("{max_pos}", str(max_positions))
               .replace("{min_pos}", str(min_positions))
               .replace("{max_pct}", str(int(max_position_pct))))
-    user = _user_prompt(portfolio_text, candidates_text, macro_block)
+    user = _user_prompt(candidates_text, macro_block)
 
     data: dict | None = None
     positions: list[TargetPosition] = []

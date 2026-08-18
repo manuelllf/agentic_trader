@@ -29,7 +29,7 @@ def test_constructor_prompt_no_pide_cash_pct() -> None:
                 {"ticker": "AAA", "weight_pct": 100, "thesis": "t", "edge": "e", "risk": "r"}],
                 "summary": "s"})
 
-    constructor_mod.construct(_Capturing(), "cartera", "candidatos", "macro",
+    constructor_mod.construct(_Capturing(), "candidatos", "macro",
                               max_positions=1, max_position_pct=100.0, valid_tickers={"AAA"})
     assert "cash_pct" not in captured["system"]
     assert "cash_pct" not in captured["user"]

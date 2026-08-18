@@ -232,7 +232,7 @@ def test_ningun_prompt_promete_un_outlook_sectorial() -> None:
     from app.agents.constructor import _user_prompt as constructor_prompt
 
     scorer_user = _user_prompt(_name_data(), "VIX 15.0.", None)
-    constructor_user = constructor_prompt("cartera", "candidatos", "VIX 15.0.")
+    constructor_user = constructor_prompt("candidatos", "VIX 15.0.")
     for prompt in (scorer_user, constructor_user):
         assert "sector outlook" not in prompt.lower()
         assert "Macro outlook:" in prompt

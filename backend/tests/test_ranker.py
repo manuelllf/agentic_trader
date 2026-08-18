@@ -111,7 +111,7 @@ def test_constructor_enforces_rules() -> None:
         '], "summary": "s"}'
     )
     valid = {"AAA", "BBB", "CCC", "DDD", "EEE"}  # ZZZ no está
-    res = constructor_mod.construct(FakeLLM(reply), "cartera", "candidatos", "macro",
+    res = constructor_mod.construct(FakeLLM(reply), "candidatos", "macro",
                                     max_positions=4, max_position_pct=35.0, valid_tickers=valid)
     assert len(res.positions) == 4                       # tope de 4
     assert all(p.weight_pct <= 35.0 for p in res.positions)  # tope 35%
@@ -122,7 +122,7 @@ def test_constructor_enforces_rules() -> None:
 
 
 def test_constructor_bad_json_all_cash() -> None:
-    res = constructor_mod.construct(FakeLLM("nope"), "c", "c", "m", 4, 35.0, {"AAA"})
+    res = constructor_mod.construct(FakeLLM("nope"), "c", "m", 4, 35.0, {"AAA"})
     assert res.positions == [] and res.cash_pct == 100.0
 
 
@@ -132,7 +132,7 @@ def test_constructor_allows_ucits_instrument() -> None:
              '{"ticker": "CSPX.L", "weight_pct": 40, "thesis": "t", "edge": "e", "risk": "r"},'
              '{"ticker": "AAA", "weight_pct": 30, "thesis": "t", "edge": "e", "risk": "r"}'
              '], "summary": "s"}')
-    res = constructor_mod.construct(FakeLLM(reply), "cartera", "candidatos", "macro",
+    res = constructor_mod.construct(FakeLLM(reply), "candidatos", "macro",
                                     max_positions=5, max_position_pct=35.0,
                                     valid_tickers={"AAA", "CSPX.L"})
     assert {"CSPX.L", "AAA"} == {p.ticker for p in res.positions}
@@ -489,7 +489,7 @@ def test_constructor_registra_por_que_dejo_fuera_a_los_demas() -> None:
         ],
         "summary": "s",
     })
-    res = constructor_mod.construct(FakeLLM(reply), "cartera", "candidatos", "macro",
+    res = constructor_mod.construct(FakeLLM(reply), "candidatos", "macro",
                                     1, 100.0, {"AAA", "BBB"})
     assert [(o.ticker, o.reason) for o in res.omitted] == [("BBB", "Menor recorrido al objetivo.")]
 
@@ -499,5 +499,5 @@ def test_constructor_sin_omitidos_no_revienta() -> None:
     reply = json.dumps({"cash_pct": 0, "omitted": None, "summary": "s",
                         "positions": [{"ticker": "AAA", "weight_pct": 100,
                                        "thesis": "t", "edge": "e", "risk": "r"}]})
-    res = constructor_mod.construct(FakeLLM(reply), "c", "c", "m", 1, 100.0, {"AAA"})
+    res = constructor_mod.construct(FakeLLM(reply), "c", "m", 1, 100.0, {"AAA"})
     assert res.omitted == [] and len(res.positions) == 1

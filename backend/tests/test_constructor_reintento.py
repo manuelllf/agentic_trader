@@ -28,7 +28,7 @@ class LLMGuion:
 
 
 def _construye(llm):
-    return construct(llm, "cartera", "candidatos", "VIX 15.0.", 5, 35.0, VALIDOS, 1)
+    return construct(llm, "candidatos", "VIX 15.0.", 5, 35.0, VALIDOS, 1)
 
 
 def test_una_respuesta_vacia_no_cuesta_la_cartera() -> None:

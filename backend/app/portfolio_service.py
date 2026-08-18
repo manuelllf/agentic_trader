@@ -240,23 +240,6 @@ def _equity(db: Session, held: dict, price_map: dict) -> tuple[Decimal, Decimal]
     return cash, to_cents(cash + pos_value)
 
 
-def portfolio_text(db: Session, held: dict, price_map: dict) -> str:
-    """Foto de la cartera para el constructor — fiel al paper: no ve caja, coste ni P&L (el
-    paper reconstruye el top-15 de cero cada mes, sin pasarle cartera alguna); nosotros sí le
-    enseñamos QUÉ tiene y con QUÉ peso, lo mínimo para que pueda decidir mantener o rotar bajo
-    LOW TURNOVER. El dinero exacto lo calcula el código, nunca el LLM (ver `SYSTEM`)."""
-    if not held:
-        return "No open positions (the sleeve is all cash)."
-    cash, equity = _equity(db, held, price_map)
-    lines = []
-    for tk, p in held.items():
-        price = D(price_map[tk]) if price_map.get(tk) else p.avg_cost
-        value = to_cents(p.quantity * price)
-        weight = (value / equity * 100) if equity else ZERO
-        lines.append(f"- {tk}: {weight:.1f}% of the portfolio")
-    return "\n".join(lines)
-
-
 def _upside(price, target: float | None) -> float | None:
     """% de recorrido hasta el objetivo del LLM (None si falta dato)."""
     if price is None or not target:

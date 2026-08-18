@@ -772,7 +772,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     selected = portfolio.select_top(
         _aparta_opadas(list(deep.values()), issues),
         mcap_map, settings.min_buy_score, settings.select_count)
-    portfolio_text = portfolio.portfolio_text(db, held, price_map)
     constructor_llm = None
     if not selected and not held:
         floor = settings.min_buy_score
@@ -798,7 +797,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         # llamadas a `get_llm()` que usan los tests para distinguir prescore/mid/deep.
         constructor_llm = _llm_for(constructor_cfg)
         construction = constructor_mod.construct(
-            constructor_llm, portfolio_text, candidates_text, macro_block,
+            constructor_llm, candidates_text, macro_block,
             settings.max_positions, settings.max_position_pct, valid, settings.min_positions,
             **_sampling_kwargs(constructor_cfg),
         )
@@ -1021,7 +1020,6 @@ def recheck(db: Session) -> dict:
         _aparta_opadas(deep, issues_recheck), mcap_map, floor, settings.select_count)
     last = db.query(Proposal).order_by(Proposal.created_at.desc()).first()
     macro_block = (last.macro_summary if last else "") or "n/d"
-    portfolio_text = portfolio.portfolio_text(db, held, price_map)
 
     if not selected and not held:
         reason = (f"Ningún nombre del top alcanza el suelo ({floor})" if floor > 0
@@ -1033,7 +1031,7 @@ def recheck(db: Session) -> dict:
             selected, {r.ticker: r.sector for r in selected}, mcap_map)
         valid = {r.ticker for r in selected}
         construction = constructor_mod.construct(
-            llm, portfolio_text, candidates_text, macro_block,
+            llm, candidates_text, macro_block,
             settings.max_positions, settings.max_position_pct, valid, settings.min_positions)
         construction = portfolio.finalize_full_invest(
             construction, selected, settings.min_positions, settings.max_positions,
@@ -1106,7 +1104,6 @@ def redeep(db: Session) -> dict:
     selected = portfolio.select_top(
         _aparta_opadas(list(results.values()), issues_redeep),
         mcap_map, settings.min_buy_score, settings.select_count)
-    portfolio_text = portfolio.portfolio_text(db, held, price_map)
     constructor_llm = None
     if not selected and not held:
         construction = constructor_mod.ConstructionResult(
@@ -1117,7 +1114,7 @@ def redeep(db: Session) -> dict:
         valid = {r.ticker for r in selected}
         constructor_llm = get_llm(reasoning_effort=settings.reasoning_effort)
         construction = constructor_mod.construct(
-            constructor_llm, portfolio_text, candidates_text, macro_block,
+            constructor_llm, candidates_text, macro_block,
             settings.max_positions, settings.max_position_pct, valid, settings.min_positions)
         construction = portfolio.finalize_full_invest(
             construction, selected, settings.min_positions, settings.max_positions,
