@@ -18,9 +18,9 @@ puntúa en dos pasos: un cribado rápido y barato sobre todo el universo, y un a
 solo reparte los pesos entre los ya seleccionados. Todo el dinero (tamaños, caja, P&L) lo
 calcula el código con aritmética exacta en `Decimal` — nunca el LLM.
 
-El escaneo semanal es un **observatorio**: refresca ranking, watchlist y memoria sin tocar
-ningún libro. La **decisión** de cartera es mensual, porque el análisis razona a un mes vista
-y rebalancear cada semana sería operar su propio ruido.
+El escaneo semanal es un **observatorio**: refresca ranking y memoria sin tocar ningún libro.
+La **decisión** de cartera es mensual, porque el análisis razona a un mes vista y rebalancear
+cada semana sería operar su propio ruido.
 
 Dos modos, con libros de capital separados:
 

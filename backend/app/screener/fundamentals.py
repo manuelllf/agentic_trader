@@ -192,7 +192,6 @@ _FUNDAMENTAL_FIELDS: list[tuple[str, str, str]] = [
     ("trailingAnnualDividendYield", "Dividend yield (TTM)", "yld"),
     ("sharesShortPreviousMonthDate", "Short interest date (prev month)", "date"),
     ("dateShortInterest", "Short interest date (most recent)", "date"),
-    ("targetMedianPrice", "Analyst target (median)", "num"),
     ("trailingPegRatio", "PEG (trailing)", "num"),
 ]
 
@@ -209,16 +208,15 @@ class NameData:
     news: list[str] = field(default_factory=list)
     earnings_text: str = ""           # próxima fecha de resultados — dato para el PROFUNDO
     name: str = ""                      # nombre corto de la empresa
-    target_high: float | None = None    # objetivo máximo del consenso de analistas, como NUMERO
-    # (ya viaja como texto dentro de fundamentals_text; esto es para el guardarrail determinista)
-    target_mean: float | None = None    # objetivo MEDIO del consenso, como NUMERO (idem, para el
-    # guardarraíl de eco de consenso — ver `_flag_consensus_echo` en scan_service.py)
+    # target_high/target_mean: consenso de analistas, SOLO para los guardarraíles deterministas
+    # (target_flagged, `_flag_consensus_echo`) — desde el 19-ago ya NO viajan a ningún prompt.
+    target_high: float | None = None    # objetivo máximo del consenso, como NUMERO
+    target_mean: float | None = None    # objetivo MEDIO del consenso, como NUMERO
 
 
 def _fmt(value: object, kind: str) -> str | None:
-    # "none" es como yfinance dice "sin datos" en los campos de texto (`recommendationKey`), y
-    # escrito tal cual se lee como un veredicto: "Analyst reco: none" parece "los analistas no la
-    # recomiendan" cuando significa que no hay ninguno cubriéndola. Se trata como ausente.
+    # "none" es como yfinance dice "sin datos" en campos de texto, y escrito tal cual se puede
+    # leer como un veredicto en vez de una ausencia. Se trata como ausente.
     if value is None or value == "" or (isinstance(value, str) and value.strip().lower() == "none"):
         return None
     try:

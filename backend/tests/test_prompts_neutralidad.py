@@ -150,12 +150,12 @@ def test_el_objetivo_de_precio_va_al_mismo_horizonte_que_la_nota() -> None:
     """Price target 1-month horizon; matches score horizon and rebalance cadence."""
     assert "for the same one-month horizon as the score" in SYSTEM
     assert "3-month PRICE TARGET" not in SYSTEM
-    # Del horizonte de los objetivos de analistas se enuncia el HECHO, no el método: sin la nota
-    # puede copiar un objetivo a doce meses como si fuera a uno; con "do not copy" o con
-    # "longer-horizon" a secas, sobrecorrige o hace una regla de tres. "12-18 month" es más
-    # concreto que "longer horizons" (medido: un 3,8% de los target_price en producción copiaban
-    # el consenso) pero sigue sin prescribir el método.
-    assert "typically published for a 12-18 month horizon" in SYSTEM
+    # Los targets de analistas se quitaron del prompt (momentum disfrazado de fundamental) — el
+    # profundo ya no tiene ningún objetivo externo que copiar, así que el precio sale SOLO de
+    # fundamentales/técnicos/noticias. El guardarraíl viejo de "12-18 month horizon" (contra
+    # copiar el consenso) ya no aplica: no hay consenso en el prompt que copiar.
+    assert "analyst" not in SYSTEM.lower()
+    assert "derived from the fundamentals, technicals and news" in SYSTEM
     for instruccion in ("do not copy", "scale", "divide"):
         assert instruccion not in SYSTEM.lower()
 

@@ -76,17 +76,25 @@ def _snapshot_text() -> tuple[str, list[str], str]:
         except Exception:
             return None
 
+    def desde_max(c) -> float | None:
+        """% por debajo del máximo de 52 semanas. Solo para `lines` (el propio agente macro):
+        sin el nivel real, se ha visto llamar "máximos" al oro estando un 23% por debajo (4.300
+        vs máximo de 5.600) — alucinación de nivel, no juicio de momentum. NO entra en
+        `compacto`/`market_line`, que repite en cada una de las ~2.600+ llamadas de scoring por
+        nombre — ahí sí era el mismo dato que el sesgo hacia ATH lee como "fortaleza"."""
+        mx = float(c.max())
+        return (mx - float(c.iloc[-1])) / mx * 100 if mx else None
+
+    # `lines` es prompt (va al agente macro): SIEMPRE en inglés, como el resto del sistema.
     compacto: list[str] = []
-    # Índices + tendencia. Sin distancia al máximo de 52s: el paper (Exhibit 2C/2D) no mete
-    # datos de precio en el macro, solo noticias/eventos — y esa distancia es la misma métrica
-    # de momentum que el sesgo hacia ATH lee como "fortaleza" en cada uno de los ~2.600+ prompts
-    # a los que viaja `compacto`.
     for tk, label in (("SPY", "S&P 500"), ("QQQ", "Nasdaq 100"), ("IWM", "Small caps")):
         c = close(tk)
         if c is not None and len(c) > 200:
-            above = "sobre" if c.iloc[-1] > ta.sma(c, 200) else "bajo"
+            above = "above" if c.iloc[-1] > ta.sma(c, 200) else "below"
+            dm = desde_max(c)
             lines.append(f"{label}: {ta.pct_change_ndays(c, 21):+.1f}% 1m, "
-                         f"{ta.pct_change_ndays(c, 63):+.1f}% 3m, {above} MA200")
+                         f"{ta.pct_change_ndays(c, 63):+.1f}% 3m, {above} MA200"
+                         + (f", {dm:.0f}% below its 52w high" if dm is not None else ""))
     vix = close("^VIX")
     if vix is not None:
         lines.append(f"VIX: {float(vix.iloc[-1]):.1f}")
@@ -100,7 +108,7 @@ def _snapshot_text() -> tuple[str, list[str], str]:
     c = close("^TNX")
     if c is not None:
         compacto.append(f"10y yield {float(c.iloc[-1]):.2f}%")
-    # Nivel + 1m + 3m. 1 mes es el horizonte de decisión del sistema.
+    # Nivel + 1m + 3m + distancia al máximo (en `lines`, no en `compacto` — ver `desde_max`).
     for tk, label, fmt in (("DX-Y.NYB", "USD index", "{:,.1f}"),
                            ("GC=F", "Gold", "{:,.0f}"),
                            ("CL=F", "Oil (WTI)", "{:,.2f}")):
@@ -108,13 +116,17 @@ def _snapshot_text() -> tuple[str, list[str], str]:
         if c is None:
             continue
         nivel = fmt.format(float(c.iloc[-1]))
+        dm = desde_max(c)
+        cola = f", {dm:.0f}% below its 52w high" if dm is not None else ""
         lines.append(f"{label}: {nivel} ({ta.pct_change_ndays(c, 21):+.1f}% 1m, "
-                     f"{ta.pct_change_ndays(c, 63):+.1f}% 3m)")
+                     f"{ta.pct_change_ndays(c, 63):+.1f}% 3m{cola})")
         compacto.append(f"{label} {nivel} ({ta.pct_change_ndays(c, 21):+.0f}% 1m)")
     c = close("HYG")
     if c is not None:
+        dm = desde_max(c)
         lines.append(f"High yield credit (HYG ETF): {ta.pct_change_ndays(c, 21):+.1f}% 1m, "
-                     f"{ta.pct_change_ndays(c, 63):+.1f}% 3m")
+                     f"{ta.pct_change_ndays(c, 63):+.1f}% 3m"
+                     + (f", {dm:.0f}% below its 52w high" if dm is not None else ""))
 
     headlines: list[str] = []
     try:

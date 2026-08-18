@@ -38,15 +38,14 @@ SYSTEM = (
     # No se prohíben cuartos explícitamente (produciría respuestas degeneradas).
     "Use exactly two decimal places, and let those decimals carry real precision rather than "
     "rounding to quarters or halves - e.g. 71.38, 84.61. "
-    # Horizonte de nota, precio objetivo y rebalanceo deben coincidir (un mes). "12-18 month"
-    # para los objetivos de analistas evita que target_price copie su consenso, sin decir "no copies", que sobrecorregía.
+    # Horizonte de nota, precio objetivo y rebalanceo deben coincidir (un mes). Ya no se
+    # mencionan targets de analistas: se quitaron del prompt (momentum disfrazado de
+    # fundamental, ver docs/prompts.md) y la frase vieja le pedía usar un dato que no le llega.
     "ALSO give your own approximate PRICE TARGET for the same one-month horizon as the score (a "
-    "single number in the stock's trading currency), informed by the fundamentals and the analyst "
-    "targets provided, which are typically published for a 12-18 month horizon - a much longer "
-    "call than the one-month target you are making here. If the news show "
-    "the company is under a definitive cash acquisition offer, use the offer terms exactly as "
-    "reported (do not derive per-share figures yourself) and do not set the price target above "
-    "the cash offer price. "
+    "single number in the stock's trading currency), derived from the fundamentals, technicals "
+    "and news above. If the news show the company is under a definitive cash acquisition offer, "
+    "use the offer terms exactly as reported (do not derive per-share figures yourself) and do "
+    "not set the price target above the cash offer price. "
     # under_acquisition preguntada explícitamente, no deducida: el modelo diferencia
     # quién compra de quién es comprado cuando se le pregunta.
     "ALSO state whether THIS company is itself the TARGET of a definitive acquisition offer "
