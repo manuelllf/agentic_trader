@@ -41,10 +41,13 @@ export function richText(text: string): ReactNode {
 
   while (i < lineas.length) {
     const linea = lineas[i];
-    if (FILA.test(linea) && i + 1 < lineas.length && SEPARADOR.test(lineas[i + 1])) {
+    // La fila separadora (|---|---|) es opcional: el modelo no siempre la escribe pese a pedirle
+    // una tabla, y exigirla dejaba la tabla entera como texto plano. Basta con 2+ filas seguidas.
+    if (FILA.test(linea) && i + 1 < lineas.length && FILA.test(lineas[i + 1])) {
       cierraParrafo();
       const cabecera = celdas(linea);
-      i += 2;
+      i += 1;
+      if (SEPARADOR.test(lineas[i])) i += 1;
       const filas: string[][] = [];
       while (i < lineas.length && FILA.test(lineas[i])) {
         filas.push(celdas(lineas[i]));

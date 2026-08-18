@@ -73,18 +73,18 @@ def test_migracion_anade_columnas_y_conserva_datos(tmp_path):
 
     sa_cols = _cols(engine, "scan_audit")
     sc_cols = _cols(engine, "scores")
-    assert {"entry_lane", "had_prior_thesis"} <= sa_cols
+    assert "entry_lane" in sa_cols
+    assert "had_prior_thesis" not in sa_cols   # retirada: ya no se crea en DBs nuevas
     assert {"news_used", "target_raw", "target_flagged"} <= sc_cols
 
     with engine.connect() as conn:
         row = conn.execute(text(
-            "SELECT ticker, sector, stage, entry_lane, had_prior_thesis FROM scan_audit WHERE id=1"
+            "SELECT ticker, sector, stage, entry_lane FROM scan_audit WHERE id=1"
         )).one()
         assert row.ticker == "ABC"
         assert row.sector == "Tech"
         assert row.stage == "selected"
         assert row.entry_lane is None
-        assert row.had_prior_thesis is None
 
         row2 = conn.execute(text(
             "SELECT ticker, score, held, news_used, target_raw, target_flagged "

@@ -50,12 +50,13 @@ class Settings(BaseSettings):
     # Reasoning caro solo donde hay pocas llamadas (macro/constructor=1, profundo≤100). "low" en
     # lotes de 20 degradó la granularidad del prescore (menos decimales, peor correlación con el
     # profundo) y costó 2,6× más — vuelve a "none", que da 2 decimales limpios siempre.
-    macro_reasoning_effort: str | None = "max"
+    # "high" y no "max": es el default documentado de DeepSeek (el camino más probado) y la doc
+    # no publica qué cambia internamente entre niveles — sin evidencia, el default gana.
+    macro_reasoning_effort: str | None = "high"
     prescore_reasoning_effort: str | None = "none"
     mid_reasoning_effort: str | None = "low"
     deep_reasoning_effort: str | None = "high"
-    # Constructor: 1 llamada/escaneo, decide la cartera — el coste extra de "max" es trivial.
-    reasoning_effort: str | None = "max"
+    reasoning_effort: str | None = "high"   # constructor
     # Alias ROLLING de la API directa de DeepSeek, sin snapshot fechado invocable: se pierde la
     # garantía de que el modelo no cambie solo entre escaneos (no hay forma de pinnear).
     llm_model: str = "deepseek-v4-pro"      # profundo + macro + constructor

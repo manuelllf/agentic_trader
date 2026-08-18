@@ -271,11 +271,32 @@ def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, final
                     len(sample), len(prescored), len(failed), len(finalists), len(fin_sectors))
         logger.info("  pre-score por sector: %s", top(Counter(d.sector for _p, d in prescored)))
         logger.info("  finalistas por sector: %s", top(fin_sectors))
+        # Confianza del prescore AGREGADA: el aviso por llamada inundaba (>350 líneas/escaneo) y
+        # Railway descarta líneas a ese volumen — en el escaneo grande solo sobrevivió el 1%.
+        confs = sorted(p.confidence for p, _d in prescored if p.confidence is not None)
+        if confs:
+            def cuantil(q: float) -> float:
+                return confs[min(len(confs) - 1, int(len(confs) * q))]
+            bajos = sum(1 for c in confs if c < scorer_mod._LOW_CONFIDENCE)
+            logger.info("  confianza prescore (n=%d): min=%.4f p25=%.4f mediana=%.4f max=%.4f · "
+                        "por debajo de %.2f: %d (%.0f%%)", len(confs), confs[0], cuantil(0.25),
+                        cuantil(0.50), confs[-1], scorer_mod._LOW_CONFIDENCE, bajos,
+                        bajos / len(confs) * 100)
         sel = ", ".join(f"{r.ticker}[{_sector(data_by_t, r.ticker)}]={r.score}" for r in selected)
         logger.info("  seleccionados (top-%d): %s", len(selected), sel or "ninguno")
+        # Orden en que el constructor los vio (barajado): sin esto no se distingue "eligió por
+        # convicción" de "se quedó con los primeros de la lista".
+        logger.info("  orden mostrado al constructor: %s",
+                    ", ".join(r.ticker for r in portfolio.orden_presentacion(selected)) or "n/d")
         cartera = ", ".join(f"{p.ticker} {p.weight_pct:.0f}%[{_sector(data_by_t, p.ticker)}]"
                             for p in construction.positions) or "vacía"
         logger.info("  CARTERA: %s", cartera)
+        # La métrica que se está vigilando: ¿fondeó justo el top-N por score, o de verdad eligió?
+        fondeados = {p.ticker for p in construction.positions}
+        if fondeados and selected:
+            top_n = {r.ticker for r in selected[:len(fondeados)]}
+            logger.info("  ¿cartera == top-%d por score? %s", len(fondeados),
+                        "SÍ — colapsó al ranking" if fondeados == top_n else "no")
         if instr_prices:
             usados = [p.ticker for p in construction.positions if p.ticker in instr_prices]
             logger.info("  UCITS disponibles=%d · usados=%s", len(instr_prices), usados or "—")
@@ -394,17 +415,19 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     else:
         n = settings.scan_sample_size
 
-    # 1) Nombres a analizar: posiciones + watchlist + cartera personal (siempre) + el universo
-    # (entero por defecto). La cartera personal (`always_deep_tickers`) es SOLO para que
-    # Manuel vea la opinión del sistema sobre sus tickers — entran garantizados a fondo (carril
-    # "seguimiento" en `select_finalists`) pero compiten en igualdad en la selección, sin veto ni
-    # ventaja; no implica nada sobre la cartera del AGENTE ni toca sus posiciones personales de
-    # IBKR (`PersonalPosition`, totalmente aparte).
+    # 1) Nombres a analizar: posiciones + cartera personal (siempre) + el universo (entero por
+    # defecto). La cartera personal (`always_deep_tickers`) es SOLO para que Manuel vea la opinión
+    # del sistema sobre sus tickers — entran garantizados a fondo (carril "seguimiento" en
+    # `select_finalists`) pero compiten en igualdad en la selección, sin veto ni ventaja; no
+    # implica nada sobre la cartera del AGENTE ni toca sus posiciones personales de IBKR
+    # (`PersonalPosition`, totalmente aparte).
+    # La watchlist ya NO entra: el paper no tiene ninguna capa de "lo que vigilo", y garantizar
+    # sitio a los que ya puntuaron alto premia el éxito pasado (que correlaciona con haber subido).
     held = {p.ticker: p for p in ledger.open_positions(db)}
-    watch = set(watchlist_mod.tickers(db))
+    watch = set(watchlist_mod.tickers(db))   # solo para el badge del ranking, no da acceso
     personal = list(settings.always_deep_tickers)
-    always = (list(held.keys()) + [t for t in watch if t not in held]
-             + [t for t in personal if t not in held and t not in watch])
+    always = (list(held.keys())
+             + [t for t in personal if t not in held])
     # Muestra semanal = ventana ROTATORIA (offset persistido) para tejer el universo sin repetir;
     # el mensual (n=None) coge el universo entero y no mueve el cursor.
     # El universo sale de la FOTO del último cierre: el volumen de NASDAQ es el acumulado de la
@@ -440,7 +463,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     macro_block = macro_mod.outlook_prompt_block(macro)
     timings["macro"] = round(time.monotonic() - t0, 1)
     logger.info("Escaneo: MACRO completado en %.1fs.", timings["macro"])
-    prior = {t: watchlist_mod.thesis_for(db, t) for t in always}
 
     # Incidencias para el informe persistido: los fallos PARCIALES que hasta ahora solo se
     # veían leyendo los logs de Railway (fuentes caídas, LLM no parseable, nombres sin datos).
@@ -639,16 +661,15 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
 
     # Sin capa media (semanal): carril sectorial=2 (garantiza profundo ve cada sector).
     per_sector = settings.deep_per_sector_mid if mid_scores else settings.deep_per_sector
+    # Carril "watchlist" vacío a propósito: ver el motivo donde se arma `always`.
     finalists, lanes = portfolio.select_finalists(
-        prescored, set(held), watchlist_mod.top(db, settings.deep_watchlist),
+        prescored, set(held), (),
         per_sector, settings.deep_finalists_cap,
         top_caps=settings.deep_top_caps, mid_scores=mid_scores, tracked=personal)
 
     # 4) PASO 2 — profundo (V4-Pro) + price target en finalistas.
     # Memoria vectorial solo al final (remember). Tesis previa quitada: cada escaneo juzga desde cero.
-    # prior/had_prior conservadas solo como telemetría auditoría; Watchlist.thesis sigue para web.
     store = _memory_store()
-    had_prior = {t for t in finalists if prior.get(t)}
 
     _deep_kw = _sampling_kwargs(deep_cfg)
 
@@ -742,9 +763,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 store.remember(f"{d.headline} {d.report[:400]}", kind="thesis", ticker=t)
             except Exception:
                 pass
-    # A la watchlist SOLO entran scores PROFUNDOS: los pre-scores de Flash no están verificados
-    # (calibran mal) y contaminaban la memoria entre escaneos con notas infladas.
-    watchlist_mod.update(db, [(t, r.score, r.headline) for t, r in deep.items()])
+    # Watchlist SIN alimentar: no está en el paper y ya no da acceso al profundo (ver `always`).
+    # El módulo y la tabla se quedan: lo guardado sigue viéndose, pero deja de crecer.
 
     # 6) SELECCIÓN fiel al paper: top-N por SCORE PROFUNDO, desempate por MARKET CAP.
     #    (La convicción del constructor solo pondera; no re-selecciona.)
@@ -764,11 +784,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     else:
         # Informe COMPLETO por candidato, no un titular — fiel a Exhibit 2E ("we have the
         # following reports for the stocks that were scored the highest").
-        candidates_text = "\n\n".join(
-            f"{r.ticker} ({data_by_t[r.ticker].sector}, cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B) "
-            f"— score {r.score}:\n{r.report}"
-            for r in selected
-        ) or "(sin candidatos)"
+        candidates_text = portfolio.candidates_text(
+            selected, {t: d.sector for t, d in data_by_t.items()}, mcap_map)
         candidates_text += instruments_mod.prompt_block(instr_prices)  # UCITS ('' si vacío)
         valid = {r.ticker for r in selected} | set(instr_prices)
         scan_progress.set_stage("constructor")
@@ -776,10 +793,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                    len(selected), constructor_cfg["model"] or settings.llm_model,
                    constructor_cfg["reasoning_effort"])
         t0 = time.monotonic()
-        # Instancia SEPARADA (no `deep_llm`): el constructor es la ÚNICA etapa con reasoning
-        # "max" (ver config.py) — una llamada por escaneo, coste extra asumible. Se crea aquí,
-        # justo antes de usarse, para no alterar el ORDEN de las llamadas a `get_llm()` que ya
-        # usan los tests para distinguir prescore/mid/deep sin mirar el string del modelo.
+        # Instancia SEPARADA (no `deep_llm`): el constructor lleva su propio reasoning (ver
+        # config.py). Se crea aquí, justo antes de usarse, para no alterar el ORDEN de las
+        # llamadas a `get_llm()` que usan los tests para distinguir prescore/mid/deep.
         constructor_llm = _llm_for(constructor_cfg)
         construction = constructor_mod.construct(
             constructor_llm, portfolio_text, candidates_text, macro_block,
@@ -801,7 +817,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         scan_audit.record(db, prescored=prescored, failed=failed, finalists=finalists,
                           deep=deep, selected=selected, construction=construction,
                           pre_errors=pre_errors, deep_errors=deep_caidos, decide=decide,
-                          lanes=lanes, had_prior=had_prior)
+                          lanes=lanes)
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
 
@@ -898,11 +914,21 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         round(saldo_antes - saldo_despues, 4)
         if saldo_antes is not None and saldo_despues is not None else None
     )
+    # Confianza del prescore resumida: los logs de Railway caducan (y a 3.000 llamadas descartan
+    # líneas), así que el único sitio donde se puede leer DESPUÉS es el informe persistido.
+    _confs = sorted(p.confidence for p, _d in prescored if p.confidence is not None)
+    confianza = {
+        "n": len(_confs), "min": round(_confs[0], 4), "max": round(_confs[-1], 4),
+        "mediana": round(_confs[len(_confs) // 2], 4),
+        "bajo_umbral": sum(1 for c in _confs if c < scorer_mod._LOW_CONFIDENCE),
+        "umbral": scorer_mod._LOW_CONFIDENCE,
+    } if _confs else None
     result = {
         "universe": universo_info,
         "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
         # Solo cuenta en observatorio; en decisión el ranking se reemplaza entero (None).
         "refreshed": None if decide else refreshed,
+        "confianza_prescore": confianza,
         "watchlist": len(watchlist_mod.tickers(db)),
         "proposed": len([i for i in items if i["action"] != "mantener"]),
         "positions": len(construction.positions),
@@ -977,7 +1003,7 @@ def recheck(db: Session) -> dict:
     """Re-comprobación del top: re-corre SOLO la construcción sobre los nombres ya analizados a
     fondo (report != ''), reutilizando sus informes/scores/targets guardados y aplicando el suelo
     ACTUAL. No re-escanea el universo → instantáneo y casi gratis (1 llamada de construcción)."""
-    llm = get_llm(reasoning_effort=settings.reasoning_effort)   # solo construcción → max
+    llm = get_llm(reasoning_effort=settings.reasoning_effort)   # solo construcción
     deep = (db.query(Score).filter(Score.report != "").order_by(Score.score.desc()).all())
     if not deep:
         raise ValueError("No hay análisis profundo previo; lanza un escaneo primero.")
@@ -1003,9 +1029,8 @@ def recheck(db: Session) -> dict:
         construction = constructor_mod.ConstructionResult(
             cash_pct=100.0, positions=[], summary=f"{reason} — 100% en caja.")
     else:
-        candidates_text = "\n\n".join(
-            f"{r.ticker} ({r.sector}, cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B) "
-            f"— score {r.score}:\n{r.report}" for r in selected)
+        candidates_text = portfolio.candidates_text(
+            selected, {r.ticker: r.sector for r in selected}, mcap_map)
         valid = {r.ticker for r in selected}
         construction = constructor_mod.construct(
             llm, portfolio_text, candidates_text, macro_block,
@@ -1087,11 +1112,10 @@ def redeep(db: Session) -> dict:
         construction = constructor_mod.ConstructionResult(
             cash_pct=100.0, positions=[], summary="Sin candidatos tras re-análisis — 100% caja.")
     else:
-        candidates_text = "\n\n".join(
-            f"{r.ticker} ({data_by_t[r.ticker].sector}, cap ${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B) "
-            f"— score {r.score}:\n{r.report}" for r in selected)
+        candidates_text = portfolio.candidates_text(
+            selected, {t: d.sector for t, d in data_by_t.items()}, mcap_map)
         valid = {r.ticker for r in selected}
-        constructor_llm = get_llm(reasoning_effort=settings.reasoning_effort)  # solo esto → max
+        constructor_llm = get_llm(reasoning_effort=settings.reasoning_effort)
         construction = constructor_mod.construct(
             constructor_llm, portfolio_text, candidates_text, macro_block,
             settings.max_positions, settings.max_position_pct, valid, settings.min_positions)

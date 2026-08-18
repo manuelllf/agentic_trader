@@ -259,9 +259,8 @@ def prescore_one(
             return PrescoreResult(data.ticker, 0.0,
                                   error="SinNota: JSON válido sin score utilizable",
                                   raw=_recorte(raw), confidence=confidence)
-        if confidence is not None and confidence < _LOW_CONFIDENCE:
-            logger.warning("Pre-score de %s: confianza baja (%.4f, token menos seguro) — "
-                           "se acepta igual, es solo aviso", data.ticker, confidence)
+        # Sin aviso por llamada: viaja en `PrescoreResult.confidence` y el escaneo lo resume
+        # agregado (ver `_log_funnel`). Una línea por ticker inundaba y Railway las descartaba.
         return PrescoreResult(data.ticker, sc, confidence=confidence)
     except Exception as exc:
         logger.warning("Pre-score no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
@@ -391,10 +390,7 @@ def prescore_batch(
                 # cap) es el mismo mecanismo que el paper ya prevé como caso raro.
                 logger.warning("Prescore por lote (%d empresas): formato degenerado (≥90%% con "
                                "un solo decimal) — se acepta igual, no se reintenta", len(items))
-            if confidence is not None and confidence < _LOW_CONFIDENCE:
-                logger.warning("Prescore por lote (%d empresas): confianza baja (%.4f, token "
-                               "menos seguro) — se acepta igual, es solo aviso", len(items),
-                               confidence)
+            # La confianza viaja en cada `PrescoreResult`; el escaneo la resume (ver `_log_funnel`).
             break
         except Exception as exc:
             logger.warning("Prescore por lote (%d empresas) intento %d/3 falló: %s (%r)",

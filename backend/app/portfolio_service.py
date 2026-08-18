@@ -10,6 +10,7 @@ Lo usa `app.scan_service` desde sus tres pipelines (escaneo, recheck, redeep).
 
 from __future__ import annotations
 
+import random
 from decimal import ROUND_DOWN, Decimal
 
 from sqlalchemy.orm import Session
@@ -31,6 +32,34 @@ def select_top(rows: list, mcap: dict, floor: int, n: int) -> list:
     eligible = [r for r in rows if r.score >= floor]
     eligible.sort(key=lambda r: (-r.score, -(mcap.get(r.ticker) or 0.0)))
     return eligible[:n]
+
+
+def orden_presentacion(selected: list) -> list:
+    """Orden BARAJADO (semilla = los propios tickers, reproducible) en que el constructor ve los
+    candidatos. Separado de `candidates_text` para poder DEJARLO EN LA TRAZA: sin él no se puede
+    distinguir "eligió por convicción" de "se quedó con los primeros que le pusimos delante"."""
+    orden = list(selected)
+    random.Random("|".join(sorted(r.ticker for r in orden))).shuffle(orden)
+    return orden
+
+
+def candidates_text(selected: list, sector_of: dict, mcap_map: dict) -> str:
+    """Reports completos de los candidatos para el constructor, barajados y SIN el score (el
+    constructor no necesita el número — solo ponderar convicción leyendo el report).
+
+    `selected` sigue viniendo ordenado por score de `select_top` (lo sigue usando
+    `_finalize_full_invest` para rellenar) — esto solo cambia el orden de PRESENTACIÓN al LLM.
+    Sin barajar y con el score como primer texto de cada bloque, medido que el constructor
+    colapsaba a fondear literalmente el top-N por score en vez de ponderar convicción.
+    """
+    if not selected:
+        return "(sin candidatos)"
+    orden = orden_presentacion(selected)
+    return "\n\n".join(
+        f"{r.ticker} ({sector_of.get(r.ticker, 'n/d')}, cap "
+        f"${(mcap_map.get(r.ticker, 0.0) / 1e9):.1f}B):\n{r.report}"
+        for r in orden
+    )
 
 
 def top_por_sector(prescored: list, n: int) -> list[str]:

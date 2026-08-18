@@ -118,10 +118,11 @@ def _gather_stub(monkeypatch, sector: str = "Technology", news: list | None = No
     ), None))
 
 
-# ---- entry_lane + had_prior_thesis en la traza --------------------------------
+# ---- entry_lane en la traza ---------------------------------------------------
 
-def test_entry_lane_y_had_prior_thesis_en_la_traza(db, monkeypatch) -> None:
-    """Entry lanes: OLD (position), WATCH (watchlist+thesis), NEW (top caps)."""
+def test_entry_lane_en_la_traza(db, monkeypatch) -> None:
+    """Entry lanes: OLD (position), NEW (top caps). La watchlist ya no es carril ni se escanea:
+    WATCH no aparece en la traza aunque esté guardada en la tabla."""
     llm = FakeLLM(_FAKE_REPLY)
     _stub_common(monkeypatch, llm, ["NEW"])
     _gather_stub(monkeypatch)
@@ -135,11 +136,8 @@ def test_entry_lane_y_had_prior_thesis_en_la_traza(db, monkeypatch) -> None:
 
     rows = {r.ticker: r for r in db.query(ScanAudit).all()}
     assert rows["OLD"].entry_lane == "posicion"
-    assert rows["WATCH"].entry_lane == "watchlist"
     assert rows["NEW"].entry_lane == "caps"   # top_caps=10 >= 3 nombres: los rescata a todos
-    assert rows["WATCH"].had_prior_thesis is True     # tenía tesis previa en la watchlist
-    assert rows["OLD"].had_prior_thesis is False       # en cartera pero SIN tesis guardada
-    assert rows["NEW"].had_prior_thesis is False
+    assert "WATCH" not in rows                 # guardada, pero ya no da acceso a nada
 
 
 # ---- news_used congelado -------------------------------------------------------

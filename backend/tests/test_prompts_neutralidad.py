@@ -12,6 +12,7 @@ from app.agents.scorer import (
     _mid_prompt,
     _user_prompt,
 )
+from app import portfolio_service as portfolio
 from app.screener import macro as macro_mod
 from app.screener.fundamentals import NameData
 
@@ -261,13 +262,13 @@ def test_el_scoring_recibe_los_niveles_de_mercado_como_dato() -> None:
     """Market levels (not ETF proxies) sent to scorer; prevents hallucination."""
     bloque = macro_mod.outlook_prompt_block({
         "vix": 14.9, "outlook_en": "Text.",
-        "market_line": "Gold 4,341 (18% below 52w high, +5% 1m). Oil (WTI) 78.18 (31% below "
-                       "52w high, +8% 1m)",
+        "market_line": "Gold 4,341 (+5% 1m). Oil (WTI) 78.18 (+8% 1m)",
     })
-    assert "Gold 4,341" in bloque and "18% below 52w high" in bloque
+    assert "Gold 4,341" in bloque
     assert "14.9" in bloque and "Text." in bloque
-    # Son NIVELES y distancias, no adjetivos: nada de "fuerte", "débil", "sobrecomprado".
-    for juicio in ("strong", "weak", "overbought", "oversold", "elevated", "cheap"):
+    # Son NIVELES, no adjetivos ni distancia a máximos (eso es momentum, no dato de régimen).
+    for juicio in ("strong", "weak", "overbought", "oversold", "elevated", "cheap",
+                  "below 52w high", "del máximo de 52s"):
         assert juicio not in bloque.lower()
     # Un escaneo viejo (sin la clave) tiene que dar el bloque EXACTAMENTE como antes.
     viejo = macro_mod.outlook_prompt_block({"vix": 14.9, "outlook_en": "Text."})
@@ -306,3 +307,30 @@ def test_un_json_valido_sin_nota_cuenta_como_fallo_y_se_reintenta() -> None:
     assert r.score == 0
     assert r.error and "SinNota" in r.error      # marcado: el caller reintentará
     assert r.raw                                  # y con la respuesta cruda para diagnosticarlo
+
+
+def test_candidates_text_no_ancla_al_orden_de_score() -> None:
+    """Sin score en el texto y con el orden barajado — medido que con score-primero-y-ordenado
+    el constructor colapsaba a fondear el top-N literal."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class R:
+        ticker: str
+        score: float
+        report: str
+
+    seleccionados = [R(f"TK{i}", 90.0 - i, f"informe {i}") for i in range(8)]
+    sectores = {r.ticker: "Technology" for r in seleccionados}
+    texto = portfolio.candidates_text(seleccionados, sectores, {})
+
+    bloques = texto.split("\n\n")
+    assert len(bloques) == len(seleccionados)
+    orden_presentado = [b.split(" ", 1)[0] for b in bloques]
+    assert orden_presentado != [r.ticker for r in seleccionados]  # no es el orden de score
+    for r in seleccionados:
+        assert str(r.score) not in texto  # el score no viaja al constructor
+
+    # Reproducible: misma entrada, mismo orden.
+    otro = portfolio.candidates_text(list(seleccionados), sectores, {})
+    assert otro == texto

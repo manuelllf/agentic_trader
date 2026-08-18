@@ -148,12 +148,11 @@ _FUNDAMENTAL_FIELDS: list[tuple[str, str, str]] = [
     ("heldPercentInstitutions", "Institutional ownership", "pct"),
     ("shortPercentOfFloat", "Short % of float", "pct"),
     ("shortRatio", "Short ratio (days to cover)", "num"),
-    ("targetMeanPrice", "Analyst target (mean)", "num"),
-    ("targetHighPrice", "Analyst target (high)", "num"),
-    ("targetLowPrice", "Analyst target (low)", "num"),
-    ("numberOfAnalystOpinions", "# analysts", "num"),
-    ("recommendationKey", "Analyst reco", "str"),
-    ("recommendationMean", "Reco mean (1 buy–5 sell)", "num"),
+    # PRUEBA — decisión propia, NO fiel al paper (Exhibit 2B trae los campos 66-70: targets,
+    # nº de analistas y recomendación). Fuera porque el consenso se revisa DESPUÉS del movimiento
+    # de precio: es momentum disfrazado de fundamental, y colado como juicio experto esquiva la
+    # cláusula que protege a los caídos (el modelo no lo lee como dato de precio). Siguen en
+    # `NameData` para los guardarraíles de target, que son telemetría y no tocan prompt.
     ("auditRisk", "Audit risk (1-10)", "num"),
     ("boardRisk", "Board risk (1-10)", "num"),
     ("compensationRisk", "Comp risk (1-10)", "num"),
@@ -273,14 +272,11 @@ def _fundamentals_text(info: dict) -> str:
 
 def _technical_text(info: dict, hist) -> str:
     parts: list[str] = []
-    price = info.get("currentPrice") or info.get("regularMarketPrice")
     if hist is not None and not hist.empty:
         close = hist["close"]
-        if price is None:
-            price = float(close.iloc[-1])
         parts.append(f"price ${float(close.iloc[-1]):.2f}")
-        # Solo lo que el paper pasa (Exhibit 2B): precio, MA50/200, 52w range, beta, 52w change.
-        # Sin conclusiones (RSI, "% below high", etc); dato sí, interpretación no.
+        # Solo lo que el paper pasa (Exhibit 2B): precio, MA50/200, 52w range, beta. El 52w change
+        # va UNA sola vez, en `fundamentals_text` (campo 62) — aquí lo duplicaba.
         ma50, ma200 = ta.sma(close, 50), ta.sma(close, 200)
         if ma50 == ma50:
             parts.append(f"MA50 ${ma50:.2f}")
@@ -289,16 +285,9 @@ def _technical_text(info: dict, hist) -> str:
     lo, hi = info.get("fiftyTwoWeekLow"), info.get("fiftyTwoWeekHigh")
     if lo and hi:
         parts.append(f"52w range ${lo:.2f}-${hi:.2f}")
-    # Precio vs target medio: aritmética sobre dos datos que ya damos (dato sí, no conclusión).
-    tgt = info.get("targetMeanPrice")
-    if tgt and price:
-        parts.append(f"price vs analyst mean target {((price / float(tgt)) - 1) * 100:+.0f}%")
     beta = info.get("beta")
     if beta is not None:
         parts.append(f"beta {beta:.2f}")
-    chg = info.get("52WeekChange")
-    if chg is not None:
-        parts.append(f"52w change {chg * 100:+.0f}%")
     return " · ".join(parts)
 
 

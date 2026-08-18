@@ -174,9 +174,8 @@ class ScanAudit(Base):
     # Sin saberlo no se puede evaluar si un carril aporta valor o solo ocupa hueco de otro mejor.
     # NULL = fila anterior a la columna.
     entry_lane: Mapped[str | None] = mapped_column(String(12), default=None)
-    # ¿se puntuó con tesis previa (memoria de un escaneo anterior) o en frío? Sin este dato no se
-    # puede medir si esa memoria ayuda o simplemente ancla al modelo. NULL = fila anterior.
-    had_prior_thesis: Mapped[bool | None] = mapped_column(default=None)
+    # `had_prior_thesis` retirada: se alimentaba de la tesis de la watchlist, que ya no se usa
+    # ni se alimenta — quedaba siempre en False. La columna sigue en las DB viejas, sin escribir.
 
 
 class ScanRun(Base):

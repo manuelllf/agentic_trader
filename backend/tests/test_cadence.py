@@ -213,18 +213,17 @@ def test_scan_writes_persistent_report(db, monkeypatch) -> None:
     assert rep["mode"] == "observatorio" and rep["error"] is None
     assert rep["issues"] == [] and rep["deep"] == 1
     # Sin decisión previa no hay ranking que coincida: nada se refresca y el ranking no lleva
-    # novedades (el observatorio no lo puebla); pero SÍ aprende — AAA entra a la watchlist.
+    # novedades (el observatorio no lo puebla). La watchlist ya no se alimenta.
     assert rep["refreshed"] == 0
     assert not any(c.startswith("Ranking") for c in rep["changes"])
-    assert any("Watchlist" in c and "entra AAA" in c for c in rep["changes"])
+    assert not any("Watchlist" in c for c in rep["changes"])
 
     scan_service.run_scan_and_store(db, sample_size=5)
     rep = _last_report(db)
     assert rep["mode"] == "decisión" and rep["error"] is None
     assert rep["refreshed"] is None
-    # la decisión SÍ puebla el ranking (reemplazo total) y compra AAA → sale de la watchlist
+    # la decisión SÍ puebla el ranking (reemplazo total)
     assert any("Ranking" in c and "entran AAA" in c for c in rep["changes"])
-    assert any("Watchlist" in c and "sale AAA" in c for c in rep["changes"])
 
 
 def test_scan_report_records_issues(db, monkeypatch) -> None:
@@ -299,32 +298,23 @@ def test_escaneo_se_aborta_con_universo_de_emergencia(db, monkeypatch) -> None:
 
 # ---- memoria del embudo: badge, profundos no parseables y cursor rotatorio ----
 
-def test_badge_de_seguimiento_dice_la_verdad_del_final(db, monkeypatch) -> None:
-    """El badge se estampaba ANTES de actualizar la watchlist, así que iba un escaneo por
-    detrás. Ahora se re-sella al final contra la watchlist REAL de después — también en
-    observatorio, que solo actualiza filas existentes (no las crea)."""
+def test_la_watchlist_ya_no_se_alimenta(db, monkeypatch) -> None:
+    """No está en el paper y daba acceso garantizado al profundo por puntuar alto en el pasado
+    (que correlaciona con haber subido). La tabla se conserva; deja de crecer."""
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
-    # Fila de una decisión previa (AAA analizada, sin comprar esa vez).
-    db.add(models.Score(ticker="AAA", sector="Technology", score=1, on_watchlist=False))
-    db.commit()
-
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)
-    assert db.query(models.Score).one().on_watchlist is True    # AAA entra a vigilancia hoy
 
-    scan_service.run_scan_and_store(db, sample_size=5)        # decide → compra AAA
-    assert db.query(models.Score).one().on_watchlist is False
+    from app import watchlist as watchlist_mod
+    assert watchlist_mod.tickers(db) == []
 
 
-def test_profundo_no_parseable_ni_puntua_ni_borra_watchlist(db, monkeypatch) -> None:
-    """El scorer profundo va de 1 a 100: un 0 solo puede ser fallo de parseo. Se quedaba en el
-    ranking como puntuación legítima Y, por debajo del umbral de expulsión, echaba al nombre de
-    la watchlist — un fallo del LLM borraba memoria del agente."""
+def test_profundo_no_parseable_no_puntua(db, monkeypatch) -> None:
+    """El scorer profundo va de 1 a 100: un 0 solo puede ser fallo de parseo, y se quedaba en el
+    ranking como puntuación legítima."""
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
-    scan_service.run_scan_and_store(db, sample_size=5, decide=False)   # AAA entra a vigilancia
-    from app import watchlist as watchlist_mod
-    assert watchlist_mod.tickers(db) == ["AAA"]
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
 
     # Solo falla el PROFUNDO: get_llm() sin argumentos es el caro; con modelo, el del pre-score.
     cero = _FAKE_REPLY.replace('"score": 90', '"score": 0')
@@ -333,7 +323,6 @@ def test_profundo_no_parseable_ni_puntua_ni_borra_watchlist(db, monkeypatch) -> 
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)
 
     assert db.query(models.Score).count() == 0                 # fuera del ranking
-    assert watchlist_mod.tickers(db) == ["AAA"]                # la memoria sobrevive al fallo
     assert any("no parseable" in i and "AAA" in i for i in _last_report(db)["issues"])
 
 

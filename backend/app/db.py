@@ -80,11 +80,9 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
     pr = cols("proposals")
     if pr and "omitted" not in pr:
         conn.execute(text("ALTER TABLE proposals ADD COLUMN omitted JSON DEFAULT '[]'"))
-    # Carril de entrada y tesis previa.
+    # Carril de entrada. (`had_prior_thesis` ya no se crea ni se escribe; donde exista, se queda.)
     if sa and "entry_lane" not in sa:
         conn.execute(text("ALTER TABLE scan_audit ADD COLUMN entry_lane VARCHAR(12)"))
-    if sa and "had_prior_thesis" not in sa:
-        conn.execute(text("ALTER TABLE scan_audit ADD COLUMN had_prior_thesis BOOLEAN"))
     # Telemetría: noticias usadas y guardarraíl de precio.
     if sc and "news_used" not in sc:
         conn.execute(text("ALTER TABLE scores ADD COLUMN news_used JSON"))
