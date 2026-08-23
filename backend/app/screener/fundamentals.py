@@ -34,7 +34,8 @@ _FOTO_TTL_H = 12.0
 # 0.0 defecto (sin pausa) para tests; no es kwarg para mantener firma estable ante stubs.
 _GATHER_PACE_S = 0.0
 
-# _FOTO_LOCK serializa la escritura de la foto (SQLAlchemy no es thread-safe en JSON concurrente).
+# _FOTO_LOCK serializa TODO acceso a `db` desde `gather()` (lectura y escritura): la Session de
+# SQLAlchemy no es thread-safe, ni siquiera para un `SELECT` concurrente con otro hilo.
 # _SCRAPER_LOCK: consentimiento/crumb una sola vez/proceso; si falla, todo a yfinance puro.
 _FOTO_LOCK = threading.Lock()
 _SCRAPER_LOCK = threading.Lock()
@@ -60,10 +61,15 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
     """Última foto de este ticker si cae dentro de la ventana. Sustituye la lectura del cache."""
     from app.models import FundamentalsSnapshot
 
-    row = (db.query(FundamentalsSnapshot)
-           .filter(FundamentalsSnapshot.ticker == ticker)
-           .order_by(FundamentalsSnapshot.captured_at.desc())
-           .first())
+    # `_FOTO_LOCK` también aquí, no solo en `foto_guardar`: `gather()` llama a ambas con el
+    # MISMO `db` de `_GATHER_WORKERS` hilos a la vez, y una `Session` de SQLAlchemy no es
+    # thread-safe ni para LEER — sin el lock en la lectura, "This session is provisioning a
+    # new connection; concurrent operations are not permitted" (visto en producción, 23-ago).
+    with _FOTO_LOCK:
+        row = (db.query(FundamentalsSnapshot)
+               .filter(FundamentalsSnapshot.ticker == ticker)
+               .order_by(FundamentalsSnapshot.captured_at.desc())
+               .first())
     if not row:
         return None
     # SQLite devuelve el datetime naive pese a DateTime(timezone=True) — mismo patrón que

@@ -470,16 +470,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # OJO: el cursor NO avanza aquí sino al final. Avanzarlo ahora consumía la franja
     # aunque el escaneo reventase a mitad, y esos nombres no volvían hasta la siguiente vuelta.
 
-    # 2) Outlook macro forward (V4-Pro, 1 llamada).
-    scan_progress.set_stage("macro")
-    logger.info("Escaneo: iniciando MACRO (modelo=%s, reasoning=%s).",
-               macro_cfg["model"] or settings.llm_model, macro_cfg["reasoning_effort"])
-    t0 = time.monotonic()
-    macro = macro_mod.get_macro_outlook(macro_llm, db, **_sampling_kwargs(macro_cfg))
-    macro_block = macro_mod.outlook_prompt_block(macro)
-    timings["macro"] = round(time.monotonic() - t0, 1)
-    logger.info("Escaneo: MACRO completado en %.1fs.", timings["macro"])
-
     # Incidencias para el informe persistido: los fallos PARCIALES que hasta ahora solo se
     # veían leyendo los logs de Railway (fuentes caídas, LLM no parseable, nombres sin datos).
     issues: list[str] = []
@@ -500,25 +490,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         issues.append(f"El tope está recortando fuerte: {sobre_suelo} nombres pasaban el suelo "
                       f"de liquidez y solo se escanearon los {universo_info['size']} de más "
                       "volumen. Conviene subir el suelo en dólares.")
-    ev = macro.get("events")
-    if ev is not None:
-        if not ev.get("wiki") and not ev.get("sched"):
-            issues.append("Eventos macro: Wikipedia sin contenido (¿bloqueo del User-Agent?).")
-        # La fuente principal es Google News y GDELT la reserva (ver macro.py).
-        # Que GDELT no traiga nada dejó de ser noticia: lo raro —y lo que hay que avisar— es que
-        # falle la principal, o que fallen las dos.
-        if not ev.get("gnews"):
-            if ev.get("gdelt"):
-                issues.append("Eventos macro: Google News sin titulares; cubrió la reserva "
-                              "de GDELT.")
-            else:
-                issues.append("Eventos macro: sin titulares — Google News y la reserva de "
-                              "GDELT cayeron a la vez.")
-    if not macro.get("outlook"):
-        issues.append("Outlook macro del LLM caído — se usó solo el régimen determinista.")
 
-    # 3) PASO 1 — prescore rápido (Flash) en lotes. Agrupa sobrecarga fija de llamadas.
-    # Reintento lote (hasta 2 extra) vive en scorer.prescore_batch(), no aquí.
+    # 2) Gather ANTES que el macro: si Yahoo está caído entero, mejor descubrirlo aquí (gratis)
+    # que después de haber pagado la llamada de macro (V4-Pro, reasoning alto, la más cara del
+    # embudo por llamada única).
     # _GATHER_WORKERS/PACE_S: validados en vivo (2 hilos, 0,4s pausa) para yahoo_scraper.
     fund_mod._GATHER_PACE_S = _GATHER_PACE_S
 
@@ -568,6 +543,42 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Motivo real por ticker (antes se tragaba entero) — va a `ScanRun.failures` con el resto.
     gather_errors = [(t, e) for t, d, e in gathered if d is None and e]
     datos_ok = [d for _t, d, _e in gathered if d is not None]
+    if not datos_ok:
+        # Cero nombres útiles tras gather + reintento: Yahoo no está disponible (o el universo
+        # está roto). Abortar AQUÍ, antes del macro, es justo el ahorro que motiva este orden —
+        # sin datos que puntuar, pagar la llamada más cara del embudo no compra nada.
+        raise RuntimeError(
+            f"Gather sin ningún dato útil: los {len(sample)} nombres fallaron (Yahoo caído o "
+            "universo roto). El escaneo se aborta antes del macro, sin gastar en él."
+        )
+
+    # 3) Outlook macro forward (V4-Pro, 1 llamada) — ya con la certeza de que hay datos que
+    # puntuar con él.
+    scan_progress.set_stage("macro")
+    logger.info("Escaneo: iniciando MACRO (modelo=%s, reasoning=%s).",
+               macro_cfg["model"] or settings.llm_model, macro_cfg["reasoning_effort"])
+    t0 = time.monotonic()
+    macro = macro_mod.get_macro_outlook(macro_llm, db, **_sampling_kwargs(macro_cfg))
+    macro_block = macro_mod.outlook_prompt_block(macro)
+    timings["macro"] = round(time.monotonic() - t0, 1)
+    logger.info("Escaneo: MACRO completado en %.1fs.", timings["macro"])
+
+    ev = macro.get("events")
+    if ev is not None:
+        if not ev.get("wiki") and not ev.get("sched"):
+            issues.append("Eventos macro: Wikipedia sin contenido (¿bloqueo del User-Agent?).")
+        # La fuente principal es Google News y GDELT la reserva (ver macro.py).
+        # Que GDELT no traiga nada dejó de ser noticia: lo raro —y lo que hay que avisar— es que
+        # falle la principal, o que fallen las dos.
+        if not ev.get("gnews"):
+            if ev.get("gdelt"):
+                issues.append("Eventos macro: Google News sin titulares; cubrió la reserva "
+                              "de GDELT.")
+            else:
+                issues.append("Eventos macro: sin titulares — Google News y la reserva de "
+                              "GDELT cayeron a la vez.")
+    if not macro.get("outlook"):
+        issues.append("Outlook macro del LLM caído — se usó solo el régimen determinista.")
 
     # C.4 (apagado por defecto): mediana de P/E por sector calculada sobre ESTE universo, con el
     # mismo campo con el que se puntúa. Nunca de una fuente externa — mezclar metodologías daba
@@ -578,6 +589,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         issues.append(f"Mediana de P/E del sector activa en los prompts ({len(medianas)} "
                       "sectores con muestra suficiente) — experimento, ver plan C.4.")
 
+    # 4) PASO 1 — prescore rápido (Flash) en lotes. Agrupa sobrecarga fija de llamadas.
+    # Reintento lote (hasta 2 extra) vive en scorer.prescore_batch(), no aquí.
     _prescore_kw = _sampling_kwargs(prescore_cfg)
 
     def _pre_uno(d):
@@ -696,7 +709,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         per_sector, settings.deep_finalists_cap,
         top_caps=settings.deep_top_caps, mid_scores=mid_scores, tracked=personal)
 
-    # 4) PASO 2 — profundo (V4-Pro) + price target en finalistas.
+    # 5) PASO 2 — profundo (V4-Pro) + price target en finalistas.
     # Memoria vectorial solo al final (remember). Tesis previa quitada: cada escaneo juzga desde cero.
     store = _memory_store()
 
@@ -750,7 +763,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                  for p, _d in prescored}
     target_map = {t: r.target_price for t, r in deep.items()}
 
-    # 5) Leaderboard: DECISIÓN reemplaza total; OBSERVATORIO refresca solo hoy-profundos.
+    # 6) Leaderboard: DECISIÓN reemplaza total; OBSERVATORIO refresca solo hoy-profundos.
     # Foto prev ranking/watchlist para detectar novedades (qué entra/sale) en informe.
     prev_ranking = {s.ticker for s in db.query(Score).all()}
     prev_watch = set(watchlist_mod.tickers(db))
@@ -797,7 +810,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Watchlist SIN alimentar: no está en el paper y ya no da acceso al profundo (ver `always`).
     # El módulo y la tabla se quedan: lo guardado sigue viéndose, pero deja de crecer.
 
-    # 6) SELECCIÓN fiel al paper: top-N por SCORE PROFUNDO, desempate por MARKET CAP.
+    # 7) SELECCIÓN fiel al paper: top-N por SCORE PROFUNDO, desempate por MARKET CAP.
     #    (La convicción del constructor solo pondera; no re-selecciona.)
     #    Antes del corte se apartan las opadas (ver `_aparta_opadas`).
     selected = portfolio.select_top(
@@ -838,7 +851,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         timings["constructor"] = round(time.monotonic() - t0, 1)
         logger.info("Escaneo: CONSTRUCTOR completado en %.1fs.", timings["constructor"])
 
-    # 7) Trades con aritmética exacta (la cartera que PROPONDRÍA hoy; solo se persiste al decidir).
+    # 8) Trades con aritmética exacta (la cartera que PROPONDRÍA hoy; solo se persiste al decidir).
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
     macro_line = macro.get("outlook", "") or construction.summary
 
@@ -856,7 +869,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     _log_funnel(cadence, sample, prescored, failed, finalists, data_by_t, selected,
                 construction, instr_prices)
 
-    # 8) DECISIÓN (mensual o manual): persistir la propuesta, ejecutar la sombra y proponer a
+    # 9) DECISIÓN (mensual o manual): persistir la propuesta, ejecutar la sombra y proponer a
     #    la real. El escaneo observatorio termina antes de este bloque: el libro conserva la
     #    cartera del último decidido para que cada elección viva su mes entero.
     if decide:
