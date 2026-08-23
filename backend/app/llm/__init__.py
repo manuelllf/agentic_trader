@@ -13,8 +13,13 @@ from app.llm.deepseek import DeepSeekProvider
 from app.llm.openrouter import _PROVEEDORES_EXCLUIDOS_0731, OpenRouterProvider
 
 
-def get_llm(model: str | None = None, reasoning_effort: str | None = "none") -> LLMProvider:
+def get_llm(model: str | None = None, reasoning_effort: str | None = "none",
+            stage: str = "", recorder=None) -> LLMProvider:  # noqa: ANN001
     """Proveedor LLM. Lanza si falta la key del proveedor configurado.
+
+    `stage`/`recorder`: traza de llamadas (ver `app/llm/trace.py`). Solo la implementa el
+    circuito oficial de DeepSeek; con OpenRouter (pruebas locales puntuales) se ignoran y la
+    tabla `llm_call` se queda vacía.
 
     `reasoning_effort` por defecto es `"none"` (desactiva el razonamiento del todo) — medido en
     producción que dejarlo sin mandar (el proveedor cae a su default documentado, "high") disparó
@@ -50,4 +55,6 @@ def get_llm(model: str | None = None, reasoning_effort: str | None = "none") -> 
         model=model or settings.llm_model,
         base_url=settings.deepseek_base_url,
         reasoning_effort=reasoning_effort,
+        stage=stage,
+        recorder=recorder,
     )

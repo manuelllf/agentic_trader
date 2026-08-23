@@ -26,15 +26,17 @@ from app.screener import yahoo_scraper
 
 logger = logging.getLogger(__name__)
 
-_FUND_CACHE_TTL_H = 12.0   # ver `FundamentalsCache` en models.py para el motivo
+# Ventana de reutilización de la foto: dentro de ella el escaneo NO vuelve a pedirle nada a
+# Yahoo (protección contra el 401 masivo que motivó el cache; ver `FundamentalsSnapshot`).
+_FOTO_TTL_H = 12.0
 
 # Pausa tras cada petición Yahoo (módulo, no parámetro gather): scan_service fija antes gather.
 # 0.0 defecto (sin pausa) para tests; no es kwarg para mantener firma estable ante stubs.
 _GATHER_PACE_S = 0.0
 
-# _CACHE_LOCK serializa caché (SQLAlchemy no es thread-safe en JSON concurrente).
+# _FOTO_LOCK serializa la escritura de la foto (SQLAlchemy no es thread-safe en JSON concurrente).
 # _SCRAPER_LOCK: consentimiento/crumb una sola vez/proceso; si falla, todo a yfinance puro.
-_CACHE_LOCK = threading.Lock()
+_FOTO_LOCK = threading.Lock()
 _SCRAPER_LOCK = threading.Lock()
 _SCRAPER_CACHE: dict[str, object] = {}
 
@@ -54,35 +56,38 @@ def _scraper_session() -> tuple[yahoo_scraper.creq.Session, str] | None:
     return _SCRAPER_CACHE.get("ok")  # type: ignore[return-value]
 
 
-def _cache_get(db, ticker: str) -> NameData | None:  # noqa: ANN001
-    from app.models import FundamentalsCache
+def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | None:  # noqa: ANN001
+    """Última foto de este ticker si cae dentro de la ventana. Sustituye la lectura del cache."""
+    from app.models import FundamentalsSnapshot
 
-    with _CACHE_LOCK:
-        row = db.get(FundamentalsCache, ticker)
-        if not row:
-            return None
-        # SQLite devuelve `row.at` naive pese a DateTime(timezone=True) — mismo patrón que
-        # watchlist.py::_aware().
-        at = row.at if row.at.tzinfo is not None else row.at.replace(tzinfo=UTC)
-        edad_h = (datetime.now(UTC) - at).total_seconds() / 3600
-        if edad_h >= _FUND_CACHE_TTL_H:
-            return None
-        try:
-            return NameData(**row.data)
-        except TypeError:
-            return None   # forma vieja del dataclass (campo añadido/quitado) — se ignora, no rompe
+    row = (db.query(FundamentalsSnapshot)
+           .filter(FundamentalsSnapshot.ticker == ticker)
+           .order_by(FundamentalsSnapshot.captured_at.desc())
+           .first())
+    if not row:
+        return None
+    # SQLite devuelve el datetime naive pese a DateTime(timezone=True) — mismo patrón que
+    # watchlist.py::_aware().
+    at = row.captured_at
+    at = at if at.tzinfo is not None else at.replace(tzinfo=UTC)
+    if (datetime.now(UTC) - at).total_seconds() / 3600 >= ttl_h:
+        return None
+    try:
+        return NameData(**row.data)
+    except TypeError:
+        return None   # forma vieja del dataclass (campo añadido/quitado) — se ignora, no rompe
 
 
-def _cache_put(db, ticker: str, data: NameData) -> None:  # noqa: ANN001
-    from app.models import FundamentalsCache
+def foto_guardar(db, ticker: str, data: NameData) -> None:  # noqa: ANN001
+    """Añade una foto NUEVA (nunca pisa la anterior): es el histórico, no un cache."""
+    from app.models import FundamentalsSnapshot
 
-    payload = dataclasses.asdict(data)
-    with _CACHE_LOCK:
-        row = db.get(FundamentalsCache, ticker)
-        if row:
-            row.at, row.data = datetime.now(UTC), payload
-        else:
-            db.add(FundamentalsCache(ticker=ticker, data=payload))
+    with _FOTO_LOCK:
+        db.add(FundamentalsSnapshot(
+            ticker=ticker, data=dataclasses.asdict(data), sector=data.sector,
+            price=data.price, market_cap=data.market_cap, pe_trailing=data.pe_trailing,
+            pe_forward=data.pe_forward, high_52w=data.high_52w, low_52w=data.low_52w,
+        ))
         db.commit()
 
 # Variables fundamentales relevantes de .info (mapean a la lista del Exhibit 2B del paper).
@@ -212,6 +217,56 @@ class NameData:
     # (target_flagged, `_flag_consensus_echo`) — desde el 19-ago ya NO viajan a ningún prompt.
     target_high: float | None = None    # objetivo máximo del consenso, como NUMERO
     target_mean: float | None = None    # objetivo MEDIO del consenso, como NUMERO
+    # Los mismos números que ya van dentro de `fundamentals_text`/`technical_text`, pero como
+    # NÚMERO: el texto no se puede agregar (mediana de P/E por sector, distancia al máximo).
+    pe_trailing: float | None = None
+    pe_forward: float | None = None
+    high_52w: float | None = None
+    low_52w: float | None = None
+
+
+def _num(info: dict, key: str) -> float | None:
+    try:
+        v = info.get(key)
+        return float(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def metricas(info: dict) -> dict:
+    """Campos numéricos de `.info` que la foto materializa (ver `FundamentalsSnapshot`)."""
+    return {
+        "pe_trailing": _num(info, "trailingPE"),
+        "pe_forward": _num(info, "forwardPE"),
+        "high_52w": _num(info, "fiftyTwoWeekHigh"),
+        "low_52w": _num(info, "fiftyTwoWeekLow"),
+    }
+
+
+# Mínimo de nombres para publicar la mediana de un sector: con 3 o 4 la mediana la mueve
+# cualquiera. Es el mismo suelo con el que se midieron las medianas del A/B.
+_MIN_POR_SECTOR = 6
+
+
+def medianas_pe_por_sector(datos: list[NameData]) -> dict[str, float]:
+    """Mediana del P/E trailing por sector, calculada sobre el UNIVERSO PROPIO.
+
+    Nunca de una fuente externa: el numerador (`trailingPE` de yfinance) y el sector salen de
+    aquí, y mezclar metodologías da el doble de diferencia (Financial Services: 14,46 propio vs
+    7,35 de un agregado externo). Mediana y no media: un P/E de 300 no la destroza.
+
+    Sesgo conocido y sin esconder: con el universo cortado a los ~3.000 de más volumen, esto es
+    la mediana de las GRANDES capitalizaciones del sector, no la del sector entero.
+    """
+    import statistics
+    from collections import defaultdict
+
+    por_sector: dict[str, list[float]] = defaultdict(list)
+    for d in datos:
+        if d.pe_trailing and d.pe_trailing > 0 and d.sector:
+            por_sector[d.sector].append(d.pe_trailing)
+    return {sector: round(statistics.median(pes), 2)
+            for sector, pes in por_sector.items() if len(pes) >= _MIN_POR_SECTOR}
 
 
 def _fmt(value: object, kind: str) -> str | None:
@@ -333,9 +388,10 @@ def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
 
 def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa: ANN001
     """Baja .info + histórico + noticias: devuelve (datos, motivo_si_None) o (data, None).
-    Motor: yahoo_scraper primario; fallback yfinance. DB cachea 12h. PACE_S fijado por scan_service."""
+    Motor: yahoo_scraper primario; fallback yfinance. Reutiliza la foto de las ultimas 12h.
+    PACE_S fijado por scan_service."""
     if db is not None:
-        cached = _cache_get(db, ticker)
+        cached = foto_reciente(db, ticker)
         if cached is not None:
             return cached, None
 
@@ -356,7 +412,7 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
                 time.sleep(_GATHER_PACE_S)
             if data is not None:
                 if db is not None:
-                    _cache_put(db, ticker, data)
+                    foto_guardar(db, ticker, data)
                 return data, None
             # "sin_datos" genuino (200 OK, ticker vacío/deslistado): NO se reintenta por
             # yfinance — medido que los mismos tickers fallan igual en los dos sitios.
@@ -394,11 +450,14 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
             name=info.get("shortName", ""),
             target_high=float(target_high) if target_high else None,
             target_mean=float(target_mean) if target_mean else None,
+            **metricas(info),
         )
         if db is not None:
-            _cache_put(db, ticker, data)
+            foto_guardar(db, ticker, data)
         return data, None
     except Exception as exc:
-        motivo = f"{type(exc).__name__}: {exc}"[:300]
+        # Entero, sin cortar a 300: acaba en `ScanRun.failures` y un 401 de Yahoo trae el cuerpo
+        # de la respuesta dentro del mensaje — justo la parte que se perdía al recortar.
+        motivo = f"{type(exc).__name__}: {exc}"
         logger.warning("Gather sin datos para %s: %s", ticker, motivo)
         return None, motivo

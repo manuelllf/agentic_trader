@@ -1,4 +1,4 @@
-"""Scheduler de escaneo (cron semanal, anclado a la hora del mercado US).
+"""Scheduler de escaneo (cron mensual, anclado a la hora del mercado US).
 
 APScheduler `BackgroundScheduler` (síncrono), coherente con el resto del backend.
 Se arranca/para desde el lifespan de FastAPI (ver `main.py`). Solo tickea mientras el proceso
@@ -23,27 +23,14 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler(timezone="UTC")
 
 
-def decision_due(now: datetime | None = None) -> bool:
-    """¿Le toca DECIDIR cartera (ejecutar sombra + proponer a la real) a este escaneo programado?
-
-    La decisión es mensual: solo el PRIMER escaneo programado del mes — la primera aparición
-    de un día de semana cae siempre en día 1-7. El resto de semanales son observatorio (la
-    señal del scorer es a un mes; ver `real_proposals_monthly` en config).
-    Con `real_proposals_monthly=False`, todos los escaneos deciden (cadencia única).
-    """
-    if not settings.real_proposals_monthly:
-        return True
-    now = now or datetime.now(ZoneInfo(settings.scan_timezone))
-    return now.day <= 7
-
-
 def _scan_job() -> None:
+    """Único escaneo programado: mensual, universo entero, decide. El semanal (muestra
+    rotatoria, sin capa media, sin decisión) se retiró — no aportaba conocimiento nuevo: el
+    mercado no cambia lo bastante en una semana para justificar 750 llamadas de pago sin capa
+    media y sin tocar cartera (ver docs/plan-datos-observability.md)."""
     db = SessionLocal()
     try:
-        due = decision_due()
-        # Decisión (mensual) → universo entero; observatorio (semanal) → muestra rotatoria.
-        sample = None if due else settings.scan_sample_size
-        result = run_scan_and_store(db, sample_size=sample, decide=due)
+        result = run_scan_and_store(db, sample_size=None, decide=True)
         logger.info("Escaneo completado: %s", result)
     except Exception as exc:
         logger.exception("Fallo en el job de escaneo")
@@ -100,6 +87,21 @@ def _universe_job() -> None:
         db.close()
 
 
+def _universo_global_job() -> None:
+    """Sincroniza el universo global de HuggingFace, mensual. El catálogo de tickers no se
+    mueve rápido; esto solo ensancha lo que se puede FOTOGRAFIAR, el escaneo sigue en NASDAQ."""
+    from app.screener import universe_global
+
+    db = SessionLocal()
+    try:
+        info = universe_global.sincronizar(db)
+        logger.info("Universo global sincronizado: %s tickers.", info["tickers"])
+    except Exception:
+        logger.exception("No se pudo sincronizar el universo global")
+    finally:
+        db.close()
+
+
 def _reconcile_job() -> None:
     """Reconcilia fills de órdenes límite 'working' SIN depender de que la web esté abierta.
 
@@ -123,18 +125,21 @@ def start_scheduler() -> None:
     if not settings.enable_scheduler:
         logger.info("Scheduler desactivado (ENABLE_SCHEDULER=false)")
         return
+    # Día 1 del mes: puede caer en fin de semana, y no pasa nada — `universe_for_scan` usa la
+    # foto del último cierre (el job diario la mantiene fresca), no depende de que el mercado
+    # esté abierto ese día exacto.
     trigger = CronTrigger(
-        day_of_week=settings.scan_cron_day,
+        day=1,
         hour=settings.scan_cron_hour,
         minute=settings.scan_cron_minute,
         timezone=settings.scan_timezone,
     )
     # Gracia de misfire: con el default (~1 s), un proceso ocupado/reiniciándose justo a la hora
-    # del cron SALTARÍA el escaneo en silencio hasta la semana siguiente (snapshot y reconcile
-    # se auto-curan huecos; el escaneo no). Una hora de margen lo cubre; coalesce=True evita
+    # del cron SALTARÍA el escaneo en silencio hasta el mes siguiente (snapshot y reconcile
+    # se auto-curan huecos; el escaneo no). Un día de margen lo cubre; coalesce=True evita
     # ejecutarlo dos veces si se acumularan varios misfires.
-    scheduler.add_job(_scan_job, trigger=trigger, id="weekly_scan", replace_existing=True,
-                      misfire_grace_time=3600, coalesce=True)
+    scheduler.add_job(_scan_job, trigger=trigger, id="monthly_scan", replace_existing=True,
+                      misfire_grace_time=86400, coalesce=True)
     # Cierre diario de la curva histórica: lun-vie 16:30 ET (cierre + retraso de yfinance).
     scheduler.add_job(
         _snapshot_job,
@@ -148,14 +153,19 @@ def start_scheduler() -> None:
                     timezone=settings.scan_timezone),
         id="universe_snapshot", replace_existing=True, misfire_grace_time=3600, coalesce=True,
     )
+    # Universo global (HuggingFace): día 1 de cada mes, de madrugada y fuera de horas de mercado.
+    scheduler.add_job(
+        _universo_global_job,
+        CronTrigger(day=1, hour=3, minute=0, timezone=settings.scan_timezone),
+        id="universo_global", replace_existing=True, misfire_grace_time=86400, coalesce=True,
+    )
     # Reconciliación de órdenes working cada 2 min (no-op sin órdenes vivas; ver _reconcile_job).
     scheduler.add_job(_reconcile_job, "interval", minutes=2, id="reconcile_working",
                       replace_existing=True)
     scheduler.start()
     logger.info(
-        "Scheduler arrancado: %s %02d:%02d %s",
-        settings.scan_cron_day, settings.scan_cron_hour,
-        settings.scan_cron_minute, settings.scan_timezone,
+        "Scheduler arrancado: escaneo mensual día 1 %02d:%02d %s",
+        settings.scan_cron_hour, settings.scan_cron_minute, settings.scan_timezone,
     )
 
 

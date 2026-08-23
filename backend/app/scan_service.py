@@ -49,6 +49,7 @@ from app.config import settings
 from app.ledger import service as ledger
 from app.llm import get_llm
 from app.llm import deepseek as deepseek_mod
+from app.llm.trace import LLMTrace
 from app.models import Meta, Proposal, ScanRun, Score
 from app.screener import fundamentals as fund_mod
 from app.screener import macro as macro_mod
@@ -141,10 +142,15 @@ def _llm_usage(**etapas) -> dict:
     desde que se dejó OpenRouter: sin `by_stage`, `by_model["deepseek-v4-pro"]` mezclaría las
     tres y ScanRun.cost dejaría de decir en qué paso se fue el dinero, justo lo que `by_model`
     existe para evitar.
+
+    `cache_hit/miss_tokens` y `peak_calls` vienen del proveedor: un escaneo caro puede serlo por
+    mal aprovechamiento de la caché (el tramo miss cuesta 30x el de hit) o por haber caído en
+    horario peak (el doble), y sin el desglose las dos causas son indistinguibles del total.
     """
-    total = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0,
-             "by_model": {}, "by_stage": {}}
-    campos = ("calls", "prompt_tokens", "completion_tokens", "cost_usd")
+    campos = ("calls", "prompt_tokens", "completion_tokens", "cache_hit_tokens",
+              "cache_miss_tokens", "peak_calls", "cost_usd")
+    total = dict.fromkeys(campos, 0)
+    total.update(by_model={}, by_stage={})
     for etapa, llm in etapas.items():
         u = getattr(llm, "usage", None)
         if not isinstance(u, dict):
@@ -156,6 +162,10 @@ def _llm_usage(**etapas) -> dict:
             for k in campos:
                 acc[k] += stats.get(k, 0)
         total["by_stage"][etapa] = {k: u.get(k, 0) for k in campos}
+    prompt_facturado = total["cache_hit_tokens"] + total["cache_miss_tokens"]
+    total["cache_hit_ratio"] = (
+        round(total["cache_hit_tokens"] / prompt_facturado, 4) if prompt_facturado else None
+    )
     total["cost_usd"] = round(total["cost_usd"], 4)
     return total
 
@@ -315,19 +325,20 @@ DEFAULT_TOP_P = 0.95
 
 
 def _stage_cfg(overrides: dict | None, stage: str, default_model: str,
-              default_reasoning: str | None) -> dict:
+              default_reasoning: str | None,
+              default_temperature: float = DEFAULT_TEMPERATURE) -> dict:
     """Config efectiva de una etapa: lo que mande `overrides[stage]` gana, si no el default de
     `settings` (modelo/reasoning) o `DEFAULT_TEMPERATURE`/`DEFAULT_TOP_P` (muestreo)."""
     o = (overrides or {}).get(stage) or {}
     return {
         "model": o.get("model") or default_model,
         "reasoning_effort": o.get("reasoning_effort", default_reasoning),
-        "temperature": o.get("temperature", DEFAULT_TEMPERATURE),
+        "temperature": o.get("temperature", default_temperature),
         "top_p": o.get("top_p", DEFAULT_TOP_P),
     }
 
 
-def _llm_for(cfg: dict):
+def _llm_for(cfg: dict, stage: str = "", recorder=None):  # noqa: ANN001
     """`get_llm()` con el `model` de la config, PERO solo como argumento posicional cuando hay
     uno de verdad (override, o default de etapa como `prescore_model`/`mid_model`) — igual que
     las llamadas de antes de este refactor. Sin esto, macro/deep/constructor (que antes NO
@@ -336,8 +347,9 @@ def _llm_for(cfg: dict):
     que dependen los fakes de test que distinguen la etapa mirando `*args` (ver
     `test_cadence.py::test_profundo_no_parseable_...`)."""
     if cfg["model"]:
-        return get_llm(cfg["model"], reasoning_effort=cfg["reasoning_effort"])
-    return get_llm(reasoning_effort=cfg["reasoning_effort"])
+        return get_llm(cfg["model"], reasoning_effort=cfg["reasoning_effort"],
+                       stage=stage, recorder=recorder)
+    return get_llm(reasoning_effort=cfg["reasoning_effort"], stage=stage, recorder=recorder)
 
 
 def _sampling_kwargs(cfg: dict) -> dict:
@@ -357,12 +369,12 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                        llm_overrides: dict | None = None) -> dict:
     """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
 
-    `decide=False` → escaneo OBSERVATORIO (el cron semanal entre decisiones): puntúa el
-    universo y refresca ranking, watchlist, memoria vectorial y auditoría — el conocimiento —
-    pero NO pisa la propuesta vigente, NO toca el libro sombra y NO crea aprobaciones para la
-    real. La DECISIÓN de cartera (ambos libros) es mensual (`real_proposals_monthly`): la señal
-    del scorer es a un mes y así cada elección vive su mes y la curva mide la selección, no el
-    ruido semanal del LLM. Los escaneos manuales van con `decide=True` (ciclo completo).
+    `decide=False` → escaneo OBSERVATORIO (usado hoy por la "simulación" manual de Sala Real,
+    banco de pruebas de configuración): puntúa el universo y refresca ranking, watchlist,
+    memoria vectorial y auditoría — el conocimiento — pero NO pisa la propuesta vigente, NO toca
+    el libro sombra y NO crea aprobaciones para la real. El cron programado (`scheduler.py`) es
+    mensual único y siempre decide — la señal del scorer es a un mes, así cada elección vive su
+    mes y la curva mide la selección, no ruido semanal del LLM.
 
     `llm_overrides`: {"macro"|"prescore"|"mid"|"deep"|"constructor": {"model", "reasoning_effort",
     "temperature", "top_p"}} — SOLO para el botón "simulación" de Sala Real (banco de pruebas de
@@ -393,20 +405,24 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     macro_cfg = _stage_cfg(llm_overrides, "macro", None, settings.macro_reasoning_effort)
     deep_cfg = _stage_cfg(llm_overrides, "deep", None, settings.deep_reasoning_effort)
     prescore_cfg = _stage_cfg(llm_overrides, "prescore", settings.prescore_model,
-                              settings.prescore_reasoning_effort)
+                              settings.prescore_reasoning_effort,
+                              settings.prescore_temperature)
     mid_cfg = _stage_cfg(llm_overrides, "mid", settings.mid_model, settings.mid_reasoning_effort)
     constructor_cfg = _stage_cfg(llm_overrides, "constructor", None, settings.reasoning_effort)
 
     # Instancia PROPIA para el macro (antes compartía `deep_llm`): sin esto, su única llamada se
     # mezclaba con las del profundo en `by_model` (ambos V4-Pro) y el desglose de coste por
     # etapa de `_llm_usage` no podía separarlas.
-    macro_llm = _llm_for(macro_cfg)
-    deep_llm = _llm_for(deep_cfg)
-    prescore_llm = _llm_for(prescore_cfg)
+    # Traza de llamadas (ver `app/llm/trace.py`): se acumula en memoria y se vuelca de una vez al
+    # final, con el `ScanRun` ya escrito para poder referenciarlo.
+    traza = LLMTrace()
+    macro_llm = _llm_for(macro_cfg, "macro", traza)
+    deep_llm = _llm_for(deep_cfg, "deep", traza)
+    prescore_llm = _llm_for(prescore_cfg, "prescore", traza)
     # Capa media (opcional): repuntúa los mejores de cada sector con un modelo mejor que Flash
     # antes del corte a finalistas. Se crea aquí (como los otros dos) para que su coste entre en
     # `_llm_usage` aunque no llegue a usarse ninguna vez si `mid_layer` está desactivado.
-    mid_llm = _llm_for(mid_cfg) if settings.mid_layer else None
+    mid_llm = _llm_for(mid_cfg, "mid", traza) if settings.mid_layer else None
     # sample_size explícito (pruebas) manda; si no, TODO el universo salvo que se desactive.
     if sample_size is not None:
         n = sample_size
@@ -553,14 +569,25 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     gather_errors = [(t, e) for t, d, e in gathered if d is None and e]
     datos_ok = [d for _t, d, _e in gathered if d is not None]
 
+    # C.4 (apagado por defecto): mediana de P/E por sector calculada sobre ESTE universo, con el
+    # mismo campo con el que se puntúa. Nunca de una fuente externa — mezclar metodologías daba
+    # el doble de diferencia en financieras. Va como dato pegado al P/E, sin instrucción.
+    medianas = (fund_mod.medianas_pe_por_sector(datos_ok)
+                if settings.sector_median_in_prompt else {})
+    if medianas:
+        issues.append(f"Mediana de P/E del sector activa en los prompts ({len(medianas)} "
+                      "sectores con muestra suficiente) — experimento, ver plan C.4.")
+
     _prescore_kw = _sampling_kwargs(prescore_cfg)
 
     def _pre_uno(d):
-        p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
+        p = scorer_mod.prescore_one(prescore_llm, d, macro_block, medianas=medianas,
+                                    **_prescore_kw)
         for _ in range(2):   # mismo criterio que capa media/profundo: DOS reintentos, no uno
             if not p.error:
                 break
-            p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
+            p = scorer_mod.prescore_one(prescore_llm, d, macro_block, medianas=medianas,
+                                        **_prescore_kw)
         scan_progress.tick(ok=not p.error, reason=f"{p.ticker}: {p.error}" if p.error else None)
         return [(p, d)]
 
@@ -638,11 +665,13 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         _mid_kw = _sampling_kwargs(mid_cfg)
 
         def _mid(ticker: str):
-            p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block, **_mid_kw)
+            p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block,
+                                        medianas=medianas, **_mid_kw)
             for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
                 if not p.error:
                     break
-                p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block, **_mid_kw)
+                p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block,
+                                            medianas=medianas, **_mid_kw)
             scan_progress.tick(ok=not p.error, reason=f"{ticker}: {p.error}" if p.error else None)
             return p
 
@@ -674,11 +703,13 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     _deep_kw = _sampling_kwargs(deep_cfg)
 
     def _deep(ticker: str):
-        r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, **_deep_kw)
+        r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, medianas=medianas,
+                             **_deep_kw)
         for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
             if not r.error:
                 break
-            r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, **_deep_kw)
+            r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, medianas=medianas,
+                                 **_deep_kw)
         return r
 
     scan_progress.set_stage("deep", total=len(finalists), unit="finalistas")
@@ -795,7 +826,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         # Instancia SEPARADA (no `deep_llm`): el constructor lleva su propio reasoning (ver
         # config.py). Se crea aquí, justo antes de usarse, para no alterar el ORDEN de las
         # llamadas a `get_llm()` que usan los tests para distinguir prescore/mid/deep.
-        constructor_llm = _llm_for(constructor_cfg)
+        constructor_llm = _llm_for(constructor_cfg, "constructor", traza)
         construction = constructor_mod.construct(
             constructor_llm, candidates_text, macro_block,
             settings.max_positions, settings.max_position_pct, valid, settings.min_positions,
@@ -903,16 +934,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                ", ".join(f"{fase}={dur}s" for fase, dur in timings.items() if fase != "total"))
     coste = _llm_usage(macro=macro_llm, prescore=prescore_llm, mid=mid_llm,
                        profundo=deep_llm, constructor=constructor_llm)
-    # Saldo real DESPUÉS: la liquidación de DeepSeek tarda, esta resta se queda corta
-    # sistemáticamente — `cost_usd` (por tokens) manda para mostrar, esto es solo referencia.
-    saldo_despues = (
-        deepseek_mod.account_balance_usd(settings.deepseek_api_key, settings.deepseek_base_url)
-        if settings.llm_provider == "deepseek" and settings.deepseek_api_key else None
-    )
-    coste["real_usd_deepseek"] = (
-        round(saldo_antes - saldo_despues, 4)
-        if saldo_antes is not None and saldo_despues is not None else None
-    )
+    # NO se relee el saldo al terminar: DeepSeek liquida con retraso y la resta salía a menos de
+    # la mitad de lo real (medido: $0,04 al acabar vs $0,10 minutos después, con $0,103 estimados
+    # por tokens). Se guarda el saldo de ANTES; la resta contra el `saldo_antes` del escaneo
+    # siguiente sí está liquidada y se calcula offline sobre `ScanRun`.
+    coste["saldo_antes_usd"] = saldo_antes
     # Confianza del prescore resumida: los logs de Railway caducan (y a 3.000 llamadas descartan
     # líneas), así que el único sitio donde se puede leer DESPUÉS es el informe persistido.
     _confs = sorted(p.confidence for p, _d in prescored if p.confidence is not None)
@@ -933,8 +959,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         "positions": len(construction.positions),
         "decided": decide,
         # coste con `by_stage` además de `by_model` (ver `_llm_usage`) — `mid_llm` puede ser None
-        # (desactivada), se tolera igual que a un FakeLLM sin `usage`. `real_usd_deepseek`: saldo
-        # real antes/después, no una estimación (ver arriba).
+        # (desactivada), se tolera igual que a un FakeLLM sin `usage`.
         "cost": coste,
         "outlook": macro.get("outlook") or "",
         # Duración por fase, segundos (ver `timings` arriba) — clave ausente = fase no corrió.
@@ -973,7 +998,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             "items": items,
             "omitted": [{"ticker": o.ticker, "reason": o.reason} for o in construction.omitted],
         }
-        db.add(ScanRun(
+        run = ScanRun(
             cadence=cadence, decide=decide, regime=macro.get("regime") or "",
             vix=macro.get("vix"), favored_sectors=macro.get("favored_sectors") or [],
             avoided_sectors=macro.get("avoided_sectors") or [], outlook=macro.get("outlook") or "",
@@ -990,10 +1015,19 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                     "raw": analizados[t].raw} for t in deep_caidos]
             ),
             finalists=finalists_detail, construction=construction_detail,
-        ))
+        )
+        db.add(run)
         db.commit()
+        scan_run_id = run.id
     except Exception:
         logger.exception("No se pudo persistir ScanRun (no aborta el escaneo).")
+        scan_run_id = None
+    try:
+        # Va fuera del try de arriba: si `ScanRun` falla, la traza se guarda igual (suelta, sin
+        # escaneo al que colgarse) — es justo cuando más falta hace.
+        logger.info("Traza LLM: %d llamadas guardadas.", traza.flush(db, scan_run_id))
+    except Exception:
+        logger.exception("No se pudo persistir la traza de llamadas (no aborta el escaneo).")
     scan_progress.set_stage("done")
     return result
 

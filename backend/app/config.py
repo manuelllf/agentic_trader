@@ -20,15 +20,14 @@ class Settings(BaseSettings):
     memory_db_path: str = "agent_memory.db"
 
     # Cron anclado a la hora del MERCADO (no UTC): sobrevive al cambio de horario y cae con la
-    # foto ya asentada tras el retraso de 15 min de yfinance.
+    # foto ya asentada tras el retraso de 15 min de yfinance. Mensual, día 1 (ver scheduler.py):
+    # el semanal (muestra rotatoria, sin capa media, sin decisión) se retiró — el mercado no
+    # cambia lo bastante en una semana para justificar 750 llamadas de pago sin conocimiento
+    # nuevo (ver docs/plan-datos-observability.md).
     enable_scheduler: bool = True
-    scan_cron_day: str = "tue"                 # día(s) de la semana (APScheduler: mon,tue,...)
     scan_cron_hour: int = 10
     scan_cron_minute: int = 15
     scan_timezone: str = "America/New_York"    # ancla a la bolsa US (sobrevive al horario de verano)
-    # La cartera solo se decide en el primer escaneo del mes (señal del scorer es mensual); el
-    # resto son observatorio: ranking/watchlist/auditoría al día, sin tocar ningún libro.
-    real_proposals_monthly: bool = True
 
     # CORS: orígenes permitidos del frontend, separados por coma.
     cors_origins: str = "http://localhost:3000"
@@ -57,11 +56,23 @@ class Settings(BaseSettings):
     mid_reasoning_effort: str | None = "low"
     deep_reasoning_effort: str | None = "high"
     reasoning_effort: str | None = "high"   # constructor
+    # Temperatura PROPIA del prescore (el resto va a `DEFAULT_TEMPERATURE`=1.0). A 1.0 la nota
+    # salía de un sorteo (sd≈6,5 puntos, token elegido con 11% de probabilidad mediana). Medido
+    # en A/B real (26 tickers x 2 tiradas): a 0.0 la diferencia entre dos tiradas IDÉNTICAS baja
+    # de 6,21 a 0,00 puntos de mediana (Spearman 0,640 -> 0,912). No perfectamente determinista
+    # (2/26 casos saltaron igual, atribuible al enrutado MoE del proveedor), pero la mejora es
+    # enorme. Decisión: 0.0 en producción.
+    prescore_temperature: float = 0.0
     # Alias ROLLING de la API directa de DeepSeek, sin snapshot fechado invocable: se pierde la
     # garantía de que el modelo no cambie solo entre escaneos (no hay forma de pinnear).
     llm_model: str = "deepseek-v4-pro"      # profundo + macro + constructor
     prescore_model: str = "deepseek-v4-flash"  # triaje: ranking 1-100 del universo
     mid_layer: bool = True          # capa media: repuntúa los mejores de cada sector
+    # Los dos experimentos de prompt del plan de observabilidad, APAGADOS por defecto: el efecto
+    # medido de la mediana sectorial (~3 pts) es menor que el ruido de muestreo del prescore
+    # (~5,5), así que encenderlos a la vez haría imposible atribuir qué movió qué.
+    sector_median_in_prompt: bool = False   # C.4: mediana de P/E del sector pegada al P/E
+    prescore_driver: bool = False           # A.5.4: el prescore dice qué campo pesó más
     # Sectores grandes (Financial Services, Consumer Cyclical...) mandaban solo 10 a la capa
     # media: un #11-15 genuinamente bueno no tenía oportunidad de competir en el carril global.
     mid_per_sector: int = 15        # cuántos por sector entran a la capa media

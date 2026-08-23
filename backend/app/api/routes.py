@@ -24,6 +24,8 @@ un feed de señales.
 - POST /ledger/allocate      → asignar/retirar fondos                             [protegido]
 - POST /demo/run             → lanza el escaneo (universo entero → scores → cartera 3-5) [protegido]
 - POST /admin/universe-snapshot → relanza a mano la foto del universo (si el cron falló) [protegido]
+- POST /admin/foto           → foto de fundamentales a demanda, en segundo plano      [protegido]
+- POST /admin/universo-global → sincroniza el universo global de HuggingFace           [protegido]
 - GET  /demo/status          → estado del escaneo                                  [público]
 - GET  /scan/report          → informe persistido del último escaneo (incidencias) [doble nivel]
 - GET  /scan/funnel          → embudo de los últimos escaneos por etapa y sector   [doble nivel]
@@ -49,7 +51,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import execution_service, pipeline, scan_audit
+from app import execution_service, foto_service, pipeline, scan_audit
 from app import watchlist as watchlist_mod
 from app.auth import auth_optional
 from app.config import settings
@@ -527,6 +529,39 @@ def admin_universe_snapshot(db: Session = Depends(get_db)) -> dict:
     try:
         info = universe_mod.refresh_snapshot_and_report(db)
         return {"ok": True, **info}
+    except Exception as exc:  # noqa: BLE001 — el motivo legible es lo que necesita el panel
+        return {"ok": False, "error": str(exc)}
+
+
+@router.post("/admin/foto")
+def admin_foto(alcance: str = Query("nasdaq", pattern="^(nasdaq|global)$"),
+               limite: int | None = Query(None, ge=1)) -> dict:
+    """Lanza la foto de fundamentales a demanda, en segundo plano.
+
+    Separa recoger datos de puntuarlos: fotografiar a las 10:00 y escanear off-peak a las 13:00
+    (mitad de tarifa) sale del mismo dato. El progreso vivo va por `/scan/progress`.
+    """
+    if not foto_service.start(alcance=alcance, limite=limite):
+        raise HTTPException(409, "Ya hay una foto o un escaneo en marcha.")
+    return {"started": True, **foto_service.get_status()}
+
+
+@router.get("/admin/foto")
+def admin_foto_status() -> dict:
+    return foto_service.get_status()
+
+
+@router.post("/admin/universo-global")
+def admin_universo_global(db: Session = Depends(get_db)) -> dict:
+    """Sincroniza a mano el universo global de HuggingFace (el job lo hace mensualmente).
+
+    Fuente ajena: si HuggingFace no responde eso no es un error del backend, viaja como
+    `{"ok": false, ...}` con 200, igual que la foto de NASDAQ.
+    """
+    from app.screener import universe_global
+
+    try:
+        return {"ok": True, **universe_global.sincronizar(db)}
     except Exception as exc:  # noqa: BLE001 — el motivo legible es lo que necesita el panel
         return {"ok": False, "error": str(exc)}
 

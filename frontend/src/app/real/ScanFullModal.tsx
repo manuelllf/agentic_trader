@@ -81,13 +81,9 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                 {scan.cost && (
                   <span className={NUMS} style={{ color: T.muted }}>
                     {scan.cost.calls} llamadas ·{" "}
-                    {/* cost_usd manda: no depende de que DeepSeek liquide el saldo (tarda,
-                        real_usd_deepseek se quedaba corto por consultarlo demasiado pronto). */}
+                    {/* Solo el estimado por tokens: medido contra el saldo ya liquidado, acierta
+                        al 3%. El saldo leído al terminar el escaneo no, DeepSeek liquida tarde. */}
                     ${money(scan.cost.cost_usd)} <span title="Estimado por tokens de cada respuesta">est.</span>
-                    {scan.cost.real_usd_deepseek != null &&
-                      <span title="Saldo de DeepSeek antes/después de este escaneo — puede quedarse corto, la liquidación tarda">
-                        {" "}(saldo: ${money(scan.cost.real_usd_deepseek)})
-                      </span>}
                   </span>
                 )}
               </div>

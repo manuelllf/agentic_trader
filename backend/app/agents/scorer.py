@@ -10,7 +10,9 @@ import json
 import logging
 from dataclasses import dataclass
 
+from app.config import settings
 from app.llm.base import LLMProvider
+from app.llm.trace import ticker_ctx
 from app.screener.fundamentals import NameData
 
 logger = logging.getLogger(__name__)
@@ -85,13 +87,16 @@ class PrescoreResult:
     ticker: str
     score: float
     # error/raw: solo si falló. `error` distingue transporte (429, timeout…) de un JSON roto;
-    # `raw` guarda ~300 chars de la respuesta cruda. El caller decide si reintenta con `error`.
+    # `raw` guarda la respuesta cruda ENTERA. El caller decide si reintenta con `error`.
     error: str | None = None
     raw: str | None = None
     # Probabilidad del token menos seguro del LOTE (no por ticker: no hay forma barata de mapear
     # cada nota a sus tokens dentro de un JSON de 20 entradas). None si el proveedor no expone
     # logprobs (FakeLLM en tests, OpenRouter).
     confidence: float | None = None
+    # A.5.4: en 3-8 palabras, qué campo pesó más. None si el flag está apagado o el modelo se lo
+    # saltó. Telemetría — no entra en ningún ranking ni vuelve a un prompt.
+    driver: str | None = None
 
 
 @dataclass
@@ -111,7 +116,26 @@ class ScoreResult:
     raw: str | None = None
 
 
-def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> str:
+# Etiqueta EXACTA que emite `_fundamentals_text` para el P/E trailing: la mediana se pega a esa
+# línea y nada más — el dato al lado del dato, sin una sola instrucción sobre qué hacer con él.
+_ETIQUETA_PE = "- P/E (trailing): "
+
+
+def _con_mediana(fundamentals_text: str, sector: str, medianas: dict[str, float] | None) -> str:
+    """Añade `(sector median X)` a la línea del P/E. Sin mediana para ese sector, no toca nada."""
+    mediana = (medianas or {}).get(sector)
+    if not mediana:
+        return fundamentals_text
+    lineas = fundamentals_text.split("\n")
+    for i, linea in enumerate(lineas):
+        if linea.startswith(_ETIQUETA_PE):
+            lineas[i] = f"{linea} (sector median {mediana})"
+            break
+    return "\n".join(lineas)
+
+
+def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None,
+                 medianas: dict[str, float] | None = None) -> str:
     news = "\n".join(f"- {h}" for h in data.news) if data.news else "none"
     prior = (
         f"\nPrior view on this name (from our records): {prior_thesis}\n"
@@ -129,7 +153,7 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> 
         # existe y colaba la palabra "sector" como marco en cada llamada. El sector de ESTA empresa
         # sigue abajo, que es donde el paper lo pone.
         f"Company: {data.ticker} — sector {data.sector} / {data.industry}.\n"
-        f"Latest fundamentals:\n{data.fundamentals_text}\n\n"
+        f"Latest fundamentals:\n{_con_mediana(data.fundamentals_text, data.sector, medianas)}\n\n"
         f"Technical context: {data.technical_text or 'n/d'}\n"
         # Fecha de resultados como dato más del contexto, SIN regla de qué hacer con ella
         # (decisión pública del post de AXS: dato sí, instrucción no). Solo en el profundo.
@@ -140,7 +164,8 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> 
     )
 
 
-def _mid_prompt(data: NameData, macro_block: str) -> str:
+def _mid_prompt(data: NameData, macro_block: str,
+                medianas: dict[str, float] | None = None) -> str:
     # Todos los titulares, no solo los 3 primeros: la capa media decide quién llega al análisis
     # caro viendo un tercio de las noticias. En un escaneo real dio 100/100 a un nombre —el
     # único ≥90 de 2.594— y el profundo le puso 48 en cuanto vio la noticia que lo hundía (venta
@@ -156,7 +181,7 @@ def _mid_prompt(data: NameData, macro_block: str) -> str:
         f"Macro: {macro_block}\n"
         f"{data.ticker}{name} — {data.sector}/{data.industry}\n"
         f"News: {news}\n"
-        f"Fundamentals:\n{data.fundamentals_text}\n"
+        f"Fundamentals:\n{_con_mediana(data.fundamentals_text, data.sector, medianas)}\n"
         f"Technical: {data.technical_text or 'n/d'}\n"
         # Igual que en el lote barato (ver `_prescore_batch_prompt`): dato del calendario, sin
         # regla de qué hacer con él.
@@ -165,26 +190,23 @@ def _mid_prompt(data: NameData, macro_block: str) -> str:
     )
 
 
-_RAW_MAX = 1500          # se persiste en ScanRun.failures: unas decenas de KB al mes, nada
-
-
-def _recorte(raw: str) -> str:
-    """Respuesta truncada para diagnóstico: principio (prosa vs JSON) y final (corte a medias)."""
-    if len(raw) <= _RAW_MAX:
-        return raw
-    mitad = _RAW_MAX // 2
-    return f"{raw[:mitad]}\n…[recortado {len(raw) - _RAW_MAX} chars]…\n{raw[-mitad:]}"
+# La respuesta cruda de un fallo va ENTERA a `ScanRun.failures` (antes se recortaba a 1500
+# chars): un JSON degenerado o un bucle de repetición se diagnostica por su forma completa, y
+# son unas decenas de casos por escaneo, no miles.
 
 
 def mid_prescore(
     llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
-    top_p: float | None = 0.95,
+    top_p: float | None = 0.95, medianas: dict[str, float] | None = None,
 ) -> PrescoreResult:
     """Segunda opinión: best-effort 0 si falla, con error/raw para decidir reintento."""
     raw = ""
     try:
-        raw = llm.chat(MID_SYSTEM, _mid_prompt(data, macro_block),
-                       temperature=temperature, top_p=top_p) or ""
+        # `ticker_ctx`: el proveedor no sabe de qué nombre es la llamada; así la traza lo sabe
+        # sin meter un parámetro de telemetría en la interfaz del LLM (ver `app/llm/trace.py`).
+        with ticker_ctx(data.ticker):
+            raw = llm.chat(MID_SYSTEM, _mid_prompt(data, macro_block, medianas),
+                           temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
         # Score 0 en escala 1-100 = fallo de parseo. Sin esto, nombres caen sin rastro.
@@ -192,18 +214,18 @@ def mid_prescore(
         if sc <= 0:
             return PrescoreResult(data.ticker, 0.0,
                                   error="SinNota: JSON válido sin score utilizable",
-                                  raw=_recorte(raw))
+                                  raw=raw)
         return PrescoreResult(data.ticker, sc)
     except Exception as exc:
         logger.warning("Capa media no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
         return PrescoreResult(data.ticker, 0.0, error=f"{type(exc).__name__}: {exc}",
-                              raw=_recorte(raw))
+                              raw=raw)
 
 
 # Pre-score INDIVIDUAL — triaje rápido del universo, 1 llamada/ticker (fiel al paper).
 # Macro va siempre delante para maximizar hit de caché de prefijo DeepSeek.
 
-PRESCORE_SYSTEM = (
+_PRESCORE_BASE = (
     "You are the first-pass TRIAGE of an equity research pipeline. For the company given, "
     "answer ONE question: how likely is it that a rigorous deep fundamental analysis would find "
     "this company attractive for the next month? Weigh fundamentals, valuation and news "
@@ -215,18 +237,36 @@ PRESCORE_SYSTEM = (
     "Calibrate the scale: 90+ exceptional (rare), 75-89 strong "
     "candidate for deep review, 50-74 unremarkable, <50 weak. Use exactly two decimal places, "
     "and let those decimals carry real precision rather than rounding to quarters or halves - "
-    'e.g. 71.38, 84.61. Respond ONLY in JSON: {"score": <number 0-100, two decimal places>}.'
+    "e.g. 71.38, 84.61. "
 )
 
+# El orden de las claves es TODO el diseño: con la nota primero, el driver se emite DESPUÉS de
+# un token ya fijado — racionalización a posteriori, telemetría que no cambia la nota. Al revés
+# sería un micro-razonamiento encubierto, y eso es otro experimento (ver docs/prompts.md).
+_PRESCORE_JSON = 'Respond ONLY in JSON: {"score": <number 0-100, two decimal places>}.'
+_PRESCORE_JSON_DRIVER = (
+    'Respond ONLY in JSON: {"score": <number 0-100, two decimal places>, '
+    '"driver": "<3-8 words naming the single input that weighed most>"}.'
+)
 
-def _prescore_prompt(data: NameData, macro_block: str) -> str:
+PRESCORE_SYSTEM = _PRESCORE_BASE + _PRESCORE_JSON
+
+
+def _prescore_system() -> str:
+    """El prompt del prescore, con o sin el campo `driver` según `settings.prescore_driver`."""
+    return _PRESCORE_BASE + (_PRESCORE_JSON_DRIVER if settings.prescore_driver
+                             else _PRESCORE_JSON)
+
+
+def _prescore_prompt(data: NameData, macro_block: str,
+                     medianas: dict[str, float] | None = None) -> str:
     news = "; ".join(_titulo(n) for n in data.news) if data.news else "none"
     name = f" ({data.name})" if data.name else ""
     return (
         f"Macro outlook: {macro_block}\n"
         f"{data.ticker}{name} — {data.sector}/{data.industry}\n"
         f"News: {news}\n"
-        f"Fundamentals:\n{data.fundamentals_text}\n"
+        f"Fundamentals:\n{_con_mediana(data.fundamentals_text, data.sector, medianas)}\n"
         f"Technical: {data.technical_text or 'n/d'}\n"
         f"Earnings: {data.earnings_text or 'n/d'}\n"
         "1.00-100.00 score (JSON)."
@@ -235,7 +275,7 @@ def _prescore_prompt(data: NameData, macro_block: str) -> str:
 
 def prescore_one(
     llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
-    top_p: float | None = 0.95,
+    top_p: float | None = 0.95, medianas: dict[str, float] | None = None,
 ) -> PrescoreResult:
     """Triaje de un ticker: best-effort 0 si falla. temperature=1.0 (DeepSeek para análisis).
     temperature/top_p mandados en todas etapas aunque reasoning los ignore."""
@@ -245,26 +285,27 @@ def prescore_one(
     # ticker por respuesta, así que aquí SÍ mapea limpio: la confianza es de ESE ticker.
     chat_fn = getattr(llm, "chat_logprobs", None)
     try:
-        if chat_fn is not None:
-            raw, confidence = chat_fn(PRESCORE_SYSTEM, _prescore_prompt(data, macro_block),
-                                      temperature=temperature, top_p=top_p)
-            raw = raw or ""
-        else:
-            raw = llm.chat(PRESCORE_SYSTEM, _prescore_prompt(data, macro_block),
-                           temperature=temperature, top_p=top_p) or ""
+        with ticker_ctx(data.ticker):
+            system, user = _prescore_system(), _prescore_prompt(data, macro_block, medianas)
+            if chat_fn is not None:
+                raw, confidence = chat_fn(system, user, temperature=temperature, top_p=top_p)
+                raw = raw or ""
+            else:
+                raw = llm.chat(system, user, temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
         if sc <= 0:
             return PrescoreResult(data.ticker, 0.0,
                                   error="SinNota: JSON válido sin score utilizable",
-                                  raw=_recorte(raw), confidence=confidence)
+                                  raw=raw, confidence=confidence)
         # Sin aviso por llamada: viaja en `PrescoreResult.confidence` y el escaneo lo resume
         # agregado (ver `_log_funnel`). Una línea por ticker inundaba y Railway las descartaba.
-        return PrescoreResult(data.ticker, sc, confidence=confidence)
+        driver = str(obj.get("driver") or "").strip() or None
+        return PrescoreResult(data.ticker, sc, confidence=confidence, driver=driver)
     except Exception as exc:
         logger.warning("Pre-score no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
         return PrescoreResult(data.ticker, 0.0, error=f"{type(exc).__name__}: {exc}",
-                              raw=_recorte(raw), confidence=confidence)
+                              raw=raw, confidence=confidence)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -397,7 +438,7 @@ def prescore_batch(
             notas = {}
     if not notas:
         return {t: PrescoreResult(t, 0.0, error="lote no parseable/degenerado tras 3 intentos",
-                                  raw=_recorte(raw), confidence=confidence) for t in wanted}
+                                  raw=raw, confidence=confidence) for t in wanted}
 
     out: dict[str, PrescoreResult] = {}
     for t in wanted:
@@ -415,13 +456,15 @@ def prescore_batch(
 def score(
     llm: LLMProvider, data: NameData, macro_block: str, prior_thesis: str | None = None,
     temperature: float = 1.0, top_p: float | None = 0.95,
+    medianas: dict[str, float] | None = None,
 ) -> ScoreResult:
     """Puntúa un nombre. Best-effort: si el LLM falla/no parsea, score 0 (queda fuera), con
     `error`/`raw` para que el caller sepa POR QUÉ y decida si reintenta."""
     raw = ""
     try:
-        raw = llm.chat(SYSTEM, _user_prompt(data, macro_block, prior_thesis),
-                       temperature=temperature, top_p=top_p) or ""
+        with ticker_ctx(data.ticker):
+            raw = llm.chat(SYSTEM, _user_prompt(data, macro_block, prior_thesis, medianas),
+                           temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
         tp = obj.get("target_price")
@@ -438,7 +481,7 @@ def score(
         if sc <= 0:
             return ScoreResult(ticker=data.ticker, score=0.0, headline="", report="",
                                error="SinNota: JSON válido sin score utilizable",
-                               raw=_recorte(raw))
+                               raw=raw)
         return ScoreResult(
             ticker=data.ticker,
             score=sc,
@@ -450,4 +493,4 @@ def score(
     except Exception as exc:
         logger.warning("Scorer no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
         return ScoreResult(ticker=data.ticker, score=0.0, headline="", report="",
-                           error=f"{type(exc).__name__}: {exc}", raw=_recorte(raw))
+                           error=f"{type(exc).__name__}: {exc}", raw=raw)

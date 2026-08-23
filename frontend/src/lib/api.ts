@@ -180,7 +180,7 @@ export interface ScanReport {
   scanned: number | null;
   prescored: number | null;
   deep: number | null;
-  cost: { calls: number; cost_usd: number; real_usd_deepseek?: number | null } | null;
+  cost: { calls: number; cost_usd: number } | null;
 }
 export const getScanReport = () => get<{ report: ScanReport | null }>("/scan/report");
 
@@ -226,7 +226,7 @@ export interface ScanFull {
   outlook: string;
   universe: ScanReport["universe"];
   counters: Record<string, number>;
-  cost: { calls: number; cost_usd: number; real_usd_deepseek?: number | null } | null;
+  cost: { calls: number; cost_usd: number } | null;
   issues: string[];
   finalists: ScanFullFinalist[];
   construction: {
@@ -326,6 +326,23 @@ export interface UniverseSnapshotResult {
 /** Rehace la foto del universo NASDAQ al cierre (la que usa el próximo escaneo) bajo demanda,
  *  en vez de esperar al cron. No toca posiciones ni operaciones de ningún libro. */
 export const snapshotUniverse = () => post<UniverseSnapshotResult>("/admin/universe-snapshot");
+
+export interface FotoStatus {
+  status: "idle" | "running" | "done" | "error";
+  started_at: string | null;
+  finished_at: string | null;
+  result: { alcance: string; pedidos: number; capturados: number; sin_datos: number;
+            segundos: number; at: string } | null;
+  error: string | null;
+}
+
+/** Lanza la foto de fundamentales a demanda (no puntúa nada): recoger datos deja de ir pegado
+ *  a puntuarlos, y así se puede fotografiar por la mañana y escanear off-peak por la tarde. */
+export const startFoto = (alcance: "nasdaq" | "global" = "nasdaq", limite?: number) =>
+  post<{ started: boolean } & FotoStatus>(
+    `/admin/foto?alcance=${alcance}${limite ? `&limite=${limite}` : ""}`);
+
+export const getFotoStatus = () => get<FotoStatus>("/admin/foto");
 
 // ---- Cartera personal IBKR (read-only, intocable para el agente) ----
 export const getPersonal = () => get<PersonalSummary>("/personal");

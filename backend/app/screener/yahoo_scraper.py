@@ -239,5 +239,6 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str) -> tuple[NameData |
         name=info.get("shortName", ""),
         target_high=float(target_high) if target_high else None,
         target_mean=float(target_mean) if target_mean else None,
+        **fund_mod.metricas(info),
     )
     return data, None

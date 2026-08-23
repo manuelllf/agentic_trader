@@ -9,7 +9,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getHistory,
   getPerformance, getPersonal, getPushKey, getReal, getScanFunnel, getScanReport, logout,
-  reconcileApprovals, rejectTrade, resetShadow, runDemo, snapshotUniverse, subscribePush,
+  reconcileApprovals, rejectTrade, resetShadow, runDemo, snapshotUniverse, startFoto,
+  subscribePush,
   syncPersonal, testPush,
   type ScanReport,
 } from "@/lib/api";
@@ -72,6 +73,8 @@ function SalaRealRoom() {
   // Resultado de rehacer la foto del universo: éxito en tono neutro, error en ámbar — no hay
   // paso intermedio armar→confirmar porque no es destructivo (solo refresca una foto de lectura).
   const [snapMsg, setSnapMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [fotoing, setFotoing] = useState(false);
+  const [fotoMsg, setFotoMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
@@ -137,6 +140,22 @@ function SalaRealRoom() {
       setSnapMsg({ text: e instanceof Error ? e.message : "No se pudo rehacer la foto del universo.", bad: true });
     } finally {
       setSnapping(false);
+    }
+  }
+
+  /** Lanza la foto de fundamentales (~20 min en segundo plano). No puntúa: el escaneo posterior
+   *  reutiliza esta foto durante 12h, que es lo que permite fotografiar por la mañana y puntuar
+   *  off-peak por la tarde a mitad de tarifa. El avance solo se ve por API (`GET /admin/foto`):
+   *  este panel no tiene barra de progreso todavía. */
+  async function doFoto() {
+    setFotoing(true);
+    try {
+      await startFoto("nasdaq");
+      setFotoMsg({ text: "foto lanzada, ~20 min en segundo plano (no bloquea nada)" });
+    } catch (e) {
+      setFotoMsg({ text: e instanceof Error ? e.message : "No se pudo lanzar la foto.", bad: true });
+    } finally {
+      setFotoing(false);
     }
   }
 
@@ -871,6 +890,27 @@ function SalaRealRoom() {
             {snapMsg && (
               <span className="text-[10.5px]" style={{ color: snapMsg.bad ? T.warn : T.muted }}>
                 {snapMsg.text}
+              </span>
+            )}
+          </div>
+
+          {/* Foto de fundamentales a demanda: separa recoger datos de puntuarlos, para poder
+              fotografiar por la mañana y lanzar el scoring off-peak (mitad de tarifa). */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t pt-3" style={{ borderColor: T.grid }}>
+            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+              Fundamentales
+            </span>
+            <span style={{ color: T.ink2 }}>
+              Capturar ahora los datos de los ~3.000 nombres (~20 min). El escaneo los reutiliza 12h.
+            </span>
+            <button onClick={doFoto} disabled={fotoing}
+                    className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                    style={{ borderColor: T.ring, color: T.ink2 }}>
+              {fotoing ? "Lanzando…" : "Capturar fundamentales"}
+            </button>
+            {fotoMsg && (
+              <span className="text-[10.5px]" style={{ color: fotoMsg.bad ? T.warn : T.muted }}>
+                {fotoMsg.text}
               </span>
             )}
           </div>

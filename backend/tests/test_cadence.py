@@ -1,13 +1,10 @@
-"""Cadencia de decisión: el escaneo semanal es OBSERVATORIO (aprende sin tocar libros);
-la cartera —sombra y propuestas a la real— solo se decide en el primer escaneo programado
-del mes o en los escaneos manuales."""
+"""Cadencia de decisión: `decide=False` es OBSERVATORIO (aprende sin tocar libros), usado hoy
+por la simulación manual de Sala Real; el cron programado (mensual único) siempre decide."""
 
 from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import create_engine
@@ -16,13 +13,10 @@ from sqlalchemy.orm import sessionmaker
 from app import (
     models,  # noqa: F401  (registra las tablas)
     scan_service,
-    scheduler,
 )
 from app.db import Base
 from app.ledger import service as ledger
 from app.models import BOOK_SHADOW, Approval, Proposal
-
-_ET = ZoneInfo("America/New_York")
 
 
 @pytest.fixture
@@ -182,18 +176,6 @@ def test_default_scan_decides_both_books(db, monkeypatch) -> None:
     assert result["decided"] is True
     assert db.query(Approval).count() >= 1
     assert {p.ticker for p in ledger.open_positions(db, BOOK_SHADOW)} == {"AAA"}
-
-
-def test_decision_due_only_first_scheduled_week(monkeypatch) -> None:
-    """El primer escaneo programado del mes cae siempre en día 1-7; el resto, observatorio."""
-    monkeypatch.setattr(scheduler.settings, "real_proposals_monthly", True)
-    assert scheduler.decision_due(datetime(2026, 7, 7, 10, 15, tzinfo=_ET)) is True
-    assert scheduler.decision_due(datetime(2026, 7, 14, 10, 15, tzinfo=_ET)) is False
-    assert scheduler.decision_due(datetime(2026, 7, 28, 10, 15, tzinfo=_ET)) is False
-
-    # Cadencia única (flag apagado): todos los escaneos deciden.
-    monkeypatch.setattr(scheduler.settings, "real_proposals_monthly", False)
-    assert scheduler.decision_due(datetime(2026, 7, 14, 10, 15, tzinfo=_ET)) is True
 
 
 # ---- informe persistido del escaneo (panel de errores) -----------------------
