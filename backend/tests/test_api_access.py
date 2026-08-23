@@ -292,10 +292,11 @@ def test_config_does_not_leak_sensitive_fields(client) -> None:
         "max_positions", "min_positions", "max_position_pct", "dry_run", "limit_buffer_pct",
         "approval_expiry_days", "llm_defaults",
     }
-    # llm_defaults es modelo/reasoning por etapa (público, ver routes.py) — nunca temperature/
-    # top_p/api keys, que sí serían sensibles o ruido de implementación.
+    # llm_defaults es modelo/reasoning/temperature por etapa (público, ver routes.py) — nunca
+    # api keys. `temperature` SÍ viaja: sin ella, el modal de simulación partía de un 1.0 fijo
+    # en el frontend y anulaba en silencio el `prescore_temperature` real de producción.
     for etapa in body["llm_defaults"].values():
-        assert set(etapa.keys()) == {"model", "reasoning_effort"}
+        assert set(etapa.keys()) == {"model", "reasoning_effort", "temperature"}
 
 
 # ---- /admin/memory-status: diagnóstico de la memoria vectorial ---------------

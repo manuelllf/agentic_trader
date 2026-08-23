@@ -27,6 +27,7 @@ export type ReasoningEffort = "none" | "low" | "high" | "max";
 export interface LlmStageDefault {
   model: string;
   reasoning_effort: ReasoningEffort;
+  temperature: number;
 }
 
 export interface AppConfig {

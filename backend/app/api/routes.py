@@ -51,7 +51,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import execution_service, foto_service, pipeline, scan_audit
+from app import execution_service, foto_service, pipeline, scan_audit, scan_service
 from app import watchlist as watchlist_mod
 from app.auth import auth_optional
 from app.config import settings
@@ -90,13 +90,22 @@ def config() -> dict:
         # Defaults de LLM por etapa, para que el modal de configuración de la simulación
         # (Sala Real) arranque con los valores REALES de producción en vez de copias a mano
         # que se desincronizan del config.py el día que alguien lo cambie aquí y no allí.
+        # `temperature` va aquí también (no solo model/reasoning_effort): sin esto, el modal
+        # partía de un 1.0 fijo en el frontend y el prescore=0.0 recién decidido se anulaba en
+        # SILENCIO cada vez que se lanzaba una simulación — el override "ganaba" sobre el
+        # default de `settings` en `_stage_cfg` (ver `scan_service.py`).
         "llm_defaults": {
-            "macro": {"model": settings.llm_model, "reasoning_effort": settings.macro_reasoning_effort},
+            "macro": {"model": settings.llm_model, "reasoning_effort": settings.macro_reasoning_effort,
+                      "temperature": scan_service.DEFAULT_TEMPERATURE},
             "prescore": {"model": settings.prescore_model,
-                        "reasoning_effort": settings.prescore_reasoning_effort},
-            "mid": {"model": settings.mid_model, "reasoning_effort": settings.mid_reasoning_effort},
-            "deep": {"model": settings.llm_model, "reasoning_effort": settings.deep_reasoning_effort},
-            "constructor": {"model": settings.llm_model, "reasoning_effort": settings.reasoning_effort},
+                        "reasoning_effort": settings.prescore_reasoning_effort,
+                        "temperature": settings.prescore_temperature},
+            "mid": {"model": settings.mid_model, "reasoning_effort": settings.mid_reasoning_effort,
+                    "temperature": scan_service.DEFAULT_TEMPERATURE},
+            "deep": {"model": settings.llm_model, "reasoning_effort": settings.deep_reasoning_effort,
+                     "temperature": scan_service.DEFAULT_TEMPERATURE},
+            "constructor": {"model": settings.llm_model, "reasoning_effort": settings.reasoning_effort,
+                            "temperature": scan_service.DEFAULT_TEMPERATURE},
         },
     }
 
