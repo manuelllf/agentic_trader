@@ -116,26 +116,32 @@ class ScoreResult:
     raw: str | None = None
 
 
-# Etiqueta EXACTA que emite `_fundamentals_text` para el P/E trailing: la mediana se pega a esa
-# línea y nada más — el dato al lado del dato, sin una sola instrucción sobre qué hacer con él.
-_ETIQUETA_PE = "- P/E (trailing): "
+# Etiquetas EXACTAS que emite `_fundamentals_text` para el P/E: la mediana se pega a esa línea y
+# nada más — el dato al lado del dato, sin una sola instrucción sobre qué hacer con él.
+_ETIQUETA_PE_TRAILING = "- P/E (trailing): "
+_ETIQUETA_PE_FORWARD = "- P/E (forward): "
 
 
-def _con_mediana(fundamentals_text: str, sector: str, medianas: dict[str, float] | None) -> str:
-    """Añade `(sector median X)` a la línea del P/E. Sin mediana para ese sector, no toca nada."""
-    mediana = (medianas or {}).get(sector)
-    if not mediana:
+def _con_mediana(
+    fundamentals_text: str, sector: str, medianas: dict[str, dict[str, float]] | None,
+) -> str:
+    """Añade `(sector median X)` a las líneas de P/E trailing Y forward (por separado — un
+    sector puede tener mediana de uno y no del otro). Sin mediana para ese sector/campo, no
+    toca esa línea."""
+    entrada = (medianas or {}).get(sector)
+    if not entrada:
         return fundamentals_text
     lineas = fundamentals_text.split("\n")
     for i, linea in enumerate(lineas):
-        if linea.startswith(_ETIQUETA_PE):
-            lineas[i] = f"{linea} (sector median {mediana})"
-            break
+        if "trailing" in entrada and linea.startswith(_ETIQUETA_PE_TRAILING):
+            lineas[i] = f"{linea} (sector median {entrada['trailing']})"
+        elif "forward" in entrada and linea.startswith(_ETIQUETA_PE_FORWARD):
+            lineas[i] = f"{linea} (sector median {entrada['forward']})"
     return "\n".join(lineas)
 
 
 def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None,
-                 medianas: dict[str, float] | None = None) -> str:
+                 medianas: dict[str, dict[str, float]] | None = None) -> str:
     news = "\n".join(f"- {h}" for h in data.news) if data.news else "none"
     prior = (
         f"\nPrior view on this name (from our records): {prior_thesis}\n"
@@ -165,7 +171,7 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None,
 
 
 def _mid_prompt(data: NameData, macro_block: str,
-                medianas: dict[str, float] | None = None) -> str:
+                medianas: dict[str, dict[str, float]] | None = None) -> str:
     # Todos los titulares, no solo los 3 primeros: la capa media decide quién llega al análisis
     # caro viendo un tercio de las noticias. En un escaneo real dio 100/100 a un nombre —el
     # único ≥90 de 2.594— y el profundo le puso 48 en cuanto vio la noticia que lo hundía (venta
@@ -197,7 +203,7 @@ def _mid_prompt(data: NameData, macro_block: str,
 
 def mid_prescore(
     llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
-    top_p: float | None = 0.95, medianas: dict[str, float] | None = None,
+    top_p: float | None = 0.95, medianas: dict[str, dict[str, float]] | None = None,
 ) -> PrescoreResult:
     """Segunda opinión: best-effort 0 si falla, con error/raw para decidir reintento."""
     raw = ""
@@ -259,7 +265,7 @@ def _prescore_system() -> str:
 
 
 def _prescore_prompt(data: NameData, macro_block: str,
-                     medianas: dict[str, float] | None = None) -> str:
+                     medianas: dict[str, dict[str, float]] | None = None) -> str:
     news = "; ".join(_titulo(n) for n in data.news) if data.news else "none"
     name = f" ({data.name})" if data.name else ""
     return (
@@ -275,7 +281,7 @@ def _prescore_prompt(data: NameData, macro_block: str,
 
 def prescore_one(
     llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
-    top_p: float | None = 0.95, medianas: dict[str, float] | None = None,
+    top_p: float | None = 0.95, medianas: dict[str, dict[str, float]] | None = None,
 ) -> PrescoreResult:
     """Triaje de un ticker: best-effort 0 si falla. temperature=1.0 (DeepSeek para análisis).
     temperature/top_p mandados en todas etapas aunque reasoning los ignore."""
@@ -456,7 +462,7 @@ def prescore_batch(
 def score(
     llm: LLMProvider, data: NameData, macro_block: str, prior_thesis: str | None = None,
     temperature: float = 1.0, top_p: float | None = 0.95,
-    medianas: dict[str, float] | None = None,
+    medianas: dict[str, dict[str, float]] | None = None,
 ) -> ScoreResult:
     """Puntúa un nombre. Best-effort: si el LLM falla/no parsea, score 0 (queda fuera), con
     `error`/`raw` para que el caller sepa POR QUÉ y decida si reintenta."""

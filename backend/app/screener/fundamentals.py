@@ -316,12 +316,15 @@ def metricas(info: dict) -> dict:
 _MIN_POR_SECTOR = 6
 
 
-def medianas_pe_por_sector(datos: list[NameData]) -> dict[str, float]:
-    """Mediana del P/E trailing por sector, calculada sobre el UNIVERSO PROPIO.
+def medianas_pe_por_sector(datos: list[NameData]) -> dict[str, dict[str, float]]:
+    """Mediana de P/E trailing Y forward por sector, calculada sobre el UNIVERSO PROPIO.
 
-    Nunca de una fuente externa: el numerador (`trailingPE` de yfinance) y el sector salen de
-    aquí, y mezclar metodologías da el doble de diferencia (Financial Services: 14,46 propio vs
-    7,35 de un agregado externo). Mediana y no media: un P/E de 300 no la destroza.
+    Nunca de una fuente externa: el numerador (`trailingPE`/`forwardPE` de yfinance) y el sector
+    salen de aquí, y mezclar metodologías da el doble de diferencia (Financial Services: 14,46
+    propio vs 7,35 de un agregado externo). Mediana y no media: un P/E de 300 no la destroza.
+    `{sector: {"trailing": x, "forward": y}}` — una clave falta si ese sector no llegó a
+    `_MIN_POR_SECTOR` muestras para ESE campo (trailing y forward pueden fallar por separado,
+    un nombre puede traer uno y no el otro).
 
     Sesgo conocido y sin esconder: con el universo cortado a los ~3.000 de más volumen, esto es
     la mediana de las GRANDES capitalizaciones del sector, no la del sector entero.
@@ -329,12 +332,25 @@ def medianas_pe_por_sector(datos: list[NameData]) -> dict[str, float]:
     import statistics
     from collections import defaultdict
 
-    por_sector: dict[str, list[float]] = defaultdict(list)
+    trailing: dict[str, list[float]] = defaultdict(list)
+    forward: dict[str, list[float]] = defaultdict(list)
     for d in datos:
-        if d.pe_trailing and d.pe_trailing > 0 and d.sector:
-            por_sector[d.sector].append(d.pe_trailing)
-    return {sector: round(statistics.median(pes), 2)
-            for sector, pes in por_sector.items() if len(pes) >= _MIN_POR_SECTOR}
+        if not d.sector:
+            continue
+        if d.pe_trailing and d.pe_trailing > 0:
+            trailing[d.sector].append(d.pe_trailing)
+        if d.pe_forward and d.pe_forward > 0:
+            forward[d.sector].append(d.pe_forward)
+    out: dict[str, dict[str, float]] = {}
+    for sector in set(trailing) | set(forward):
+        entrada = {}
+        if len(trailing.get(sector, [])) >= _MIN_POR_SECTOR:
+            entrada["trailing"] = round(statistics.median(trailing[sector]), 2)
+        if len(forward.get(sector, [])) >= _MIN_POR_SECTOR:
+            entrada["forward"] = round(statistics.median(forward[sector]), 2)
+        if entrada:
+            out[sector] = entrada
+    return out
 
 
 def _fmt(value: object, kind: str) -> str | None:

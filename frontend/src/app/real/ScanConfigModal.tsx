@@ -26,7 +26,7 @@ const STAGE_LABEL: Record<Stage, string> = {
 // modal vacío un instante.
 const FALLBACK: Record<Stage, Required<StageLLMOverride>> = {
   macro: { model: "deepseek-v4-pro", reasoning_effort: "max", temperature: 1.0, top_p: 0.95 },
-  prescore: { model: "deepseek-v4-flash", reasoning_effort: "none", temperature: 0.0, top_p: 0.95 },
+  prescore: { model: "deepseek-v4-flash", reasoning_effort: "none", temperature: 0.3, top_p: 0.95 },
   mid: { model: "deepseek-v4-pro", reasoning_effort: "low", temperature: 1.0, top_p: 0.95 },
   deep: { model: "deepseek-v4-pro", reasoning_effort: "high", temperature: 1.0, top_p: 0.95 },
   constructor: { model: "deepseek-v4-pro", reasoning_effort: "max", temperature: 1.0, top_p: 0.95 },

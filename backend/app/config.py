@@ -56,23 +56,36 @@ class Settings(BaseSettings):
     mid_reasoning_effort: str | None = "low"
     deep_reasoning_effort: str | None = "high"
     reasoning_effort: str | None = "high"   # constructor
-    # Temperatura PROPIA del prescore (el resto va a `DEFAULT_TEMPERATURE`=1.0). A 1.0 la nota
-    # salía de un sorteo (sd≈6,5 puntos, token elegido con 11% de probabilidad mediana). Medido
-    # en A/B real (26 tickers x 2 tiradas): a 0.0 la diferencia entre dos tiradas IDÉNTICAS baja
-    # de 6,21 a 0,00 puntos de mediana (Spearman 0,640 -> 0,912). No perfectamente determinista
-    # (2/26 casos saltaron igual, atribuible al enrutado MoE del proveedor), pero la mejora es
-    # enorme. Decisión: 0.0 en producción.
-    prescore_temperature: float = 0.0
+    # Temperatura PROPIA del prescore (el resto va a `DEFAULT_TEMPERATURE`=1.0). A 1.0 la nota de
+    # UN MISMO ticker salía de un sorteo (sd≈6,5 puntos, A/B de 26 tickers x 2 tiradas: mediana de
+    # diferencia entre tiradas IDÉNTICAS de 6,21 a 0,00 bajando a 0.0). Pero a 0.0 apareció un
+    # problema DISTINTO, medido el 23-ago sobre el escaneo real completo (3001 nombres): el
+    # prescore colapsa — 339/3001 dieron EXACTO 71.38 (el ejemplo literal del prompt) y el top-5
+    # de valores se llevó el 79% del universo. No es que un ticker sea inconsistente consigo
+    # mismo; es que tickers DISTINTOS no se distinguen entre sí. 0.3 (probado en 500 reales) sube
+    # la cardinalidad de 25 a 38 valores distintos y baja el top-5 de 67% a 52% sin tocar el
+    # reasoning (que si sube el coste). Sigue sin resolver el fondo del todo (1.0 discrimina mucho
+    # mejor, 144/500 valores distintos, pero eso reintroduce el ruido intra-ticker que 0.0 evitaba)
+    # — 0.3 es el punto intermedio elegido mientras no se investigue más a fondo.
+    prescore_temperature: float = 0.3
     # Alias ROLLING de la API directa de DeepSeek, sin snapshot fechado invocable: se pierde la
     # garantía de que el modelo no cambie solo entre escaneos (no hay forma de pinnear).
     llm_model: str = "deepseek-v4-pro"      # profundo + macro + constructor
     prescore_model: str = "deepseek-v4-flash"  # triaje: ranking 1-100 del universo
     mid_layer: bool = True          # capa media: repuntúa los mejores de cada sector
-    # Los dos experimentos de prompt del plan de observabilidad, APAGADOS por defecto: el efecto
-    # medido de la mediana sectorial (~3 pts) es menor que el ruido de muestreo del prescore
-    # (~5,5), así que encenderlos a la vez haría imposible atribuir qué movió qué.
-    sector_median_in_prompt: bool = False   # C.4: mediana de P/E del sector pegada al P/E
-    prescore_driver: bool = False           # A.5.4: el prescore dice qué campo pesó más
+    # C.4: mediana de P/E (trailing Y forward) del sector propio pegada a su línea de P/E, sin
+    # instrucción — dato al lado del dato. Medido el 23-ago con datos reales pareados (mismo
+    # ticker, con y sin mediana, flash/none/T=0): 44-44% del universo cambia de nota al activarla
+    # (250 aleatorios y top-100 por market cap, dos tiradas independientes), con saltos grandes en
+    # ambas direcciones (hasta ±20 puntos) — efecto real, no ruido de T=0. ACTIVADO en producción.
+    sector_median_in_prompt: bool = True    # C.4
+    # A.5.4: el prescore explica en 3-8 palabras qué campo pesó más. Medido el 23-ago (flash/none,
+    # mismo ticker/macro): pedirlo cambia la nota de forma consistente y sistemática (+4,24 pts en
+    # dos tiradas idénticas) pese a ir DESPUÉS del score en el JSON — contamina justo lo que el
+    # diseño asumía que no tocaba. Además, hoy el campo `driver` no se persiste en ningún sitio
+    # (se calcula y se tira). APAGADO hasta que se resuelva la contaminación y se decida dónde
+    # guardarlo.
+    prescore_driver: bool = False           # A.5.4
     # Sectores grandes (Financial Services, Consumer Cyclical...) mandaban solo 10 a la capa
     # media: un #11-15 genuinamente bueno no tenía oportunidad de competir en el carril global.
     mid_per_sector: int = 15        # cuántos por sector entran a la capa media
