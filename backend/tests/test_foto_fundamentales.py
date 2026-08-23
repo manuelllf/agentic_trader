@@ -27,16 +27,36 @@ def db():
 def _sample() -> NameData:
     return NameData(
         ticker="AAA", sector="Technology", industry="Software", price=100.0,
-        fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=["n1"],
+        fundamentals_text="- P/E (trailing): 20.00\n- Trading currency: USD",
+        technical_text="RSI 55", market_cap=5e9,
+        news=["más reciente", "segunda", "tercera"], earnings_text="10-Q el 12-sep",
+        name="AAA Inc", target_high=150.0, target_mean=130.0,
+        pe_trailing=22.5, pe_forward=19.1, high_52w=110.0, low_52w=80.0,
+        # Lo que de verdad se persiste (ver FundamentalsSnapshotMetric): en crudo, no el texto
+        # ya montado de arriba — ese solo importa para el prompt EN VIVO, nunca para la BD.
+        fundamentales_crudos={"trailingPE": 20.0, "currency": "USD"},
     )
 
 
 def test_foto_guardar_y_leer_redondo(db) -> None:
+    """Ronda completa por columnas propias (nunca JSON ni texto formateado, ver
+    `FundamentalsSnapshot`): las noticias y los ~85 campos crudos son las partes hermanas más
+    fáciles de dejar mal — filas por FK, con el ORDEN de las noticias conservado vía `posicion`.
+    `fundamentals_text` NO se guarda: se reconstruye con la MISMA función que la monta en vivo
+    a partir de las filas crudas — por eso la ronda comprueba el texto reconstruido, no un campo
+    guardado tal cual."""
     fund_mod.foto_guardar(db, "AAA", _sample())
     got = fund_mod.foto_reciente(db, "AAA")
     assert got is not None
     assert got.ticker == "AAA"
-    assert got.fundamentals_text == "- P/E: 20"
+    # Reconstruido con `_fundamentals_text`, no guardado tal cual — mismo orden de catálogo.
+    assert got.fundamentals_text == "- P/E (trailing): 20.00\n- Trading currency: USD"
+    assert got.fundamentales_crudos == {"trailingPE": 20.0, "currency": "USD"}   # str y num
+    assert got.news == ["más reciente", "segunda", "tercera"]   # orden intacto
+    assert (got.industry, got.name, got.earnings_text) == ("Software", "AAA Inc", "10-Q el 12-sep")
+    assert (got.target_high, got.target_mean) == (150.0, 130.0)
+    assert (got.pe_trailing, got.pe_forward) == (22.5, 19.1)
+    assert (got.high_52w, got.low_52w) == (110.0, 80.0)
 
 
 def test_sin_foto_devuelve_none(db) -> None:

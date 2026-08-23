@@ -12,8 +12,8 @@ falte va como `n/d` y el LLM lo maneja (nada de excluir por dato incompleto).
 
 from __future__ import annotations
 
-import dataclasses
 import logging
+import math
 import threading
 import time
 from dataclasses import dataclass, field
@@ -59,41 +59,87 @@ def _scraper_session() -> tuple[yahoo_scraper.creq.Session, str] | None:
 
 def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | None:  # noqa: ANN001
     """Última foto de este ticker si cae dentro de la ventana. Sustituye la lectura del cache."""
-    from app.models import FundamentalsSnapshot
+    from app.models import (
+        FundamentalsSnapshot,
+        FundamentalsSnapshotMetric,
+        FundamentalsSnapshotNews,
+    )
 
-    # `_FOTO_LOCK` también aquí, no solo en `foto_guardar`: `gather()` llama a ambas con el
-    # MISMO `db` de `_GATHER_WORKERS` hilos a la vez, y una `Session` de SQLAlchemy no es
-    # thread-safe ni para LEER — sin el lock en la lectura, "This session is provisioning a
-    # new connection; concurrent operations are not permitted" (visto en producción, 23-ago).
+    # `_FOTO_LOCK` cubre TODO acceso a `db` (lectura y escritura, incluidas noticias/métricas
+    # hermanas): `gather()` llama a `foto_reciente`/`foto_guardar` con el MISMO `db` desde
+    # `_GATHER_WORKERS` hilos a la vez, y una `Session` de SQLAlchemy no es thread-safe ni para
+    # LEER — sin el lock, "This session is provisioning a new connection; concurrent operations
+    # are not permitted" (visto en producción, 23-ago).
     with _FOTO_LOCK:
         row = (db.query(FundamentalsSnapshot)
                .filter(FundamentalsSnapshot.ticker == ticker)
                .order_by(FundamentalsSnapshot.captured_at.desc())
                .first())
-    if not row:
-        return None
-    # SQLite devuelve el datetime naive pese a DateTime(timezone=True) — mismo patrón que
-    # watchlist.py::_aware().
-    at = row.captured_at
-    at = at if at.tzinfo is not None else at.replace(tzinfo=UTC)
-    if (datetime.now(UTC) - at).total_seconds() / 3600 >= ttl_h:
-        return None
-    try:
-        return NameData(**row.data)
-    except TypeError:
-        return None   # forma vieja del dataclass (campo añadido/quitado) — se ignora, no rompe
+        if not row:
+            return None
+        # SQLite devuelve el datetime naive pese a DateTime(timezone=True) — mismo patrón que
+        # watchlist.py::_aware().
+        at = row.captured_at
+        at = at if at.tzinfo is not None else at.replace(tzinfo=UTC)
+        if (datetime.now(UTC) - at).total_seconds() / 3600 >= ttl_h:
+            return None
+        noticias = [n.texto for n in
+                   db.query(FundamentalsSnapshotNews)
+                   .filter(FundamentalsSnapshotNews.fundamentals_snapshot_id == row.id)
+                   .order_by(FundamentalsSnapshotNews.posicion)
+                   .all()]
+        metricas_crudas = {m.clave: (m.valor_num if m.valor_num is not None else m.valor_texto)
+                           for m in db.query(FundamentalsSnapshotMetric)
+                           .filter(FundamentalsSnapshotMetric.fundamentals_snapshot_id == row.id)
+                           .all()}
+    # Reconstruye el prompt con la MISMA función que lo monta en vivo (`_fundamentals_text`):
+    # nunca se reimplementa el formateo, así que el texto reconstruido es idéntico al original.
+    # `currentPrice` no es uno de los ~85 (viaja aparte, ya materializado en `row.price`) — se
+    # inyecta solo para esta llamada, no contamina `fundamentales_crudos` del resultado.
+    texto = _fundamentals_text({**metricas_crudas, "currentPrice": row.price})
+    return NameData(
+        ticker=row.ticker, sector=row.sector or "n/d", industry=row.industry or "n/d",
+        price=row.price, fundamentals_text=texto,
+        technical_text=row.technical_text or "", market_cap=row.market_cap,
+        news=noticias, earnings_text=row.earnings_text or "", name=row.name or "",
+        target_high=row.target_high, target_mean=row.target_mean,
+        pe_trailing=row.pe_trailing, pe_forward=row.pe_forward,
+        high_52w=row.high_52w, low_52w=row.low_52w,
+        fundamentales_crudos=metricas_crudas,
+    )
 
 
 def foto_guardar(db, ticker: str, data: NameData) -> None:  # noqa: ANN001
-    """Añade una foto NUEVA (nunca pisa la anterior): es el histórico, no un cache."""
-    from app.models import FundamentalsSnapshot
+    """Añade una foto NUEVA (nunca pisa la anterior): es el histórico, no un cache. Columnas
+    propias, nunca un blob — ver `app.models.FundamentalsSnapshot`. Los ~85 campos de
+    `fundamentals_text` se guardan en crudo (`FundamentalsSnapshotMetric`), NUNCA el texto ya
+    formateado: es lo que se le mandó al LLM, no un dato — se reconstruye al leer."""
+    from app.models import (
+        FundamentalsSnapshot,
+        FundamentalsSnapshotMetric,
+        FundamentalsSnapshotNews,
+    )
 
     with _FOTO_LOCK:
-        db.add(FundamentalsSnapshot(
-            ticker=ticker, data=dataclasses.asdict(data), sector=data.sector,
-            price=data.price, market_cap=data.market_cap, pe_trailing=data.pe_trailing,
-            pe_forward=data.pe_forward, high_52w=data.high_52w, low_52w=data.low_52w,
-        ))
+        fila = FundamentalsSnapshot(
+            ticker=ticker, sector=data.sector, industry=data.industry, name=data.name,
+            price=data.price, market_cap=data.market_cap,
+            target_high=data.target_high, target_mean=data.target_mean,
+            pe_trailing=data.pe_trailing, pe_forward=data.pe_forward,
+            high_52w=data.high_52w, low_52w=data.low_52w,
+            technical_text=data.technical_text, earnings_text=data.earnings_text,
+        )
+        db.add(fila)
+        db.flush()   # asigna fila.id sin comprometer la transacción, para las hermanas
+        for i, titular in enumerate(data.news):
+            db.add(FundamentalsSnapshotNews(
+                fundamentals_snapshot_id=fila.id, posicion=i, texto=titular))
+        for clave, valor in data.fundamentales_crudos.items():
+            db.add(FundamentalsSnapshotMetric(
+                fundamentals_snapshot_id=fila.id, clave=clave,
+                valor_num=valor if isinstance(valor, float) else None,
+                valor_texto=valor if isinstance(valor, str) else None,
+            ))
         db.commit()
 
 # Variables fundamentales relevantes de .info (mapean a la lista del Exhibit 2B del paper).
@@ -229,14 +275,30 @@ class NameData:
     pe_forward: float | None = None
     high_52w: float | None = None
     low_52w: float | None = None
+    # Los ~85 campos de `fundamentals_text` (Exhibit 2B), EN CRUDO — clave de yfinance → valor
+    # sin formatear. Es lo que se persiste (`fundamentals_snapshot_metric`, relacional, nunca
+    # texto ni JSON); `fundamentals_text` sigue viajando al prompt tal cual, sin tocar.
+    fundamentales_crudos: dict[str, float | str] = field(default_factory=dict)
+
+
+def numero_finito(v: object) -> float | None:
+    """Cualquier valor crudo de `.info` a `float`, nunca `inf`/`-inf`/`nan`: yfinance los emite
+    cuando el ratio de origen divide por ~0 (ganancias nulas → P/E "infinito"). Sin este
+    guardarraíl llegan como número válido hasta la fila entera del ticker — visto en producción
+    con `trailingPE` reventando el INSERT (Postgres no acepta `Infinity` en JSON). Compartido
+    por `metricas()` aquí y por `yahoo_scraper.gather_scraper()` para price/market_cap/target,
+    los mismos campos que antes hacían `float(x) if x else None` sin este filtro."""
+    if v in (None, ""):
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
 
 
 def _num(info: dict, key: str) -> float | None:
-    try:
-        v = info.get(key)
-        return float(v) if v not in (None, "") else None
-    except (TypeError, ValueError):
-        return None
+    return numero_finito(info.get(key))
 
 
 def metricas(info: dict) -> dict:
@@ -327,6 +389,25 @@ def _fundamentals_text(info: dict) -> str:
         if s is not None:
             lines.append(f"- Avg dollar volume/day: {s}")
     return "\n".join(lines)
+
+
+def _valores_crudos(info: dict) -> dict[str, float | str]:
+    """Los mismos ~85 campos de `_fundamentals_text`, SIN formatear — lo que se persiste
+    relacional en `fundamentals_snapshot_metric`. Mismo criterio de "ausente se omite" que
+    `_fmt`; los numéricos pasan por `numero_finito` (mismo guardarraíl que evitó el fallo de
+    `Infinity`). No incluye "Avg dollar volume/day": es aritmética derivada de `averageVolume`
+    (ya en el catálogo) y el precio (ya su propia columna), se recalcula al reconstruir."""
+    out: dict[str, float | str] = {}
+    for key, _label, kind in _FUNDAMENTAL_FIELDS:
+        v = info.get(key)
+        if kind == "str":
+            if v not in (None, "") and not (isinstance(v, str) and v.strip().lower() == "none"):
+                out[key] = str(v)
+            continue
+        f = numero_finito(v)
+        if f is not None:
+            out[key] = f
+    return out
 
 
 def _technical_text(info: dict, hist) -> str:
@@ -447,15 +528,16 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
             ticker=ticker,
             sector=info.get("sector", "n/d"),
             industry=info.get("industry", "n/d"),
-            price=float(price) if price else None,
+            price=numero_finito(price),
             fundamentals_text=_fundamentals_text(info),
             technical_text=_technical_text(info, hist),
-            market_cap=float(mcap) if mcap else None,
+            market_cap=numero_finito(mcap),
             news=_news(yt),
             earnings_text=_earnings_text(info),
             name=info.get("shortName", ""),
-            target_high=float(target_high) if target_high else None,
-            target_mean=float(target_mean) if target_mean else None,
+            target_high=numero_finito(target_high),
+            target_mean=numero_finito(target_mean),
+            fundamentales_crudos=_valores_crudos(info),
             **metricas(info),
         )
         if db is not None:

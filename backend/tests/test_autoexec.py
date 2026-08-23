@@ -24,7 +24,7 @@ from app import (
 )
 from app.db import Base
 from app.ledger import service as ledger
-from app.models import BOOK_SHADOW, Proposal, Trade
+from app.models import BOOK_SHADOW, Proposal, ProposalItem, Trade
 
 
 @pytest.fixture
@@ -55,7 +55,19 @@ class FakeLLM:
 # ---- unitario: orden y no-op --------------------------------------------------
 
 def _seed_proposal(db, items: list[dict]) -> None:
-    db.add(Proposal(cash_target_pct=0.0, macro_summary="m", items=items))
+    prop = Proposal(cash_target_pct=0.0, macro_summary="m")
+    db.add(prop)
+    db.flush()
+    for i, it in enumerate(items):
+        db.add(ProposalItem(
+            proposal_id=prop.id, posicion=i, ticker=it["ticker"], action=it["action"],
+            score=it.get("score"), target_weight_pct=it.get("target_weight_pct") or 0.0,
+            price=it.get("price"), target_price=it.get("target_price"),
+            upside_pct=it.get("upside_pct"), target_value=it.get("target_value", "0"),
+            target_shares=it.get("target_shares") or 0.0,
+            delta_shares=it.get("delta_shares") or 0.0,
+            thesis=it.get("thesis", ""), edge=it.get("edge", ""), risk=it.get("risk", ""),
+        ))
     db.commit()
 
 

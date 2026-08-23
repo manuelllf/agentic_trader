@@ -29,7 +29,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, object_session
 
 from app.db import Base
 from app.ledger.money import DecimalStr
@@ -101,16 +101,60 @@ class FundamentalsSnapshot(Base):
     id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
     ticker: Mapped[str] = mapped_column(String(16))
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    # Materializadas de `data`: son las que se consultan siempre (mediana de P/E por sector,
-    # distancia al máximo por etapa del embudo) y escanear JSON para eso no sale a cuenta.
+    # Todo `NameData` como columnas propias, nunca como JSON — un solo campo corrupto (visto en
+    # producción: `pe_trailing=Infinity` de yfinance) tumbaba antes la fila ENTERA al reventar
+    # el INSERT del blob; con columnas sueltas, un campo malo solo afecta a ese campo.
     sector: Mapped[str | None] = mapped_column(String(48))
+    industry: Mapped[str | None] = mapped_column(String(64))
+    name: Mapped[str | None] = mapped_column(String(128))
     price: Mapped[float | None] = mapped_column(Float)
     market_cap: Mapped[float | None] = mapped_column(Float)
+    target_high: Mapped[float | None] = mapped_column(Float)
+    target_mean: Mapped[float | None] = mapped_column(Float)
     pe_trailing: Mapped[float | None] = mapped_column(Float)
     pe_forward: Mapped[float | None] = mapped_column(Float)
     high_52w: Mapped[float | None] = mapped_column(Float)
     low_52w: Mapped[float | None] = mapped_column(Float)
-    data: Mapped[dict] = mapped_column(JSON_PG)   # NameData completo, reconstruible
+    # `fundamentals_text` (el prompt YA MONTADO) NO se persiste: era texto formateado con los
+    # ~85 campos de abajo mezclados dentro de una cadena — la propia definición de "chapuza"
+    # que motivó este cambio. Se reconstruye al leer con la MISMA función que lo genera en vivo
+    # (`_fundamentals_text`), aplicada a las filas de `FundamentalsSnapshotMetric` — nunca se
+    # reimplementa el formateo, así que el prompt reconstruido es idéntico al que se mandó.
+    technical_text: Mapped[str | None] = mapped_column(Text)
+    earnings_text: Mapped[str | None] = mapped_column(Text)
+
+
+class FundamentalsSnapshotNews(Base):
+    """Titulares de una foto, uno por fila — hermanas de `FundamentalsSnapshot` por FK, nunca
+    una lista serializada. `NameData.news` es `list[str]`; `posicion` conserva el orden original
+    (más reciente primero, tal como lo entrega la fuente)."""
+
+    __tablename__ = "fundamentals_snapshot_news"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    fundamentals_snapshot_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("fundamentals_snapshot.id", ondelete="CASCADE"), index=True)
+    posicion: Mapped[int] = mapped_column(SmallInteger)
+    texto: Mapped[str] = mapped_column(Text)
+
+
+class FundamentalsSnapshotMetric(Base):
+    """Los ~85 campos crudos de `.info` (Exhibit 2B del paper) que antes vivían formateados
+    DENTRO de `fundamentals_text` — uno por fila, nunca texto ni JSON. `clave` es el nombre de
+    campo de yfinance (`trailingPE`, `beta`...); solo uno de `valor_num`/`valor_texto` va
+    relleno (3 de los ~85 son texto: `currency`, `financialCurrency`, `lastSplitFactor`)."""
+
+    __tablename__ = "fundamentals_snapshot_metric"
+    __table_args__ = (
+        Index("ix_fundamentals_snapshot_metric_snapshot_id", "fundamentals_snapshot_id"),
+    )
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    fundamentals_snapshot_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("fundamentals_snapshot.id", ondelete="CASCADE"))
+    clave: Mapped[str] = mapped_column(String(48))
+    valor_num: Mapped[float | None] = mapped_column(Float)
+    valor_texto: Mapped[str | None] = mapped_column(String(32))
 
 
 class UniverseTicker(Base):
@@ -173,9 +217,6 @@ class Score(Base):
     target_price: Mapped[float | None] = mapped_column(Float)  # objetivo 3m del LLM
     held: Mapped[bool] = mapped_column(default=False)          # ¿está en cartera?
     on_watchlist: Mapped[bool] = mapped_column(default=False)
-    # copia CONGELADA de los titulares que entraron al prompt: las noticias son un endpoint en
-    # vivo, al día siguiente ya no se pueden reconstruir. Telemetría: nunca vuelve a un prompt.
-    news_used: Mapped[list | None] = mapped_column(JSON_PG, default=None)
     # target_raw/target_flagged: el objetivo TAL CUAL lo dijo el modelo cuando un guardarrail
     # lo corrige después. Telemetría para auditar el guardarrail, nunca vuelve a un prompt.
     target_raw: Mapped[float | None] = mapped_column(Float)
@@ -193,6 +234,64 @@ class Score(Base):
     # es nullable y no un booleano con default False.
     under_acquisition: Mapped[bool | None] = mapped_column(Boolean, default=None)
 
+    @property
+    def news_used(self) -> list[str]:
+        """Reconstruido desde `ScoreNews` (hermanas, orden `posicion`), nunca guardado como JSON.
+        `[]` cubre tanto "no había noticias" como "no se llegó a congelar nada" — ninguna lectura
+        distinguía los dos casos, así que ya no hace falta el `None` que llevaba la columna JSON."""
+        db = object_session(self)
+        if db is None:
+            return []
+        rows = (db.query(ScoreNews).filter_by(score_id=self.id)
+                .order_by(ScoreNews.posicion).all())
+        return [r.texto for r in rows]
+
+
+class ScoreNews(Base):
+    """Titulares que entraron al prompt de un `Score`, uno por fila — hermanas por FK, nunca una
+    lista serializada. Copia CONGELADA: las noticias son un endpoint en vivo, al día siguiente ya
+    no se pueden reconstruir. Telemetría: nunca vuelve a un prompt."""
+
+    __tablename__ = "score_news"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    score_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scores.id", ondelete="CASCADE"), index=True)
+    posicion: Mapped[int] = mapped_column(SmallInteger)
+    texto: Mapped[str] = mapped_column(Text)
+
+
+class _TradeItemColumns:
+    """Columnas compartidas por `ProposalItem` y `ScanRunConstructionItem` — mismo shape (salida
+    de `portfolio_service.build_trades`), dos tablas porque un observatorio nunca crea
+    `Proposal` pero sí necesita guardar su cartera hipotética (ver `ScanRun.construction`)."""
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    posicion: Mapped[int] = mapped_column(SmallInteger)   # orden de `build_trades`, conservado
+    ticker: Mapped[str] = mapped_column(String(16))
+    action: Mapped[str] = mapped_column(String(16))
+    score: Mapped[float | None] = mapped_column(Float)
+    target_weight_pct: Mapped[float] = mapped_column(Float)
+    price: Mapped[str | None] = mapped_column(String(32))   # Decimal-as-str, como ya viaja hoy
+    target_price: Mapped[float | None] = mapped_column(Float)
+    upside_pct: Mapped[float | None] = mapped_column(Float)
+    target_value: Mapped[str] = mapped_column(String(32))
+    target_shares: Mapped[float] = mapped_column(Float)
+    delta_shares: Mapped[float] = mapped_column(Float)
+    thesis: Mapped[str] = mapped_column(Text, default="")
+    edge: Mapped[str] = mapped_column(Text, default="")
+    risk: Mapped[str] = mapped_column(Text, default="")
+
+
+def _trade_item_dict(r) -> dict:  # noqa: ANN001 — fila de ProposalItem o ScanRunConstructionItem
+    return {
+        "ticker": r.ticker, "action": r.action, "score": r.score,
+        "target_weight_pct": r.target_weight_pct, "price": r.price,
+        "target_price": r.target_price, "upside_pct": r.upside_pct,
+        "target_value": r.target_value, "target_shares": r.target_shares,
+        "delta_shares": r.delta_shares, "thesis": r.thesis, "edge": r.edge, "risk": r.risk,
+    }
+
 
 class Proposal(Base):
     """Cartera objetivo + trades que propone el constructor en un escaneo (5 posiciones fijas)."""
@@ -203,12 +302,47 @@ class Proposal(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     cash_target_pct: Mapped[float] = mapped_column(Float, default=0.0)
     macro_summary: Mapped[str] = mapped_column(Text, default="")
-    # items: [{ticker, action, target_weight_pct, shares, est_value, thesis, edge, risk, score}]
-    items: Mapped[list] = mapped_column(JSON_PG, default=list)
-    # omitted: [{ticker, reason}] — los seleccionados que el constructor NO fondeó. Fondear 5 de
-    # 10 obliga a dejar 5 fuera; guardar el motivo permite distinguir después criterio de
-    # pattern-matching. Telemetría: no vuelve a entrar a ningún prompt.
-    omitted: Mapped[list] = mapped_column(JSON_PG, default=list)
+
+    @property
+    def items(self) -> list[dict]:
+        """[{ticker, action, target_weight_pct, shares, est_value, thesis, edge, risk, score}],
+        reconstruido desde `ProposalItem` (hermanas, orden `posicion`) — nunca guardado como JSON."""
+        db = object_session(self)
+        if db is None:
+            return []
+        rows = (db.query(ProposalItem).filter_by(proposal_id=self.id)
+                .order_by(ProposalItem.posicion).all())
+        return [_trade_item_dict(r) for r in rows]
+
+    @property
+    def omitted(self) -> list[dict]:
+        """[{ticker, reason}] — los seleccionados que el constructor NO fondeó. Fondear 5 de 10
+        obliga a dejar 5 fuera; guardar el motivo permite distinguir después criterio de
+        pattern-matching. Telemetría: no vuelve a entrar a ningún prompt."""
+        db = object_session(self)
+        if db is None:
+            return []
+        rows = db.query(ProposalOmitted).filter_by(proposal_id=self.id).order_by(
+            ProposalOmitted.id).all()
+        return [{"ticker": r.ticker, "reason": r.reason} for r in rows]
+
+
+class ProposalItem(_TradeItemColumns, Base):
+    __tablename__ = "proposal_item"
+    __table_args__ = (Index("ix_proposal_item_proposal_id", "proposal_id"),)
+
+    proposal_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("proposals.id", ondelete="CASCADE"))
+
+
+class ProposalOmitted(Base):
+    __tablename__ = "proposal_omitted"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    proposal_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("proposals.id", ondelete="CASCADE"), index=True)
+    ticker: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text, default="")
 
 
 class ScanAudit(Base):
@@ -266,30 +400,260 @@ class ScanRun(Base):
     decide: Mapped[bool] = mapped_column(default=False)
     regime: Mapped[str] = mapped_column(String(16), default="")
     vix: Mapped[float | None] = mapped_column(Float)
-    favored_sectors: Mapped[list] = mapped_column(JSON_PG, default=list)
-    avoided_sectors: Mapped[list] = mapped_column(JSON_PG, default=list)
     outlook: Mapped[str] = mapped_column(Text, default="")
-    universe: Mapped[dict] = mapped_column(JSON_PG, default=dict)
-    counters: Mapped[dict] = mapped_column(JSON_PG, default=dict)
-    cost: Mapped[dict] = mapped_column(JSON_PG, default=dict)
-    # Duración de cada fase en segundos ({"macro": 12.3, "gather": 145.2, ...} + "total"). Fase
-    # ausente = no corrió ese escaneo (ej. "mid" sin capa media), no que tardó 0s. Filas de antes
-    # de esta columna quedan con `{}` — no hay forma de reconstruir tiempos que no se midieron.
-    timings: Mapped[dict] = mapped_column(JSON_PG, default=dict)
-    issues: Mapped[list] = mapped_column(JSON_PG, default=list)
-    # Forense de los fallos del LLM: [{ticker, etapa, error, raw}]. `issues` es el texto que se
-    # lee en el panel y tiene que caber; esto es el detalle para saber DESPUÉS por qué falló un
-    # nombre — los logs de Railway caducan y el fallo se descubre al leer el informe, más tarde.
-    failures: Mapped[list] = mapped_column(JSON_PG, default=list)
-    # Recuperación completa del escaneo (mensual decidido U observatorio semanal): sin esto, la
-    # cartera hipotética de un observatorio —y su tesis— se perdía en cuanto terminaba el proceso,
-    # porque `Proposal` solo se escribe cuando `decide=True`. `finalists` = snapshot por ticker de
-    # los que llegaron al profundo (score, target, sector, precio, si se seleccionó/fondeó, su
-    # peso); `construction` = {cash_pct, summary, items, omitted} tal cual lo escribió el
-    # constructor. Mismo shape que `Proposal.items`/`omitted`, pero aquí vive SIEMPRE, no solo
-    # cuando se decide.
-    finalists: Mapped[list] = mapped_column(JSON_PG, default=list)
-    construction: Mapped[dict] = mapped_column(JSON_PG, default=dict)
+    # `universe_for_scan()` (app/screener/universe.py) — dict de forma fija, aplanado a columnas:
+    # no es una lista y sus 5 claves no cambian nunca, partirlo en filas no ganaba nada.
+    universe_fuente: Mapped[str] = mapped_column(String(16), default="")
+    universe_at: Mapped[str | None] = mapped_column(String(32))
+    universe_dias: Mapped[int | None] = mapped_column(Integer)
+    universe_size: Mapped[int] = mapped_column(Integer, default=0)
+    universe_sobre_suelo: Mapped[int | None] = mapped_column(Integer)
+    # Recuento del embudo — igual que `universe_*`, dict de forma fija aplanado.
+    counter_scanned: Mapped[int] = mapped_column(Integer, default=0)
+    counter_prescored: Mapped[int] = mapped_column(Integer, default=0)
+    counter_deep: Mapped[int] = mapped_column(Integer, default=0)
+    counter_selected: Mapped[int] = mapped_column(Integer, default=0)
+    counter_positions: Mapped[int] = mapped_column(Integer, default=0)
+    # Totales de coste (ver `_llm_usage` en scan_service.py); el desglose por modelo/etapa vive en
+    # `ScanRunCostBreakdown`, que sí es una lista de tamaño variable.
+    cost_calls: Mapped[int] = mapped_column(Integer, default=0)
+    cost_prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_cache_hit_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_cache_miss_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_peak_calls: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    cost_cache_hit_ratio: Mapped[float | None] = mapped_column(Float)
+    # Saldo ANTES del escaneo (no se relee al terminar: DeepSeek liquida con retraso, ver
+    # `_llm_usage`/`run_scan_and_store`). No es parte de `_llm_usage`, se añade aparte.
+    saldo_antes_usd: Mapped[float | None] = mapped_column(Float)
+    # {cash_pct, summary} de lo que escribió el constructor; `items`/`omitted` en las tablas
+    # hermanas de abajo — mismo shape que `Proposal`, pero aquí vive SIEMPRE (observatorio
+    # incluido), no solo cuando `decide=True`.
+    construction_cash_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    construction_summary: Mapped[str] = mapped_column(Text, default="")
+
+    @property
+    def favored_sectors(self) -> list[str]:
+        return self._sectores("favored")
+
+    @property
+    def avoided_sectors(self) -> list[str]:
+        return self._sectores("avoided")
+
+    def _sectores(self, stance: str) -> list[str]:
+        db = object_session(self)
+        if db is None:
+            return []
+        rows = (db.query(ScanRunSector).filter_by(scan_run_id=self.id, stance=stance)
+                .order_by(ScanRunSector.id).all())
+        return [r.sector for r in rows]
+
+    @property
+    def universe(self) -> dict:
+        return {"fuente": self.universe_fuente, "at": self.universe_at,
+                "dias": self.universe_dias, "size": self.universe_size,
+                "sobre_suelo": self.universe_sobre_suelo}
+
+    @property
+    def counters(self) -> dict:
+        return {"scanned": self.counter_scanned, "prescored": self.counter_prescored,
+                "deep": self.counter_deep, "selected": self.counter_selected,
+                "positions": self.counter_positions}
+
+    @property
+    def cost(self) -> dict:
+        db = object_session(self)
+        rows = (db.query(ScanRunCostBreakdown).filter_by(scan_run_id=self.id).all()
+                if db is not None else [])
+        by_model, by_stage = {}, {}
+        campos = ("calls", "prompt_tokens", "completion_tokens", "cache_hit_tokens",
+                  "cache_miss_tokens", "peak_calls", "cost_usd")
+        for r in rows:
+            destino = by_model if r.dimension == "model" else by_stage
+            destino[r.clave] = {k: getattr(r, k) for k in campos}
+        return {
+            "calls": self.cost_calls, "prompt_tokens": self.cost_prompt_tokens,
+            "completion_tokens": self.cost_completion_tokens,
+            "cache_hit_tokens": self.cost_cache_hit_tokens,
+            "cache_miss_tokens": self.cost_cache_miss_tokens,
+            "peak_calls": self.cost_peak_calls, "cost_usd": self.cost_usd,
+            "by_model": by_model, "by_stage": by_stage,
+            "cache_hit_ratio": self.cost_cache_hit_ratio,
+            "saldo_antes_usd": self.saldo_antes_usd,
+        }
+
+    @property
+    def timings(self) -> dict:
+        """{fase: segundos, ..., "total": segundos}. Fase ausente = no corrió ese escaneo (ej.
+        "mid" sin capa media), no que tardó 0s — reconstruido solo con las filas que existen."""
+        db = object_session(self)
+        if db is None:
+            return {}
+        rows = db.query(ScanRunTiming).filter_by(scan_run_id=self.id).all()
+        return {r.fase: r.segundos for r in rows}
+
+    @property
+    def issues(self) -> list[str]:
+        db = object_session(self)
+        if db is None:
+            return []
+        rows = (db.query(ScanRunIssue).filter_by(scan_run_id=self.id)
+                .order_by(ScanRunIssue.posicion).all())
+        return [r.texto for r in rows]
+
+    @property
+    def failures(self) -> list[dict]:
+        """Forense de los fallos del LLM: [{ticker, etapa, error, raw}]. `issues` es el texto que
+        se lee en el panel y tiene que caber; esto es el detalle para saber DESPUÉS por qué falló
+        un nombre — los logs de Railway caducan y el fallo se descubre al leer el informe, más
+        tarde."""
+        db = object_session(self)
+        if db is None:
+            return []
+        rows = db.query(ScanRunFailure).filter_by(scan_run_id=self.id).order_by(
+            ScanRunFailure.id).all()
+        return [{"ticker": r.ticker, "etapa": r.etapa, "error": r.error, "raw": r.raw}
+                for r in rows]
+
+    @property
+    def finalists(self) -> list[dict]:
+        """Snapshot por ticker de los que llegaron al profundo (score, target, sector, precio, si
+        se seleccionó/fondeó, su peso) — recuperación completa del escaneo (decida o no), porque
+        `Proposal` solo se escribe cuando `decide=True`."""
+        db = object_session(self)
+        if db is None:
+            return []
+        rows = (db.query(ScanRunFinalist).filter_by(scan_run_id=self.id)
+                .order_by(ScanRunFinalist.posicion).all())
+        return [{
+            "ticker": r.ticker, "sector": r.sector, "prescore": r.prescore, "price": r.price,
+            "market_cap": r.market_cap, "deep_score": r.deep_score, "headline": r.headline,
+            "target_price": r.target_price, "selected": r.selected, "funded": r.funded,
+            "weight_pct": r.weight_pct, "error": r.error,
+        } for r in rows]
+
+    @property
+    def construction(self) -> dict:
+        db = object_session(self)
+        if db is None:
+            return {"cash_pct": self.construction_cash_pct, "summary": self.construction_summary,
+                    "items": [], "omitted": []}
+        items = (db.query(ScanRunConstructionItem).filter_by(scan_run_id=self.id)
+                 .order_by(ScanRunConstructionItem.posicion).all())
+        omitted = (db.query(ScanRunConstructionOmitted).filter_by(scan_run_id=self.id)
+                   .order_by(ScanRunConstructionOmitted.id).all())
+        return {
+            "cash_pct": self.construction_cash_pct, "summary": self.construction_summary,
+            "items": [_trade_item_dict(r) for r in items],
+            "omitted": [{"ticker": r.ticker, "reason": r.reason} for r in omitted],
+        }
+
+
+class ScanRunSector(Base):
+    """Inclinación sectorial que el macro emitió ese día — `stance` es 'favored'/'avoided'. Antes
+    dos listas JSON; una tabla con `stance` en vez de dos evita duplicar 8 columnas idénticas."""
+
+    __tablename__ = "scan_run_sector"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    stance: Mapped[str] = mapped_column(String(8))
+    sector: Mapped[str] = mapped_column(String(48))
+
+
+class ScanRunCostBreakdown(Base):
+    """Desglose de `_llm_usage()` por modelo o por etapa — `dimension` es 'model'/'stage',
+    `clave` el nombre del modelo o de la etapa. Necesario aparte porque macro/profundo/constructor
+    comparten modelo desde que se dejó OpenRouter: sin `by_stage`, el desglose por modelo
+    mezclaría las tres y dejaría de decir en qué paso se fue el dinero."""
+
+    __tablename__ = "scan_run_cost_breakdown"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    dimension: Mapped[str] = mapped_column(String(8))
+    clave: Mapped[str] = mapped_column(String(32))
+    calls: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cache_hit_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cache_miss_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    peak_calls: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class ScanRunTiming(Base):
+    __tablename__ = "scan_run_timing"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    fase: Mapped[str] = mapped_column(String(16))
+    segundos: Mapped[float] = mapped_column(Float)
+
+
+class ScanRunIssue(Base):
+    __tablename__ = "scan_run_issue"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    posicion: Mapped[int] = mapped_column(SmallInteger)
+    texto: Mapped[str] = mapped_column(Text)
+
+
+class ScanRunFailure(Base):
+    __tablename__ = "scan_run_failure"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    ticker: Mapped[str] = mapped_column(String(16))
+    etapa: Mapped[str] = mapped_column(String(16))
+    error: Mapped[str | None] = mapped_column(Text)
+    raw: Mapped[str | None] = mapped_column(Text)
+
+
+class ScanRunFinalist(Base):
+    __tablename__ = "scan_run_finalist"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    posicion: Mapped[int] = mapped_column(SmallInteger)
+    ticker: Mapped[str] = mapped_column(String(16))
+    sector: Mapped[str | None] = mapped_column(String(48))
+    prescore: Mapped[float | None] = mapped_column(Float)
+    price: Mapped[float | None] = mapped_column(Float)
+    market_cap: Mapped[float | None] = mapped_column(Float)
+    deep_score: Mapped[float | None] = mapped_column(Float)
+    headline: Mapped[str | None] = mapped_column(Text)
+    target_price: Mapped[float | None] = mapped_column(Float)
+    selected: Mapped[bool] = mapped_column(default=False)
+    funded: Mapped[bool] = mapped_column(default=False)
+    weight_pct: Mapped[float | None] = mapped_column(Float)
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class ScanRunConstructionItem(_TradeItemColumns, Base):
+    __tablename__ = "scan_run_construction_item"
+    __table_args__ = (Index("ix_scan_run_construction_item_scan_run_id", "scan_run_id"),)
+
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"))
+
+
+class ScanRunConstructionOmitted(Base):
+    __tablename__ = "scan_run_construction_omitted"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    ticker: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text, default="")
 
 
 class LLMCall(Base):

@@ -47,10 +47,26 @@ from app.agents import constructor as constructor_mod
 from app.agents import scorer as scorer_mod
 from app.config import settings
 from app.ledger import service as ledger
-from app.llm import get_llm
 from app.llm import deepseek as deepseek_mod
+from app.llm import get_llm
 from app.llm.trace import LLMTrace
-from app.models import Meta, Proposal, ScanRun, Score
+from app.models import (
+    Meta,
+    Proposal,
+    ProposalItem,
+    ProposalOmitted,
+    ScanRun,
+    ScanRunConstructionItem,
+    ScanRunConstructionOmitted,
+    ScanRunCostBreakdown,
+    ScanRunFailure,
+    ScanRunFinalist,
+    ScanRunIssue,
+    ScanRunSector,
+    ScanRunTiming,
+    Score,
+    ScoreNews,
+)
 from app.screener import fundamentals as fund_mod
 from app.screener import macro as macro_mod
 from app.screener import universe as universe_mod
@@ -174,6 +190,39 @@ def _sector(data_by_t: dict, ticker: str) -> str:
     """Sector de un ticker (o 'UCITS' si es un instrumento del allowlist, que no se puntúa)."""
     d = data_by_t.get(ticker)
     return d.sector if d else "UCITS"
+
+
+def _guardar_news_used(db: Session, score_id: int, news: list[str] | None) -> None:
+    """Congela `NameData.news` como filas de `ScoreNews` — nunca como JSON. `None` = el gather no
+    trajo noticias (no se distingue de "trajo cero"; ningún lector lo necesitaba)."""
+    for i, texto in enumerate(news or []):
+        db.add(ScoreNews(score_id=score_id, posicion=i, texto=texto))
+
+
+def _guardar_trade_items(db: Session, model_cls: type, fk_field: str, fk_id: int,
+                         items: list[dict]) -> None:
+    """Filas hermanas de `_TradeItemColumns` (`ProposalItem`/`ScanRunConstructionItem`), mismo
+    shape que la salida de `portfolio_service.build_trades` — `posicion` conserva su orden."""
+    for i, it in enumerate(items):
+        db.add(model_cls(**{fk_field: fk_id}, posicion=i, ticker=it["ticker"], action=it["action"],
+                          score=it.get("score"),
+                          target_weight_pct=it.get("target_weight_pct") or 0.0,
+                          price=it.get("price"), target_price=it.get("target_price"),
+                          upside_pct=it.get("upside_pct"), target_value=it.get("target_value", "0"),
+                          target_shares=it.get("target_shares") or 0.0,
+                          delta_shares=it.get("delta_shares") or 0.0,
+                          thesis=it.get("thesis", ""), edge=it.get("edge", ""),
+                          risk=it.get("risk", "")))
+
+
+def _guardar_cost_breakdown(db: Session, scan_run_id: int, cost: dict) -> None:
+    campos = ("calls", "prompt_tokens", "completion_tokens", "cache_hit_tokens",
+              "cache_miss_tokens", "peak_calls", "cost_usd")
+    for dimension, bucket in (("model", cost.get("by_model") or {}),
+                              ("stage", cost.get("by_stage") or {})):
+        for clave, stats in bucket.items():
+            db.add(ScanRunCostBreakdown(scan_run_id=scan_run_id, dimension=dimension, clave=clave,
+                                        **{k: stats.get(k, 0) for k in campos}))
 
 
 def _lista(ts: list[str], n: int = 10) -> str:
@@ -772,18 +821,19 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         db.query(Score).delete()
         for ticker, d in deep.items():
             data = data_by_t[ticker]
-            db.add(Score(
+            score_row = Score(
                 ticker=ticker, sector=data.sector, score=d.score,
                 headline=d.headline, report=d.report,
                 price=data.price, market_cap=data.market_cap, target_price=d.target_price,
                 held=ticker in held, on_watchlist=ticker in watch,  # provisional: resella al final
-                # Noticias usadas congeladas: endpoint vivo, al día siguiente desaparecen.
-                news_used=list(data.news) if data.news is not None else None,
                 target_raw=target_raw.get(ticker), target_flagged=ticker in target_flagged,
                 target_consensus_mean=target_consensus_mean.get(ticker),
                 target_echoed_consensus=ticker in target_echoed,
                 under_acquisition=d.under_acquisition,
-            ))
+            )
+            db.add(score_row)
+            db.flush()   # necesita el id para las noticias hermanas
+            _guardar_news_used(db, score_row.id, data.news)
     else:
         existing = {s.ticker: s for s in db.query(Score).all()}
         for ticker, d in deep.items():
@@ -873,12 +923,12 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     #    la real. El escaneo observatorio termina antes de este bloque: el libro conserva la
     #    cartera del último decidido para que cada elección viva su mes entero.
     if decide:
-        db.add(Proposal(
-            cash_target_pct=construction.cash_pct,
-            macro_summary=macro_line,
-            items=items,
-            omitted=[{"ticker": o.ticker, "reason": o.reason} for o in construction.omitted],
-        ))
+        prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_line)
+        db.add(prop)
+        db.flush()   # necesita el id para los items/omitted hermanos
+        _guardar_trade_items(db, ProposalItem, "proposal_id", prop.id, items)
+        for o in construction.omitted:
+            db.add(ProposalOmitted(proposal_id=prop.id, ticker=o.ticker, reason=o.reason))
         db.commit()
         # Sombra: se ejecuta SOLA, sin botones — dinero simulado, cero riesgo. Ventas antes que
         # compras (execute_proposal_all lo garantiza) para que la caja se libere primero. Un
@@ -1006,30 +1056,51 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             }
             for t in finalists
         ]
-        construction_detail = {
-            "cash_pct": construction.cash_pct, "summary": construction.summary,
-            "items": items,
-            "omitted": [{"ticker": o.ticker, "reason": o.reason} for o in construction.omitted],
-        }
+        failures_detail = (
+            [{"ticker": t, "etapa": "gather", "error": e, "raw": None} for t, e in gather_errors]
+            + [{"ticker": p.ticker, "etapa": "prescore", "error": p.error, "raw": p.raw}
+               for p, _d in pre_errors]
+            + [{"ticker": t, "etapa": "profundo", "error": analizados[t].error,
+                "raw": analizados[t].raw} for t in deep_caidos]
+        )
+        coste = result["cost"]
         run = ScanRun(
             cadence=cadence, decide=decide, regime=macro.get("regime") or "",
-            vix=macro.get("vix"), favored_sectors=macro.get("favored_sectors") or [],
-            avoided_sectors=macro.get("avoided_sectors") or [], outlook=macro.get("outlook") or "",
-            universe=universo_info,
-            counters={"scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
-                     "selected": len(selected), "positions": len(construction.positions)},
-            cost=result["cost"], timings=timings, issues=issues,
-            failures=(
-                [{"ticker": t, "etapa": "gather", "error": e, "raw": None}
-                 for t, e in gather_errors]
-                + [{"ticker": p.ticker, "etapa": "prescore", "error": p.error, "raw": p.raw}
-                   for p, _d in pre_errors]
-                + [{"ticker": t, "etapa": "profundo", "error": analizados[t].error,
-                    "raw": analizados[t].raw} for t in deep_caidos]
-            ),
-            finalists=finalists_detail, construction=construction_detail,
+            vix=macro.get("vix"), outlook=macro.get("outlook") or "",
+            universe_fuente=universo_info["fuente"], universe_at=universo_info["at"],
+            universe_dias=universo_info["dias"], universe_size=universo_info["size"],
+            universe_sobre_suelo=universo_info.get("sobre_suelo"),
+            counter_scanned=len(sample), counter_prescored=len(prescored),
+            counter_deep=len(deep), counter_selected=len(selected),
+            counter_positions=len(construction.positions),
+            cost_calls=coste["calls"], cost_prompt_tokens=coste["prompt_tokens"],
+            cost_completion_tokens=coste["completion_tokens"],
+            cost_cache_hit_tokens=coste["cache_hit_tokens"],
+            cost_cache_miss_tokens=coste["cache_miss_tokens"], cost_peak_calls=coste["peak_calls"],
+            cost_usd=coste["cost_usd"], cost_cache_hit_ratio=coste["cache_hit_ratio"],
+            saldo_antes_usd=coste.get("saldo_antes_usd"),
+            construction_cash_pct=construction.cash_pct, construction_summary=construction.summary,
         )
         db.add(run)
+        db.flush()   # necesita el id para todas las filas hermanas de abajo
+        for sector in macro.get("favored_sectors") or []:
+            db.add(ScanRunSector(scan_run_id=run.id, stance="favored", sector=sector))
+        for sector in macro.get("avoided_sectors") or []:
+            db.add(ScanRunSector(scan_run_id=run.id, stance="avoided", sector=sector))
+        _guardar_cost_breakdown(db, run.id, coste)
+        for fase, segundos in timings.items():
+            db.add(ScanRunTiming(scan_run_id=run.id, fase=fase, segundos=segundos))
+        for i, texto in enumerate(issues):
+            db.add(ScanRunIssue(scan_run_id=run.id, posicion=i, texto=texto))
+        for f in failures_detail:
+            db.add(ScanRunFailure(scan_run_id=run.id, ticker=f["ticker"], etapa=f["etapa"],
+                                  error=f["error"], raw=f["raw"]))
+        for i, f in enumerate(finalists_detail):
+            db.add(ScanRunFinalist(scan_run_id=run.id, posicion=i, **f))
+        _guardar_trade_items(db, ScanRunConstructionItem, "scan_run_id", run.id, items)
+        for o in construction.omitted:
+            db.add(ScanRunConstructionOmitted(scan_run_id=run.id, ticker=o.ticker,
+                                              reason=o.reason))
         db.commit()
         scan_run_id = run.id
     except Exception:
@@ -1085,10 +1156,12 @@ def recheck(db: Session) -> dict:
             settings.max_position_pct)
 
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
-    db.add(Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_block,
-                    items=items,
-                    omitted=[{"ticker": o.ticker, "reason": o.reason}
-                             for o in construction.omitted]))
+    prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_block)
+    db.add(prop)
+    db.flush()
+    _guardar_trade_items(db, ProposalItem, "proposal_id", prop.id, items)
+    for o in construction.omitted:
+        db.add(ProposalOmitted(proposal_id=prop.id, ticker=o.ticker, reason=o.reason))
     db.commit()
     try:
         from app import approvals as approvals_mod
@@ -1136,11 +1209,13 @@ def redeep(db: Session) -> dict:
     db.query(Score).delete()
     for t, r in results.items():
         d = data_by_t[t]
-        db.add(Score(ticker=t, sector=d.sector, score=r.score, headline=r.headline,
-                     report=r.report, price=d.price, market_cap=d.market_cap,
-                     target_price=r.target_price, held=t in held, on_watchlist=t in watch,
-                     news_used=list(d.news) if d.news is not None else None,
-                     under_acquisition=r.under_acquisition))
+        score_row = Score(ticker=t, sector=d.sector, score=r.score, headline=r.headline,
+                          report=r.report, price=d.price, market_cap=d.market_cap,
+                          target_price=r.target_price, held=t in held, on_watchlist=t in watch,
+                          under_acquisition=r.under_acquisition)
+        db.add(score_row)
+        db.flush()
+        _guardar_news_used(db, score_row.id, d.news)
     db.commit()
 
     mcap_map = {t: (data_by_t[t].market_cap or 0.0) for t in results}
@@ -1169,7 +1244,10 @@ def redeep(db: Session) -> dict:
 
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
     macro_line = macro.get("outlook", "") or construction.summary
-    db.add(Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_line, items=items))
+    prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_line)
+    db.add(prop)
+    db.flush()
+    _guardar_trade_items(db, ProposalItem, "proposal_id", prop.id, items)
     db.commit()
     try:
         from app import approvals as approvals_mod

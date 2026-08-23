@@ -201,7 +201,7 @@ def test_propuesta_anterior_sobrevive_a_un_escaneo_nuevo(db, monkeypatch) -> Non
     _stub_common(monkeypatch, llm, ["AAA"])
     _gather_stub(monkeypatch)
 
-    db.add(Proposal(cash_target_pct=0.0, macro_summary="propuesta vieja", items=[]))
+    db.add(Proposal(cash_target_pct=0.0, macro_summary="propuesta vieja"))
     db.commit()
     vieja_id = db.query(Proposal).one().id
 
