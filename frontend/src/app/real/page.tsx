@@ -100,7 +100,8 @@ function SalaRealRoom() {
   // Navegador de escaneo compartido por coste-etapa/confianza-prescore: -1 = "Total" (agregado
   // histórico, sin scan_run_id), 0 = el más reciente, 1 = el siguiente más antiguo, etc.
   const [analyticsScans, setAnalyticsScans] = useState<{ id: number; at: string; cadence: string }[]>([]);
-  const [analyticsScanPos, setAnalyticsScanPos] = useState(-1);
+  const [costeScanPos, setCosteScanPos] = useState(-1);
+  const [confianzaScanPos, setConfianzaScanPos] = useState(-1);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
@@ -224,7 +225,8 @@ function SalaRealRoom() {
    *  instalado en el backend) en una no debe tapar el resultado de las otras dos. */
   async function loadAnalytics() {
     setAnalyticsLoaded(true);
-    setAnalyticsScanPos(-1);
+    setCosteScanPos(-1);
+    setConfianzaScanPos(-1);
     setPeSector({ data: null, loading: true, error: "" });
     setCosteEtapa({ data: null, loading: true, error: "" });
     setConfianzaPrescore({ data: null, loading: true, error: "" });
@@ -242,16 +244,23 @@ function SalaRealRoom() {
       .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
   }
 
-  /** Recarga solo coste-etapa/confianza-prescore para el escaneo en `pos` (-1 = Total, agregado
-   *  histórico). No toca PER por sector ni vuelve a pedir la lista de escaneos. */
-  function loadAnalyticsForScan(pos: number) {
-    setAnalyticsScanPos(pos);
+  /** Recarga solo coste-etapa para el escaneo en `pos` (-1 = Total, agregado histórico).
+   *  Independiente de confianza-prescore aunque compartan `analyticsScans` — mover una no debe
+   *  mover la otra, aunque salgan de la misma tabla `llm_call`. */
+  function loadCosteForScan(pos: number) {
+    setCosteScanPos(pos);
     const scanId = pos >= 0 ? analyticsScans[pos]?.id : undefined;
     setCosteEtapa((s) => ({ ...s, loading: true, error: "" }));
-    setConfianzaPrescore((s) => ({ ...s, loading: true, error: "" }));
     fetchAnalyticsCosteEtapa(scanId)
       .then((r) => setCosteEtapa({ data: r.items, loading: false, error: "" }))
       .catch((e) => setCosteEtapa({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+  }
+
+  /** Igual que `loadCosteForScan` pero para confianza-prescore, con su propia posición. */
+  function loadConfianzaForScan(pos: number) {
+    setConfianzaScanPos(pos);
+    const scanId = pos >= 0 ? analyticsScans[pos]?.id : undefined;
+    setConfianzaPrescore((s) => ({ ...s, loading: true, error: "" }));
     fetchAnalyticsConfianzaPrescore(scanId)
       .then((r) => setConfianzaPrescore({ data: r.items, loading: false, error: "" }))
       .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
@@ -1022,9 +1031,9 @@ function SalaRealRoom() {
               <div className="grid gap-4 p-4 lg:grid-cols-3">
                 <AnalyticsTable title="PER por sector" state={peSector} />
                 <AnalyticsTable title="Coste por etapa" state={costeEtapa}
-                  nav={<ScanNav scans={analyticsScans} pos={analyticsScanPos} onMove={loadAnalyticsForScan} />} />
+                  nav={<ScanNav scans={analyticsScans} pos={costeScanPos} onMove={loadCosteForScan} />} />
                 <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore}
-                  nav={<ScanNav scans={analyticsScans} pos={analyticsScanPos} onMove={loadAnalyticsForScan} />} />
+                  nav={<ScanNav scans={analyticsScans} pos={confianzaScanPos} onMove={loadConfianzaForScan} />} />
               </div>
             )}
           </Panel>
