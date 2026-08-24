@@ -180,22 +180,6 @@ class UniverseTicker(Base):
     isin: Mapped[str | None] = mapped_column(String(16))
 
 
-class FundamentalsCache(Base):
-    """RETIRADA: la sustituye `FundamentalsSnapshot`. Ya nadie la lee ni la escribe.
-
-    La tabla sigue declarada a propósito — todavía guarda los últimos datos de producción y
-    borrarla es una decisión aparte (volcarlos como primera fila de foto, o descartarlos).
-    Existía por el 401 "Invalid Crumb" masivo de Yahoo (2.400-2.500 de 3.000 nombres sin datos
-    al repetir escaneo el mismo día); esa protección la cubre ahora la ventana de 24h de la
-    foto, sin pisar el histórico."""
-
-    __tablename__ = "fundamentals_cache"
-
-    ticker: Mapped[str] = mapped_column(String(16), primary_key=True)
-    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    data: Mapped[dict] = mapped_column(JSON_PG)   # dataclasses.asdict(NameData), reconstruible
-
-
 class Score(Base):
     """Score de un nombre en un escaneo (para el leaderboard + drill-down del informe)."""
 

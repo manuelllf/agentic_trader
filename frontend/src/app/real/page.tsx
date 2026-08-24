@@ -13,6 +13,7 @@ import {
   getPerformance, getPersonal, getPushKey, getReal, getScanFunnel, getScanReport, logout,
   reconcileApprovals, recheck, redeep, rejectTrade, resetShadow, runDemo, snapshotUniverse, startFoto,
   subscribePush,
+  syncAnalytics,
   syncPersonal, testPush,
   type ScanReport,
 } from "@/lib/api";
@@ -102,6 +103,8 @@ function SalaRealRoom() {
   const [analyticsScans, setAnalyticsScans] = useState<{ id: number; at: string; cadence: string }[]>([]);
   const [costeScanPos, setCosteScanPos] = useState(-1);
   const [confianzaScanPos, setConfianzaScanPos] = useState(-1);
+  const [syncingAnalytics, setSyncingAnalytics] = useState(false);
+  const [analyticsSyncMsg, setAnalyticsSyncMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
@@ -242,6 +245,23 @@ function SalaRealRoom() {
     fetchAnalyticsConfianzaPrescore()
       .then((r) => setConfianzaPrescore({ data: r.items, loading: false, error: "" }))
       .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+  }
+
+  /** Reconstruye el fichero DuckDB en el backend (POST /admin/sync-analytics) y recarga las 3
+   *  tablas — para no esperar hasta el cron diario tras el primer despliegue o un escaneo nuevo. */
+  async function doSyncAnalytics() {
+    setSyncingAnalytics(true);
+    setAnalyticsSyncMsg(null);
+    try {
+      const r = await syncAnalytics();
+      const resumen = Object.entries(r.counts).map(([t, n]) => `${t}: ${n}`).join(", ");
+      setAnalyticsSyncMsg({ text: `Sincronizado (${resumen}).` });
+      await loadAnalytics();
+    } catch (e) {
+      setAnalyticsSyncMsg({ text: e instanceof Error ? e.message : "No se pudo sincronizar.", bad: true });
+    } finally {
+      setSyncingAnalytics(false);
+    }
   }
 
   /** Recarga solo coste-etapa para el escaneo en `pos` (-1 = Total, agregado histórico).
@@ -1009,17 +1029,25 @@ function SalaRealRoom() {
         <div className="mt-4">
           <Panel title="Analítica del método"
                  right={analyticsLoaded
-                   ? <button onClick={loadAnalytics}
-                             className="text-[11px] font-semibold transition-colors hover:underline"
-                             style={{ color: T.buy }}>
-                       ↻ recargar
-                     </button>
+                   ? <span className="flex items-center gap-3">
+                       <button onClick={doSyncAnalytics} disabled={syncingAnalytics}
+                               className="text-[11px] font-semibold transition-colors hover:underline disabled:opacity-50"
+                               style={{ color: T.ink2 }}>
+                         {syncingAnalytics ? "sincronizando…" : "⟳ sincronizar fichero"}
+                       </button>
+                       <button onClick={loadAnalytics}
+                               className="text-[11px] font-semibold transition-colors hover:underline"
+                               style={{ color: T.buy }}>
+                         ↻ recargar
+                       </button>
+                     </span>
                    : undefined}>
             {!analyticsLoaded ? (
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <p className="text-[12px]" style={{ color: T.muted }}>
                   PER por sector, coste por etapa del embudo y confianza del prescore — 3
-                  consultas a DuckDB sobre Postgres, bajo demanda.
+                  consultas sobre un fichero DuckDB local, sincronizado desde Postgres a diario
+                  (o a mano con &quot;sincronizar fichero&quot;).
                 </p>
                 <button onClick={loadAnalytics}
                         className="shrink-0 rounded px-3 py-1.5 text-[11.5px] font-bold text-white transition-opacity hover:opacity-90"
@@ -1028,13 +1056,21 @@ function SalaRealRoom() {
                 </button>
               </div>
             ) : (
-              <div className="grid gap-4 p-4 lg:grid-cols-3">
-                <AnalyticsTable title="PER por sector" state={peSector} />
-                <AnalyticsTable title="Coste por etapa" state={costeEtapa}
-                  nav={<ScanNav scans={analyticsScans} pos={costeScanPos} onMove={loadCosteForScan} />} />
-                <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore}
-                  nav={<ScanNav scans={analyticsScans} pos={confianzaScanPos} onMove={loadConfianzaForScan} />} />
-              </div>
+              <>
+                {analyticsSyncMsg && (
+                  <p className="px-4 pt-2 text-[11px]"
+                     style={{ color: analyticsSyncMsg.bad ? T.warn : T.muted }}>
+                    {analyticsSyncMsg.text}
+                  </p>
+                )}
+                <div className="grid gap-4 p-4 lg:grid-cols-3">
+                  <AnalyticsTable title="PER por sector" state={peSector} />
+                  <AnalyticsTable title="Coste por etapa" state={costeEtapa}
+                    nav={<ScanNav scans={analyticsScans} pos={costeScanPos} onMove={loadCosteForScan} />} />
+                  <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore}
+                    nav={<ScanNav scans={analyticsScans} pos={confianzaScanPos} onMove={loadConfianzaForScan} />} />
+                </div>
+              </>
             )}
           </Panel>
         </div>

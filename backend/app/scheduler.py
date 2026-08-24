@@ -102,6 +102,19 @@ def _universo_global_job() -> None:
         db.close()
 
 
+def _analytics_sync_job() -> None:
+    """Reconstruye el fichero DuckDB persistente de `/analytics/*` desde Postgres. Fuera de
+    horas de mercado, a propósito no atado a ningún escaneo — la analítica acepta estar hasta
+    24h desatualizada (ver `app/analytics_sync.py`), así que basta con una pasada diaria."""
+    from app import analytics_sync
+
+    try:
+        counts = analytics_sync.sync()
+        logger.info("Analítica DuckDB sincronizada: %s", counts)
+    except Exception:
+        logger.exception("No se pudo sincronizar la analítica DuckDB")
+
+
 def _reconcile_job() -> None:
     """Reconcilia fills de órdenes límite 'working' SIN depender de que la web esté abierta.
 
@@ -162,6 +175,14 @@ def start_scheduler() -> None:
     # Reconciliación de órdenes working cada 2 min (no-op sin órdenes vivas; ver _reconcile_job).
     scheduler.add_job(_reconcile_job, "interval", minutes=2, id="reconcile_working",
                       replace_existing=True)
+    # Fichero DuckDB de /analytics/*: 6:00 hora española (no la del mercado US, esta la mira
+    # Manuel, no el escaneo) — una vez al día basta (ver _analytics_sync_job).
+    # POST /admin/sync-analytics existe para no esperar a esta hora.
+    scheduler.add_job(
+        _analytics_sync_job,
+        CronTrigger(hour=6, minute=0, timezone="Europe/Madrid"),
+        id="analytics_sync", replace_existing=True, misfire_grace_time=3600, coalesce=True,
+    )
     scheduler.start()
     logger.info(
         "Scheduler arrancado: escaneo mensual día 1 %02d:%02d %s",

@@ -37,13 +37,15 @@ un feed de señales.
 - GET  /proposal             → cartera objetivo + trades del último escaneo        [protegido]
 - GET  /watchlist            → nombres vigilados                                   [protegido]
 - GET  /memory/search        → buscador sobre la memoria semántica (ticker o texto) [protegido]
-- GET  /analytics/pe-sector          → mediana de PE trailing por sector (DuckDB→Postgres) [protegido]
+- GET  /analytics/pe-sector          → mediana de PE trailing por sector (fichero DuckDB local) [protegido]
 - GET  /analytics/coste-etapa        → coste/latencia/cache de llamadas LLM por etapa,
                                        opcional `?scan_run_id=` para un escaneo concreto  [protegido]
 - GET  /analytics/confianza-prescore → distribución de confianza persistida del prescore,
                                        opcional `?scan_run_id=` para un escaneo concreto  [protegido]
 - GET  /analytics/scans              → últimos 50 escaneos (id, fecha, cadencia) para el
                                        navegador de la analítica por escaneo               [protegido]
+- POST /admin/sync-analytics         → reconstruye el fichero DuckDB de /analytics/* desde
+                                       Postgres (también corre solo, una vez al día)       [protegido]
 """
 
 from __future__ import annotations
@@ -421,7 +423,7 @@ def memory_search(q: str = Query(..., min_length=1), limit: int = Query(20, ge=1
 
     try:
         store = memory.get_store()
-    except Exception:  # noqa: BLE001 — deps opcionales (fastembed/sqlite-vec) pueden faltar
+    except Exception:  # noqa: BLE001 — fastembed puede faltar, o DATABASE_URL no ser Postgres
         store = None
     if store is None:
         return {"mode": "vacio", "items": [], "error": "memoria vectorial no disponible"}
@@ -430,17 +432,17 @@ def memory_search(q: str = Query(..., min_length=1), limit: int = Query(20, ge=1
     if _TICKER_LIKE.match(q):
         try:
             hist = store.history_for(q.upper(), limit=limit)
-        except Exception as exc:  # noqa: BLE001 — fichero ausente/corrupto: se avisa, no se
-            # disfraza de búsqueda semántica. Bug real reproducido en producción: `history_for`
-            # reventaba por hilos (ver store._connect) y este `except` lo tragaba en silencio,
-            # cayendo al modo semántico sin avisar — parecía que la memoria "olvidaba" nombres.
+        except Exception as exc:  # noqa: BLE001 — BD caída/inalcanzable: se avisa, no se disfraza
+            # de búsqueda semántica. Bug real reproducido en producción con el store antiguo
+            # (SQLite): un fallo aquí se tragaba en silencio y caía al modo semántico sin avisar
+            # — parecía que la memoria "olvidaba" nombres.
             return {"mode": "vacio", "items": [], "error": str(exc)}
         if hist:
             return {"mode": "ticker", "items": [_memory_out(m) for m in hist]}
 
     try:
         results = store.search(q, k=limit)
-    except Exception as exc:  # noqa: BLE001 — típicamente fastembed/sqlite-vec no instalados
+    except Exception as exc:  # noqa: BLE001 — típicamente fastembed no instalado o BD inalcanzable
         return {"mode": "vacio", "items": [], "error": str(exc)}
     return {"mode": "semantic", "items": [_memory_out(m) for m in results]}
 
@@ -457,7 +459,7 @@ _ANALYTICS_QUERIES: dict[str, str] = {
                      / nullif(sum(prompt_cache_hit_tokens
                                   + prompt_cache_miss_tokens), 0), 1) as cache_hit_pct,
                sum(case when not ok then 1 else 0 end)      as fallos
-        from pg.llm_call
+        from llm_call
         {where}
         group by stage
         order by usd desc
@@ -465,7 +467,7 @@ _ANALYTICS_QUERIES: dict[str, str] = {
     "pe-sector": """
         with ultima as (
             select distinct on (ticker) ticker, sector, pe_trailing
-            from pg.fundamentals_snapshot
+            from fundamentals_snapshot
             where pe_trailing is not null and pe_trailing > 0
             order by ticker, captured_at desc
         )
@@ -480,7 +482,7 @@ _ANALYTICS_QUERIES: dict[str, str] = {
     "confianza-prescore": """
         select round(confidence::numeric, 1) as confianza,
                count(*)                      as llamadas
-        from pg.llm_call
+        from llm_call
         where stage = 'prescore' and confidence is not null
         {and_scan}
         group by 1
@@ -490,20 +492,26 @@ _ANALYTICS_QUERIES: dict[str, str] = {
 
 
 def _run_analytics_query(nombre: str, scan_run_id: int | None = None) -> list[dict]:
-    """Abre una conexión DuckDB→Postgres de solo lectura y ejecuta una de las consultas
-    predefinidas (mismo `ATTACH ... type postgres` que `scripts/analitica.py` — no se reinventa
-    la conexión). Sin caché ni estado: se cierra sola al salir del `with`.
+    """Abre el fichero DuckDB persistente (columnar de verdad, sincronizado desde Postgres por
+    `app.analytics_sync.sync()` — ver ese módulo y `POST /admin/sync-analytics`) en modo
+    solo-lectura y ejecuta una de las consultas predefinidas. Los datos son tan frescos como la
+    última sincronización, no en vivo — trade-off aceptado: esta analítica no necesita el
+    segundo exacto, y a cambio no depende de Postgres estar despierto para responder.
 
     `scan_run_id` filtra `coste-etapa`/`confianza-prescore` a un único escaneo — sin él, agregan
     TODA la vida de `llm_call` (todos los escaneos históricos mezclados). `pe-sector` lo ignora:
     no depende de escaneo, usa el snapshot más reciente por ticker. El valor llega tipado `int`
     desde FastAPI (`Query(None)`), así que es seguro interpolarlo en el SQL de DuckDB."""
+    import os
+
     import duckdb
 
-    url = settings.database_url
-    if not url.startswith(("postgresql", "postgres")):
-        raise HTTPException(503, "La analítica requiere DATABASE_URL de Postgres (no SQLite).")
-    dsn = url.replace("postgresql+psycopg://", "postgresql://")
+    from app.analytics_sync import default_path
+
+    db_path = default_path()
+    if not os.path.exists(db_path):
+        raise HTTPException(
+            503, "Analítica sin sincronizar todavía — lanza POST /admin/sync-analytics primero.")
     sql = _ANALYTICS_QUERIES[nombre]
     if "{where}" in sql:
         clause = f"where scan_run_id = {int(scan_run_id)}" if scan_run_id is not None else ""
@@ -511,10 +519,8 @@ def _run_analytics_query(nombre: str, scan_run_id: int | None = None) -> list[di
     elif "{and_scan}" in sql:
         clause = f"and scan_run_id = {int(scan_run_id)}" if scan_run_id is not None else ""
         sql = sql.format(and_scan=clause)
-    con = duckdb.connect()
+    con = duckdb.connect(db_path, read_only=True)
     try:
-        con.execute("install postgres; load postgres;")
-        con.execute(f"attach '{dsn}' as pg (type postgres, read_only)")
         return con.execute(sql).df().to_dict("records")
     finally:
         con.close()
@@ -577,6 +583,24 @@ def analytics_scans(db: Session = Depends(get_db)) -> dict:
     ]}
 
 
+@router.post("/admin/sync-analytics")
+def admin_sync_analytics() -> dict:
+    """Reconstruye el fichero DuckDB persistente de `/analytics/*` desde Postgres (ver
+    `app/analytics_sync.sync`). También corre solo, una vez al día (ver `scheduler.py`) — esto
+    es para no esperar hasta la próxima pasada tras un escaneo nuevo."""
+    from app import analytics_sync
+
+    try:
+        counts = analytics_sync.sync()
+    except ImportError:
+        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — Postgres caído/ATTACH roto: mensaje legible, no 500
+        raise HTTPException(503, f"No se pudo sincronizar: {exc}") from exc
+    return {"ok": True, "counts": counts}
+
+
 @router.post("/recheck")
 def recheck(db: Session = Depends(get_db)) -> dict:
     """Re-comprobación del top: re-construye la cartera sobre los ya analizados a fondo,
@@ -630,28 +654,6 @@ def admin_seed(body: SeedIn, db: Session = Depends(get_db)) -> dict:
     except Exception:
         db.rollback()
         raise
-
-
-_SEED_MEMORY_MAX_BYTES = 100 * 1024 * 1024   # el fichero real ronda pocos MB; esto es anti-DoS
-
-
-@router.post("/admin/seed-memory")
-def admin_seed_memory(body: bytes = Body(...)) -> dict:
-    """Sube el fichero de memoria vectorial (agent_memory.db) TAL CUAL y lo escribe en la ruta
-    configurada (en Railway, el volumen). Copia literal del SQLite con sus vectores — NO re-embebe.
-    """
-    import pathlib
-
-    from app import memory
-    if not body:
-        raise HTTPException(422, "Fichero de memoria vacío.")
-    if len(body) > _SEED_MEMORY_MAX_BYTES:
-        raise HTTPException(413, "Fichero de memoria demasiado grande (tope 100 MB).")
-    memory.reset_store()                        # cierra la conexión si estaba abierta (evita lock)
-    path = pathlib.Path(settings.memory_db_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(body)
-    return {"ok": True, "bytes": len(body), "path": str(path)}
 
 
 @router.post("/admin/reset-shadow")

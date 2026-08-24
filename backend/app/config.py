@@ -15,9 +15,16 @@ class Settings(BaseSettings):
     # Base de datos: SQLite en local, Postgres (Supabase) en prod.
     database_url: str = "sqlite:///./agentic_trader.db"
 
-    # Ruta de fichero pelada (NO una URL SQLAlchemy — la abre sqlite3 crudo).
-    # En Railway vive en el volumen → /data/agent_memory.db.
+    # Ya NO es la ruta de un SQLite (la memoria vectorial vive en Postgres/pgvector, ver
+    # `app/memory/store.py`) — solo se usa para derivar el directorio de caché del modelo de
+    # embeddings (`app/memory/_cache_dir()`), reutilizando el mismo volumen de Railway sin tener
+    # que añadir una variable de entorno nueva al despliegue.
     memory_db_path: str = "agent_memory.db"
+    # Fichero DuckDB persistente con TODAS las tablas de Postgres, sincronizado a diario (ver
+    # `app/analytics_sync.py`) — columnar de verdad en disco, no una pasarela en memoria que
+    # vuelve a pedirle todo a Postgres en cada consulta de `/analytics/*`. En Railway, mismo
+    # volumen que `MEMORY_DB_PATH`: `DUCKDB_PATH=/data/analytics.duckdb`.
+    duckdb_path: str = "analytics.duckdb"
 
     # Cron anclado a la hora del MERCADO (no UTC): sobrevive al cambio de horario y cae con la
     # foto ya asentada tras el retraso de 15 min de yfinance. Mensual, día 1 (ver scheduler.py):

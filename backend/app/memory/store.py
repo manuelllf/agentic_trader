@@ -1,15 +1,15 @@
-"""Almacén de memoria vectorial: `sqlite-vec` + embeddings locales (`fastembed`).
+"""Almacén de memoria vectorial: Postgres/pgvector (Supabase) + embeddings locales (`fastembed`).
 
-- `sqlite-vec`: búsqueda vectorial DENTRO de un fichero SQLite → cero infra, inspeccionable.
+- `pgvector`: búsqueda vectorial dentro de la misma base que el resto de la app — mismo backup,
+  mismo pool de conexiones, sin fichero SQLite aparte en el volumen de Railway.
 - `fastembed`: embeddings en local con ONNX (sin torch, ligero) → 0 € por vector.
 
 Las dependencias se importan de forma perezosa: la app arranca sin ellas; solo hacen falta
-si de verdad usas la memoria (`uv sync --extra memory`).
+si de verdad usas la memoria (`uv sync --extra memory --extra postgres`).
 """
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 # posición del acierto en el top-10 mejora en 6 de 8 consultas — "aseguradoras" #6→#2,
 # "mineras de oro" #2→#1, "bancos con exposición a emergentes" #10→#4, "venta de acciones por
 # directivos" no salía y pasa a #8. Mismas 384 dimensiones que el modelo anterior → la tabla
-# `vec_memories` no cambia de forma, solo hay que recalcular los vectores (ver
+# `memories` no cambia de forma, solo hay que recalcular los vectores (ver
 # scripts/reembed_memoria.py). Pesa 0,22 GB frente a 0,13 del modelo inglés.
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -57,159 +57,115 @@ def dedup_por_ticker(items: list[Memory], counts: dict[str, int] | None = None) 
     return ordenados
 
 
+def _pg_dsn(database_url: str) -> str:
+    """`postgresql+psycopg://...` (dialecto SQLAlchemy) → `postgresql://...` (lo que espera
+    `psycopg.connect` a pelo). Mismo patrón que `_run_analytics_query` en `api/routes.py`."""
+    return database_url.replace("postgresql+psycopg://", "postgresql://")
+
+
 class MemoryStore:
-    def __init__(self, db_path: str = "agent_memory.db", model_name: str = DEFAULT_MODEL) -> None:
-        self._db_path = db_path
+    def __init__(self, database_url: str, model_name: str = DEFAULT_MODEL,
+                 cache_dir: str | None = None) -> None:
+        if not database_url.startswith(("postgresql", "postgres")):
+            raise ValueError(
+                "La memoria vectorial requiere Postgres (pgvector) — DATABASE_URL apunta a "
+                f"{database_url.split(':', 1)[0]!r}, no a postgresql."
+            )
+        self._dsn = _pg_dsn(database_url)
         self._model_name = model_name
-        self._conn: sqlite3.Connection | None = None
-        self._sql_conn: sqlite3.Connection | None = None
+        # En Railway cae en el mismo volumen que antes usaba el SQLite (`/data/fastembed_cache`,
+        # ya existe) → el modelo ONNX (~0,22 GB) se descarga una sola vez, no en cada deploy.
+        self._cache_dir = cache_dir
         self._embedder = None
         self._dim: int | None = None
 
     # -- inicialización perezosa ------------------------------------------------
     def _embed(self, text: str):  # noqa: ANN001
         if self._embedder is None:
-            import os
-
             from fastembed import TextEmbedding  # import perezoso
 
-            # Cache del modelo JUNTO a la DB de memoria → en Railway cae en el volumen y se
-            # descarga una sola vez (no en cada deploy).
-            cache = os.path.join(os.path.dirname(self._db_path) or ".", "fastembed_cache")
-            self._embedder = TextEmbedding(model_name=self._model_name, cache_dir=cache)
+            self._embedder = TextEmbedding(model_name=self._model_name, cache_dir=self._cache_dir)
         return list(self._embedder.embed([text]))[0]
 
-    def _connect(self) -> sqlite3.Connection:
-        if self._conn is not None:
-            return self._conn
+    def _connect(self):  # noqa: ANN001
+        """Conexión nueva por llamada: Postgres soporta concurrencia real (a diferencia del
+        SQLite de antes), así que no hace falta el singleton `check_same_thread=False` ni sus
+        workarounds — cada método abre y cierra la suya."""
+        import psycopg
 
-        import sqlite_vec  # import perezoso
+        return psycopg.connect(self._dsn)
 
-        # `check_same_thread=False`: FastAPI atiende cada petición en un hilo distinto del
-        # pool y el store cachea esta conexión en el singleton. Sin esto, la SEGUNDA petición
-        # (en otro hilo) revienta con: "ProgrammingError: SQLite objects created in a thread
-        # can only be used in that same thread". Reproducido en producción: buscar un ticker
-        # devolvía su historia la primera vez y luego caía. Es seguro porque aquí solo se lee
-        # (o se escribe siempre desde `remember`, nunca en paralelo) y SQLite serializa el
-        # acceso a nivel de fichero.
-        conn = sqlite3.connect(self._db_path, check_same_thread=False)
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-        conn.enable_load_extension(False)
-
-        if self._dim is None:
-            self._dim = len(self._embed("dimension probe"))
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS memories("
-            "id INTEGER PRIMARY KEY, kind TEXT, ticker TEXT, text TEXT, created_at TEXT)"
-        )
-        conn.execute(
-            f"CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories USING vec0(embedding float[{self._dim}])"
-        )
-        conn.commit()
-        self._conn = conn
-        return conn
-
-    def _connect_sql_only(self) -> sqlite3.Connection:
-        """Conexión SQL pura, sin `sqlite-vec` ni el embedder: para consultas exactas.
-
-        Si `_connect()` ya se ejecutó (recall/remember previos), reutiliza esa conexión —
-        ya tiene la tabla `memories`. Si no, abre una conexión ligera propia y crea solo la
-        tabla `memories` (nunca `vec_memories`, que exige conocer la dimensión del embedder).
-        """
-        if self._conn is not None:
-            return self._conn
-        if self._sql_conn is None:
-            # Mismo motivo que en `_connect`: este singleton se comparte entre peticiones que
-            # FastAPI puede atender en hilos distintos del pool.
-            conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS memories("
-                "id INTEGER PRIMARY KEY, kind TEXT, ticker TEXT, text TEXT, created_at TEXT)"
-            )
-            conn.commit()
-            self._sql_conn = conn
-        return self._sql_conn
+    @staticmethod
+    def _vec_literal(emb) -> str:  # noqa: ANN001
+        return "[" + ",".join(repr(float(x)) for x in emb) + "]"
 
     # -- API --------------------------------------------------------------------
     def remember(self, text: str, kind: str = "", ticker: str = "") -> int:
         """Guarda un recuerdo (tesis, decisión, observación) y su embedding.
 
-        Descarta texto en blanco (2 de 317 recuerdos reales eran un solo espacio: residuo de
-        informes profundos que fallaron al parsear en julio) — no tiene sentido ni embeberlo
-        ni mostrarlo. Devuelve -1 para dejar claro que no se guardó nada.
+        Descarta texto en blanco (residuo de informes profundos que fallaron al parsear) — no
+        tiene sentido ni embeberlo ni mostrarlo. Devuelve -1 para dejar claro que no se guardó
+        nada.
         """
         if not text.strip():
             return -1
-        import sqlite_vec
-
-        conn = self._connect()
-        cur = conn.execute(
-            "INSERT INTO memories(kind, ticker, text, created_at) VALUES (?, ?, ?, ?)",
-            (kind, ticker, text, datetime.now(UTC).isoformat()),
-        )
-        rowid = cur.lastrowid
         emb = self._embed(text)
-        conn.execute(
-            "INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)",
-            (rowid, sqlite_vec.serialize_float32(emb)),
-        )
-        conn.commit()
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO memories (kind, ticker, text, created_at, embedding) "
+                "VALUES (%s, %s, %s, %s, %s::vector) RETURNING id",
+                (kind, ticker, text, datetime.now(UTC), self._vec_literal(emb)),
+            )
+            rowid = cur.fetchone()[0]
+            conn.commit()
         return int(rowid)
 
     def _knn(self, emb, k: int, rowids: list[int] | None = None) -> list[Memory]:
-        """KNN sobre `vec_memories`, opcionalmente restringido a un subconjunto de rowids.
+        """KNN por distancia L2 (`<->`, mismo operador que usaba `sqlite-vec` por defecto — no
+        se cambia de métrica al migrar, para no mover el ranking ya calibrado), opcionalmente
+        restringido a un subconjunto de ids.
 
-        El filtro por rowid se aplica ANTES del `k` (dentro de la propia consulta MATCH), no
-        después en Python: pedir los k vecinos de TODA la base y filtrar luego deja fuera
-        recuerdos reales cuando la tesis de un nombre se parece a las de sus vecinos. Medido
-        sobre 268 recuerdos: de 31 nombres con recuerdo guardado, 12 recibían lista vacía — y
-        los más afectados eran los más trillados, justo los que más historial tenían.
+        El filtro por id se aplica DENTRO de la propia consulta (no después en Python): pedir
+        los k vecinos de TODA la base y filtrar luego deja fuera recuerdos reales cuando la
+        tesis de un nombre se parece a las de sus vecinos (medido sobre el store real: de 31
+        nombres con recuerdo guardado, 12 recibían lista vacía con ese orden).
         """
-        import sqlite_vec
-
-        conn = self._connect()
-        if rowids is not None:
-            if not rowids:
-                return []
-            placeholders = ",".join("?" * len(rowids))
-            sql = (
-                "SELECT m.id, m.kind, m.ticker, m.text, m.created_at, v.distance "
-                "FROM vec_memories v JOIN memories m ON m.id = v.rowid "
-                f"WHERE v.embedding MATCH ? AND k = ? AND v.rowid IN ({placeholders}) "
-                "AND trim(m.text) != '' "
-                "ORDER BY v.distance"
-            )
-            params = (sqlite_vec.serialize_float32(emb), k, *rowids)
-        else:
-            sql = (
-                "SELECT m.id, m.kind, m.ticker, m.text, m.created_at, v.distance "
-                "FROM vec_memories v JOIN memories m ON m.id = v.rowid "
-                "WHERE v.embedding MATCH ? AND k = ? AND trim(m.text) != '' "
-                "ORDER BY v.distance"
-            )
-            params = (sqlite_vec.serialize_float32(emb), k)
-        rows = conn.execute(sql, params).fetchall()
+        vec = self._vec_literal(emb)
+        with self._connect() as conn, conn.cursor() as cur:
+            if rowids is not None:
+                if not rowids:
+                    return []
+                cur.execute(
+                    "SELECT id, kind, ticker, text, created_at, embedding <-> %s::vector AS dist "
+                    "FROM memories WHERE id = ANY(%s) AND trim(text) != '' "
+                    "ORDER BY embedding <-> %s::vector LIMIT %s",
+                    (vec, rowids, vec, k),
+                )
+            else:
+                cur.execute(
+                    "SELECT id, kind, ticker, text, created_at, embedding <-> %s::vector AS dist "
+                    "FROM memories WHERE trim(text) != '' "
+                    "ORDER BY embedding <-> %s::vector LIMIT %s",
+                    (vec, vec, k),
+                )
+            rows = cur.fetchall()
         return [
-            Memory(id=r[0], kind=r[1], ticker=r[2], text=r[3], created_at=r[4], distance=r[5])
+            Memory(id=r[0], kind=r[1], ticker=r[2], text=r[3], created_at=r[4].isoformat(),
+                   distance=r[5])
             for r in rows
         ]
 
     def recall(self, query: str, k: int = 5, ticker: str | None = None) -> list[Memory]:
         """Recupera los k recuerdos más parecidos por significado, de un ticker si se indica.
 
-        Cuando se pide `ticker`, la búsqueda vectorial se restringe a los rowids de ese ticker
+        Cuando se pide `ticker`, la búsqueda vectorial se restringe a los ids de ese ticker
         ANTES de quedarse con los k mejores (ver `_knn`), no después.
         """
-        conn = self._connect()
         emb = self._embed(query)
         if ticker:
-            ids = [
-                r[0]
-                for r in conn.execute(
-                    "SELECT id FROM memories WHERE ticker = ?", (ticker,)
-                ).fetchall()
-            ]
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute("SELECT id FROM memories WHERE ticker = %s", (ticker,))
+                ids = [r[0] for r in cur.fetchall()]
             return self._knn(emb, k, rowids=ids)
         return self._knn(emb, k)
 
@@ -225,15 +181,14 @@ class MemoryStore:
         candidatos = self._knn(emb, k)
         counts: dict[str, int] = {}
         if candidatos:
-            conn = self._connect()
             tickers = sorted({m.ticker for m in candidatos})
-            placeholders = ",".join("?" * len(tickers))
-            filas = conn.execute(
-                f"SELECT ticker, COUNT(*) FROM memories "
-                f"WHERE ticker IN ({placeholders}) AND trim(text) != '' GROUP BY ticker",
-                tickers,
-            ).fetchall()
-            counts = dict(filas)
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT ticker, COUNT(*) FROM memories "
+                    "WHERE ticker = ANY(%s) AND trim(text) != '' GROUP BY ticker",
+                    (tickers,),
+                )
+                counts = dict(cur.fetchall())
         return dedup_por_ticker(candidatos, counts=counts)
 
     def history_for(self, ticker: str, limit: int = 20) -> list[Memory]:
@@ -243,23 +198,21 @@ class MemoryStore:
         por parecido semántico: usar el índice vectorial para esto sería la herramienta
         equivocada. Por eso este método NO llama a `_embed` ni fuerza la carga del modelo.
         """
-        conn = self._connect_sql_only()
-        rows = conn.execute(
-            "SELECT id, kind, ticker, text, created_at FROM memories "
-            "WHERE ticker = ? AND trim(text) != '' ORDER BY created_at DESC LIMIT ?",
-            (ticker, limit),
-        ).fetchall()
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, kind, ticker, text, created_at FROM memories "
+                "WHERE ticker = %s AND trim(text) != '' ORDER BY created_at DESC LIMIT %s",
+                (ticker, limit),
+            )
+            rows = cur.fetchall()
         return [
-            Memory(id=r[0], kind=r[1], ticker=r[2], text=r[3], created_at=r[4]) for r in rows
+            Memory(id=r[0], kind=r[1], ticker=r[2], text=r[3], created_at=r[4].isoformat())
+            for r in rows
         ]
 
     def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
-        if self._sql_conn is not None:
-            self._sql_conn.close()
-            self._sql_conn = None
+        """Sin conexión persistente que cerrar: cada método abre/cierra la suya (ver
+        `_connect`). Se queda como no-op para no romper `reset_store()`/el context manager."""
 
     def __enter__(self) -> "MemoryStore":
         return self

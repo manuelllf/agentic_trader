@@ -32,8 +32,10 @@ ibkr-webapi = ["ibind>=0.1.15"]
 ibkr-gateway = ["ib_async>=1.0.3"]
 # Base de datos Postgres/Supabase en producción.
 postgres = ["psycopg[binary]>=3.2"]
-# Memoria vectorial del agente: búsqueda en SQLite + embeddings locales (sin torch).
-memory = ["sqlite-vec>=0.1.6", "fastembed>=0.4.0"]
+# Memoria vectorial del agente: pgvector (Supabase, requiere `postgres` también) + embeddings
+# locales (fastembed, sin torch). psycopg repetido a propósito: instalar solo `memory` sin
+# `postgres` debe seguir funcionando, no asumir que el otro extra ya está puesto.
+memory = ["psycopg[binary]>=3.2", "fastembed>=0.4.0"]
 # Consultas analíticas sobre Postgres (`scripts/analitica.py`). FUERA de la imagen de Docker a
 # propósito: es para leer en local, el backend no lo necesita para funcionar.
 analytics = ["duckdb>=1.1"]

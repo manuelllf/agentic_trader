@@ -40,8 +40,8 @@ def db():
 @pytest.fixture
 def client(db, monkeypatch, tmp_path):
     monkeypatch.setattr(auth.settings, "app_password", PASSWORD)
-    # Aísla la ruta de la memoria vectorial en un tmp: /admin/seed-memory escribe a fichero,
-    # jamás debe tocar el agent_memory.db real durante los tests.
+    # memory_db_path ya solo sirve para derivar el directorio de caché del embedder (ver
+    # app/memory/_cache_dir()) — aislado en un tmp para no tocar el real durante los tests.
     monkeypatch.setattr(auth.settings, "memory_db_path", str(tmp_path / "mem.db"))
     # /macro llamaría a yfinance; en tests no hay red — régimen determinista de mentira.
     monkeypatch.setattr(
@@ -103,7 +103,6 @@ PROTECTED_CALLS = [
     ("get", "/proposal", None),
     ("get", "/watchlist", None),
     ("post", "/admin/seed", {"version": 1, "tables": {"meta": [{"key": "x", "value": "y"}]}}),
-    ("post", "/admin/seed-memory", {"anything": True}),
     ("get", "/admin/memory-status", None),
     ("post", "/admin/universe-snapshot", None),
     ("get", "/fx", None),
@@ -301,35 +300,35 @@ def test_config_does_not_leak_sensitive_fields(client) -> None:
 
 # ---- /admin/memory-status: diagnóstico de la memoria vectorial ---------------
 
-def test_memory_status_counts_after_seed_without_loading_model(client, token, tmp_path) -> None:
-    """El diagnóstico cuenta los recuerdos del fichero subido leyéndolo con sqlite3 crudo (sin
-    cargar el modelo de embeddings). El `client` ya apuntó memory_db_path a este mismo tmp_path."""
-    import sqlite3
+def test_memory_status_degrades_without_postgres(client, token, monkeypatch) -> None:
+    """La memoria vectorial vive en Postgres/pgvector (ver `app/memory/store.py`) — en el
+    entorno de tests `DATABASE_URL` es SQLite (fixture `db`), así que el diagnóstico debe
+    avisar de forma legible en vez de intentar conectar o reventar."""
+    from app.memory import status
 
-    # agent_memory.db mínimo: tabla `memories` con 3 filas (sin vectores; status() no los usa).
-    src = tmp_path / "source.db"
-    conn = sqlite3.connect(src)
-    conn.execute("CREATE TABLE memories(id INTEGER PRIMARY KEY, kind TEXT, ticker TEXT, "
-                 "text TEXT, created_at TEXT)")
-    conn.executemany(
-        "INSERT INTO memories(kind, ticker, text, created_at) VALUES (?, ?, ?, ?)",
-        [("thesis", t, f"tesis {t}", "now") for t in ("AAA", "BBB", "CCC")],
-    )
-    conn.commit()
-    conn.close()
-
+    monkeypatch.setattr("app.config.settings.database_url", "sqlite:///./agentic_trader.db")
     headers = {"Authorization": f"Bearer {token}"}
-    before = client.get("/admin/memory-status", headers=headers).json()
-    assert before["exists"] is False and before["count"] == 0   # aún no se subió nada
+    body = client.get("/admin/memory-status", headers=headers).json()
+    assert body == status()
+    assert body["available"] is False
+    assert "error" in body
 
-    up = client.post("/admin/seed-memory", content=src.read_bytes(),
-                     headers={**headers, "Content-Type": "application/octet-stream"})
-    assert up.status_code == 200 and up.json()["bytes"] > 0
 
-    after = client.get("/admin/memory-status", headers=headers).json()
-    assert after["exists"] is True
-    assert after["count"] == 3
-    assert "deps" in after                                        # se informa si las deps están
+def test_memory_status_reports_connection_failure_without_crashing(client, token,
+                                                                     monkeypatch) -> None:
+    """Con `DATABASE_URL` apuntando a Postgres pero inalcanzable (host de mentira), el
+    diagnóstico debe seguir devolviendo 200 con `available: False`, no un 500."""
+    monkeypatch.setattr(
+        "app.config.settings.database_url",
+        "postgresql+psycopg://user:pw@host-inexistente-de-mentira:5432/db"
+        "?connect_timeout=2",
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.get("/admin/memory-status", headers=headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["available"] is False
+    assert "error" in body
 
 
 # ---- /admin/universe-snapshot: relanzar a mano la foto del universo ---------
@@ -467,17 +466,6 @@ def test_allocate_negative_withdrawal_still_works(db, client, token) -> None:
     res = client.post("/ledger/allocate", json={"amount": -40}, headers=headers)
     assert res.status_code == 200
     assert res.json()["cash"] == "60.00"
-
-
-def test_seed_memory_size_cap(client, token, monkeypatch, tmp_path) -> None:
-    """Por encima del tope de bytes → 413 y NO se escribe nada en la ruta de memoria."""
-    import app.api.routes as routes_mod
-
-    monkeypatch.setattr(routes_mod, "_SEED_MEMORY_MAX_BYTES", 8)
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/octet-stream"}
-    res = client.post("/admin/seed-memory", content=b"123456789", headers=headers)
-    assert res.status_code == 413
-    assert not (tmp_path / "mem.db").exists()
 
 
 def test_docs_disabled_with_password() -> None:

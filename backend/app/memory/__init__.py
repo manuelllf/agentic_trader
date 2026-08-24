@@ -4,15 +4,15 @@ El dinero vive en el ledger (exacto, sin vectores). Aquí van las TESIS y razona
 pasados, embebidos con un modelo local (gratis), para que el agente pueda RECORDAR por
 significado ("¿qué concluí de un setup parecido antes?") aunque el historial crezca.
 
-`get_store()` devuelve un singleton perezoso; si faltan las deps (fastembed/sqlite-vec) o
-falla, el que llama debe tolerarlo (la memoria es una mejora, no un requisito del escaneo).
+`get_store()` devuelve un singleton perezoso; si faltan las deps (fastembed) o falla (p. ej.
+DATABASE_URL no es Postgres), el que llama debe tolerarlo (la memoria es una mejora, no un
+requisito del escaneo).
 """
 
 from __future__ import annotations
 
 import importlib.util
-import sqlite3
-from pathlib import Path
+import os
 
 from app.config import settings
 from app.memory.store import Memory, MemoryStore
@@ -20,15 +20,22 @@ from app.memory.store import Memory, MemoryStore
 _store: MemoryStore | None = None
 
 
-def get_store(db_path: str | None = None) -> MemoryStore:
+def _cache_dir() -> str:
+    """Mismo directorio que antes usaba el volumen para el SQLite (`MEMORY_DB_PATH` sigue
+    apuntando a `/data/agent_memory.db` en Railway) — reutiliza `/data/fastembed_cache`, que
+    ya existe, sin tener que tocar ninguna variable de entorno en el despliegue."""
+    return os.path.join(os.path.dirname(settings.memory_db_path) or ".", "fastembed_cache")
+
+
+def get_store() -> MemoryStore:
     global _store
     if _store is None:
-        _store = MemoryStore(db_path=db_path or settings.memory_db_path)
+        _store = MemoryStore(database_url=settings.database_url, cache_dir=_cache_dir())
     return _store
 
 
 def reset_store() -> None:
-    """Cierra y olvida el singleton (p. ej. antes de sobrescribir el fichero de memoria)."""
+    """Olvida el singleton (p. ej. tras un cambio de configuración en caliente)."""
     global _store
     if _store is not None:
         _store.close()
@@ -38,29 +45,25 @@ def reset_store() -> None:
 def status() -> dict:
     """Diagnóstico READ-ONLY de la memoria vectorial SIN cargar el modelo de embeddings.
 
-    Abre el fichero con sqlite3 crudo y cuenta los recuerdos; comprueba con `find_spec` (sin
-    importar nada pesado) si las deps de vectores están instaladas. Sirve para confirmar que el
-    volcado llegó al volumen y que un `recall` funcionaría, sin disparar fastembed (~130 MB).
+    Cuenta filas en `memories` (Postgres) directamente; comprueba con `find_spec` (sin importar
+    nada pesado) si `fastembed` está instalado. Sirve para confirmar que un `recall` funcionaría
+    sin disparar la carga del modelo (~130 MB).
     """
-    path = settings.memory_db_path
-    deps = bool(importlib.util.find_spec("fastembed") and importlib.util.find_spec("sqlite_vec"))
-    if not Path(path).exists():
-        return {"available": False, "exists": False, "count": 0, "deps": deps, "path": path}
+    deps = bool(importlib.util.find_spec("fastembed"))
+    if not settings.database_url.startswith(("postgresql", "postgres")):
+        return {"available": False, "deps": deps, "count": 0,
+                "error": "DATABASE_URL no es Postgres."}
     try:
-        conn = sqlite3.connect(path)
-        try:
-            has_table = conn.execute(
-                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='memories'"
-            ).fetchone()[0]
-            count = conn.execute("SELECT count(*) FROM memories").fetchone()[0] if has_table else 0
-        finally:
-            conn.close()
-    except Exception as exc:  # noqa: BLE001 — un fichero corrupto no debe tirar el diagnóstico
-        return {"available": False, "exists": True, "count": 0, "deps": deps,
-                "path": path, "error": str(exc)}
-    # Utilizable = fichero con recuerdos Y deps instaladas (recall real funcionaría).
-    return {"available": bool(count and deps), "exists": True, "count": count,
-            "deps": deps, "path": path}
+        import psycopg
+
+        from app.memory.store import _pg_dsn
+
+        with psycopg.connect(_pg_dsn(settings.database_url)) as conn, conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM memories")
+            count = cur.fetchone()[0]
+    except Exception as exc:  # noqa: BLE001 — tabla ausente/BD caída: no debe tirar el diagnóstico
+        return {"available": False, "deps": deps, "count": 0, "error": str(exc)}
+    return {"available": bool(count and deps), "deps": deps, "count": count}
 
 
 __all__ = ["Memory", "MemoryStore", "get_store", "reset_store", "status"]

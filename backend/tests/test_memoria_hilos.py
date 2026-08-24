@@ -1,73 +1,16 @@
-"""Tests sin red y sin embeddings: bug de hilos, filtro de recuerdos vacíos y deduplicación.
+"""Tests puros de `dedup_por_ticker` (sin BD, sin red, sin embeddings).
 
-El bug importante (reproducido en producción): `history_for` cacheaba la conexión sqlite del
-singleton `MemoryStore`, pero FastAPI atiende cada petición en un hilo distinto del pool →
-`ProgrammingError: SQLite objects created in a thread can only be used in that same thread`.
-Aquí se reproduce llamando desde el hilo principal Y desde un hilo aparte sobre el MISMO store.
+El bug de hilos que este fichero comprobaba (`ProgrammingError: SQLite objects created in a
+thread can only be used in that same thread`, singleton con conexión sqlite cacheada) ya no
+puede reproducirse: al migrar a Postgres/pgvector (`app/memory/store.py`), cada método de
+`MemoryStore` abre y cierra su propia conexión — no hay conexión compartida entre hilos que
+proteger. Los tests de conexión concurrente se retiran; los de deduplicación (lógica pura de
+Python, sin base de datos) se quedan tal cual.
 """
 
 from __future__ import annotations
 
-import sqlite3
-import threading
-
-from app.memory.store import Memory, MemoryStore, dedup_por_ticker
-
-
-def _insert(db_path: str, kind: str, ticker: str, text: str, created_at: str) -> None:
-    conn = sqlite3.connect(db_path)
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS memories("
-        "id INTEGER PRIMARY KEY, kind TEXT, ticker TEXT, text TEXT, created_at TEXT)"
-    )
-    conn.execute(
-        "INSERT INTO memories(kind, ticker, text, created_at) VALUES (?, ?, ?, ?)",
-        (kind, ticker, text, created_at),
-    )
-    conn.commit()
-    conn.close()
-
-
-def test_history_for_funciona_desde_otro_hilo(tmp_path) -> None:
-    """Reproduce el bug real: mismo store, misma conexión cacheada, hilo distinto."""
-    db_path = str(tmp_path / "memoria.db")
-    _insert(db_path, "tesis", "NVDA", "primera tesis", "2026-01-01T00:00:00+00:00")
-    _insert(db_path, "decision", "NVDA", "segunda tesis", "2026-02-01T00:00:00+00:00")
-
-    store = MemoryStore(db_path=db_path)
-    try:
-        desde_principal = store.history_for("NVDA")
-
-        resultado_hilo: list[Memory] = []
-        error_hilo: list[Exception] = []
-
-        def _en_otro_hilo() -> None:
-            try:
-                resultado_hilo.extend(store.history_for("NVDA"))
-            except Exception as exc:  # noqa: BLE001 — se captura para poder aserirla en el test
-                error_hilo.append(exc)
-
-        hilo = threading.Thread(target=_en_otro_hilo)
-        hilo.start()
-        hilo.join()
-
-        assert not error_hilo, f"history_for reventó en otro hilo: {error_hilo}"
-        assert [m.text for m in resultado_hilo] == [m.text for m in desde_principal]
-    finally:
-        store.close()
-
-
-def test_history_for_omite_recuerdos_de_texto_vacio(tmp_path) -> None:
-    db_path = str(tmp_path / "memoria.db")
-    _insert(db_path, "tesis", "NVDA", "tesis real", "2026-01-01T00:00:00+00:00")
-    _insert(db_path, "tesis", "NVDA", " ", "2026-01-02T00:00:00+00:00")  # residuo de parseo roto
-
-    store = MemoryStore(db_path=db_path)
-    try:
-        recuerdos = store.history_for("NVDA")
-        assert [m.text for m in recuerdos] == ["tesis real"]
-    finally:
-        store.close()
+from app.memory.store import Memory, dedup_por_ticker
 
 
 def _memoria(id_, ticker, text, distance) -> Memory:

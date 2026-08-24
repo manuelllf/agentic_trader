@@ -331,6 +331,9 @@ export const fetchAnalyticsConfianzaPrescore = (scanRunId?: number) =>
   );
 export const fetchAnalyticsScans = () =>
   get<{ items: { id: number; at: string; cadence: string }[] }>("/analytics/scans");
+/** Reconstruye el fichero DuckDB de /analytics/* desde Postgres (también corre solo a diario). */
+export const syncAnalytics = () =>
+  post<{ ok: boolean; counts: Record<string, number> }>("/admin/sync-analytics");
 
 export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
