@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   approveTrade, fetchAnalyticsConfianzaPrescore, fetchAnalyticsCosteEtapa, fetchAnalyticsPeSector,
+  fetchAnalyticsScans,
   getApprovals, getConfig, getDemoStatus, getFx, getHistory,
   getPerformance, getPersonal, getPushKey, getReal, getScanFunnel, getScanReport, logout,
   reconcileApprovals, recheck, redeep, rejectTrade, resetShadow, runDemo, snapshotUniverse, startFoto,
@@ -96,6 +97,10 @@ function SalaRealRoom() {
   const [peSector, setPeSector] = useState<{ data: Record<string, unknown>[] | null; loading: boolean; error: string }>({ data: null, loading: false, error: "" });
   const [costeEtapa, setCosteEtapa] = useState<{ data: Record<string, unknown>[] | null; loading: boolean; error: string }>({ data: null, loading: false, error: "" });
   const [confianzaPrescore, setConfianzaPrescore] = useState<{ data: Record<string, unknown>[] | null; loading: boolean; error: string }>({ data: null, loading: false, error: "" });
+  // Navegador de escaneo compartido por coste-etapa/confianza-prescore: -1 = "Total" (agregado
+  // histórico, sin scan_run_id), 0 = el más reciente, 1 = el siguiente más antiguo, etc.
+  const [analyticsScans, setAnalyticsScans] = useState<{ id: number; at: string; cadence: string }[]>([]);
+  const [analyticsScanPos, setAnalyticsScanPos] = useState(-1);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
@@ -219,16 +224,35 @@ function SalaRealRoom() {
    *  instalado en el backend) en una no debe tapar el resultado de las otras dos. */
   async function loadAnalytics() {
     setAnalyticsLoaded(true);
+    setAnalyticsScanPos(-1);
     setPeSector({ data: null, loading: true, error: "" });
     setCosteEtapa({ data: null, loading: true, error: "" });
     setConfianzaPrescore({ data: null, loading: true, error: "" });
     fetchAnalyticsPeSector()
       .then((r) => setPeSector({ data: r.items, loading: false, error: "" }))
       .catch((e) => setPeSector({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+    fetchAnalyticsScans()
+      .then((r) => setAnalyticsScans(r.items))
+      .catch(() => setAnalyticsScans([]));
     fetchAnalyticsCosteEtapa()
       .then((r) => setCosteEtapa({ data: r.items, loading: false, error: "" }))
       .catch((e) => setCosteEtapa({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
     fetchAnalyticsConfianzaPrescore()
+      .then((r) => setConfianzaPrescore({ data: r.items, loading: false, error: "" }))
+      .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+  }
+
+  /** Recarga solo coste-etapa/confianza-prescore para el escaneo en `pos` (-1 = Total, agregado
+   *  histórico). No toca PER por sector ni vuelve a pedir la lista de escaneos. */
+  function loadAnalyticsForScan(pos: number) {
+    setAnalyticsScanPos(pos);
+    const scanId = pos >= 0 ? analyticsScans[pos]?.id : undefined;
+    setCosteEtapa((s) => ({ ...s, loading: true, error: "" }));
+    setConfianzaPrescore((s) => ({ ...s, loading: true, error: "" }));
+    fetchAnalyticsCosteEtapa(scanId)
+      .then((r) => setCosteEtapa({ data: r.items, loading: false, error: "" }))
+      .catch((e) => setCosteEtapa({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+    fetchAnalyticsConfianzaPrescore(scanId)
       .then((r) => setConfianzaPrescore({ data: r.items, loading: false, error: "" }))
       .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
   }
@@ -997,8 +1021,10 @@ function SalaRealRoom() {
             ) : (
               <div className="grid gap-4 p-4 lg:grid-cols-3">
                 <AnalyticsTable title="PER por sector" state={peSector} />
-                <AnalyticsTable title="Coste por etapa" state={costeEtapa} />
-                <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore} />
+                <AnalyticsTable title="Coste por etapa" state={costeEtapa}
+                  nav={<ScanNav scans={analyticsScans} pos={analyticsScanPos} onMove={loadAnalyticsForScan} />} />
+                <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore}
+                  nav={<ScanNav scans={analyticsScans} pos={analyticsScanPos} onMove={loadAnalyticsForScan} />} />
               </div>
             )}
           </Panel>
@@ -1216,16 +1242,48 @@ function Distribution({ summary, equity }: { summary: RealSummary; equity: numbe
 /* Una tabla de "Analítica del método": columnas = claves del primer registro (no se tipa cada
    campo, son consultas DuckDB de forma libre). Carga, error (p.ej. 503 sin DuckDB) y vacío,
    cada uno con su mensaje — nada se traga en silencio. overflow-x-auto por si la tabla es ancha. */
-function AnalyticsTable({ title, state }: {
+/** Navegador compacto ‹ Total › compartido por coste-etapa/confianza-prescore: `pos` -1 = Total
+ *  (agregado histórico, sin scan_run_id), 0 = escaneo más reciente, 1 = el siguiente más
+ *  antiguo, etc., recorriendo `scans` (orden de `/analytics/scans`, ya descendente por fecha). */
+function ScanNav({ scans, pos, onMove }: {
+  scans: { id: number; at: string; cadence: string }[];
+  pos: number;
+  onMove: (pos: number) => void;
+}) {
+  const atTotal = pos <= -1;
+  const atOldest = scans.length === 0 || pos >= scans.length - 1;
+  const label = atTotal ? "Total" : fmtTime(scans[pos]?.at ?? null);
+  return (
+    <div className="flex shrink-0 items-center gap-1 text-[10.5px]" style={{ color: T.muted }}>
+      <button onClick={() => onMove(pos - 1)} disabled={atTotal}
+              className="rounded px-1.5 leading-5 disabled:opacity-30"
+              style={{ background: T.panel2 }} aria-label="Escaneo más reciente / total">
+        ‹
+      </button>
+      <span className="min-w-[64px] text-center font-semibold" style={{ color: T.ink2 }}>{label}</span>
+      <button onClick={() => onMove(pos + 1)} disabled={atOldest}
+              className="rounded px-1.5 leading-5 disabled:opacity-30"
+              style={{ background: T.panel2 }} aria-label="Escaneo anterior">
+        ›
+      </button>
+    </div>
+  );
+}
+
+function AnalyticsTable({ title, state, nav }: {
   title: string;
   state: { data: Record<string, unknown>[] | null; loading: boolean; error: string };
+  nav?: React.ReactNode;
 }) {
   const cols = state.data && state.data.length > 0 ? Object.keys(state.data[0]) : [];
   return (
     <div>
-      <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-        {title}
-      </p>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+          {title}
+        </p>
+        {nav}
+      </div>
       {state.loading ? (
         <p className="text-[11.5px]" style={{ color: T.muted }}>Cargando…</p>
       ) : state.error ? (

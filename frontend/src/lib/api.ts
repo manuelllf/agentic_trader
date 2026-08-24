@@ -321,10 +321,16 @@ export const fetchScanAudit = (ticker: string) =>
 // ---- Analítica columnar (DuckDB leyendo Postgres) ----
 export const fetchAnalyticsPeSector = () =>
   get<{ items: Record<string, unknown>[] }>("/analytics/pe-sector");
-export const fetchAnalyticsCosteEtapa = () =>
-  get<{ items: Record<string, unknown>[] }>("/analytics/coste-etapa");
-export const fetchAnalyticsConfianzaPrescore = () =>
-  get<{ items: Record<string, unknown>[] }>("/analytics/confianza-prescore");
+export const fetchAnalyticsCosteEtapa = (scanRunId?: number) =>
+  get<{ items: Record<string, unknown>[] }>(
+    `/analytics/coste-etapa${scanRunId != null ? `?scan_run_id=${scanRunId}` : ""}`,
+  );
+export const fetchAnalyticsConfianzaPrescore = (scanRunId?: number) =>
+  get<{ items: Record<string, unknown>[] }>(
+    `/analytics/confianza-prescore${scanRunId != null ? `?scan_run_id=${scanRunId}` : ""}`,
+  );
+export const fetchAnalyticsScans = () =>
+  get<{ items: { id: number; at: string; cadence: string }[] }>("/analytics/scans");
 
 export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);

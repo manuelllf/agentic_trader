@@ -38,8 +38,12 @@ un feed de señales.
 - GET  /watchlist            → nombres vigilados                                   [protegido]
 - GET  /memory/search        → buscador sobre la memoria semántica (ticker o texto) [protegido]
 - GET  /analytics/pe-sector          → mediana de PE trailing por sector (DuckDB→Postgres) [protegido]
-- GET  /analytics/coste-etapa        → coste/latencia/cache de llamadas LLM por etapa       [protegido]
-- GET  /analytics/confianza-prescore → distribución de confianza persistida del prescore    [protegido]
+- GET  /analytics/coste-etapa        → coste/latencia/cache de llamadas LLM por etapa,
+                                       opcional `?scan_run_id=` para un escaneo concreto  [protegido]
+- GET  /analytics/confianza-prescore → distribución de confianza persistida del prescore,
+                                       opcional `?scan_run_id=` para un escaneo concreto  [protegido]
+- GET  /analytics/scans              → últimos 50 escaneos (id, fecha, cadencia) para el
+                                       navegador de la analítica por escaneo               [protegido]
 """
 
 from __future__ import annotations
@@ -454,6 +458,7 @@ _ANALYTICS_QUERIES: dict[str, str] = {
                                   + prompt_cache_miss_tokens), 0), 1) as cache_hit_pct,
                sum(case when not ok then 1 else 0 end)      as fallos
         from pg.llm_call
+        {where}
         group by stage
         order by usd desc
     """,
@@ -477,27 +482,40 @@ _ANALYTICS_QUERIES: dict[str, str] = {
                count(*)                      as llamadas
         from pg.llm_call
         where stage = 'prescore' and confidence is not null
+        {and_scan}
         group by 1
         order by 1
     """,
 }
 
 
-def _run_analytics_query(nombre: str) -> list[dict]:
+def _run_analytics_query(nombre: str, scan_run_id: int | None = None) -> list[dict]:
     """Abre una conexión DuckDB→Postgres de solo lectura y ejecuta una de las consultas
     predefinidas (mismo `ATTACH ... type postgres` que `scripts/analitica.py` — no se reinventa
-    la conexión). Sin caché ni estado: se cierra sola al salir del `with`."""
+    la conexión). Sin caché ni estado: se cierra sola al salir del `with`.
+
+    `scan_run_id` filtra `coste-etapa`/`confianza-prescore` a un único escaneo — sin él, agregan
+    TODA la vida de `llm_call` (todos los escaneos históricos mezclados). `pe-sector` lo ignora:
+    no depende de escaneo, usa el snapshot más reciente por ticker. El valor llega tipado `int`
+    desde FastAPI (`Query(None)`), así que es seguro interpolarlo en el SQL de DuckDB."""
     import duckdb
 
     url = settings.database_url
     if not url.startswith(("postgresql", "postgres")):
         raise HTTPException(503, "La analítica requiere DATABASE_URL de Postgres (no SQLite).")
     dsn = url.replace("postgresql+psycopg://", "postgresql://")
+    sql = _ANALYTICS_QUERIES[nombre]
+    if "{where}" in sql:
+        clause = f"where scan_run_id = {int(scan_run_id)}" if scan_run_id is not None else ""
+        sql = sql.format(where=clause)
+    elif "{and_scan}" in sql:
+        clause = f"and scan_run_id = {int(scan_run_id)}" if scan_run_id is not None else ""
+        sql = sql.format(and_scan=clause)
     con = duckdb.connect()
     try:
         con.execute("install postgres; load postgres;")
         con.execute(f"attach '{dsn}' as pg (type postgres, read_only)")
-        return con.execute(_ANALYTICS_QUERIES[nombre]).df().to_dict("records")
+        return con.execute(sql).df().to_dict("records")
     finally:
         con.close()
 
@@ -517,11 +535,12 @@ def analytics_pe_sector() -> dict:
 
 
 @router.get("/analytics/coste-etapa")
-def analytics_coste_etapa() -> dict:
+def analytics_coste_etapa(scan_run_id: int | None = Query(None)) -> dict:
     """Coste, latencia media y % de acierto de caché de las llamadas LLM, agrupado por etapa
-    del embudo (macro/prescore/mid/deep/constructor)."""
+    del embudo (macro/prescore/mid/deep/constructor). Sin `scan_run_id`, agrega TODA la vida de
+    la tabla (todos los escaneos históricos mezclados); con él, un único escaneo."""
     try:
-        return {"items": _run_analytics_query("coste-etapa")}
+        return {"items": _run_analytics_query("coste-etapa", scan_run_id)}
     except ImportError:
         raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
     except HTTPException:
@@ -531,17 +550,31 @@ def analytics_coste_etapa() -> dict:
 
 
 @router.get("/analytics/confianza-prescore")
-def analytics_confianza_prescore() -> dict:
+def analytics_confianza_prescore(scan_run_id: int | None = Query(None)) -> dict:
     """Distribución de la confianza persistida del prescore (el ruido medido, ~5,5 puntos de sd,
-    visto desde lo que el propio LLM dice que sabe)."""
+    visto desde lo que el propio LLM dice que sabe). Sin `scan_run_id`, agrega TODA la vida de
+    la tabla; con él, un único escaneo."""
     try:
-        return {"items": _run_analytics_query("confianza-prescore")}
+        return {"items": _run_analytics_query("confianza-prescore", scan_run_id)}
     except ImportError:
         raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+
+
+@router.get("/analytics/scans")
+def analytics_scans(db: Session = Depends(get_db)) -> dict:
+    """Últimos 50 escaneos (id, fecha, cadencia), para el navegador de `coste-etapa` y
+    `confianza-prescore` por escaneo concreto. Consulta normal contra Postgres vía SQLAlchemy,
+    no DuckDB — no hace falta para leer `scan_runs`."""
+    from app.models import ScanRun
+
+    rows = db.query(ScanRun).order_by(ScanRun.scan_at.desc()).limit(50).all()
+    return {"items": [
+        {"id": r.id, "at": utc_iso(r.scan_at), "cadence": r.cadence} for r in rows
+    ]}
 
 
 @router.post("/recheck")
