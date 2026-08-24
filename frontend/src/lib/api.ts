@@ -368,7 +368,7 @@ export interface FotoStatus {
   started_at: string | null;
   finished_at: string | null;
   result: { alcance: string; pedidos: number; capturados: number; sin_datos: number;
-            segundos: number; at: string } | null;
+            segundos: number; at: string; cortado: boolean; motivo_corte: string | null } | null;
   error: string | null;
 }
 
@@ -388,6 +388,20 @@ export const startFoto = (
 };
 
 export const getFotoStatus = () => get<FotoStatus>("/admin/foto");
+
+export interface ScanProgress {
+  stage: string; // idle | macro | gather | gather_retry | prescore | mid | deep | constructor | foto | done | error
+  total: number | null;
+  unit: string | null;
+  done: number;
+  ok: number;
+  fail: number;
+  last_fail: string | null;
+}
+
+/** Progreso en vivo de la foto/escaneo que esté corriendo ahora mismo — para la barra de
+ *  avance mientras `startFoto` trabaja en segundo plano. */
+export const fetchScanProgress = () => get<ScanProgress>("/scan/progress");
 
 export interface UniversoGlobalOpciones {
   synced_at: string | null;

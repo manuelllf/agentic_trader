@@ -13,14 +13,20 @@ horas, no minutos: por eso `limite` existe.
 from __future__ import annotations
 
 import logging
+import queue
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 from app import scan_progress
 from app.db import SessionLocal
 
 logger = logging.getLogger(__name__)
+
+# Circuit breaker: fallos SEGUIDOS (se resetea a 0 en cuanto hay un éxito) antes de cortar la
+# tanda entera. Un bloqueo real de Yahoo se ve como una racha sostenida, no fallos sueltos
+# (medido en local, 24-ago-2026: a 6 hilos pasa de 100% a ~85% en un puñado de cientos de
+# tickers una vez empieza) -- 100 seguidos no lo explica el ruido normal (deslistados sueltos).
+_CORTE_FALLOS_SEGUIDOS = 100
 
 _state: dict = {
     "status": "idle",       # idle | running | done | error
@@ -58,7 +64,12 @@ def _tickers(db, alcance: str, limite: int | None,  # noqa: ANN001
 
 def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: ANN001
             countries: list[str] | None = None, exchanges: list[str] | None = None) -> dict:
-    """Recorre el universo pedido y guarda una foto por nombre. No puntúa nada."""
+    """Recorre el universo pedido y guarda una foto por nombre. No puntúa nada.
+
+    Cola + workers (no `ThreadPoolExecutor.map`): con `.map` TODA la lista se lanza a la cola
+    de una vez, así que un corte a mitad de tanda no frena los hilos ya en marcha. Con cola
+    compartida, cada worker mira `corte` antes de coger el siguiente ticker -- el circuit
+    breaker para peticiones de verdad, no solo deja de contar."""
     from app import scan_service
     from app.screener import fundamentals as fund_mod
 
@@ -68,24 +79,54 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
     scan_progress.set_stage("foto", total=len(nombres), unit="tickers")
     inicio = datetime.now(UTC)
 
-    ok = 0
-    fallos: list[str] = []
-    with ThreadPoolExecutor(max_workers=scan_service._GATHER_WORKERS) as ex:
-        for ticker, (data, err) in zip(
-            nombres, ex.map(lambda t: fund_mod.gather(t, db=db), nombres), strict=False
-        ):
-            if data is not None:
-                ok += 1
-            else:
-                fallos.append(f"{ticker}: {err}")
-            scan_progress.tick(ok=data is not None, reason=fallos[-1] if data is None else None)
+    cola: queue.Queue[str] = queue.Queue()
+    for t in nombres:
+        cola.put(t)
+
+    stats_lock = threading.Lock()
+    stats = {"ok": 0, "fallos": 0, "seguidos": 0}
+    corte = threading.Event()
+    motivo_corte: list[str] = []
+
+    def _worker() -> None:
+        while not corte.is_set():
+            try:
+                ticker = cola.get_nowait()
+            except queue.Empty:
+                return
+            data, err = fund_mod.gather(ticker, db=db)
+            with stats_lock:
+                if data is not None:
+                    stats["ok"] += 1
+                    stats["seguidos"] = 0
+                else:
+                    stats["fallos"] += 1
+                    stats["seguidos"] += 1
+                    if stats["seguidos"] >= _CORTE_FALLOS_SEGUIDOS and not corte.is_set():
+                        corte.set()
+                        motivo_corte.append(
+                            f"{_CORTE_FALLOS_SEGUIDOS} fallos seguidos (último: {ticker}: {err})")
+                scan_progress.tick(ok=data is not None,
+                                   reason=f"{ticker}: {err}" if data is None else None)
+
+    hilos = [threading.Thread(target=_worker, daemon=True)
+             for _ in range(scan_service._GATHER_WORKERS)]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
     scan_progress.set_stage("done")
 
     dur = (datetime.now(UTC) - inicio).total_seconds()
-    logger.info("Foto (%s): %d/%d nombres capturados en %.0fs.", alcance, ok, len(nombres), dur)
-    return {"alcance": alcance, "pedidos": len(nombres), "capturados": ok,
-            "sin_datos": len(fallos), "segundos": round(dur, 1),
-            "at": inicio.isoformat()}
+    cortado = bool(motivo_corte)
+    if cortado:
+        logger.warning("Foto (%s) CORTADA: %s", alcance, motivo_corte[0])
+    logger.info("Foto (%s): %d/%d nombres capturados en %.0fs.",
+               alcance, stats["ok"], len(nombres), dur)
+    return {"alcance": alcance, "pedidos": len(nombres), "capturados": stats["ok"],
+            "sin_datos": stats["fallos"], "segundos": round(dur, 1),
+            "at": inicio.isoformat(), "cortado": cortado,
+            "motivo_corte": motivo_corte[0] if motivo_corte else None}
 
 
 def _run(alcance: str, limite: int | None,

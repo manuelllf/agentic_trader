@@ -489,6 +489,24 @@ def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
     return out
 
 
+# Backoff SOLO ante 429 (rate-limit real): un timeout/HTTP 5xx no se beneficia de esperar y ya
+# cae a yfinance abajo. Medido en local (24-ago-2026): a partir de 6 hilos el 429 llega en racha
+# sostenida, no aislado -- 2 reintentos cortos separan un pico puntual de un bloqueo real (que
+# el circuit breaker de `foto_service.capturar` corta más arriba, no aquí).
+_429_BACKOFF_S = (3.0, 8.0)
+
+
+def _gather_scraper_con_backoff(s, crumb: str, ticker: str):  # noqa: ANN001
+    for espera in _429_BACKOFF_S:
+        try:
+            return yahoo_scraper.gather_scraper(s, crumb, ticker)
+        except yahoo_scraper.TransportError as exc:
+            if "HTTP 429" not in str(exc):
+                raise
+            time.sleep(espera)
+    return yahoo_scraper.gather_scraper(s, crumb, ticker)
+
+
 def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa: ANN001
     """Baja .info + histórico + noticias: devuelve (datos, motivo_si_None) o (data, None).
     Motor: yahoo_scraper primario; fallback yfinance. Reutiliza la foto de las ultimas 24h.
@@ -502,7 +520,7 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
     if scraper is not None:
         s, crumb = scraper
         try:
-            data, motivo = yahoo_scraper.gather_scraper(s, crumb, ticker)
+            data, motivo = _gather_scraper_con_backoff(s, crumb, ticker)
         except yahoo_scraper.TransportError as exc:
             if _GATHER_PACE_S:
                 time.sleep(_GATHER_PACE_S)

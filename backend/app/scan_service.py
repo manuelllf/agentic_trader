@@ -81,9 +81,9 @@ if settings.llm_provider == "deepseek":
     _DEEP_WORKERS = 50        # Pro, profundo (hasta `deep_finalists_cap` finalistas)
 else:
     _PRESCORE_WORKERS = _MID_WORKERS = _DEEP_WORKERS = 10
-# Gather: 2 hilos vía yahoo_scraper (validado 100% a volumen production). 10 hilos caen a 48%.
-# Techo real entre 2-10; 2 es único nivel validado seguro, no se sube a ciegas.
-_GATHER_WORKERS = 2
+# Gather: 4 hilos vía yahoo_scraper (validado 100% limpio a 3.000/3.000 tickers reales, en
+# local, 24-ago-2026). 6 hilos ya cae a ~85% (bloqueo de Yahoo); 4 es el techo con margen.
+_GATHER_WORKERS = 4
 # Pausa/hilo (0,4s): validada en vivo junto con _GATHER_WORKERS.
 # Se aplica en fundamentals.gather(), no yahoo_scraper.py (módulo limpio, solo HTTP).
 _GATHER_PACE_S = 0.4

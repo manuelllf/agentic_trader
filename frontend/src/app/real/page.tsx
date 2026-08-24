@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   approveTrade, fetchAnalyticsConfianzaPrescore, fetchAnalyticsCosteEtapa, fetchAnalyticsPeSector,
-  fetchAnalyticsScans,
+  fetchAnalyticsScans, fetchScanProgress, getFotoStatus,
   getApprovals, getConfig, getDemoStatus, getFx, getHistory,
   getPerformance, getPersonal, getPushKey, getReal, getScanFunnel, getScanReport, logout,
   reconcileApprovals, recheck, redeep, rejectTrade, resetShadow, runDemo, snapshotUniverse, startFoto,
@@ -27,6 +27,7 @@ import type {
   AppConfig, Approval, ApprovalsResponse, DemoRunOverrides, DemoStatus, HistoryPoint, Performance,
   PersonalSummary, RealSummary,
 } from "@/lib/types";
+import type { ScanProgress } from "@/lib/api";
 import { CapitalForm } from "./CapitalForm";
 import { FotoGlobalPicker } from "./FotoGlobalPicker";
 import { MemorySearch } from "./MemorySearch";
@@ -84,6 +85,11 @@ function SalaRealRoom() {
   const [fotoing, setFotoing] = useState(false);
   const [fotoMsg, setFotoMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [fotoScope, setFotoScope] = useState<"nasdaq" | "global">("nasdaq");
+  // Barra de avance mientras la captura corre en segundo plano (`GET /scan/progress`, ya
+  // existía en el backend, sin usar en el panel). Se para sola en cuanto la etapa deja de ser
+  // "foto" -- no hace falta que el usuario se quede mirando.
+  const [fotoProgress, setFotoProgress] = useState<ScanProgress | null>(null);
+  const fotoPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Actividad (histórico de decisiones): colapsada por defecto, movida junto a Mantenimiento —
   // las herramientas de uso real (recheck/redeep, memoria, analítica) ganan el espacio de arriba.
   const [actividadOpen, setActividadOpen] = useState(false);
@@ -179,16 +185,38 @@ function SalaRealRoom() {
     }
   }
 
-  /** Lanza la foto de fundamentales (~20 min en segundo plano). No puntúa: el escaneo posterior
-   *  reutiliza esta foto durante 24h, que es lo que permite fotografiar por la mañana y puntuar
-   *  off-peak por la tarde a mitad de tarifa. El avance solo se ve por API (`GET /admin/foto`):
-   *  este panel no tiene barra de progreso todavía. */
+  /** Lanza la foto de fundamentales (~12-15 min en segundo plano con 4 hilos). No puntúa: el
+   *  escaneo posterior reutiliza esta foto durante 24h, que es lo que permite fotografiar por
+   *  la mañana y puntuar off-peak por la tarde a mitad de tarifa. Avance en vivo vía
+   *  `/scan/progress`, sondeado cada 3s mientras dure. */
   async function doFoto() {
     setFotoArmed(false);
     setFotoing(true);
     try {
       await startFoto("nasdaq");
-      setFotoMsg({ text: "foto lanzada, ~20 min en segundo plano (no bloquea nada)" });
+      setFotoMsg({ text: "foto lanzada, ~12-15 min en segundo plano (no bloquea nada)" });
+      if (fotoPollRef.current) clearInterval(fotoPollRef.current);
+      fotoPollRef.current = setInterval(async () => {
+        try {
+          const p = await fetchScanProgress();
+          if (p.stage !== "foto") {
+            if (fotoPollRef.current) clearInterval(fotoPollRef.current);
+            fotoPollRef.current = null;
+            setFotoProgress(null);
+            const st = await getFotoStatus();
+            if (st.result?.cortado) {
+              setFotoMsg({ text: `foto cortada: ${st.result.motivo_corte ?? "bloqueo del proveedor"} `
+                + `(${st.result.capturados}/${st.result.pedidos} capturados igualmente)`, bad: true });
+            } else if (st.result) {
+              setFotoMsg({ text: `foto terminada: ${st.result.capturados}/${st.result.pedidos} capturados` });
+            }
+          } else {
+            setFotoProgress(p);
+          }
+        } catch {
+          // sondeo silencioso: un fallo puntual de red no debe tapar el mensaje de lanzamiento
+        }
+      }, 3000);
     } catch (e) {
       setFotoMsg({ text: e instanceof Error ? e.message : "No se pudo lanzar la foto.", bad: true });
     } finally {
@@ -299,6 +327,7 @@ function SalaRealRoom() {
       alive.current = false;
       if (pollRef.current) clearInterval(pollRef.current);
       if (scanTimer.current) clearTimeout(scanTimer.current);
+      if (fotoPollRef.current) clearInterval(fotoPollRef.current);
     };
   }, [load]);
 
@@ -953,11 +982,16 @@ function SalaRealRoom() {
             <div className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap">
               <div className="flex flex-wrap items-center gap-2">
                 {!recheckArmed ? (
-                  <button onClick={() => setRecheckArmed(true)} disabled={rechecking}
-                          className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
-                          style={{ borderColor: T.ring, color: T.ink2 }}>
-                    {rechecking ? "Recomponiendo…" : "Recomponer cartera"}
-                  </button>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10.5px]" style={{ color: T.muted }}>
+                      Gratis, sin re-escanear: reconstruye la cartera con los informes ya analizados.
+                    </span>
+                    <button onClick={() => setRecheckArmed(true)} disabled={rechecking}
+                            className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                            style={{ borderColor: T.ring, color: T.ink2 }}>
+                      {rechecking ? "Recomponiendo…" : "Recomponer cartera"}
+                    </button>
+                  </span>
                 ) : (
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="text-[10.5px]" style={{ color: T.muted }}>
@@ -985,11 +1019,16 @@ function SalaRealRoom() {
               <span className="hidden h-6 w-px sm:inline-block" style={{ background: T.grid }} />
               <div className="flex flex-wrap items-center gap-2">
                 {!redeepArmed ? (
-                  <button onClick={() => setRedeepArmed(true)} disabled={redeeping}
-                          className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
-                          style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
-                    {redeeping ? "Reanalizando…" : "Reanalizar con macro de hoy"}
-                  </button>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10.5px]" style={{ color: T.muted }}>
+                      Dinero real (~$0,03-0,05): rejuzga a fondo cada nombre con el macro de hoy.
+                    </span>
+                    <button onClick={() => setRedeepArmed(true)} disabled={redeeping}
+                            className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                            style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
+                      {redeeping ? "Reanalizando…" : "Reanalizar con macro de hoy"}
+                    </button>
+                  </span>
                 ) : (
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="text-[10.5px]" style={{ color: T.warn }}>
@@ -1252,7 +1291,7 @@ function SalaRealRoom() {
               ) : (
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="text-[10.5px]" style={{ color: T.warn }}>
-                    Tarda ~20 min; repetirlo el mismo día puede volver a bloquear el proveedor de datos.
+                    Tarda ~12-15 min; repetirlo el mismo día puede volver a bloquear el proveedor de datos.
                   </span>
                   <button onClick={doFoto} disabled={fotoing}
                           className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
@@ -1269,6 +1308,19 @@ function SalaRealRoom() {
             ) : (
               <FotoGlobalPicker />
             )}
+            {fotoScope === "nasdaq" && fotoProgress?.total ? (
+              <div className="flex flex-col gap-1">
+                <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: T.grid }}>
+                  <div className="h-full rounded-full transition-[width]"
+                       style={{ width: `${Math.min(100, (fotoProgress.done / fotoProgress.total) * 100)}%`,
+                                background: T.buy }} />
+                </div>
+                <span className={`text-[10.5px] ${NUMS}`} style={{ color: T.muted }}>
+                  {fmtNum(fotoProgress.done)}/{fmtNum(fotoProgress.total)} · {fmtNum(fotoProgress.ok)} ok
+                  {fotoProgress.fail ? ` · ${fmtNum(fotoProgress.fail)} fallos` : ""}
+                </span>
+              </div>
+            ) : null}
             {fotoScope === "nasdaq" && fotoMsg && (
               <span className="text-[10.5px]" style={{ color: fotoMsg.bad ? T.warn : T.muted }}>
                 {fotoMsg.text}
