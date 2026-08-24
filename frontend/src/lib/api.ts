@@ -299,6 +299,33 @@ export interface MemorySearchResult {
 export const searchMemory = (q: string, limit = 20) =>
   get<MemorySearchResult>(`/memory/search?q=${encodeURIComponent(q)}&limit=${limit}`);
 
+/** Re-comprobación del top: reconstruye la cartera sobre los ya analizados a fondo con el suelo
+ *  actual, sin re-escanear el universo (instantáneo). */
+export const recheck = () => post<Record<string, unknown>>("/recheck");
+/** Re-analiza a fondo (V4-Pro) los nombres ya profundizados con el macro ACTUAL, sin re-escanear
+ *  el universo. Para refrescar tras corregir un dato macro. */
+export const redeep = () => post<Record<string, unknown>>("/redeep");
+
+/** Historia de UN ticker a través de los escaneos (¿es estable el criterio?). Protegido entero. */
+export interface ScanAuditEntry {
+  at: string;
+  stage: string;
+  prescore: number | null;
+  deep_score: number | null;
+  price: number | null;
+  weight_pct: number | null;
+}
+export const fetchScanAudit = (ticker: string) =>
+  get<{ ticker: string; scans: ScanAuditEntry[] }>(`/scan/audit/${encodeURIComponent(ticker)}`);
+
+// ---- Analítica columnar (DuckDB leyendo Postgres) ----
+export const fetchAnalyticsPeSector = () =>
+  get<{ items: Record<string, unknown>[] }>("/analytics/pe-sector");
+export const fetchAnalyticsCosteEtapa = () =>
+  get<{ items: Record<string, unknown>[] }>("/analytics/coste-etapa");
+export const fetchAnalyticsConfianzaPrescore = () =>
+  get<{ items: Record<string, unknown>[] }>("/analytics/confianza-prescore");
+
 export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
 export const reconcileApprovals = () => post<{ reconciled: number }>("/approvals/reconcile");

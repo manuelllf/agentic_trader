@@ -7,9 +7,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  approveTrade, getApprovals, getConfig, getDemoStatus, getFx, getHistory,
+  approveTrade, fetchAnalyticsConfianzaPrescore, fetchAnalyticsCosteEtapa, fetchAnalyticsPeSector,
+  getApprovals, getConfig, getDemoStatus, getFx, getHistory,
   getPerformance, getPersonal, getPushKey, getReal, getScanFunnel, getScanReport, logout,
-  reconcileApprovals, rejectTrade, resetShadow, runDemo, snapshotUniverse, startFoto,
+  reconcileApprovals, recheck, redeep, rejectTrade, resetShadow, runDemo, snapshotUniverse, startFoto,
   subscribePush,
   syncPersonal, testPush,
   type ScanReport,
@@ -29,6 +30,7 @@ import { MemorySearch } from "./MemorySearch";
 import { ScanConfigModal } from "./ScanConfigModal";
 import { ScanFullButton } from "./ScanFullModal";
 import { OrderRow } from "./OrderRow";
+import { TickerAudit } from "./TickerAudit";
 import { NUMS, SERIES, T } from "./tokens";
 import { Empty, Field, Kpi, Panel, SideTag, Td, Th } from "./ui";
 
@@ -69,12 +71,31 @@ function SalaRealRoom() {
   const [resetArmed, setResetArmed] = useState(false);    // armar→confirmar el reinicio del sombra
   const [resetting, setResetting] = useState(false);
   const [mantOpen, setMantOpen] = useState(false);        // mantenimiento plegado (destructivo)
+  const [scanArmed, setScanArmed] = useState(false);      // armar→confirmar "Analizar mercado" (dinero real)
+  const [snapArmed, setSnapArmed] = useState(false);      // armar→confirmar rehacer foto del universo
+  const [fotoArmed, setFotoArmed] = useState(false);      // armar→confirmar capturar fundamentales
   const [snapping, setSnapping] = useState(false);
   // Resultado de rehacer la foto del universo: éxito en tono neutro, error en ámbar — no hay
   // paso intermedio armar→confirmar porque no es destructivo (solo refresca una foto de lectura).
   const [snapMsg, setSnapMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [fotoing, setFotoing] = useState(false);
   const [fotoMsg, setFotoMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  // Ajustar sin re-escanear: recomponer la cartera (gratis) o reanalizar a fondo con el macro
+  // de hoy (dinero real) — mismo patrón armar→confirmar que el resto, variables propias.
+  const [recheckArmed, setRecheckArmed] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
+  const [recheckMsg, setRecheckMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [redeepArmed, setRedeepArmed] = useState(false);
+  const [redeeping, setRedeeping] = useState(false);
+  const [redeepMsg, setRedeepMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  // Historia de un ticker a través de los escaneos: se abre desde "Posiciones del agente".
+  const [auditTicker, setAuditTicker] = useState<string | null>(null);
+  // Analítica del método (DuckDB sobre Postgres): bajo demanda, cada tabla con su propio
+  // estado — un 503 (DuckDB no instalado) en una no debe tragarse las otras dos.
+  const [analyticsLoaded, setAnalyticsLoaded] = useState(false);
+  const [peSector, setPeSector] = useState<{ data: Record<string, unknown>[] | null; loading: boolean; error: string }>({ data: null, loading: false, error: "" });
+  const [costeEtapa, setCosteEtapa] = useState<{ data: Record<string, unknown>[] | null; loading: boolean; error: string }>({ data: null, loading: false, error: "" });
+  const [confianzaPrescore, setConfianzaPrescore] = useState<{ data: Record<string, unknown>[] | null; loading: boolean; error: string }>({ data: null, loading: false, error: "" });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
@@ -125,6 +146,7 @@ function SalaRealRoom() {
    *  responder 200 con `ok: false` (p.ej. NASDAQ no respondió) — no es un fallo de red, así que
    *  se lee del cuerpo, no del catch. */
   async function doSnapshotUniverse() {
+    setSnapArmed(false);
     setSnapping(true);
     try {
       const r = await snapshotUniverse();
@@ -144,10 +166,11 @@ function SalaRealRoom() {
   }
 
   /** Lanza la foto de fundamentales (~20 min en segundo plano). No puntúa: el escaneo posterior
-   *  reutiliza esta foto durante 12h, que es lo que permite fotografiar por la mañana y puntuar
+   *  reutiliza esta foto durante 24h, que es lo que permite fotografiar por la mañana y puntuar
    *  off-peak por la tarde a mitad de tarifa. El avance solo se ve por API (`GET /admin/foto`):
    *  este panel no tiene barra de progreso todavía. */
   async function doFoto() {
+    setFotoArmed(false);
     setFotoing(true);
     try {
       await startFoto("nasdaq");
@@ -157,6 +180,57 @@ function SalaRealRoom() {
     } finally {
       setFotoing(false);
     }
+  }
+
+  /** Recompone la cartera con los informes ya analizados y el suelo actual — gratis, no
+   *  vuelve a escanear ni a llamar al LLM. */
+  async function doRecheck() {
+    setRecheckArmed(false);
+    setRechecking(true);
+    try {
+      await recheck();
+      setRecheckMsg({ text: "Cartera recompuesta con los informes ya analizados." });
+      await load();
+    } catch (e) {
+      setRecheckMsg({ text: e instanceof Error ? e.message : "No se pudo recomponer la cartera.", bad: true });
+    } finally {
+      setRechecking(false);
+    }
+  }
+
+  /** Reanaliza a fondo (V4-Pro) los nombres ya profundizados con el macro de HOY, sin
+   *  re-escanear el universo. Cuesta dinero real. */
+  async function doRedeep() {
+    setRedeepArmed(false);
+    setRedeeping(true);
+    try {
+      await redeep();
+      setRedeepMsg({ text: "Reanálisis a fondo completado con el macro de hoy." });
+      await load();
+    } catch (e) {
+      setRedeepMsg({ text: e instanceof Error ? e.message : "No se pudo reanalizar a fondo.", bad: true });
+    } finally {
+      setRedeeping(false);
+    }
+  }
+
+  /** Carga las 3 tablas de analítica (DuckDB sobre Postgres) bajo demanda — no se dispara
+   *  sola al montar la página. Cada tabla lleva su propio estado: un 503 (DuckDB no
+   *  instalado en el backend) en una no debe tapar el resultado de las otras dos. */
+  async function loadAnalytics() {
+    setAnalyticsLoaded(true);
+    setPeSector({ data: null, loading: true, error: "" });
+    setCosteEtapa({ data: null, loading: true, error: "" });
+    setConfianzaPrescore({ data: null, loading: true, error: "" });
+    fetchAnalyticsPeSector()
+      .then((r) => setPeSector({ data: r.items, loading: false, error: "" }))
+      .catch((e) => setPeSector({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+    fetchAnalyticsCosteEtapa()
+      .then((r) => setCosteEtapa({ data: r.items, loading: false, error: "" }))
+      .catch((e) => setCosteEtapa({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+    fetchAnalyticsConfianzaPrescore()
+      .then((r) => setConfianzaPrescore({ data: r.items, loading: false, error: "" }))
+      .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
   }
 
   useEffect(() => {
@@ -188,6 +262,7 @@ function SalaRealRoom() {
 
   const handleRunScan = async () => {
     setError("");
+    setScanArmed(false);
     try {
       await runDemo();
       setRunning(true);
@@ -365,18 +440,37 @@ function SalaRealRoom() {
                     }`
                   : "sin análisis previo"}
             </span>
-            <button onClick={handleRunScan} disabled={isScanning}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-[11.5px] font-bold transition-opacity hover:opacity-90 disabled:opacity-50"
-                    style={{ background: "#5DCAA5", color: "#0d0d0d" }}>
-              <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 ${isScanning ? "animate-spin" : ""}`}
-                   fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                   strokeLinejoin="round" aria-hidden>
-                <circle cx="12" cy="12" r="0.5" fill="currentColor" />
-                <path d="M15.51 15.56a5 5 0 1 0 -3.51 1.44" />
-                <path d="M18.83 17.86a9 9 0 1 0 -6.83 3.14" />
-              </svg>
-              {isScanning ? "Analizando…" : "Analizar mercado"}
-            </button>
+            {!scanArmed ? (
+              <button onClick={() => setScanArmed(true)} disabled={isScanning}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-[11.5px] font-bold transition-opacity hover:opacity-90 disabled:opacity-50"
+                      style={{ background: "#5DCAA5", color: "#0d0d0d" }}>
+                <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 ${isScanning ? "animate-spin" : ""}`}
+                     fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                     strokeLinejoin="round" aria-hidden>
+                  <circle cx="12" cy="12" r="0.5" fill="currentColor" />
+                  <path d="M15.51 15.56a5 5 0 1 0 -3.51 1.44" />
+                  <path d="M18.83 17.86a9 9 0 1 0 -6.83 3.14" />
+                </svg>
+                {isScanning ? "Analizando…" : "Analizar mercado"}
+              </button>
+            ) : (
+              <span className="inline-flex flex-wrap items-center gap-1.5 rounded-full border px-3 py-1"
+                    style={{ borderColor: "rgba(208,59,59,0.5)", background: "rgba(208,59,59,0.08)" }}>
+                <span className="text-[10.5px] font-semibold" style={{ color: T.bad }}>
+                  Lanza el escaneo real completo — dinero real de por medio.
+                </span>
+                <button onClick={handleRunScan}
+                        className="rounded-full px-3 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90"
+                        style={{ background: T.bad }}>
+                  Confirmar análisis
+                </button>
+                <button onClick={() => setScanArmed(false)}
+                        className="rounded-full border px-3 py-1 text-[11px] transition-colors hover:bg-white/5"
+                        style={{ borderColor: T.ring, color: T.ink2 }}>
+                  Cancelar
+                </button>
+              </span>
+            )}
             {/* Simulación: universo completo, coste y modelo REALES, pero decide=false — no
                 propone ni toca ninguna cartera. Círculo aparte (no un pill con texto) a propósito:
                 que nunca se confunda al vuelo con el botón de decisión de al lado. Reutiliza 📡,
@@ -618,7 +712,12 @@ function SalaRealRoom() {
                           <Td>
                             <span className="mr-2 inline-block h-2.5 w-2.5 rounded-sm align-middle"
                                   style={{ background: SERIES[i % SERIES.length] }} />
-                            <b style={{ color: T.ink }}>{p.ticker}</b>
+                            <button onClick={() => setAuditTicker(p.ticker)}
+                                    className="font-bold underline-offset-2 hover:underline"
+                                    style={{ color: T.ink }}
+                                    title="Ver la historia de este ticker a través de los escaneos">
+                              {p.ticker}
+                            </button>
                           </Td>
                           <Td right><span className={NUMS}>{qty4(p.quantity)}</span></Td>
                           <Td right><span className={NUMS}>${money(p.avg_cost)}</span></Td>
@@ -646,6 +745,16 @@ function SalaRealRoom() {
           )}
         </Panel>
         )}
+
+        {/* ---------- memoria del agente: visible sin desplegar nada ---------- */}
+        <div className="mt-4">
+          <div className="mb-2 flex items-center gap-2 px-0.5">
+            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+              Memoria del agente
+            </span>
+          </div>
+          <MemorySearch />
+        </div>
 
         {/* curva histórica del libro real: solo cuando existen cierres (tras la primera compra) */}
         {hist.length >= 2 && (
@@ -791,6 +900,110 @@ function SalaRealRoom() {
           )}
         </div>
 
+        {/* ---------- 4b · ajustar sin re-escanear: recomponer (gratis) o reanalizar a fondo
+            (dinero real) sin volver a escanear el universo. Uso normal, no escondido. ---------- */}
+        <div className="mt-4">
+          <Panel title="Ajustar sin re-escanear">
+            <div className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap">
+              <div className="flex flex-wrap items-center gap-2">
+                {!recheckArmed ? (
+                  <button onClick={() => setRecheckArmed(true)} disabled={rechecking}
+                          className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                          style={{ borderColor: T.ring, color: T.ink2 }}>
+                    {rechecking ? "Recomponiendo…" : "Recomponer cartera"}
+                  </button>
+                ) : (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10.5px]" style={{ color: T.muted }}>
+                      Reconstruye la cartera con los informes ya analizados y el suelo actual —
+                      gratis, sin re-escanear.
+                    </span>
+                    <button onClick={doRecheck} disabled={rechecking}
+                            className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                            style={{ background: T.buy }}>
+                      {rechecking ? "Recomponiendo…" : "Confirmar"}
+                    </button>
+                    <button onClick={() => setRecheckArmed(false)} disabled={rechecking}
+                            className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                            style={{ borderColor: T.ring, color: T.ink2 }}>
+                      Cancelar
+                    </button>
+                  </span>
+                )}
+                {recheckMsg && (
+                  <span className="text-[10.5px]" style={{ color: recheckMsg.bad ? T.warn : T.muted }}>
+                    {recheckMsg.text}
+                  </span>
+                )}
+              </div>
+              <span className="hidden h-6 w-px sm:inline-block" style={{ background: T.grid }} />
+              <div className="flex flex-wrap items-center gap-2">
+                {!redeepArmed ? (
+                  <button onClick={() => setRedeepArmed(true)} disabled={redeeping}
+                          className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                          style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
+                    {redeeping ? "Reanalizando…" : "Reanalizar con macro de hoy"}
+                  </button>
+                ) : (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10.5px]" style={{ color: T.warn }}>
+                      Vuelve a juzgar a fondo cada nombre con el macro de hoy — cuesta dinero
+                      real (~$0,03-0,05).
+                    </span>
+                    <button onClick={doRedeep} disabled={redeeping}
+                            className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                            style={{ background: T.bad }}>
+                      {redeeping ? "Reanalizando…" : "Confirmar"}
+                    </button>
+                    <button onClick={() => setRedeepArmed(false)} disabled={redeeping}
+                            className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                            style={{ borderColor: T.ring, color: T.ink2 }}>
+                      Cancelar
+                    </button>
+                  </span>
+                )}
+                {redeepMsg && (
+                  <span className="text-[10.5px]" style={{ color: redeepMsg.bad ? T.warn : T.muted }}>
+                    {redeepMsg.text}
+                  </span>
+                )}
+              </div>
+            </div>
+          </Panel>
+        </div>
+
+        {/* ---------- 4c · analítica del método: DuckDB sobre Postgres, bajo demanda ---------- */}
+        <div className="mt-4">
+          <Panel title="Analítica del método"
+                 right={analyticsLoaded
+                   ? <button onClick={loadAnalytics}
+                             className="text-[11px] font-semibold transition-colors hover:underline"
+                             style={{ color: T.buy }}>
+                       ↻ recargar
+                     </button>
+                   : undefined}>
+            {!analyticsLoaded ? (
+              <div className="flex items-center justify-between gap-3 px-4 py-3">
+                <p className="text-[12px]" style={{ color: T.muted }}>
+                  PER por sector, coste por etapa del embudo y confianza del prescore — 3
+                  consultas a DuckDB sobre Postgres, bajo demanda.
+                </p>
+                <button onClick={loadAnalytics}
+                        className="shrink-0 rounded px-3 py-1.5 text-[11.5px] font-bold text-white transition-opacity hover:opacity-90"
+                        style={{ background: T.buy }}>
+                  Cargar analítica
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-4 p-4 lg:grid-cols-3">
+                <AnalyticsTable title="PER por sector" state={peSector} />
+                <AnalyticsTable title="Coste por etapa" state={costeEtapa} />
+                <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore} />
+              </div>
+            )}
+          </Panel>
+        </div>
+
         {/* ---------- 5 · pie de ajustes: una línea discreta, sin panel ---------- */}
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border px-4 py-2.5 text-[11.5px]"
              style={{ borderColor: T.ring, background: T.panel }}>
@@ -823,7 +1036,7 @@ function SalaRealRoom() {
                   title="Borra el token de sesión de este navegador y vuelve al login.">
             Cerrar sesión
           </button>
-          <button onClick={() => { setMantOpen(!mantOpen); setResetArmed(false); }}
+          <button onClick={() => { setMantOpen(!mantOpen); setResetArmed(false); setSnapArmed(false); setFotoArmed(false); }}
                   aria-expanded={mantOpen}
                   className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
                   style={{ borderColor: T.ring, color: mantOpen ? T.ink2 : T.muted }}>
@@ -882,11 +1095,29 @@ function SalaRealRoom() {
             <span style={{ color: T.ink2 }}>
               Rehacer la foto del universo NASDAQ al cierre (la que arranca el próximo escaneo).
             </span>
-            <button onClick={doSnapshotUniverse} disabled={snapping}
-                    className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
-                    style={{ borderColor: T.ring, color: T.ink2 }}>
-              {snapping ? "Rehaciendo…" : "Rehacer foto del universo"}
-            </button>
+            {!snapArmed ? (
+              <button onClick={() => setSnapArmed(true)} disabled={snapping}
+                      className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                      style={{ borderColor: T.ring, color: T.ink2 }}>
+                {snapping ? "Rehaciendo…" : "Rehacer foto del universo"}
+              </button>
+            ) : (
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="text-[10.5px]" style={{ color: T.warn }}>
+                  Vuelve a pedir datos a fuentes externas.
+                </span>
+                <button onClick={doSnapshotUniverse} disabled={snapping}
+                        className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                        style={{ background: T.bad }}>
+                  {snapping ? "Rehaciendo…" : "Confirmar foto"}
+                </button>
+                <button onClick={() => setSnapArmed(false)} disabled={snapping}
+                        className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                        style={{ borderColor: T.ring, color: T.ink2 }}>
+                  Cancelar
+                </button>
+              </span>
+            )}
             {snapMsg && (
               <span className="text-[10.5px]" style={{ color: snapMsg.bad ? T.warn : T.muted }}>
                 {snapMsg.text}
@@ -901,24 +1132,42 @@ function SalaRealRoom() {
               Fundamentales
             </span>
             <span style={{ color: T.ink2 }}>
-              Capturar ahora los datos de los ~3.000 nombres (~20 min). El escaneo los reutiliza 12h.
+              Capturar ahora los datos de los ~3.000 nombres (~20 min). El escaneo los reutiliza 24h.
             </span>
-            <button onClick={doFoto} disabled={fotoing}
-                    className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
-                    style={{ borderColor: T.ring, color: T.ink2 }}>
-              {fotoing ? "Lanzando…" : "Capturar fundamentales"}
-            </button>
+            {!fotoArmed ? (
+              <button onClick={() => setFotoArmed(true)} disabled={fotoing}
+                      className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                      style={{ borderColor: T.ring, color: T.ink2 }}>
+                {fotoing ? "Lanzando…" : "Capturar fundamentales"}
+              </button>
+            ) : (
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="text-[10.5px]" style={{ color: T.warn }}>
+                  Tarda ~20 min; repetirlo el mismo día puede volver a bloquear el proveedor de datos.
+                </span>
+                <button onClick={doFoto} disabled={fotoing}
+                        className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                        style={{ background: T.bad }}>
+                  {fotoing ? "Lanzando…" : "Confirmar captura"}
+                </button>
+                <button onClick={() => setFotoArmed(false)} disabled={fotoing}
+                        className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                        style={{ borderColor: T.ring, color: T.ink2 }}>
+                  Cancelar
+                </button>
+              </span>
+            )}
             {fotoMsg && (
               <span className="text-[10.5px]" style={{ color: fotoMsg.bad ? T.warn : T.muted }}>
                 {fotoMsg.text}
               </span>
             )}
           </div>
-
-          <MemorySearch />
         </div>
         )}
       </div>
+
+      {auditTicker && <TickerAudit ticker={auditTicker} onClose={() => setAuditTicker(null)} />}
 
       {/* velo de salida hacia la portada */}
       <div aria-hidden
@@ -960,6 +1209,51 @@ function Distribution({ summary, equity }: { summary: RealSummary; equity: numbe
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* Una tabla de "Analítica del método": columnas = claves del primer registro (no se tipa cada
+   campo, son consultas DuckDB de forma libre). Carga, error (p.ej. 503 sin DuckDB) y vacío,
+   cada uno con su mensaje — nada se traga en silencio. overflow-x-auto por si la tabla es ancha. */
+function AnalyticsTable({ title, state }: {
+  title: string;
+  state: { data: Record<string, unknown>[] | null; loading: boolean; error: string };
+}) {
+  const cols = state.data && state.data.length > 0 ? Object.keys(state.data[0]) : [];
+  return (
+    <div>
+      <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+        {title}
+      </p>
+      {state.loading ? (
+        <p className="text-[11.5px]" style={{ color: T.muted }}>Cargando…</p>
+      ) : state.error ? (
+        <p className="text-[11.5px]" style={{ color: T.bad }}>{state.error}</p>
+      ) : !state.data || state.data.length === 0 ? (
+        <p className="text-[11.5px]" style={{ color: T.muted }}>Sin datos.</p>
+      ) : (
+        <div className="overflow-x-auto rounded border" style={{ borderColor: T.grid }}>
+          <table className={`w-full border-collapse whitespace-nowrap text-[11px] ${NUMS}`}>
+            <thead>
+              <tr style={{ color: T.muted, background: T.panel2 }}>
+                {cols.map((c) => <th key={c} className="px-2 py-1 text-left font-semibold">{c}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {state.data.map((row, i) => (
+                <tr key={i} className="border-t" style={{ borderColor: T.grid }}>
+                  {cols.map((c) => (
+                    <td key={c} className="px-2 py-1" style={{ color: T.ink2 }}>
+                      {row[c] == null ? "—" : String(row[c])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

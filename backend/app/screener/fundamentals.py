@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Ventana de reutilización de la foto: dentro de ella el escaneo NO vuelve a pedirle nada a
 # Yahoo (protección contra el 401 masivo que motivó el cache; ver `FundamentalsSnapshot`).
-_FOTO_TTL_H = 12.0
+_FOTO_TTL_H = 24.0
 
 # Pausa tras cada petición Yahoo (módulo, no parámetro gather): scan_service fija antes gather.
 # 0.0 defecto (sin pausa) para tests; no es kwarg para mantener firma estable ante stubs.
@@ -491,7 +491,7 @@ def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
 
 def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa: ANN001
     """Baja .info + histórico + noticias: devuelve (datos, motivo_si_None) o (data, None).
-    Motor: yahoo_scraper primario; fallback yfinance. Reutiliza la foto de las ultimas 12h.
+    Motor: yahoo_scraper primario; fallback yfinance. Reutiliza la foto de las ultimas 24h.
     PACE_S fijado por scan_service."""
     if db is not None:
         cached = foto_reciente(db, ticker)

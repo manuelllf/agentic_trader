@@ -37,6 +37,9 @@ un feed de señales.
 - GET  /proposal             → cartera objetivo + trades del último escaneo        [protegido]
 - GET  /watchlist            → nombres vigilados                                   [protegido]
 - GET  /memory/search        → buscador sobre la memoria semántica (ticker o texto) [protegido]
+- GET  /analytics/pe-sector          → mediana de PE trailing por sector (DuckDB→Postgres) [protegido]
+- GET  /analytics/coste-etapa        → coste/latencia/cache de llamadas LLM por etapa       [protegido]
+- GET  /analytics/confianza-prescore → distribución de confianza persistida del prescore    [protegido]
 """
 
 from __future__ import annotations
@@ -436,6 +439,109 @@ def memory_search(q: str = Query(..., min_length=1), limit: int = Query(20, ge=1
     except Exception as exc:  # noqa: BLE001 — típicamente fastembed/sqlite-vec no instalados
         return {"mode": "vacio", "items": [], "error": str(exc)}
     return {"mode": "semantic", "items": [_memory_out(m) for m in results]}
+
+
+# ---- Analítica columnar (DuckDB leyendo Postgres directamente, solo lectura) ------------
+
+_ANALYTICS_QUERIES: dict[str, str] = {
+    "coste-etapa": """
+        select stage,
+               count(*)                                     as llamadas,
+               round(sum(cost_usd)::numeric, 4)             as usd,
+               round(avg(latency_ms))                       as ms_medios,
+               round(100.0 * sum(prompt_cache_hit_tokens)
+                     / nullif(sum(prompt_cache_hit_tokens
+                                  + prompt_cache_miss_tokens), 0), 1) as cache_hit_pct,
+               sum(case when not ok then 1 else 0 end)      as fallos
+        from pg.llm_call
+        group by stage
+        order by usd desc
+    """,
+    "pe-sector": """
+        with ultima as (
+            select distinct on (ticker) ticker, sector, pe_trailing
+            from pg.fundamentals_snapshot
+            where pe_trailing is not null and pe_trailing > 0
+            order by ticker, captured_at desc
+        )
+        select sector,
+               count(*)                                       as nombres,
+               round(median(pe_trailing)::numeric, 2)         as mediana_pe
+        from ultima
+        group by sector
+        having count(*) >= 6
+        order by mediana_pe desc
+    """,
+    "confianza-prescore": """
+        select round(confidence::numeric, 1) as confianza,
+               count(*)                      as llamadas
+        from pg.llm_call
+        where stage = 'prescore' and confidence is not null
+        group by 1
+        order by 1
+    """,
+}
+
+
+def _run_analytics_query(nombre: str) -> list[dict]:
+    """Abre una conexión DuckDB→Postgres de solo lectura y ejecuta una de las consultas
+    predefinidas (mismo `ATTACH ... type postgres` que `scripts/analitica.py` — no se reinventa
+    la conexión). Sin caché ni estado: se cierra sola al salir del `with`."""
+    import duckdb
+
+    url = settings.database_url
+    if not url.startswith(("postgresql", "postgres")):
+        raise HTTPException(503, "La analítica requiere DATABASE_URL de Postgres (no SQLite).")
+    dsn = url.replace("postgresql+psycopg://", "postgresql://")
+    con = duckdb.connect()
+    try:
+        con.execute("install postgres; load postgres;")
+        con.execute(f"attach '{dsn}' as pg (type postgres, read_only)")
+        return con.execute(_ANALYTICS_QUERIES[nombre]).df().to_dict("records")
+    finally:
+        con.close()
+
+
+@router.get("/analytics/pe-sector")
+def analytics_pe_sector() -> dict:
+    """Mediana de `trailingPE` (yfinance) por sector, sobre el último snapshot de cada ticker —
+    el mismo campo con el que se puntúa, no un agregado de una fuente externa."""
+    try:
+        return {"items": _run_analytics_query("pe-sector")}
+    except ImportError:
+        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — Postgres caído/ATTACH roto: mensaje legible, no 500
+        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+
+
+@router.get("/analytics/coste-etapa")
+def analytics_coste_etapa() -> dict:
+    """Coste, latencia media y % de acierto de caché de las llamadas LLM, agrupado por etapa
+    del embudo (macro/prescore/mid/deep/constructor)."""
+    try:
+        return {"items": _run_analytics_query("coste-etapa")}
+    except ImportError:
+        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+
+
+@router.get("/analytics/confianza-prescore")
+def analytics_confianza_prescore() -> dict:
+    """Distribución de la confianza persistida del prescore (el ruido medido, ~5,5 puntos de sd,
+    visto desde lo que el propio LLM dice que sabe)."""
+    try:
+        return {"items": _run_analytics_query("confianza-prescore")}
+    except ImportError:
+        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
 
 
 @router.post("/recheck")

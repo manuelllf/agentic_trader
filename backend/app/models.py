@@ -186,7 +186,7 @@ class FundamentalsCache(Base):
     La tabla sigue declarada a propósito — todavía guarda los últimos datos de producción y
     borrarla es una decisión aparte (volcarlos como primera fila de foto, o descartarlos).
     Existía por el 401 "Invalid Crumb" masivo de Yahoo (2.400-2.500 de 3.000 nombres sin datos
-    al repetir escaneo el mismo día); esa protección la cubre ahora la ventana de 12h de la
+    al repetir escaneo el mismo día); esa protección la cubre ahora la ventana de 24h de la
     foto, sin pisar el histórico."""
 
     __tablename__ = "fundamentals_cache"

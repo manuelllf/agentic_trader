@@ -1,4 +1,4 @@
-"""Foto versionada de `fundamentals.gather()` (`FundamentalsSnapshot`), ventana de 12h."""
+"""Foto versionada de `fundamentals.gather()` (`FundamentalsSnapshot`), ventana de 24h."""
 
 from __future__ import annotations
 
@@ -63,16 +63,16 @@ def test_sin_foto_devuelve_none(db) -> None:
     assert fund_mod.foto_reciente(db, "ZZZ") is None
 
 
-def test_la_foto_caduca_a_las_12h(db) -> None:
+def test_la_foto_caduca_a_las_24h(db) -> None:
     fund_mod.foto_guardar(db, "AAA", _sample())
     row = db.query(FundamentalsSnapshot).one()
-    row.captured_at = datetime.now(UTC) - timedelta(hours=13)   # forzar caducidad
+    row.captured_at = datetime.now(UTC) - timedelta(hours=25)   # forzar caducidad
     db.commit()
     assert fund_mod.foto_reciente(db, "AAA") is None
 
 
 def test_gather_reutiliza_la_foto_sin_tocar_yfinance(db, monkeypatch) -> None:
-    """Segunda llamada dentro de las 12h no debe tocar yfinance en absoluto."""
+    """Segunda llamada dentro de las 24h no debe tocar yfinance en absoluto."""
     # Este test ejerce `gather()` de verdad (no mockea la función entera, solo `yf.Ticker`), así
     # que desde el scraper primario tocaría red real para consentir con Yahoo. Se fuerza "sesión
     # no disponible" para aislarlo — sigue probando lo mismo: la reutilización de la foto

@@ -2,7 +2,7 @@
 
 Existe para separar dos cosas que hasta ahora iban pegadas: RECOGER los datos y PUNTUARLOS. Con
 esto se puede fotografiar el mercado a las 10:00 y lanzar el scoring off-peak a las 13:00 (la
-mitad de tarifa), porque el escaneo reutiliza la foto de las últimas 12h en vez de volver a
+mitad de tarifa), porque el escaneo reutiliza la foto de las últimas 24h en vez de volver a
 pedirle todo a Yahoo (ver `fundamentals.foto_reciente`).
 
 Ritmo real: 2 hilos y 0,4s de pausa por petición (los únicos valores validados contra el bloqueo
