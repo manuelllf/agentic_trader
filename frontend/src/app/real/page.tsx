@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   approveTrade, fetchAnalyticsConfianzaPrescore, fetchAnalyticsCosteEtapa, fetchAnalyticsPeSector,
-  fetchAnalyticsScans, fetchScanProgress, getFotoStatus,
+  fetchAnalyticsPeSectorFechas, fetchAnalyticsScans, fetchScanProgress, getFotoStatus,
   getApprovals, getConfig, getDemoStatus, getFx, getHistory,
   getPerformance, getPersonal, getPushKey, getReal, getScanFunnel, getScanReport, logout,
   reconcileApprovals, recheck, redeep, rejectTrade, resetShadow, runDemo, snapshotUniverse, startFoto,
@@ -114,6 +114,11 @@ function SalaRealRoom() {
   const [analyticsScans, setAnalyticsScans] = useState<{ id: number; at: string; cadence: string }[]>([]);
   const [costeScanPos, setCosteScanPos] = useState(-1);
   const [confianzaScanPos, setConfianzaScanPos] = useState(-1);
+  // Navegador de fecha para PER por sector: -1 = snapshot más reciente de cada ticker (de
+  // siempre), 0 = el día más reciente CON fecha fija, 1 = el anterior, etc. Independiente de
+  // `analyticsScans` (que es de escaneos, no de días de captura).
+  const [peSectorFechas, setPeSectorFechas] = useState<string[]>([]);
+  const [peSectorPos, setPeSectorPos] = useState(-1);
   const [syncingAnalytics, setSyncingAnalytics] = useState(false);
   const [analyticsSyncMsg, setAnalyticsSyncMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -263,12 +268,16 @@ function SalaRealRoom() {
     setAnalyticsLoaded(true);
     setCosteScanPos(-1);
     setConfianzaScanPos(-1);
+    setPeSectorPos(-1);
     setPeSector({ data: null, loading: true, error: "" });
     setCosteEtapa({ data: null, loading: true, error: "" });
     setConfianzaPrescore({ data: null, loading: true, error: "" });
     fetchAnalyticsPeSector()
       .then((r) => setPeSector({ data: r.items, loading: false, error: "" }))
       .catch((e) => setPeSector({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+    fetchAnalyticsPeSectorFechas()
+      .then((r) => setPeSectorFechas(r.items))
+      .catch(() => setPeSectorFechas([]));
     fetchAnalyticsScans()
       .then((r) => setAnalyticsScans(r.items))
       .catch(() => setAnalyticsScans([]));
@@ -317,6 +326,17 @@ function SalaRealRoom() {
     fetchAnalyticsConfianzaPrescore(scanId)
       .then((r) => setConfianzaPrescore({ data: r.items, loading: false, error: "" }))
       .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+  }
+
+  /** Recarga PER por sector para la fecha en `pos` (-1 = último snapshot de cada ticker, de
+   *  siempre). Navegador propio: no depende de `analyticsScans`, esta tabla nunca lo usó. */
+  function loadPeSectorForDate(pos: number) {
+    setPeSectorPos(pos);
+    const fecha = pos >= 0 ? peSectorFechas[pos] : undefined;
+    setPeSector((s) => ({ ...s, loading: true, error: "" }));
+    fetchAnalyticsPeSector(fecha)
+      .then((r) => setPeSector({ data: r.items, loading: false, error: "" }))
+      .catch((e) => setPeSector({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
   }
 
   useEffect(() => {
@@ -1096,7 +1116,13 @@ function SalaRealRoom() {
                   </p>
                 )}
                 <div className="grid gap-4 p-4 lg:grid-cols-3">
-                  <AnalyticsTable title="PER por sector" state={peSector} />
+                  <AnalyticsTable title="PER por sector" state={peSector}
+                    nav={<ScanNav
+                      scans={peSectorFechas.map((f) => ({ id: f, at: f, cadence: "" }))}
+                      pos={peSectorPos} onMove={loadPeSectorForDate}
+                      totalLabel="Más reciente"
+                      formatLabel={(f) => new Date(f).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+                    />} />
                   <AnalyticsTable title="Coste por etapa" state={costeEtapa}
                     nav={<ScanNav scans={analyticsScans} pos={costeScanPos} onMove={loadCosteForScan} />} />
                   <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore}
@@ -1383,14 +1409,17 @@ function Distribution({ summary, equity }: { summary: RealSummary; equity: numbe
 /** Navegador compacto ‹ Total › compartido por coste-etapa/confianza-prescore: `pos` -1 = Total
  *  (agregado histórico, sin scan_run_id), 0 = escaneo más reciente, 1 = el siguiente más
  *  antiguo, etc., recorriendo `scans` (orden de `/analytics/scans`, ya descendente por fecha). */
-function ScanNav({ scans, pos, onMove }: {
-  scans: { id: number; at: string; cadence: string }[];
+function ScanNav({ scans, pos, onMove, totalLabel = "Total", formatLabel }: {
+  scans: { id: number | string; at: string; cadence: string }[];
   pos: number;
   onMove: (pos: number) => void;
+  totalLabel?: string;
+  formatLabel?: (at: string) => string;
 }) {
   const atTotal = pos <= -1;
   const atOldest = scans.length === 0 || pos >= scans.length - 1;
-  const label = atTotal ? "Total" : fmtTime(scans[pos]?.at ?? null);
+  const label = atTotal ? totalLabel
+    : (formatLabel ?? fmtTime)(scans[pos]?.at ?? "");
   return (
     <div className="flex shrink-0 items-center gap-1 text-[10.5px]" style={{ color: T.muted }}>
       <button onClick={() => onMove(pos - 1)} disabled={atTotal}

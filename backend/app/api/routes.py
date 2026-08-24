@@ -40,7 +40,9 @@ un feed de señales.
 - GET  /proposal             → cartera objetivo + trades del último escaneo        [protegido]
 - GET  /watchlist            → nombres vigilados                                   [protegido]
 - GET  /memory/search        → buscador sobre la memoria semántica (ticker o texto) [protegido]
-- GET  /analytics/pe-sector          → mediana de PE trailing por sector (fichero DuckDB local) [protegido]
+- GET  /analytics/pe-sector          → mediana de PE trailing por sector (fichero DuckDB local),
+                                       opcional `?fecha=YYYY-MM-DD` para un día concreto    [protegido]
+- GET  /analytics/pe-sector/fechas   → fechas con snapshot disponible, para su navegador     [protegido]
 - GET  /analytics/coste-etapa        → coste/latencia/cache de llamadas LLM por etapa,
                                        opcional `?scan_run_id=` para un escaneo concreto  [protegido]
 - GET  /analytics/confianza-prescore → distribución de confianza persistida del prescore,
@@ -472,6 +474,7 @@ _ANALYTICS_QUERIES: dict[str, str] = {
             select distinct on (ticker) ticker, sector, pe_trailing
             from fundamentals_snapshot
             where pe_trailing is not null and pe_trailing > 0
+            {and_fecha}
             order by ticker, captured_at desc
         )
         select sector,
@@ -481,6 +484,13 @@ _ANALYTICS_QUERIES: dict[str, str] = {
         group by sector
         having count(*) >= 6
         order by mediana_pe desc
+    """,
+    "pe-sector-fechas": """
+        select distinct captured_at::date as fecha
+        from fundamentals_snapshot
+        where pe_trailing is not null and pe_trailing > 0
+        order by fecha desc
+        limit 60
     """,
     "confianza-prescore": """
         select round(confidence::numeric, 1) as confianza,
@@ -494,7 +504,8 @@ _ANALYTICS_QUERIES: dict[str, str] = {
 }
 
 
-def _run_analytics_query(nombre: str, scan_run_id: int | None = None) -> list[dict]:
+def _run_analytics_query(nombre: str, scan_run_id: int | None = None,
+                         fecha: str | None = None) -> list[dict]:
     """Abre el fichero DuckDB persistente (columnar de verdad, sincronizado desde Postgres por
     `app.analytics_sync.sync()` — ver ese módulo y `POST /admin/sync-analytics`) en modo
     solo-lectura y ejecuta una de las consultas predefinidas. Los datos son tan frescos como la
@@ -503,9 +514,11 @@ def _run_analytics_query(nombre: str, scan_run_id: int | None = None) -> list[di
 
     `scan_run_id` filtra `coste-etapa`/`confianza-prescore` a un único escaneo — sin él, agregan
     TODA la vida de `llm_call` (todos los escaneos históricos mezclados). `pe-sector` lo ignora:
-    no depende de escaneo, usa el snapshot más reciente por ticker. El valor llega tipado `int`
-    desde FastAPI (`Query(None)`), así que es seguro interpolarlo en el SQL de DuckDB."""
+    no depende de escaneo, usa el snapshot más reciente por ticker (o el de `fecha` si se pide).
+    El valor llega tipado `int` desde FastAPI (`Query(None)`), así que es seguro interpolarlo en
+    el SQL de DuckDB; `fecha` se valida a mano (YYYY-MM-DD) por el mismo motivo."""
     import os
+    import re
 
     import duckdb
 
@@ -522,6 +535,11 @@ def _run_analytics_query(nombre: str, scan_run_id: int | None = None) -> list[di
     elif "{and_scan}" in sql:
         clause = f"and scan_run_id = {int(scan_run_id)}" if scan_run_id is not None else ""
         sql = sql.format(and_scan=clause)
+    elif "{and_fecha}" in sql:
+        if fecha is not None and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", fecha):
+            raise HTTPException(400, "fecha inválida, formato YYYY-MM-DD")
+        clause = f"and captured_at::date = '{fecha}'" if fecha is not None else ""
+        sql = sql.format(and_fecha=clause)
     con = duckdb.connect(db_path, read_only=True)
     try:
         return con.execute(sql).df().to_dict("records")
@@ -530,16 +548,33 @@ def _run_analytics_query(nombre: str, scan_run_id: int | None = None) -> list[di
 
 
 @router.get("/analytics/pe-sector")
-def analytics_pe_sector() -> dict:
+def analytics_pe_sector(fecha: str | None = Query(None)) -> dict:
     """Mediana de `trailingPE` (yfinance) por sector, sobre el último snapshot de cada ticker —
-    el mismo campo con el que se puntúa, no un agregado de una fuente externa."""
+    el mismo campo con el que se puntúa, no un agregado de una fuente externa. `fecha`
+    (YYYY-MM-DD, ver /analytics/pe-sector/fechas) fija el snapshot de ese día en vez del más
+    reciente; sin ella, igual que siempre."""
     try:
-        return {"items": _run_analytics_query("pe-sector")}
+        return {"items": _run_analytics_query("pe-sector", fecha=fecha)}
     except ImportError:
         raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 — Postgres caído/ATTACH roto: mensaje legible, no 500
+        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+
+
+@router.get("/analytics/pe-sector/fechas")
+def analytics_pe_sector_fechas() -> dict:
+    """Fechas con snapshot disponible (hasta 60, más reciente primero) — para el navegador de
+    `/analytics/pe-sector?fecha=`."""
+    try:
+        filas = _run_analytics_query("pe-sector-fechas")
+        return {"items": [str(f["fecha"]) for f in filas]}
+    except ImportError:
+        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
 
 

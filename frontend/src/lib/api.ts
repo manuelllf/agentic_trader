@@ -319,8 +319,12 @@ export const fetchScanAudit = (ticker: string) =>
   get<{ ticker: string; scans: ScanAuditEntry[] }>(`/scan/audit/${encodeURIComponent(ticker)}`);
 
 // ---- Analítica columnar (DuckDB leyendo Postgres) ----
-export const fetchAnalyticsPeSector = () =>
-  get<{ items: Record<string, unknown>[] }>("/analytics/pe-sector");
+export const fetchAnalyticsPeSector = (fecha?: string) =>
+  get<{ items: Record<string, unknown>[] }>(
+    `/analytics/pe-sector${fecha ? `?fecha=${fecha}` : ""}`,
+  );
+export const fetchAnalyticsPeSectorFechas = () =>
+  get<{ items: string[] }>("/analytics/pe-sector/fechas");
 export const fetchAnalyticsCosteEtapa = (scanRunId?: number) =>
   get<{ items: Record<string, unknown>[] }>(
     `/analytics/coste-etapa${scanRunId != null ? `?scan_run_id=${scanRunId}` : ""}`,
