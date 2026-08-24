@@ -18,7 +18,9 @@ COPY scripts ./scripts
 # Instala EXACTAMENTE lo del lockfile (build reproducible), sin dev.
 # --extra postgres: el driver psycopg va SIEMPRE en la imagen → cambiar de SQLite a
 # Supabase/Postgres es solo cambiar DATABASE_URL, sin tocar el build.
-RUN uv sync --frozen --no-dev --extra postgres --extra memory
+# --extra analytics: duckdb, para que /analytics/* (motor columnar sobre Postgres) no dependa
+# de instalarlo a mano en el contenedor — sin esto los 3 endpoints devuelven 503 siempre.
+RUN uv sync --frozen --no-dev --extra postgres --extra memory --extra analytics
 
 # Usuario sin privilegios para el PROCESO de la app. Railway monta el volumen /data como
 # root, así que el contenedor entra como root SOLO para chown-earlo y suelta privilegios
