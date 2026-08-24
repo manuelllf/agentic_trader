@@ -112,8 +112,22 @@ def ultimo_sync(db) -> datetime | None:  # noqa: ANN001
     return db.query(func.max(UniverseTicker.synced_at)).scalar()
 
 
-def tickers(db, exchange: str | None = None, asset_type: str | None = None) -> list[str]:  # noqa: ANN001
-    """Tickers de la última tanda, opcionalmente filtrados por mercado o tipo."""
+def _filtrar(q, countries: list[str] | None, exchanges: list[str] | None):  # noqa: ANN001, ANN201
+    """Filtro común país/mercado (multi-select, AND entre sí) para `tickers`/`contar`."""
+    from app.models import UniverseTicker
+
+    if countries:
+        q = q.filter(UniverseTicker.country.in_(countries))
+    if exchanges:
+        q = q.filter(UniverseTicker.exchange.in_(exchanges))
+    return q
+
+
+def tickers(db, exchange: str | None = None, asset_type: str | None = None,  # noqa: ANN001
+           countries: list[str] | None = None, exchanges: list[str] | None = None) -> list[str]:
+    """Tickers de la última tanda, opcionalmente filtrados por mercado, tipo, país(es) o
+    mercado(s) (multi-select — `exchange` sigue existiendo aparte por compatibilidad, pero
+    `exchanges` es el que usa el picker nuevo)."""
     from app.models import UniverseTicker
 
     ultimo = ultimo_sync(db)
@@ -124,4 +138,64 @@ def tickers(db, exchange: str | None = None, asset_type: str | None = None) -> l
         q = q.filter(UniverseTicker.exchange == exchange)
     if asset_type:
         q = q.filter(UniverseTicker.asset_type == asset_type)
+    q = _filtrar(q, countries, exchanges)
     return [t for (t,) in q.all()]
+
+
+def contar(db, countries: list[str] | None = None, exchanges: list[str] | None = None,  # noqa: ANN001
+          asset_type: str | None = "Stock") -> int:
+    """Cuenta EXACTA de tickers para una combinación de filtros — para el aviso de "vas a
+    capturar N tickers" antes de confirmar, sin traerse la lista entera."""
+    from app.models import UniverseTicker
+
+    ultimo = ultimo_sync(db)
+    if ultimo is None:
+        return 0
+    q = db.query(UniverseTicker.ticker).filter(UniverseTicker.synced_at == ultimo)
+    if asset_type:
+        q = q.filter(UniverseTicker.asset_type == asset_type)
+    q = _filtrar(q, countries, exchanges)
+    return q.count()
+
+
+def opciones(db, asset_type: str | None = "Stock") -> dict:  # noqa: ANN001
+    """Países y mercados de la última tanda con su recuento real (solo `asset_type`, "Stock"
+    por defecto — lo que de verdad se va a capturar), para que el picker nunca sea "elige a
+    ciegas". `None` en `ultimo_sync` → sin sincronizar todavía, listas vacías."""
+    from sqlalchemy import func
+
+    from app.models import UniverseTicker
+
+    ultimo = ultimo_sync(db)
+    if ultimo is None:
+        return {"synced_at": None, "total": 0, "countries": [], "exchanges": []}
+
+    base = db.query(UniverseTicker).filter(UniverseTicker.synced_at == ultimo)
+    if asset_type:
+        base = base.filter(UniverseTicker.asset_type == asset_type)
+    total = base.count()
+
+    base_grp = db.query(UniverseTicker).filter(UniverseTicker.synced_at == ultimo)
+    if asset_type:
+        base_grp = base_grp.filter(UniverseTicker.asset_type == asset_type)
+
+    paises = (
+        base_grp.with_entities(UniverseTicker.country, func.count(UniverseTicker.ticker))
+        .filter(UniverseTicker.country.isnot(None))
+        .group_by(UniverseTicker.country)
+        .order_by(func.count(UniverseTicker.ticker).desc())
+        .all()
+    )
+    mercados = (
+        base_grp.with_entities(UniverseTicker.exchange, func.count(UniverseTicker.ticker))
+        .filter(UniverseTicker.exchange.isnot(None))
+        .group_by(UniverseTicker.exchange)
+        .order_by(func.count(UniverseTicker.ticker).desc())
+        .all()
+    )
+    return {
+        "synced_at": ultimo.isoformat(),
+        "total": total,
+        "countries": [{"country": c, "count": n} for c, n in paises],
+        "exchanges": [{"exchange": e, "count": n} for e, n in mercados],
+    }

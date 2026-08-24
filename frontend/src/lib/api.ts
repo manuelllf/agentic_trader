@@ -373,12 +373,52 @@ export interface FotoStatus {
 }
 
 /** Lanza la foto de fundamentales a demanda (no puntúa nada): recoger datos deja de ir pegado
- *  a puntuarlos, y así se puede fotografiar por la mañana y escanear off-peak por la tarde. */
-export const startFoto = (alcance: "nasdaq" | "global" = "nasdaq", limite?: number) =>
-  post<{ started: boolean } & FotoStatus>(
-    `/admin/foto?alcance=${alcance}${limite ? `&limite=${limite}` : ""}`);
+ *  a puntuarlos, y así se puede fotografiar por la mañana y escanear off-peak por la tarde.
+ *  `countries`/`exchanges` solo aplican con `alcance="global"` — el universo global no trae
+ *  precio/cap/volumen, así que país/mercado es el único filtro barato disponible. */
+export const startFoto = (
+  alcance: "nasdaq" | "global" = "nasdaq", limite?: number,
+  countries?: string[], exchanges?: string[],
+) => {
+  const params = new URLSearchParams({ alcance });
+  if (limite) params.set("limite", String(limite));
+  (countries ?? []).forEach((c) => params.append("countries", c));
+  (exchanges ?? []).forEach((e) => params.append("exchanges", e));
+  return post<{ started: boolean } & FotoStatus>(`/admin/foto?${params.toString()}`);
+};
 
 export const getFotoStatus = () => get<FotoStatus>("/admin/foto");
+
+export interface UniversoGlobalOpciones {
+  synced_at: string | null;
+  total: number;
+  countries: { country: string; count: number }[];
+  exchanges: { exchange: string; count: number }[];
+}
+/** Estado del universo global (HuggingFace) sincronizado: fecha, total, y países/mercados con
+ *  su recuento real — para el picker de `startFoto("global", ...)`. */
+export const getUniversoGlobal = () => get<UniversoGlobalOpciones>("/admin/universo-global");
+
+export interface UniversoGlobalSyncResult {
+  ok: boolean;
+  tickers?: number;
+  synced_at?: string;
+  podadas?: number;
+  source?: string;
+  error?: string;
+}
+/** Descarga el CSV completo de HuggingFace (~63.000 filas) y lo carga en `universe_ticker`.
+ *  El job mensual lo hace solo; esto es para no esperar. */
+export const syncUniversoGlobal = () => post<UniversoGlobalSyncResult>("/admin/universo-global");
+
+/** Cuenta EXACTA de tickers para una combinación país/mercado, sin traerse la lista entera —
+ *  el aviso "vas a capturar N tickers" antes de poder confirmar. */
+export const contarUniversoGlobal = (countries: string[], exchanges: string[]) => {
+  const params = new URLSearchParams();
+  countries.forEach((c) => params.append("countries", c));
+  exchanges.forEach((e) => params.append("exchanges", e));
+  return get<{ count: number }>(`/admin/universo-global/contar?${params.toString()}`);
+};
 
 // ---- Cartera personal IBKR (read-only, intocable para el agente) ----
 export const getPersonal = () => get<PersonalSummary>("/personal");

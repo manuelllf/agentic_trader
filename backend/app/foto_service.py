@@ -37,15 +37,18 @@ def get_status() -> dict:
         return dict(_state)
 
 
-def _tickers(db, alcance: str, limite: int | None) -> list[str]:  # noqa: ANN001
+def _tickers(db, alcance: str, limite: int | None,  # noqa: ANN001
+            countries: list[str] | None = None, exchanges: list[str] | None = None) -> list[str]:
     from app.screener import universe as universe_mod
     from app.screener import universe_global
 
     if alcance == "global":
-        nombres = universe_global.tickers(db, asset_type="Stock")
+        nombres = universe_global.tickers(db, asset_type="Stock",
+                                          countries=countries, exchanges=exchanges)
         if not nombres:
             raise RuntimeError("No hay universo global sincronizado todavía "
-                               "(POST /admin/universo-global).")
+                               "(POST /admin/universo-global), o el filtro país/mercado no "
+                               "encuentra ningún ticker.")
     else:
         nombres, info = universe_mod.universe_for_scan(db)
         if info["fuente"] == "seed":
@@ -53,12 +56,13 @@ def _tickers(db, alcance: str, limite: int | None) -> list[str]:  # noqa: ANN001
     return nombres[:limite] if limite else nombres
 
 
-def capturar(db, alcance: str = "nasdaq", limite: int | None = None) -> dict:  # noqa: ANN001
+def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: ANN001
+            countries: list[str] | None = None, exchanges: list[str] | None = None) -> dict:
     """Recorre el universo pedido y guarda una foto por nombre. No puntúa nada."""
     from app import scan_service
     from app.screener import fundamentals as fund_mod
 
-    nombres = _tickers(db, alcance, limite)
+    nombres = _tickers(db, alcance, limite, countries=countries, exchanges=exchanges)
     fund_mod._GATHER_PACE_S = scan_service._GATHER_PACE_S
     scan_progress.reset()
     scan_progress.set_stage("foto", total=len(nombres), unit="tickers")
@@ -84,10 +88,12 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None) -> dict:  #
             "at": inicio.isoformat()}
 
 
-def _run(alcance: str, limite: int | None) -> None:
+def _run(alcance: str, limite: int | None,
+        countries: list[str] | None, exchanges: list[str] | None) -> None:
     db = SessionLocal()
     try:
-        result = capturar(db, alcance=alcance, limite=limite)
+        result = capturar(db, alcance=alcance, limite=limite,
+                          countries=countries, exchanges=exchanges)
         with _lock:
             _state.update(status="done", result=result, error=None,
                           finished_at=datetime.now(UTC).isoformat())
@@ -101,7 +107,8 @@ def _run(alcance: str, limite: int | None) -> None:
         db.close()
 
 
-def start(alcance: str = "nasdaq", limite: int | None = None) -> bool:
+def start(alcance: str = "nasdaq", limite: int | None = None,
+         countries: list[str] | None = None, exchanges: list[str] | None = None) -> bool:
     """Lanza la captura en segundo plano. False si ya hay una foto o un escaneo en marcha
     (comparten `scan_progress` y el cupo de peticiones a Yahoo: solaparlos es pedir el 401)."""
     from app import pipeline
@@ -111,5 +118,6 @@ def start(alcance: str = "nasdaq", limite: int | None = None) -> bool:
             return False
         _state.update(status="running", started_at=datetime.now(UTC).isoformat(),
                       finished_at=None, result=None, error=None)
-    threading.Thread(target=_run, args=(alcance, limite), daemon=True).start()
+    threading.Thread(target=_run, args=(alcance, limite, countries, exchanges),
+                     daemon=True).start()
     return True

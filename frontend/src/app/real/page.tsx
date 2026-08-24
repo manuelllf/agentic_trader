@@ -28,6 +28,7 @@ import type {
   PersonalSummary, RealSummary,
 } from "@/lib/types";
 import { CapitalForm } from "./CapitalForm";
+import { FotoGlobalPicker } from "./FotoGlobalPicker";
 import { MemorySearch } from "./MemorySearch";
 import { ScanConfigModal } from "./ScanConfigModal";
 import { ScanFullButton } from "./ScanFullModal";
@@ -82,6 +83,10 @@ function SalaRealRoom() {
   const [snapMsg, setSnapMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [fotoing, setFotoing] = useState(false);
   const [fotoMsg, setFotoMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [fotoScope, setFotoScope] = useState<"nasdaq" | "global">("nasdaq");
+  // Actividad (histórico de decisiones): colapsada por defecto, movida junto a Mantenimiento —
+  // las herramientas de uso real (recheck/redeep, memoria, analítica) ganan el espacio de arriba.
+  const [actividadOpen, setActividadOpen] = useState(false);
   // Ajustar sin re-escanear: recomponer la cartera (gratis) o reanalizar a fondo con el macro
   // de hoy (dinero real) — mismo patrón armar→confirmar que el resto, variables propias.
   const [recheckArmed, setRecheckArmed] = useState(false);
@@ -939,18 +944,6 @@ function SalaRealRoom() {
             </div>
           </Panel>
 
-          {/* actividad: solo existe si hay decisiones tomadas — sin panel vacío de relleno */}
-          {history.length > 0 && (
-            <Panel title={`Actividad · ${history.length} decisión(es)`}>
-              <div className="max-h-[340px] overflow-y-auto">
-                <table className="w-full border-collapse text-[12.5px]">
-                  <tbody>
-                    {history.map((h) => <HistoryRow key={h.id} h={h} />)}
-                  </tbody>
-                </table>
-              </div>
-            </Panel>
-          )}
         </div>
 
         {/* ---------- 4b · ajustar sin re-escanear: recomponer (gratis) o reanalizar a fondo
@@ -1075,6 +1068,29 @@ function SalaRealRoom() {
           </Panel>
         </div>
 
+        {/* ---------- 4d · actividad (histórico de decisiones): colapsada, justo antes de
+            ajustes/mantenimiento — las herramientas de uso real (arriba) ganan el sitio. ---------- */}
+        {history.length > 0 && (
+          <div className="mt-4 rounded-lg border text-[11.5px]" style={{ borderColor: T.ring, background: T.panel }}>
+            <button onClick={() => setActividadOpen(!actividadOpen)} aria-expanded={actividadOpen}
+                    className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-white/5">
+              <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+                Actividad · {history.length} decisión(es)
+              </span>
+              <span style={{ color: T.muted }}>{actividadOpen ? "▴" : "▾"}</span>
+            </button>
+            {actividadOpen && (
+              <div className="max-h-[340px] overflow-y-auto border-t px-4 pb-2" style={{ borderColor: T.grid }}>
+                <table className="w-full border-collapse text-[12.5px]">
+                  <tbody>
+                    {history.map((h) => <HistoryRow key={h.id} h={h} />)}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ---------- 5 · pie de ajustes: una línea discreta, sin panel ---------- */}
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border px-4 py-2.5 text-[11.5px]"
              style={{ borderColor: T.ring, background: T.panel }}>
@@ -1197,38 +1213,63 @@ function SalaRealRoom() {
           </div>
 
           {/* Foto de fundamentales a demanda: separa recoger datos de puntuarlos, para poder
-              fotografiar por la mañana y lanzar el scoring off-peak (mitad de tarifa). */}
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t pt-3" style={{ borderColor: T.grid }}>
-            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-              Fundamentales
-            </span>
-            <span style={{ color: T.ink2 }}>
-              Capturar ahora los datos de los ~3.000 nombres (~20 min). El escaneo los reutiliza 24h.
-            </span>
-            {!fotoArmed ? (
-              <button onClick={() => setFotoArmed(true)} disabled={fotoing}
-                      className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
-                      style={{ borderColor: T.ring, color: T.ink2 }}>
-                {fotoing ? "Lanzando…" : "Capturar fundamentales"}
-              </button>
-            ) : (
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="text-[10.5px]" style={{ color: T.warn }}>
-                  Tarda ~20 min; repetirlo el mismo día puede volver a bloquear el proveedor de datos.
-                </span>
-                <button onClick={doFoto} disabled={fotoing}
-                        className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                        style={{ background: T.bad }}>
-                  {fotoing ? "Lanzando…" : "Confirmar captura"}
-                </button>
-                <button onClick={() => setFotoArmed(false)} disabled={fotoing}
-                        className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                        style={{ borderColor: T.ring, color: T.ink2 }}>
-                  Cancelar
-                </button>
+              fotografiar por la mañana y lanzar el scoring off-peak (mitad de tarifa).
+              NASDAQ (fiel al escaneo, sin más) o Global (universo HuggingFace, con picker de
+              país/mercado — el único filtro barato posible, ver FotoGlobalPicker). */}
+          <div className="mt-3 flex flex-col gap-2 border-t pt-3" style={{ borderColor: T.grid }}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+                Fundamentales
               </span>
+              <div className="flex overflow-hidden rounded border" style={{ borderColor: T.ring }}>
+                {(["nasdaq", "global"] as const).map((s) => (
+                  <button key={s} onClick={() => { setFotoScope(s); setFotoArmed(false); }}
+                          className="px-2.5 py-1 text-[11px] font-semibold transition-colors"
+                          style={{
+                            background: fotoScope === s ? T.buy : "transparent",
+                            color: fotoScope === s ? "#fff" : T.ink2,
+                          }}>
+                    {s === "nasdaq" ? "NASDAQ" : "Global"}
+                  </button>
+                ))}
+              </div>
+              {fotoScope === "nasdaq" && (
+                <span style={{ color: T.ink2 }}>
+                  Capturar ahora los datos de los ~3.000 nombres (~20 min). El escaneo los reutiliza 24h.
+                </span>
+              )}
+            </div>
+
+            {fotoScope === "nasdaq" ? (
+              !fotoArmed ? (
+                <div>
+                  <button onClick={() => setFotoArmed(true)} disabled={fotoing}
+                          className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                          style={{ borderColor: T.ring, color: T.ink2 }}>
+                    {fotoing ? "Lanzando…" : "Capturar fundamentales"}
+                  </button>
+                </div>
+              ) : (
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10.5px]" style={{ color: T.warn }}>
+                    Tarda ~20 min; repetirlo el mismo día puede volver a bloquear el proveedor de datos.
+                  </span>
+                  <button onClick={doFoto} disabled={fotoing}
+                          className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                          style={{ background: T.bad }}>
+                    {fotoing ? "Lanzando…" : "Confirmar captura"}
+                  </button>
+                  <button onClick={() => setFotoArmed(false)} disabled={fotoing}
+                          className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                          style={{ borderColor: T.ring, color: T.ink2 }}>
+                    Cancelar
+                  </button>
+                </span>
+              )
+            ) : (
+              <FotoGlobalPicker />
             )}
-            {fotoMsg && (
+            {fotoScope === "nasdaq" && fotoMsg && (
               <span className="text-[10.5px]" style={{ color: fotoMsg.bad ? T.warn : T.muted }}>
                 {fotoMsg.text}
               </span>

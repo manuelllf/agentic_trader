@@ -24,8 +24,11 @@ un feed de señales.
 - POST /ledger/allocate      → asignar/retirar fondos                             [protegido]
 - POST /demo/run             → lanza el escaneo (universo entero → scores → cartera 3-5) [protegido]
 - POST /admin/universe-snapshot → relanza a mano la foto del universo (si el cron falló) [protegido]
-- POST /admin/foto           → foto de fundamentales a demanda, en segundo plano      [protegido]
+- POST /admin/foto           → foto de fundamentales a demanda, en segundo plano;
+                               `alcance=global` admite `countries`/`exchanges`          [protegido]
 - POST /admin/universo-global → sincroniza el universo global de HuggingFace           [protegido]
+- GET  /admin/universo-global → estado + países/mercados con recuento, para el picker  [protegido]
+- GET  /admin/universo-global/contar → cuenta exacta de una combinación país/mercado   [protegido]
 - GET  /demo/status          → estado del escaneo                                  [público]
 - GET  /scan/report          → informe persistido del último escaneo (incidencias) [doble nivel]
 - GET  /scan/funnel          → embudo de los últimos escaneos por etapa y sector   [doble nivel]
@@ -685,13 +688,19 @@ def admin_universe_snapshot(db: Session = Depends(get_db)) -> dict:
 
 @router.post("/admin/foto")
 def admin_foto(alcance: str = Query("nasdaq", pattern="^(nasdaq|global)$"),
-               limite: int | None = Query(None, ge=1)) -> dict:
+               limite: int | None = Query(None, ge=1),
+               countries: list[str] | None = Query(None),
+               exchanges: list[str] | None = Query(None)) -> dict:
     """Lanza la foto de fundamentales a demanda, en segundo plano.
 
     Separa recoger datos de puntuarlos: fotografiar a las 10:00 y escanear off-peak a las 13:00
     (mitad de tarifa) sale del mismo dato. El progreso vivo va por `/scan/progress`.
+    `countries`/`exchanges` (multi-select, AND entre sí) solo aplican con `alcance=global` — el
+    universo global no trae precio/cap/volumen (ver `universe_global.py`), así que país/mercado
+    es el único filtro barato disponible antes de gastar peticiones reales a Yahoo.
     """
-    if not foto_service.start(alcance=alcance, limite=limite):
+    if not foto_service.start(alcance=alcance, limite=limite,
+                              countries=countries, exchanges=exchanges):
         raise HTTPException(409, "Ya hay una foto o un escaneo en marcha.")
     return {"started": True, **foto_service.get_status()}
 
@@ -714,6 +723,28 @@ def admin_universo_global(db: Session = Depends(get_db)) -> dict:
         return {"ok": True, **universe_global.sincronizar(db)}
     except Exception as exc:  # noqa: BLE001 — el motivo legible es lo que necesita el panel
         return {"ok": False, "error": str(exc)}
+
+
+@router.get("/admin/universo-global")
+def admin_universo_global_opciones(db: Session = Depends(get_db)) -> dict:
+    """Estado del universo global sincronizado: fecha, total, y países/mercados con su
+    recuento real — para el picker de `POST /admin/foto?alcance=global`, que nunca debe ser
+    "elige a ciegas"."""
+    from app.screener import universe_global
+
+    return universe_global.opciones(db)
+
+
+@router.get("/admin/universo-global/contar")
+def admin_universo_global_contar(
+    countries: list[str] | None = Query(None), exchanges: list[str] | None = Query(None),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Cuenta EXACTA de tickers para una combinación país/mercado, sin traerse la lista entera
+    — el aviso "vas a capturar N tickers" antes de que se pueda confirmar."""
+    from app.screener import universe_global
+
+    return {"count": universe_global.contar(db, countries=countries, exchanges=exchanges)}
 
 
 @router.get("/admin/memory-status")
