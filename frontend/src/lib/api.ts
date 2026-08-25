@@ -417,17 +417,21 @@ export interface UniversoGlobalOpciones {
  *  su recuento real — para el picker de `startFoto("global", ...)`. */
 export const getUniversoGlobal = () => get<UniversoGlobalOpciones>("/admin/universo-global");
 
-export interface UniversoGlobalSyncResult {
-  ok: boolean;
-  tickers?: number;
-  synced_at?: string;
-  podadas?: number;
-  source?: string;
-  error?: string;
+export interface UniversoGlobalSyncEstado {
+  status: "idle" | "running" | "done" | "error";
+  started_at: string | null;
+  finished_at: string | null;
+  result: { tickers: number; synced_at: string; podadas: number; source: string } | null;
+  error: string | null;
 }
-/** Descarga el CSV completo de HuggingFace (~63.000 filas) y lo carga en `universe_ticker`.
- *  El job mensual lo hace solo; esto es para no esperar. */
-export const syncUniversoGlobal = () => post<UniversoGlobalSyncResult>("/admin/universo-global");
+/** Lanza en segundo plano la descarga del CSV completo de HuggingFace (~63.000 filas) —
+ *  demasiado grande para caber en el timeout de un request HTTP normal, por eso va en
+ *  segundo plano igual que la foto de fundamentales: se lanza y se sondea con
+ *  `getUniversoGlobalSyncEstado()`. El job mensual lo hace solo; esto es para no esperar. */
+export const syncUniversoGlobal = () =>
+  post<{ started: boolean } & UniversoGlobalSyncEstado>("/admin/universo-global");
+export const getUniversoGlobalSyncEstado = () =>
+  get<UniversoGlobalSyncEstado>("/admin/universo-global/estado");
 
 /** Cuenta EXACTA de tickers para una combinación país/mercado, sin traerse la lista entera —
  *  el aviso "vas a capturar N tickers" antes de poder confirmar. */

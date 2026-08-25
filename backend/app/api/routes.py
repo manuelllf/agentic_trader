@@ -26,7 +26,8 @@ un feed de señales.
 - POST /admin/universe-snapshot → relanza a mano la foto del universo (si el cron falló) [protegido]
 - POST /admin/foto           → foto de fundamentales a demanda, en segundo plano;
                                `alcance=global` admite `countries`/`exchanges`          [protegido]
-- POST /admin/universo-global → sincroniza el universo global de HuggingFace           [protegido]
+- POST /admin/universo-global → lanza en segundo plano la sync del universo global    [protegido]
+- GET  /admin/universo-global/estado → running/done/error de esa sincronización       [protegido]
 - GET  /admin/universo-global → estado + países/mercados con recuento, para el picker  [protegido]
 - GET  /admin/universo-global/contar → cuenta exacta de una combinación país/mercado   [protegido]
 - GET  /demo/status          → estado del escaneo                                  [público]
@@ -746,18 +747,24 @@ def admin_foto_status() -> dict:
 
 
 @router.post("/admin/universo-global")
-def admin_universo_global(db: Session = Depends(get_db)) -> dict:
-    """Sincroniza a mano el universo global de HuggingFace (el job lo hace mensualmente).
-
-    Fuente ajena: si HuggingFace no responde eso no es un error del backend, viaja como
-    `{"ok": false, ...}` con 200, igual que la foto de NASDAQ.
+def admin_universo_global() -> dict:
+    """Lanza a mano la sincronización del universo global de HuggingFace en segundo plano (el
+    job lo hace mensualmente). En segundo plano porque ~63.000 filas descargadas + insertadas
+    superan el timeout del proxy si se hace dentro del propio request (visto en vivo,
+    25-ago-2026) — el progreso se consulta con `GET /admin/universo-global/estado`.
     """
     from app.screener import universe_global
 
-    try:
-        return {"ok": True, **universe_global.sincronizar(db)}
-    except Exception as exc:  # noqa: BLE001 — el motivo legible es lo que necesita el panel
-        return {"ok": False, "error": str(exc)}
+    if not universe_global.start():
+        raise HTTPException(409, "Ya hay una sincronización en marcha.")
+    return {"started": True, **universe_global.get_status()}
+
+
+@router.get("/admin/universo-global/estado")
+def admin_universo_global_estado() -> dict:
+    from app.screener import universe_global
+
+    return universe_global.get_status()
 
 
 @router.get("/admin/universo-global")

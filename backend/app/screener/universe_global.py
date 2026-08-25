@@ -13,11 +13,31 @@ from __future__ import annotations
 
 import csv
 import logging
+import threading
 from datetime import UTC, datetime
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Estado de la sincronización en segundo plano (mismo patrón que `foto_service.py`): la
+# descarga+insert de ~63.000 filas dentro del propio request HTTP superaba el timeout del proxy
+# (Railway corta ~30-60s) y como el único log era al final, un corte a mitad no dejaba NADA en
+# logs -- visto en vivo el 25-ago-2026. Se lanza en un hilo y se consulta por polling, igual que
+# la foto de fundamentales.
+_state: dict = {
+    "status": "idle",       # idle | running | done | error
+    "started_at": None,
+    "finished_at": None,
+    "result": None,
+    "error": None,
+}
+_lock = threading.Lock()
+
+
+def get_status() -> dict:
+    with _lock:
+        return dict(_state)
 
 DATASET = "adanosorg/free-global-stock-ticker-database"
 URL_CSV = f"https://huggingface.co/datasets/{DATASET}/resolve/main/tickers.csv"
@@ -58,7 +78,10 @@ def _recortar(valor: str | None, tope: int) -> str | None:
 
 
 def sincronizar(db, url: str = URL_CSV) -> dict:  # noqa: ANN001
-    """Descarga el universo y lo añade como tanda nueva. No pisa la anterior (append-only)."""
+    """Descarga el universo y lo añade como tanda nueva. No pisa la anterior (append-only).
+
+    Log de progreso cada lote (no solo al final): si el proceso muere a mitad, antes no quedaba
+    NINGÚN rastro en logs de por dónde iba -- ahora sí."""
     from app.models import UniverseTicker
 
     sync_at = datetime.now(UTC)
@@ -75,6 +98,7 @@ def sincronizar(db, url: str = URL_CSV) -> dict:  # noqa: ANN001
         if len(lote) >= _LOTE:
             db.bulk_insert_mappings(UniverseTicker, lote)
             total, lote = total + len(lote), []
+            logger.info("Universo global: %d filas insertadas hasta ahora.", total)
     if lote:
         db.bulk_insert_mappings(UniverseTicker, lote)
         total += len(lote)
@@ -86,6 +110,34 @@ def sincronizar(db, url: str = URL_CSV) -> dict:  # noqa: ANN001
     return {"tickers": total, "synced_at": sync_at.isoformat(), "podadas": podadas,
             "source": DATASET}
 
+
+def _run() -> None:
+    from app.db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        result = sincronizar(db)
+        with _lock:
+            _state.update(status="done", result=result, error=None,
+                          finished_at=datetime.now(UTC).isoformat())
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Fallo sincronizando el universo global.")
+        with _lock:
+            _state.update(status="error", error=str(exc),
+                          finished_at=datetime.now(UTC).isoformat())
+    finally:
+        db.close()
+
+
+def start() -> bool:
+    """Lanza la sincronización en segundo plano. False si ya hay una en marcha."""
+    with _lock:
+        if _state["status"] == "running":
+            return False
+        _state.update(status="running", started_at=datetime.now(UTC).isoformat(),
+                      finished_at=None, result=None, error=None)
+    threading.Thread(target=_run, daemon=True).start()
+    return True
 
 
 def _podar(db) -> int:  # noqa: ANN001

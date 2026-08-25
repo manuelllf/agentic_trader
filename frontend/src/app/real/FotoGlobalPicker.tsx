@@ -9,10 +9,10 @@
  *  reales a Yahoo — nunca "elige a ciegas": cada opción muestra su recuento real, y la cuenta
  *  final se recalcula en el backend antes de poder confirmar. */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  contarUniversoGlobal, getUniversoGlobal, startFoto, syncUniversoGlobal,
-  type UniversoGlobalOpciones,
+  contarUniversoGlobal, getUniversoGlobal, getUniversoGlobalSyncEstado, startFoto,
+  syncUniversoGlobal, type UniversoGlobalOpciones,
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
 import { T } from "./tokens";
@@ -50,6 +50,9 @@ export function FotoGlobalPicker() {
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [syncArmed, setSyncArmed] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => () => { if (syncPollRef.current) clearInterval(syncPollRef.current); }, []);
 
   async function cargarOpciones() {
     setLoadingOpciones(true);
@@ -86,19 +89,32 @@ export function FotoGlobalPicker() {
   async function doSyncGlobal() {
     setSyncArmed(false);
     setSyncing(true);
+    setMsg({ text: "Sincronizando en segundo plano (~63.000 filas, unos minutos)…" });
     try {
-      const r = await syncUniversoGlobal();
-      if (r.ok) {
-        setMsg({ text: `Universo global sincronizado: ${fmtNum(r.tickers ?? 0)} tickers.` });
-        await cargarOpciones();
-      } else {
-        setMsg({ text: r.error ?? "No se pudo sincronizar.", bad: true });
-      }
+      await syncUniversoGlobal();
     } catch (e) {
-      setMsg({ text: e instanceof Error ? e.message : "No se pudo sincronizar.", bad: true });
-    } finally {
+      setMsg({ text: e instanceof Error ? e.message : "No se pudo lanzar la sincronización.", bad: true });
       setSyncing(false);
+      return;
     }
+    if (syncPollRef.current) clearInterval(syncPollRef.current);
+    syncPollRef.current = setInterval(async () => {
+      try {
+        const st = await getUniversoGlobalSyncEstado();
+        if (st.status === "running") return;
+        if (syncPollRef.current) clearInterval(syncPollRef.current);
+        syncPollRef.current = null;
+        setSyncing(false);
+        if (st.status === "done" && st.result) {
+          setMsg({ text: `Universo global sincronizado: ${fmtNum(st.result.tickers)} tickers.` });
+          await cargarOpciones();
+        } else {
+          setMsg({ text: st.error ?? "No se pudo sincronizar.", bad: true });
+        }
+      } catch {
+        // sondeo silencioso: un fallo puntual de red no debe tapar el mensaje de lanzamiento
+      }
+    }, 3000);
   }
 
   async function doLaunch() {
