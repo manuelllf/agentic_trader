@@ -68,6 +68,10 @@ build/
 .eggs/
 .ipynb_checkpoints/
 
+# Scripts de exploración puntual (comparativas de proveedor, etc.) -- no son mantenimiento del
+# repo, se quedan locales.
+backend/scripts/compara_*.py
+
 # ---- Node / Next.js ----
 node_modules/
 .next/
