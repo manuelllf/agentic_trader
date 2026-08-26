@@ -1144,75 +1144,8 @@ function SalaRealRoom() {
           </Panel>
         </div>
 
-        {/* ---------- 4d · actividad (histórico de decisiones): colapsada, justo antes de
-            ajustes/mantenimiento — las herramientas de uso real (arriba) ganan el sitio. ---------- */}
-        {history.length > 0 && (
-          <div className="mt-4 rounded-lg border text-[11.5px]" style={{ borderColor: T.ring, background: T.panel }}>
-            <button onClick={() => setActividadOpen(!actividadOpen)} aria-expanded={actividadOpen}
-                    className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-white/5">
-              <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-                Actividad · {history.length} decisión(es)
-              </span>
-              <span style={{ color: T.muted }}>{actividadOpen ? "▴" : "▾"}</span>
-            </button>
-            {actividadOpen && (
-              <div className="max-h-[340px] overflow-y-auto border-t px-4 pb-2" style={{ borderColor: T.grid }}>
-                <table className="w-full border-collapse text-[12.5px]">
-                  <tbody>
-                    {history.map((h) => <HistoryRow key={h.id} h={h} />)}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ---------- 5 · pie de ajustes: una línea discreta, sin panel ---------- */}
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border px-4 py-2.5 text-[11.5px]"
-             style={{ borderColor: T.ring, background: T.panel }}>
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-            Ajustes
-          </span>
-          <span style={{ color: T.ink2 }}>
-            alertas push{" "}
-            <b style={{ color: pushOn ? T.good : T.muted }}>
-              {pushOn == null ? "…" : pushOn ? "activas" : "inactivas"}
-            </b>
-          </span>
-          {!pushOn ? (
-            <button onClick={enablePush}
-                    className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90"
-                    style={{ background: T.buy }}
-                    title="Suena cuando el agente propone. En iPhone: instala la app en pantalla de inicio.">
-              Activar alertas
-            </button>
-          ) : (
-            <button onClick={async () => setFlash(`Prueba enviada a ${(await testPush()).sent} dispositivo(s).`)}
-                    className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                    style={{ borderColor: T.ring, color: T.ink2 }}>
-              Enviar prueba
-            </button>
-          )}
-          <button onClick={logout}
-                  className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5"
-                  style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}
-                  title="Borra el token de sesión de este navegador y vuelve al login.">
-            Cerrar sesión
-          </button>
-          <button onClick={() => { setMantOpen(!mantOpen); setResetArmed(false); }}
-                  aria-expanded={mantOpen}
-                  className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                  style={{ borderColor: T.ring, color: mantOpen ? T.ink2 : T.muted }}>
-            mantenimiento {mantOpen ? "▴" : "▾"}
-          </button>
-          <span className="ml-auto text-right" style={{ color: T.muted }} title={summary?.broker.detail}>
-            {dry ? "simulación" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a límite
-            (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado
-          </span>
-        </div>
-
-        {/* ---------- Fotos: SIEMPRE visible, propia — no es "mantenimiento" (se usa a menudo,
-            no una vez al mes), sacada del colapsable para que no quede escondida. ---------- */}
+        {/* ---------- Fotos: SIEMPRE visible, propia — se usa a menudo, va antes de
+            actividad/ajustes (los dos últimos, uso ocasional). ---------- */}
         <div className="mt-4 rounded-lg border px-4 py-3 text-[11.5px]"
              style={{ borderColor: T.ring, background: T.panel }}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -1249,9 +1182,7 @@ function SalaRealRoom() {
           </div>
 
           {/* Foto de fundamentales a demanda: separa recoger datos de puntuarlos, para poder
-              fotografiar por la mañana y lanzar el scoring off-peak (mitad de tarifa).
-              NASDAQ (fiel al escaneo, sin más) o Global (universo HuggingFace, con picker de
-              país/mercado — el único filtro barato posible, ver FotoGlobalPicker). */}
+              fotografiar por la mañana y lanzar el scoring off-peak (mitad de tarifa). */}
           <div className="mt-3 flex flex-col gap-2 border-t pt-3" style={{ borderColor: T.grid }}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
@@ -1320,6 +1251,73 @@ function SalaRealRoom() {
               </span>
             )}
           </div>
+        </div>
+
+        {/* ---------- 4d · actividad (histórico de decisiones): justo antes de ajustes —
+            son los dos últimos, uso ocasional. ---------- */}
+        {history.length > 0 && (
+          <div className="mt-4 rounded-lg border text-[11.5px]" style={{ borderColor: T.ring, background: T.panel }}>
+            <button onClick={() => setActividadOpen(!actividadOpen)} aria-expanded={actividadOpen}
+                    className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-white/5">
+              <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+                Actividad · {history.length} decisión(es)
+              </span>
+              <span style={{ color: T.muted }}>{actividadOpen ? "▴" : "▾"}</span>
+            </button>
+            {actividadOpen && (
+              <div className="max-h-[340px] overflow-y-auto border-t px-4 pb-2" style={{ borderColor: T.grid }}>
+                <table className="w-full border-collapse text-[12.5px]">
+                  <tbody>
+                    {history.map((h) => <HistoryRow key={h.id} h={h} />)}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ---------- 5 · pie de ajustes: una línea discreta, sin panel ---------- */}
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border px-4 py-2.5 text-[11.5px]"
+             style={{ borderColor: T.ring, background: T.panel }}>
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+            Ajustes
+          </span>
+          <span style={{ color: T.ink2 }}>
+            alertas push{" "}
+            <b style={{ color: pushOn ? T.good : T.muted }}>
+              {pushOn == null ? "…" : pushOn ? "activas" : "inactivas"}
+            </b>
+          </span>
+          {!pushOn ? (
+            <button onClick={enablePush}
+                    className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90"
+                    style={{ background: T.buy }}
+                    title="Suena cuando el agente propone. En iPhone: instala la app en pantalla de inicio.">
+              Activar alertas
+            </button>
+          ) : (
+            <button onClick={async () => setFlash(`Prueba enviada a ${(await testPush()).sent} dispositivo(s).`)}
+                    className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                    style={{ borderColor: T.ring, color: T.ink2 }}>
+              Enviar prueba
+            </button>
+          )}
+          <button onClick={logout}
+                  className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5"
+                  style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}
+                  title="Borra el token de sesión de este navegador y vuelve al login.">
+            Cerrar sesión
+          </button>
+          <button onClick={() => { setMantOpen(!mantOpen); setResetArmed(false); }}
+                  aria-expanded={mantOpen}
+                  className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                  style={{ borderColor: T.ring, color: mantOpen ? T.ink2 : T.muted }}>
+            mantenimiento {mantOpen ? "▴" : "▾"}
+          </button>
+          <span className="ml-auto text-right" style={{ color: T.muted }} title={summary?.broker.detail}>
+            {dry ? "simulación" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a límite
+            (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado
+          </span>
         </div>
 
         {/* ---------- Mantenimiento: PLEGADO — un botón destructivo que se usa una vez al mes
