@@ -66,10 +66,10 @@ Las que más forma le dan al sistema:
 | Backend   | Python 3.12 · FastAPI · SQLAlchemy 2 · Pydantic v2            |
 | Datos     | yfinance · screener público de NASDAQ                        |
 | LLM       | DeepSeek, API oficial directa (capa de proveedor intercambiable)   |
-| Memoria   | sqlite-vec + fastembed (embeddings locales, sin coste)       |
+| Memoria   | pgvector + fastembed (embeddings locales, sin coste)         |
 | Bróker    | IBKR Web API (OAuth 1.0a headless, `ibind`)                  |
 | Scheduler | APScheduler                                                  |
-| DB        | SQLite sobre volumen persistente (driver Postgres incluido)  |
+| DB        | Postgres (Supabase) en producción; SQLite por defecto en local |
 | Frontend  | Next.js 15 · React 19 · TypeScript · Tailwind v4             |
 | Deploy    | Railway (backend) · Vercel (frontend)                        |
 
