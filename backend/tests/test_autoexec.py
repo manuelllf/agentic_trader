@@ -173,7 +173,7 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
     monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
         ["AAA"], {"fuente": "cierre", "at": "2026-07-27T20:30:00+00:00", "dias": 0, "size": 1}))
-    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None: (NameData(
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None, **kw: (NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
     ), None))
@@ -229,7 +229,7 @@ def test_scan_failure_in_autoexec_never_fails_the_scan(db, monkeypatch) -> None:
     monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
         ["AAA"], {"fuente": "cierre", "at": "2026-07-27T20:30:00+00:00", "dias": 0, "size": 1}))
-    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None: (NameData(
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None, **kw: (NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
     ), None))

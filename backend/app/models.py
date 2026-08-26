@@ -122,6 +122,11 @@ class FundamentalsSnapshot(Base):
     # reimplementa el formateo, así que el prompt reconstruido es idéntico al que se mandó.
     technical_text: Mapped[str | None] = mapped_column(Text)
     earnings_text: Mapped[str | None] = mapped_column(Text)
+    # True = esta captura vino del universo global (HuggingFace, `alcance=global`); False = del
+    # universo de escaneo (NASDAQ). Mismo ticker puede tener filas de los dos orígenes si
+    # coincide en ambos catálogos (ej. AAPL) -- esto no las funde, cada captura es su propia fila
+    # con su propio origen, igual que ya pasa con capturas repetidas del mismo alcance.
+    es_dataset: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class FundamentalsSnapshotNews(Base):

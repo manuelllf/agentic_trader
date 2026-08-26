@@ -77,7 +77,7 @@ def _stub_scan(monkeypatch) -> None:
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
     monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)  # sin la pausa del reintento
     _stub_universo(monkeypatch, ["AAA"])
-    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None: (NameData(
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None, **kw: (NameData(
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
     ), None))
@@ -215,7 +215,7 @@ def test_scan_report_records_issues(db, monkeypatch) -> None:
 
     _stub_scan(monkeypatch)
     _stub_universo(monkeypatch, ["AAA", "BBB"])
-    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None: (None, "sin datos")
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None, **kw: (None, "sin datos")
                         if t == "BBB" else (NameData(
                             ticker=t, sector="Technology", industry="Software", price=100.0,
                             fundamentals_text="- P/E: 20", technical_text="RSI 55",

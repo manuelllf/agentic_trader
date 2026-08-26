@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { searchMemory, type MemoryItem } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
+import { InfoTip } from "./InfoTip";
 import { NUMS, T } from "./tokens";
 
 const TITLES: Record<string, string> = {
@@ -80,9 +81,7 @@ export function MemorySearch() {
         <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
           Memoria
         </span>
-        <span style={{ color: T.ink2 }}>
-          Busca un ticker (su historia) o describe algo con texto libre (tesis parecidas).
-        </span>
+        <InfoTip text="Busca un ticker (su historia) o describe algo con texto libre (tesis parecidas)." />
       </div>
       <div className="mt-2 flex gap-2">
         <input value={q}

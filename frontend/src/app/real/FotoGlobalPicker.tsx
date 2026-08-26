@@ -15,6 +15,7 @@ import {
   subirUniversoGlobalCsv, syncUniversoGlobal, type UniversoGlobalOpciones,
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
+import { InfoTip } from "./InfoTip";
 import { T } from "./tokens";
 
 // Link directo del CSV: para bajarlo a mano, revisarlo y subirlo si la red del propio servidor
@@ -221,11 +222,10 @@ export function FotoGlobalPicker() {
     <div className="flex w-full flex-col gap-2.5">
       {csvUploadInput}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10.5px]" style={{ color: T.muted }}>
+        <span className="flex items-center gap-1 text-[10.5px]" style={{ color: T.muted }}>
           {fmtNum(opciones.total)} tickers sincronizados ({opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString("es-ES") : "—"}).
-          Sin filtro de país/mercado no baja el precio, el cap ni el volumen (el dataset global no
-          los trae) — límite siempre obligatorio.
-        </p>
+          <InfoTip text="Sin filtro de país/mercado no baja el precio, el cap ni el volumen (el dataset global no los trae) — límite siempre obligatorio." />
+        </span>
         {!syncArmed ? (
           <button onClick={() => setSyncArmed(true)} disabled={syncing}
                   className="shrink-0 text-[10.5px] font-semibold transition-colors hover:underline disabled:opacity-50"
@@ -300,8 +300,9 @@ export function FotoGlobalPicker() {
           </button>
         ) : (
           <span className="flex flex-wrap items-center gap-2">
-            <span className="text-[10.5px]" style={{ color: T.warn }}>
-              ~{minutosEstimados} min en segundo plano; no filtra por precio/cap/volumen, solo por país/mercado.
+            <span className="flex items-center gap-1 text-[10.5px]" style={{ color: T.warn }}>
+              ~{minutosEstimados} min en segundo plano
+              <InfoTip text="No filtra por precio/cap/volumen, solo por país/mercado." />
             </span>
             <button onClick={doLaunch} disabled={launching}
                     className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"

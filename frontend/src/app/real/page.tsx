@@ -30,6 +30,7 @@ import type {
 import type { ScanProgress } from "@/lib/api";
 import { CapitalForm } from "./CapitalForm";
 import { FotoGlobalPicker } from "./FotoGlobalPicker";
+import { InfoTip } from "./InfoTip";
 import { MemorySearch } from "./MemorySearch";
 import { ScanConfigModal } from "./ScanConfigModal";
 import { ScanFullButton } from "./ScanFullModal";
@@ -76,6 +77,10 @@ function SalaRealRoom() {
   const [resetting, setResetting] = useState(false);
   const [mantOpen, setMantOpen] = useState(false);        // mantenimiento plegado (destructivo)
   const [scanArmed, setScanArmed] = useState(false);      // armar→confirmar "Analizar mercado" (dinero real)
+  // Checkbox de los dos modales de escaneo: usa la última foto de fundamentales de cada ticker
+  // sin importar su antigüedad, en vez de esperar un gather fresco (~20-40 min) — para pruebas
+  // a mitad de mes donde no hace falta dato del minuto.
+  const [reutilizarFoto, setReutilizarFoto] = useState(false);
   const [snapArmed, setSnapArmed] = useState(false);      // armar→confirmar rehacer foto del universo
   const [fotoArmed, setFotoArmed] = useState(false);      // armar→confirmar capturar fundamentales
   const [snapping, setSnapping] = useState(false);
@@ -371,7 +376,7 @@ function SalaRealRoom() {
     setError("");
     setScanArmed(false);
     try {
-      await runDemo();
+      await runDemo({ reutilizarUltimaFoto: reutilizarFoto });
       setRunning(true);
       setFlash("Análisis en marcha…");
       pollScan();
@@ -382,11 +387,12 @@ function SalaRealRoom() {
 
   // Full monthly circuit (universe + mid-layer) with decide=false: refreshes without touching any portfolio.
   // Opens config modal to set model/reasoning per stage; actual launch happens on confirmation.
-  const handleLaunchSimulation = async (overrides: DemoRunOverrides) => {
+  const handleLaunchSimulation = async (overrides: DemoRunOverrides, reutilizarFotoSim: boolean) => {
     setConfigOpen(false);
     setError("");
     try {
-      await runDemo({ decide: false, forceMidLayer: true, overrides });
+      await runDemo({ decide: false, forceMidLayer: true, overrides,
+                      reutilizarUltimaFoto: reutilizarFotoSim });
       setRunning(true);
       setFlash("Simulación en marcha (no va a tocar ninguna cartera)…");
       pollScan();
@@ -563,9 +569,14 @@ function SalaRealRoom() {
             ) : (
               <span className="inline-flex flex-wrap items-center gap-1.5 rounded-full border px-3 py-1"
                     style={{ borderColor: "rgba(208,59,59,0.5)", background: "rgba(208,59,59,0.08)" }}>
-                <span className="text-[10.5px] font-semibold" style={{ color: T.bad }}>
-                  Lanza el escaneo real completo — dinero real de por medio.
-                </span>
+                <InfoTip text="Lanza el escaneo real completo — dinero real de por medio." />
+                <label className="flex items-center gap-1 text-[10.5px]" style={{ color: T.ink2 }}>
+                  <input type="checkbox" checked={reutilizarFoto}
+                         onChange={(e) => setReutilizarFoto(e.target.checked)}
+                         className="h-3 w-3" />
+                  reutilizar última foto
+                  <InfoTip text="Usa la última foto de fundamentales de cada ticker sin importar su antigüedad, en vez de esperar un gather fresco (~20-40 min). Pensado para pruebas a mitad de mes; sin marcar, se pide dato fresco o de hasta 12h." />
+                </label>
                 <button onClick={handleRunScan}
                         className="rounded-full px-3 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90"
                         style={{ background: T.bad }}>
@@ -1188,7 +1199,7 @@ function SalaRealRoom() {
                   title="Borra el token de sesión de este navegador y vuelve al login.">
             Cerrar sesión
           </button>
-          <button onClick={() => { setMantOpen(!mantOpen); setResetArmed(false); setSnapArmed(false); setFotoArmed(false); }}
+          <button onClick={() => { setMantOpen(!mantOpen); setResetArmed(false); }}
                   aria-expanded={mantOpen}
                   className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
                   style={{ borderColor: T.ring, color: mantOpen ? T.ink2 : T.muted }}>
@@ -1200,53 +1211,15 @@ function SalaRealRoom() {
           </span>
         </div>
 
-        {/* ---------- 6 · mantenimiento: PLEGADO tras Ajustes — un botón destructivo que se usa
-            una vez al mes no merece pantalla permanente. Armar→confirmar intacto. ---------- */}
-        {mantOpen && (
+        {/* ---------- Fotos: SIEMPRE visible, propia — no es "mantenimiento" (se usa a menudo,
+            no una vez al mes), sacada del colapsable para que no quede escondida. ---------- */}
         <div className="mt-4 rounded-lg border px-4 py-3 text-[11.5px]"
              style={{ borderColor: T.ring, background: T.panel }}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-              Mantenimiento
+              Fotos
             </span>
-            <span style={{ color: T.ink2 }}>
-              Reiniciar el libro <b>sombra</b>: borra posiciones, operaciones y curva; <b>conserva tu capital</b>.
-            </span>
-            {!resetArmed ? (
-              <button onClick={() => setResetArmed(true)}
-                      className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5"
-                      style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
-                Reiniciar sombra
-              </button>
-            ) : (
-              <span className="flex items-center gap-2">
-                <button onClick={doResetShadow} disabled={resetting}
-                        className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                        style={{ background: T.bad }}>
-                  {resetting ? "Reiniciando…" : "Confirmar borrado"}
-                </button>
-                <button onClick={() => setResetArmed(false)} disabled={resetting}
-                        className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                        style={{ borderColor: T.ring, color: T.ink2 }}>
-                  Cancelar
-                </button>
-              </span>
-            )}
-          </div>
-          <p className="mt-1.5 text-[10.5px]" style={{ color: T.muted }}>
-            Solo el libro sombra (escaparate). No toca el libro real ni tu cartera personal. El próximo
-            escaneo redespliega la caja en la cartera nueva.
-          </p>
-
-          {/* Foto del universo: la lista NASDAQ que arranca cada escaneo. Rehacerla a mano vale
-              para no esperar al cron del cierre si hace falta un escaneo ya con datos frescos. */}
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t pt-3" style={{ borderColor: T.grid }}>
-            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-              Universo
-            </span>
-            <span style={{ color: T.ink2 }}>
-              Rehacer la foto del universo NASDAQ al cierre (la que arranca el próximo escaneo).
-            </span>
+            <InfoTip text="Rehace la foto del universo NASDAQ al cierre (la que arranca el próximo escaneo)." />
             {!snapArmed ? (
               <button onClick={() => setSnapArmed(true)} disabled={snapping}
                       className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
@@ -1255,9 +1228,7 @@ function SalaRealRoom() {
               </button>
             ) : (
               <span className="flex flex-wrap items-center gap-2">
-                <span className="text-[10.5px]" style={{ color: T.warn }}>
-                  Vuelve a pedir datos a fuentes externas.
-                </span>
+                <InfoTip text="Vuelve a pedir datos a fuentes externas." />
                 <button onClick={doSnapshotUniverse} disabled={snapping}
                         className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                         style={{ background: T.bad }}>
@@ -1299,9 +1270,7 @@ function SalaRealRoom() {
                 ))}
               </div>
               {fotoScope === "nasdaq" && (
-                <span style={{ color: T.ink2 }}>
-                  Capturar ahora los datos de los ~3.000 nombres (~20 min). El escaneo los reutiliza 24h.
-                </span>
+                <InfoTip text="Captura ahora los datos de los ~3.000 nombres (~20 min). El escaneo reutiliza una foto de hasta 12h." />
               )}
             </div>
 
@@ -1316,9 +1285,7 @@ function SalaRealRoom() {
                 </div>
               ) : (
                 <span className="flex flex-wrap items-center gap-2">
-                  <span className="text-[10.5px]" style={{ color: T.warn }}>
-                    Tarda ~12-15 min; repetirlo el mismo día puede volver a bloquear el proveedor de datos.
-                  </span>
+                  <InfoTip text="Tarda ~12-15 min; repetirlo el mismo día puede volver a bloquear el proveedor de datos." />
                   <button onClick={doFoto} disabled={fotoing}
                           className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                           style={{ background: T.bad }}>
@@ -1353,6 +1320,45 @@ function SalaRealRoom() {
               </span>
             )}
           </div>
+        </div>
+
+        {/* ---------- Mantenimiento: PLEGADO — un botón destructivo que se usa una vez al mes
+            no merece pantalla permanente. Armar→confirmar intacto. ---------- */}
+        {mantOpen && (
+        <div className="mt-4 rounded-lg border px-4 py-3 text-[11.5px]"
+             style={{ borderColor: T.ring, background: T.panel }}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+              Mantenimiento
+            </span>
+            <span style={{ color: T.ink2 }}>
+              Reiniciar el libro <b>sombra</b>: borra posiciones, operaciones y curva; <b>conserva tu capital</b>.
+            </span>
+            {!resetArmed ? (
+              <button onClick={() => setResetArmed(true)}
+                      className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5"
+                      style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
+                Reiniciar sombra
+              </button>
+            ) : (
+              <span className="flex items-center gap-2">
+                <button onClick={doResetShadow} disabled={resetting}
+                        className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                        style={{ background: T.bad }}>
+                  {resetting ? "Reiniciando…" : "Confirmar borrado"}
+                </button>
+                <button onClick={() => setResetArmed(false)} disabled={resetting}
+                        className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                        style={{ borderColor: T.ring, color: T.ink2 }}>
+                  Cancelar
+                </button>
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 text-[10.5px]" style={{ color: T.muted }}>
+            Solo el libro sombra (escaparate). No toca el libro real ni tu cartera personal. El próximo
+            escaneo redespliega la caja en la cartera nueva.
+          </p>
         </div>
         )}
       </div>

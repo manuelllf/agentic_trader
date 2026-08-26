@@ -111,7 +111,7 @@ def _gather_stub(monkeypatch, sector: str = "Technology", news: list | None = No
     from app.screener import fundamentals as fund_mod
     from app.screener.fundamentals import NameData
 
-    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None: (NameData(
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None, **kw: (NameData(
         ticker=t, sector=sector, industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9,
         news=news if news is not None else [],

@@ -415,7 +415,8 @@ def _sampling_kwargs(cfg: dict) -> dict:
 
 def run_scan_and_store(db: Session, sample_size: int | None = None,
                        decide: bool = True, force_mid_layer: bool = False,
-                       llm_overrides: dict | None = None) -> dict:
+                       llm_overrides: dict | None = None,
+                       reutilizar_ultima_foto: bool = False) -> dict:
     """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
 
     `decide=False` → escaneo OBSERVATORIO (usado hoy por la "simulación" manual de Sala Real,
@@ -429,6 +430,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     "temperature", "top_p"}} — SOLO para el botón "simulación" de Sala Real (banco de pruebas de
     configuración con coste/modelo reales, sin tocar ninguna cartera). El cron y "Analizar
     mercado" no mandan nada, así que se comportan exactamente como antes (defaults de `settings`).
+
+    `reutilizar_ultima_foto`: checkbox de los dos modales de Sala Real. Por defecto el gather
+    pide dato fresco o de hasta 12h (`fundamentals._FOTO_TTL_H`); con esto a True, usa la última
+    foto de cada ticker sin importar su antigüedad — para no esperar un gather completo en
+    pruebas a mitad de mes. El cron nunca lo manda (siempre False, dato fresco de verdad).
     """
     scan_progress.reset()
     t_scan_inicio = time.monotonic()
@@ -545,9 +551,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # embudo por llamada única).
     # _GATHER_WORKERS/PACE_S: validados en vivo (2 hilos, 0,4s pausa) para yahoo_scraper.
     fund_mod._GATHER_PACE_S = _GATHER_PACE_S
+    ttl_h = float("inf") if reutilizar_ultima_foto else fund_mod._FOTO_TTL_H
 
     def _gather(ticker: str):
-        data, err = fund_mod.gather(ticker, db=db)
+        data, err = fund_mod.gather(ticker, db=db, ttl_h=ttl_h)
         return ticker, data, err
 
     def _run_gather(tickers: list[str]) -> list[tuple[str, object, str | None]]:

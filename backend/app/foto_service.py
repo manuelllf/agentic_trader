@@ -98,7 +98,8 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
                 ticker, yahoo_symbol = cola.get_nowait()
             except queue.Empty:
                 return
-            data, err = fund_mod.gather(ticker, db=db, yahoo_symbol=yahoo_symbol)
+            data, err = fund_mod.gather(ticker, db=db, yahoo_symbol=yahoo_symbol,
+                                        es_dataset=(alcance == "global"))
             with stats_lock:
                 if data is not None:
                     stats["ok"] += 1

@@ -28,7 +28,10 @@ logger = logging.getLogger(__name__)
 
 # Ventana de reutilización de la foto: dentro de ella el escaneo NO vuelve a pedirle nada a
 # Yahoo (protección contra el 401 masivo que motivó el cache; ver `FundamentalsSnapshot`).
-_FOTO_TTL_H = 24.0
+# 24h -> 12h: para una decisión real queremos dato fresco o casi (medio día, no un día entero);
+# quien quiera evitar la espera de un gather completo (pruebas a mitad de mes) pide
+# explícitamente `ttl_h=inf` vía `reutilizar_ultima_foto`, no un default silenciosamente largo.
+_FOTO_TTL_H = 12.0
 
 # Pausa tras cada petición Yahoo (módulo, no parámetro gather): scan_service fija antes gather.
 # 0.0 defecto (sin pausa) para tests; no es kwarg para mantener firma estable ante stubs.
@@ -109,11 +112,14 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
     )
 
 
-def foto_guardar(db, ticker: str, data: NameData) -> None:  # noqa: ANN001
+def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False) -> None:  # noqa: ANN001
     """Añade una foto NUEVA (nunca pisa la anterior): es el histórico, no un cache. Columnas
     propias, nunca un blob — ver `app.models.FundamentalsSnapshot`. Los ~85 campos de
     `fundamentals_text` se guardan en crudo (`FundamentalsSnapshotMetric`), NUNCA el texto ya
-    formateado: es lo que se le mandó al LLM, no un dato — se reconstruye al leer."""
+    formateado: es lo que se le mandó al LLM, no un dato — se reconstruye al leer.
+
+    `es_dataset`: de qué universo vino ESTA captura (global/HuggingFace o NASDAQ/escaneo)
+    — no cambia la identidad (`ticker`), solo la etiqueta de origen de la fila."""
     from app.models import (
         FundamentalsSnapshot,
         FundamentalsSnapshotMetric,
@@ -128,6 +134,7 @@ def foto_guardar(db, ticker: str, data: NameData) -> None:  # noqa: ANN001
             pe_trailing=data.pe_trailing, pe_forward=data.pe_forward,
             high_52w=data.high_52w, low_52w=data.low_52w,
             technical_text=data.technical_text, earnings_text=data.earnings_text,
+            es_dataset=es_dataset,
         )
         db.add(fila)
         db.flush()   # asigna fila.id sin comprometer la transacción, para las hermanas
@@ -508,16 +515,20 @@ def _gather_scraper_con_backoff(s, crumb: str, ticker: str,  # noqa: ANN001
     return yahoo_scraper.gather_scraper(s, crumb, ticker, query_symbol=query_symbol)
 
 
-def gather(ticker: str, db=None, yahoo_symbol: str | None = None) -> tuple[NameData | None, str | None]:  # noqa: ANN001
+def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN001
+          es_dataset: bool = False, ttl_h: float = _FOTO_TTL_H) -> tuple[NameData | None, str | None]:
     """Baja .info + histórico + noticias: devuelve (datos, motivo_si_None) o (data, None).
-    Motor: yahoo_scraper primario; fallback yfinance. Reutiliza la foto de las ultimas 24h.
-    PACE_S fijado por scan_service.
+    Motor: yahoo_scraper primario; fallback yfinance. Reutiliza la foto reciente si cae dentro
+    de `ttl_h`. PACE_S fijado por scan_service.
 
     `yahoo_symbol`: símbolo con sufijo de mercado (`000001.SZ`) para tickers del universo global
     que lo necesitan (ver `universe_global.py`) — se usa SOLO para preguntarle a Yahoo; `ticker`
-    (el del dataset) sigue siendo la identidad bajo la que se guarda/lee la foto."""
+    (el del dataset) sigue siendo la identidad bajo la que se guarda/lee la foto.
+    `es_dataset`: solo etiqueta de qué universo vino esta captura (ver `foto_guardar`).
+    `ttl_h`: ventana de reutilización — `float("inf")` = usa la última foto que haya, sin
+    importar su antigüedad (botón "reutilizar última foto" de Sala Real)."""
     if db is not None:
-        cached = foto_reciente(db, ticker)
+        cached = foto_reciente(db, ticker, ttl_h=ttl_h)
         if cached is not None:
             return cached, None
 
@@ -538,7 +549,7 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None) -> tuple[NameD
                 time.sleep(_GATHER_PACE_S)
             if data is not None:
                 if db is not None:
-                    foto_guardar(db, ticker, data)
+                    foto_guardar(db, ticker, data, es_dataset=es_dataset)
                 return data, None
             # "sin_datos" genuino (200 OK, ticker vacío/deslistado): NO se reintenta por
             # yfinance — medido que los mismos tickers fallan igual en los dos sitios.
@@ -580,7 +591,7 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None) -> tuple[NameD
             **metricas(info),
         )
         if db is not None:
-            foto_guardar(db, ticker, data)
+            foto_guardar(db, ticker, data, es_dataset=es_dataset)
         return data, None
     except Exception as exc:
         # Entero, sin cortar a 300: acaba en `ScanRun.failures` y un 401 de Yahoo trae el cuerpo

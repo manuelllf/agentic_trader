@@ -273,7 +273,7 @@ class DemoRunOverrides(BaseModel):
 
 @router.post("/demo/run")
 def demo_run(sample_size: int | None = None, decide: bool = True,
-            force_mid_layer: bool = False,
+            force_mid_layer: bool = False, reutilizar_ultima_foto: bool = False,
             overrides: DemoRunOverrides | None = Body(None)) -> dict:
     # decide=False: escaneo de universo completo en producción real, con el modelo/coste
     # de verdad, que NO propone ni toca ninguna cartera — solo refresca ranking, watchlist,
@@ -281,12 +281,14 @@ def demo_run(sample_size: int | None = None, decide: bool = True,
     # media incluida) sin tocar el cron semanal. Es el botón "simulación" de Sala Real.
     # `overrides`: config por etapa del modal de la simulación — cuerpo JSON opcional, nunca lo
     # manda "Analizar mercado" ni el cron, así que ambos siguen usando los defaults de siempre.
+    # `reutilizar_ultima_foto`: checkbox de los dos modales — ver `scan_service.run_scan_and_store`.
     if not settings.enable_llm or not settings.llm_api_key_present:
         raise HTTPException(503, "Configura ENABLE_LLM=true y la key del proveedor "
                                  f"({settings.llm_provider.upper()}_API_KEY).")
     llm_overrides = (overrides.model_dump(exclude_none=True) if overrides else None) or None
     started = pipeline.start(sample_size=sample_size, decide=decide,
-                             force_mid_layer=force_mid_layer, llm_overrides=llm_overrides)
+                             force_mid_layer=force_mid_layer, llm_overrides=llm_overrides,
+                             reutilizar_ultima_foto=reutilizar_ultima_foto)
     return {"started": started, **pipeline.get_status()}
 
 
@@ -488,7 +490,7 @@ _ANALYTICS_QUERIES: dict[str, str] = {
         order by mediana_pe desc
     """,
     "pe-sector-fechas": """
-        select distinct captured_at::date as fecha
+        select distinct strftime(captured_at::date, '%Y-%m-%d') as fecha
         from fundamentals_snapshot
         where pe_trailing is not null and pe_trailing > 0
         order by fecha desc

@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getConfig } from "@/lib/api";
 import type { DemoRunOverrides, ReasoningEffort, StageLLMOverride } from "@/lib/types";
+import { InfoTip } from "./InfoTip";
 import { T } from "./tokens";
 
 const MODELS = ["deepseek-v4-pro", "deepseek-v4-flash"] as const;
@@ -36,11 +37,12 @@ const STAGES: Stage[] = ["macro", "prescore", "mid", "deep", "constructor"];
 
 export function ScanConfigModal({ onClose, onLaunch }: {
   onClose: () => void;
-  onLaunch: (overrides: DemoRunOverrides) => void;
+  onLaunch: (overrides: DemoRunOverrides, reutilizarUltimaFoto: boolean) => void;
 }) {
   const [cfg, setCfg] = useState<Record<Stage, Required<StageLLMOverride>>>(FALLBACK);
   // Until /config resolves, controls are disabled to prevent race: user changes get overwritten by defaults.
   const [loaded, setLoaded] = useState(false);
+  const [reutilizarFoto, setReutilizarFoto] = useState(false);
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -77,7 +79,7 @@ export function ScanConfigModal({ onClose, onLaunch }: {
   const launch = () => onLaunch({
     macro: cfg.macro, prescore: cfg.prescore, mid: cfg.mid, deep: cfg.deep,
     constructor: cfg.constructor,
-  });
+  }, reutilizarFoto);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
@@ -107,7 +109,7 @@ export function ScanConfigModal({ onClose, onLaunch }: {
           <button ref={closeRef} onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto px-4 py-3 text-[12px]" aria-busy={!loaded}>
+        <div className="px-4 py-3 text-[12px]" aria-busy={!loaded}>
           {!loaded && (
             <p className="mb-2 text-[11px]" style={{ color: T.muted }}>Cargando configuración real…</p>
           )}
@@ -116,7 +118,14 @@ export function ScanConfigModal({ onClose, onLaunch }: {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t px-4 py-2.5" style={{ borderColor: T.grid }}>
+        <div className="flex items-center justify-end gap-3 border-t px-4 py-2.5" style={{ borderColor: T.grid }}>
+          <label className="flex items-center gap-1 text-[10.5px]" style={{ color: T.ink2 }}>
+            <input type="checkbox" checked={reutilizarFoto}
+                   onChange={(e) => setReutilizarFoto(e.target.checked)}
+                   className="h-3 w-3" />
+            reutilizar última foto
+            <InfoTip text="Usa la última foto de fundamentales de cada ticker sin importar su antigüedad, en vez de esperar un gather fresco (~20-40 min). Sin marcar, se pide dato fresco o de hasta 12h." />
+          </label>
           <button onClick={onClose}
                   className="rounded px-3 py-1.5 text-[11.5px] font-semibold hover:opacity-80"
                   style={{ color: T.muted }}>
