@@ -44,21 +44,25 @@ def get_status() -> dict:
 
 
 def _tickers(db, alcance: str, limite: int | None,  # noqa: ANN001
-            countries: list[str] | None = None, exchanges: list[str] | None = None) -> list[str]:
+            countries: list[str] | None = None,
+            exchanges: list[str] | None = None) -> list[tuple[str, str | None]]:
+    """(ticker, yahoo_symbol) -- `yahoo_symbol` solo viene relleno para `alcance=global` en
+    mercados no-US (ver `universe_global._resolver_simbolos`); NASDAQ ya cotiza bare en Yahoo."""
     from app.screener import universe as universe_mod
     from app.screener import universe_global
 
     if alcance == "global":
-        nombres = universe_global.tickers(db, asset_type="Stock",
-                                          countries=countries, exchanges=exchanges)
+        nombres = universe_global.simbolos(db, asset_type="Stock",
+                                           countries=countries, exchanges=exchanges)
         if not nombres:
             raise RuntimeError("No hay universo global sincronizado todavía "
                                "(POST /admin/universo-global), o el filtro país/mercado no "
                                "encuentra ningún ticker.")
     else:
-        nombres, info = universe_mod.universe_for_scan(db)
+        tickers, info = universe_mod.universe_for_scan(db)
         if info["fuente"] == "seed":
             raise RuntimeError("Sin universo: NASDAQ no responde y no hay foto del cierre.")
+        nombres = [(t, None) for t in tickers]
     return nombres[:limite] if limite else nombres
 
 
@@ -79,7 +83,7 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
     scan_progress.set_stage("foto", total=len(nombres), unit="tickers")
     inicio = datetime.now(UTC)
 
-    cola: queue.Queue[str] = queue.Queue()
+    cola: queue.Queue[tuple[str, str | None]] = queue.Queue()
     for t in nombres:
         cola.put(t)
 
@@ -91,10 +95,10 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
     def _worker() -> None:
         while not corte.is_set():
             try:
-                ticker = cola.get_nowait()
+                ticker, yahoo_symbol = cola.get_nowait()
             except queue.Empty:
                 return
-            data, err = fund_mod.gather(ticker, db=db)
+            data, err = fund_mod.gather(ticker, db=db, yahoo_symbol=yahoo_symbol)
             with stats_lock:
                 if data is not None:
                     stats["ok"] += 1

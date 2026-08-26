@@ -496,21 +496,26 @@ def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
 _429_BACKOFF_S = (3.0, 8.0)
 
 
-def _gather_scraper_con_backoff(s, crumb: str, ticker: str):  # noqa: ANN001
+def _gather_scraper_con_backoff(s, crumb: str, ticker: str,  # noqa: ANN001
+                                query_symbol: str | None = None):
     for espera in _429_BACKOFF_S:
         try:
-            return yahoo_scraper.gather_scraper(s, crumb, ticker)
+            return yahoo_scraper.gather_scraper(s, crumb, ticker, query_symbol=query_symbol)
         except yahoo_scraper.TransportError as exc:
             if "HTTP 429" not in str(exc):
                 raise
             time.sleep(espera)
-    return yahoo_scraper.gather_scraper(s, crumb, ticker)
+    return yahoo_scraper.gather_scraper(s, crumb, ticker, query_symbol=query_symbol)
 
 
-def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa: ANN001
+def gather(ticker: str, db=None, yahoo_symbol: str | None = None) -> tuple[NameData | None, str | None]:  # noqa: ANN001
     """Baja .info + histórico + noticias: devuelve (datos, motivo_si_None) o (data, None).
     Motor: yahoo_scraper primario; fallback yfinance. Reutiliza la foto de las ultimas 24h.
-    PACE_S fijado por scan_service."""
+    PACE_S fijado por scan_service.
+
+    `yahoo_symbol`: símbolo con sufijo de mercado (`000001.SZ`) para tickers del universo global
+    que lo necesitan (ver `universe_global.py`) — se usa SOLO para preguntarle a Yahoo; `ticker`
+    (el del dataset) sigue siendo la identidad bajo la que se guarda/lee la foto."""
     if db is not None:
         cached = foto_reciente(db, ticker)
         if cached is not None:
@@ -520,7 +525,7 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
     if scraper is not None:
         s, crumb = scraper
         try:
-            data, motivo = _gather_scraper_con_backoff(s, crumb, ticker)
+            data, motivo = _gather_scraper_con_backoff(s, crumb, ticker, query_symbol=yahoo_symbol)
         except yahoo_scraper.TransportError as exc:
             if _GATHER_PACE_S:
                 time.sleep(_GATHER_PACE_S)
@@ -541,7 +546,7 @@ def gather(ticker: str, db=None) -> tuple[NameData | None, str | None]:  # noqa:
                 logger.warning("Gather sin datos para %s: %s", ticker, motivo)
             return None, motivo
     try:
-        yt = yf.Ticker(ticker)
+        yt = yf.Ticker(yahoo_symbol or ticker)
         info = yt.info or {}
         if not (info.get("sector") or info.get("marketCap") or info.get("shortName")):
             motivo = "sin sector/marketCap/shortName en .info (vacío o deslistado)"

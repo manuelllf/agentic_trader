@@ -224,7 +224,7 @@ def test_gather_con_transporterror_del_scraper_cae_a_yfinance(monkeypatch) -> No
     el MISMO ticker por yfinance puro (mockeado aquí) y aun así devuelve un resultado usable."""
     monkeypatch.setattr(fund_mod, "_scraper_session", lambda: (object(), "crumb"))
 
-    def _falla(s, crumb, ticker):
+    def _falla(s, crumb, ticker, query_symbol=None):
         raise yahoo_scraper.TransportError("crumb caducado a mitad de escaneo")
 
     monkeypatch.setattr(yahoo_scraper, "gather_scraper", _falla)

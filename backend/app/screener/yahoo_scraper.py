@@ -157,9 +157,15 @@ def _noticias(s: creq.Session, ticker: str, max_items: int = 8) -> list[str]:
         return []
 
 
-def gather_scraper(s: creq.Session, crumb: str, ticker: str) -> tuple[NameData | None, str | None]:
+def gather_scraper(s: creq.Session, crumb: str, ticker: str,
+                   query_symbol: str | None = None) -> tuple[NameData | None, str | None]:
     """Equivalente de `fundamentals.gather()` por HTTP directo (motor primario). Mismo contrato
     EXACTO: `(datos, motivo)`, `motivo` solo puesto cuando `datos` es None.
+
+    `query_symbol`: para el universo global, Yahoo exige el símbolo CON el sufijo de mercado
+    (`000001.SZ`, no `000001`) — ver `universe_global._resolver_simbolo_por_isin`. Si se pasa,
+    es lo que se manda a Yahoo; `ticker` (el del dataset, sin sufijo) sigue siendo la identidad
+    bajo la que se guarda/lee la foto en todo el resto de la app.
 
     Distingue dos fallos (ver docstring de `TransportError`):
       - "sin_datos": 200 OK pero sin `sector`/`marketCap`/`shortName` — el ticker no tiene datos
@@ -171,26 +177,27 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str) -> tuple[NameData |
     """
     from app.screener import fundamentals as fund_mod  # perezoso: evita el ciclo de imports
 
+    q = query_symbol or ticker
     # query2 (no query1): mismo motivo que en `_historico` — es lo medido en vivo a 3.000/3.000.
-    url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}"
+    url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{q}"
     params = {"modules": MODULES, "corsDomain": "finance.yahoo.com", "crumb": crumb,
              "formatted": "false"}
     try:
         r = s.get(url, params=params, timeout=15)
     except Exception as exc:
-        raise TransportError(f"quoteSummary {ticker}: {exc}") from exc
+        raise TransportError(f"quoteSummary {q}: {exc}") from exc
     if r.status_code != 200:
-        raise TransportError(f"quoteSummary {ticker}: HTTP {r.status_code}")
+        raise TransportError(f"quoteSummary {q}: HTTP {r.status_code}")
     try:
         payload = r.json()
     except Exception as exc:
-        raise TransportError(f"quoteSummary {ticker}: JSON inválido ({exc})") from exc
+        raise TransportError(f"quoteSummary {q}: JSON inválido ({exc})") from exc
 
     qs = payload.get("quoteSummary") or {}
     if qs.get("error"):
         # Típicamente un crumb inválido/caducado a mitad de escaneo — es transporte, no "sin
         # datos": el ticker puede tener datos perfectamente, es la petición la que falló.
-        raise TransportError(f"quoteSummary {ticker}: {qs['error']}")
+        raise TransportError(f"quoteSummary {q}: {qs['error']}")
     resultados = qs.get("result") or []
     if not resultados:
         return None, "sin resultado en quoteSummary (vacío o deslistado)"
@@ -219,8 +226,8 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str) -> tuple[NameData |
     if not (info.get("sector") or info.get("marketCap") or info.get("shortName")):
         return None, "sin sector/marketCap/shortName en quoteSummary (vacío o deslistado)"
 
-    hist = _historico(s, ticker)
-    news = _noticias(s, ticker)
+    hist = _historico(s, q)
+    news = _noticias(s, q)
 
     price = info.get("currentPrice") or info.get("regularMarketPrice")
     mcap = info.get("marketCap")

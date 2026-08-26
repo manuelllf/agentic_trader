@@ -4,7 +4,6 @@ Filtra por precio y liquidez en DÓLARES con tope duro; foto con bolsa CERRADA (
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import time
@@ -19,9 +18,12 @@ logger = logging.getLogger(__name__)
 
 # In-memory cache; daily refresh (composition changes slowly).
 _cache: tuple[date, list[str]] | None = None
-_SNAPSHOT_KEY = "universe_snapshot"
 _NASDAQ_RETRIES = 4
 _NASDAQ_BACKOFF = 20.0
+# Tandas de snapshot a conservar -- mismo criterio y mismo número que `universe_global.py`
+# (`_SYNCS_A_CONSERVAR`): el mínimo que permite diffear qué entró y qué salió sin acumular
+# 3.000 filas por día para siempre sin que nadie las lea.
+_SNAPSHOTS_A_CONSERVAR = 2
 
 NASDAQ_SCREENER_URL = "https://api.nasdaq.com/api/screener/stocks"
 _NASDAQ_HEADERS = {
@@ -165,35 +167,70 @@ def build_universe(force_refresh: bool = False) -> list[str]:
     return list(_SEED_FALLBACK)
 
 
+def _ultimo_snapshot_at(db) -> datetime | None:  # noqa: ANN001
+    from sqlalchemy import func
+
+    from app.models import NasdaqSnapshotTicker
+
+    at = db.query(func.max(NasdaqSnapshotTicker.snapshot_at)).scalar()
+    if at is None:
+        return None
+    # SQLite devuelve el datetime naive pese a DateTime(timezone=True) -- mismo patrón que
+    # `fundamentals.foto_reciente`. En Postgres ya viene aware, esto no cambia nada ahí.
+    return at if at.tzinfo is not None else at.replace(tzinfo=UTC)
+
+
+def _filas_de(db, at: datetime) -> list[tuple[str, float, float]]:  # noqa: ANN001
+    """Filas `(ticker, price, volume)` de una tanda concreta -- común a
+    `refresh_snapshot_and_report`/`universe_for_scan`, que leen la misma tanda por motivos
+    distintos (informar vs decidir el universo de escaneo)."""
+    from app.models import NasdaqSnapshotTicker
+
+    return [(t, float(px), float(vol)) for t, px, vol in
+            db.query(NasdaqSnapshotTicker.ticker, NasdaqSnapshotTicker.price,
+                     NasdaqSnapshotTicker.volume)
+            .filter(NasdaqSnapshotTicker.snapshot_at == at).all()]
+
+
+def _podar_snapshots(db) -> int:  # noqa: ANN001
+    """Deja solo las `_SNAPSHOTS_A_CONSERVAR` tandas más recientes -- mismo patrón que
+    `universe_global._podar`."""
+    from app.models import NasdaqSnapshotTicker
+
+    fechas = [f for (f,) in db.query(NasdaqSnapshotTicker.snapshot_at)
+              .distinct().order_by(NasdaqSnapshotTicker.snapshot_at.desc()).all()]
+    viejas = fechas[_SNAPSHOTS_A_CONSERVAR:]
+    if not viejas:
+        return 0
+    n = (db.query(NasdaqSnapshotTicker)
+         .filter(NasdaqSnapshotTicker.snapshot_at.in_(viejas))
+         .delete(synchronize_session=False))
+    db.commit()
+    return n
+
+
 def snapshot_date(db) -> date | None:  # noqa: ANN001
     """Fecha (ET) de la foto guardada, o None si no hay. Lectura barata, sin red."""
-    from app.models import Meta
-
-    row = db.get(Meta, _SNAPSHOT_KEY)
-    if not row:
-        return None
-    try:
-        at = datetime.fromisoformat(json.loads(row.value)["at"])
-    except (ValueError, KeyError, TypeError):
+    at = _ultimo_snapshot_at(db)
+    if at is None:
         return None
     return at.astimezone(ZoneInfo(settings.scan_timezone)).date()
 
 
 def refresh_snapshot(db) -> int:  # noqa: ANN001
-    """Snapshot universe and persist. Called with market closed (daily volume complete).
-
-    Returns row count."""
-    from app.models import Meta
+    """Snapshot universe and persist como tanda NUEVA (append-only, igual que `UniverseTicker` —
+    no pisa la anterior, así se ve qué entra y qué sale día a día). Called with market closed
+    (daily volume complete). Returns row count."""
+    from app.models import NasdaqSnapshotTicker
 
     filas = _from_nasdaq()
-    payload = json.dumps({"at": datetime.now(UTC).isoformat(),
-                          "rows": [[s, px, vol] for s, px, vol in filas]})
-    row = db.get(Meta, _SNAPSHOT_KEY)
-    if row:
-        row.value = payload
-    else:
-        db.add(Meta(key=_SNAPSHOT_KEY, value=payload))
+    snapshot_at = datetime.now(UTC)
+    db.bulk_insert_mappings(NasdaqSnapshotTicker, [
+        {"snapshot_at": snapshot_at, "ticker": s, "price": px, "volume": vol}
+        for s, px, vol in filas
+    ])
     db.commit()
+    _podar_snapshots(db)
     logger.info("Foto del universo: %d filas elegibles, %d sobre el suelo de liquidez, "
                 "%d tras el tope.", len(filas), len(_sobre_suelo(filas)), len(_liquidos(filas)))
     return len(filas)
@@ -203,38 +240,24 @@ def refresh_snapshot_and_report(db) -> dict:  # noqa: ANN001
     """Manual snapshot refresh; returns {"at": iso, "size": n} for API.
 
     Always forces download (unlike scheduled job); no today-check."""
-    from app.models import Meta
-
     refresh_snapshot(db)                     # descarga y persiste; si falla, la excepción sube
-    row = db.get(Meta, _SNAPSHOT_KEY)
-    data = json.loads(row.value)
-    filas = [(s, float(px), float(vol)) for s, px, vol in data.get("rows", [])]
-    return {"at": data.get("at"), "size": len(_liquidos(filas))}
+    at = _ultimo_snapshot_at(db)
+    filas = _filas_de(db, at) if at else []
+    return {"at": at.isoformat() if at else None, "size": len(_liquidos(filas))}
 
 
 def universe_for_scan(db) -> tuple[list[str], dict]:  # noqa: ANN001
     """(symbols, provenance) for scan; prefers last-close snapshot.
 
     Provenance travels to report; sobre_suelo > size = cap bite."""
-    from app.models import Meta
-
-    row = db.get(Meta, _SNAPSHOT_KEY)
-    if row:
-        try:
-            data = json.loads(row.value)
-            filas = [(s, float(px), float(vol)) for s, px, vol in data.get("rows", [])]
-        except Exception:
-            logger.exception("Foto del universo ilegible → se reconstruye en vivo.")
-            filas = []
+    at = _ultimo_snapshot_at(db)
+    if at is not None:
+        filas = _filas_de(db, at)
         if filas:
             symbols = _liquidos(filas)
-            at = data.get("at", "")
-            try:
-                dias = (datetime.now(UTC) - datetime.fromisoformat(at)).days
-            except ValueError:
-                dias = None
-            return symbols, {"fuente": "cierre", "at": at, "dias": dias, "size": len(symbols),
-                             "sobre_suelo": len(_sobre_suelo(filas))}
+            dias = (datetime.now(UTC) - at).days
+            return symbols, {"fuente": "cierre", "at": at.isoformat(), "dias": dias,
+                             "size": len(symbols), "sobre_suelo": len(_sobre_suelo(filas))}
 
     try:
         filas = _from_nasdaq()

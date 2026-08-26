@@ -9,13 +9,18 @@
  *  reales a Yahoo — nunca "elige a ciegas": cada opción muestra su recuento real, y la cuenta
  *  final se recalcula en el backend antes de poder confirmar. */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   contarUniversoGlobal, getUniversoGlobal, getUniversoGlobalSyncEstado, startFoto,
-  syncUniversoGlobal, type UniversoGlobalOpciones,
+  subirUniversoGlobalCsv, syncUniversoGlobal, type UniversoGlobalOpciones,
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
 import { T } from "./tokens";
+
+// Link directo del CSV: para bajarlo a mano, revisarlo y subirlo si la red del propio servidor
+// falla a mitad de descarga (visto en vivo el 25-ago-2026).
+const URL_CSV_HUGGINGFACE =
+  "https://huggingface.co/datasets/adanosorg/free-global-stock-ticker-database/resolve/main/tickers.csv";
 
 // Medido en real (foto_service.py): 2 hilos + 0,4s de pausa → ~3.000 nombres en ~20 min.
 const RITMO_POR_MIN = 150;
@@ -51,6 +56,7 @@ export function FotoGlobalPicker() {
   const [syncArmed, setSyncArmed] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => () => { if (syncPollRef.current) clearInterval(syncPollRef.current); }, []);
 
@@ -86,17 +92,7 @@ export function FotoGlobalPicker() {
     set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   }
 
-  async function doSyncGlobal() {
-    setSyncArmed(false);
-    setSyncing(true);
-    setMsg({ text: "Sincronizando en segundo plano (~63.000 filas, unos minutos)…" });
-    try {
-      await syncUniversoGlobal();
-    } catch (e) {
-      setMsg({ text: e instanceof Error ? e.message : "No se pudo lanzar la sincronización.", bad: true });
-      setSyncing(false);
-      return;
-    }
+  function pollSync() {
     if (syncPollRef.current) clearInterval(syncPollRef.current);
     syncPollRef.current = setInterval(async () => {
       try {
@@ -117,6 +113,41 @@ export function FotoGlobalPicker() {
     }, 3000);
   }
 
+  async function doSyncGlobal() {
+    setSyncArmed(false);
+    setSyncing(true);
+    setMsg({ text: "Sincronizando en segundo plano (~63.000 filas, unos minutos)…" });
+    try {
+      await syncUniversoGlobal();
+    } catch (e) {
+      setMsg({ text: e instanceof Error ? e.message : "No se pudo lanzar la sincronización.", bad: true });
+      setSyncing(false);
+      return;
+    }
+    pollSync();
+  }
+
+  function abrirSelectorArchivo() {
+    fileInputRef.current?.click();
+  }
+
+  async function doSubirCsv(e: ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0];
+    e.target.value = ""; // permite volver a elegir el mismo fichero si hace falta reintentar
+    if (!archivo) return;
+    setSyncArmed(false);
+    setSyncing(true);
+    setMsg({ text: `Subiendo ${archivo.name} y sincronizando en segundo plano…` });
+    try {
+      await subirUniversoGlobalCsv(archivo);
+    } catch (e2) {
+      setMsg({ text: e2 instanceof Error ? e2.message : "No se pudo subir el CSV.", bad: true });
+      setSyncing(false);
+      return;
+    }
+    pollSync();
+  }
+
   async function doLaunch() {
     setArmed(false);
     setLaunching(true);
@@ -134,9 +165,26 @@ export function FotoGlobalPicker() {
     return <p className="text-[11px]" style={{ color: T.muted }}>Cargando universo global…</p>;
   }
 
+  const csvUploadInput = (
+    <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={doSubirCsv} />
+  );
+
+  const csvUploadLink = (
+    <span className="text-[10.5px]" style={{ color: T.muted }}>
+      o{" "}
+      <a href={URL_CSV_HUGGINGFACE} target="_blank" rel="noreferrer" className="underline">descarga el CSV</a>
+      {" "}y{" "}
+      <button type="button" onClick={abrirSelectorArchivo} disabled={syncing} className="underline disabled:opacity-50">
+        súbelo a mano
+      </button>
+      {" "}si la red falla a mitad.
+    </span>
+  );
+
   if (!opciones || opciones.total === 0) {
     return (
       <div className="flex flex-wrap items-center gap-2">
+        {csvUploadInput}
         <span style={{ color: T.warn }}>
           El universo global (HuggingFace) no está sincronizado todavía — sin esto, &quot;global&quot; no tiene de dónde elegir.
         </span>
@@ -161,6 +209,7 @@ export function FotoGlobalPicker() {
             </button>
           </span>
         )}
+        {csvUploadLink}
         {msg && (
           <span className="text-[10.5px]" style={{ color: msg.bad ? T.warn : T.muted }}>{msg.text}</span>
         )}
@@ -170,6 +219,7 @@ export function FotoGlobalPicker() {
 
   return (
     <div className="flex w-full flex-col gap-2.5">
+      {csvUploadInput}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[10.5px]" style={{ color: T.muted }}>
           {fmtNum(opciones.total)} tickers sincronizados ({opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString("es-ES") : "—"}).
@@ -196,6 +246,9 @@ export function FotoGlobalPicker() {
             </button>
           </span>
         )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {csvUploadLink}
       </div>
 
       <div className="flex flex-col gap-1.5">

@@ -11,9 +11,12 @@ FOTOGRAFIAR, que es otra cosa.
 
 from __future__ import annotations
 
+import concurrent.futures
 import csv
+import io
 import logging
 import threading
+import time
 from datetime import UTC, datetime
 
 import httpx
@@ -44,6 +47,11 @@ URL_CSV = f"https://huggingface.co/datasets/{DATASET}/resolve/main/tickers.csv"
 
 _TIMEOUT = 120.0
 _LOTE = 2_000
+# HuggingFace corta la conexión a mitad de la descarga de vez en cuando ("incomplete chunked
+# read", visto en vivo el 25-ago-2026, a la fila 44.000 de 63.000) -- es un corte de red
+# transitorio de su lado, no un timeout nuestro, así que reintentar desde cero basta.
+_REINTENTOS = 3
+_ESPERA_REINTENTO_S = (10.0, 30.0)
 # Cuántas tandas de sync se conservan. Dos es el mínimo que permite diffear qué entró y qué
 # salió; más son 63.000 filas por tanda sin nadie que las lea (revisar junto con la retención).
 _SYNCS_A_CONSERVAR = 2
@@ -55,6 +63,21 @@ _COLUMNAS = [
     ("asset_type", "asset_type"), ("stock_sector", "sector"),
     ("country", "country"), ("country_code", "country_code"), ("isin", "isin"),
 ]
+
+# Venues que ya cotizan con el ticker pelado en Yahoo (sin importar el país de incorporación de
+# la empresa -- hay ADRs/listados directos cayman, australianos, etc. bajo NASDAQ/NYSE). Medido
+# en vivo (26-ago-2026): TODO lo demás (SZSE, TSE, KRX, LSE, ASX... 35.261 de 54.037 tickers)
+# devuelve "sin datos" con el ticker pelado, sin excepciones encontradas -- necesitan el símbolo
+# con sufijo que solo Yahoo mismo sabe dar (`_resolver_simbolo_por_isin`).
+_EXCHANGES_SIN_SUFIJO = {"NASDAQ", "NYSE", "NYSE ARCA", "BATS", "NYSE MKT", "OTC"}
+
+# El ISIN no vale como símbolo de consulta directo (`v8/finance/chart/<ISIN>` da 404) -- SOLO el
+# buscador de Yahoo lo resuelve al símbolo real. 4 hilos: mismo ritmo ya validado para golpear
+# Yahoo en `scan_service._GATHER_WORKERS`/`foto_service`.
+_SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search"
+_SEARCH_HEADERS = {"User-Agent": "Mozilla/5.0"}
+_RESOLVE_WORKERS = 4
+_RESOLVE_429_BACKOFF_S = (3.0, 8.0)
 
 
 # Topes de las columnas VARCHAR (ver `UniverseTicker`): el dataset es ajeno y Postgres sí
@@ -77,19 +100,24 @@ def _recortar(valor: str | None, tope: int) -> str | None:
     return valor[:tope]
 
 
-def sincronizar(db, url: str = URL_CSV) -> dict:  # noqa: ANN001
-    """Descarga el universo y lo añade como tanda nueva. No pisa la anterior (append-only).
+def _insertar_filas(db, filas, sync_at: datetime, ya_insertados: set[str] | None = None) -> int:  # noqa: ANN001
+    """Lógica común de inserción, sea el origen la descarga o un CSV subido a mano.
+
+    `ya_insertados` (tickers ya en BD para este `sync_at`, de un intento anterior que se cortó
+    a mitad) se salta en vez de reinsertar -- retomar es gratis porque el dataset es casi
+    estático, y descargar nada de nuevo lo que ya teníamos sería tirar minutos de descarga real.
 
     Log de progreso cada lote (no solo al final): si el proceso muere a mitad, antes no quedaba
     NINGÚN rastro en logs de por dónde iba -- ahora sí."""
     from app.models import UniverseTicker
 
-    sync_at = datetime.now(UTC)
-    total, lote = 0, []
-    for fila in _filas(url):
+    vistos = ya_insertados or set()
+    total, lote = len(vistos), []
+    for fila in filas:
         ticker = (fila.get("ticker") or "").strip()
-        if not ticker:
+        if not ticker or ticker in vistos:
             continue
+        vistos.add(ticker)
         registro = {"synced_at": sync_at, "source": DATASET}
         for col, campo in _COLUMNAS:
             registro[campo] = _recortar((fila.get(col) or "").strip() or None,
@@ -103,7 +131,38 @@ def sincronizar(db, url: str = URL_CSV) -> dict:  # noqa: ANN001
         db.bulk_insert_mappings(UniverseTicker, lote)
         total += len(lote)
     db.commit()
+    return total
 
+
+def sincronizar(db, url: str = URL_CSV) -> dict:  # noqa: ANN001
+    """Descarga el universo y lo añade como tanda nueva. No pisa la anterior (append-only).
+
+    HuggingFace corta la conexión de vez en cuando a mitad de la descarga. Como el dataset es
+    prácticamente estático, un reintento retoma donde se quedó (salta los tickers que ya están
+    insertados para este `sync_at`) en vez de tirar lo ya descargado y empezar de cero."""
+    from app.models import UniverseTicker
+
+    sync_at = datetime.now(UTC)
+    ultimo_error: Exception | None = None
+    for intento in range(_REINTENTOS):
+        if intento > 0:
+            espera = _ESPERA_REINTENTO_S[min(intento - 1, len(_ESPERA_REINTENTO_S) - 1)]
+            logger.warning("Universo global: reintentando descarga tras fallo (%s), espera %.0fs.",
+                          ultimo_error, espera)
+            time.sleep(espera)
+        ya = {t for (t,) in db.query(UniverseTicker.ticker)
+              .filter(UniverseTicker.synced_at == sync_at).all()}
+        try:
+            total = _insertar_filas(db, _filas(url), sync_at, ya_insertados=ya)
+            break
+        except httpx.HTTPError as exc:
+            ultimo_error = exc
+    else:
+        raise RuntimeError(
+            f"Descarga del universo global falló tras {_REINTENTOS} intentos: {ultimo_error}"
+        ) from ultimo_error
+
+    _resolver_todo(db, sync_at)
     podadas = _podar(db)
     logger.info("Universo global sincronizado: %d tickers (%d filas de syncs viejos podadas).",
                 total, podadas)
@@ -111,12 +170,133 @@ def sincronizar(db, url: str = URL_CSV) -> dict:  # noqa: ANN001
             "source": DATASET}
 
 
-def _run() -> None:
+def sincronizar_desde_archivo(db, contenido: bytes) -> dict:  # noqa: ANN001
+    """Igual que `sincronizar()` pero desde un CSV ya descargado a mano (mismo formato que
+    `URL_CSV`) -- para cuando la red de HuggingFace no coopera y toca revisar el fichero antes
+    de subirlo, o simplemente evitar la descarga en el propio servidor."""
+    sync_at = datetime.now(UTC)
+    filas = csv.DictReader(io.StringIO(contenido.decode("utf-8-sig")))
+    total = _insertar_filas(db, filas, sync_at)
+
+    _resolver_todo(db, sync_at)
+    podadas = _podar(db)
+    logger.info("Universo global sincronizado desde archivo: %d tickers (%d filas viejas podadas).",
+                total, podadas)
+    return {"tickers": total, "synced_at": sync_at.isoformat(), "podadas": podadas,
+            "source": f"{DATASET} (subido a mano)"}
+
+
+def _heredar_simbolos(db, sync_at: datetime) -> int:  # noqa: ANN001
+    """Copia `yahoo_symbol` de la tanda anterior por ISIN antes de resolver nada -- el ISIN no
+    cambia entre sincronizaciones, así que volver a resolver el mismo ticker cada vez sería
+    tirar minutos de peticiones reales a la basura (el dataset es prácticamente estático)."""
+    from app.models import UniverseTicker
+
+    anterior = (db.query(UniverseTicker.synced_at)
+               .filter(UniverseTicker.synced_at < sync_at, UniverseTicker.ticker.isnot(None))
+               .distinct().order_by(UniverseTicker.synced_at.desc()).first())
+    if not anterior:
+        return 0
+    previos = dict(
+        db.query(UniverseTicker.isin, UniverseTicker.yahoo_symbol)
+        .filter(UniverseTicker.synced_at == anterior[0], UniverseTicker.yahoo_symbol.isnot(None))
+        .all()
+    )
+    if not previos:
+        return 0
+    nuevos = (db.query(UniverseTicker.id, UniverseTicker.isin)
+             .filter(UniverseTicker.synced_at == sync_at, UniverseTicker.isin.in_(previos.keys()))
+             .all())
+    actualizaciones = [{"id": id_, "yahoo_symbol": previos[isin]} for id_, isin in nuevos]
+    if actualizaciones:
+        db.bulk_update_mappings(UniverseTicker, actualizaciones)
+        db.commit()
+    return len(actualizaciones)
+
+
+def _resolver_simbolo_por_isin(isin: str) -> str | None:
+    """Yahoo no acepta el ISIN como símbolo de consulta directo (`v8/finance/chart/<ISIN>` da
+    404) -- solo su buscador lo resuelve al símbolo real con sufijo (comprobado en vivo: China,
+    Corea, Japón, UK). Devuelve None si Yahoo no tiene ese ISIN (algunos mercados del dataset,
+    ej. Nigeria, no están cubiertos -- no es un fallo, es que no hay nada que resolver)."""
+    for espera in (*_RESOLVE_429_BACKOFF_S, None):
+        try:
+            r = httpx.get(_SEARCH_URL, params={"q": isin, "quotesCount": 1, "newsCount": 0},
+                         headers=_SEARCH_HEADERS, timeout=15)
+        except httpx.HTTPError:
+            return None
+        if r.status_code == 429 and espera is not None:
+            time.sleep(espera)
+            continue
+        if r.status_code != 200:
+            return None
+        quotes = (r.json() or {}).get("quotes") or []
+        return quotes[0].get("symbol") if quotes else None
+    return None
+
+
+def _resolver_simbolos(db, sync_at: datetime) -> None:  # noqa: ANN001
+    """Resuelve `yahoo_symbol` para los tickers de mercados no-US de esta tanda que no vinieron
+    ya heredados de `_heredar_simbolos`. 4 hilos (mismo ritmo ya validado contra Yahoo que
+    `scan_service`/`foto_service`) -- esto es aparte del scraper de fundamentales, así que no
+    comparte su circuit breaker ni su caché de sesión."""
+    from app.models import UniverseTicker
+
+    candidatos = (
+        db.query(UniverseTicker.id, UniverseTicker.isin)
+        .filter(UniverseTicker.synced_at == sync_at,
+               UniverseTicker.yahoo_symbol.is_(None),
+               UniverseTicker.isin.isnot(None),
+               UniverseTicker.exchange.isnot(None),
+               ~UniverseTicker.exchange.in_(_EXCHANGES_SIN_SUFIJO))
+        .all()
+    )
+    if not candidatos:
+        return
+    logger.info("Universo global: resolviendo símbolo de Yahoo para %d tickers no-US.",
+               len(candidatos))
+
+    resueltos, sin_cobertura, actualizaciones = 0, 0, []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_RESOLVE_WORKERS) as pool:
+        futuros = {pool.submit(_resolver_simbolo_por_isin, isin): id_ for id_, isin in candidatos}
+        for i, fut in enumerate(concurrent.futures.as_completed(futuros), start=1):
+            simbolo = fut.result()
+            if simbolo:
+                actualizaciones.append({"id": futuros[fut], "yahoo_symbol": simbolo})
+                resueltos += 1
+            else:
+                sin_cobertura += 1
+            if len(actualizaciones) >= _LOTE:
+                db.bulk_update_mappings(UniverseTicker, actualizaciones)
+                db.commit()
+                actualizaciones = []
+            if i % _LOTE == 0:
+                logger.info("Universo global: %d/%d símbolos resueltos hasta ahora.",
+                           i, len(candidatos))
+    if actualizaciones:
+        db.bulk_update_mappings(UniverseTicker, actualizaciones)
+        db.commit()
+    logger.info("Universo global: símbolos resueltos %d, sin cobertura en Yahoo %d (de %d).",
+               resueltos, sin_cobertura, len(candidatos))
+
+
+def _resolver_todo(db, sync_at: datetime) -> None:  # noqa: ANN001
+    """Heredar + resolver, en ese orden -- llamado tras insertar cualquier tanda nueva (por red
+    o por archivo), antes de podar la anterior (`_heredar_simbolos` todavía la necesita)."""
+    heredados = _heredar_simbolos(db, sync_at)
+    if heredados:
+        logger.info("Universo global: %d símbolos heredados de la sincronización anterior.",
+                   heredados)
+    _resolver_simbolos(db, sync_at)
+
+
+def _run(contenido: bytes | None = None) -> None:
     from app.db import SessionLocal
 
     db = SessionLocal()
     try:
-        result = sincronizar(db)
+        result = (sincronizar_desde_archivo(db, contenido) if contenido is not None
+                 else sincronizar(db))
         with _lock:
             _state.update(status="done", result=result, error=None,
                           finished_at=datetime.now(UTC).isoformat())
@@ -129,14 +309,15 @@ def _run() -> None:
         db.close()
 
 
-def start() -> bool:
-    """Lanza la sincronización en segundo plano. False si ya hay una en marcha."""
+def start(contenido: bytes | None = None) -> bool:
+    """Lanza la sincronización en segundo plano (por red, o desde un CSV subido a mano si se
+    pasa `contenido`). False si ya hay una en marcha."""
     with _lock:
         if _state["status"] == "running":
             return False
         _state.update(status="running", started_at=datetime.now(UTC).isoformat(),
                       finished_at=None, result=None, error=None)
-    threading.Thread(target=_run, daemon=True).start()
+    threading.Thread(target=_run, args=(contenido,), daemon=True).start()
     return True
 
 
@@ -192,6 +373,27 @@ def tickers(db, exchange: str | None = None, asset_type: str | None = None,  # n
         q = q.filter(UniverseTicker.asset_type == asset_type)
     q = _filtrar(q, countries, exchanges)
     return [t for (t,) in q.all()]
+
+
+def simbolos(db, exchange: str | None = None, asset_type: str | None = None,  # noqa: ANN001
+            countries: list[str] | None = None,
+            exchanges: list[str] | None = None) -> list[tuple[str, str | None]]:
+    """Como `tickers()` pero devuelve (ticker, yahoo_symbol) -- para que la foto le pregunte a
+    Yahoo por el símbolo con sufijo correcto cuando exista, sin perder el ticker del dataset
+    como identidad de guardado (`foto_service.py`)."""
+    from app.models import UniverseTicker
+
+    ultimo = ultimo_sync(db)
+    if ultimo is None:
+        return []
+    q = (db.query(UniverseTicker.ticker, UniverseTicker.yahoo_symbol)
+         .filter(UniverseTicker.synced_at == ultimo))
+    if exchange:
+        q = q.filter(UniverseTicker.exchange == exchange)
+    if asset_type:
+        q = q.filter(UniverseTicker.asset_type == asset_type)
+    q = _filtrar(q, countries, exchanges)
+    return [(t, s) for t, s in q.all()]
 
 
 def contar(db, countries: list[str] | None = None, exchanges: list[str] | None = None,  # noqa: ANN001

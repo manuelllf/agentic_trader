@@ -171,6 +171,10 @@ class UniverseTicker(Base):
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     source: Mapped[str] = mapped_column(String(64))
     ticker: Mapped[str] = mapped_column(String(32), index=True)
+    # Símbolo CON sufijo de mercado para Yahoo (`000001.SZ`) -- solo mercados no-US lo necesitan,
+    # resuelto por ISIN al sincronizar (ver `universe_global.py`). NULL = usar `ticker` tal cual
+    # (venue US) o "no se pudo resolver todavía / Yahoo no cubre este mercado".
+    yahoo_symbol: Mapped[str | None] = mapped_column(String(32))
     exchange: Mapped[str | None] = mapped_column(String(32))
     name: Mapped[str | None] = mapped_column(Text)
     asset_type: Mapped[str | None] = mapped_column(String(16))   # Stock | ETF | ...
@@ -178,6 +182,28 @@ class UniverseTicker(Base):
     country: Mapped[str | None] = mapped_column(String(64))
     country_code: Mapped[str | None] = mapped_column(String(8))
     isin: Mapped[str | None] = mapped_column(String(16))
+
+
+class NasdaqSnapshotTicker(Base):
+    """Universo NASDAQ elegible (screener público, gratis) -- para el ESCANEO, no la foto (esa
+    es `UniverseTicker`). Antes vivía como un JSON en `Meta["universe_snapshot"]`, una fila que
+    se pisaba cada día sin dejar rastro de qué entraba o salía; ahora es append-only por
+    `snapshot_at`, mismo patrón que `UniverseTicker` (conserva las últimas tandas, ver
+    `universe.py::_podar`).
+
+    Solo 3 campos porque es lo único que aporta el screener de NASDAQ: precio y volumen del
+    cierre, para aplicar el suelo de liquidez en `universe.py`. El dedupe por clase de acción
+    (`_company_key`, usa el nombre) ya pasó en memoria antes de llegar aquí -- el nombre no hace
+    falta guardarlo.
+    """
+
+    __tablename__ = "nasdaq_snapshot_ticker"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    ticker: Mapped[str] = mapped_column(String(16), index=True)
+    price: Mapped[float] = mapped_column(Float)
+    volume: Mapped[float] = mapped_column(Float)
 
 
 class Score(Base):

@@ -27,6 +27,7 @@ un feed de señales.
 - POST /admin/foto           → foto de fundamentales a demanda, en segundo plano;
                                `alcance=global` admite `countries`/`exchanges`          [protegido]
 - POST /admin/universo-global → lanza en segundo plano la sync del universo global    [protegido]
+- POST /admin/universo-global/subir-csv → igual, pero desde un CSV subido a mano       [protegido]
 - GET  /admin/universo-global/estado → running/done/error de esa sincronización       [protegido]
 - GET  /admin/universo-global → estado + países/mercados con recuento, para el picker  [protegido]
 - GET  /admin/universo-global/contar → cuenta exacta de una combinación país/mercado   [protegido]
@@ -61,7 +62,7 @@ import re
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -765,6 +766,20 @@ def admin_universo_global_estado() -> dict:
     from app.screener import universe_global
 
     return universe_global.get_status()
+
+
+@router.post("/admin/universo-global/subir-csv")
+async def admin_universo_global_subir_csv(archivo: UploadFile = File(...)) -> dict:
+    """Sincroniza el universo global desde un CSV ya descargado a mano (mismo formato que
+    `universe_global.URL_CSV`), en vez de que el propio servidor descargue de HuggingFace --
+    para cuando la red de ellos no coopera, o para revisar el fichero antes de subirlo.
+    """
+    from app.screener import universe_global
+
+    contenido = await archivo.read()
+    if not universe_global.start(contenido=contenido):
+        raise HTTPException(409, "Ya hay una sincronización en marcha.")
+    return {"started": True, **universe_global.get_status()}
 
 
 @router.get("/admin/universo-global")

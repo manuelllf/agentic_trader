@@ -16,6 +16,9 @@ dependencies = [
     "yfinance>=0.2.50",
     "httpx>=0.27",
     "pywebpush>=2.3.0",
+    # Subida a mano del CSV del universo global (`POST /admin/universo-global/subir-csv`):
+    # FastAPI exige esto para poder declarar un parámetro `UploadFile`.
+    "python-multipart>=0.0.12",
     "ibind>=0.1.23",
     "pycryptodome>=3.23.0",
     "tzdata>=2025.3",

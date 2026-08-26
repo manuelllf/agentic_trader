@@ -77,6 +77,23 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Como `post()` pero multipart (subida de fichero) — sin `Content-Type` a mano, el navegador
+ *  pone el boundary. */
+async function postFile<T>(path: string, field: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append(field, file);
+  const res = await request(path, { method: "POST", body: form });
+  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new ApiError(
+      (detail as { detail?: string }).detail ?? `La operación falló (${res.status}).`,
+      "http", res.status,
+    );
+  }
+  return res.json() as Promise<T>;
+}
+
 /* ---- login / sesión ---- */
 
 /** Inicia sesión con la contraseña. Guarda el token si es correcta; lanza si no.
@@ -432,6 +449,13 @@ export const syncUniversoGlobal = () =>
   post<{ started: boolean } & UniversoGlobalSyncEstado>("/admin/universo-global");
 export const getUniversoGlobalSyncEstado = () =>
   get<UniversoGlobalSyncEstado>("/admin/universo-global/estado");
+/** Igual que `syncUniversoGlobal()` pero desde un CSV ya descargado a mano (mismo formato que
+ *  el de HuggingFace) — para cuando su red no coopera, o para revisar el fichero antes de
+ *  subirlo. Mismo polling de `getUniversoGlobalSyncEstado()`. */
+export const subirUniversoGlobalCsv = (archivo: File) =>
+  postFile<{ started: boolean } & UniversoGlobalSyncEstado>(
+    "/admin/universo-global/subir-csv", "archivo", archivo,
+  );
 
 /** Cuenta EXACTA de tickers para una combinación país/mercado, sin traerse la lista entera —
  *  el aviso "vas a capturar N tickers" antes de poder confirmar. */
