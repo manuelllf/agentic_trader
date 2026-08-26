@@ -280,14 +280,44 @@ def _resolver_simbolos(db, sync_at: datetime) -> None:  # noqa: ANN001
                resueltos, sin_cobertura, len(candidatos))
 
 
+def _rellenar_simbolos_bare(db, sync_at: datetime) -> int:  # noqa: ANN001
+    """Copia `ticker` a `yahoo_symbol` en los venues que ya cotizan pelados
+    (`_EXCHANGES_SIN_SUFIJO`) y siguen sin él tras heredar/resolver.
+
+    Sin esto, `yahoo_symbol IS NULL` mezclaba dos cosas distintas: "cotiza pelado, nunca hizo
+    falta resolverlo" y "no se le encontró símbolo de verdad" -- y el gather no podía distinguir
+    un ticker sin comprobar de uno sin comprobar QUE de verdad no tiene búsqueda posible. Tras
+    esto, `yahoo_symbol IS NULL` significa solo lo segundo (ver `simbolos()`)."""
+    from app.models import UniverseTicker
+
+    candidatos = (
+        db.query(UniverseTicker.id, UniverseTicker.ticker)
+        .filter(UniverseTicker.synced_at == sync_at,
+               UniverseTicker.yahoo_symbol.is_(None),
+               UniverseTicker.exchange.in_(_EXCHANGES_SIN_SUFIJO))
+        .all()
+    )
+    if not candidatos:
+        return 0
+    actualizaciones = [{"id": id_, "yahoo_symbol": ticker} for id_, ticker in candidatos]
+    db.bulk_update_mappings(UniverseTicker, actualizaciones)
+    db.commit()
+    return len(actualizaciones)
+
+
 def _resolver_todo(db, sync_at: datetime) -> None:  # noqa: ANN001
-    """Heredar + resolver, en ese orden -- llamado tras insertar cualquier tanda nueva (por red
-    o por archivo), antes de podar la anterior (`_heredar_simbolos` todavía la necesita)."""
+    """Heredar + resolver + rellenar bare, en ese orden -- llamado tras insertar cualquier tanda
+    nueva (por red o por archivo), antes de podar la anterior (`_heredar_simbolos` todavía la
+    necesita)."""
     heredados = _heredar_simbolos(db, sync_at)
     if heredados:
         logger.info("Universo global: %d símbolos heredados de la sincronización anterior.",
                    heredados)
     _resolver_simbolos(db, sync_at)
+    rellenados = _rellenar_simbolos_bare(db, sync_at)
+    if rellenados:
+        logger.info("Universo global: %d símbolos bare rellenados (ticker == yahoo_symbol).",
+                   rellenados)
 
 
 def _run(contenido: bytes | None = None) -> None:
@@ -380,14 +410,19 @@ def simbolos(db, exchange: str | None = None, asset_type: str | None = None,  # 
             exchanges: list[str] | None = None) -> list[tuple[str, str | None]]:
     """Como `tickers()` pero devuelve (ticker, yahoo_symbol) -- para que la foto le pregunte a
     Yahoo por el símbolo con sufijo correcto cuando exista, sin perder el ticker del dataset
-    como identidad de guardado (`foto_service.py`)."""
+    como identidad de guardado (`foto_service.py`).
+
+    Excluye `yahoo_symbol IS NULL`: tras `_resolver_todo` eso significa "sin ISIN o sin
+    cobertura en el buscador de Yahoo" (los que sí cotizan pelados ya llevan `yahoo_symbol
+    == ticker`, ver `_rellenar_simbolos_bare`), así que pedirle esto a Yahoo es un 404 seguro --
+    ahorra la petición y el log."""
     from app.models import UniverseTicker
 
     ultimo = ultimo_sync(db)
     if ultimo is None:
         return []
     q = (db.query(UniverseTicker.ticker, UniverseTicker.yahoo_symbol)
-         .filter(UniverseTicker.synced_at == ultimo))
+         .filter(UniverseTicker.synced_at == ultimo, UniverseTicker.yahoo_symbol.isnot(None)))
     if exchange:
         q = q.filter(UniverseTicker.exchange == exchange)
     if asset_type:

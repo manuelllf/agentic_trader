@@ -540,6 +540,13 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
         except yahoo_scraper.TransportError as exc:
             if _GATHER_PACE_S:
                 time.sleep(_GATHER_PACE_S)
+            if "HTTP 404" in str(exc):
+                # Símbolo inexistente para Yahoo -- no es un fallo de transporte pasajero, es
+                # "no existe". yfinance pega al mismo endpoint y da el mismo 404: reintentar solo
+                # duplica el log sin cambiar el resultado (medido con los SZSE sin sufijo, 26-ago).
+                motivo = f"{exc} (sin reintento: símbolo no encontrado)"
+                logger.warning("Gather sin datos para %s: %s", ticker, motivo)
+                return None, motivo
             logger.warning("Scraper de Yahoo: fallo de transporte en %s (%s) — reintento vía "
                            "yfinance.", ticker, exc)
             # No hay `return` aquí a propósito: cae al bloque de yfinance puro de abajo, SIN
