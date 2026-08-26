@@ -9,10 +9,17 @@ import type { DemoRunOverrides, ReasoningEffort, StageLLMOverride } from "@/lib/
 import { InfoTip } from "./InfoTip";
 import { T } from "./tokens";
 
-const MODELS = ["deepseek-v4-pro", "deepseek-v4-flash"] as const;
+const DEEPSEEK_MODELS = ["deepseek-v4-pro", "deepseek-v4-flash"] as const;
+// Solo el prescorer sabe hablar con Qwen (`scan_service._prescore_llm`); el resto, solo DeepSeek.
+const PRESCORE_MODELS = ["qwen3.7-flash", ...DEEPSEEK_MODELS] as const;
 const REASONINGS: ReasoningEffort[] = ["none", "low", "high", "max"];
 
 type Stage = "macro" | "prescore" | "mid" | "deep" | "constructor";
+
+const MODELS_BY_STAGE: Record<Stage, readonly string[]> = {
+  macro: DEEPSEEK_MODELS, prescore: PRESCORE_MODELS, mid: DEEPSEEK_MODELS,
+  deep: DEEPSEEK_MODELS, constructor: DEEPSEEK_MODELS,
+};
 
 const STAGE_LABEL: Record<Stage, string> = {
   macro: "Macro",
@@ -27,7 +34,7 @@ const STAGE_LABEL: Record<Stage, string> = {
 // modal vacío un instante.
 const FALLBACK: Record<Stage, Required<StageLLMOverride>> = {
   macro: { model: "deepseek-v4-pro", reasoning_effort: "max", temperature: 1.0, top_p: 0.95 },
-  prescore: { model: "deepseek-v4-flash", reasoning_effort: "none", temperature: 0.3, top_p: 0.95 },
+  prescore: { model: "qwen3.7-flash", reasoning_effort: "none", temperature: 0.3, top_p: 0.95 },
   mid: { model: "deepseek-v4-pro", reasoning_effort: "low", temperature: 1.0, top_p: 0.95 },
   deep: { model: "deepseek-v4-pro", reasoning_effort: "high", temperature: 1.0, top_p: 0.95 },
   constructor: { model: "deepseek-v4-pro", reasoning_effort: "max", temperature: 1.0, top_p: 0.95 },
@@ -114,7 +121,10 @@ export function ScanConfigModal({ onClose, onLaunch }: {
             <p className="mb-2 text-[11px]" style={{ color: T.muted }}>Cargando configuración real…</p>
           )}
           <div className={`space-y-2.5 ${loaded ? "" : "pointer-events-none opacity-50"}`}>
-            {STAGES.map((s) => <StageRow key={s} stage={s} v={cfg[s]} onChange={(p) => patch(s, p)} />)}
+            {STAGES.map((s) => (
+              <StageRow key={s} stage={s} v={cfg[s]} models={MODELS_BY_STAGE[s]}
+                       onChange={(p) => patch(s, p)} />
+            ))}
           </div>
         </div>
 
@@ -142,8 +152,9 @@ export function ScanConfigModal({ onClose, onLaunch }: {
   );
 }
 
-function StageRow({ stage, v, onChange }: {
-  stage: Stage; v: Required<StageLLMOverride>; onChange: (p: Partial<StageLLMOverride>) => void;
+function StageRow({ stage, v, models, onChange }: {
+  stage: Stage; v: Required<StageLLMOverride>; models: readonly string[];
+  onChange: (p: Partial<StageLLMOverride>) => void;
 }) {
   return (
     <div className="rounded border px-2.5 py-2" style={{ borderColor: T.grid }}>
@@ -155,7 +166,7 @@ function StageRow({ stage, v, onChange }: {
           <select value={v.model} onChange={(e) => onChange({ model: e.target.value })}
                   className="cfg-select w-full rounded border px-1.5 py-1 text-[11px]"
                   style={{ borderColor: T.ring, color: T.ink, background: T.panel2 }}>
-            {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+            {models.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </Field>
         <Field label="reasoning">

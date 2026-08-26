@@ -73,14 +73,20 @@ from app.screener import universe as universe_mod
 
 logger = logging.getLogger(__name__)
 
-# Concurrencia: OpenRouter=10 (local); DeepSeek=500/100/50 (producc).
-# Pico real = MAYOR de 3 (etapas seriales), no suma. Límite duro: cgroup pids.max=1000.
-if settings.llm_provider == "deepseek":
+# Concurrencia del prescore: mira `prescore_provider`, no `llm_provider` — mid/deep siguen en
+# DeepSeek pase lo que pase aquí (ver `_prescore_llm`).
+if settings.prescore_provider == "qwen" and settings.dashscope_api_key:
+    _PRESCORE_WORKERS = 100  # QwenCloud: 15.000 RPM/cuenta documentado, sin medir en vivo aún.
+elif settings.llm_provider == "deepseek":
     _PRESCORE_WORKERS = 500   # Flash, triaje individual (1 llamada/ticker, fiel al paper)
+else:
+    _PRESCORE_WORKERS = 10
+
+if settings.llm_provider == "deepseek":
     _MID_WORKERS = 100        # Pro, capa media (~200 candidatos)
     _DEEP_WORKERS = 50        # Pro, profundo (hasta `deep_finalists_cap` finalistas)
 else:
-    _PRESCORE_WORKERS = _MID_WORKERS = _DEEP_WORKERS = 10
+    _MID_WORKERS = _DEEP_WORKERS = 10
 # Gather: 4 hilos vía yahoo_scraper (validado 100% limpio a 3.000/3.000 tickers reales, en
 # local, 24-ago-2026). 6 hilos ya cae a ~85% (bloqueo de Yahoo); 4 es el techo con margen.
 _GATHER_WORKERS = 4
@@ -401,6 +407,19 @@ def _llm_for(cfg: dict, stage: str = "", recorder=None):  # noqa: ANN001
     return get_llm(reasoning_effort=cfg["reasoning_effort"], stage=stage, recorder=recorder)
 
 
+def _prescore_llm(cfg: dict, tiene_override: bool, recorder=None):  # noqa: ANN001
+    """Como `_llm_for`, pero SOLO para el prescore: sin override manda `prescore_provider`; con
+    override (modal), el modelo que eligió el usuario decide Qwen o DeepSeek (ver `config.py`)."""
+    quiere_qwen = (
+        cfg["model"] == settings.qwen_model if tiene_override
+        else settings.prescore_provider == "qwen"
+    )
+    if quiere_qwen and settings.dashscope_api_key:
+        return get_llm(cfg["model"], reasoning_effort=cfg["reasoning_effort"], stage="prescore",
+                       recorder=recorder, provider="qwen")
+    return _llm_for(cfg, "prescore", recorder)
+
+
 def _sampling_kwargs(cfg: dict) -> dict:
     """`temperature`/`top_p` de la config efectiva (override o `DEFAULT_TEMPERATURE`/
     `DEFAULT_TOP_P`, ver `_stage_cfg`) — nunca None, así que siempre van al `llm.chat()` de la
@@ -473,7 +492,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     traza = LLMTrace()
     macro_llm = _llm_for(macro_cfg, "macro", traza)
     deep_llm = _llm_for(deep_cfg, "deep", traza)
-    prescore_llm = _llm_for(prescore_cfg, "prescore", traza)
+    prescore_llm = _prescore_llm(prescore_cfg, bool((llm_overrides or {}).get("prescore")), traza)
     # Capa media (opcional): repuntúa los mejores de cada sector con un modelo mejor que Flash
     # antes del corte a finalistas. Se crea aquí (como los otros dos) para que su coste entre en
     # `_llm_usage` aunque no llegue a usarse ninguna vez si `mid_layer` está desactivado.

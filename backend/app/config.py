@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
+    # Prescore por QwenCloud/DashScope: medido ~4x más barato que DeepSeek con el razonamiento
+    # apagado, correlación ~0,75 (`scripts/compara_qwen_flash.py`). Solo esta etapa, no el resto.
+    prescore_provider: str = "qwen"       # "deepseek" | "qwen"
+    dashscope_api_key: str = ""
+    qwen_model: str = "qwen3.7-flash"
     # Reasoning caro solo donde hay pocas llamadas (macro/constructor=1, profundo≤100). "low" en
     # lotes de 20 degradó la granularidad del prescore (menos decimales, peor correlación con el
     # profundo) y costó 2,6× más — vuelve a "none", que da 2 decimales limpios siempre.

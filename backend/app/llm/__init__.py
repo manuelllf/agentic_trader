@@ -11,23 +11,31 @@ from app.config import settings
 from app.llm.base import LLMProvider
 from app.llm.deepseek import DeepSeekProvider
 from app.llm.openrouter import _PROVEEDORES_EXCLUIDOS_0731, OpenRouterProvider
+from app.llm.qwen import QwenProvider
 
 
 def get_llm(model: str | None = None, reasoning_effort: str | None = "none",
-            stage: str = "", recorder=None) -> LLMProvider:  # noqa: ANN001
+            stage: str = "", recorder=None, provider: str | None = None) -> LLMProvider:  # noqa: ANN001
     """Proveedor LLM. Lanza si falta la key del proveedor configurado.
 
-    `stage`/`recorder`: traza de llamadas (ver `app/llm/trace.py`). Solo la implementa el
-    circuito oficial de DeepSeek; con OpenRouter (pruebas locales puntuales) se ignoran y la
-    tabla `llm_call` se queda vacía.
+    `reasoning_effort` por defecto es `"none"` — sin mandarlo, el proveedor cae a su default
+    ("high") y dispara el coste en las etapas de volumen.
 
-    `reasoning_effort` por defecto es `"none"` (desactiva el razonamiento del todo) — medido en
-    producción que dejarlo sin mandar (el proveedor cae a su default documentado, "high") disparó
-    el coste muy por encima de lo estimado en las etapas de volumen (prescore, capa media,
-    profundo). El caller del constructor lo sobreescribe explícitamente a `None` (sin mandar el
-    campo → "high") con `settings.reasoning_effort` — la única etapa (1 llamada/escaneo) donde
-    se acepta el coste extra.
-    """
+    `provider`: override puntual SOLO para que `scan_service._prescore_llm` pida Qwen sin tocar
+    el resto del circuito. `model` se ignora en la rama "qwen" (un único modelo configurado)."""
+    if (provider or settings.llm_provider) == "qwen":
+        if not settings.dashscope_api_key:
+            raise RuntimeError(
+                "DASHSCOPE_API_KEY no configurada. Ponla en backend/.env (o en Railway) para "
+                "usar Qwen."
+            )
+        return QwenProvider(
+            api_key=settings.dashscope_api_key,
+            model=settings.qwen_model,
+            stage=stage,
+            recorder=recorder,
+        )
+
     if settings.llm_provider == "openrouter":
         if not settings.openrouter_api_key:
             raise RuntimeError(

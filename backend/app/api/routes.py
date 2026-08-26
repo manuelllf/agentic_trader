@@ -113,9 +113,12 @@ def config() -> dict:
         "llm_defaults": {
             "macro": {"model": settings.llm_model, "reasoning_effort": settings.macro_reasoning_effort,
                       "temperature": scan_service.DEFAULT_TEMPERATURE},
-            "prescore": {"model": settings.prescore_model,
-                        "reasoning_effort": settings.prescore_reasoning_effort,
-                        "temperature": settings.prescore_temperature},
+            "prescore": {
+                "model": (settings.qwen_model if settings.prescore_provider == "qwen"
+                         else settings.prescore_model),
+                "reasoning_effort": settings.prescore_reasoning_effort,
+                "temperature": settings.prescore_temperature,
+            },
             "mid": {"model": settings.mid_model, "reasoning_effort": settings.mid_reasoning_effort,
                     "temperature": scan_service.DEFAULT_TEMPERATURE},
             "deep": {"model": settings.llm_model, "reasoning_effort": settings.deep_reasoning_effort,
