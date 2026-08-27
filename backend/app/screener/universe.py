@@ -88,10 +88,24 @@ def _norm_symbol(symbol: str) -> str | None:
     return symbol.replace("/", "-")
 
 
-def _from_nasdaq() -> list[tuple[str, float, float]]:
-    """Eligible rows: [(symbol, price, volume)] without liquidity gate.
+# NASDAQ no expone tipo de instrumento, solo el nombre en texto libre -- esta regex es la
+# heurística para excluir preferentes/convertibles/warrants sin tocar ADRs legítimos.
+_NO_COMUN_RE = re.compile(
+    r"preferred|convertible|\bnotes?\b|warrant|\brights?\b|subordinat|"
+    r"tangible equity unit|\bzones\b|capital trust|\bunit(s)?\b",
+    re.IGNORECASE,
+)
 
-    Liquidity filter applied at read time for dynamic threshold adjustments."""
+
+def _es_comun(name: str) -> bool:
+    """True si el nombre parece acción común/ADR normal (no preferente/warrant/unit/etc.)."""
+    return not _NO_COMUN_RE.search(name or "")
+
+
+def _from_nasdaq() -> list[tuple[str, float, float, float | None, str]]:
+    """Todas las filas del screener: [(symbol, price, volume, market_cap, name)], SIN filtrar
+    por precio/cap/tipo de instrumento -- eso se decide a LECTURA (ver `_liquidos`), así la foto
+    no descarta nada de forma permanente."""
     params = {"tableonly": "true", "limit": "0", "download": "true"}
     rows: list[dict] = []
     # Retries with exponential backoff; NASDAQ sometimes returns 200 with empty body.
@@ -110,40 +124,55 @@ def _from_nasdaq() -> list[tuple[str, float, float]]:
     if not rows:
         raise RuntimeError(f"NASDAQ no devolvió listado en {_NASDAQ_RETRIES} intentos")
 
-    cap_min = settings.universe_market_cap_min
-    cap_max = settings.universe_market_cap_max
-    price_min = settings.universe_min_price
-    # Dedup de clases: por empresa, nos quedamos con la más LÍQUIDA → {company_key: (sym, px, vol)}
-    best: dict[str, tuple[str, float, float]] = {}
+    # Dedup de clases: por empresa, nos quedamos con la más LÍQUIDA → {company_key: (sym, px, vol, cap, name)}
+    best: dict[str, tuple[str, float, float, float | None, str]] = {}
     for row in rows:
         symbol = _norm_symbol((row.get("symbol") or "").strip().upper())
         if symbol is None:
             continue
         cap = _parse_market_cap(row.get("marketCap", ""))
-        if cap is None or not (cap_min <= cap <= cap_max):
-            continue
-        # Precio vivo reciente (lastsale): sin precio → fuera; suelo de config (higiene anti-penny).
+        # Precio vivo reciente (lastsale): sin precio → fuera (no hay fila válida sin precio).
         price = _parse_market_cap(row.get("lastsale", ""))  # el parser ya quita el '$'
-        if price is None or price < price_min:
+        if price is None:
             continue
         vol = _parse_market_cap(row.get("volume", "")) or 0.0   # mismo parser (número plano)
-        key = _company_key(row.get("name", ""), symbol)
+        name = row.get("name") or ""
+        key = _company_key(name, symbol)
         if key not in best or vol > best[key][2]:
-            best[key] = (symbol, price, vol)
+            best[key] = (symbol, price, vol, cap, name)
     return sorted(best.values())
 
 
-def _sobre_suelo(filas: list[tuple[str, float, float]]) -> list[tuple[str, float, float]]:
-    """Filas que superan el suelo de liquidez, de MÁS a MENOS dinero negociado."""
+def _elegibles(
+    filas: list[tuple[str, float, float, float | None, str]],
+) -> list[tuple[str, float, float, float | None, str]]:
+    """Filas que pasan precio/cap/tipo de instrumento -- todavía SIN suelo de liquidez ni tope."""
+    cap_min = settings.universe_market_cap_min
+    cap_max = settings.universe_market_cap_max
+    price_min = settings.universe_min_price
+    return [
+        f for f in filas
+        if f[1] >= price_min
+        and f[3] is not None and cap_min <= f[3] <= cap_max
+        and _es_comun(f[4])
+    ]
+
+
+def _sobre_suelo(
+    filas: list[tuple[str, float, float, float | None, str]],
+) -> list[tuple[str, float, float, float | None, str]]:
+    """Filas elegibles (precio, cap, tipo de instrumento) que además superan el suelo de
+    liquidez, de MÁS a MENOS dinero negociado."""
     minimo = settings.universe_min_dollar_volume
-    return sorted((f for f in filas if f[1] * f[2] >= minimo), key=lambda f: -(f[1] * f[2]))
+    return sorted((f for f in _elegibles(filas) if f[1] * f[2] >= minimo),
+                  key=lambda f: -(f[1] * f[2]))
 
 
-def _liquidos(filas: list[tuple[str, float, float]]) -> list[str]:
-    """Eligible universe: dollar-volume floor + hard cap on names scanned.
+def _liquidos(filas: list[tuple[str, float, float, float | None, str]]) -> list[str]:
+    """Eligible universe: price/cap/common-stock filters + dollar-volume floor + hard cap.
 
     Returned alphabetically (not by volume) for stable rotation in sample_for_scan."""
-    return sorted(sym for sym, _px, _vol in _sobre_suelo(filas)[:settings.universe_max_names])
+    return sorted(sym for sym, _px, _vol, _cap, _name in _sobre_suelo(filas)[:settings.universe_max_names])
 
 
 def build_universe(force_refresh: bool = False) -> list[str]:
@@ -180,15 +209,16 @@ def _ultimo_snapshot_at(db) -> datetime | None:  # noqa: ANN001
     return at if at.tzinfo is not None else at.replace(tzinfo=UTC)
 
 
-def _filas_de(db, at: datetime) -> list[tuple[str, float, float]]:  # noqa: ANN001
-    """Filas `(ticker, price, volume)` de una tanda concreta -- común a
+def _filas_de(db, at: datetime) -> list[tuple[str, float, float, float | None, str]]:  # noqa: ANN001
+    """Filas `(ticker, price, volume, market_cap, name)` de una tanda concreta -- común a
     `refresh_snapshot_and_report`/`universe_for_scan`, que leen la misma tanda por motivos
     distintos (informar vs decidir el universo de escaneo)."""
     from app.models import NasdaqSnapshotTicker
 
-    return [(t, float(px), float(vol)) for t, px, vol in
+    return [(t, float(px), float(vol), cap, name or "") for t, px, vol, cap, name in
             db.query(NasdaqSnapshotTicker.ticker, NasdaqSnapshotTicker.price,
-                     NasdaqSnapshotTicker.volume)
+                     NasdaqSnapshotTicker.volume, NasdaqSnapshotTicker.market_cap,
+                     NasdaqSnapshotTicker.name)
             .filter(NasdaqSnapshotTicker.snapshot_at == at).all()]
 
 
@@ -226,13 +256,15 @@ def refresh_snapshot(db) -> int:  # noqa: ANN001
     filas = _from_nasdaq()
     snapshot_at = datetime.now(UTC)
     db.bulk_insert_mappings(NasdaqSnapshotTicker, [
-        {"snapshot_at": snapshot_at, "ticker": s, "price": px, "volume": vol}
-        for s, px, vol in filas
+        {"snapshot_at": snapshot_at, "ticker": s, "price": px, "volume": vol,
+         "market_cap": cap, "name": name}
+        for s, px, vol, cap, name in filas
     ])
     db.commit()
     _podar_snapshots(db)
-    logger.info("Foto del universo: %d filas elegibles, %d sobre el suelo de liquidez, "
-                "%d tras el tope.", len(filas), len(_sobre_suelo(filas)), len(_liquidos(filas)))
+    logger.info("Foto del universo: %d filas capturadas, %d elegibles, %d sobre el suelo de "
+                "liquidez, %d tras el tope.", len(filas), len(_elegibles(filas)),
+                len(_sobre_suelo(filas)), len(_liquidos(filas)))
     return len(filas)
 
 

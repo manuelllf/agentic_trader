@@ -211,11 +211,23 @@ def test_liquidez_se_mide_en_dolares_no_en_acciones(monkeypatch) -> None:
     monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 5_000_000)
     monkeypatch.setattr(universe_mod.settings, "universe_max_names", 2_600)
     filas = [
-        ("CARO", 138.59, 299_570),      # $41,5M al día: líquido de verdad, pocas acciones
-        ("BARATO", 6.0, 300_000),       # $1,8M al día: pasaba el corte de acciones y no debía
-        ("JUSTO", 10.0, 500_000),       # $5,0M exactos: entra
+        ("CARO", 138.59, 299_570, 1e9, "Caro Inc. Common Stock"),      # $41,5M: líquido de verdad
+        ("BARATO", 6.0, 300_000, 1e9, "Barato Inc. Common Stock"),     # $1,8M: no llega
+        ("JUSTO", 10.0, 500_000, 1e9, "Justo Inc. Common Stock"),      # $5,0M exactos: entra
     ]
     assert universe_mod._liquidos(filas) == ["CARO", "JUSTO"]
+
+
+def test_preferentes_fuera_adr_legitimo_dentro(monkeypatch) -> None:
+    """El filtro por nombre saca preferentes/notas pero no toca ADRs legítimos."""
+    monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 1_000_000)
+    monkeypatch.setattr(universe_mod.settings, "universe_max_names", 10)
+    filas = [
+        ("PREF", 50.0, 100_000, 1e9, "Foo Inc. Preferred Stock"),
+        ("ADR", 50.0, 100_000, 1e9,
+         "Bar Inc. American Depositary Shares (each representing 1 Common Share)"),
+    ]
+    assert universe_mod._liquidos(filas) == ["ADR"]
 
 
 def test_el_tope_recorta_por_volumen_y_devuelve_alfabetico(monkeypatch) -> None:
@@ -223,9 +235,9 @@ def test_el_tope_recorta_por_volumen_y_devuelve_alfabetico(monkeypatch) -> None:
     monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 1_000_000)
     monkeypatch.setattr(universe_mod.settings, "universe_max_names", 2)
     filas = [
-        ("ZZZ", 10.0, 900_000),         # $9M   → el que más mueve, pero último alfabéticamente
-        ("AAA", 10.0, 800_000),         # $8M
-        ("MMM", 10.0, 700_000),         # $7M   → se cae por el tope, no por iliquidez
+        ("ZZZ", 10.0, 900_000, 1e9, "Zzz Inc. Common Stock"),   # $9M → el que más mueve, pero último alfabéticamente
+        ("AAA", 10.0, 800_000, 1e9, "Aaa Inc. Common Stock"),   # $8M
+        ("MMM", 10.0, 700_000, 1e9, "Mmm Inc. Common Stock"),   # $7M → se cae por el tope, no por iliquidez
     ]
     assert universe_mod._liquidos(filas) == ["AAA", "ZZZ"]
 
@@ -235,7 +247,9 @@ def test_el_informe_lleva_cuanto_recorto_el_tope(db, monkeypatch) -> None:
     monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 1_000_000)
     monkeypatch.setattr(universe_mod.settings, "universe_max_names", 2)
     monkeypatch.setattr(universe_mod, "_from_nasdaq", lambda: [
-        ("AAA", 10.0, 900_000), ("BBB", 10.0, 800_000), ("CCC", 10.0, 700_000),
+        ("AAA", 10.0, 900_000, 1e9, "Aaa Inc. Common Stock"),
+        ("BBB", 10.0, 800_000, 1e9, "Bbb Inc. Common Stock"),
+        ("CCC", 10.0, 700_000, 1e9, "Ccc Inc. Common Stock"),
     ])
     _symbols, info = universe_mod.universe_for_scan(db)
     assert info["size"] == 2 and info["sobre_suelo"] == 3
@@ -243,8 +257,10 @@ def test_el_informe_lleva_cuanto_recorto_el_tope(db, monkeypatch) -> None:
 
 def test_foto_del_universo_se_guarda_y_se_relee(db, monkeypatch) -> None:
     """Universe snapshot closed-market; avoids intra-day volume bias."""
-    monkeypatch.setattr(universe_mod, "_from_nasdaq",
-                        lambda: [("AAA", 100.0, 1_000_000), ("ILIQ", 1.0, 1_000)])
+    monkeypatch.setattr(universe_mod, "_from_nasdaq", lambda: [
+        ("AAA", 100.0, 1_000_000, 1e9, "Aaa Inc. Common Stock"),
+        ("ILIQ", 1.0, 1_000, 1e9, "Iliq Inc. Common Stock"),
+    ])
 
     assert universe_mod.refresh_snapshot(db) == 2
 
@@ -259,7 +275,8 @@ def test_foto_del_universo_se_guarda_y_se_relee(db, monkeypatch) -> None:
 
 def test_sin_foto_avisa_de_que_va_en_vivo(db, monkeypatch) -> None:
     """No snapshot: scans live; provenance marked in report."""
-    monkeypatch.setattr(universe_mod, "_from_nasdaq", lambda: [("AAA", 100.0, 1_000_000)])
+    monkeypatch.setattr(universe_mod, "_from_nasdaq",
+                        lambda: [("AAA", 100.0, 1_000_000, 1e9, "Aaa Inc. Common Stock")])
     _symbols, info = universe_mod.universe_for_scan(db)
     assert info["fuente"] == "vivo"
 

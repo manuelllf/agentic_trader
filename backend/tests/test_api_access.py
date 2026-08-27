@@ -669,7 +669,8 @@ def test_estado_datos_devuelve_las_cuatro_fuentes(client, token, db) -> None:
     from app.models import FundamentalsSnapshot, FxRate, NasdaqSnapshotTicker
 
     ahora = datetime.now(UTC)
-    db.add(NasdaqSnapshotTicker(snapshot_at=ahora, ticker="AAA", price=10.0, volume=1e6))
+    db.add(NasdaqSnapshotTicker(snapshot_at=ahora, ticker="AAA", price=10.0, volume=1e6,
+                                market_cap=1e9, name="Aaa Inc. Common Stock"))
     db.add(FundamentalsSnapshot(ticker="AAA", captured_at=ahora, es_dataset=False))
     db.add(FundamentalsSnapshot(ticker="BBB", captured_at=ahora, es_dataset=True))
     db.add(FxRate(synced_at=ahora, currency_code="KRW", usd_per_unit=0.00072))
@@ -694,10 +695,12 @@ def test_estado_datos_universo_elegibles_vs_a_escanear(client, token, db) -> Non
     from app.models import NasdaqSnapshotTicker
 
     ahora = datetime.now(UTC)
-    # Pasa precio/cap (ya filtrado al guardar), pero volumen$ por debajo del suelo -- no escanea.
-    db.add(NasdaqSnapshotTicker(snapshot_at=ahora, ticker="ILIQUIDO", price=1.0, volume=1.0))
+    # Pasa precio/cap/tipo de instrumento, pero volumen$ por debajo del suelo -- no escanea.
+    db.add(NasdaqSnapshotTicker(snapshot_at=ahora, ticker="ILIQUIDO", price=1.0, volume=1.0,
+                                market_cap=1e9, name="Iliquido Inc. Common Stock"))
     # Sí supera el suelo de liquidez -- este SÍ escanea.
-    db.add(NasdaqSnapshotTicker(snapshot_at=ahora, ticker="LIQUIDO", price=10.0, volume=1e6))
+    db.add(NasdaqSnapshotTicker(snapshot_at=ahora, ticker="LIQUIDO", price=10.0, volume=1e6,
+                                market_cap=1e9, name="Liquido Inc. Common Stock"))
     db.commit()
     assert 1.0 * 1.0 < settings.universe_min_dollar_volume  # confirma la premisa del test
 

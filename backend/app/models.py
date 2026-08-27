@@ -202,10 +202,8 @@ class NasdaqSnapshotTicker(Base):
     `snapshot_at`, mismo patrón que `UniverseTicker` (conserva las últimas tandas, ver
     `universe.py::_podar`).
 
-    Solo 3 campos porque es lo único que aporta el screener de NASDAQ: precio y volumen del
-    cierre, para aplicar el suelo de liquidez en `universe.py`. El dedupe por clase de acción
-    (`_company_key`, usa el nombre) ya pasó en memoria antes de llegar aquí -- el nombre no hace
-    falta guardarlo.
+    Guarda precio, volumen, market cap y nombre del cierre; los filtros de riesgo (precio, cap,
+    tipo de instrumento) se aplican a LECTURA en `universe.py`, no aquí -- nada se descarta al capturar.
     """
 
     __tablename__ = "nasdaq_snapshot_ticker"
@@ -215,6 +213,8 @@ class NasdaqSnapshotTicker(Base):
     ticker: Mapped[str] = mapped_column(String(16), index=True)
     price: Mapped[float] = mapped_column(Float)
     volume: Mapped[float] = mapped_column(Float)
+    market_cap: Mapped[float | None] = mapped_column(Float, nullable=True)
+    name: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
 
 class IbkrExchange(Base):

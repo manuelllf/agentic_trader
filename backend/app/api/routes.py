@@ -657,12 +657,13 @@ def admin_estado_datos(db: Session = Depends(get_db)) -> dict:
                 .filter(FundamentalsSnapshot.es_dataset.is_(es_dataset)).one())
         return {"at": utc_iso(at) if at else None, "n": n or 0}
 
-    # "elegibles" = TODO lo que pasa precio/cap (~9.000); "a_escanear" = tras liquidez y tope
-    # de 3.000. Solo lee la BD: sin snapshot no dispara ningún fetch en vivo a NASDAQ.
+    # "elegibles" = lo que pasa precio/cap/tipo de instrumento; "a_escanear" = tras liquidez y
+    # tope. Solo lee la BD: sin snapshot no dispara ningún fetch en vivo a NASDAQ.
     uni_at = universe_mod._ultimo_snapshot_at(db)
     if uni_at is not None:
         filas = universe_mod._filas_de(db, uni_at)
-        uni_elegibles, uni_a_escanear = len(filas), len(universe_mod._liquidos(filas))
+        uni_elegibles = len(universe_mod._elegibles(filas))
+        uni_a_escanear = len(universe_mod._liquidos(filas))
     else:
         uni_elegibles = uni_a_escanear = 0
     fx_at = db.query(func.max(FxRate.synced_at)).scalar()

@@ -138,11 +138,11 @@ class Settings(BaseSettings):
     universe_market_cap_min: float = 0                   # SIN suelo de cap: todo el mercado US
     universe_market_cap_max: float = 10_000_000_000_000
     # Liquidez en DÓLARES negociados/día (no en acciones): contar acciones castiga a los caros.
-    universe_min_dollar_volume: float = 3_000_000
+    universe_min_dollar_volume: float = 6_000_000
     # Tope duro por dinero negociado: sin él, el tamaño del universo (y el coste del pre-score,
     # 1 llamada/nombre) queda al azar de lo movida que estuviera la sesión de la foto.
     universe_max_names: int = 3_000
-    universe_min_price: float = 5.0                      # descarta penny stocks < $5 (higiene)
+    universe_min_price: float = 0                         # sin suelo real hoy -- liquidez ya filtra lo ilíquido
     # Universo alternativo del modal de simulación: top N por market cap USD del universo
     # global, filtrado a mercados operables en IBKR (ver `universe_global.top_market_cap_usd`).
     global_topcap_size: int = 3_000

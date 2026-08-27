@@ -9,7 +9,7 @@
  *  reales a Yahoo — nunca "elige a ciegas": cada opción muestra su recuento real, y la cuenta
  *  final se recalcula en el backend antes de poder confirmar. */
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
 import {
   contarUniversoGlobal, getFotoStatus, getUniversoGlobal, getUniversoGlobalSyncEstado, startFoto,
   subirUniversoGlobalCsv, syncUniversoGlobal, type UniversoGlobalOpciones,
@@ -136,6 +136,23 @@ export function FotoGlobalPicker() {
     fileInputRef.current?.click();
   }
 
+  // `resolve/main` no lleva Content-Disposition: attachment para CSVs no-LFS, así que el
+  // navegador lo abre renderizado en vez de descargarlo. Forzamos el guardado vía blob.
+  async function descargarCsv(e: MouseEvent<HTMLAnchorElement>) {
+    e.preventDefault();
+    try {
+      const blob = await (await fetch(URL_CSV_HUGGINGFACE)).blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "tickers.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(URL_CSV_HUGGINGFACE, "_blank");
+    }
+  }
+
   async function doSubirCsv(e: ChangeEvent<HTMLInputElement>) {
     const archivo = e.target.files?.[0];
     e.target.value = ""; // permite volver a elegir el mismo fichero si hace falta reintentar
@@ -207,7 +224,8 @@ export function FotoGlobalPicker() {
   const csvUploadLink = (
     <span className="text-[10.5px]" style={{ color: T.muted }}>
       o{" "}
-      <a href={URL_CSV_HUGGINGFACE} target="_blank" rel="noreferrer" className="underline">descarga el CSV</a>
+      <a href={URL_CSV_HUGGINGFACE} target="_blank" rel="noreferrer" className="underline"
+         onClick={descargarCsv}>descarga el CSV</a>
       {" "}y{" "}
       <button type="button" onClick={abrirSelectorArchivo} disabled={syncing} className="underline disabled:opacity-50">
         súbelo a mano
