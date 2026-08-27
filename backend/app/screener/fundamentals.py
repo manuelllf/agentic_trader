@@ -26,6 +26,18 @@ from app.screener import yahoo_scraper
 
 logger = logging.getLogger(__name__)
 
+
+def categoria_fallo(motivo: str | None) -> str:
+    """Agrupa un motivo de gather fallido para el resumen agregado del caller -- un 404 esperado
+    y un 429/401 de verdad no pueden mezclarse en el mismo número."""
+    if not motivo:
+        return "sin motivo"
+    for clave, etiqueta in (("HTTP 404", "404"), ("HTTP 429", "429"), ("HTTP 401", "401"),
+                            ("vacío o deslistado", "sin datos")):
+        if clave in motivo:
+            return etiqueta
+    return "otro"
+
 # Ventana de reutilización de la foto: dentro de ella el escaneo NO vuelve a pedirle nada a
 # Yahoo (protección contra el 401 masivo que motivó el cache; ver `FundamentalsSnapshot`).
 # 24h -> 12h: para una decisión real queremos dato fresco o casi (medio día, no un día entero);
@@ -545,7 +557,7 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
                 # "no existe". yfinance pega al mismo endpoint y da el mismo 404: reintentar solo
                 # duplica el log sin cambiar el resultado (medido con los SZSE sin sufijo, 26-ago).
                 motivo = f"{exc} (sin reintento: símbolo no encontrado)"
-                logger.warning("Gather sin datos para %s: %s", ticker, motivo)
+                logger.debug("Gather sin datos para %s: %s", ticker, motivo)
                 return None, motivo
             logger.warning("Scraper de Yahoo: fallo de transporte en %s (%s) — reintento vía "
                            "yfinance.", ticker, exc)
@@ -561,14 +573,14 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
             # "sin_datos" genuino (200 OK, ticker vacío/deslistado): NO se reintenta por
             # yfinance — medido que los mismos tickers fallan igual en los dos sitios.
             if motivo:
-                logger.warning("Gather sin datos para %s: %s", ticker, motivo)
+                logger.debug("Gather sin datos para %s: %s", ticker, motivo)
             return None, motivo
     try:
         yt = yf.Ticker(yahoo_symbol or ticker)
         info = yt.info or {}
         if not (info.get("sector") or info.get("marketCap") or info.get("shortName")):
             motivo = "sin sector/marketCap/shortName en .info (vacío o deslistado)"
-            logger.warning("Gather sin datos para %s: %s", ticker, motivo)
+            logger.debug("Gather sin datos para %s: %s", ticker, motivo)
             return None, motivo
         hist = None
         try:

@@ -65,8 +65,10 @@ def start(sample_size: int | None = None, decide: bool = True,
     (modelo/reasoning/temperature/top_p) del modal de la simulación — ver `run_scan_and_store`.
     `reutilizar_ultima_foto`: checkbox de los dos modales — ver `run_scan_and_store`.
     """
+    from app import foto_service
+
     with _lock:
-        if _state["status"] == "running":
+        if _state["status"] == "running" or foto_service.get_status()["status"] == "running":
             return False
         _state.update(status="running", started_at=datetime.now(UTC).isoformat(),
                       finished_at=None, result=None, error=None)

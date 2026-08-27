@@ -579,15 +579,21 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     def _run_gather(tickers: list[str]) -> list[tuple[str, object, str | None]]:
         """Consume ex.map uno a uno para marcar progreso por nombre sin acumular en lista."""
         out: list[tuple[str, object, str | None]] = []
+        categorias: Counter[str] = Counter()
         with ThreadPoolExecutor(max_workers=_GATHER_WORKERS) as ex:
             for t, d, e in ex.map(_gather, tickers):
                 out.append((t, d, e))
                 razon = f"{t}: {e}" if d is None and e else None
                 scan_progress.tick(ok=d is not None, reason=razon)
+                if d is None and e:
+                    categorias[fund_mod.categoria_fallo(e)] += 1
                 if len(out) % 250 == 0:
                     snap = scan_progress.snapshot()
                     logger.info("gather %d/%d: %d ok, %d fallidos",
                                len(out), len(tickers), snap["ok"], snap["fail"])
+        if categorias:
+            logger.info("Gather terminado, fallos por tipo: %s",
+                        ", ".join(f"{k}={v}" for k, v in categorias.most_common()))
         return out
 
     scan_progress.set_stage("gather", total=len(sample), unit="tickers")
@@ -655,14 +661,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     if not macro.get("outlook"):
         issues.append("Outlook macro del LLM caído — se usó solo el régimen determinista.")
 
-    # C.4 (apagado por defecto): mediana de P/E por sector calculada sobre ESTE universo, con el
-    # mismo campo con el que se puntúa. Nunca de una fuente externa — mezclar metodologías daba
-    # el doble de diferencia en financieras. Va como dato pegado al P/E, sin instrucción.
+    # C.4: mediana de P/E por sector calculada sobre ESTE universo, con el mismo campo con el
+    # que se puntúa. Nunca de una fuente externa — mezclar metodologías daba el doble de
+    # diferencia en financieras. Va como dato pegado al P/E, sin instrucción.
     medianas = (fund_mod.medianas_pe_por_sector(datos_ok)
                 if settings.sector_median_in_prompt else {})
-    if medianas:
-        issues.append(f"Mediana de P/E del sector activa en los prompts ({len(medianas)} "
-                      "sectores con muestra suficiente) — experimento, ver plan C.4.")
 
     # 4) PASO 1 — prescore rápido (Flash) en lotes. Agrupa sobrecarga fija de llamadas.
     # Reintento lote (hasta 2 extra) vive en scorer.prescore_batch(), no aquí.

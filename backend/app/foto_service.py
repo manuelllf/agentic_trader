@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+from collections import Counter
 from datetime import UTC, datetime
 
 from app import scan_progress
@@ -89,6 +90,7 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
 
     stats_lock = threading.Lock()
     stats = {"ok": 0, "fallos": 0, "seguidos": 0}
+    categorias: Counter[str] = Counter()
     corte = threading.Event()
     motivo_corte: list[str] = []
 
@@ -107,12 +109,17 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
                 else:
                     stats["fallos"] += 1
                     stats["seguidos"] += 1
+                    categorias[fund_mod.categoria_fallo(err)] += 1
                     if stats["seguidos"] >= _CORTE_FALLOS_SEGUIDOS and not corte.is_set():
                         corte.set()
                         motivo_corte.append(
                             f"{_CORTE_FALLOS_SEGUIDOS} fallos seguidos (último: {ticker}: {err})")
                 scan_progress.tick(ok=data is not None,
                                    reason=f"{ticker}: {err}" if data is None else None)
+                hechos = stats["ok"] + stats["fallos"]
+                if hechos % 250 == 0:
+                    logger.info("foto (%s) %d/%d: %d ok, %d fallidos",
+                               alcance, hechos, len(nombres), stats["ok"], stats["fallos"])
 
     hilos = [threading.Thread(target=_worker, daemon=True)
              for _ in range(scan_service._GATHER_WORKERS)]
@@ -128,6 +135,9 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
         logger.warning("Foto (%s) CORTADA: %s", alcance, motivo_corte[0])
     logger.info("Foto (%s): %d/%d nombres capturados en %.0fs.",
                alcance, stats["ok"], len(nombres), dur)
+    if categorias:
+        logger.info("Foto (%s), fallos por tipo: %s",
+                    alcance, ", ".join(f"{k}={v}" for k, v in categorias.most_common()))
     return {"alcance": alcance, "pedidos": len(nombres), "capturados": stats["ok"],
             "sin_datos": stats["fallos"], "segundos": round(dur, 1),
             "at": inicio.isoformat(), "cortado": cortado,

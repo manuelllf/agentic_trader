@@ -11,7 +11,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
-  contarUniversoGlobal, getUniversoGlobal, getUniversoGlobalSyncEstado, startFoto,
+  contarUniversoGlobal, getFotoStatus, getUniversoGlobal, getUniversoGlobalSyncEstado, startFoto,
   subirUniversoGlobalCsv, syncUniversoGlobal, type UniversoGlobalOpciones,
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
@@ -57,9 +57,13 @@ export function FotoGlobalPicker() {
   const [syncArmed, setSyncArmed] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fotoPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => () => { if (syncPollRef.current) clearInterval(syncPollRef.current); }, []);
+  useEffect(() => () => {
+    if (syncPollRef.current) clearInterval(syncPollRef.current);
+    if (fotoPollRef.current) clearInterval(fotoPollRef.current);
+  }, []);
 
   async function cargarOpciones() {
     setLoadingOpciones(true);
@@ -149,12 +153,42 @@ export function FotoGlobalPicker() {
     pollSync();
   }
 
+  // Sondea `getFotoStatus()` directamente (no `/scan/progress`): ese progreso lo comparte
+  // CUALQUIER captura/escaneo en curso a la vez, así que fiarse de él aquí mezclaría el
+  // mensaje de esta tanda con el de otra corriendo en paralelo.
+  function pollFoto() {
+    if (fotoPollRef.current) clearInterval(fotoPollRef.current);
+    fotoPollRef.current = setInterval(async () => {
+      try {
+        const st = await getFotoStatus();
+        if (st.status === "running") return;
+        if (fotoPollRef.current) clearInterval(fotoPollRef.current);
+        fotoPollRef.current = null;
+        if (st.status === "done" && st.result) {
+          const r = st.result;
+          if (r.cortado) {
+            setMsg({ text: `Captura global cortada: ${r.motivo_corte ?? "bloqueo del proveedor"} `
+              + `(${fmtNum(r.capturados)}/${fmtNum(r.pedidos)} capturados igualmente).`, bad: true });
+          } else {
+            setMsg({ text: `Captura global terminada: ${fmtNum(r.capturados)}/${fmtNum(r.pedidos)} `
+              + `capturados (${fmtNum(r.sin_datos)} sin datos).` });
+          }
+        } else {
+          setMsg({ text: st.error ?? "La captura global falló.", bad: true });
+        }
+      } catch {
+        // sondeo silencioso: un fallo puntual de red no debe tapar el mensaje de lanzamiento
+      }
+    }, 3000);
+  }
+
   async function doLaunch() {
     setArmed(false);
     setLaunching(true);
     try {
       await startFoto("global", limite, countries, exchanges);
       setMsg({ text: `Captura global lanzada (${fmtNum(efectivo ?? limite)} nombres, ~${minutosEstimados} min en segundo plano).` });
+      pollFoto();
     } catch (e) {
       setMsg({ text: e instanceof Error ? e.message : "No se pudo lanzar la captura.", bad: true });
     } finally {
