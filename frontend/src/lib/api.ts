@@ -32,9 +32,9 @@ function onUnauthorized() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event("agentic-unauthorized"));
 }
 
-async function request(path: string, init?: RequestInit): Promise<Response> {
+async function request(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS): Promise<Response> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const token = getToken();
   const headers = {
     ...(init?.headers as Record<string, string> | undefined),
@@ -60,12 +60,12 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function post<T>(path: string, body?: unknown, timeoutMs?: number): Promise<T> {
   const res = await request(path, {
     method: "POST",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
-  });
+  }, timeoutMs);
   if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
@@ -355,9 +355,33 @@ export const fetchAnalyticsConfianzaPrescore = (scanRunId?: number) =>
   );
 export const fetchAnalyticsScans = () =>
   get<{ items: { id: number; at: string; cadence: string }[] }>("/analytics/scans");
+// Las dos siguientes hacen trabajo síncrono de verdad dentro del propio request (reconstruir
+// DuckDB entero, o levantar la sesión del scraper de Yahoo + recalcular). El timeout de 15s
+// pensado para lecturas normales las corta a mitad y sale como "falló" cuando en realidad el
+// backend sigue trabajando -- visto en vivo con `sync-analytics`. 90s les da margen de verdad
+// sin dejar un botón colgado para siempre si el backend está de verdad caído.
+const TIMEOUT_SYNC_MS = 90_000;
+
 /** Reconstruye el fichero DuckDB de /analytics/* desde Postgres (también corre solo a diario). */
 export const syncAnalytics = () =>
-  post<{ ok: boolean; counts: Record<string, number> }>("/admin/sync-analytics");
+  post<{ ok: boolean; counts: Record<string, number> }>(
+    "/admin/sync-analytics", undefined, TIMEOUT_SYNC_MS);
+
+/** Tasas de cambio a USD + recálculo de market_cap_usd (también corre sola a las 5:00). El
+ *  backend devuelve `ok: false` con motivo si el scraper de Yahoo no responde — no lanza. */
+export const syncFx = () =>
+  post<{ ok: boolean; divisas?: number; recalculadas?: number; error?: string }>(
+    "/admin/fx-sync", undefined, TIMEOUT_SYNC_MS);
+
+export interface EstadoFuente { at: string | null; n: number }
+export interface EstadoDatos {
+  universo: EstadoFuente; foto_nasdaq: EstadoFuente;
+  foto_global: EstadoFuente; fx: EstadoFuente;
+}
+
+/** Frescura de las fuentes que alimentan un escaneo — la tira de estado del centro de
+ *  operaciones. Sin esto los chips tendrían que inventarse la antigüedad. */
+export const getEstadoDatos = () => get<EstadoDatos>("/admin/estado-datos");
 
 export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);

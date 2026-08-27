@@ -353,6 +353,16 @@ def metricas(info: dict) -> dict:
 # cualquiera. Es el mismo suelo con el que se midieron las medianas del A/B.
 _MIN_POR_SECTOR = 6
 
+# "n/d" es el relleno que pone `gather()` cuando la fuente no trae sector, y el scraper puede
+# devolverlo vacío -- ninguno de los dos es un sector contra el que comparar un P/E.
+_NO_SECTOR = {"", "n/d", "none", "null"}
+
+
+def es_sector(valor: str | None) -> bool:
+    """False para ausencias disfrazadas de sector ("n/d", vacío): agruparlas da una "mediana del
+    sector desconocido" que no significa nada y que el prompt pegaría al P/E como si fuera real."""
+    return bool(valor) and valor.strip().lower() not in _NO_SECTOR
+
 
 def medianas_pe_por_sector(datos: list[NameData]) -> dict[str, dict[str, float]]:
     """Mediana de P/E trailing Y forward por sector, calculada sobre el UNIVERSO PROPIO.
@@ -373,7 +383,7 @@ def medianas_pe_por_sector(datos: list[NameData]) -> dict[str, dict[str, float]]
     trailing: dict[str, list[float]] = defaultdict(list)
     forward: dict[str, list[float]] = defaultdict(list)
     for d in datos:
-        if not d.sector:
+        if not es_sector(d.sector):
             continue
         if d.pe_trailing and d.pe_trailing > 0:
             trailing[d.sector].append(d.pe_trailing)

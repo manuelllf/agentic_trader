@@ -1,12 +1,11 @@
 "use client";
 
-// Simulation button modal: configure model/reasoning/temperature/top_p per stage.
-// Always opens with production defaults from /config. Temperature/top_p editable on all stages.
+// Configure model/reasoning/temperature/top_p per stage. Opens with production defaults from
+// /config. Universe and photo reuse live in the operations card, not here — they aren't models.
 
 import { useEffect, useRef, useState } from "react";
 import { getConfig } from "@/lib/api";
 import type { DemoRunOverrides, ReasoningEffort, StageLLMOverride } from "@/lib/types";
-import { InfoTip } from "./InfoTip";
 import { T } from "./tokens";
 
 const DEEPSEEK_MODELS = ["deepseek-v4-pro", "deepseek-v4-flash"] as const;
@@ -42,26 +41,13 @@ const FALLBACK: Record<Stage, Required<StageLLMOverride>> = {
 
 const STAGES: Stage[] = ["macro", "prescore", "mid", "deep", "constructor"];
 
-type ModoUniverso = "nasdaq" | "global_topcap";
-
-const UNIVERSOS: { value: ModoUniverso; label: string; hint: string }[] = [
-  { value: "nasdaq", label: "NASDAQ (de siempre)",
-    hint: "Universo elegible de NASDAQ (precio ≥$5, volumen ≥300k, hasta 3.000 nombres)." },
-  { value: "global_topcap", label: "Top 3.000 market cap global (USD)",
-    hint: "Los de mayor market cap del universo global convertido a USD, solo mercados operables "
-         + "en IBKR. Necesita foto global reciente (POST /admin/foto?alcance=global)." },
-];
-
-export function ScanConfigModal({ onClose, onLaunch }: {
+export function ScanConfigModal({ onClose, onApply }: {
   onClose: () => void;
-  onLaunch: (overrides: DemoRunOverrides, reutilizarUltimaFoto: boolean,
-            modoUniverso: ModoUniverso) => void;
+  onApply: (overrides: DemoRunOverrides) => void;
 }) {
   const [cfg, setCfg] = useState<Record<Stage, Required<StageLLMOverride>>>(FALLBACK);
   // Until /config resolves, controls are disabled to prevent race: user changes get overwritten by defaults.
   const [loaded, setLoaded] = useState(false);
-  const [reutilizarFoto, setReutilizarFoto] = useState(false);
-  const [modoUniverso, setModoUniverso] = useState<ModoUniverso>("nasdaq");
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -95,10 +81,10 @@ export function ScanConfigModal({ onClose, onLaunch }: {
   // Objeto literal explícito, no un `{}` + asignación por bucle: "constructor" como nombre de
   // propiedad choca con `Object.prototype.constructor` y TS infiere mal el tipo del literal
   // vacío en ese caso.
-  const launch = () => onLaunch({
+  const apply = () => onApply({
     macro: cfg.macro, prescore: cfg.prescore, mid: cfg.mid, deep: cfg.deep,
     constructor: cfg.constructor,
-  }, reutilizarFoto, modoUniverso);
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
@@ -114,15 +100,15 @@ export function ScanConfigModal({ onClose, onLaunch }: {
         .cfg-num::-webkit-inner-spin-button, .cfg-num::-webkit-outer-spin-button {
           appearance: none; margin: 0; }
       `}</style>
-      <div role="dialog" aria-modal="true" aria-label="Configuración de la simulación de escaneo"
+      <div role="dialog" aria-modal="true" aria-label="Configuración de modelo por etapa del escaneo"
            className="w-full max-w-2xl rounded-lg border shadow-xl"
            style={{ borderColor: T.ring, background: T.panel }}
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: T.grid }}>
           <div className="flex items-center gap-2">
-            <b style={{ color: T.ink }}>Configurar simulación</b>
+            <b style={{ color: T.ink }}>Modelo por etapa</b>
             <span className="text-[11px]" style={{ color: T.muted }}>
-              modelo/reasoning reales, coste real — no toca ninguna cartera
+              se aplica al próximo escaneo que lances desde la card
             </span>
           </div>
           <button ref={closeRef} onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
@@ -132,24 +118,6 @@ export function ScanConfigModal({ onClose, onLaunch }: {
           {!loaded && (
             <p className="mb-2 text-[11px]" style={{ color: T.muted }}>Cargando configuración real…</p>
           )}
-          <div className="mb-2.5 rounded border px-2.5 py-2" style={{ borderColor: T.grid }}>
-            <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-              Universo
-            </p>
-            <div className="mt-1.5 flex flex-col gap-1.5 sm:flex-row sm:gap-3">
-              {UNIVERSOS.map((u) => (
-                <label key={u.value} className="flex items-start gap-1.5 text-[11px]" style={{ color: T.ink }}>
-                  <input type="radio" name="modo-universo" className="mt-0.5 h-3 w-3"
-                         checked={modoUniverso === u.value}
-                         onChange={() => setModoUniverso(u.value)} />
-                  <span>
-                    {u.label}
-                    <InfoTip text={u.hint} />
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
           <div className={`space-y-2.5 ${loaded ? "" : "pointer-events-none opacity-50"}`}>
             {STAGES.map((s) => (
               <StageRow key={s} stage={s} v={cfg[s]} models={MODELS_BY_STAGE[s]}
@@ -159,22 +127,15 @@ export function ScanConfigModal({ onClose, onLaunch }: {
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t px-4 py-2.5" style={{ borderColor: T.grid }}>
-          <label className="flex items-center gap-1 text-[10.5px]" style={{ color: T.ink2 }}>
-            <input type="checkbox" checked={reutilizarFoto}
-                   onChange={(e) => setReutilizarFoto(e.target.checked)}
-                   className="h-3 w-3" />
-            reutilizar última foto
-            <InfoTip text="Usa la última foto de fundamentales de cada ticker sin importar su antigüedad, en vez de esperar un gather fresco (~20-40 min). Sin marcar, se pide dato fresco o de hasta 12h." />
-          </label>
           <button onClick={onClose}
                   className="rounded px-3 py-1.5 text-[11.5px] font-semibold hover:opacity-80"
                   style={{ color: T.muted }}>
             Cancelar
           </button>
-          <button onClick={launch} disabled={!loaded}
+          <button onClick={apply} disabled={!loaded}
                   className="rounded-full px-4 py-1.5 text-[11.5px] font-bold hover:opacity-90 disabled:opacity-50"
                   style={{ background: T.warn, color: "#0d0d0d" }}>
-            Lanzar simulación
+            Aplicar
           </button>
         </div>
       </div>

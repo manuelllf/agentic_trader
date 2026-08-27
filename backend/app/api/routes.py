@@ -55,6 +55,8 @@ un feed de señales.
                                        Postgres (también corre solo, una vez al día)       [protegido]
 - POST /admin/fx-sync                → tasas de cambio a USD + recálculo de market_cap_usd
                                        (también corre solo, 5:00 Europa/Madrid)            [protegido]
+- GET  /admin/estado-datos           → frescura de universo/fotos/tasas, para el centro de
+                                       operaciones de Sala Real                            [protegido]
 """
 
 from __future__ import annotations
@@ -482,11 +484,16 @@ _ANALYTICS_QUERIES: dict[str, str] = {
         group by stage
         order by usd desc
     """,
+    # `es_dataset = false`: SOLO la foto del universo de escaneo. Sin este filtro entraban los
+    # ~34.000 del universo global y la mediana pasaba a ser la del mundo entero (Technology:
+    # 33,9 con NASDAQ, 28,6 mezclado) — otra pregunta distinta, no la que responde este panel.
     "pe-sector": """
         with ultima as (
             select distinct on (ticker) ticker, sector, pe_trailing
             from fundamentals_snapshot
             where pe_trailing is not null and pe_trailing > 0
+              and es_dataset = false
+              and coalesce(lower(trim(sector)), '') not in ('', 'n/d', 'none', 'null')
             {and_fecha}
             order by ticker, captured_at desc
         )
@@ -501,7 +508,7 @@ _ANALYTICS_QUERIES: dict[str, str] = {
     "pe-sector-fechas": """
         select distinct strftime(captured_at::date, '%Y-%m-%d') as fecha
         from fundamentals_snapshot
-        where pe_trailing is not null and pe_trailing > 0
+        where pe_trailing is not null and pe_trailing > 0 and es_dataset = false
         order by fecha desc
         limit 60
     """,
@@ -562,10 +569,10 @@ def _run_analytics_query(nombre: str, scan_run_id: int | None = None,
 
 @router.get("/analytics/pe-sector")
 def analytics_pe_sector(fecha: str | None = Query(None)) -> dict:
-    """Mediana de `trailingPE` (yfinance) por sector, sobre el último snapshot de cada ticker —
-    el mismo campo con el que se puntúa, no un agregado de una fuente externa. `fecha`
-    (YYYY-MM-DD, ver /analytics/pe-sector/fechas) fija el snapshot de ese día en vez del más
-    reciente; sin ella, igual que siempre."""
+    """Mediana de `trailingPE` (yfinance) por sector, sobre el último snapshot de cada ticker del
+    UNIVERSO DE ESCANEO — el mismo campo y el mismo universo con los que se puntúa, no un
+    agregado de una fuente externa ni del universo global. `fecha` (YYYY-MM-DD, ver
+    /analytics/pe-sector/fechas) fija el snapshot de ese día en vez del más reciente."""
     try:
         return {"items": _run_analytics_query("pe-sector", fecha=fecha)}
     except ImportError:
@@ -632,6 +639,34 @@ def analytics_scans(db: Session = Depends(get_db)) -> dict:
     return {"items": [
         {"id": r.id, "at": utc_iso(r.scan_at), "cadence": r.cadence} for r in rows
     ]}
+
+
+@router.get("/admin/estado-datos")
+def admin_estado_datos(db: Session = Depends(get_db)) -> dict:
+    """Frescura de cada fuente que alimenta un escaneo (universo, fotos, tasas) — para que el
+    centro de operaciones diga "puedes lanzar" o "te falta esto" ANTES de gastar, en vez de
+    descubrirlo a mitad. Solo lecturas agregadas, nada de traerse las filas."""
+    from sqlalchemy import func
+
+    from app.models import FundamentalsSnapshot, FxRate, NasdaqSnapshotTicker
+
+    def _foto(es_dataset: bool) -> dict:
+        at, n = (db.query(func.max(FundamentalsSnapshot.captured_at),
+                         func.count(func.distinct(FundamentalsSnapshot.ticker)))
+                .filter(FundamentalsSnapshot.es_dataset.is_(es_dataset)).one())
+        return {"at": utc_iso(at) if at else None, "n": n or 0}
+
+    uni_at, uni_n = (db.query(func.max(NasdaqSnapshotTicker.snapshot_at),
+                             func.count(NasdaqSnapshotTicker.ticker)).one())
+    fx_at = db.query(func.max(FxRate.synced_at)).scalar()
+    fx_n = (db.query(func.count(FxRate.currency_code))
+           .filter(FxRate.synced_at == fx_at).scalar() if fx_at else 0)
+    return {
+        "universo": {"at": utc_iso(uni_at) if uni_at else None, "n": uni_n or 0},
+        "foto_nasdaq": _foto(False),
+        "foto_global": _foto(True),
+        "fx": {"at": utc_iso(fx_at) if fx_at else None, "n": fx_n or 0},
+    }
 
 
 @router.post("/admin/fx-sync")

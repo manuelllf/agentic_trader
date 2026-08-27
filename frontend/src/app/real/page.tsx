@@ -8,12 +8,11 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   approveTrade, fetchAnalyticsConfianzaPrescore, fetchAnalyticsCosteEtapa, fetchAnalyticsPeSector,
-  fetchAnalyticsPeSectorFechas, fetchAnalyticsScans, fetchScanProgress, getFotoStatus,
+  fetchAnalyticsPeSectorFechas, fetchAnalyticsScans,
   getApprovals, getConfig, getDemoStatus, getFx, getHistory,
   getPerformance, getPersonal, getPushKey, getReal, getScanFunnel, getScanReport, logout,
-  reconcileApprovals, recheck, redeep, rejectTrade, resetShadow, runDemo, snapshotUniverse, startFoto,
+  reconcileApprovals, rejectTrade, resetShadow,
   subscribePush,
-  syncAnalytics,
   syncPersonal, testPush,
   type ScanReport,
 } from "@/lib/api";
@@ -24,15 +23,12 @@ import {
   cascada, fmtNum, fmtScanCost, sectoresTop, universoLinea, type FunnelScan,
 } from "@/lib/scan";
 import type {
-  AppConfig, Approval, ApprovalsResponse, DemoRunOverrides, DemoStatus, HistoryPoint, Performance,
+  AppConfig, Approval, ApprovalsResponse, DemoStatus, HistoryPoint, Performance,
   PersonalSummary, RealSummary,
 } from "@/lib/types";
-import type { ScanProgress } from "@/lib/api";
 import { CapitalForm } from "./CapitalForm";
-import { FotoGlobalPicker } from "./FotoGlobalPicker";
-import { InfoTip } from "./InfoTip";
+import { CentroOperaciones } from "./CentroOperaciones";
 import { MemorySearch } from "./MemorySearch";
-import { ScanConfigModal } from "./ScanConfigModal";
 import { ScanFullButton } from "./ScanFullModal";
 import { OrderRow } from "./OrderRow";
 import { TickerAudit } from "./TickerAudit";
@@ -68,44 +64,14 @@ function SalaRealRoom() {
   const [pushOn, setPushOn] = useState<boolean | null>(null);
   const [scanStatus, setScanStatus] = useState<DemoStatus | null>(null);
   const [running, setRunning] = useState(false);
-  const [configOpen, setConfigOpen] = useState(false);   // modal del botón 📡 (simulación)
   const [shadowPerf, setShadowPerf] = useState<Performance | null>(null);   // sombra en paralelo
   const [hist, setHist] = useState<HistoryPoint[]>([]);   // curva del libro real (cierres diarios)
   const [report, setReport] = useState<ScanReport | null>(null);   // informe del último escaneo
   const [funnel, setFunnel] = useState<FunnelScan | null>(null);   // embudo (traza de auditoría)
   const [resetArmed, setResetArmed] = useState(false);    // armar→confirmar el reinicio del sombra
   const [resetting, setResetting] = useState(false);
-  const [mantOpen, setMantOpen] = useState(false);        // mantenimiento plegado (destructivo)
-  const [scanArmed, setScanArmed] = useState(false);      // armar→confirmar "Analizar mercado" (dinero real)
-  // Checkbox de los dos modales de escaneo: usa la última foto de fundamentales de cada ticker
-  // sin importar su antigüedad, en vez de esperar un gather fresco (~20-40 min) — para pruebas
-  // a mitad de mes donde no hace falta dato del minuto.
-  const [reutilizarFoto, setReutilizarFoto] = useState(false);
-  const [snapArmed, setSnapArmed] = useState(false);      // armar→confirmar rehacer foto del universo
-  const [fotoArmed, setFotoArmed] = useState(false);      // armar→confirmar capturar fundamentales
-  const [snapping, setSnapping] = useState(false);
-  // Resultado de rehacer la foto del universo: éxito en tono neutro, error en ámbar — no hay
-  // paso intermedio armar→confirmar porque no es destructivo (solo refresca una foto de lectura).
-  const [snapMsg, setSnapMsg] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [fotoing, setFotoing] = useState(false);
-  const [fotoMsg, setFotoMsg] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [fotoScope, setFotoScope] = useState<"nasdaq" | "global">("nasdaq");
-  // Barra de avance mientras la captura corre en segundo plano (`GET /scan/progress`, ya
-  // existía en el backend, sin usar en el panel). Se para sola en cuanto la etapa deja de ser
-  // "foto" -- no hace falta que el usuario se quede mirando.
-  const [fotoProgress, setFotoProgress] = useState<ScanProgress | null>(null);
-  const fotoPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Actividad (histórico de decisiones): colapsada por defecto, movida junto a Mantenimiento —
-  // las herramientas de uso real (recheck/redeep, memoria, analítica) ganan el espacio de arriba.
+  // Actividad (histórico de decisiones): colapsada por defecto, penúltima — uso ocasional.
   const [actividadOpen, setActividadOpen] = useState(false);
-  // Ajustar sin re-escanear: recomponer la cartera (gratis) o reanalizar a fondo con el macro
-  // de hoy (dinero real) — mismo patrón armar→confirmar que el resto, variables propias.
-  const [recheckArmed, setRecheckArmed] = useState(false);
-  const [rechecking, setRechecking] = useState(false);
-  const [recheckMsg, setRecheckMsg] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [redeepArmed, setRedeepArmed] = useState(false);
-  const [redeeping, setRedeeping] = useState(false);
-  const [redeepMsg, setRedeepMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   // Historia de un ticker a través de los escaneos: se abre desde "Posiciones del agente".
   const [auditTicker, setAuditTicker] = useState<string | null>(null);
   // Analítica del método (DuckDB sobre Postgres): bajo demanda, cada tabla con su propio
@@ -124,8 +90,6 @@ function SalaRealRoom() {
   // `analyticsScans` (que es de escaneos, no de días de captura).
   const [peSectorFechas, setPeSectorFechas] = useState<string[]>([]);
   const [peSectorPos, setPeSectorPos] = useState(-1);
-  const [syncingAnalytics, setSyncingAnalytics] = useState(false);
-  const [analyticsSyncMsg, setAnalyticsSyncMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
@@ -172,100 +136,6 @@ function SalaRealRoom() {
     }
   }
 
-  /** Rehace la foto del universo bajo demanda, sin esperar al cron del cierre. El backend puede
-   *  responder 200 con `ok: false` (p.ej. NASDAQ no respondió) — no es un fallo de red, así que
-   *  se lee del cuerpo, no del catch. */
-  async function doSnapshotUniverse() {
-    setSnapArmed(false);
-    setSnapping(true);
-    try {
-      const r = await snapshotUniverse();
-      if (r.ok) {
-        const hhmm = r.at
-          ? new Date(r.at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
-          : "—";
-        setSnapMsg({ text: `foto rehecha: ${r.size != null ? fmtNum(r.size) : "—"} nombres · ${hhmm}` });
-      } else {
-        setSnapMsg({ text: r.error ?? "No se pudo rehacer la foto del universo.", bad: true });
-      }
-    } catch (e) {
-      setSnapMsg({ text: e instanceof Error ? e.message : "No se pudo rehacer la foto del universo.", bad: true });
-    } finally {
-      setSnapping(false);
-    }
-  }
-
-  /** Lanza la foto de fundamentales (~12-15 min en segundo plano con 4 hilos). No puntúa: el
-   *  escaneo posterior reutiliza esta foto durante 24h, que es lo que permite fotografiar por
-   *  la mañana y puntuar off-peak por la tarde a mitad de tarifa. Avance en vivo vía
-   *  `/scan/progress`, sondeado cada 3s mientras dure. */
-  async function doFoto() {
-    setFotoArmed(false);
-    setFotoing(true);
-    try {
-      await startFoto("nasdaq");
-      setFotoMsg({ text: "foto lanzada, ~12-15 min en segundo plano (no bloquea nada)" });
-      if (fotoPollRef.current) clearInterval(fotoPollRef.current);
-      fotoPollRef.current = setInterval(async () => {
-        try {
-          const p = await fetchScanProgress();
-          if (p.stage !== "foto") {
-            if (fotoPollRef.current) clearInterval(fotoPollRef.current);
-            fotoPollRef.current = null;
-            setFotoProgress(null);
-            const st = await getFotoStatus();
-            if (st.result?.cortado) {
-              setFotoMsg({ text: `foto cortada: ${st.result.motivo_corte ?? "bloqueo del proveedor"} `
-                + `(${st.result.capturados}/${st.result.pedidos} capturados igualmente)`, bad: true });
-            } else if (st.result) {
-              setFotoMsg({ text: `foto terminada: ${st.result.capturados}/${st.result.pedidos} capturados` });
-            }
-          } else {
-            setFotoProgress(p);
-          }
-        } catch {
-          // sondeo silencioso: un fallo puntual de red no debe tapar el mensaje de lanzamiento
-        }
-      }, 3000);
-    } catch (e) {
-      setFotoMsg({ text: e instanceof Error ? e.message : "No se pudo lanzar la foto.", bad: true });
-    } finally {
-      setFotoing(false);
-    }
-  }
-
-  /** Recompone la cartera con los informes ya analizados y el suelo actual — gratis, no
-   *  vuelve a escanear ni a llamar al LLM. */
-  async function doRecheck() {
-    setRecheckArmed(false);
-    setRechecking(true);
-    try {
-      await recheck();
-      setRecheckMsg({ text: "Cartera recompuesta con los informes ya analizados." });
-      await load();
-    } catch (e) {
-      setRecheckMsg({ text: e instanceof Error ? e.message : "No se pudo recomponer la cartera.", bad: true });
-    } finally {
-      setRechecking(false);
-    }
-  }
-
-  /** Reanaliza a fondo (V4-Pro) los nombres ya profundizados con el macro de HOY, sin
-   *  re-escanear el universo. Cuesta dinero real. */
-  async function doRedeep() {
-    setRedeepArmed(false);
-    setRedeeping(true);
-    try {
-      await redeep();
-      setRedeepMsg({ text: "Reanálisis a fondo completado con el macro de hoy." });
-      await load();
-    } catch (e) {
-      setRedeepMsg({ text: e instanceof Error ? e.message : "No se pudo reanalizar a fondo.", bad: true });
-    } finally {
-      setRedeeping(false);
-    }
-  }
-
   /** Carga las 3 tablas de analítica (DuckDB sobre Postgres) bajo demanda — no se dispara
    *  sola al montar la página. Cada tabla lleva su propio estado: un 503 (DuckDB no
    *  instalado en el backend) en una no debe tapar el resultado de las otras dos. */
@@ -292,23 +162,6 @@ function SalaRealRoom() {
     fetchAnalyticsConfianzaPrescore()
       .then((r) => setConfianzaPrescore({ data: r.items, loading: false, error: "" }))
       .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
-  }
-
-  /** Reconstruye el fichero DuckDB en el backend (POST /admin/sync-analytics) y recarga las 3
-   *  tablas — para no esperar hasta el cron diario tras el primer despliegue o un escaneo nuevo. */
-  async function doSyncAnalytics() {
-    setSyncingAnalytics(true);
-    setAnalyticsSyncMsg(null);
-    try {
-      const r = await syncAnalytics();
-      const resumen = Object.entries(r.counts).map(([t, n]) => `${t}: ${n}`).join(", ");
-      setAnalyticsSyncMsg({ text: `Sincronizado (${resumen}).` });
-      await loadAnalytics();
-    } catch (e) {
-      setAnalyticsSyncMsg({ text: e instanceof Error ? e.message : "No se pudo sincronizar.", bad: true });
-    } finally {
-      setSyncingAnalytics(false);
-    }
   }
 
   /** Recarga solo coste-etapa para el escaneo en `pos` (-1 = Total, agregado histórico).
@@ -352,7 +205,6 @@ function SalaRealRoom() {
       alive.current = false;
       if (pollRef.current) clearInterval(pollRef.current);
       if (scanTimer.current) clearTimeout(scanTimer.current);
-      if (fotoPollRef.current) clearInterval(fotoPollRef.current);
     };
   }, [load]);
 
@@ -372,34 +224,18 @@ function SalaRealRoom() {
     }
   }, [load]);
 
-  const handleRunScan = async () => {
+  /** La card lanza; aquí solo arranca el sondeo y el aviso. Así el estado del escaneo sigue
+   *  viviendo en la página (lo mira también la cabecera) sin que la card tenga que conocerlo. */
+  const onScanStarted = useCallback(() => {
     setError("");
-    setScanArmed(false);
-    try {
-      await runDemo({ reutilizarUltimaFoto: reutilizarFoto });
-      setRunning(true);
-      setFlash("Análisis en marcha…");
-      pollScan();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo lanzar el análisis.");
-    }
-  };
+    setRunning(true);
+    setFlash("Escaneo en marcha…");
+    pollScan();
+  }, [pollScan]);
 
-  // Full monthly circuit (universe + mid-layer) with decide=false: refreshes without touching any portfolio.
-  // Opens config modal to set model/reasoning per stage; actual launch happens on confirmation.
-  const handleLaunchSimulation = async (overrides: DemoRunOverrides, reutilizarFotoSim: boolean,
-                                        modoUniverso: "nasdaq" | "global_topcap") => {
-    setConfigOpen(false);
-    setError("");
-    try {
-      await runDemo({ decide: false, forceMidLayer: true, overrides,
-                      reutilizarUltimaFoto: reutilizarFotoSim, modoUniverso });
-      setRunning(true);
-      setFlash("Simulación en marcha (no va a tocar ninguna cartera)…");
-      pollScan();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo lanzar la simulación.");
-    }
+  const irAOperaciones = () => {
+    document.getElementById("centro-operaciones")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   useEffect(() => {
@@ -526,100 +362,47 @@ function SalaRealRoom() {
       <header className="sticky top-0 z-40 border-b backdrop-blur"
               style={{ borderColor: T.ring, background: "rgba(13,13,13,0.92)" }}>
         <div className="mx-auto flex h-auto max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:h-11 sm:flex-nowrap sm:py-0 lg:px-6">
+          {/* Cuatro cosas y ninguna más: volver, dónde estoy, lanzar, y con qué dinero. El
+              lema y la fecha del último análisis se fueron al centro de operaciones — repetían
+              lo que ya dicen la card de abajo y el pie de ajustes. */}
           <div className="flex items-center gap-3">
             <button onClick={exit} className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
               ← Portada
             </button>
-            <span className="h-4 w-px" style={{ background: T.grid }} />
-            <span className="inline-flex items-center gap-2 text-[14px] font-bold tracking-tight" style={{ color: T.ink }}>
+            <span className="inline-flex items-center gap-2 text-[13px] font-bold tracking-tight" style={{ color: T.ink }}>
               <span className={`h-2 w-2 rounded-full ${loading && !summary ? "animate-pulse" : ""}`}
                     style={{ background: error ? T.bad : loading && !summary ? T.warn : T.good }}
                     title={error ? "sin conexión" : "conectado"} />
               SALA REAL
             </span>
-            <span className="hidden text-[11.5px] sm:inline" style={{ color: T.muted }}>
-              cuenta real · el agente propone, tú decides
-            </span>
           </div>
-          <div className="flex items-center gap-2">
-            {/* Last scan state: "analyzing…" from polling; rest from persistent report (/scan/report). */}
-            <span className="hidden items-center rounded px-2.5 py-1 text-[11px] font-semibold sm:inline-flex"
-                  style={{ background: "rgba(255,255,255,0.05)", color: T.muted }}
-                  title="Puntúa el universo, propone la cartera real (a tu Sí/No) y ejecuta sola la sombra.">
-              {isScanning
-                ? "analizando…"
-                : report
-                  ? `último análisis ${fmtTime(report.at)}${
-                      report.cost ? ` · $${report.cost.cost_usd.toFixed(3)}` : ""
-                    }`
-                  : "sin análisis previo"}
-            </span>
-            {!scanArmed ? (
-              <button onClick={() => setScanArmed(true)} disabled={isScanning}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-[11.5px] font-bold transition-opacity hover:opacity-90 disabled:opacity-50"
-                      style={{ background: "#5DCAA5", color: "#0d0d0d" }}>
-                <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 ${isScanning ? "animate-spin" : ""}`}
-                     fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                     strokeLinejoin="round" aria-hidden>
-                  <circle cx="12" cy="12" r="0.5" fill="currentColor" />
-                  <path d="M15.51 15.56a5 5 0 1 0 -3.51 1.44" />
-                  <path d="M18.83 17.86a9 9 0 1 0 -6.83 3.14" />
-                </svg>
-                {isScanning ? "Analizando…" : "Analizar mercado"}
-              </button>
-            ) : (
-              <span className="inline-flex flex-wrap items-center gap-1.5 rounded-full border px-3 py-1"
-                    style={{ borderColor: "rgba(208,59,59,0.5)", background: "rgba(208,59,59,0.08)" }}>
-                <InfoTip text="Lanza el escaneo real completo — dinero real de por medio." />
-                <label className="flex items-center gap-1 text-[10.5px]" style={{ color: T.ink2 }}>
-                  <input type="checkbox" checked={reutilizarFoto}
-                         onChange={(e) => setReutilizarFoto(e.target.checked)}
-                         className="h-3 w-3" />
-                  reutilizar última foto
-                  <InfoTip text="Usa la última foto de fundamentales de cada ticker sin importar su antigüedad, en vez de esperar un gather fresco (~20-40 min). Pensado para pruebas a mitad de mes; sin marcar, se pide dato fresco o de hasta 12h." />
-                </label>
-                <button onClick={handleRunScan}
-                        className="rounded-full px-3 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90"
-                        style={{ background: T.bad }}>
-                  Confirmar análisis
-                </button>
-                <button onClick={() => setScanArmed(false)}
-                        className="rounded-full border px-3 py-1 text-[11px] transition-colors hover:bg-white/5"
-                        style={{ borderColor: T.ring, color: T.ink2 }}>
-                  Cancelar
-                </button>
-              </span>
-            )}
-            {/* Simulación: universo completo, coste y modelo REALES, pero decide=false — no
-                propone ni toca ninguna cartera. Círculo aparte (no un pill con texto) a propósito:
-                que nunca se confunda al vuelo con el botón de decisión de al lado. Reutiliza 📡,
-                el mismo símbolo que ya usa la sala sombra para "observa, no decide". */}
-            <button onClick={() => setConfigOpen(true)} disabled={isScanning}
-                    title="Simulación: escanea el universo completo con el modelo y coste reales, pero NO propone ni toca ninguna cartera (ni sombra ni real) — solo refresca ranking, watchlist, memoria y traza. Abre un modal para configurar modelo/reasoning/temperatura/top_p por etapa antes de lanzar."
-                    aria-label="Configurar y lanzar simulación de escaneo completo (no toca ninguna cartera)"
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] transition-opacity hover:opacity-90 disabled:opacity-50"
-                    style={{ background: T.bad }}>
-              <span className={isScanning ? "animate-pulse" : ""} aria-hidden>📡</span>
+          <div className="flex items-center gap-2.5">
+            <button onClick={irAOperaciones}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1 text-[11.5px] font-semibold transition-opacity hover:opacity-90"
+                    style={{ background: isScanning ? "rgba(57,135,229,0.15)" : T.buy,
+                             color: isScanning ? "#85b7eb" : "#fff" }}>
+              <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 ${isScanning ? "animate-spin" : ""}`}
+                   fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                   strokeLinejoin="round" aria-hidden>
+                <circle cx="12" cy="12" r="0.5" fill="currentColor" />
+                <path d="M15.51 15.56a5 5 0 1 0 -3.51 1.44" />
+                <path d="M18.83 17.86a9 9 0 1 0 -6.83 3.14" />
+              </svg>
+              {isScanning ? "Analizando…" : "Escanear"}
             </button>
             {summary && (
+              // Un punto y una palabra. Es lo único de la cabecera que no puede faltar: distingue
+              // dinero de verdad de dinero de mentira.
               <span title={summary.broker.detail}
-                    className="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-bold tracking-wide"
-                    style={dry
-                      ? { background: "rgba(250,178,25,0.12)", color: T.warn }
-                      : { background: "rgba(12,163,12,0.12)", color: T.good }}>
+                    className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wide"
+                    style={{ color: dry ? T.warn : T.good }}>
                 <span className="h-[7px] w-[7px] rounded-full" style={{ background: dry ? T.warn : T.good }} />
-                {dry ? "SIMULACIÓN" : "LIVE · IBKR"}
+                {dry ? "DRY-RUN" : "LIVE"}
               </span>
             )}
           </div>
         </div>
       </header>
-
-      {/* Outside header: header's backdrop-blur creates containing block for position:fixed,
-          clipping the modal veil; moved here to cover full screen. */}
-      {configOpen && (
-        <ScanConfigModal onClose={() => setConfigOpen(false)} onLaunch={handleLaunchSimulation} />
-      )}
 
       <div className="mx-auto max-w-[1500px] px-4 pt-4 lg:px-6">
 
@@ -798,8 +581,71 @@ function SalaRealRoom() {
           </>
         )}
 
-        {/* ---------- 3 · libro del agente (solo cuando hay capital) ---------- */}
+        {/* ---------- 3 · operar: lanzar y, justo debajo, lo que salió de lanzar. Antes se
+            lanzaba desde cuatro sitios distintos y el informe caía lejos del lanzador. ---------- */}
+        <div id="centro-operaciones" className="mt-4 scroll-mt-16">
+          <CentroOperaciones report={report} escaneando={isScanning}
+                             onScanStarted={onScanStarted} onReload={load}
+                             onLoadAnalytics={loadAnalytics} />
+        </div>
+
+        {report && (
+          <div className="mt-4">
+            <ScanReportPanel r={report} scan={funnel} />
+          </div>
+        )}
+
+        {/* ---------- 4 · cómo piensa: memoria (buscador) + analítica del método (tablero).
+            Ambas son introspección; el buscador va arriba porque se usa escribiendo, no
+            ojeando, y entre tres tablas se perdía. El botón de sincronizar vive en la card. ---------- */}
+        <div className="mt-4">
+          <Panel title="Cómo piensa el agente"
+                 right={analyticsLoaded
+                   ? <button onClick={loadAnalytics}
+                             className="text-[11px] font-semibold transition-colors hover:underline"
+                             style={{ color: T.buy }}>
+                       ↻ recargar
+                     </button>
+                   : undefined}>
+            {/* Sin encabezado propio: `MemorySearch` ya trae el suyo y salían dos "MEMORIA" seguidos. */}
+            <div className="border-b px-4 py-3" style={{ borderColor: T.grid }}>
+              <MemorySearch />
+            </div>
+            {!analyticsLoaded ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <p className="text-[12px]" style={{ color: T.muted }}>
+                  PER por sector, coste por etapa del embudo y confianza del prescore — 3
+                  consultas sobre un fichero DuckDB local, sincronizado desde Postgres a diario.
+                </p>
+                <button onClick={loadAnalytics}
+                        className="shrink-0 rounded px-3 py-1.5 text-[11.5px] font-bold text-white transition-opacity hover:opacity-90"
+                        style={{ background: T.buy }}>
+                  Cargar analítica
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-4 p-4 lg:grid-cols-3">
+                  <AnalyticsTable title="PER por sector" state={peSector}
+                    nav={<ScanNav
+                      scans={peSectorFechas.map((f) => ({ id: f, at: f, cadence: "" }))}
+                      pos={peSectorPos} onMove={loadPeSectorForDate}
+                      totalLabel="Más reciente"
+                      formatLabel={(f) => new Date(f).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+                    />} />
+                  <AnalyticsTable title="Coste por etapa" state={costeEtapa}
+                    nav={<ScanNav scans={analyticsScans} pos={costeScanPos} onMove={loadCosteForScan} />} />
+                  <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore}
+                    nav={<ScanNav scans={analyticsScans} pos={confianzaScanPos} onMove={loadConfianzaForScan} />} />
+                </div>
+              </>
+            )}
+          </Panel>
+        </div>
+
+        {/* ---------- 5 · libro del agente: composición y trayectoria juntas ---------- */}
         {(!summary || hasCapital) && (
+        <div className="mt-4">
         <Panel title={`Posiciones del agente · ${summary?.positions.length ?? 0}/${cfg?.max_positions ?? 5}`}
                right={summary && Number(summary.positions_value) > 0
                  ? <span className={`text-[12px] font-bold ${NUMS}`} style={{ color: T.ink }}>
@@ -862,56 +708,39 @@ function SalaRealRoom() {
               )}
             </>
           )}
-        </Panel>
-        )}
 
-        {/* ---------- memoria del agente: visible sin desplegar nada ---------- */}
-        <div className="mt-4">
-          <div className="mb-2 flex items-center gap-2 px-0.5">
-            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-              Memoria del agente
-            </span>
-          </div>
-          <MemorySearch />
-        </div>
-
-        {/* curva histórica del libro real: solo cuando existen cierres (tras la primera compra) */}
-        {hist.length >= 2 && (
-          <div className="mt-4">
-            <Panel title="Tu curva vs S&P 500"
-                   right={<span className="text-[11px]" style={{ color: T.muted }}>
-                            las aportaciones no cuentan como rentabilidad
-                          </span>}>
-              <div className="px-4 py-3">
-                <HistoryChart points={hist} dark />
+          {/* Curva y sombra DENTRO de esta card: composición ahora y trayectoria responden a la
+              misma pregunta, y como dos paneles seguidos ya se leían como uno solo. */}
+          {hist.length >= 2 && (
+            <div className="border-t px-4 py-3" style={{ borderColor: T.grid }}>
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+                  Tu curva vs S&amp;P 500
+                </span>
+                <span className="text-[11px]" style={{ color: T.muted }}>
+                  las aportaciones no cuentan como rentabilidad
+                </span>
               </div>
-            </Panel>
+              <HistoryChart points={hist} dark />
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t px-4 py-2.5 text-[12px]"
+               style={{ borderColor: T.grid }}>
+            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+              Sombra en paralelo
+            </span>
+            <span style={{ color: T.ink2 }}>Sombra <b className={NUMS} style={{ color: (shadowPerf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(shadowPerf?.portfolio_return_pct)}</b></span>
+            <span style={{ color: T.ink2 }}>Real <b className={NUMS} style={{ color: (perf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(perf?.portfolio_return_pct)}</b></span>
+            <span style={{ color: T.ink2 }}>S&amp;P <b className={NUMS} style={{ color: T.ink }}>{fmtPct(shadowPerf?.spy_return_pct ?? perf?.spy_return_pct)}</b></span>
+            <Link href="/sombra" className="ml-auto text-[11.5px] font-semibold hover:underline" style={{ color: T.buy }}>
+              Ver sombra →
+            </Link>
           </div>
-        )}
-
-        {/* mini-franja: sombra en paralelo vs libro real vs S&P — un vistazo, sin repetir el detalle */}
-        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border px-4 py-2.5 text-[12px]"
-             style={{ borderColor: T.ring, background: T.panel }}>
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-            Sombra en paralelo
-          </span>
-          <span style={{ color: T.ink2 }}>Sombra <b className={NUMS} style={{ color: (shadowPerf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(shadowPerf?.portfolio_return_pct)}</b></span>
-          <span style={{ color: T.ink2 }}>Real <b className={NUMS} style={{ color: (perf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(perf?.portfolio_return_pct)}</b></span>
-          <span style={{ color: T.ink2 }}>S&amp;P <b className={NUMS} style={{ color: T.ink }}>{fmtPct(shadowPerf?.spy_return_pct ?? perf?.spy_return_pct)}</b></span>
-          <Link href="/sombra" className="ml-auto text-[11.5px] font-semibold hover:underline" style={{ color: T.buy }}>
-            Ver sombra →
-          </Link>
+        </Panel>
         </div>
-
-        {/* salud del último escaneo (cron o manual): persistido en el backend — sobrevive a
-            reinicios y también lo escribe el cron del martes. Solo existe si hay informe. */}
-        {report && (
-          <div className="mt-4">
-            <ScanReportPanel r={report} scan={funnel} />
-          </div>
         )}
 
-        {/* ---------- 4 · tu dinero real, siempre a la vista (el agente no lo toca) ---------- */}
+        {/* ---------- 6 · tu dinero real, siempre a la vista (el agente no lo toca) ---------- */}
         <div className="mt-4 space-y-4">
           <Panel title="Cartera personal IBKR"
                  right={personal?.synced_at
@@ -1007,254 +836,7 @@ function SalaRealRoom() {
 
         </div>
 
-        {/* ---------- 4b · ajustar sin re-escanear: recomponer (gratis) o reanalizar a fondo
-            (dinero real) sin volver a escanear el universo. Uso normal, no escondido. ---------- */}
-        <div className="mt-4">
-          <Panel title="Ajustar sin re-escanear">
-            <div className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap">
-              <div className="flex flex-wrap items-center gap-2">
-                {!recheckArmed ? (
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10.5px]" style={{ color: T.muted }}>
-                      Gratis, sin re-escanear: reconstruye la cartera con los informes ya analizados.
-                    </span>
-                    <button onClick={() => setRecheckArmed(true)} disabled={rechecking}
-                            className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
-                            style={{ borderColor: T.ring, color: T.ink2 }}>
-                      {rechecking ? "Recomponiendo…" : "Recomponer cartera"}
-                    </button>
-                  </span>
-                ) : (
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10.5px]" style={{ color: T.muted }}>
-                      Reconstruye la cartera con los informes ya analizados y el suelo actual —
-                      gratis, sin re-escanear.
-                    </span>
-                    <button onClick={doRecheck} disabled={rechecking}
-                            className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                            style={{ background: T.buy }}>
-                      {rechecking ? "Recomponiendo…" : "Confirmar"}
-                    </button>
-                    <button onClick={() => setRecheckArmed(false)} disabled={rechecking}
-                            className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                            style={{ borderColor: T.ring, color: T.ink2 }}>
-                      Cancelar
-                    </button>
-                  </span>
-                )}
-                {recheckMsg && (
-                  <span className="text-[10.5px]" style={{ color: recheckMsg.bad ? T.warn : T.muted }}>
-                    {recheckMsg.text}
-                  </span>
-                )}
-              </div>
-              <span className="hidden h-6 w-px sm:inline-block" style={{ background: T.grid }} />
-              <div className="flex flex-wrap items-center gap-2">
-                {!redeepArmed ? (
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10.5px]" style={{ color: T.muted }}>
-                      Dinero real (~$0,03-0,05): rejuzga a fondo cada nombre con el macro de hoy.
-                    </span>
-                    <button onClick={() => setRedeepArmed(true)} disabled={redeeping}
-                            className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
-                            style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
-                      {redeeping ? "Reanalizando…" : "Reanalizar con macro de hoy"}
-                    </button>
-                  </span>
-                ) : (
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10.5px]" style={{ color: T.warn }}>
-                      Vuelve a juzgar a fondo cada nombre con el macro de hoy — cuesta dinero
-                      real (~$0,03-0,05).
-                    </span>
-                    <button onClick={doRedeep} disabled={redeeping}
-                            className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                            style={{ background: T.bad }}>
-                      {redeeping ? "Reanalizando…" : "Confirmar"}
-                    </button>
-                    <button onClick={() => setRedeepArmed(false)} disabled={redeeping}
-                            className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                            style={{ borderColor: T.ring, color: T.ink2 }}>
-                      Cancelar
-                    </button>
-                  </span>
-                )}
-                {redeepMsg && (
-                  <span className="text-[10.5px]" style={{ color: redeepMsg.bad ? T.warn : T.muted }}>
-                    {redeepMsg.text}
-                  </span>
-                )}
-              </div>
-            </div>
-          </Panel>
-        </div>
-
-        {/* ---------- 4c · analítica del método: DuckDB sobre Postgres, bajo demanda ---------- */}
-        <div className="mt-4">
-          <Panel title="Analítica del método"
-                 right={analyticsLoaded
-                   ? <span className="flex items-center gap-3">
-                       <button onClick={doSyncAnalytics} disabled={syncingAnalytics}
-                               className="text-[11px] font-semibold transition-colors hover:underline disabled:opacity-50"
-                               style={{ color: T.ink2 }}>
-                         {syncingAnalytics ? "sincronizando…" : "⟳ sincronizar fichero"}
-                       </button>
-                       <button onClick={loadAnalytics}
-                               className="text-[11px] font-semibold transition-colors hover:underline"
-                               style={{ color: T.buy }}>
-                         ↻ recargar
-                       </button>
-                     </span>
-                   : undefined}>
-            {!analyticsLoaded ? (
-              <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <p className="text-[12px]" style={{ color: T.muted }}>
-                  PER por sector, coste por etapa del embudo y confianza del prescore — 3
-                  consultas sobre un fichero DuckDB local, sincronizado desde Postgres a diario
-                  (o a mano con &quot;sincronizar fichero&quot;).
-                </p>
-                <button onClick={loadAnalytics}
-                        className="shrink-0 rounded px-3 py-1.5 text-[11.5px] font-bold text-white transition-opacity hover:opacity-90"
-                        style={{ background: T.buy }}>
-                  Cargar analítica
-                </button>
-              </div>
-            ) : (
-              <>
-                {analyticsSyncMsg && (
-                  <p className="px-4 pt-2 text-[11px]"
-                     style={{ color: analyticsSyncMsg.bad ? T.warn : T.muted }}>
-                    {analyticsSyncMsg.text}
-                  </p>
-                )}
-                <div className="grid gap-4 p-4 lg:grid-cols-3">
-                  <AnalyticsTable title="PER por sector" state={peSector}
-                    nav={<ScanNav
-                      scans={peSectorFechas.map((f) => ({ id: f, at: f, cadence: "" }))}
-                      pos={peSectorPos} onMove={loadPeSectorForDate}
-                      totalLabel="Más reciente"
-                      formatLabel={(f) => new Date(f).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
-                    />} />
-                  <AnalyticsTable title="Coste por etapa" state={costeEtapa}
-                    nav={<ScanNav scans={analyticsScans} pos={costeScanPos} onMove={loadCosteForScan} />} />
-                  <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore}
-                    nav={<ScanNav scans={analyticsScans} pos={confianzaScanPos} onMove={loadConfianzaForScan} />} />
-                </div>
-              </>
-            )}
-          </Panel>
-        </div>
-
-        {/* ---------- Fotos: SIEMPRE visible, propia — se usa a menudo, va antes de
-            actividad/ajustes (los dos últimos, uso ocasional). ---------- */}
-        <div className="mt-4 rounded-lg border px-4 py-3 text-[11.5px]"
-             style={{ borderColor: T.ring, background: T.panel }}>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-              Fotos
-            </span>
-            <InfoTip text="Rehace la foto del universo NASDAQ al cierre (la que arranca el próximo escaneo)." />
-            {!snapArmed ? (
-              <button onClick={() => setSnapArmed(true)} disabled={snapping}
-                      className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
-                      style={{ borderColor: T.ring, color: T.ink2 }}>
-                {snapping ? "Rehaciendo…" : "Rehacer foto del universo"}
-              </button>
-            ) : (
-              <span className="flex flex-wrap items-center gap-2">
-                <InfoTip text="Vuelve a pedir datos a fuentes externas." />
-                <button onClick={doSnapshotUniverse} disabled={snapping}
-                        className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                        style={{ background: T.bad }}>
-                  {snapping ? "Rehaciendo…" : "Confirmar foto"}
-                </button>
-                <button onClick={() => setSnapArmed(false)} disabled={snapping}
-                        className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                        style={{ borderColor: T.ring, color: T.ink2 }}>
-                  Cancelar
-                </button>
-              </span>
-            )}
-            {snapMsg && (
-              <span className="text-[10.5px]" style={{ color: snapMsg.bad ? T.warn : T.muted }}>
-                {snapMsg.text}
-              </span>
-            )}
-          </div>
-
-          {/* Foto de fundamentales a demanda: separa recoger datos de puntuarlos, para poder
-              fotografiar por la mañana y lanzar el scoring off-peak (mitad de tarifa). */}
-          <div className="mt-3 flex flex-col gap-2 border-t pt-3" style={{ borderColor: T.grid }}>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-                Fundamentales
-              </span>
-              <div className="flex overflow-hidden rounded border" style={{ borderColor: T.ring }}>
-                {(["nasdaq", "global"] as const).map((s) => (
-                  <button key={s} onClick={() => { setFotoScope(s); setFotoArmed(false); }}
-                          className="px-2.5 py-1 text-[11px] font-semibold transition-colors"
-                          style={{
-                            background: fotoScope === s ? T.buy : "transparent",
-                            color: fotoScope === s ? "#fff" : T.ink2,
-                          }}>
-                    {s === "nasdaq" ? "NASDAQ" : "Global"}
-                  </button>
-                ))}
-              </div>
-              {fotoScope === "nasdaq" && (
-                <InfoTip text="Captura ahora los datos de los ~3.000 nombres (~20 min). El escaneo reutiliza una foto de hasta 12h." />
-              )}
-            </div>
-
-            {fotoScope === "nasdaq" ? (
-              !fotoArmed ? (
-                <div>
-                  <button onClick={() => setFotoArmed(true)} disabled={fotoing}
-                          className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
-                          style={{ borderColor: T.ring, color: T.ink2 }}>
-                    {fotoing ? "Lanzando…" : "Capturar fundamentales"}
-                  </button>
-                </div>
-              ) : (
-                <span className="flex flex-wrap items-center gap-2">
-                  <InfoTip text="Tarda ~12-15 min; repetirlo el mismo día puede volver a bloquear el proveedor de datos." />
-                  <button onClick={doFoto} disabled={fotoing}
-                          className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                          style={{ background: T.bad }}>
-                    {fotoing ? "Lanzando…" : "Confirmar captura"}
-                  </button>
-                  <button onClick={() => setFotoArmed(false)} disabled={fotoing}
-                          className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                          style={{ borderColor: T.ring, color: T.ink2 }}>
-                    Cancelar
-                  </button>
-                </span>
-              )
-            ) : (
-              <FotoGlobalPicker />
-            )}
-            {fotoScope === "nasdaq" && fotoProgress?.total ? (
-              <div className="flex flex-col gap-1">
-                <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: T.grid }}>
-                  <div className="h-full rounded-full transition-[width]"
-                       style={{ width: `${Math.min(100, (fotoProgress.done / fotoProgress.total) * 100)}%`,
-                                background: T.buy }} />
-                </div>
-                <span className={`text-[10.5px] ${NUMS}`} style={{ color: T.muted }}>
-                  {fmtNum(fotoProgress.done)}/{fmtNum(fotoProgress.total)} · {fmtNum(fotoProgress.ok)} ok
-                  {fotoProgress.fail ? ` · ${fmtNum(fotoProgress.fail)} fallos` : ""}
-                </span>
-              </div>
-            ) : null}
-            {fotoScope === "nasdaq" && fotoMsg && (
-              <span className="text-[10.5px]" style={{ color: fotoMsg.bad ? T.warn : T.muted }}>
-                {fotoMsg.text}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* ---------- 4d · actividad (histórico de decisiones): justo antes de ajustes —
+        {/* ---------- 7 · actividad (histórico de decisiones): justo antes de ajustes —
             son los dos últimos, uso ocasional. ---------- */}
         {history.length > 0 && (
           <div className="mt-4 rounded-lg border text-[11.5px]" style={{ borderColor: T.ring, background: T.panel }}>
@@ -1277,7 +859,7 @@ function SalaRealRoom() {
           </div>
         )}
 
-        {/* ---------- 5 · pie de ajustes: una línea discreta, sin panel ---------- */}
+        {/* ---------- 8 · ajustes: push, sesión y el reinicio del sombra, todo a la vista ---------- */}
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border px-4 py-2.5 text-[11.5px]"
              style={{ borderColor: T.ring, background: T.panel }}>
           <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
@@ -1309,29 +891,17 @@ function SalaRealRoom() {
                   title="Borra el token de sesión de este navegador y vuelve al login.">
             Cerrar sesión
           </button>
-          <button onClick={() => { setMantOpen(!mantOpen); setResetArmed(false); }}
-                  aria-expanded={mantOpen}
-                  className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                  style={{ borderColor: T.ring, color: mantOpen ? T.ink2 : T.muted }}>
-            mantenimiento {mantOpen ? "▴" : "▾"}
-          </button>
           <span className="ml-auto text-right" style={{ color: T.muted }} title={summary?.broker.detail}>
-            {dry ? "simulación" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a límite
-            (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado
+            {dry ? "bróker en dry-run" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a
+            límite (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado
           </span>
-        </div>
-
-        {/* ---------- Mantenimiento: PLEGADO — un botón destructivo que se usa una vez al mes
-            no merece pantalla permanente. Armar→confirmar intacto. ---------- */}
-        {mantOpen && (
-        <div className="mt-4 rounded-lg border px-4 py-3 text-[11.5px]"
-             style={{ borderColor: T.ring, background: T.panel }}>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-              Mantenimiento
-            </span>
+          {/* Reiniciar sombra, a la vista: plegarlo tras "mantenimiento" solo añadía un clic a
+              algo que ya tiene su propio armar→confirmar. */}
+          <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 border-t pt-2.5"
+               style={{ borderColor: T.grid }}>
             <span style={{ color: T.ink2 }}>
-              Reiniciar el libro <b>sombra</b>: borra posiciones, operaciones y curva; <b>conserva tu capital</b>.
+              Reiniciar el libro <b>sombra</b>: borra posiciones, operaciones y curva;
+              {" "}<b>conserva tu capital</b>. No toca el libro real ni tu cartera personal.
             </span>
             {!resetArmed ? (
               <button onClick={() => setResetArmed(true)}
@@ -1354,12 +924,8 @@ function SalaRealRoom() {
               </span>
             )}
           </div>
-          <p className="mt-1.5 text-[10.5px]" style={{ color: T.muted }}>
-            Solo el libro sombra (escaparate). No toca el libro real ni tu cartera personal. El próximo
-            escaneo redespliega la caja en la cartera nueva.
-          </p>
         </div>
-        )}
+
       </div>
 
       {auditTicker && <TickerAudit ticker={auditTicker} onClose={() => setAuditTicker(null)} />}

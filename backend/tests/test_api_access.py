@@ -660,3 +660,32 @@ def test_historia_de_un_ticker_es_privada(client, db, token) -> None:
     body = res.json()
     assert body["ticker"] == "AAA"
     assert body["scans"][0]["deep_score"] == 88 and body["scans"][0]["stage"] == "cartera"
+
+
+def test_estado_datos_devuelve_las_cuatro_fuentes(client, token, db) -> None:
+    """El centro de operaciones pinta un chip por fuente: si falta una clave, el chip miente."""
+    from datetime import UTC, datetime
+
+    from app.models import FundamentalsSnapshot, FxRate, NasdaqSnapshotTicker
+
+    ahora = datetime.now(UTC)
+    db.add(NasdaqSnapshotTicker(snapshot_at=ahora, ticker="AAA", price=10.0, volume=1e6))
+    db.add(FundamentalsSnapshot(ticker="AAA", captured_at=ahora, es_dataset=False))
+    db.add(FundamentalsSnapshot(ticker="BBB", captured_at=ahora, es_dataset=True))
+    db.add(FxRate(synced_at=ahora, currency_code="KRW", usd_per_unit=0.00072))
+    db.commit()
+
+    r = client.get("/admin/estado-datos", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    d = r.json()
+    assert set(d) == {"universo", "foto_nasdaq", "foto_global", "fx"}
+    assert d["foto_nasdaq"]["n"] == 1 and d["foto_global"]["n"] == 1
+    assert d["fx"]["n"] == 1 and d["universo"]["n"] == 1
+    assert all(d[k]["at"] for k in d)
+
+
+def test_estado_datos_con_la_base_vacia_no_revienta(client, token) -> None:
+    """Sin datos aún, cada fuente debe decir "nunca" (at=None, n=0), no fallar."""
+    r = client.get("/admin/estado-datos", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert all(v == {"at": None, "n": 0} for v in r.json().values())
