@@ -101,6 +101,26 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
         conn.execute(text(
             "ALTER TABLE scores ADD COLUMN target_echoed_consensus BOOLEAN NOT NULL DEFAULT 0"
         ))
+    # `scan_run_finalist` pasa de resumen a archivo de verdad: informe completo + los mismos 5
+    # campos de guardarraíl que `scores` (que se pisa; esta fila no).
+    srf = cols("scan_run_finalist")
+    if srf and "report" not in srf:
+        conn.execute(text("ALTER TABLE scan_run_finalist ADD COLUMN report TEXT"))
+    if srf and "target_raw" not in srf:
+        conn.execute(text("ALTER TABLE scan_run_finalist ADD COLUMN target_raw FLOAT"))
+    if srf and "target_flagged" not in srf:
+        conn.execute(text(
+            "ALTER TABLE scan_run_finalist ADD COLUMN target_flagged BOOLEAN NOT NULL DEFAULT 0"
+        ))
+    if srf and "target_consensus_mean" not in srf:
+        conn.execute(text("ALTER TABLE scan_run_finalist ADD COLUMN target_consensus_mean FLOAT"))
+    if srf and "target_echoed_consensus" not in srf:
+        conn.execute(text(
+            "ALTER TABLE scan_run_finalist ADD COLUMN target_echoed_consensus "
+            "BOOLEAN NOT NULL DEFAULT 0"
+        ))
+    if srf and "under_acquisition" not in srf:
+        conn.execute(text("ALTER TABLE scan_run_finalist ADD COLUMN under_acquisition BOOLEAN"))
     conn.commit()
     _migrate_score_decimal(conn)
     _drop_columnas_muertas(conn)

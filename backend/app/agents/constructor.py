@@ -26,6 +26,10 @@ from app.llm.base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
+# Literal exacto que devuelve `construct()` si el LLM falla los 3 intentos — el caller lo usa
+# para distinguir "constructor caído" de "cartera sana con poca convicción" en `issues`.
+FALLBACK_SUMMARY = "Sin propuesta (fallo del modelo)."
+
 SYSTEM = (
     "You are a portfolio manager doing the ALLOCATION step — the stocks were ALREADY SELECTED by "
     "score. You receive the FULL reports of the SELECTED stocks (news, financials, valuation, "
@@ -140,8 +144,7 @@ def construct(
             logger.warning("Constructor sin posiciones utilizables (intento %d/3)", intento)
     if not positions:
         logger.error("Constructor sin cartera tras 3 intentos → todo caja")
-        return ConstructionResult(cash_pct=100.0, positions=[],
-                                  summary="Sin propuesta (fallo del modelo).")
+        return ConstructionResult(cash_pct=100.0, positions=[], summary=FALLBACK_SUMMARY)
 
     # Renormaliza si la suma de pesos pasa de 100 (respetando el tope por posición).
     total = sum(p.weight_pct for p in positions)

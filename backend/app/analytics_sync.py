@@ -24,12 +24,13 @@ logger = logging.getLogger(__name__)
 
 # Tablas que se saltan a propósito, no por accidente:
 _EXCLUIDAS = {
-    # `embedding` (pgvector) llega como VARCHAR con el texto crudo del vector — no hay ANN
-    # aquí, la búsqueda real sigue viviendo en Postgres. Se sincroniza igual (no rompe nada,
-    # medido), pero duplicar 2.376 vectores de texto en cada sincronización diaria es peso sin
-    # ningún consultante real hoy — si algún día hace falta analítica sobre la memoria, quitar
-    # de aquí.
+    # `memories.text` ya no lleva vector propio (se movió a `memory_chunks`, ver
+    # `memory/store.py`) — se queda excluida igual: sin ANN aquí, nada la consulta en DuckDB.
     "memories",
+    # `embedding` (pgvector) llega como VARCHAR con el texto crudo del vector — no hay ANN
+    # aquí, la búsqueda real sigue viviendo en Postgres. Mismo motivo que `memories`: duplicar
+    # miles de vectores de texto cada día es peso sin ningún consultante real hoy.
+    "memory_chunks",
 }
 
 

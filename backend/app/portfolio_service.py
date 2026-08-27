@@ -230,6 +230,16 @@ def finalize_full_invest(construction, selected: list, min_pos: int, max_pos: in
     return construction
 
 
+def backfill_count(construction) -> int:
+    """Cuántas posiciones finales son relleno de código, no convicción del LLM.
+
+    El backfill de arriba las crea con `edge=""`/`risk=""` (el LLM siempre rellena esos dos
+    campos por prompt) — es la única señal que sobrevive a la normalización de pesos para
+    distinguir "constructor sano con poca convicción" de "constructor caído, todo relleno".
+    """
+    return sum(1 for p in construction.positions if not p.edge and not p.risk)
+
+
 def _equity(db: Session, held: dict, price_map: dict) -> tuple[Decimal, Decimal]:
     """(cash, equity) usando precios actuales; cae al coste medio si falta precio."""
     cash = ledger.available_cash(db)

@@ -22,6 +22,34 @@ from datetime import UTC, datetime
 # scripts/reembed_memoria.py). Pesa 0,22 GB frente a 0,13 del modelo inglés.
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
+# El modelo solo "ve" ~128 tokens: un recuerdo más largo que eso no se puede representar en un
+# solo vector, lo que sobre queda ignorado en silencio. Antes se cortaba el TEXTO GUARDADO a 400
+# chars para que cupiera entero en su embedding — perdiendo el resto para siempre. Ahora `text`
+# guarda el recuerdo COMPLETO y es `_chunk()` quien lo trocea en ventanas de `_CHUNK_WORDS`
+# palabras (conservador: el español tokeniza más denso que el inglés, así que 90 palabras deja
+# margen de sobra bajo 128 tokens) — cada trozo se embebe y se guarda en `memory_chunks`, varias
+# filas por recuerdo. `_CHUNK_OVERLAP` evita que una idea quede partida justo en el borde entre
+# dos trozos consecutivos.
+_CHUNK_WORDS = 90
+_CHUNK_OVERLAP = 15
+
+
+def _chunk(text: str, words_per_chunk: int = _CHUNK_WORDS, overlap: int = _CHUNK_OVERLAP) -> list[str]:
+    """Trocea `text` en solapes de `words_per_chunk` palabras. Un texto que ya cabe en una sola
+    ventana devuelve `[text]` sin tocar — es el caso de todo lo guardado antes de este cambio."""
+    words = text.split()
+    if len(words) <= words_per_chunk:
+        return [text]
+    step = words_per_chunk - overlap
+    chunks = []
+    i = 0
+    while i < len(words):
+        chunks.append(" ".join(words[i:i + words_per_chunk]))
+        if i + words_per_chunk >= len(words):
+            break
+        i += step
+    return chunks
+
 
 @dataclass
 class Memory:
@@ -101,7 +129,7 @@ class MemoryStore:
 
     # -- API --------------------------------------------------------------------
     def remember(self, text: str, kind: str = "", ticker: str = "") -> int:
-        """Guarda un recuerdo (tesis, decisión, observación) y su embedding.
+        """Guarda un recuerdo (tesis, decisión, observación) COMPLETO y un embedding por trozo.
 
         Descarta texto en blanco (residuo de informes profundos que fallaron al parsear) — no
         tiene sentido ni embeberlo ni mostrarlo. Devuelve -1 para dejar claro que no se guardó
@@ -109,51 +137,70 @@ class MemoryStore:
         """
         if not text.strip():
             return -1
-        emb = self._embed(text)
+        chunks = _chunk(text)
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO memories (kind, ticker, text, created_at, embedding) "
-                "VALUES (%s, %s, %s, %s, %s::vector) RETURNING id",
-                (kind, ticker, text, datetime.now(UTC), self._vec_literal(emb)),
+                "INSERT INTO memories (kind, ticker, text, created_at) "
+                "VALUES (%s, %s, %s, %s) RETURNING id",
+                (kind, ticker, text, datetime.now(UTC)),
             )
             rowid = cur.fetchone()[0]
+            for i, chunk_text in enumerate(chunks):
+                emb = self._embed(chunk_text)
+                cur.execute(
+                    "INSERT INTO memory_chunks (memory_id, chunk_index, text, embedding) "
+                    "VALUES (%s, %s, %s, %s::vector)",
+                    (rowid, i, chunk_text, self._vec_literal(emb)),
+                )
             conn.commit()
         return int(rowid)
 
     def _knn(self, emb, k: int, rowids: list[int] | None = None) -> list[Memory]:
         """KNN por distancia L2 (`<->`, mismo operador que usaba `sqlite-vec` por defecto — no
-        se cambia de métrica al migrar, para no mover el ranking ya calibrado), opcionalmente
-        restringido a un subconjunto de ids.
+        se cambia de métrica al migrar, para no mover el ranking ya calibrado) sobre
+        `memory_chunks`, colapsado a un resultado POR RECUERDO (`memory_id`) quedándose con su
+        trozo de menor distancia — mismo patrón que `dedup_por_ticker`, un nivel más abajo.
+        Opcionalmente restringido a un subconjunto de ids de `memories`.
 
-        El filtro por id se aplica DENTRO de la propia consulta (no después en Python): pedir
-        los k vecinos de TODA la base y filtrar luego deja fuera recuerdos reales cuando la
-        tesis de un nombre se parece a las de sus vecinos (medido sobre el store real: de 31
-        nombres con recuerdo guardado, 12 recibían lista vacía con ese orden).
+        Sobre-pide (`k*4` trozos) antes de colapsar: varios de los mejores trozos pueden
+        pertenecer al mismo recuerdo largo, y pedir solo `k` antes de colapsar dejaría huecos
+        donde antes había un resultado real — mismo motivo que ya obligaba a aplicar el filtro
+        por id DENTRO de la consulta y no después en Python (medido sobre el store real, antes
+        del troceo: de 31 nombres con recuerdo guardado, 12 recibían lista vacía con ese orden).
         """
         vec = self._vec_literal(emb)
+        limit = max(k * 4, k)
         with self._connect() as conn, conn.cursor() as cur:
             if rowids is not None:
                 if not rowids:
                     return []
                 cur.execute(
-                    "SELECT id, kind, ticker, text, created_at, embedding <-> %s::vector AS dist "
-                    "FROM memories WHERE id = ANY(%s) AND trim(text) != '' "
-                    "ORDER BY embedding <-> %s::vector LIMIT %s",
-                    (vec, rowids, vec, k),
+                    "SELECT m.id, m.kind, m.ticker, m.text, m.created_at, "
+                    "c.embedding <-> %s::vector AS dist "
+                    "FROM memory_chunks c JOIN memories m ON m.id = c.memory_id "
+                    "WHERE c.memory_id = ANY(%s) AND trim(m.text) != '' "
+                    "ORDER BY c.embedding <-> %s::vector LIMIT %s",
+                    (vec, rowids, vec, limit),
                 )
             else:
                 cur.execute(
-                    "SELECT id, kind, ticker, text, created_at, embedding <-> %s::vector AS dist "
-                    "FROM memories WHERE trim(text) != '' "
-                    "ORDER BY embedding <-> %s::vector LIMIT %s",
-                    (vec, vec, k),
+                    "SELECT m.id, m.kind, m.ticker, m.text, m.created_at, "
+                    "c.embedding <-> %s::vector AS dist "
+                    "FROM memory_chunks c JOIN memories m ON m.id = c.memory_id "
+                    "WHERE trim(m.text) != '' "
+                    "ORDER BY c.embedding <-> %s::vector LIMIT %s",
+                    (vec, vec, limit),
                 )
             rows = cur.fetchall()
-        return [
-            Memory(id=r[0], kind=r[1], ticker=r[2], text=r[3], created_at=r[4].isoformat(),
-                   distance=r[5])
-            for r in rows
-        ]
+        # `rows` ya viene ordenado por distancia ascendente: el primer trozo visto de cada
+        # `memory_id` es su mejor trozo, así que un `dict` normal basta para colapsar sin perder
+        # el orden ni tener que reordenar después.
+        seen: dict[int, Memory] = {}
+        for r in rows:
+            if r[0] not in seen:
+                seen[r[0]] = Memory(id=r[0], kind=r[1], ticker=r[2], text=r[3],
+                                    created_at=r[4].isoformat(), distance=r[5])
+        return list(seen.values())[:k]
 
     def recall(self, query: str, k: int = 5, ticker: str | None = None) -> list[Memory]:
         """Recupera los k recuerdos más parecidos por significado, de un ticker si se indica.

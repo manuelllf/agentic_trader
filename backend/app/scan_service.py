@@ -65,6 +65,7 @@ from app.models import (
     ScanRunCostBreakdown,
     ScanRunFailure,
     ScanRunFinalist,
+    ScanRunFinalistNews,
     ScanRunIssue,
     ScanRunSector,
     ScanRunTiming,
@@ -283,6 +284,22 @@ def _aparta_opadas(rows: list, issues: list[str]) -> list:
         issues.append("Sin respuesta al campo de oferta de adquisición (no aparta a nadie): "
                       + _lista(sin_respuesta))
     return [r for r in rows if getattr(r, "under_acquisition", None) is not True]
+
+
+def _flag_constructor_backfill(construction, issues: list[str]) -> None:
+    """Avisa si la cartera final no es (del todo) convicción del LLM, sino relleno por score.
+
+    Antes `positions: 5` salía igual con el constructor sano o caído 3/3 — la única pista era
+    el summary, enterrado en un modal que nadie abre a tiempo. Ahora sale en `issues`.
+    """
+    if construction.summary == constructor_mod.FALLBACK_SUMMARY:
+        issues.append("Constructor caído (3 intentos fallidos): la cartera se rellenó "
+                      "automáticamente por score, sin tesis del LLM.")
+        return
+    n = portfolio.backfill_count(construction)
+    if n:
+        issues.append(f"El constructor solo fondeó {len(construction.positions) - n} de "
+                      f"{len(construction.positions)} posiciones; el resto se rellenó por score.")
 
 
 def _flag_corporate_deal_targets(
@@ -925,7 +942,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     if store:                                      # guarda las tesis nuevas para recordarlas luego
         for t, d in deep.items():
             try:
-                store.remember(f"{d.headline} {d.report[:400]}", kind="thesis", ticker=t)
+                # Informe COMPLETO, no un corte a 400 chars: `MemoryStore.remember()` trocea y
+                # embebe por ventanas (ver `memory/store.py`), ya no hace falta cortar aquí.
+                store.remember(f"{d.headline} {d.report}", kind="thesis", ticker=t)
             except Exception:
                 pass
     # Watchlist SIN alimentar: no está en el paper y ya no da acceso al profundo (ver `always`).
@@ -971,6 +990,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             settings.max_position_pct)
         timings["constructor"] = round(time.monotonic() - t0, 1)
         logger.info("Escaneo: CONSTRUCTOR completado en %.1fs.", timings["constructor"])
+        _flag_constructor_backfill(construction, issues)
 
     # 8) Trades con aritmética exacta (la cartera que PROPONDRÍA hoy; solo se persiste al decidir).
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
@@ -1120,10 +1140,17 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 "market_cap": data_by_t[t].market_cap,
                 "deep_score": deep[t].score if t in deep else None,
                 "headline": deep[t].headline if t in deep else None,
+                # Informe completo + guardarraíles del target: `Score` se pisa en cuanto ese
+                # ticker se re-analiza, esta fila no — es el archivo de verdad de esa fecha.
+                "report": deep[t].report if t in deep else None,
                 "target_price": deep[t].target_price if t in deep else None,
                 "selected": t in selected_set, "funded": t in funded_map,
                 "weight_pct": funded_map.get(t),
                 "error": analizados[t].error if t in deep_caidos else None,
+                "target_raw": target_raw.get(t), "target_flagged": t in target_flagged,
+                "target_consensus_mean": target_consensus_mean.get(t),
+                "target_echoed_consensus": t in target_echoed,
+                "under_acquisition": deep[t].under_acquisition if t in deep else None,
             }
             for t in finalists
         ]
@@ -1166,8 +1193,15 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         for f in failures_detail:
             db.add(ScanRunFailure(scan_run_id=run.id, ticker=f["ticker"], etapa=f["etapa"],
                                   error=f["error"], raw=f["raw"]))
+        finalist_rows = []
         for i, f in enumerate(finalists_detail):
-            db.add(ScanRunFinalist(scan_run_id=run.id, posicion=i, **f))
+            row = ScanRunFinalist(scan_run_id=run.id, posicion=i, **f)
+            db.add(row)
+            finalist_rows.append(row)
+        db.flush()   # necesita el id de cada finalista para colgarle sus noticias
+        for row in finalist_rows:
+            for j, texto in enumerate(data_by_t[row.ticker].news or []):
+                db.add(ScanRunFinalistNews(scan_run_finalist_id=row.id, posicion=j, texto=texto))
         _guardar_trade_items(db, ScanRunConstructionItem, "scan_run_id", run.id, items)
         for o in construction.omitted:
             db.add(ScanRunConstructionOmitted(scan_run_id=run.id, ticker=o.ticker,
@@ -1225,6 +1259,7 @@ def recheck(db: Session) -> dict:
         construction = portfolio.finalize_full_invest(
             construction, selected, settings.min_positions, settings.max_positions,
             settings.max_position_pct)
+        _flag_constructor_backfill(construction, issues_recheck)
 
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
     prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_block)
@@ -1241,6 +1276,7 @@ def recheck(db: Session) -> dict:
         logger.exception("No se pudieron crear las aprobaciones del modo real.")
     return {"eligible": len(selected), "positions": len(construction.positions),
             "proposed": len([i for i in items if i["action"] != "mantener"]),
+            "issues": issues_recheck,
             "cost": _llm_usage(constructor=llm)}  # 1 llamada de construcción
 
 
@@ -1312,6 +1348,7 @@ def redeep(db: Session) -> dict:
         construction = portfolio.finalize_full_invest(
             construction, selected, settings.min_positions, settings.max_positions,
             settings.max_position_pct)
+        _flag_constructor_backfill(construction, issues_redeep)
 
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
     macro_line = macro.get("outlook", "") or construction.summary
@@ -1327,4 +1364,5 @@ def redeep(db: Session) -> dict:
         logger.exception("No se pudieron crear las aprobaciones del modo real.")
     return {"redeep": len(results), "positions": len(construction.positions),
             "proposed": len([i for i in items if i["action"] != "mantener"]),
+            "issues": issues_redeep,
             "cost": _llm_usage(macro_profundo=deep_llm, constructor=constructor_llm)}

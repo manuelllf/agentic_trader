@@ -572,11 +572,23 @@ class ScanRun(Base):
             return []
         rows = (db.query(ScanRunFinalist).filter_by(scan_run_id=self.id)
                 .order_by(ScanRunFinalist.posicion).all())
+        ids = [r.id for r in rows]
+        news_by_finalist: dict[int, list[str]] = {}
+        if ids:
+            for n in (db.query(ScanRunFinalistNews)
+                     .filter(ScanRunFinalistNews.scan_run_finalist_id.in_(ids))
+                     .order_by(ScanRunFinalistNews.posicion).all()):
+                news_by_finalist.setdefault(n.scan_run_finalist_id, []).append(n.texto)
         return [{
             "ticker": r.ticker, "sector": r.sector, "prescore": r.prescore, "price": r.price,
             "market_cap": r.market_cap, "deep_score": r.deep_score, "headline": r.headline,
-            "target_price": r.target_price, "selected": r.selected, "funded": r.funded,
-            "weight_pct": r.weight_pct, "error": r.error,
+            "report": r.report, "target_price": r.target_price, "selected": r.selected,
+            "funded": r.funded, "weight_pct": r.weight_pct, "error": r.error,
+            "target_raw": r.target_raw, "target_flagged": r.target_flagged,
+            "target_consensus_mean": r.target_consensus_mean,
+            "target_echoed_consensus": r.target_echoed_consensus,
+            "under_acquisition": r.under_acquisition,
+            "news_used": news_by_finalist.get(r.id, []),
         } for r in rows]
 
     @property
@@ -664,6 +676,11 @@ class ScanRunFailure(Base):
 
 
 class ScanRunFinalist(Base):
+    """Snapshot POR ESCANEO de cada finalista — a diferencia de `Score` (se pisa en cuanto el
+    ticker se re-analiza), esta fila nunca se toca tras crearse. Es el archivo de verdad del
+    informe de ese mes/semana: `report` y los campos de guardarraíl del target viven aquí
+    completos, no solo en `Score`."""
+
     __tablename__ = "scan_run_finalist"
 
     id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
@@ -677,11 +694,34 @@ class ScanRunFinalist(Base):
     market_cap: Mapped[float | None] = mapped_column(Float)
     deep_score: Mapped[float | None] = mapped_column(Float)
     headline: Mapped[str | None] = mapped_column(Text)
+    report: Mapped[str | None] = mapped_column(Text)         # Investment Report completo, congelado
     target_price: Mapped[float | None] = mapped_column(Float)
     selected: Mapped[bool] = mapped_column(default=False)
     funded: Mapped[bool] = mapped_column(default=False)
     weight_pct: Mapped[float | None] = mapped_column(Float)
     error: Mapped[str | None] = mapped_column(Text)
+    # Mismos 5 campos de guardarraíl que `Score` — sin ellos, auditar por qué el target de un
+    # escaneo viejo se corrigió (o si la empresa estaba opada) era imposible en cuanto `Score`
+    # se pisaba con el siguiente análisis de ese ticker.
+    target_raw: Mapped[float | None] = mapped_column(Float)
+    target_flagged: Mapped[bool] = mapped_column(default=False)
+    target_consensus_mean: Mapped[float | None] = mapped_column(Float)
+    target_echoed_consensus: Mapped[bool] = mapped_column(default=False)
+    under_acquisition: Mapped[bool | None] = mapped_column(Boolean)
+
+
+class ScanRunFinalistNews(Base):
+    """Titulares que entraron al prompt de un `ScanRunFinalist`, mismo patrón que `ScoreNews`
+    pero SIN colgar de `Score` — así sobreviven aunque `Score` se pise en el siguiente análisis
+    de ese ticker (ver el docstring de `ScanRunFinalist`)."""
+
+    __tablename__ = "scan_run_finalist_news"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_finalist_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_run_finalist.id", ondelete="CASCADE"), index=True)
+    posicion: Mapped[int] = mapped_column(SmallInteger)
+    texto: Mapped[str] = mapped_column(Text)
 
 
 class ScanRunConstructionItem(_TradeItemColumns, Base):

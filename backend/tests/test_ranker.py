@@ -10,6 +10,8 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app import models  # noqa: F401  (registra las tablas)
+from app import portfolio_service as portfolio
+from app import scan_service
 from app import watchlist as wl
 from app.agents import constructor as constructor_mod
 from app.agents import scorer as scorer_mod
@@ -124,6 +126,56 @@ def test_constructor_enforces_rules() -> None:
 def test_constructor_bad_json_all_cash() -> None:
     res = constructor_mod.construct(FakeLLM("nope"), "c", "m", 4, 35.0, {"AAA"})
     assert res.positions == [] and res.cash_pct == 100.0
+
+
+# ---- backfill del constructor: caído del todo o a medias, la UI tiene que enterarse ----
+
+class _FakeSelected:
+    def __init__(self, ticker: str) -> None:
+        self.ticker = ticker
+        self.headline = f"headline {ticker}"
+
+
+def test_constructor_caido_del_todo_avisa_en_issues() -> None:
+    res = constructor_mod.construct(FakeLLM("nope"), "c", "m", 4, 35.0,
+                                    {"AAA", "BBB", "CCC"})
+    selected = [_FakeSelected(t) for t in ("AAA", "BBB", "CCC")]
+    res = portfolio.finalize_full_invest(res, selected, min_pos=3, max_pos=4, cap=35.0)
+    assert len(res.positions) == 3  # relleno del todo por score, cero convicción del LLM
+
+    issues: list[str] = []
+    scan_service._flag_constructor_backfill(res, issues)
+    assert len(issues) == 1
+    assert "Constructor caído" in issues[0]
+
+
+def test_constructor_a_medias_avisa_cuanto_relleno_hay() -> None:
+    reply = ('{"cash_pct": 0, "positions": ['
+             '{"ticker": "AAA", "weight_pct": 60, "thesis": "t", "edge": "e", "risk": "r"}'
+             '], "summary": "s"}')
+    res = constructor_mod.construct(FakeLLM(reply), "c", "m", 4, 35.0, {"AAA", "BBB", "CCC"})
+    selected = [_FakeSelected(t) for t in ("AAA", "BBB", "CCC")]
+    res = portfolio.finalize_full_invest(res, selected, min_pos=3, max_pos=4, cap=35.0)
+    assert len(res.positions) == 3  # AAA del LLM + BBB/CCC de relleno
+
+    issues: list[str] = []
+    scan_service._flag_constructor_backfill(res, issues)
+    assert len(issues) == 1
+    assert "fondeó 1 de 3" in issues[0]
+
+
+def test_constructor_sano_no_avisa() -> None:
+    reply = ('{"cash_pct": 0, "positions": ['
+             '{"ticker": "AAA", "weight_pct": 60, "thesis": "t", "edge": "e", "risk": "r"},'
+             '{"ticker": "BBB", "weight_pct": 40, "thesis": "t", "edge": "e", "risk": "r"}'
+             '], "summary": "s"}')
+    res = constructor_mod.construct(FakeLLM(reply), "c", "m", 4, 35.0, {"AAA", "BBB"})
+    selected = [_FakeSelected(t) for t in ("AAA", "BBB")]
+    res = portfolio.finalize_full_invest(res, selected, min_pos=2, max_pos=4, cap=35.0)
+
+    issues: list[str] = []
+    scan_service._flag_constructor_backfill(res, issues)
+    assert issues == []
 
 
 def test_constructor_allows_ucits_instrument() -> None:

@@ -183,6 +183,49 @@ def test_news_used_tambien_se_congela_en_observatorio(db, monkeypatch) -> None:
     assert row.news_used == ["Titular más reciente"]       # el segundo observatorio pisa al primero
 
 
+# ---- ScanRunFinalist: archivo que sobrevive al pisado de Score -----------------
+
+def test_scan_run_finalist_guarda_informe_y_guardarrailes_completos(db, monkeypatch) -> None:
+    """`ScanRunFinalist` (a diferencia de `Score`) es una fila nueva por escaneo, nunca se pisa:
+    tiene que llevar el informe completo, las noticias y los 5 campos de guardarraíl."""
+    llm = FakeLLM(_FAKE_REPLY)
+    _stub_common(monkeypatch, llm, ["AAA"])
+    _gather_stub(monkeypatch, news=["Titular uno", "Titular dos"])
+
+    scan_service.run_scan_and_store(db, sample_size=5, decide=True)
+
+    run = db.query(ScanRun).order_by(ScanRun.id.desc()).first()
+    finalist = next(f for f in run.finalists if f["ticker"] == "AAA")
+    assert finalist["report"] == "informe"
+    assert finalist["news_used"] == ["Titular uno", "Titular dos"]
+    # Los 5 campos de guardarraíl viajan aunque en este caso no se disparen (valores por defecto).
+    assert finalist["target_raw"] is None
+    assert finalist["target_flagged"] is False
+    assert finalist["target_consensus_mean"] is None
+    assert finalist["target_echoed_consensus"] is False
+    assert finalist["under_acquisition"] is None
+
+
+def test_scan_run_finalist_sobrevive_al_pisado_de_score(db, monkeypatch) -> None:
+    """Un segundo escaneo pisa `Score` (fila de trabajo) pero NO el `ScanRunFinalist` del
+    primero — es el archivo de verdad de ESE escaneo concreto, no del ticker en general."""
+    llm = FakeLLM(_FAKE_REPLY)
+    _stub_common(monkeypatch, llm, ["AAA"])
+    _gather_stub(monkeypatch, news=["Titular del primer escaneo"])
+    scan_service.run_scan_and_store(db, sample_size=5, decide=True)
+    primer_run_id = db.query(ScanRun).order_by(ScanRun.id.desc()).first().id
+
+    _gather_stub(monkeypatch, news=["Titular del segundo escaneo"])
+    scan_service.run_scan_and_store(db, sample_size=5, decide=True)
+
+    row = db.query(Score).filter(Score.ticker == "AAA").one()
+    assert row.news_used == ["Titular del segundo escaneo"]   # Score: pisada, como siempre
+
+    primer_run = db.get(ScanRun, primer_run_id)
+    finalist = next(f for f in primer_run.finalists if f["ticker"] == "AAA")
+    assert finalist["news_used"] == ["Titular del primer escaneo"]   # intacto, no se movió
+
+
 # ---- fallo del LLM: reintento y el nombre no se pierde -------------------------
 
 def test_fallo_llm_se_reintenta_y_el_nombre_no_se_pierde(db, monkeypatch) -> None:
