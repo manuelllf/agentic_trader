@@ -165,9 +165,8 @@ export default function SombraDashboard() {
     };
   }, [refresh]);
 
-  // Volver a esta pestaña tras un rato fuera: se trata como una carga desde cero (pantalla de
-  // carga completa) en vez de refrescar en silencio con la UI ya pintada de por medio — mismo
-  // criterio que Sala Real. El sondeo de cada 45s con la pestaña activa sigue silencioso.
+  // Volver a esta pestaña tras un rato fuera: carga desde cero, mismo criterio que Sala Real.
+  // El sondeo de cada 45s con la pestaña activa sigue silencioso.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") {

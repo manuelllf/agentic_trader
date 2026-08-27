@@ -882,9 +882,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     target_map = {t: r.target_price for t, r in deep.items()}
 
     # 6) Leaderboard: DECISIÓN reemplaza total; OBSERVATORIO refresca solo hoy-profundos. Las
-    # noticias que entraron al prompt se congelan en los dos casos (`_guardar_news_used`) — un
-    # escaneo manual/observatorio es conocimiento y traza igual que uno decisivo, no un
-    # ciudadano de segunda cuya evidencia se pueda perder.
+    # noticias se congelan en los dos casos (`_guardar_news_used`), un observatorio es traza igual.
     # Foto prev ranking/watchlist para detectar novedades (qué entra/sale) en informe.
     prev_ranking = {s.ticker for s in db.query(Score).all()}
     prev_watch = set(watchlist_mod.tickers(db))

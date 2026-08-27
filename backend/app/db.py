@@ -107,9 +107,7 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
 
 
 # Columnas JSON normalizadas a tablas hijas (ver ScanRun.finalists/construction/timings y
-# Proposal.omitted/Score.news_used en models.py): dejaron de escribirse hace tiempo, models.py
-# ya no las declara, y `scripts/check_schema_drift.py` las señalaba como deriva. Confirmado
-# vacías en producción antes de soltarlas (0 filas con datos en las cinco).
+# Proposal.omitted/Score.news_used en models.py) — confirmadas vacías antes de soltarlas.
 _COLUMNAS_MUERTAS = (
     ("scan_runs", "finalists"), ("scan_runs", "construction"), ("scan_runs", "timings"),
     ("proposals", "omitted"), ("scores", "news_used"),

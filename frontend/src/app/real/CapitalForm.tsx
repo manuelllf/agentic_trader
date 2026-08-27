@@ -1,9 +1,7 @@
 "use client";
 
-// Aportar / retirar capital del agente. Se apunta EN SU DIVISA, sin convertir — así funciona
-// IBKR de verdad: el saldo se queda en euros o dólares tal cual entra, y es IBKR quien convierte
-// solo en el momento de comprar si la caja $ no alcanza (dólares primero, euros solo para
-// completar). Retiradas: solo en $ (el consolidado vive en dólares).
+// Aportar / retirar capital del agente. Se apunta EN SU DIVISA, sin convertir — IBKR convierte
+// sola solo al comprar, si la caja $ no alcanza. Retiradas: solo en $.
 
 import { useState } from "react";
 import { allocateReal } from "@/lib/api";

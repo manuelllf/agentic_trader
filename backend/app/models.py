@@ -762,9 +762,7 @@ class LLMCallLogprob(Base):
     parte: Mapped[int] = mapped_column(SmallInteger)
     elegido: Mapped[bool] = mapped_column(Boolean)
     token: Mapped[str] = mapped_column(String(8))
-    # REAL en Postgres (precisión simple, 4 bytes — una probabilidad no necesita más) en vez del
-    # DOUBLE PRECISION por defecto de Float(); en SQLite sigue siendo el genérico Float. Sin el
-    # variant, `check_schema_drift.py` marcaba una diferencia de tipo sin consecuencia funcional.
+    # REAL en Postgres (una probabilidad no necesita DOUBLE PRECISION); Float genérico en SQLite.
     logprob: Mapped[float] = mapped_column(Float().with_variant(PG_REAL(), "postgresql"))
 
 

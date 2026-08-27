@@ -165,10 +165,8 @@ def reconcile_working(db: Session) -> int:
         except Exception as exc:  # noqa: BLE001 — un fallo puntual no debe tumbar el refresco
             db.rollback()   # descarta cualquier cambio a medias de ESTA aprobación
             logger.warning("No se pudo reconciliar la orden %s", a.broker_order_id)
-            # El estado NO cambia (sigue 'working', se reintenta sola en el siguiente sondeo) —
-            # pero el motivo tiene que verse en el panel, no quedarse solo en un log que el
-            # usuario no puede leer. Sin esto, una orden atascada de verdad (p. ej. el auto-FX
-            # que no termina de aparecer) se queda "colgada" en silencio indefinidamente.
+            # El estado no cambia (se reintenta sola), pero el motivo tiene que verse en el
+            # panel — si no, una orden atascada de verdad se queda "colgada" en silencio.
             a.result_msg = f"Reconciliando… el último intento falló: {exc}"
             db.commit()
             continue
@@ -234,9 +232,8 @@ def _record_fill(db: Session, a: Approval, side: str, total_filled: Decimal, avg
     a.quantity = total_filled
     a.fill_price = to_cents(avg_new)   # medio acumulado (lo que el usuario espera ver)
     if side == "buy":
-        # ANTES de mover el libro: si IBKR disparó su auto-FX para cubrir esta compra, la caja
-        # USD tiene que reflejarlo ya — si no, record_buy puede rechazar por falta de caja USD
-        # una compra que el sizing sí contaba como cubierta (USD + EUR, ver `_eur_usd_rate`).
+        # ANTES de mover el libro: si IBKR disparó su auto-FX, la caja USD tiene que reflejarlo
+        # ya, o record_buy rechazaría una compra que el sizing sí contaba como cubierta.
         _reconcile_fx(db, a)
         ledger.record_buy(db, a.ticker, delta, px, a.order_ref, fees=fee, book=BOOK_REAL)
     else:

@@ -208,12 +208,8 @@ function SalaRealRoom() {
     };
   }, [load]);
 
-  // Volver a esta pestaña (o al navegador) tras un rato fuera: los datos en pantalla pueden
-  // llevar minutos de retraso (caja, aprobaciones pendientes, precios) — dinero real de por
-  // medio, así que se trata como una carga desde cero (pantalla de carga completa, sin dejar
-  // el libro clicable con números que ya no son ciertos) en vez de refrescar en silencio por
-  // detrás. El sondeo de cada 60s mientras la pestaña sigue activa NO entra por aquí: ese sí
-  // sigue siendo silencioso, sería muy molesto tapar la pantalla cada minuto mientras se lee.
+  // Volver a esta pestaña tras un rato fuera: se trata como carga desde cero (dinero real de
+  // por medio). El sondeo de cada 60s con la pestaña activa NO entra por aquí, sigue silencioso.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") {
@@ -354,10 +350,8 @@ function SalaRealRoom() {
   // Escala común de las barras de P&L por posición (una vez, no dentro del map por fila).
   const maxAbs = Math.max(1e-9, ...(perf?.positions ?? []).map((x) => Math.abs(Number(x.unrealized_pnl))));
 
-  // Carga completa (primer montaje o volver a la pestaña tras un rato fuera): NADA de la sala
-  // se pinta hasta que todo llegue a la vez — ni un botón clicable, ni un número a medio
-  // refrescar. Mejor 1-2s de pantalla en blanco que un hueco donde algo parezca al día sin
-  // serlo, con dinero real de por medio.
+  // Nada de la sala se pinta hasta que todo llegue junto — mejor un instante en blanco que
+  // un hueco donde algo parezca al día sin serlo, con dinero real de por medio.
   if (loading) {
     return (
       <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 text-[13px]"

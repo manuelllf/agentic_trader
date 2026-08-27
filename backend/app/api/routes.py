@@ -90,9 +90,8 @@ class AllocateIn(BaseModel):
     # del libro con un 500; mejor 422 aquí. Bounds holgados (±$1.000M) — negativo = retirada.
     amount: float = Field(allow_inf_nan=False, gt=-1e9, lt=1e9)
     note: str = ""
-    # Literal, no str libre: una divisa mal escrita ("EURO", "eur", vacío) no debe apuntarse
-    # silenciosa en una caja invisible (ni la EUR ni la USD la contarían) — mejor un 422 claro
-    # que una aportación real que desaparece.
+    # Literal, no str libre: una divisa mal escrita se apuntaría en una caja invisible que
+    # nadie cuenta — mejor un 422 claro que una aportación real que desaparece.
     currency: Literal["USD", "EUR"] = "USD"
 
 
@@ -966,9 +965,8 @@ def real_summary(db: Session = Depends(get_db)) -> dict:
     snap = ledger.snapshot(db, price_lookup=lambda t: prices.get(t), book=BOOK_REAL)
     wallet = ledger.cash_by_currency(db, BOOK_REAL)   # caja propia del agente, EUR y USD por separado
     eur_rate = tracking.live_prices(["EURUSD=X"]).get("EURUSD=X")
-    # Patrimonio en USD (posiciones + caja USD) + el EUR propio del agente al cambio indicativo
-    # del momento — sin esto, tener EUR sin invertir haría parecer más pobre al libro de lo que
-    # es de verdad.
+    # + el EUR propio del agente al cambio del momento, o el libro parecería más pobre de lo
+    # que es solo por tener euros sin invertir.
     equity_usd = snap.equity + (wallet["EUR"] * D(str(eur_rate)) if eur_rate else Decimal("0"))
     return {
         "cash": {"eur": _money(wallet["EUR"]), "usd": _money(wallet["USD"])},
