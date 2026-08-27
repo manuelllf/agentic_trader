@@ -24,6 +24,25 @@ export function Panel({ title, right, accent, children }: {
   );
 }
 
+// El checkbox nativo (recuadro blanco del SO) desentona sobre el fondo casi negro de la sala.
+export function Checkbox({ checked, onChange, className }: {
+  checked: boolean; onChange: (v: boolean) => void; className?: string;
+}) {
+  return (
+    <button type="button" role="checkbox" aria-checked={checked}
+            onClick={(e) => { e.stopPropagation(); onChange(!checked); }}
+            className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${className ?? ""}`}
+            style={{ borderColor: checked ? T.buy : T.ring, background: checked ? T.buy : "transparent" }}>
+      {checked && (
+        <svg viewBox="0 0 16 16" className="h-2.5 w-2.5" fill="none" stroke="#fff" strokeWidth="2.4"
+             strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M3.5 8.5l3 3 6-7" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export function Kpi({ label, value, sub, tone, big }: {
   label: string; value: string; sub?: string; tone?: "good" | "bad"; big?: boolean;
 }) {

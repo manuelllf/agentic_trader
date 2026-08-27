@@ -42,7 +42,10 @@ def sincronizar(db) -> dict:  # noqa: ANN001
 
     divisas = _divisas_activas(db)
     if not divisas:
-        return {"divisas": 0, "recalculadas": 0}
+        # Antes era silencioso: "0 divisas" sin motivo es indistinguible de un fallo real.
+        motivo = "Ninguna foto reciente trae divisa registrada todavía."
+        logger.info("FX: nada que sincronizar (%s)", motivo)
+        return {"divisas": 0, "recalculadas": 0, "motivo": motivo}
 
     scraper = fund_mod._scraper_session()
     if scraper is None:

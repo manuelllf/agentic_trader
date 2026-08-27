@@ -17,6 +17,7 @@ import { FotoGlobalPicker } from "./FotoGlobalPicker";
 import { InfoTip } from "./InfoTip";
 import { ScanConfigModal } from "./ScanConfigModal";
 import { NUMS, T } from "./tokens";
+import { Checkbox } from "./ui";
 
 type Key = "obs" | "redeep" | "recomp" | "real" | "universo" | "fnas" | "fglo" | "fx" | "anal";
 type ModoUniverso = "nasdaq" | "global_topcap";
@@ -207,7 +208,7 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
           // de red, así que el motivo se lee del cuerpo y no del catch.
           const r = await snapshotUniverse();
           setMsg(r.ok
-            ? { text: `Foto rehecha: ${r.size != null ? fmtNum(r.size) : "—"} nombres elegibles.` }
+            ? { text: `Foto rehecha: ${r.size != null ? fmtNum(r.size) : "—"} nombres a escanear.` }
             : { text: r.error ?? "No se pudo rehacer la foto del universo.", bad: true });
           break;
         }
@@ -217,9 +218,13 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
           break;
         case "fx": {
           const r = await syncFx();
-          setMsg(r.ok
-            ? { text: `${r.divisas ?? 0} divisas sincronizadas · ${fmtNum(r.recalculadas ?? 0)} fotos recalculadas a USD.` }
-            : { text: r.error ?? "No se pudieron sincronizar las tasas.", bad: true });
+          // "0 de 0" sin explicación se lee como un fallo silencioso -- si el backend da
+          // motivo (nada que convertir todavía), se muestra ese en vez del recuento vacío.
+          setMsg(!r.ok
+            ? { text: r.error ?? "No se pudieron sincronizar las tasas.", bad: true }
+            : r.motivo
+              ? { text: r.motivo }
+              : { text: `${r.divisas ?? 0} divisas sincronizadas · ${fmtNum(r.recalculadas ?? 0)} fotos recalculadas a USD.` });
           break;
         }
         case "anal": {
@@ -316,16 +321,18 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
               <div className="border-t pt-2" style={{ borderColor: T.grid }}>
                 {a.uni && <SelectorUniverso uni={uni} onUni={setUni} estado={estado || null} />}
                 {a.foto && (
-                  <label className="flex cursor-pointer items-start gap-2 py-1.5 text-[11px]" style={{ color: T.ink2 }}>
-                    <input type="checkbox" checked={reFoto} onChange={(e) => setReFoto(e.target.checked)}
-                           className="mt-0.5 h-3 w-3" />
+                  // <div>, no <label>: un <label> solo reenvía el clic a un <input> real, y
+                  // aquí el checkbox es un <button> propio -- clicar el texto no lo tocaría.
+                  <div onClick={() => setReFoto((v) => !v)}
+                       className="flex cursor-pointer items-start gap-2 py-1.5 text-[11px]" style={{ color: T.ink2 }}>
+                    <Checkbox checked={reFoto} onChange={setReFoto} className="mt-0.5" />
                     <span>
                       Reutilizar última foto de fundamentales
                       <span className="block text-[9.5px]" style={{ color: T.muted }}>
                         Salta el gather (~20-40 min) y usa la última foto de cada ticker, sea de cuando sea.
                       </span>
                     </span>
-                  </label>
+                  </div>
                 )}
                 {a.cfg && (
                   <div className="flex flex-wrap items-center justify-between gap-2 py-1.5">
@@ -431,9 +438,13 @@ function Item({ k, sel, activo, onSel }: {
 function SelectorUniverso({ uni, onUni, estado }: {
   uni: ModoUniverso; onUni: (u: ModoUniverso) => void; estado: EstadoDatos | null;
 }) {
+  // "elegibles" = todo lo que pasa precio/cap del screener (~9.000); "a escanear" = tras
+  // liquidez y el tope de 3.000.
   const opciones: { v: ModoUniverso; t: string; sub: string }[] = [
     { v: "nasdaq", t: "NASDAQ",
-      sub: estado?.universo.at ? `${fmtNum(estado.universo.n)} nombres` : "el de siempre" },
+      sub: estado?.universo.at
+        ? `${fmtNum(estado.universo.elegibles)} disponibles · ${fmtNum(estado.universo.a_escanear)} a escanear`
+        : "el de siempre" },
     { v: "global_topcap", t: "Top 3.000 market cap",
       sub: "global en USD · solo IBKR" },
   ];

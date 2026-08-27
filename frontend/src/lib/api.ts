@@ -370,12 +370,15 @@ export const syncAnalytics = () =>
 /** Tasas de cambio a USD + recálculo de market_cap_usd (también corre sola a las 5:00). El
  *  backend devuelve `ok: false` con motivo si el scraper de Yahoo no responde — no lanza. */
 export const syncFx = () =>
-  post<{ ok: boolean; divisas?: number; recalculadas?: number; error?: string }>(
+  post<{ ok: boolean; divisas?: number; recalculadas?: number; motivo?: string; error?: string }>(
     "/admin/fx-sync", undefined, TIMEOUT_SYNC_MS);
 
 export interface EstadoFuente { at: string | null; n: number }
+export interface EstadoUniverso {
+  at: string | null; elegibles: number; a_escanear: number;
+}
 export interface EstadoDatos {
-  universo: EstadoFuente; foto_nasdaq: EstadoFuente;
+  universo: EstadoUniverso; foto_nasdaq: EstadoFuente;
   foto_global: EstadoFuente; fx: EstadoFuente;
 }
 

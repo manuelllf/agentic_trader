@@ -680,12 +680,37 @@ def test_estado_datos_devuelve_las_cuatro_fuentes(client, token, db) -> None:
     d = r.json()
     assert set(d) == {"universo", "foto_nasdaq", "foto_global", "fx"}
     assert d["foto_nasdaq"]["n"] == 1 and d["foto_global"]["n"] == 1
-    assert d["fx"]["n"] == 1 and d["universo"]["n"] == 1
-    assert all(d[k]["at"] for k in d)
+    assert d["fx"]["n"] == 1
+    assert d["universo"]["elegibles"] == 1 and d["universo"]["a_escanear"] == 1
+    assert d["universo"]["at"] and d["foto_nasdaq"]["at"] and d["foto_global"]["at"] and d["fx"]["at"]
+
+
+def test_estado_datos_universo_elegibles_vs_a_escanear(client, token, db) -> None:
+    """"elegibles" es TODO lo que pasa precio/cap (la tabla cruda); "a_escanear" es tras el
+    suelo de liquidez Y el tope de 3.000 -- confundirlos fue el bug real (9.000 vs ~3.000)."""
+    from datetime import UTC, datetime
+
+    from app.config import settings
+    from app.models import NasdaqSnapshotTicker
+
+    ahora = datetime.now(UTC)
+    # Pasa precio/cap (ya filtrado al guardar), pero volumen$ por debajo del suelo -- no escanea.
+    db.add(NasdaqSnapshotTicker(snapshot_at=ahora, ticker="ILIQUIDO", price=1.0, volume=1.0))
+    # Sí supera el suelo de liquidez -- este SÍ escanea.
+    db.add(NasdaqSnapshotTicker(snapshot_at=ahora, ticker="LIQUIDO", price=10.0, volume=1e6))
+    db.commit()
+    assert 1.0 * 1.0 < settings.universe_min_dollar_volume  # confirma la premisa del test
+
+    r = client.get("/admin/estado-datos", headers={"Authorization": f"Bearer {token}"})
+    assert r.json()["universo"] == {"at": r.json()["universo"]["at"], "elegibles": 2, "a_escanear": 1}
 
 
 def test_estado_datos_con_la_base_vacia_no_revienta(client, token) -> None:
     """Sin datos aún, cada fuente debe decir "nunca" (at=None, n=0), no fallar."""
     r = client.get("/admin/estado-datos", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
-    assert all(v == {"at": None, "n": 0} for v in r.json().values())
+    d = r.json()
+    assert d["universo"] == {"at": None, "elegibles": 0, "a_escanear": 0}
+    assert d["foto_nasdaq"] == {"at": None, "n": 0}
+    assert d["foto_global"] == {"at": None, "n": 0}
+    assert d["fx"] == {"at": None, "n": 0}

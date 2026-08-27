@@ -648,7 +648,8 @@ def admin_estado_datos(db: Session = Depends(get_db)) -> dict:
     descubrirlo a mitad. Solo lecturas agregadas, nada de traerse las filas."""
     from sqlalchemy import func
 
-    from app.models import FundamentalsSnapshot, FxRate, NasdaqSnapshotTicker
+    from app.models import FundamentalsSnapshot, FxRate
+    from app.screener import universe as universe_mod
 
     def _foto(es_dataset: bool) -> dict:
         at, n = (db.query(func.max(FundamentalsSnapshot.captured_at),
@@ -656,13 +657,20 @@ def admin_estado_datos(db: Session = Depends(get_db)) -> dict:
                 .filter(FundamentalsSnapshot.es_dataset.is_(es_dataset)).one())
         return {"at": utc_iso(at) if at else None, "n": n or 0}
 
-    uni_at, uni_n = (db.query(func.max(NasdaqSnapshotTicker.snapshot_at),
-                             func.count(NasdaqSnapshotTicker.ticker)).one())
+    # "elegibles" = TODO lo que pasa precio/cap (~9.000); "a_escanear" = tras liquidez y tope
+    # de 3.000. Solo lee la BD: sin snapshot no dispara ningún fetch en vivo a NASDAQ.
+    uni_at = universe_mod._ultimo_snapshot_at(db)
+    if uni_at is not None:
+        filas = universe_mod._filas_de(db, uni_at)
+        uni_elegibles, uni_a_escanear = len(filas), len(universe_mod._liquidos(filas))
+    else:
+        uni_elegibles = uni_a_escanear = 0
     fx_at = db.query(func.max(FxRate.synced_at)).scalar()
     fx_n = (db.query(func.count(FxRate.currency_code))
            .filter(FxRate.synced_at == fx_at).scalar() if fx_at else 0)
     return {
-        "universo": {"at": utc_iso(uni_at) if uni_at else None, "n": uni_n or 0},
+        "universo": {"at": utc_iso(uni_at) if uni_at else None,
+                    "elegibles": uni_elegibles, "a_escanear": uni_a_escanear},
         "foto_nasdaq": _foto(False),
         "foto_global": _foto(True),
         "fx": {"at": utc_iso(fx_at) if fx_at else None, "n": fx_n or 0},
