@@ -143,6 +143,9 @@ class Settings(BaseSettings):
     # 1 llamada/nombre) queda al azar de lo movida que estuviera la sesión de la foto.
     universe_max_names: int = 3_000
     universe_min_price: float = 5.0                      # descarta penny stocks < $5 (higiene)
+    # Universo alternativo del modal de simulación: top N por market cap USD del universo
+    # global, filtrado a mercados operables en IBKR (ver `universe_global.top_market_cap_usd`).
+    global_topcap_size: int = 3_000
     scan_full_universe: bool = True  # mensual: pre-score TODO el universo (cobertura total, ~15 min)
     scan_sample_size: int = 750     # semanal: ventana rotatoria (teje el universo en varias semanas)
     leaderboard_size: int = 20      # cuántos muestra el panel además de la cartera

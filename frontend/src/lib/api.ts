@@ -134,12 +134,13 @@ export const getLedger = () => get<LedgerSnapshot>("/ledger");
 // overrides in body only (simulation config); "Analyze" never sends it, always uses production defaults.
 export const runDemo = (opts?: {
   decide?: boolean; forceMidLayer?: boolean; overrides?: DemoRunOverrides;
-  reutilizarUltimaFoto?: boolean;
+  reutilizarUltimaFoto?: boolean; modoUniverso?: "nasdaq" | "global_topcap";
 }) => {
   const params = new URLSearchParams();
   if (opts?.decide === false) params.set("decide", "false");
   if (opts?.forceMidLayer) params.set("force_mid_layer", "true");
   if (opts?.reutilizarUltimaFoto) params.set("reutilizar_ultima_foto", "true");
+  if (opts?.modoUniverso === "global_topcap") params.set("modo_universo", "global_topcap");
   const qs = params.toString();
   return post<DemoStatus & { started: boolean }>(
     `/demo/run${qs ? `?${qs}` : ""}`, opts?.overrides ? { overrides: opts.overrides } : undefined,

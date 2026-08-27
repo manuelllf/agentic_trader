@@ -70,6 +70,7 @@ from app.models import (
 from app.screener import fundamentals as fund_mod
 from app.screener import macro as macro_mod
 from app.screener import universe as universe_mod
+from app.screener import universe_global
 
 logger = logging.getLogger(__name__)
 
@@ -435,7 +436,8 @@ def _sampling_kwargs(cfg: dict) -> dict:
 def run_scan_and_store(db: Session, sample_size: int | None = None,
                        decide: bool = True, force_mid_layer: bool = False,
                        llm_overrides: dict | None = None,
-                       reutilizar_ultima_foto: bool = False) -> dict:
+                       reutilizar_ultima_foto: bool = False,
+                       modo_universo: str = "nasdaq") -> dict:
     """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
 
     `decide=False` → escaneo OBSERVATORIO (usado hoy por la "simulación" manual de Sala Real,
@@ -454,6 +456,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     pide dato fresco o de hasta 12h (`fundamentals._FOTO_TTL_H`); con esto a True, usa la última
     foto de cada ticker sin importar su antigüedad — para no esperar un gather completo en
     pruebas a mitad de mes. El cron nunca lo manda (siempre False, dato fresco de verdad).
+
+    `modo_universo`: "nasdaq" (de siempre) o "global_topcap" (los N de mayor `market_cap_usd` del
+    universo global soportados por IBKR, ver `universe_global.top_market_cap_usd`) — SOLO para
+    el modal de simulación (`decide=False`); depende de que ya exista foto global reciente, así
+    que no tiene ventana rotatoria ni cursor (siempre la lista entera, `n=None`).
     """
     scan_progress.reset()
     t_scan_inicio = time.monotonic()
@@ -518,31 +525,52 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     personal = list(settings.always_deep_tickers)
     always = (list(held.keys())
              + [t for t in personal if t not in held])
-    # Muestra semanal = ventana ROTATORIA (offset persistido) para tejer el universo sin repetir;
-    # el mensual (n=None) coge el universo entero y no mueve el cursor.
-    # El universo sale de la FOTO del último cierre: el volumen de NASDAQ es el acumulado de la
-    # sesión en curso, así que filtrar en caliente a las 10:15 ET dejaba fuera casi todo el
-    # mercado y colaba justo lo que tenía actividad anormal esa mañana.
-    universo, universo_info = universe_mod.universe_for_scan(db)
-    if universo_info["fuente"] == "seed":
-        # Fallar RUIDOSAMENTE es mejor que escanear: un ranking salido de 40 nombres de
-        # emergencia parecería normal en la web y no lo es.
-        raise RuntimeError(
-            f"Sin universo: NASDAQ no responde y no hay foto del cierre guardada. El escaneo se "
-            f"aborta antes de gastar nada (solo había {universo_info['size']} nombres de "
-            f"emergencia). Se reintenta en el próximo cierre o a mano."
-        )
-    if decide and universo_info["fuente"] != "cierre":
-        # Un observatorio con el universo a medias es un mal menor (avisa y aprende); una
-        # DECISIÓN que elige la cartera del mes con medio mercado mirado, no.
-        raise RuntimeError(
-            "Decisión abortada: no hay foto del universo del último cierre y en vivo el mercado "
-            f"sale a medias ({universo_info['size']} nombres). Elegir la cartera del mes así "
-            "sería mirar una fracción del mercado. Repite cuando exista la foto."
-        )
-    sample = universe_mod.sample_for_scan(always, n, _scan_cursor(db), universe=universo)
-    # OJO: el cursor NO avanza aquí sino al final. Avanzarlo ahora consumía la franja
-    # aunque el escaneo reventase a mitad, y esos nombres no volvían hasta la siguiente vuelta.
+    # yahoo_symbol por ticker, SOLO para `modo_universo="global_topcap"` -- NASDAQ cotiza pelado,
+    # el gather no necesita el mapa (ver `_gather` más abajo).
+    simbolos_global: dict[str, str | None] = {}
+    if modo_universo == "global_topcap":
+        # Universo FIJO (el top N por market cap ya rankeado, ver `top_market_cap_usd`): sin
+        # ventana rotatoria ni cursor -- eso es un concepto de la muestra semanal de NASDAQ, que
+        # aquí no aplica. Depende de que ya exista foto global con `market_cap_usd`, así que no
+        # hay "fuente vivo/seed" que degradar: o hay candidatos, o no hay scan.
+        candidatos = universe_global.top_market_cap_usd(db, limite=settings.global_topcap_size)
+        if not candidatos:
+            raise RuntimeError(
+                "Sin candidatos para el universo global por market cap: hace falta una foto "
+                "global reciente con market_cap_usd ya calculado (ver /admin/foto?alcance=global "
+                "y el job de tasas de cambio de las 5:00)."
+            )
+        simbolos_global = dict(candidatos)
+        n = None
+        sample = list(dict.fromkeys(always + [t for t, _ in candidatos]))
+        universo_info = {"fuente": "global_topcap", "size": len(candidatos), "dias": None,
+                         "sobre_suelo": None, "at": datetime.now(UTC).isoformat()}
+    else:
+        # Muestra semanal = ventana ROTATORIA (offset persistido) para tejer el universo sin
+        # repetir; el mensual (n=None) coge el universo entero y no mueve el cursor.
+        # El universo sale de la FOTO del último cierre: el volumen de NASDAQ es el acumulado de
+        # la sesión en curso, así que filtrar en caliente a las 10:15 ET dejaba fuera casi todo el
+        # mercado y colaba justo lo que tenía actividad anormal esa mañana.
+        universo, universo_info = universe_mod.universe_for_scan(db)
+        if universo_info["fuente"] == "seed":
+            # Fallar RUIDOSAMENTE es mejor que escanear: un ranking salido de 40 nombres de
+            # emergencia parecería normal en la web y no lo es.
+            raise RuntimeError(
+                f"Sin universo: NASDAQ no responde y no hay foto del cierre guardada. El escaneo "
+                f"se aborta antes de gastar nada (solo había {universo_info['size']} nombres de "
+                f"emergencia). Se reintenta en el próximo cierre o a mano."
+            )
+        if decide and universo_info["fuente"] != "cierre":
+            # Un observatorio con el universo a medias es un mal menor (avisa y aprende); una
+            # DECISIÓN que elige la cartera del mes con medio mercado mirado, no.
+            raise RuntimeError(
+                "Decisión abortada: no hay foto del universo del último cierre y en vivo el "
+                f"mercado sale a medias ({universo_info['size']} nombres). Elegir la cartera del "
+                "mes así sería mirar una fracción del mercado. Repite cuando exista la foto."
+            )
+        sample = universe_mod.sample_for_scan(always, n, _scan_cursor(db), universe=universo)
+        # OJO: el cursor NO avanza aquí sino al final. Avanzarlo ahora consumía la franja
+        # aunque el escaneo reventase a mitad, y esos nombres no volvían hasta la siguiente vuelta.
 
     # Incidencias para el informe persistido: los fallos PARCIALES que hasta ahora solo se
     # veían leyendo los logs de Railway (fuentes caídas, LLM no parseable, nombres sin datos).
@@ -573,7 +601,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     ttl_h = float("inf") if reutilizar_ultima_foto else fund_mod._FOTO_TTL_H
 
     def _gather(ticker: str):
-        data, err = fund_mod.gather(ticker, db=db, ttl_h=ttl_h)
+        data, err = fund_mod.gather(ticker, db=db, ttl_h=ttl_h,
+                                    yahoo_symbol=simbolos_global.get(ticker),
+                                    es_dataset=modo_universo == "global_topcap")
         return ticker, data, err
 
     def _run_gather(tickers: list[str]) -> list[tuple[str, object, str | None]]:

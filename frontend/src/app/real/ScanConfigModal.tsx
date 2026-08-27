@@ -42,14 +42,26 @@ const FALLBACK: Record<Stage, Required<StageLLMOverride>> = {
 
 const STAGES: Stage[] = ["macro", "prescore", "mid", "deep", "constructor"];
 
+type ModoUniverso = "nasdaq" | "global_topcap";
+
+const UNIVERSOS: { value: ModoUniverso; label: string; hint: string }[] = [
+  { value: "nasdaq", label: "NASDAQ (de siempre)",
+    hint: "Universo elegible de NASDAQ (precio ≥$5, volumen ≥300k, hasta 3.000 nombres)." },
+  { value: "global_topcap", label: "Top 3.000 market cap global (USD)",
+    hint: "Los de mayor market cap del universo global convertido a USD, solo mercados operables "
+         + "en IBKR. Necesita foto global reciente (POST /admin/foto?alcance=global)." },
+];
+
 export function ScanConfigModal({ onClose, onLaunch }: {
   onClose: () => void;
-  onLaunch: (overrides: DemoRunOverrides, reutilizarUltimaFoto: boolean) => void;
+  onLaunch: (overrides: DemoRunOverrides, reutilizarUltimaFoto: boolean,
+            modoUniverso: ModoUniverso) => void;
 }) {
   const [cfg, setCfg] = useState<Record<Stage, Required<StageLLMOverride>>>(FALLBACK);
   // Until /config resolves, controls are disabled to prevent race: user changes get overwritten by defaults.
   const [loaded, setLoaded] = useState(false);
   const [reutilizarFoto, setReutilizarFoto] = useState(false);
+  const [modoUniverso, setModoUniverso] = useState<ModoUniverso>("nasdaq");
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -86,7 +98,7 @@ export function ScanConfigModal({ onClose, onLaunch }: {
   const launch = () => onLaunch({
     macro: cfg.macro, prescore: cfg.prescore, mid: cfg.mid, deep: cfg.deep,
     constructor: cfg.constructor,
-  }, reutilizarFoto);
+  }, reutilizarFoto, modoUniverso);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
@@ -120,6 +132,24 @@ export function ScanConfigModal({ onClose, onLaunch }: {
           {!loaded && (
             <p className="mb-2 text-[11px]" style={{ color: T.muted }}>Cargando configuración real…</p>
           )}
+          <div className="mb-2.5 rounded border px-2.5 py-2" style={{ borderColor: T.grid }}>
+            <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+              Universo
+            </p>
+            <div className="mt-1.5 flex flex-col gap-1.5 sm:flex-row sm:gap-3">
+              {UNIVERSOS.map((u) => (
+                <label key={u.value} className="flex items-start gap-1.5 text-[11px]" style={{ color: T.ink }}>
+                  <input type="radio" name="modo-universo" className="mt-0.5 h-3 w-3"
+                         checked={modoUniverso === u.value}
+                         onChange={() => setModoUniverso(u.value)} />
+                  <span>
+                    {u.label}
+                    <InfoTip text={u.hint} />
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
           <div className={`space-y-2.5 ${loaded ? "" : "pointer-events-none opacity-50"}`}>
             {STAGES.map((s) => (
               <StageRow key={s} stage={s} v={cfg[s]} models={MODELS_BY_STAGE[s]}

@@ -102,6 +102,22 @@ def _universo_global_job() -> None:
         db.close()
 
 
+def _fx_job() -> None:
+    """Tasas de cambio a USD + recálculo de `market_cap_usd` (ver `app/screener/fx.py`) --
+    5:00 Europa/Madrid, antes de la analítica, para que el scan "top market cap global" del día
+    ya tenga la tasa fresca."""
+    from app.screener import fx as fx_mod
+
+    db = SessionLocal()
+    try:
+        info = fx_mod.sincronizar(db)
+        logger.info("FX sincronizado: %s", info)
+    except Exception:
+        logger.exception("No se pudo sincronizar las tasas de cambio")
+    finally:
+        db.close()
+
+
 def _analytics_sync_job() -> None:
     """Reconstruye el fichero DuckDB persistente de `/analytics/*` desde Postgres. Fuera de
     horas de mercado, a propósito no atado a ningún escaneo — la analítica acepta estar hasta
@@ -175,6 +191,12 @@ def start_scheduler() -> None:
     # Reconciliación de órdenes working cada 2 min (no-op sin órdenes vivas; ver _reconcile_job).
     scheduler.add_job(_reconcile_job, "interval", minutes=2, id="reconcile_working",
                       replace_existing=True)
+    # Tasas de cambio a USD: 5:00 Europa/Madrid, antes de la analítica -- ver _fx_job.
+    scheduler.add_job(
+        _fx_job,
+        CronTrigger(hour=5, minute=0, timezone="Europe/Madrid"),
+        id="fx_sync", replace_existing=True, misfire_grace_time=3600, coalesce=True,
+    )
     # Fichero DuckDB de /analytics/*: 6:00 hora española (no la del mercado US, esta la mira
     # Manuel, no el escaneo) — una vez al día basta (ver _analytics_sync_job).
     # POST /admin/sync-analytics existe para no esperar a esta hora.

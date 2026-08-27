@@ -23,6 +23,7 @@ ritmo).
 
 from __future__ import annotations
 
+import math
 import re
 from typing import TYPE_CHECKING
 
@@ -155,6 +156,28 @@ def _noticias(s: creq.Session, ticker: str, max_items: int = 8) -> list[str]:
         return _news_desde_stream(stream, max_items)
     except Exception:
         return []
+
+
+def tasas_de_cambio(s: creq.Session, crumb: str, divisas: list[str]) -> dict[str, float]:
+    """USD por unidad de cada divisa (`{"KRW": 0.00072, ...}`), en UNA sola petición (`v7/finance/
+    quote` acepta varios símbolos separados por coma) -- job de las 5:00, ver `scheduler._fx_job`.
+    Divisas sin cotización (símbolo raro/Yahoo no lo tiene) simplemente no salen en el dict."""
+    divisas = [d for d in divisas if d and d != "USD"]
+    if not divisas:
+        return {}
+    simbolos = {f"{d}USD=X": d for d in divisas}
+    r = s.get("https://query2.finance.yahoo.com/v7/finance/quote",
+              params={"symbols": ",".join(simbolos), "crumb": crumb}, timeout=15)
+    if r.status_code != 200:
+        raise TransportError(f"fx quote: HTTP {r.status_code}")
+    resultados = ((r.json() or {}).get("quoteResponse") or {}).get("result") or []
+    tasas: dict[str, float] = {}
+    for fila in resultados:
+        divisa = simbolos.get(fila.get("symbol"))
+        precio = fila.get("regularMarketPrice")
+        if divisa and isinstance(precio, (int, float)) and math.isfinite(precio):
+            tasas[divisa] = float(precio)
+    return tasas
 
 
 def gather_scraper(s: creq.Session, crumb: str, ticker: str,

@@ -53,6 +53,8 @@ un feed de señales.
                                        navegador de la analítica por escaneo               [protegido]
 - POST /admin/sync-analytics         → reconstruye el fichero DuckDB de /analytics/* desde
                                        Postgres (también corre solo, una vez al día)       [protegido]
+- POST /admin/fx-sync                → tasas de cambio a USD + recálculo de market_cap_usd
+                                       (también corre solo, 5:00 Europa/Madrid)            [protegido]
 """
 
 from __future__ import annotations
@@ -277,6 +279,7 @@ class DemoRunOverrides(BaseModel):
 @router.post("/demo/run")
 def demo_run(sample_size: int | None = None, decide: bool = True,
             force_mid_layer: bool = False, reutilizar_ultima_foto: bool = False,
+            modo_universo: Literal["nasdaq", "global_topcap"] = "nasdaq",
             overrides: DemoRunOverrides | None = Body(None)) -> dict:
     # decide=False: escaneo de universo completo en producción real, con el modelo/coste
     # de verdad, que NO propone ni toca ninguna cartera — solo refresca ranking, watchlist,
@@ -285,13 +288,16 @@ def demo_run(sample_size: int | None = None, decide: bool = True,
     # `overrides`: config por etapa del modal de la simulación — cuerpo JSON opcional, nunca lo
     # manda "Analizar mercado" ni el cron, así que ambos siguen usando los defaults de siempre.
     # `reutilizar_ultima_foto`: checkbox de los dos modales — ver `scan_service.run_scan_and_store`.
+    # `modo_universo`: NASDAQ de siempre o top market cap USD del universo global (ver
+    # `scan_service.run_scan_and_store`) — elección nueva del modal, solo aquí (nunca el cron).
     if not settings.enable_llm or not settings.llm_api_key_present:
         raise HTTPException(503, "Configura ENABLE_LLM=true y la key del proveedor "
                                  f"({settings.llm_provider.upper()}_API_KEY).")
     llm_overrides = (overrides.model_dump(exclude_none=True) if overrides else None) or None
     started = pipeline.start(sample_size=sample_size, decide=decide,
                              force_mid_layer=force_mid_layer, llm_overrides=llm_overrides,
-                             reutilizar_ultima_foto=reutilizar_ultima_foto)
+                             reutilizar_ultima_foto=reutilizar_ultima_foto,
+                             modo_universo=modo_universo)
     return {"started": started, **pipeline.get_status()}
 
 
@@ -626,6 +632,19 @@ def analytics_scans(db: Session = Depends(get_db)) -> dict:
     return {"items": [
         {"id": r.id, "at": utc_iso(r.scan_at), "cadence": r.cadence} for r in rows
     ]}
+
+
+@router.post("/admin/fx-sync")
+def admin_fx_sync(db: Session = Depends(get_db)) -> dict:
+    """Lanza a mano la sincronización de tasas de cambio + recálculo de `market_cap_usd` (ver
+    `app/screener/fx.py`). También corre sola a las 5:00 Europa/Madrid — esto es para no esperar
+    a esa hora antes de un scan `global_topcap`."""
+    from app.screener import fx as fx_mod
+
+    try:
+        return {"ok": True, **fx_mod.sincronizar(db)}
+    except Exception as exc:  # noqa: BLE001 — scraper de Yahoo caído: mensaje legible, no 500
+        return {"ok": False, "error": str(exc)}
 
 
 @router.post("/admin/sync-analytics")

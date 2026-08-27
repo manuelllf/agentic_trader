@@ -127,6 +127,12 @@ class FundamentalsSnapshot(Base):
     # coincide en ambos catálogos (ej. AAPL) -- esto no las funde, cada captura es su propia fila
     # con su propio origen, igual que ya pasa con capturas repetidas del mismo alcance.
     es_dataset: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Divisa nativa (yfinance "currency") -- antes se descartaba tras montar el prompt, hace
+    # falta para saber qué tasa de `FxRate` aplicarle a `market_cap`.
+    currency: Mapped[str | None] = mapped_column(String(8))
+    # `market_cap` en USD -- se rellena en el gather y se recalcula cada noche (ver
+    # `scheduler._fx_job`) para que un movimiento de divisa se note sin re-capturar fundamentales.
+    market_cap_usd: Mapped[float | None] = mapped_column(Float)
 
 
 class FundamentalsSnapshotNews(Base):
@@ -209,6 +215,30 @@ class NasdaqSnapshotTicker(Base):
     ticker: Mapped[str] = mapped_column(String(16), index=True)
     price: Mapped[float] = mapped_column(Float)
     volume: Mapped[float] = mapped_column(Float)
+
+
+class IbkrExchange(Base):
+    """Allow-list de mercados operables en IBKR (`universe_ticker.exchange`), verificada a mano
+    contra `search_contracts` -- sin esto, un scan "top market cap global" mezclaría mercados
+    que ni siquiera se pueden operar en la cuenta real."""
+
+    __tablename__ = "ibkr_exchange"
+
+    exchange: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(64))
+
+
+class FxRate(Base):
+    """Tasa de cambio a USD por divisa, una tanda por día (append-only). Job de las 5:00
+    Europa/Madrid (ver `scheduler._fx_job`) -- solo las divisas que aparecen de verdad en
+    `fundamentals_snapshot.currency`, no un catálogo mundial completo."""
+
+    __tablename__ = "fx_rate"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    currency_code: Mapped[str] = mapped_column(String(8))
+    usd_per_unit: Mapped[float] = mapped_column(Float)
 
 
 class Score(Base):

@@ -375,10 +375,19 @@ def ultimo_sync(db) -> datetime | None:  # noqa: ANN001
     return db.query(func.max(UniverseTicker.synced_at)).scalar()
 
 
+# Mercados que se SIGUEN sincronizando y guardando (`sincronizar()` no cambia), pero no salen de
+# aquí para abajo -- ni picker, ni foto, ni scan, ni conversión de divisa. "OTC" agrupa demasiado
+# heterogéneo (pink sheets tradables de verdad junto a ADRs exóticos sin exchange real detrás)
+# para fiarse de él en nada automático; queda en BD por si algún día se quiere activar a mano.
+EXCHANGES_EXCLUIDOS = {"OTC"}
+
+
 def _filtrar(q, countries: list[str] | None, exchanges: list[str] | None):  # noqa: ANN001, ANN201
-    """Filtro común país/mercado (multi-select, AND entre sí) para `tickers`/`contar`."""
+    """Filtro común país/mercado (multi-select, AND entre sí) para `tickers`/`contar`. Excluye
+    SIEMPRE `EXCHANGES_EXCLUIDOS`, aunque alguien lo pida explícito por `exchanges`."""
     from app.models import UniverseTicker
 
+    q = q.filter(~UniverseTicker.exchange.in_(EXCHANGES_EXCLUIDOS))
     if countries:
         q = q.filter(UniverseTicker.country.in_(countries))
     if exchanges:
@@ -447,6 +456,38 @@ def contar(db, countries: list[str] | None = None, exchanges: list[str] | None =
     return q.count()
 
 
+def top_market_cap_usd(db, limite: int = 3000) -> list[tuple[str, str | None]]:  # noqa: ANN001
+    """Los `limite` tickers de mayor `market_cap_usd` entre los soportados por IBKR
+    (`IbkrExchange`), uno por ticker (la foto MÁS RECIENTE de cada uno, `es_dataset=True`).
+
+    Depende de que ya exista foto global: sin `market_cap_usd` (sin foto, o foto sin
+    `fx_rate` todavía para su divisa) el ticker simplemente no entra -- no se puede rankear lo
+    que no se ha fotografiado."""
+    from sqlalchemy import func
+
+    from app.models import FundamentalsSnapshot, IbkrExchange, UniverseTicker
+
+    ultimo = ultimo_sync(db)
+    if ultimo is None:
+        return []
+    rn = (func.row_number()
+         .over(partition_by=FundamentalsSnapshot.ticker,
+               order_by=FundamentalsSnapshot.captured_at.desc())
+         .label("rn"))
+    sub = (db.query(FundamentalsSnapshot.ticker, FundamentalsSnapshot.market_cap_usd, rn)
+          .filter(FundamentalsSnapshot.es_dataset.is_(True),
+                 FundamentalsSnapshot.market_cap_usd.isnot(None))
+          .subquery())
+    q = (db.query(sub.c.ticker, UniverseTicker.yahoo_symbol)
+        .join(UniverseTicker, (UniverseTicker.ticker == sub.c.ticker)
+             & (UniverseTicker.synced_at == ultimo))
+        .join(IbkrExchange, IbkrExchange.exchange == UniverseTicker.exchange)
+        .filter(sub.c.rn == 1, UniverseTicker.yahoo_symbol.isnot(None))
+        .order_by(sub.c.market_cap_usd.desc())
+        .limit(limite))
+    return [(t, s) for t, s in q.all()]
+
+
 def opciones(db, asset_type: str | None = "Stock") -> dict:  # noqa: ANN001
     """Países y mercados de la última tanda con su recuento real (solo `asset_type`, "Stock"
     por defecto — lo que de verdad se va a capturar), para que el picker nunca sea "elige a
@@ -459,12 +500,14 @@ def opciones(db, asset_type: str | None = "Stock") -> dict:  # noqa: ANN001
     if ultimo is None:
         return {"synced_at": None, "total": 0, "countries": [], "exchanges": []}
 
-    base = db.query(UniverseTicker).filter(UniverseTicker.synced_at == ultimo)
+    base = (db.query(UniverseTicker).filter(UniverseTicker.synced_at == ultimo)
+           .filter(~UniverseTicker.exchange.in_(EXCHANGES_EXCLUIDOS)))
     if asset_type:
         base = base.filter(UniverseTicker.asset_type == asset_type)
     total = base.count()
 
-    base_grp = db.query(UniverseTicker).filter(UniverseTicker.synced_at == ultimo)
+    base_grp = (db.query(UniverseTicker).filter(UniverseTicker.synced_at == ultimo)
+               .filter(~UniverseTicker.exchange.in_(EXCHANGES_EXCLUIDOS)))
     if asset_type:
         base_grp = base_grp.filter(UniverseTicker.asset_type == asset_type)
 

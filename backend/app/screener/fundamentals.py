@@ -119,9 +119,24 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
         news=noticias, earnings_text=row.earnings_text or "", name=row.name or "",
         target_high=row.target_high, target_mean=row.target_mean,
         pe_trailing=row.pe_trailing, pe_forward=row.pe_forward,
-        high_52w=row.high_52w, low_52w=row.low_52w,
+        high_52w=row.high_52w, low_52w=row.low_52w, currency=row.currency,
         fundamentales_crudos=metricas_crudas,
     )
+
+
+def _market_cap_usd(db, market_cap: float | None, currency: str | None) -> float | None:  # noqa: ANN001
+    """`market_cap` a USD con la tasa MÁS RECIENTE de `FxRate` -- USD/sin divisa es la unidad
+    (tasa 1.0), el resto sin tasa todavía se deja en `None` (no bloquea el gather)."""
+    from app.models import FxRate
+
+    if market_cap is None:
+        return None
+    if not currency or currency == "USD":
+        return market_cap
+    fila = (db.query(FxRate.usd_per_unit)
+           .filter(FxRate.currency_code == currency)
+           .order_by(FxRate.synced_at.desc()).first())
+    return market_cap * fila[0] if fila else None
 
 
 def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False) -> None:  # noqa: ANN001
@@ -146,7 +161,8 @@ def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False) -> N
             pe_trailing=data.pe_trailing, pe_forward=data.pe_forward,
             high_52w=data.high_52w, low_52w=data.low_52w,
             technical_text=data.technical_text, earnings_text=data.earnings_text,
-            es_dataset=es_dataset,
+            es_dataset=es_dataset, currency=data.currency,
+            market_cap_usd=_market_cap_usd(db, data.market_cap, data.currency),
         )
         db.add(fila)
         db.flush()   # asigna fila.id sin comprometer la transacción, para las hermanas
@@ -294,6 +310,8 @@ class NameData:
     pe_forward: float | None = None
     high_52w: float | None = None
     low_52w: float | None = None
+    # Divisa nativa (yfinance "currency") -- para convertir `market_cap` a USD (ver `FxRate`).
+    currency: str | None = None
     # Los ~85 campos de `fundamentals_text` (Exhibit 2B), EN CRUDO — clave de yfinance → valor
     # sin formatear. Es lo que se persiste (`fundamentals_snapshot_metric`, relacional, nunca
     # texto ni JSON); `fundamentals_text` sigue viajando al prompt tal cual, sin tocar.
@@ -327,6 +345,7 @@ def metricas(info: dict) -> dict:
         "pe_forward": _num(info, "forwardPE"),
         "high_52w": _num(info, "fiftyTwoWeekHigh"),
         "low_52w": _num(info, "fiftyTwoWeekLow"),
+        "currency": info.get("currency") or None,
     }
 
 

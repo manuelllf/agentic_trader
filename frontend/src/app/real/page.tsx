@@ -387,12 +387,13 @@ function SalaRealRoom() {
 
   // Full monthly circuit (universe + mid-layer) with decide=false: refreshes without touching any portfolio.
   // Opens config modal to set model/reasoning per stage; actual launch happens on confirmation.
-  const handleLaunchSimulation = async (overrides: DemoRunOverrides, reutilizarFotoSim: boolean) => {
+  const handleLaunchSimulation = async (overrides: DemoRunOverrides, reutilizarFotoSim: boolean,
+                                        modoUniverso: "nasdaq" | "global_topcap") => {
     setConfigOpen(false);
     setError("");
     try {
       await runDemo({ decide: false, forceMidLayer: true, overrides,
-                      reutilizarUltimaFoto: reutilizarFotoSim });
+                      reutilizarUltimaFoto: reutilizarFotoSim, modoUniverso });
       setRunning(true);
       setFlash("Simulación en marcha (no va a tocar ninguna cartera)…");
       pollScan();
