@@ -5,9 +5,9 @@ esto se puede fotografiar el mercado a las 10:00 y lanzar el scoring off-peak a 
 mitad de tarifa), porque el escaneo reutiliza la foto de las últimas 24h en vez de volver a
 pedirle todo a Yahoo (ver `fundamentals.foto_reciente`).
 
-Ritmo real: 2 hilos y 0,4s de pausa por petición (los únicos valores validados contra el bloqueo
-de Yahoo, ver `scan_service`) → ~3.000 nombres son ~20 min. El universo global de 63.000 son
-horas, no minutos: por eso `limite` existe.
+Ritmo real: 4 hilos y 0,4s de pausa por petición (validado en vivo, ver `scan_service`) →
+~3.000 nombres son ~20 min. El universo global de 63.000 son horas, no minutos: por eso
+`limite` existe.
 """
 
 from __future__ import annotations
@@ -60,9 +60,11 @@ def _tickers(db, alcance: str, limite: int | None,  # noqa: ANN001
                                "(POST /admin/universo-global), o el filtro país/mercado no "
                                "encuentra ningún ticker.")
     else:
-        tickers, info = universe_mod.universe_for_scan(db)
-        if info["fuente"] == "seed":
-            raise RuntimeError("Sin universo: NASDAQ no responde y no hay foto del cierre.")
+        # Captura TODO lo elegible, no solo lo que se va a escanear (`universe_for_scan` aplica
+        # además liquidez+tope) -- así bajar el suelo de liquidez no obliga a recapturar.
+        tickers = universe_mod.tickers_elegibles(db)
+        if not tickers:
+            raise RuntimeError("Sin universo: no hay foto del cierre de NASDAQ todavía.")
         nombres = [(t, None) for t in tickers]
     return nombres[:limite] if limite else nombres
 

@@ -196,6 +196,16 @@ def build_universe(force_refresh: bool = False) -> list[str]:
     return list(_SEED_FALLBACK)
 
 
+def tickers_elegibles(db) -> list[str]:  # noqa: ANN001
+    """Tickers que pasan precio/cap/tipo de instrumento, SIN suelo de liquidez ni tope -- para
+    CAPTURAR fundamentales de más de lo que se va a escanear, así tocar el suelo de liquidez
+    no obliga a recapturar nada."""
+    at = _ultimo_snapshot_at(db)
+    if at is None:
+        return []
+    return sorted(sym for sym, *_resto in _elegibles(_filas_de(db, at)))
+
+
 def _ultimo_snapshot_at(db) -> datetime | None:  # noqa: ANN001
     from sqlalchemy import func
 

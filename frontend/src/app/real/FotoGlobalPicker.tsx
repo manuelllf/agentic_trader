@@ -1,8 +1,8 @@
 "use client";
 
-/** Selector país/mercado para capturar fundamentales del universo GLOBAL (HuggingFace) —
- *  autocontenido a propósito: `page.tsx` ya tiene bastante estado propio, y este picker no
- *  necesita compartir nada con el resto de la página salvo el resultado final.
+/** Dos acciones separadas del universo GLOBAL (HuggingFace), igual que NASDAQ separa "rehacer
+ *  foto" de "capturar fundamentales": `UniversoGlobalSync` trae tickers/yahoo_symbol/país/mercado
+ *  desde HuggingFace; `FotoGlobalPicker` captura fundamentales reales sobre lo ya sincronizado.
  *
  *  El dataset global no trae precio/cap/volumen (a diferencia del screener de NASDAQ, que sí),
  *  así que país y mercado son el único filtro barato disponible ANTES de gastar peticiones
@@ -43,27 +43,16 @@ function Chip({ label, count, active, onClick }: {
   );
 }
 
-export function FotoGlobalPicker() {
+/** Resincroniza tickers/yahoo_symbol/país/mercado desde el CSV de HuggingFace — el "rehacer
+ *  foto" del universo global. No toca fundamentales, solo la lista de nombres disponibles. */
+export function UniversoGlobalSync() {
   const [opciones, setOpciones] = useState<UniversoGlobalOpciones | null>(null);
   const [loadingOpciones, setLoadingOpciones] = useState(true);
-  const [countries, setCountries] = useState<string[]>([]);
-  const [exchanges, setExchanges] = useState<string[]>([]);
-  const [limite, setLimite] = useState(LIMITE_DEFECTO);
-  const [count, setCount] = useState<number | null>(null);
-  const [counting, setCounting] = useState(false);
   const [armed, setArmed] = useState(false);
-  const [launching, setLaunching] = useState(false);
-  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [syncArmed, setSyncArmed] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const fotoPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => () => {
-    if (syncPollRef.current) clearInterval(syncPollRef.current);
-    if (fotoPollRef.current) clearInterval(fotoPollRef.current);
-  }, []);
 
   async function cargarOpciones() {
     setLoadingOpciones(true);
@@ -76,26 +65,10 @@ export function FotoGlobalPicker() {
     }
   }
 
-  useEffect(() => { cargarOpciones(); }, []);
-
-  // Recuenta en el backend (fuente real) cada vez que cambia la selección — un cliente nunca
-  // debe fiarse de sumar los recuentos por país + por mercado a la vez (no son independientes).
   useEffect(() => {
-    let vivo = true;
-    setCounting(true);
-    contarUniversoGlobal(countries, exchanges)
-      .then((r) => { if (vivo) setCount(r.count); })
-      .catch(() => { if (vivo) setCount(null); })
-      .finally(() => { if (vivo) setCounting(false); });
-    return () => { vivo = false; };
-  }, [countries, exchanges]);
-
-  const efectivo = count != null ? Math.min(count, limite) : null;
-  const minutosEstimados = efectivo != null ? Math.max(1, Math.round(efectivo / RITMO_POR_MIN)) : null;
-
-  function toggle(list: string[], set: (v: string[]) => void, v: string) {
-    set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-  }
+    cargarOpciones();
+    return () => { if (syncPollRef.current) clearInterval(syncPollRef.current); };
+  }, []);
 
   function pollSync() {
     if (syncPollRef.current) clearInterval(syncPollRef.current);
@@ -118,8 +91,8 @@ export function FotoGlobalPicker() {
     }, 3000);
   }
 
-  async function doSyncGlobal() {
-    setSyncArmed(false);
+  async function doSync() {
+    setArmed(false);
     setSyncing(true);
     setMsg({ text: "Sincronizando en segundo plano (~63.000 filas, unos minutos)…" });
     try {
@@ -157,7 +130,7 @@ export function FotoGlobalPicker() {
     const archivo = e.target.files?.[0];
     e.target.value = ""; // permite volver a elegir el mismo fichero si hace falta reintentar
     if (!archivo) return;
-    setSyncArmed(false);
+    setArmed(false);
     setSyncing(true);
     setMsg({ text: `Subiendo ${archivo.name} y sincronizando en segundo plano…` });
     try {
@@ -168,6 +141,107 @@ export function FotoGlobalPicker() {
       return;
     }
     pollSync();
+  }
+
+  if (loadingOpciones) {
+    return <p className="text-[11px]" style={{ color: T.muted }}>Cargando universo global…</p>;
+  }
+
+  const csvUploadInput = (
+    <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={doSubirCsv} />
+  );
+
+  const csvUploadLink = (
+    <span className="text-[10.5px]" style={{ color: T.muted }}>
+      o{" "}
+      <a href={URL_CSV_HUGGINGFACE} target="_blank" rel="noreferrer" className="underline"
+         onClick={descargarCsv}>descarga el CSV</a>
+      {" "}y{" "}
+      <button type="button" onClick={abrirSelectorArchivo} disabled={syncing} className="underline disabled:opacity-50">
+        súbelo a mano
+      </button>
+      {" "}si la red falla a mitad.
+    </span>
+  );
+
+  const sinSincronizar = !opciones || opciones.total === 0;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {csvUploadInput}
+      <span className="text-[10.5px]" style={{ color: sinSincronizar ? T.warn : T.muted }}>
+        {sinSincronizar
+          ? "El universo global (HuggingFace) no está sincronizado todavía — sin esto, «global» no tiene de dónde elegir."
+          : `${fmtNum(opciones.total)} tickers sincronizados (${opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString("es-ES") : "—"}).`}
+      </span>
+      {!armed ? (
+        <button onClick={() => setArmed(true)} disabled={syncing}
+                className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                style={{ borderColor: T.ring, color: T.ink2 }}>
+          {syncing ? "Sincronizando…" : sinSincronizar ? "Sincronizar universo global" : "↻ Resincronizar"}
+        </button>
+      ) : (
+        <span className="flex flex-wrap items-center gap-2">
+          {sinSincronizar && (
+            <span className="text-[10.5px]" style={{ color: T.warn }}>~63.000 tickers, descarga de HuggingFace.</span>
+          )}
+          <button onClick={doSync} disabled={syncing}
+                  className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  style={{ background: T.bad }}>
+            {syncing ? "Sincronizando…" : "Confirmar"}
+          </button>
+          <button onClick={() => setArmed(false)} disabled={syncing}
+                  className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
+                  style={{ borderColor: T.ring, color: T.ink2 }}>
+            Cancelar
+          </button>
+        </span>
+      )}
+      {csvUploadLink}
+      {msg && (
+        <span className="text-[10.5px]" style={{ color: msg.bad ? T.warn : T.muted }}>{msg.text}</span>
+      )}
+    </div>
+  );
+}
+
+/** Selector país/mercado + captura de fundamentales sobre el universo global YA sincronizado —
+ *  no resincroniza nada, eso vive en `UniversoGlobalSync`. */
+export function FotoGlobalPicker() {
+  const [opciones, setOpciones] = useState<UniversoGlobalOpciones | null>(null);
+  const [loadingOpciones, setLoadingOpciones] = useState(true);
+  const [countries, setCountries] = useState<string[]>([]);
+  const [exchanges, setExchanges] = useState<string[]>([]);
+  const [limite, setLimite] = useState(LIMITE_DEFECTO);
+  const [count, setCount] = useState<number | null>(null);
+  const [counting, setCounting] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const [launching, setLaunching] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const fotoPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    getUniversoGlobal().then(setOpciones).catch(() => setOpciones(null)).finally(() => setLoadingOpciones(false));
+    return () => { if (fotoPollRef.current) clearInterval(fotoPollRef.current); };
+  }, []);
+
+  // Recuenta en el backend (fuente real) cada vez que cambia la selección — un cliente nunca
+  // debe fiarse de sumar los recuentos por país + por mercado a la vez (no son independientes).
+  useEffect(() => {
+    let vivo = true;
+    setCounting(true);
+    contarUniversoGlobal(countries, exchanges)
+      .then((r) => { if (vivo) setCount(r.count); })
+      .catch(() => { if (vivo) setCount(null); })
+      .finally(() => { if (vivo) setCounting(false); });
+    return () => { vivo = false; };
+  }, [countries, exchanges]);
+
+  const efectivo = count != null ? Math.min(count, limite) : null;
+  const minutosEstimados = efectivo != null ? Math.max(1, Math.round(efectivo / RITMO_POR_MIN)) : null;
+
+  function toggle(list: string[], set: (v: string[]) => void, v: string) {
+    set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   }
 
   // Sondea `getFotoStatus()` directamente (no `/scan/progress`): ese progreso lo comparte
@@ -217,91 +291,20 @@ export function FotoGlobalPicker() {
     return <p className="text-[11px]" style={{ color: T.muted }}>Cargando universo global…</p>;
   }
 
-  const csvUploadInput = (
-    <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={doSubirCsv} />
-  );
-
-  const csvUploadLink = (
-    <span className="text-[10.5px]" style={{ color: T.muted }}>
-      o{" "}
-      <a href={URL_CSV_HUGGINGFACE} target="_blank" rel="noreferrer" className="underline"
-         onClick={descargarCsv}>descarga el CSV</a>
-      {" "}y{" "}
-      <button type="button" onClick={abrirSelectorArchivo} disabled={syncing} className="underline disabled:opacity-50">
-        súbelo a mano
-      </button>
-      {" "}si la red falla a mitad.
-    </span>
-  );
-
   if (!opciones || opciones.total === 0) {
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        {csvUploadInput}
-        <span style={{ color: T.warn }}>
-          El universo global (HuggingFace) no está sincronizado todavía — sin esto, &quot;global&quot; no tiene de dónde elegir.
-        </span>
-        {!syncArmed ? (
-          <button onClick={() => setSyncArmed(true)} disabled={syncing}
-                  className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
-                  style={{ borderColor: T.ring, color: T.ink2 }}>
-            {syncing ? "Sincronizando…" : "Sincronizar universo global"}
-          </button>
-        ) : (
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="text-[10.5px]" style={{ color: T.warn }}>~63.000 tickers, descarga de HuggingFace.</span>
-            <button onClick={doSyncGlobal} disabled={syncing}
-                    className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                    style={{ background: T.bad }}>
-              {syncing ? "Sincronizando…" : "Confirmar"}
-            </button>
-            <button onClick={() => setSyncArmed(false)} disabled={syncing}
-                    className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                    style={{ borderColor: T.ring, color: T.ink2 }}>
-              Cancelar
-            </button>
-          </span>
-        )}
-        {csvUploadLink}
-        {msg && (
-          <span className="text-[10.5px]" style={{ color: msg.bad ? T.warn : T.muted }}>{msg.text}</span>
-        )}
-      </div>
+      <p className="text-[11px]" style={{ color: T.warn }}>
+        El universo global (HuggingFace) no está sincronizado todavía — resincronízalo desde «Universo global» primero.
+      </p>
     );
   }
 
   return (
     <div className="flex w-full flex-col gap-2.5">
-      {csvUploadInput}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex items-center gap-1 text-[10.5px]" style={{ color: T.muted }}>
-          {fmtNum(opciones.total)} tickers sincronizados ({opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString("es-ES") : "—"}).
-          <InfoTip text="Sin filtro de país/mercado no baja el precio, el cap ni el volumen (el dataset global no los trae) — límite siempre obligatorio." />
-        </span>
-        {!syncArmed ? (
-          <button onClick={() => setSyncArmed(true)} disabled={syncing}
-                  className="shrink-0 text-[10.5px] font-semibold transition-colors hover:underline disabled:opacity-50"
-                  style={{ color: T.ink2 }}>
-            {syncing ? "sincronizando…" : "↻ resincronizar universo global"}
-          </button>
-        ) : (
-          <span className="flex shrink-0 flex-wrap items-center gap-2">
-            <button onClick={doSyncGlobal} disabled={syncing}
-                    className="rounded px-2 py-0.5 text-[10.5px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                    style={{ background: T.bad }}>
-              {syncing ? "…" : "Confirmar"}
-            </button>
-            <button onClick={() => setSyncArmed(false)} disabled={syncing}
-                    className="rounded border px-2 py-0.5 text-[10.5px] transition-colors hover:bg-white/5"
-                    style={{ borderColor: T.ring, color: T.ink2 }}>
-              Cancelar
-            </button>
-          </span>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {csvUploadLink}
-      </div>
+      <span className="flex items-center gap-1 text-[10.5px]" style={{ color: T.muted }}>
+        {fmtNum(opciones.total)} tickers sincronizados ({opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString("es-ES") : "—"}).
+        <InfoTip text="Sin filtro de país/mercado no baja el precio, el cap ni el volumen (el dataset global no los trae) — límite siempre obligatorio." />
+      </span>
 
       <div className="flex flex-col gap-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>País</span>

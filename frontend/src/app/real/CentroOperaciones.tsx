@@ -13,14 +13,15 @@ import {
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
 import type { DemoRunOverrides } from "@/lib/types";
-import { FotoGlobalPicker } from "./FotoGlobalPicker";
+import { FotoGlobalPicker, UniversoGlobalSync } from "./FotoGlobalPicker";
 import { InfoTip } from "./InfoTip";
 import { ScanConfigModal } from "./ScanConfigModal";
 import { NUMS, T } from "./tokens";
 import { Checkbox } from "./ui";
 
-type Key = "obs" | "redeep" | "recomp" | "real" | "universo" | "fnas" | "fglo" | "fx" | "anal";
+type Key = "obs" | "redeep" | "recomp" | "real" | "foto" | "fundam" | "fx" | "anal";
 type ModoUniverso = "nasdaq" | "global_topcap";
+type Fuente = "nasdaq" | "global";
 type Tono = "coste" | "info" | "malo" | "neutro";
 
 interface Accion {
@@ -32,12 +33,39 @@ interface Accion {
   uni?: boolean;         // selector de universo
   foto?: boolean;        // casilla de reutilizar foto
   cfg?: boolean;         // modelo por etapa
-  global?: boolean;      // embebe el picker de país/mercado
+  fuente?: boolean;      // selector NASDAQ/Global (ver FOTO_INFO/FUND_INFO)
   aviso?: string;
 }
 
 const PAGO: Key[] = ["obs", "redeep", "recomp", "real"];
-const GRATIS: Key[] = ["universo", "fnas", "fglo", "fx", "anal"];
+const GRATIS: Key[] = ["foto", "fundam", "fx", "anal"];
+
+// "foto"/"fundam" son NASDAQ o Global según `fotoFuente`/`fundFuente` -- el contenido real
+// (descripción, botón, badge) sale de aquí en vez de `ACCIONES`, que es estático.
+const FOTO_INFO: Record<Fuente, { d: string; cta: string; badges: [string, Tono][] }> = {
+  nasdaq: {
+    d: "Rehace el screener del cierre de NASDAQ (precio y volumen) que define qué nombres son "
+      + "elegibles para el próximo escaneo.",
+    cta: "Rehacer foto", badges: [["~10 s", "neutro"]],
+  },
+  global: {
+    d: "Trae tickers, símbolo Yahoo, país y mercado desde HuggingFace (~63.000 filas). Define "
+      + "qué nombres existen para el resto de acciones globales, no captura fundamentales.",
+    cta: "Sincronizar", badges: [["~minutos", "neutro"]],
+  },
+};
+const FUND_INFO: Record<Fuente, { d: string; cta: string; badges: [string, Tono][] }> = {
+  nasdaq: {
+    d: "Captura fundamentales de TODO lo elegible (precio, cap, tipo de instrumento) -- de más, "
+      + "no de lo que se vaya a escanear, así tocar el suelo de liquidez no obliga a recapturar.",
+    cta: "Capturar", badges: [["~40 min", "neutro"]],
+  },
+  global: {
+    d: "Captura el universo global ya sincronizado. Filtrable por país y mercado antes de gastar "
+      + "peticiones reales — son horas, no minutos.",
+    cta: "Capturar", badges: [["~4 h", "neutro"]],
+  },
+};
 
 const ACCIONES: Record<Key, Accion> = {
   obs: {
@@ -67,23 +95,13 @@ const ACCIONES: Record<Key, Accion> = {
     peligro: true, uni: true, foto: true,
     aviso: "El único de la lista que escribe propuesta y ejecuta el libro sombra.",
   },
-  universo: {
-    t: "Foto del universo",
-    d: "Rehace el screener del cierre de NASDAQ (precio y volumen) que define qué nombres son "
-      + "elegibles para el próximo escaneo.",
-    cta: "Rehacer foto", badges: [["~10 s", "neutro"]],
+  foto: {
+    t: "Foto del universo", d: FOTO_INFO.nasdaq.d, cta: FOTO_INFO.nasdaq.cta,
+    badges: FOTO_INFO.nasdaq.badges, fuente: true,
   },
-  fnas: {
-    t: "Fundamentales NASDAQ",
-    d: "Captura los fundamentales de los nombres elegibles sin puntuar nada. Un escaneo posterior "
-      + "reutiliza esta foto si tiene menos de 12 h.",
-    cta: "Capturar", badges: [["~20 min", "neutro"]],
-  },
-  fglo: {
-    t: "Fundamentales global",
-    d: "Captura el universo global entero. Filtrable por país y mercado antes de gastar peticiones "
-      + "reales — son horas, no minutos.",
-    cta: "Capturar", badges: [["~4 h", "neutro"]], global: true,
+  fundam: {
+    t: "Fundamentales universo", d: FUND_INFO.nasdaq.d, cta: FUND_INFO.nasdaq.cta,
+    badges: FUND_INFO.nasdaq.badges, fuente: true,
   },
   fx: {
     t: "Tasas de cambio",
@@ -136,6 +154,8 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [uni, setUni] = useState<ModoUniverso>("nasdaq");
   const [reFoto, setReFoto] = useState(false);
+  const [fotoFuente, setFotoFuente] = useState<Fuente>("nasdaq");
+  const [fundFuente, setFundFuente] = useState<Fuente>("nasdaq");
   const [overrides, setOverrides] = useState<DemoRunOverrides | null>(null);
   const [cfgOpen, setCfgOpen] = useState(false);
   // `null` = cargando, `false` = no se pudo leer. Distinguirlos importa: un chip clavado en "…"
@@ -175,6 +195,11 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
   }, [activo, onReload, refrescarEstado]);
 
   const a = ACCIONES[sel];
+  // "foto"/"fundam" resuelven su contenido real por NASDAQ/Global en vez de por `a` estático.
+  const info = sel === "foto" ? FOTO_INFO[fotoFuente]
+    : sel === "fundam" ? FUND_INFO[fundFuente] : a;
+  const mostrarPickerGlobal = (sel === "foto" && fotoFuente === "global")
+    || (sel === "fundam" && fundFuente === "global");
   const cargando = estado === false ? "sin leer" : "…";
   const elegir = (k: Key) => { setSel(k); setArmed(false); setMsg(null); };
 
@@ -203,7 +228,8 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
           setMsg({ text: "Cartera recompuesta y propuesta nueva escrita." });
           onReload();
           break;
-        case "universo": {
+        case "foto": {
+          // Solo llega aquí en modo NASDAQ -- en modo Global lanza `UniversoGlobalSync` solo.
           // El backend responde 200 con `ok: false` cuando NASDAQ no coopera — no es un fallo
           // de red, así que el motivo se lee del cuerpo y no del catch.
           const r = await snapshotUniverse();
@@ -212,7 +238,8 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
             : { text: r.error ?? "No se pudo rehacer la foto del universo.", bad: true });
           break;
         }
-        case "fnas":
+        case "fundam":
+          // Solo llega aquí en modo NASDAQ -- en modo Global lanza `FotoGlobalPicker` solo.
           await startFoto("nasdaq");
           setFotoPropia(true);
           break;
@@ -302,14 +329,14 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
             <>
               <div className="mb-1.5 flex flex-wrap items-start gap-2">
                 <span className="text-[13.5px] font-bold" style={{ color: T.ink }}>{a.t}</span>
-                {a.badges.map(([texto, tono]) => (
+                {info.badges.map(([texto, tono]) => (
                   <span key={texto} className="rounded px-1.5 py-0.5 text-[10px]"
                         style={{ background: TONOS[tono].bg, color: TONOS[tono].fg }}>
                     {texto}
                   </span>
                 ))}
               </div>
-              <p className="mb-2.5 text-[11.5px] leading-relaxed" style={{ color: T.muted }}>{a.d}</p>
+              <p className="mb-2.5 text-[11.5px] leading-relaxed" style={{ color: T.muted }}>{info.d}</p>
 
               {a.aviso && (
                 <p className="mb-2.5 rounded border px-2.5 py-1.5 text-[10.5px]"
@@ -349,14 +376,21 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
                     </button>
                   </div>
                 )}
-                {a.global && <div className="py-1"><FotoGlobalPicker /></div>}
-                {!a.uni && !a.foto && !a.cfg && !a.global && (
+                {sel === "foto" && (
+                  <FuenteToggle fuente={fotoFuente} onFuente={setFotoFuente} />
+                )}
+                {sel === "fundam" && (
+                  <FuenteToggle fuente={fundFuente} onFuente={setFundFuente} />
+                )}
+                {sel === "foto" && fotoFuente === "global" && <div className="py-1"><UniversoGlobalSync /></div>}
+                {sel === "fundam" && fundFuente === "global" && <div className="py-1"><FotoGlobalPicker /></div>}
+                {!a.uni && !a.foto && !a.cfg && !a.fuente && (
                   <p className="py-1 text-[10.5px]" style={{ color: T.muted }}>Sin opciones — se lanza tal cual.</p>
                 )}
               </div>
 
-              {/* El picker global lanza por su cuenta (lleva sus propios filtros y confirmación). */}
-              {!a.global && (
+              {/* Los pickers globales lanzan por su cuenta (llevan sus propios filtros y confirmación). */}
+              {!mostrarPickerGlobal && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {armed ? (
                     <>
@@ -382,7 +416,7 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
                             style={a.peligro ? { background: T.bad, color: "#fff" }
                               : PAGO.includes(sel) ? { background: T.warn, color: "#0d0d0d" }
                               : { background: T.buy, color: "#fff" }}>
-                      {busy ? "Lanzando…" : a.cta}
+                      {busy ? "Lanzando…" : info.cta}
                     </button>
                   )}
                 </div>
@@ -438,8 +472,7 @@ function Item({ k, sel, activo, onSel }: {
 function SelectorUniverso({ uni, onUni, estado }: {
   uni: ModoUniverso; onUni: (u: ModoUniverso) => void; estado: EstadoDatos | null;
 }) {
-  // "elegibles" = todo lo que pasa precio/cap del screener (~9.000); "a escanear" = tras
-  // liquidez y el tope de 3.000.
+  // "elegibles" = pasa precio/cap/tipo de instrumento; "a escanear" = tras liquidez y tope.
   const opciones: { v: ModoUniverso; t: string; sub: string }[] = [
     { v: "nasdaq", t: "NASDAQ",
       sub: estado?.universo.at
@@ -479,6 +512,27 @@ function SelectorUniverso({ uni, onUni, estado }: {
           Lánzalas primero desde «Tasas de cambio».
         </p>
       )}
+    </div>
+  );
+}
+
+/** NASDAQ/Global para "Foto del universo" y "Fundamentales universo" -- cada fuente cambia
+ *  qué se lanza y con qué UI, no solo un filtro sobre la misma acción. */
+function FuenteToggle({ fuente, onFuente }: { fuente: Fuente; onFuente: (f: Fuente) => void }) {
+  const opciones: { v: Fuente; t: string }[] = [{ v: "nasdaq", t: "NASDAQ" }, { v: "global", t: "Global" }];
+  return (
+    <div className="flex gap-1.5 py-1.5">
+      {opciones.map((o) => (
+        <button key={o.v} onClick={() => onFuente(o.v)}
+                className="rounded border px-2.5 py-1 text-[11px] transition-colors"
+                style={{
+                  borderColor: fuente === o.v ? T.buy : T.ring,
+                  background: fuente === o.v ? "rgba(57,135,229,0.12)" : "transparent",
+                  color: fuente === o.v ? T.ink : T.ink2,
+                }}>
+          {o.t}
+        </button>
+      ))}
     </div>
   );
 }
