@@ -165,6 +165,20 @@ export default function SombraDashboard() {
     };
   }, [refresh]);
 
+  // Volver a esta pestaña tras un rato fuera: se trata como una carga desde cero (pantalla de
+  // carga completa) en vez de refrescar en silencio con la UI ya pintada de por medio — mismo
+  // criterio que Sala Real. El sondeo de cada 45s con la pestaña activa sigue silencioso.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setLoading(true);
+        refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refresh]);
+
   // El overlay del ranking cierra con Escape, además del backdrop y el botón — un modal sin
   // salida por teclado es una trampa para quien navega sin ratón.
   useEffect(() => {
@@ -400,6 +414,17 @@ export default function SombraDashboard() {
   const investedPct = equity > 0 && ledger ? (Number(ledger.positions_value) / equity) * 100 : 0;
   const watchTop = [...watch].sort((a, b) => b.score - a.score);
 
+  // Carga completa (primer montaje o volver a la pestaña tras un rato fuera): nada de la sala
+  // se pinta hasta que todo llegue a la vez, mismo criterio que Sala Real.
+  if (loading) {
+    return (
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-slate-100/70 text-sm text-slate-500">
+        <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+        <p>Cargando Sala Sombra…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[100dvh] bg-slate-100/70 text-slate-900">
       {/* Top bar */}
@@ -419,7 +444,7 @@ export default function SombraDashboard() {
               </span>
             )}
             <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/5 px-2.5 py-1 text-[11px] font-bold tracking-wide text-slate-500 ring-1 ring-inset ring-slate-900/10">
-              <span className={`h-1.5 w-1.5 rounded-full ${error ? "bg-rose-500" : loading ? "bg-amber-400 animate-pulse" : "bg-emerald-500"}`} />
+              <span className={`h-1.5 w-1.5 rounded-full ${error ? "bg-rose-500" : "bg-emerald-500"}`} />
               SALA SOMBRA
             </span>
             <RealDoor />
@@ -440,13 +465,6 @@ export default function SombraDashboard() {
             </div>
           </div>
         )}
-        {loading && !ledger && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
-            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-            Conectando con el backend…
-          </div>
-        )}
-
         {/* KPI strip (línea operativa; el veredicto de abajo es quien cuenta la historia) */}
         <section className={`mb-6 grid grid-cols-2 gap-px overflow-hidden ${CARD} bg-slate-200 p-0 md:grid-cols-3 lg:grid-cols-6`}>
           <Kpi label="Patrimonio" value={`$${money(equity)}`} accent />

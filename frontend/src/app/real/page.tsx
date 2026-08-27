@@ -571,7 +571,7 @@ function SalaRealRoom() {
         {/* ---------- 2b · libro con capital → KPIs + aportar/retirar ---------- */}
         {(!summary || hasCapital) && (
           <>
-            <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border md:grid-cols-4 xl:grid-cols-7"
+            <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border md:grid-cols-3 xl:grid-cols-6"
                      style={{ borderColor: T.ring, background: T.grid }}>
               <Kpi big label="Patrimonio"
                    value={summary && fx && equity > 0 ? `€${money(equity / fx, 0)}` : "—"}
@@ -580,11 +580,13 @@ function SalaRealRoom() {
               <Kpi label="Caja $" value={summary ? `$${money(summary.cash.usd)}` : "—"} />
               <Kpi label="Invertido" value={summary ? `$${money(summary.positions_value)}` : "—"}
                    sub={summary ? `${summary.positions.length}/${cfg?.max_positions ?? 5} posiciones` : undefined} />
+              {/* Realizado va de subtexto aquí (no su propio tile): con 7 KPIs la cuadrícula
+                  quedaba descuadrada en móvil (2 columnas, última fila con uno solo). */}
               <Kpi label="P&L abierto" value={summary ? signMoney(uPnl) : "—"}
                    tone={uPnl > 0 ? "good" : uPnl < 0 ? "bad" : undefined}
-                   sub={summary && equity > 0 ? `${((uPnl / equity) * 100).toFixed(2)}% del patrimonio` : undefined} />
-              <Kpi label="P&L realizado" value={summary ? signMoney(rPnl) : "—"}
-                   tone={rPnl > 0 ? "good" : rPnl < 0 ? "bad" : undefined} sub="ventas cerradas" />
+                   sub={summary
+                     ? `${equity > 0 ? `${((uPnl / equity) * 100).toFixed(2)}% del patrimonio · ` : ""}realizado ${signMoney(rPnl)}`
+                     : undefined} />
               {/* Primero lo que hace TU libro; el índice y el alpha, de contexto en la línea
                   pequeña — la comparación nunca por delante del resultado. */}
               <Kpi label="Rentabilidad"
