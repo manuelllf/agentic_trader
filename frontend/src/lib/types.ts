@@ -279,3 +279,52 @@ export interface DemoStatus {
   } | null;
   error: string | null;
 }
+
+// ---- Explorador de universo (filtro sobre las fotos de fundamentales, DuckDB) ----
+export interface ExplorerFiltros {
+  fecha_desde?: string;
+  fecha_hasta?: string;
+  alcance?: "global" | "escaneo";
+  sector?: string[];
+  industria?: string[];
+  pais?: string[];
+  mercado?: string[];
+  q?: string;
+  market_cap_min?: number;
+  market_cap_max?: number;
+  price_min?: number;
+  price_max?: number;
+  pe_trailing_min?: number;
+  pe_trailing_max?: number;
+  pe_forward_min?: number;
+  pe_forward_max?: number;
+  cerca_max_pct?: number;
+}
+export interface ExplorerOpciones {
+  sectores: string[];
+  industrias: string[];
+  paises: string[];
+  mercados: string[];
+}
+export interface ExplorerDistribucion { p25: number; p50: number; p75: number }
+export interface ExplorerContar {
+  total: number;
+  distribuciones: Partial<Record<"market_cap_usd" | "price" | "pe_trailing" | "pe_forward", ExplorerDistribucion>>;
+}
+export interface ExplorerTickerRow {
+  ticker: string;
+  captured_at: string;
+  name: string | null;
+  sector: string | null;
+  industry: string | null;
+  currency: string | null;
+  price: number | null;
+  market_cap_usd: number | null;
+  pe_trailing: number | null;
+  pe_forward: number | null;
+  high_52w: number | null;
+  low_52w: number | null;
+  country: string | null;
+  exchange: string | null;
+}
+export interface ExplorerTickers { items: ExplorerTickerRow[]; total: number }

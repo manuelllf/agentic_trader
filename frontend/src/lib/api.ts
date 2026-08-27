@@ -2,6 +2,7 @@
 import type { FunnelScan } from "./scan";
 import type {
   AppConfig, Approval, ApprovalsResponse, DemoRunOverrides, DemoStatus, EquityHistory,
+  ExplorerContar, ExplorerFiltros, ExplorerOpciones, ExplorerTickers,
   LedgerSnapshot, Macro, Overview, Performance, PersonalSummary, Proposal, RealSummary,
   ScoreRow, WatchItem,
 } from "./types";
@@ -347,6 +348,23 @@ export const fetchAnalyticsConfianzaPrescore = (scanRunId?: number) =>
   );
 export const fetchAnalyticsScans = () =>
   get<{ items: { id: number; at: string; cadence: string }[] }>("/analytics/scans");
+
+// ---- Explorador de universo: filtro combinable sobre las fotos, sin objetivo de escaneo ----
+function explorerQuery(f: ExplorerFiltros, extra?: Record<string, string | number>): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) {
+    if (v === undefined || v === "" || (Array.isArray(v) && v.length === 0)) continue;
+    if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+    else p.append(k, String(v));
+  }
+  if (extra) for (const [k, v] of Object.entries(extra)) p.append(k, String(v));
+  return p.toString();
+}
+export const fetchExplorerOpciones = () => get<ExplorerOpciones>("/analytics/explorar/opciones");
+export const fetchExplorerContar = (f: ExplorerFiltros) =>
+  get<ExplorerContar>(`/analytics/explorar/contar?${explorerQuery(f)}`);
+export const fetchExplorerTickers = (f: ExplorerFiltros, limit: number, offset: number) =>
+  get<ExplorerTickers>(`/analytics/explorar/tickers?${explorerQuery(f, { limit, offset })}`);
 // Las dos siguientes hacen trabajo síncrono de verdad dentro del propio request (reconstruir
 // DuckDB entero, o levantar la sesión del scraper de Yahoo + recalcular). El timeout de 15s
 // pensado para lecturas normales las corta a mitad y sale como "falló" cuando en realidad el

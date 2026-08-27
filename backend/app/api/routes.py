@@ -643,6 +643,119 @@ def analytics_scans(db: Session = Depends(get_db)) -> dict:
     ]}
 
 
+def _filtros_explorador(
+    fecha_desde: str | None, fecha_hasta: str | None, alcance: str | None,
+    sector: list[str], industria: list[str], pais: list[str], mercado: list[str],
+    q: str | None, market_cap_min: float | None, market_cap_max: float | None,
+    price_min: float | None, price_max: float | None,
+    pe_trailing_min: float | None, pe_trailing_max: float | None,
+    pe_forward_min: float | None, pe_forward_max: float | None,
+    cerca_max_pct: float | None,
+):
+    """`alcance` llega como texto ("global"/"escaneo"/vacío) desde la URL — se traduce aquí al
+    `bool | None` que espera `Filtros`, así el resto de la capa de datos no sabe de query params."""
+    from app.analytics_explorer import Filtros
+
+    mapa_alcance = {"global": True, "escaneo": False, None: None, "": None}
+    if alcance not in mapa_alcance:
+        raise HTTPException(400, "alcance debe ser 'global', 'escaneo' o vacío")
+    try:
+        return Filtros(
+            fecha_desde=fecha_desde or None, fecha_hasta=fecha_hasta or None,
+            alcance=mapa_alcance[alcance], sectores=sector, industrias=industria,
+            paises=pais, mercados=mercado, q=q or None,
+            market_cap_min=market_cap_min, market_cap_max=market_cap_max,
+            price_min=price_min, price_max=price_max,
+            pe_trailing_min=pe_trailing_min, pe_trailing_max=pe_trailing_max,
+            pe_forward_min=pe_forward_min, pe_forward_max=pe_forward_max,
+            cerca_max_pct=cerca_max_pct,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/analytics/explorar/opciones")
+def analytics_explorar_opciones() -> dict:
+    """Sectores/industrias/países/mercados con al menos una foto capturada — para poblar los
+    desplegables del filtro, sin filtrar por lo demás puesto (mismo criterio que un buscador de
+    filtros normal, no facetado)."""
+    from app.analytics_explorer import opciones as opciones_fn
+    from app.analytics_sync import default_path
+
+    try:
+        return opciones_fn(default_path())
+    except ImportError:
+        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except FileNotFoundError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+
+
+@router.get("/analytics/explorar/contar")
+def analytics_explorar_contar(
+    fecha_desde: str | None = Query(None), fecha_hasta: str | None = Query(None),
+    alcance: str | None = Query(None), sector: list[str] = Query([]),
+    industria: list[str] = Query([]), pais: list[str] = Query([]), mercado: list[str] = Query([]),
+    q: str | None = Query(None), market_cap_min: float | None = Query(None),
+    market_cap_max: float | None = Query(None), price_min: float | None = Query(None),
+    price_max: float | None = Query(None), pe_trailing_min: float | None = Query(None),
+    pe_trailing_max: float | None = Query(None), pe_forward_min: float | None = Query(None),
+    pe_forward_max: float | None = Query(None), cerca_max_pct: float | None = Query(None),
+) -> dict:
+    """Recuento en vivo + distribuciones (mediana, p25, p75) sobre el filtro pedido — el mismo
+    patrón que ya usa el picker de foto global (`contar()` antes de gastar), aplicado a explorar
+    el mercado en vez de a dimensionar una captura."""
+    from app.analytics_explorer import contar as contar_fn
+    from app.analytics_sync import default_path
+
+    f = _filtros_explorador(
+        fecha_desde, fecha_hasta, alcance, sector, industria, pais, mercado, q,
+        market_cap_min, market_cap_max, price_min, price_max,
+        pe_trailing_min, pe_trailing_max, pe_forward_min, pe_forward_max, cerca_max_pct,
+    )
+    try:
+        return contar_fn(default_path(), f)
+    except ImportError:
+        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except FileNotFoundError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+
+
+@router.get("/analytics/explorar/tickers")
+def analytics_explorar_tickers(
+    fecha_desde: str | None = Query(None), fecha_hasta: str | None = Query(None),
+    alcance: str | None = Query(None), sector: list[str] = Query([]),
+    industria: list[str] = Query([]), pais: list[str] = Query([]), mercado: list[str] = Query([]),
+    q: str | None = Query(None), market_cap_min: float | None = Query(None),
+    market_cap_max: float | None = Query(None), price_min: float | None = Query(None),
+    price_max: float | None = Query(None), pe_trailing_min: float | None = Query(None),
+    pe_trailing_max: float | None = Query(None), pe_forward_min: float | None = Query(None),
+    pe_forward_max: float | None = Query(None), cerca_max_pct: float | None = Query(None),
+    limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
+) -> dict:
+    """Tabla paginada de resultados del mismo filtro que `/contar` — pensada para picotear
+    nombres concretos una vez el recuento ya dice que la búsqueda tiene sentido."""
+    from app.analytics_explorer import tickers as tickers_fn
+    from app.analytics_sync import default_path
+
+    f = _filtros_explorador(
+        fecha_desde, fecha_hasta, alcance, sector, industria, pais, mercado, q,
+        market_cap_min, market_cap_max, price_min, price_max,
+        pe_trailing_min, pe_trailing_max, pe_forward_min, pe_forward_max, cerca_max_pct,
+    )
+    try:
+        return tickers_fn(default_path(), f, limit, offset)
+    except ImportError:
+        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except FileNotFoundError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+
+
 @router.get("/admin/estado-datos")
 def admin_estado_datos(db: Session = Depends(get_db)) -> dict:
     """Frescura de cada fuente que alimenta un escaneo (universo, fotos, tasas) — para que el

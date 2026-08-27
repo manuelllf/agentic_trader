@@ -28,6 +28,7 @@ import type {
 } from "@/lib/types";
 import { CapitalForm } from "./CapitalForm";
 import { CentroOperaciones } from "./CentroOperaciones";
+import { Explorador } from "./Explorador";
 import { MemorySearch } from "./MemorySearch";
 import { ScanFullButton } from "./ScanFullModal";
 import { OrderRow } from "./OrderRow";
@@ -625,7 +626,16 @@ function SalaRealRoom() {
           </div>
         )}
 
-        {/* ---------- 4 · cómo piensa: memoria (buscador) + analítica del método (tablero).
+        {/* ---------- 4a · explorador de universo: filtrar el mercado ya capturado, sin
+            objetivo de escaneo — situaciones de mercado, no preparación de cartera. Vive junto
+            a "cómo piensa" porque comparte fuente (DuckDB) pero es su propia cosa. ---------- */}
+        <div className="mt-4">
+          <Panel title="Explorador de universo">
+            <Explorador />
+          </Panel>
+        </div>
+
+        {/* ---------- 4b · cómo piensa: memoria (buscador) + analítica del método (tablero).
             Ambas son introspección; el buscador va arriba porque se usa escribiendo, no
             ojeando, y entre tres tablas se perdía. El botón de sincronizar vive en la card. ---------- */}
         <div className="mt-4">
