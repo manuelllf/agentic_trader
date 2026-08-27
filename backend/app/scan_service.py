@@ -1,27 +1,31 @@
 """Orquestación del escaneo (ranker fundamental híbrido, método whitepaper DeepSeek).
 
-Embudo en 2 pasos para ir rápido y barato sin perder profundidad donde importa:
-  1. universo ENTERO (~2.600 nombres elegibles del screener de NASDAQ: precio ≥$5 y volumen
-     ≥300k, SIN suelo de capitalización) — posiciones y watchlist siempre dentro; el semanal
-     usa una muestra ROTATORIA de N (`scan_sample_size`)
+Embudo para ir rápido y barato sin perder profundidad donde importa:
+  1. universo ENTERO del screener de NASDAQ (~3.000 tras suelo de liquidez en dólares y tope
+     `universe_max_names`; sin suelo de capitalización) — las posiciones abiertas y los tickers
+     de `always_deep_tickers` van siempre dentro
   2. outlook macro forward (1 llamada V4-Pro)
-  3. PASO 1 — pre-score RÁPIDO (Flash) de todo el universo en paralelo → ranking 1-100
-  3b. capa media (opcional, `mid_layer`): repuntúa los mejores de cada sector con un modelo
-     mejor que Flash — el carril "global" del corte a finalistas sale de esa segunda opinión
-     en vez de la frontera ruidosa del pre-score barato
-  4. PASO 2 — informe PROFUNDO (V4-Pro) + price target solo en el top ~20 finalistas
-  5. actualiza la watchlist (con el pre-score de todos); el leaderboard persiste SOLO los
-     analizados a fondo
+  3. PASO 1 — pre-score de todo el universo en paralelo, 1 llamada por nombre → ranking 1-100.
+     Lo sirve `prescore_provider` (hoy Qwen), no el V4-Pro del resto del embudo
+  3b. capa media (`mid_layer`): repuntúa los mejores de cada sector con V4-Pro — el carril
+     "global" del corte a finalistas sale de esa segunda opinión en vez de la frontera ruidosa
+     del pre-score barato
+  4. PASO 2 — informe PROFUNDO (V4-Pro) + price target en los finalistas (`deep_finalists_cap`)
+  5. el leaderboard persiste SOLO los analizados a fondo. La watchlist ya NO se alimenta: el
+     paper no la tiene y dejó de dar acceso al profundo (ver donde se arma `always`)
   6. SELECCIÓN fiel al paper (código): top-N por score PROFUNDO, desempate por market cap →
      el constructor (V4-Pro) solo ASIGNA PESOS a los ya seleccionados (Exhibit 2E)
   7. traduce a trades con aritmética EXACTA (Decimal, nunca el LLM); SOLO si el escaneo DECIDE
-     (mensual o manual) persiste la propuesta, ejecuta la sombra y propone a la real — el
-     semanal restante es OBSERVATORIO: aprende (ranking/watchlist/memoria) sin tocar libros
+     persiste la propuesta, ejecuta la sombra y propone a la real. Un escaneo con `decide=False`
+     es OBSERVATORIO: aprende (ranking/memoria/traza) sin tocar libros
 
-El dinero lo calcula el código; el LLM solo decide los pesos. El coste REAL de cada
-escaneo (Flash prescoring de todo el universo + V4-Pro en finalistas, incl. tokens de razonamiento)
-se acumula desde el `usage` de OpenRouter y se devuelve en result["cost"] — ~$1 el full
-(medido: $0.97 con ~2.600 nombres); el semanal (muestra rotatoria de 750), bastante menos.
+El único escaneo PROGRAMADO es el mensual, que siempre decide (ver `scheduler.py`). El
+observatorio y la muestra rotatoria (`scan_sample_size`, `_CURSOR_KEY`) siguen existiendo para
+los lanzamientos manuales de Sala Real; el cron semanal que los usaba se retiró.
+
+El dinero lo calcula el código; el LLM solo decide los pesos. El coste se acumula del `usage`
+que devuelve el proveedor y viaja en result["cost"]; el histórico real por escaneo vive en
+`ScanRun.cost_usd`, que es donde hay que mirarlo en vez de fiarse de un número escrito aquí.
 
 Este módulo solo ORQUESTA. La matemática de cartera (selección, pesos, diff a trades) vive en
 `app.portfolio_service`; la ejecución del libro sombra, en `app.execution_service`.
@@ -201,7 +205,13 @@ def _sector(data_by_t: dict, ticker: str) -> str:
 
 def _guardar_news_used(db: Session, score_id: int, news: list[str] | None) -> None:
     """Congela `NameData.news` como filas de `ScoreNews` — nunca como JSON. `None` = el gather no
-    trajo noticias (no se distingue de "trajo cero"; ningún lector lo necesitaba)."""
+    trajo noticias (no se distingue de "trajo cero"; ningún lector lo necesitaba).
+
+    Borra las filas previas de este `score_id` antes de insertar: en un observatorio la fila de
+    `Score` se REUTILIZA (no se recrea, ver `run_scan_and_store`), así que sin este borrado las
+    noticias de escaneos anteriores se irían acumulando debajo de las nuevas en vez de reflejar
+    solo lo que entró al prompt en ESTE escaneo."""
+    db.query(ScoreNews).filter(ScoreNews.score_id == score_id).delete()
     for i, texto in enumerate(news or []):
         db.add(ScoreNews(score_id=score_id, posicion=i, texto=texto))
 
@@ -871,7 +881,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                  for p, _d in prescored}
     target_map = {t: r.target_price for t, r in deep.items()}
 
-    # 6) Leaderboard: DECISIÓN reemplaza total; OBSERVATORIO refresca solo hoy-profundos.
+    # 6) Leaderboard: DECISIÓN reemplaza total; OBSERVATORIO refresca solo hoy-profundos. Las
+    # noticias que entraron al prompt se congelan en los dos casos (`_guardar_news_used`) — un
+    # escaneo manual/observatorio es conocimiento y traza igual que uno decisivo, no un
+    # ciudadano de segunda cuya evidencia se pueda perder.
     # Foto prev ranking/watchlist para detectar novedades (qué entra/sale) en informe.
     prev_ranking = {s.ticker for s in db.query(Score).all()}
     prev_watch = set(watchlist_mod.tickers(db))
@@ -908,6 +921,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             row.target_consensus_mean = target_consensus_mean.get(ticker)
             row.target_echoed_consensus = ticker in target_echoed
             row.under_acquisition = d.under_acquisition
+            _guardar_news_used(db, row.id, data.news)
             refreshed += 1
     db.commit()
     if store:                                      # guarda las tesis nuevas para recordarlas luego

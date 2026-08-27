@@ -400,44 +400,63 @@ def test_history_rejects_unknown_book(client) -> None:
 
 # ---- aportaciones con divisa: el libro vive en USD, Manuel aporta EUR ---------
 
-def test_allocate_eur_converts_via_broker_and_books_actual_usd(db, client, token) -> None:
-    """Aportación en €: el broker (dry-run) convierte al cambio del fixture (1.09) y se apunta
-    la imagen final — 100 EUR → $109.00 en caja, con la trazabilidad en la respuesta."""
+def test_allocate_eur_books_as_is(db, client, token) -> None:
+    """Aportación en €: se apunta EN EUROS tal cual, sin convertir — el libro real ya no
+    convierte al aportar (IBKR convierte sola al comprar, si hace falta)."""
     headers = {"Authorization": f"Bearer {token}"}
     res = client.post("/real/allocate", json={"amount": 100, "currency": "EUR"}, headers=headers)
     assert res.status_code == 200
     body = res.json()
-    assert body["cash"] == "109.00"                    # neto REAL apuntado, no el input
-    assert body["allocated"]["usd"] == "109.00"
-    assert body["allocated"]["rate"] == "1.09"
-    assert body["allocated"]["simulated"] is True      # dry-run: conversión simulada
-
-
-def test_allocate_eur_without_rate_books_nothing(db, client, token, monkeypatch) -> None:
-    """Si la conversión no ejecuta (sin cotización → FX cerrado), el libro NO se toca."""
-    monkeypatch.setattr("app.tracking.live_prices", lambda _t: {})
-    headers = {"Authorization": f"Bearer {token}"}
-    res = client.post("/real/allocate", json={"amount": 100, "currency": "EUR"}, headers=headers)
-    assert res.status_code == 409
-    monkeypatch.setattr("app.tracking.live_prices", lambda _t: {"EURUSD=X": 1.09})
-    assert client.get("/real", headers=headers).json()["cash"] == "0.00"   # ni un céntimo apuntado
+    assert body["cash"] == {"eur": "100.00", "usd": "0.00"}
 
 
 def test_allocate_eur_withdrawal_rejected(client, token) -> None:
-    """Retiradas solo en $ (el libro vive en dólares): aportación negativa en € → 422."""
+    """Retiradas solo en $ (el consolidado vive en dólares): aportación negativa en € → 422."""
     headers = {"Authorization": f"Bearer {token}"}
     res = client.post("/real/allocate", json={"amount": -50, "currency": "EUR"}, headers=headers)
     assert res.status_code == 422
 
 
 def test_allocate_usd_direct_unchanged(db, client, token) -> None:
-    """Modo $ (default): apunte directo sin conversión, como siempre."""
+    """Modo $ (default): apunte directo, como siempre."""
     headers = {"Authorization": f"Bearer {token}"}
     res = client.post("/real/allocate", json={"amount": 150}, headers=headers)
     assert res.status_code == 200
     body = res.json()
-    assert body["cash"] == "150.00"
-    assert "allocated" not in body                     # sin conversión no hay traza FX
+    assert body["cash"] == {"eur": "0.00", "usd": "150.00"}
+
+
+def test_allocate_currency_desconocida_rechazada(db, client, token) -> None:
+    """Una divisa que no sea exactamente EUR/USD (typo, otra moneda, minúsculas) no debe
+    apuntarse en silencio en una caja invisible — ni `cash_by_currency` ni `available_cash`
+    la contarían, y el dinero "desaparecería" del panel sin ningún error. 422, no un 200 mudo."""
+    headers = {"Authorization": f"Bearer {token}"}
+    for divisa in ("GBP", "eur", "Usd", "EURO", "", "usd "):
+        res = client.post("/real/allocate", json={"amount": 100, "currency": divisa},
+                          headers=headers)
+        assert res.status_code == 422, f"{divisa!r} debería rechazarse, no aceptarse"
+    # Y nada de lo anterior dejó rastro: la caja sigue a cero.
+    assert client.get("/real", headers=headers).json()["cash"] == {"eur": "0.00", "usd": "0.00"}
+
+
+def test_allocate_real_rejects_nan_and_infinity(db, client, token) -> None:
+    """Mismo guardarraíl que `/ledger/allocate` (Infinity/NaN → 500 al convertir a Decimal),
+    verificado también en `/real/allocate` — es el mismo `AllocateIn`, pero es la ruta que
+    mueve dinero real y merece su propia comprobación, no dar por hecho que comparten schema."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    for bad in ("1e999", "-1e999", "NaN", "Infinity"):
+        res = client.post("/real/allocate", content=f'{{"amount": {bad}, "currency": "USD"}}',
+                          headers=headers)
+        assert res.status_code == 422
+    assert client.get("/real", headers=headers).json()["cash"] == {"eur": "0.00", "usd": "0.00"}
+
+
+def test_allocate_eur_cero_es_no_op(db, client, token) -> None:
+    """Aportar 0€ no revienta ni queda como aportación fantasma con efecto — cash sigue a cero."""
+    headers = {"Authorization": f"Bearer {token}"}
+    res = client.post("/real/allocate", json={"amount": 0, "currency": "EUR"}, headers=headers)
+    assert res.status_code == 200
+    assert res.json()["cash"] == {"eur": "0.00", "usd": "0.00"}
 
 
 # ---- higiene de API: caps y validación de entrada ----------------------------

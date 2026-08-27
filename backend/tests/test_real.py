@@ -163,6 +163,9 @@ class _FakeBroker:
                             simulated=False, status=self.poll_status, order_id=order_id,
                             filled_quantity=self.filled_qty, message=f"estado {self.poll_status}")
 
+    def fx_conversions_for(self, broker_order_id):  # noqa: ANN001
+        return []   # estos tests no ejercitan el auto-FX, ver test_moneda.py
+
     def status(self):
         return {"mode": "live", "live": True, "detail": "fake"}
 

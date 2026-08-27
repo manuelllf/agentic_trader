@@ -208,6 +208,23 @@ function SalaRealRoom() {
     };
   }, [load]);
 
+  // Volver a esta pestaña (o al navegador) tras un rato fuera: los datos en pantalla pueden
+  // llevar minutos de retraso (caja, aprobaciones pendientes, precios) — dinero real de por
+  // medio, así que se trata como una carga desde cero (pantalla de carga completa, sin dejar
+  // el libro clicable con números que ya no son ciertos) en vez de refrescar en silencio por
+  // detrás. El sondeo de cada 60s mientras la pestaña sigue activa NO entra por aquí: ese sí
+  // sigue siendo silencioso, sería muy molesto tapar la pantalla cada minuto mientras se lee.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setLoading(true);
+        load();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load]);
+
   // Escaneo bajo demanda: el agente puntúa el universo, propone la cartera real (a tu Sí/No) y
   // ejecuta sola la sombra. Se sondea el estado mientras corre, igual que hacía la Sala Sombra.
   const pollScan = useCallback(async () => {
@@ -337,6 +354,21 @@ function SalaRealRoom() {
   // Escala común de las barras de P&L por posición (una vez, no dentro del map por fila).
   const maxAbs = Math.max(1e-9, ...(perf?.positions ?? []).map((x) => Math.abs(Number(x.unrealized_pnl))));
 
+  // Carga completa (primer montaje o volver a la pestaña tras un rato fuera): NADA de la sala
+  // se pinta hasta que todo llegue a la vez — ni un botón clicable, ni un número a medio
+  // refrescar. Mejor 1-2s de pantalla en blanco que un hueco donde algo parezca al día sin
+  // serlo, con dinero real de por medio.
+  if (loading) {
+    return (
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 text-[13px]"
+           style={{ background: T.page, color: T.muted }}>
+        <span className="h-6 w-6 animate-spin rounded-full border-2"
+              style={{ borderColor: T.grid, borderTopColor: T.buy }} />
+        <p>Cargando Sala Real…</p>
+      </div>
+    );
+  }
+
   return (
       <div className="real-room min-h-[100dvh] pb-8 text-[13px] antialiased"
            style={{ background: T.page, color: T.ink2 }}>
@@ -370,8 +402,7 @@ function SalaRealRoom() {
               ← Portada
             </button>
             <span className="inline-flex items-center gap-2 text-[13px] font-bold tracking-tight" style={{ color: T.ink }}>
-              <span className={`h-2 w-2 rounded-full ${loading && !summary ? "animate-pulse" : ""}`}
-                    style={{ background: error ? T.bad : loading && !summary ? T.warn : T.good }}
+              <span className="h-2 w-2 rounded-full" style={{ background: error ? T.bad : T.good }}
                     title={error ? "sin conexión" : "conectado"} />
               SALA REAL
             </span>
@@ -425,15 +456,6 @@ function SalaRealRoom() {
             <button onClick={() => setFlash("")} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
           </div>
         )}
-        {loading && !summary && !error && (
-          <div className="mb-3 flex items-center gap-2.5 rounded-lg border px-4 py-2.5 text-[12.5px]"
-               style={{ borderColor: T.ring, background: T.panel, color: T.muted }}>
-            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2"
-                  style={{ borderColor: T.grid, borderTopColor: T.muted }} />
-            Conectando con el backend…
-          </div>
-        )}
-
         {/* ---------- 1 · requiere decisión: cuando existe, SIEMPRE lo más alto ---------- */}
         {(pending.length > 0 || working.length > 0) && (
           <div className="mb-4 space-y-4">
@@ -453,18 +475,30 @@ function SalaRealRoom() {
                             </button>}>
                 <div className="divide-y" style={{ borderColor: T.grid }}>
                   {working.map((w) => (
-                    <div key={w.id} className="flex flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2.5">
-                      <SideTag action={w.action} />
-                      <span className="w-14 text-[14px] font-bold" style={{ color: T.ink }}>{w.ticker}</span>
-                      <Field k="Pedidas" v={w.requested_quantity ? qty4(w.requested_quantity) : "—"} />
-                      <Field k="Ejecutadas" v={w.quantity ? qty4(w.quantity) : "0"} />
-                      <Field k="Precio est." v={w.est_price ? `$${money(w.est_price)}` : "—"} />
-                      <Field k="Orden IBKR" v={w.broker_order_id ?? "—"} />
-                      <Field k="Enviada" v={fmtTime(w.decided_at)} />
-                      <span className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: T.warn }}>
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: T.warn }} />
-                        TRABAJANDO
-                      </span>
+                    <div key={w.id} className="px-4 py-2.5">
+                      <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+                        <SideTag action={w.action} />
+                        <span className="w-14 text-[14px] font-bold" style={{ color: T.ink }}>{w.ticker}</span>
+                        <Field k="Pedidas" v={w.requested_quantity ? qty4(w.requested_quantity) : "—"} />
+                        <Field k="Ejecutadas" v={w.quantity ? qty4(w.quantity) : "0"} />
+                        <Field k="Precio est." v={w.est_price ? `$${money(w.est_price)}` : "—"} />
+                        <Field k="Orden IBKR" v={w.broker_order_id ?? "—"} />
+                        <Field k="Enviada" v={fmtTime(w.decided_at)} />
+                        <span className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: T.warn }}>
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: T.warn }} />
+                          TRABAJANDO
+                        </span>
+                      </div>
+                      {/* Si el último sondeo tropezó (p. ej. la conversión EUR→USD que IBKR
+                          disparó sola aún no aparece en su histórico), que se vea AQUÍ por qué
+                          sigue "trabajando" — nunca una caja negra sin explicación. El resto de
+                          mensajes ("enviada", estado normal de IBKR) va en tono neutro. */}
+                      {w.result_msg && (
+                        <p className="mt-1 text-[11px]"
+                           style={{ color: w.result_msg.toLowerCase().includes("falló") ? T.bad : T.muted }}>
+                          {w.result_msg}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -513,7 +547,7 @@ function SalaRealRoom() {
                   <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
                     <b style={{ color: T.ink2 }}>1</b> · capital del agente
                   </p>
-                  <CapitalForm fx={fx} onDone={(s, msg) => { setSummary(s); setFlash(msg); }} onError={setError} />
+                  <CapitalForm onDone={(s, msg) => { setSummary(s); setFlash(msg); }} onError={setError} />
                 </div>
                 <div className="rounded-lg border p-3.5" style={{ borderColor: T.grid }}>
                   <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
@@ -537,12 +571,13 @@ function SalaRealRoom() {
         {/* ---------- 2b · libro con capital → KPIs + aportar/retirar ---------- */}
         {(!summary || hasCapital) && (
           <>
-            <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border md:grid-cols-3 xl:grid-cols-6"
+            <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border md:grid-cols-4 xl:grid-cols-7"
                      style={{ borderColor: T.ring, background: T.grid }}>
-              <Kpi big label="Patrimonio" value={summary ? `$${money(summary.equity)}` : "—"}
-                   sub={summary && fx && equity > 0 ? `≈ €${money(equity / fx, 0)}` : undefined} />
-              <Kpi label="Caja" value={summary ? `$${money(summary.cash)}` : "—"}
-                   sub={summary ? `de $${money(equity)} gestionados` : undefined} />
+              <Kpi big label="Patrimonio"
+                   value={summary && fx && equity > 0 ? `€${money(equity / fx, 0)}` : "—"}
+                   sub={summary ? `≈ $${money(equity)}` : undefined} />
+              <Kpi label="Caja €" value={summary ? `€${money(summary.cash.eur)}` : "—"} />
+              <Kpi label="Caja $" value={summary ? `$${money(summary.cash.usd)}` : "—"} />
               <Kpi label="Invertido" value={summary ? `$${money(summary.positions_value)}` : "—"}
                    sub={summary ? `${summary.positions.length}/${cfg?.max_positions ?? 5} posiciones` : undefined} />
               <Kpi label="P&L abierto" value={summary ? signMoney(uPnl) : "—"}
@@ -573,8 +608,7 @@ function SalaRealRoom() {
                 <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
                   Aportar o retirar capital del agente
                 </p>
-                <CapitalForm fx={fx}
-                             onDone={(s, msg) => { setSummary(s); setFlash(msg); setCapOpen(false); }}
+                <CapitalForm onDone={(s, msg) => { setSummary(s); setFlash(msg); setCapOpen(false); }}
                              onError={setError} />
               </div>
             )}
@@ -652,11 +686,11 @@ function SalaRealRoom() {
                      ${money(summary.positions_value)}
                    </span> : undefined}>
           {!summary || summary.positions.length === 0 ? (
-            <Empty>Caja lista{summary ? ` ($${money(summary.cash)})` : ""}. Cuando el agente proponga y
+            <Empty>Caja lista{summary ? ` ($${money(summary.cash.usd)} + €${money(summary.cash.eur)})` : ""}. Cuando el agente proponga y
               apruebes una compra, la posición aparecerá aquí con su distribución, coste y P&L en vivo.</Empty>
           ) : (
             <>
-              <Distribution summary={summary} equity={equity} />
+              <Distribution summary={summary} equity={equity} fx={fx} />
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse whitespace-nowrap text-[13px]">
                   <thead>
@@ -942,8 +976,9 @@ function SalaRealRoom() {
    armar→confirmar — en sus propios ficheros para poder testearlas en aislamiento.) */
 
 /* Distribución de la cartera: barra apilada (huecos de 2px) + leyenda con etiquetas directas. */
-function Distribution({ summary, equity }: { summary: RealSummary; equity: number }) {
-  const cash = Number(summary.cash);
+function Distribution({ summary, equity, fx }: { summary: RealSummary; equity: number; fx: number | null }) {
+  // Mismo consolidado que "Patrimonio": $ + € al cambio indicativo, para que la barra cuadre.
+  const cash = Number(summary.cash.usd) + Number(summary.cash.eur) * (fx ?? 0);
   const rows = summary.positions.map((p, i) => ({
     label: p.ticker, value: Number(p.value), color: SERIES[i % SERIES.length],
   }));

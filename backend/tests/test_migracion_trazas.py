@@ -1,9 +1,10 @@
 """Migración de scan_audit/scores: columnas nuevas sobre un esquema VIEJO ya poblado.
 
 Monta a mano una DB con las tablas tal como eran antes de entry_lane/had_prior_thesis/
-news_used/target_raw/target_flagged, corre `_migrate_books` y comprueba que las columnas
-aparecen, que los datos previos sobreviven, y que la migración es idempotente (correrla dos
-veces no rompe nada).
+target_raw/target_flagged, corre `_migrate_books` y comprueba que las columnas aparecen, que
+los datos previos sobreviven, y que la migración es idempotente (correrla dos veces no rompe
+nada). `news_used` NO se prueba aquí a propósito: se normalizó a `ScoreNews` y ya no se crea
+(ver `_drop_columnas_muertas`, que la quita si la encuentra en una BD vieja).
 """
 
 from __future__ import annotations
@@ -75,7 +76,8 @@ def test_migracion_anade_columnas_y_conserva_datos(tmp_path):
     sc_cols = _cols(engine, "scores")
     assert "entry_lane" in sa_cols
     assert "had_prior_thesis" not in sa_cols   # retirada: ya no se crea en DBs nuevas
-    assert {"news_used", "target_raw", "target_flagged"} <= sc_cols
+    assert {"target_raw", "target_flagged"} <= sc_cols
+    assert "news_used" not in sc_cols   # normalizada a ScoreNews: ya no se crea
 
     with engine.connect() as conn:
         row = conn.execute(text(
@@ -87,13 +89,11 @@ def test_migracion_anade_columnas_y_conserva_datos(tmp_path):
         assert row.entry_lane is None
 
         row2 = conn.execute(text(
-            "SELECT ticker, score, held, news_used, target_raw, target_flagged "
-            "FROM scores WHERE id=1"
+            "SELECT ticker, score, held, target_raw, target_flagged FROM scores WHERE id=1"
         )).one()
         assert row2.ticker == "ABC"
         assert row2.score == 77
         assert row2.held == 1
-        assert row2.news_used is None
         assert row2.target_raw is None
         assert row2.target_flagged == 0
 

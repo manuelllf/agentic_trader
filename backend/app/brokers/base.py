@@ -45,6 +45,19 @@ class BrokerResult:
     fees: Decimal | None = None
 
 
+@dataclass(frozen=True)
+class FxFill:
+    """Una ejecución EUR.USD real, del histórico de `trades()` de IBKR — la conversión
+    automática que IBKR dispara sola al comprar sin caja USD suficiente (ver
+    `Broker.fx_conversions_for`)."""
+
+    external_id: str    # trade_id de IBKR: único, evita duplicar si se reconcilia dos veces
+    eur_amount: Decimal  # EUR vendidos
+    usd_amount: Decimal  # USD brutos recibidos (net_amount de IBKR, antes de su comisión)
+    rate: Decimal
+    fee: Decimal
+
+
 def marketable_limit(reference: Decimal, side: str, buffer_pct: float) -> Decimal:
     """Precio LÍMITE ejecutable = referencia ± colchón (buy sube, sell baja), a céntimos.
 
@@ -78,11 +91,22 @@ class Broker(Protocol):
     def convert_currency(self, eur: Decimal) -> BrokerResult:
         """Convierte EUR→USD en la cuenta (venta del par EUR.USD a LÍMITE ejecutable, ±buffer).
 
-        SOLO la inicia el usuario al aportar (su click es la aprobación). La imagen final la
-        pone el broker — aquí NO se estima ninguna comisión: `fill_price` = cambio real del
-        fill y `filled_quantity` = EUR convertidos; USD resultantes = cantidad × cambio.
-        Si no ejecuta (p. ej. FX cerrado), el llamador NO debe apuntar nada en el libro.
+        Sin uso hoy (el libro real ya no convierte al aportar, IBKR convierte sola al comprar
+        — ver `fx_conversions_for`); se deja implementado por si hiciera falta una conversión
+        manual puntual. La imagen final la pone el broker — aquí NO se estima ninguna comisión:
+        `fill_price` = cambio real del fill y `filled_quantity` = EUR convertidos; USD
+        resultantes = cantidad × cambio. Si no ejecuta (p. ej. FX cerrado), el llamador NO debe
+        apuntar nada en el libro.
         """
+        ...
+
+    def fx_conversions_for(self, broker_order_id: str) -> list["FxFill"]:
+        """Ejecuciones EUR.USD que IBKR generó SOLA en la misma orden (auto-FX al comprar sin
+        caja USD suficiente) — emparejadas por MISMO `trade_time` que la ejecución de la
+        acción, no por `order_id` (la conversión lleva uno propio, generado por IBKR). Excluye
+        el barrido diario de la casa de custodia (`order_type="OTHER"`, céntimos a las 21:00
+        UTC, sin relación con ninguna orden). Vacío si no hubo auto-FX — y siempre vacío en
+        dry-run: no se simula (ver `approvals._eur_usd_rate`)."""
         ...
 
     def status(self) -> dict:

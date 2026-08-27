@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.brokers.base import BrokerResult, marketable_limit
+from app.brokers.base import BrokerResult, FxFill, marketable_limit
 from app.config import settings
 from app.ledger.money import D, to_cents
 
@@ -62,6 +62,11 @@ class DryRunBroker:
             filled_quantity=D(str(eur)),
             message=f"SIMULADO: {eur} EUR → ${usd} @ {px} (dry-run, sin conversión real).",
         )
+
+    def fx_conversions_for(self, broker_order_id: str) -> list[FxFill]:
+        # No se simula: dry-run solo ve caja USD (ver `approvals._eur_usd_rate`), así que nunca
+        # hay una compra que dispare auto-FX de verdad que reconciliar aquí.
+        return []
 
     def status(self) -> dict:
         return {

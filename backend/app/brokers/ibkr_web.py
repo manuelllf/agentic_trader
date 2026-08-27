@@ -12,8 +12,8 @@ rest_03_stock_querying.py, rest_05_marketdata_history.py, rest_08_oauth.py):
 Credenciales: 7 variables IBIND_* (se vuelcan desde nuestra config). Requiere alta previa en
 el Self-Service OAuth de IBKR (cuenta individual Pro). Ver secrets/ibkr/HANDOFF.md.
 
-NOTA: escrito y listo, pero SIN validar contra la API real hasta que existan credenciales
-activas (IBKR tarda 24h-2 semanas en activar). Hasta entonces la factory usa DryRunBroker.
+ACTIVO en producción desde julio (verificado leyendo la cuenta real). `settings.dry_run` sigue
+en True: la conexión funciona, pero ninguna orden sale sin que ese flag pase a False.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import time
 import uuid
 from decimal import Decimal
 
-from app.brokers.base import BrokerResult
+from app.brokers.base import BrokerResult, FxFill
 from app.config import settings
 from app.ledger.money import D, to_cents
 
@@ -359,6 +359,49 @@ class IbkrWebBroker:
             logger.exception("Fallo en la conversión EUR→USD")
             return BrokerResult(ok=False, fill_price=None, simulated=False, status="rejected",
                                 message=f"IBKR error en conversión: {exc}")
+
+    # --- Conversión de divisa (auto-FX de IBKR al comprar, ver Broker.fx_conversions_for) ----
+
+    def fx_conversions_for(self, broker_order_id: str) -> list[FxFill]:
+        """Busca en `trades()` (verificado en vivo contra la cuenta real: `sec_type`, `currency`,
+        `commission`, `net_amount`, `order_id`, `trade_time`, `order_type` son campos reales,
+        no de la documentación) la(s) ejecución(es) EUR.USD que acompañan a la orden de la
+        acción — mismo `trade_time`, `order_id` propio de la conversión (no el nuestro), y
+        `order_type != "OTHER"` para excluir el barrido de la casa de custodia (`CUSTHSFX`,
+        céntimos a las 21:00 UTC, sin relación con ninguna orden del agente)."""
+        try:
+            trades = self._client.trades(days="1", account_id=self._account).data or []
+        except Exception:
+            logger.warning("No se pudo leer trades() para buscar auto-FX de la orden %s",
+                           broker_order_id)
+            return []
+        if not isinstance(trades, list):
+            return []
+        momentos = {
+            t.get("trade_time") for t in trades
+            if isinstance(t, dict) and str(t.get("order_id")) == str(broker_order_id)
+               and t.get("sec_type") == "STK"
+        }
+        momentos.discard(None)
+        if not momentos:
+            return []
+        out: list[FxFill] = []
+        for t in trades:
+            if not isinstance(t, dict):
+                continue
+            if (t.get("symbol") == "EUR.USD" and t.get("sec_type") == "CASH"
+                    and t.get("order_type") != "OTHER" and t.get("trade_time") in momentos):
+                trade_id = t.get("trade_id")
+                if not trade_id:
+                    continue
+                out.append(FxFill(
+                    external_id=str(trade_id),
+                    eur_amount=Decimal(str(abs(t.get("size", 0)))),
+                    usd_amount=Decimal(str(t.get("net_amount", 0))),
+                    rate=Decimal(str(t.get("price", 0))),
+                    fee=Decimal(str(t.get("commission", 0) or 0)),
+                ))
+        return out
 
     def raw_positions(self) -> list[dict]:
         """Posiciones BRUTAS de la cuenta IBKR (read-only, incluye las personales del usuario).

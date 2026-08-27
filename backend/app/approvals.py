@@ -24,7 +24,7 @@ from app.brokers import get_broker
 from app.config import settings
 from app.ledger import service as ledger
 from app.ledger.money import D, to_cents
-from app.models import BOOK_REAL, Approval, Score
+from app.models import BOOK_REAL, Approval, CurrencyConversion, Score
 
 logger = logging.getLogger(__name__)
 
@@ -162,9 +162,15 @@ def reconcile_working(db: Session) -> int:
             db.commit()
             if a.status != before or result.status in ("filled", "partial"):
                 changed += 1
-        except Exception:  # noqa: BLE001 — un fallo puntual no debe tumbar el refresco
-            logger.warning("No se pudo reconciliar la orden %s", a.broker_order_id)
+        except Exception as exc:  # noqa: BLE001 — un fallo puntual no debe tumbar el refresco
             db.rollback()   # descarta cualquier cambio a medias de ESTA aprobación
+            logger.warning("No se pudo reconciliar la orden %s", a.broker_order_id)
+            # El estado NO cambia (sigue 'working', se reintenta sola en el siguiente sondeo) —
+            # pero el motivo tiene que verse en el panel, no quedarse solo en un log que el
+            # usuario no puede leer. Sin esto, una orden atascada de verdad (p. ej. el auto-FX
+            # que no termina de aparecer) se queda "colgada" en silencio indefinidamente.
+            a.result_msg = f"Reconciliando… el último intento falló: {exc}"
+            db.commit()
             continue
     return changed
 
@@ -228,9 +234,31 @@ def _record_fill(db: Session, a: Approval, side: str, total_filled: Decimal, avg
     a.quantity = total_filled
     a.fill_price = to_cents(avg_new)   # medio acumulado (lo que el usuario espera ver)
     if side == "buy":
+        # ANTES de mover el libro: si IBKR disparó su auto-FX para cubrir esta compra, la caja
+        # USD tiene que reflejarlo ya — si no, record_buy puede rechazar por falta de caja USD
+        # una compra que el sizing sí contaba como cubierta (USD + EUR, ver `_eur_usd_rate`).
+        _reconcile_fx(db, a)
         ledger.record_buy(db, a.ticker, delta, px, a.order_ref, fees=fee, book=BOOK_REAL)
     else:
         ledger.record_sell(db, a.ticker, delta, px, a.order_ref, fees=fee, book=BOOK_REAL)
+
+
+def _reconcile_fx(db: Session, a: Approval) -> None:
+    """Registra la(s) conversión(es) EUR→USD que IBKR haya disparado sola para esta orden.
+
+    Idempotente por `external_id` (el `trade_id` propio de IBKR para esa ejecución): reconciliar
+    de más (esta función corre en cada `approve` y en cada `reconcile_working`) nunca duplica.
+    """
+    if not a.broker_order_id:
+        return
+    for fx in get_broker().fx_conversions_for(a.broker_order_id):
+        if db.query(CurrencyConversion).filter_by(external_id=fx.external_id).first():
+            continue
+        db.add(CurrencyConversion(
+            external_id=fx.external_id, order_ref=a.order_ref,
+            eur_amount=fx.eur_amount, usd_amount=fx.usd_amount,
+            rate=fx.rate, fee=fx.fee, book=BOOK_REAL,
+        ))
 
 
 def _get_pending(db: Session, approval_id: int) -> Approval:
@@ -272,17 +300,29 @@ def _reserved(db: Session, ticker: str) -> tuple[Decimal, Decimal]:
     return to_cents(cash), shares
 
 
+def _eur_usd_rate(broker) -> Decimal | None:  # noqa: ANN001
+    """Cambio EUR→USD indicativo, solo para bróker EN VIVO — en dry-run el libro real solo ve
+    su caja USD (ver `size_to_weight`): simular el auto-FX de IBKR aquí no aporta nada de
+    verdad, y complicaría el sizing de la simulación sin ningún fill real detrás."""
+    if not getattr(broker, "is_live", False):
+        return None
+    rate = tracking.live_prices(["EURUSD=X"]).get("EURUSD=X")
+    return D(str(rate)) if rate else None
+
+
 def _sizing(db: Session, a: Approval) -> tuple[Decimal, str]:
     """(cantidad, lado) cent-exactos sobre el libro REAL en el momento de aprobar.
 
     Delega en el sizing único y compartido (mismo criterio que la Sala Sombra): floor de
     acciones a 4 decimales + recorte a la caja → nunca falla por céntimos. El precio del
     nombre objetivo es el vivo (con fallback a la estimación del escaneo). La caja/acciones
-    comprometidas por órdenes 'working' quedan RESERVADAS (anti doble gasto).
+    comprometidas por órdenes 'working' quedan RESERVADAS (anti doble gasto). La caja
+    considerada es USD + EUR propio del agente (ver `_eur_usd_rate`): USD se gasta primero,
+    el EUR solo entra a completar lo que la caja USD no llega a cubrir.
     """
     cash_reserved, shares_reserved = _reserved(db, a.ticker)
     return ledger.size_to_weight(
         db, BOOK_REAL, a.ticker, a.action, a.target_weight_pct, _live_price(a),
         cash_reserved=cash_reserved, shares_reserved=shares_reserved,
-        live_prices=tracking.live_prices,
+        live_prices=tracking.live_prices, eur_usd_rate=_eur_usd_rate(get_broker()),
     )

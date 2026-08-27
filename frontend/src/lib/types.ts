@@ -197,7 +197,7 @@ export interface RealPosition extends Position {
 }
 
 export interface RealSummary {
-  cash: string;
+  cash: { eur: string; usd: string };   // caja PROPIA del agente, nunca el saldo mezclado de IBKR
   positions_value: string;
   equity: string;
   realized_pnl: string;

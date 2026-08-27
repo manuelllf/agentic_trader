@@ -164,16 +164,8 @@ export const getReal = () => get<RealSummary>("/real");
 /** Cambio EUR→USD indicativo (el libro vive en USD; tú aportas en €). */
 export const getFx = () => get<{ pair: string; rate: number | null; asof: string | null }>("/fx");
 
-/** Traza de una aportación en €: lo que el broker convirtió DE VERDAD (o simuló en dry-run). */
-export interface FxAllocated {
-  currency: string;
-  eur?: number;
-  usd: string;        // dólares netos apuntados en el libro (imagen final del broker)
-  rate: string;       // cambio real del fill
-  simulated: boolean;
-}
 export const allocateReal = (amount: number, note = "", currency: "USD" | "EUR" = "USD") =>
-  post<RealSummary & { allocated?: FxAllocated }>("/real/allocate", { amount, note, currency });
+  post<RealSummary>("/real/allocate", { amount, note, currency });
 export const getApprovals = () => get<ApprovalsResponse>("/approvals");
 
 /** Persistent scan report: mode, counters, cost, issues. Survives deploys unlike /demo/status.

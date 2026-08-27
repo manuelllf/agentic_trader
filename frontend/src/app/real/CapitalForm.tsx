@@ -1,56 +1,37 @@
 "use client";
 
-// Aportar / retirar capital del agente. El libro habla DÓLARES (tope de gasto exacto).
-// Modo €: el broker CONVIERTE al aportar (límite ±buffer; simulado en dry-run) y se apunta la
-// imagen final que devuelva — nunca una estimación. Modo $: apunte directo (dólares que ya
-// existen en la cuenta, p. ej. residuales de ventas propias). Retiradas: solo en $.
+// Aportar / retirar capital del agente. Se apunta EN SU DIVISA, sin convertir — así funciona
+// IBKR de verdad: el saldo se queda en euros o dólares tal cual entra, y es IBKR quien convierte
+// solo en el momento de comprar si la caja $ no alcanza (dólares primero, euros solo para
+// completar). Retiradas: solo en $ (el consolidado vive en dólares).
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { allocateReal } from "@/lib/api";
 import { money } from "@/lib/format";
 import type { RealSummary } from "@/lib/types";
 import { NUMS, T } from "./tokens";
 
-export function CapitalForm({ fx, onDone, onError }: {
-  fx: number | null;
+export function CapitalForm({ onDone, onError }: {
   onDone: (s: RealSummary, msg: string) => void;
   onError: (msg: string) => void;
 }) {
   const [amount, setAmount] = useState("");
   const [cur, setCur] = useState<"EUR" | "USD">("EUR");
   const [busy, setBusy] = useState(false);
-  const [armed, setArmed] = useState(false);       // modo €: armar → confirmar (conversión real)
   const v = parseFloat(amount);
   const valid = Number.isFinite(v) && v !== 0;
-  const est = cur === "EUR" && valid && v > 0 && fx ? v * fx : null;   // SOLO informativo
-
-  useEffect(() => {
-    if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 6000);   // 6 s para arrepentirse
-    return () => clearTimeout(t);
-  }, [armed]);
 
   const submit = async () => {
     if (!valid || busy) return;
-    if (cur === "EUR") {
-      if (v <= 0) return onError("En € solo aportaciones positivas — para retirar usa $.");
-      if (!armed) return setArmed(true);           // 1er click: pedir confirmación
-    }
+    if (cur === "EUR" && v < 0) return onError("En € solo aportaciones — para retirar usa $.");
     setBusy(true);
     try {
-      const res = cur === "EUR"
-        ? await allocateReal(v, "", "EUR")
-        : await allocateReal(v, "aportación sala real", "USD");
-      const msg = res.allocated
-        ? `Convertidos ${money(v)} € → $${money(res.allocated.usd)} @ ${res.allocated.rate}`
-          + (res.allocated.simulated ? " (simulado)." : ".")
-        : `Capital del agente actualizado: ${v > 0 ? "+" : ""}$${money(v)}.`;
-      onDone(res, msg);
+      const res = await allocateReal(v, cur === "USD" ? "aportación sala real" : "", cur);
+      const symbol = cur === "EUR" ? "€" : "$";
+      onDone(res, `Caja ${cur} actualizada: ${v > 0 ? "+" : ""}${symbol}${money(v)}.`);
       setAmount("");
-      setArmed(false);
     } catch (e) {
       onError(e instanceof Error ? e.message : "Error asignando capital.");
-      setArmed(false);
     } finally {
       setBusy(false);
     }
@@ -60,7 +41,7 @@ export function CapitalForm({ fx, onDone, onError }: {
     <div>
       <div className="flex gap-2">
         <input value={amount}
-               onChange={(e) => { setAmount(e.target.value); setArmed(false); }}
+               onChange={(e) => setAmount(e.target.value)}
                onKeyDown={(e) => e.key === "Enter" && submit()}
                placeholder="0.00" inputMode="decimal" aria-label="Importe"
                className={`w-full rounded border bg-transparent px-3 py-1.5 text-[13px] outline-none ${NUMS}`}
@@ -69,7 +50,7 @@ export function CapitalForm({ fx, onDone, onError }: {
                onBlur={(e) => (e.currentTarget.style.borderColor = T.grid)} />
         <div className="flex shrink-0 overflow-hidden rounded border" style={{ borderColor: T.grid }}>
           {(["EUR", "USD"] as const).map((c) => (
-            <button key={c} onClick={() => { setCur(c); setArmed(false); }}
+            <button key={c} onClick={() => setCur(c)}
                     className="px-2.5 text-[12px] font-bold transition-colors"
                     style={cur === c ? { background: T.base, color: T.ink } : { color: T.muted }}>
               {c === "EUR" ? "€" : "$"}
@@ -78,20 +59,14 @@ export function CapitalForm({ fx, onDone, onError }: {
         </div>
         <button onClick={submit} disabled={busy || !valid}
                 className="shrink-0 rounded px-4 py-1.5 text-[12px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                style={{ background: armed ? "#66a5f2" : T.buy }}>
-          {busy ? "…" : cur === "EUR" ? (armed ? "Confirmar" : "Convertir y aportar") : "Aportar"}
+                style={{ background: T.buy }}>
+          {busy ? "…" : "Aportar"}
         </button>
       </div>
       <p className={`mt-1.5 text-[10.5px] leading-snug ${NUMS}`} style={{ color: T.muted }}>
-        {armed && est != null
-          ? `se venderán ${money(v)} € ≈ $${money(est)} (límite al cambio actual) — se apuntará la
-             imagen final que devuelva el broker, comisión incluida`
-          : cur === "EUR" && valid && v > 0
-            ? `se convertirá en el broker al aportar${est != null ? ` · ahora ≈ $${money(est)} (EURUSD ${fx?.toFixed(4)})` : ""}
-               — el libro apunta los $ exactos del fill, no esta estimación`
-            : cur === "EUR"
-              ? "aportaciones en € (positivas) · para retirar usa $"
-              : "negativo = retirar · ninguna orden puede gastar más de lo asignado"}
+        {cur === "EUR"
+          ? "se queda en € — IBKR convierte solo en el momento de comprar, si la caja $ no llega"
+          : "negativo = retirar · ninguna orden puede gastar más de lo asignado"}
       </p>
     </div>
   );

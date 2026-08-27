@@ -29,6 +29,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import REAL as PG_REAL
 from sqlalchemy.orm import Mapped, mapped_column, object_session
 
 from app.db import Base
@@ -214,7 +215,7 @@ class NasdaqSnapshotTicker(Base):
     price: Mapped[float] = mapped_column(Float)
     volume: Mapped[float] = mapped_column(Float)
     market_cap: Mapped[float | None] = mapped_column(Float, nullable=True)
-    name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    name: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class IbkrExchange(Base):
@@ -761,7 +762,10 @@ class LLMCallLogprob(Base):
     parte: Mapped[int] = mapped_column(SmallInteger)
     elegido: Mapped[bool] = mapped_column(Boolean)
     token: Mapped[str] = mapped_column(String(8))
-    logprob: Mapped[float] = mapped_column(Float)
+    # REAL en Postgres (precisión simple, 4 bytes — una probabilidad no necesita más) en vez del
+    # DOUBLE PRECISION por defecto de Float(); en SQLite sigue siendo el genérico Float. Sin el
+    # variant, `check_schema_drift.py` marcaba una diferencia de tipo sin consecuencia funcional.
+    logprob: Mapped[float] = mapped_column(Float().with_variant(PG_REAL(), "postgresql"))
 
 
 # ---------------------------------------------------------------------------
@@ -770,7 +774,11 @@ class LLMCallLogprob(Base):
 
 
 class Allocation(Base):
-    """Movimiento de capital del usuario al sleeve del agente (+ ingreso / − retiro)."""
+    """Movimiento de capital del usuario al sleeve del agente (+ ingreso / − retiro).
+
+    `currency`: la divisa en la que se aportó, tal cual — el libro real ya NO convierte a USD
+    al aportar (IBKR se queda con el saldo en su divisa de origen y convierte solo en el
+    momento de comprar, ver `CurrencyConversion`). El libro sombra siempre es USD."""
 
     __tablename__ = "allocations"
 
@@ -779,6 +787,7 @@ class Allocation(Base):
     amount: Mapped[Decimal] = mapped_column(DecimalStr(32))  # firmado: + ingreso, − retiro
     note: Mapped[str] = mapped_column(Text, default="")
     book: Mapped[str] = mapped_column(String(8), default=BOOK_SHADOW, index=True)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
 
 
 class Trade(Base):
@@ -796,6 +805,32 @@ class Trade(Base):
     order_ref: Mapped[str] = mapped_column(String(48), index=True)  # etiqueta AGENT-<uuid>
     realized_pnl: Mapped[Decimal | None] = mapped_column(DecimalStr(32))  # solo en ventas
     book: Mapped[str] = mapped_column(String(8), default=BOOK_SHADOW, index=True)
+
+
+class CurrencyConversion(Base):
+    """Conversión EUR→USD que IBKR ejecuta SOLA al comprar sin caja USD suficiente (auto-FX) —
+    hermana de `Trade`, nunca mezclada con él: una compra puede generar dos movimientos de
+    naturaleza distinta (la acción y la divisa), cada uno su propia fila, su propio comportamiento.
+
+    Se detecta tras el fill buscando en `trades()` de IBKR una ejecución `sec_type=CASH` del par
+    EUR.USD en el MISMO `trade_time` que la acción (no `order_id` — IBKR genera uno propio para
+    la conversión) y con `order_type != "OTHER"`: eso último excluye el barrido diario de la casa
+    de custodia (céntimos sueltos a las 21:00 UTC, sin `order_ref` nuestro, no atribuible al
+    agente — verificado contra el histórico real de la cuenta). `external_id` es el `trade_id`
+    de IBKR para esa ejecución: único de verdad, evita duplicar la misma conversión si se
+    reconcilia más de una vez (`reconcile_working` es best-effort y puede repetirse)."""
+
+    __tablename__ = "currency_conversions"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    order_ref: Mapped[str] = mapped_column(String(48), index=True)  # el order_ref que la disparó
+    eur_amount: Mapped[Decimal] = mapped_column(DecimalStr(32))    # EUR vendidos (positivo)
+    usd_amount: Mapped[Decimal] = mapped_column(DecimalStr(32))    # USD brutos recibidos (net_amount)
+    rate: Mapped[Decimal] = mapped_column(DecimalStr(32))          # precio del par en el fill
+    fee: Mapped[Decimal] = mapped_column(DecimalStr(32), default=Decimal("0"))
+    book: Mapped[str] = mapped_column(String(8), default=BOOK_REAL, index=True)
 
 
 class Position(Base):

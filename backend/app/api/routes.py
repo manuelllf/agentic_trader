@@ -90,7 +90,10 @@ class AllocateIn(BaseModel):
     # del libro con un 500; mejor 422 aquí. Bounds holgados (±$1.000M) — negativo = retirada.
     amount: float = Field(allow_inf_nan=False, gt=-1e9, lt=1e9)
     note: str = ""
-    currency: str = "USD"   # "USD" = apunte directo · "EUR" = el broker convierte primero (real)
+    # Literal, no str libre: una divisa mal escrita ("EURO", "eur", vacío) no debe apuntarse
+    # silenciosa en una caja invisible (ni la EUR ni la USD la contarían) — mejor un 422 claro
+    # que una aportación real que desaparece.
+    currency: Literal["USD", "EUR"] = "USD"
 
 
 def _money(x: Decimal) -> str:
@@ -961,10 +964,16 @@ def real_summary(db: Session = Depends(get_db)) -> dict:
         pass
     prices = tracking.live_prices([p.ticker for p in ledger.open_positions(db, BOOK_REAL)])
     snap = ledger.snapshot(db, price_lookup=lambda t: prices.get(t), book=BOOK_REAL)
+    wallet = ledger.cash_by_currency(db, BOOK_REAL)   # caja propia del agente, EUR y USD por separado
+    eur_rate = tracking.live_prices(["EURUSD=X"]).get("EURUSD=X")
+    # Patrimonio en USD (posiciones + caja USD) + el EUR propio del agente al cambio indicativo
+    # del momento — sin esto, tener EUR sin invertir haría parecer más pobre al libro de lo que
+    # es de verdad.
+    equity_usd = snap.equity + (wallet["EUR"] * D(str(eur_rate)) if eur_rate else Decimal("0"))
     return {
-        "cash": _money(snap.cash),
+        "cash": {"eur": _money(wallet["EUR"]), "usd": _money(wallet["USD"])},
         "positions_value": _money(snap.positions_value),
-        "equity": _money(snap.equity),
+        "equity": _money(to_cents(equity_usd)),
         "realized_pnl": _money(snap.realized_pnl),
         "unrealized_pnl": _money(snap.unrealized_pnl),
         "positions": [
@@ -981,31 +990,15 @@ def real_summary(db: Session = Depends(get_db)) -> dict:
 
 @router.post("/real/allocate")
 def real_allocate(body: AllocateIn, db: Session = Depends(get_db)) -> dict:
-    """Aportar/retirar capital del agente. En $, apunte directo (dólares que ya existen).
-    En €, el broker CONVIERTE primero (límite ±buffer; simulado en dry-run) y se apunta la
-    imagen final que devuelva — jamás una estimación, jamás nada si la conversión no ejecutó."""
+    """Aportar/retirar capital del agente. Se apunta EN SU DIVISA, sin convertir — así funciona
+    IBKR de verdad: el saldo se queda en euros o dólares tal cual entra, y es IBKR quien
+    convierte SOLO en el momento de comprar si la caja USD no alcanza (ver
+    `Broker.fx_conversions_for`), no nosotros al aportar."""
     from app.models import BOOK_REAL
 
-    if body.currency.upper() == "EUR":
-        from app.brokers import get_broker
-
-        if body.amount <= 0:
-            raise HTTPException(422, "Las retiradas se hacen en $ — el libro vive en dólares.")
-        res = get_broker().convert_currency(D(str(body.amount)))
-        if (not res.ok or res.status != "filled"
-                or res.fill_price is None or res.filled_quantity is None):
-            raise HTTPException(409, f"No se apunta nada. {res.message}")
-        usd = to_cents(res.filled_quantity * res.fill_price)
-        note = (f"aportación {body.amount} EUR → ${usd} @ {res.fill_price}"
-                + (" (sim)" if res.simulated else "")
-                + (f" · {body.note}" if body.note else ""))
-        ledger.allocate(db, float(usd), note, book=BOOK_REAL)
-        out = real_summary(db)
-        out["allocated"] = {"currency": "EUR", "eur": body.amount, "usd": str(usd),
-                            "rate": str(res.fill_price), "simulated": res.simulated}
-        return out
-
-    ledger.allocate(db, body.amount, body.note, book=BOOK_REAL)
+    if body.currency == "EUR" and body.amount < 0:
+        raise HTTPException(422, "Las retiradas se hacen en $ — el consolidado vive en dólares.")
+    ledger.allocate(db, body.amount, body.note, book=BOOK_REAL, currency=body.currency)
     return real_summary(db)
 
 

@@ -4,7 +4,7 @@ import PwaInstall from "@/components/PwaInstall";
 
 export const metadata: Metadata = {
   title: "Agentic Trader",
-  description: "Cazador autónomo de ineficiencias en small/mid caps US",
+  description: "Ranker fundamental por LLM sobre todo el mercado de EE. UU., sin sesgo de capitalización",
   manifest: "/manifest.json",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "Agentic" },
   icons: {

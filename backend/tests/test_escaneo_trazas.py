@@ -159,6 +159,30 @@ def test_news_used_se_congela(db, monkeypatch) -> None:
     assert row.news_used == ["Titular uno", "Titular dos"]     # sigue congelado
 
 
+def test_news_used_tambien_se_congela_en_observatorio(db, monkeypatch) -> None:
+    """Un escaneo observatorio (decide=False) es conocimiento y traza igual que uno decisivo:
+    las noticias que entraron al prompt se congelan también ahí, no solo cuando decide cartera.
+    Además, en un segundo observatorio se REFRESCAN (no se acumulan debajo de las viejas), porque
+    la fila de Score se reutiliza en vez de recrearse."""
+    llm = FakeLLM(_FAKE_REPLY)
+    _stub_common(monkeypatch, llm, ["AAA"])
+
+    _gather_stub(monkeypatch, news=["Titular uno"])
+    scan_service.run_scan_and_store(db, sample_size=5, decide=True)   # crea la fila de Score
+
+    _gather_stub(monkeypatch, news=["Titular del observatorio"])
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
+
+    row = db.query(Score).filter(Score.ticker == "AAA").one()
+    assert row.news_used == ["Titular del observatorio"]   # refrescado, no acumulado
+
+    _gather_stub(monkeypatch, news=["Titular más reciente"])
+    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
+
+    row = db.query(Score).filter(Score.ticker == "AAA").one()
+    assert row.news_used == ["Titular más reciente"]       # el segundo observatorio pisa al primero
+
+
 # ---- fallo del LLM: reintento y el nombre no se pierde -------------------------
 
 def test_fallo_llm_se_reintenta_y_el_nombre_no_se_pierde(db, monkeypatch) -> None:

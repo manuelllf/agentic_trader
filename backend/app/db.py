@@ -52,6 +52,12 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
             conn.execute(text(
                 f"ALTER TABLE {table} ADD COLUMN book VARCHAR(8) NOT NULL DEFAULT 'shadow'"
             ))
+    # Cartera híbrida EUR/USD: el libro real ya no convierte al aportar (ver `models.Allocation`).
+    ac = cols("allocations")
+    if ac and "currency" not in ac:
+        conn.execute(text(
+            "ALTER TABLE allocations ADD COLUMN currency VARCHAR(8) NOT NULL DEFAULT 'USD'"
+        ))
     c = cols("positions")
     if c and "book" not in c:
         # Índices renombrados chocan con create_all.
@@ -76,16 +82,9 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
     # Cartera hipotética vs. decisión real; NULL = observatorio.
     if sa and "decide" not in sa:
         conn.execute(text("ALTER TABLE scan_audit ADD COLUMN decide BOOLEAN"))
-    # Candidatos no fondeados y motivos.
-    pr = cols("proposals")
-    if pr and "omitted" not in pr:
-        conn.execute(text("ALTER TABLE proposals ADD COLUMN omitted JSON DEFAULT '[]'"))
     # Carril de entrada. (`had_prior_thesis` ya no se crea ni se escribe; donde exista, se queda.)
     if sa and "entry_lane" not in sa:
         conn.execute(text("ALTER TABLE scan_audit ADD COLUMN entry_lane VARCHAR(12)"))
-    # Telemetría: noticias usadas y guardarraíl de precio.
-    if sc and "news_used" not in sc:
-        conn.execute(text("ALTER TABLE scores ADD COLUMN news_used JSON"))
     if sc and "target_raw" not in sc:
         conn.execute(text("ALTER TABLE scores ADD COLUMN target_raw FLOAT"))
     if sc and "target_flagged" not in sc:
@@ -95,15 +94,6 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
     # NULL = no respondió; 0 = verificado como falso.
     if sc and "under_acquisition" not in sc:
         conn.execute(text("ALTER TABLE scores ADD COLUMN under_acquisition BOOLEAN"))
-    # Recuperación completa del escaneo.
-    sr = cols("scan_runs")
-    if sr and "finalists" not in sr:
-        conn.execute(text("ALTER TABLE scan_runs ADD COLUMN finalists JSON DEFAULT '[]'"))
-    if sr and "construction" not in sr:
-        conn.execute(text("ALTER TABLE scan_runs ADD COLUMN construction JSON DEFAULT '{}'"))
-    # Duración por fase.
-    if sr and "timings" not in sr:
-        conn.execute(text("ALTER TABLE scan_runs ADD COLUMN timings JSON DEFAULT '{}'"))
     # Guardarraíl de precio objetivo.
     if sc and "target_consensus_mean" not in sc:
         conn.execute(text("ALTER TABLE scores ADD COLUMN target_consensus_mean FLOAT"))
@@ -113,6 +103,29 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
         ))
     conn.commit()
     _migrate_score_decimal(conn)
+    _drop_columnas_muertas(conn)
+
+
+# Columnas JSON normalizadas a tablas hijas (ver ScanRun.finalists/construction/timings y
+# Proposal.omitted/Score.news_used en models.py): dejaron de escribirse hace tiempo, models.py
+# ya no las declara, y `scripts/check_schema_drift.py` las señalaba como deriva. Confirmado
+# vacías en producción antes de soltarlas (0 filas con datos en las cinco).
+_COLUMNAS_MUERTAS = (
+    ("scan_runs", "finalists"), ("scan_runs", "construction"), ("scan_runs", "timings"),
+    ("proposals", "omitted"), ("scores", "news_used"),
+)
+
+
+def _drop_columnas_muertas(conn) -> None:  # noqa: ANN001
+    from sqlalchemy import inspect, text
+
+    insp = inspect(conn)
+    for tabla, columna in _COLUMNAS_MUERTAS:
+        if not insp.has_table(tabla):
+            continue
+        if columna in {c["name"] for c in insp.get_columns(tabla)}:
+            conn.execute(text(f"ALTER TABLE {tabla} DROP COLUMN {columna}"))
+    conn.commit()
 
 
 # Score columns per table (originally INTEGER).

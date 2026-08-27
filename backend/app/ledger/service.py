@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app import commissions
 from app.ledger.money import D, to_cents
-from app.models import BOOK_SHADOW, Allocation, Position, Trade
+from app.models import BOOK_SHADOW, Allocation, CurrencyConversion, Position, Trade
 
 ZERO = Decimal("0")
 
@@ -35,9 +35,12 @@ class InsufficientShares(ValueError):
     pass
 
 
-def allocate(db: Session, amount, note: str = "", book: str = BOOK_SHADOW) -> Allocation:  # noqa: ANN001
-    """Ingreso (+) o retiro (−) de capital del usuario al sleeve del agente."""
-    row = Allocation(amount=to_cents(amount), note=note, book=book)
+def allocate(
+    db: Session, amount, note: str = "", book: str = BOOK_SHADOW, currency: str = "USD",  # noqa: ANN001
+) -> Allocation:
+    """Ingreso (+) o retiro (−) de capital del usuario al sleeve del agente, en su divisa tal
+    cual (el libro real ya no convierte a USD al aportar, ver `CurrencyConversion`)."""
+    row = Allocation(amount=to_cents(amount), note=note, book=book, currency=currency)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -45,8 +48,13 @@ def allocate(db: Session, amount, note: str = "", book: str = BOOK_SHADOW) -> Al
 
 
 def available_cash(db: Session, book: str = BOOK_SHADOW) -> Decimal:
-    """Caja disponible = Σ asignaciones − coste de compras + ingresos de ventas."""
-    allocs = db.scalars(select(Allocation).where(Allocation.book == book)).all()
+    """Caja disponible EN USD = Σ asignaciones en USD − coste de compras + ingresos de ventas
+    + USD entrado por conversión automática de divisa. Para el desglose EUR/USD completo del
+    libro real (nunca el total de la cuenta IBKR, que está mezclada con lo personal), ver
+    `cash_by_currency`."""
+    allocs = db.scalars(
+        select(Allocation).where(Allocation.book == book, Allocation.currency == "USD")
+    ).all()
     cash = sum((a.amount for a in allocs), ZERO)
     for t in db.scalars(select(Trade).where(Trade.book == book)).all():
         # Cada trade LIQUIDA en céntimos enteros (como un bróker real): se redondea el bruto
@@ -57,7 +65,23 @@ def available_cash(db: Session, book: str = BOOK_SHADOW) -> Decimal:
             cash -= gross + t.fees
         else:  # sell
             cash += gross - t.fees
+    for c in db.scalars(select(CurrencyConversion).where(CurrencyConversion.book == book)).all():
+        cash += c.usd_amount - c.fee  # misma convención que una venta: bruto − comisión
     return to_cents(cash)
+
+
+def cash_by_currency(db: Session, book: str = BOOK_SHADOW) -> dict[str, Decimal]:
+    """Caja del libro POR DIVISA propia del agente — nunca el saldo total de la cuenta IBKR
+    (mezclada con lo personal del usuario). USD: `available_cash`. EUR: asignaciones en EUR
+    menos lo ya vendido en conversiones automáticas registradas."""
+    usd = available_cash(db, book)
+    eur_allocs = db.scalars(
+        select(Allocation).where(Allocation.book == book, Allocation.currency == "EUR")
+    ).all()
+    eur = sum((a.amount for a in eur_allocs), ZERO)
+    for c in db.scalars(select(CurrencyConversion).where(CurrencyConversion.book == book)).all():
+        eur -= c.eur_amount
+    return {"USD": usd, "EUR": to_cents(eur)}
 
 
 def reset_shadow_book(db: Session) -> dict:
@@ -219,6 +243,7 @@ def size_to_weight(
     db: Session, book: str, ticker: str, action: str, target_weight_pct, price,  # noqa: ANN001
     cash_reserved: Decimal = ZERO, shares_reserved: Decimal = ZERO,
     live_prices: Callable[[list[str]], dict] | None = None,
+    eur_usd_rate: Decimal | None = None,
 ) -> tuple[Decimal, str]:
     """(cantidad, lado) cent-exactos para llevar `ticker` a `target_weight_pct` en `book`.
 
@@ -233,12 +258,19 @@ def size_to_weight(
     Reservas (órdenes límite 'working' aún sin fill, solo libro real): `cash_reserved` resta de
     la caja gastable y `shares_reserved` (de ESTE ticker) de lo vendible → imposible el doble
     gasto o la doble venta mientras una orden anterior sigue viva en IBKR.
+
+    `eur_usd_rate` (solo libro real, solo bróker EN VIVO — el caller lo deja en None en
+    dry-run): caja EUR propia del agente sumada a la USD, al cambio indicativo del momento, para
+    no rechazar una compra que IBKR sí cubriría con su conversión automática. USD se gasta
+    primero: el EUR solo entra a completar lo que la caja USD no llega a cubrir.
     """
     price = D(price)
     if price <= ZERO:
         raise InsufficientFunds(f"Precio inválido para {ticker}.")
     positions = open_positions(db, book)
     cash = available_cash(db, book)
+    if eur_usd_rate:
+        cash = to_cents(cash + cash_by_currency(db, book)["EUR"] * D(eur_usd_rate))
     quotes = live_prices([p.ticker for p in positions]) if live_prices else {}
     equity = cash + sum(
         (p.quantity * (D(quotes[p.ticker]) if p.ticker in quotes else p.avg_cost)
