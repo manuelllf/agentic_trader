@@ -148,6 +148,12 @@ export const runDemo = (opts?: {
   );
 };
 export const getDemoStatus = () => get<DemoStatus>("/demo/status");
+// Cada botón cancela SOLO el suyo -- el backend además comprueba que lo que corre coincide
+// (`pipeline.cancel(decide=...)`), esto es solo para no poder ni pulsar el botón equivocado.
+export const cancelObservatorio = () =>
+  post<{ cancelled: boolean } & DemoStatus>("/demo/cancel-observatorio", undefined);
+export const cancelDecision = () =>
+  post<{ cancelled: boolean } & DemoStatus>("/demo/cancel-decision", undefined);
 
 export const getMacro = () => get<Macro>("/macro");
 export const getConfig = () => get<AppConfig>("/config");

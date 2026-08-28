@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 
 from app import scan_progress
 from app.db import SessionLocal
-from app.scan_service import run_scan_and_store, write_scan_failure
+from app.scan_service import ScanCancelado, run_scan_and_store, write_scan_failure
 
 _state: dict = {
     "status": "idle",       # idle | running | done | error
@@ -20,13 +20,27 @@ _state: dict = {
     "finished_at": None,
     "result": None,
     "error": None,
+    "decide": None,         # qué escaneo está corriendo -- para que cancel() no cancele el otro
 }
 _lock = threading.Lock()
+# Evento propio (no re-crear en start(): un hilo viejo que siga vivo por cualquier motivo
+# extraño tiene que seguir viendo el MISMO objeto que cancel() marca) -- se limpia al arrancar.
+_cancel_event = threading.Event()
 
 
 def get_status() -> dict:
     with _lock:
         return dict(_state)
+
+
+def cancel(decide: bool) -> bool:
+    """Pide parar el escaneo EN CURSO, solo si su `decide` coincide con el pedido. Best-effort:
+    para en el próximo punto de control, no interrumpe llamadas ya en vuelo."""
+    with _lock:
+        if _state["status"] != "running" or _state["decide"] != decide:
+            return False
+        _cancel_event.set()
+        return True
 
 
 def _run(sample_size: int | None, decide: bool, force_mid_layer: bool,
@@ -37,10 +51,16 @@ def _run(sample_size: int | None, decide: bool, force_mid_layer: bool,
                                     force_mid_layer=force_mid_layer,
                                     llm_overrides=llm_overrides,
                                     reutilizar_ultima_foto=reutilizar_ultima_foto,
-                                    modo_universo=modo_universo)
+                                    modo_universo=modo_universo,
+                                    cancel_event=_cancel_event)
         with _lock:
             _state.update(status="done", result=result, error=None,
                           finished_at=datetime.now(UTC).isoformat())
+    except ScanCancelado as exc:
+        with _lock:
+            _state.update(status="cancelled", error=str(exc),
+                          finished_at=datetime.now(UTC).isoformat())
+        scan_progress.set_stage("idle")   # no "error": es lo que se pidió, no un fallo
     except Exception as exc:  # noqa: BLE001
         with _lock:
             _state.update(status="error", error=str(exc),
@@ -73,8 +93,9 @@ def start(sample_size: int | None = None, decide: bool = True,
     with _lock:
         if _state["status"] == "running" or foto_service.get_status()["status"] == "running":
             return False
+        _cancel_event.clear()
         _state.update(status="running", started_at=datetime.now(UTC).isoformat(),
-                      finished_at=None, result=None, error=None)
+                      finished_at=None, result=None, error=None, decide=decide)
     threading.Thread(target=_run, args=(sample_size, decide, force_mid_layer, llm_overrides,
                                         reutilizar_ultima_foto, modo_universo),
                      daemon=True).start()

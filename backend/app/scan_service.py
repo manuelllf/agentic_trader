@@ -35,10 +35,11 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 import unicodedata
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -445,11 +446,8 @@ def _llm_for(cfg: dict, stage: str = "", recorder=None):  # noqa: ANN001
     que dependen los fakes de test que distinguen la etapa mirando `*args` (ver
     `test_cadence.py::test_profundo_no_parseable_...`).
 
-    Enruta a Qwen en CUALQUIER etapa cuando el modelo elegido (modal de simulación) es
-    `settings.qwen_model` — antes solo el prescore sabía hacer esto (ver `_prescore_llm`); sin
-    esto, pedir Qwen en macro/mid/deep/constructor mandaba el string "qwen3.7-flash" como
-    `model` al proveedor DeepSeek (llamada real, 400 de la API) en vez de usar el proveedor
-    correcto — inconsistencia real del modal detectada 28-ago."""
+    Enruta a Qwen en CUALQUIER etapa cuando el modelo elegido es `settings.qwen_model` — antes
+    pedir Qwen fuera del prescore mandaba su nombre a DeepSeek en vez de al proveedor correcto."""
     if cfg["model"] == settings.qwen_model and settings.dashscope_api_key:
         return get_llm(cfg["model"], reasoning_effort=cfg["reasoning_effort"], stage=stage,
                        recorder=recorder, provider="qwen",
@@ -483,11 +481,24 @@ def _sampling_kwargs(cfg: dict) -> dict:
     return kw
 
 
+class ScanCancelado(RuntimeError):
+    """Distinto de un RuntimeError normal para que `pipeline._run()` marque status="cancelled"
+    en vez de "error" -- mismo camino de aborto, pero no es un fallo, es lo que se pidió."""
+
+
+def _revisar_cancelado(cancel_event: threading.Event | None) -> None:
+    """Punto de control entre etapas caras — best-effort, evita entrar en la siguiente etapa si
+    alguien ya pidió cancelar, pero no corta llamadas ya en vuelo dentro de una."""
+    if cancel_event is not None and cancel_event.is_set():
+        raise ScanCancelado("Escaneo cancelado por el usuario antes de completarse.")
+
+
 def run_scan_and_store(db: Session, sample_size: int | None = None,
                        decide: bool = True, force_mid_layer: bool = False,
                        llm_overrides: dict | None = None,
                        reutilizar_ultima_foto: bool = False,
-                       modo_universo: str = "nasdaq") -> dict:
+                       modo_universo: str = "nasdaq",
+                       cancel_event: threading.Event | None = None) -> dict:
     """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
 
     `decide=False` → escaneo OBSERVATORIO (usado hoy por la "simulación" manual de Sala Real,
@@ -715,6 +726,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
 
     # 3) Outlook macro forward (V4-Pro, 1 llamada) — ya con la certeza de que hay datos que
     # puntuar con él.
+    _revisar_cancelado(cancel_event)
     scan_progress.set_stage("macro")
     logger.info("Escaneo: iniciando MACRO (modelo=%s, reasoning=%s).",
                macro_cfg["model"] or settings.llm_model, macro_cfg["reasoning_effort"])
@@ -784,13 +796,27 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         tareas = [datos_ok[i:i + tam_lote] for i in range(0, len(datos_ok), tam_lote)]
         correr, unidad = _pre_lote, "lotes"
 
+    _revisar_cancelado(cancel_event)
     scan_progress.set_stage("prescore", total=len(tareas), unit=unidad)
     logger.info("Escaneo: iniciando PRESCORE (%d %s, %d nombres, modelo=%s, reasoning=%s).",
                len(tareas), unidad, len(datos_ok),
                prescore_cfg["model"], prescore_cfg["reasoning_effort"])
     t0 = time.monotonic()
+    por_lote: list = []
     with ThreadPoolExecutor(max_workers=_PRESCORE_WORKERS) as ex:
-        por_lote = list(ex.map(correr, tareas))
+        futs = [ex.submit(correr, t) for t in tareas]
+        cancelado = False
+        for fut in as_completed(futs):
+            if cancel_event is not None and cancel_event.is_set():
+                cancelado = True
+                break
+            por_lote.append(fut.result())
+        if cancelado:
+            # Corta lo que aún no había arrancado; lo ya en vuelo termina solo (no se puede
+            # abortar una llamada HTTP a media petición).
+            ex.shutdown(wait=False, cancel_futures=True)
+    if cancelado:
+        raise ScanCancelado("Escaneo cancelado por el usuario durante el prescore.")
     timings["prescore"] = round(time.monotonic() - t0, 1)
     logger.info("Escaneo: PRESCORE completado en %.1fs.", timings["prescore"])
     results = [par for lote_res in por_lote for par in lote_res]   # aplanado, 1 par por ticker
@@ -846,6 +872,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             scan_progress.tick(ok=not p.error, reason=f"{ticker}: {p.error}" if p.error else None)
             return p
 
+        _revisar_cancelado(cancel_event)
         scan_progress.set_stage("mid", total=len(mid_candidates), unit="candidatos")
         logger.info("Escaneo: iniciando MID (%d candidatos, modelo=%s, reasoning=%s).",
                    len(mid_candidates), mid_cfg["model"], mid_cfg["reasoning_effort"])
@@ -883,17 +910,28 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                                  **_deep_kw)
         return r
 
+    _revisar_cancelado(cancel_event)
     scan_progress.set_stage("deep", total=len(finalists), unit="finalistas")
     logger.info("Escaneo: iniciando DEEP (%d finalistas, modelo=%s, reasoning=%s).",
                len(finalists), deep_cfg["model"] or settings.llm_model, deep_cfg["reasoning_effort"])
     t0 = time.monotonic()
     analizados: dict[str, scorer_mod.ScoreResult] = {}
     with ThreadPoolExecutor(max_workers=_DEEP_WORKERS) as ex:
-        for res in ex.map(_deep, finalists):
+        futs = [ex.submit(_deep, t) for t in finalists]
+        cancelado = False
+        for fut in as_completed(futs):
+            if cancel_event is not None and cancel_event.is_set():
+                cancelado = True
+                break
+            res = fut.result()
             analizados[res.ticker] = res
             # Score 0 = fallo parseo (profundo puntúa 1-100).
             scan_progress.tick(ok=res.score > 0,
                                reason=f"{res.ticker}: {res.error}" if res.error else None)
+        if cancelado:
+            ex.shutdown(wait=False, cancel_futures=True)
+    if cancelado:
+        raise ScanCancelado("Escaneo cancelado por el usuario durante el profundo.")
     timings["deep"] = round(time.monotonic() - t0, 1)
     logger.info("Escaneo: DEEP completado en %.1fs.", timings["deep"])
     # Score 0 = fallo parseo. Cae del ranking y NO llega watchlist (guardarraíl memoria).
@@ -920,6 +958,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     score_map = {p.ticker: (deep[p.ticker].score if p.ticker in deep else round(p.score))
                  for p, _d in prescored}
     target_map = {t: r.target_price for t, r in deep.items()}
+
+    # Última salida limpia: lo de aquí en adelante empieza a persistir de verdad (Score, memoria,
+    # ScanRun...). Cancelar después de este punto ya no evita nada.
+    _revisar_cancelado(cancel_event)
 
     # 6) Leaderboard: DECISIÓN reemplaza total; OBSERVATORIO refresca solo hoy-profundos. Las
     # noticias se congelan en los dos casos (`_guardar_news_used`), un observatorio es traza igual.

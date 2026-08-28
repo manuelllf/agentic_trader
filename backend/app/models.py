@@ -251,8 +251,8 @@ class Score(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     ticker: Mapped[str] = mapped_column(String(16), index=True)
     sector: Mapped[str] = mapped_column(String(48), default="")
-    # Float aunque la nota sea entera (28-ago): el desempate por market cap en el corte, antes
-    # raro con decimales, ahora es frecuente a propósito — es el mecanismo que define el paper.
+    # Float aunque la nota sea entera: el desempate por market cap en el corte es ahora frecuente
+    # a propósito — es el mecanismo que define el paper, no un fallo.
     score: Mapped[float] = mapped_column(Float, index=True)   # entera, 1-100
     headline: Mapped[str] = mapped_column(Text, default="")  # tesis de una línea
     report: Mapped[str] = mapped_column(Text, default="")    # Investment Report completo

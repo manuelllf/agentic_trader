@@ -736,3 +736,26 @@ def test_estado_datos_con_la_base_vacia_no_revienta(client, token) -> None:
     assert d["foto_nasdaq"] == {"at": None, "n": 0}
     assert d["foto_global"] == {"at": None, "n": 0}
     assert d["fx"] == {"at": None, "n": 0}
+
+
+def test_demo_run_de_verdad_lee_el_body_que_manda_el_frontend(
+    client, token, monkeypatch,
+) -> None:
+    """Golpea la ruta HTTP de verdad (no `run_scan_and_store` a pelo), que es donde vivía el bug
+    del `embed=True` -- todos los campos opcionales dejaban pasar un body mal envuelto sin 422."""
+    capturado: dict = {}
+    monkeypatch.setattr(
+        "app.api.routes.pipeline.start",
+        lambda **kw: capturado.update(kw) or True,
+    )
+    monkeypatch.setattr("app.api.routes.settings.enable_llm", True)
+    # `llm_api_key_present` es una property derivada (sin setter) -- se satisface por debajo.
+    monkeypatch.setattr("app.api.routes.settings.deepseek_api_key", "fake-key")
+
+    body = {"overrides": {"deep": {"model": "qwen3.7-flash", "reasoning_effort": "high"}}}
+    r = client.post("/demo/run", json=body, headers={"Authorization": f"Bearer {token}"})
+
+    assert r.status_code == 200
+    assert capturado["llm_overrides"] == {
+        "deep": {"model": "qwen3.7-flash", "reasoning_effort": "high"},
+    }

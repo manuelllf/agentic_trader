@@ -284,13 +284,15 @@ class DemoRunOverrides(BaseModel):
 def demo_run(sample_size: int | None = None, decide: bool = True,
             force_mid_layer: bool = False, reutilizar_ultima_foto: bool = False,
             modo_universo: Literal["nasdaq", "global_topcap"] = "nasdaq",
-            overrides: DemoRunOverrides | None = Body(None)) -> dict:
+            overrides: DemoRunOverrides | None = Body(None, embed=True)) -> dict:
     # decide=False: escaneo de universo completo en producción real, con el modelo/coste
     # de verdad, que NO propone ni toca ninguna cartera — solo refresca ranking, watchlist,
     # memoria y traza. force_mid_layer=True lo hace el circuito EXACTO de un mensual (capa
     # media incluida) sin tocar el cron semanal. Es el botón "simulación" de Sala Real.
     # `overrides`: config por etapa del modal de la simulación — cuerpo JSON opcional, nunca lo
     # manda "Analizar mercado" ni el cron, así que ambos siguen usando los defaults de siempre.
+    # `embed=True`: el frontend manda `{"overrides": {...}}`. Sin esto se parseaba como un
+    # DemoRunOverrides vacío sin dar error (todos sus campos son opcionales) — bug ya arreglado.
     # `reutilizar_ultima_foto`: checkbox de los dos modales — ver `scan_service.run_scan_and_store`.
     # `modo_universo`: NASDAQ de siempre o top market cap USD del universo global (ver
     # `scan_service.run_scan_and_store`) — elección nueva del modal, solo aquí (nunca el cron).
@@ -303,6 +305,19 @@ def demo_run(sample_size: int | None = None, decide: bool = True,
                              reutilizar_ultima_foto=reutilizar_ultima_foto,
                              modo_universo=modo_universo)
     return {"started": started, **pipeline.get_status()}
+
+
+@router.post("/demo/cancel-observatorio")
+def demo_cancel_observatorio() -> dict:
+    """Cancela SOLO si lo que corre ahora mismo es un observatorio, nunca uno con decisión.
+    Best-effort: para en el próximo punto de control; lo ya en vuelo termina solo."""
+    return {"cancelled": pipeline.cancel(decide=False), **pipeline.get_status()}
+
+
+@router.post("/demo/cancel-decision")
+def demo_cancel_decision() -> dict:
+    """Igual que `demo_cancel_observatorio` pero al revés: solo cancela uno con decisión."""
+    return {"cancelled": pipeline.cancel(decide=True), **pipeline.get_status()}
 
 
 @public_router.get("/demo/status")

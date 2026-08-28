@@ -667,6 +667,7 @@ function SalaRealRoom() {
             lanzaba desde cuatro sitios distintos y el informe caía lejos del lanzador. ---------- */}
         <div id="centro-operaciones" className="mt-4 scroll-mt-16">
           <CentroOperaciones report={report} escaneando={isScanning}
+                             escaneandoDecide={scanStatus?.decide ?? null}
                              onScanStarted={onScanStarted} onReload={load}
                              onLoadAnalytics={loadAnalytics} />
         </div>

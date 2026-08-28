@@ -17,15 +17,8 @@ from app.screener.fundamentals import NameData
 
 logger = logging.getLogger(__name__)
 
-# Núcleo de la pregunta de scoring, literal del Exhibit 1 del paper ("Use the provided financial
-# data and news to assign a score... reflecting the potential investment value... for the next
-# month" — quitamos "provided" porque ya hay una regla propia contra esa palabra). Compartido por
-# prescore, capa media y profundo: si la pregunta es la misma, el texto no debería variar entre
-# etapas. El anti-sesgo de precio está medido (49 finalistas: sin él, las castigadas por RSI≤45
-# perdían 13,7 puntos de media). Los dos decimales se retiran (28-ago): el reasoning real mostraba
-# al modelo dudando entre dos números y eligiendo uno — precisión de mentira. El entero real, con
-# el mismo aviso de no colapsar en múltiplos de 5, mantiene el ranking sin fingir un rigor que el
-# propio modelo no tiene.
+# Núcleo compartido por prescore, capa media y profundo (Exhibit 1 del paper). Entero en vez de
+# decimales: el reasoning real mostraba al modelo dudando entre dos números — precisión de mentira.
 _SCORE_CORE = (
     "Use the financial data and news to assign a score (from 1 to 100) reflecting the "
     "potential investment value of the company for the next month. "

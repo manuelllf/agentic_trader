@@ -8,8 +8,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ApiError, getConfig, getEstadoDatos, recheck, redeep, runDemo, snapshotUniverse, startFoto,
-  syncAnalytics, syncFx, fetchScanProgress, type EstadoDatos, type ScanProgress, type ScanReport,
+  ApiError, cancelDecision, cancelObservatorio, getConfig, getEstadoDatos, recheck, redeep,
+  runDemo, snapshotUniverse, startFoto, syncAnalytics, syncFx, fetchScanProgress,
+  type EstadoDatos, type ScanProgress, type ScanReport,
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
 import type { AppConfig, DemoRunOverrides } from "@/lib/types";
@@ -152,9 +153,13 @@ function hace(at: string | null): string {
   return h < 48 ? `hace ${h} h` : `hace ${Math.round(h / 24)} d`;
 }
 
-export function CentroOperaciones({ report, escaneando, onScanStarted, onReload, onLoadAnalytics }: {
+export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScanStarted, onReload,
+                                   onLoadAnalytics }: {
   report: ScanReport | null;
   escaneando: boolean;
+  // Qué escaneo es el que corre (null si no hay ninguno) -- decide cuál de los dos botones de
+  // cancelar (cada uno el suyo, nunca se cruzan) tiene sentido mostrar.
+  escaneandoDecide: boolean | null;
   onScanStarted: () => void;
   onReload: () => void;
   onLoadAnalytics: () => void;
@@ -162,6 +167,7 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
   const [sel, setSel] = useState<Key>("obs");
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cancelando, setCancelando] = useState(false);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [uni, setUni] = useState<ModoUniverso>("nasdaq");
   const [reFoto, setReFoto] = useState(false);
@@ -169,9 +175,8 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
   const [fundFuente, setFundFuente] = useState<Fuente>("nasdaq");
   const [overrides, setOverrides] = useState<DemoRunOverrides | null>(null);
   const [cfgOpen, setCfgOpen] = useState(false);
-  // Defaults REALES de producción (mismo endpoint que arranca el modal, ver ScanConfigModal) --
-  // el resumen de "qué se va a mandar" sale de aquí + `overrides`, nunca de un valor fijo en el
-  // frontend: si `config.py` cambia un default mañana, este texto lo refleja solo.
+  // Defaults reales de producción (mismo endpoint que el modal) -- el resumen de "qué se manda"
+  // sale de aquí + `overrides`, nunca de un valor fijo en el frontend.
   const [llmDefaults, setLlmDefaults] = useState<AppConfig["llm_defaults"] | null>(null);
   // `null` = cargando, `false` = no se pudo leer. Distinguirlos importa: un chip clavado en "…"
   // parece que sigue cargando cuando en realidad el endpoint está devolviendo error.
@@ -298,6 +303,22 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
     }
   }
 
+  async function detener() {
+    if (escaneandoDecide === null) return;
+    setCancelando(true);
+    try {
+      const r = escaneandoDecide ? await cancelDecision() : await cancelObservatorio();
+      setMsg(r.cancelled
+        ? { text: "Cancelación pedida — para en el próximo punto de control (entre etapas); "
+             + "lo que ya estaba en vuelo termina solo." }
+        : { text: "No había nada de ese tipo corriendo ya.", bad: true });
+    } catch (e) {
+      setMsg({ text: e instanceof Error ? e.message : "No se pudo cancelar.", bad: true });
+    } finally {
+      setCancelando(false);
+    }
+  }
+
   return (
     <div className="rounded-lg border" style={{ borderColor: T.ring, background: T.panel }}>
       {cfgOpen && (
@@ -312,6 +333,22 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
         </span>
         <InfoTip text="Todo lo que se puede lanzar desde la sala, agrupado por si cuesta dinero o no. Los escaneos y las capturas no pueden correr a la vez: el backend los excluye." />
       </div>
+
+      {/* Visible SIEMPRE que corre un escaneo, sea cual sea la pestaña abierta -- cortar rápido
+          no puede depender de estar en la pestaña correcta. */}
+      {escaneando && escaneandoDecide !== null && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2"
+             style={{ borderColor: T.grid, background: "rgba(233,163,44,0.08)" }}>
+          <span className="text-[11px]" style={{ color: T.warn }}>
+            Corriendo: {escaneandoDecide ? "escaneo con decisión" : "escaneo observatorio"}
+          </span>
+          <button onClick={detener} disabled={cancelando}
+                  className="rounded-full border px-3 py-1 text-[10.5px] font-semibold transition-colors hover:bg-white/5 disabled:opacity-50"
+                  style={{ borderColor: T.bad, color: T.bad }}>
+            {cancelando ? "Cancelando…" : "Detener escaneo"}
+          </button>
+        </div>
+      )}
 
       {/* Tira de frescura: responde "¿puedo lanzar ya?" antes de pinchar nada. */}
       <div className="grid gap-1.5 border-b px-4 py-2.5 sm:grid-cols-2 lg:grid-cols-4"
@@ -383,11 +420,8 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
                   <div className="flex flex-wrap items-start justify-between gap-2 py-1.5">
                     <span className="text-[11px]" style={{ color: T.ink2 }}>
                       Modelo por etapa
-                      {/* Lo que se va a MANDAR de verdad: override aplicado si lo hay, si no el
-                          default real de `/config` -- nunca un valor fijo aquí en el frontend, así
-                          si cambia `config.py` esto lo refleja solo. Antes de ejecutar nada, para
-                          no lanzar un escaneo de pago con la config equivocada sin darse cuenta
-                          (ver el aviso de "clic fuera pierde la config", 28-ago). */}
+                      {/* Lo que se va a mandar de verdad: override aplicado, si no el default
+                          real de `/config` -- nunca un valor fijo aquí, para ver antes de lanzar. */}
                       <span className="mt-0.5 grid gap-x-3 gap-y-0.5 text-[9.5px]"
                             style={{ color: T.muted, gridTemplateColumns: "auto auto auto" }}>
                         {ETAPAS_LLM.map(({ key, label }) => {

@@ -260,9 +260,12 @@ export interface Overview {
 }
 
 export interface DemoStatus {
-  status: "idle" | "running" | "done" | "error";
+  status: "idle" | "running" | "done" | "error" | "cancelled";
   started_at: string | null;
   finished_at: string | null;
+  // Qué escaneo corre/corrió: false=observatorio, true=decisión, null=nada -- decide qué botón
+  // de cancelar (cada uno el suyo) tiene sentido mostrar.
+  decide: boolean | null;
   result: {
     scanned: number;
     prescored: number;
