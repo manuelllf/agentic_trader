@@ -309,7 +309,10 @@ def _flag_corporate_deal_targets(
     efectivo Y el objetivo del modelo supera el máximo del consenso en más de un 5%: ahí el
     target_price del código pasa a ser el consenso, no el número (probablemente mal calculado)
     del LLM. Sin `target_high` no se hace nada (no se inventa un techo). Devuelve
-    (target_raw, target_flagged) para que el caller los guarde en `Score`."""
+    (target_raw, target_flagged) para que el caller los guarde en `Score`.
+
+    Sin efecto hoy: ya no se le pide target_price al profundo, siempre es None. Se queda
+    intacta por si algún día vuelve a pedirse."""
     target_raw: dict[str, float] = {}
     target_flagged: set[str] = set()
     for ticker, r in deep.items():
@@ -337,7 +340,9 @@ def _flag_consensus_echo(deep: dict, data_by_t: dict) -> tuple[dict, set]:
     número en vez de razonar el horizonte corto. A diferencia de `_flag_corporate_deal_targets`,
     NO toca `target_price`: es puro telemetría para medir si el prompt mejora con el tiempo.
     Devuelve (target_consensus_mean, target_echoed_consensus) para que el caller los guarde en
-    `Score`."""
+    `Score`.
+
+    Sin efecto hoy: ya no se le pide target_price al profundo, siempre es None."""
     target_consensus_mean: dict[str, float] = {}
     echoed: set[str] = set()
     for ticker, r in deep.items():
@@ -993,7 +998,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         _flag_constructor_backfill(construction, issues)
 
     # 8) Trades con aritmética exacta (la cartera que PROPONDRÍA hoy; solo se persiste al decidir).
-    items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
+    high52_map = {t: d.high_52w for t, d in data_by_t.items()}
+    items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map,
+                                   high52_map)
     macro_line = macro.get("outlook", "") or construction.summary
 
     # Traza de auditoría del embudo (diagnóstico; nunca debe tirar el escaneo).
@@ -1001,7 +1008,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         scan_audit.record(db, prescored=prescored, failed=failed, finalists=finalists,
                           deep=deep, selected=selected, construction=construction,
                           pre_errors=pre_errors, deep_errors=deep_caidos, decide=decide,
-                          lanes=lanes)
+                          lanes=lanes, mid_scores=mid_scores)
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
 
@@ -1138,7 +1145,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 "ticker": t, "sector": data_by_t[t].sector,
                 "prescore": pre_map.get(t), "price": data_by_t[t].price,
                 "market_cap": data_by_t[t].market_cap,
+                "mid_score": (mid_scores or {}).get(t),
                 "deep_score": deep[t].score if t in deep else None,
+                "high_52w": data_by_t[t].high_52w,
                 "headline": deep[t].headline if t in deep else None,
                 # Informe completo + guardarraíles del target: `Score` se pisa en cuanto ese
                 # ticker se re-analiza, esta fila no — es el archivo de verdad de esa fecha.

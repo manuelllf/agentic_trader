@@ -226,6 +226,23 @@ def test_scan_run_finalist_sobrevive_al_pisado_de_score(db, monkeypatch) -> None
     assert finalist["news_used"] == ["Titular del primer escaneo"]   # intacto, no se movió
 
 
+def test_mid_score_se_persiste_en_finalist_y_audit(db, monkeypatch) -> None:
+    """Antes solo vivía dentro de `llm_call.content` (JSON crudo) — ahora es columna propia,
+    mismo patrón que prescore/deep_score, en las dos tablas que ya las llevan."""
+    llm = FakeLLM(_FAKE_REPLY)
+    _stub_common(monkeypatch, llm, ["AAA"])
+    _gather_stub(monkeypatch)
+
+    scan_service.run_scan_and_store(db, sample_size=5, decide=True)
+
+    run = db.query(ScanRun).order_by(ScanRun.id.desc()).first()
+    finalist = next(f for f in run.finalists if f["ticker"] == "AAA")
+    assert finalist["mid_score"] == 90.0   # score de _FAKE_REPLY
+
+    audit_row = db.query(ScanAudit).filter(ScanAudit.ticker == "AAA").one()
+    assert audit_row.mid_score == 90.0
+
+
 # ---- fallo del LLM: reintento y el nombre no se pierde -------------------------
 
 def test_fallo_llm_se_reintenta_y_el_nombre_no_se_pierde(db, monkeypatch) -> None:

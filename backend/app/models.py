@@ -321,6 +321,7 @@ class _TradeItemColumns:
     price: Mapped[str | None] = mapped_column(String(32))   # Decimal-as-str, como ya viaja hoy
     target_price: Mapped[float | None] = mapped_column(Float)
     upside_pct: Mapped[float | None] = mapped_column(Float)
+    high_52w: Mapped[float | None] = mapped_column(Float)   # para distancia al máximo, no editable
     target_value: Mapped[str] = mapped_column(String(32))
     target_shares: Mapped[float] = mapped_column(Float)
     delta_shares: Mapped[float] = mapped_column(Float)
@@ -333,7 +334,7 @@ def _trade_item_dict(r) -> dict:  # noqa: ANN001 — fila de ProposalItem o Scan
     return {
         "ticker": r.ticker, "action": r.action, "score": r.score,
         "target_weight_pct": r.target_weight_pct, "price": r.price,
-        "target_price": r.target_price, "upside_pct": r.upside_pct,
+        "target_price": r.target_price, "upside_pct": r.upside_pct, "high_52w": r.high_52w,
         "target_value": r.target_value, "target_shares": r.target_shares,
         "delta_shares": r.delta_shares, "thesis": r.thesis, "edge": r.edge, "risk": r.risk,
     }
@@ -411,6 +412,8 @@ class ScanAudit(Base):
     price: Mapped[float | None] = mapped_column(Float)        # precio del día (sin él no se puede
     # medir DESPUÉS si las descartadas lo hicieron mejor que las compradas)
     reached_deep: Mapped[bool] = mapped_column(default=False)  # ¿pasó el corte al profundo?
+    # None si el ticker no pasó por capa media (no todos los carriles la usan, ver scan_service).
+    mid_score: Mapped[float | None] = mapped_column(Float)
     deep_score: Mapped[float | None] = mapped_column(Float)   # dos decimales, como `Score.score`
     selected: Mapped[bool] = mapped_column(default=False)      # ¿top-10 al constructor?
     funded: Mapped[bool] = mapped_column(default=False)        # ¿acabó en la cartera?
@@ -581,7 +584,8 @@ class ScanRun(Base):
                 news_by_finalist.setdefault(n.scan_run_finalist_id, []).append(n.texto)
         return [{
             "ticker": r.ticker, "sector": r.sector, "prescore": r.prescore, "price": r.price,
-            "market_cap": r.market_cap, "deep_score": r.deep_score, "headline": r.headline,
+            "market_cap": r.market_cap, "mid_score": r.mid_score, "deep_score": r.deep_score,
+            "high_52w": r.high_52w, "headline": r.headline,
             "report": r.report, "target_price": r.target_price, "selected": r.selected,
             "funded": r.funded, "weight_pct": r.weight_pct, "error": r.error,
             "target_raw": r.target_raw, "target_flagged": r.target_flagged,
@@ -692,7 +696,10 @@ class ScanRunFinalist(Base):
     prescore: Mapped[float | None] = mapped_column(Float)
     price: Mapped[float | None] = mapped_column(Float)
     market_cap: Mapped[float | None] = mapped_column(Float)
+    # None si el ticker no pasó por capa media (no todos los carriles la usan).
+    mid_score: Mapped[float | None] = mapped_column(Float)
     deep_score: Mapped[float | None] = mapped_column(Float)
+    high_52w: Mapped[float | None] = mapped_column(Float)   # para distancia al máximo, no editable
     headline: Mapped[str | None] = mapped_column(Text)
     report: Mapped[str | None] = mapped_column(Text)         # Investment Report completo, congelado
     target_price: Mapped[float | None] = mapped_column(Float)

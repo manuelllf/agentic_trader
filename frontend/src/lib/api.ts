@@ -210,7 +210,9 @@ export interface ScanFullFinalist {
   prescore: number | null;
   price: number | null;
   market_cap: number | null;
+  mid_score: number | null;
   deep_score: number | null;
+  high_52w: number | null;
   headline: string | null;
   target_price: number | null;
   selected: boolean;
@@ -226,6 +228,7 @@ export interface ScanFullPosition {
   price?: string | null;
   target_price?: number | null;
   upside_pct?: number | null;
+  high_52w?: number | null;
   thesis?: string;
   edge?: string;
   risk?: string;

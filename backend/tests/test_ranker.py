@@ -123,6 +123,27 @@ def test_constructor_enforces_rules() -> None:
     assert res.cash_pct == 0.0
 
 
+def test_build_trades_lleva_high_52w_cuando_se_pasa(db) -> None:
+    """La distancia al máximo se calcula en código (front/back), nunca la da el LLM."""
+    construction = constructor_mod.ConstructionResult(
+        cash_pct=0.0,
+        positions=[constructor_mod.TargetPosition("AAA", 100.0, "t", "e", "r")],
+    )
+    items = portfolio.build_trades(db, construction, {}, {"AAA": "10.00"}, {}, {},
+                                   high52_map={"AAA": 12.0})
+    assert items[0]["high_52w"] == 12.0
+
+
+def test_build_trades_high_52w_none_sin_mapa(db) -> None:
+    """recheck/redeep no repiten el gather — sin `high52_map`, sale `None`, no revienta."""
+    construction = constructor_mod.ConstructionResult(
+        cash_pct=0.0,
+        positions=[constructor_mod.TargetPosition("AAA", 100.0, "t", "e", "r")],
+    )
+    items = portfolio.build_trades(db, construction, {}, {"AAA": "10.00"}, {}, {})
+    assert items[0]["high_52w"] is None
+
+
 def test_constructor_bad_json_all_cash() -> None:
     res = constructor_mod.construct(FakeLLM("nope"), "c", "m", 4, 35.0, {"AAA"})
     assert res.positions == [] and res.cash_pct == 100.0

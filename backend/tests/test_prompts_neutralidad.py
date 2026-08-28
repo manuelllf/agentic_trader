@@ -146,24 +146,19 @@ def test_el_macro_va_al_prompt_en_ingles_y_a_la_web_en_espanol() -> None:
     assert "Solo español." in solo_es
 
 
-def test_el_objetivo_de_precio_va_al_mismo_horizonte_que_la_nota() -> None:
-    """Price target 1-month horizon; matches score horizon and rebalance cadence."""
-    assert "for the same one-month horizon as the score" in SYSTEM
-    assert "3-month PRICE TARGET" not in SYSTEM
-    # Los targets de analistas se quitaron del prompt (momentum disfrazado de fundamental) — el
-    # profundo ya no tiene ningún objetivo externo que copiar, así que el precio sale SOLO de
-    # fundamentales/técnicos/noticias. El guardarraíl viejo de "12-18 month horizon" (contra
-    # copiar el consenso) ya no aplica: no hay consenso en el prompt que copiar.
+def test_el_profundo_ya_no_pide_precio_objetivo() -> None:
+    """target_price sin respaldo en el paper — quitado del todo (28-ago)."""
+    assert "PRICE TARGET" not in SYSTEM
+    assert "target_price" not in SYSTEM
     assert "analyst" not in SYSTEM.lower()
-    assert "derived from the fundamentals, technicals and news" in SYSTEM
-    for instruccion in ("do not copy", "scale", "divide"):
-        assert instruccion not in SYSTEM.lower()
 
 
 def test_la_nota_dice_contra_que_se_mide() -> None:
-    """Score benchmarked vs. S&P 500 (paper vocabulary); no directional language."""
+    """Score = literal del Exhibit 1 (potential investment value), sin S&P 500 ni dirección."""
     assert "potential investment value" in SYSTEM
-    assert "outperform the S&P 500 over that month" in SYSTEM
+    # "Beat the S&P 500" es del Exhibit 2E (constructor), no del Exhibit 1 — el profundo ya
+    # no lo lleva (28-ago, verificado contra el PDF del paper).
+    assert "S&P 500" not in SYSTEM
     # Es un referente, no una dirección: no dice hacia dónde inclinarse. Con límite de palabra —
     # "buy" a pelo casa con el "someone is buying THIS company" del guardarraíl de opas, que es un
     # uso legítimo y no una recomendación.
@@ -171,6 +166,22 @@ def test_la_nota_dice_contra_que_se_mide() -> None:
 
     for palabra in ("buy", "sell", "bullish", "bearish", "overweight"):
         assert not re.search(rf"\b{palabra}\b", SYSTEM.lower())
+
+
+def test_beat_sp500_solo_vive_en_el_constructor() -> None:
+    """Exhibit 2E lo pide para la cartera, Exhibit 1 no lo pide para el score individual."""
+    from app.agents.constructor import SYSTEM as CONSTRUCTOR_SYSTEM
+
+    assert "S&P 500" not in SYSTEM
+    assert "S&P 500" not in MID_SYSTEM
+    assert "S&P 500" not in PRESCORE_SYSTEM
+    assert "S&P 500" in CONSTRUCTOR_SYSTEM
+
+
+def test_prescore_y_capa_media_hacen_la_misma_pregunta() -> None:
+    """Sin driver, PRESCORE_SYSTEM y MID_SYSTEM son literalmente el mismo texto — la única
+    diferencia real entre las dos etapas es el modelo, no la pregunta."""
+    assert PRESCORE_SYSTEM == MID_SYSTEM
 
 
 def test_los_dos_jueces_piden_dos_decimales_con_la_misma_redaccion() -> None:

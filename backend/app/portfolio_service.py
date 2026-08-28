@@ -259,10 +259,13 @@ def _upside(price, target: float | None) -> float | None:
 
 
 def build_trades(db: Session, construction, held: dict, price_map: dict,
-                 score_map: dict, target_map: dict) -> list[dict]:
-    """Diff cartera objetivo vs actual → items con acción y aritmética exacta (Decimal)."""
+                 score_map: dict, target_map: dict, high52_map: dict | None = None) -> list[dict]:
+    """Diff cartera objetivo vs actual → items con acción y aritmética exacta (Decimal).
+    `high52_map` es opcional (None en recheck/redeep, que no repiten el gather) — sin él,
+    `high_52w` sale `None` y la distancia al máximo no se puede calcular para esas filas."""
     cash, equity = _equity(db, held, price_map)
     target = {p.ticker: p for p in construction.positions}
+    high52_map = high52_map or {}
     items: list[dict] = []
 
     for tp in construction.positions:
@@ -289,6 +292,7 @@ def build_trades(db: Session, construction, held: dict, price_map: dict,
             "target_weight_pct": tp.weight_pct, "price": str(price) if price else None,
             "target_price": target_map.get(tp.ticker),
             "upside_pct": _upside(price, target_map.get(tp.ticker)),
+            "high_52w": high52_map.get(tp.ticker),
             "target_value": str(tgt_value), "target_shares": float(tgt_shares),
             "delta_shares": float(delta),
             "thesis": tp.thesis, "edge": tp.edge, "risk": tp.risk,
@@ -303,6 +307,7 @@ def build_trades(db: Session, construction, held: dict, price_map: dict,
             "ticker": tk, "action": "vender", "score": score_map.get(tk),
             "target_weight_pct": 0.0, "price": str(price),
             "target_price": target_map.get(tk), "upside_pct": _upside(price, target_map.get(tk)),
+            "high_52w": high52_map.get(tk),
             "target_value": "0", "target_shares": 0.0,
             "delta_shares": round(float(-p.quantity), 3),
             "thesis": "Sale de la cartera objetivo.", "edge": "", "risk": "",

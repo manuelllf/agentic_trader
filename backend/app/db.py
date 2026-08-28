@@ -121,6 +121,21 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
         ))
     if srf and "under_acquisition" not in srf:
         conn.execute(text("ALTER TABLE scan_run_finalist ADD COLUMN under_acquisition BOOLEAN"))
+    # mid_score persistido como columna propia, mismo patrón que prescore/deep_score.
+    if srf and "mid_score" not in srf:
+        conn.execute(text("ALTER TABLE scan_run_finalist ADD COLUMN mid_score FLOAT"))
+    sa2 = cols("scan_audit")
+    if sa2 and "mid_score" not in sa2:
+        conn.execute(text("ALTER TABLE scan_audit ADD COLUMN mid_score FLOAT"))
+    # Distancia al máximo de 52 semanas, mismo shape que target_price/upside_pct.
+    pi = cols("proposal_item")
+    if pi and "high_52w" not in pi:
+        conn.execute(text("ALTER TABLE proposal_item ADD COLUMN high_52w FLOAT"))
+    srci = cols("scan_run_construction_item")
+    if srci and "high_52w" not in srci:
+        conn.execute(text("ALTER TABLE scan_run_construction_item ADD COLUMN high_52w FLOAT"))
+    if srf and "high_52w" not in srf:
+        conn.execute(text("ALTER TABLE scan_run_finalist ADD COLUMN high_52w FLOAT"))
     conn.commit()
     _migrate_score_decimal(conn)
     _drop_columnas_muertas(conn)

@@ -52,6 +52,25 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
     ? posiciones.reduce((acc, p) => acc + (p.upside_pct ?? 0) * ((p.target_weight_pct ?? 0) / 100), 0)
     : null;
 
+  // Distancia al máximo de 52 semanas, calculada aquí (nunca por el LLM): % por debajo del high.
+  const distAth = posiciones
+    .map((p) => {
+      const precio = p.price ? parseFloat(p.price) : null;
+      if (!precio || !p.high_52w) return null;
+      return { d: ((p.high_52w - precio) / p.high_52w) * 100, w: p.target_weight_pct ?? 0 };
+    })
+    .filter((x): x is { d: number; w: number } => x !== null);
+  const pesoTotal = distAth.reduce((acc, x) => acc + x.w, 0);
+  const athMedia = distAth.length && pesoTotal
+    ? distAth.reduce((acc, x) => acc + x.d * x.w, 0) / pesoTotal
+    : null;
+  const athOrdenada = distAth.map((x) => x.d).sort((a, b) => a - b);
+  const athMediana = athOrdenada.length
+    ? athOrdenada.length % 2
+      ? athOrdenada[(athOrdenada.length - 1) / 2]
+      : (athOrdenada[athOrdenada.length / 2 - 1] + athOrdenada[athOrdenada.length / 2]) / 2
+    : null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
          onClick={onClose}>
@@ -113,6 +132,12 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                       </b>
                     </span>
                   )}
+                  {athMedia != null && (
+                    <span className="ml-2 font-normal normal-case" style={{ color: T.muted }}>
+                      · dist. a máximo <b className={NUMS} style={{ color: T.ink }}>{athMedia.toFixed(1)}%</b>
+                      {" "}(mediana <b className={NUMS} style={{ color: T.ink }}>{athMediana?.toFixed(1)}%</b>)
+                    </span>
+                  )}
                 </SectionTitle>
                 <table className={`mt-1.5 w-full text-[11px] ${NUMS}`}>
                   <thead>
@@ -122,10 +147,14 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                       <th className="pb-1 text-right font-semibold">peso</th>
                       <th className="pb-1 text-right font-semibold">target</th>
                       <th className="pb-1 text-right font-semibold">upside</th>
+                      <th className="pb-1 text-right font-semibold">dist. ATH</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(scan.construction.items ?? []).map((p) => (
+                    {(scan.construction.items ?? []).map((p) => {
+                      const precio = p.price ? parseFloat(p.price) : null;
+                      const dist = precio && p.high_52w ? ((p.high_52w - precio) / p.high_52w) * 100 : null;
+                      return (
                       <tr key={p.ticker} className="border-t align-top" style={{ borderColor: T.grid }}>
                         <td className="py-1"><b style={{ color: T.ink }}>{p.ticker}</b></td>
                         <td className="py-1" style={{ color: T.ink2 }}>{p.action}</td>
@@ -138,8 +167,12 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                         <td className="py-1 text-right" style={{ color: (p.upside_pct ?? 0) >= 0 ? T.good : T.bad }}>
                           {p.upside_pct != null ? `${p.upside_pct >= 0 ? "+" : ""}${p.upside_pct}%` : "—"}
                         </td>
+                        <td className="py-1 text-right" style={{ color: T.ink2 }}>
+                          {dist != null ? `${dist.toFixed(1)}%` : "—"}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 {posiciones.map((p) => (p.thesis || p.edge || p.risk) && (
@@ -175,9 +208,11 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                     <tr style={{ color: T.muted }}>
                       <th className="pb-1 text-left font-semibold">ticker</th>
                       <th className="pb-1 text-left font-semibold">sector</th>
-                      <th className="pb-1 text-right font-semibold">score</th>
+                      <th className="pb-1 text-right font-semibold">pre</th>
+                      <th className="pb-1 text-right font-semibold">mid</th>
+                      <th className="pb-1 text-right font-semibold">deep</th>
                       <th className="pb-1 text-right font-semibold">precio</th>
-                      <th className="pb-1 text-right font-semibold">target</th>
+                      <th className="pb-1 text-right font-semibold">dist. ATH</th>
                       <th className="pb-1 text-left font-semibold pl-2">estado</th>
                     </tr>
                   </thead>
@@ -220,13 +255,17 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function FinalistRow({ f }: { f: ScanFullFinalist }) {
   const estado = f.funded ? "en cartera" : f.selected ? "seleccionado" : f.error ? "informe ilegible" : "";
   const color = f.funded ? T.good : f.selected ? T.buy : f.error ? T.bad : T.muted;
+  // Distancia al máximo de 52 semanas, calculada aquí (nunca por el LLM), igual que en la cartera.
+  const dist = f.price != null && f.high_52w ? ((f.high_52w - f.price) / f.high_52w) * 100 : null;
   return (
     <tr className="border-t align-top" style={{ borderColor: T.grid }} title={f.headline || undefined}>
       <td className="py-1"><b style={{ color: T.ink }}>{f.ticker}</b></td>
       <td className="py-1" style={{ color: T.ink2 }}>{f.sector || "—"}</td>
-      <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(f.deep_score ?? f.prescore)}</td>
+      <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.prescore)}</td>
+      <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.mid_score)}</td>
+      <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(f.deep_score)}</td>
       <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.price != null ? `$${money(f.price)}` : "—"}</td>
-      <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.target_price != null ? `$${money(f.target_price)}` : "—"}</td>
+      <td className="py-1 text-right" style={{ color: T.ink2 }}>{dist != null ? `${dist.toFixed(1)}%` : "—"}</td>
       <td className="py-1 pl-2 text-left font-semibold" style={{ color }}>{estado}</td>
     </tr>
   );

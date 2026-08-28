@@ -35,7 +35,7 @@ def _stage(reached_deep: bool, selected: bool, funded: bool) -> str:
 def record(db, *, prescored: list, failed: list[str], finalists: list[str],
            deep: dict, selected: list, construction, pre_errors: list | None = None,
            deep_errors: list[str] | None = None, decide: bool | None = None,
-           lanes: dict[str, str] | None = None) -> None:
+           lanes: dict[str, str] | None = None, mid_scores: dict[str, float] | None = None) -> None:
     """Añade la traza del embudo de ESTE escaneo (no borra las anteriores) y poda las viejas.
 
     `prescored` = [(PrescoreResult, NameData)]; `failed` = tickers sin datos; `deep` = {ticker:
@@ -57,6 +57,7 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
     funded = {p.ticker: p.weight_pct for p in construction.positions}
     deep_err_set = set(deep_errors or [])
     lanes = lanes or {}
+    mid_scores = mid_scores or {}
     now = _utcnow()
 
     rows: list[ScanAudit] = []
@@ -65,7 +66,8 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
         in_deep, is_sel, is_fund = t in finalist_set, t in selected_set, t in funded
         rows.append(ScanAudit(
             scan_at=now, ticker=t, sector=d.sector, prescore=p.score, price=d.price,
-            reached_deep=in_deep, deep_score=deep[t].score if t in deep else None,
+            reached_deep=in_deep, mid_score=mid_scores.get(t),
+            deep_score=deep[t].score if t in deep else None,
             selected=is_sel, funded=is_fund, weight_pct=funded.get(t), decide=decide,
             # Un profundo ilegible LLEGÓ al profundo (reached_deep se conserva) pero falló ahí.
             stage="deep_error" if t in deep_err_set else _stage(in_deep, is_sel, is_fund),
@@ -160,7 +162,7 @@ def _detalle(db, at) -> list[dict]:  # noqa: ANN001
             .limit(DETAIL_TOP))
     return [
         {"ticker": r.ticker, "sector": r.sector, "prescore": r.prescore,
-         "deep_score": r.deep_score, "stage": r.stage, "price": r.price,
-         "weight_pct": r.weight_pct}
+         "mid_score": r.mid_score, "deep_score": r.deep_score, "stage": r.stage,
+         "price": r.price, "weight_pct": r.weight_pct}
         for r in db.execute(stmt).scalars()
     ]

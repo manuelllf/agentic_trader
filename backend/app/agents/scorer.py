@@ -1,7 +1,7 @@
 """Scorer por nombre (método whitepaper DeepSeek, Exhibit 1).
 
 Una llamada razonada por empresa: informe (noticias, financials, valoración, outlook) e
-INTERPRETA → score 1.00-100.00 contra el S&P 500. Prompt en inglés; salida en español.
+INTERPRETA → score 1.00-100.00. Prompt en inglés; salida en español.
 """
 
 from __future__ import annotations
@@ -17,66 +17,46 @@ from app.screener.fundamentals import NameData
 
 logger = logging.getLogger(__name__)
 
+# Núcleo de la pregunta de scoring, literal del Exhibit 1 del paper ("Use the provided financial
+# data and news to assign a score... reflecting the potential investment value... for the next
+# month" — quitamos "provided" porque ya hay una regla propia contra esa palabra). Compartido por
+# prescore, capa media y profundo: si la pregunta es la misma, el texto no debería variar entre
+# etapas. El anti-sesgo de precio está medido (49 finalistas: sin él, las castigadas por RSI≤45
+# perdían 13,7 puntos de media) y los dos decimales también (evitan que el desempate lo decida el
+# market cap a mitad de ranking).
+_SCORE_CORE = (
+    "Use the financial data and news to assign a score (from 1 to 100) reflecting the "
+    "potential investment value of the company for the next month. "
+    "A price move is not by itself a verdict in either direction: a fall does not make a "
+    "business weak, nor does a rally make it strong. "
+    "Use exactly two decimal places, and let those decimals carry real precision rather than "
+    "rounding to quarters or halves - e.g. 71.38, 84.61. "
+)
+
 SYSTEM = (
     "You are a financial expert with stock-recommendation experience. You provide an investment "
-    "score (1-100) for the NEXT MONTH for a company, based on its financial data and news. Speak "
+    "score for the NEXT MONTH for a company, based on its financial data and news. Speak "
     "in the third person; do not mention credentials; do not speak directly to investors nor "
     "recommend actions; do not recommend alternatives. Write a short investment report with "
     "sections: recent news, financials, valuation, and economic outlook affecting the firm. "
     "INTERPRET the news, do not just repeat it. Do not describe the data as 'provided': call it "
     "recent or latest. The macro outlook is background context "
-    "about the environment the firm operates in; weigh it as you judge appropriate for this "
-    "specific company. "
-    # Medido sobre 49 finalistas: sin esta frase las castigadas (RSI≤45) perdían 13,7 puntos de
-    # media y las calientes 5,5 — protege a las caídas de que se las penalice por haber caído.
-    "A price move is not by itself a verdict in either direction: a fall does not make a "
-    "business weak, nor does a rally make it strong. "
-    # Anti-sesgo explícito quitado: universo no es S&P 500, divergen absoluto y relativo.
-    # "Beat the S&P 500" fija referencia, no dirección.
-    "Then assign a "
-    "score from 1.00 to 100.00 for the potential investment value over the next month "
-    "(100 = best): rank how likely this company is to outperform the S&P 500 over that month. "
-    # Dos decimales evitan que market cap decida a mitad del ranking (repartía 1 plaza antes de esto).
-    # No se prohíben cuartos explícitamente (produciría respuestas degeneradas).
-    "Use exactly two decimal places, and let those decimals carry real precision rather than "
-    "rounding to quarters or halves - e.g. 71.38, 84.61. "
-    # Horizonte de nota, precio objetivo y rebalanceo deben coincidir (un mes). Ya no se
-    # mencionan targets de analistas: se quitaron del prompt (momentum disfrazado de
-    # fundamental, ver docs/prompts.md) y la frase vieja le pedía usar un dato que no le llega.
-    "ALSO give your own approximate PRICE TARGET for the same one-month horizon as the score (a "
-    "single number in the stock's trading currency), derived from the fundamentals, technicals "
-    "and news above. If the news show the company is under a definitive cash acquisition offer, "
-    "use the offer terms exactly as reported (do not derive per-share figures yourself) and do "
-    "not set the price target above the cash offer price. "
+    "about the environment the firm operates in. "
+    + _SCORE_CORE +
     # under_acquisition preguntada explícitamente, no deducida: el modelo diferencia
     # quién compra de quién es comprado cuando se le pregunta.
     "ALSO state whether THIS company is itself the TARGET of a definitive acquisition offer "
     "(someone is buying THIS company). It is false when this company is the one ACQUIRING "
     "another business. "
     'Respond ONLY in JSON: {"report": "...", "headline": "one-sentence thesis", '
-    '"score": <number 1.00-100.00, two decimal places>, "target_price": <number>, '
+    '"score": <number 1.00-100.00, two decimal places>, '
     '"under_acquisition": <true|false>}. '
     "Write report and headline in Spanish."
 )
 
 
 MID_SYSTEM = (
-    "You are the SECOND-OPINION triage of an equity research pipeline, reviewing companies that "
-    "a cheaper first pass already ranked highly. Your score answers ONE question: how likely is "
-    "it that a rigorous deep fundamental analysis would find this company attractive for the next "
-    "month? Weigh fundamentals, valuation and news TOGETHER. "
-    # Misma frase que el profundo y por el mismo motivo: los dos jueces del mismo nombre deben
-    # llevar la misma config, o el corte de finalistas queda a medio criterio.
-    "A price move is not by itself a verdict in either direction: a fall does not make a "
-    "business weak, nor does a rally make it strong. "
-    "Calibrate the scale: 90+ exceptional (rare), 75-89 strong candidate for deep review, 50-74 "
-    # Pasa de UNO a DOS decimales, misma redacción que el profundo. Aquí el empate cuesta
-    # más que allí: son ~3.000 nombres compitiendo por ~50 plazas de finalista, y el carril global
-    # del corte va por orden de esta nota. El desempate también es por market cap, así que un
-    # empate ancho en la frontera es otra vez tamaño decidiendo. Los dos jueces con la misma
-    # granularidad, además, hacen comparables sus dos rankings.
-    "unremarkable, <50 weak. Use exactly two decimal places, and let those decimals carry real "
-    "precision rather than rounding to quarters or halves - e.g. 71.38, 84.61. "
+    _SCORE_CORE +
     # Headline se omite: no se consume (scan_service, traza, watchlist, web). ~20 tokens de salida sin uso.
     'Respond ONLY in JSON: {"score": <number 0-100, two decimal places>}.'
 )
@@ -231,21 +211,6 @@ def mid_prescore(
 # Pre-score INDIVIDUAL — triaje rápido del universo, 1 llamada/ticker (fiel al paper).
 # Macro va siempre delante para maximizar hit de caché de prefijo DeepSeek.
 
-_PRESCORE_BASE = (
-    "You are the first-pass TRIAGE of an equity research pipeline. For the company given, "
-    "answer ONE question: how likely is it that a rigorous deep fundamental analysis would find "
-    "this company attractive for the next month? Weigh fundamentals, valuation and news "
-    "TOGETHER. "
-    # Misma frase en las cinco etapas: si los jueces del mismo nombre miden distinto, el corte
-    # de finalistas queda a medio criterio.
-    "A price move is not by itself a verdict in either direction: a fall does not make a "
-    "business weak, nor does a rally make it strong. "
-    "Calibrate the scale: 90+ exceptional (rare), 75-89 strong "
-    "candidate for deep review, 50-74 unremarkable, <50 weak. Use exactly two decimal places, "
-    "and let those decimals carry real precision rather than rounding to quarters or halves - "
-    "e.g. 71.38, 84.61. "
-)
-
 # El orden de las claves es TODO el diseño: con la nota primero, el driver se emite DESPUÉS de
 # un token ya fijado — racionalización a posteriori, telemetría que no cambia la nota. Al revés
 # sería un micro-razonamiento encubierto, y eso es otro experimento (ver docs/prompts.md).
@@ -255,13 +220,13 @@ _PRESCORE_JSON_DRIVER = (
     '"driver": "<3-8 words naming the single input that weighed most>"}.'
 )
 
-PRESCORE_SYSTEM = _PRESCORE_BASE + _PRESCORE_JSON
+PRESCORE_SYSTEM = _SCORE_CORE + _PRESCORE_JSON
 
 
 def _prescore_system() -> str:
     """El prompt del prescore, con o sin el campo `driver` según `settings.prescore_driver`."""
-    return _PRESCORE_BASE + (_PRESCORE_JSON_DRIVER if settings.prescore_driver
-                             else _PRESCORE_JSON)
+    return _SCORE_CORE + (_PRESCORE_JSON_DRIVER if settings.prescore_driver
+                          else _PRESCORE_JSON)
 
 
 def _prescore_prompt(data: NameData, macro_block: str,
