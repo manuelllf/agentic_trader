@@ -94,6 +94,9 @@ function SalaRealRoom() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
+  const hiddenAt = useRef<number | null>(null);   // cuándo se fue de la pestaña, para medir la ausencia
+  const hasLoadedOnce = useRef(false);   // primera carga: pantalla completa. Recargas después:
+                                          // velo encima, sin desmontar nada (ver el `return`)
 
   const load = useCallback(async () => {
     try {
@@ -114,6 +117,26 @@ function SalaRealRoom() {
       if (hs) setHist(hs.series);
       if (sr) setReport(sr.report);
       if (fn) setFunnel(fn.scans[0] ?? null);
+      setError("");
+    } catch (e) {
+      if (alive.current) setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
+    } finally {
+      hasLoadedOnce.current = true;
+      if (alive.current) setLoading(false);
+    }
+  }, []);
+
+  // Al volver de una ausencia larga, lo único con lo que se ACTÚA es la lista de aprobaciones
+  // (aceptar/rechazar una orden real) — y el resumen del que sale la caja contra la que se
+  // juzgan. El resto (curva, rendimiento, personal, informe del escaneo, config) es para mirar,
+  // no para decidir en el momento: se queda con lo último cargado y lo pone al día el sondeo
+  // normal de 60s en menos de un minuto. 2 llamadas en vez de 10 → el velo dura una fracción.
+  const loadCritical = useCallback(async () => {
+    try {
+      const [s, a] = await Promise.all([getReal(), getApprovals()]);
+      if (!alive.current) return;
+      setSummary(s);
+      setApprovals(a);
       setError("");
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
@@ -209,18 +232,28 @@ function SalaRealRoom() {
     };
   }, [load]);
 
-  // Volver a esta pestaña tras un rato fuera: se trata como carga desde cero (dinero real de
-  // por medio). El sondeo de cada 60s con la pestaña activa NO entra por aquí, sigue silencioso.
+  // Volver a esta pestaña tras un rato fuera: recarga lo CRÍTICO (aprobaciones + caja, ver
+  // `loadCritical`) — el navegador puede pausar el sondeo de 60s mientras está oculta, así que
+  // eso podría llevar minutos sin refrescar, y es lo único con lo que se actúa de verdad. Pero
+  // cambiar de pestaña un segundo y volver NO merece nada — antes disparaba en CUALQUIER cambio
+  // de visibilidad. El bloqueo en sí (velo, no desmontaje) vive en el `return`.
   useEffect(() => {
+    const UMBRAL_MS = 3 * 60_000;
     const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        setLoading(true);
-        load();
+      if (document.visibilityState === "hidden") {
+        hiddenAt.current = Date.now();
+        return;
       }
+      if (document.visibilityState !== "visible") return;
+      const desde = hiddenAt.current;
+      hiddenAt.current = null;
+      if (desde !== null && Date.now() - desde < UMBRAL_MS) return;   // ausencia corta, no recarga
+      setLoading(true);
+      loadCritical();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [load]);
+  }, [loadCritical]);
 
   // Escaneo bajo demanda: el agente puntúa el universo, propone la cartera real (a tu Sí/No) y
   // ejecuta sola la sombra. Se sondea el estado mientras corre, igual que hacía la Sala Sombra.
@@ -351,9 +384,10 @@ function SalaRealRoom() {
   // Escala común de las barras de P&L por posición (una vez, no dentro del map por fila).
   const maxAbs = Math.max(1e-9, ...(perf?.positions ?? []).map((x) => Math.abs(Number(x.unrealized_pnl))));
 
-  // Nada de la sala se pinta hasta que todo llegue junto — mejor un instante en blanco que
-  // un hueco donde algo parezca al día sin serlo, con dinero real de por medio.
-  if (loading) {
+  // Primera carga: nada de la sala se pinta hasta que todo llegue junto — mejor un instante en
+  // blanco que un hueco donde algo parezca al día sin serlo, con dinero real de por medio. No
+  // hay nada montado todavía, así que un `return` completo no pierde ningún estado.
+  if (loading && !hasLoadedOnce.current) {
     return (
       <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 text-[13px]"
            style={{ background: T.page, color: T.muted }}>
@@ -367,6 +401,19 @@ function SalaRealRoom() {
   return (
       <div className="real-room min-h-[100dvh] pb-8 text-[13px] antialiased"
            style={{ background: T.page, color: T.ink2 }}>
+
+      {/* Recarga tras volver de una ausencia: un velo ENCIMA, no un `return` que sustituya la
+          sala — así ningún filtro escrito, panel abierto o scroll se pierde por debajo. Bloquea
+          clics de verdad (cubre toda la pantalla, z-50) mientras dura, mismo criterio de fondo
+          que la pantalla de la primera carga: nada de tocar datos que se están refrescando. */}
+      {loading && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 text-[13px]"
+             style={{ background: `${T.page}f2` }}>
+          <span className="h-6 w-6 animate-spin rounded-full border-2"
+                style={{ borderColor: T.grid, borderTopColor: T.buy }} />
+          <p style={{ color: T.muted }}>Actualizando…</p>
+        </div>
+      )}
 
       {/* Scroll INTEGRADO en toda la sala (incluida la barra del documento): fino, tono panel,
           sin flechas. El <style> vive solo mientras esta página está montada. */}

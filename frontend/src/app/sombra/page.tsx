@@ -111,6 +111,8 @@ export default function SombraDashboard() {
   const [rankingOpen, setRankingOpen] = useState(false);   // overlay del ranking semanal (privado)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const alive = useRef(true);                    // guard de desmontaje (mismo patrón que portada)
+  const hasLoadedOnce = useRef(false);   // primera carga: pantalla completa. Recargas después:
+                                          // velo encima, sin desmontar nada (ver el `return`)
 
   const refresh = useCallback(async () => {
     try {
@@ -149,6 +151,7 @@ export default function SombraDashboard() {
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : "No se pudo contactar con el backend.");
     } finally {
+      hasLoadedOnce.current = true;
       if (alive.current) setLoading(false);
     }
   }, []);
@@ -165,14 +168,13 @@ export default function SombraDashboard() {
     };
   }, [refresh]);
 
-  // Volver a esta pestaña tras un rato fuera: carga desde cero, mismo criterio que Sala Real.
-  // El sondeo de cada 45s con la pestaña activa sigue silencioso.
+  // Volver a esta pestaña: refresca en segundo plano, SIN velo ni espera — a diferencia de Sala
+  // Real, aquí no hay nada que aprobar ni decidir (el sombra se ejecuta solo), así que no hay
+  // ninguna acción que pueda tomarse sobre un dato obsoleto. Es el mismo sondeo de 45s, solo
+  // adelantado para no esperar al siguiente tick tras una ausencia.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        setLoading(true);
-        refresh();
-      }
+      if (document.visibilityState === "visible") refresh();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
@@ -415,7 +417,8 @@ export default function SombraDashboard() {
 
   // Carga completa (primer montaje o volver a la pestaña tras un rato fuera): nada de la sala
   // se pinta hasta que todo llegue a la vez, mismo criterio que Sala Real.
-  if (loading) {
+  // Primera carga: nada montado todavía, un `return` completo no pierde ningún estado.
+  if (loading && !hasLoadedOnce.current) {
     return (
       <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-slate-100/70 text-sm text-slate-500">
         <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
@@ -426,6 +429,14 @@ export default function SombraDashboard() {
 
   return (
     <div className="min-h-[100dvh] bg-slate-100/70 text-slate-900">
+      {/* Recarga tras volver de una ausencia: velo ENCIMA, no un `return` que sustituya la sala
+          — ningún filtro/panel/scroll se pierde por debajo. Bloquea clics de verdad (z-50). */}
+      {loading && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-slate-100/95 text-sm text-slate-500">
+          <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+          <p>Actualizando…</p>
+        </div>
+      )}
       {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 lg:px-8">
