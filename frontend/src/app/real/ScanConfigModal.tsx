@@ -49,9 +49,13 @@ const FALLBACK: Record<Stage, Required<StageLLMOverride>> = {
 
 const STAGES: Stage[] = ["macro", "prescore", "mid", "deep", "constructor"];
 
-export function ScanConfigModal({ onClose, onApply }: {
+export function ScanConfigModal({ onClose, onApply, applied }: {
   onClose: () => void;
   onApply: (overrides: DemoRunOverrides) => void;
+  // Lo que YA se aplicó en esta sesión (botón "Aplicar" de una apertura anterior), si lo hay —
+  // sin esto, reabrir el modal siempre repintaba los valores de producción, dando la impresión
+  // de que la configuración elegida se había perdido cuando en realidad seguía en pie.
+  applied?: DemoRunOverrides | null;
 }) {
   const [cfg, setCfg] = useState<Record<Stage, Required<StageLLMOverride>>>(FALLBACK);
   // Until /config resolves, controls are disabled to prevent race: user changes get overwritten by defaults.
@@ -75,13 +79,18 @@ export function ScanConfigModal({ onClose, onApply }: {
             const d = c.llm_defaults[s];
             if (d) next[s] = { ...prev[s], model: d.model, reasoning_effort: d.reasoning_effort,
                                temperature: d.temperature };
+            // Encima del default de producción, lo que ya se había aplicado gana — así el modal
+            // reabre mostrando de verdad lo que se va a mandar al próximo escaneo, no el punto
+            // de partida.
+            const o = applied?.[s];
+            if (o) next[s] = { ...next[s], ...o };
           }
           return next;
         });
       })
       .catch(() => {}) // el modal sigue usable con los FALLBACK si /config no responde
       .finally(() => setLoaded(true));
-  }, []);
+  }, [applied]);
 
   const patch = (s: Stage, p: Partial<StageLLMOverride>) =>
     setCfg((prev) => {

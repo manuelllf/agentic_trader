@@ -283,7 +283,7 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
   return (
     <div className="rounded-lg border" style={{ borderColor: T.ring, background: T.panel }}>
       {cfgOpen && (
-        <ScanConfigModal onClose={() => setCfgOpen(false)}
+        <ScanConfigModal onClose={() => setCfgOpen(false)} applied={overrides}
                          onApply={(o) => { setOverrides(o); setCfgOpen(false); }} />
       )}
 
