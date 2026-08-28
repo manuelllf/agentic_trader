@@ -14,7 +14,7 @@ class ScoreOut(BaseModel):
     created_at: datetime
     ticker: str
     sector: str
-    score: float          # dos decimales (ver scorer.SYSTEM); la web la redondea al pintarla
+    score: float          # entera (ver scorer.SYSTEM), guardada en Float por el tipo de columna
     headline: str
     report: str
     price: float | None

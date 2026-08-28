@@ -1,7 +1,7 @@
 """Scorer por nombre (método whitepaper DeepSeek, Exhibit 1).
 
 Una llamada razonada por empresa: informe (noticias, financials, valoración, outlook) e
-INTERPRETA → score 1.00-100.00. Prompt en inglés; salida en español.
+INTERPRETA → score 1-100. Prompt en inglés; salida en español.
 """
 
 from __future__ import annotations
@@ -22,15 +22,16 @@ logger = logging.getLogger(__name__)
 # month" — quitamos "provided" porque ya hay una regla propia contra esa palabra). Compartido por
 # prescore, capa media y profundo: si la pregunta es la misma, el texto no debería variar entre
 # etapas. El anti-sesgo de precio está medido (49 finalistas: sin él, las castigadas por RSI≤45
-# perdían 13,7 puntos de media) y los dos decimales también (evitan que el desempate lo decida el
-# market cap a mitad de ranking).
+# perdían 13,7 puntos de media). Los dos decimales se retiran (28-ago): el reasoning real mostraba
+# al modelo dudando entre dos números y eligiendo uno — precisión de mentira. El entero real, con
+# el mismo aviso de no colapsar en múltiplos de 5, mantiene el ranking sin fingir un rigor que el
+# propio modelo no tiene.
 _SCORE_CORE = (
     "Use the financial data and news to assign a score (from 1 to 100) reflecting the "
     "potential investment value of the company for the next month. "
     "A price move is not by itself a verdict in either direction: a fall does not make a "
     "business weak, nor does a rally make it strong. "
-    "Use exactly two decimal places, and let those decimals carry real precision rather than "
-    "rounding to quarters or halves - e.g. 71.38, 84.61. "
+    "Give the score as a whole number, and do not let it always collapse to a multiple of five. "
 )
 
 SYSTEM = (
@@ -49,7 +50,7 @@ SYSTEM = (
     "(someone is buying THIS company). It is false when this company is the one ACQUIRING "
     "another business. "
     'Respond ONLY in JSON: {"report": "...", "headline": "one-sentence thesis", '
-    '"score": <number 1.00-100.00, two decimal places>, '
+    '"score": <number 1-100, whole number>, '
     '"under_acquisition": <true|false>}. '
     "Write report and headline in Spanish."
 )
@@ -58,7 +59,7 @@ SYSTEM = (
 MID_SYSTEM = (
     _SCORE_CORE +
     # Headline se omite: no se consume (scan_service, traza, watchlist, web). ~20 tokens de salida sin uso.
-    'Respond ONLY in JSON: {"score": <number 0-100, two decimal places>}.'
+    'Respond ONLY in JSON: {"score": <number 0-100, whole number>}.'
 )
 
 
@@ -82,8 +83,8 @@ class PrescoreResult:
 @dataclass
 class ScoreResult:
     ticker: str
-    # float, no int: la nota lleva dos decimales (ver `SYSTEM`). Redondearla a entero aquí volvería
-    # a apelmazar el ranking justo antes del corte, que es el problema que los decimales resuelven.
+    # float aunque el valor sea siempre entero (ver `SYSTEM`): evita tocar el tipo en toda la
+    # cadena (BD, ordenación, pesos) por un cambio que es de formato, no de tipo.
     score: float
     headline: str
     report: str
@@ -146,7 +147,7 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None,
         f"Earnings calendar: {data.earnings_text or 'n/d'}\n\n"
         f"Recent news:\n{news}\n"
         f"{prior}\n"
-        "Write the investment report (JSON) and the 1.00-100.00 score."
+        "Write the investment report (JSON) and the 1-100 score."
     )
 
 
@@ -172,7 +173,7 @@ def _mid_prompt(data: NameData, macro_block: str,
         # Igual que en el lote barato (ver `_prescore_batch_prompt`): dato del calendario, sin
         # regla de qué hacer con él.
         f"Earnings: {data.earnings_text or 'n/d'}\n"
-        "1.00-100.00 score (JSON)."
+        "1-100 score (JSON)."
     )
 
 
@@ -194,7 +195,7 @@ def mid_prescore(
             raw = llm.chat(MID_SYSTEM, _mid_prompt(data, macro_block, medianas),
                            temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-        sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
+        sc = max(0.0, min(100.0, round(float(obj.get("score", 0)))))
         # Score 0 en escala 1-100 = fallo de parseo. Sin esto, nombres caen sin rastro.
         # Medido: 118/3.000 invisibles sin este guardarraíl.
         if sc <= 0:
@@ -214,9 +215,9 @@ def mid_prescore(
 # El orden de las claves es TODO el diseño: con la nota primero, el driver se emite DESPUÉS de
 # un token ya fijado — racionalización a posteriori, telemetría que no cambia la nota. Al revés
 # sería un micro-razonamiento encubierto, y eso es otro experimento (ver docs/prompts.md).
-_PRESCORE_JSON = 'Respond ONLY in JSON: {"score": <number 0-100, two decimal places>}.'
+_PRESCORE_JSON = 'Respond ONLY in JSON: {"score": <number 0-100, whole number>}.'
 _PRESCORE_JSON_DRIVER = (
-    'Respond ONLY in JSON: {"score": <number 0-100, two decimal places>, '
+    'Respond ONLY in JSON: {"score": <number 0-100, whole number>, '
     '"driver": "<3-8 words naming the single input that weighed most>"}.'
 )
 
@@ -240,7 +241,7 @@ def _prescore_prompt(data: NameData, macro_block: str,
         f"Fundamentals:\n{_con_mediana(data.fundamentals_text, data.sector, medianas)}\n"
         f"Technical: {data.technical_text or 'n/d'}\n"
         f"Earnings: {data.earnings_text or 'n/d'}\n"
-        "1.00-100.00 score (JSON)."
+        "1-100 score (JSON)."
     )
 
 
@@ -264,7 +265,7 @@ def prescore_one(
             else:
                 raw = llm.chat(system, user, temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-        sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
+        sc = max(0.0, min(100.0, round(float(obj.get("score", 0)))))
         if sc <= 0:
             return PrescoreResult(data.ticker, 0.0,
                                   error="SinNota: JSON válido sin score utilizable",
@@ -289,9 +290,8 @@ def prescore_one(
 # ---------------------------------------------------------------------------------------------
 
 PRESCORE_BATCH_SYSTEM = (
-    "You are the first-pass TRIAGE of an equity research pipeline. You will be given SEVERAL "
-    "companies. For EACH one, INDEPENDENTLY, answer ONE question: how likely is it that a "
-    "rigorous deep fundamental analysis would find this company attractive for the next month? "
+    "You will be given SEVERAL companies and must judge each one independently. "
+    + _SCORE_CORE +
     # Cláusula propia de este nivel (no la necesita la capa media, que juzga 1 ticker por
     # llamada): el riesgo medido de agrupar varios nombres en un mismo prompt es que el juicio
     # de uno "contamine" al siguiente (orden, comparación implícita) — se le pide
@@ -299,19 +299,11 @@ PRESCORE_BATCH_SYSTEM = (
     "Judge each company ONLY on its own fundamentals, valuation and news, weighed together. Do "
     "NOT compare or rank the companies against each other, and do not let one company's news or "
     "sector color your judgment of another. "
-    # Misma frase que el resto del scoring (ver `SYSTEM`) — este nivel solo corre con OpenRouter
-    # local, pero se mantiene consistente con producción.
-    "A price move is not by itself a verdict in either direction: a fall does not make a "
-    "business weak, nor does a rally make it strong. "
-    "Calibrate the scale: 90+ "
-    "exceptional (rare), 75-89 strong candidate for deep review, 50-74 unremarkable, <50 weak. "
-    "Use exactly two decimal places, and let those decimals carry real precision rather than "
-    "rounding to quarters or halves - e.g. 71.38, 84.61. "
-    'Respond ONLY in JSON: {"scores": [{"ticker": "<TICKER>", "score": <number 0-100, two '
-    'decimal places>}, ...]}. Example (illustrative tickers, NOT real data) for THREE '
+    'Respond ONLY in JSON: {"scores": [{"ticker": "<TICKER>", "score": <number 0-100, whole '
+    'number>}, ...]}. Example (illustrative tickers, NOT real data) for THREE '
     "companies — respond the SAME way but for ALL companies listed below, one entry each, "
-    'omitting none: {"scores": [{"ticker": "ABCD", "score": 68.47}, {"ticker": "WXYZ", '
-    '"score": 91.02}, {"ticker": "QRST", "score": 34.19}]}.'
+    'omitting none: {"scores": [{"ticker": "ABCD", "score": 68}, {"ticker": "WXYZ", '
+    '"score": 91}, {"ticker": "QRST", "score": 34}]}.'
 )
 
 
@@ -341,11 +333,11 @@ def _prescore_batch_prompt(items: list[NameData], macro_block: str) -> str:
 
 
 def _formato_degenerado(notas: list[float]) -> bool:
-    """True si ≥90% comparten un solo decimal (segundo en cero): indica lote degenerado."""
+    """True si ≥90% son múltiplos de 5: indica que el lote colapsó pese al aviso."""
     if len(notas) < 5:
         return False
-    un_decimal = sum(1 for n in notas if round(n * 100) % 10 == 0)
-    return un_decimal / len(notas) >= 0.9
+    multiplo_5 = sum(1 for n in notas if round(n) % 5 == 0)
+    return multiplo_5 / len(notas) >= 0.9
 
 
 # Umbral de aviso para `confidence` (probabilidad del token menos seguro del lote) — de momento
@@ -387,20 +379,16 @@ def prescore_batch(
                 if t not in wanted or t in notas:
                     continue
                 try:
-                    notas[t] = max(0.0, min(100.0, round(float(fila.get("score", 0)), 2)))
+                    notas[t] = max(0.0, min(100.0, round(float(fila.get("score", 0)))))
                 except (TypeError, ValueError):
                     notas[t] = 0.0
             if _formato_degenerado(list(notas.values())):
-                # Medido en producción (dos escaneos reales): reintentar el lote NO arregla el
-                # formato de forma fiable — un mismo lote pasó de un decimal (intento
-                # 1) a un decimal otra vez (intento 2) a CERO decimales (intento 3), cada vez
-                # peor. El coste de reintentar (hasta ×3 llamadas) no compraba nada, y cuando los
-                # 3 intentos fallaban se perdían los 20 nombres enteros — peor que aceptar la
-                # nota con menos precisión. Se acepta y se avisa; ya no se descarta ni reintenta
-                # solo por esto. El desempate más grosero en el corte de finalistas (por market
-                # cap) es el mismo mecanismo que el paper ya prevé como caso raro.
-                logger.warning("Prescore por lote (%d empresas): formato degenerado (≥90%% con "
-                               "un solo decimal) — se acepta igual, no se reintenta", len(items))
+                # Medido en producción (dos escaneos reales, formato con decimales): reintentar el
+                # lote no arregla el colapso de forma fiable, cada intento salía igual o peor. Se
+                # acepta y se avisa en vez de perder los 20 nombres del lote por reintentar de más.
+                # El desempate resultante por market cap es el mismo mecanismo que define el paper.
+                logger.warning("Prescore por lote (%d empresas): formato degenerado (≥90%% "
+                               "múltiplos de 5) — se acepta igual, no se reintenta", len(items))
             # La confianza viaja en cada `PrescoreResult`; el escaneo la resume (ver `_log_funnel`).
             break
         except Exception as exc:
@@ -437,7 +425,7 @@ def score(
             raw = llm.chat(SYSTEM, _user_prompt(data, macro_block, prior_thesis, medianas),
                            temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-        sc = max(0.0, min(100.0, round(float(obj.get("score", 0)), 2)))
+        sc = max(0.0, min(100.0, round(float(obj.get("score", 0)))))
         tp = obj.get("target_price")
         try:
             tp = float(tp) if tp is not None else None

@@ -1,8 +1,10 @@
-"""Cliente directo de QwenCloud/DashScope para el prescore -- mismo contrato que
-`DeepSeekProvider` (`chat_logprobs` duck-typed) y mismo esquema de logprobs, reutilizado tal cual.
+"""Cliente directo de QwenCloud/DashScope -- mismo contrato que `DeepSeekProvider`
+(`chat_logprobs` duck-typed) y mismo esquema de logprobs, reutilizado tal cual.
 
-`enable_thinking: false` va SIEMPRE: sin él, el coste se dispara ~33x (medido en vivo). Sin coste
-facturado en `usage`: se estima por tarifa fija, igual que ya hace `DeepSeekProvider`.
+`enable_thinking` es una elección explícita del caller (modal de simulación de Sala Real o
+`settings` por defecto), NO un hardcode: con él activo el coste se dispara ~33x (medido en
+vivo), así que el default sigue siendo `False` en todas partes salvo que alguien lo pida. Sin
+coste facturado en `usage`: se estima por tarifa fija, igual que ya hace `DeepSeekProvider`.
 """
 
 from __future__ import annotations
@@ -36,11 +38,13 @@ class QwenProvider:
         base_url: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
         stage: str = "",
         recorder=None,  # noqa: ANN001  (app.llm.trace.LLMTrace; None = no se traza)
+        enable_thinking: bool = False,
     ) -> None:
         self._model = model
         self._base_url = base_url.rstrip("/")
         self._stage = stage
         self._recorder = recorder
+        self._enable_thinking = enable_thinking
         self._logprobs_soportado = True
         self._headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         self._usage = {
@@ -82,8 +86,7 @@ class QwenProvider:
             ],
             "temperature": temperature,
             "response_format": {"type": "json_object"},
-            # SIEMPRE, sin excepción -- ver punto 1 del docstring del módulo.
-            "enable_thinking": False,
+            "enable_thinking": self._enable_thinking,
         }
         if top_p is not None:
             payload["top_p"] = top_p
@@ -134,9 +137,13 @@ class QwenProvider:
         hit, miss, ct, cost = uso
         self._recorder.record(CallRecord(
             at=datetime.now(UTC), stage=self._stage, ticker=current_ticker(),
-            model=self._model, reasoning_effort=None,   # enable_thinking=False: no hay niveles
+            model=self._model,
+            # Qwen no tiene niveles (low/high/max) como DeepSeek, solo on/off -- se guarda como
+            # "high"/"none" para que las consultas de traza que ya asumen ese campo string sigan
+            # funcionando igual sin necesitar un caso especial por proveedor.
+            reasoning_effort="high" if self._enable_thinking else "none",
             content=msg.get("content"),
-            reasoning=None,   # enable_thinking=False siempre -- nunca hay razonamiento que guardar
+            reasoning=msg.get("reasoning_content") if self._enable_thinking else None,
             confidence=_min_prob(data) if data else None,
             prompt_cache_hit_tokens=hit, prompt_cache_miss_tokens=miss, completion_tokens=ct,
             cost_usd=cost, latency_ms=int((time.monotonic() - t0) * 1000),

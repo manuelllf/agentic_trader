@@ -184,21 +184,20 @@ def test_prescore_y_capa_media_hacen_la_misma_pregunta() -> None:
     assert PRESCORE_SYSTEM == MID_SYSTEM
 
 
-def test_los_dos_jueces_piden_dos_decimales_con_la_misma_redaccion() -> None:
-    """Two decimal places prevent ties; tiebreaker by market cap (paper provision)."""
-    frase = ("Use exactly two decimal places, and let those decimals carry real precision rather "
-             "than rounding to quarters or halves")
+def test_los_dos_jueces_piden_nota_entera_con_la_misma_redaccion() -> None:
+    """Whole number score, sin ejemplos; los decimales eran precisión de mentira (28-ago)."""
+    frase = "Give the score as a whole number, and do not let it always collapse to a multiple of five."
     for texto in (SYSTEM, MID_SYSTEM):
         assert frase in texto
-    # SUAVE a propósito: prohibirle los cuartos ("never end in .25") endureció el prompt y produjo
-    # 3 respuestas degeneradas de 49. Con esta redacción: 0 fallos y 100% con decimal real.
     for duro in ("never", "must not", "forbidden"):
         assert duro not in SYSTEM.lower()
-    assert "one decimal" not in MID_SYSTEM.lower()
+    assert "decimal" not in SYSTEM.lower()
+    assert "decimal" not in MID_SYSTEM.lower()
 
 
-def test_la_nota_conserva_los_dos_decimales_al_parsear() -> None:
-    """Score stored as float; parsing guard against int rounding."""
+def test_la_nota_se_redondea_a_entero_al_parsear() -> None:
+    """El modelo puede seguir devolviendo un decimal (no lo pedimos, pero puede colarse);
+    se redondea a entero al parsear, no se guarda tal cual."""
     from app.agents import scorer as scorer_mod
 
     class LLMDecimal:
@@ -211,9 +210,9 @@ def test_la_nota_conserva_los_dos_decimales_al_parsear() -> None:
                     + ', "target_price": 10.0, "under_acquisition": false}')
 
     r = scorer_mod.score(LLMDecimal("78.37"), _name_data(), "VIX 15.0.")
-    assert r.score == 78.37
+    assert r.score == 78.0
     p = scorer_mod.mid_prescore(LLMDecimal("84.61"), _name_data(), "VIX 15.0.")
-    assert p.score == 84.61
+    assert p.score == 85.0
 
 
 def test_el_decimal_manda_sobre_el_market_cap_en_la_seleccion() -> None:

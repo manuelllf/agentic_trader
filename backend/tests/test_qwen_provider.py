@@ -29,9 +29,10 @@ def _respuesta(content: str = '{"score": 71.38}', logprobs: dict | None = None) 
     return {"choices": [choice]}
 
 
-def test_payload_apaga_siempre_el_razonamiento() -> None:
-    """`enable_thinking: false` va SIEMPRE, sin parámetro para desactivarlo -- ver docstring del
-    módulo (medido en vivo: dejarlo sin apagar dispara el coste ~33x)."""
+def test_payload_apaga_el_razonamiento_por_defecto() -> None:
+    """`enable_thinking` es un parámetro del caller, no un hardcode (ver docstring del módulo:
+    medido en vivo, dejarlo activo dispara el coste ~33x) -- pero el default sigue siendo
+    apagado si nadie lo pide."""
     p = QwenProvider(api_key="fake", stage="prescore")
     payload = p._payload("sys", "user", 0.3, 0.95)
 
@@ -39,6 +40,13 @@ def test_payload_apaga_siempre_el_razonamiento() -> None:
     assert payload["temperature"] == 0.3
     assert payload["top_p"] == 0.95
     assert payload["top_logprobs"] == qwen_mod._TOP_LOGPROBS
+
+
+def test_payload_activa_el_razonamiento_si_se_pide() -> None:
+    p = QwenProvider(api_key="fake", stage="deep", enable_thinking=True)
+    payload = p._payload("sys", "user", 1.0, None)
+
+    assert payload["enable_thinking"] is True
 
 
 def test_top_logprobs_solo_donde_la_salida_es_un_numero() -> None:
@@ -65,7 +73,7 @@ def test_account_estima_coste_por_tarifa_fija_sin_precio_de_cache() -> None:
 
 
 def test_trazar_sin_razonamiento_ni_coste_facturado() -> None:
-    """`enable_thinking=False` siempre: nunca hay razonamiento que guardar, a diferencia de
+    """`enable_thinking=False` (default): nunca hay razonamiento que guardar, a diferencia de
     DeepSeek (que sí puede traerlo con `reasoning_effort` alto)."""
     traza = LLMTrace()
     p = QwenProvider(api_key="fake", stage="prescore", recorder=traza)
@@ -76,7 +84,7 @@ def test_trazar_sin_razonamiento_ni_coste_facturado() -> None:
     assert len(traza) == 1
     c = traza._calls[0]
     assert (c.stage, c.ticker) == ("prescore", "AVGO")
-    assert c.reasoning is None and c.reasoning_effort is None
+    assert c.reasoning is None and c.reasoning_effort == "none"
     assert c.content == '{"score": 71.38}'
     assert (c.prompt_cache_hit_tokens, c.prompt_cache_miss_tokens) == (10, 20)
     assert c.ok and c.error is None
@@ -84,6 +92,19 @@ def test_trazar_sin_razonamiento_ni_coste_facturado() -> None:
     # prescore está en _ETAPAS_CON_ALTERNATIVAS: las fichas numéricas se extraen igual que en
     # DeepSeek (mismo `_notas_logprob`, reutilizado sin reescribir).
     assert len(c.notas) == 6
+
+
+def test_trazar_guarda_razonamiento_cuando_esta_activo() -> None:
+    traza = LLMTrace()
+    p = QwenProvider(api_key="fake", stage="deep", recorder=traza, enable_thinking=True)
+    data = _respuesta()
+    data["choices"][0]["message"]["reasoning_content"] = "pensando en voz alta"
+    with ticker_ctx("NVDA"):
+        p._trazar(time.monotonic(), data, uso=(0, 0, 5, 0.001))
+
+    c = traza._calls[0]
+    assert c.reasoning == "pensando en voz alta"
+    assert c.reasoning_effort == "high"
 
 
 def test_chat_logprobs_devuelve_contenido_y_confianza(monkeypatch) -> None:  # noqa: ANN001

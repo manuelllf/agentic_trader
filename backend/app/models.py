@@ -251,11 +251,9 @@ class Score(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     ticker: Mapped[str] = mapped_column(String(16), index=True)
     sector: Mapped[str] = mapped_column(String(48), default="")
-    # Float y no Integer: la nota del scorer lleva dos decimales. Con nota entera,
-    # el desempate por market cap (fiel al paper, pensado como caso raro) repartía la mitad del
-    # top-10 —diez nombres empatados a 78 para cinco plazas— y se lo llevaban siempre los cinco
-    # mayores. El decimal es lo que hace que decida el análisis y no el tamaño.
-    score: Mapped[float] = mapped_column(Float, index=True)   # 1,00-100,00
+    # Float aunque la nota sea entera (28-ago): el desempate por market cap en el corte, antes
+    # raro con decimales, ahora es frecuente a propósito — es el mecanismo que define el paper.
+    score: Mapped[float] = mapped_column(Float, index=True)   # entera, 1-100
     headline: Mapped[str] = mapped_column(Text, default="")  # tesis de una línea
     report: Mapped[str] = mapped_column(Text, default="")    # Investment Report completo
     price: Mapped[float | None] = mapped_column(Float)         # precio al escanear
@@ -414,7 +412,7 @@ class ScanAudit(Base):
     reached_deep: Mapped[bool] = mapped_column(default=False)  # ¿pasó el corte al profundo?
     # None si el ticker no pasó por capa media (no todos los carriles la usan, ver scan_service).
     mid_score: Mapped[float | None] = mapped_column(Float)
-    deep_score: Mapped[float | None] = mapped_column(Float)   # dos decimales, como `Score.score`
+    deep_score: Mapped[float | None] = mapped_column(Float)   # entera, como `Score.score`
     selected: Mapped[bool] = mapped_column(default=False)      # ¿top-10 al constructor?
     funded: Mapped[bool] = mapped_column(default=False)        # ¿acabó en la cartera?
     # ¿El escaneo DECIDÍA cartera? La construcción se calcula (y se registra) también en los
@@ -920,7 +918,7 @@ class Approval(Base):
     sector: Mapped[str] = mapped_column(String(48), default="")
     action: Mapped[str] = mapped_column(String(10))            # comprar|ampliar|recortar|vender
     target_weight_pct: Mapped[float] = mapped_column(Float, default=0.0)
-    score: Mapped[float | None] = mapped_column(Float)                  # dos decimales
+    score: Mapped[float | None] = mapped_column(Float)                  # entera
     est_price: Mapped[Decimal | None] = mapped_column(DecimalStr(32))   # precio al proponer
     target_price: Mapped[float | None] = mapped_column(Float)           # objetivo 3m del LLM
     upside_pct: Mapped[float | None] = mapped_column(Float)

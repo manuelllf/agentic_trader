@@ -125,7 +125,10 @@ def _stub_llms(monkeypatch, prescore_scores: dict, mid_scores: dict, deep_replie
     deep_llm = DeepLLM(deep_replies)
 
     def fake_get_llm(model: str | None = None, **_kwargs):
-        if model == scan_service.settings.prescore_model:
+        # El prescore llega aquí con `settings.prescore_model` (override/DeepSeek) o con
+        # `settings.qwen_model` (default de producción, `prescore_provider="qwen"` — ver
+        # `scan_service._prescore_llm`); cualquiera de los dos es la llamada del prescore.
+        if model in (scan_service.settings.prescore_model, scan_service.settings.qwen_model):
             return prescore_llm
         if model == scan_service.settings.mid_model:
             return mid_llm

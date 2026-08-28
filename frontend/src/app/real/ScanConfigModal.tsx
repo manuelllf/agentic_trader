@@ -9,15 +9,23 @@ import type { DemoRunOverrides, ReasoningEffort, StageLLMOverride } from "@/lib/
 import { T } from "./tokens";
 
 const DEEPSEEK_MODELS = ["deepseek-v4-pro", "deepseek-v4-flash"] as const;
-// Solo el prescorer sabe hablar con Qwen (`scan_service._prescore_llm`); el resto, solo DeepSeek.
-const PRESCORE_MODELS = ["qwen3.7-flash", ...DEEPSEEK_MODELS] as const;
-const REASONINGS: ReasoningEffort[] = ["none", "low", "high", "max"];
+const QWEN_MODEL = "qwen3.7-flash";
+// Cualquier etapa puede hablar con Qwen desde 28-ago (`scan_service._llm_for` enruta por modelo,
+// no solo el prescorer) — mismas opciones en las 5 etapas.
+const ALL_MODELS = [QWEN_MODEL, ...DEEPSEEK_MODELS] as const;
+const isQwen = (model: string) => model === QWEN_MODEL;
+
+// DeepSeek tiene 4 niveles; Qwen solo on/off (`enable_thinking`), representado con los mismos
+// dos valores del tipo compartido para no tocar el contrato del backend (ver StageLLMOverride).
+const DEEPSEEK_REASONINGS: ReasoningEffort[] = ["none", "low", "high", "max"];
+const QWEN_REASONINGS: ReasoningEffort[] = ["none", "high"];
+const QWEN_REASONING_LABEL: Record<string, string> = { none: "sin razonamiento", high: "con razonamiento (~33x coste)" };
 
 type Stage = "macro" | "prescore" | "mid" | "deep" | "constructor";
 
 const MODELS_BY_STAGE: Record<Stage, readonly string[]> = {
-  macro: DEEPSEEK_MODELS, prescore: PRESCORE_MODELS, mid: DEEPSEEK_MODELS,
-  deep: DEEPSEEK_MODELS, constructor: DEEPSEEK_MODELS,
+  macro: ALL_MODELS, prescore: ALL_MODELS, mid: ALL_MODELS,
+  deep: ALL_MODELS, constructor: ALL_MODELS,
 };
 
 const STAGE_LABEL: Record<Stage, string> = {
@@ -76,7 +84,16 @@ export function ScanConfigModal({ onClose, onApply }: {
   }, []);
 
   const patch = (s: Stage, p: Partial<StageLLMOverride>) =>
-    setCfg((prev) => ({ ...prev, [s]: { ...prev[s], ...p } }));
+    setCfg((prev) => {
+      const next = { ...prev[s], ...p };
+      // Qwen solo entiende "none"/"high" (on/off) — si el cambio de modelo deja un
+      // reasoning_effort de DeepSeek ("low"/"max") colgando, lo baja a "none" para no mandar al
+      // backend una combinación que no significa nada para ese proveedor.
+      if (p.model && isQwen(p.model) && !QWEN_REASONINGS.includes(next.reasoning_effort)) {
+        next.reasoning_effort = "none";
+      }
+      return { ...prev, [s]: next };
+    });
 
   // Objeto literal explícito, no un `{}` + asignación por bucle: "constructor" como nombre de
   // propiedad choca con `Object.prototype.constructor` y TS infiere mal el tipo del literal
@@ -147,6 +164,8 @@ function StageRow({ stage, v, models, onChange }: {
   stage: Stage; v: Required<StageLLMOverride>; models: readonly string[];
   onChange: (p: Partial<StageLLMOverride>) => void;
 }) {
+  const qwen = isQwen(v.model);
+  const reasonings = qwen ? QWEN_REASONINGS : DEEPSEEK_REASONINGS;
   return (
     <div className="rounded border px-2.5 py-2" style={{ borderColor: T.grid }}>
       <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
@@ -160,12 +179,16 @@ function StageRow({ stage, v, models, onChange }: {
             {models.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </Field>
-        <Field label="reasoning">
+        {/* Selector distinto a propósito: Qwen no tiene niveles, solo on/off (`enable_thinking`,
+            ver QwenProvider) — mostrar los 4 niveles de DeepSeek sugeriría gradación que no existe. */}
+        <Field label={qwen ? "razonamiento" : "reasoning"}>
           <select value={v.reasoning_effort}
                   onChange={(e) => onChange({ reasoning_effort: e.target.value as ReasoningEffort })}
                   className="cfg-select w-full rounded border px-1.5 py-1 text-[11px]"
                   style={{ borderColor: T.ring, color: T.ink, background: T.panel2 }}>
-            {REASONINGS.map((r) => <option key={r} value={r}>{r}</option>)}
+            {reasonings.map((r) => (
+              <option key={r} value={r}>{qwen ? QWEN_REASONING_LABEL[r] : r}</option>
+            ))}
           </select>
         </Field>
         <Field label="temperatura">

@@ -145,8 +145,6 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                       <th className="pb-1 text-left font-semibold">ticker</th>
                       <th className="pb-1 text-left font-semibold">acción</th>
                       <th className="pb-1 text-right font-semibold">peso</th>
-                      <th className="pb-1 text-right font-semibold">target</th>
-                      <th className="pb-1 text-right font-semibold">upside</th>
                       <th className="pb-1 text-right font-semibold">dist. ATH</th>
                     </tr>
                   </thead>
@@ -160,12 +158,6 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                         <td className="py-1" style={{ color: T.ink2 }}>{p.action}</td>
                         <td className="py-1 text-right" style={{ color: T.ink }}>
                           {p.target_weight_pct != null ? `${p.target_weight_pct}%` : "—"}
-                        </td>
-                        <td className="py-1 text-right" style={{ color: T.ink2 }}>
-                          {p.target_price != null ? `$${money(p.target_price)}` : "—"}
-                        </td>
-                        <td className="py-1 text-right" style={{ color: (p.upside_pct ?? 0) >= 0 ? T.good : T.bad }}>
-                          {p.upside_pct != null ? `${p.upside_pct >= 0 ? "+" : ""}${p.upside_pct}%` : "—"}
                         </td>
                         <td className="py-1 text-right" style={{ color: T.ink2 }}>
                           {dist != null ? `${dist.toFixed(1)}%` : "—"}

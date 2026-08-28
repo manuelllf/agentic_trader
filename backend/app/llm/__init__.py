@@ -15,14 +15,20 @@ from app.llm.qwen import QwenProvider
 
 
 def get_llm(model: str | None = None, reasoning_effort: str | None = "none",
-            stage: str = "", recorder=None, provider: str | None = None) -> LLMProvider:  # noqa: ANN001
+            stage: str = "", recorder=None, provider: str | None = None,
+            enable_thinking: bool = False) -> LLMProvider:  # noqa: ANN001
     """Proveedor LLM. Lanza si falta la key del proveedor configurado.
 
     `reasoning_effort` por defecto es `"none"` — sin mandarlo, el proveedor cae a su default
     ("high") y dispara el coste en las etapas de volumen.
 
-    `provider`: override puntual SOLO para que `scan_service._prescore_llm` pida Qwen sin tocar
-    el resto del circuito. `model` se ignora en la rama "qwen" (un único modelo configurado)."""
+    `provider`: override puntual para que `scan_service._llm_for`/`_prescore_llm` pidan Qwen en
+    CUALQUIER etapa (modal de simulación) sin tocar el resto del circuito. `model` SÍ se respeta
+    en la rama "qwen" (antes se ignoraba y siempre usaba `settings.qwen_model` — daba igual
+    porque solo el prescore la llamaba con un modelo fijo; con el modal permitiendo Qwen en
+    cualquier etapa, ignorarlo mandaría siempre el mismo modelo aunque el caller pidiera otro).
+    `enable_thinking`: on/off del razonamiento de Qwen (no tiene niveles como DeepSeek) — coste
+    ~33x medido cuando está activo, así que el default es `False`."""
     if (provider or settings.llm_provider) == "qwen":
         if not settings.dashscope_api_key:
             raise RuntimeError(
@@ -31,9 +37,10 @@ def get_llm(model: str | None = None, reasoning_effort: str | None = "none",
             )
         return QwenProvider(
             api_key=settings.dashscope_api_key,
-            model=settings.qwen_model,
+            model=model or settings.qwen_model,
             stage=stage,
             recorder=recorder,
+            enable_thinking=enable_thinking,
         )
 
     if settings.llm_provider == "openrouter":

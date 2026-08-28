@@ -59,8 +59,8 @@ class Settings(BaseSettings):
     dashscope_api_key: str = ""
     qwen_model: str = "qwen3.7-flash"
     # Reasoning caro solo donde hay pocas llamadas (macro/constructor=1, profundo≤100). "low" en
-    # lotes de 20 degradó la granularidad del prescore (menos decimales, peor correlación con el
-    # profundo) y costó 2,6× más — vuelve a "none", que da 2 decimales limpios siempre.
+    # lotes de 20 degradó la granularidad del prescore (peor correlación con el profundo) y costó
+    # 2,6× más — vuelve a "none", que da una nota limpia siempre.
     # "high" y no "max": es el default documentado de DeepSeek (el camino más probado) y la doc
     # no publica qué cambia internamente entre niveles — sin evidencia, el default gana.
     macro_reasoning_effort: str | None = "high"

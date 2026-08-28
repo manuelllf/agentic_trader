@@ -27,6 +27,6 @@ export const fmtTime = (iso: string | null) =>
 export const fmtPct = (v: number | null | undefined) =>
   v != null ? `${v > 0 ? "+" : ""}${v}%` : "—";
 
-/** "78.43" — two decimals matching backend precision to reflect actual selection/tiebreak logic. */
+/** "78" — entera, matching backend precision (28-ago: se dejan los decimales de mentira). */
 export const fmtScore = (v: number | null | undefined) =>
-  v != null ? Number(v).toFixed(2) : "—";
+  v != null ? Number(v).toFixed(0) : "—";

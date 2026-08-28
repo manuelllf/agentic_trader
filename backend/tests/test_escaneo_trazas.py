@@ -17,7 +17,7 @@ from app import (
 )
 from app.db import Base
 from app.ledger import service as ledger
-from app.models import Proposal, ScanAudit, ScanRun, Score, Watchlist
+from app.models import Proposal, ProposalItem, ScanAudit, ScanRun, ScanRunConstructionItem, Score, Watchlist
 
 
 @pytest.fixture
@@ -106,7 +106,8 @@ def _stub_common(monkeypatch, llm, symbols: list[str]) -> None:
     monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)  # sin la pausa del reintento
 
 
-def _gather_stub(monkeypatch, sector: str = "Technology", news: list | None = None):
+def _gather_stub(monkeypatch, sector: str = "Technology", news: list | None = None,
+                 high_52w: float | None = None):
     """Stub fundamentals.gather with fixed NameData."""
     from app.screener import fundamentals as fund_mod
     from app.screener.fundamentals import NameData
@@ -114,7 +115,7 @@ def _gather_stub(monkeypatch, sector: str = "Technology", news: list | None = No
     monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None, **kw: (NameData(
         ticker=t, sector=sector, industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9,
-        news=news if news is not None else [],
+        news=news if news is not None else [], high_52w=high_52w,
     ), None))
 
 
@@ -241,6 +242,24 @@ def test_mid_score_se_persiste_en_finalist_y_audit(db, monkeypatch) -> None:
 
     audit_row = db.query(ScanAudit).filter(ScanAudit.ticker == "AAA").one()
     assert audit_row.mid_score == 90.0
+
+
+def test_high_52w_se_persiste_en_cartera_y_propuesta(db, monkeypatch) -> None:
+    """`build_trades()` ya lo calculaba bien, pero `_guardar_trade_items()` lo dejaba fuera al
+    escribir la fila (bug real, 28-ago: la web enseñaba dist. ATH vacía en todas las filas)."""
+    llm = FakeLLM(_FAKE_REPLY)
+    _stub_common(monkeypatch, llm, ["AAA"])
+    _gather_stub(monkeypatch, high_52w=120.0)
+
+    scan_service.run_scan_and_store(db, sample_size=5, decide=True)
+
+    run = db.query(ScanRun).order_by(ScanRun.id.desc()).first()
+    item = db.query(ScanRunConstructionItem).filter_by(scan_run_id=run.id, ticker="AAA").one()
+    assert item.high_52w == 120.0
+
+    prop = db.query(Proposal).order_by(Proposal.id.desc()).first()
+    prop_item = db.query(ProposalItem).filter_by(proposal_id=prop.id, ticker="AAA").one()
+    assert prop_item.high_52w == 120.0
 
 
 # ---- fallo del LLM: reintento y el nombre no se pierde -------------------------

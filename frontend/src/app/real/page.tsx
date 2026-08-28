@@ -369,7 +369,11 @@ function SalaRealRoom() {
 
   const perf = summary?.performance;
   const dry = summary?.broker.mode !== "live";
-  const pending = approvals?.pending ?? [];
+  // Ventas/recortes primero: liberan caja antes de que lleguen las compras. Aprobar en el orden
+  // contrario (visto en producción, 28-ago) dimensiona las compras contra caja casi a cero.
+  const libera = (accion: string) => accion === "vender" || accion === "recortar";
+  const pending = [...(approvals?.pending ?? [])].sort(
+    (a, b) => Number(!libera(a.action)) - Number(!libera(b.action)));
   const historyAll = approvals?.history ?? [];
   const working = historyAll.filter((h) => h.status === "working");
   const history = historyAll.filter((h) => h.status !== "working");

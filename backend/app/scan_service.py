@@ -226,7 +226,8 @@ def _guardar_trade_items(db: Session, model_cls: type, fk_field: str, fk_id: int
                           score=it.get("score"),
                           target_weight_pct=it.get("target_weight_pct") or 0.0,
                           price=it.get("price"), target_price=it.get("target_price"),
-                          upside_pct=it.get("upside_pct"), target_value=it.get("target_value", "0"),
+                          upside_pct=it.get("upside_pct"), high_52w=it.get("high_52w"),
+                          target_value=it.get("target_value", "0"),
                           target_shares=it.get("target_shares") or 0.0,
                           delta_shares=it.get("delta_shares") or 0.0,
                           thesis=it.get("thesis", ""), edge=it.get("edge", ""),
@@ -426,6 +427,13 @@ def _stage_cfg(overrides: dict | None, stage: str, default_model: str,
     }
 
 
+def _quiere_reasoning_qwen(reasoning_effort: str | None) -> bool:
+    """Qwen no tiene niveles (low/high/max) como DeepSeek, solo on/off — cualquier cosa que no
+    sea "none"/None del modal (que solo ofrece dos opciones para Qwen, ver ScanConfigModal) se
+    interpreta como razonamiento activo."""
+    return reasoning_effort not in (None, "none")
+
+
 def _llm_for(cfg: dict, stage: str = "", recorder=None):  # noqa: ANN001
     """`get_llm()` con el `model` de la config, PERO solo como argumento posicional cuando hay
     uno de verdad (override, o default de etapa como `prescore_model`/`mid_model`) — igual que
@@ -433,7 +441,17 @@ def _llm_for(cfg: dict, stage: str = "", recorder=None):  # noqa: ANN001
     pasaban `model` en absoluto, cayendo al default interno de `get_llm()`) pasarían a llamarlo
     siempre con un positional (aunque fuera `None`), cambiando la ARIDAD de la llamada — de lo
     que dependen los fakes de test que distinguen la etapa mirando `*args` (ver
-    `test_cadence.py::test_profundo_no_parseable_...`)."""
+    `test_cadence.py::test_profundo_no_parseable_...`).
+
+    Enruta a Qwen en CUALQUIER etapa cuando el modelo elegido (modal de simulación) es
+    `settings.qwen_model` — antes solo el prescore sabía hacer esto (ver `_prescore_llm`); sin
+    esto, pedir Qwen en macro/mid/deep/constructor mandaba el string "qwen3.7-flash" como
+    `model` al proveedor DeepSeek (llamada real, 400 de la API) en vez de usar el proveedor
+    correcto — inconsistencia real del modal detectada 28-ago."""
+    if cfg["model"] == settings.qwen_model and settings.dashscope_api_key:
+        return get_llm(cfg["model"], reasoning_effort=cfg["reasoning_effort"], stage=stage,
+                       recorder=recorder, provider="qwen",
+                       enable_thinking=_quiere_reasoning_qwen(cfg["reasoning_effort"]))
     if cfg["model"]:
         return get_llm(cfg["model"], reasoning_effort=cfg["reasoning_effort"],
                        stage=stage, recorder=recorder)
@@ -441,15 +459,13 @@ def _llm_for(cfg: dict, stage: str = "", recorder=None):  # noqa: ANN001
 
 
 def _prescore_llm(cfg: dict, tiene_override: bool, recorder=None):  # noqa: ANN001
-    """Como `_llm_for`, pero SOLO para el prescore: sin override manda `prescore_provider`; con
-    override (modal), el modelo que eligió el usuario decide Qwen o DeepSeek (ver `config.py`)."""
-    quiere_qwen = (
-        cfg["model"] == settings.qwen_model if tiene_override
-        else settings.prescore_provider == "qwen"
-    )
-    if quiere_qwen and settings.dashscope_api_key:
-        return get_llm(cfg["model"], reasoning_effort=cfg["reasoning_effort"], stage="prescore",
-                       recorder=recorder, provider="qwen")
+    """Como `_llm_for`, pero el prescore además tiene un default de PRODUCCIÓN a Qwen
+    (`settings.prescore_provider`) cuando no hay override del modal — el resto de etapas no
+    tienen ese concepto, van a DeepSeek salvo que el modal pida Qwen explícitamente."""
+    if not tiene_override and settings.prescore_provider == "qwen" and settings.dashscope_api_key:
+        return get_llm(settings.qwen_model, reasoning_effort=cfg["reasoning_effort"],
+                       stage="prescore", recorder=recorder, provider="qwen",
+                       enable_thinking=_quiere_reasoning_qwen(cfg["reasoning_effort"]))
     return _llm_for(cfg, "prescore", recorder)
 
 
@@ -898,8 +914,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     instr_prices = instruments_mod.prices()        # {} si el allowlist UCITS está vacío
     price_map.update(instr_prices)
     mcap_map = {t: (data_by_t[t].market_cap or 0.0) for t in deep}
-    # score_map: profundo para finalistas, pre-score para resto (watchlist/display), ambos 2 decimales.
-    score_map = {p.ticker: (deep[p.ticker].score if p.ticker in deep else round(p.score, 2))
+    # score_map: profundo para finalistas, pre-score para resto (watchlist/display), ambos enteros.
+    score_map = {p.ticker: (deep[p.ticker].score if p.ticker in deep else round(p.score))
                  for p, _d in prescored}
     target_map = {t: r.target_price for t, r in deep.items()}
 
