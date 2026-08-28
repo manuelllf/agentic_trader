@@ -16,7 +16,7 @@ import {
 import type { ExplorerContar, ExplorerFiltros, ExplorerOpciones, ExplorerTickerRow } from "@/lib/types";
 import { fmtNum } from "@/lib/scan";
 import { InfoTip } from "./InfoTip";
-import { NUMS, T } from "./tokens";
+import { NUM_INPUT, NUMS, T } from "./tokens";
 
 const PAGE_SIZE = 25;
 const DEBOUNCE_MS = 400;
@@ -76,12 +76,12 @@ function RangoNumerico({ label, min, max, onMin, onMax, prefijo = "" }: {
         {prefijo && <span className="text-[11px]" style={{ color: T.muted }}>{prefijo}</span>}
         <input type="number" inputMode="decimal" placeholder="mín" value={min}
                onChange={(e) => onMin(e.target.value)}
-               className={`w-full min-w-0 rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS}`}
+               className={`w-full min-w-0 rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS} ${NUM_INPUT}`}
                style={{ borderColor: T.ring, color: T.ink }} />
         <span style={{ color: T.muted }}>–</span>
         <input type="number" inputMode="decimal" placeholder="máx" value={max}
                onChange={(e) => onMax(e.target.value)}
-               className={`w-full min-w-0 rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS}`}
+               className={`w-full min-w-0 rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS} ${NUM_INPUT}`}
                style={{ borderColor: T.ring, color: T.ink }} />
       </span>
     </label>
@@ -268,7 +268,7 @@ export function Explorador() {
           </span>
           <input type="number" inputMode="decimal" min={0} max={100} placeholder="ej. 10"
                  value={cercaMax} onChange={(e) => setCercaMax(e.target.value)}
-                 className={`rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS}`}
+                 className={`rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS} ${NUM_INPUT}`}
                  style={{ borderColor: T.ring, color: T.ink }} />
         </label>
       </div>

@@ -16,7 +16,7 @@ import {
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
 import { InfoTip } from "./InfoTip";
-import { T } from "./tokens";
+import { NUM_INPUT, T } from "./tokens";
 
 // Link directo del CSV: para bajarlo a mano, revisarlo y subirlo si la red del propio servidor
 // falla a mitad de descarga (visto en vivo el 25-ago-2026).
@@ -331,9 +331,9 @@ export function FotoGlobalPicker() {
       <div className="flex flex-wrap items-center gap-3 border-t pt-2.5" style={{ borderColor: T.grid }}>
         <label className="flex items-center gap-1.5 text-[11px]" style={{ color: T.ink2 }}>
           Límite (obligatorio)
-          <input type="number" min={1} max={opciones.total} value={limite}
+          <input type="number" inputMode="numeric" min={1} max={opciones.total} value={limite}
                  onChange={(e) => setLimite(Math.max(1, Number(e.target.value) || 1))}
-                 className="w-20 rounded border bg-transparent px-1.5 py-0.5 text-[11px]"
+                 className={`w-20 rounded border bg-transparent px-1.5 py-0.5 text-[11px] ${NUM_INPUT}`}
                  style={{ borderColor: T.ring, color: T.ink }} />
         </label>
         <span className="text-[11px]" style={{ color: T.ink2 }}>

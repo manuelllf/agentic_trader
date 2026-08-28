@@ -23,4 +23,11 @@ export const SERIES = ["#3987e5", "#199e70", "#c98500", "#9085e9", "#d55181"];
 
 export const NUMS = "tabular-nums";
 
+// `<input type="number">` trae spinner nativo (blanco, fuera de tema) en Chrome/Safari — mismo
+// problema que ya se documentó y resolvió a mano en ScanConfigModal (`.cfg-num`), aquí como
+// clases Tailwind reutilizables para no repetir el `<style jsx global>` en cada sitio nuevo.
+export const NUM_INPUT =
+  "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none " +
+  "[&::-webkit-inner-spin-button]:appearance-none";
+
 export const isBuy = (a: TradeAction) => a === "comprar" || a === "ampliar";
