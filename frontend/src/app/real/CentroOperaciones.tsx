@@ -8,16 +8,27 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ApiError, getEstadoDatos, recheck, redeep, runDemo, snapshotUniverse, startFoto, syncAnalytics,
-  syncFx, fetchScanProgress, type EstadoDatos, type ScanProgress, type ScanReport,
+  ApiError, getConfig, getEstadoDatos, recheck, redeep, runDemo, snapshotUniverse, startFoto,
+  syncAnalytics, syncFx, fetchScanProgress, type EstadoDatos, type ScanProgress, type ScanReport,
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
-import type { DemoRunOverrides } from "@/lib/types";
+import type { AppConfig, DemoRunOverrides } from "@/lib/types";
 import { FotoGlobalPicker, UniversoGlobalSync } from "./FotoGlobalPicker";
 import { InfoTip } from "./InfoTip";
 import { ScanConfigModal } from "./ScanConfigModal";
 import { NUMS, T } from "./tokens";
 import { Checkbox } from "./ui";
+
+// Mismas 5 etapas y orden que ScanConfigModal.STAGES -- solo para pintar el resumen "qué se va a
+// mandar", nunca para decidir nada (el override real vive en `overrides`, el default en `/config`).
+// Nombre distinto de `ETAPAS` (más abajo, las del progreso en vivo): representan cosas distintas.
+const ETAPAS_LLM: { key: keyof NonNullable<AppConfig["llm_defaults"]>; label: string }[] = [
+  { key: "macro", label: "Macro" },
+  { key: "prescore", label: "Prescore" },
+  { key: "mid", label: "Capa media" },
+  { key: "deep", label: "Profundo" },
+  { key: "constructor", label: "Constructor" },
+];
 
 type Key = "obs" | "redeep" | "recomp" | "real" | "foto" | "fundam" | "fx" | "anal";
 type ModoUniverso = "nasdaq" | "global_topcap";
@@ -158,6 +169,10 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
   const [fundFuente, setFundFuente] = useState<Fuente>("nasdaq");
   const [overrides, setOverrides] = useState<DemoRunOverrides | null>(null);
   const [cfgOpen, setCfgOpen] = useState(false);
+  // Defaults REALES de producción (mismo endpoint que arranca el modal, ver ScanConfigModal) --
+  // el resumen de "qué se va a mandar" sale de aquí + `overrides`, nunca de un valor fijo en el
+  // frontend: si `config.py` cambia un default mañana, este texto lo refleja solo.
+  const [llmDefaults, setLlmDefaults] = useState<AppConfig["llm_defaults"] | null>(null);
   // `null` = cargando, `false` = no se pudo leer. Distinguirlos importa: un chip clavado en "…"
   // parece que sigue cargando cuando en realidad el endpoint está devolviendo error.
   const [estado, setEstado] = useState<EstadoDatos | null | false>(null);
@@ -171,6 +186,9 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
     getEstadoDatos().then(setEstado).catch(() => setEstado(false));
   }, []);
   useEffect(() => { refrescarEstado(); }, [refrescarEstado]);
+  useEffect(() => {
+    getConfig().then((c) => c.llm_defaults && setLlmDefaults(c.llm_defaults)).catch(() => {});
+  }, []);
 
   const activo = escaneando || fotoPropia;
 
@@ -362,11 +380,29 @@ export function CentroOperaciones({ report, escaneando, onScanStarted, onReload,
                   </div>
                 )}
                 {a.cfg && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                  <div className="flex flex-wrap items-start justify-between gap-2 py-1.5">
                     <span className="text-[11px]" style={{ color: T.ink2 }}>
                       Modelo por etapa
-                      <span className="block text-[9.5px]" style={{ color: T.muted }}>
-                        {overrides ? "configuración propia aplicada" : "los valores de producción"}
+                      {/* Lo que se va a MANDAR de verdad: override aplicado si lo hay, si no el
+                          default real de `/config` -- nunca un valor fijo aquí en el frontend, así
+                          si cambia `config.py` esto lo refleja solo. Antes de ejecutar nada, para
+                          no lanzar un escaneo de pago con la config equivocada sin darse cuenta
+                          (ver el aviso de "clic fuera pierde la config", 28-ago). */}
+                      <span className="mt-0.5 grid gap-x-3 gap-y-0.5 text-[9.5px]"
+                            style={{ color: T.muted, gridTemplateColumns: "auto auto auto" }}>
+                        {ETAPAS_LLM.map(({ key, label }) => {
+                          const o = overrides?.[key];
+                          const d = llmDefaults?.[key];
+                          const modelo = o?.model ?? d?.model ?? "…";
+                          const reasoning = o?.reasoning_effort ?? d?.reasoning_effort ?? "…";
+                          return (
+                            <span key={key} className="contents">
+                              <span>{label}:</span>
+                              <span className={NUMS} style={{ color: T.ink2 }}>{modelo}</span>
+                              <span>{reasoning}</span>
+                            </span>
+                          );
+                        })}
                       </span>
                     </span>
                     <button onClick={() => setCfgOpen(true)}

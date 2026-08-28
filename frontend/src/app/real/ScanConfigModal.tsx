@@ -113,8 +113,11 @@ export function ScanConfigModal({ onClose, onApply, applied }: {
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
-         onClick={onClose}>
+    // Sin onClick aquí a propósito (28-ago): un clic fuera del cuadro cerraba el modal sin
+    // aplicar nada, en SILENCIO — perdiendo config real (Qwen en todas las etapas) sin ningún
+    // aviso. Cerrar sin aplicar sigue disponible, pero solo por acción explícita (Cancelar, X,
+    // Escape), nunca por un clic que caiga fuera del cuadro sin querer.
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm">
       {/* Native select/input ignore theme (OS arrows/spinners are usually white); custom styled here. */}
       {/* jsx global: scopes to child components StageRow/NumberStepper via .cfg-* classes. */}
       <style jsx global>{`

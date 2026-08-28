@@ -361,8 +361,10 @@ def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, final
     """Traza legible del embudo en los logs (Railway/consola): permite ver de un vistazo que el
     corte ya no colapsa en un sector, y si algo va raro saber en qué paso. Best-effort."""
     try:
-        def top(counter: Counter, k: int = 6) -> str:
-            return ", ".join(f"{s}:{n}" for s, n in counter.most_common(k)) or "n/d"
+        def top(counter: Counter) -> str:
+            """TODOS los sectores del counter, no un top-N -- una lista recortada aquí se lee
+            como si el resto se hubiera descartado del embudo, cuando solo faltaba en el log."""
+            return ", ".join(f"{s}:{n}" for s, n in counter.most_common()) or "n/d"
 
         fin_sectors = Counter(_sector(data_by_t, t) for t in finalists)
         logger.info("── EMBUDO (%s) ──────────────────────────────", cadence)
