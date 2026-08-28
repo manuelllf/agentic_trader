@@ -12,21 +12,22 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 ## Cómo funciona
 
 Un escaneo programado recorre **~3.000 acciones cotizadas en EE. UU.** (ADRs incluidos) y las
-puntúa en dos pasos: un cribado rápido y barato sobre todo el universo, y un análisis profundo
-(informe + score + precio objetivo) sobre hasta 70 finalistas. La selección final es
-**determinista y vive en el código** —top-N por score, desempate por capitalización—; el LLM
+puntúa en tres pasos: un cribado rápido y barato sobre todo el universo, una segunda opinión
+sobre los mejores de cada sector, y un análisis profundo (informe + score) sobre hasta 70
+finalistas. La selección final es
+**determinista y vive en el código** (top-N por score, desempate por capitalización); el LLM
 solo reparte los pesos entre los ya seleccionados. Todo el dinero (tamaños, caja, P&L) lo
-calcula el código con aritmética exacta en `Decimal` — nunca el LLM.
+calcula el código con aritmética exacta en `Decimal`, nunca el LLM.
 
-El escaneo semanal es un **observatorio**: refresca ranking y memoria sin tocar ningún libro.
-La **decisión** de cartera es mensual, porque el análisis razona a un mes vista y rebalancear
-cada semana sería operar su propio ruido.
+La **decisión** de cartera es mensual (día 1), porque el análisis razona a un mes vista y
+rebalancear más a menudo sería operar su propio ruido. Un botón de simulación en Sala Real
+corre el mismo circuito completo sin tocar ningún libro, para observar sin decidir.
 
 Dos modos, con libros de capital separados:
 
-- **Sala sombra** — cartera simulada de seguimiento; mide el método frente al S&P 500 sin
+- **Sala sombra**: cartera simulada de seguimiento; mide el método frente al S&P 500 sin
   dinero real, neto de comisiones simuladas.
-- **Sala real** — conectada a Interactive Brokers. El agente *propone*; el usuario decide
+- **Sala real**: conectada a Interactive Brokers. El agente *propone*; el usuario decide
   (Sí / No) cada orden. Órdenes a límite y, por defecto, en modo simulación.
 
 ## Decisiones de diseño
@@ -45,7 +46,7 @@ Las que más forma le dan al sistema:
 - **Elegir y ponderar son pasos distintos.** Que el modelo hiciera las dos cosas hacía
   imposible saber si un acierto venía del análisis o del reparto. Ahora la selección es
   aritmética reproducible y el criterio del LLM queda confinado al peso.
-- **Cada escaneo deja traza — y la traza se lee.** Una tabla de auditoría guarda por qué cada
+- **Cada escaneo deja traza, y la traza se lee.** Una tabla de auditoría guarda por qué cada
   nombre llegó hasta donde llegó y a qué precio, con 90 días de retención, y la web la
   convierte en respuesta: cuánto rindió después cada grupo (cartera, elegidos sin fondear,
   descartados) frente al S&P 500, como agregados sin nombres. Es evaluación offline y
@@ -53,7 +54,7 @@ Las que más forma le dan al sistema:
 - **La simulación paga comisiones.** El libro simulado descuenta la comisión de cada compra y
   la incorpora al coste medio, igual que hace el bróker. Sin eso, la rentabilidad simulada
   está inflada y cualquier comparación entre operar más o menos a menudo sale sesgada a favor
-  de operar más — que es justo el sesgo que un simulador no se puede permitir.
+  de operar más: justo el sesgo que un simulador no se puede permitir.
 - **La API tiene dos caras.** El mismo endpoint responde distinto con sesión y sin ella, según
   una regla única: *cómo se comporta el sistema es público; qué nombres elige, no*. Cuántas
   acciones sobreviven a cada etapa, por sector, es comportamiento; un ticker con su score
@@ -117,3 +118,8 @@ npm run dev
 - Las órdenes son a límite, nunca a mercado.
 - El libro del agente y la cartera personal del usuario se contabilizan por separado: el
   agente solo puede vender lo que él mismo compró.
+
+## Licencia
+
+Código propietario, todos los derechos reservados (ver [LICENSE](LICENSE)). Ver el repositorio
+no otorga ningún permiso de uso, copia o distribución.
