@@ -407,7 +407,7 @@ def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, final
         logger.exception("No se pudo emitir la traza del embudo (no aborta el escaneo).")
 
 
-DEFAULT_TEMPERATURE = 1.0
+DEFAULT_TEMPERATURE = 0.3
 DEFAULT_TOP_P = 0.95
 # Se mandan en TODAS las etapas, tengan o no razonamiento activo — decisión explícita: aunque
 # api-docs.deepseek.com/guides/thinking_mode diga que el modo razonamiento ignora
