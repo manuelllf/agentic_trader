@@ -63,11 +63,11 @@ class Settings(BaseSettings):
     # 2,6× más — vuelve a "none", que da una nota limpia siempre.
     # "high" y no "max": es el default documentado de DeepSeek (el camino más probado) y la doc
     # no publica qué cambia internamente entre niveles — sin evidencia, el default gana.
-    macro_reasoning_effort: str | None = "high"
+    macro_reasoning_effort: str | None = "low"
     prescore_reasoning_effort: str | None = "none"
-    mid_reasoning_effort: str | None = "low"
-    deep_reasoning_effort: str | None = "high"
-    reasoning_effort: str | None = "high"   # constructor
+    mid_reasoning_effort: str | None = "none"
+    deep_reasoning_effort: str | None = "none"
+    reasoning_effort: str | None = "low"   # constructor
     # Temperatura PROPIA del prescore (el resto va a `DEFAULT_TEMPERATURE`=1.0). A 1.0 la nota de
     # UN MISMO ticker salía de un sorteo (sd≈6,5 puntos, A/B de 26 tickers x 2 tiradas: mediana de
     # diferencia entre tiradas IDÉNTICAS de 6,21 a 0,00 bajando a 0.0). Pero a 0.0 apareció un
