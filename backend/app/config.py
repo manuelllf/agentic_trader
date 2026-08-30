@@ -100,11 +100,11 @@ class Settings(BaseSettings):
     prescore_driver: bool = False           # A.5.4
     # Sectores grandes (Financial Services, Consumer Cyclical...) mandaban solo 10 a la capa
     # media: un #11-15 genuinamente bueno no tenía oportunidad de competir en el carril global.
-    mid_per_sector: int = 15        # cuántos por sector entran a la capa media
+    mid_per_sector: int = 16        # cuántos por sector entran a la capa media
     # Tope duro: sin él, el tamaño de la capa media lo decide un dato externo (sectores que trae
     # yfinance ese día) — protege de un fallo de datos. 300→200: el nuevo precio peak/off-peak
     # de DeepSeek dobló el coste de esta etapa, recorte de gasto puro (menos llamadas caras).
-    mid_candidates_cap: int = 200
+    mid_candidates_cap: int = 300
     # V4-Pro directo (no el mismo alias que el pre-score): recupera el juicio de un modelo
     # distinto en vez de un re-muestreo del mismo.
     mid_model: str = "deepseek-v4-pro"
@@ -117,7 +117,7 @@ class Settings(BaseSettings):
     deep_top_caps: int = 10                              # las N mayores caps SIEMPRE al profundo
     # Tope pensado para acotar gasto (coste lineal por llamada), no un límite de calidad. 100→70:
     # mismo recorte que `mid_candidates_cap`, por el nuevo precio peak/off-peak de DeepSeek.
-    deep_finalists_cap: int = 70                          # tope DURO de finalistas (coste V4-Pro)
+    deep_finalists_cap: int = 100                          # tope DURO de finalistas (coste V4-Pro)
     # Literal del paper (Exhibit 1: "Selection of top 10 companies based on the scores") —
     # fidelidad sobre ampliar el corte, aunque el código puro sea ciego a matices de frontera.
     select_count: int = 10                               # nombres al constructor (fiel al paper)
