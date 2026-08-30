@@ -158,16 +158,19 @@ _SYSTEM = (
     # mercado favorecer, que sigue prohibido tres líneas más abajo) y con el contrapeso que el
     # paper sí tiene y nosotros no teníamos: *comparar* con lo que espera el mercado. Pedir un
     # diferencial obliga a enunciar las dos cifras; pedir "tu opinión" a secas, no.
-    "For those forecasts give your own expectation - grounded in the data and events above, not "
-    "only what analysts and the market expect - and say where the two differ. "
+    "For those forecasts give your own expectation grounded in the data and events above — "
+    "not only what analysts and the market expect. Compare your forecasts with the market's "
+    "expectations. If they match, say they match. If a market/consensus figure is not in the "
+    "snapshot, headlines or events above, write 'unknown' — do not invent one. "
     # Literal del 2D ("I also want a table with your forecast for interest rates, inflation,
     # tariffs, and other economic events for the next month and quarter"): antes solo pedíamos
     # prosa cubriendo esos temas, sin la tabla explícita a los dos horizontes. Se pide como texto
     # dentro del mismo campo (no una clave JSON nueva) para no tocar `outlook_prompt_block` ni
     # el esquema que ya consumen ~3.000 prompts — solo cambia CUÁNTO detalle estructurado trae
     # el texto que ya viajaba.
-    "Include a compact forecast table for interest rates, inflation and tariffs, each with your "
-    "own 1-month AND 3-month forecast plus the market/consensus expectation for comparison. "
+    "Include a compact forecast table for interest rates, inflation and tariffs for the next "
+    "month AND quarter: your forecast, the market/consensus if present in the inputs "
+    "(otherwise 'unknown'), and a one-line comparison. "
     "Write about these conditions only: "
     "do NOT name sectors or industries, and do not say which parts of the market you would favour "
     "or avoid. Be brief. "
