@@ -140,45 +140,18 @@ def _snapshot_text() -> tuple[str, list[str], str]:
 
 
 _SYSTEM = (
-    "You are a macro strategist. From the market snapshot, recent market headlines, and recent "
-    "real-world economic & political events, write a concise 3-month forward outlook for US "
-    # `tariffs` es literal del Exhibit 2D, que pide una tabla de previsiones de "interest rates,
-    # inflation, tariffs, and other economic events". Se pedían los dos primeros y no el tercero.
-    "equities: your expectation for interest rates, inflation, tariffs, the key upcoming "
-    "economic/political events and their likely market impact, and risk appetite. "
-    # "Pay special attention to the next month" es literal del 2D y nos faltaba: TODO lo que
-    # decide el sistema es a un mes (la nota, el objetivo, el rebalanceo) y este era el único
-    # eslabón que miraba a tres sin distinguir el tramo que de verdad importa. Es un horizonte,
-    # no una inclinación.
-    "PAY SPECIAL ATTENTION TO THE NEXT MONTH: it is the horizon of every decision this outlook "
-    "feeds. "
-    # En su momento se quitó "Give your own view, not just what the market expects" por sesgo. Era
-    # paper —2D: "Not only what analysts and the market expect"— y quitarla entera fue pasarse.
-    # Vuelve con las dos correcciones que le faltaban: acotada al PRONÓSTICO (no a qué partes del
-    # mercado favorecer, que sigue prohibido tres líneas más abajo) y con el contrapeso que el
-    # paper sí tiene y nosotros no teníamos: *comparar* con lo que espera el mercado. Pedir un
-    # diferencial obliga a enunciar las dos cifras; pedir "tu opinión" a secas, no.
-    "For those forecasts give your own expectation grounded in the data and events above — "
-    "not only what analysts and the market expect. Compare your forecasts with the market's "
-    "expectations. If they match, say they match. If a market/consensus figure is not in the "
-    "snapshot, headlines or events above, write 'unknown' — do not invent one. "
-    # Literal del 2D ("I also want a table with your forecast for interest rates, inflation,
-    # tariffs, and other economic events for the next month and quarter"): antes solo pedíamos
-    # prosa cubriendo esos temas, sin la tabla explícita a los dos horizontes. Se pide como texto
-    # dentro del mismo campo (no una clave JSON nueva) para no tocar `outlook_prompt_block` ni
-    # el esquema que ya consumen ~3.000 prompts — solo cambia CUÁNTO detalle estructurado trae
-    # el texto que ya viajaba.
-    "Include a compact forecast table for interest rates, inflation and tariffs for the next "
-    "month AND quarter: your forecast, the market/consensus if present in the inputs "
-    "(otherwise 'unknown'), and a one-line comparison. "
-    "Write about these conditions only: "
-    "do NOT name sectors or industries, and do not say which parts of the market you would favour "
-    "or avoid. Be brief. "
-    # REGIMEN y favored/avoided_sectors ya no se piden: el primero lo calcula determinista
-    # get_macro_regime(); los segundos escapaban al outlook text llevando sesgo a ~3.000 scorings.
-    # Los DOS idiomas en una sola llamada (~200 tokens de salida de más, una vez por escaneo).
-    # El texto viaja a ~3.000 prompts que están en inglés: meter ahí un párrafo en español era la
-    # única costura del sistema. El inglés va al prompt; el español, a la web y a la traza.
+    "You are a macro strategist. Use ONLY the market snapshot, headlines and events "
+    "in the user message. Do not use outside knowledge. Do not invent officials, "
+    "titles, dates, percentages, rate paths, CPI prints, tariff rates or 'market consensus' "
+    "figures that are not explicitly written in those inputs. "
+    "Write a concise 3-month outlook for US equities with special attention to the next "
+    "month (the horizon of every decision this outlook feeds). "
+    "Cover: what the provided levels show (rates, USD, gold, oil, credit, indices, VIX), "
+    "the scheduled events listed, and the recent headlines/events listed. "
+    "If a number or a consensus is not in the inputs, say it is not in the inputs — "
+    "do not guess it. "
+    "Do NOT name sectors or industries, and do not say which parts of the market you "
+    "would favour or avoid. Be brief. "
     'Respond ONLY in JSON: {"outlook_en": "...", "outlook_es": "..."}. Same content in both: '
     "English for downstream prompts, Spanish for the human-facing report."
 )
@@ -233,8 +206,8 @@ def get_macro_outlook(llm: LLMProvider, db=None, temperature: float = 1.0,
             f"{wiki_events or 'n/d'}\n\n"
             f"Upcoming scheduled events (economic & political calendar):\n"
             f"{wiki_scheduled or 'n/d'}\n\n"
-            + "Write the 3-month forward outlook, taking these events into account, with special "
-              "attention to the next month."
+            + "Write the 3-month outlook using only the snapshot, headlines and events above. "
+              "Do not add a numeric forecast table."
         )
         raw = llm.chat(_SYSTEM, user, temperature=temperature, top_p=top_p)
         data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
