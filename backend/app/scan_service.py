@@ -68,6 +68,7 @@ from app.models import (
     ScanRunFinalist,
     ScanRunFinalistNews,
     ScanRunIssue,
+    ScanRunMacroHeadline,
     ScanRunSector,
     ScanRunTiming,
     Score,
@@ -549,7 +550,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     prescore_cfg = _stage_cfg(llm_overrides, "prescore", settings.prescore_model,
                               settings.prescore_reasoning_effort,
                               settings.prescore_temperature)
-    mid_cfg = _stage_cfg(llm_overrides, "mid", settings.mid_model, settings.mid_reasoning_effort)
+    mid_cfg = _stage_cfg(llm_overrides, "mid", settings.mid_model, settings.mid_reasoning_effort,
+                        settings.mid_temperature)
     constructor_cfg = _stage_cfg(llm_overrides, "constructor", None, settings.reasoning_effort)
 
     # Instancia PROPIA para el macro (antes compartía `deep_llm`): sin esto, su única llamada se
@@ -1247,9 +1249,15 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             cost_usd=coste["cost_usd"], cost_cache_hit_ratio=coste["cache_hit_ratio"],
             saldo_antes_usd=coste.get("saldo_antes_usd"),
             construction_cash_pct=construction.cash_pct, construction_summary=construction.summary,
+            macro_wiki_events=macro.get("wiki_events_text") or "",
+            macro_wiki_scheduled=macro.get("wiki_scheduled_text") or "",
         )
         db.add(run)
         db.flush()   # necesita el id para todas las filas hermanas de abajo
+        for fuente, titulares in (macro.get("macro_headlines") or {}).items():
+            for i, texto in enumerate(titulares or []):
+                db.add(ScanRunMacroHeadline(scan_run_id=run.id, fuente=fuente, posicion=i,
+                                            texto=texto))
         for sector in macro.get("favored_sectors") or []:
             db.add(ScanRunSector(scan_run_id=run.id, stance="favored", sector=sector))
         for sector in macro.get("avoided_sectors") or []:

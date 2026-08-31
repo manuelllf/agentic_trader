@@ -173,7 +173,7 @@ def _full_invest(weights: list[float], cap: float, total: float = 100.0) -> list
     """Reparte `total`% entre las posiciones respetando el tope `cap` por posición (water-filling).
 
     Usa `weights` como prioridades. Requiere len*cap >= total (garantizado por config:
-    min_positions × max_position_pct ≥ 100 — hoy 5 × 35).
+    min_positions × max_position_pct ≥ 100 — hoy 7 × 35).
     """
     n = len(weights)
     if n == 0:

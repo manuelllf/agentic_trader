@@ -185,10 +185,13 @@ def test_prescore_y_capa_media_hacen_la_misma_pregunta() -> None:
 
 
 def test_los_dos_jueces_piden_nota_entera_con_la_misma_redaccion() -> None:
-    """Whole number score, sin ejemplos; los decimales eran precisión de mentira (28-ago)."""
-    frase = "Give the score as a whole number, and do not let it always collapse to a multiple of five."
+    """Whole number score, sin ejemplos; los decimales eran precisión de mentira. El aviso de
+    "no colapses en múltiplos de 5" se quitó después -- se convirtió en ruido de formato que el
+    modelo resolvía al final en vez de dejar que el análisis decidiera (auditoría escaneo 54)."""
+    frase = "Give the score as a whole number."
     for texto in (SYSTEM, MID_SYSTEM):
         assert frase in texto
+    assert "multiple of five" not in SYSTEM.lower()
     for duro in ("never", "must not", "forbidden"):
         assert duro not in SYSTEM.lower()
     assert "decimal" not in SYSTEM.lower()
@@ -258,10 +261,13 @@ def test_el_macro_mira_al_proximo_mes_y_a_los_aranceles() -> None:
 
 
 def test_el_macro_da_su_prevision_pero_comparada_con_el_mercado() -> None:
-    """Model opinion on forecasts vs. market expectations (not sector favoring)."""
+    """Model opinion on forecasts vs. market expectations (not sector favoring). "Say where they
+    differ" pasó a "compare + if they match, say they match": obliga a enunciar las dos cifras
+    en vez de un diferencial suelto, y a no inventar la del mercado si no está en los datos."""
     bajo = macro_mod._SYSTEM.lower()
     assert "not only what analysts and the market expect" in bajo
-    assert "say where the two differ" in bajo
+    assert "compare your forecasts with the market" in bajo
+    assert "write 'unknown'" in bajo
     # Sigue sin poder hablar de sectores ni de qué favorecer: solo se acota el alcance de la
     # opinión propia.
     assert "do not name sectors" in bajo

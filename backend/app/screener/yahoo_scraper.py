@@ -181,7 +181,8 @@ def tasas_de_cambio(s: creq.Session, crumb: str, divisas: list[str]) -> dict[str
 
 
 def gather_scraper(s: creq.Session, crumb: str, ticker: str,
-                   query_symbol: str | None = None) -> tuple[NameData | None, str | None]:
+                   query_symbol: str | None = None, db=None,  # noqa: ANN001
+                   ) -> tuple[NameData | None, str | None]:
     """Equivalente de `fundamentals.gather()` por HTTP directo (motor primario). Mismo contrato
     EXACTO: `(datos, motivo)`, `motivo` solo puesto cuando `datos` es None.
 
@@ -261,7 +262,7 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str,
         sector=info.get("sector", "n/d"),
         industry=info.get("industry", "n/d"),
         price=fund_mod.numero_finito(price),
-        fundamentals_text=fund_mod._fundamentals_text(info),
+        fundamentals_text=fund_mod._fundamentals_text(info, db=db),
         technical_text=fund_mod._technical_text(info, hist),
         market_cap=fund_mod.numero_finito(mcap),
         news=news,

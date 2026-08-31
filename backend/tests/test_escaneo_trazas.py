@@ -262,6 +262,33 @@ def test_high_52w_se_persiste_en_cartera_y_propuesta(db, monkeypatch) -> None:
     assert prop_item.high_52w == 120.0
 
 
+def test_titulares_y_eventos_del_macro_se_persisten(db, monkeypatch) -> None:
+    """Antes solo vivían en la caché de `Meta` (blob sin scan_run_id, podado con el tiempo) --
+    ahora quedan colgados del `ScanRun` para poder comprobar qué vio el macro de verdad."""
+    from app.models import ScanRunMacroHeadline
+    from app.screener import macro as macro_mod
+
+    llm = FakeLLM(_FAKE_REPLY)
+    _stub_common(monkeypatch, llm, ["AAA"])
+    _gather_stub(monkeypatch)
+    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
+        "regime": "neutral", "vix": 15.0, "outlook": "estable",
+        "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
+        "macro_headlines": {"yfinance": ["Y1"], "gnews": ["G1", "G2"], "gdelt": []},
+        "wiki_events_text": "eventos de la semana", "wiki_scheduled_text": "calendario del año",
+    })
+
+    scan_service.run_scan_and_store(db, sample_size=5, decide=True)
+
+    run = db.query(ScanRun).order_by(ScanRun.id.desc()).first()
+    assert run.macro_wiki_events == "eventos de la semana"
+    assert run.macro_wiki_scheduled == "calendario del año"
+    titulares = db.query(ScanRunMacroHeadline).filter_by(scan_run_id=run.id).all()
+    assert {(t.fuente, t.texto) for t in titulares} == {
+        ("yfinance", "Y1"), ("gnews", "G1"), ("gnews", "G2"),
+    }
+
+
 # ---- fallo del LLM: reintento y el nombre no se pierde -------------------------
 
 def test_fallo_llm_se_reintenta_y_el_nombre_no_se_pierde(db, monkeypatch) -> None:

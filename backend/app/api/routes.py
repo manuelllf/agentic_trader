@@ -126,7 +126,7 @@ def config() -> dict:
                 "temperature": settings.prescore_temperature,
             },
             "mid": {"model": settings.mid_model, "reasoning_effort": settings.mid_reasoning_effort,
-                    "temperature": scan_service.DEFAULT_TEMPERATURE},
+                    "temperature": settings.mid_temperature},
             "deep": {"model": settings.llm_model, "reasoning_effort": settings.deep_reasoning_effort,
                      "temperature": scan_service.DEFAULT_TEMPERATURE},
             "constructor": {"model": settings.llm_model, "reasoning_effort": settings.reasoning_effort,

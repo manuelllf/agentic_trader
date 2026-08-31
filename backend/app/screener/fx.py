@@ -19,18 +19,26 @@ _VENTANA_RECALCULO_DIAS = 35
 
 
 def _divisas_activas(db) -> list[str]:  # noqa: ANN001
-    """Divisas distintas (no-USD) presentes en fotos recientes -- no un catálogo mundial."""
+    """Divisas distintas (no-USD) presentes en fotos recientes -- no un catálogo mundial.
+
+    Unión de `currency` (cotización, para `market_cap_usd`) y `financial_currency` (estados
+    financieros, para los 8 campos de `fundamentals._CAMPOS_MONEDA_FINANCIERA`) -- son divisas
+    DISTINTAS para extranjeras (TSM cotiza en USD, reporta en NTD) y hasta este arreglo solo se
+    sincronizaba la primera, así que nunca hubo tasa de NTD/JPY/KRW aunque se pidiera todos los
+    días."""
     from datetime import timedelta
 
     from app.models import FundamentalsSnapshot
 
     desde = datetime.now(UTC) - timedelta(days=_VENTANA_RECALCULO_DIAS)
-    filas = (db.query(FundamentalsSnapshot.currency).distinct()
-            .filter(FundamentalsSnapshot.captured_at >= desde,
-                   FundamentalsSnapshot.currency.isnot(None),
-                   FundamentalsSnapshot.currency != "USD")
-            .all())
-    return [c for (c,) in filas]
+    activas: set[str] = set()
+    for columna in (FundamentalsSnapshot.currency, FundamentalsSnapshot.financial_currency):
+        filas = (db.query(columna).distinct()
+                .filter(FundamentalsSnapshot.captured_at >= desde,
+                       columna.isnot(None), columna != "USD")
+                .all())
+        activas.update(c for (c,) in filas)
+    return sorted(activas)
 
 
 def sincronizar(db) -> dict:  # noqa: ANN001

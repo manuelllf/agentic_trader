@@ -68,18 +68,15 @@ class Settings(BaseSettings):
     mid_reasoning_effort: str | None = "none"
     deep_reasoning_effort: str | None = "low"
     reasoning_effort: str | None = "low"   # constructor
-    # Temperatura PROPIA del prescore (el resto va a `DEFAULT_TEMPERATURE`=1.0). A 1.0 la nota de
-    # UN MISMO ticker salía de un sorteo (sd≈6,5 puntos, A/B de 26 tickers x 2 tiradas: mediana de
-    # diferencia entre tiradas IDÉNTICAS de 6,21 a 0,00 bajando a 0.0). Pero a 0.0 apareció un
-    # problema DISTINTO, medido el 23-ago sobre el escaneo real completo (3001 nombres): el
-    # prescore colapsa — 339/3001 dieron EXACTO 71.38 (el ejemplo literal del prompt) y el top-5
-    # de valores se llevó el 79% del universo. No es que un ticker sea inconsistente consigo
-    # mismo; es que tickers DISTINTOS no se distinguen entre sí. 0.3 (probado en 500 reales) sube
-    # la cardinalidad de 25 a 38 valores distintos y baja el top-5 de 67% a 52% sin tocar el
-    # reasoning (que si sube el coste). Sigue sin resolver el fondo del todo (1.0 discrimina mucho
-    # mejor, 144/500 valores distintos, pero eso reintroduce el ruido intra-ticker que 0.0 evitaba)
-    # — 0.3 es el punto intermedio elegido mientras no se investigue más a fondo.
-    prescore_temperature: float = 0.3
+    # Temperatura PROPIA del prescore (el resto va a `DEFAULT_TEMPERATURE`=0.3, ver
+    # scan_service.py). A 1.0 la nota de un mismo ticker salía de un sorteo, pero también
+    # discriminaba mucho mejor entre tickers distintos (144/500 valores únicos vs 38 a 0.3) — el
+    # colapso de granularidad pesaba más que el ruido intra-ticker. Vuelve a 1.0 para la decisión
+    # de mañana, en prueba activa en el observatorio — sin medir el resultado completo todavía.
+    prescore_temperature: float = 1.0
+    # Temperatura PROPIA de la capa media, mismo motivo que el prescore. En prueba activa junto
+    # con `prescore_temperature`, sin medir el resultado completo todavía.
+    mid_temperature: float = 1.0
     # Alias ROLLING de la API directa de DeepSeek, sin snapshot fechado invocable: se pierde la
     # garantía de que el modelo no cambie solo entre escaneos (no hay forma de pinnear).
     llm_model: str = "deepseek-v4-pro"      # profundo + macro + constructor
@@ -105,9 +102,9 @@ class Settings(BaseSettings):
     # yfinance ese día) — protege de un fallo de datos. 300→200: el nuevo precio peak/off-peak
     # de DeepSeek dobló el coste de esta etapa, recorte de gasto puro (menos llamadas caras).
     mid_candidates_cap: int = 300
-    # V4-Pro directo (no el mismo alias que el pre-score): recupera el juicio de un modelo
-    # distinto en vez de un re-muestreo del mismo.
-    mid_model: str = "deepseek-v4-pro"
+    # Flash para la decisión de mañana (antes Pro) -- en prueba activa en el observatorio junto
+    # con `mid_temperature`/`mid_reasoning_effort`, sin medir el resultado completo todavía.
+    mid_model: str = "deepseek-v4-flash"
     # Corte de finalistas al profundo: top-`deep_per_sector` (amplitud) ∪ posiciones ∪ seguimiento
     # personal ∪ watchlist ∪ mayores caps ∪ el resto por score, todo truncado a `deep_finalists_cap`.
     # El carril sectorial vale 2 sin capa media (única garantía de ver cada sector); 1 con ella.
@@ -118,9 +115,10 @@ class Settings(BaseSettings):
     # Tope pensado para acotar gasto (coste lineal por llamada), no un límite de calidad. 100→70:
     # mismo recorte que `mid_candidates_cap`, por el nuevo precio peak/off-peak de DeepSeek.
     deep_finalists_cap: int = 100                          # tope DURO de finalistas (coste V4-Pro)
-    # Literal del paper (Exhibit 1: "Selection of top 10 companies based on the scores") —
-    # fidelidad sobre ampliar el corte, aunque el código puro sea ciego a matices de frontera.
-    select_count: int = 10                               # nombres al constructor (fiel al paper)
+    # Paper (Exhibit 1): "Selection of top 10 companies based on the scores" -- 10→15 al subir
+    # la cartera de 5 a 7 posiciones: con 10 candidatos para 7 huecos, el constructor casi no
+    # elige nada de verdad.
+    select_count: int = 15                               # nombres al constructor
     # Llegan SIEMPRE al profundo para ver la opinión del sistema sobre la cartera PERSONAL
     # (IBKR) de Manuel; compiten en igualdad, sin veto — nunca implican nada sobre el agente.
     always_deep_tickers: list[str] = ["MSFT", "HUMA", "ASTS", "BTC-USD"]
@@ -128,10 +126,10 @@ class Settings(BaseSettings):
     # llamada/ticker, fiel al paper — proveedor propio + concurrencia + caché lo hacen asumible.
     prescore_batch_size: int = 20
 
-    # Guardarraíles del sleeve (LOCKED). Cartera de TAMAÑO FIJO (paper 15 assets → aquí 5).
+    # Guardarraíles del sleeve. Cartera de TAMAÑO FIJO (paper 15 assets → aquí 7, subido de 5).
     max_position_pct: float = 35.0  # % máximo por posición
-    max_positions: int = 5          # nº de posiciones de la cartera (FIJO: min = max = 5)
-    min_positions: int = 5          # = max_positions → cartera de EXACTAMENTE 5 nombres
+    max_positions: int = 7          # nº de posiciones de la cartera (FIJO: min = max = 7)
+    min_positions: int = 7          # = max_positions → cartera de EXACTAMENTE 7 nombres
     fully_invested: bool = True     # True = sin caja: los pesos se normalizan a 100% (método paper)
 
     # Universo + muestreo del escaneo.

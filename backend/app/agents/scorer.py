@@ -19,12 +19,16 @@ logger = logging.getLogger(__name__)
 
 # Núcleo compartido por prescore, capa media y profundo (Exhibit 1 del paper). Entero en vez de
 # decimales: el reasoning real mostraba al modelo dudando entre dos números — precisión de mentira.
+# El aviso de "no colapses en múltiplos de 5" se quitó (auditoría del escaneo 54): el modelo lo
+# trataba como un problema de formato a resolver al final ("avoid 65, use 67"), gastando
+# reasoning en eso en vez de en el análisis -- y el colapso en sí ya es un coste asumido, no algo
+# que este aviso estuviera evitando de verdad.
 _SCORE_CORE = (
     "Use the financial data and news to assign a score (from 1 to 100) reflecting the "
     "potential investment value of the company for the next month. "
     "A price move is not by itself a verdict in either direction: a fall does not make a "
     "business weak, nor does a rally make it strong. "
-    "Give the score as a whole number, and do not let it always collapse to a multiple of five. "
+    "Give the score as a whole number. "
 )
 
 SYSTEM = (

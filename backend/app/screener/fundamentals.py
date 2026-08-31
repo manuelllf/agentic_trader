@@ -111,7 +111,7 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
     # nunca se reimplementa el formateo, así que el texto reconstruido es idéntico al original.
     # `currentPrice` no es uno de los ~85 (viaja aparte, ya materializado en `row.price`) — se
     # inyecta solo para esta llamada, no contamina `fundamentales_crudos` del resultado.
-    texto = _fundamentals_text({**metricas_crudas, "currentPrice": row.price})
+    texto = _fundamentals_text({**metricas_crudas, "currentPrice": row.price}, db=db)
     return NameData(
         ticker=row.ticker, sector=row.sector or "n/d", industry=row.industry or "n/d",
         price=row.price, fundamentals_text=texto,
@@ -124,19 +124,60 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
     )
 
 
-def _market_cap_usd(db, market_cap: float | None, currency: str | None) -> float | None:  # noqa: ANN001
-    """`market_cap` a USD con la tasa MÁS RECIENTE de `FxRate` -- USD/sin divisa es la unidad
-    (tasa 1.0), el resto sin tasa todavía se deja en `None` (no bloquea el gather)."""
+def _a_usd(db, valor: float | None, moneda: str | None) -> float | None:  # noqa: ANN001
+    """Cualquier cifra a USD con la tasa MÁS RECIENTE de `FxRate` -- USD/sin divisa es la unidad
+    (tasa 1.0), el resto sin tasa todavía se deja en `None` (no bloquea el gather ni el prompt)."""
     from app.models import FxRate
 
-    if market_cap is None:
+    if valor is None:
         return None
-    if not currency or currency == "USD":
-        return market_cap
+    if not moneda or moneda == "USD":
+        return valor
     fila = (db.query(FxRate.usd_per_unit)
-           .filter(FxRate.currency_code == currency)
+           .filter(FxRate.currency_code == moneda)
            .order_by(FxRate.synced_at.desc()).first())
-    return market_cap * fila[0] if fila else None
+    return valor * fila[0] if fila else None
+
+
+def _market_cap_usd(db, market_cap: float | None, currency: str | None) -> float | None:  # noqa: ANN001
+    return _a_usd(db, market_cap, currency)
+
+
+# Los 8 campos de ESTADOS FINANCIEROS del Exhibit 2B que yfinance da en `financialCurrency`
+# (la divisa de los informes de la empresa), NUNCA en `currency` (la de cotización) -- para
+# extranjeras son divisas distintas. `marketCap` no está aquí: ese sí viene en `currency`, ya
+# correcto. Bug real encontrado auditando el escaneo 54: TSM enseñaba "Revenue: $4.44T" con el
+# "$" de `_fmt` puesto a ciegas, cuando en realidad son 4,44 billones de NTD (~$140B) -- el
+# modelo veía ratios "imposibles" porque de verdad lo eran, mezclando dos divisas como si fueran
+# la misma.
+_CAMPOS_MONEDA_FINANCIERA = (
+    "enterpriseValue", "totalRevenue", "ebitda", "totalCash", "totalDebt",
+    "freeCashflow", "operatingCashflow", "netIncomeToCommon",
+)
+
+
+def _convertir_financieros_a_usd(info: dict, db) -> dict:  # noqa: ANN001
+    """Copia de `info` con los 8 campos de `_CAMPOS_MONEDA_FINANCIERA` convertidos a USD desde
+    `financialCurrency`. Sin `db` (scripts sueltos de reconstrucción, sin sesión real) o sin
+    divisa financiera declarada, se devuelve `info` tal cual -- mismo comportamiento que antes
+    de este arreglo, nunca peor. Si `financialCurrency` es extranjera pero `FxRate` todavía no
+    tiene su tasa sincronizada (hueco real solo el primer día tras desplegar esto, ver
+    `fx._divisas_activas`), el campo se OMITE en vez de mostrarse con el "$" equivocado -- mismo
+    criterio que ya usa `_fmt` para cualquier dato ausente: mentir es peor que no decir nada."""
+    moneda = info.get("financialCurrency")
+    if db is None or not moneda or moneda == "USD":
+        return info
+    out = dict(info)
+    for campo in _CAMPOS_MONEDA_FINANCIERA:
+        v = numero_finito(out.get(campo))
+        if v is None:
+            continue
+        usd = _a_usd(db, v, moneda)
+        if usd is None:
+            out.pop(campo, None)
+        else:
+            out[campo] = usd
+    return out
 
 
 def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False) -> None:  # noqa: ANN001
@@ -162,6 +203,7 @@ def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False) -> N
             high_52w=data.high_52w, low_52w=data.low_52w,
             technical_text=data.technical_text, earnings_text=data.earnings_text,
             es_dataset=es_dataset, currency=data.currency,
+            financial_currency=data.fundamentales_crudos.get("financialCurrency"),
             market_cap_usd=_market_cap_usd(db, data.market_cap, data.currency),
         )
         db.add(fila)
@@ -438,8 +480,11 @@ def _fmt(value: object, kind: str) -> str | None:
     return f"{v:.2f}"
 
 
-def _fundamentals_text(info: dict) -> str:
-    """Omite campos sin dato (no escribe "n/d"): "none" engaña; ausente no."""
+def _fundamentals_text(info: dict, db=None) -> str:  # noqa: ANN001
+    """Omite campos sin dato (no escribe "n/d"): "none" engaña; ausente no. `db`: convierte los
+    campos de estados financieros a USD si vienen en otra divisa (ver `_convertir_financieros_a_usd`)
+    -- opcional, para no romper los scripts de reconstrucción que llaman esto sin sesión real."""
+    info = _convertir_financieros_a_usd(info, db)
     lines = []
     for key, label, kind in _FUNDAMENTAL_FIELDS:
         s = _fmt(info.get(key), kind)
@@ -545,15 +590,15 @@ _429_BACKOFF_S = (3.0, 8.0)
 
 
 def _gather_scraper_con_backoff(s, crumb: str, ticker: str,  # noqa: ANN001
-                                query_symbol: str | None = None):
+                                query_symbol: str | None = None, db=None):
     for espera in _429_BACKOFF_S:
         try:
-            return yahoo_scraper.gather_scraper(s, crumb, ticker, query_symbol=query_symbol)
+            return yahoo_scraper.gather_scraper(s, crumb, ticker, query_symbol=query_symbol, db=db)
         except yahoo_scraper.TransportError as exc:
             if "HTTP 429" not in str(exc):
                 raise
             time.sleep(espera)
-    return yahoo_scraper.gather_scraper(s, crumb, ticker, query_symbol=query_symbol)
+    return yahoo_scraper.gather_scraper(s, crumb, ticker, query_symbol=query_symbol, db=db)
 
 
 def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN001
@@ -577,7 +622,8 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
     if scraper is not None:
         s, crumb = scraper
         try:
-            data, motivo = _gather_scraper_con_backoff(s, crumb, ticker, query_symbol=yahoo_symbol)
+            data, motivo = _gather_scraper_con_backoff(s, crumb, ticker, query_symbol=yahoo_symbol,
+                                                       db=db)
         except yahoo_scraper.TransportError as exc:
             if _GATHER_PACE_S:
                 time.sleep(_GATHER_PACE_S)
@@ -627,7 +673,7 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
             sector=info.get("sector", "n/d"),
             industry=info.get("industry", "n/d"),
             price=numero_finito(price),
-            fundamentals_text=_fundamentals_text(info),
+            fundamentals_text=_fundamentals_text(info, db=db),
             technical_text=_technical_text(info, hist),
             market_cap=numero_finito(mcap),
             news=_news(yt),

@@ -143,13 +143,19 @@ _SYSTEM = (
     "You are a macro strategist. Use ONLY the market snapshot, headlines and events "
     "in the user message. Do not use outside knowledge. Do not invent officials, "
     "titles, dates, percentages, rate paths, CPI prints, tariff rates or 'market consensus' "
-    "figures that are not explicitly written in those inputs. "
-    "Write a concise 3-month outlook for US equities with special attention to the next "
-    "month (the horizon of every decision this outlook feeds). "
-    "Cover: what the provided levels show (rates, USD, gold, oil, credit, indices, VIX), "
-    "the scheduled events listed, and the recent headlines/events listed. "
-    "If a number or a consensus is not in the inputs, say it is not in the inputs — "
-    "do not guess it. "
+    "figures that are not explicitly written in those inputs — if a market/consensus figure "
+    "is not in the inputs, write 'unknown', do not guess it. "
+    "Write a concise 3-month forward outlook for US equities: your expectation for interest "
+    "rates, inflation, tariffs, the key upcoming economic/political events and their likely "
+    "market impact, and risk appetite. "
+    "PAY SPECIAL ATTENTION TO THE NEXT MONTH: it is the horizon of every decision this outlook "
+    "feeds. "
+    "For those forecasts give your own expectation grounded in the data and events above — "
+    "not only what analysts and the market expect. Compare your forecasts with the market's "
+    "expectations; if they match, say they match. "
+    "Include a compact forecast table for interest rates, inflation and tariffs for the next "
+    "month AND quarter: your forecast, the market/consensus if present in the inputs "
+    "(otherwise 'unknown'), and a one-line comparison. "
     "Do NOT name sectors or industries, and do not say which parts of the market you "
     "would favour or avoid. Be brief. "
     'Respond ONLY in JSON: {"outlook_en": "...", "outlook_es": "..."}. Same content in both: '
@@ -196,6 +202,12 @@ def get_macro_outlook(llm: LLMProvider, db=None, temperature: float = 1.0,
         # pero debe VERSE (estuvo semanas mudo).
         "events": {"wiki": len(wiki_events), "sched": len(wiki_scheduled), "gdelt": len(gdelt),
                    "gnews": len(gnews)},
+        # Crudo para persistir (ver `_guardar_macro_headlines` en scan_service.py) -- antes solo
+        # vivían en la caché de `Meta` (un blob JSON sin scan_run_id, podado con el tiempo), sin
+        # forma de comprobar después qué vio realmente el macro de un escaneo concreto.
+        "macro_headlines": {"yfinance": headlines, "gnews": gnews, "gdelt": gdelt},
+        "wiki_events_text": wiki_events,
+        "wiki_scheduled_text": wiki_scheduled,
     }
     try:
         all_headlines = headlines + gdelt + gnews
@@ -206,8 +218,8 @@ def get_macro_outlook(llm: LLMProvider, db=None, temperature: float = 1.0,
             f"{wiki_events or 'n/d'}\n\n"
             f"Upcoming scheduled events (economic & political calendar):\n"
             f"{wiki_scheduled or 'n/d'}\n\n"
-            + "Write the 3-month outlook using only the snapshot, headlines and events above. "
-              "Do not add a numeric forecast table."
+            + "Write the 3-month forward outlook, taking these events into account, with special "
+              "attention to the next month."
         )
         raw = llm.chat(_SYSTEM, user, temperature=temperature, top_p=top_p)
         data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])

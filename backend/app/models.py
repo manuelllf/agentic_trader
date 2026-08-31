@@ -131,6 +131,10 @@ class FundamentalsSnapshot(Base):
     # Divisa nativa (yfinance "currency") -- antes se descartaba tras montar el prompt, hace
     # falta para saber qué tasa de `FxRate` aplicarle a `market_cap`.
     currency: Mapped[str | None] = mapped_column(String(8))
+    # Divisa de los ESTADOS FINANCIEROS (yfinance "financialCurrency") -- distinta de `currency`
+    # para extranjeras (TSM cotiza en USD pero reporta en NTD). Columna propia (no solo el EAV)
+    # para que `fx._divisas_activas()` pueda pedir su tasa sin unir contra `..._metric`.
+    financial_currency: Mapped[str | None] = mapped_column(String(8))
     # `market_cap` en USD -- se rellena en el gather y se recalcula cada noche (ver
     # `scheduler._fx_job`) para que un movimiento de divisa se note sin re-capturar fundamentales.
     market_cap_usd: Mapped[float | None] = mapped_column(Float)
@@ -339,7 +343,8 @@ def _trade_item_dict(r) -> dict:  # noqa: ANN001 — fila de ProposalItem o Scan
 
 
 class Proposal(Base):
-    """Cartera objetivo + trades que propone el constructor en un escaneo (5 posiciones fijas)."""
+    """Cartera objetivo + trades que propone el constructor en un escaneo (tamaño fijo, ver
+    `settings.max_positions`/`min_positions`)."""
 
     __tablename__ = "proposals"
 
@@ -448,6 +453,10 @@ class ScanRun(Base):
     regime: Mapped[str] = mapped_column(String(16), default="")
     vix: Mapped[float | None] = mapped_column(Float)
     outlook: Mapped[str] = mapped_column(Text, default="")
+    # Bloques largos de eventos reales que vio el macro (Exhibit 2D: páginas de Wikipedia,
+    # días pasados + calendario del año) -- titulares sueltos van a `ScanRunMacroHeadline`.
+    macro_wiki_events: Mapped[str] = mapped_column(Text, default="")
+    macro_wiki_scheduled: Mapped[str] = mapped_column(Text, default="")
     # `universe_for_scan()` (app/screener/universe.py) — dict de forma fija, aplanado a columnas:
     # no es una lista y sus 5 claves no cambian nunca, partirlo en filas no ganaba nada.
     universe_fuente: Mapped[str] = mapped_column(String(16), default="")
@@ -661,6 +670,21 @@ class ScanRunIssue(Base):
     id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
     scan_run_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    posicion: Mapped[int] = mapped_column(SmallInteger)
+    texto: Mapped[str] = mapped_column(Text)
+
+
+class ScanRunMacroHeadline(Base):
+    """Titulares que vio el macro de ESTE escaneo -- antes solo vivían en la caché de `Meta`
+    (un blob JSON sin scan_run_id, podado con el tiempo), sin forma de comprobar después qué
+    vio realmente. `fuente` distingue yfinance/gnews/gdelt (ver `macro.get_macro_outlook`)."""
+
+    __tablename__ = "scan_run_macro_headline"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    fuente: Mapped[str] = mapped_column(String(16))   # yfinance | gnews | gdelt
     posicion: Mapped[int] = mapped_column(SmallInteger)
     texto: Mapped[str] = mapped_column(Text)
 

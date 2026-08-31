@@ -71,7 +71,7 @@ class TargetPosition:
 class OmittedName:
     """Un candidato que quedó fuera de la cartera, con el motivo en una línea.
 
-    Es TELEMETRÍA: el constructor fondea 5 de los 10 seleccionados, así que omitir es
+    Es TELEMETRÍA: el constructor fondea 7 de los 15 seleccionados, así que omitir es
     obligatorio, no una opinión. Sirve para distinguir criterio de pattern-matching cuando se
     revisa un escaneo a posteriori — nunca vuelve a entrar a un prompt.
     """
