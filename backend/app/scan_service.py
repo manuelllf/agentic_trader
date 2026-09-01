@@ -93,13 +93,18 @@ else:
 if settings.llm_provider == "deepseek":
     _MID_WORKERS = 100        # Pro, capa media (~200 candidatos)
     # 50->40 (escaneo 57, 1-sep): 156 429 y 51 nombres perdidos "no parseable tras reintento" --
-    # el reintento (2 extra en `_deep()`) no tiene backoff, así que si el primer intento choca
-    # con el rate limit de DeepSeek los siguientes chocan también, casi seguro, contra la MISMA
-    # ventana. Bajar la concurrencia es más simple y más seguro que meter backoff sin medir antes
-    # cuánto rate limit hay de margen real.
+    # el reintento (2 extra en `_deep()`/`_mid()`) disparaba casi inmediato, sin esperar nada,
+    # así que si el primer intento chocaba con el rate limit de DeepSeek los siguientes chocaban
+    # también, casi seguro, contra la MISMA ventana. Bajar la concurrencia es más simple y más
+    # seguro que confiar solo en el backoff para absorber picos.
     _DEEP_WORKERS = 40        # Pro, profundo (hasta `deep_finalists_cap` finalistas)
 else:
     _MID_WORKERS = _DEEP_WORKERS = 10
+
+# Espera antes de cada reintento en `_mid()`/`_deep()` (ver arriba): un 429 puntual de DeepSeek
+# suele resolverse solo si se le da un respiro; reintentar sin esperar nada choca casi seguro
+# contra la misma ventana de rate limit.
+_RETRY_BACKOFF_S = 2.0
 # Gather: 4 hilos vía yahoo_scraper (validado 100% limpio a 3.000/3.000 tickers reales, en
 # local, 24-ago-2026). 6 hilos ya cae a ~85% (bloqueo de Yahoo); 4 es el techo con margen.
 _GATHER_WORKERS = 4
@@ -874,6 +879,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
                 if not p.error:
                     break
+                time.sleep(_RETRY_BACKOFF_S)
                 p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block,
                                             medianas=medianas, **_mid_kw)
             scan_progress.tick(ok=not p.error, reason=f"{ticker}: {p.error}" if p.error else None)
@@ -913,6 +919,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
             if not r.error:
                 break
+            time.sleep(_RETRY_BACKOFF_S)
             r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, medianas=medianas,
                                  **_deep_kw)
         return r

@@ -151,6 +151,54 @@ def _deep_ok(ticker: str) -> dict:
     return {"score": 85, "headline": f"deep-{ticker}", "report": "informe", "target_price": 150.0}
 
 
+class _DeepFallaUnaVez(DeepLLM):
+    """Como `DeepLLM`, pero la PRIMERA llamada de profundo a `falla_en` revienta (simula un 429
+    de DeepSeek) -- para comprobar que el reintento espera antes de disparar de nuevo."""
+
+    def __init__(self, replies: dict[str, dict], falla_en: str) -> None:
+        super().__init__(replies)
+        self._falla_en, self._ya_fallo = falla_en, False
+
+    def chat(self, system: str, user: str, *, temperature: float = 0.3,
+            top_p: float | None = None) -> str:
+        if not self._ya_fallo and f"Company: {self._falla_en}" in user:
+            self._ya_fallo = True
+            raise RuntimeError("429 Too Many Requests")
+        return super().chat(system, user, temperature=temperature, top_p=top_p)
+
+
+def test_reintento_de_profundo_espera_antes_de_disparar_de_nuevo(db, monkeypatch) -> None:
+    """Escaneo 57 (1-sep): el reintento disparaba sin esperar nada, chocando casi seguro contra
+    la MISMA ventana de rate limit de DeepSeek. Ahora debe esperar `_RETRY_BACKOFF_S` antes del
+    segundo intento -- y el nombre debe salvarse (no caer del ranking) si ese intento sí cuaja."""
+    _stub_universo(monkeypatch, ["SOLO"])
+    _gather_stub(monkeypatch, {"SOLO": "Tech"})
+    prescore_llm = ScoringLLM({"SOLO": 90.0})
+    deep_llm = _DeepFallaUnaVez({"SOLO": _deep_ok("SOLO")}, falla_en="SOLO")
+
+    def fake_get_llm(model: str | None = None, **_kwargs):
+        if model in (scan_service.settings.prescore_model, scan_service.settings.qwen_model):
+            return prescore_llm
+        return deep_llm
+
+    monkeypatch.setattr(scan_service, "get_llm", fake_get_llm)
+    _stub_common(monkeypatch)                          # deja el resto igual que los demás tests...
+    esperas: list[float] = []
+    monkeypatch.setattr(scan_service.time, "sleep", esperas.append)  # ...pero SÍ medimos la espera
+
+    monkeypatch.setattr(scan_service.settings, "mid_layer", False)
+    monkeypatch.setattr(scan_service.settings, "deep_per_sector", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_top_caps", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_watchlist", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_finalists_cap", 1)
+
+    result = scan_service.run_scan_and_store(db, sample_size=1, decide=True)
+
+    assert esperas == [scan_service._RETRY_BACKOFF_S]   # una espera, no cero ni dos
+    assert result["deep"] == 1
+    assert {s.ticker for s in db.query(Score).all()} == {"SOLO"}   # se salvó, no cayó del ranking
+
+
 def test_capa_media_repuntua_top_por_sector_y_manda_en_el_carril_global(db, monkeypatch) -> None:
     """Con mid_layer activado: solo se repuntúan los top-1/sector (TA1 y HA2) y el carril
     global sale de ESE score, no del pre-score crudo (que habría elegido a HA2, no a TA1)."""

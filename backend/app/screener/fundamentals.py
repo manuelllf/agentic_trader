@@ -3,8 +3,9 @@
 Junta lo que el paper mete en el prompt de puntuación: los fundamentales de yfinance `.info`
 (las ~97 variables SON este dict: valoración, márgenes, crecimiento, balance, short interest,
 targets de analistas, propiedad, riesgo de gobernanza), técnicos SOLO como contexto
-(MA50/200, 52 semanas, RSI, beta), la próxima fecha de resultados (dato, no regla) y
-titulares con su resumen. Todo gratis (yfinance).
+(MA50/200, 52 semanas, beta -- los únicos "technical indicators" que el Exhibit 2B enumera;
+el RSI no está en el paper y no se manda, ver `_technical_text`), la próxima fecha de
+resultados (dato, no regla) y titulares con su resumen. Todo gratis (yfinance).
 
 Tolerante a huecos: como el paper, "usamos la información más reciente disponible" — lo que
 falte va como `n/d` y el LLM lo maneja (nada de excluir por dato incompleto).
@@ -269,7 +270,9 @@ _FUNDAMENTAL_FIELDS: list[tuple[str, str, str]] = [
     # y fondeó otro con la misma liquidez exacta (HAPN $38M/día vs VIPS $40M/día) — no por mal
     # juicio, sino porque no tenía ni un dato de volumen delante y la objeción era incomprobable. El
     # prompt del scorer ya dice que el tamaño y la liquidez son riesgos legítimos; ahora se pueden
-    # medir. (El campo 20 del paper es el mismo dato que el 19 en yfinance; no se duplica.)
+    # medir. (El campo 19 del paper es `averageVolume10days`; el 20, "Avg daily volume 10d, alt"
+    # más abajo -- añadido después al completar el resto del Exhibit 2B -- es un campo DISTINTO
+    # en yfinance, `averageDailyVolume10Day`, aunque casi siempre coincida en valor.)
     ("floatShares", "Float shares", "cnt"),
     ("averageVolume", "Avg volume (shares/day)", "cnt"),
     ("averageVolume10days", "Avg volume 10d (shares/day)", "cnt"),
@@ -289,11 +292,12 @@ _FUNDAMENTAL_FIELDS: list[tuple[str, str, str]] = [
     ("heldPercentInstitutions", "Institutional ownership", "pct"),
     ("shortPercentOfFloat", "Short % of float", "pct"),
     ("shortRatio", "Short ratio (days to cover)", "num"),
-    # PRUEBA — decisión propia, NO fiel al paper (Exhibit 2B trae los campos 66-70: targets,
-    # nº de analistas y recomendación). Fuera porque el consenso se revisa DESPUÉS del movimiento
-    # de precio: es momentum disfrazado de fundamental, y colado como juicio experto esquiva la
-    # cláusula que protege a los caídos (el modelo no lo lee como dato de precio). Siguen en
-    # `NameData` para los guardarraíles de target, que son telemetría y no tocan prompt.
+    # Los 5 SÍ son del Exhibit 2B (campos 93-97, literales) -- no confundir con los campos 66-72
+    # (targets de analistas, nº de opiniones, recomendación), esos SÍ decisión propia fuera del
+    # prompt: el consenso se revisa DESPUÉS del movimiento de precio, es momentum disfrazado de
+    # fundamental, y colado como juicio experto esquiva la cláusula que protege a los caídos (el
+    # modelo no lo lee como dato de precio). Los targets siguen en `NameData` para los
+    # guardarraíles, que son telemetría y no tocan prompt.
     ("auditRisk", "Audit risk (1-10)", "num"),
     ("boardRisk", "Board risk (1-10)", "num"),
     ("compensationRisk", "Comp risk (1-10)", "num"),
@@ -497,13 +501,6 @@ def _fundamentals_text(info: dict, db=None) -> str:  # noqa: ANN001
         s = _fmt(info.get(key), kind)
         if s is not None:
             lines.append(f"- {label}: {s}")
-    # Volumen en dinero (multiplicado): aritmética sobre datos que ya damos, dato sí (no conclusión).
-    vol, precio = info.get("averageVolume"), (info.get("currentPrice")
-                                              or info.get("regularMarketPrice"))
-    if vol and precio:
-        s = _fmt(float(vol) * float(precio), "cur")
-        if s is not None:
-            lines.append(f"- Avg dollar volume/day: {s}")
     return "\n".join(lines)
 
 
@@ -511,8 +508,7 @@ def _valores_crudos(info: dict) -> dict[str, float | str]:
     """Los mismos ~85 campos de `_fundamentals_text`, SIN formatear — lo que se persiste
     relacional en `fundamentals_snapshot_metric`. Mismo criterio de "ausente se omite" que
     `_fmt`; los numéricos pasan por `numero_finito` (mismo guardarraíl que evitó el fallo de
-    `Infinity`). No incluye "Avg dollar volume/day": es aritmética derivada de `averageVolume`
-    (ya en el catálogo) y el precio (ya su propia columna), se recalcula al reconstruir."""
+    `Infinity`)."""
     out: dict[str, float | str] = {}
     for key, _label, kind in _FUNDAMENTAL_FIELDS:
         v = info.get(key)
