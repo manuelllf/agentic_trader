@@ -109,11 +109,15 @@ def select_finalists(
     sobre de hueco tras los demás carriles, en orden de nota, hasta que `cap` corta — un único
     número gobierna el tamaño del embudo, no dos que se pisaban.
 
-    `mid_scores`, si viene, sustituye el criterio del carril GLOBAL: se ordena por ese diccionario
-    (desempate por market cap) y solo entran tickers presentes en él. Motivo: el prescore barato
-    tiene una frontera ruidosa; cuando un modelo mejor repuntúa a los mejores de cada sector, el
-    carril de "los mejores globales" debe salir de esa segunda opinión, no de la primera. Los
-    demás carriles (posición, watchlist, caps, sector) no cambian.
+    `mid_scores`, si viene, sustituye el criterio del carril GLOBAL **y también el del carril
+    SECTOR**: ambos se ordenan por ese diccionario (desempate por market cap), y el núcleo por
+    sector sale SOLO de los tickers que mid puntuó (antes salía de `prescored` entero, con el
+    pre-score crudo, incluso con capa media activa). Motivo, encontrado auditando el escaneo 56:
+    con el criterio viejo, el "mejor de cada sector" podía ser un nombre que la propia capa media
+    ya había hundido (ARX: pre-score 92 → mid 35 → profundo 25) — coló en el carril "para que el
+    profundo VEA cada sector" al favorito del modelo barato, no al mejor candidato real, cuando
+    el objetivo del carril es justo lo segundo. Sin capa media (semanal), sector sigue saliendo
+    del pre-score crudo, como siempre.
 
     Prioridad al truncar a `cap`: posiciones → watchlist → mayores caps → núcleo por sector →
     extras del top global. Los carriles GARANTIZADOS van primero: la watchlist es la única
@@ -137,14 +141,14 @@ def select_finalists(
     ranked = [p.ticker for p, _d in prescored]
     present = set(ranked)
 
-    core = top_por_sector(prescored, per_sector)
-
     if mid_scores:
         mid_present = [(p, d) for p, d in prescored if p.ticker in mid_scores]
         mid_present.sort(key=lambda pd: (-mid_scores[pd[0].ticker], -(pd[1].market_cap or 0.0)))
         global_top = [p.ticker for p, _d in mid_present]      # sin tope propio, ver docstring
+        core = top_por_sector(mid_present, per_sector)        # segunda opinión, no pre-score crudo
     else:
         global_top = ranked
+        core = top_por_sector(prescored, per_sector)          # sin capa media: pre-score crudo
 
     held_in = [t for t in ranked if t in held]          # solo las presentes, en orden de score
     by_cap = sorted(prescored, key=lambda pd: -(pd[1].market_cap or 0.0))

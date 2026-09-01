@@ -210,7 +210,12 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                   </thead>
                   <tbody>
                     {[...scan.finalists]
-                      .sort((a, b) => (b.deep_score ?? -1) - (a.deep_score ?? -1))
+                      // Empate en deep_score (frecuente: el modelo colapsa en un puñado de notas,
+                      // ver auditoría 1-sep) desempatado por market cap desc — mismo criterio que
+                      // el backend en select_finalists/select_top, para que el orden no dependa
+                      // de en qué posición llegó el finalista desde la API.
+                      .sort((a, b) => (b.deep_score ?? -1) - (a.deep_score ?? -1)
+                                    || (b.market_cap ?? 0) - (a.market_cap ?? 0))
                       .map((f) => <FinalistRow key={f.ticker} f={f} />)}
                   </tbody>
                 </table>

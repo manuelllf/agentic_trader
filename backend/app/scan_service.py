@@ -92,7 +92,12 @@ else:
 
 if settings.llm_provider == "deepseek":
     _MID_WORKERS = 100        # Pro, capa media (~200 candidatos)
-    _DEEP_WORKERS = 50        # Pro, profundo (hasta `deep_finalists_cap` finalistas)
+    # 50->40 (escaneo 57, 1-sep): 156 429 y 51 nombres perdidos "no parseable tras reintento" --
+    # el reintento (2 extra en `_deep()`) no tiene backoff, así que si el primer intento choca
+    # con el rate limit de DeepSeek los siguientes chocan también, casi seguro, contra la MISMA
+    # ventana. Bajar la concurrencia es más simple y más seguro que meter backoff sin medir antes
+    # cuánto rate limit hay de margen real.
+    _DEEP_WORKERS = 40        # Pro, profundo (hasta `deep_finalists_cap` finalistas)
 else:
     _MID_WORKERS = _DEEP_WORKERS = 10
 # Gather: 4 hilos vía yahoo_scraper (validado 100% limpio a 3.000/3.000 tickers reales, en
