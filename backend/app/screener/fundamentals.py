@@ -163,20 +163,27 @@ def _convertir_financieros_a_usd(info: dict, db) -> dict:  # noqa: ANN001
     de este arreglo, nunca peor. Si `financialCurrency` es extranjera pero `FxRate` todavía no
     tiene su tasa sincronizada (hueco real solo el primer día tras desplegar esto, ver
     `fx._divisas_activas`), el campo se OMITE en vez de mostrarse con el "$" equivocado -- mismo
-    criterio que ya usa `_fmt` para cualquier dato ausente: mentir es peor que no decir nada."""
+    criterio que ya usa `_fmt` para cualquier dato ausente: mentir es peor que no decir nada.
+
+    Todo el acceso a `db` va dentro de `_FOTO_LOCK`: esta función corre en los mismos
+    `_GATHER_WORKERS` hilos que comparten la sesión de `foto_guardar`/`foto_reciente`, y una
+    `Session` de SQLAlchemy no es thread-safe ni para leer -- sin el lock aquí también, la
+    sesión compartida queda expuesta al mismo fallo de concurrencia que ya protege el resto del
+    módulo (visto en producción, 23-ago, y de nuevo el 01-sept por este hueco concreto)."""
     moneda = info.get("financialCurrency")
     if db is None or not moneda or moneda == "USD":
         return info
     out = dict(info)
-    for campo in _CAMPOS_MONEDA_FINANCIERA:
-        v = numero_finito(out.get(campo))
-        if v is None:
-            continue
-        usd = _a_usd(db, v, moneda)
-        if usd is None:
-            out.pop(campo, None)
-        else:
-            out[campo] = usd
+    with _FOTO_LOCK:
+        for campo in _CAMPOS_MONEDA_FINANCIERA:
+            v = numero_finito(out.get(campo))
+            if v is None:
+                continue
+            usd = _a_usd(db, v, moneda)
+            if usd is None:
+                out.pop(campo, None)
+            else:
+                out[campo] = usd
     return out
 
 
