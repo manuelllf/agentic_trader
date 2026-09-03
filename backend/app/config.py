@@ -73,10 +73,10 @@ class Settings(BaseSettings):
     # discriminaba mucho mejor entre tickers distintos (144/500 valores únicos vs 38 a 0.3) — el
     # colapso de granularidad pesaba más que el ruido intra-ticker. Vuelve a 1.0 para la decisión
     # de mañana, en prueba activa en el observatorio — sin medir el resultado completo todavía.
-    prescore_temperature: float = 1.0
+    prescore_temperature: float = 0.6
     # Temperatura PROPIA de la capa media, mismo motivo que el prescore. En prueba activa junto
     # con `prescore_temperature`, sin medir el resultado completo todavía.
-    mid_temperature: float = 1.0
+    mid_temperature: float = 0.6
     # Alias ROLLING de la API directa de DeepSeek, sin snapshot fechado invocable: se pierde la
     # garantía de que el modelo no cambie solo entre escaneos (no hay forma de pinnear).
     llm_model: str = "deepseek-v4-pro"      # profundo + macro + constructor
