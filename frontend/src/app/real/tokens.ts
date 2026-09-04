@@ -18,12 +18,8 @@ export const T = {
   buy: "#3987e5",         // compra (slot azul)
 };
 
-/* Serie categórica (orden fijo): posiciones 1..7 (embudo 5→7, ver settings.max_positions). Las
-   5 primeras son las validadas CVD originales; cian y pizarra se añadieron detrás, separadas de
-   azul/verde por tono para no confundirse en daltonismo. El verde queda RESERVADO al P&L. */
-export const SERIES = [
-  "#3987e5", "#199e70", "#c98500", "#9085e9", "#d55181", "#2bb3c0", "#6b7a8f",
-];
+/* Serie categórica (orden fijo, validado): posiciones 1..5. El verde queda RESERVADO al P&L. */
+export const SERIES = ["#3987e5", "#199e70", "#c98500", "#9085e9", "#d55181"];
 
 export const NUMS = "tabular-nums";
 

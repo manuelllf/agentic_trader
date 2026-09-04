@@ -115,9 +115,9 @@ class Settings(BaseSettings):
     # Tope pensado para acotar gasto (coste lineal por llamada), no un límite de calidad. 100→70:
     # mismo recorte que `mid_candidates_cap`, por el nuevo precio peak/off-peak de DeepSeek.
     deep_finalists_cap: int = 100                          # tope DURO de finalistas (coste V4-Pro)
-    # Paper (Exhibit 1): "Selection of top 10 companies based on the scores" -- 10→15 al subir
-    # la cartera de 5 a 7 posiciones: con 10 candidatos para 7 huecos, el constructor casi no
-    # elige nada de verdad.
+    # Paper (Exhibit 1): "Selection of top 10 companies based on the scores" -- 10→15 el 1-sep
+    # (se probó subir la cartera a 7 a la vez; se revirtió a 5 el mismo día, pero 15 candidatos
+    # para 5 huecos se queda: más margen real de elección para el constructor que los 10 de antes).
     select_count: int = 15                               # nombres al constructor
     # Llegan SIEMPRE al profundo para ver la opinión del sistema sobre la cartera PERSONAL
     # (IBKR) de Manuel; compiten en igualdad, sin veto — nunca implican nada sobre el agente.
@@ -126,10 +126,11 @@ class Settings(BaseSettings):
     # llamada/ticker, fiel al paper — proveedor propio + concurrencia + caché lo hacen asumible.
     prescore_batch_size: int = 20
 
-    # Guardarraíles del sleeve. Cartera de TAMAÑO FIJO (paper 15 assets → aquí 7, subido de 5).
+    # Guardarraíles del sleeve. Cartera de TAMAÑO FIJO (paper 15 assets → aquí 5). Se probó 7
+    # el 1-sep un rato; revertido el mismo día, no convenció.
     max_position_pct: float = 35.0  # % máximo por posición
-    max_positions: int = 7          # nº de posiciones de la cartera (FIJO: min = max = 7)
-    min_positions: int = 7          # = max_positions → cartera de EXACTAMENTE 7 nombres
+    max_positions: int = 5          # nº de posiciones de la cartera (FIJO: min = max = 5)
+    min_positions: int = 5          # = max_positions → cartera de EXACTAMENTE 5 nombres
     fully_invested: bool = True     # True = sin caja: los pesos se normalizan a 100% (método paper)
 
     # Universo + muestreo del escaneo.

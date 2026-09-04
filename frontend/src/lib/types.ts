@@ -102,7 +102,7 @@ export interface Proposal {
   macro_summary: string;
   items: ProposalItem[];
   /** Candidatos seleccionados que el constructor NO fondeó, con el motivo en una línea.
-   *  Fondear 7 de 15 obliga a dejar 8 fuera: esto distingue criterio de pattern-matching. */
+   *  Fondear 5 de 15 obliga a dejar 10 fuera: esto distingue criterio de pattern-matching. */
   omitted?: { ticker: string; reason: string }[];
 }
 

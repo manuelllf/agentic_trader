@@ -625,7 +625,7 @@ function SalaRealRoom() {
               <Kpi label="Caja €" value={summary ? `€${money(summary.cash.eur)}` : "—"} />
               <Kpi label="Caja $" value={summary ? `$${money(summary.cash.usd)}` : "—"} />
               <Kpi label="Invertido" value={summary ? `$${money(summary.positions_value)}` : "—"}
-                   sub={summary ? `${summary.positions.length}/${cfg?.max_positions ?? 7} posiciones` : undefined} />
+                   sub={summary ? `${summary.positions.length}/${cfg?.max_positions ?? 5} posiciones` : undefined} />
               {/* Realizado va de subtexto aquí (no su propio tile): con 7 KPIs la cuadrícula
                   quedaba descuadrada en móvil (2 columnas, última fila con uno solo). */}
               <Kpi label="P&L abierto" value={summary ? signMoney(uPnl) : "—"}
@@ -738,7 +738,7 @@ function SalaRealRoom() {
         {/* ---------- 5 · libro del agente: composición y trayectoria juntas ---------- */}
         {(!summary || hasCapital) && (
         <div className="mt-4">
-        <Panel title={`Posiciones del agente · ${summary?.positions.length ?? 0}/${cfg?.max_positions ?? 7}`}
+        <Panel title={`Posiciones del agente · ${summary?.positions.length ?? 0}/${cfg?.max_positions ?? 5}`}
                right={summary && Number(summary.positions_value) > 0
                  ? <span className={`text-[12px] font-bold ${NUMS}`} style={{ color: T.ink }}>
                      ${money(summary.positions_value)}

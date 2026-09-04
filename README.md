@@ -13,7 +13,7 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 
 Un escaneo programado recorre **~3.000 acciones cotizadas en EE. UU.** (ADRs incluidos) y las
 puntúa en tres pasos: un cribado rápido y barato sobre todo el universo, una segunda opinión
-sobre los mejores de cada sector, y un análisis profundo (informe + score) sobre hasta 70
+sobre los mejores de cada sector, y un análisis profundo (informe + score) sobre hasta 100
 finalistas. La selección final es
 **determinista y vive en el código** (top-N por score, desempate por capitalización); el LLM
 solo reparte los pesos entre los ya seleccionados. Todo el dinero (tamaños, caja, P&L) lo
@@ -66,7 +66,7 @@ Las que más forma le dan al sistema:
 |-----------|---------------------------------------------------------------|
 | Backend   | Python 3.12 · FastAPI · SQLAlchemy 2 · Pydantic v2            |
 | Datos     | yfinance · screener público de NASDAQ                        |
-| LLM       | DeepSeek, API oficial directa (capa de proveedor intercambiable)   |
+| LLM       | DeepSeek (API oficial directa) + Qwen (cribado inicial); capa de proveedor intercambiable |
 | Memoria   | pgvector + fastembed (embeddings locales, sin coste)         |
 | Bróker    | IBKR Web API (OAuth 1.0a headless, `ibind`)                  |
 | Scheduler | APScheduler                                                  |
