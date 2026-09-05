@@ -31,6 +31,15 @@ _EXCLUIDAS = {
     # aquí, la búsqueda real sigue viviendo en Postgres. Mismo motivo que `memories`: duplicar
     # miles de vectores de texto cada día es peso sin ningún consultante real hoy.
     "memory_chunks",
+    # Append-only y NUNCA leídas por `/analytics/*` (comprobado en `analytics_explorer.py`) --
+    # solo se consultan directo contra Postgres para la auditoría de un escaneo puntual. Sin
+    # excluirlas, el `SELECT *` diario las retransmite ENTERAS cada día: detectado 5-sep-2026
+    # tras un aviso de Supabase por bandwidth, ~710 MB/día (~21 GB/mes) contra un free tier de
+    # 5.5 GB, dominado por estas 4 (fundamentals_snapshot_metric sola son 384 MB).
+    "fundamentals_snapshot_metric",
+    "llm_call_logprob",
+    "llm_call",
+    "fundamentals_snapshot_news",
 }
 
 
