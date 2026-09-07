@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from fastapi import Depends
 
 from app.db import get_db
-from app.momentum import capital, news_gate, signals
+from app.momentum import capital, gate_progress, gate_runner, signals
 
 router = APIRouter(prefix="/momentum", tags=["momentum"])
 
@@ -217,37 +217,22 @@ def decidir_candidato(candidato_id: int, body: CandidatoDecisionIn, db: Session 
 def evaluar_pendientes(db: Session = Depends(get_db)) -> dict:
     """ÚNICO punto donde el gate gasta dinero real -- se llama SOLO con un clic explícito desde
     la sala, nunca desde el cron (ver `_momentum_scan_job`, que guarda gate pendiente y para
-    ahí). Evalúa todas las señales con `gate_resultado is null`; idempotente por construcción
-    -- una vez evaluada, deja de estar pendiente."""
+    ahí). Solo LANZA el trabajo en segundo plano (ver `gate_runner`) y responde al momento --
+    17 llamadas reales en serie tardan minutos, y esperar aquí es lo que se colgó en producción
+    el 7-sep-2026. El progreso real se sondea en `GET /gate/progreso`."""
     pendientes = db.execute(text("""
-        select * from momentum_senales where gate_resultado is null and estado != 'descartada'
-    """)).mappings().all()
-    resultados = []
-    for m in pendientes:
-        entry_date = m["entry_date"]
-        if isinstance(entry_date, str):
-            entry_date = date.fromisoformat(entry_date)
-        desde = m["desde_noticias"]
-        if isinstance(desde, str):
-            desde = date.fromisoformat(desde)
-        try:
-            r = news_gate.evaluar(
-                m["ticker"], signals.NOMBRE.get(m["ticker"], m["ticker"]),
-                ath=float(m["ath"]), entry_date=entry_date, entry_price=float(m["entry_price"]),
-                caida_pct=float(m["caida_pct"]), desde=desde,
-            )
-            nuevo_estado = "nueva" if r.pasa else "descartada"
-            db.execute(text("""
-                update momentum_senales
-                set gate_resultado = :res, gate_detalle = :detalle, estado = :estado
-                where id = :id
-            """), {"res": "pasa" if r.pasa else "falla", "detalle": r.motivo,
-                   "estado": nuevo_estado, "id": m["id"]})
-            resultados.append({"id": m["id"], "ticker": m["ticker"], "pasa": r.pasa, "motivo": r.motivo})
-        except Exception as exc:
-            resultados.append({"id": m["id"], "ticker": m["ticker"], "pasa": None, "motivo": f"error: {exc}"})
-    db.commit()
-    return {"evaluadas": len(resultados), "resultados": resultados}
+        select count(*) from momentum_senales where gate_resultado is null and estado != 'descartada'
+    """)).scalar()
+    if pendientes == 0:
+        return {"lanzado": False, "motivo": "sin pendientes", "pendientes": 0}
+    if not gate_runner.start(pendientes):
+        return {"lanzado": False, "motivo": "ya en curso", "pendientes": pendientes}
+    return {"lanzado": True, "pendientes": pendientes}
+
+
+@router.get("/gate/progreso")
+def gate_progreso() -> dict:
+    return gate_progress.snapshot()
 
 
 @router.post("/admin/scan")

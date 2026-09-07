@@ -29,9 +29,21 @@ export const decidirCandidato = (id: number, decision: "incorporado" | "descarta
 export const setMantenerUniverso = (ticker: string, mantener: boolean) =>
   post<{ ok: boolean; mantener: boolean }>(`/momentum/universo/${ticker}/mantener`, { mantener });
 
-export type ResultadoGate = { id: number; ticker: string; pasa: boolean | null; motivo: string };
-export const evaluarPendientesGate = () =>
-  post<{ evaluadas: number; resultados: ResultadoGate[] }>("/momentum/gate/evaluar-pendientes");
+// El endpoint solo LANZA el gate en segundo plano y responde al momento -- 17 llamadas reales
+// en serie tardan minutos, así que el progreso real se sondea aparte con `getGateProgreso()`.
+export const lanzarGate = () =>
+  post<{ lanzado: boolean; motivo?: string; pendientes: number }>("/momentum/gate/evaluar-pendientes");
+
+export type GateProgreso = {
+  status: "idle" | "running" | "done" | "error";
+  total: number;
+  hecho: number;
+  ok: number;
+  fail: number;
+  ticker_actual: string | null;
+  error: string | null;
+};
+export const getGateProgreso = () => get<GateProgreso>("/momentum/gate/progreso");
 
 // Rescate manual del escaneo diario (cron 16:45 ET) -- gratis, sin gate, por si el cron no ha
 // corrido todavía o falló. Separado de "actualizar" a propósito: ese solo relee lo que ya hay.

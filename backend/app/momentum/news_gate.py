@@ -114,16 +114,20 @@ class GateResult:
 
 
 def evaluar(ticker: str, nombre: str, *, ath: float, entry_date: date, entry_price: float,
-            caida_pct: float, desde: date) -> GateResult:
+            caida_pct: float, desde: date, recorder=None) -> GateResult:
     """Evalúa UNA señal (la más reciente del ticker/candidato). `desde` acota la ventana de
     noticias -- el llamador pasa la fecha del último pico confirmado (zigzag) o una ventana
-    razonable hacia atrás (suelo); cualquier earnings relevante cae dentro por construcción."""
+    razonable hacia atrás (suelo); cualquier earnings relevante cae dentro por construcción.
+
+    `recorder`: objeto duck-typed con `.record(CallRecord)` (ver `app.llm.trace`) -- lo usa
+    `gate_runner` para volcar la llamada en `momentum_gate_llamadas`. `None` = sin traza (tests).
+    """
     if not settings.deepseek_api_key:
         raise RuntimeError("Sin DEEPSEEK_API_KEY configurada: no se puede evaluar el gate.")
     noticias = _noticias_para(ticker, desde, date.today())
     llm = DeepSeekProvider(settings.deepseek_api_key, settings.llm_model,
                            base_url=settings.deepseek_base_url,
-                           reasoning_effort="low", stage="momentum_gate")
+                           reasoning_effort="low", stage="momentum_gate", recorder=recorder)
     raw = llm.chat(SYSTEM, _user_prompt(ticker, nombre, noticias, ath=ath, entry_date=entry_date,
                                         entry_price=entry_price, caida_pct=caida_pct),
                    temperature=0.0)

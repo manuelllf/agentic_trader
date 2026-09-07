@@ -5,14 +5,16 @@
  *  Ver docs/momentum-sala-real-x.md para el diseño completo. */
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, getFx } from "@/lib/api";
 import { money } from "@/lib/format";
 import {
-  adminScan, decidirCandidato, descartarSenal, ejecutarSenal, evaluarPendientesGate, getAlertas,
-  getCandidatos, getCuenta, getHistorial, getUniverso, getValidacion, setMantenerUniverso,
+  adminScan, decidirCandidato, descartarSenal, ejecutarSenal, getAlertas, getCandidatos,
+  getCuenta, getGateProgreso, getHistorial, getUniverso, getValidacion, lanzarGate,
+  setMantenerUniverso,
 } from "./api";
+import type { GateProgreso } from "./api";
 import { NUMS, T } from "./tokens";
 import type { Candidato, Cuenta, Senal, UniversoTicker, Validacion } from "./types";
 
@@ -432,20 +434,44 @@ function AlertasCarrusel({ alertas, empates, onDone }: {
  *  totalmente invisible si no hay nada pendiente, y el botón es el único gatillo (ver doc §3,
  *  decidido 7-sep-2026 -- el gate lo controla Manuel, no un cron). */
 function GatePendienteBanner({ señales, onEvaluado }: { señales: Senal[]; onEvaluado: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [resumen, setResumen] = useState<{ pasan: number; fallan: number } | null>(null);
+  const [progreso, setProgreso] = useState<GateProgreso | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const parar = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }, []);
+
+  // Sondeo real (`/gate/progreso`) -- las 17 llamadas tardan minutos, así que nunca se espera
+  // la respuesta del lanzamiento, se pregunta aparte cada 3s (mismo patrón que el escaneo del
+  // ranker, ver `CentroOperaciones.tsx`).
+  const sondear = useCallback(async () => {
+    try {
+      const p = await getGateProgreso();
+      setProgreso(p);
+      if (p.status !== "running") {
+        parar();
+        onEvaluado();
+      }
+    } catch { /* fallo puntual de red no corta el sondeo */ }
+  }, [onEvaluado, parar]);
+
+  // Al entrar (o recargar a mitad): si ya había un gate corriendo, retoma el sondeo solo.
+  useEffect(() => {
+    getGateProgreso().then((p) => {
+      setProgreso(p);
+      if (p.status === "running") pollRef.current = setInterval(sondear, 3000);
+    }).catch(() => {});
+    return parar;
+  }, [sondear, parar]);
 
   const evaluar = async () => {
-    setBusy(true);
-    try {
-      const { resultados } = await evaluarPendientesGate();
-      const pasan = resultados.filter((r) => r.pasa).length;
-      setResumen({ pasan, fallan: resultados.length - pasan });
-      onEvaluado();
-    } finally {
-      setBusy(false);
-    }
+    const r = await lanzarGate();
+    if (!r.lanzado) { sondear(); return; }
+    setProgreso({ status: "running", total: r.pendientes, hecho: 0, ok: 0, fail: 0, ticker_actual: null, error: null });
+    pollRef.current = setInterval(sondear, 3000);
   };
+
+  const corriendo = progreso?.status === "running";
 
   return (
     <div className="mb-6 rounded-xl border p-4" style={{ borderColor: "rgba(250,178,25,0.35)", background: "rgba(250,178,25,0.06)" }}>
@@ -465,17 +491,16 @@ function GatePendienteBanner({ señales, onEvaluado }: { señales: Senal[]; onEv
           </span>
         ))}
       </div>
-      {resumen ? (
-        <p className="mt-3 text-[12px] font-semibold" style={{ color: T.ink }}>
-          Evaluadas: <span style={{ color: T.good }}>{resumen.pasan} pasan</span>
-          {" · "}
-          <span style={{ color: T.bad }}>{resumen.fallan} fallan</span>
-        </p>
+      {corriendo && progreso ? (
+        <div className="mt-3 rounded-lg py-2 text-center text-[12.5px] font-bold" style={{ background: T.warn, color: "#3a2600" }}>
+          Evaluando {progreso.hecho}/{progreso.total}
+          {progreso.ticker_actual ? ` · ${progreso.ticker_actual}` : ""}…
+        </div>
       ) : (
-        <button onClick={evaluar} disabled={busy}
-                className="mt-3 w-full rounded-lg py-2 text-[12.5px] font-bold disabled:opacity-50"
+        <button onClick={evaluar}
+                className="mt-3 w-full rounded-lg py-2 text-[12.5px] font-bold"
                 style={{ background: T.warn, color: "#3a2600" }}>
-          {busy ? "Evaluando…" : `Evaluar ahora (${señales.length})`}
+          Evaluar ahora ({señales.length})
         </button>
       )}
     </div>
