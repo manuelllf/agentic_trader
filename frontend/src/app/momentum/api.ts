@@ -32,3 +32,8 @@ export const setMantenerUniverso = (ticker: string, mantener: boolean) =>
 export type ResultadoGate = { id: number; ticker: string; pasa: boolean | null; motivo: string };
 export const evaluarPendientesGate = () =>
   post<{ evaluadas: number; resultados: ResultadoGate[] }>("/momentum/gate/evaluar-pendientes");
+
+// Rescate manual del escaneo diario (cron 16:45 ET) -- gratis, sin gate, por si el cron no ha
+// corrido todavía o falló. Separado de "actualizar" a propósito: ese solo relee lo que ya hay.
+export const adminScan = () =>
+  post<{ ok: boolean; nuevas?: number; total_universo?: number; error?: string }>("/momentum/admin/scan");

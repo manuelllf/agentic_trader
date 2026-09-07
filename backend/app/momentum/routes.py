@@ -248,3 +248,18 @@ def evaluar_pendientes(db: Session = Depends(get_db)) -> dict:
             resultados.append({"id": m["id"], "ticker": m["ticker"], "pasa": None, "motivo": f"error: {exc}"})
     db.commit()
     return {"evaluadas": len(resultados), "resultados": resultados}
+
+
+@router.post("/admin/scan")
+def admin_scan(db: Session = Depends(get_db)) -> dict:
+    """Rescate manual del escaneo diario (mismo patrón que `/admin/universe-snapshot` del
+    ranker): por si el cron `momentum_scan` (16:45 ET) todavía no ha corrido o falló. Gratis
+    (yfinance, sin gate) -- no dispara ningún gasto real. `{"ok": false, ...}` con 200, no 500:
+    un fallo de yfinance no es un error del backend."""
+    from app.scheduler import run_momentum_scan
+
+    try:
+        info = run_momentum_scan(db)
+        return {"ok": True, **info}
+    except Exception as exc:  # noqa: BLE001 — el motivo legible es lo que necesita el panel
+        return {"ok": False, "error": str(exc)}

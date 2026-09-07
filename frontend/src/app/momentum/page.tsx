@@ -10,7 +10,7 @@ import AuthGate from "@/components/AuthGate";
 import { ApiError, getFx } from "@/lib/api";
 import { money } from "@/lib/format";
 import {
-  decidirCandidato, descartarSenal, ejecutarSenal, evaluarPendientesGate, getAlertas,
+  adminScan, decidirCandidato, descartarSenal, ejecutarSenal, evaluarPendientesGate, getAlertas,
   getCandidatos, getCuenta, getHistorial, getUniverso, getValidacion, setMantenerUniverso,
 } from "./api";
 import { NUMS, T } from "./tokens";
@@ -56,6 +56,8 @@ function SalaMomentumRoom() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanMsg, setScanMsg] = useState("");
   const [histVisibles, setHistVisibles] = useState(5);
 
   // Recarga: re-pide datos y actualiza estado sin navegar ni desmontar la sala -- el scroll y
@@ -81,6 +83,22 @@ function SalaMomentumRoom() {
   }, []);
 
   const refrescar = useCallback(() => { setRefreshing(true); load(); }, [load]);
+
+  // Rescate manual del escaneo diario (cron 16:45 ET): gratis, sin gate. Separado de
+  // "actualizar" a propósito -- ese solo relee lo que ya hay, esto hace ~34 llamadas a yfinance.
+  const escanear = async () => {
+    setScanning(true);
+    setScanMsg("");
+    try {
+      const r = await adminScan();
+      setScanMsg(r.ok ? `${r.nuevas} señal(es) nueva(s) de ${r.total_universo} revisadas.` : `Error: ${r.error}`);
+      if (r.ok) await load();
+    } catch (e) {
+      setScanMsg(e instanceof ApiError ? e.message : "No se pudo lanzar el escaneo.");
+    } finally {
+      setScanning(false);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -130,7 +148,7 @@ function SalaMomentumRoom() {
       )}
       <header className="sticky top-0 z-40 border-b backdrop-blur"
               style={{ borderColor: T.ring, background: "rgba(13,13,13,0.92)" }}>
-        <div className="mx-auto flex h-11 max-w-[900px] items-center justify-between px-4">
+        <div className="mx-auto flex min-h-11 max-w-[900px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-4 py-2">
           <div className="flex items-center gap-3">
             <Link href="/" className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
               ← Portada
@@ -140,18 +158,45 @@ function SalaMomentumRoom() {
               SALA REAL X
             </span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 text-[10.5px] font-bold"
+          <div className="flex items-center gap-2">
+            <span className="hidden items-center gap-1.5 text-[10.5px] font-bold sm:inline-flex"
                   style={{ color: conectado ? T.good : T.warn }}>
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: conectado ? T.good : T.warn }} />
               {conectado ? "IBKR conectado" : "IBKR sin conexión"}
             </span>
+            <span className="h-1.5 w-1.5 rounded-full sm:hidden" style={{ background: conectado ? T.good : T.warn }} />
+
+            {/* Icono-solo a propósito: dos acciones distintas, dos formas distintas, sin
+                depender de leer texto en una pantalla pequeña. */}
+            <button onClick={escanear} disabled={scanning}
+                    title="Recalcular señales ahora (escaneo manual, gratis — por si el cron 16:45 ET no ha corrido)"
+                    aria-label="Recalcular señales"
+                    className="flex h-8 w-8 items-center justify-center rounded-full transition disabled:opacity-40"
+                    style={{ background: "rgba(250,178,25,0.14)" }}>
+              <svg viewBox="0 0 24 24" className={`h-4 w-4 ${scanning ? "animate-pulse" : ""}`}
+                   fill="currentColor" style={{ color: T.warn }}>
+                <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
+              </svg>
+            </button>
             <button onClick={refrescar} disabled={refreshing}
-                    className="text-[11px] font-semibold transition-colors hover:underline disabled:opacity-50" style={{ color: T.entry }}>
-              {refreshing ? "actualizando…" : "↻ actualizar"}
+                    title="Actualizar" aria-label="Actualizar"
+                    className="flex h-8 w-8 items-center justify-center rounded-full transition disabled:opacity-40"
+                    style={{ background: "rgba(111,92,245,0.14)" }}>
+              <svg viewBox="0 0 24 24" className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                   fill="none" stroke={T.entry} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 0 1 15.3-6.3L21 8" />
+                <path d="M21 3v5h-5" />
+                <path d="M21 12a9 9 0 0 1-15.3 6.3L3 16" />
+                <path d="M3 21v-5h5" />
+              </svg>
             </button>
           </div>
         </div>
+        {scanMsg && (
+          <div className="mx-auto max-w-[900px] px-4 pb-2 text-[11px]" style={{ color: T.muted }}>
+            {scanMsg}
+          </div>
+        )}
       </header>
 
       <div className="mx-auto max-w-[900px] px-4 pt-4">

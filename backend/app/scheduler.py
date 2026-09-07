@@ -150,10 +150,12 @@ def _reconcile_job() -> None:
         db.close()
 
 
-def _momentum_scan_job() -> None:
-    """Escaneo diario del universo fijo de momentum (34 tickers): SOLO detecta señales nuevas
-    y guarda el contexto que el gate necesitará (`ath`, `desde_noticias`) -- NUNCA llama al
-    gate. Cero coste (yfinance), por eso sí puede vivir en un cron automático.
+def run_momentum_scan(db) -> dict:  # noqa: ANN001 — Session, evitar el import circular con db.py
+    """Escaneo del universo fijo de momentum (34 tickers): SOLO detecta señales nuevas y guarda
+    el contexto que el gate necesitará (`ath`, `desde_noticias`) -- NUNCA llama al gate. Cero
+    coste (yfinance). Reutilizable: la llama el cron y también `POST /admin/momentum-scan`
+    (rescate manual si el cron no ha corrido todavía o falló, mismo patrón que
+    `/admin/universe-snapshot`). Deja subir la excepción -- cada llamador decide cómo reportarla.
 
     El gate se evalúa aparte, con un clic explícito de Manuel (ver `POST
     /momentum/gate/evaluar-pendientes` en momentum/routes.py) -- separar las dos cosas es la
@@ -164,43 +166,51 @@ def _momentum_scan_job() -> None:
 
     from app.momentum import signals as momentum_signals
 
+    todas = momentum_signals.compute_signals()
+    nuevas = 0
+    for s in todas:
+        entry_date = s["entry_date"].date()
+        existe = db.execute(text(
+            "select 1 from momentum_senales where ticker=:t and tipo=:tp and entry_date=:d"
+        ), {"t": s["ticker"], "tp": s["tipo"], "d": entry_date}).first()
+        if existe:
+            continue
+        # `compute_signals()` pasa por un DataFrame internamente (para resolver 'ambos') --
+        # eso puede colar NaT/NaN en vez de None en exit_date/motivo. SIEMPRE pd.notna(),
+        # nunca `is not None` (bug real, ya nos mordió con esto antes).
+        exit_val = s.get("exit_date")
+        motivo_val = s.get("motivo")
+        db.execute(text("""
+            insert into momentum_senales
+              (ticker, sector, tipo, entry_date, entry_price, ref_label, ref_price,
+               caida_pct, resuelta, exit_date, ret, motivo, dias, estado, ath, desde_noticias)
+            values (:ticker, :sector, :tipo, :entry_date, :entry_price, :ref_label,
+                    :ref_price, :caida_pct, :resuelta, :exit_date, :ret, :motivo, :dias,
+                    'nueva', :ath, :desde_noticias)
+            on conflict (ticker, tipo, entry_date) do nothing
+        """), {
+            "ticker": s["ticker"], "sector": s["sector"], "tipo": s["tipo"],
+            "entry_date": entry_date, "entry_price": s["entry_price"],
+            "ref_label": s["ref_label"], "ref_price": s["ref_price"],
+            "caida_pct": s["caida_pct"], "resuelta": s["resuelta"],
+            "exit_date": exit_val.date() if pd.notna(exit_val) else None,
+            "ret": s["ret"], "motivo": motivo_val if pd.notna(motivo_val) else None,
+            "dias": s["dias"], "ath": s["ath"], "desde_noticias": s["desde_noticias"].date(),
+        })
+        nuevas += 1
+    db.commit()
+    if nuevas:
+        logger.info("Momentum: %s señal(es) nueva(s) detectada(s), gate pendiente.", nuevas)
+    return {"nuevas": nuevas, "total_universo": len(todas)}
+
+
+def _momentum_scan_job() -> None:
+    """Wrapper del cron: abre su propia sesión y se traga el error (logueado) -- un cron caído
+    no puede tirar el proceso. El rescate manual (`run_momentum_scan` desde el endpoint) SÍ deja
+    subir la excepción, para que el panel la enseñe."""
     db = SessionLocal()
     try:
-        todas = momentum_signals.compute_signals()
-        nuevas = 0
-        for s in todas:
-            entry_date = s["entry_date"].date()
-            existe = db.execute(text(
-                "select 1 from momentum_senales where ticker=:t and tipo=:tp and entry_date=:d"
-            ), {"t": s["ticker"], "tp": s["tipo"], "d": entry_date}).first()
-            if existe:
-                continue
-            # `compute_signals()` pasa por un DataFrame internamente (para resolver 'ambos') --
-            # eso puede colar NaT/NaN en vez de None en exit_date/motivo. SIEMPRE pd.notna(),
-            # nunca `is not None` (bug real, ya nos mordió con esto antes).
-            exit_val = s.get("exit_date")
-            motivo_val = s.get("motivo")
-            db.execute(text("""
-                insert into momentum_senales
-                  (ticker, sector, tipo, entry_date, entry_price, ref_label, ref_price,
-                   caida_pct, resuelta, exit_date, ret, motivo, dias, estado, ath, desde_noticias)
-                values (:ticker, :sector, :tipo, :entry_date, :entry_price, :ref_label,
-                        :ref_price, :caida_pct, :resuelta, :exit_date, :ret, :motivo, :dias,
-                        'nueva', :ath, :desde_noticias)
-                on conflict (ticker, tipo, entry_date) do nothing
-            """), {
-                "ticker": s["ticker"], "sector": s["sector"], "tipo": s["tipo"],
-                "entry_date": entry_date, "entry_price": s["entry_price"],
-                "ref_label": s["ref_label"], "ref_price": s["ref_price"],
-                "caida_pct": s["caida_pct"], "resuelta": s["resuelta"],
-                "exit_date": exit_val.date() if pd.notna(exit_val) else None,
-                "ret": s["ret"], "motivo": motivo_val if pd.notna(motivo_val) else None,
-                "dias": s["dias"], "ath": s["ath"], "desde_noticias": s["desde_noticias"].date(),
-            })
-            nuevas += 1
-        db.commit()
-        if nuevas:
-            logger.info("Momentum: %s señal(es) nueva(s) detectada(s), gate pendiente.", nuevas)
+        run_momentum_scan(db)
     except Exception:
         logger.exception("Fallo en el job de escaneo de momentum")
     finally:
