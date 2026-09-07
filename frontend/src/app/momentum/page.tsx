@@ -747,8 +747,8 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
     <button onClick={onChange} disabled={disabled} aria-pressed={checked}
             className="relative h-[21px] w-9 shrink-0 rounded-full transition-colors disabled:opacity-50"
             style={{ background: checked ? T.entry : T.grid }}>
-      <span className="absolute top-[2px] h-[17px] w-[17px] rounded-full bg-white transition-transform"
-            style={{ transform: checked ? "translateX(17px)" : "translateX(2px)" }} />
+      <span className="absolute left-[2px] top-[2px] h-[17px] w-[17px] rounded-full bg-white transition-transform"
+            style={{ transform: checked ? "translateX(15px)" : "translateX(0)" }} />
     </button>
   );
 }
