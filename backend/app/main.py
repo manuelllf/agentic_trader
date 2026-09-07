@@ -31,6 +31,7 @@ from app.auth import (
 )
 from app.config import settings
 from app.db import init_db
+from app.momentum.routes import router as momentum_router
 from app.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -185,6 +186,9 @@ async def _validation_422(_request: Request, exc: RequestValidationError) -> JSO
 # /health, /, /auth/login.
 app.include_router(public_router)
 app.include_router(router, dependencies=[Depends(require_auth)])
+# Sala Real X (momentum), 2ª estrategia independiente del ranker -- mismo candado, tablas
+# propias (momentum_*), sin ORM (ver app/momentum/routes.py).
+app.include_router(momentum_router, dependencies=[Depends(require_auth)])
 
 
 # ---- Público (sin token) ----------------------------------------------------

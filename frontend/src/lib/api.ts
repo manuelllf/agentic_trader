@@ -54,14 +54,16 @@ async function request(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS)
   }
 }
 
-async function get<T>(path: string): Promise<T> {
+// Exportados (sin re-exponer `request`): Sala Real X (frontend/src/app/momentum/) los reusa
+// para no duplicar timeout/auth/401-handling en un cliente HTTP propio.
+export async function get<T>(path: string): Promise<T> {
   const res = await request(path);
   if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
   if (!res.ok) throw new ApiError(`No se pudo leer ${path} (${res.status}).`, "http", res.status);
   return res.json() as Promise<T>;
 }
 
-async function post<T>(path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+export async function post<T>(path: string, body?: unknown, timeoutMs?: number): Promise<T> {
   const res = await request(path, {
     method: "POST",
     headers: body ? { "Content-Type": "application/json" } : undefined,

@@ -412,6 +412,22 @@ class IbkrWebBroker:
         data = self._client.positions(self._account).data
         return [p for p in (data or []) if isinstance(p, dict)]
 
+    def raw_cash(self) -> dict[str, Decimal]:
+        """Caja BRUTA de la cuenta IBKR por divisa (read-only, mezclada con lo personal y con
+        el libro real del ranker -- es la MISMA cuenta física). SOLO para Sala Real X
+        (momentum): esa sala nunca ejecuta, solo informa "hay dinero disponible o no" para que
+        Manuel decida el tamaño a mano. El ranker JAMÁS usa esto para dimensionar/vender: su
+        única fuente es su propio libro (`ledger.service`, book='real')."""
+        data = self._client.get_ledger(self._account).data or {}
+        out: dict[str, Decimal] = {}
+        for currency, info in data.items():
+            if currency == "BASE" or not isinstance(info, dict):
+                continue
+            saldo = info.get("cashbalance")
+            if saldo is not None:
+                out[currency] = D(str(saldo))
+        return out
+
     def status(self) -> dict:
         try:
             healthy = bool(self._client.check_health())

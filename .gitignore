@@ -72,6 +72,13 @@ build/
 # repo, se quedan locales.
 backend/scripts/compara_*.py
 
+# Momentum: análisis puntual y datos generados, no fuente de verdad del repo (ver
+# docs/momentum-sala-real-x.md). El motor real vive en backend/app/momentum/.
+backend/scripts/senales.csv
+backend/scripts/sim_4_spots.py
+backend/scripts/scan_sectores_candidatos.py
+backend/scripts/scan_sectores_candidatos_resultado.txt
+
 # ---- Node / Next.js ----
 node_modules/
 .next/

@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     prescore_provider: str = "qwen"       # "deepseek" | "qwen"
     dashscope_api_key: str = ""
     qwen_model: str = "qwen3.7-flash"
+    # Solo /company-news (from/to acotado), para el gate de noticias del momentum -- no sustituye
+    # al scraper de Yahoo, que sigue siendo la fuente para el resto (ver yahoo_scraper.py).
+    finnhub_api_key: str = ""
+    # Tope manual de capital para Sala Real X (momentum) -- sin slots, Manuel reparte a mano
+    # por posición (ver docs/momentum-sala-real-x.md §4). Editable por env hasta que haga falta
+    # una UI propia; el valor no es una decisión de producto, solo un límite de partida.
+    momentum_capital_tope_usd: float = 3000.0
     # Reasoning caro solo donde hay pocas llamadas (macro/constructor=1, profundo≤100). "low" en
     # lotes de 20 degradó la granularidad del prescore (peor correlación con el profundo) y costó
     # 2,6× más — vuelve a "none", que da una nota limpia siempre.

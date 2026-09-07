@@ -150,6 +150,63 @@ def _reconcile_job() -> None:
         db.close()
 
 
+def _momentum_scan_job() -> None:
+    """Escaneo diario del universo fijo de momentum (34 tickers): SOLO detecta señales nuevas
+    y guarda el contexto que el gate necesitará (`ath`, `desde_noticias`) -- NUNCA llama al
+    gate. Cero coste (yfinance), por eso sí puede vivir en un cron automático.
+
+    El gate se evalúa aparte, con un clic explícito de Manuel (ver `POST
+    /momentum/gate/evaluar-pendientes` en momentum/routes.py) -- separar las dos cosas es la
+    decisión de diseño del 7-sep-2026: el dinero lo controla él, nunca un cron silencioso.
+    """
+    import pandas as pd
+    from sqlalchemy import text
+
+    from app.momentum import signals as momentum_signals
+
+    db = SessionLocal()
+    try:
+        todas = momentum_signals.compute_signals()
+        nuevas = 0
+        for s in todas:
+            entry_date = s["entry_date"].date()
+            existe = db.execute(text(
+                "select 1 from momentum_senales where ticker=:t and tipo=:tp and entry_date=:d"
+            ), {"t": s["ticker"], "tp": s["tipo"], "d": entry_date}).first()
+            if existe:
+                continue
+            # `compute_signals()` pasa por un DataFrame internamente (para resolver 'ambos') --
+            # eso puede colar NaT/NaN en vez de None en exit_date/motivo. SIEMPRE pd.notna(),
+            # nunca `is not None` (bug real, ya nos mordió con esto antes).
+            exit_val = s.get("exit_date")
+            motivo_val = s.get("motivo")
+            db.execute(text("""
+                insert into momentum_senales
+                  (ticker, sector, tipo, entry_date, entry_price, ref_label, ref_price,
+                   caida_pct, resuelta, exit_date, ret, motivo, dias, estado, ath, desde_noticias)
+                values (:ticker, :sector, :tipo, :entry_date, :entry_price, :ref_label,
+                        :ref_price, :caida_pct, :resuelta, :exit_date, :ret, :motivo, :dias,
+                        'nueva', :ath, :desde_noticias)
+                on conflict (ticker, tipo, entry_date) do nothing
+            """), {
+                "ticker": s["ticker"], "sector": s["sector"], "tipo": s["tipo"],
+                "entry_date": entry_date, "entry_price": s["entry_price"],
+                "ref_label": s["ref_label"], "ref_price": s["ref_price"],
+                "caida_pct": s["caida_pct"], "resuelta": s["resuelta"],
+                "exit_date": exit_val.date() if pd.notna(exit_val) else None,
+                "ret": s["ret"], "motivo": motivo_val if pd.notna(motivo_val) else None,
+                "dias": s["dias"], "ath": s["ath"], "desde_noticias": s["desde_noticias"].date(),
+            })
+            nuevas += 1
+        db.commit()
+        if nuevas:
+            logger.info("Momentum: %s señal(es) nueva(s) detectada(s), gate pendiente.", nuevas)
+    except Exception:
+        logger.exception("Fallo en el job de escaneo de momentum")
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     if not settings.enable_scheduler:
         logger.info("Scheduler desactivado (ENABLE_SCHEDULER=false)")
@@ -204,6 +261,13 @@ def start_scheduler() -> None:
         _analytics_sync_job,
         CronTrigger(hour=6, minute=0, timezone="Europe/Madrid"),
         id="analytics_sync", replace_existing=True, misfire_grace_time=3600, coalesce=True,
+    )
+    # Momentum: detección diaria de señales nuevas (sin gate, coste cero) -- 16:45 ET, tras el
+    # cierre + retraso de yfinance. El gate se evalúa aparte, con un clic explícito de Manuel.
+    scheduler.add_job(
+        _momentum_scan_job,
+        CronTrigger(day_of_week="mon-fri", hour=16, minute=45, timezone=settings.scan_timezone),
+        id="momentum_scan", replace_existing=True, misfire_grace_time=3600, coalesce=True,
     )
     scheduler.start()
     logger.info(
