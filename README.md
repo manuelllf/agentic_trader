@@ -60,6 +60,15 @@ Las que más forma le dan al sistema:
   acciones sobreviven a cada etapa, por sector, es comportamiento; un ticker con su score
   sería un feed de señales. Las posiciones sin sesión salen anonimizadas.
 
+## Segunda estrategia: momentum (Sala Real X)
+
+Independiente del ranker fundamental — universo propio de cíclicas puras (Espacio, IA-infra,
+Quantum, cripto-IA, óptica-IA, biotech-IA), sin cartera ni capital compartido. Detecta caídas
+violentas por patrón técnico (zigzag / suelo múltiple); un LLM decide una única cosa, si la
+caída es miedo o negocio roto (gate de noticias, lista cerrada de motivos), nunca tamaño ni
+ejecución. **Esta sala nunca opera sola**: alerta, y el usuario ejecuta a mano en IBKR y lo
+reporta de vuelta.
+
 ## Stack
 
 | Área      | Tecnología                                                    |
@@ -78,8 +87,9 @@ Las que más forma le dan al sistema:
 
 ```
 agentic_trading/
-├── backend/     # FastAPI: escaneo, scoring, libros de capital, bróker, aprobaciones
-└── frontend/    # Next.js: sala sombra + sala real
+├── backend/     # FastAPI: escaneo, scoring, libros de capital, bróker, aprobaciones,
+│                #   momentum (2ª estrategia, independiente)
+└── frontend/    # Next.js: sala sombra + sala real + sala real X (momentum)
 ```
 
 ## Puesta en marcha
