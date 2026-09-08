@@ -151,35 +151,57 @@ def _reconcile_job() -> None:
 
 
 def run_momentum_scan(db) -> dict:  # noqa: ANN001 — Session, evitar el import circular con db.py
-    """Escaneo del universo fijo de momentum (34 tickers): SOLO detecta señales nuevas y guarda
-    el contexto que el gate necesitará (`ath`, `desde_noticias`) -- NUNCA llama al gate. Cero
-    coste (yfinance). Reutilizable: la llama el cron y también `POST /admin/momentum-scan`
-    (rescate manual si el cron no ha corrido todavía o falló, mismo patrón que
-    `/admin/universe-snapshot`). Deja subir la excepción -- cada llamador decide cómo reportarla.
+    """Escaneo del universo fijo de momentum (34 tickers): detecta señales nuevas (guarda el
+    contexto que el gate necesitará -- `ath`, `desde_noticias` -- NUNCA llama al gate, cero
+    coste) y ACTUALIZA las que ya estaban abiertas y desde entonces se resolvieron de verdad
+    (objetivo o 90 días). Reutilizable: la llama el cron y también `POST /admin/momentum-scan`
+    (rescate manual). Deja subir la excepción -- cada llamador decide cómo reportarla.
 
     El gate se evalúa aparte, con un clic explícito de Manuel (ver `POST
     /momentum/gate/evaluar-pendientes` en momentum/routes.py) -- separar las dos cosas es la
     decisión de diseño del 7-sep-2026: el dinero lo controla él, nunca un cron silencioso.
+
+    Bug real encontrado el 8-sep-2026: antes de esto, una señal insertada como abierta se
+    quedaba `resuelta=false` PARA SIEMPRE -- el job solo insertaba nuevas y nunca revisitaba
+    las existentes, así que ninguna alerta ni posición pasaba nunca sola a Historial aunque el
+    precio llevara semanas habiendo cruzado el objetivo o cumplido el plazo.
     """
     import pandas as pd
     from sqlalchemy import text
 
+    from app import push
     from app.momentum import signals as momentum_signals
 
     todas = momentum_signals.compute_signals()
-    nuevas = 0
+    nuevas, tickers_nuevos = 0, []
+    resueltas_ejecutadas = []   # posiciones REALES (estado='ejecutada') que acaban de resolverse
     for s in todas:
         entry_date = s["entry_date"].date()
-        existe = db.execute(text(
-            "select 1 from momentum_senales where ticker=:t and tipo=:tp and entry_date=:d"
-        ), {"t": s["ticker"], "tp": s["tipo"], "d": entry_date}).first()
-        if existe:
-            continue
         # `compute_signals()` pasa por un DataFrame internamente (para resolver 'ambos') --
         # eso puede colar NaT/NaN en vez de None en exit_date/motivo. SIEMPRE pd.notna(),
         # nunca `is not None` (bug real, ya nos mordió con esto antes).
         exit_val = s.get("exit_date")
         motivo_val = s.get("motivo")
+        motivo_final = motivo_val if pd.notna(motivo_val) else None
+        fila = db.execute(text("""
+            select id, resuelta, estado from momentum_senales
+            where ticker=:t and tipo=:tp and entry_date=:d
+        """), {"t": s["ticker"], "tp": s["tipo"], "d": entry_date}).mappings().first()
+        if fila:
+            if (not fila["resuelta"]) and s["resuelta"]:
+                db.execute(text("""
+                    update momentum_senales
+                    set resuelta = true, exit_date = :exit_date, ret = :ret,
+                        motivo = :motivo, dias = :dias
+                    where id = :id
+                """), {
+                    "exit_date": exit_val.date() if pd.notna(exit_val) else None,
+                    "ret": s["ret"], "motivo": motivo_final, "dias": s["dias"], "id": fila["id"],
+                })
+                if fila["estado"] == "ejecutada":
+                    resueltas_ejecutadas.append(
+                        {"ticker": s["ticker"], "ret": s["ret"], "motivo": motivo_final})
+            continue
         db.execute(text("""
             insert into momentum_senales
               (ticker, sector, tipo, entry_date, entry_price, ref_label, ref_price,
@@ -194,14 +216,27 @@ def run_momentum_scan(db) -> dict:  # noqa: ANN001 — Session, evitar el import
             "ref_label": s["ref_label"], "ref_price": s["ref_price"],
             "caida_pct": s["caida_pct"], "resuelta": s["resuelta"],
             "exit_date": exit_val.date() if pd.notna(exit_val) else None,
-            "ret": s["ret"], "motivo": motivo_val if pd.notna(motivo_val) else None,
+            "ret": s["ret"], "motivo": motivo_final,
             "dias": s["dias"], "ath": s["ath"], "desde_noticias": s["desde_noticias"].date(),
         })
         nuevas += 1
+        tickers_nuevos.append(s["ticker"])
     db.commit()
     if nuevas:
         logger.info("Momentum: %s señal(es) nueva(s) detectada(s), gate pendiente.", nuevas)
-    return {"nuevas": nuevas, "total_universo": len(todas)}
+        plural = "es" if nuevas != 1 else ""
+        push.send_to_all(
+            db, title=f"Sala Real X: {nuevas} señal{plural} nueva{plural and 's'}",
+            body=", ".join(tickers_nuevos), url="/momentum", tag="agentic-momentum",
+        )
+    for r in resueltas_ejecutadas:
+        motivo_txt = "objetivo alcanzado" if r["motivo"] == "objetivo" else "90 días cumplidos"
+        push.send_to_all(
+            db, title=f"Sala Real X: {r['ticker']} -- {motivo_txt}",
+            body=f"Resultado {r['ret']:+.1f}%. Revisa si toca vender.",
+            url="/momentum", tag="agentic-momentum",
+        )
+    return {"nuevas": nuevas, "resueltas": len(resueltas_ejecutadas), "total_universo": len(todas)}
 
 
 def _momentum_scan_job() -> None:
@@ -213,6 +248,22 @@ def _momentum_scan_job() -> None:
         run_momentum_scan(db)
     except Exception:
         logger.exception("Fallo en el job de escaneo de momentum")
+    finally:
+        db.close()
+
+
+def _apewisdom_job() -> None:
+    """Wrapper del cron: captura (fase 1) + detección de rupturas de menciones (fase 2, gratis,
+    sin LLM -- ver `momentum/candidatos.py`). Si ApeWisdom cae o cambia de forma, se loguea y no
+    toca nada más."""
+    db = SessionLocal()
+    try:
+        from app.momentum import apewisdom, candidatos
+        n = apewisdom.capturar(db)
+        nuevos = candidatos.detectar_rupturas(db)
+        logger.info("ApeWisdom: %s tickers capturados, %s candidato(s) nuevo(s).", n, nuevos)
+    except Exception:
+        logger.exception("Fallo en la captura diaria de ApeWisdom")
     finally:
         db.close()
 
@@ -272,12 +323,21 @@ def start_scheduler() -> None:
         CronTrigger(hour=6, minute=0, timezone="Europe/Madrid"),
         id="analytics_sync", replace_existing=True, misfire_grace_time=3600, coalesce=True,
     )
-    # Momentum: detección diaria de señales nuevas (sin gate, coste cero) -- 16:45 ET, tras el
-    # cierre + retraso de yfinance. El gate se evalúa aparte, con un clic explícito de Manuel.
+    # Momentum: detección diaria de señales nuevas (sin gate, coste cero) -- 16:05 ET, justo tras
+    # el cierre (16:00 ET). Antes eran las 16:45, que en España son las 22:45 -- con el mercado
+    # cerrado, sin ventana real para actuar. Manuel opera en after-market con el cierre real
+    # (decidido 8-sep-2026), así que no hace falta esperar más que el margen de yfinance.
     scheduler.add_job(
         _momentum_scan_job,
-        CronTrigger(day_of_week="mon-fri", hour=16, minute=45, timezone=settings.scan_timezone),
+        CronTrigger(day_of_week="mon-fri", hour=16, minute=5, timezone=settings.scan_timezone),
         id="momentum_scan", replace_existing=True, misfire_grace_time=3600, coalesce=True,
+    )
+    # ApeWisdom: captura diaria de menciones sociales (fase 1, solo guardar -- ver
+    # momentum/apewisdom.py). Mismo horario que el escaneo por simplicidad, sin cron propio.
+    scheduler.add_job(
+        _apewisdom_job,
+        CronTrigger(day_of_week="mon-fri", hour=16, minute=10, timezone=settings.scan_timezone),
+        id="apewisdom_capture", replace_existing=True, misfire_grace_time=3600, coalesce=True,
     )
     scheduler.start()
     logger.info(

@@ -71,8 +71,14 @@ def unsubscribe(db: Session, endpoint: str) -> None:
         db.commit()
 
 
-def send_to_all(db: Session, title: str, body: str, url: str = "/real") -> int:
-    """Empuja a todos los dispositivos suscritos. Poda suscripciones muertas (404/410)."""
+def send_to_all(
+    db: Session, title: str, body: str, url: str = "/real", tag: str = "agentic-real",
+) -> int:
+    """Empuja a todos los dispositivos suscritos. Poda suscripciones muertas (404/410).
+
+    `tag`: agrupa notificaciones en el navegador (una misma `tag` colapsa la anterior). Cada
+    sala manda la suya (`agentic-real`, `agentic-momentum`, ...) para no comerse avisos de
+    la otra -- ver `sw.js`."""
     if not settings.vapid_private_key:
         logger.info("Push omitido: faltan claves VAPID.")
         return 0
@@ -83,7 +89,7 @@ def send_to_all(db: Session, title: str, body: str, url: str = "/real") -> int:
         return 0
 
     subs = db.scalars(select(PushSubscription)).all()
-    payload = json.dumps({"title": title, "body": body, "url": url})
+    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
     sent = 0
     for s in subs:
         if not _valid_push_endpoint(s.endpoint):     # defensa extra: jamás POSTear fuera

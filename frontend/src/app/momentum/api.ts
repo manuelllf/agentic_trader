@@ -26,13 +26,23 @@ export const descartarSenal = (id: number) =>
 export const decidirCandidato = (id: number, decision: "incorporado" | "descartado") =>
   post<{ ok: boolean; decision: string }>(`/momentum/candidatos/${id}/decision`, { decision });
 
+// Etapas 1+2 (sector + estadística), gratis -- a demanda, candidato a candidato.
+export const comprobarFiltrosCandidato = (id: number) =>
+  post<Candidato>(`/momentum/candidatos/${id}/comprobar-filtros`);
+
+// Única llamada real del candidato -- siempre uno a uno, nunca en bloque (ver page.tsx).
+export const lanzarGateCandidato = (id: number) =>
+  post<Candidato>(`/momentum/candidatos/${id}/gate`);
+
 export const setMantenerUniverso = (ticker: string, mantener: boolean) =>
   post<{ ok: boolean; mantener: boolean }>(`/momentum/universo/${ticker}/mantener`, { mantener });
 
-// El endpoint solo LANZA el gate en segundo plano y responde al momento -- 17 llamadas reales
-// en serie tardan minutos, así que el progreso real se sondea aparte con `getGateProgreso()`.
-export const lanzarGate = () =>
-  post<{ lanzado: boolean; motivo?: string; pendientes: number }>("/momentum/gate/evaluar-pendientes");
+// `ids`: las señales que Manuel eligió (nunca "todas" a ciegas). El endpoint solo LANZA el
+// gate en segundo plano y responde al momento -- el progreso real se sondea con `getGateProgreso()`.
+export const lanzarGate = (ids: number[]) =>
+  post<{ lanzado: boolean; motivo?: string; pendientes: number }>(
+    "/momentum/gate/evaluar-pendientes", { ids },
+  );
 
 export type GateProgreso = {
   status: "idle" | "running" | "done" | "error";
@@ -49,3 +59,16 @@ export const getGateProgreso = () => get<GateProgreso>("/momentum/gate/progreso"
 // corrido todavía o falló. Separado de "actualizar" a propósito: ese solo relee lo que ya hay.
 export const adminScan = () =>
   post<{ ok: boolean; nuevas?: number; total_universo?: number; error?: string }>("/momentum/admin/scan");
+
+// Rescate manual de la detección diaria de ApeWisdom -- mismo criterio que adminScan.
+export const adminDetectarCandidatos = () =>
+  post<{ ok: boolean; nuevos?: number; error?: string }>("/momentum/admin/candidatos-detectar");
+
+// Alta manual de un candidato que Manuel detectó por su cuenta, sin esperar a ApeWisdom.
+export const crearCandidatoManual = (ticker: string) =>
+  post<Candidato>("/momentum/candidatos", { ticker });
+
+// Busca la fila más reciente de un ticker si ya existe (`null` si nunca se vio) -- para el
+// buscador del header: encuentra lo que ya hay antes de crear uno nuevo.
+export const buscarCandidato = (ticker: string) =>
+  get<Candidato | null>(`/momentum/candidatos/buscar?ticker=${encodeURIComponent(ticker)}`);

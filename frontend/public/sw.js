@@ -28,7 +28,7 @@ self.addEventListener("fetch", (event) => {
 // ---- Push: el timbre de la Sala Real ----------------------------------------
 
 self.addEventListener("push", (event) => {
-  let data = { title: "Agentic Trader", body: "Nueva alerta.", url: "/real" };
+  let data = { title: "Agentic Trader", body: "Nueva alerta.", url: "/real", tag: "agentic-real" };
   try {
     data = { ...data, ...event.data.json() };
   } catch {
@@ -39,7 +39,7 @@ self.addEventListener("push", (event) => {
       body: data.body,
       icon: "/icon-192.png",
       badge: "/icon-192.png",
-      tag: "agentic-real",           // colapsa alertas repetidas en una sola
+      tag: data.tag,                 // cada sala la suya -- colapsa repetidas, no se pisan entre salas
       data: { url: data.url },
     })
   );

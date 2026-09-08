@@ -13,7 +13,7 @@ import threading
 import time
 from datetime import UTC, date, datetime
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from app.db import SessionLocal
 from app.llm.trace import CallRecord
@@ -39,19 +39,20 @@ def esta_corriendo() -> bool:
         return _running
 
 
-def start(total: int) -> bool:
-    """Lanza el gate sobre las pendientes si no hay uno ya en marcha. `False` = ya corría.
+def start(ids: list[int]) -> bool:
+    """Lanza el gate SOLO sobre los ids elegidos (Manuel decide cuáles, señal a señal -- nunca
+    un "evaluar todas" a ciegas) si no hay uno ya en marcha. `False` = ya corría.
 
-    `total` lo marca el llamador (ya hizo el count para su propia respuesta) y se fija AQUÍ,
-    antes de arrancar el hilo -- si se fijara dentro de `_run()` habría una ventana de carrera
-    donde el primer sondeo del frontend puede ver el estado "idle"/"done" de la vez anterior."""
+    El total se fija AQUÍ, antes de arrancar el hilo -- si se fijara dentro de `_run()` habría
+    una ventana de carrera donde el primer sondeo del frontend puede ver el estado "idle"/"done"
+    de la vez anterior."""
     global _running
     with _lock:
         if _running:
             return False
         _running = True
-    gate_progress.iniciar(total)
-    threading.Thread(target=_run, daemon=True).start()
+    gate_progress.iniciar(len(ids))
+    threading.Thread(target=_run, args=(ids,), daemon=True).start()
     return True
 
 
@@ -59,13 +60,14 @@ def _parse_fecha(v):  # noqa: ANN001
     return date.fromisoformat(v) if isinstance(v, str) else v
 
 
-def _run() -> None:
+def _run(ids: list[int]) -> None:
     global _running
     db = SessionLocal()
     try:
         pendientes = db.execute(text("""
-            select * from momentum_senales where gate_resultado is null and estado != 'descartada'
-        """)).mappings().all()
+            select * from momentum_senales
+            where id in :ids and gate_resultado is null and estado != 'descartada'
+        """).bindparams(bindparam("ids", expanding=True)), {"ids": ids}).mappings().all()
         for m in pendientes:
             ticker = m["ticker"]
             gate_progress.marca_ticker(ticker)

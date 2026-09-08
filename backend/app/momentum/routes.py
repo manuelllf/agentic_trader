@@ -12,13 +12,13 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
-from fastapi import Depends
 
 from app.db import get_db
+from app.momentum import candidatos as candidatos_mod
 from app.momentum import capital, gate_progress, gate_runner, signals
 
 router = APIRouter(prefix="/momentum", tags=["momentum"])
@@ -39,7 +39,14 @@ def _row(m: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/cuenta")
 def cuenta(db: Session = Depends(get_db)) -> dict:
-    return capital.resumen(db)
+    resumen = capital.resumen(db)
+    gasto = db.execute(text("""
+        select coalesce(sum(cost_usd), 0) as usd, count(*) as n
+        from momentum_gate_llamadas where ok = true
+    """)).mappings().first()
+    resumen["gate_gastado_usd"] = str(gasto["usd"])
+    resumen["gate_llamadas"] = int(gasto["n"])
+    return resumen
 
 
 def _mantener_map(db: Session) -> dict[str, bool]:
@@ -150,6 +157,44 @@ def candidatos(db: Session = Depends(get_db)) -> list[dict]:
     return [_row(dict(m)) for m in rows]
 
 
+@router.get("/candidatos/buscar")
+def buscar_candidato(ticker: str, db: Session = Depends(get_db)) -> dict | None:
+    """Para el buscador de la sala: la fila más reciente de ese ticker si ya existe (de
+    ApeWisdom o de un alta manual anterior), o `null` si nunca se vio -- el frontend crea
+    uno nuevo en ese caso (`POST /candidatos`)."""
+    row = db.execute(text("""
+        select * from momentum_candidatos where ticker = :t
+        order by fecha_evaluacion desc, id desc limit 1
+    """), {"t": ticker.strip().upper()}).mappings().first()
+    return _row(dict(row)) if row else None
+
+
+class CandidatoManualIn(BaseModel):
+    ticker: str
+
+
+@router.post("/candidatos")
+def crear_candidato_manual(body: CandidatoManualIn, db: Session = Depends(get_db)) -> dict:
+    """Alta manual -- Manuel ficha un ticker que él mismo detectó, sin esperar a ApeWisdom.
+    Mismo pipeline desde aquí en adelante (filtros -> gate) que un candidato automático."""
+    try:
+        return _row(candidatos_mod.crear_manual(body.ticker, db))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/admin/candidatos-detectar")
+def admin_detectar_candidatos(db: Session = Depends(get_db)) -> dict:
+    """Rescate manual de la detección diaria de ApeWisdom (mismo patrón que `/admin/scan`):
+    por si el cron `apewisdom_capture` (16:10 ET) no ha corrido todavía o falló. Gratis, sin
+    gate -- no dispara ningún gasto real."""
+    try:
+        n = candidatos_mod.detectar_rupturas(db)
+        return {"ok": True, "nuevos": n}
+    except Exception as exc:  # noqa: BLE001 — el motivo legible es lo que necesita el panel
+        return {"ok": False, "error": str(exc)}
+
+
 class EjecucionIn(BaseModel):
     accion: Literal["compra", "venta"]
     acciones: float
@@ -213,19 +258,47 @@ def decidir_candidato(candidato_id: int, body: CandidatoDecisionIn, db: Session 
     return {"ok": True, "candidato_id": candidato_id, "decision": body.decision}
 
 
+@router.post("/candidatos/{candidato_id}/comprobar-filtros")
+def comprobar_filtros_candidato(candidato_id: int, db: Session = Depends(get_db)) -> dict:
+    """Etapas 1+2 (sector + estadística) -- gratis, a demanda, candidato a candidato."""
+    try:
+        return _row(candidatos_mod.comprobar_filtros(candidato_id, db))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/candidatos/{candidato_id}/gate")
+def gate_candidato(candidato_id: int, db: Session = Depends(get_db)) -> dict:
+    """Única llamada LLM del candidato -- siempre un clic explícito, uno a la vez, nunca en
+    bloque (decidido 8-sep-2026: aparte del gate de señales a propósito, ver `candidatos.py`)."""
+    try:
+        return _row(candidatos_mod.lanzar_gate_candidato(candidato_id, db))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+class EvaluarPendientesIn(BaseModel):
+    ids: list[int]
+
+
 @router.post("/gate/evaluar-pendientes")
-def evaluar_pendientes(db: Session = Depends(get_db)) -> dict:
+def evaluar_pendientes(body: EvaluarPendientesIn, db: Session = Depends(get_db)) -> dict:
     """ÚNICO punto donde el gate gasta dinero real -- se llama SOLO con un clic explícito desde
-    la sala, nunca desde el cron (ver `_momentum_scan_job`, que guarda gate pendiente y para
-    ahí). Solo LANZA el trabajo en segundo plano (ver `gate_runner`) y responde al momento --
-    17 llamadas reales en serie tardan minutos, y esperar aquí es lo que se colgó en producción
-    el 7-sep-2026. El progreso real se sondea en `GET /gate/progreso`."""
+    la sala, nunca desde el cron. `ids` los elige Manuel señal a señal (decidido 8-sep-2026: no
+    hay "evaluar todas" a ciegas, igual que el gate de candidatos). Solo LANZA el trabajo en
+    segundo plano (ver `gate_runner`) y responde al momento -- varias llamadas reales en serie
+    tardan minutos, y esperar aquí es lo que se colgó en producción el 7-sep-2026. El progreso
+    real se sondea en `GET /gate/progreso`."""
+    ids = list(dict.fromkeys(body.ids))  # sin duplicados, mismo orden
+    if not ids:
+        return {"lanzado": False, "motivo": "sin selección", "pendientes": 0}
     pendientes = db.execute(text("""
-        select count(*) from momentum_senales where gate_resultado is null and estado != 'descartada'
-    """)).scalar()
+        select count(*) from momentum_senales
+        where id in :ids and gate_resultado is null and estado != 'descartada'
+    """).bindparams(bindparam("ids", expanding=True)), {"ids": ids}).scalar()
     if pendientes == 0:
         return {"lanzado": False, "motivo": "sin pendientes", "pendientes": 0}
-    if not gate_runner.start(pendientes):
+    if not gate_runner.start(ids):
         return {"lanzado": False, "motivo": "ya en curso", "pendientes": pendientes}
     return {"lanzado": True, "pendientes": pendientes}
 

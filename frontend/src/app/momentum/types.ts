@@ -52,6 +52,12 @@ export type Cuenta = {
   desplegado_usd: string;
   tope_usd: string;
   libre_usd: string;
+  gate_gastado_usd: string;
+  gate_llamadas: number;
+  pnl_abierto_usd: string;
+  pnl_abierto_pct: string;
+  pnl_realizado_usd: string;
+  pnl_realizado_pct: string;
 };
 
 export type UniversoTicker = { ticker: string; sector: string; mantener: boolean };

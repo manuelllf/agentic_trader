@@ -44,13 +44,65 @@ def capital_desplegado(db: Session) -> Decimal:
     return D(str(row or 0))
 
 
+def pnl_abierto(db: Session) -> tuple[Decimal, Decimal]:
+    """($ , %) de las posiciones abiertas de verdad (compradas, sin venta reportada): valor a
+    precio de HOY (entry_price * (1 + ret/100), el mismo mark-to-market que ya usa la sala)
+    menos lo realmente invertido -- coste y comisión de compra incluidos."""
+    rows = db.execute(text("""
+        select s.entry_price, s.ret, e.acciones, e.precio, e.comision
+        from momentum_senales s
+        join momentum_ejecuciones e on e.senal_id = s.id and e.accion = 'compra'
+        where s.estado = 'ejecutada'
+          and not exists (
+            select 1 from momentum_ejecuciones v where v.senal_id = s.id and v.accion = 'venta'
+          )
+    """)).mappings().all()
+    invertido = ZERO
+    valor_hoy = ZERO
+    for r in rows:
+        acciones = D(str(r["acciones"]))
+        invertido += acciones * D(str(r["precio"])) + D(str(r["comision"]))
+        precio_hoy = D(str(r["entry_price"])) * (1 + D(str(r["ret"] or 0)) / 100)
+        valor_hoy += acciones * precio_hoy
+    pnl = valor_hoy - invertido
+    pct = (pnl / invertido * 100) if invertido else ZERO
+    return pnl, pct
+
+
+def pnl_realizado(db: Session) -> tuple[Decimal, Decimal]:
+    """($ , %) de las posiciones ya vendidas: proceeds de venta menos coste de compra, ambos
+    con la comisión real que Manuel reportó en cada ejecución."""
+    rows = db.execute(text("""
+        select
+          sum(case when accion = 'compra' then acciones * precio + comision else 0 end) as coste,
+          sum(case when accion = 'venta' then acciones * precio - comision else 0 end) as proceeds
+        from momentum_ejecuciones
+        group by senal_id
+        having sum(case when accion = 'venta' then 1 else 0 end) > 0
+    """)).mappings().all()
+    coste_total = ZERO
+    pnl_total = ZERO
+    for r in rows:
+        coste = D(str(r["coste"] or 0))
+        coste_total += coste
+        pnl_total += D(str(r["proceeds"] or 0)) - coste
+    pct = (pnl_total / coste_total * 100) if coste_total else ZERO
+    return pnl_total, pct
+
+
 def resumen(db: Session) -> dict:
     """Todo lo que necesita la sección "Cuenta" de Sala Real X."""
     desplegado = capital_desplegado(db)
     tope = D(str(settings.momentum_capital_tope_usd))
+    pnl_ab, pnl_ab_pct = pnl_abierto(db)
+    pnl_re, pnl_re_pct = pnl_realizado(db)
     return {
         "cash": cash_disponible(),
         "desplegado_usd": str(desplegado),
         "tope_usd": str(tope),
         "libre_usd": str(max(ZERO, tope - desplegado)),
+        "pnl_abierto_usd": str(pnl_ab),
+        "pnl_abierto_pct": str(pnl_ab_pct),
+        "pnl_realizado_usd": str(pnl_re),
+        "pnl_realizado_pct": str(pnl_re_pct),
     }
