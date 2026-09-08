@@ -127,10 +127,16 @@ function SalaMomentumRoom() {
   // Señales detectadas por el escaneo diario (gratis) que todavía no pasaron por el gate de
   // noticias (el único paso que gasta dinero real) -- ver doc §3, decidido 7-sep-2026.
   const pendientesGate = (alertas ?? []).filter((s) => s.gate_resultado == null);
-  // Candidatos detectados por ApeWisdom, sin decisión todavía, vs. los ya evaluados (con o
-  // sin gate) -- la decisión es lo único que separa "por revisar" de "evaluados" (ver doc §1).
-  const candidatosPorRevisar = (candidatos ?? []).filter((c) => c.decision === "pendiente");
-  const candidatosEvaluados = (candidatos ?? []).filter((c) => c.decision !== "pendiente");
+  // Candidatos: solo se ven aquí mientras siguen sin decidir (corregido 8-sep-2026 -- el
+  // filtro/gate no deciden por ti, solo informan). En cuanto decides Incorporar o Mantener
+  // fuera, la fila sale de esta vista -- el dato sigue en la base para siempre, pero deja de
+  // ocupar sitio: si incorporas, ya vive de verdad en Universo; si descartas, la decisión fue
+  // con fundamento y no hace falta seguir viéndola.
+  const pipelineTerminado = (c: Candidato) =>
+    c.gate_pass != null || (c.filtro_sector_pass != null && (!c.filtro_sector_pass || !c.estadistica_pass));
+  const candidatosActivos = (candidatos ?? []).filter((c) => c.decision === "pendiente");
+  const candidatosPorRevisar = candidatosActivos.filter((c) => !pipelineTerminado(c));
+  const candidatosEvaluados = candidatosActivos.filter(pipelineTerminado);
   // De los "por revisar", cuáles ya pasaron sector+estadística y solo les falta el gate -- se
   // recuerda arriba junto al otro gasto real para que no se pierdan al fondo de un acordeón.
   const candidatosListos = candidatosPorRevisar.filter((c) => c.filtro_sector_pass && c.estadistica_pass);
@@ -194,16 +200,16 @@ function SalaMomentumRoom() {
         {/* Fila propia, centrada -- cada acción se distingue por su texto, no por un color
             arbitrario (antes: iconos solos + leyenda aparte explicándolos, redundante). */}
         <div className="mx-auto flex max-w-[900px] flex-wrap justify-center gap-2 px-4 pb-2.5">
-          <ActionChip onClick={escanear} busy={scanning} label="Recalcular señales"
+          <ActionChip onClick={escanear} busy={scanning} label="Señales"
                       title="Recalcular señales ahora (gratis, por si el cron 16:05 ET no ha corrido)">
             <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
           </ActionChip>
-          <ActionChip onClick={detectarCandidatos} busy={detectando} label="Detectar rupturas"
+          <ActionChip onClick={detectarCandidatos} busy={detectando} label="Rupturas"
                       title="Fuerza la detección de rupturas de ApeWisdom ahora (gratis, por si el cron 16:10 ET no ha corrido). Automático: solo mira lo que ApeWisdom ya trae."
                       stroke>
             <path d="M2 13h3l2-7 3 15 3-11 2 3h5" />
           </ActionChip>
-          <ActionChip onClick={() => setBuscadorAbierto(true)} label="Añadir ticker"
+          <ActionChip onClick={() => setBuscadorAbierto(true)} label="Tickers"
                       title="Añade o revisa un ticker a mano, sin esperar a ApeWisdom" stroke>
             <circle cx="10" cy="10" r="6.5" />
             <path d="M20 20l-4.3-4.3M10 7v6M7 10h6" />
@@ -1231,11 +1237,11 @@ function CandidatoRow({ c, first, onDecidido }: { c: Candidato; first: boolean; 
           <b style={{ color: T.ink }}>{c.ticker}</b>
           <span className="ml-2 text-[11px]" style={{ color: T.muted }}>{c.nombre}</span>
         </div>
+        {/* Esta lista solo contiene candidatos sin decidir todavía (los decididos salen de
+            aquí en cuanto Incorporas o Mantienes fuera) -- el badge es siempre neutro. */}
         <span className="shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase"
-              style={c.decision === "incorporado"
-                ? { background: "rgba(12,163,12,0.14)", color: T.good }
-                : { background: "rgba(250,178,25,0.16)", color: T.warn }}>
-          {c.decision}
+              style={{ background: T.base, color: T.ink2 }}>
+          sin decidir
         </span>
       </button>
       {open && (
@@ -1253,19 +1259,19 @@ function CandidatoRow({ c, first, onDecidido }: { c: Candidato; first: boolean; 
             </button>
           )}
           <div className="mt-3 flex gap-2">
-            <button onClick={() => decidir("incorporado")} disabled={busy != null || c.decision === "incorporado"}
+            <button onClick={() => decidir("incorporado")} disabled={busy != null}
                     className="flex-1 rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
                     style={{ background: "rgba(12,163,12,0.14)", color: T.good, border: "1px solid rgba(12,163,12,0.35)" }}>
               {busy === "incorporado" ? "…" : "Incorporar"}
             </button>
-            <button onClick={() => decidir("descartado")} disabled={busy != null || c.decision === "descartado"}
+            <button onClick={() => decidir("descartado")} disabled={busy != null}
                     className="flex-1 rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
                     style={{ background: "transparent", color: T.bad, border: "1px solid rgba(208,59,59,0.5)" }}>
               {busy === "descartado" ? "…" : "Mantener fuera"}
             </button>
           </div>
           <p className="mt-2 text-[10px]" style={{ color: T.muted }}>
-            {c.decidido_por === "manual" ? "Decisión tuya." : "Propuesta del sistema: decides tú."}
+            Sin decidir todavía: incorporar o mantener fuera es cosa tuya.
           </p>
         </div>
       )}

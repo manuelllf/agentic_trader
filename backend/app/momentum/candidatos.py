@@ -95,6 +95,32 @@ def detectar_rupturas(db: Session) -> int:
     return creados
 
 
+def sincronizar_universo(db: Session) -> int:
+    """Añade al universo EN CALIENTE (signals.UNIVERSO/SECTOR/NOMBRE, memoria del proceso) los
+    candidatos que ya incorporaste -- así "Incorporar" surte efecto en el escaneo diario, la
+    validación y el universo sin que nadie toque código nunca más (decidido 8-sep-2026, era
+    manual antes). Fuente de verdad real: `momentum_candidatos.decision = 'incorporado'`, esto
+    solo la refleja en memoria -- idempotente, seguro llamarlo en cada lectura.
+
+    Sector = el real de yfinance (la parte antes de la barra), no se fuerza a uno de los 6
+    sub-géneros curados de los 34 originales -- estos llegaron por descubrimiento, no por ETF."""
+    rows = db.execute(text("""
+        select ticker, nombre, filtro_sector_detalle from momentum_candidatos
+        where decision = 'incorporado'
+    """)).mappings().all()
+    añadidos = 0
+    for r in rows:
+        t = r["ticker"]
+        if t in signals.UNIVERSO:
+            continue
+        signals.UNIVERSO.append(t)
+        sector = (r["filtro_sector_detalle"] or "").split(" / ")[0].strip()
+        signals.SECTOR[t] = sector or "Descubierto"
+        signals.NOMBRE[t] = r["nombre"] or t
+        añadidos += 1
+    return añadidos
+
+
 def crear_manual(ticker: str, db: Session) -> dict:
     """Alta manual -- Manuel ficha un ticker que él mismo detectó, sin esperar a ApeWisdom.
     Cae en la misma cola "por revisar" que uno automático, mismo pipeline desde aquí."""
@@ -151,7 +177,9 @@ def _stats_estadistica(señales: list[dict]) -> str:
 def comprobar_filtros(candidato_id: int, db: Session) -> dict:
     """Etapas 1+2, gratis y automáticas: sector (yfinance, excluye solo lo ya descartado con
     datos reales) + estadística (¿el motor de señales encuentra alguna entrada en su histórico?).
-    Si falla cualquiera, se descarta por defecto -- Manuel puede pisarlo igual (ver doc §1)."""
+    Nunca decide por Manuel -- solo informa. Si falla cualquiera, la fila pasa a "evaluados"
+    igualmente (nada más que comprobar), pero la decisión de incorporar o no sigue siendo
+    100% suya (decidido 8-sep-2026, corrigiendo un sesgo real: antes se auto-descartaba)."""
     row = db.execute(text("select * from momentum_candidatos where id = :id"),
                      {"id": candidato_id}).mappings().first()
     if row is None:
@@ -174,24 +202,14 @@ def comprobar_filtros(candidato_id: int, db: Session) -> dict:
     estad_detalle = (_stats_estadistica(señales) if estad_pass
                      else "Sin ninguna entrada con el patrón zigzag/suelo.")
 
-    decision, decidido_por = row["decision"], row["decidido_por"]
-    if not (sector_pass and estad_pass):
-        decision, decidido_por = "descartado", "sistema"
-    elif decidido_por == "sistema":
-        # Reintento tras un fallo puntual (yfinance caído, etc.) que ahora sí pasa -- vuelve a
-        # "pendiente" para que aparezca el botón de gate. Una decisión MANUAL nunca se pisa así.
-        decision, decidido_por = "pendiente", "sistema"
-
     db.execute(text("""
         update momentum_candidatos
         set filtro_sector_pass = :sp, filtro_sector_detalle = :sd,
-            estadistica_pass = :ep, estadistica_detalle = :ed,
-            nombre = :nombre, decision = :decision, decidido_por = :decidido_por
+            estadistica_pass = :ep, estadistica_detalle = :ed, nombre = :nombre
         where id = :id
     """), {
         "sp": sector_pass, "sd": sector_detalle, "ep": estad_pass, "ed": estad_detalle,
-        "nombre": nombre or row["nombre"], "decision": decision, "decidido_por": decidido_por,
-        "id": candidato_id,
+        "nombre": nombre or row["nombre"], "id": candidato_id,
     })
     db.commit()
     return dict(db.execute(text("select * from momentum_candidatos where id = :id"),
@@ -276,12 +294,11 @@ def _lanzar_gate_candidato(candidato_id: int, db: Session) -> dict:
         "ct": c.completion_tokens if c else None, "cost": c.cost_usd if c else None,
         "lat": c.latency_ms if c else None, "pasa": r.pasa, "motivo": r.motivo,
     })
+    # El gate informa, no decide -- ni siquiera si pasa. Incorporar o descartar es SIEMPRE
+    # tu clic explícito (corregido 8-sep-2026: antes esto se decidía solo).
     db.execute(text("""
-        update momentum_candidatos
-        set gate_pass = :gp, gate_detalle = :gd, decision = :decision, decidido_por = 'sistema'
-        where id = :id
-    """), {"gp": r.pasa, "gd": r.motivo, "decision": "incorporado" if r.pasa else "descartado",
-           "id": candidato_id})
+        update momentum_candidatos set gate_pass = :gp, gate_detalle = :gd where id = :id
+    """), {"gp": r.pasa, "gd": r.motivo, "id": candidato_id})
     db.commit()
     return dict(db.execute(text("select * from momentum_candidatos where id = :id"),
                            {"id": candidato_id}).mappings().first())

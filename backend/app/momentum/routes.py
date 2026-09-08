@@ -57,6 +57,7 @@ def _mantener_map(db: Session) -> dict[str, bool]:
 
 @router.get("/universo")
 def universo(db: Session = Depends(get_db)) -> list[dict]:
+    candidatos_mod.sincronizar_universo(db)
     mantener = _mantener_map(db)
     return [{"ticker": t, "sector": signals.SECTOR[t], "mantener": mantener.get(t, True)}
             for t in signals.UNIVERSO]
@@ -100,6 +101,7 @@ def validacion(db: Session = Depends(get_db)) -> list[dict]:
     """Agregado por ticker (n, media, mediana, % positivas) sobre señales YA resueltas. La
     mediana no tiene función nativa portable en SQL simple -- se calcula en Python sobre los
     retornos, la tabla no es lo bastante grande para que importe el viaje extra."""
+    candidatos_mod.sincronizar_universo(db)
     rows = db.execute(text("""
         select ticker, sector, ret from momentum_senales where resuelta = true
     """)).mappings().all()
@@ -133,6 +135,7 @@ def set_mantener(ticker: str, body: MantenerIn, db: Session = Depends(get_db)) -
     """Toggle manual de un ticker fijo -- nunca lo saca del código, solo lo marca para que la
     sala lo destaque como pendiente de revisión (ver doc §5). El sistema recomienda, no decide."""
     ticker = ticker.upper()
+    candidatos_mod.sincronizar_universo(db)
     if ticker not in signals.UNIVERSO:
         raise HTTPException(404, "Ticker fuera del universo fijo.")
     # Update-then-insert en vez de ON CONFLICT: portable entre Postgres (real) y SQLite (dev
@@ -243,9 +246,9 @@ class CandidatoDecisionIn(BaseModel):
 
 @router.post("/candidatos/{candidato_id}/decision")
 def decidir_candidato(candidato_id: int, body: CandidatoDecisionIn, db: Session = Depends(get_db)) -> dict:
-    """Decisión SIEMPRE de Manuel, nunca automática -- el sistema solo propone un valor por
-    defecto al crear la fila (ver doc §1: pasa las 3 condiciones → incorporado por defecto,
-    falla cualquiera → descartado por defecto). Esto la sobreescribe explícitamente."""
+    """Decisión SIEMPRE de Manuel, nunca automática -- ni el filtro ni el gate deciden por él
+    (corregido 8-sep-2026, era un sesgo real). Si incorpora, se propaga solo al universo real
+    (escaneo, validación, universo) al momento -- ver `candidatos.sincronizar_universo()`."""
     row = db.execute(text("select id from momentum_candidatos where id = :id"),
                      {"id": candidato_id}).mappings().first()
     if row is None:
@@ -255,6 +258,8 @@ def decidir_candidato(candidato_id: int, body: CandidatoDecisionIn, db: Session 
         where id = :id
     """), {"decision": body.decision, "id": candidato_id})
     db.commit()
+    if body.decision == "incorporado":
+        candidatos_mod.sincronizar_universo(db)
     return {"ok": True, "candidato_id": candidato_id, "decision": body.decision}
 
 

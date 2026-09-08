@@ -170,8 +170,12 @@ def run_momentum_scan(db) -> dict:  # noqa: ANN001 — Session, evitar el import
     from sqlalchemy import text
 
     from app import push
+    from app.momentum import candidatos as momentum_candidatos
     from app.momentum import signals as momentum_signals
 
+    # Los tickers que ya incorporaste desde el pipeline de descubrimiento entran aquí también,
+    # sin tocar código (ver candidatos.sincronizar_universo -- decidido 8-sep-2026).
+    momentum_candidatos.sincronizar_universo(db)
     todas = momentum_signals.compute_signals()
     nuevas, tickers_nuevos = 0, []
     resueltas_ejecutadas = []   # posiciones REALES (estado='ejecutada') que acaban de resolverse

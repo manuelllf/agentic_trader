@@ -69,6 +69,13 @@ caída es miedo o negocio roto (gate de noticias, lista cerrada de motivos), nun
 ejecución. **Esta sala nunca opera sola**: alerta, y el usuario ejecuta a mano en IBKR y lo
 reporta de vuelta.
 
+El universo no es una lista cerrada para siempre: un descubrimiento diario sobre menciones
+sociales (ApeWisdom) detecta rupturas fuera del universo fijo, las pasa por los mismos filtros
+objetivos y el mismo gate de noticias, y el usuario decide fila a fila si entran. Ni el filtro
+ni el gate deciden solos en ningún punto del sistema — solo informan; incorporar o descartar es
+siempre un clic humano, y esa decisión se propaga sola al resto (escaneo, validación, universo)
+sin tocar código.
+
 ## Stack
 
 | Área      | Tecnología                                                    |

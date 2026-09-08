@@ -34,6 +34,10 @@ UNIVERSO = ["ASTS", "RKLB", "LUNR", "FLY", "RDW", "VOYG", "GSAT", "ECHO", "VSAT"
             "CIFR", "HUT", "WULF", "BTDR", "CORZ",
             "LITE", "COHR", "FN", "POET", "AAOI",
             "RXRX", "TEM", "ABSI", "DNA"]
+# Nota: los tickers incorporados desde el pipeline de descubrimiento (ApeWisdom -> filtros ->
+# gate -> "Incorporar" tuyo) se añaden EN CALIENTE a esta lista y a SECTOR/NOMBRE de abajo --
+# ver `momentum/candidatos.py:sincronizar_universo()`. Nunca hace falta tocar este archivo a
+# mano para eso (decidido 8-sep-2026); esta lista es solo el núcleo curado por ETF/prensa.
 SECTOR = {"ASTS": "Espacio", "RKLB": "Espacio", "LUNR": "Espacio", "FLY": "Espacio", "RDW": "Espacio",
           "VOYG": "Espacio", "GSAT": "Espacio", "ECHO": "Espacio", "VSAT": "Espacio", "PL": "Espacio",
           "NBIS": "IA infra", "CRWV": "IA infra", "APLD": "IA infra", "IREN": "IA infra", "SOUN": "IA infra",
