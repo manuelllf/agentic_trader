@@ -98,6 +98,24 @@ function SalaMomentumRoom() {
 
   const refrescar = useCallback(() => { setRefreshing(true); load(); }, [load]);
 
+  // Acciones sueltas (descartar, ejecutar, comprobar filtros, gate, decidir...) ya NO recargan
+  // la sala entera antes de responder -- eso era el motor de "se queda colgado un segundo":
+  // esperaban a IBKR (Cuenta) + precio en vivo de 17 tickers antes de mover una sola fila.
+  // Ahora la propia respuesta de la acción (ya trae la fila actualizada) se aplica al momento,
+  // y la recarga completa sigue en segundo plano, sin bloquear lo que ya se ve.
+  const actualizarAlerta = useCallback((id: number, patch: Partial<Senal>) => {
+    setAlertas((prev) => prev?.map((a) => (a.id === id ? { ...a, ...patch } : a)) ?? prev);
+    load();
+  }, [load]);
+  const actualizarCandidato = useCallback((c: Candidato) => {
+    setCandidatos((prev) => prev?.map((x) => (x.id === c.id ? c : x)) ?? prev);
+    load();
+  }, [load]);
+  const actualizarValidacion = useCallback((ticker: string, patch: Partial<Validacion>) => {
+    setValidacion((prev) => prev?.map((v) => (v.ticker === ticker ? { ...v, ...patch } : v)) ?? prev);
+    load();
+  }, [load]);
+
   // Rescate manual del escaneo diario (cron 16:45 ET): gratis, sin gate. Separado de
   // "actualizar" a propósito -- ese solo relee lo que ya hay, esto hace ~34 llamadas a yfinance.
   const escanear = async () => {
@@ -332,7 +350,7 @@ function SalaMomentumRoom() {
           {activas.length === 0 ? (
             <Empty>Ninguna señal sin resolver ahora mismo.</Empty>
           ) : (
-            <AlertasCarrusel alertas={activas} empates={empatesPorFecha} preciosVivos={preciosVivos} onDone={load} />
+            <AlertasCarrusel alertas={activas} empates={empatesPorFecha} preciosVivos={preciosVivos} onCambio={actualizarAlerta} />
           )}
         </Section>
 
@@ -428,7 +446,7 @@ function SalaMomentumRoom() {
               (&quot;Añadir ticker&quot;). Sector y estadística son automáticos; el gate es la
               única llamada real, siempre candidato a candidato.
             </p>
-            <CandidatosTabs porRevisar={candidatosPorRevisar} evaluados={candidatosEvaluados} onCambiado={load} />
+            <CandidatosTabs porRevisar={candidatosPorRevisar} evaluados={candidatosEvaluados} onCambio={actualizarCandidato} />
           </Collapsible>
         </div>
 
@@ -439,11 +457,11 @@ function SalaMomentumRoom() {
             Los 34 tickers fijos con su resultado real acumulado. El interruptor decide si sigues
             vigilando ese ticker o lo apartas (el código nunca lo borra).
           </p>
-          <UniversoTabla validacion={validacion ?? []} onCambiado={load} />
+          <UniversoTabla validacion={validacion ?? []} onCambio={actualizarValidacion} />
         </Collapsible>
       </div>
       {buscadorAbierto && (
-        <CandidatoBuscadorModal onClose={() => setBuscadorAbierto(false)} onCambiado={load} />
+        <CandidatoBuscadorModal onClose={() => setBuscadorAbierto(false)} onCambio={actualizarCandidato} />
       )}
     </div>
   );
@@ -454,8 +472,9 @@ function SalaMomentumRoom() {
 /** Carrusel horizontal deslizable (scroll-snap nativo, sin librería) — todas las alertas
  *  cargadas, sin paginar (con 34 tickers no hace falta, ver feedback 7-sep-2026). Los puntos
  *  reflejan la posición real de scroll. */
-function AlertasCarrusel({ alertas, empates, preciosVivos, onDone }: {
-  alertas: Senal[]; empates: Map<string, Senal[]>; preciosVivos: Record<string, number | null>; onDone: () => void;
+function AlertasCarrusel({ alertas, empates, preciosVivos, onCambio }: {
+  alertas: Senal[]; empates: Map<string, Senal[]>; preciosVivos: Record<string, number | null>;
+  onCambio: (id: number, patch: Partial<Senal>) => void;
 }) {
   const [activo, setActivo] = useState(0);
 
@@ -469,7 +488,7 @@ function AlertasCarrusel({ alertas, empates, preciosVivos, onDone }: {
           const grupo = empates.get(s.entry_date) ?? [];
           return (
             <div key={s.id} className="w-full shrink-0 snap-start">
-              <AlertaCard s={s} grupo={grupo} precioVivo={preciosVivos[s.ticker] ?? null} onDone={onDone} />
+              <AlertaCard s={s} grupo={grupo} precioVivo={preciosVivos[s.ticker] ?? null} onCambio={onCambio} />
             </div>
           );
         })}
@@ -664,8 +683,8 @@ function CargarMasBtn({ onClick, restantes }: { onClick: () => void; restantes: 
   );
 }
 
-function AlertaCard({ s, grupo, precioVivo, onDone }: {
-  s: Senal; grupo: Senal[]; precioVivo: number | null; onDone: () => void;
+function AlertaCard({ s, grupo, precioVivo, onCambio }: {
+  s: Senal; grupo: Senal[]; precioVivo: number | null; onCambio: (id: number, patch: Partial<Senal>) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
@@ -680,11 +699,11 @@ function AlertaCard({ s, grupo, precioVivo, onDone }: {
     if (!n || busy) return;
     setBusy("guardar"); setErr("");
     try {
-      await ejecutarSenal(s.id, { accion: "compra", acciones: n, precio: Number(precio), comision: Number(comision) || 0 });
+      const r = await ejecutarSenal(s.id, { accion: "compra", acciones: n, precio: Number(precio), comision: Number(comision) || 0 });
       setDone(true);
-      // Confirmación visible un momento antes de recargar -- la recarga es en caliente
-      // (solo re-pide datos, no navega ni pierde el scroll), así que no hay prisa.
-      setTimeout(onDone, 1600);
+      // Confirmación breve y a propósito (no una espera de red -- eso ya se aplicó al momento):
+      // deja ver el check antes de que la card salga de Alertas activas.
+      setTimeout(() => onCambio(s.id, { estado: r.estado as Senal["estado"] }), 900);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "No se pudo registrar la posición.");
       setBusy(null);
@@ -695,8 +714,8 @@ function AlertaCard({ s, grupo, precioVivo, onDone }: {
     if (busy) return;
     setBusy("descartar");
     try {
-      await descartarSenal(s.id);
-      onDone();
+      const r = await descartarSenal(s.id);
+      onCambio(s.id, { estado: r.estado as Senal["estado"] });
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "No se pudo descartar.");
       setBusy(null);
@@ -825,7 +844,9 @@ function FormField({ label, value, onChange, placeholder }: {
  *  34 tickers repetidos en dos acordeones) en una sola tabla. Cada fila se despliega para el
  *  diagnóstico + el toggle "mantener" -- ese solo importa en los bordes (revisar), no en los
  *  34 a la vez, así que no hace falta un interruptor permanente por fila. */
-function UniversoTabla({ validacion, onCambiado }: { validacion: Validacion[]; onCambiado: () => void }) {
+function UniversoTabla({ validacion, onCambio }: {
+  validacion: Validacion[]; onCambio: (ticker: string, patch: Partial<Validacion>) => void;
+}) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-[11.5px]">
@@ -840,14 +861,16 @@ function UniversoTabla({ validacion, onCambiado }: { validacion: Validacion[]; o
           </tr>
         </thead>
         <tbody>
-          {validacion.map((v, i) => <UniversoRow key={v.ticker} v={v} first={i === 0} onCambiado={onCambiado} />)}
+          {validacion.map((v, i) => <UniversoRow key={v.ticker} v={v} first={i === 0} onCambio={onCambio} />)}
         </tbody>
       </table>
     </div>
   );
 }
 
-function UniversoRow({ v, first, onCambiado }: { v: Validacion; first: boolean; onCambiado: () => void }) {
+function UniversoRow({ v, first, onCambio }: {
+  v: Validacion; first: boolean; onCambio: (ticker: string, patch: Partial<Validacion>) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const revisar = v.n === 0 || v.n === 1 || (v.pct_positivas ?? 100) < 90;
@@ -855,8 +878,9 @@ function UniversoRow({ v, first, onCambiado }: { v: Validacion; first: boolean; 
   const toggleMantener = async () => {
     setBusy(true);
     try {
-      await setMantenerUniverso(v.ticker, !v.mantener);
-      onCambiado();
+      const nuevo = !v.mantener;
+      await setMantenerUniverso(v.ticker, nuevo);
+      onCambio(v.ticker, { mantener: nuevo });
     } finally {
       setBusy(false);
     }
@@ -932,7 +956,7 @@ function AvisoTemporal({ texto, onCerrar }: { texto: string; onCerrar: () => voi
  *  gate + decisión en un solo sitio; "Incorporar"/"Mantener fuera" cierran la emergente solos.
  *  Mismo patrón de emergente que `real/ScanFullModal.tsx` (velo + tarjeta + cerrar por X/Escape/
  *  click fuera), con los tokens propios de esta sala. */
-function CandidatoBuscadorModal({ onClose, onCambiado }: { onClose: () => void; onCambiado: () => void }) {
+function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => void; onCambio: (c: Candidato) => void }) {
   const [ticker, setTicker] = useState("");
   const [candidato, setCandidato] = useState<Candidato | null>(null);
   const [busy, setBusy] = useState(false);
@@ -965,7 +989,9 @@ function CandidatoBuscadorModal({ onClose, onCambiado }: { onClose: () => void; 
     setBusy(true);
     setErr("");
     try {
-      setCandidato(await fn());
+      const actualizado = await fn();
+      setCandidato(actualizado);
+      onCambio(actualizado);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "No se pudo completar la acción.");
     } finally {
@@ -978,7 +1004,7 @@ function CandidatoBuscadorModal({ onClose, onCambiado }: { onClose: () => void; 
     setBusy(true);
     try {
       await decidirCandidato(candidato.id, decision);
-      onCambiado();
+      onCambio({ ...candidato, decision, decidido_por: "manual" });
       onClose();
     } finally {
       setBusy(false);
@@ -1088,8 +1114,8 @@ function CandidatoBuscadorModal({ onClose, onCambiado }: { onClose: () => void; 
 
 /** Pestañas "Por revisar" / "Evaluados" dentro de un único módulo Candidatos (antes eran dos
  *  acordeones separados -- fusionados 8-sep-2026 para no amontonar módulos). */
-function CandidatosTabs({ porRevisar, evaluados, onCambiado }: {
-  porRevisar: Candidato[]; evaluados: Candidato[]; onCambiado: () => void;
+function CandidatosTabs({ porRevisar, evaluados, onCambio }: {
+  porRevisar: Candidato[]; evaluados: Candidato[]; onCambio: (c: Candidato) => void;
 }) {
   const [tab, setTab] = useState<"revisar" | "evaluados">("revisar");
   const tabBtn = (activo: boolean) => ({
@@ -1115,13 +1141,13 @@ function CandidatosTabs({ porRevisar, evaluados, onCambiado }: {
           porRevisar.length === 0 ? (
             <div className="px-3.5 pb-3.5 pt-2.5 text-[12px]" style={{ color: T.muted }}>Nada nuevo detectado.</div>
           ) : (
-            porRevisar.map((c, i) => <CandidatoPorRevisarRow key={c.id} c={c} first={i === 0} onCambiado={onCambiado} />)
+            porRevisar.map((c, i) => <CandidatoPorRevisarRow key={c.id} c={c} first={i === 0} onCambio={onCambio} />)
           )
         ) : (
           evaluados.length === 0 ? (
             <div className="px-3.5 pb-3.5 pt-2.5 text-[12px]" style={{ color: T.muted }}>Ningún candidato evaluado todavía.</div>
           ) : (
-            evaluados.map((c, i) => <CandidatoRow key={c.id} c={c} first={i === 0} onDecidido={onCambiado} />)
+            evaluados.map((c, i) => <CandidatoRow key={c.id} c={c} first={i === 0} onCambio={onCambio} />)
           )
         )}
       </div>
@@ -1132,19 +1158,31 @@ function CandidatosTabs({ porRevisar, evaluados, onCambiado }: {
 /** Detectado por ApeWisdom (ruptura de menciones) o añadido a mano, sin decisión todavía.
  *  Sector + estadística son automáticos a un clic; el gate LLM es la única llamada que gasta
  *  dinero, y siempre candidato a candidato -- nunca un "evaluar todos" (8-sep-2026). */
-function CandidatoPorRevisarRow({ c, first, onCambiado }: { c: Candidato; first: boolean; onCambiado: () => void }) {
+function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; first: boolean; onCambio: (c: Candidato) => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
   const sinComprobar = c.filtro_sector_pass == null;
   const listoParaGate = !sinComprobar && !!c.filtro_sector_pass && !!c.estadistica_pass;
 
-  const accionar = async (fn: () => Promise<unknown>) => {
+  const accionar = async (fn: () => Promise<Candidato>) => {
     setBusy(true);
     setErr("");
     try {
-      await fn();
-      onCambiado();
+      onCambio(await fn());
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "No se pudo completar la acción.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const descartar = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      await decidirCandidato(c.id, "descartado");
+      onCambio({ ...c, decision: "descartado", decidido_por: "manual" });
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "No se pudo completar la acción.");
     } finally {
@@ -1192,7 +1230,7 @@ function CandidatoPorRevisarRow({ c, first, onCambiado }: { c: Candidato; first:
         ) : null}
         {/* Descartar sin necesidad de comprobar nada antes -- cada ticker es una decisión
             independiente, nunca hace falta procesar uno para poder quitarlo de la lista. */}
-        <button onClick={() => accionar(() => decidirCandidato(c.id, "descartado"))} disabled={busy}
+        <button onClick={descartar} disabled={busy}
                 className="rounded-lg px-3 py-2 text-[11.5px] font-bold disabled:opacity-40"
                 style={{ background: "transparent", color: T.bad, border: "1px solid rgba(208,59,59,0.5)" }}>
           Descartar
@@ -1202,7 +1240,7 @@ function CandidatoPorRevisarRow({ c, first, onCambiado }: { c: Candidato; first:
   );
 }
 
-function CandidatoRow({ c, first, onDecidido }: { c: Candidato; first: boolean; onDecidido: () => void }) {
+function CandidatoRow({ c, first, onCambio }: { c: Candidato; first: boolean; onCambio: (c: Candidato) => void }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<"incorporado" | "descartado" | "reintentar" | null>(null);
 
@@ -1210,21 +1248,20 @@ function CandidatoRow({ c, first, onDecidido }: { c: Candidato; first: boolean; 
     setBusy(decision);
     try {
       await decidirCandidato(c.id, decision);
-      onDecidido();
+      onCambio({ ...c, decision, decidido_por: "manual" });
     } finally {
       setBusy(null);
     }
   };
 
   // Solo tiene sentido antes del gate: un fallo de sector/estadística puede ser un yfinance
-  // caído en su momento, no un veredicto final -- reintentar no pisa nunca una decisión tuya
-  // (el backend solo reactiva "pendiente" si la decisión actual era automática).
+  // caído en su momento, no un veredicto final -- reintentar nunca decide nada, solo repite
+  // el chequeo gratis y deja la decisión igual de pendiente que estaba.
   const puedeReintentar = c.gate_pass == null && (!c.filtro_sector_pass || !c.estadistica_pass);
   const reintentar = async () => {
     setBusy("reintentar");
     try {
-      await comprobarFiltrosCandidato(c.id);
-      onDecidido();
+      onCambio(await comprobarFiltrosCandidato(c.id));
     } finally {
       setBusy(null);
     }

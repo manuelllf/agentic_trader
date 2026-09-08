@@ -121,6 +121,21 @@ def sincronizar_universo(db: Session) -> int:
     return añadidos
 
 
+def backfill_señales(ticker: str, db: Session) -> None:
+    """Tras incorporar: calcula y guarda YA el historial completo de señales del ticker
+    (resueltas para Validación/Historial, y la activa si tiene una abierta) -- mismo trabajo
+    que hace el cron diario para cualquiera de los 34 fijos, para que "Incorporar" no deje al
+    ticker esperando hasta mañana (bug real 8-sep-2026: Manuel incorporó QCOM con una alerta
+    activa detectada por el propio filtro de estadística, y no aparecía en Alertas activas
+    porque sincronizar_universo solo tocaba la lista en memoria, nunca `momentum_senales`).
+    Mejor esfuerzo: si yfinance falla aquí, el cron de mañana lo recupera solo."""
+    from app.scheduler import procesar_señales  # import perezoso, evita el circular con scheduler
+    try:
+        procesar_señales(db, signals.compute_signals([ticker]))
+    except Exception:
+        logger.exception("Backfill de señales tras incorporar %s falló", ticker)
+
+
 def crear_manual(ticker: str, db: Session) -> dict:
     """Alta manual -- Manuel ficha un ticker que él mismo detectó, sin esperar a ApeWisdom.
     Cae en la misma cola "por revisar" que uno automático, mismo pipeline desde aquí."""

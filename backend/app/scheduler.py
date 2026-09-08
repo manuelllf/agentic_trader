@@ -150,33 +150,17 @@ def _reconcile_job() -> None:
         db.close()
 
 
-def run_momentum_scan(db) -> dict:  # noqa: ANN001 — Session, evitar el import circular con db.py
-    """Escaneo del universo fijo de momentum (34 tickers): detecta señales nuevas (guarda el
-    contexto que el gate necesitará -- `ath`, `desde_noticias` -- NUNCA llama al gate, cero
-    coste) y ACTUALIZA las que ya estaban abiertas y desde entonces se resolvieron de verdad
-    (objetivo o 90 días). Reutilizable: la llama el cron y también `POST /admin/momentum-scan`
-    (rescate manual). Deja subir la excepción -- cada llamador decide cómo reportarla.
-
-    El gate se evalúa aparte, con un clic explícito de Manuel (ver `POST
-    /momentum/gate/evaluar-pendientes` en momentum/routes.py) -- separar las dos cosas es la
-    decisión de diseño del 7-sep-2026: el dinero lo controla él, nunca un cron silencioso.
-
-    Bug real encontrado el 8-sep-2026: antes de esto, una señal insertada como abierta se
-    quedaba `resuelta=false` PARA SIEMPRE -- el job solo insertaba nuevas y nunca revisitaba
-    las existentes, así que ninguna alerta ni posición pasaba nunca sola a Historial aunque el
-    precio llevara semanas habiendo cruzado el objetivo o cumplido el plazo.
-    """
+def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Session, evitar el circular
+    """Inserta las señales nuevas de `todas` y actualiza a resuelta las que ya estaban abiertas
+    y desde entonces cruzaron objetivo o 90 días. Extraído de `run_momentum_scan` el 8-sep-2026
+    para reutilizarlo también al incorporar un candidato: así "Incorporar" hace exactamente el
+    mismo trabajo que ya hace cualquiera de los 34 fijos (historial + alerta activa si la tiene)
+    en el momento, en vez de esperar al cron de mañana (ver `candidatos.backfill_señales`)."""
     import pandas as pd
     from sqlalchemy import text
 
     from app import push
-    from app.momentum import candidatos as momentum_candidatos
-    from app.momentum import signals as momentum_signals
 
-    # Los tickers que ya incorporaste desde el pipeline de descubrimiento entran aquí también,
-    # sin tocar código (ver candidatos.sincronizar_universo -- decidido 8-sep-2026).
-    momentum_candidatos.sincronizar_universo(db)
-    todas = momentum_signals.compute_signals()
     nuevas, tickers_nuevos = 0, []
     resueltas_ejecutadas = []   # posiciones REALES (estado='ejecutada') que acaban de resolverse
     for s in todas:
@@ -240,7 +224,27 @@ def run_momentum_scan(db) -> dict:  # noqa: ANN001 — Session, evitar el import
             body=f"Resultado {r['ret']:+.1f}%. Revisa si toca vender.",
             url="/momentum", tag="agentic-momentum",
         )
-    return {"nuevas": nuevas, "resueltas": len(resueltas_ejecutadas), "total_universo": len(todas)}
+    return {"nuevas": nuevas, "resueltas": len(resueltas_ejecutadas)}
+
+
+def run_momentum_scan(db) -> dict:  # noqa: ANN001 — Session, evitar el import circular con db.py
+    """Escaneo del universo fijo de momentum (34 tickers): detecta señales nuevas y actualiza
+    las que ya estaban abiertas y desde entonces se resolvieron de verdad (objetivo o 90 días).
+    Reutilizable: la llama el cron y también `POST /admin/scan` (rescate manual). Deja subir la
+    excepción -- cada llamador decide cómo reportarla.
+
+    El gate se evalúa aparte, con un clic explícito de Manuel (ver `POST
+    /momentum/gate/evaluar-pendientes` en momentum/routes.py) -- separar las dos cosas es la
+    decisión de diseño del 7-sep-2026: el dinero lo controla él, nunca un cron silencioso."""
+    from app.momentum import candidatos as momentum_candidatos
+    from app.momentum import signals as momentum_signals
+
+    # Los tickers que ya incorporaste desde el pipeline de descubrimiento entran aquí también,
+    # sin tocar código (ver candidatos.sincronizar_universo -- decidido 8-sep-2026).
+    momentum_candidatos.sincronizar_universo(db)
+    todas = momentum_signals.compute_signals()
+    resultado = procesar_señales(db, todas)
+    return {**resultado, "total_universo": len(todas)}
 
 
 def _momentum_scan_job() -> None:

@@ -255,9 +255,10 @@ class CandidatoDecisionIn(BaseModel):
 @router.post("/candidatos/{candidato_id}/decision")
 def decidir_candidato(candidato_id: int, body: CandidatoDecisionIn, db: Session = Depends(get_db)) -> dict:
     """Decisión SIEMPRE de Manuel, nunca automática -- ni el filtro ni el gate deciden por él
-    (corregido 8-sep-2026, era un sesgo real). Si incorpora, se propaga solo al universo real
-    (escaneo, validación, universo) al momento -- ver `candidatos.sincronizar_universo()`."""
-    row = db.execute(text("select id from momentum_candidatos where id = :id"),
+    (corregido 8-sep-2026, era un sesgo real). Si incorpora, se propaga al universo real
+    (escaneo, validación, universo) Y se calcula ya su historial/alerta activa -- como
+    cualquiera de los 34 fijos, sin esperar al cron (ver `candidatos.backfill_señales`)."""
+    row = db.execute(text("select id, ticker from momentum_candidatos where id = :id"),
                      {"id": candidato_id}).mappings().first()
     if row is None:
         raise HTTPException(404, "Candidato no encontrado.")
@@ -268,6 +269,7 @@ def decidir_candidato(candidato_id: int, body: CandidatoDecisionIn, db: Session 
     db.commit()
     if body.decision == "incorporado":
         candidatos_mod.sincronizar_universo(db)
+        candidatos_mod.backfill_señales(row["ticker"], db)
     return {"ok": True, "candidato_id": candidato_id, "decision": body.decision}
 
 
