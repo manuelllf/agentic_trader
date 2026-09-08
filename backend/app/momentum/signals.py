@@ -71,6 +71,18 @@ TOPE_DIAS = 90
 CUIDADO_DIAS = 21  # p75 real de dias-a-objetivo entre las señales ganadoras
 
 
+def precio_vivo(ticker: str) -> float | None:
+    """Precio en vivo (con el retraso habitual de datos gratuitos) -- SOLO para mostrar de
+    referencia en Alertas activas. Nunca entra en el cálculo de entrada/salida, que sigue
+    siendo cierre->apertura siguiente (ver doc §3); esto es solo para que Manuel vea si el
+    movimiento de HOY cambia lo que quiere hacer antes de que cierre el mercado."""
+    try:
+        p = yf.Ticker(ticker).fast_info.last_price
+        return float(p) if p else None
+    except Exception:
+        return None
+
+
 def fetch(ticker: str, intentos: int = 3) -> pd.DataFrame:
     """Descarga con reintento -- una descarga vacia por fallo puntual de red NUNCA debe
     interpretarse como 'sin señales' (bug real que costo caro con SOUN/ECHO)."""

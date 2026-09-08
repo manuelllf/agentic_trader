@@ -63,6 +63,14 @@ def universo(db: Session = Depends(get_db)) -> list[dict]:
             for t in signals.UNIVERSO]
 
 
+@router.get("/precios-vivos")
+def precios_vivos(tickers: str) -> dict[str, float | None]:
+    """Precio en vivo (best-effort) de los tickers pedidos -- SOLO para pintar de referencia en
+    Alertas activas. `null` si yfinance no responde para ese ticker; nunca toca entrada/salida."""
+    lista = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+    return {t: signals.precio_vivo(t) for t in lista}
+
+
 @router.get("/alertas")
 def alertas(db: Session = Depends(get_db)) -> list[dict]:
     """Señales sin resolver, no descartadas -- más reciente primero. `cuidado` se calcula aquí

@@ -10,6 +10,11 @@ export const getValidacion = () => get<Validacion[]>("/momentum/validacion");
 export const getCandidatos = () => get<Candidato[]>("/momentum/candidatos");
 export const getUniverso = () => get<UniversoTicker[]>("/momentum/universo");
 
+// Precio en vivo (referencia visual, best-effort) de los tickers pedidos -- solo para Alertas
+// activas, nunca toca entrada/salida (eso sigue siendo cierre->apertura, ver doc §3).
+export const getPreciosVivos = (tickers: string[]) =>
+  get<Record<string, number | null>>(`/momentum/precios-vivos?tickers=${tickers.map(encodeURIComponent).join(",")}`);
+
 export type EjecutarBody = {
   accion: "compra" | "venta";
   acciones: number;

@@ -12,7 +12,7 @@ import { money, signMoney } from "@/lib/format";
 import {
   adminDetectarCandidatos, adminScan, buscarCandidato, comprobarFiltrosCandidato,
   crearCandidatoManual, decidirCandidato, descartarSenal, ejecutarSenal, getAlertas,
-  getCandidatos, getCuenta, getGateProgreso, getHistorial, getValidacion,
+  getCandidatos, getCuenta, getGateProgreso, getHistorial, getPreciosVivos, getValidacion,
   lanzarGate, lanzarGateCandidato, setMantenerUniverso,
 } from "./api";
 import type { GateProgreso } from "./api";
@@ -55,6 +55,7 @@ function SalaMomentumRoom() {
   const [validacion, setValidacion] = useState<Validacion[] | null>(null);
   const [candidatos, setCandidatos] = useState<Candidato[] | null>(null);
   const [fx, setFx] = useState<number | null>(null);
+  const [preciosVivos, setPreciosVivos] = useState<Record<string, number | null>>({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,6 +80,14 @@ function SalaMomentumRoom() {
       setCuenta(c); setAlertas(a); setHistorial(h); setValidacion(v); setCandidatos(cd);
       if (fxr?.rate) setFx(fxr.rate);
       setError("");
+      // Precio en vivo (solo activas, no ejecutadas): referencia visual aparte, sin esperar a
+      // que responda para terminar de cargar el resto -- si yfinance tarda o falla, no bloquea.
+      const tickersActivos = Array.from(new Set(
+        a.filter((s) => s.estado === "nueva" || s.estado === "cuidado").map((s) => s.ticker),
+      ));
+      if (tickersActivos.length) {
+        getPreciosVivos(tickersActivos).then(setPreciosVivos).catch(() => {});
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Sin conexión con el backend.");
     } finally {
@@ -323,7 +332,7 @@ function SalaMomentumRoom() {
           {activas.length === 0 ? (
             <Empty>Ninguna señal sin resolver ahora mismo.</Empty>
           ) : (
-            <AlertasCarrusel alertas={activas} empates={empatesPorFecha} onDone={load} />
+            <AlertasCarrusel alertas={activas} empates={empatesPorFecha} preciosVivos={preciosVivos} onDone={load} />
           )}
         </Section>
 
@@ -445,8 +454,8 @@ function SalaMomentumRoom() {
 /** Carrusel horizontal deslizable (scroll-snap nativo, sin librería) — todas las alertas
  *  cargadas, sin paginar (con 34 tickers no hace falta, ver feedback 7-sep-2026). Los puntos
  *  reflejan la posición real de scroll. */
-function AlertasCarrusel({ alertas, empates, onDone }: {
-  alertas: Senal[]; empates: Map<string, Senal[]>; onDone: () => void;
+function AlertasCarrusel({ alertas, empates, preciosVivos, onDone }: {
+  alertas: Senal[]; empates: Map<string, Senal[]>; preciosVivos: Record<string, number | null>; onDone: () => void;
 }) {
   const [activo, setActivo] = useState(0);
 
@@ -460,7 +469,7 @@ function AlertasCarrusel({ alertas, empates, onDone }: {
           const grupo = empates.get(s.entry_date) ?? [];
           return (
             <div key={s.id} className="w-full shrink-0 snap-start">
-              <AlertaCard s={s} grupo={grupo} onDone={onDone} />
+              <AlertaCard s={s} grupo={grupo} precioVivo={preciosVivos[s.ticker] ?? null} onDone={onDone} />
             </div>
           );
         })}
@@ -655,7 +664,9 @@ function CargarMasBtn({ onClick, restantes }: { onClick: () => void; restantes: 
   );
 }
 
-function AlertaCard({ s, grupo, onDone }: { s: Senal; grupo: Senal[]; onDone: () => void }) {
+function AlertaCard({ s, grupo, precioVivo, onDone }: {
+  s: Senal; grupo: Senal[]; precioVivo: number | null; onDone: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   const [acciones, setAcciones] = useState("");
@@ -695,6 +706,10 @@ function AlertaCard({ s, grupo, onDone }: { s: Senal; grupo: Senal[]; onDone: ()
   const esAmbos = grupo.some((g) => g.tipo === "ambos");
   // Color real, no decorativo: el punto junto al ticker es el estado del gate de esta señal.
   const puntoEstado = s.gate_resultado === "pasa" ? T.good : s.gate_resultado === "falla" ? T.bad : T.muted;
+  // Precio en vivo si lo hay (referencia visual, best-effort) -- si no, el de siempre (cierre
+  // guardado en el último escaneo). Nunca toca lo que se guarda ni cómo se resuelve la señal.
+  const precioMostrado = precioVivo ?? precioHoy(s);
+  const retornoMostrado = precioVivo != null ? (precioVivo / Number(s.entry_price) - 1) * 100 : Number(s.ret);
 
   return (
     <div className="rounded-xl border p-3.5" style={{ borderColor: T.ring, background: T.panel }}>
@@ -736,11 +751,11 @@ function AlertaCard({ s, grupo, onDone }: { s: Senal; grupo: Senal[]; onDone: ()
         </div>
         <div className="min-w-0 flex-1 border-l pl-2.5" style={{ borderColor: T.grid }}>
           <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Hoy</div>
-          <b className={NUMS} style={{ color: T.ink }}>${money(precioHoy(s))}</b>
+          <b className={NUMS} style={{ color: T.ink }}>${money(precioMostrado)}</b>
         </div>
         <div className="min-w-0 flex-1 border-l pl-2.5" style={{ borderColor: T.grid }}>
           <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Retorno</div>
-          <b className={NUMS} style={{ color: Number(s.ret) >= 0 ? T.good : T.bad }}>{fmtRet(s.ret)}</b>
+          <b className={NUMS} style={{ color: retornoMostrado >= 0 ? T.good : T.bad }}>{fmtRet(retornoMostrado)}</b>
         </div>
       </div>
 
