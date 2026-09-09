@@ -1,25 +1,30 @@
-"""Motor de señales de la estrategia de momentum (zigzag / suelo múltiple / salida cierre→
+"""Motor de señales de la estrategia de momentum (zigzag / suelo reactivo / salida cierre→
 apertura). Movido desde backend/scripts/backtest_canonico_momentum.py el 7-sep-2026 -- misma
 lógica, sin reescribir. Ver docs/momentum-sala-real-x.md para el diseño completo.
 
-Universo: 34 tickers en 6 sub-géneros (Espacio, IA infra, Quantum, Cripto-IA, Óptica-IA,
-Biotech-IA). Ventana permanente: 2025-09-01 -> hoy (se refresca solo, usa la fecha real del
+Universo: sin tickers hardcodeados aquí (database-first, decidido 9-sep-2026 -- ver
+[[supabase-db-first]]). `UNIVERSO`/`SECTOR`/`NOMBRE` empiezan vacíos y los rellena
+`momentum/candidatos.py:sincronizar_universo()` desde la tabla `momentum_universo` (origen
+'original' = núcleo por ETF/prensa, 'incorporado' = pipeline de descubrimiento -- misma tabla,
+mismo trato). Ventana permanente: 2025-09-01 -> hoy (se refresca solo, usa la fecha real del
 sistema).
 
 Reglas de entrada:
 - ZIGZAG: pivots de al menos 20% de reversal. Una entrada se dispara cuando el precio cae
   >=40% desde el ULTIMO PICO CONFIRMADO, y no se re-dispara hasta que se confirma un pico
   nuevo (una entrada por tramo -- "armado" se resetea solo con un pico posterior).
-- SUELO MULTIPLE (doble, triple, o mas toques -- generalizado, no solo "doble"): los minimos
-  zigzag se agrupan en clusters de precio similar (tolerancia 10%). Un cluster valido necesita
-  2+ toques Y precio medio >=40% bajo el ATH real de la serie completa. El PRIMER toque de un
-  cluster NUNCA es señal -- cada toque siguiente (2o, 3o, ...) es una entrada propia.
+- SUELO REACTIVO (reemplaza al doble-suelo por clusters el 9-sep-2026 -- ver
+  `entradas_suelo()`): un mínimo zigzag confirmado (rebote >=20%) a >=60% bajo el ATH real
+  establece un nivel de referencia; desde ahí, CUALQUIER vuelta a ese nivel (banda ±10%)
+  dispara una entrada al toque, sin exigir que ese toque en concreto rebote por su cuenta.
 - Si una misma fecha+ticker produce zigzag Y suelo a la vez, se marca 'ambos'.
 
 Salida: objetivo por tramos según el arranque de precio a 3 sesiones (flojo <5% -> +11%,
 moderado 5-15% -> +27%, fuerte >=15% -> +40%), o tope de 90 días naturales, lo que llegue
-antes. SIN stop-loss de precio. El cruce se DETECTA con el cierre; el precio que se registra
-es la APERTURA del día siguiente (captura el sesgo overnight, ver doc §3).
+antes (mismo tope para zigzag y suelo -- verificado 9-sep-2026: p99 real de días-a-objetivo
+en suelo es 86, un solo caso histórico en 108 supera los 90). SIN stop-loss de precio. El
+cruce se DETECTA con el cierre; el precio que se registra es la APERTURA del día siguiente
+(captura el sesgo overnight, ver doc §3).
 """
 from __future__ import annotations
 
@@ -29,35 +34,13 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 
-UNIVERSO = ["ASTS", "RKLB", "LUNR", "FLY", "RDW", "VOYG", "GSAT", "ECHO", "VSAT", "PL",
-            "NBIS", "CRWV", "APLD", "IREN", "SOUN", "IONQ", "QBTS", "RGTI", "ARQQ", "HQ",
-            "CIFR", "HUT", "WULF", "BTDR", "CORZ",
-            "LITE", "COHR", "FN", "POET", "AAOI",
-            "RXRX", "TEM", "ABSI", "DNA"]
-# Nota: los tickers incorporados desde el pipeline de descubrimiento (ApeWisdom -> filtros ->
-# gate -> "Incorporar" tuyo) se añaden EN CALIENTE a esta lista y a SECTOR/NOMBRE de abajo --
-# ver `momentum/candidatos.py:sincronizar_universo()`. Nunca hace falta tocar este archivo a
-# mano para eso (decidido 8-sep-2026); esta lista es solo el núcleo curado por ETF/prensa.
-SECTOR = {"ASTS": "Espacio", "RKLB": "Espacio", "LUNR": "Espacio", "FLY": "Espacio", "RDW": "Espacio",
-          "VOYG": "Espacio", "GSAT": "Espacio", "ECHO": "Espacio", "VSAT": "Espacio", "PL": "Espacio",
-          "NBIS": "IA infra", "CRWV": "IA infra", "APLD": "IA infra", "IREN": "IA infra", "SOUN": "IA infra",
-          "IONQ": "Quantum", "QBTS": "Quantum", "RGTI": "Quantum", "ARQQ": "Quantum", "HQ": "Quantum",
-          "CIFR": "Cripto-IA", "HUT": "Cripto-IA", "WULF": "Cripto-IA", "BTDR": "Cripto-IA", "CORZ": "Cripto-IA",
-          "LITE": "Optica-IA", "COHR": "Optica-IA", "FN": "Optica-IA", "POET": "Optica-IA", "AAOI": "Optica-IA",
-          "RXRX": "Biotech-IA", "TEM": "Biotech-IA", "ABSI": "Biotech-IA", "DNA": "Biotech-IA"}
-NOMBRE = {
-    "ASTS": "AST SpaceMobile", "RKLB": "Rocket Lab", "LUNR": "Intuitive Machines",
-    "FLY": "Firefly Aerospace", "RDW": "Redwire", "VOYG": "Voyager Technologies",
-    "GSAT": "Globalstar", "ECHO": "EchoStar", "VSAT": "Viasat", "PL": "Planet Labs",
-    "NBIS": "Nebius", "CRWV": "CoreWeave", "APLD": "Applied Digital", "IREN": "IREN Limited",
-    "SOUN": "SoundHound AI", "IONQ": "IonQ", "QBTS": "D-Wave Quantum", "RGTI": "Rigetti Computing",
-    "ARQQ": "Arqit Quantum", "HQ": "Horizon Quantum",
-    "CIFR": "Cipher Mining", "HUT": "Hut 8", "WULF": "TeraWulf", "BTDR": "Bitdeer Technologies",
-    "CORZ": "Core Scientific",
-    "LITE": "Lumentum", "COHR": "Coherent", "FN": "Fabrinet", "POET": "POET Technologies",
-    "AAOI": "Applied Optoelectronics",
-    "RXRX": "Recursion Pharmaceuticals", "TEM": "Tempus AI", "ABSI": "Absci", "DNA": "Ginkgo Bioworks",
-}
+# Poblados en runtime por `candidatos.sincronizar_universo(db)` desde `momentum_universo` --
+# nunca hardcodeados (ver nota de arriba). Mutables a propósito: se actualizan in-place
+# (`UNIVERSO[:] = ...`, `SECTOR.clear()`+`update(...)`) para que cualquier módulo que ya haya
+# hecho `from app.momentum.signals import UNIVERSO` siga viendo la lista viva.
+UNIVERSO: list[str] = []
+SECTOR: dict[str, str] = {}
+NOMBRE: dict[str, str] = {}
 
 # Ventana permanente -- NO tocar sin una decision explicita nueva (memoria 7-sep-2026: no se
 # amplia mas atras a proposito, regimen de empresa distinto antes de estas fechas).
@@ -66,7 +49,7 @@ EVAL_START = pd.Timestamp("2025-09-01", tz="America/New_York")
 REVERSAL_PCT = 0.20
 ENTRY_TH = 0.40
 SUELO_TOL = 0.10
-SUELO_MIN_BAJO_ATH = 0.40
+SUELO_MIN_BAJO_ATH = 0.60  # subido de 0.40 el 9-sep-2026: barrido real, "escalón" claro en 55-60%
 TOPE_DIAS = 90
 CUIDADO_DIAS = 21  # p75 real de dias-a-objetivo entre las señales ganadoras
 
@@ -147,22 +130,87 @@ def entradas_zigzag(precios: pd.Series, picos: list[tuple], umbral: float) -> li
     return salidas
 
 
-def agrupar_suelos(minimos: list[tuple], tolerancia: float) -> list[list[tuple]]:
-    """Agrupa minimos de precio similar en clusters (doble, triple, N suelos -- sin limite).
-    Un cluster de 1 solo toque no es un suelo confirmado, se descarta."""
-    if len(minimos) < 2:
-        return []
-    ordenados = sorted(minimos, key=lambda x: x[1])
-    clusters, actual = [], [ordenados[0]]
-    for fecha, precio in ordenados[1:]:
-        base = sum(p for _, p in actual) / len(actual)
-        if (precio - base) / base <= tolerancia:
-            actual.append((fecha, precio))
+def entradas_suelo(precios: pd.Series, ath: float, ath_min: float = SUELO_MIN_BAJO_ATH,
+                    tol: float = SUELO_TOL, reversal: float = REVERSAL_PCT) -> list[dict]:
+    """Suelo "reactivo" -- sustituye el 9-sep-2026 al doble-suelo por clusters (`agrupar_suelos`,
+    ya retirado). Motivo real: exigir que el TOQUE que dispara la entrada sea él mismo un
+    mínimo confirmado (rebote >=20%) mete un rebote "gratis" ya incorporado antes de que exista
+    la alerta -- 58-67 trades históricos con CERO perdedores era la pista de que el retorno
+    estaba inflado por el propio retraso de confirmación, no por alfa real.
+
+    Un mínimo zigzag confirmado que además está a >=ath_min bajo el ATH real establece un
+    "nivel" de referencia (con el PRECIO MEDIO de sus toques, no el último). Desde que se
+    establece, CUALQUIER vuelta al nivel (banda simétrica ±tol, no solo "por debajo") dispara
+    una entrada al toque -- ya sabemos que ese precio es soporte real, no hace falta que ese
+    toque en concreto rebote por su cuenta. 'armado' evita repetir mientras el precio se queda
+    pegado a la banda.
+
+    Dos correcciones necesarias frente al prototipo inicial de backtest (9-sep-2026, casos
+    reales encontrados con LUNR y ABSI):
+    - Niveles a precio parecido se fusionan ANTES de vigilar -- si no, un mismo toque real
+      puede satisfacer dos niveles casi iguales y contarse dos veces.
+    - Si dos niveles vecinos (ya fusionados o no, sus bandas de ±tol pueden solaparse igual)
+      disparan la MISMA fecha, se queda solo el más cercano a ese precio ese día."""
+    picos = zigzag(precios, reversal)
+    bajos = sorted([(f, p) for f, p, tipo in picos if tipo == "low"], key=lambda x: x[0])
+
+    confirmados = []  # (fecha_confirmacion, fecha_toque, precio), en orden de confirmacion
+    for f, p in bajos:
+        tras = precios.loc[f:]
+        alcanzado = tras[tras >= p * (1 + reversal)]
+        if alcanzado.empty:
+            continue
+        confirmados.append((alcanzado.index[0], f, p))
+    confirmados.sort(key=lambda x: x[0])
+
+    niveles: list[dict] = []
+    for f_conf, f_toque, precio in confirmados:
+        nivel = None
+        for n in niveles:
+            base = sum(pp for _, pp in n["touches"]) / len(n["touches"])
+            if abs(precio - base) / base <= tol:
+                nivel = n
+                break
+        if nivel is None:
+            nivel = {"touches": [(f_toque, precio)], "establecido_en": None,
+                      "primer_toque": f_toque}
+            niveles.append(nivel)
         else:
-            clusters.append(actual)
-            actual = [(fecha, precio)]
-    clusters.append(actual)
-    return [c for c in clusters if len(c) >= 2]
+            nivel["touches"].append((f_toque, precio))
+        if nivel["establecido_en"] is None:
+            base = sum(pp for _, pp in nivel["touches"]) / len(nivel["touches"])
+            if (1 - base / ath) >= ath_min:
+                nivel["establecido_en"] = f_conf
+                nivel["precio_ref"] = base
+
+    entradas = []
+    for nivel in niveles:
+        if nivel["establecido_en"] is None:
+            continue
+        precio_ref = nivel["precio_ref"]
+        vigilancia = precios.loc[nivel["establecido_en"]:].iloc[1:]
+        armado = True
+        for fecha, precio_hoy in vigilancia.items():
+            if fecha < EVAL_START:
+                continue
+            dentro = abs(precio_hoy / precio_ref - 1) <= tol
+            if dentro and armado:
+                entradas.append({"entry_date": fecha, "entry_price": precio_hoy,
+                                  "_nivel_ref": precio_ref,
+                                  "desde_noticias": nivel["primer_toque"]})
+                armado = False
+            elif not dentro:
+                armado = True
+
+    por_fecha: dict = {}
+    for e in entradas:
+        actual = por_fecha.get(e["entry_date"])
+        distancia = abs(e["entry_price"] / e["_nivel_ref"] - 1)
+        mejor = actual is None or distancia < abs(actual["entry_price"] / actual["_nivel_ref"] - 1)
+        if mejor:
+            por_fecha[e["entry_date"]] = e
+    return [{"entry_date": e["entry_date"], "entry_price": e["entry_price"],
+             "desde_noticias": e["desde_noticias"]} for e in por_fecha.values()]
 
 
 def objetivo_por_arranque(retorno_3_sesiones: float) -> float:
@@ -217,7 +265,6 @@ def señales_de_ticker(ticker: str) -> list[dict]:
     ath = precios.max()
     picos = zigzag(precios, REVERSAL_PCT)
     altos = [(f, p) for f, p, tipo in picos if tipo == "high"]
-    bajos = [(f, p) for f, p, tipo in picos if tipo == "low"]
     sector = SECTOR.get(ticker, "—")
 
     señales = []
@@ -233,27 +280,18 @@ def señales_de_ticker(ticker: str) -> list[dict]:
             "ath": ath, "desde_noticias": entrada["ref_date"],
             **salida,
         })
-    for cluster in agrupar_suelos(bajos, SUELO_TOL):
-        media = sum(p for _, p in cluster) / len(cluster)
-        pct_bajo_ath = (1 - media / ath) * 100
-        if pct_bajo_ath < SUELO_MIN_BAJO_ATH * 100:
-            continue
-        ordenado = sorted(cluster, key=lambda x: x[0])
-        primer_toque_fecha = ordenado[0][0]
-        for fecha, precio in ordenado[1:]:  # el primer toque nunca es señal
-            if fecha < EVAL_START:
-                continue
-            salida = resolver_salida(precios, aperturas, fecha, precio)
-            señales.append({
-                "ticker": ticker, "sector": sector, "tipo": "suelo",
-                "entry_date": fecha, "entry_price": precio,
-                "ref_label": "ATH_referencia", "ref_price": ath,
-                "caida_pct": pct_bajo_ath,
-                # Sin "último pico" natural en un suelo -- se usa el primer toque del cluster
-                # (inicio de la historia de esta caída) como ventana de noticias.
-                "ath": ath, "desde_noticias": primer_toque_fecha,
-                **salida,
-            })
+    for entrada in entradas_suelo(precios, ath):
+        salida = resolver_salida(precios, aperturas, entrada["entry_date"], entrada["entry_price"])
+        señales.append({
+            "ticker": ticker, "sector": sector, "tipo": "suelo",
+            "entry_date": entrada["entry_date"], "entry_price": entrada["entry_price"],
+            "ref_label": "ATH_referencia", "ref_price": ath,
+            "caida_pct": (1 - entrada["entry_price"] / ath) * 100,
+            # Sin "último pico" natural en un suelo -- se usa el toque que estableció el nivel
+            # (inicio de la historia de esta caída) como ventana de noticias.
+            "ath": ath, "desde_noticias": entrada["desde_noticias"],
+            **salida,
+        })
     return señales
 
 

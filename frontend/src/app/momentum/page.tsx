@@ -71,7 +71,24 @@ function SalaMomentumRoom() {
   // pantalla completa; un refresco posterior (botón "actualizar") pone un velo ENCIMA de lo que
   // ya hay, mismo criterio que Sala Real -- consistente como bloqueo de pantalla, sin perder
   // nada de lo que el usuario tenía abierto.
+  //
+  // Coalescer llamadas simultáneas -- BUG real (9-sep-2026): cada acción suelta (descartar,
+  // ejecutar...) aplica su parche optimista y DESPUÉS lanza `load()` en segundo plano. Si dos
+  // acciones se disparan seguidas, la primera `load()` puede seguir en vuelo cuando la segunda
+  // acción ya confirmó en el servidor -- esa `load()` vieja trae una foto DE ANTES del segundo
+  // cambio y la pisa por completo (`setAlertas(a)` es un reemplazo total), así que la fila
+  // vuelve a aparecer un instante hasta que la `load()` de la segunda acción por fin llega y la
+  // quita otra vez. Fix: si ya hay una `load()` en vuelo, no lanzar otra en paralelo -- solo
+  // marcar que hace falta una más, y encadenarla justo cuando la actual termine. Esa última
+  // siempre arranca DESPUÉS de que todas las acciones ya confirmaran en el servidor.
+  const cargandoRef = useRef(false);
+  const recargaPendienteRef = useRef(false);
   const load = useCallback(async () => {
+    if (cargandoRef.current) {
+      recargaPendienteRef.current = true;
+      return;
+    }
+    cargandoRef.current = true;
     try {
       const [c, a, h, v, cd, fxr] = await Promise.all([
         getCuenta(), getAlertas(), getHistorial(), getValidacion(), getCandidatos(),
@@ -93,6 +110,11 @@ function SalaMomentumRoom() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      cargandoRef.current = false;
+      if (recargaPendienteRef.current) {
+        recargaPendienteRef.current = false;
+        load();
+      }
     }
   }, []);
 
@@ -694,6 +716,45 @@ function AlertaCard({ s, grupo, precioVivo, onCambio }: {
   const [busy, setBusy] = useState<"guardar" | "descartar" | null>(null);
   const [err, setErr] = useState("");
 
+  // Gate individual (9-sep-2026): mismo endpoint/hilo en segundo plano que el banner de arriba,
+  // lanzado con un solo id -- no hace falta bajar a la caja naranja para evaluar una sola señal.
+  // Solo UN gate corre a la vez en todo el backend (`gate_runner._running`); si ya hay uno en
+  // marcha (el del banner u otra tarjeta), no nos "enganchamos" a su progreso -- sería el de
+  // OTRO ticker y confundiría -- se avisa y ya está, reintenta cuando termine.
+  const [gateProgreso, setGateProgreso] = useState<GateProgreso | null>(null);
+  const [gateErr, setGateErr] = useState("");
+  const gatePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => { if (gatePollRef.current) clearInterval(gatePollRef.current); }, []);
+
+  const sondearGate = useCallback(async () => {
+    try {
+      const p = await getGateProgreso();
+      setGateProgreso(p);
+      if (p.status !== "running") {
+        if (gatePollRef.current) { clearInterval(gatePollRef.current); gatePollRef.current = null; }
+        onCambio(s.id, {});   // patch vacío -- solo dispara la recarga que trae el veredicto real
+      }
+    } catch { /* fallo puntual de red no corta el sondeo */ }
+  }, [onCambio, s.id]);
+
+  const lanzarGateIndividual = async () => {
+    if (gateProgreso?.status === "running") return;
+    setGateErr("");
+    try {
+      const r = await lanzarGate([s.id]);
+      if (!r.lanzado) {
+        setGateErr(r.motivo === "ya en curso"
+          ? "Ya hay una evaluación en curso (de otra señal) -- espera a que termine."
+          : "No se pudo lanzar el gate.");
+        return;
+      }
+      setGateProgreso({ status: "running", total: 1, hecho: 0, ok: 0, fail: 0, ticker_actual: s.ticker, error: null });
+      gatePollRef.current = setInterval(sondearGate, 3000);
+    } catch {
+      setGateErr("No se pudo lanzar el gate.");
+    }
+  };
+
   const submit = async () => {
     const n = Number(acciones);
     if (!n || busy) return;
@@ -785,6 +846,23 @@ function AlertaCard({ s, grupo, precioVivo, onCambio }: {
           : <b style={{ color: T.bad }}>falla</b>}
         {s.gate_detalle && <span>. {s.gate_detalle}</span>}
       </div>
+
+      {s.gate_resultado == null && (
+        gateProgreso?.status === "running" ? (
+          <div className="mt-2 rounded-lg py-2 text-center text-[11.5px] font-bold" style={{ background: T.warn, color: "#3a2600" }}>
+            Evaluando…
+          </div>
+        ) : (
+          <>
+            <button onClick={lanzarGateIndividual}
+                    className="mt-2 w-full rounded-lg py-2 text-[11.5px] font-bold"
+                    style={{ background: T.warn, color: "#3a2600" }}>
+              Lanzar gate (1 llamada real)
+            </button>
+            {gateErr && <p className="mt-1 text-[10.5px]" style={{ color: T.bad }}>{gateErr}</p>}
+          </>
+        )
+      )}
 
       {done ? (
         <div className="mt-2.5 flex items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold"

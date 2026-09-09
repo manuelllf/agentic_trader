@@ -96,29 +96,39 @@ def detectar_rupturas(db: Session) -> int:
 
 
 def sincronizar_universo(db: Session) -> int:
-    """Añade al universo EN CALIENTE (signals.UNIVERSO/SECTOR/NOMBRE, memoria del proceso) los
-    candidatos que ya incorporaste -- así "Incorporar" surte efecto en el escaneo diario, la
-    validación y el universo sin que nadie toque código nunca más (decidido 8-sep-2026, era
-    manual antes). Fuente de verdad real: `momentum_candidatos.decision = 'incorporado'`, esto
-    solo la refleja en memoria -- idempotente, seguro llamarlo en cada lectura.
-
-    Sector = el real de yfinance (la parte antes de la barra), no se fuerza a uno de los 6
-    sub-géneros curados de los 34 originales -- estos llegaron por descubrimiento, no por ETF."""
-    rows = db.execute(text("""
-        select ticker, nombre, filtro_sector_detalle from momentum_candidatos
-        where decision = 'incorporado'
+    """Única fuente de verdad del universo: la tabla `momentum_universo` -- ya no hay tickers
+    hardcodeados en signals.py (database-first, decidido 9-sep-2026, ver
+    [[supabase-db-first]]). Dos pasos, ambos idempotentes, seguro llamarlo en cada lectura:
+    1. Vuelca a la tabla los candidatos recién incorporados que aún no tengan fila propia
+       (mismo trabajo que antes hacía esta función solo en memoria -- ahora queda en BBDD,
+       origen='incorporado'). Sector = el real de yfinance (la parte antes de la barra), no se
+       fuerza a uno de los sub-géneros curados -- estos llegaron por descubrimiento, no por ETF.
+    2. Recarga desde cero `signals.UNIVERSO/SECTOR/NOMBRE` (memoria del proceso) con TODO lo
+       que hay en la tabla -- así un alta o baja hecha directamente en BBDD también se refleja,
+       no solo los altos vía "Incorporar"."""
+    nuevos = db.execute(text("""
+        select c.ticker, c.nombre, c.filtro_sector_detalle from momentum_candidatos c
+        where c.decision = 'incorporado'
+          and not exists (select 1 from momentum_universo u where u.ticker = c.ticker)
     """)).mappings().all()
-    añadidos = 0
-    for r in rows:
-        t = r["ticker"]
-        if t in signals.UNIVERSO:
-            continue
-        signals.UNIVERSO.append(t)
-        sector = (r["filtro_sector_detalle"] or "").split(" / ")[0].strip()
-        signals.SECTOR[t] = sector or "Descubierto"
-        signals.NOMBRE[t] = r["nombre"] or t
-        añadidos += 1
-    return añadidos
+    for r in nuevos:
+        sector = (r["filtro_sector_detalle"] or "").split(" / ")[0].strip() or "Descubierto"
+        db.execute(text("""
+            insert into momentum_universo (ticker, sector, nombre, origen)
+            values (:t, :s, :n, 'incorporado')
+            on conflict (ticker) do nothing
+        """), {"t": r["ticker"], "s": sector, "n": r["nombre"] or r["ticker"]})
+    if nuevos:
+        db.commit()
+    rows = db.execute(text(
+        "select ticker, sector, nombre from momentum_universo order by ticker"
+    )).mappings().all()
+    signals.UNIVERSO[:] = [r["ticker"] for r in rows]
+    signals.SECTOR.clear()
+    signals.SECTOR.update({r["ticker"]: r["sector"] for r in rows})
+    signals.NOMBRE.clear()
+    signals.NOMBRE.update({r["ticker"]: r["nombre"] for r in rows})
+    return len(nuevos)
 
 
 def backfill_señales(ticker: str, db: Session) -> None:
