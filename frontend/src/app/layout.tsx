@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#059669",
+  themeColor: "#131313",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -28,6 +28,16 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es">
+      <head>
+        {/* Fraunces (titular serif de la Land): vía Google Fonts directo, no next/font --
+            self-hosting solo entregaba una instancia estática y la "j" salía sin su gancho
+            (feedback 9-sep-2026, "la J cochambrosa"). El link directo, con el mismo rango de
+            eje `opsz` que pide el mockup original, sí sirve la variable de verdad. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="stylesheet"
+              href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&display=swap" />
+      </head>
       <body>
         {children}
         <PwaInstall />

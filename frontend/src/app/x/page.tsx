@@ -12,10 +12,10 @@ import { money, signMoney } from "@/lib/format";
 import {
   adminDetectarCandidatos, adminScan, buscarCandidato, comprobarFiltrosCandidato,
   crearCandidatoManual, decidirCandidato, descartarSenal, ejecutarSenal, getAlertas,
-  getCandidatos, getCuenta, getGateProgreso, getHistorial, getPreciosVivos, getValidacion,
-  lanzarGate, lanzarGateCandidato, setMantenerUniverso,
+  getCandidatos, getCuenta, getGateProgreso, getHistorial, getPreciosVivos, getScanProgreso,
+  getValidacion, lanzarGate, lanzarGateCandidato, setMantenerUniverso,
 } from "./api";
-import type { GateProgreso } from "./api";
+import type { GateProgreso, ScanProgreso } from "./api";
 import { MONO, NUMS, SANS, T } from "./tokens";
 import type { Candidato, Cuenta, Senal, Validacion } from "./types";
 
@@ -61,6 +61,8 @@ function SalaMomentumRoom() {
   const [refreshing, setRefreshing] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
+  const [scanProgreso, setScanProgreso] = useState<ScanProgreso | null>(null);
+  const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [detectando, setDetectando] = useState(false);
   const [detectMsg, setDetectMsg] = useState("");
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
@@ -139,18 +141,59 @@ function SalaMomentumRoom() {
   }, [load]);
 
   // Rescate manual del escaneo diario (cron 16:45 ET): gratis, sin gate. Separado de
-  // "actualizar" a propósito -- ese solo relee lo que ya hay, esto hace ~34 llamadas a yfinance.
+  // "actualizar" a propósito -- ese solo relee lo que ya hay, esto hace una llamada a yfinance
+  // por ticker del universo.
+  //
+  // En segundo plano desde el 9-sep-2026 (bug real): recorrer el universo entero (~9s medidos
+  // en local con 28 tickers, más en producción) podía superar el timeout de 15s del cliente --
+  // el navegador daba "timeout" con el escaneo ya completado y guardado por detrás. Mismo
+  // patrón lanza+sondea que el gate: `POST /admin/scan` solo arranca el hilo, y `GET
+  // /scan/progreso` se sondea cada 2s hasta que termina.
+  const pararScan = useCallback(() => {
+    if (scanPollRef.current) { clearInterval(scanPollRef.current); scanPollRef.current = null; }
+  }, []);
+
+  const sondearScan = useCallback(async () => {
+    try {
+      const p = await getScanProgreso();
+      setScanProgreso(p);
+      if (p.status !== "running") {
+        pararScan();
+        setScanning(false);
+        if (p.status === "done") {
+          setScanMsg(`${p.nuevas} señal(es) nueva(s) de ${p.total} ticker(s) revisado(s).`);
+          load();
+        } else if (p.status === "error") {
+          setScanMsg(`Error: ${p.error}`);
+        }
+      }
+    } catch { /* fallo puntual de red no debe cortar el sondeo */ }
+  }, [load, pararScan]);
+
+  // Al entrar (o recargar a mitad): si ya había un escaneo corriendo, retoma el sondeo solo --
+  // mismo criterio que el gate (GateBanner más abajo).
+  useEffect(() => {
+    getScanProgreso().then((p) => {
+      if (p.status === "running") { setScanning(true); scanPollRef.current = setInterval(sondearScan, 2000); }
+    }).catch(() => {});
+    return pararScan;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const escanear = async () => {
-    setScanning(true);
     setScanMsg("");
     try {
       const r = await adminScan();
-      setScanMsg(r.ok ? `${r.nuevas} señal(es) nueva(s) de ${r.total_universo} revisadas.` : `Error: ${r.error}`);
-      if (r.ok) await load();
+      if (!r.lanzado) {
+        setScanMsg(r.motivo === "ya en curso" ? "Ya había un escaneo en curso, sigo el suyo." : "");
+        setScanning(true);
+        scanPollRef.current = setInterval(sondearScan, 2000);
+        return;
+      }
+      setScanning(true);
+      scanPollRef.current = setInterval(sondearScan, 2000);
     } catch (e) {
       setScanMsg(e instanceof ApiError ? e.message : "No se pudo lanzar el escaneo.");
-    } finally {
-      setScanning(false);
     }
   };
 
@@ -211,7 +254,7 @@ function SalaMomentumRoom() {
            style={{ background: T.page, color: T.muted }}>
         <span className="h-6 w-6 animate-spin rounded-full border-2"
               style={{ borderColor: T.grid, borderTopColor: T.entry }} />
-        <p>Cargando Sala Real X…</p>
+        <p>Cargando X…</p>
       </div>
     );
   }
@@ -228,28 +271,48 @@ function SalaMomentumRoom() {
           <p style={{ color: T.muted }}>Actualizando…</p>
         </div>
       )}
+      {/* Barra fina y sticky (solo volver + estado): las acciones ya no viven aquí clavadas
+          arriba -- flotan más abajo, en el flujo normal, como el resto de la casa (ver /mockup). */}
       <header className="sticky top-0 z-40 border-b backdrop-blur"
               style={{ borderColor: T.ring, background: "rgba(13,13,13,0.92)" }}>
-        <div className="mx-auto flex min-h-11 max-w-[900px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-4 py-2">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
-              ← Portada
-            </Link>
-            <span className="inline-flex items-center gap-2 text-[13px] font-bold tracking-tight" style={{ color: T.ink }}>
-              <span className="h-2 w-2 rounded-full" style={{ background: error ? T.bad : T.entry }} />
-              SALA REAL X
-            </span>
-          </div>
-          <span className="flex items-center gap-1.5 text-[10.5px] font-bold"
-                style={{ color: conectado ? T.good : T.warn }}>
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: conectado ? T.good : T.warn }} />
-            <span className="hidden sm:inline">{conectado ? "IBKR conectado" : "IBKR sin conexión"}</span>
-          </span>
+        <div className="mx-auto flex min-h-11 max-w-[1500px] items-center justify-between gap-x-3 px-4 py-2 lg:px-6">
+          <Link href="/" className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
+            ← Portada
+          </Link>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: error ? T.bad : conectado ? T.good : T.warn }} />
         </div>
-        {/* Fila propia, centrada -- cada acción se distingue por su texto, no por un color
-            arbitrario (antes: iconos solos + leyenda aparte explicándolos, redundante). */}
-        <div className="mx-auto flex max-w-[900px] flex-wrap justify-center gap-2 px-4 pb-2.5">
-          <ActionChip onClick={escanear} busy={scanning} label="Señales"
+        {scanMsg && <AvisoTemporal texto={scanMsg} onCerrar={() => setScanMsg("")} />}
+        {detectMsg && <AvisoTemporal texto={detectMsg} onCerrar={() => setDetectMsg("")} />}
+      </header>
+
+      <div className="mx-auto max-w-[1500px] px-4 pt-4 lg:px-6">
+        {/* ---------- cabecera: eyebrow + título + descripción, como Alpha y Beta (ver /mockup). ---------- */}
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className={`flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] ${MONO}`}
+               style={{ color: T.entry }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: error ? T.bad : T.good }} />
+              X
+            </p>
+            <h1 className="mt-1 text-[26px] font-bold" style={{ color: T.ink }}>Descubrimiento de momentum</h1>
+            <p className="mt-2 max-w-[46ch] text-[14px]" style={{ color: T.ink2 }}>
+              El agente detecta rupturas y sugiere; tú ejecutas a mano y lo reportas aquí.
+            </p>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                style={{ background: conectado ? "rgba(107,190,138,0.14)" : "rgba(250,178,25,0.14)",
+                         color: conectado ? T.good : T.warn }}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: conectado ? T.good : T.warn }} />
+            {conectado ? "IBKR conectado" : "IBKR sin conexión"}
+          </span>
+        </header>
+
+        {/* Fila propia, flotando en el flujo normal -- cada acción se distingue por su texto,
+            no por un color arbitrario (antes: iconos solos + leyenda aparte explicándolos). */}
+        <div className="mb-6 flex flex-wrap gap-2">
+          <ActionChip onClick={escanear} busy={scanning}
+                      label={scanning && scanProgreso?.status === "running" && scanProgreso.total > 0
+                        ? `${scanProgreso.hecho}/${scanProgreso.total}` : "Señales"}
                       title="Recalcular señales ahora (gratis, por si el cron 16:05 ET no ha corrido)">
             <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
           </ActionChip>
@@ -267,11 +330,7 @@ function SalaMomentumRoom() {
             <path d="M3 12a9 9 0 0 1 15.3-6.3L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.3 6.3L3 16M3 21v-5h5" />
           </ActionChip>
         </div>
-        {scanMsg && <AvisoTemporal texto={scanMsg} onCerrar={() => setScanMsg("")} />}
-        {detectMsg && <AvisoTemporal texto={detectMsg} onCerrar={() => setDetectMsg("")} />}
-      </header>
 
-      <div className="mx-auto max-w-[900px] px-4 pt-4">
         {error && (
           <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border px-4 py-2 text-[12.5px]"
                style={{ borderColor: "rgba(208,59,59,0.4)", background: "rgba(208,59,59,0.08)", color: "#e66767" }}>
@@ -295,74 +354,66 @@ function SalaMomentumRoom() {
           </p>
         )}
 
-        {/* ---------- Cuenta: el resultado manda, la mecánica de cuenta es contexto detrás ---------- */}
-        <Section title="Cuenta">
+        {/* ---------- Cuenta: el resultado manda, la mecánica de cuenta es contexto detrás. Una
+            sola card (antes dos, con la fila de cash/poder/gasto suelta abajo) -- misma info,
+            una sola superficie, como el resto de módulos de la sala. ---------- */}
+        <div className="mb-6">
+          <p className="mb-3 text-[16px] font-bold tracking-tight" style={{ color: T.ink }}>Cuenta</p>
           {(() => {
             const pnlAbUsd = Number(cuenta?.pnl_abierto_usd ?? 0);
             const pnlReUsd = Number(cuenta?.pnl_realizado_usd ?? 0);
-            const signoTotal = pnlAbUsd + pnlReUsd >= 0 ? T.good : T.bad;
             const eur = cuenta?.cash && fx ? Number(cuenta.cash.EUR ?? 0) + Number(cuenta.cash.USD ?? 0) / fx : null;
             return (
-              <>
-                <div className="rounded-xl border p-4" style={{ borderColor: T.ring, background: T.panel, borderTop: `2px solid ${signoTotal}` }}>
-                  <div className="flex gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[9px] font-bold uppercase tracking-wide" style={{ color: T.muted }}>Capital total</div>
-                      <div className={`mt-1 text-[18px] font-bold ${NUMS}`} style={{ color: T.ink }}>${money(cuenta?.desplegado_usd ?? 0)}</div>
+              <div className="rounded-2xl border p-5 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]"
+                   style={{ borderColor: T.ring, background: T.panel }}>
+                <div className="grid grid-cols-2 gap-x-5 gap-y-5">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Capital total</div>
+                    <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: T.ink }}>${money(cuenta?.desplegado_usd ?? 0)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>PnL abierto</div>
+                    <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: pnlAbUsd >= 0 ? T.good : T.bad }}>
+                      {signMoney(pnlAbUsd)}
                     </div>
-                    <div className="min-w-0 flex-1 border-l pl-3" style={{ borderColor: T.grid }}>
-                      <div className="text-[9px] font-bold uppercase tracking-wide" style={{ color: T.muted }}>PnL abierto</div>
-                      <div className={`mt-1 text-[18px] font-bold ${NUMS}`} style={{ color: pnlAbUsd >= 0 ? T.good : T.bad }}>
-                        {signMoney(pnlAbUsd)}
-                      </div>
-                      <div className={`text-[10.5px] ${NUMS}`} style={{ color: pnlAbUsd >= 0 ? T.good : T.bad }}>
-                        {fmtRet(cuenta?.pnl_abierto_pct ?? null)}
-                      </div>
-                    </div>
-                    <div className="min-w-0 flex-1 border-l pl-3" style={{ borderColor: T.grid }}>
-                      <div className="text-[9px] font-bold uppercase tracking-wide" style={{ color: T.muted }}>PnL realizado</div>
-                      <div className={`mt-1 text-[18px] font-bold ${NUMS}`} style={{ color: pnlReUsd >= 0 ? T.good : T.bad }}>
-                        {signMoney(pnlReUsd)}
-                      </div>
-                      <div className={`text-[10.5px] ${NUMS}`} style={{ color: pnlReUsd >= 0 ? T.good : T.bad }}>
-                        {fmtRet(cuenta?.pnl_realizado_pct ?? null)}
-                      </div>
+                    <div className={`mt-0.5 text-[10.5px] ${NUMS}`} style={{ color: pnlAbUsd >= 0 ? T.good : T.bad }}>
+                      {fmtRet(cuenta?.pnl_abierto_pct ?? null)}
                     </div>
                   </div>
-                </div>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <div className="rounded-lg border p-2.5" style={{ borderColor: T.ring, background: T.panel }}>
-                    <div className="text-[8.5px] font-bold uppercase tracking-wide" style={{ color: T.muted }}>Cash</div>
-                    {cuenta?.cash ? (
-                      <div className={`mt-1 text-[13px] font-bold ${NUMS}`} style={{ color: T.ink }}>
-                        {money(cuenta.cash.EUR ?? 0, 0)} <span className="text-[9px] font-medium" style={{ color: T.muted }}>EUR</span>
-                      </div>
-                    ) : (
-                      <div className="mt-1 text-[10.5px]" style={{ color: T.muted }}>sin IBKR</div>
-                    )}
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>PnL realizado</div>
+                    <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: pnlReUsd >= 0 ? T.good : T.bad }}>
+                      {signMoney(pnlReUsd)}
+                    </div>
+                    <div className={`mt-0.5 text-[10.5px] ${NUMS}`} style={{ color: pnlReUsd >= 0 ? T.good : T.bad }}>
+                      {fmtRet(cuenta?.pnl_realizado_pct ?? null)}
+                    </div>
                   </div>
-                  <div className="rounded-lg border p-2.5" style={{ borderColor: T.ring, background: T.panel }}>
-                    <div className="text-[8.5px] font-bold uppercase tracking-wide" style={{ color: T.muted }}>Poder compra</div>
-                    <div className={`mt-1 text-[13px] font-bold ${NUMS}`} style={{ color: T.ink }}>
+                  <div>
+                    {/* Antes había un tile "Cash" aparte -- era el mismo dinero que este, solo
+                        que sin convertir y sin el USD sumado: redundante, se quita. */}
+                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Poder compra</div>
+                    <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: T.ink }}>
                       {eur != null ? `€${money(eur, 0)}` : "-"}
                     </div>
                     {eur != null && fx && (
-                      <div className={`text-[8.5px] ${NUMS}`} style={{ color: T.muted }}>≈ ${money(eur * fx, 0)}</div>
+                      <div className={`mt-0.5 text-[10.5px] ${NUMS}`} style={{ color: T.muted }}>≈ ${money(eur * fx, 0)}</div>
                     )}
                   </div>
-                  <div className="rounded-lg border p-2.5" style={{ borderColor: T.ring, background: T.panel }}
-                       title={`${cuenta?.gate_llamadas ?? 0} llamada(s) real(es) a DeepSeek, señales + candidatos`}>
-                    <div className="text-[8.5px] font-bold uppercase tracking-wide" style={{ color: T.muted }}>Gate gasto</div>
-                    <div className={`mt-1 text-[13px] font-bold ${NUMS}`} style={{ color: T.warn }}>
-                      ${money(cuenta?.gate_gastado_usd ?? 0, 2)}
-                    </div>
-                    <div className="text-[8.5px]" style={{ color: T.muted }}>{cuenta?.gate_llamadas ?? 0} llam.</div>
-                  </div>
                 </div>
-              </>
+                <div className="mt-4 flex items-baseline justify-between border-t pt-3.5"
+                     style={{ borderColor: T.grid }}
+                     title={`${cuenta?.gate_llamadas ?? 0} llamada(s) real(es) a DeepSeek, señales + candidatos`}>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Gate gasto</span>
+                  <span className={`text-[13px] font-bold ${NUMS}`} style={{ color: T.warn }}>
+                    ${money(cuenta?.gate_gastado_usd ?? 0, 2)}
+                    <span className="ml-1.5 font-normal" style={{ color: T.muted }}>· {cuenta?.gate_llamadas ?? 0} llam.</span>
+                  </span>
+                </div>
+              </div>
             );
           })()}
-        </Section>
+        </div>
 
         {/* ---------- Alertas activas ---------- */}
         <Section title="Alertas activas" count={activas.length}>
@@ -590,10 +641,10 @@ function GatePendienteBanner({ señales, onEvaluado }: { señales: Senal[]; onEv
   const corriendo = progreso?.status === "running";
 
   return (
-    <div className="mb-6 rounded-xl border p-4" style={{ borderColor: "rgba(250,178,25,0.35)", background: "rgba(250,178,25,0.06)" }}>
+    <div className="mb-6 rounded-2xl border p-5 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]" style={{ borderColor: T.ring, background: T.panel }}>
       <div className="flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: T.warn }} />
-        <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: T.warn }}>Gate pendiente: señales del universo</span>
+        <span className="text-[15px] font-bold tracking-tight" style={{ color: T.warn }}>Gate pendiente: señales del universo</span>
       </div>
       <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: T.ink2 }}>
         <b style={{ color: T.ink }}>{señales.length} señal{señales.length === 1 ? "" : "es"}</b> del
@@ -616,14 +667,14 @@ function GatePendienteBanner({ señales, onEvaluado }: { señales: Senal[]; onEv
         })}
       </div>
       {corriendo && progreso ? (
-        <div className="mt-3 rounded-lg py-2 text-center text-[12.5px] font-bold" style={{ background: T.warn, color: "#3a2600" }}>
+        <div className="mt-3 rounded-full py-2 text-center text-[12.5px] font-bold" style={{ background: T.entry, color: "#fff" }}>
           Evaluando {progreso.hecho}/{progreso.total}
           {progreso.ticker_actual ? ` · ${progreso.ticker_actual}` : ""}…
         </div>
       ) : (
         <button onClick={evaluar} disabled={seleccionadas.size === 0}
-                className="mt-3 w-full rounded-lg py-2 text-[12.5px] font-bold disabled:opacity-40"
-                style={{ background: T.warn, color: "#3a2600" }}>
+                className="mt-3 w-full rounded-full py-2 text-[12.5px] font-bold disabled:opacity-40"
+                style={{ background: T.entry, color: "#fff" }}>
           Evaluar seleccionadas ({seleccionadas.size})
         </button>
       )}
@@ -655,10 +706,9 @@ function ActionChip({ onClick, label, title, busy, stroke, children }: {
 function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
   return (
     <div className="mb-6">
-      <p className="mb-2 flex items-baseline justify-between text-[11px] font-bold uppercase tracking-wider"
-         style={{ color: T.muted }}>
-        <span><span className="mr-1 font-semibold normal-case">{"›"}</span>{title}</span>
-        {count != null && <span className="font-normal normal-case" style={{ color: T.muted }}>{count}</span>}
+      <p className="mb-3 flex items-baseline gap-2 text-[16px] font-bold tracking-tight" style={{ color: T.ink }}>
+        {title}
+        {count != null && <span className="text-[12.5px] font-normal" style={{ color: T.muted }}>{count}</span>}
       </p>
       {children}
     </div>
@@ -670,14 +720,14 @@ function Section({ title, count, children }: { title: string; count?: number; ch
 function Collapsible({ title, count, children }: { title: string; count?: number | string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="mb-6 rounded-xl border overflow-hidden" style={{ borderColor: T.ring, background: T.panel }}>
+    <div className="mb-6 rounded-2xl border overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]" style={{ borderColor: T.ring, background: T.panel }}>
       <button onClick={() => setOpen((o) => !o)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left">
-        <span className="text-[12.5px] font-bold" style={{ color: T.ink2 }}>
+              className="flex w-full items-center justify-between px-4 py-3.5 text-left">
+        <span className="text-[16px] font-bold" style={{ color: T.ink }}>
           {title}{" "}
-          {count != null && <span className="font-normal" style={{ color: T.muted }}>{count}</span>}
+          {count != null && <span className="text-[13px] font-normal" style={{ color: T.muted }}>{count}</span>}
         </span>
-        <span className="text-[11px] transition-transform" style={{ color: T.muted, transform: open ? "rotate(180deg)" : undefined }}>▾</span>
+        <span className="text-[13px] transition-transform" style={{ color: T.muted, transform: open ? "rotate(180deg)" : undefined }}>▾</span>
       </button>
       {open && <div className="border-t" style={{ borderColor: T.grid }}>{children}</div>}
     </div>
@@ -686,7 +736,7 @@ function Collapsible({ title, count, children }: { title: string; count?: number
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border px-4 py-4 text-center text-[12px]"
+    <div className="rounded-2xl border px-4 py-5 text-center text-[12px]"
          style={{ borderColor: T.ring, background: T.panel, color: T.muted }}>
       {children}
     </div>
@@ -792,16 +842,21 @@ function AlertaCard({ s, grupo, precioVivo, onCambio }: {
   const retornoMostrado = precioVivo != null ? (precioVivo / Number(s.entry_price) - 1) * 100 : Number(s.ret);
 
   return (
-    <div className="rounded-xl border p-3.5" style={{ borderColor: T.ring, background: T.panel }}>
+    <div className="rounded-2xl border p-4 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]" style={{ borderColor: T.ring, background: T.panel }}>
       <div className="flex items-baseline justify-between gap-2">
         <div className="flex min-w-0 items-baseline gap-1.5">
           <span className="h-1.5 w-1.5 shrink-0 translate-y-[-1px] rounded-full" style={{ background: puntoEstado }} />
           <span className={`text-[17px] font-bold ${MONO}`} style={{ color: T.ink }}>{s.ticker}</span>
           <span className="text-[10.5px]" style={{ color: T.muted }}>{s.sector}</span>
         </div>
-        <div className="shrink-0 whitespace-nowrap text-right text-[9.5px] leading-tight" style={{ color: T.muted }}>
-          <div className="font-semibold uppercase tracking-wide" style={{ color: T.ink2 }}>{TIPO_LABEL[s.tipo]}</div>
-          <div>{s.cuidado && <b style={{ color: T.warn }}>CUIDADO · </b>}{fmtFecha(s.entry_date)} · {s.dias}d</div>
+        <div className="shrink-0 text-right">
+          <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-wide"
+                style={{ background: "rgba(255,255,255,0.06)", color: T.ink2 }}>
+            {TIPO_LABEL[s.tipo]}
+          </span>
+          <div className="mt-1 whitespace-nowrap text-[9.5px] leading-tight" style={{ color: T.muted }}>
+            {s.cuidado && <b style={{ color: T.warn }}>CUIDADO · </b>}{fmtFecha(s.entry_date)} · {s.dias}d
+          </div>
         </div>
       </div>
 
@@ -824,18 +879,18 @@ function AlertaCard({ s, grupo, precioVivo, onCambio }: {
         </span>
       </div>
 
-      <div className="mt-2.5 flex border-t pt-2.5 text-[12px]" style={{ borderColor: T.grid }}>
-        <div className="min-w-0 flex-1">
+      <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
+        <div className="min-w-0">
           <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Señal</div>
-          <b className={NUMS} style={{ color: T.ink }}>${money(s.entry_price)}</b>
+          <b className={`${NUMS} text-[14px]`} style={{ color: T.ink }}>${money(s.entry_price)}</b>
         </div>
-        <div className="min-w-0 flex-1 border-l pl-2.5" style={{ borderColor: T.grid }}>
+        <div className="min-w-0">
           <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Hoy</div>
-          <b className={NUMS} style={{ color: T.ink }}>${money(precioMostrado)}</b>
+          <b className={`${NUMS} text-[14px]`} style={{ color: T.ink }}>${money(precioMostrado)}</b>
         </div>
-        <div className="min-w-0 flex-1 border-l pl-2.5" style={{ borderColor: T.grid }}>
+        <div className="min-w-0">
           <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Retorno</div>
-          <b className={NUMS} style={{ color: retornoMostrado >= 0 ? T.good : T.bad }}>{fmtRet(retornoMostrado)}</b>
+          <b className={`${NUMS} text-[14px]`} style={{ color: retornoMostrado >= 0 ? T.good : T.bad }}>{fmtRet(retornoMostrado)}</b>
         </div>
       </div>
 
@@ -849,14 +904,14 @@ function AlertaCard({ s, grupo, precioVivo, onCambio }: {
 
       {s.gate_resultado == null && (
         gateProgreso?.status === "running" ? (
-          <div className="mt-2 rounded-lg py-2 text-center text-[11.5px] font-bold" style={{ background: T.warn, color: "#3a2600" }}>
+          <div className="mt-2 rounded-full py-2 text-center text-[11.5px] font-bold" style={{ background: T.entry, color: "#fff" }}>
             Evaluando…
           </div>
         ) : (
           <>
             <button onClick={lanzarGateIndividual}
-                    className="mt-2 w-full rounded-lg py-2 text-[11.5px] font-bold"
-                    style={{ background: T.warn, color: "#3a2600" }}>
+                    className="mt-2 w-full rounded-full py-2 text-[11.5px] font-bold"
+                    style={{ background: T.entry, color: "#fff" }}>
               Lanzar gate (1 llamada real)
             </button>
             {gateErr && <p className="mt-1 text-[10.5px]" style={{ color: T.bad }}>{gateErr}</p>}
@@ -865,7 +920,7 @@ function AlertaCard({ s, grupo, precioVivo, onCambio }: {
       )}
 
       {done ? (
-        <div className="mt-2.5 flex items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold"
+        <div className="mt-2.5 flex items-center justify-center gap-1.5 rounded-full py-2 text-[12.5px] font-bold"
              style={{ background: "rgba(51,193,90,0.14)", color: T.good }}>
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" stroke={T.good} fill="none" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3.5 8.5l3 3 6-7" />
@@ -875,12 +930,12 @@ function AlertaCard({ s, grupo, precioVivo, onCambio }: {
       ) : !open ? (
         <div className="mt-2.5 flex gap-2">
           <button onClick={descartar} disabled={busy != null}
-                  className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
+                  className="rounded-full border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
                   style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>
             {busy === "descartar" ? "…" : "Descartar"}
           </button>
           <button onClick={() => setOpen(true)}
-                  className="flex-1 rounded-lg border py-1.5 text-[12px] font-bold"
+                  className="flex-1 rounded-full border py-1.5 text-[12px] font-bold"
                   style={{ background: T.panel2, borderColor: T.grid, color: T.ink }}>
             Marcar ejecutada
           </button>
@@ -894,7 +949,7 @@ function AlertaCard({ s, grupo, precioVivo, onCambio }: {
           </div>
           {err && <p className="mt-1.5 text-[11px]" style={{ color: T.bad }}>{err}</p>}
           <button onClick={submit} disabled={busy != null || !acciones}
-                  className="mt-2 w-full rounded-lg py-1.5 text-[12px] font-bold disabled:opacity-40"
+                  className="mt-2 w-full rounded-full py-1.5 text-[12px] font-bold disabled:opacity-40"
                   style={{ background: T.ink, color: T.page }}>
             {busy === "guardar" ? "Guardando…" : "Guardar posición"}
           </button>
@@ -1021,7 +1076,7 @@ function AvisoTemporal({ texto, onCerrar }: { texto: string; onCerrar: () => voi
   }, [texto, onCerrar]);
 
   return (
-    <div className="mx-auto flex max-w-[900px] items-center justify-between gap-2 px-4 pb-2 text-[11px]"
+    <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-2 px-4 pb-2 text-[11px]"
          style={{ color: T.muted }}>
       <span>{texto}</span>
       <button onClick={onCerrar} aria-label="Cerrar aviso" className="shrink-0 hover:opacity-70">✕</button>
@@ -1113,7 +1168,7 @@ function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => void; on
                    className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[12px] uppercase"
                    style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.grid}` }} />
             <button onClick={buscar} disabled={busy || !ticker.trim()}
-                    className="shrink-0 rounded-lg px-3 py-2 text-[11.5px] font-bold disabled:opacity-40"
+                    className="shrink-0 rounded-full px-3.5 py-2 text-[11.5px] font-bold disabled:opacity-40"
                     style={{ background: T.base, color: T.ink2 }}>
               {busy && !candidato ? "…" : "Buscar"}
             </button>
@@ -1158,25 +1213,25 @@ function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => void; on
 
               {sinComprobar ? (
                 <button onClick={() => recargar(() => comprobarFiltrosCandidato(candidato.id))} disabled={busy}
-                        className="mt-3 w-full rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
+                        className="mt-3 w-full rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                         style={{ background: T.base, color: T.ink2 }}>
                   {busy ? "Comprobando…" : "Comprobar filtros (gratis)"}
                 </button>
               ) : listoParaGate ? (
                 <button onClick={() => recargar(() => lanzarGateCandidato(candidato.id))} disabled={busy}
-                        className="mt-3 w-full rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
-                        style={{ background: T.warn, color: "#3a2600" }}>
+                        className="mt-3 w-full rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
+                        style={{ background: T.entry, color: "#fff" }}>
                   {busy ? "Evaluando…" : "Lanzar gate (1 llamada real)"}
                 </button>
               ) : (
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => decidir("incorporado")} disabled={busy || candidato.decision === "incorporado"}
-                          className="flex-1 rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
+                          className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                           style={{ background: "rgba(12,163,12,0.14)", color: T.good, border: "1px solid rgba(12,163,12,0.35)" }}>
                     Incorporar
                   </button>
                   <button onClick={() => decidir("descartado")} disabled={busy || candidato.decision === "descartado"}
-                          className="flex-1 rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
+                          className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                           style={{ background: "transparent", color: T.bad, border: "1px solid rgba(208,59,59,0.5)" }}>
                     Mantener fuera
                   </button>
@@ -1295,21 +1350,21 @@ function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; first: b
       <div className="mt-2.5 flex gap-2">
         {sinComprobar ? (
           <button onClick={() => accionar(() => comprobarFiltrosCandidato(c.id))} disabled={busy}
-                  className="flex-1 rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
+                  className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                   style={{ background: T.base, color: T.ink2 }}>
             {busy ? "Comprobando…" : "Comprobar filtros (gratis)"}
           </button>
         ) : listoParaGate ? (
           <button onClick={() => accionar(() => lanzarGateCandidato(c.id))} disabled={busy}
-                  className="flex-1 rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
-                  style={{ background: T.warn, color: "#3a2600" }}>
+                  className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
+                  style={{ background: T.entry, color: "#fff" }}>
             {busy ? "Evaluando…" : "Lanzar gate (1 llamada real)"}
           </button>
         ) : null}
         {/* Descartar sin necesidad de comprobar nada antes -- cada ticker es una decisión
             independiente, nunca hace falta procesar uno para poder quitarlo de la lista. */}
         <button onClick={descartar} disabled={busy}
-                className="rounded-lg px-3 py-2 text-[11.5px] font-bold disabled:opacity-40"
+                className="rounded-full px-3 py-2 text-[11.5px] font-bold disabled:opacity-40"
                 style={{ background: "transparent", color: T.bad, border: "1px solid rgba(208,59,59,0.5)" }}>
           Descartar
         </button>
@@ -1383,19 +1438,19 @@ function CandidatoRow({ c, first, onCambio }: { c: Candidato; first: boolean; on
           </div>
           {puedeReintentar && (
             <button onClick={reintentar} disabled={busy != null}
-                    className="mt-2.5 w-full rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
+                    className="mt-2.5 w-full rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                     style={{ background: T.base, color: T.ink2 }}>
               {busy === "reintentar" ? "Reintentando…" : "Reintentar filtros (gratis)"}
             </button>
           )}
           <div className="mt-3 flex gap-2">
             <button onClick={() => decidir("incorporado")} disabled={busy != null}
-                    className="flex-1 rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
+                    className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                     style={{ background: "rgba(12,163,12,0.14)", color: T.good, border: "1px solid rgba(12,163,12,0.35)" }}>
               {busy === "incorporado" ? "…" : "Incorporar"}
             </button>
             <button onClick={() => decidir("descartado")} disabled={busy != null}
-                    className="flex-1 rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40"
+                    className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                     style={{ background: "transparent", color: T.bad, border: "1px solid rgba(208,59,59,0.5)" }}>
               {busy === "descartado" ? "…" : "Mantener fuera"}
             </button>

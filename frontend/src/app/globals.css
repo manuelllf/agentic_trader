@@ -3,10 +3,15 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+  --font-land-serif: "Fraunces", ui-serif, Georgia, serif;
 }
 
+/* Toda la app (Land, Alpha, Beta, X) es oscura de verdad, nunca clara -- con `light` aquí el
+   navegador pintaba scrollbar y controles nativos (checkboxes, marcador de <details>...) en su
+   versión clara encima de un fondo casi negro: exactamente el "nativo, no integrado" del
+   feedback 9-sep-2026. */
 html {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 body {
@@ -26,4 +31,13 @@ body {
 @keyframes real-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* El gesto de volver atrás (swipe desde el borde, Safari/Chrome móvil) se confundía con las
+   tablas y el carrusel de alertas que hacen scroll horizontal: al arrastrar desde dentro de uno
+   de ellos, el rebote se propagaba a la página y el navegador no sabía si era "scroll" o
+   "volver" (feedback 9-sep-2026). `contain` evita que el rebote de estos elementos se filtre
+   hacia arriba, sin tocar el gesto nativo del navegador en el resto de la pantalla. */
+.overflow-x-auto {
+  overscroll-behavior-x: contain;
 }

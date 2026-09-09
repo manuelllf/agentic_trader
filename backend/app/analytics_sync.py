@@ -50,26 +50,19 @@ _EXCLUIDAS = {
 #
 # Formato: {nombre_en_duckdb: (referencia_en_postgres, columna_id)}.
 #
-# Las 4 de 'public' llevan su propia PK autoincremental. Las 5 `..._archivo` (poda del
-# 9-sep-2026, ver docs/momentum-sala-real-x.md -- no, esto es del ranker: `fundamentals_snapshot`
-# guardaba el dataset global/HuggingFace entero sin que `foto_reciente` (TTL=12h) ni el escaneo
-# real -- solo mira las ~3.310 de NASDAQ -- lo consultasen nunca; y `scan_audit`/`scan_runs`
-# guardaban cada escaneo de PRUEBA (`decide=false`) igual que uno real) viven en un esquema
-# `archivo` aparte EN POSTGRES (no en 'public') -- movidas ahí a propósito el 9-sep-2026 para
-# que ni siquiera un despliegue viejo/atrasado de este archivo pueda volver a mandarlas enteras
-# por error (el descubrimiento de arriba solo mira 'public'). Son estáticas -- nadie vuelve a
-# escribir en ellas -- así que tras el primer pull completo esto no hace nada más.
+# La poda del 9-sep-2026 (ver docs/momentum-sala-real-x.md -- no, esto es del ranker:
+# `fundamentals_snapshot` guardaba el dataset global/HuggingFace entero sin que `foto_reciente`
+# (TTL=12h) ni el escaneo real -- solo mira las ~3.310 de NASDAQ -- lo consultasen nunca; y
+# `scan_audit`/`scan_runs` guardaban cada escaneo de PRUEBA (`decide=false`) igual que uno real)
+# pasó primero por un esquema `archivo` en Postgres como copia de seguridad puente, y una vez
+# este mismo sync confirmó el pull 1:1 a DuckDB (mismos conteos), ese esquema se borró del todo
+# -- las 5 entradas `..._archivo` ya no existen como fuente y se retiraron de aquí. DuckDB es
+# ahora el único sitio donde vive ese histórico.
 _INCREMENTALES: dict[str, tuple[str, str]] = {
     "fundamentals_snapshot_metric": ("pg.fundamentals_snapshot_metric", "id"),
     "fundamentals_snapshot_news": ("pg.fundamentals_snapshot_news", "id"),
     "llm_call": ("pg.llm_call", "id"),
     "llm_call_logprob": ("pg.llm_call_logprob", "id"),
-    "fundamentals_snapshot_archivo": ("pg.archivo.fundamentals_snapshot_archivo", "id"),
-    "fundamentals_snapshot_metric_archivo": (
-        "pg.archivo.fundamentals_snapshot_metric_archivo", "id"),
-    "fundamentals_snapshot_news_archivo": ("pg.archivo.fundamentals_snapshot_news_archivo", "id"),
-    "scan_audit_archivo": ("pg.archivo.scan_audit_archivo", "id"),
-    "scan_runs_archivo": ("pg.archivo.scan_runs_archivo", "id"),
 }
 
 

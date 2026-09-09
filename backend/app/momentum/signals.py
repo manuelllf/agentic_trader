@@ -29,6 +29,7 @@ cruce se DETECTA con el cierre; el precio que se registra es la APERTURA del dí
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -312,13 +313,23 @@ def _combinar_ambos(señales: list[dict]) -> list[dict]:
     return sorted(combinadas, key=lambda r: r["entry_date"], reverse=True)
 
 
-def compute_signals(universo: list[str] | None = None) -> list[dict]:
+def compute_signals(
+    universo: list[str] | None = None,
+    progreso_cb: Callable[[int, int, str], None] | None = None,
+) -> list[dict]:
     """Punto de entrada reutilizable: todas las señales del universo dado (por defecto, los
-    34 fijos), con 'ambos' ya resuelto. Sin efectos secundarios (sin print, sin CSV) -- lo usa
-    el job diario del scheduler."""
+    fijos), con 'ambos' ya resuelto. Sin efectos secundarios (sin print, sin CSV) -- lo usa
+    el job diario del scheduler.
+
+    `progreso_cb(i, total, ticker)`, si se pasa, se llama ANTES de procesar cada ticker --
+    opcional y sin efecto en el resultado, solo para que un llamador en segundo plano (ver
+    `momentum/scan_runner.py`) pueda reportar avance real mientras esto tarda varios segundos."""
     universo = universo if universo is not None else UNIVERSO
+    total = len(universo)
     todas = []
-    for ticker in universo:
+    for i, ticker in enumerate(universo):
+        if progreso_cb:
+            progreso_cb(i, total, ticker)
         todas.extend(señales_de_ticker(ticker))
         time.sleep(0.12)
     return _combinar_ambos(todas)

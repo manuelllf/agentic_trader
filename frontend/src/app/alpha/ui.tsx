@@ -3,6 +3,7 @@
 // Kit presentacional pequeño de la Sala Real: piezas sin estado (o casi) que comparten la
 // página y sus componentes extraídos. Nada de lógica de negocio aquí.
 
+import { useState } from "react";
 import { NUMS, T, isBuy } from "./tokens";
 import type { TradeAction } from "@/lib/types";
 
@@ -12,14 +13,50 @@ export function Panel({ title, right, accent, children }: {
   // h-full + flex-col: en una fila de la rejilla, los dos paneles miden lo mismo
   // (el vacío se centra en vez de dejar un hueco negro debajo).
   return (
-    <section className="flex h-full flex-col overflow-hidden rounded-xl border"
+    <section className="flex h-full flex-col overflow-hidden rounded-2xl border shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]"
              style={{ borderColor: accent ? `${accent}55` : T.ring, background: T.panel }}>
-      <div className="flex shrink-0 items-center justify-between border-b px-4 py-2"
+      <div className="flex shrink-0 items-center justify-between border-b px-4 py-3.5"
            style={{ borderColor: T.grid, background: T.panel2 }}>
-        <h2 className="text-[12px] font-bold tracking-wide" style={{ color: accent ?? T.ink2 }}>{title}</h2>
+        <h2 className="text-[16px] font-bold" style={{ color: accent ?? T.ink }}>{title}</h2>
         {right}
       </div>
       {children}
+    </section>
+  );
+}
+
+// Card-acordeón del mockup (`details.card`): a diferencia de `Panel` (siempre abierta), el
+// contenido solo se pinta si se despliega — para módulos de consulta ocasional (Universo,
+// Cartera IBKR, Ajustes...), no para lo que exige decisión ahora mismo (eso sigue en `Panel`).
+export function Details({ title, meta, right, accent, defaultOpen, children }: {
+  title: string; meta?: string; right?: React.ReactNode; accent?: string; defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  const toggle = () => setOpen((o) => !o);
+  // `right` a veces trae sus propios botones (p. ej. ScanFullButton) — un <button> dentro de
+  // otro <button> es HTML inválido y rompe la hidratación, así que el toggle vive en DOS
+  // botones hermanos (título y chevron), con `right` libre entre medias, en vez de uno solo
+  // envolviendo toda la fila.
+  return (
+    <section className="overflow-hidden rounded-2xl border shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]"
+             style={{ borderColor: accent ? `${accent}55` : T.ring, background: T.panel }}>
+      <div className="flex w-full items-center gap-2.5 py-3.5 pl-4 pr-2.5">
+        <button onClick={toggle} aria-expanded={open}
+                className="flex-1 text-left text-[16px] font-bold transition-colors" style={{ color: accent ?? T.ink }}>
+          {title}{" "}
+          {meta && <span className="text-[13px] font-normal" style={{ color: T.muted }}>{meta}</span>}
+        </button>
+        {right}
+        <button onClick={toggle} aria-expanded={open} aria-label={open ? "Colapsar" : "Desplegar"}
+                className="flex shrink-0 items-center rounded p-1.5 transition-colors hover:bg-white/5">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="2"
+               className="shrink-0 transition-transform" style={{ transform: open ? "rotate(90deg)" : undefined }}>
+            <path d="m9 6 6 6-6 6" />
+          </svg>
+        </button>
+      </div>
+      {open && <div className="border-t" style={{ borderColor: T.grid }}>{children}</div>}
     </section>
   );
 }
@@ -47,13 +84,13 @@ export function Kpi({ label, value, sub, tone, big }: {
   label: string; value: string; sub?: string; tone?: "good" | "bad"; big?: boolean;
 }) {
   return (
-    <div className="px-4 py-3" style={{ background: T.panel }}>
+    <div>
       <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>{label}</p>
-      <p className={`mt-1 font-bold leading-none ${NUMS} ${big ? "text-[25px]" : "text-[20px]"}`}
+      <p className={`mt-1.5 font-bold leading-none tracking-tight ${NUMS} ${big ? "text-[27px]" : "text-[22px]"}`}
          style={{ color: tone === "good" ? T.good : tone === "bad" ? T.bad : T.ink }}>
         {value}
       </p>
-      {sub && <p className="mt-1 text-[10.5px]" style={{ color: T.muted }}>{sub}</p>}
+      {sub && <p className="mt-1.5 text-[10.5px]" style={{ color: T.muted }}>{sub}</p>}
     </div>
   );
 }

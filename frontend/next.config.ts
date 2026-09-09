@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 // Cabeceras de seguridad para TODAS las rutas (aplican igual en Vercel).
 // Sin CSP completa a propósito: Next usa inline scripts y una CSP estricta exigiría
 // fontanería de nonces para no romper la app — sobrediseño hoy. `frame-ancestors` sí,
-// que es lo que corta el clickjacking (nadie puede meter /real en un iframe).
+// que es lo que corta el clickjacking (nadie puede meter /alpha en un iframe).
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },

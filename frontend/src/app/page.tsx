@@ -1,8 +1,8 @@
 "use client";
 
-// Portada pública: sobria y factual, sin reclamos comerciales. Vista previa de ambas salas
-// (teaser vía GET /overview, sin token) — la sombra es de libre acceso, la real pide login al
-// entrar (AuthGate vive dentro de /real, no aquí).
+// Portada pública: sobria y factual, sin reclamos comerciales. Vista previa de las 3 salas
+// (teaser vía GET /overview, sin token) — Beta es de libre acceso, Alpha pide login al entrar
+// (AuthGate vive dentro de /real, no aquí).
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -12,14 +12,28 @@ import Logo from "@/components/Logo";
 import { fmtPct } from "@/lib/format";
 import type { HistoryPoint, Overview } from "@/lib/types";
 
-const pctTone = (v: number | null, dark = false) =>
-  v == null || v === 0 ? "text-slate-400" : v > 0 ? (dark ? "text-emerald-400" : "text-emerald-600")
-                                                    : (dark ? "text-rose-400" : "text-rose-600");
+// Mismos valores que T.good/T.bad en real/tokens.ts y momentum/tokens.ts.
+const pctTone = (v: number | null) =>
+  v == null || v === 0 ? "text-[#6E6E6B]" : v > 0 ? "text-[#6BBE8A]" : "text-[#E0776C]";
+
+// Acento único de marca -- mismo valor que real/tokens.ts (T.buy) y momentum/tokens.ts (T.entry).
+const ACCENT = "#4FA39D";
+
+// Flecha de esquina: la card entera es el link, un botón "Entrar" encima era redundante
+// (feedback 9-sep-2026, "más minimalista").
+function CornerArrow({ color }: { color: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className="absolute right-3 top-3 h-4 w-4 transition group-hover:translate-x-0.5 sm:right-5 sm:top-5 sm:h-5 sm:w-5"
+         fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 17 17 7M9 7h8v8" />
+    </svg>
+  );
+}
 
 export default function Landing() {
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
-  // Mini-curvas (públicas): la real llega sin equity — solo fechas y %, como el teaser.
+  // Mini-curvas (públicas): Alpha llega sin equity -- solo fechas y %, como el teaser.
   const [shadowHist, setShadowHist] = useState<HistoryPoint[]>([]);
   const [realHist, setRealHist] = useState<HistoryPoint[]>([]);
 
@@ -38,124 +52,151 @@ export default function Landing() {
   const real = data?.real;
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-slate-100/70 text-slate-900">
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-4 py-4 sm:py-16">
-        <Logo size={32} />
-        <h1 className="mt-2 text-xl font-bold tracking-tight sm:mt-3 sm:text-3xl">Agentic Trader</h1>
-        <p className="mt-1 max-w-lg text-center text-[12.5px] text-slate-500 sm:mt-2 sm:text-sm">
-          Dos estrategias de inversión sistemática, medidas en público.
-        </p>
+    <div className="min-h-[100dvh] bg-[#131313] text-[#A3A3A0]">
+      <header className="mx-auto flex max-w-5xl items-center px-4 py-6 sm:px-8">
+        <Logo size={30} />
+        <span className="ml-3 font-mono text-[13px] font-semibold tracking-tight text-white">
+          ALPHA<span style={{ color: ACCENT }}>·</span>BETA<span style={{ color: ACCENT }}>·</span>X
+        </span>
+      </header>
 
-        <div className="mt-4 grid w-full grid-cols-1 gap-2.5 sm:mt-10 sm:grid-cols-3 sm:gap-4">
-          {/* ---- Sala Sombra: pública, cartera simulada (ranker) ---- */}
-          <Link
-            href="/sombra"
-            className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_16px_rgba(15,23,42,0.06)] transition hover:border-slate-300 sm:p-5"
+      {/* Acceso inmediato a las 3 salas — lo primero que se puede hacer, sin bajar a leer nada.
+          Rectángulos pequeños, los 3 a la vez incluso en móvil. */}
+      <div className="mx-auto max-w-5xl px-4 sm:px-8">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          <Link href="/beta" className="group relative flex flex-col justify-between rounded-xl border border-[#303030] bg-[#1C1C1C] p-2.5 transition hover:border-[#383838] sm:rounded-2xl sm:p-4">
+            <CornerArrow color="#6E6E6B" />
+            <span className="text-[9.5px] font-bold uppercase tracking-wider text-[#6E6E6B] sm:text-[11px]">Beta</span>
+            <span className={`mt-1 text-sm font-bold tabular-nums ${pctTone(shadow?.return_pct ?? null)}`}>{loading ? "—" : fmtPct(shadow?.return_pct ?? null)}</span>
+          </Link>
+          <Link href="/alpha" className="group relative flex flex-col justify-between rounded-xl border border-[#303030] bg-[#1C1C1C] p-2.5 transition hover:border-[#383838] sm:rounded-2xl sm:p-4">
+            <CornerArrow color={ACCENT} />
+            <span className="text-[9.5px] font-bold uppercase tracking-wider sm:text-[11px]" style={{ color: ACCENT }}>Alpha</span>
+            <span className="mt-1 text-sm font-bold tabular-nums text-[#6E6E6B]">Cartera real</span>
+          </Link>
+          <Link href="/x" className="group relative flex flex-col justify-between rounded-xl border border-[#303030] bg-[#1C1C1C] p-2.5 transition hover:border-[#383838] sm:rounded-2xl sm:p-4">
+            <CornerArrow color={ACCENT} />
+            <span className="flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-wider sm:text-[11px]" style={{ color: ACCENT }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT }} />X
+            </span>
+            <span className="mt-1 text-sm font-bold tabular-nums text-[#6E6E6B]">Momentum</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Hero editorial: el único momento con alma tipográfica antes de la precisión de las
+          salas -- Fraunces solo aquí, el resto de la app se queda en la fuente de sistema. */}
+      <div className="mx-auto max-w-5xl px-4 pb-8 pt-10 sm:px-8 sm:pb-14 lg:grid lg:grid-cols-[1.05fr_0.95fr] lg:gap-14 lg:pb-20">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.16em]" style={{ color: ACCENT }}>
+            Tres libros · una tesis
+          </p>
+          <h1
+            style={{ fontFamily: "var(--font-land-serif)", lineHeight: 1.1,
+                     fontOpticalSizing: "none", fontVariationSettings: '"opsz" 9' }}
+            className="mt-3 text-[32px] font-medium text-white sm:text-[42px] lg:text-[50px]"
           >
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sala Sombra</span>
-            <p className="mt-1 text-[11px] leading-snug text-slate-400 sm:mt-1.5">
-              Ranker fundamental por LLM sobre ~3.000 acciones US, cartera simulada.
-            </p>
+            Dejar que el dato decida,<br className="hidden sm:block" /> no la corazonada.
+          </h1>
+          <p className="mt-5 max-w-[52ch] text-[15px] leading-relaxed text-[#6E6E6B]">
+            <strong className="font-semibold text-[#A3A3A0]">Alpha</strong> analiza fundamentales con IA y ejecuta
+            capital real, con <strong className="font-semibold text-[#A3A3A0]">Beta</strong> como réplica pública
+            en papel del mismo método. <strong className="font-semibold text-[#A3A3A0]">X</strong> caza rotación de
+            mercado antes de que tenga nombre en ningún radar.
+          </p>
+          <div className="mt-7 flex flex-wrap items-center gap-5">
+            <Link href="/beta" className="rounded-full px-5 py-3 text-[14px] font-semibold text-[#131313] transition hover:opacity-90" style={{ background: ACCENT }}>
+              Ver la cartera en papel
+            </Link>
+            <a href="#estado" className="text-[14px] font-medium text-[#6E6E6B] underline decoration-dotted underline-offset-4 hover:text-[#A3A3A0]">
+              Cómo va cada sala ahora →
+            </a>
+          </div>
+          <p className="mt-10 font-mono text-[10.5px] text-[#565654]">
+            No constituye recomendación de inversión · datos con fines educativos y de investigación personal
+          </p>
+        </div>
+        <div className="mt-8 hidden rounded-2xl border border-[#303030] bg-[#1C1C1C] p-6 lg:block">
+          <svg viewBox="0 0 400 190" className="w-full" role="img"
+               aria-label="Línea de precio esquemática con un punto de entrada de señal marcado">
+            <line x1="0" y1="140" x2="400" y2="140" stroke="#303030" strokeWidth="1" />
+            <polyline points="0,110 40,120 70,95 100,130 130,158 160,145 190,125 220,108 250,85 280,98 310,68 340,50 370,32 400,22"
+                      fill="none" stroke="#565654" strokeWidth="1.5" />
+            <circle cx="130" cy="158" r="4" fill={ACCENT} />
+            <text x="140" y="162" fontSize="10" fill={ACCENT}>entrada · suelo reactivo</text>
+          </svg>
+        </div>
+      </div>
+
+      {/* Estado real, ahora mismo: las 3 cards ampliadas, con la cifra y el contexto real de
+          cada sala -- la versión "de verdad" de las miniaturas de arriba. */}
+      <main id="estado" className="mx-auto max-w-5xl px-4 pb-16 pt-2 sm:px-8">
+        <p className="mb-5 font-mono text-[11px] uppercase tracking-[0.08em]" style={{ color: ACCENT }}>
+          Estado real, ahora mismo
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+          <Link href="/beta" className="group relative flex flex-col rounded-xl border border-[#303030] bg-[#1C1C1C] p-4 transition hover:border-[#383838] sm:rounded-2xl sm:p-5">
+            <CornerArrow color="#6E6E6B" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#6E6E6B]">Beta</span>
             {loading ? (
-              <div className="mt-2 h-8 w-24 animate-pulse rounded bg-slate-100 sm:mt-2 sm:h-9 sm:w-28" />
+              <div className="mt-2 h-8 w-20 animate-pulse rounded bg-white/5" />
             ) : (
-              <span className={`mt-1.5 text-2xl font-bold tabular-nums tracking-tight sm:mt-2 sm:text-3xl ${pctTone(shadow?.return_pct ?? null)}`}>
+              <span className={`mt-2 text-2xl font-bold tabular-nums tracking-tight sm:text-3xl ${pctTone(shadow?.return_pct ?? null)}`}>
                 {fmtPct(shadow?.return_pct ?? null)}
               </span>
             )}
-            {/* El número grande es LA CARTERA y su etiqueta lo dice; la comparación con el
-                índice baja un escalón — es contexto, no el titular. */}
-            <p className="mt-1 text-xs text-slate-500 sm:mt-2">rentabilidad de la cartera simulada</p>
-            <p className="mt-0.5 hidden text-[11px] text-slate-400 sm:block">
-              alpha vs S&amp;P 500: {fmtPct(shadow?.alpha_pct ?? null)}
-            </p>
+            <p className="mt-1.5 text-xs text-[#A3A3A0]">rentabilidad de la cartera simulada</p>
+            <p className="mt-0.5 text-[11px] text-[#6E6E6B]">alpha vs S&amp;P 500: {fmtPct(shadow?.alpha_pct ?? null)}</p>
             {shadowHist.length >= 2 && (
               <div className="mt-2 hidden sm:block">
-                <HistoryChart points={shadowHist} mini />
+                <HistoryChart points={shadowHist} mini dark />
               </div>
             )}
-            <p className="mt-1 hidden text-[11px] text-slate-400 sm:block">
+            <p className="mt-1 text-[11px] text-[#6E6E6B]">
               {shadow?.since ? `desde ${shadow.since} · ${shadow.positions} posiciones` : "todavía sin cartera"}
             </p>
-            <span className="mt-2.5 inline-flex w-fit items-center gap-1.5 self-start rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white transition group-hover:bg-slate-700 sm:mt-4 sm:py-2">
-              Entrar
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-            </span>
           </Link>
 
-          {/* ---- Sala Real: privada, cuenta IBKR real (ranker) ---- */}
-          <Link
-            href="/real"
-            className="group flex flex-col rounded-2xl border p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.25),0_4px_16px_rgba(0,0,0,0.35)] transition hover:border-white/20 sm:p-5"
-            style={{ background: "#0d0d0d", borderColor: "rgba(255,255,255,0.10)", color: "#c3c2b7" }}
-          >
-            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          <Link href="/alpha" className="group relative flex flex-col rounded-xl border border-[#303030] bg-[#1C1C1C] p-4 transition hover:border-[#383838] sm:rounded-2xl sm:p-5">
+            <CornerArrow color={ACCENT} />
+            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: ACCENT }}>
               <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="5" y="11" width="14" height="9" rx="1.5" />
                 <path d="M8 11V7a4 4 0 0 1 8 0v4" strokeLinecap="round" />
               </svg>
-              Sala Real
+              Alpha
             </span>
-            <p className="mt-1 text-[11px] leading-snug sm:mt-1.5" style={{ color: "#898781" }}>
-              Mismo método, cuenta de verdad: el agente propone, tú decides.
-            </p>
             {loading ? (
-              <div className="mt-2 h-8 w-24 animate-pulse rounded bg-white/10 sm:mt-2 sm:h-9 sm:w-28" />
+              <div className="mt-2 h-8 w-20 animate-pulse rounded bg-white/5" />
             ) : (
-              <span className={`mt-1.5 text-2xl font-bold tabular-nums tracking-tight sm:mt-2 sm:text-3xl ${pctTone(real?.unrealized_pct ?? null, true)}`}>
+              <span className={`mt-2 text-2xl font-bold tabular-nums tracking-tight sm:text-3xl ${pctTone(real?.unrealized_pct ?? null)}`}>
                 {fmtPct(real?.unrealized_pct ?? null)}
               </span>
             )}
-            <p className="mt-1 text-xs sm:mt-2" style={{ color: "#898781" }}>P&amp;L no realizado</p>
+            <p className="mt-1.5 text-xs text-[#A3A3A0]">P&amp;L no realizado</p>
             {realHist.length >= 2 && (
               <div className="mt-2 hidden sm:block">
                 <HistoryChart points={realHist} mini dark />
               </div>
             )}
-            <p className="mt-0.5 hidden text-[11px] sm:mt-1 sm:block" style={{ color: "#898781" }}>
-              Cuenta IBKR real · acceso privado
-            </p>
-            <span
-              className="mt-2.5 inline-flex w-fit items-center gap-1.5 self-start rounded-lg px-3.5 py-1.5 text-xs font-semibold text-white transition group-hover:opacity-90 sm:mt-4 sm:py-2"
-              style={{ background: "#3987e5" }}
-            >
-              Entrar
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-            </span>
+            <p className="mt-1 text-[11px] text-[#6E6E6B]">Cuenta IBKR real · acceso privado</p>
           </Link>
 
-          {/* ---- Sala Real X: privada, estrategia de momentum, independiente del ranker ----
-              Sin cifra pública: no hay teaser propio todavía, y no se inventa un número. */}
-          <Link
-            href="/momentum"
-            className="group flex flex-col rounded-2xl border p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.25),0_4px_16px_rgba(0,0,0,0.35)] transition hover:border-white/20 sm:p-5"
-            style={{ background: "#0d0d0d", borderColor: "rgba(255,255,255,0.10)", color: "#c3c2b7" }}
-          >
-            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: "#6f5cf5" }}>
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#6f5cf5" }} />
-              Sala Real X
+          <Link href="/x" className="group relative flex flex-col rounded-xl border border-[#303030] bg-[#1C1C1C] p-4 transition hover:border-[#383838] sm:rounded-2xl sm:p-5">
+            <CornerArrow color={ACCENT} />
+            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: ACCENT }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT }} />X
             </span>
-            <span className="mt-1.5 text-lg font-bold leading-snug sm:mt-2 sm:text-xl" style={{ color: "#fff" }}>
-              Descubrimiento de momentum
-            </span>
-            <p className="mt-1 text-xs leading-relaxed sm:mt-2" style={{ color: "#898781" }}>
+            <span className="mt-2 text-2xl font-bold tracking-tight text-[#6E6E6B] sm:text-3xl">Momentum</span>
+            <p className="mt-1.5 text-xs leading-relaxed text-[#6E6E6B]">
               Caídas técnicas + gate de noticias por LLM. Nunca ejecuta sola.
             </p>
-            <p className="mt-0.5 hidden text-[11px] sm:mt-2 sm:block" style={{ color: "#898781" }}>
-              Universo propio · acceso privado
-            </p>
-            <span
-              className="mt-2.5 inline-flex w-fit items-center gap-1.5 self-start rounded-lg px-3.5 py-1.5 text-xs font-semibold text-white transition group-hover:opacity-90 sm:mt-4 sm:py-2"
-              style={{ background: "#6f5cf5" }}
-            >
-              Entrar
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-            </span>
+            <p className="mt-2 text-[11px] text-[#6E6E6B]">Universo propio · acceso privado</p>
           </Link>
         </div>
       </main>
 
-      <footer className="hidden border-t border-slate-200 py-4 text-center text-[11px] text-slate-400 sm:block">
+      <footer className="border-t border-[#303030] py-4 text-center text-[11px] text-[#565654]">
         Agentic Trader
       </footer>
     </div>

@@ -9,6 +9,14 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const TIMEOUT_MS = 15_000;
+// Para endpoints que hacen trabajo síncrono de verdad dentro del propio request (reconstruir
+// DuckDB entero, llamadas reales a un LLM de razonamiento, levantar el scraper de Yahoo) --
+// el timeout de 15s pensado para lecturas normales los corta a mitad y sale como "falló" cuando
+// en realidad el backend sigue trabajando y termina guardando el resultado igual (bug real,
+// visto en vivo con `sync-analytics`, y con la misma forma en `recheck`/`redeep`: ninguno de
+// los dos usaba esto y ambos disparan un LLM real). 90s da margen de verdad sin dejar un botón
+// colgado para siempre si el backend está de verdad caído.
+const TIMEOUT_SYNC_MS = 90_000;
 const TOKEN_KEY = "agentic_token";
 
 /** Error de red tipado: el backend no respondió (caído, CORS, timeout). */
@@ -54,7 +62,7 @@ async function request(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS)
   }
 }
 
-// Exportados (sin re-exponer `request`): Sala Real X (frontend/src/app/momentum/) los reusa
+// Exportados (sin re-exponer `request`): X (frontend/src/app/x/) los reusa
 // para no duplicar timeout/auth/401-handling en un cliente HTTP propio.
 export async function get<T>(path: string): Promise<T> {
   const res = await request(path);
@@ -324,11 +332,13 @@ export const searchMemory = (q: string, limit = 20) =>
   get<MemorySearchResult>(`/memory/search?q=${encodeURIComponent(q)}&limit=${limit}`);
 
 /** Re-comprobación del top: reconstruye la cartera sobre los ya analizados a fondo con el suelo
- *  actual, sin re-escanear el universo (instantáneo). */
-export const recheck = () => post<Record<string, unknown>>("/recheck");
+ *  actual, sin re-escanear el universo. Dispara una llamada real de construcción -- timeout
+ *  largo (ver `TIMEOUT_SYNC_MS`), no el de 15s de una lectura normal. */
+export const recheck = () => post<Record<string, unknown>>("/recheck", undefined, TIMEOUT_SYNC_MS);
 /** Re-analiza a fondo (V4-Pro) los nombres ya profundizados con el macro ACTUAL, sin re-escanear
- *  el universo. Para refrescar tras corregir un dato macro. */
-export const redeep = () => post<Record<string, unknown>>("/redeep");
+ *  el universo. Para refrescar tras corregir un dato macro. Varias llamadas reales en paralelo --
+ *  manda la más lenta, timeout largo por el mismo motivo que `recheck`. */
+export const redeep = () => post<Record<string, unknown>>("/redeep", undefined, TIMEOUT_SYNC_MS);
 
 /** Historia de UN ticker a través de los escaneos (¿es estable el criterio?). Protegido entero. */
 export interface ScanAuditEntry {
@@ -376,13 +386,6 @@ export const fetchExplorerContar = (f: ExplorerFiltros) =>
   get<ExplorerContar>(`/analytics/explorar/contar?${explorerQuery(f)}`);
 export const fetchExplorerTickers = (f: ExplorerFiltros, limit: number, offset: number) =>
   get<ExplorerTickers>(`/analytics/explorar/tickers?${explorerQuery(f, { limit, offset })}`);
-// Las dos siguientes hacen trabajo síncrono de verdad dentro del propio request (reconstruir
-// DuckDB entero, o levantar la sesión del scraper de Yahoo + recalcular). El timeout de 15s
-// pensado para lecturas normales las corta a mitad y sale como "falló" cuando en realidad el
-// backend sigue trabajando -- visto en vivo con `sync-analytics`. 90s les da margen de verdad
-// sin dejar un botón colgado para siempre si el backend está de verdad caído.
-const TIMEOUT_SYNC_MS = 90_000;
-
 /** Reconstruye el fichero DuckDB de /analytics/* desde Postgres (también corre solo a diario). */
 export const syncAnalytics = () =>
   post<{ ok: boolean; counts: Record<string, number> }>(

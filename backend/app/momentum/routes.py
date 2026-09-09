@@ -8,6 +8,7 @@ son 3 tablas nuevas y sencillas, y esta sala no comparte modelos con el ranker.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
@@ -63,12 +64,24 @@ def universo(db: Session = Depends(get_db)) -> list[dict]:
             for t in signals.UNIVERSO]
 
 
+_PRECIOS_VIVOS_HILOS = 4  # tope bajo a propósito -- yfinance sin key, cubrirse cuesta cero
+
+
 @router.get("/precios-vivos")
 def precios_vivos(tickers: str) -> dict[str, float | None]:
     """Precio en vivo (best-effort) de los tickers pedidos -- SOLO para pintar de referencia en
-    Alertas activas. `null` si yfinance no responde para ese ticker; nunca toca entrada/salida."""
+    Alertas activas. `null` si yfinance no responde para ese ticker; nunca toca entrada/salida.
+
+    En paralelo (máx 4 hilos) desde el 9-sep-2026: antes era un `fast_info` por ticker EN SERIE
+    dentro de la misma petición -- con 10+ alertas activas eran 10+ ida-vueltas de red seguidas
+    bloqueando el hilo de FastAPI. No es el scraper grande (un solo precio, sin histórico), pero
+    4 a la vez de margen no cuesta nada y evita saturar a Yahoo con un pico de golpe."""
     lista = [t.strip().upper() for t in tickers.split(",") if t.strip()]
-    return {t: signals.precio_vivo(t) for t in lista}
+    if not lista:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(_PRECIOS_VIVOS_HILOS, len(lista))) as ex:
+        precios = ex.map(signals.precio_vivo, lista)
+    return dict(zip(lista, precios, strict=True))
 
 
 @router.get("/alertas")
@@ -324,15 +337,25 @@ def gate_progreso() -> dict:
 
 
 @router.post("/admin/scan")
-def admin_scan(db: Session = Depends(get_db)) -> dict:
+def admin_scan() -> dict:
     """Rescate manual del escaneo diario (mismo patrón que `/admin/universe-snapshot` del
     ranker): por si el cron `momentum_scan` (16:45 ET) todavía no ha corrido o falló. Gratis
-    (yfinance, sin gate) -- no dispara ningún gasto real. `{"ok": false, ...}` con 200, no 500:
-    un fallo de yfinance no es un error del backend."""
-    from app.scheduler import run_momentum_scan
+    (yfinance, sin gate) -- no dispara ningún gasto real.
 
-    try:
-        info = run_momentum_scan(db)
-        return {"ok": True, **info}
-    except Exception as exc:  # noqa: BLE001 — el motivo legible es lo que necesita el panel
-        return {"ok": False, "error": str(exc)}
+    Segundo plano desde el 9-sep-2026 (ver `scan_runner.py`): recorrer el universo entero puede
+    superar el timeout del cliente -- antes esto se esperaba dentro de la propia petición y
+    podía dar un "timeout" en el navegador con el escaneo ya completado por detrás (mismo bug
+    que ya mordió al gate). Solo lanza y responde al momento; `GET /momentum/scan/progreso`
+    sondea el resultado real."""
+    from app.momentum import scan_runner
+
+    if not scan_runner.start():
+        return {"lanzado": False, "motivo": "ya en curso"}
+    return {"lanzado": True}
+
+
+@router.get("/scan/progreso")
+def scan_progreso() -> dict:
+    from app.momentum import scan_progress
+
+    return scan_progress.snapshot()

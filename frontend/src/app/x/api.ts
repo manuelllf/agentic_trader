@@ -62,8 +62,22 @@ export const getGateProgreso = () => get<GateProgreso>("/momentum/gate/progreso"
 
 // Rescate manual del escaneo diario (cron 16:45 ET) -- gratis, sin gate, por si el cron no ha
 // corrido todavía o falló. Separado de "actualizar" a propósito: ese solo relee lo que ya hay.
+// En segundo plano desde el 9-sep-2026 (mismo motivo que el gate: recorrer el universo entero
+// podía superar el timeout de 15s del cliente) -- solo lanza el hilo, el progreso real se
+// sondea con `getScanProgreso()`.
 export const adminScan = () =>
-  post<{ ok: boolean; nuevas?: number; total_universo?: number; error?: string }>("/momentum/admin/scan");
+  post<{ lanzado: boolean; motivo?: string }>("/momentum/admin/scan");
+
+export type ScanProgreso = {
+  status: "idle" | "running" | "done" | "error";
+  total: number;
+  hecho: number;
+  ticker_actual: string | null;
+  nuevas: number;
+  resueltas: number;
+  error: string | null;
+};
+export const getScanProgreso = () => get<ScanProgreso>("/momentum/scan/progreso");
 
 // Rescate manual de la detección diaria de ApeWisdom -- mismo criterio que adminScan.
 export const adminDetectarCandidatos = () =>

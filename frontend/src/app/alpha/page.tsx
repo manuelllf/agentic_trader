@@ -33,8 +33,8 @@ import { MemorySearch } from "./MemorySearch";
 import { ScanFullButton } from "./ScanFullModal";
 import { OrderRow } from "./OrderRow";
 import { TickerAudit } from "./TickerAudit";
-import { NUMS, SERIES, T } from "./tokens";
-import { Empty, Field, Kpi, Panel, SideTag, Td, Th } from "./ui";
+import { MONO, NUMS, SANS, SERIES, T } from "./tokens";
+import { Details, Empty, Field, Kpi, Panel, SideTag, Td, Th } from "./ui";
 
 /* ============================== página ============================== */
 
@@ -394,7 +394,7 @@ function SalaRealRoom() {
   if (loading && !hasLoadedOnce.current) {
     return (
       <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 text-[13px]"
-           style={{ background: T.page, color: T.muted }}>
+           style={{ background: T.page, color: T.muted, fontFamily: SANS }}>
         <span className="h-6 w-6 animate-spin rounded-full border-2"
               style={{ borderColor: T.grid, borderTopColor: T.buy }} />
         <p>Cargando Sala Real…</p>
@@ -404,7 +404,7 @@ function SalaRealRoom() {
 
   return (
       <div className="real-room min-h-[100dvh] pb-8 text-[13px] antialiased"
-           style={{ background: T.page, color: T.ink2 }}>
+           style={{ background: T.page, color: T.ink2, fontFamily: SANS }}>
 
       {/* Recarga tras volver de una ausencia: un velo ENCIMA, no un `return` que sustituya la
           sala — así ningún filtro escrito, panel abierto o scroll se pierde por debajo. Bloquea
@@ -436,29 +436,26 @@ function SalaRealRoom() {
         .real-room *::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
       `}</style>
 
-      {/* ---------- cabecera ---------- */}
-      <header className="sticky top-0 z-40 border-b backdrop-blur"
-              style={{ borderColor: T.ring, background: "rgba(13,13,13,0.92)" }}>
-        <div className="mx-auto flex h-auto max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:h-11 sm:flex-nowrap sm:py-0 lg:px-6">
-          {/* Cuatro cosas y ninguna más: volver, dónde estoy, lanzar, y con qué dinero. El
-              lema y la fecha del último análisis se fueron al centro de operaciones — repetían
-              lo que ya dicen la card de abajo y el pie de ajustes. */}
-          <div className="flex items-center gap-3">
-            <button onClick={exit} className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
-              ← Portada
-            </button>
-            <span className="inline-flex items-center gap-2 text-[13px] font-bold tracking-tight" style={{ color: T.ink }}>
-              <span className="h-2 w-2 rounded-full" style={{ background: error ? T.bad : T.good }}
-                    title={error ? "sin conexión" : "conectado"} />
-              SALA REAL
-            </span>
-          </div>
+      {/* ---------- barra fina: solo lo que hace falta alcanzar sin subir scroll en una sala
+          larga (volver, lanzar). El estilo grande (eyebrow, título, descripción, dry-run) vive
+          debajo, sin sticky -- lo uno no quita lo otro, mobile first en una página que sí es larga
+          de verdad (el mockup, estático, nunca tuvo este problema). ---------- */}
+      <div className="sticky top-0 z-40 border-b backdrop-blur"
+           style={{ borderColor: T.ring, background: "rgba(13,13,13,0.92)" }}>
+        <div className="mx-auto flex h-11 max-w-[1500px] items-center justify-between gap-3 px-4 lg:px-6">
+          <button onClick={exit} className="text-[12px] font-semibold transition-colors hover:underline" style={{ color: T.muted }}>
+            ← Portada
+          </button>
           <div className="flex items-center gap-2.5">
+            {summary && (
+              <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: dry ? T.warn : T.good }}
+                    title={dry ? "dry-run" : "live"} />
+            )}
             <button onClick={irAOperaciones}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1 text-[11.5px] font-semibold transition-opacity hover:opacity-90"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold transition-opacity hover:opacity-90"
                     style={{ background: isScanning ? "rgba(57,135,229,0.15)" : T.buy,
                              color: isScanning ? "#85b7eb" : "#fff" }}>
-              <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 ${isScanning ? "animate-spin" : ""}`}
+              <svg viewBox="0 0 24 24" className={`h-3 w-3 ${isScanning ? "animate-spin" : ""}`}
                    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
                    strokeLinejoin="round" aria-hidden>
                 <circle cx="12" cy="12" r="0.5" fill="currentColor" />
@@ -467,21 +464,41 @@ function SalaRealRoom() {
               </svg>
               {isScanning ? "Analizando…" : "Escanear"}
             </button>
-            {summary && (
-              // Un punto y una palabra. Es lo único de la cabecera que no puede faltar: distingue
-              // dinero de verdad de dinero de mentira.
-              <span title={summary.broker.detail}
-                    className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wide"
-                    style={{ color: dry ? T.warn : T.good }}>
-                <span className="h-[7px] w-[7px] rounded-full" style={{ background: dry ? T.warn : T.good }} />
-                {dry ? "DRY-RUN" : "LIVE"}
-              </span>
-            )}
           </div>
         </div>
-      </header>
+      </div>
 
       <div className="mx-auto max-w-[1500px] px-4 pt-4 lg:px-6">
+
+        {/* ---------- cabecera: eyebrow + título + descripción, como el resto de la casa
+            (ver /mockup). ---------- */}
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className={`flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] ${MONO}`}
+               style={{ color: T.buy }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: error ? T.bad : T.good }}
+                    title={error ? "sin conexión" : "conectado"} />
+              Alpha
+            </p>
+            <h1 className="mt-1 text-[26px] font-bold" style={{ color: T.ink }}>Cartera real</h1>
+            <p className="mt-2 max-w-[46ch] text-[14px]" style={{ color: T.ink2 }}>
+              El agente propone; cada orden espera tu Sí o tu No.
+            </p>
+          </div>
+          {summary && (
+            // Un punto y una palabra, en píldora -- misma forma que el resto de badges de
+            // cabecera (Beta, X): la única diferencia real de Alpha es que este no es
+            // decorativo, distingue dinero de verdad de dinero de mentira.
+            <span title={summary.broker.detail}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide"
+                  style={{ background: dry ? "rgba(250,178,25,0.14)" : "rgba(107,190,138,0.14)",
+                           color: dry ? T.warn : T.good }}>
+              <span className="h-[7px] w-[7px] rounded-full" style={{ background: dry ? T.warn : T.good }} />
+              {dry ? "DRY-RUN" : "LIVE"}
+            </span>
+          )}
+        </header>
+
 
         {/* ---------- avisos ---------- */}
         {error && (
@@ -617,8 +634,8 @@ function SalaRealRoom() {
         {/* ---------- 2b · libro con capital → KPIs + aportar/retirar ---------- */}
         {(!summary || hasCapital) && (
           <>
-            <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border md:grid-cols-3 xl:grid-cols-6"
-                     style={{ borderColor: T.ring, background: T.grid }}>
+            <section className="grid grid-cols-2 gap-x-6 gap-y-6 rounded-2xl border p-5 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)] md:grid-cols-3 xl:grid-cols-6"
+                     style={{ borderColor: T.ring, background: T.panel }}>
               <Kpi big label="Patrimonio"
                    value={summary && fx && equity > 0 ? `€${money(equity / fx, 0)}` : "—"}
                    sub={summary ? `≈ $${money(equity)}` : undefined} />
@@ -682,16 +699,16 @@ function SalaRealRoom() {
             objetivo de escaneo — situaciones de mercado, no preparación de cartera. Vive junto
             a "cómo piensa" porque comparte fuente (DuckDB) pero es su propia cosa. ---------- */}
         <div className="mt-4">
-          <Panel title="Explorador de universo">
+          <Details title="Explorador de universo">
             <Explorador />
-          </Panel>
+          </Details>
         </div>
 
         {/* ---------- 4b · cómo piensa: memoria (buscador) + analítica del método (tablero).
             Ambas son introspección; el buscador va arriba porque se usa escribiendo, no
             ojeando, y entre tres tablas se perdía. El botón de sincronizar vive en la card. ---------- */}
         <div className="mt-4">
-          <Panel title="Cómo piensa el agente"
+          <Details title="Cómo piensa el agente"
                  right={analyticsLoaded
                    ? <button onClick={loadAnalytics}
                              className="text-[11px] font-semibold transition-colors hover:underline"
@@ -732,13 +749,15 @@ function SalaRealRoom() {
                 </div>
               </>
             )}
-          </Panel>
+          </Details>
         </div>
 
         {/* ---------- 5 · libro del agente: composición y trayectoria juntas ---------- */}
         {(!summary || hasCapital) && (
         <div className="mt-4">
-        <Panel title={`Posiciones del agente · ${summary?.positions.length ?? 0}/${cfg?.max_positions ?? 5}`}
+        <Details title="Posiciones del agente"
+               meta={`${summary?.positions.length ?? 0}/${cfg?.max_positions ?? 5}`}
+               defaultOpen
                right={summary && Number(summary.positions_value) > 0
                  ? <span className={`text-[12px] font-bold ${NUMS}`} style={{ color: T.ink }}>
                      ${money(summary.positions_value)}
@@ -824,20 +843,18 @@ function SalaRealRoom() {
             <span style={{ color: T.ink2 }}>Sombra <b className={NUMS} style={{ color: (shadowPerf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(shadowPerf?.portfolio_return_pct)}</b></span>
             <span style={{ color: T.ink2 }}>Real <b className={NUMS} style={{ color: (perf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(perf?.portfolio_return_pct)}</b></span>
             <span style={{ color: T.ink2 }}>S&amp;P <b className={NUMS} style={{ color: T.ink }}>{fmtPct(shadowPerf?.spy_return_pct ?? perf?.spy_return_pct)}</b></span>
-            <Link href="/sombra" className="ml-auto text-[11.5px] font-semibold hover:underline" style={{ color: T.buy }}>
+            <Link href="/beta" className="ml-auto text-[11.5px] font-semibold hover:underline" style={{ color: T.buy }}>
               Ver sombra →
             </Link>
           </div>
-        </Panel>
+        </Details>
         </div>
         )}
 
         {/* ---------- 6 · tu dinero real, siempre a la vista (el agente no lo toca) ---------- */}
         <div className="mt-4 space-y-4">
-          <Panel title="Cartera personal IBKR"
-                 right={personal?.synced_at
-                   ? <span className="text-[11px]" style={{ color: T.muted }}>sync {fmtTime(personal.synced_at)}</span>
-                   : undefined}>
+          <Details title="Cartera personal IBKR"
+                 meta={personal?.synced_at ? `sync ${fmtTime(personal.synced_at)}` : undefined}>
             {!personal || personal.positions.length === 0 ? (
               <Empty>Tus posiciones propias de IBKR, separadas del agente. Sincroniza para guardar el snapshot.</Empty>
             ) : (
@@ -924,18 +941,19 @@ function SalaRealRoom() {
                 tuyo, en IBKR se suman pero aquí siguen separados.
               </p>
             </div>
-          </Panel>
+          </Details>
 
         </div>
 
         {/* ---------- 7 · actividad (histórico de decisiones): justo antes de ajustes —
             son los dos últimos, uso ocasional. ---------- */}
         {history.length > 0 && (
-          <div className="mt-4 rounded-lg border text-[11.5px]" style={{ borderColor: T.ring, background: T.panel }}>
+          <div className="mt-4 overflow-hidden rounded-2xl border text-[11.5px] shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]"
+               style={{ borderColor: T.ring, background: T.panel }}>
             <button onClick={() => setActividadOpen(!actividadOpen)} aria-expanded={actividadOpen}
-                    className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-white/5">
-              <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-                Actividad · {history.length} decisión(es)
+                    className="flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors hover:bg-white/5">
+              <span className="text-[16px] font-bold" style={{ color: T.ink }}>
+                Actividad <span className="text-[13px] font-normal" style={{ color: T.muted }}>· {history.length} decisión(es)</span>
               </span>
               <span style={{ color: T.muted }}>{actividadOpen ? "▴" : "▾"}</span>
             </button>
@@ -951,71 +969,67 @@ function SalaRealRoom() {
           </div>
         )}
 
-        {/* ---------- 8 · ajustes: push, sesión y el reinicio del sombra, todo a la vista ---------- */}
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border px-4 py-2.5 text-[11.5px]"
-             style={{ borderColor: T.ring, background: T.panel }}>
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-            Ajustes
-          </span>
-          <span style={{ color: T.ink2 }}>
-            alertas push{" "}
-            <b style={{ color: pushOn ? T.good : T.muted }}>
-              {pushOn == null ? "…" : pushOn ? "activas" : "inactivas"}
-            </b>
-          </span>
-          {!pushOn ? (
-            <button onClick={enablePush}
-                    className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90"
-                    style={{ background: T.buy }}
-                    title="Suena cuando el agente propone. En iPhone: instala la app en pantalla de inicio.">
-              Activar alertas
-            </button>
-          ) : (
-            <button onClick={async () => setFlash(`Prueba enviada a ${(await testPush()).sent} dispositivo(s).`)}
-                    className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                    style={{ borderColor: T.ring, color: T.ink2 }}>
-              Enviar prueba
-            </button>
-          )}
-          <button onClick={logout}
-                  className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5"
-                  style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}
-                  title="Borra el token de sesión de este navegador y vuelve al login.">
-            Cerrar sesión
-          </button>
-          <span className="ml-auto text-right" style={{ color: T.muted }} title={summary?.broker.detail}>
-            {dry ? "bróker en dry-run" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a
-            límite (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado
-          </span>
-          {/* Reiniciar sombra, a la vista: plegarlo tras "mantenimiento" solo añadía un clic a
-              algo que ya tiene su propio armar→confirmar. */}
-          <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 border-t pt-2.5"
-               style={{ borderColor: T.grid }}>
-            <span style={{ color: T.ink2 }}>
-              Reiniciar el libro <b>sombra</b>: borra posiciones, operaciones y curva;
-              {" "}<b>conserva tu capital</b>. No toca el libro real ni tu cartera personal.
-            </span>
-            {!resetArmed ? (
-              <button onClick={() => setResetArmed(true)}
-                      className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5"
-                      style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
-                Reiniciar sombra
-              </button>
-            ) : (
-              <span className="flex items-center gap-2">
-                <button onClick={doResetShadow} disabled={resetting}
-                        className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                        style={{ background: T.bad }}>
-                  {resetting ? "Reiniciando…" : "Confirmar borrado"}
+        {/* ---------- 8 · ajustes: push, sesión y el reinicio del sombra — consulta ocasional,
+            plegado por defecto como en el mockup (antes ocupaba una barra siempre a la vista). ---------- */}
+        <div className="mt-4">
+          <Details title="Ajustes">
+            <div className="space-y-3 px-4 pb-4 pt-3.5 text-[12.5px]" style={{ color: T.ink2 }}>
+              <p>
+                Alertas push{" "}
+                <b style={{ color: pushOn ? T.good : T.muted }}>
+                  {pushOn == null ? "…" : pushOn ? "activas" : "inactivas"}
+                </b>
+                {" — "}
+                {!pushOn ? (
+                  <button onClick={enablePush}
+                          className="underline decoration-dotted underline-offset-4"
+                          style={{ color: T.buy }}
+                          title="Suena cuando el agente propone. En iPhone: instala la app en pantalla de inicio.">
+                    Activar
+                  </button>
+                ) : (
+                  <button onClick={async () => setFlash(`Prueba enviada a ${(await testPush()).sent} dispositivo(s).`)}
+                          className="underline decoration-dotted underline-offset-4" style={{ color: T.buy }}>
+                    Enviar prueba
+                  </button>
+                )}
+              </p>
+              <p style={{ color: T.muted }} title={summary?.broker.detail}>
+                {dry ? "Bróker en dry-run" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a
+                límite (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado.
+              </p>
+              <p style={{ color: T.muted }}>
+                Reiniciar el libro <b>sombra</b> borra posiciones, operaciones y curva —
+                {" "}<b>conserva tu capital</b>. No toca el libro real ni tu cartera personal.
+              </p>
+              {!resetArmed ? (
+                <button onClick={() => setResetArmed(true)}
+                        className="rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors hover:bg-white/5"
+                        style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
+                  Reiniciar sombra
                 </button>
-                <button onClick={() => setResetArmed(false)} disabled={resetting}
-                        className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
-                        style={{ borderColor: T.ring, color: T.ink2 }}>
-                  Cancelar
+              ) : (
+                <span className="flex flex-wrap items-center gap-2">
+                  <button onClick={doResetShadow} disabled={resetting}
+                          className="rounded-full px-4 py-2 text-[13px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                          style={{ background: T.bad }}>
+                    {resetting ? "Reiniciando…" : "Confirmar borrado"}
+                  </button>
+                  <button onClick={() => setResetArmed(false)} disabled={resetting}
+                          className="rounded-full border px-4 py-2 text-[13px] transition-colors hover:bg-white/5"
+                          style={{ borderColor: T.ring, color: T.ink2 }}>
+                    Cancelar
+                  </button>
+                </span>
+              )}
+              <p>
+                <button onClick={logout} className="text-[12.5px]" style={{ color: T.ink2 }}
+                        title="Borra el token de sesión de este navegador y vuelve al login.">
+                  Cerrar sesión
                 </button>
-              </span>
-            )}
-          </div>
+              </p>
+            </div>
+          </Details>
         </div>
 
       </div>
@@ -1185,14 +1199,11 @@ function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan | null }
   const maxPre = sectores[0]?.pre || 1;
 
   return (
-    <Panel title="Último escaneo"
+    <Details title="Último escaneo"
+           meta={fmtTime(r.at)}
+           defaultOpen
            accent={failed ? T.bad : issues.length ? T.warn : undefined}
-           right={
-             <span className="flex items-center gap-2.5">
-               <ScanFullButton />
-               <span className="text-[11px]" style={{ color: T.muted }}>{fmtTime(r.at)}</span>
-             </span>
-           }>
+           right={<ScanFullButton />}>
       <div className="px-4 py-3 text-[12px]">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span style={{ color: T.ink2 }}>modo <b style={{ color: T.ink }}>{r.mode ?? "—"}</b></span>
@@ -1286,7 +1297,7 @@ function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan | null }
           </ul>
         )}
       </div>
-    </Panel>
+    </Details>
   );
 }
 

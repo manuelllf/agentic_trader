@@ -320,15 +320,16 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
   }
 
   return (
-    <div className="rounded-lg border" style={{ borderColor: T.ring, background: T.panel }}>
+    <div className="rounded-2xl border shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]"
+         style={{ borderColor: T.ring, background: T.panel }}>
       {cfgOpen && (
         <ScanConfigModal onClose={() => setCfgOpen(false)} applied={overrides}
                          onApply={(o) => { setOverrides(o); setCfgOpen(false); }} />
       )}
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2.5"
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b px-4 py-3.5"
            style={{ borderColor: T.grid }}>
-        <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+        <span className="text-[16px] font-bold" style={{ color: T.ink }}>
           Centro de operaciones
         </span>
         <InfoTip text="Todo lo que se puede lanzar desde la sala, agrupado por si cuesta dinero o no. Los escaneos y las capturas no pueden correr a la vez: el backend los excluye." />
@@ -350,8 +351,9 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
         </div>
       )}
 
-      {/* Tira de frescura: responde "¿puedo lanzar ya?" antes de pinchar nada. */}
-      <div className="grid gap-1.5 border-b px-4 py-2.5 sm:grid-cols-2 lg:grid-cols-4"
+      {/* Tira de frescura: responde "¿puedo lanzar ya?" antes de pinchar nada. Texto plano
+          apilado, sin caja por debajo -- como el resto de info-grids del mockup. */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b px-4 py-4 sm:grid-cols-4"
            style={{ borderColor: T.grid }}>
         <Chip label="Último escaneo"
               valor={report
@@ -369,15 +371,20 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
               malo={!!estado && !estado.fx.at} />
       </div>
 
-      <div className="grid lg:grid-cols-[200px_minmax(0,1fr)]">
-        <div className="border-b pb-2 lg:border-b-0 lg:border-r" style={{ borderColor: T.grid }}>
-          <Grupo titulo="Escanear · cuesta dinero" />
+      {/* Antes menú lateral + panel de detalle a dos columnas; ahora dos filas de pills (como
+          el mockup) y el detalle de la acción elegida se abre debajo, a todo lo ancho. Mismo
+          estado, mismos handlers -- solo cambia el envoltorio visual. */}
+      <div className="px-4 py-4">
+        <Grupo titulo="Escanear · cuesta dinero" />
+        <div className="mb-4 flex flex-wrap gap-2">
           {PAGO.map((k) => <Item key={k} k={k} sel={sel} activo={activo} onSel={elegir} />)}
-          <Grupo titulo="Datos · gratis" />
+        </div>
+        <Grupo titulo="Datos · gratis" />
+        <div className="mb-1 flex flex-wrap gap-2">
           {GRATIS.map((k) => <Item key={k} k={k} sel={sel} activo={activo} onSel={elegir} />)}
         </div>
 
-        <div className="min-w-0 px-4 py-3">
+        <div className="mt-4 border-t pt-4" style={{ borderColor: T.grid }}>
           {activo ? (
             <EnMarcha p={progreso} />
           ) : (
@@ -385,7 +392,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
               <div className="mb-1.5 flex flex-wrap items-start gap-2">
                 <span className="text-[13.5px] font-bold" style={{ color: T.ink }}>{a.t}</span>
                 {info.badges.map(([texto, tono]) => (
-                  <span key={texto} className="rounded px-1.5 py-0.5 text-[10px]"
+                  <span key={texto} className="rounded-full px-2 py-0.5 text-[10px]"
                         style={{ background: TONOS[tono].bg, color: TONOS[tono].fg }}>
                     {texto}
                   </span>
@@ -394,13 +401,13 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
               <p className="mb-2.5 text-[11.5px] leading-relaxed" style={{ color: T.muted }}>{info.d}</p>
 
               {a.aviso && (
-                <p className="mb-2.5 rounded border px-2.5 py-1.5 text-[10.5px]"
+                <p className="mb-2.5 rounded-lg border px-2.5 py-1.5 text-[10.5px]"
                    style={{ borderColor: "rgba(208,59,59,0.4)", background: "rgba(208,59,59,0.07)", color: "#e66767" }}>
                   {a.aviso}
                 </p>
               )}
 
-              <div className="border-t pt-2" style={{ borderColor: T.grid }}>
+              <div>
                 {a.uni && <SelectorUniverso uni={uni} onUni={setUni} estado={estado || null} />}
                 {a.foto && (
                   // <div>, no <label>: un <label> solo reenvía el clic a un <input> real, y
@@ -440,7 +447,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                       </span>
                     </span>
                     <button onClick={() => setCfgOpen(true)}
-                            className="rounded border px-2.5 py-1 text-[10.5px] transition-colors hover:bg-white/5"
+                            className="rounded-full border px-2.5 py-1 text-[10.5px] transition-colors hover:bg-white/5"
                             style={{ borderColor: T.ring, color: T.ink2 }}>
                       Configurar
                     </button>
@@ -505,22 +512,24 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
 
 function Chip({ label, valor, malo }: { label: string; valor: string; malo?: boolean }) {
   return (
-    <div className="rounded px-2 py-1.5" style={{ background: "rgba(255,255,255,0.04)" }}>
-      <div className="text-[9.5px]" style={{ color: T.muted }}>{label}</div>
-      <div className={`text-[11.5px] ${NUMS}`} style={{ color: malo ? T.bad : T.ink2 }}>{valor}</div>
+    <div>
+      <div className="text-[10.5px] uppercase tracking-wide" style={{ color: T.muted }}>{label}</div>
+      <div className={`mt-1 text-[12.5px] ${NUMS}`} style={{ color: malo ? T.bad : T.ink2 }}>{valor}</div>
     </div>
   );
 }
 
 function Grupo({ titulo }: { titulo: string }) {
   return (
-    <div className="px-3 pb-1 pt-2.5 text-[9.5px] font-semibold uppercase tracking-wider"
-         style={{ color: T.muted }}>
+    <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
       {titulo}
-    </div>
+    </p>
   );
 }
 
+// Pill, no fila de menú: elegir una acción es solo ver su detalle debajo, nunca lanzarla --
+// por eso el resaltado es siempre el mismo teal (el rojo/ámbar se reserva para el botón de
+// confirmar, el momento real de "esto cuesta o escribe cartera").
 function Item({ k, sel, activo, onSel }: {
   k: Key; sel: Key; activo: boolean; onSel: (k: Key) => void;
 }) {
@@ -528,12 +537,10 @@ function Item({ k, sel, activo, onSel }: {
   const on = k === sel && !activo;
   return (
     <button onClick={() => onSel(k)} aria-selected={on} role="tab"
-            className="block w-full border-l-2 px-3 py-1.5 text-left text-[11.5px] leading-tight transition-colors hover:bg-white/5"
-            style={{
-              borderLeftColor: on ? (a.peligro ? T.bad : T.buy) : "transparent",
-              background: on ? "rgba(255,255,255,0.06)" : "transparent",
-              color: on ? T.ink : T.ink2,
-            }}>
+            className="rounded-full px-3.5 py-1.5 text-left text-[12px] font-semibold transition-colors"
+            style={on
+              ? { background: T.buy, color: "#fff" }
+              : { background: T.panel2, color: T.ink2, border: `1px solid ${T.ring}` }}>
       {a.t}
     </button>
   );
