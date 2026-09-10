@@ -20,6 +20,7 @@ export type Senal = {
   gate_resultado: "pasa" | "falla" | null;
   gate_detalle: string;
   cuidado?: boolean;
+  mantener?: boolean;  // solo lo trae /historial: false = ticker apagado
 };
 
 export type Validacion = {

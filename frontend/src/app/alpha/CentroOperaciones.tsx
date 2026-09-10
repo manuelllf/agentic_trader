@@ -8,8 +8,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ApiError, cancelDecision, cancelObservatorio, getConfig, getEstadoDatos, recheck, redeep,
-  runDemo, snapshotUniverse, startFoto, syncAnalytics, syncFx, fetchScanProgress,
+  ApiError, cancelDecision, cancelObservatorio, getConfig, getEstadoDatos, getScanDecideConfig,
+  recheck, redeep, runDemo, snapshotUniverse, startFoto, syncAnalytics, syncFx, fetchScanProgress,
   type EstadoDatos, type ScanProgress, type ScanReport,
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
@@ -104,7 +104,7 @@ const ACCIONES: Record<Key, Accion> = {
     t: "Escaneo con decisión",
     d: "Puntúa el universo, forma la cartera del mes y te la propone para tu sí o no.",
     cta: "Lanzar con decisión", badges: [["≈ $1,60", "coste"], ["escribe cartera", "malo"]],
-    peligro: true, uni: true, foto: true,
+    peligro: true, uni: true, foto: true, cfg: true,
     aviso: "El único de la lista que escribe propuesta y ejecuta el libro sombra.",
   },
   foto: {
@@ -174,6 +174,9 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
   const [fotoFuente, setFotoFuente] = useState<Fuente>("nasdaq");
   const [fundFuente, setFundFuente] = useState<Fuente>("nasdaq");
   const [overrides, setOverrides] = useState<DemoRunOverrides | null>(null);
+  // Config PERSISTIDA del escaneo con decisión (cron + botón "con decisión"). Independiente de
+  // `overrides` (que es solo del observatorio y no se guarda). `{}` = usa los defaults de /config.
+  const [decideCfg, setDecideCfg] = useState<DemoRunOverrides | null>(null);
   const [cfgOpen, setCfgOpen] = useState(false);
   // Defaults reales de producción (mismo endpoint que el modal) -- el resumen de "qué se manda"
   // sale de aquí + `overrides`, nunca de un valor fijo en el frontend.
@@ -194,6 +197,10 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
   useEffect(() => {
     getConfig().then((c) => c.llm_defaults && setLlmDefaults(c.llm_defaults)).catch(() => {});
   }, []);
+  const refrescarDecideCfg = useCallback(() => {
+    getScanDecideConfig().then((r) => setDecideCfg(r.overrides ?? {})).catch(() => {});
+  }, []);
+  useEffect(() => { refrescarDecideCfg(); }, [refrescarDecideCfg]);
 
   const activo = escaneando || fotoPropia;
 
@@ -322,10 +329,16 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
   return (
     <div className="rounded-2xl border shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]"
          style={{ borderColor: T.ring, background: T.panel }}>
-      {cfgOpen && (
+      {cfgOpen && (sel === "real" ? (
+        <ScanConfigModal
+          target="decide"
+          onClose={() => setCfgOpen(false)}
+          applied={decideCfg}
+          onApply={(o) => { setDecideCfg(o); refrescarDecideCfg(); setCfgOpen(false); }} />
+      ) : (
         <ScanConfigModal onClose={() => setCfgOpen(false)} applied={overrides}
                          onApply={(o) => { setOverrides(o); setCfgOpen(false); }} />
-      )}
+      ))}
 
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b px-4 py-3.5"
            style={{ borderColor: T.grid }}>
@@ -427,12 +440,18 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                   <div className="flex flex-wrap items-start justify-between gap-2 py-1.5">
                     <span className="text-[11px]" style={{ color: T.ink2 }}>
                       Modelo por etapa
-                      {/* Lo que se va a mandar de verdad: override aplicado, si no el default
-                          real de `/config` -- nunca un valor fijo aquí, para ver antes de lanzar. */}
+                      {sel === "real" && (
+                        <span className="ml-1 text-[9.5px]" style={{ color: T.muted }}>
+                          (guardado · también lo usa el cron)
+                        </span>
+                      )}
+                      {/* Lo que se va a mandar de verdad: override aplicado (del observatorio, o
+                          la config guardada del escaneo con decisión), si no el default real de
+                          `/config` -- nunca un valor fijo aquí, para ver antes de lanzar. */}
                       <span className="mt-0.5 grid gap-x-3 gap-y-0.5 text-[9.5px]"
                             style={{ color: T.muted, gridTemplateColumns: "auto auto auto" }}>
                         {ETAPAS_LLM.map(({ key, label }) => {
-                          const o = overrides?.[key];
+                          const o = (sel === "real" ? decideCfg : overrides)?.[key];
                           const d = llmDefaults?.[key];
                           const modelo = o?.model ?? d?.model ?? "…";
                           const reasoning = o?.reasoning_effort ?? d?.reasoning_effort ?? "…";

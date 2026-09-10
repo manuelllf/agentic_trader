@@ -85,9 +85,12 @@ class Settings(BaseSettings):
     # con `prescore_temperature`, sin medir el resultado completo todavía.
     mid_temperature: float = 0.6
     # Alias ROLLING de la API directa de DeepSeek, sin snapshot fechado invocable: se pierde la
-    # garantía de que el modelo no cambie solo entre escaneos (no hay forma de pinnear).
-    llm_model: str = "deepseek-v4-pro"      # profundo + macro + constructor
-    prescore_model: str = "deepseek-v4-flash"  # triaje: ranking 1-100 del universo
+    # garantía de que el modelo no cambie solo entre escaneos (no hay forma de pinnear). Se elige
+    # a propósito el alias sin versión (`deepseek-flash`, no `deepseek-v4-flash`): DeepSeek lo
+    # reapunta a la última Flash y `deepseek-v4-pro` enruta también a Flash desde el 14-sep-2026,
+    # así que el circuito sigue la versión vigente sin tocar código. V4.1 Flash salió el 10-sep.
+    llm_model: str = "deepseek-flash"      # profundo + macro + constructor
+    prescore_model: str = "deepseek-flash"  # triaje: ranking 1-100 del universo
     mid_layer: bool = True          # capa media: repuntúa los mejores de cada sector
     # C.4: mediana de P/E (trailing Y forward) del sector propio pegada a su línea de P/E, sin
     # instrucción — dato al lado del dato. Medido el 23-ago con datos reales pareados (mismo
@@ -111,7 +114,7 @@ class Settings(BaseSettings):
     mid_candidates_cap: int = 300
     # Flash para la decisión de mañana (antes Pro) -- en prueba activa en el observatorio junto
     # con `mid_temperature`/`mid_reasoning_effort`, sin medir el resultado completo todavía.
-    mid_model: str = "deepseek-v4-flash"
+    mid_model: str = "deepseek-flash"
     # Corte de finalistas al profundo: top-`deep_per_sector` (amplitud) ∪ posiciones ∪ seguimiento
     # personal ∪ watchlist ∪ mayores caps ∪ el resto por score, todo truncado a `deep_finalists_cap`.
     # El carril sectorial vale 2 sin capa media (única garantía de ver cada sector); 1 con ella.

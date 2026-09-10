@@ -99,13 +99,15 @@ function SalaMomentumRoom() {
       setCuenta(c); setAlertas(a); setHistorial(h); setValidacion(v); setCandidatos(cd);
       if (fxr?.rate) setFx(fxr.rate);
       setError("");
-      // Precio en vivo (solo activas, no ejecutadas): referencia visual aparte, sin esperar a
-      // que responda para terminar de cargar el resto -- si yfinance tarda o falla, no bloquea.
-      const tickersActivos = Array.from(new Set(
-        a.filter((s) => s.estado === "nueva" || s.estado === "cuidado").map((s) => s.ticker),
-      ));
-      if (tickersActivos.length) {
-        getPreciosVivos(tickersActivos).then(setPreciosVivos).catch(() => {});
+      // Precio en vivo (activas + descartadas que siguen en curso en el histórico): referencia
+      // visual aparte, sin esperar a que responda para terminar de cargar el resto -- si
+      // yfinance tarda o falla, no bloquea.
+      const tickersEnVivo = Array.from(new Set([
+        ...a.filter((s) => s.estado === "nueva" || s.estado === "cuidado").map((s) => s.ticker),
+        ...h.filter((s) => !s.resuelta).map((s) => s.ticker),
+      ]));
+      if (tickersEnVivo.length) {
+        getPreciosVivos(tickersEnVivo).then(setPreciosVivos).catch(() => {});
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Sin conexión con el backend.");
@@ -233,6 +235,12 @@ function SalaMomentumRoom() {
   // recuerda arriba junto al otro gasto real para que no se pierdan al fondo de un acordeón.
   const candidatosListos = candidatosPorRevisar.filter((c) => c.filtro_sector_pass && c.estadistica_pass);
 
+  // Universo activo vs apagado (apagado = mantener false; sin fila = activo).
+  const universoApagados = (validacion ?? []).filter((v) => v.mantener === false).length;
+  const universoCount = universoApagados > 0
+    ? `${(validacion ?? []).length - universoApagados} activos · ${universoApagados} apagados`
+    : (validacion ?? []).length;
+
   // Empate del día: 2+ señales NUEVAS con la misma fecha de entrada. Si alguna del grupo es
   // 'ambos' (zigzag+suelo coinciden), esa se recomienda; si no, se muestra el empate sin
   // destacar ninguna — decide Manuel (ver doc §4, decidido 7-sep-2026).
@@ -309,7 +317,7 @@ function SalaMomentumRoom() {
 
         {/* Fila propia, flotando en el flujo normal -- cada acción se distingue por su texto,
             no por un color arbitrario (antes: iconos solos + leyenda aparte explicándolos). */}
-        <div className="mb-6 flex flex-wrap gap-2">
+        <div className="mb-6 flex flex-wrap justify-center gap-2">
           <ActionChip onClick={escanear} busy={scanning}
                       label={scanning && scanProgreso?.status === "running" && scanProgreso.total > 0
                         ? `${scanProgreso.hecho}/${scanProgreso.total}` : "Señales"}
@@ -466,12 +474,19 @@ function SalaMomentumRoom() {
         {/* ---------- Historial de señales ---------- */}
         <Section title="Historial de señales" count={historial?.length ?? 0}>
           <p className="mb-2 text-[10.5px]" style={{ color: T.muted }}>
-            Resultado real del backtest para cada señal ya resuelta: el check marca si la
-            ejecutaste de verdad o la dejaste pasar (para revisar tu criterio después).
+            Señales ya resueltas más las que descartaste y siguen en curso (para ver &quot;la
+            dejé pasar y habría hecho X%&quot;). El check marca si la ejecutaste de verdad.
           </p>
           <div className="rounded-xl border" style={{ borderColor: T.ring, background: T.panel }}>
             {(historial ?? []).slice(0, histVisibles).map((s, i) => {
               const ejecutada = s.estado === "ejecutada" || s.estado === "vendida";
+              const enCurso = !s.resuelta;
+              // Descartada en curso: retorno en vivo (precio de ahora vs entrada), igual que
+              // en Alertas activas -- si yfinance no responde, cae al ret guardado.
+              const vivo = preciosVivos[s.ticker];
+              const ret = enCurso && vivo != null
+                ? (vivo / Number(s.entry_price) - 1) * 100
+                : Number(s.ret);
               return (
                 <div key={s.id} className="flex items-center gap-3 px-3.5 py-3"
                      style={i > 0 ? { borderTop: `1px solid ${T.grid}` } : undefined}>
@@ -479,7 +494,7 @@ function SalaMomentumRoom() {
                         style={ejecutada
                           ? { background: T.entry, borderColor: T.entry }
                           : { borderColor: T.ring }}
-                        title={ejecutada ? "La ejecutaste" : "No se ejecutó"}>
+                        title={ejecutada ? "La ejecutaste" : enCurso ? "Descartada, sigue en seguimiento" : "No se ejecutó"}>
                     {ejecutada && (
                       <svg viewBox="0 0 16 16" className="h-3 w-3" stroke="#fff" fill="none" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M3.5 8.5l3 3 6-7" />
@@ -488,15 +503,18 @@ function SalaMomentumRoom() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <b style={{ color: T.ink }}>{s.ticker}</b>
+                    {s.mantener === false && <span className="ml-1.5 text-[9px]" style={{ color: T.warn }}>apagado</span>}
                     <span className="ml-2 text-[11px]" style={{ color: T.muted }}>
                       {TIPO_LABEL[s.tipo]} · {fmtFecha(s.entry_date)}
                     </span>
                   </div>
                   <div className="text-right">
-                    <div className={`font-bold ${NUMS}`} style={{ color: Number(s.ret) >= 0 ? T.good : T.bad }}>
-                      {fmtRet(s.ret)}
+                    <div className={`font-bold ${NUMS}`} style={{ color: ret >= 0 ? T.good : T.bad }}>
+                      {fmtRet(ret)}
                     </div>
-                    <div className="text-[9.5px]" style={{ color: T.muted }}>{s.motivo}</div>
+                    <div className="text-[9.5px]" style={{ color: enCurso ? T.warn : T.muted }}>
+                      {enCurso ? `en curso · ${s.dias}d` : s.motivo}
+                    </div>
                   </div>
                 </div>
               );
@@ -525,10 +543,10 @@ function SalaMomentumRoom() {
 
         {/* ---------- Universo: fusiona "Validación histórica" + "Universo vigilado" en una
             sola tabla (antes los mismos 34 tickers se repetían en dos acordeones) ---------- */}
-        <Collapsible title="Universo" count={validacion?.length ?? 0}>
+        <Collapsible title="Universo" count={universoCount}>
           <p className="px-3.5 pb-2 pt-3 text-[11px] leading-relaxed" style={{ color: T.muted }}>
-            Los 34 tickers fijos con su resultado real acumulado. El interruptor decide si sigues
-            vigilando ese ticker o lo apartas (el código nunca lo borra).
+            Cada ticker con su resultado real acumulado. Apagar uno lo saca de alertas y recuentos
+            pero se sigue escaneando, para ver si mejora y quieres reactivarlo.
           </p>
           <UniversoTabla validacion={validacion ?? []} onCambio={actualizarValidacion} />
         </Collapsible>
@@ -1007,11 +1025,12 @@ function UniversoRow({ v, first, onCambio }: {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const revisar = v.n === 0 || v.n === 1 || (v.pct_positivas ?? 100) < 90;
+  const apagado = v.mantener === false;
 
   const toggleMantener = async () => {
     setBusy(true);
     try {
-      const nuevo = !v.mantener;
+      const nuevo = apagado;  // apagado -> encender (true); activo -> apagar (false)
       await setMantenerUniverso(v.ticker, nuevo);
       onCambio(v.ticker, { mantener: nuevo });
     } finally {
@@ -1024,8 +1043,10 @@ function UniversoRow({ v, first, onCambio }: {
 
   return (
     <>
-      <tr onClick={() => setOpen((o) => !o)} className="cursor-pointer" style={borde}>
-        <td className={`${celda} ${MONO} font-semibold`} style={{ color: v.mantener ? T.ink : T.warn }}>{v.ticker}</td>
+      <tr onClick={() => setOpen((o) => !o)} className="cursor-pointer" style={{ ...borde, opacity: apagado ? 0.5 : 1 }}>
+        <td className={`${celda} ${MONO} font-semibold`} style={{ color: apagado ? T.warn : T.ink }}>
+          {v.ticker}{apagado && <span className="ml-1.5 text-[9px] font-normal">apagado</span>}
+        </td>
         <td className={celda} style={{ color: T.muted }}>{v.sector}</td>
         <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{v.n}</td>
         <td className={`${celda} ${NUMS} text-right`} style={{ color: v.media == null ? T.muted : v.media >= 0 ? T.good : T.bad }}>
@@ -1043,12 +1064,14 @@ function UniversoRow({ v, first, onCambio }: {
                 : revisar ? `Mediana ${fmtRet(v.mediana)}. ${v.pct_positivas}% de acierto: varianza más alta que el resto del universo.`
                 : `Mediana ${fmtRet(v.mediana)}. ${v.n} entradas resueltas (${v.sector}), ${v.pct_positivas}% positivas. Sigue cumpliendo el criterio de admisión.`}
             </p>
-            {revisar && (
-              <div className="mt-2.5 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: T.base }}>
-                <span className="text-[12px] font-semibold" style={{ color: T.ink2 }}>Mantener en universo</span>
-                <Toggle checked={v.mantener} onChange={toggleMantener} disabled={busy} />
-              </div>
-            )}
+            {/* Siempre visible: `revisar` solo recomienda, no decide -- el control es tuyo. */}
+            <div className="mt-2.5 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: T.base }}>
+              <span className="text-[12px] font-semibold" style={{ color: T.ink2 }}>
+                Mantener en universo
+                {apagado && <span className="ml-1.5 font-normal" style={{ color: T.warn }}>· apagado, sigue en seguimiento</span>}
+              </span>
+              <Toggle checked={!apagado} onChange={toggleMantener} disabled={busy} />
+            </div>
           </td>
         </tr>
       )}

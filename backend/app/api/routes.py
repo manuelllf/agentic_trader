@@ -71,7 +71,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import execution_service, foto_service, pipeline, scan_audit, scan_service
+from app import execution_service, foto_service, pipeline, scan_audit, scan_config, scan_service
 from app import watchlist as watchlist_mod
 from app.auth import auth_optional
 from app.config import settings
@@ -284,13 +284,17 @@ class DemoRunOverrides(BaseModel):
 def demo_run(sample_size: int | None = None, decide: bool = True,
             force_mid_layer: bool = False, reutilizar_ultima_foto: bool = False,
             modo_universo: Literal["nasdaq", "global_topcap"] = "nasdaq",
-            overrides: DemoRunOverrides | None = Body(None, embed=True)) -> dict:
+            overrides: DemoRunOverrides | None = Body(None, embed=True),
+            db: Session = Depends(get_db)) -> dict:
     # decide=False: escaneo de universo completo en producción real, con el modelo/coste
     # de verdad, que NO propone ni toca ninguna cartera — solo refresca ranking, watchlist,
     # memoria y traza. force_mid_layer=True lo hace el circuito EXACTO de un mensual (capa
     # media incluida) sin tocar el cron semanal. Es el botón "simulación" de Sala Real.
-    # `overrides`: config por etapa del modal de la simulación — cuerpo JSON opcional, nunca lo
-    # manda "Analizar mercado" ni el cron, así que ambos siguen usando los defaults de siempre.
+    # `overrides`: config por etapa del modal — cuerpo JSON opcional. Con `decide=True` y SIN
+    # `overrides` en el cuerpo (el botón "Analizar y decidir"), se lee la config PERSISTIDA del
+    # escaneo con decisión (`scan_config`), la misma que usa el cron mensual — así los dos
+    # deciden con el mismo circuito. "Analizar mercado" (decide=False sin cuerpo) sigue con los
+    # defaults de `settings`.
     # `embed=True`: el frontend manda `{"overrides": {...}}`. Sin esto se parseaba como un
     # DemoRunOverrides vacío sin dar error (todos sus campos son opcionales) — bug ya arreglado.
     # `reutilizar_ultima_foto`: checkbox de los dos modales — ver `scan_service.run_scan_and_store`.
@@ -300,11 +304,32 @@ def demo_run(sample_size: int | None = None, decide: bool = True,
         raise HTTPException(503, "Configura ENABLE_LLM=true y la key del proveedor "
                                  f"({settings.llm_provider.upper()}_API_KEY).")
     llm_overrides = (overrides.model_dump(exclude_none=True) if overrides else None) or None
+    if decide and llm_overrides is None:
+        llm_overrides = scan_config.get_decide_overrides(db)
     started = pipeline.start(sample_size=sample_size, decide=decide,
                              force_mid_layer=force_mid_layer, llm_overrides=llm_overrides,
                              reutilizar_ultima_foto=reutilizar_ultima_foto,
                              modo_universo=modo_universo)
     return {"started": started, **pipeline.get_status()}
+
+
+@router.get("/scan/decide-config")
+def get_scan_decide_config(db: Session = Depends(get_db)) -> dict:
+    """Override de LLM por etapa GUARDADO para el escaneo con decisión (cron mensual + botón
+    "Analizar y decidir"). `overrides` vacío = ese escaneo usa los defaults de producción
+    (`llm_defaults` de /config). El observatorio NO se toca aquí: su config viaja por el
+    cuerpo de /demo/run."""
+    return {"overrides": scan_config.get_decide_overrides(db) or {}}
+
+
+@router.put("/scan/decide-config")
+def put_scan_decide_config(overrides: DemoRunOverrides = Body(..., embed=True),
+                           db: Session = Depends(get_db)) -> dict:
+    """Fija la config por etapa del escaneo con decisión. Un cuerpo `{"overrides": {}}` (o con
+    todas las etapas vacías) borra la clave y vuelve a los defaults de `settings`. Solo afecta
+    a escaneos FUTUROS; no relanza nada."""
+    guardado = scan_config.set_decide_overrides(db, overrides.model_dump(exclude_none=True))
+    return {"overrides": guardado}
 
 
 @router.post("/demo/cancel-observatorio")

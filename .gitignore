@@ -78,6 +78,7 @@ backend/scripts/senales.csv
 backend/scripts/sim_4_spots.py
 backend/scripts/scan_sectores_candidatos.py
 backend/scripts/scan_sectores_candidatos_resultado.txt
+backend/scripts/out/
 
 # ---- Node / Next.js ----
 node_modules/

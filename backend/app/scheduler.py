@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from app import scan_config
 from app.config import settings
 from app.db import SessionLocal
 from app.scan_service import run_scan_and_store, write_scan_failure
@@ -30,7 +31,10 @@ def _scan_job() -> None:
     media y sin tocar cartera (ver docs/plan-datos-observability.md)."""
     db = SessionLocal()
     try:
-        result = run_scan_and_store(db, sample_size=None, decide=True)
+        # Config por etapa guardada para el escaneo con decisión (misma que usa el botón
+        # "Analizar y decidir"); `None` = defaults de `settings`, comportamiento de siempre.
+        overrides = scan_config.get_decide_overrides(db)
+        result = run_scan_and_store(db, sample_size=None, decide=True, llm_overrides=overrides)
         logger.info("Escaneo completado: %s", result)
     except Exception as exc:
         logger.exception("Fallo en el job de escaneo")
@@ -161,6 +165,10 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
 
     from app import push
 
+    # Tickers apagados: se escanean y sus señales se guardan igual, pero no avisan ni cuentan
+    # como "nuevas" (ver `momentum_universo_estado.mantener`).
+    apagados = {r[0] for r in db.execute(text(
+        "select ticker from momentum_universo_estado where mantener = false")).all()}
     nuevas, tickers_nuevos = 0, []
     resueltas_ejecutadas = []   # posiciones REALES (estado='ejecutada') que acaban de resolverse
     for s in todas:
@@ -171,6 +179,12 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
         exit_val = s.get("exit_date")
         motivo_val = s.get("motivo")
         motivo_final = motivo_val if pd.notna(motivo_val) else None
+        exit_final = exit_val.date() if pd.notna(exit_val) else None
+        # `ret` y `dias` son NaN (float) en TODA señal aún sin resolver. SQLite lo traga; Postgres
+        # NO (`dias` es integer) y revienta el escaneo con un error de SQL. Se normaliza a None
+        # igual que ya se hacía con exit_date/motivo.
+        ret_final = float(s["ret"]) if pd.notna(s.get("ret")) else None
+        dias_final = int(s["dias"]) if pd.notna(s.get("dias")) else None
         fila = db.execute(text("""
             select id, resuelta, estado from momentum_senales
             where ticker=:t and tipo=:tp and entry_date=:d
@@ -183,12 +197,12 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
                         motivo = :motivo, dias = :dias
                     where id = :id
                 """), {
-                    "exit_date": exit_val.date() if pd.notna(exit_val) else None,
-                    "ret": s["ret"], "motivo": motivo_final, "dias": s["dias"], "id": fila["id"],
+                    "exit_date": exit_final, "ret": ret_final, "motivo": motivo_final,
+                    "dias": dias_final, "id": fila["id"],
                 })
                 if fila["estado"] == "ejecutada":
                     resueltas_ejecutadas.append(
-                        {"ticker": s["ticker"], "ret": s["ret"], "motivo": motivo_final})
+                        {"ticker": s["ticker"], "ret": ret_final, "motivo": motivo_final})
             continue
         db.execute(text("""
             insert into momentum_senales
@@ -203,12 +217,12 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
             "entry_date": entry_date, "entry_price": s["entry_price"],
             "ref_label": s["ref_label"], "ref_price": s["ref_price"],
             "caida_pct": s["caida_pct"], "resuelta": s["resuelta"],
-            "exit_date": exit_val.date() if pd.notna(exit_val) else None,
-            "ret": s["ret"], "motivo": motivo_final,
-            "dias": s["dias"], "ath": s["ath"], "desde_noticias": s["desde_noticias"].date(),
+            "exit_date": exit_final, "ret": ret_final, "motivo": motivo_final,
+            "dias": dias_final, "ath": s["ath"], "desde_noticias": s["desde_noticias"].date(),
         })
-        nuevas += 1
-        tickers_nuevos.append(s["ticker"])
+        if s["ticker"] not in apagados:
+            nuevas += 1
+            tickers_nuevos.append(s["ticker"])
     db.commit()
     if nuevas:
         logger.info("Momentum: %s señal(es) nueva(s) detectada(s), gate pendiente.", nuevas)

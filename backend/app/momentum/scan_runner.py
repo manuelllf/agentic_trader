@@ -50,9 +50,11 @@ def _run() -> None:
             universo, progreso_cb=lambda i, _total, t: scan_progress.avance(i, t))
         resultado = procesar_señales(db, todas)
         scan_progress.terminar(nuevas=resultado["nuevas"], resueltas=resultado["resueltas"])
-    except Exception as exc:  # noqa: BLE001 -- el motivo legible es lo que necesita el panel
+    except Exception:  # noqa: BLE001
+        # El detalle entero (incl. el SQL y los parámetros de un error de SQLAlchemy) va SOLO al
+        # log del servidor -- al panel del usuario un mensaje corto, nunca el stacktrace.
         logger.exception("Fallo en el escaneo manual de momentum")
-        scan_progress.terminar(error=str(exc))
+        scan_progress.terminar(error="No se pudo completar el escaneo. Revisa los logs del servidor.")
     finally:
         db.close()
         with _lock:

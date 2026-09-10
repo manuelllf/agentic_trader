@@ -9,6 +9,7 @@ a mitad, que es justo lo que faltaba la primera vez que se usó esto de verdad.
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from datetime import UTC, date, datetime
@@ -18,6 +19,8 @@ from sqlalchemy import bindparam, text
 from app.db import SessionLocal
 from app.llm.trace import CallRecord
 from app.momentum import gate_progress, news_gate, signals
+
+logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _running = False
@@ -140,8 +143,10 @@ def _run(ids: list[int]) -> None:
                 db.commit()
                 gate_progress.tick(False)
         gate_progress.terminar()
-    except Exception as exc:  # noqa: BLE001 -- fallo antes/entre señales (la query, etc.)
-        gate_progress.terminar(error=str(exc))
+    except Exception:  # noqa: BLE001 -- fallo antes/entre señales (la query, etc.)
+        # Detalle completo al log; al panel del usuario, mensaje corto (nunca el SQL/stacktrace).
+        logger.exception("Fallo en el gate de momentum")
+        gate_progress.terminar(error="No se pudo completar la evaluación. Revisa los logs del servidor.")
     finally:
         db.close()
         with _lock:

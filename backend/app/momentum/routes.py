@@ -8,6 +8,7 @@ son 3 tablas nuevas y sencillas, y esta sala no comparte modelos con el ranker.
 """
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from decimal import Decimal
@@ -21,6 +22,8 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.momentum import candidatos as candidatos_mod
 from app.momentum import capital, gate_progress, gate_runner, signals
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/momentum", tags=["momentum"])
 
@@ -87,10 +90,13 @@ def precios_vivos(tickers: str) -> dict[str, float | None]:
 @router.get("/alertas")
 def alertas(db: Session = Depends(get_db)) -> list[dict]:
     """Señales sin resolver, no descartadas -- más reciente primero. `cuidado` se calcula aquí
-    (no se guarda): son días reales desde hoy, no un valor que se pueda quedar desactualizado."""
+    (no se guarda): son días reales desde hoy, no un valor que se pueda quedar desactualizado.
+    Los tickers apagados (`momentum_universo_estado.mantener=false`) se siguen escaneando pero
+    sus señales no cuentan como alerta activa."""
     rows = db.execute(text("""
         select * from momentum_senales
         where resuelta = false and estado != 'descartada'
+          and ticker not in (select ticker from momentum_universo_estado where mantener = false)
         order by entry_date desc
     """)).mappings().all()
     hoy = date.today()
@@ -111,10 +117,30 @@ def alertas(db: Session = Depends(get_db)) -> list[dict]:
 
 @router.get("/historial")
 def historial(db: Session = Depends(get_db)) -> list[dict]:
+    """Señales resueltas + las descartadas a mano que siguen abiertas. Una descartada NO
+    desaparece: sigue en el escaneo diario (`procesar_señales` la resuelve igual si cruza),
+    solo que aquí se ve en curso, con su retorno mark-to-market en vivo -- para ver "la
+    descarté y habría hecho X%". `dias` se recalcula aquí para las abiertas (como en /alertas),
+    el guardado se queda viejo."""
     rows = db.execute(text("""
-        select * from momentum_senales where resuelta = true order by entry_date desc
+        select * from momentum_senales
+        where resuelta = true
+           or (estado = 'descartada' and resuelta = false)
+        order by resuelta, entry_date desc
     """)).mappings().all()
-    return [_row(dict(m)) for m in rows]
+    hoy = date.today()
+    mantener = _mantener_map(db)
+    out = []
+    for m in rows:
+        r = _row(dict(m))
+        r["mantener"] = mantener.get(m["ticker"], True)
+        if not m["resuelta"]:
+            entry_date = m["entry_date"]
+            if isinstance(entry_date, str):
+                entry_date = date.fromisoformat(entry_date)
+            r["dias"] = (hoy - entry_date).days
+        out.append(r)
+    return out
 
 
 @router.get("/validacion")
@@ -215,8 +241,10 @@ def admin_detectar_candidatos(db: Session = Depends(get_db)) -> dict:
     try:
         n = candidatos_mod.detectar_rupturas(db)
         return {"ok": True, "nuevos": n}
-    except Exception as exc:  # noqa: BLE001 — el motivo legible es lo que necesita el panel
-        return {"ok": False, "error": str(exc)}
+    except Exception:  # noqa: BLE001
+        # Detalle entero al log; al panel, mensaje corto (nunca el SQL/stacktrace en la cara).
+        logger.exception("Fallo en la detección manual de rupturas")
+        return {"ok": False, "error": "No se pudo completar la detección. Revisa los logs del servidor."}
 
 
 class EjecucionIn(BaseModel):

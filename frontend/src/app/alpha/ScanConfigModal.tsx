@@ -2,13 +2,21 @@
 
 // Configure model/reasoning/temperature/top_p per stage. Opens with production defaults from
 // /config. Universe and photo reuse live in the operations card, not here — they aren't models.
+//
+// `target` decide qué escaneo se configura:
+//   - "observatorio": la config viaja en el cuerpo de /demo/run, no se guarda (banco de pruebas).
+//     "Aplicar" solo la deja en el estado de la card para el próximo observatorio.
+//   - "decide": la config se PERSISTE (PUT /scan/decide-config) y la usan el cron mensual y el
+//     botón "Analizar y decidir". "Aplicar" guarda en el backend.
 
 import { useEffect, useRef, useState } from "react";
-import { getConfig } from "@/lib/api";
+import { getConfig, putScanDecideConfig } from "@/lib/api";
 import type { DemoRunOverrides, ReasoningEffort, StageLLMOverride } from "@/lib/types";
 import { T } from "./tokens";
 
-const DEEPSEEK_MODELS = ["deepseek-v4-pro", "deepseek-v4-flash"] as const;
+// `deepseek-flash`: alias rolling de la última Flash (V4.1 desde 10-sep-2026). Los `-v4-*` se
+// dejan seleccionables por si hay que volver a un nombre viejo, pero producción va al alias.
+const DEEPSEEK_MODELS = ["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"] as const;
 const QWEN_MODEL = "qwen3.7-flash";
 // Cualquier etapa puede hablar con Qwen desde 28-ago (`scan_service._llm_for` enruta por modelo,
 // no solo el prescorer) — mismas opciones en las 5 etapas.
@@ -40,26 +48,33 @@ const STAGE_LABEL: Record<Stage, string> = {
 // (config.py) — /config trae los reales en cuanto responde, esto es solo para no mostrar el
 // modal vacío un instante.
 const FALLBACK: Record<Stage, Required<StageLLMOverride>> = {
-  macro: { model: "deepseek-v4-pro", reasoning_effort: "max", temperature: 1.0, top_p: 0.95 },
-  prescore: { model: "qwen3.7-flash", reasoning_effort: "none", temperature: 0.3, top_p: 0.95 },
-  mid: { model: "deepseek-v4-pro", reasoning_effort: "low", temperature: 1.0, top_p: 0.95 },
-  deep: { model: "deepseek-v4-pro", reasoning_effort: "high", temperature: 1.0, top_p: 0.95 },
-  constructor: { model: "deepseek-v4-pro", reasoning_effort: "max", temperature: 1.0, top_p: 0.95 },
+  macro: { model: "deepseek-flash", reasoning_effort: "low", temperature: 0.3, top_p: 0.95 },
+  prescore: { model: "qwen3.7-flash", reasoning_effort: "none", temperature: 0.6, top_p: 0.95 },
+  mid: { model: "deepseek-flash", reasoning_effort: "none", temperature: 0.6, top_p: 0.95 },
+  deep: { model: "deepseek-flash", reasoning_effort: "low", temperature: 0.3, top_p: 0.95 },
+  constructor: { model: "deepseek-flash", reasoning_effort: "low", temperature: 0.3, top_p: 0.95 },
 };
 
 const STAGES: Stage[] = ["macro", "prescore", "mid", "deep", "constructor"];
 
-export function ScanConfigModal({ onClose, onApply, applied }: {
+export function ScanConfigModal({ onClose, onApply, applied, target = "observatorio" }: {
   onClose: () => void;
+  // observatorio: el padre guarda esto en su estado para el próximo /demo/run.
+  // decide: el modal ya ha persistido en el backend; esto es solo para que el padre refresque
+  //   su resumen de "qué se va a mandar".
   onApply: (overrides: DemoRunOverrides) => void;
-  // Lo que YA se aplicó en esta sesión (botón "Aplicar" de una apertura anterior), si lo hay —
-  // sin esto, reabrir el modal siempre repintaba los valores de producción, dando la impresión
-  // de que la configuración elegida se había perdido cuando en realidad seguía en pie.
+  // Lo que YA se aplicó (apertura anterior). En "observatorio" es el estado de sesión de la card;
+  // en "decide" es la config PERSISTIDA que trae el padre de GET /scan/decide-config. Sin esto,
+  // reabrir el modal repintaba producción y parecía que lo elegido se había perdido.
   applied?: DemoRunOverrides | null;
+  target?: "observatorio" | "decide";
 }) {
+  const esDecide = target === "decide";
   const [cfg, setCfg] = useState<Record<Stage, Required<StageLLMOverride>>>(FALLBACK);
   // Until /config resolves, controls are disabled to prevent race: user changes get overwritten by defaults.
   const [loaded, setLoaded] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [errGuardar, setErrGuardar] = useState<string | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -107,10 +122,39 @@ export function ScanConfigModal({ onClose, onApply, applied }: {
   // Objeto literal explícito, no un `{}` + asignación por bucle: "constructor" como nombre de
   // propiedad choca con `Object.prototype.constructor` y TS infiere mal el tipo del literal
   // vacío en ese caso.
-  const apply = () => onApply({
+  const construirOverrides = (): DemoRunOverrides => ({
     macro: cfg.macro, prescore: cfg.prescore, mid: cfg.mid, deep: cfg.deep,
     constructor: cfg.constructor,
   });
+
+  const apply = async () => {
+    const o = construirOverrides();
+    if (!esDecide) { onApply(o); return; }
+    // decide: se persiste en el backend antes de cerrar; si falla, el modal se queda abierto
+    // con el error para no dar por guardada una config que no lo está.
+    setGuardando(true);
+    setErrGuardar(null);
+    try {
+      const r = await putScanDecideConfig(o);
+      onApply(r.overrides);
+    } catch (e) {
+      setErrGuardar(e instanceof Error ? e.message : "No se pudo guardar la configuración.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const restablecer = async () => {
+    setGuardando(true);
+    setErrGuardar(null);
+    try {
+      const r = await putScanDecideConfig({});   // borra la clave -> vuelve a los defaults de settings
+      onApply(r.overrides);
+    } catch (e) {
+      setErrGuardar(e instanceof Error ? e.message : "No se pudo restablecer.");
+      setGuardando(false);
+    }
+  };
 
   return (
     // Sin onClick aquí a propósito (28-ago): un clic fuera del cuadro cerraba el modal sin
@@ -135,9 +179,13 @@ export function ScanConfigModal({ onClose, onApply, applied }: {
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: T.grid }}>
           <div className="flex items-center gap-2">
-            <b style={{ color: T.ink }}>Modelo por etapa</b>
+            <b style={{ color: T.ink }}>
+              Modelo por etapa · {esDecide ? "escaneo con decisión" : "observatorio"}
+            </b>
             <span className="text-[11px]" style={{ color: T.muted }}>
-              se aplica al próximo escaneo que lances desde la card
+              {esDecide
+                ? "se guarda y lo usan el cron mensual y el botón «Analizar y decidir»"
+                : "se aplica al próximo observatorio que lances desde la card"}
             </span>
           </div>
           <button ref={closeRef} onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
@@ -155,17 +203,30 @@ export function ScanConfigModal({ onClose, onApply, applied }: {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t px-4 py-2.5" style={{ borderColor: T.grid }}>
-          <button onClick={onClose}
-                  className="rounded px-3 py-1.5 text-[11.5px] font-semibold hover:opacity-80"
-                  style={{ color: T.muted }}>
-            Cancelar
-          </button>
-          <button onClick={apply} disabled={!loaded}
-                  className="rounded-full px-4 py-1.5 text-[11.5px] font-bold hover:opacity-90 disabled:opacity-50"
-                  style={{ background: T.warn, color: "#0d0d0d" }}>
-            Aplicar
-          </button>
+        {errGuardar && (
+          <p className="border-t px-4 py-2 text-[11px]"
+             style={{ borderColor: T.grid, color: T.bad }}>{errGuardar}</p>
+        )}
+        <div className="flex items-center gap-3 border-t px-4 py-2.5" style={{ borderColor: T.grid }}>
+          {esDecide && (
+            <button onClick={restablecer} disabled={!loaded || guardando}
+                    className="rounded px-2.5 py-1.5 text-[11px] hover:opacity-80 disabled:opacity-50"
+                    style={{ color: T.muted }}>
+              Restablecer a producción
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            <button onClick={onClose}
+                    className="rounded px-3 py-1.5 text-[11.5px] font-semibold hover:opacity-80"
+                    style={{ color: T.muted }}>
+              Cancelar
+            </button>
+            <button onClick={apply} disabled={!loaded || guardando}
+                    className="rounded-full px-4 py-1.5 text-[11.5px] font-bold hover:opacity-90 disabled:opacity-50"
+                    style={{ background: T.warn, color: "#0d0d0d" }}>
+              {esDecide ? (guardando ? "Guardando…" : "Guardar") : "Aplicar"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

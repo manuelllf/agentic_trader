@@ -88,6 +88,24 @@ export async function post<T>(path: string, body?: unknown, timeoutMs?: number):
   return res.json() as Promise<T>;
 }
 
+/** Como `post()` pero PUT — mismo manejo de 401 y de `detail` de error. */
+export async function put<T>(path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+  const res = await request(path, {
+    method: "PUT",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  }, timeoutMs);
+  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new ApiError(
+      (detail as { detail?: string }).detail ?? `La operación falló (${res.status}).`,
+      "http", res.status,
+    );
+  }
+  return res.json() as Promise<T>;
+}
+
 /** Como `post()` pero multipart (subida de fichero) — sin `Content-Type` a mano, el navegador
  *  pone el boundary. */
 async function postFile<T>(path: string, field: string, file: File): Promise<T> {
@@ -167,6 +185,15 @@ export const cancelDecision = () =>
 
 export const getMacro = () => get<Macro>("/macro");
 export const getConfig = () => get<AppConfig>("/config");
+
+// Config por etapa PERSISTIDA del escaneo con decisión (cron mensual + botón "Analizar y
+// decidir"). `overrides` vacío = usa los defaults de producción (`AppConfig.llm_defaults`).
+// Independiente del observatorio, cuya config viaja en el cuerpo de /demo/run y no se guarda.
+export const getScanDecideConfig = () =>
+  get<{ overrides: DemoRunOverrides }>("/scan/decide-config");
+// `Partial`: un `{}` borra la clave y vuelve a los defaults de producción; el backend sanea.
+export const putScanDecideConfig = (overrides: Partial<DemoRunOverrides>) =>
+  put<{ overrides: DemoRunOverrides }>("/scan/decide-config", { overrides });
 export const getScores = () => get<ScoreRow[]>("/scores");  // default del backend: TODO lo profundo
 export const getProposal = () => get<Proposal | null>("/proposal");
 export const getWatchlist = () => get<WatchItem[]>("/watchlist");

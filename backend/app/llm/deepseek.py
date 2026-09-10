@@ -50,11 +50,16 @@ _ETAPAS_CON_ALTERNATIVAS = {"prescore", "mid"}
 
 # USD por 1M de tokens: (input cache-miss, input cache-hit, output). Off-peak son la mitad del
 # peak (api-docs.deepseek.com/quick_start/pricing) — peak es 01:00-04:00 y 06:00-10:00 UTC.
+# `deepseek-flash` = alias rolling de V4.1 Flash (salió el 10-sep-2026, ~4x más barato que Pro).
+# Los nombres `-v4-pro`/`-v4-flash` siguen aceptándose por la API pero ya sirven V4.1 Flash a
+# precio Flash desde el 14-sep; se mantienen aquí para no romper trazas/tests antiguos.
 _PRICING_OFFPEAK: dict[str, tuple[float, float, float]] = {
+    "deepseek-flash": (0.15, 0.003, 0.6),
     "deepseek-v4-pro": (0.66, 0.022, 1.98),
     "deepseek-v4-flash": (0.22, 0.007, 0.66),
 }
 _PRICING_PEAK: dict[str, tuple[float, float, float]] = {
+    "deepseek-flash": (0.30, 0.006, 1.2),
     "deepseek-v4-pro": (1.32, 0.044, 3.96),
     "deepseek-v4-flash": (0.44, 0.014, 1.32),
 }
