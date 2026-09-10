@@ -87,7 +87,7 @@ def test_ningun_parametro_bindeado_es_nan(db, monkeypatch) -> None:
     assert vistos == [], f"llegaron NaN a un parámetro SQL: {vistos}"
 
 
-def test_reactivar_devuelve_una_descartada_a_nueva(db) -> None:
+def test_reactivar_devuelve_una_VETADA_POR_GATE_a_nueva(db) -> None:
     hoy = date.today()
     db.execute(text("""
         insert into momentum_senales (ticker, sector, tipo, entry_date, entry_price, ref_label,
@@ -107,6 +107,24 @@ def test_reactivar_devuelve_una_descartada_a_nueva(db) -> None:
     assert fila["estado"] == "nueva"
     assert fila["gate_resultado"] is None
     assert fila["gate_detalle"] == ""
+
+
+def test_reactivar_NO_toca_un_descarte_a_mano(db) -> None:
+    # gate_resultado NULL = descartada a mano por Manuel. Aunque el precio vuelva a la banda,
+    # su decisión se respeta hasta que la señal se resuelva.
+    hoy = date.today()
+    db.execute(text("""
+        insert into momentum_senales (ticker, sector, tipo, entry_date, entry_price, ref_label,
+            ref_price, caida_pct, resuelta, estado)
+        values ('PL','Space','suelo',:d,22,'ATH_referencia',51,57,false,'descartada')
+    """), {"d": hoy - timedelta(days=20)})
+    db.commit()
+
+    s = _senal_sin_resolver("PL")
+    s.update(entry_date=pd.Timestamp(hoy - timedelta(days=20)), entry_price=22.0, reactivar=True)
+    res = procesar_señales(db, [s])
+    assert res["reactivadas"] == 0
+    assert db.execute(text("select estado from momentum_senales where ticker='PL'")).scalar() == "descartada"
 
 
 def test_reactivar_no_toca_una_ya_nueva_ni_una_resuelta(db) -> None:

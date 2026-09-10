@@ -187,7 +187,7 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
         ret_final = float(s["ret"]) if pd.notna(s.get("ret")) else None
         dias_final = int(s["dias"]) if pd.notna(s.get("dias")) else None
         fila = db.execute(text("""
-            select id, resuelta, estado from momentum_senales
+            select id, resuelta, estado, gate_resultado from momentum_senales
             where ticker=:t and tipo=:tp and entry_date=:d
         """), {"t": s["ticker"], "tp": s["tipo"], "d": entry_date}).mappings().first()
         if fila:
@@ -204,11 +204,12 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
                 if fila["estado"] == "ejecutada":
                     resueltas_ejecutadas.append(
                         {"ticker": s["ticker"], "ret": ret_final, "motivo": motivo_final})
-            # Suelo descartado que sigue abierto y el precio ha vuelto a la banda tras salir de
-            # ella: es la MISMA señal, vuelve a 'nueva' (reaparece en Alertas activas) y se
-            # limpia el veredicto del gate para poder re-evaluarlo si se quiere.
+            # Suelo VETADO POR EL GATE que sigue abierto y el precio ha vuelto a la banda tras
+            # salir de ella: es la MISMA señal, vuelve a 'nueva' y se limpia el veredicto (la
+            # noticia que la vetó pudo quedar vieja). Un descarte A MANO NO se reactiva: es una
+            # decisión explícita, se respeta hasta que la señal se resuelva.
             elif (not fila["resuelta"] and fila["estado"] == "descartada"
-                  and s.get("reactivar")):
+                  and fila["gate_resultado"] == "falla" and s.get("reactivar")):
                 db.execute(text("""
                     update momentum_senales
                     set estado = 'nueva', gate_resultado = null, gate_detalle = ''

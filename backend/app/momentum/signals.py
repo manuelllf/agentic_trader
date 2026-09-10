@@ -171,8 +171,8 @@ def entradas_suelo(precios: pd.Series, aperturas: pd.Series, ath: float,
     todas cerrando al mismo objetivo -> n y % de acierto inflados por una sola tesis.
 
     `reactivar`: True cuando la entrada abierta de un nivel salió de la banda y AHORA ha vuelto
-    a ella -- `scheduler.procesar_señales` lo usa para devolver a 'nueva' esa misma fila si
-    estaba descartada (misma señal, no una nueva), y avisar.
+    a ella -- `scheduler.procesar_señales` lo usa para devolver a 'nueva' esa misma fila SOLO si
+    la vetó el gate (`gate_resultado='falla'`); un descarte a mano se respeta y no se reactiva.
 
     Dos correcciones necesarias frente al prototipo inicial de backtest (9-sep-2026, casos
     reales encontrados con LUNR y ABSI):
