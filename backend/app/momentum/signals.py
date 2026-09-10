@@ -11,8 +11,11 @@ sistema).
 
 Reglas de entrada:
 - ZIGZAG: pivots de al menos 20% de reversal. Una entrada se dispara cuando el precio cae
-  >=40% desde el ULTIMO PICO CONFIRMADO, y no se re-dispara hasta que se confirma un pico
-  nuevo (una entrada por tramo -- "armado" se resetea solo con un pico posterior).
+  >=40% desde el ULTIMO PICO CONFIRMADO **y** además está >=45% bajo el ATH real de la serie.
+  Sin la segunda condición, un -40% desde un pico que fue un spike (RKLB $150) deja el precio
+  aún caro en términos históricos: esa banda (40-45% bajo ATH) concentra todos los timeouts
+  rojos del zigzag. No se re-dispara hasta que se confirma un pico nuevo (una entrada por
+  tramo -- "armado" se resetea solo con un pico posterior).
 - SUELO REACTIVO (reemplaza al doble-suelo por clusters el 9-sep-2026 -- ver
   `entradas_suelo()`): un mínimo zigzag confirmado (rebote >=20%) a >=60% bajo el ATH real
   establece un nivel de referencia; desde ahí, una vuelta a ese nivel (banda ±10%) dispara
@@ -54,6 +57,11 @@ REVERSAL_PCT = 0.20
 ENTRY_TH = 0.40
 SUELO_TOL = 0.10
 SUELO_MIN_BAJO_ATH = 0.60  # subido de 0.40 el 9-sep-2026: barrido real, "escalón" claro en 55-60%
+# Suelo ADICIONAL para el zigzag: el precio de entrada tiene que estar >=45% bajo el ATH real,
+# no solo -40% del último pico. Barrido: la banda 40-45% bajo ATH concentra TODOS los timeouts
+# rojos del zigzag (RKLB, HQ, AVAV, IONQ...); de 45% en adelante, 100% en verde. 0.50 recorta
+# demasiadas ganadoras; 0.45 es el punto donde mediana, peor caso y varianza mejoran a la vez.
+ZIGZAG_MIN_BAJO_ATH = 0.45
 TOPE_DIAS = 90
 CUIDADO_DIAS = 21  # p75 real de dias-a-objetivo entre las señales ganadoras
 
@@ -110,9 +118,14 @@ def zigzag(precios: pd.Series, umbral: float) -> list[tuple]:
     return pivots
 
 
-def entradas_zigzag(precios: pd.Series, picos: list[tuple], umbral: float) -> list[dict]:
+def entradas_zigzag(precios: pd.Series, picos: list[tuple], umbral: float,
+                    ath_min: float = ZIGZAG_MIN_BAJO_ATH) -> list[dict]:
     """Una entrada por tramo: no se re-arma hasta que se confirma un pico NUEVO tras la
-    ultima entrada."""
+    ultima entrada. Ademas del -`umbral` desde el ultimo pico, el precio de entrada tiene que
+    estar >=`ath_min` bajo el ATH real de la serie: un -40% desde un pico que fue un spike deja
+    el precio aun caro (ver ZIGZAG_MIN_BAJO_ATH). Un disparo del -`umbral` que NO pasa ese
+    filtro CONSUME el tramo igual (no se reintenta mas abajo en el mismo tramo)."""
+    ath = precios.max()
     pico_ref, pico_ref_fecha = precios.iloc[0], precios.index[0]
     ultimo_pico_usado = None
     salidas = []
@@ -128,9 +141,10 @@ def entradas_zigzag(precios: pd.Series, picos: list[tuple], umbral: float) -> li
             continue
         armado = (ultimo_pico_usado is None) or (pico_ref_fecha > ultimo_pico_usado)
         if armado and caida <= -umbral:
-            salidas.append({"entry_date": fecha, "entry_price": precio, "ref_price": techo,
-                             "ref_date": pico_ref_fecha})
             ultimo_pico_usado = pico_ref_fecha
+            if (1 - precio / ath) >= ath_min:
+                salidas.append({"entry_date": fecha, "entry_price": precio, "ref_price": techo,
+                                 "ref_date": pico_ref_fecha})
     return salidas
 
 
