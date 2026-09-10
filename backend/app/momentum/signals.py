@@ -15,8 +15,11 @@ Reglas de entrada:
   nuevo (una entrada por tramo -- "armado" se resetea solo con un pico posterior).
 - SUELO REACTIVO (reemplaza al doble-suelo por clusters el 9-sep-2026 -- ver
   `entradas_suelo()`): un mínimo zigzag confirmado (rebote >=20%) a >=60% bajo el ATH real
-  establece un nivel de referencia; desde ahí, CUALQUIER vuelta a ese nivel (banda ±10%)
-  dispara una entrada al toque, sin exigir que ese toque en concreto rebote por su cuenta.
+  establece un nivel de referencia; desde ahí, una vuelta a ese nivel (banda ±10%) dispara
+  una entrada al toque, sin exigir que ese toque en concreto rebote por su cuenta. UNA sola
+  entrada abierta por nivel: mientras esa no se resuelva (objetivo o 90 días), volver a la
+  banda NO abre otra -- sigue siendo la misma tesis, aunque se haya descartado. Cuando
+  resuelve, la siguiente vuelta al nivel sí abre una nueva.
 - Si una misma fecha+ticker produce zigzag Y suelo a la vez, se marca 'ambos'.
 
 Salida: objetivo por tramos según el arranque de precio a 3 sesiones (flojo <5% -> +11%,
@@ -131,7 +134,8 @@ def entradas_zigzag(precios: pd.Series, picos: list[tuple], umbral: float) -> li
     return salidas
 
 
-def entradas_suelo(precios: pd.Series, ath: float, ath_min: float = SUELO_MIN_BAJO_ATH,
+def entradas_suelo(precios: pd.Series, aperturas: pd.Series, ath: float,
+                    ath_min: float = SUELO_MIN_BAJO_ATH,
                     tol: float = SUELO_TOL, reversal: float = REVERSAL_PCT) -> list[dict]:
     """Suelo "reactivo" -- sustituye el 9-sep-2026 al doble-suelo por clusters (`agrupar_suelos`,
     ya retirado). Motivo real: exigir que el TOQUE que dispara la entrada sea él mismo un
@@ -141,10 +145,20 @@ def entradas_suelo(precios: pd.Series, ath: float, ath_min: float = SUELO_MIN_BA
 
     Un mínimo zigzag confirmado que además está a >=ath_min bajo el ATH real establece un
     "nivel" de referencia (con el PRECIO MEDIO de sus toques, no el último). Desde que se
-    establece, CUALQUIER vuelta al nivel (banda simétrica ±tol, no solo "por debajo") dispara
-    una entrada al toque -- ya sabemos que ese precio es soporte real, no hace falta que ese
-    toque en concreto rebote por su cuenta. 'armado' evita repetir mientras el precio se queda
-    pegado a la banda.
+    establece, una vuelta al nivel (banda simétrica ±tol, no solo "por debajo") dispara una
+    entrada al toque -- ya sabemos que ese precio es soporte real, no hace falta que ese toque
+    en concreto rebote por su cuenta.
+
+    UNA entrada abierta por nivel a la vez (10-sep-2026): tras disparar, el nivel queda
+    bloqueado hasta que ESA entrada se resuelve (`resolver_salida`: objetivo o 90 días). Volver
+    a la banda mientras sigue abierta no crea otra -- es la misma tesis, aunque se haya
+    descartado. Cuando resuelve, la siguiente salida-y-vuelta a la banda ('armado') sí abre una
+    nueva. Sin esto, un valor que orbita el nivel disparaba 5-6 entradas solapadas en semanas,
+    todas cerrando al mismo objetivo -> n y % de acierto inflados por una sola tesis.
+
+    `reactivar`: True cuando la entrada abierta de un nivel salió de la banda y AHORA ha vuelto
+    a ella -- `scheduler.procesar_señales` lo usa para devolver a 'nueva' esa misma fila si
+    estaba descartada (misma señal, no una nueva), y avisar.
 
     Dos correcciones necesarias frente al prototipo inicial de backtest (9-sep-2026, casos
     reales encontrados con LUNR y ABSI):
@@ -191,17 +205,39 @@ def entradas_suelo(precios: pd.Series, ath: float, ath_min: float = SUELO_MIN_BA
         precio_ref = nivel["precio_ref"]
         vigilancia = precios.loc[nivel["establecido_en"]:].iloc[1:]
         armado = True
+        # Fecha hasta la que este nivel no puede volver a disparar: la salida de la entrada
+        # anterior. `None` cuando no hay entrada abierta pendiente en este nivel.
+        bloqueado_hasta = None
+        abierta_idx = None            # indice en `entradas` de la entrada de este nivel sin resolver
         for fecha, precio_hoy in vigilancia.items():
             if fecha < EVAL_START:
+                continue
+            if abierta_idx is not None:
+                break                       # ya hay una entrada abierta en el nivel: no otra
+            if bloqueado_hasta is not None and fecha <= bloqueado_hasta:
                 continue
             dentro = abs(precio_hoy / precio_ref - 1) <= tol
             if dentro and armado:
                 entradas.append({"entry_date": fecha, "entry_price": precio_hoy,
-                                  "_nivel_ref": precio_ref,
+                                  "_nivel_ref": precio_ref, "reactivar": False,
                                   "desde_noticias": nivel["primer_toque"]})
                 armado = False
+                sal = resolver_salida(precios, aperturas, fecha, precio_hoy)
+                if sal["resuelta"]:
+                    bloqueado_hasta = sal["exit_date"]
+                else:
+                    abierta_idx = len(entradas) - 1
             elif not dentro:
                 armado = True
+        # La entrada de este nivel sigue abierta: si el precio SALIO de la banda tras entrar y
+        # AHORA ha vuelto a ella, hay que reactivarla (misma señal, no una nueva -- lo consume
+        # `scheduler.procesar_señales` para devolver a 'nueva' una descartada).
+        if abierta_idx is not None:
+            post = vigilancia.loc[entradas[abierta_idx]["entry_date"]:].iloc[1:]
+            if len(post):
+                salio = bool(((post / precio_ref - 1).abs() > tol).any())
+                vuelta = bool(abs(post.iloc[-1] / precio_ref - 1) <= tol)
+                entradas[abierta_idx]["reactivar"] = salio and vuelta
 
     por_fecha: dict = {}
     for e in entradas:
@@ -211,7 +247,8 @@ def entradas_suelo(precios: pd.Series, ath: float, ath_min: float = SUELO_MIN_BA
         if mejor:
             por_fecha[e["entry_date"]] = e
     return [{"entry_date": e["entry_date"], "entry_price": e["entry_price"],
-             "desde_noticias": e["desde_noticias"]} for e in por_fecha.values()]
+             "desde_noticias": e["desde_noticias"], "reactivar": e["reactivar"]}
+            for e in por_fecha.values()]
 
 
 def objetivo_por_arranque(retorno_3_sesiones: float) -> float:
@@ -279,9 +316,10 @@ def señales_de_ticker(ticker: str) -> list[dict]:
             # ATH real de la serie (no el pico del tramo) + fecha del último pico confirmado:
             # es el contexto mínimo que necesita el gate de noticias (ver momentum/news_gate.py).
             "ath": ath, "desde_noticias": entrada["ref_date"],
+            "reactivar": False,   # solo el suelo se reactiva; el zigzag no reusa nivel
             **salida,
         })
-    for entrada in entradas_suelo(precios, ath):
+    for entrada in entradas_suelo(precios, aperturas, ath):
         salida = resolver_salida(precios, aperturas, entrada["entry_date"], entrada["entry_price"])
         señales.append({
             "ticker": ticker, "sector": sector, "tipo": "suelo",
@@ -291,6 +329,7 @@ def señales_de_ticker(ticker: str) -> list[dict]:
             # Sin "último pico" natural en un suelo -- se usa el toque que estableció el nivel
             # (inicio de la historia de esta caída) como ventana de noticias.
             "ath": ath, "desde_noticias": entrada["desde_noticias"],
+            "reactivar": bool(entrada.get("reactivar", False)),
             **salida,
         })
     return señales
@@ -309,6 +348,7 @@ def _combinar_ambos(señales: list[dict]) -> list[dict]:
             base = grupo.iloc[0].to_dict()
             base["tipo"] = "ambos"
             base["caida_pct"] = grupo["caida_pct"].max()
+            base["reactivar"] = bool(grupo["reactivar"].any())
             combinadas.append(base)
     return sorted(combinadas, key=lambda r: r["entry_date"], reverse=True)
 

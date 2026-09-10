@@ -170,6 +170,7 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
     apagados = {r[0] for r in db.execute(text(
         "select ticker from momentum_universo_estado where mantener = false")).all()}
     nuevas, tickers_nuevos = 0, []
+    reactivadas = []            # descartadas de suelo que vuelven a zona de entrada (misma señal)
     resueltas_ejecutadas = []   # posiciones REALES (estado='ejecutada') que acaban de resolverse
     for s in todas:
         entry_date = s["entry_date"].date()
@@ -203,6 +204,18 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
                 if fila["estado"] == "ejecutada":
                     resueltas_ejecutadas.append(
                         {"ticker": s["ticker"], "ret": ret_final, "motivo": motivo_final})
+            # Suelo descartado que sigue abierto y el precio ha vuelto a la banda tras salir de
+            # ella: es la MISMA señal, vuelve a 'nueva' (reaparece en Alertas activas) y se
+            # limpia el veredicto del gate para poder re-evaluarlo si se quiere.
+            elif (not fila["resuelta"] and fila["estado"] == "descartada"
+                  and s.get("reactivar")):
+                db.execute(text("""
+                    update momentum_senales
+                    set estado = 'nueva', gate_resultado = null, gate_detalle = ''
+                    where id = :id
+                """), {"id": fila["id"]})
+                if s["ticker"] not in apagados:
+                    reactivadas.append(s["ticker"])
             continue
         db.execute(text("""
             insert into momentum_senales
@@ -231,6 +244,14 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
             db, title=f"Sala Real X: {nuevas} señal{plural} nueva{plural and 's'}",
             body=", ".join(tickers_nuevos), url="/momentum", tag="agentic-momentum",
         )
+    if reactivadas:
+        logger.info("Momentum: %s señal(es) de suelo reactivada(s) (vuelven a zona).",
+                    len(reactivadas))
+        plural = "es" if len(reactivadas) != 1 else ""
+        push.send_to_all(
+            db, title=f"Sala Real X: {len(reactivadas)} señal{plural} vuelve{'n' if plural else ''} a zona",
+            body=", ".join(dict.fromkeys(reactivadas)), url="/momentum", tag="agentic-momentum",
+        )
     for r in resueltas_ejecutadas:
         motivo_txt = "objetivo alcanzado" if r["motivo"] == "objetivo" else "90 días cumplidos"
         push.send_to_all(
@@ -238,7 +259,8 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
             body=f"Resultado {r['ret']:+.1f}%. Revisa si toca vender.",
             url="/momentum", tag="agentic-momentum",
         )
-    return {"nuevas": nuevas, "resueltas": len(resueltas_ejecutadas)}
+    return {"nuevas": nuevas, "reactivadas": len(reactivadas),
+            "resueltas": len(resueltas_ejecutadas)}
 
 
 def run_momentum_scan(db) -> dict:  # noqa: ANN001 — Session, evitar el import circular con db.py

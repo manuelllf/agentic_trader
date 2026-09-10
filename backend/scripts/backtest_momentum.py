@@ -68,7 +68,7 @@ def _senales_por_metodo(ticker: str) -> dict[str, list[dict]]:
     out: dict[str, list[dict]] = {"zigzag": [], "suelo": []}
     for metodo, entradas in (
         ("zigzag", signals.entradas_zigzag(precios, altos, signals.ENTRY_TH)),
-        ("suelo", signals.entradas_suelo(precios, ath)),
+        ("suelo", signals.entradas_suelo(precios, aperturas, ath)),
     ):
         for e in entradas:
             salida = signals.resolver_salida(precios, aperturas, e["entry_date"], e["entry_price"])

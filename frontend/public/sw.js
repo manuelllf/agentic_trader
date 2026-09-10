@@ -1,6 +1,7 @@
 // Service worker: instalación PWA + notificaciones push (VAPID).
 // El caché solo toca GETs del MISMO origen (nunca la API del backend, que vive en otro puerto).
-const CACHE = "agentic-v2";
+// v3: iconos de la PWA regenerados con el logo actual (línea de señal + punto de entrada).
+const CACHE = "agentic-v3";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) =>
