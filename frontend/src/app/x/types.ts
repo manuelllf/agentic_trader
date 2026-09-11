@@ -21,6 +21,18 @@ export type Senal = {
   gate_detalle: string;
   cuidado?: boolean;
   mantener?: boolean;  // solo lo trae /historial: false = ticker apagado
+  // Termómetro de régimen (10-sep-2026, ver app/momentum/regimen.py) congelado al nacer la
+  // señal -- null = no medido (señales de antes de esta fecha). Informativo, nunca bloqueó
+  // la entrada: solo dice si el gate la habría descartado SI hubiera existido ese día.
+  cesta_60d?: number | string | null;
+  gate_regimen?: boolean | number | null;
+};
+
+// Termómetro de régimen EN VIVO -- GET /momentum/regimen, ver app/momentum/regimen.py.
+export type Regimen = {
+  cesta_60d: number | null;
+  umbral: number;
+  activo: boolean;
 };
 
 export type Validacion = {

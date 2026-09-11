@@ -21,7 +21,8 @@ _DDL = """create table momentum_senales (
     entry_date date, entry_price numeric, ref_label text, ref_price numeric,
     caida_pct numeric, resuelta boolean, exit_date date, ret numeric, motivo text,
     dias integer, estado text, gate_resultado text, gate_detalle text,
-    created_at timestamp, ath numeric, desde_noticias date,
+    created_at timestamp, ath numeric, desde_noticias date, cesta_60d numeric,
+    gate_regimen boolean,
     unique (ticker, tipo, entry_date))"""
 
 
@@ -156,3 +157,34 @@ def test_senal_resuelta_conserva_ret_y_dias(db) -> None:
     assert fila["ret"] == 27.3
     assert fila["motivo"] == "objetivo"
     assert fila["dias"] == 26
+
+
+def test_cesta_60d_se_congela_solo_en_senales_nuevas(db, monkeypatch) -> None:
+    # Sin universo: no se calcula nada, columnas a NULL (no rompe nada, p.ej. backfills viejos).
+    procesar_señales(db, [_senal_sin_resolver("SINU")])
+    fila = db.execute(text(
+        "select cesta_60d, gate_regimen from momentum_senales where ticker='SINU'"
+    )).mappings().one()
+    assert fila["cesta_60d"] is None
+    assert fila["gate_regimen"] is None
+
+    # Con universo: se calcula UNA vez y se congela en la fila nueva.
+    monkeypatch.setattr("app.momentum.regimen.cesta_60d", lambda universo: -19.5)
+    procesar_señales(db, [_senal_sin_resolver("CONU")], universo=["CONU"])
+    fila = db.execute(text(
+        "select cesta_60d, gate_regimen from momentum_senales where ticker='CONU'"
+    )).mappings().one()
+    assert fila["cesta_60d"] == -19.5
+    assert bool(fila["gate_regimen"]) is True
+
+    # Una señal ya existente (p.ej. se resuelve hoy) NO se re-etiqueta con el regimen de hoy --
+    # se queda con el valor congelado que tenía al nacer.
+    monkeypatch.setattr("app.momentum.regimen.cesta_60d", lambda universo: +5.0)
+    s = _senal_sin_resolver("CONU")
+    s.update(resuelta=True, ret=12.0, motivo="objetivo", dias=15.0, exit_date=pd.Timestamp(date.today()))
+    procesar_señales(db, [s], universo=["CONU"])
+    fila = db.execute(text(
+        "select cesta_60d, gate_regimen, resuelta from momentum_senales where ticker='CONU'"
+    )).mappings().one()
+    assert fila["resuelta"]
+    assert fila["cesta_60d"] == -19.5   # sigue el de cuando nació, no el de hoy

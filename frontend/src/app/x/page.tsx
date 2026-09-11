@@ -12,12 +12,12 @@ import { money, signMoney } from "@/lib/format";
 import {
   adminDetectarCandidatos, adminScan, buscarCandidato, comprobarFiltrosCandidato,
   crearCandidatoManual, decidirCandidato, descartarSenal, ejecutarSenal, getAlertas,
-  getCandidatos, getCuenta, getGateProgreso, getHistorial, getPreciosVivos, getScanProgreso,
-  getValidacion, lanzarGate, lanzarGateCandidato, setMantenerUniverso,
+  getCandidatos, getCuenta, getGateProgreso, getHistorial, getPreciosVivos, getRegimen,
+  getScanProgreso, getValidacion, lanzarGate, lanzarGateCandidato, setMantenerUniverso,
 } from "./api";
 import type { GateProgreso, ScanProgreso } from "./api";
 import { MONO, NUMS, SANS, T } from "./tokens";
-import type { Candidato, Cuenta, Senal, Validacion } from "./types";
+import type { Candidato, Cuenta, Regimen, Senal, Validacion } from "./types";
 
 const TIPO_LABEL: Record<string, string> = {
   zigzag: "zigzag", suelo: "doble suelo", ambos: "zigzag + doble suelo",
@@ -32,6 +32,21 @@ function fmtRet(v: number | string | null): string {
   if (v == null) return "-";
   const n = Number(v);
   return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+}
+
+// `gate_regimen` viaja como boolean o 0/1 según el driver de BD -- normaliza a un booleano real.
+// Y solo cuenta si además queda el valor de la cesta congelada, para poder explicar el porqué.
+function esGateRegimen(s: Senal): boolean {
+  return (s.gate_regimen === true || s.gate_regimen === 1) && s.cesta_60d != null;
+}
+
+// La etiqueta es una foto del día que nació la señal, no un aviso en vivo -- el título compara
+// esa foto con la cesta de HOY (si ya cargó) para que no se lea como "cuidado, esto va mal
+// ahora mismo" cuando el régimen pudo sanearse desde entonces.
+function tituloRegimen(s: Senal, regimen: Regimen | null): string {
+  const nacio = `Nació con la cesta del universo a ${Number(s.cesta_60d).toFixed(1)}% (60 sesiones) -- el gate de régimen la habría bloqueado.`;
+  const hoy = regimen?.cesta_60d != null ? ` Hoy la cesta está en ${regimen.cesta_60d.toFixed(1)}%.` : "";
+  return `${nacio}${hoy} Foto de su día de entrada, no una alarma en vivo.`;
 }
 
 /** Precio de hoy = precio de entrada × (1 + retorno actual). El backend no lo manda aparte
@@ -54,6 +69,7 @@ function SalaMomentumRoom() {
   const [historial, setHistorial] = useState<Senal[] | null>(null);
   const [validacion, setValidacion] = useState<Validacion[] | null>(null);
   const [candidatos, setCandidatos] = useState<Candidato[] | null>(null);
+  const [regimen, setRegimen] = useState<Regimen | null>(null);
   const [fx, setFx] = useState<number | null>(null);
   const [preciosVivos, setPreciosVivos] = useState<Record<string, number | null>>({});
   const [error, setError] = useState("");
@@ -67,6 +83,7 @@ function SalaMomentumRoom() {
   const [detectMsg, setDetectMsg] = useState("");
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
   const [histVisibles, setHistVisibles] = useState(5);
+  const [detalleHistorial, setDetalleHistorial] = useState<Senal | null>(null);
 
   // Recarga: re-pide datos y actualiza estado sin navegar ni desmontar la sala -- el scroll y
   // cualquier fila desplegada se quedan donde estaban. La primera carga (sin datos aún) usa
@@ -92,12 +109,15 @@ function SalaMomentumRoom() {
     }
     cargandoRef.current = true;
     try {
-      const [c, a, h, v, cd, fxr] = await Promise.all([
+      const [c, a, h, v, cd, fxr, reg] = await Promise.all([
         getCuenta(), getAlertas(), getHistorial(), getValidacion(), getCandidatos(),
         getFx().catch(() => null),
+        // Termómetro de régimen: informativo, si falla (yfinance caído) no debe tumbar la carga.
+        getRegimen().catch(() => null),
       ]);
       setCuenta(c); setAlertas(a); setHistorial(h); setValidacion(v); setCandidatos(cd);
       if (fxr?.rate) setFx(fxr.rate);
+      setRegimen(reg);
       setError("");
       // Precio en vivo (activas + descartadas que siguen en curso en el histórico): referencia
       // visual aparte, sin esperar a que responda para terminar de cargar el resto -- si
@@ -425,13 +445,14 @@ function SalaMomentumRoom() {
 
         {/* ---------- Alertas activas ---------- */}
         <Section title="Alertas activas" count={activas.length}>
+          {regimen && <RegimenChip regimen={regimen} />}
           <p className="mb-2 text-[10.5px]" style={{ color: T.muted }}>
             Sin caducidad: pasados 21 días se marcan &quot;cuidado&quot; (p75 de días-a-objetivo entre las ganadoras históricas).
           </p>
           {activas.length === 0 ? (
             <Empty>Ninguna señal sin resolver ahora mismo.</Empty>
           ) : (
-            <AlertasCarrusel alertas={activas} empates={empatesPorFecha} preciosVivos={preciosVivos} onCambio={actualizarAlerta} />
+            <AlertasCarrusel alertas={activas} empates={empatesPorFecha} preciosVivos={preciosVivos} regimen={regimen} onCambio={actualizarAlerta} />
           )}
         </Section>
 
@@ -488,7 +509,8 @@ function SalaMomentumRoom() {
                 ? (vivo / Number(s.entry_price) - 1) * 100
                 : Number(s.ret);
               return (
-                <div key={s.id} className="flex items-center gap-3 px-3.5 py-3"
+                <div key={s.id} onClick={() => setDetalleHistorial(s)}
+                     className="flex cursor-pointer items-center gap-3 px-3.5 py-3 transition-colors hover:bg-white/5"
                      style={i > 0 ? { borderTop: `1px solid ${T.grid}` } : undefined}>
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border"
                         style={ejecutada
@@ -504,6 +526,11 @@ function SalaMomentumRoom() {
                   <div className="min-w-0 flex-1">
                     <b style={{ color: T.ink }}>{s.ticker}</b>
                     {s.mantener === false && <span className="ml-1.5 text-[9px]" style={{ color: T.warn }}>apagado</span>}
+                    {esGateRegimen(s) && (
+                      <span className="ml-1.5 text-[9px]" style={{ color: T.bad }} title={tituloRegimen(s, regimen)}>
+                        ⛔ régimen
+                      </span>
+                    )}
                     <span className="ml-2 text-[11px]" style={{ color: T.muted }}>
                       {TIPO_LABEL[s.tipo]} · {fmtFecha(s.entry_date)}
                     </span>
@@ -554,6 +581,10 @@ function SalaMomentumRoom() {
       {buscadorAbierto && (
         <CandidatoBuscadorModal onClose={() => setBuscadorAbierto(false)} onCambio={actualizarCandidato} />
       )}
+      {detalleHistorial && (
+        <HistorialModal s={detalleHistorial} precioVivo={preciosVivos[detalleHistorial.ticker] ?? null}
+                        regimen={regimen} onClose={() => setDetalleHistorial(null)} />
+      )}
     </div>
   );
 }
@@ -563,8 +594,9 @@ function SalaMomentumRoom() {
 /** Carrusel horizontal deslizable (scroll-snap nativo, sin librería) — todas las alertas
  *  cargadas, sin paginar (con 34 tickers no hace falta, ver feedback 7-sep-2026). Los puntos
  *  reflejan la posición real de scroll. */
-function AlertasCarrusel({ alertas, empates, preciosVivos, onCambio }: {
+function AlertasCarrusel({ alertas, empates, preciosVivos, regimen, onCambio }: {
   alertas: Senal[]; empates: Map<string, Senal[]>; preciosVivos: Record<string, number | null>;
+  regimen: Regimen | null;
   onCambio: (id: number, patch: Partial<Senal>) => void;
 }) {
   const [activo, setActivo] = useState(0);
@@ -579,7 +611,7 @@ function AlertasCarrusel({ alertas, empates, preciosVivos, onCambio }: {
           const grupo = empates.get(s.entry_date) ?? [];
           return (
             <div key={s.id} className="w-full shrink-0 snap-start">
-              <AlertaCard s={s} grupo={grupo} precioVivo={preciosVivos[s.ticker] ?? null} onCambio={onCambio} />
+              <AlertaCard s={s} grupo={grupo} precioVivo={preciosVivos[s.ticker] ?? null} regimen={regimen} onCambio={onCambio} />
             </div>
           );
         })}
@@ -752,6 +784,34 @@ function Collapsible({ title, count, children }: { title: string; count?: number
   );
 }
 
+/** Termómetro de régimen (10-sep-2026): cesta equiponderada del universo a 60 sesiones. Solo
+ *  informativo -- nunca bloquea entradas, ver docs/momentum-sim/RESULTADOS.md para el porqué
+ *  (un único episodio histórico real, sin base para automatizarlo todavía). */
+function RegimenChip({ regimen }: { regimen: Regimen }) {
+  if (regimen.cesta_60d == null) return null;
+  const feo = regimen.activo;
+  return (
+    <div className="mb-2.5 rounded-lg border px-2.5 py-1.5 text-[11px]"
+         style={{ borderColor: feo ? "rgba(224,119,108,0.4)" : T.grid, background: feo ? "rgba(224,119,108,0.07)" : "transparent" }}>
+      <div className="flex items-center gap-2">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: feo ? T.bad : T.muted }} />
+        <span style={{ color: T.ink2 }}>
+          Salud del universo (60d):{" "}
+          <b className={NUMS} style={{ color: feo ? T.bad : T.ink }}>{regimen.cesta_60d.toFixed(1)}%</b>
+        </span>
+      </div>
+      {/* Leyenda SIEMPRE visible, no solo al pasar el ratón -- en móvil el title del tooltip
+          nunca se ve. */}
+      <p className="mt-1 pl-3.5 text-[9.5px] leading-snug" style={{ color: T.muted }}>
+        Cómo le ha ido, de media, al conjunto de tickers del universo en los últimos 3 meses.{" "}
+        {feo
+          ? "Por debajo de este nivel el sector lleva tiempo cayendo por su cuenta aunque el mercado esté bien -- informativo, no bloquea nada."
+          : "Solo referencia, no bloquea ninguna entrada."}
+      </p>
+    </div>
+  );
+}
+
 function Empty({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border px-4 py-5 text-center text-[12px]"
@@ -773,8 +833,9 @@ function CargarMasBtn({ onClick, restantes }: { onClick: () => void; restantes: 
   );
 }
 
-function AlertaCard({ s, grupo, precioVivo, onCambio }: {
-  s: Senal; grupo: Senal[]; precioVivo: number | null; onCambio: (id: number, patch: Partial<Senal>) => void;
+function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
+  s: Senal; grupo: Senal[]; precioVivo: number | null; regimen: Regimen | null;
+  onCambio: (id: number, patch: Partial<Senal>) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
@@ -873,6 +934,11 @@ function AlertaCard({ s, grupo, precioVivo, onCambio }: {
             {TIPO_LABEL[s.tipo]}
           </span>
           <div className="mt-1 whitespace-nowrap text-[9.5px] leading-tight" style={{ color: T.muted }}>
+            {esGateRegimen(s) && (
+              <b style={{ color: T.bad }} title={tituloRegimen(s, regimen)}>
+                ⛔ régimen ·{" "}
+              </b>
+            )}
             {s.cuidado && <b style={{ color: T.warn }}>CUIDADO · </b>}{fmtFecha(s.entry_date)} · {s.dias}d
           </div>
         </div>
@@ -973,6 +1039,107 @@ function AlertaCard({ s, grupo, precioVivo, onCambio }: {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Card expandida de una fila de Historial (9-sep-2026): mismo lenguaje visual que `AlertaCard`
+ *  pero sin sus acciones (ya está descartada o resuelta, no hay nada que ejecutar) -- solo para
+ *  mirar el detalle de una señal que quizá interese reconsiderar, sobre todo las "en curso"
+ *  (descartadas pero aún sin resolver, ver doc). En "resuelta" no hay "hoy" que valga -- el
+ *  precio de salida es el mismo cálculo que ya usa `precioHoy` sobre el `ret` final guardado. */
+function HistorialModal({ s, precioVivo, regimen, onClose }: {
+  s: Senal; precioVivo: number | null; regimen: Regimen | null; onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const enCurso = !s.resuelta;
+  const precioMostrado = enCurso ? (precioVivo ?? precioHoy(s)) : precioHoy(s);
+  const retornoMostrado = enCurso && precioVivo != null
+    ? (precioVivo / Number(s.entry_price) - 1) * 100
+    : Number(s.ret);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6"
+         onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={`Detalle señal ${s.ticker}`}
+           className="w-full max-w-md rounded-2xl border shadow-xl"
+           style={{ borderColor: T.ring, background: T.panel }}
+           onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: T.grid }}>
+          <div className="flex items-baseline gap-1.5">
+            <span className={`text-[16px] font-bold ${MONO}`} style={{ color: T.ink }}>{s.ticker}</span>
+            <span className="text-[10.5px]" style={{ color: T.muted }}>{s.sector}</span>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
+        </div>
+
+        <div className="p-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-wide"
+                  style={{ background: "rgba(255,255,255,0.06)", color: T.ink2 }}>
+              {TIPO_LABEL[s.tipo]}
+            </span>
+            <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-wide"
+                  style={enCurso ? { background: "rgba(250,178,25,0.14)", color: T.warn } : { background: "rgba(255,255,255,0.06)", color: T.ink2 }}>
+              {enCurso ? "en curso" : "resuelta"}
+            </span>
+            {!enCurso && s.motivo && (
+              <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-wide"
+                    style={{ background: "rgba(255,255,255,0.06)", color: T.ink2 }}>
+                {s.motivo === "objetivo" ? "objetivo" : "tiempo"}
+              </span>
+            )}
+            {s.mantener === false && <span className="text-[9px]" style={{ color: T.warn }}>apagado</span>}
+            {esGateRegimen(s) && (
+              <span className="text-[9px] font-semibold" style={{ color: T.bad }} title={tituloRegimen(s, regimen)}>
+                ⛔ régimen
+              </span>
+            )}
+          </div>
+
+          <div className="mt-3 text-[12px]" style={{ color: T.ink2 }}>
+            <b className={NUMS} style={{ color: T.bad }}>-{Number(s.caida_pct).toFixed(1)}%</b> bajo el{" "}
+            <span style={{ color: T.muted }}>
+              {s.ref_label === "ATH_referencia" ? "ATH" : "último pico"} (${money(s.ref_price)})
+            </span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
+            <div className="min-w-0">
+              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Señal</div>
+              <b className={`${NUMS} text-[14px]`} style={{ color: T.ink }}>${money(s.entry_price)}</b>
+            </div>
+            <div className="min-w-0">
+              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>{enCurso ? "Hoy" : "Salida"}</div>
+              <b className={`${NUMS} text-[14px]`} style={{ color: T.ink }}>${money(precioMostrado)}</b>
+            </div>
+            <div className="min-w-0">
+              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Retorno</div>
+              <b className={`${NUMS} text-[14px]`} style={{ color: retornoMostrado >= 0 ? T.good : T.bad }}>{fmtRet(retornoMostrado)}</b>
+            </div>
+          </div>
+
+          <div className="mt-3 text-[11px]" style={{ color: T.muted }}>
+            Gate:{" "}
+            {s.gate_resultado == null ? <b style={{ color: T.warn }}>pendiente</b>
+              : s.gate_resultado === "pasa" ? <b style={{ color: T.good }}>pasa</b>
+              : <b style={{ color: T.bad }}>falla</b>}
+            {s.gate_detalle && <span>. {s.gate_detalle}</span>}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between border-t pt-3 text-[10.5px]" style={{ borderColor: T.grid, color: T.muted }}>
+            <span>Entró {fmtFecha(s.entry_date)}</span>
+            {enCurso
+              ? <span style={{ color: T.warn }}>{s.dias}d en seguimiento</span>
+              : s.exit_date && <span>Salió {fmtFecha(s.exit_date)} · {s.dias}d</span>}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1172,7 +1339,7 @@ function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => void; on
     && !!candidato.filtro_sector_pass && !!candidato.estadistica_pass && candidato.gate_pass == null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10"
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6"
          onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-label="Añadir ticker"
            className="w-full max-w-md rounded-xl border shadow-xl"

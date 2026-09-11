@@ -141,7 +141,7 @@ def backfill_señales(ticker: str, db: Session) -> None:
     Mejor esfuerzo: si yfinance falla aquí, el cron de mañana lo recupera solo."""
     from app.scheduler import procesar_señales  # import perezoso, evita el circular con scheduler
     try:
-        procesar_señales(db, signals.compute_signals([ticker]))
+        procesar_señales(db, signals.compute_signals([ticker]), universo=list(signals.UNIVERSO))
     except Exception:
         logger.exception("Backfill de señales tras incorporar %s falló", ticker)
 

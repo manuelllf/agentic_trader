@@ -53,6 +53,21 @@ def cuenta(db: Session = Depends(get_db)) -> dict:
     return resumen
 
 
+@router.get("/regimen")
+def regimen_actual() -> dict:
+    """Termómetro de régimen EN VIVO (cesta equiponderada del universo a 60 sesiones), para
+    enseñarlo en la sala. Puramente informativo -- ver `app.momentum.regimen`, no bloquea nada."""
+    from app.momentum import regimen as regimen_mod
+    from app.momentum import signals
+
+    cesta = regimen_mod.cesta_60d(list(signals.UNIVERSO))
+    return {
+        "cesta_60d": cesta,
+        "umbral": regimen_mod.UMBRAL,
+        "activo": cesta is not None and cesta < regimen_mod.UMBRAL,
+    }
+
+
 def _mantener_map(db: Session) -> dict[str, bool]:
     """Overrides de 'mantener en universo' -- sin fila = True por defecto (ver doc §5)."""
     rows = db.execute(text("select ticker, mantener from momentum_universo_estado")).mappings().all()

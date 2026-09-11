@@ -154,21 +154,29 @@ def _reconcile_job() -> None:
         db.close()
 
 
-def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Session, evitar el circular
+def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) -> dict:  # noqa: ANN001 — Session, evitar el circular
     """Inserta las señales nuevas de `todas` y actualiza a resuelta las que ya estaban abiertas
     y desde entonces cruzaron objetivo o 90 días. Extraído de `run_momentum_scan` el 8-sep-2026
     para reutilizarlo también al incorporar un candidato: así "Incorporar" hace exactamente el
     mismo trabajo que ya hace cualquiera de los 34 fijos (historial + alerta activa si la tiene)
-    en el momento, en vez de esperar al cron de mañana (ver `candidatos.backfill_señales`)."""
+    en el momento, en vez de esperar al cron de mañana (ver `candidatos.backfill_señales`).
+
+    `universo`: para calcular UNA vez el termómetro de régimen (`app.momentum.regimen`) y
+    congelarlo en cada señal NUEVA -- informativo, nunca bloquea nada (ver `regimen.py`). Si no
+    se pasa, las columnas `cesta_60d`/`gate_regimen` quedan NULL (p.ej. en los tests)."""
     import pandas as pd
     from sqlalchemy import text
 
     from app import push
+    from app.momentum import regimen
 
     # Tickers apagados: se escanean y sus señales se guardan igual, pero no avisan ni cuentan
     # como "nuevas" (ver `momentum_universo_estado.mantener`).
     apagados = {r[0] for r in db.execute(text(
         "select ticker from momentum_universo_estado where mantener = false")).all()}
+    cesta = regimen.cesta_60d(universo) if universo else None
+    # None = no medido (sin universo, o falló la descarga) -- distinto de False (medido y sano).
+    gate_regimen = None if cesta is None else (cesta < regimen.UMBRAL)
     nuevas, tickers_nuevos = 0, []
     reactivadas = []            # descartadas de suelo que vuelven a zona de entrada (misma señal)
     resueltas_ejecutadas = []   # posiciones REALES (estado='ejecutada') que acaban de resolverse
@@ -221,10 +229,11 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
         db.execute(text("""
             insert into momentum_senales
               (ticker, sector, tipo, entry_date, entry_price, ref_label, ref_price,
-               caida_pct, resuelta, exit_date, ret, motivo, dias, estado, ath, desde_noticias)
+               caida_pct, resuelta, exit_date, ret, motivo, dias, estado, ath, desde_noticias,
+               cesta_60d, gate_regimen)
             values (:ticker, :sector, :tipo, :entry_date, :entry_price, :ref_label,
                     :ref_price, :caida_pct, :resuelta, :exit_date, :ret, :motivo, :dias,
-                    'nueva', :ath, :desde_noticias)
+                    'nueva', :ath, :desde_noticias, :cesta_60d, :gate_regimen)
             on conflict (ticker, tipo, entry_date) do nothing
         """), {
             "ticker": s["ticker"], "sector": s["sector"], "tipo": s["tipo"],
@@ -233,6 +242,7 @@ def procesar_señales(db, todas: list[dict]) -> dict:  # noqa: ANN001 — Sessio
             "caida_pct": s["caida_pct"], "resuelta": s["resuelta"],
             "exit_date": exit_final, "ret": ret_final, "motivo": motivo_final,
             "dias": dias_final, "ath": s["ath"], "desde_noticias": s["desde_noticias"].date(),
+            "cesta_60d": cesta, "gate_regimen": gate_regimen,
         })
         if s["ticker"] not in apagados:
             nuevas += 1
@@ -280,7 +290,7 @@ def run_momentum_scan(db) -> dict:  # noqa: ANN001 — Session, evitar el import
     # sin tocar código (ver candidatos.sincronizar_universo -- decidido 8-sep-2026).
     momentum_candidatos.sincronizar_universo(db)
     todas = momentum_signals.compute_signals()
-    resultado = procesar_señales(db, todas)
+    resultado = procesar_señales(db, todas, universo=list(momentum_signals.UNIVERSO))
     return {**resultado, "total_universo": len(todas)}
 
 

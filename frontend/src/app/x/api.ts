@@ -1,9 +1,12 @@
 // Cliente HTTP de Sala Real X -- reusa `get`/`post` de @/lib/api (mismo token/timeout/401
 // que el resto de la app) sin compartir tipos ni endpoints con el ranker.
 import { get, post } from "@/lib/api";
-import type { Candidato, Cuenta, Senal, UniversoTicker, Validacion } from "./types";
+import type { Candidato, Cuenta, Regimen, Senal, UniversoTicker, Validacion } from "./types";
 
 export const getCuenta = () => get<Cuenta>("/momentum/cuenta");
+// Termómetro de régimen EN VIVO (cesta del universo a 60 sesiones) -- solo informativo, no
+// filtra nada por su cuenta (ver app/momentum/regimen.py).
+export const getRegimen = () => get<Regimen>("/momentum/regimen");
 export const getAlertas = () => get<Senal[]>("/momentum/alertas");
 export const getHistorial = () => get<Senal[]>("/momentum/historial");
 export const getValidacion = () => get<Validacion[]>("/momentum/validacion");

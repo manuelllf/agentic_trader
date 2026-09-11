@@ -48,7 +48,7 @@ def _run() -> None:
         scan_progress.iniciar(len(universo))
         todas = signals.compute_signals(
             universo, progreso_cb=lambda i, _total, t: scan_progress.avance(i, t))
-        resultado = procesar_señales(db, todas)
+        resultado = procesar_señales(db, todas, universo=universo)
         scan_progress.terminar(nuevas=resultado["nuevas"], resueltas=resultado["resueltas"])
     except Exception:  # noqa: BLE001
         # El detalle entero (incl. el SQL y los parámetros de un error de SQLAlchemy) va SOLO al
