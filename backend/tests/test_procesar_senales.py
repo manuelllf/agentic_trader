@@ -188,3 +188,18 @@ def test_cesta_60d_se_congela_solo_en_senales_nuevas(db, monkeypatch) -> None:
     )).mappings().one()
     assert fila["resuelta"]
     assert fila["cesta_60d"] == -19.5   # sigue el de cuando nació, no el de hoy
+
+
+def test_cesta_60d_no_se_congela_en_backfill_historico(db, monkeypatch) -> None:
+    """Incorporar un ticker nuevo inserta de golpe todo su histórico con entry_date de meses
+    atrás -- la cesta de HOY no describe el régimen de entonces, así que se queda a NULL en vez
+    de mentir (bug real: SLS quedó con 3 señales de fechas distintas todas con la cesta de hoy)."""
+    monkeypatch.setattr("app.momentum.regimen.cesta_60d", lambda universo: -19.5)
+    s = _senal_sin_resolver("VIEJO")
+    s.update(entry_date=pd.Timestamp(date.today() - timedelta(days=200)))
+    procesar_señales(db, [s], universo=["VIEJO"])
+    fila = db.execute(text(
+        "select cesta_60d, gate_regimen from momentum_senales where ticker='VIEJO'"
+    )).mappings().one()
+    assert fila["cesta_60d"] is None
+    assert fila["gate_regimen"] is None

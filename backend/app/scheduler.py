@@ -162,8 +162,10 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
     en el momento, en vez de esperar al cron de mañana (ver `candidatos.backfill_señales`).
 
     `universo`: para calcular UNA vez el termómetro de régimen (`app.momentum.regimen`) y
-    congelarlo en cada señal NUEVA -- informativo, nunca bloquea nada (ver `regimen.py`). Si no
-    se pasa, las columnas `cesta_60d`/`gate_regimen` quedan NULL (p.ej. en los tests)."""
+    congelarlo en cada señal que nace HOY -- informativo, nunca bloquea nada (ver `regimen.py`).
+    Una señal de backfill con `entry_date` de otro día (ticker incorporado tarde) queda con
+    `cesta_60d`/`gate_regimen` en NULL: la cesta de hoy no describe un régimen de hace meses. Si
+    no se pasa `universo`, quedan NULL siempre (p.ej. en los tests)."""
     import pandas as pd
     from sqlalchemy import text
 
@@ -177,6 +179,10 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
     cesta = regimen.cesta_60d(universo) if universo else None
     # None = no medido (sin universo, o falló la descarga) -- distinto de False (medido y sano).
     gate_regimen = None if cesta is None else (cesta < regimen.UMBRAL)
+    # La cesta de HOY solo describe la señal si nace HOY (escaneo diario real). Un backfill
+    # inserta señales con entry_date de meses atrás (p.ej. al incorporar un ticker nuevo) -- ahí
+    # pegar la cesta de hoy sería mentir sobre cuándo se midió. Sin dato es mejor que un dato falso.
+    hoy = datetime.now(ZoneInfo(settings.scan_timezone)).date()
     nuevas, tickers_nuevos = 0, []
     reactivadas = []            # descartadas de suelo que vuelven a zona de entrada (misma señal)
     resueltas_ejecutadas = []   # posiciones REALES (estado='ejecutada') que acaban de resolverse
@@ -242,7 +248,8 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
             "caida_pct": s["caida_pct"], "resuelta": s["resuelta"],
             "exit_date": exit_final, "ret": ret_final, "motivo": motivo_final,
             "dias": dias_final, "ath": s["ath"], "desde_noticias": s["desde_noticias"].date(),
-            "cesta_60d": cesta, "gate_regimen": gate_regimen,
+            "cesta_60d": cesta if entry_date == hoy else None,
+            "gate_regimen": gate_regimen if entry_date == hoy else None,
         })
         if s["ticker"] not in apagados:
             nuevas += 1
