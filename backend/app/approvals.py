@@ -1,4 +1,4 @@
-"""Aprobaciones de la Sala Real — el agente PROPONE, el usuario DECIDE.
+"""Aprobaciones de Alpha — el agente PROPONE, el usuario DECIDE.
 
 Contrato de seguridad (innegociable):
 - El agente NUNCA ejecuta solo. Cada operación propuesta para la cuenta real queda
@@ -67,9 +67,9 @@ def create_from_items(db: Session, items: list[dict], macro_summary: str) -> int
     if created:
         push.send_to_all(
             db,
-            title="Agentic Trader — Sala Real",
+            title="Agentic Trader — Alpha",
             body=f"{created} operación(es) esperan tu decisión. Sí ejecuta, No descarta.",
-            url="/real",
+            url="/alpha",
         )
     return created
 
@@ -310,7 +310,7 @@ def _eur_usd_rate(broker) -> Decimal | None:  # noqa: ANN001
 def _sizing(db: Session, a: Approval) -> tuple[Decimal, str]:
     """(cantidad, lado) cent-exactos sobre el libro REAL en el momento de aprobar.
 
-    Delega en el sizing único y compartido (mismo criterio que la Sala Sombra): floor de
+    Delega en el sizing único y compartido (mismo criterio que Beta): floor de
     acciones a 4 decimales + recorte a la caja → nunca falla por céntimos. El precio del
     nombre objetivo es el vivo (con fallback a la estimación del escaneo). La caja/acciones
     comprometidas por órdenes 'working' quedan RESERVADAS (anti doble gasto). La caja

@@ -1,4 +1,4 @@
-// Tipos de Sala Real X -- deliberadamente locales, no en @/lib/types: momentum no comparte
+// Tipos de Omega -- deliberadamente locales, no en @/lib/types: momentum no comparte
 // universo ni capital con el ranker (ver docs/momentum-sala-real-x.md).
 
 export type Senal = {

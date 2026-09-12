@@ -62,7 +62,7 @@ async function request(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS)
   }
 }
 
-// Exportados (sin re-exponer `request`): X (frontend/src/app/x/) los reusa
+// Exportados (sin re-exponer `request`): Omega (frontend/src/app/omega/) los reusa
 // para no duplicar timeout/auth/401-handling en un cliente HTTP propio.
 export async function get<T>(path: string): Promise<T> {
   const res = await request(path);
@@ -203,7 +203,7 @@ export const getOverview = () => get<Overview>("/overview");
 export const getHistory = (book: "shadow" | "real" = "shadow") =>
   get<EquityHistory>(`/history?book=${book}`);
 
-// ---- Sala Real ----
+// ---- Alpha ----
 export const getReal = () => get<RealSummary>("/real");
 /** Cambio EUR→USD indicativo (el libro vive en USD; tú aportas en €). */
 export const getFx = () => get<{ pair: string; rate: number | null; asof: string | null }>("/fx");

@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #0A0A0A;
+  --foreground: #A3A3A0;
   --font-land-serif: "Fraunces", ui-serif, Georgia, serif;
 }
 
@@ -16,15 +16,12 @@ html {
 
 body {
   color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  background:
-    radial-gradient(60rem 60rem at 100% -10%, rgba(16, 185, 129, 0.06), transparent 60%),
-    radial-gradient(50rem 50rem at -10% 10%, rgba(15, 23, 42, 0.04), transparent 55%),
-    var(--background);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--background);
   min-height: 100dvh;
 }
 
-/* ---- Sala Real: entrada desde el fundido oscuro ---- */
+/* ---- Alpha: entrada desde el fundido oscuro ---- */
 .real-room {
   animation: real-fade-in 480ms ease-out;
 }

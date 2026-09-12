@@ -997,7 +997,7 @@ class PersonalPosition(Base):
     Existe para separar sin ambigüedad: en la cuenta IBKR conviven las posiciones personales
     del usuario y las del agente (libro 'real'). El agente NUNCA lee esta tabla para dimensionar
     ni vender (su libro es la única fuente); esto es el recibo visible de "esto es tuyo" y
-    alimenta el mini-tracker de la Sala Real. Se refresca con /personal/sync (read-only a IBKR).
+    alimenta el mini-tracker de Alpha. Se refresca con /personal/sync (read-only a IBKR).
     """
 
     __tablename__ = "personal_positions"

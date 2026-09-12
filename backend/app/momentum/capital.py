@@ -1,4 +1,4 @@
-"""Capital de Sala Real X (momentum) -- SOLO lectura. Sin slots, sin tamaño sugerido: aquí
+"""Capital de Omega (momentum) -- SOLO lectura. Sin slots, sin tamaño sugerido: aquí
 solo se responde "¿hay dinero disponible?" y "¿cuánto llevo desplegado ya?"; el reparto por
 posición lo decide Manuel a mano en cada alerta (ver docs/momentum-sala-real-x.md §4).
 
@@ -91,7 +91,7 @@ def pnl_realizado(db: Session) -> tuple[Decimal, Decimal]:
 
 
 def resumen(db: Session) -> dict:
-    """Todo lo que necesita la sección "Cuenta" de Sala Real X."""
+    """Todo lo que necesita la sección "Cuenta" de Omega."""
     desplegado = capital_desplegado(db)
     tope = D(str(settings.momentum_capital_tope_usd))
     pnl_ab, pnl_ab_pct = pnl_abierto(db)

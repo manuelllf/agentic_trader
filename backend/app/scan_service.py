@@ -21,7 +21,7 @@ Embudo para ir rápido y barato sin perder profundidad donde importa:
 
 El único escaneo PROGRAMADO es el mensual, que siempre decide (ver `scheduler.py`). El
 observatorio y la muestra rotatoria (`scan_sample_size`, `_CURSOR_KEY`) siguen existiendo para
-los lanzamientos manuales de Sala Real; el cron semanal que los usaba se retiró.
+los lanzamientos manuales de Alpha; el cron semanal que los usaba se retiró.
 
 El dinero lo calcula el código; el LLM solo decide los pesos. El coste se acumula del `usage`
 que devuelve el proveedor y viaja en result["cost"]; el histórico real por escaneo vive en
@@ -512,7 +512,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                        cancel_event: threading.Event | None = None) -> dict:
     """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
 
-    `decide=False` → escaneo OBSERVATORIO (usado hoy por la "simulación" manual de Sala Real,
+    `decide=False` → escaneo OBSERVATORIO (usado hoy por la "simulación" manual de Alpha,
     banco de pruebas de configuración): puntúa el universo y refresca ranking, watchlist,
     memoria vectorial y auditoría — el conocimiento — pero NO pisa la propuesta vigente, NO toca
     el libro sombra y NO crea aprobaciones para la real. El cron programado (`scheduler.py`) es
@@ -520,11 +520,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     mes y la curva mide la selección, no ruido semanal del LLM.
 
     `llm_overrides`: {"macro"|"prescore"|"mid"|"deep"|"constructor": {"model", "reasoning_effort",
-    "temperature", "top_p"}} — SOLO para el botón "simulación" de Sala Real (banco de pruebas de
+    "temperature", "top_p"}} — SOLO para el botón "simulación" de Alpha (banco de pruebas de
     configuración con coste/modelo reales, sin tocar ninguna cartera). El cron y "Analizar
     mercado" no mandan nada, así que se comportan exactamente como antes (defaults de `settings`).
 
-    `reutilizar_ultima_foto`: checkbox de los dos modales de Sala Real. Por defecto el gather
+    `reutilizar_ultima_foto`: checkbox de los dos modales de Alpha. Por defecto el gather
     pide dato fresco o de hasta 12h (`fundamentals._FOTO_TTL_H`); con esto a True, usa la última
     foto de cada ticker sin importar su antigüedad — para no esperar un gather completo en
     pruebas a mitad de mes. El cron nunca lo manda (siempre False, dato fresco de verdad).
@@ -1119,7 +1119,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             approvals_mod.create_from_items(db, items, macro_line)
         except Exception as exc:  # noqa: BLE001 — el motivo va al informe del escaneo
             logger.exception("No se pudieron crear las aprobaciones del modo real.")
-            issues.append(f"No se pudieron crear las aprobaciones de la sala real: {exc}")
+            issues.append(f"No se pudieron crear las aprobaciones de Alpha: {exc}")
     else:
         logger.info("Escaneo observatorio: ranking, watchlist y memoria al día; la cartera "
                     "(sombra y real) no se toca — la decisión es mensual.")

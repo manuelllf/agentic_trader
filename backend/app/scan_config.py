@@ -1,5 +1,5 @@
 """Config de LLM por etapa PERSISTIDA para el escaneo con DECISIÓN (cron mensual + botón
-"Analizar y decidir" de Sala Real).
+"Analizar y decidir" de Alpha).
 
 El observatorio ya era configurable: su override por etapa viaja en el cuerpo de
 `POST /demo/run` desde el modal y no se guarda (es un banco de pruebas, cada tirada elige).

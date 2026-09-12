@@ -3,7 +3,7 @@
 Aislado del escaneo (`app.scan_service`): aquí solo se traduce la última propuesta ya persistida en
 movimientos del libro sombra, con sizing cent-exacto y a precio VIVO. Idempotente y best-effort.
 
-- `execute_proposal_item`: un item (botón Comprar/Vender de la Sala Sombra).
+- `execute_proposal_item`: un item (botón Comprar/Vender de Beta).
 - `execute_proposal_all`: todos los accionables — ventas/recortes primero (liberan caja),
   compras/ampliaciones después. Lo llama el escaneo para auto-ejecutar el libro sombra.
 """
@@ -26,7 +26,7 @@ def _latest_proposal(db: Session) -> Proposal | None:
 def execute_proposal_item(db: Session, ticker: str) -> dict:
     """Ejecuta UN item de la última propuesta en el LIBRO SOMBRA (simulado, sin dinero real).
 
-    Es el backend del botón «Comprar/Vender» de la Sala Sombra: dimensiona el tamaño al peso
+    Es el backend del botón «Comprar/Vender» de Beta: dimensiona el tamaño al peso
     objetivo con el sizing cent-exacto compartido (nunca sobrepasa la caja) y lo registra a
     precio VIVO. Idempotente: reintentar una compra ya cubierta devuelve un error claro.
     """

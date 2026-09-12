@@ -234,7 +234,7 @@ def snapshot(
     )
 
 
-# --- Sizing cent-exacto (compartido por Sala Sombra y Sala Real) --------------
+# --- Sizing cent-exacto (compartido por Beta y Alpha) --------------
 
 _SHARES = Decimal("0.0001")  # IBKR soporta fraccionales: 4 decimales de acción
 

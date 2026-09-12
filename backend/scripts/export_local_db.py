@@ -4,7 +4,7 @@ Uso (desde la carpeta backend):
     uv run --system-certs python scripts/export_local_db.py
 
 Salida: backend/secrets/db_snapshot.json (gitignoreado). Ese fichero es el que subes tú
-desde el botón "Volcar base de datos" de la Sala Real en producción.
+desde el botón "Volcar base de datos" de Alpha en producción.
 """
 
 from __future__ import annotations

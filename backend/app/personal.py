@@ -5,7 +5,7 @@ Separación de tres capas en la misma cuenta IBKR:
 - Libro 'real': SOLO lo que el agente ha ejecutado vía aprobaciones (su única fuente de verdad
   para dimensionar y vender — nunca lee el portfolio bruto de IBKR).
 - personal_positions (esta tabla): recibo de lo que era del USUARIO al sincronizar. Informativa:
-  alimenta el mini-tracker de la Sala Real y deja constancia explícita de qué no es del agente.
+  alimenta el mini-tracker de Alpha y deja constancia explícita de qué no es del agente.
 
 Si el agente compra un ticker que el usuario ya tiene (p.ej. más ASTS), en IBKR se suman,
 pero aquí siguen separados: lo del agente está en su libro; lo personal, en este snapshot.

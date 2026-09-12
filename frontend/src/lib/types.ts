@@ -46,7 +46,7 @@ export interface AppConfig {
   };
 }
 
-/** Override de una etapa para el modal de configuración de la simulación (Sala Real). Todo
+/** Override de una etapa para el modal de configuración de la simulación (Alpha). Todo
  *  opcional: lo que no venga usa el default de producción (ver `AppConfig.llm_defaults`). */
 export interface StageLLMOverride {
   model?: string;
@@ -151,7 +151,7 @@ export interface WatchItem {
   last_seen: string;
 }
 
-// ---- Sala Real (cuenta IBKR · aprobar/rechazar) ----
+// ---- Alpha (cuenta IBKR · aprobar/rechazar) ----
 
 export type ApprovalStatus =
   | "pending" | "executed" | "working" | "rejected" | "failed" | "expired";

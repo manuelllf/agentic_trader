@@ -1,4 +1,4 @@
-"""Broker simulado (DRY_RUN) — el modo por defecto de la Sala Real.
+"""Broker simulado (DRY_RUN) — el modo por defecto de Alpha.
 
 Simula el fill al precio vivo de yfinance (retrasado ~15 min). No toca ninguna cuenta.
 Permite ejercitar el flujo completo de aprobaciones (push → Sí/No → libro real) sin

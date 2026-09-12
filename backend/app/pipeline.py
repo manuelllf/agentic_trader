@@ -79,7 +79,7 @@ def start(sample_size: int | None = None, decide: bool = True,
          reutilizar_ultima_foto: bool = False, modo_universo: str = "nasdaq") -> bool:
     """Arranca el escaneo si no hay uno en marcha. Devuelve True si lo lanzó.
 
-    `decide=False` (botón "simulación" de Sala Real): universo completo, escanea y
+    `decide=False` (botón "simulación" de Alpha): universo completo, escanea y
     persiste ranking/watchlist/memoria/traza — TODO menos tocar la cartera. `force_mid_layer`
     hace que ese escaneo sea el circuito EXACTO de un mensual real (capa media incluida) sin
     tocar el comportamiento del cron semanal automático. `llm_overrides`: config por etapa

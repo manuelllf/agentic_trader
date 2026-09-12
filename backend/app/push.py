@@ -2,7 +2,7 @@
 
 Flujo: el navegador se suscribe (service worker) → guardamos la suscripción → cuando el
 escaneo genera operaciones pendientes de aprobar, se empuja una notificación a todos los
-dispositivos. Tocar la notificación abre la Sala Real (/real).
+dispositivos. Tocar la notificación abre Alpha (/alpha).
 
 Best-effort deliberado: si el push falla, la app sigue — las aprobaciones viven en la web
 y el push es solo el timbre.
@@ -72,12 +72,12 @@ def unsubscribe(db: Session, endpoint: str) -> None:
 
 
 def send_to_all(
-    db: Session, title: str, body: str, url: str = "/real", tag: str = "agentic-real",
+    db: Session, title: str, body: str, url: str = "/alpha", tag: str = "agentic-alpha",
 ) -> int:
     """Empuja a todos los dispositivos suscritos. Poda suscripciones muertas (404/410).
 
     `tag`: agrupa notificaciones en el navegador (una misma `tag` colapsa la anterior). Cada
-    sala manda la suya (`agentic-real`, `agentic-momentum`, ...) para no comerse avisos de
+    sala manda la suya (`agentic-alpha`, `agentic-omega`, ...) para no comerse avisos de
     la otra -- ver `sw.js`."""
     if not settings.vapid_private_key:
         logger.info("Push omitido: faltan claves VAPID.")

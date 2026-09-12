@@ -2,7 +2,7 @@
 
 Dos routers: `public_router` (sin token, lecturas/teaser de la portada) y `router`
 (exige `require_auth` — se engancha en main.py) para todo lo que muta estado, revela las
-picks del método (tickers, tesis, scores) o expone la Sala Real/personal. Ver el reparto
+picks del método (tickers, tesis, scores) o expone Alpha/personal. Ver el reparto
 exacto donde se declara cada `@router`/`@public_router`.
 
 Cinco endpoints son de DOBLE NIVEL vía `auth_optional` (nunca dan 401: sin sesión devuelven
@@ -56,7 +56,7 @@ un feed de señales.
 - POST /admin/fx-sync                → tasas de cambio a USD + recálculo de market_cap_usd
                                        (también corre solo, 5:00 Europa/Madrid)            [protegido]
 - GET  /admin/estado-datos           → frescura de universo/fotos/tasas, para el centro de
-                                       operaciones de Sala Real                            [protegido]
+                                       operaciones de Alpha                                [protegido]
 """
 
 from __future__ import annotations
@@ -110,7 +110,7 @@ def config() -> dict:
         "limit_buffer_pct": settings.limit_buffer_pct,
         "approval_expiry_days": settings.approval_expiry_days,
         # Defaults de LLM por etapa, para que el modal de configuración de la simulación
-        # (Sala Real) arranque con los valores REALES de producción en vez de copias a mano
+        # (Alpha) arranque con los valores REALES de producción en vez de copias a mano
         # que se desincronizan del config.py el día que alguien lo cambie aquí y no allí.
         # `temperature` va aquí también (no solo model/reasoning_effort): sin esto, el modal
         # partía de un 1.0 fijo en el frontend y el prescore=0.0 recién decidido se anulaba en
@@ -289,7 +289,7 @@ def demo_run(sample_size: int | None = None, decide: bool = True,
     # decide=False: escaneo de universo completo en producción real, con el modelo/coste
     # de verdad, que NO propone ni toca ninguna cartera — solo refresca ranking, watchlist,
     # memoria y traza. force_mid_layer=True lo hace el circuito EXACTO de un mensual (capa
-    # media incluida) sin tocar el cron semanal. Es el botón "simulación" de Sala Real.
+    # media incluida) sin tocar el cron semanal. Es el botón "simulación" de Alpha.
     # `overrides`: config por etapa del modal — cuerpo JSON opcional. Con `decide=True` y SIN
     # `overrides` en el cuerpo (el botón "Analizar y decidir"), se lee la config PERSISTIDA del
     # escaneo con decisión (`scan_config`), la misma que usa el cron mensual — así los dos
@@ -1055,7 +1055,7 @@ def proposal(db: Session = Depends(get_db)) -> Proposal | None:
 
 @router.post("/proposal/execute/{ticker}")
 def proposal_execute_item(ticker: str, db: Session = Depends(get_db)) -> dict:
-    """Ejecuta el item de la propuesta actual (botón Comprar/Vender de la Sala Sombra)."""
+    """Ejecuta el item de la propuesta actual (botón Comprar/Vender de Beta)."""
     try:
         res = execution_service.execute_proposal_item(db, ticker.upper())
     except (LookupError, ValueError, ledger.InsufficientFunds, ledger.InsufficientShares) as e:
@@ -1079,7 +1079,7 @@ def watchlist(db: Session = Depends(get_db)) -> list[Watchlist]:
     return list(db.scalars(stmt).all())
 
 
-# ---- Sala Real (cuenta IBKR · el agente propone, el usuario decide) ---------
+# ---- Alpha (cuenta IBKR · el agente propone, el usuario decide) ---------
 
 def _approval_out(a) -> dict:  # noqa: ANN001
     return {
@@ -1103,7 +1103,7 @@ def _approval_out(a) -> dict:  # noqa: ANN001
 
 @router.get("/real")
 def real_summary(db: Session = Depends(get_db)) -> dict:
-    """Foto completa de la Sala Real: libro real vivo, rendimiento vs S&P, broker, pendientes."""
+    """Foto completa de Alpha: libro real vivo, rendimiento vs S&P, broker, pendientes."""
     from app import approvals as approvals_mod
     from app import tracking
     from app.brokers import get_broker
@@ -1258,6 +1258,6 @@ def push_test(db: Session = Depends(get_db)) -> dict:
     """Notificación de prueba para verificar el canal de alertas end-to-end."""
     from app import push
 
-    sent = push.send_to_all(db, "Agentic Trader — Sala Real",
-                            "Canal de alertas operativo. Así llegarán las propuestas.", "/real")
+    sent = push.send_to_all(db, "Agentic Trader — Alpha",
+                            "Canal de alertas operativo. Así llegarán las propuestas.", "/alpha")
     return {"sent": sent}

@@ -63,9 +63,13 @@ const STAGE_ORDEN: Record<string, number> = {
 };
 const scoreColor = (s: number) =>
   s >= 80 ? "bg-[#6BBE8A]" : s >= 65 ? "bg-[#4FA39D]" : s >= 50 ? "bg-[#fab219]" : "bg-[#363636]";
+// Solo para el modal (necesita flotar sobre un fondo, ver overlay de ranking) -- el resto de
+// secciones de la sala ya no usan caja, ver `SECTION` (feedback 12-sep-2026, "eso es AI slop").
 const CARD = "rounded-2xl border border-[#303030] bg-[#1C1C1C] shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]";
-// Tipografía propia de la sala (IBM Plex vía next/font en layout.tsx) -- mismo patrón que
-// Alpha y X: Sans para texto, Mono para cifras (aplicado a `.tabular-nums`, ver el <style> del
+// Sección de contenido sin caja: línea fina arriba, como el resto de la casa.
+const SECTION = "border-t border-[#303030] pt-4";
+// Tipografía propia de la sala (Geist vía next/font en layout.tsx) -- mismo patrón que
+// Alpha y Omega: Sans para texto, Mono para cifras (aplicado a `.tabular-nums`, ver el <style> del
 // contenedor raíz), en vez de la tipografía de sistema.
 const SOMBRA_SANS = "var(--font-sombra-sans), ui-sans-serif, system-ui, sans-serif";
 const SOMBRA_MONO = "var(--font-sombra-mono), ui-monospace, 'SFMono-Regular', monospace";
@@ -165,7 +169,7 @@ export default function SombraDashboard() {
   useEffect(() => {
     alive.current = true;
     refresh();
-    // Solo lectura: el escaneo se lanza desde la Sala Real (o el cron semanal), así que aquí nos
+    // Solo lectura: el escaneo se lanza desde Alpha (o el cron semanal), así que aquí nos
     // limitamos a refrescar cada poco para reflejarlo en cuanto termine, sin ningún botón.
     timer.current = setInterval(refresh, 45_000);
     return () => {
@@ -422,11 +426,11 @@ export default function SombraDashboard() {
   const watchTop = [...watch].sort((a, b) => b.score - a.score);
 
   // Carga completa (primer montaje o volver a la pestaña tras un rato fuera): nada de la sala
-  // se pinta hasta que todo llegue a la vez, mismo criterio que Sala Real.
+  // se pinta hasta que todo llegue a la vez, mismo criterio que Alpha.
   // Primera carga: nada montado todavía, un `return` completo no pierde ningún estado.
   if (loading && !hasLoadedOnce.current) {
     return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-[#131313] text-sm text-[#6E6E6B]"
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-[#0A0A0A] text-sm text-[#6E6E6B]"
            style={{ fontFamily: SOMBRA_SANS }}>
         <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#383838] border-t-[#4FA39D]" />
         <p>Cargando Beta…</p>
@@ -435,57 +439,55 @@ export default function SombraDashboard() {
   }
 
   return (
-    <div className="sombra-room min-h-[100dvh] bg-[#131313] text-white" style={{ fontFamily: SOMBRA_SANS }}>
+    <div className="sombra-room min-h-[100dvh] bg-[#0A0A0A] text-white" style={{ fontFamily: SOMBRA_SANS }}>
       {/* Cifras alineadas en mono, como Alpha y X (ver real/tokens.ts) -- una regla que alcanza
           a los `tabular-nums` ya repartidos por la sala en vez de tocar cada className. */}
       <style>{`.sombra-room .tabular-nums { font-family: ${SOMBRA_MONO}; }`}</style>
       {/* Recarga tras volver de una ausencia: velo ENCIMA, no un `return` que sustituya la sala
           — ningún filtro/panel/scroll se pierde por debajo. Bloquea clics de verdad (z-50). */}
       {loading && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-[#131313]/95 text-sm text-[#6E6E6B]">
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-[#0A0A0A]/95 text-sm text-[#6E6E6B]">
           <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#383838] border-t-[#4FA39D]" />
           <p>Actualizando…</p>
         </div>
       )}
-      {/* ---------- barra fina: solo lo que hace falta alcanzar sin subir scroll en una sala
-          larga (volver, saltar a Alpha). El estilo grande vive debajo, sin sticky. ---------- */}
-      <div className="sticky top-0 z-40 border-b backdrop-blur"
-           style={{ borderColor: "rgba(255,255,255,0.10)", background: "rgba(13,13,13,0.92)" }}>
-        <div className="mx-auto flex h-11 max-w-[1500px] items-center justify-between gap-3 px-4 lg:px-6">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 lg:px-6">
+
+        {/* Sin barra fija -- como la land, la navegación que hace falta vive en el flujo
+            normal, no clavada arriba (feedback 12-sep-2026, "el header AI slop fuera"). */}
+        <div className="mb-4 flex items-center justify-between">
           <Link href="/" className="text-[12px] font-semibold text-[#6E6E6B] transition-colors hover:underline">
             ← Portada
           </Link>
-          <div className="flex items-center gap-2.5">
-            <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${error ? "bg-[#E0776C]" : "bg-[#6BBE8A]"}`} />
-            <AlphaDoor />
-          </div>
+          <AlphaDoor />
         </div>
-      </div>
-
-      <div className="mx-auto max-w-[1500px] px-4 py-6 lg:px-6">
 
         {/* ---------- cabecera: eyebrow + título + descripción, como Alpha y el resto de la
-            casa (ver /mockup). ---------- */}
-        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4FA39D]">
+            casa (ver /mockup). El badge de régimen va en la MISMA fila que el símbolo, no como
+            hermano de todo el bloque -- así no le da por bajar debajo de la descripción en
+            pantallas estrechas (feedback 12-sep-2026). ---------- */}
+        <header className="mb-6">
+          <div className="flex items-center justify-between gap-4">
+            <p className="flex items-center gap-2 text-[22px] font-medium text-[#4FA39D]"
+               style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic",
+                        fontOpticalSizing: "none", fontVariationSettings: '"opsz" 9' }}>
               <span className={`h-1.5 w-1.5 rounded-full ${error ? "bg-[#E0776C]" : "bg-[#6BBE8A]"}`} />
-              Beta
+              β
             </p>
-            <h1 className="mt-1 text-[26px] font-bold text-white">Ranker fundamental sistemático</h1>
-            <p className="mt-2 max-w-[46ch] text-[14px] text-[#A3A3A0]">
-              Réplica pública de Alpha, en papel — mismo motor, sin dinero real.
-            </p>
+            {macro && (
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${MACRO_STYLE[macro.regime] ?? MACRO_STYLE.desconocido}`}>
+                {macro.regime}{macro.vix != null && ` · VIX ${macro.vix}`}
+              </span>
+            )}
           </div>
-          {macro && (
-            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${MACRO_STYLE[macro.regime] ?? MACRO_STYLE.desconocido}`}>
-              {macro.regime}{macro.vix != null && ` · VIX ${macro.vix}`}
-            </span>
-          )}
+          <h1 className="mt-1 text-[26px] font-bold text-white">Ranker fundamental sistemático</h1>
+          <p className="mt-2 max-w-[46ch] text-[14px] text-[#A3A3A0]">
+            Réplica pública de Alpha, en papel: mismo motor, sin dinero real.
+          </p>
         </header>
 
         {error && (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E0776C]/40 bg-[#E0776C]/10 px-4 py-3 text-sm text-[#E0776C]">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-l-2 border-[#E0776C] pl-3 text-sm text-[#E0776C]">
             <span className="flex items-center gap-2">
               <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" strokeLinecap="round" strokeLinejoin="round"/></svg>
               {error}
@@ -500,7 +502,7 @@ export default function SombraDashboard() {
             "Régimen" ya no es su propio tile: es EXACTAMENTE el mismo dato que el badge de la
             cabecera (macro.regime + VIX) -- repetirlo aquí abajo, dos veces en pantalla, era la
             "cabecera de risa" del feedback 9-sep-2026. */}
-        <section className={`mb-6 grid grid-cols-2 gap-x-6 gap-y-6 p-5 sm:grid-cols-3 lg:grid-cols-5 ${CARD}`}>
+        <section className={`mb-6 grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-3 lg:grid-cols-5 ${SECTION}`}>
           <Kpi label="Patrimonio" value={`$${money(equity)}`} accent />
           <Kpi label="Caja" value={`$${money(ledger?.cash ?? 0)}`} />
           <Kpi label="Invertido" value={`$${money(ledger?.positions_value ?? 0)}`} />
@@ -520,8 +522,8 @@ export default function SombraDashboard() {
 
         {/* 1 · ¿Bate al mercado? — veredicto + curva, una sola vez */}
         {(perf?.spy_return_pct != null || hist.length >= 2) && (
-          <section className={`mb-6 ${CARD}`}>
-            <div className="p-5">
+          <section className={`mb-6 ${SECTION}`}>
+            <div>
               <p className="text-[16px] font-bold text-white">
                 ¿Bate al mercado?{" "}
                 {perf?.since && <span className="text-[13px] font-normal text-[#6E6E6B]">desde el {fmtDay(perf.since)}</span>}
@@ -557,7 +559,7 @@ export default function SombraDashboard() {
                   </div>
                   {/* Gemelo oscuro del mismo gráfico, fuera de pantalla: la tarjeta de X (dark)
                       clona ESTE SVG, no el claro de arriba. `dark` es la misma prop que usa la
-                      Sala Real. Sigue en el documento (no display:none) para que el SVG mida algo. */}
+                      Alpha. Sigue en el documento (no display:none) para que el SVG mida algo. */}
                   <div ref={darkChartBox} aria-hidden className="pointer-events-none fixed -left-[10000px] top-0 w-[660px]">
                     <HistoryChart points={hist} dark />
                   </div>
@@ -569,7 +571,7 @@ export default function SombraDashboard() {
         )}
 
         {/* 2 · La cartera — tabla densa; la tesis expande por fila (con sesión) */}
-        <section className={`mb-6 ${CARD}`}>
+        <section className={`mb-6 ${SECTION}`}>
           <CardHead>
             La cartera{perf && perf.positions.length > 0 ? ` · ${perf.positions.length} posiciones` : ""}
             {investedPct > 0 && (
@@ -645,7 +647,7 @@ export default function SombraDashboard() {
                 <ExportButtons onExport={exportarEmbudo} msg={exportEmbudoMsg} />
               </div>
             </Details>
-            <section className={`${CARD} flex flex-col items-center justify-center gap-3 border-dashed p-10 text-center`}>
+            <section className="flex flex-col items-center justify-center gap-3 border-t border-dashed border-[#303030] py-10 text-center">
               <svg viewBox="0 0 24 24" className="h-8 w-8 text-[#565654]" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M7 11V7a5 5 0 0 1 10 0v4M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -834,7 +836,7 @@ export default function SombraDashboard() {
                     </div>
                   </div>
                   {scoresView.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-[#303030] bg-[#232323]/60 py-8 text-center text-sm text-[#6E6E6B]">
+                    <p className="border-t border-[#303030] py-8 text-center text-sm text-[#6E6E6B]">
                       Nada coincide con ese filtro.
                     </p>
                   ) : (
@@ -851,7 +853,7 @@ export default function SombraDashboard() {
         )}
 
         <footer className="mt-10 border-t border-[#303030] pt-4 text-center text-[11px] text-[#6E6E6B]">
-          No constituye recomendación de inversión · sala sombra · operaciones simuladas, sin dinero real · metodología tipo whitepaper DeepSeek
+          No constituye recomendación de inversión · Beta · operaciones simuladas, sin dinero real · metodología tipo whitepaper DeepSeek
         </footer>
 
         {/* Overlay del ranking semanal: vista PRIVADA, sin export — un ranking con tickers
@@ -1175,7 +1177,7 @@ function Details({ head, defaultOpen, children }: {
   const [open, setOpen] = useState(!!defaultOpen);
   const toggle = () => setOpen((o) => !o);
   return (
-    <section className={CARD}>
+    <section className="border-t border-[#303030]">
       <div className="flex w-full items-center gap-2.5 py-3.5 pl-4 pr-2.5">
         <button onClick={toggle} aria-expanded={open} className="flex-1 text-left text-[16px] font-bold text-white">
           {head}
@@ -1208,12 +1210,12 @@ function SectorChip({ active, onClick, children }: { active: boolean; onClick: (
 
 function Empty({ running }: { running: boolean }) {
   return (
-    <div className="m-4 flex min-h-[22vh] flex-col items-center justify-center rounded-xl border border-dashed border-[#303030] bg-[#232323]/60 text-center">
+    <div className="flex min-h-[22vh] flex-col items-center justify-center border-t border-[#303030] text-center">
       <p className="text-3xl">{running ? "🛰️" : "📡"}</p>
       <p className="mt-3 max-w-sm text-sm text-[#6E6E6B]">
         {running
           ? "El agente puntúa el universo y construye la cartera…"
-          : "El agente escanea cada semana para aprender y decide cartera el primer martes del mes (o al lanzarlo desde la Sala Real). Cuando decida, aquí aparece la cartera, ya ejecutada en el libro sombra."}
+          : "El agente escanea cada semana para aprender y decide cartera el primer martes del mes (o al lanzarlo desde Alpha). Cuando decida, aquí aparece la cartera, ya ejecutada en el libro sombra."}
       </p>
     </div>
   );

@@ -1,5 +1,5 @@
 """Cadencia de decisión: `decide=False` es OBSERVATORIO (aprende sin tocar libros), usado hoy
-por la simulación manual de Sala Real; el cron programado (mensual único) siempre decide."""
+por la simulación manual de Alpha; el cron programado (mensual único) siempre decide."""
 
 from __future__ import annotations
 

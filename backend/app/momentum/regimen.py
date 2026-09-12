@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 
-import pandas as pd
 import yfinance as yf
 
 logger = logging.getLogger(__name__)
@@ -33,9 +32,12 @@ def cesta_60d(universo: list[str]) -> float | None:
     except Exception:
         logger.warning("No se pudo calcular la cesta de régimen.", exc_info=True)
         return None
-    if df.empty or len(df) < VENTANA + 1:
+    if df.empty:
         return None
-    cesta = df.pct_change().mean(axis=1).add(1).cumprod()
-    if len(cesta) < VENTANA + 1 or pd.isna(cesta.iloc[-1]) or pd.isna(cesta.iloc[-VENTANA - 1]):
+    # yfinance a veces mete una fila de "hoy" toda a NaN (sesión aún sin cerrar/publicar) --
+    # sin dropna() esa fila fantasma tumbaba el cálculo entero (bug real, 12-sep-2026: la cesta
+    # nunca se mostraba en la sala pese a tener universo real).
+    cesta = df.pct_change().mean(axis=1).add(1).cumprod().dropna()
+    if len(cesta) < VENTANA + 1:
         return None
     return float((cesta.iloc[-1] / cesta.iloc[-VENTANA - 1] - 1) * 100)

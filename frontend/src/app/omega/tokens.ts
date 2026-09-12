@@ -1,11 +1,12 @@
-// Alma visual de Sala Real X: paleta propia, refinada 8-sep-2026 tras feedback ("bordecitos de
+// Alma visual de Omega: paleta propia, refinada 8-sep-2026 tras feedback ("bordecitos de
 // color en las cards" = ai slop) -- el acento morado ya NO decora cards sueltas, solo aparece
 // donde significa algo real (marca de la sala, punto activo del carrusel). Referencia real:
 // terminales de trading (Bloomberg, fintech dark-first), no un dashboard SaaS genérico.
 export const T = {
-  // Gris puro, sin sesgo cálido (feedback 9-sep-2026: "no me gusta esa calidez"), unificado
-  // con Sala Real y Beta.
-  page: "#131313",
+  // Casi negro, no #131313 (feedback 12-sep-2026: "más solidez, más contraste con el panel") --
+  // no #000 puro, que en OLED se ve duro. Gris puro, sin sesgo cálido (feedback 9-sep-2026: "no
+  // me gusta esa calidez").
+  page: "#0A0A0A",
   panel: "#1C1C1C",
   panel2: "#232323",
   ring: "rgba(255,255,255,0.10)",
@@ -23,7 +24,7 @@ export const T = {
   entry: "#4FA39D",
 };
 
-// Tipografía propia de la sala (IBM Plex vía next/font en layout.tsx, variables CSS): Sans
+// Tipografía propia de la sala (Geist vía next/font en layout.tsx, variables CSS): Sans
 // para texto, Mono para tickers/precios/porcentajes -- una terminal de datos alinea sus
 // números, no los deja en la tipografía de sistema.
 export const MONO = "font-[family-name:var(--font-momentum-mono)]";

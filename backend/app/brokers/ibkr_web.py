@@ -166,7 +166,7 @@ class IbkrWebBroker:
                 coid=(order_ref or f"AT-{uuid.uuid4().hex[:8]}")[:40],  # atribución/idempotencia
             )
             # "Preguntas" de precaución de IBKR: las aceptamos porque la decisión humana ya se
-            # tomó en la aprobación explícita (el Sí de la Sala Real).
+            # tomó en la aprobación explícita (el Sí de Alpha).
             answers = {
                 QuestionType.PRICE_PERCENTAGE_CONSTRAINT: True,
                 QuestionType.ORDER_VALUE_LIMIT: True,
@@ -414,7 +414,7 @@ class IbkrWebBroker:
 
     def raw_cash(self) -> dict[str, Decimal]:
         """Caja BRUTA de la cuenta IBKR por divisa (read-only, mezclada con lo personal y con
-        el libro real del ranker -- es la MISMA cuenta física). SOLO para Sala Real X
+        el libro real del ranker -- es la MISMA cuenta física). SOLO para Omega
         (momentum): esa sala nunca ejecuta, solo informa "hay dinero disponible o no" para que
         Manuel decida el tamaño a mano. El ranker JAMÁS usa esto para dimensionar/vender: su
         única fuente es su propio libro (`ledger.service`, book='real')."""

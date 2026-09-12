@@ -89,8 +89,8 @@ def detectar_rupturas(db: Session) -> int:
     if creados:
         plural = "s" if creados != 1 else ""
         push.send_to_all(
-            db, title=f"Sala Real X: {creados} candidato{plural} nuevo{plural}",
-            body=", ".join(nuevos_tickers), url="/momentum", tag="agentic-momentum-candidato",
+            db, title=f"Omega: {creados} candidato{plural} nuevo{plural}",
+            body=", ".join(nuevos_tickers), url="/omega", tag="agentic-omega-candidato",
         )
     return creados
 

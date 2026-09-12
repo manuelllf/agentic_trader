@@ -1,6 +1,6 @@
 "use client";
 
-/** Sala Real X: descubrimiento de momentum, independiente del ranker fundamental (Sala Real).
+/** Omega: descubrimiento de momentum, independiente del ranker fundamental (Alpha).
  *  Nunca ejecuta en IBKR — solo alerta y sugiere, Manuel ejecuta a mano y lo reporta aquí.
  *  Ver docs/momentum-sala-real-x.md para el diseño completo. */
 
@@ -88,7 +88,7 @@ function SalaMomentumRoom() {
   // Recarga: re-pide datos y actualiza estado sin navegar ni desmontar la sala -- el scroll y
   // cualquier fila desplegada se quedan donde estaban. La primera carga (sin datos aún) usa
   // pantalla completa; un refresco posterior (botón "actualizar") pone un velo ENCIMA de lo que
-  // ya hay, mismo criterio que Sala Real -- consistente como bloqueo de pantalla, sin perder
+  // ya hay, mismo criterio que Alpha -- consistente como bloqueo de pantalla, sin perder
   // nada de lo que el usuario tenía abierto.
   //
   // Coalescer llamadas simultáneas -- BUG real (9-sep-2026): cada acción suelta (descartar,
@@ -282,7 +282,7 @@ function SalaMomentumRoom() {
            style={{ background: T.page, color: T.muted }}>
         <span className="h-6 w-6 animate-spin rounded-full border-2"
               style={{ borderColor: T.grid, borderTopColor: T.entry }} />
-        <p>Cargando X…</p>
+        <p>Cargando Omega…</p>
       </div>
     );
   }
@@ -299,40 +299,38 @@ function SalaMomentumRoom() {
           <p style={{ color: T.muted }}>Actualizando…</p>
         </div>
       )}
-      {/* Barra fina y sticky (solo volver + estado): las acciones ya no viven aquí clavadas
-          arriba -- flotan más abajo, en el flujo normal, como el resto de la casa (ver /mockup). */}
-      <header className="sticky top-0 z-40 border-b backdrop-blur"
-              style={{ borderColor: T.ring, background: "rgba(13,13,13,0.92)" }}>
-        <div className="mx-auto flex min-h-11 max-w-[1500px] items-center justify-between gap-x-3 px-4 py-2 lg:px-6">
-          <Link href="/" className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
-            ← Portada
-          </Link>
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: error ? T.bad : conectado ? T.good : T.warn }} />
-        </div>
+      <div className="mx-auto max-w-[1500px] px-4 pt-6 lg:px-6">
+        {/* Sin barra fija -- como la land, la navegación que hace falta vive en el flujo
+            normal, no clavada arriba (feedback 12-sep-2026, "el header AI slop fuera"). */}
+        <Link href="/" className="mb-4 inline-block text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
+          ← Portada
+        </Link>
         {scanMsg && <AvisoTemporal texto={scanMsg} onCerrar={() => setScanMsg("")} />}
         {detectMsg && <AvisoTemporal texto={detectMsg} onCerrar={() => setDetectMsg("")} />}
-      </header>
 
-      <div className="mx-auto max-w-[1500px] px-4 pt-4 lg:px-6">
-        {/* ---------- cabecera: eyebrow + título + descripción, como Alpha y Beta (ver /mockup). ---------- */}
-        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className={`flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] ${MONO}`}
-               style={{ color: T.entry }}>
+        {/* ---------- cabecera: eyebrow + título + descripción, como Alpha y Beta (ver /mockup).
+            El badge de estado va en la MISMA fila que el símbolo, no como hermano de todo el
+            bloque -- así no le da por bajar debajo de la descripción en pantallas estrechas
+            (feedback 12-sep-2026). ---------- */}
+        <header className="mb-6">
+          <div className="flex items-center justify-between gap-4">
+            <p className="flex items-center gap-2 text-[22px] font-medium"
+               style={{ color: T.entry, fontFamily: "var(--font-land-serif)", fontStyle: "italic",
+                        fontOpticalSizing: "none", fontVariationSettings: '"opsz" 9' }}>
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: error ? T.bad : T.good }} />
-              X
+              Ω
             </p>
-            <h1 className="mt-1 text-[26px] font-bold" style={{ color: T.ink }}>Descubrimiento de momentum</h1>
-            <p className="mt-2 max-w-[46ch] text-[14px]" style={{ color: T.ink2 }}>
-              El agente detecta rupturas y sugiere; tú ejecutas a mano y lo reportas aquí.
-            </p>
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                  style={{ background: conectado ? "rgba(107,190,138,0.14)" : "rgba(250,178,25,0.14)",
+                           color: conectado ? T.good : T.warn }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: conectado ? T.good : T.warn }} />
+              {conectado ? "IBKR conectado" : "IBKR sin conexión"}
+            </span>
           </div>
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                style={{ background: conectado ? "rgba(107,190,138,0.14)" : "rgba(250,178,25,0.14)",
-                         color: conectado ? T.good : T.warn }}>
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: conectado ? T.good : T.warn }} />
-            {conectado ? "IBKR conectado" : "IBKR sin conexión"}
-          </span>
+          <h1 className="mt-1 text-[26px] font-bold" style={{ color: T.ink }}>Descubrimiento de momentum</h1>
+          <p className="mt-2 max-w-[46ch] text-[14px]" style={{ color: T.ink2 }}>
+            El agente detecta rupturas y sugiere; tú ejecutas a mano y lo reportas aquí.
+          </p>
         </header>
 
         {/* Fila propia, flotando en el flujo normal -- cada acción se distingue por su texto,
@@ -360,9 +358,8 @@ function SalaMomentumRoom() {
         </div>
 
         {error && (
-          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border px-4 py-2 text-[12.5px]"
-               style={{ borderColor: "rgba(208,59,59,0.4)", background: "rgba(208,59,59,0.08)", color: "#e66767" }}>
-            <span>{error}</span>
+          <div className="mb-3 border-l-2 pl-3 text-[12.5px]" style={{ borderColor: T.bad, color: T.bad }}>
+            {error}
           </div>
         )}
 
@@ -382,9 +379,10 @@ function SalaMomentumRoom() {
           </p>
         )}
 
-        {/* ---------- Cuenta: el resultado manda, la mecánica de cuenta es contexto detrás. Una
-            sola card (antes dos, con la fila de cash/poder/gasto suelta abajo) -- misma info,
-            una sola superficie, como el resto de módulos de la sala. ---------- */}
+        {/* ---------- Cuenta: solo lectura, no se toca -- lee como el resto de la casa (línea
+            fina arriba), no como una tarjeta más apilada en el feed (feedback 12-sep-2026,
+            "eso es justo el AI slop"). La caja de verdad se reserva para lo que sí es una
+            unidad discreta que se toca (alertas, historial). ---------- */}
         <div className="mb-6">
           <p className="mb-3 text-[16px] font-bold tracking-tight" style={{ color: T.ink }}>Cuenta</p>
           {(() => {
@@ -392,8 +390,7 @@ function SalaMomentumRoom() {
             const pnlReUsd = Number(cuenta?.pnl_realizado_usd ?? 0);
             const eur = cuenta?.cash && fx ? Number(cuenta.cash.EUR ?? 0) + Number(cuenta.cash.USD ?? 0) / fx : null;
             return (
-              <div className="rounded-2xl border p-5 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]"
-                   style={{ borderColor: T.ring, background: T.panel }}>
+              <div className="border-t pt-4" style={{ borderColor: T.grid }}>
                 <div className="grid grid-cols-2 gap-x-5 gap-y-5">
                   <div>
                     <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Capital total</div>
@@ -461,14 +458,18 @@ function SalaMomentumRoom() {
           {abiertas.length === 0 ? (
             <Empty>Ninguna todavía: aparecerán aquí en cuanto marques una alerta como &quot;ejecutada&quot;.</Empty>
           ) : (
-            <div className="space-y-2.5">
-              {abiertas.map((s) => {
+            <div>
+              {abiertas.map((s, i) => {
                 // Sin objetivo fijo por precio (son tramos, ver doc §3) -- lo único que se puede
                 // avisar sin inventar un progreso falso es cuánto queda del tope real de 90 días.
                 const cercaDelTope = s.dias != null && s.dias >= 80;
                 return (
-                  <div key={s.id} className="flex items-center justify-between rounded-lg border px-3.5 py-3"
-                       style={{ borderColor: cercaDelTope ? "rgba(250,178,25,0.4)" : T.ring, background: T.panel }}>
+                  <div key={s.id} className="flex items-center justify-between py-3"
+                       style={{
+                         borderTop: i > 0 ? `1px solid ${T.grid}` : undefined,
+                         borderLeft: cercaDelTope ? `2px solid ${T.warn}` : undefined,
+                         paddingLeft: cercaDelTope ? "0.625rem" : undefined,
+                       }}>
                     <div>
                       <b style={{ color: T.ink }}>{s.ticker}</b>
                       <span className="ml-2 text-[11px]" style={{ color: T.muted }}>
@@ -498,7 +499,7 @@ function SalaMomentumRoom() {
             Señales ya resueltas más las que descartaste y siguen en curso (para ver &quot;la
             dejé pasar y habría hecho X%&quot;). El check marca si la ejecutaste de verdad.
           </p>
-          <div className="rounded-xl border" style={{ borderColor: T.ring, background: T.panel }}>
+          <div className="border-t" style={{ borderColor: T.grid }}>
             {(historial ?? []).slice(0, histVisibles).map((s, i) => {
               const ejecutada = s.estado === "ejecutada" || s.estado === "vendida";
               const enCurso = !s.resuelta;
@@ -629,7 +630,7 @@ function AlertasCarrusel({ alertas, empates, preciosVivos, regimen, onCambio }: 
 }
 
 /** El ÚNICO sitio de toda la sala donde se gasta dinero real — por eso es lo primero que se ve
- *  (mismo criterio que "Requiere decisión" en Sala Real) y por eso NUNCA se dispara solo:
+ *  (mismo criterio que "Requiere decisión" en Alpha) y por eso NUNCA se dispara solo:
  *  totalmente invisible si no hay nada pendiente, y el botón es el único gatillo (ver doc §3,
  *  decidido 7-sep-2026 -- el gate lo controla Manuel, no un cron). */
 function GatePendienteBanner({ señales, onEvaluado }: { señales: Senal[]; onEvaluado: () => void }) {
@@ -691,7 +692,7 @@ function GatePendienteBanner({ señales, onEvaluado }: { señales: Senal[]; onEv
   const corriendo = progreso?.status === "running";
 
   return (
-    <div className="mb-6 rounded-2xl border p-5 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]" style={{ borderColor: T.ring, background: T.panel }}>
+    <div className="mb-6 border-l-2 py-1 pl-4" style={{ borderColor: T.warn }}>
       <div className="flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: T.warn }} />
         <span className="text-[15px] font-bold tracking-tight" style={{ color: T.warn }}>Gate pendiente: señales del universo</span>
@@ -770,7 +771,7 @@ function Section({ title, count, children }: { title: string; count?: number; ch
 function Collapsible({ title, count, children }: { title: string; count?: number | string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="mb-6 rounded-2xl border overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]" style={{ borderColor: T.ring, background: T.panel }}>
+    <div className="mb-6 border" style={{ borderColor: T.grid }}>
       <button onClick={() => setOpen((o) => !o)}
               className="flex w-full items-center justify-between px-4 py-3.5 text-left">
         <span className="text-[16px] font-bold" style={{ color: T.ink }}>
@@ -791,8 +792,8 @@ function RegimenChip({ regimen }: { regimen: Regimen }) {
   if (regimen.cesta_60d == null) return null;
   const feo = regimen.activo;
   return (
-    <div className="mb-2.5 rounded-lg border px-2.5 py-1.5 text-[11px]"
-         style={{ borderColor: feo ? "rgba(224,119,108,0.4)" : T.grid, background: feo ? "rgba(224,119,108,0.07)" : "transparent" }}>
+    <div className="mb-2.5 border-l-2 py-0.5 pl-3 text-[11px]"
+         style={{ borderColor: feo ? T.bad : T.grid }}>
       <div className="flex items-center gap-2">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: feo ? T.bad : T.muted }} />
         <span style={{ color: T.ink2 }}>
@@ -814,8 +815,8 @@ function RegimenChip({ regimen }: { regimen: Regimen }) {
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border px-4 py-5 text-center text-[12px]"
-         style={{ borderColor: T.ring, background: T.panel, color: T.muted }}>
+    <div className="border-t py-5 text-center text-[12px]"
+         style={{ borderColor: T.grid, color: T.muted }}>
       {children}
     </div>
   );
@@ -921,7 +922,7 @@ function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
   const retornoMostrado = precioVivo != null ? (precioVivo / Number(s.entry_price) - 1) * 100 : Number(s.ret);
 
   return (
-    <div className="rounded-2xl border p-4 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]" style={{ borderColor: T.ring, background: T.panel }}>
+    <div className="border-t pt-4" style={{ borderColor: T.grid }}>
       <div className="flex items-baseline justify-between gap-2">
         <div className="flex min-w-0 items-baseline gap-1.5">
           <span className="h-1.5 w-1.5 shrink-0 translate-y-[-1px] rounded-full" style={{ background: puntoEstado }} />
@@ -1266,7 +1267,7 @@ function AvisoTemporal({ texto, onCerrar }: { texto: string; onCerrar: () => voi
   }, [texto, onCerrar]);
 
   return (
-    <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-2 px-4 pb-2 text-[11px]"
+    <div className="mb-3 flex items-center justify-between gap-2 text-[11px]"
          style={{ color: T.muted }}>
       <span>{texto}</span>
       <button onClick={onCerrar} aria-label="Cerrar aviso" className="shrink-0 hover:opacity-70">✕</button>

@@ -1,6 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import { Geist } from "next/font/google";
 import "./globals.css";
 import PwaInstall from "@/components/PwaInstall";
+
+// Geist para el cuerpo de TODA la app (12-sep-2026, "letra muy vista" -- mismo criterio que
+// Alpha/Beta/Omega, que ya cargan su propia instancia). Fraunces se queda reservada al titular
+// de la portada, el único momento con alma tipográfica.
+const geistSans = Geist({ subsets: ["latin"], weight: "variable", variable: "--font-geist-sans" });
 
 export const metadata: Metadata = {
   title: "Agentic Trader",
@@ -17,7 +23,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#131313",
+  themeColor: "#0A0A0A",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -27,7 +33,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es">
+    <html lang="es" className={geistSans.variable}>
       <head>
         {/* Fraunces (titular serif de la Land): vía Google Fonts directo, no next/font --
             self-hosting solo entregaba una instancia estática y la "j" salía sin su gancho

@@ -24,7 +24,7 @@ export function CapitalForm({ onDone, onError }: {
     if (cur === "EUR" && v < 0) return onError("En € solo aportaciones — para retirar usa $.");
     setBusy(true);
     try {
-      const res = await allocateReal(v, cur === "USD" ? "aportación sala real" : "", cur);
+      const res = await allocateReal(v, cur === "USD" ? "aportación Alpha" : "", cur);
       const symbol = cur === "EUR" ? "€" : "$";
       onDone(res, `Caja ${cur} actualizada: ${v > 0 ? "+" : ""}${symbol}${money(v)}.`);
       setAmount("");

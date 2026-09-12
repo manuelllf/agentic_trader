@@ -20,14 +20,14 @@ solo reparte los pesos entre los ya seleccionados. Todo el dinero (tamaños, caj
 calcula el código con aritmética exacta en `Decimal`, nunca el LLM.
 
 La **decisión** de cartera es mensual (día 1), porque el análisis razona a un mes vista y
-rebalancear más a menudo sería operar su propio ruido. Un botón de simulación en Sala Real
+rebalancear más a menudo sería operar su propio ruido. Un botón de simulación en Alpha
 corre el mismo circuito completo sin tocar ningún libro, para observar sin decidir.
 
 Dos modos, con libros de capital separados:
 
-- **Sala sombra**: cartera simulada de seguimiento; mide el método frente al S&P 500 sin
+- **Beta**: cartera simulada de seguimiento; mide el método frente al S&P 500 sin
   dinero real, neto de comisiones simuladas.
-- **Sala real**: conectada a Interactive Brokers. El agente *propone*; el usuario decide
+- **Alpha**: conectada a Interactive Brokers. El agente *propone*; el usuario decide
   (Sí / No) cada orden. Órdenes a límite y, por defecto, en modo simulación.
 
 ## Decisiones de diseño
@@ -60,7 +60,7 @@ Las que más forma le dan al sistema:
   acciones sobreviven a cada etapa, por sector, es comportamiento; un ticker con su score
   sería un feed de señales. Las posiciones sin sesión salen anonimizadas.
 
-## Segunda estrategia: momentum (Sala Real X)
+## Segunda estrategia: momentum (Omega)
 
 Independiente del ranker fundamental — universo propio de cíclicas puras (Espacio, IA-infra,
 Quantum, cripto-IA, óptica-IA, biotech-IA), sin cartera ni capital compartido. Detecta caídas
@@ -96,7 +96,7 @@ sin tocar código.
 agentic_trading/
 ├── backend/     # FastAPI: escaneo, scoring, libros de capital, bróker, aprobaciones,
 │                #   momentum (2ª estrategia, independiente)
-└── frontend/    # Next.js: sala sombra + sala real + sala real X (momentum)
+└── frontend/    # Next.js: Beta + Alpha + Omega (momentum)
 ```
 
 ## Puesta en marcha
@@ -116,7 +116,7 @@ La documentación OpenAPI (`/docs`, `/redoc`, `/openapi.json`) solo se sirve en 
 
 Variables de entorno en `backend/.env` (no versionado). Para el escaneo con LLM hace falta
 `DEEPSEEK_API_KEY` (proveedor por defecto; `OPENROUTER_API_KEY` es opcional, solo para pruebas
-puntuales locales con `LLM_PROVIDER=openrouter`); para la sala real, las credenciales OAuth de
+puntuales locales con `LLM_PROVIDER=openrouter`); para Alpha, las credenciales OAuth de
 IBKR. Sin ellas, el sistema funciona igualmente: el escaneo requiere la clave del LLM y el
 bróker cae a simulación.
 

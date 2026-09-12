@@ -33,7 +33,7 @@ import { MemorySearch } from "./MemorySearch";
 import { ScanFullButton } from "./ScanFullModal";
 import { OrderRow } from "./OrderRow";
 import { TickerAudit } from "./TickerAudit";
-import { MONO, NUMS, SANS, SERIES, T } from "./tokens";
+import { NUMS, SANS, SERIES, T } from "./tokens";
 import { Details, Empty, Field, Kpi, Panel, SideTag, Td, Th } from "./ui";
 
 /* ============================== página ============================== */
@@ -256,7 +256,7 @@ function SalaRealRoom() {
   }, [loadCritical]);
 
   // Escaneo bajo demanda: el agente puntúa el universo, propone la cartera real (a tu Sí/No) y
-  // ejecuta sola la sombra. Se sondea el estado mientras corre, igual que hacía la Sala Sombra.
+  // ejecuta sola la sombra. Se sondea el estado mientras corre, igual que hacía Beta.
   const pollScan = useCallback(async () => {
     try {
       const s = await getDemoStatus();
@@ -279,11 +279,6 @@ function SalaRealRoom() {
     setFlash("Escaneo en marcha…");
     pollScan();
   }, [pollScan]);
-
-  const irAOperaciones = () => {
-    document.getElementById("centro-operaciones")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
 
   useEffect(() => {
     if (!flash) return;
@@ -397,7 +392,7 @@ function SalaRealRoom() {
            style={{ background: T.page, color: T.muted, fontFamily: SANS }}>
         <span className="h-6 w-6 animate-spin rounded-full border-2"
               style={{ borderColor: T.grid, borderTopColor: T.buy }} />
-        <p>Cargando Sala Real…</p>
+        <p>Cargando Alpha…</p>
       </div>
     );
   }
@@ -436,85 +431,62 @@ function SalaRealRoom() {
         .real-room *::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
       `}</style>
 
-      {/* ---------- barra fina: solo lo que hace falta alcanzar sin subir scroll en una sala
-          larga (volver, lanzar). El estilo grande (eyebrow, título, descripción, dry-run) vive
-          debajo, sin sticky -- lo uno no quita lo otro, mobile first en una página que sí es larga
-          de verdad (el mockup, estático, nunca tuvo este problema). ---------- */}
-      <div className="sticky top-0 z-40 border-b backdrop-blur"
-           style={{ borderColor: T.ring, background: "rgba(13,13,13,0.92)" }}>
-        <div className="mx-auto flex h-11 max-w-[1500px] items-center justify-between gap-3 px-4 lg:px-6">
-          <button onClick={exit} className="text-[12px] font-semibold transition-colors hover:underline" style={{ color: T.muted }}>
-            ← Portada
-          </button>
-          <div className="flex items-center gap-2.5">
-            {summary && (
-              <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: dry ? T.warn : T.good }}
-                    title={dry ? "dry-run" : "live"} />
-            )}
-            <button onClick={irAOperaciones}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold transition-opacity hover:opacity-90"
-                    style={{ background: isScanning ? "rgba(57,135,229,0.15)" : T.buy,
-                             color: isScanning ? "#85b7eb" : "#fff" }}>
-              <svg viewBox="0 0 24 24" className={`h-3 w-3 ${isScanning ? "animate-spin" : ""}`}
-                   fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                   strokeLinejoin="round" aria-hidden>
-                <circle cx="12" cy="12" r="0.5" fill="currentColor" />
-                <path d="M15.51 15.56a5 5 0 1 0 -3.51 1.44" />
-                <path d="M18.83 17.86a9 9 0 1 0 -6.83 3.14" />
-              </svg>
-              {isScanning ? "Analizando…" : "Escanear"}
-            </button>
-          </div>
-        </div>
-      </div>
+      <div className="mx-auto max-w-[1500px] px-4 pt-6 lg:px-6">
 
-      <div className="mx-auto max-w-[1500px] px-4 pt-4 lg:px-6">
+        {/* Sin barra fija -- como la land, la navegación que hace falta vive en el flujo
+            normal, no clavada arriba (feedback 12-sep-2026, "el header AI slop fuera"). El
+            escaneo ya tiene su propio botón en Centro de operaciones más abajo. */}
+        <button onClick={exit} className="mb-4 text-[12px] font-semibold transition-colors hover:underline" style={{ color: T.muted }}>
+          ← Portada
+        </button>
 
         {/* ---------- cabecera: eyebrow + título + descripción, como el resto de la casa
-            (ver /mockup). ---------- */}
-        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className={`flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] ${MONO}`}
-               style={{ color: T.buy }}>
+            (ver /mockup). El badge dry-run/live va en la MISMA fila que el símbolo, no como
+            hermano de todo el bloque -- así no le da por bajar debajo de la descripción en
+            pantallas estrechas (feedback 12-sep-2026). ---------- */}
+        <header className="mb-6">
+          <div className="flex items-center justify-between gap-4">
+            <p className="flex items-center gap-2 text-[22px] font-medium"
+               style={{ color: T.buy, fontFamily: "var(--font-land-serif)", fontStyle: "italic",
+                        fontOpticalSizing: "none", fontVariationSettings: '"opsz" 9' }}>
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: error ? T.bad : T.good }}
                     title={error ? "sin conexión" : "conectado"} />
-              Alpha
+              α
             </p>
-            <h1 className="mt-1 text-[26px] font-bold" style={{ color: T.ink }}>Cartera real</h1>
-            <p className="mt-2 max-w-[46ch] text-[14px]" style={{ color: T.ink2 }}>
-              El agente propone; cada orden espera tu Sí o tu No.
-            </p>
+            {summary && (
+              // Un punto y una palabra, en píldora -- misma forma que el resto de badges de
+              // cabecera (Beta, Omega): la única diferencia real de Alpha es que este no es
+              // decorativo, distingue dinero de verdad de dinero de mentira.
+              <span title={summary.broker.detail}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide"
+                    style={{ background: dry ? "rgba(250,178,25,0.14)" : "rgba(107,190,138,0.14)",
+                             color: dry ? T.warn : T.good }}>
+                <span className="h-[7px] w-[7px] rounded-full" style={{ background: dry ? T.warn : T.good }} />
+                {dry ? "DRY-RUN" : "LIVE"}
+              </span>
+            )}
           </div>
-          {summary && (
-            // Un punto y una palabra, en píldora -- misma forma que el resto de badges de
-            // cabecera (Beta, X): la única diferencia real de Alpha es que este no es
-            // decorativo, distingue dinero de verdad de dinero de mentira.
-            <span title={summary.broker.detail}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide"
-                  style={{ background: dry ? "rgba(250,178,25,0.14)" : "rgba(107,190,138,0.14)",
-                           color: dry ? T.warn : T.good }}>
-              <span className="h-[7px] w-[7px] rounded-full" style={{ background: dry ? T.warn : T.good }} />
-              {dry ? "DRY-RUN" : "LIVE"}
-            </span>
-          )}
+          <h1 className="mt-1 text-[26px] font-bold" style={{ color: T.ink }}>Cartera real</h1>
+          <p className="mt-2 max-w-[46ch] text-[14px]" style={{ color: T.ink2 }}>
+            El agente propone; cada orden espera tu Sí o tu No.
+          </p>
         </header>
 
 
         {/* ---------- avisos ---------- */}
         {error && (
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-2 text-[12.5px]"
-               style={{ borderColor: "rgba(208,59,59,0.4)", background: "rgba(208,59,59,0.08)", color: "#e66767" }}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-l-2 pl-3 text-[12.5px]"
+               style={{ borderColor: T.bad, color: T.bad }}>
             <span>{error}</span>
             <button onClick={() => { setLoading(true); load(); }}
                     className="rounded border px-3 py-1 text-[11.5px] font-bold transition-opacity hover:opacity-80"
-                    style={{ borderColor: "rgba(208,59,59,0.5)", color: "#e66767" }}>
+                    style={{ borderColor: T.bad, color: T.bad }}>
               Reintentar
             </button>
           </div>
         )}
         {flash && (
-          <div className="mb-3 flex items-center justify-between rounded-lg border px-4 py-2 text-[12.5px]"
-               style={{ borderColor: T.ring, background: T.panel, color: T.ink2 }}>
+          <div className="mb-3 flex items-center justify-between text-[12.5px]" style={{ color: T.ink2 }}>
             <span>{flash}</span>
             <button onClick={() => setFlash("")} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
           </div>
@@ -606,13 +578,13 @@ function SalaRealRoom() {
                 {dry ? " — y ahora mismo en simulación: nada llega a IBKR." : "."}
               </p>
               <div className="grid gap-3 p-4 md:grid-cols-2">
-                <div className="rounded-lg border p-3.5" style={{ borderColor: T.grid }}>
+                <div className="border p-3.5" style={{ borderColor: T.grid }}>
                   <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
                     <b style={{ color: T.ink2 }}>1</b> · capital del agente
                   </p>
                   <CapitalForm onDone={(s, msg) => { setSummary(s); setFlash(msg); }} onError={setError} />
                 </div>
-                <div className="rounded-lg border p-3.5" style={{ borderColor: T.grid }}>
+                <div className="border p-3.5" style={{ borderColor: T.grid }}>
                   <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
                     <b style={{ color: T.ink2 }}>2</b> · análisis
                   </p>
@@ -634,8 +606,8 @@ function SalaRealRoom() {
         {/* ---------- 2b · libro con capital → KPIs + aportar/retirar ---------- */}
         {(!summary || hasCapital) && (
           <>
-            <section className="grid grid-cols-2 gap-x-6 gap-y-6 rounded-2xl border p-5 shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)] md:grid-cols-3 xl:grid-cols-6"
-                     style={{ borderColor: T.ring, background: T.panel }}>
+            <section className="grid grid-cols-2 gap-x-6 gap-y-6 border-t pb-1 pt-4 md:grid-cols-3 xl:grid-cols-6"
+                     style={{ borderColor: T.grid }}>
               <Kpi big label="Patrimonio"
                    value={summary && fx && equity > 0 ? `€${money(equity / fx, 0)}` : "—"}
                    sub={summary ? `≈ $${money(equity)}` : undefined} />
@@ -668,8 +640,8 @@ function SalaRealRoom() {
               </button>
             </div>
             {capOpen && (
-              <div className="mb-4 max-w-[520px] rounded-xl border px-4 py-3"
-                   style={{ borderColor: T.ring, background: T.panel }}>
+              <div className="mb-4 max-w-[520px] border-t px-0.5 pt-3"
+                   style={{ borderColor: T.grid }}>
                 <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
                   Aportar o retirar capital del agente
                 </p>
@@ -682,7 +654,7 @@ function SalaRealRoom() {
 
         {/* ---------- 3 · operar: lanzar y, justo debajo, lo que salió de lanzar. Antes se
             lanzaba desde cuatro sitios distintos y el informe caía lejos del lanzador. ---------- */}
-        <div id="centro-operaciones" className="mt-4 scroll-mt-16">
+        <div id="centro-operaciones" className="mt-4">
           <CentroOperaciones report={report} escaneando={isScanning}
                              escaneandoDecide={scanStatus?.decide ?? null}
                              onScanStarted={onScanStarted} onReload={load}
@@ -948,10 +920,9 @@ function SalaRealRoom() {
         {/* ---------- 7 · actividad (histórico de decisiones): justo antes de ajustes —
             son los dos últimos, uso ocasional. ---------- */}
         {history.length > 0 && (
-          <div className="mt-4 overflow-hidden rounded-2xl border text-[11.5px] shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]"
-               style={{ borderColor: T.ring, background: T.panel }}>
+          <div className="mt-4 border-t text-[11.5px]" style={{ borderColor: T.grid }}>
             <button onClick={() => setActividadOpen(!actividadOpen)} aria-expanded={actividadOpen}
-                    className="flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors hover:bg-white/5">
+                    className="flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors hover:opacity-80">
               <span className="text-[16px] font-bold" style={{ color: T.ink }}>
                 Actividad <span className="text-[13px] font-normal" style={{ color: T.muted }}>· {history.length} decisión(es)</span>
               </span>

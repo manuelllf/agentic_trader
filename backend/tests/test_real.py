@@ -1,4 +1,4 @@
-"""Tests de la Sala Real: libros separados, aprobaciones Sí/No, sizing Decimal exacto."""
+"""Tests de Alpha: libros separados, aprobaciones Sí/No, sizing Decimal exacto."""
 
 from __future__ import annotations
 

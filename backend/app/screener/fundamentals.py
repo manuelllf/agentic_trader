@@ -615,7 +615,7 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
     (el del dataset) sigue siendo la identidad bajo la que se guarda/lee la foto.
     `es_dataset`: solo etiqueta de qué universo vino esta captura (ver `foto_guardar`).
     `ttl_h`: ventana de reutilización — `float("inf")` = usa la última foto que haya, sin
-    importar su antigüedad (botón "reutilizar última foto" de Sala Real)."""
+    importar su antigüedad (botón "reutilizar última foto" de Alpha)."""
     if db is not None:
         cached = foto_reciente(db, ticker, ttl_h=ttl_h)
         if cached is not None:

@@ -138,7 +138,7 @@ def _analytics_sync_job() -> None:
 def _reconcile_job() -> None:
     """Reconcilia fills de órdenes límite 'working' SIN depender de que la web esté abierta.
 
-    Clave en producción: si una orden llena a los 15 min y nadie tiene la Sala Real abierta,
+    Clave en producción: si una orden llena a los 15 min y nadie tiene Alpha abierta,
     este job cuadra el libro igualmente. Barato: si no hay órdenes working, es solo una query
     a la BD (ni toca IBKR)."""
     from app import approvals as approvals_mod
@@ -259,23 +259,23 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
         logger.info("Momentum: %s señal(es) nueva(s) detectada(s), gate pendiente.", nuevas)
         plural = "es" if nuevas != 1 else ""
         push.send_to_all(
-            db, title=f"Sala Real X: {nuevas} señal{plural} nueva{plural and 's'}",
-            body=", ".join(tickers_nuevos), url="/momentum", tag="agentic-momentum",
+            db, title=f"Omega: {nuevas} señal{plural} nueva{plural and 's'}",
+            body=", ".join(tickers_nuevos), url="/omega", tag="agentic-omega",
         )
     if reactivadas:
         logger.info("Momentum: %s señal(es) de suelo reactivada(s) (vuelven a zona).",
                     len(reactivadas))
         plural = "es" if len(reactivadas) != 1 else ""
         push.send_to_all(
-            db, title=f"Sala Real X: {len(reactivadas)} señal{plural} vuelve{'n' if plural else ''} a zona",
-            body=", ".join(dict.fromkeys(reactivadas)), url="/momentum", tag="agentic-momentum",
+            db, title=f"Omega: {len(reactivadas)} señal{plural} vuelve{'n' if plural else ''} a zona",
+            body=", ".join(dict.fromkeys(reactivadas)), url="/omega", tag="agentic-omega",
         )
     for r in resueltas_ejecutadas:
         motivo_txt = "objetivo alcanzado" if r["motivo"] == "objetivo" else "90 días cumplidos"
         push.send_to_all(
-            db, title=f"Sala Real X: {r['ticker']} -- {motivo_txt}",
+            db, title=f"Omega: {r['ticker']} -- {motivo_txt}",
             body=f"Resultado {r['ret']:+.1f}%. Revisa si toca vender.",
-            url="/momentum", tag="agentic-momentum",
+            url="/omega", tag="agentic-omega",
         )
     return {"nuevas": nuevas, "reactivadas": len(reactivadas),
             "resueltas": len(resueltas_ejecutadas)}

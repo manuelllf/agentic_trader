@@ -7,6 +7,7 @@ con esos campos a NULL.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pytest
@@ -14,7 +15,13 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import settings
 from app.scheduler import procesar_señales
+
+# `procesar_señales` compara `entry_date` contra "hoy" en huso de Nueva York (ver scheduler.py),
+# no la fecha local del sistema -- de madrugada en España ya son fechas de calendario distintas
+# (bug real de test, no del código: hacía flaky `test_cesta_60d_se_congela_solo_en_senales_nuevas`).
+_HOY_NY = datetime.now(ZoneInfo(settings.scan_timezone)).date()
 
 _DDL = """create table momentum_senales (
     id integer primary key autoincrement, ticker text, sector text, tipo text,
@@ -46,7 +53,7 @@ def db():
 
 
 def _senal_sin_resolver(ticker: str = "NEW") -> dict:
-    hoy = pd.Timestamp(date.today())
+    hoy = pd.Timestamp(_HOY_NY)
     return {
         "ticker": ticker, "sector": "Space", "tipo": "suelo",
         "entry_date": hoy, "entry_price": 15.24, "ref_label": "ATH_referencia",

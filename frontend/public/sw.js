@@ -26,10 +26,10 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// ---- Push: el timbre de la Sala Real ----------------------------------------
+// ---- Push: el timbre de Alpha ----------------------------------------
 
 self.addEventListener("push", (event) => {
-  let data = { title: "Agentic Trader", body: "Nueva alerta.", url: "/real", tag: "agentic-real" };
+  let data = { title: "Agentic Trader", body: "Nueva alerta.", url: "/alpha", tag: "agentic-alpha" };
   try {
     data = { ...data, ...event.data.json() };
   } catch {
@@ -48,7 +48,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/real";
+  const url = event.notification.data?.url || "/alpha";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((tabs) => {
       for (const tab of tabs) {

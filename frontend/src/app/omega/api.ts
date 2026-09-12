@@ -1,4 +1,4 @@
-// Cliente HTTP de Sala Real X -- reusa `get`/`post` de @/lib/api (mismo token/timeout/401
+// Cliente HTTP de Omega -- reusa `get`/`post` de @/lib/api (mismo token/timeout/401
 // que el resto de la app) sin compartir tipos ni endpoints con el ranker.
 import { get, post } from "@/lib/api";
 import type { Candidato, Cuenta, Regimen, Senal, UniversoTicker, Validacion } from "./types";

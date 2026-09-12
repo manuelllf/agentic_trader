@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     # Solo /company-news (from/to acotado), para el gate de noticias del momentum -- no sustituye
     # al scraper de Yahoo, que sigue siendo la fuente para el resto (ver yahoo_scraper.py).
     finnhub_api_key: str = ""
-    # Tope manual de capital para Sala Real X (momentum) -- sin slots, Manuel reparte a mano
+    # Tope manual de capital para Omega (momentum) -- sin slots, Manuel reparte a mano
     # por posición (ver docs/momentum-sala-real-x.md §4). Editable por env hasta que haga falta
     # una UI propia; el valor no es una decisión de producto, solo un límite de partida.
     momentum_capital_tope_usd: float = 3000.0
@@ -181,7 +181,7 @@ class Settings(BaseSettings):
     # huecos/malos prints). 0.0 = límite estricto al ref.
     limit_buffer_pct: float = 0.2
     # Al aprobar en vivo, cuánto se sondea el estado de la orden límite en IBKR esperando el fill
-    # antes de dejarla como 'working' (se reconcilia después al refrescar la Sala Real).
+    # antes de dejarla como 'working' (se reconcilia después al refrescar Alpha).
     order_poll_seconds: int = 12
 
     # IBKR Web API OAuth 1.0a headless vía ibind (self-service portal, cuenta individual Pro).

@@ -1,6 +1,6 @@
 "use client";
 
-/** Centro de operaciones: la ÚNICA card que lanza cosas en Sala Real.
+/** Centro de operaciones: la ÚNICA card que lanza cosas en Alpha.
  *
  *  Antes había nueve acciones repartidas en cuatro sitios (cabecera, "ajustar sin re-escanear",
  *  "fotos", el enlace de sincronizar de analítica) y ninguna decía si costaba dinero. Aquí el
@@ -327,8 +327,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
   }
 
   return (
-    <div className="rounded-2xl border shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_16px_32px_-20px_rgba(0,0,0,0.65)]"
-         style={{ borderColor: T.ring, background: T.panel }}>
+    <div className="border-t" style={{ borderColor: T.grid }}>
       {cfgOpen && (sel === "real" ? (
         <ScanConfigModal
           target="decide"
@@ -414,8 +413,8 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
               <p className="mb-2.5 text-[11.5px] leading-relaxed" style={{ color: T.muted }}>{info.d}</p>
 
               {a.aviso && (
-                <p className="mb-2.5 rounded-lg border px-2.5 py-1.5 text-[10.5px]"
-                   style={{ borderColor: "rgba(208,59,59,0.4)", background: "rgba(208,59,59,0.07)", color: "#e66767" }}>
+                <p className="mb-2.5 border-l-2 pl-2.5 text-[10.5px]"
+                   style={{ borderColor: T.bad, color: T.bad }}>
                   {a.aviso}
                 </p>
               )}

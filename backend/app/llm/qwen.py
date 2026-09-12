@@ -1,7 +1,7 @@
 """Cliente directo de QwenCloud/DashScope -- mismo contrato que `DeepSeekProvider`
 (`chat_logprobs` duck-typed) y mismo esquema de logprobs, reutilizado tal cual.
 
-`enable_thinking` es una elección explícita del caller (modal de simulación de Sala Real o
+`enable_thinking` es una elección explícita del caller (modal de simulación de Alpha o
 `settings` por defecto), NO un hardcode: con él activo el coste se dispara ~33x (medido en
 vivo), así que el default sigue siendo `False` en todas partes salvo que alguien lo pida. Sin
 coste facturado en `usage`: se estima por tarifa fija, igual que ya hace `DeepSeekProvider`.

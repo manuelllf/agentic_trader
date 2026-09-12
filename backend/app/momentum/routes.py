@@ -1,4 +1,4 @@
-"""Endpoints de Sala Real X (momentum) -- todos protegidos por `require_auth` (se engancha en
+"""Endpoints de Omega (momentum) -- todos protegidos por `require_auth` (se engancha en
 main.py, igual que el resto de la API). Solo lectura salvo dos escrituras explícitas:
 marcar ejecutada/vendida y decidir un candidato -- nunca una orden a IBKR (esta sala no
 ejecuta, ver docs/momentum-sala-real-x.md).
@@ -54,12 +54,18 @@ def cuenta(db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/regimen")
-def regimen_actual() -> dict:
+def regimen_actual(db: Session = Depends(get_db)) -> dict:
     """Termómetro de régimen EN VIVO (cesta equiponderada del universo a 60 sesiones), para
-    enseñarlo en la sala. Puramente informativo -- ver `app.momentum.regimen`, no bloquea nada."""
+    enseñarlo en la sala. Puramente informativo -- ver `app.momentum.regimen`, no bloquea nada.
+
+    `signals.UNIVERSO` empieza vacío en cada proceso nuevo y solo se rellena al llamar a
+    `sincronizar_universo` (bug real: `/alertas`/`/historial` no lo hacían, así que en un
+    backend recién arrancado este endpoint devolvía `cesta_60d: null` siempre, hasta que
+    alguien abría la pestaña Universo por su cuenta)."""
     from app.momentum import regimen as regimen_mod
     from app.momentum import signals
 
+    candidatos_mod.sincronizar_universo(db)
     cesta = regimen_mod.cesta_60d(list(signals.UNIVERSO))
     return {
         "cesta_60d": cesta,
