@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import push
+from app.db import SessionLocal
 from app.llm.trace import CallRecord
 from app.momentum import news_gate, signals
 
@@ -37,9 +38,14 @@ _INDUSTRIA_EXCLUIDA = {"cannabis", "auto manufacturers", "other industrial metal
 _SECTOR_EXCLUIDO = {"utilities"}
 
 # Candado por candidato -- evita dos gates a la vez sobre el MISMO id (doble clic, dos
-# pestañas). Por id y no global: cada candidato es independiente, no hace falta bloquear todos.
+# pestañas). Por id y no global: cada candidato es independiente, no hace falta bloquear todos
+# (a diferencia de gate_runner, que sí sirve una cola serie de señales).
 _gate_lock = threading.Lock()
 _gate_en_curso: set[int] = set()
+# Último estado conocido del gate en segundo plano de cada candidato -- lo sondea el frontend
+# (ver `gate_progreso_candidato`). En memoria, un solo proceso, se resetea al reiniciar (mismo
+# patrón que `gate_progress.py`).
+_gate_estado: dict[int, dict] = {}
 
 
 @dataclass
@@ -241,25 +247,18 @@ def comprobar_filtros(candidato_id: int, db: Session) -> dict:
                            {"id": candidato_id}).mappings().first())
 
 
-def lanzar_gate_candidato(candidato_id: int, db: Session) -> dict:
+def lanzar_gate_candidato(candidato_id: int, db: Session) -> None:
     """Única llamada LLM del candidato -- sobre su señal más reciente, igual criterio que el
-    gate del universo fijo (ver news_gate.py). Síncrona: es UNA llamada (~segundos), no hace
-    falta el hilo en segundo plano de `gate_runner` (pensado para 17+ llamadas en serie).
+    gate del universo fijo (ver news_gate.py).
+
+    Valida al momento (barato: BD + señales ya calculadas) y lanza la llamada real en un hilo
+    aparte -- si se esperara aquí, el timeout del navegador/proxy corta la conexión antes de que
+    DeepSeek responda (mismo bug que ya forzó a hacer async el gate de señales el 7-sep y el
+    escaneo el 9-sep; visto en producción con este mismo endpoint el 14-sep-2026 -- la
+    suposición de "es UNA llamada, van segundos" dejó de sostenerse).
 
     Candado por id: un doble clic (o dos pestañas) sobre el MISMO candidato no debe lanzar dos
     llamadas reales en paralelo."""
-    with _gate_lock:
-        if candidato_id in _gate_en_curso:
-            raise ValueError("Ya hay un gate en curso para este candidato.")
-        _gate_en_curso.add(candidato_id)
-    try:
-        return _lanzar_gate_candidato(candidato_id, db)
-    finally:
-        with _gate_lock:
-            _gate_en_curso.discard(candidato_id)
-
-
-def _lanzar_gate_candidato(candidato_id: int, db: Session) -> dict:
     row = db.execute(text("select * from momentum_candidatos where id = :id"),
                      {"id": candidato_id}).mappings().first()
     if row is None:
@@ -272,6 +271,39 @@ def _lanzar_gate_candidato(candidato_id: int, db: Session) -> dict:
         raise ValueError("Sin señales que evaluar (el histórico pudo cambiar desde el filtro).")
     reciente = max(señales, key=lambda s: s["entry_date"])
 
+    with _gate_lock:
+        if candidato_id in _gate_en_curso:
+            raise ValueError("Ya hay un gate en curso para este candidato.")
+        _gate_en_curso.add(candidato_id)
+        _gate_estado[candidato_id] = {"status": "running", "error": None}
+    threading.Thread(target=_gate_en_segundo_plano,
+                     args=(candidato_id, ticker, row["nombre"], reciente), daemon=True).start()
+
+
+def gate_progreso_candidato(candidato_id: int) -> dict:
+    with _gate_lock:
+        return dict(_gate_estado.get(candidato_id, {"status": "idle", "error": None}))
+
+
+def _gate_en_segundo_plano(candidato_id: int, ticker: str, nombre: str | None,
+                           reciente: dict) -> None:
+    db = SessionLocal()
+    try:
+        _lanzar_gate_candidato(candidato_id, ticker, nombre, reciente, db)
+        with _gate_lock:
+            _gate_estado[candidato_id] = {"status": "done", "error": None}
+    except Exception as exc:  # noqa: BLE001 -- el fallo se guarda para que el frontend lo enseñe
+        logger.exception("Fallo en el gate del candidato %s (%s)", candidato_id, ticker)
+        with _gate_lock:
+            _gate_estado[candidato_id] = {"status": "error", "error": str(exc)}
+    finally:
+        db.close()
+        with _gate_lock:
+            _gate_en_curso.discard(candidato_id)
+
+
+def _lanzar_gate_candidato(candidato_id: int, ticker: str, nombre: str | None, reciente: dict,
+                          db: Session) -> None:
     lanzado_at = datetime.now(UTC)
     llamada_id = db.execute(text("""
         insert into momentum_gate_llamadas (candidato_id, ticker, lanzado_at)
@@ -283,7 +315,7 @@ def _lanzar_gate_candidato(candidato_id: int, db: Session) -> dict:
     recorder = _Recorder()
     try:
         r = news_gate.evaluar(
-            ticker, row["nombre"] or ticker, ath=float(reciente["ath"]),
+            ticker, nombre or ticker, ath=float(reciente["ath"]),
             entry_date=reciente["entry_date"].date(), entry_price=float(reciente["entry_price"]),
             caida_pct=float(reciente["caida_pct"]), desde=reciente["desde_noticias"].date(),
             recorder=recorder,
@@ -325,5 +357,3 @@ def _lanzar_gate_candidato(candidato_id: int, db: Session) -> dict:
         update momentum_candidatos set gate_pass = :gp, gate_detalle = :gd where id = :id
     """), {"gp": r.pasa, "gd": r.motivo, "id": candidato_id})
     db.commit()
-    return dict(db.execute(text("select * from momentum_candidatos where id = :id"),
-                           {"id": candidato_id}).mappings().first())

@@ -369,11 +369,27 @@ def comprobar_filtros_candidato(candidato_id: int, db: Session = Depends(get_db)
 @router.post("/candidatos/{candidato_id}/gate")
 def gate_candidato(candidato_id: int, db: Session = Depends(get_db)) -> dict:
     """Única llamada LLM del candidato -- siempre un clic explícito, uno a la vez, nunca en
-    bloque (decidido 8-sep-2026: aparte del gate de señales a propósito, ver `candidatos.py`)."""
+    bloque (decidido 8-sep-2026: aparte del gate de señales a propósito, ver `candidatos.py`).
+
+    Valida al momento y solo LANZA la llamada real en segundo plano -- esperar aquí es lo que
+    daba timeout en el navegador con el gate ya en curso por detrás (14-sep-2026, mismo patrón
+    que el gate de señales y el escaneo). El progreso real se sondea en
+    `GET /candidatos/{id}/gate/progreso`."""
     try:
-        return _row(candidatos_mod.lanzar_gate_candidato(candidato_id, db))
+        candidatos_mod.lanzar_gate_candidato(candidato_id, db)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    return {"lanzado": True}
+
+
+@router.get("/candidatos/{candidato_id}/gate/progreso")
+def gate_progreso_candidato(candidato_id: int, db: Session = Depends(get_db)) -> dict:
+    estado = candidatos_mod.gate_progreso_candidato(candidato_id)
+    row = None
+    if estado["status"] != "running":
+        row = db.execute(text("select * from momentum_candidatos where id = :id"),
+                         {"id": candidato_id}).mappings().first()
+    return {**estado, "candidato": _row(dict(row)) if row else None}
 
 
 class EvaluarPendientesIn(BaseModel):

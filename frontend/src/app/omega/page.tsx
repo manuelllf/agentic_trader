@@ -12,8 +12,9 @@ import { money, signMoney } from "@/lib/format";
 import {
   adminDetectarCandidatos, adminScan, buscarCandidato, comprobarFiltrosCandidato,
   crearCandidatoManual, decidirCandidato, descartarSenal, ejecutarSenal, getAlertas,
-  getCandidatos, getCuenta, getGateProgreso, getHistorial, getPreciosVivos, getRegimen,
-  getScanProgreso, getValidacion, lanzarGate, lanzarGateCandidato, setMantenerUniverso,
+  getCandidatos, getCuenta, getGateProgreso, getGateProgresoCandidato, getHistorial,
+  getPreciosVivos, getRegimen, getScanProgreso, getValidacion, lanzarGate, lanzarGateCandidato,
+  setMantenerUniverso,
 } from "./api";
 import type { GateProgreso, ScanProgreso } from "./api";
 import { MONO, NUMS, SANS, T } from "./tokens";
@@ -1405,6 +1406,37 @@ function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => void; on
     }
   };
 
+  // Gate: solo LANZA en segundo plano y sondea -- esperar la respuesta aquí es lo que daba
+  // timeout en el navegador con el gate ya en curso por detrás (14-sep-2026).
+  const gatePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => { if (gatePollRef.current) clearInterval(gatePollRef.current); }, []);
+
+  const sondearGate = useCallback(async () => {
+    if (!candidato) return;
+    try {
+      const p = await getGateProgresoCandidato(candidato.id);
+      if (p.status !== "running") {
+        if (gatePollRef.current) { clearInterval(gatePollRef.current); gatePollRef.current = null; }
+        setBusy(false);
+        if (p.status === "error") setErr(p.error ?? "No se pudo completar el gate.");
+        if (p.candidato) { setCandidato(p.candidato); onCambio(p.candidato); }
+      }
+    } catch { /* fallo puntual de red no corta el sondeo */ }
+  }, [candidato, onCambio]);
+
+  const lanzarGate = async () => {
+    if (!candidato) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await lanzarGateCandidato(candidato.id);
+      gatePollRef.current = setInterval(sondearGate, 3000);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "No se pudo lanzar el gate.");
+      setBusy(false);
+    }
+  };
+
   const decidir = async (decision: "incorporado" | "descartado") => {
     if (!candidato) return;
     setBusy(true);
@@ -1491,7 +1523,7 @@ function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => void; on
                   {busy ? "Comprobando…" : "Comprobar filtros (gratis)"}
                 </button>
               ) : listoParaGate ? (
-                <button onClick={() => recargar(() => lanzarGateCandidato(candidato.id))} disabled={busy}
+                <button onClick={lanzarGate} disabled={busy}
                         className="mt-3 w-full rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                         style={{ background: T.entry, color: "#fff" }}>
                   {busy ? "Evaluando…" : "Lanzar gate (1 llamada real)"}
@@ -1583,6 +1615,35 @@ function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; first: b
     }
   };
 
+  // Gate: solo LANZA en segundo plano y sondea -- esperar la respuesta aquí es lo que daba
+  // timeout en el navegador con el gate ya en curso por detrás (14-sep-2026).
+  const gatePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => { if (gatePollRef.current) clearInterval(gatePollRef.current); }, []);
+
+  const sondearGate = useCallback(async () => {
+    try {
+      const p = await getGateProgresoCandidato(c.id);
+      if (p.status !== "running") {
+        if (gatePollRef.current) { clearInterval(gatePollRef.current); gatePollRef.current = null; }
+        setBusy(false);
+        if (p.status === "error") setErr(p.error ?? "No se pudo completar el gate.");
+        if (p.candidato) onCambio(p.candidato);
+      }
+    } catch { /* fallo puntual de red no corta el sondeo */ }
+  }, [c.id, onCambio]);
+
+  const lanzarGate = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      await lanzarGateCandidato(c.id);
+      gatePollRef.current = setInterval(sondearGate, 3000);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "No se pudo lanzar el gate.");
+      setBusy(false);
+    }
+  };
+
   const descartar = async () => {
     setBusy(true);
     setErr("");
@@ -1628,7 +1689,7 @@ function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; first: b
             {busy ? "Comprobando…" : "Comprobar filtros (gratis)"}
           </button>
         ) : listoParaGate ? (
-          <button onClick={() => accionar(() => lanzarGateCandidato(c.id))} disabled={busy}
+          <button onClick={lanzarGate} disabled={busy}
                   className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                   style={{ background: T.entry, color: "#fff" }}>
             {busy ? "Evaluando…" : "Lanzar gate (1 llamada real)"}

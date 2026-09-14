@@ -39,8 +39,19 @@ export const comprobarFiltrosCandidato = (id: number) =>
   post<Candidato>(`/momentum/candidatos/${id}/comprobar-filtros`);
 
 // Única llamada real del candidato -- siempre uno a uno, nunca en bloque (ver page.tsx).
+// Solo LANZA el gate en segundo plano y responde al momento -- el progreso real se sondea con
+// `getGateProgresoCandidato()` (mismo motivo que el gate de señales: esperar aquí es lo que
+// daba timeout en el navegador con el gate ya en curso por detrás, 14-sep-2026).
 export const lanzarGateCandidato = (id: number) =>
-  post<Candidato>(`/momentum/candidatos/${id}/gate`);
+  post<{ lanzado: boolean }>(`/momentum/candidatos/${id}/gate`);
+
+export type GateProgresoCandidato = {
+  status: "idle" | "running" | "done" | "error";
+  error: string | null;
+  candidato: Candidato | null;
+};
+export const getGateProgresoCandidato = (id: number) =>
+  get<GateProgresoCandidato>(`/momentum/candidatos/${id}/gate/progreso`);
 
 export const setMantenerUniverso = (ticker: string, mantener: boolean) =>
   post<{ ok: boolean; mantener: boolean }>(`/momentum/universo/${ticker}/mantener`, { mantener });
