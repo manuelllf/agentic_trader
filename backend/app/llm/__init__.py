@@ -16,7 +16,7 @@ from app.llm.qwen import QwenProvider
 
 def get_llm(model: str | None = None, reasoning_effort: str | None = "none",
             stage: str = "", recorder=None, provider: str | None = None,
-            enable_thinking: bool = False) -> LLMProvider:  # noqa: ANN001
+            enable_thinking: bool = False, timeout: float | None = None) -> LLMProvider:  # noqa: ANN001
     """Proveedor LLM. Lanza si falta la key del proveedor configurado.
 
     `reasoning_effort` por defecto es `"none"` — sin mandarlo, el proveedor cae a su default
@@ -28,19 +28,23 @@ def get_llm(model: str | None = None, reasoning_effort: str | None = "none",
     porque solo el prescore la llamaba con un modelo fijo; con el modal permitiendo Qwen en
     cualquier etapa, ignorarlo mandaría siempre el mismo modelo aunque el caller pidiera otro).
     `enable_thinking`: on/off del razonamiento de Qwen (no tiene niveles como DeepSeek) — coste
-    ~33x medido cuando está activo, así que el default es `False`."""
+    ~33x medido cuando está activo, así que el default es `False`.
+    `timeout`: `None` = cada proveedor usa su default (180s, pensado para prosa larga con
+    razonamiento). El gate de momentum pasa uno corto -- ver `news_gate.py`."""
     if (provider or settings.llm_provider) == "qwen":
         if not settings.dashscope_api_key:
             raise RuntimeError(
                 "DASHSCOPE_API_KEY no configurada. Ponla en backend/.env (o en Railway) para "
                 "usar Qwen."
             )
+        kwargs = {"timeout": timeout} if timeout is not None else {}
         return QwenProvider(
             api_key=settings.dashscope_api_key,
             model=model or settings.qwen_model,
             stage=stage,
             recorder=recorder,
             enable_thinking=enable_thinking,
+            **kwargs,
         )
 
     if settings.llm_provider == "openrouter":
@@ -65,6 +69,7 @@ def get_llm(model: str | None = None, reasoning_effort: str | None = "none",
             "DEEPSEEK_API_KEY no configurada. Ponla en backend/.env (o en Railway) para usar "
             "el LLM."
         )
+    kwargs = {"timeout": timeout} if timeout is not None else {}
     return DeepSeekProvider(
         api_key=settings.deepseek_api_key,
         model=model or settings.llm_model,
@@ -72,4 +77,5 @@ def get_llm(model: str | None = None, reasoning_effort: str | None = "none",
         reasoning_effort=reasoning_effort,
         stage=stage,
         recorder=recorder,
+        **kwargs,
     )

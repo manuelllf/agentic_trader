@@ -1,6 +1,6 @@
 // Cliente HTTP de Omega -- reusa `get`/`post` de @/lib/api (mismo token/timeout/401
 // que el resto de la app) sin compartir tipos ni endpoints con el ranker.
-import { get, post } from "@/lib/api";
+import { get, post, put } from "@/lib/api";
 import type { Candidato, Cuenta, Regimen, Senal, UniversoTicker, Validacion } from "./types";
 
 export const getCuenta = () => get<Cuenta>("/momentum/cuenta");
@@ -73,6 +73,14 @@ export type GateProgreso = {
   error: string | null;
 };
 export const getGateProgreso = () => get<GateProgreso>("/momentum/gate/progreso");
+
+// Selector MANUAL del proveedor del gate (candidatos + señales) -- persistido hasta que Manuel
+// lo cambie, sin failover automático (ver backend/app/momentum/gate_config.py, 14-sep-2026: el
+// apagón de DeepSeek dejó el gate colgado horas sin forma de saltar a otro proveedor).
+export type GateProvider = "deepseek" | "qwen";
+export const getGateConfig = () => get<{ provider: GateProvider }>("/momentum/gate/config");
+export const setGateConfig = (provider: GateProvider) =>
+  put<{ provider: GateProvider }>("/momentum/gate/config", { provider });
 
 // Rescate manual del escaneo diario (cron 16:45 ET) -- gratis, sin gate, por si el cron no ha
 // corrido todavía o falló. Separado de "actualizar" a propósito: ese solo relee lo que ya hay.

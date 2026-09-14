@@ -18,7 +18,7 @@ from sqlalchemy import bindparam, text
 
 from app.db import SessionLocal
 from app.llm.trace import CallRecord
-from app.momentum import gate_progress, news_gate, signals
+from app.momentum import gate_config, gate_progress, news_gate, signals
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,9 @@ def _run(ids: list[int]) -> None:
             select * from momentum_senales
             where id in :ids and gate_resultado is null and estado != 'descartada'
         """).bindparams(bindparam("ids", expanding=True)), {"ids": ids}).mappings().all()
+        # Mismo selector manual que el gate de candidatos (ver `gate_config.py`) -- una sola
+        # lectura para todo el lote, no por señal: es el mismo proveedor durante todo el batch.
+        provider = gate_config.get_gate_provider(db)
         for m in pendientes:
             ticker = m["ticker"]
             gate_progress.marca_ticker(ticker)
@@ -94,6 +97,7 @@ def _run(ids: list[int]) -> None:
                     ticker, signals.NOMBRE.get(ticker, ticker),
                     ath=float(m["ath"]), entry_date=entry_date, entry_price=float(m["entry_price"]),
                     caida_pct=float(m["caida_pct"]), desde=desde, recorder=recorder,
+                    provider=provider,
                 )
                 c = recorder.calls[0] if recorder.calls else None
                 db.execute(text("""

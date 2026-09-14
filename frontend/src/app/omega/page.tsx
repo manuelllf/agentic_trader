@@ -12,11 +12,11 @@ import { money, signMoney } from "@/lib/format";
 import {
   adminDetectarCandidatos, adminScan, buscarCandidato, comprobarFiltrosCandidato,
   crearCandidatoManual, decidirCandidato, descartarSenal, ejecutarSenal, getAlertas,
-  getCandidatos, getCuenta, getGateProgreso, getGateProgresoCandidato, getHistorial,
-  getPreciosVivos, getRegimen, getScanProgreso, getValidacion, lanzarGate, lanzarGateCandidato,
-  setMantenerUniverso,
+  getCandidatos, getCuenta, getGateConfig, getGateProgreso, getGateProgresoCandidato,
+  getHistorial, getPreciosVivos, getRegimen, getScanProgreso, getValidacion, lanzarGate,
+  lanzarGateCandidato, setGateConfig, setMantenerUniverso,
 } from "./api";
-import type { GateProgreso, ScanProgreso } from "./api";
+import type { GateProgreso, GateProvider, ScanProgreso } from "./api";
 import { MONO, NUMS, SANS, T } from "./tokens";
 import type { Candidato, Cuenta, Regimen, Senal, Validacion } from "./types";
 
@@ -95,6 +95,23 @@ function SalaMomentumRoom() {
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
   const [histVisibles, setHistVisibles] = useState(5);
   const [detalleHistorial, setDetalleHistorial] = useState<Senal | null>(null);
+
+  // Selector MANUAL del proveedor del gate (candidatos + señales) -- persistido en el backend,
+  // no en el navegador: se queda así hasta que Manuel lo cambie, sea cual sea la pestaña o el
+  // dispositivo desde el que lo mire (14-sep-2026: el apagón de DeepSeek dejó el gate colgado
+  // horas sin forma de saltar a Qwen).
+  const [gateProvider, setGateProviderState] = useState<GateProvider | null>(null);
+  const [gateProviderBusy, setGateProviderBusy] = useState(false);
+  useEffect(() => { getGateConfig().then((c) => setGateProviderState(c.provider)).catch(() => {}); }, []);
+  const cambiarGateProvider = async (p: GateProvider) => {
+    if (p === gateProvider || gateProviderBusy) return;
+    setGateProviderBusy(true);
+    try {
+      const r = await setGateConfig(p);
+      setGateProviderState(r.provider);
+    } catch { /* fallo puntual: el select vuelve al valor guardado */ }
+    finally { setGateProviderBusy(false); }
+  };
 
   // Recarga: re-pide datos y actualiza estado sin navegar ni desmontar la sala -- el scroll y
   // cualquier fila desplegada se quedan donde estaban. La primera carga (sin datos aún) usa
@@ -439,12 +456,23 @@ function SalaMomentumRoom() {
                 </div>
                 <div className="mt-4 flex items-baseline justify-between border-t pt-3.5"
                      style={{ borderColor: T.grid }}
-                     title={`${cuenta?.gate_llamadas ?? 0} llamada(s) real(es) a DeepSeek, señales + candidatos`}>
+                     title={`${cuenta?.gate_llamadas ?? 0} llamada(s) real(es), señales + candidatos`}>
                   <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Gate gasto</span>
                   <span className={`text-[13px] font-bold ${NUMS}`} style={{ color: T.warn }}>
                     ${money(cuenta?.gate_gastado_usd ?? 0, 2)}
                     <span className="ml-1.5 font-normal" style={{ color: T.muted }}>· {cuenta?.gate_llamadas ?? 0} llam.</span>
                   </span>
+                </div>
+                <div className="mt-2.5 flex items-center justify-between"
+                     title="Proveedor del gate (candidatos + señales) -- se queda así hasta que lo cambies, sin salto automático si uno falla.">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Gate modelo</span>
+                  <select value={gateProvider ?? ""} disabled={gateProvider == null || gateProviderBusy}
+                          onChange={(e) => cambiarGateProvider(e.target.value as GateProvider)}
+                          className="rounded-md px-2 py-1 text-[11.5px] font-bold disabled:opacity-40"
+                          style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.grid}` }}>
+                    <option value="deepseek">DeepSeek Flash</option>
+                    <option value="qwen">Qwen 3.7 Flash</option>
+                  </select>
                 </div>
               </div>
             );

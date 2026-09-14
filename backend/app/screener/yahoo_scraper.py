@@ -23,8 +23,10 @@ ritmo).
 
 from __future__ import annotations
 
+import logging
 import math
 import re
+import time
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -32,6 +34,8 @@ from curl_cffi import requests as creq
 
 if TYPE_CHECKING:
     from app.screener.fundamentals import NameData
+
+logger = logging.getLogger(__name__)
 
 # Módulos del quoteSummary que cubren los mismos datos que trae `.info` de yfinance: valoración,
 # tipo de instrumento, estadísticas clave, perfil de la empresa, resumen de mercado, calendario de
@@ -51,14 +55,22 @@ class TransportError(Exception):
 
 def consentir_y_crumb() -> tuple[creq.Session, str]:
     """Sesión con la cookie de consentimiento GDPR aceptada + UN crumb, reutilizables para
-    todo el escaneo. Lanza RuntimeError si no se puede (el caller cae entero a yfinance)."""
+    todo el escaneo. Lanza RuntimeError si no se puede (el caller cae entero a yfinance).
+
+    Cada petición loguea su propio tiempo -- `timeout=15` es lo que le pides a curl_cffi, no una
+    garantía: visto en local (Windows, 14-sep-2026) tardar minutos sin que ese timeout saltara.
+    Sin estos logs, un cuelgue aquí es indistinguible de un cuelgue en cualquier otro sitio."""
+    t0 = time.monotonic()
     s = creq.Session(impersonate="chrome")
     r = s.get("https://finance.yahoo.com/quote/AAPL/", timeout=15)
+    logger.info("Yahoo scraper: homepage en %.1fs (%s).", time.monotonic() - t0, r.url)
     txt = r.text
     # Si no hay muro de consentimiento (ej. IP no-EU), estos campos no existen: no es un fallo,
     # solo no hace falta consentir. Detectarlo por la ausencia de "consent.yahoo.com" en la URL.
     if "consent.yahoo.com" not in r.url:
+        t1 = time.monotonic()
         rc = s.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=15)
+        logger.info("Yahoo scraper: crumb (sin consentir) en %.1fs.", time.monotonic() - t1)
         if rc.status_code == 200 and rc.text and "error" not in rc.text.lower():
             return s, rc.text.strip()
         raise RuntimeError(
@@ -68,9 +80,13 @@ def consentir_y_crumb() -> tuple[creq.Session, str]:
     done_url = (re.search(r'name="originalDoneUrl" value="([^"]+)"', txt)
                 .group(1).replace("&#x3D;", "="))
     namespace = re.search(r'name="namespace" value="([^"]+)"', txt).group(1)
+    t2 = time.monotonic()
     s.post(r.url, data={"csrfToken": csrf, "sessionId": session_id, "originalDoneUrl": done_url,
                         "namespace": namespace, "agree": "agree"}, timeout=15)
+    logger.info("Yahoo scraper: consentimiento POST en %.1fs.", time.monotonic() - t2)
+    t3 = time.monotonic()
     rc = s.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=15)
+    logger.info("Yahoo scraper: crumb (tras consentir) en %.1fs.", time.monotonic() - t3)
     if rc.status_code != 200 or not rc.text or "error" in rc.text.lower():
         raise RuntimeError(f"No se pudo obtener crumb: {rc.status_code} {rc.text[:200]}")
     return s, rc.text.strip()

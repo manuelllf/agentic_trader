@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.momentum import candidatos as candidatos_mod
-from app.momentum import capital, gate_progress, gate_runner, signals
+from app.momentum import capital, gate_config, gate_progress, gate_runner, signals
 
 logger = logging.getLogger(__name__)
 
@@ -421,6 +421,22 @@ def evaluar_pendientes(body: EvaluarPendientesIn, db: Session = Depends(get_db))
 @router.get("/gate/progreso")
 def gate_progreso() -> dict:
     return gate_progress.snapshot()
+
+
+class GateConfigIn(BaseModel):
+    provider: Literal["deepseek", "qwen"]
+
+
+@router.get("/gate/config")
+def gate_config_get(db: Session = Depends(get_db)) -> dict:
+    return {"provider": gate_config.get_gate_provider(db)}
+
+
+@router.put("/gate/config")
+def gate_config_set(body: GateConfigIn, db: Session = Depends(get_db)) -> dict:
+    """Selector MANUAL del proveedor del gate (candidatos + señales), persistido hasta que
+    Manuel lo vuelva a cambiar -- sin failover automático (ver `gate_config.py`)."""
+    return {"provider": gate_config.set_gate_provider(db, body.provider)}
 
 
 @router.post("/admin/scan")

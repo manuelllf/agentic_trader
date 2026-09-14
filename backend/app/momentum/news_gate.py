@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from datetime import date
 
 import httpx
 
 from app.config import settings
-from app.llm.deepseek import DeepSeekProvider
+from app.llm import get_llm
 from app.screener import fundamentals, yahoo_scraper
 
 logger = logging.getLogger(__name__)
@@ -95,11 +96,17 @@ def _finnhub_news(ticker: str, desde: date, hasta: date) -> list[str]:
 def _noticias_para(ticker: str, desde: date, hasta: date) -> list[str]:
     """Yahoo (scraper propio, ya usado por el ranker fundamental) primario; Finnhub de respaldo
     cuando hace falta acotar por fecha y el scraper no trajo nada."""
+    t0 = time.monotonic()
+    logger.info("Gate %s: sesión del scraper de Yahoo (crumb/consentimiento)...", ticker)
     scraper = fundamentals._scraper_session()
+    logger.info("Gate %s: sesión del scraper resuelta en %.1fs (%s).", ticker,
+               time.monotonic() - t0, "ok" if scraper else "sin scraper, cae a Finnhub")
     if scraper is not None:
         s, _crumb = scraper
         try:
+            t1 = time.monotonic()
             noticias = yahoo_scraper._noticias(s, ticker)
+            logger.info("Gate %s: noticias de Yahoo en %.1fs.", ticker, time.monotonic() - t1)
             if noticias:
                 return noticias
         except Exception:
@@ -114,31 +121,43 @@ class GateResult:
 
 
 def evaluar(ticker: str, nombre: str, *, ath: float, entry_date: date, entry_price: float,
-            caida_pct: float, desde: date, recorder=None) -> GateResult:
+            caida_pct: float, desde: date, recorder=None, provider: str = "deepseek") -> GateResult:
     """Evalúa UNA señal (la más reciente del ticker/candidato). `desde` acota la ventana de
     noticias -- el llamador pasa la fecha del último pico confirmado (zigzag) o una ventana
     razonable hacia atrás (suelo); cualquier earnings relevante cae dentro por construcción.
 
     `recorder`: objeto duck-typed con `.record(CallRecord)` (ver `app.llm.trace`) -- lo usa
     `gate_runner` para volcar la llamada en `momentum_gate_llamadas`. `None` = sin traza (tests).
+
+    `provider`: "deepseek" o "qwen" -- selector MANUAL persistido (ver `gate_config.py`), no
+    failover automático: si uno de los dos está caído (visto en vivo 14-sep-2026, apagón de
+    DeepSeek), Manuel elige el otro desde la sala y se queda así hasta que lo cambie.
     """
-    if not settings.deepseek_api_key:
-        raise RuntimeError("Sin DEEPSEEK_API_KEY configurada: no se puede evaluar el gate.")
+    # Logs de cada fase, no solo del fallo final -- si algo se cuelga, `tail -f` tiene que decir
+    # EN QUÉ paso está atascado en ese momento, no solo la excepción una vez ya abandonado
+    # (visto en local 14-sep-2026: sin esto no había forma de saber si el cuelgue era noticias o
+    # el LLM hasta que saltaba el techo duro de 90s).
+    t0 = time.monotonic()
+    logger.info("Gate %s: pidiendo noticias...", ticker)
     noticias = _noticias_para(ticker, desde, date.today())
-    # "deepseek-flash" fijo (V4.1 Flash) -- explícito y no via `settings.llm_model`: ese ajuste
-    # es el default de Alpha, pero cada escaneo de Alpha puede pisarlo con su propio modelo por
-    # etapa (pro, flash, lo que sea, ver "Configurar" en la sala). Omega no tiene ese selector --
-    # una única llamada de sí/no, siempre con el mismo modelo, pase lo que pase en Alpha.
+    logger.info("Gate %s: %d noticia(s) en %.1fs.", ticker, len(noticias), time.monotonic() - t0)
+    # Modelo/proveedor vía `get_llm()` (no `settings.llm_model`): ese ajuste es el default de
+    # Alpha, pero cada escaneo de Alpha puede pisarlo con su propio modelo por etapa (pro, flash,
+    # Qwen, lo que sea, ver "Configurar" en la sala). Omega usa su propio selector, independiente
+    # del de Alpha. `enable_thinking=False` (Qwen) / `reasoning_effort="low"` (DeepSeek): de
+    # sobra para una clasificación de una frase, y Qwen con razonamiento cuesta ~33x más.
     # `timeout` corto (no los 180s del escaneo): una llamada colgada 15 minutos (visto en
     # producción 14-sep-2026) dejaba a Manuel sin saber si reintentar o esperar -- 45s falla
     # rápido y avisa, en vez de bloquear en silencio.
-    llm = DeepSeekProvider(settings.deepseek_api_key, "deepseek-flash",
-                           base_url=settings.deepseek_base_url,
-                           reasoning_effort="low", stage="momentum_gate", recorder=recorder,
-                           timeout=45.0)
+    llm = get_llm(model="deepseek-flash" if provider == "deepseek" else None,
+                 reasoning_effort="low", stage="momentum_gate", recorder=recorder,
+                 provider=provider, enable_thinking=False, timeout=45.0)
+    t1 = time.monotonic()
+    logger.info("Gate %s: llamando a %s...", ticker, provider)
     raw = llm.chat(SYSTEM, _user_prompt(ticker, nombre, noticias, ath=ath, entry_date=entry_date,
                                         entry_price=entry_price, caida_pct=caida_pct),
                    temperature=0.0)
+    logger.info("Gate %s: respuesta de %s en %.1fs.", ticker, provider, time.monotonic() - t1)
     try:
         data = json.loads(raw)
         return GateResult(pasa=bool(data["pasa"]), motivo=str(data.get("motivo", "")))

@@ -39,12 +39,15 @@ class QwenProvider:
         stage: str = "",
         recorder=None,  # noqa: ANN001  (app.llm.trace.LLMTrace; None = no se traza)
         enable_thinking: bool = False,
+        timeout: float = _HARD_TIMEOUT,
     ) -> None:
         self._model = model
         self._base_url = base_url.rstrip("/")
         self._stage = stage
         self._recorder = recorder
         self._enable_thinking = enable_thinking
+        # Mismo motivo que `DeepSeekProvider._timeout`: el gate de momentum pasa uno corto.
+        self._timeout = timeout
         self._logprobs_soportado = True
         self._headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         self._usage = {
@@ -102,7 +105,7 @@ class QwenProvider:
             payload = self._payload(system, user, temperature, top_p)
             t0 = time.monotonic()
             try:
-                with httpx.Client(timeout=_HARD_TIMEOUT) as client:
+                with httpx.Client(timeout=self._timeout) as client:
                     resp = client.post(
                         f"{self._base_url}/chat/completions",
                         headers=self._headers,

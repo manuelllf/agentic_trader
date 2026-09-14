@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
@@ -20,7 +21,7 @@ from sqlalchemy.orm import Session
 from app import push
 from app.db import SessionLocal
 from app.llm.trace import CallRecord
-from app.momentum import news_gate, signals
+from app.momentum import gate_config, news_gate, signals
 
 logger = logging.getLogger(__name__)
 
@@ -285,19 +286,48 @@ def gate_progreso_candidato(candidato_id: int) -> dict:
         return dict(_gate_estado.get(candidato_id, {"status": "idle", "error": None}))
 
 
+# Techo duro de TODO el trabajo del gate (noticias + LLM), no solo de la llamada a DeepSeek
+# (que ya tiene su propio timeout de 45s, ver news_gate.py): el fetch de noticias hace varias
+# peticiones de hasta 15s cada una ANTES de llegar al LLM, y en local (Windows + curl_cffi) se
+# ha visto colgarse muy por encima de sus propios timeouts (visto 14-sep-2026: más de 3 minutos
+# sin resolver). Python no puede matar un hilo a medias, así que esto NO cancela el trabajo --
+# lo abandona y libera el candado para que Manuel no se quede bloqueado esperando una respuesta
+# que quizá nunca llegue.
+_GATE_TIMEOUT_S = 90.0
+
+
 def _gate_en_segundo_plano(candidato_id: int, ticker: str, nombre: str | None,
                            reciente: dict) -> None:
+    t0 = time.monotonic()
+    logger.info("Gate candidato %s (%s): lanzado, techo %.0fs.", candidato_id, ticker,
+               _GATE_TIMEOUT_S)
     db = SessionLocal()
+    pool = ThreadPoolExecutor(max_workers=1)
+    cerrar_db = True
     try:
-        _lanzar_gate_candidato(candidato_id, ticker, nombre, reciente, db)
+        future = pool.submit(_lanzar_gate_candidato, candidato_id, ticker, nombre, reciente, db)
+        try:
+            future.result(timeout=_GATE_TIMEOUT_S)
+        except FutureTimeoutError as exc:
+            # El hilo interno sigue vivo por detrás -- no se cierra `db` bajo sus pies, se deja
+            # que muera solo cuando (si) el fetch/LLM colgado termine.
+            cerrar_db = False
+            raise RuntimeError(
+                f"Sin respuesta en {_GATE_TIMEOUT_S:.0f}s -- abandonado, reintenta más tarde."
+            ) from exc
         with _gate_lock:
             _gate_estado[candidato_id] = {"status": "done", "error": None}
+        logger.info("Gate candidato %s (%s): terminado en %.1fs.", candidato_id, ticker,
+                   time.monotonic() - t0)
     except Exception as exc:  # noqa: BLE001 -- el fallo se guarda para que el frontend lo enseñe
-        logger.exception("Fallo en el gate del candidato %s (%s)", candidato_id, ticker)
+        logger.exception("Gate candidato %s (%s): fallo tras %.1fs.", candidato_id, ticker,
+                         time.monotonic() - t0)
         with _gate_lock:
             _gate_estado[candidato_id] = {"status": "error", "error": str(exc)}
     finally:
-        db.close()
+        if cerrar_db:
+            db.close()
+        pool.shutdown(wait=False)
         with _gate_lock:
             _gate_en_curso.discard(candidato_id)
 
@@ -313,12 +343,13 @@ def _lanzar_gate_candidato(candidato_id: int, ticker: str, nombre: str | None, r
     db.commit()
 
     recorder = _Recorder()
+    provider = gate_config.get_gate_provider(db)
     try:
         r = news_gate.evaluar(
             ticker, nombre or ticker, ath=float(reciente["ath"]),
             entry_date=reciente["entry_date"].date(), entry_price=float(reciente["entry_price"]),
             caida_pct=float(reciente["caida_pct"]), desde=reciente["desde_noticias"].date(),
-            recorder=recorder,
+            recorder=recorder, provider=provider,
         )
     except Exception as exc:
         c = recorder.calls[0] if recorder.calls else None
