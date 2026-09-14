@@ -55,6 +55,16 @@ function precioHoy(s: Senal): number {
   return Number(s.entry_price) * (1 + Number(s.ret ?? 0) / 100);
 }
 
+/** Distancia extra al ATH real, solo para señales cuyo número principal ya va contra el pico
+ *  local (zigzag): el ATH existe igual en esas filas, solo nunca se enseñaba. Null si no aporta
+ *  nada -- falta el dato, o el pico local YA ES el ATH (mismo número dos veces es ruido). */
+function distAth(s: Senal): number | null {
+  if (s.ref_label === "ATH_referencia" || s.ath == null) return null;
+  const ath = Number(s.ath);
+  if (!ath || Number(s.ref_price) >= ath - 0.005) return null;
+  return (1 - Number(s.entry_price) / ath) * 100;
+}
+
 export default function SalaMomentum() {
   return (
     <AuthGate>
@@ -123,7 +133,7 @@ function SalaMomentumRoom() {
       // visual aparte, sin esperar a que responda para terminar de cargar el resto -- si
       // yfinance tarda o falla, no bloquea.
       const tickersEnVivo = Array.from(new Set([
-        ...a.filter((s) => s.estado === "nueva" || s.estado === "cuidado").map((s) => s.ticker),
+        ...a.filter((s) => s.estado === "nueva" || s.estado === "cuidado" || s.estado === "ejecutada").map((s) => s.ticker),
         ...h.filter((s) => !s.resuelta).map((s) => s.ticker),
       ]));
       if (tickersEnVivo.length) {
@@ -463,8 +473,15 @@ function SalaMomentumRoom() {
                 // Sin objetivo fijo por precio (son tramos, ver doc §3) -- lo único que se puede
                 // avisar sin inventar un progreso falso es cuánto queda del tope real de 90 días.
                 const cercaDelTope = s.dias != null && s.dias >= 80;
+                // Retorno EN VIVO (precio de ahora vs precio de la señal) -- antes se pintaba
+                // el `ret` guardado en BD, que para una señal recién ejecutada está a null hasta
+                // que el job diario la recalcula (bug real: HQ marcada hoy no mostraba nada).
+                // Mismo criterio que "Historial" para las 'en curso' (ver más abajo).
+                const vivo = preciosVivos[s.ticker];
+                const ret = vivo != null ? (vivo / Number(s.entry_price) - 1) * 100 : Number(s.ret);
                 return (
-                  <div key={s.id} className="flex items-center justify-between py-3"
+                  <div key={s.id} onClick={() => setDetalleHistorial(s)}
+                       className="flex cursor-pointer items-center justify-between py-3 transition-colors hover:bg-white/5"
                        style={{
                          borderTop: i > 0 ? `1px solid ${T.grid}` : undefined,
                          borderLeft: cercaDelTope ? `2px solid ${T.warn}` : undefined,
@@ -483,8 +500,8 @@ function SalaMomentumRoom() {
                       )}
                     </div>
                     <span className={`font-bold ${NUMS}`}
-                          style={{ color: Number(s.ret) >= 0 ? T.good : T.bad }}>
-                      {fmtRet(s.ret)}
+                          style={{ color: ret >= 0 ? T.good : T.bad }}>
+                      {fmtRet(ret)}
                     </span>
                   </div>
                 );
@@ -843,6 +860,9 @@ function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
   const [acciones, setAcciones] = useState("");
   const [precio, setPrecio] = useState(String(s.entry_price));
   const [comision, setComision] = useState("0");
+  // No se limpia al pulsar "Volver" -- si reabres el formulario en la misma visita, lo escrito
+  // sigue ahí (solo se pierde de verdad al recargar la página, como el resto del borrador).
+  const [notas, setNotas] = useState("");
   const [busy, setBusy] = useState<"guardar" | "descartar" | null>(null);
   const [err, setErr] = useState("");
 
@@ -890,7 +910,10 @@ function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
     if (!n || busy) return;
     setBusy("guardar"); setErr("");
     try {
-      const r = await ejecutarSenal(s.id, { accion: "compra", acciones: n, precio: Number(precio), comision: Number(comision) || 0 });
+      const r = await ejecutarSenal(s.id, {
+        accion: "compra", acciones: n, precio: Number(precio), comision: Number(comision) || 0,
+        notas: notas.trim() || undefined,
+      });
       setDone(true);
       // Confirmación breve y a propósito (no una espera de red -- eso ya se aplicó al momento):
       // deja ver el check antes de que la card salga de Alertas activas.
@@ -959,9 +982,12 @@ function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
 
       <div className="mt-2 text-[12px]" style={{ color: T.ink2 }}>
         <b className={NUMS} style={{ color: T.bad }}>-{Number(s.caida_pct).toFixed(1)}%</b> bajo el{" "}
-        <span style={{ color: T.muted }}>
-          {s.ref_label === "ATH_referencia" ? "ATH" : "último pico"} (${money(s.ref_price)})
-        </span>
+        {s.ref_label === "ATH_referencia" ? "ATH" : "último pico"} (${money(s.ref_price)})
+        {distAth(s) != null && (
+          <>
+            {" "}· <b className={NUMS} style={{ color: T.bad }}>-{distAth(s)!.toFixed(1)}%</b> bajo el ATH (${money(s.ath!)})
+          </>
+        )}
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
@@ -1032,12 +1058,28 @@ function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
             <FormField label="Precio ($)" value={precio} onChange={setPrecio} />
             <FormField label="Comisión" value={comision} onChange={setComision} />
           </div>
+          <div className="mt-1.5">
+            <label className="mb-1 block text-[9px] uppercase tracking-wide" style={{ color: T.muted }}>
+              Notas (opcional)
+            </label>
+            <textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={2}
+                      placeholder="Por qué entras, qué vigilar…"
+                      className="w-full resize-none rounded-lg px-2 py-1.5 text-[12px] outline-none"
+                      style={{ background: T.base, border: `1px solid ${T.ring}`, color: T.ink }} />
+          </div>
           {err && <p className="mt-1.5 text-[11px]" style={{ color: T.bad }}>{err}</p>}
-          <button onClick={submit} disabled={busy != null || !acciones}
-                  className="mt-2 w-full rounded-full py-1.5 text-[12px] font-bold disabled:opacity-40"
-                  style={{ background: T.ink, color: T.page }}>
-            {busy === "guardar" ? "Guardando…" : "Guardar posición"}
-          </button>
+          <div className="mt-2 flex gap-1.5">
+            <button onClick={() => { setOpen(false); setErr(""); }} disabled={busy != null}
+                    className="rounded-full border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
+                    style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>
+              Volver
+            </button>
+            <button onClick={submit} disabled={busy != null || !acciones}
+                    className="flex-1 rounded-full py-1.5 text-[12px] font-bold disabled:opacity-40"
+                    style={{ background: T.ink, color: T.page }}>
+              {busy === "guardar" ? "Guardando…" : "Guardar posición"}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -1105,9 +1147,12 @@ function HistorialModal({ s, precioVivo, regimen, onClose }: {
 
           <div className="mt-3 text-[12px]" style={{ color: T.ink2 }}>
             <b className={NUMS} style={{ color: T.bad }}>-{Number(s.caida_pct).toFixed(1)}%</b> bajo el{" "}
-            <span style={{ color: T.muted }}>
-              {s.ref_label === "ATH_referencia" ? "ATH" : "último pico"} (${money(s.ref_price)})
-            </span>
+            {s.ref_label === "ATH_referencia" ? "ATH" : "último pico"} (${money(s.ref_price)})
+            {distAth(s) != null && (
+              <>
+                {" "}· <b className={NUMS} style={{ color: T.bad }}>-{distAth(s)!.toFixed(1)}%</b> bajo el ATH (${money(s.ath!)})
+              </>
+            )}
           </div>
 
           <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
@@ -1132,6 +1177,43 @@ function HistorialModal({ s, precioVivo, regimen, onClose }: {
               : <b style={{ color: T.bad }}>falla</b>}
             {s.gate_detalle && <span>. {s.gate_detalle}</span>}
           </div>
+
+          {/* Lo que se escribió de verdad al marcar "Ejecutada" -- vive en `momentum_ejecuciones`,
+              tabla aparte de la señal; hasta el 14-sep-2026 se guardaba y ningún sitio lo volvía
+              a mostrar. Solo aparece si /alertas trajo una ejecución para esta señal. */}
+          {s.ejecucion && (
+            <div className="mt-4 rounded-lg p-3" style={{ background: T.panel2 }}>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>
+                Tu ejecución
+              </p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[12px]">
+                <div>
+                  <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Acciones</div>
+                  <b className={NUMS} style={{ color: T.ink }}>{Number(s.ejecucion.acciones)}</b>
+                </div>
+                <div>
+                  <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Precio de compra</div>
+                  <b className={NUMS} style={{ color: T.ink }}>${money(s.ejecucion.precio)}</b>
+                </div>
+                <div>
+                  <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Comisión</div>
+                  <b className={NUMS} style={{ color: T.ink }}>${money(s.ejecucion.comision)}</b>
+                </div>
+                <div>
+                  <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Invertido</div>
+                  <b className={NUMS} style={{ color: T.ink }}>
+                    ${money(Number(s.ejecucion.acciones) * Number(s.ejecucion.precio) + Number(s.ejecucion.comision))}
+                  </b>
+                </div>
+              </div>
+              {s.ejecucion.notas && (
+                <div className="mt-2.5 border-t pt-2" style={{ borderColor: T.grid }}>
+                  <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Notas</div>
+                  <p className="mt-0.5 text-[11.5px] leading-relaxed" style={{ color: T.ink2 }}>{s.ejecucion.notas}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="mt-3 flex items-center justify-between border-t pt-3 text-[10.5px]" style={{ borderColor: T.grid, color: T.muted }}>
             <span>Entró {fmtFecha(s.entry_date)}</span>

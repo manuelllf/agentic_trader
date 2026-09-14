@@ -108,6 +108,25 @@ def precios_vivos(tickers: str) -> dict[str, float | None]:
     return dict(zip(lista, precios, strict=True))
 
 
+def _ultimas_ejecuciones(db: Session, senal_ids: list[int]) -> dict[int, dict]:
+    """Última compra registrada por señal (`momentum_ejecuciones`, accion='compra') -- lo que
+    Manuel escribió de verdad al marcar "Ejecutada" (acciones/precio/comisión/notas). Vive en
+    tabla aparte y hasta ahora ningún endpoint la devolvía: se guardaba y no se volvía a ver
+    (bug real, 14-sep-2026)."""
+    if not senal_ids:
+        return {}
+    rows = db.execute(text("""
+        select senal_id, acciones, precio, comision, notas, ejecutada_at
+        from momentum_ejecuciones
+        where senal_id in :ids and accion = 'compra'
+        order by ejecutada_at desc
+    """).bindparams(bindparam("ids", expanding=True)), {"ids": senal_ids}).mappings().all()
+    out: dict[int, dict] = {}
+    for r in rows:
+        out.setdefault(r["senal_id"], _row(dict(r)))  # primera vista = la más reciente (ORDER BY)
+    return out
+
+
 @router.get("/alertas")
 def alertas(db: Session = Depends(get_db)) -> list[dict]:
     """Señales sin resolver, no descartadas -- más reciente primero. `cuidado` se calcula aquí
@@ -121,6 +140,7 @@ def alertas(db: Session = Depends(get_db)) -> list[dict]:
         order by entry_date desc
     """)).mappings().all()
     hoy = date.today()
+    ejecuciones = _ultimas_ejecuciones(db, [m["id"] for m in rows if m["estado"] == "ejecutada"])
     out = []
     for m in rows:
         r = _row(dict(m))
@@ -132,6 +152,8 @@ def alertas(db: Session = Depends(get_db)) -> list[dict]:
         dias = (hoy - entry_date).days
         r["dias"] = dias
         r["cuidado"] = dias > signals.CUIDADO_DIAS
+        if m["estado"] == "ejecutada":
+            r["ejecucion"] = ejecuciones.get(m["id"])
         out.append(r)
     return out
 

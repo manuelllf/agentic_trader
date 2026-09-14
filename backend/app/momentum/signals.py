@@ -359,9 +359,13 @@ def _combinar_ambos(señales: list[dict]) -> list[dict]:
         if len(grupo) == 1:
             combinadas.append(grupo.iloc[0].to_dict())
         else:
-            base = grupo.iloc[0].to_dict()
+            # La fila base tiene que ser la del leg que gana el máximo (zigzag vs suelo miden
+            # la caída contra referencias distintas -- pico local vs ATH real): si no, el %
+            # que se muestra queda emparejado con el ref_price/ref_label del OTRO leg (bug
+            # real, 14-sep-2026: HQ mostraba -72% "bajo el pico de $19.93" cuando el 72% era
+            # la caída contra el ATH de $38.39, no contra ese pico).
+            base = grupo.loc[grupo["caida_pct"].idxmax()].to_dict()
             base["tipo"] = "ambos"
-            base["caida_pct"] = grupo["caida_pct"].max()
             base["reactivar"] = bool(grupo["reactivar"].any())
             combinadas.append(base)
     return sorted(combinadas, key=lambda r: r["entry_date"], reverse=True)

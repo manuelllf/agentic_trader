@@ -26,6 +26,22 @@ export type Senal = {
   // la entrada: solo dice si el gate la habría descartado SI hubiera existido ese día.
   cesta_60d?: number | string | null;
   gate_regimen?: boolean | number | null;
+  // ATH real de la serie -- lo guarda `signals.py` para AMBAS familias (no solo suelo), pero
+  // hasta ahora solo se enseñaba cuando ref_label era el propio ATH. En zigzag (ref_label =
+  // pico_referencia) existe igual, solo no se mostraba.
+  ath?: number | string | null;
+  // Solo en /alertas, solo si estado === "ejecutada": lo que se escribió de verdad al marcar
+  // la señal como ejecutada (tabla aparte `momentum_ejecuciones`, antes se guardaba y nunca se
+  // volvía a mostrar en ningún sitio -- ver Ejecucion más abajo).
+  ejecucion?: Ejecucion | null;
+};
+
+export type Ejecucion = {
+  acciones: number | string;
+  precio: number | string;
+  comision: number | string;
+  notas: string;
+  ejecutada_at: string;
 };
 
 // Termómetro de régimen EN VIVO -- GET /momentum/regimen, ver app/momentum/regimen.py.

@@ -1167,7 +1167,12 @@ function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan | null }
   const pasos = cascada(r, scan);
   const universo = universoLinea(r);
   const sectores = sectoresTop(scan, 6);
-  const maxPre = sectores[0]?.pre || 1;
+  // NO es sectores[0].pre: la lista viene ordenada por "a fondo" (deep), no por "vistos" (pre)
+  // -- un sector puede tener más vistos y menos deep que el primero. Con sectores[0] como techo,
+  // cualquier otro sector con más pre que el top-by-deep calculaba una barra a >100% y se salía
+  // de su columna (bug real, 14-sep-2026: "se va de madre la barrita" en móvil). El techo real
+  // es el máximo de verdad, sea cual sea su posición en la lista.
+  const maxPre = Math.max(1, ...sectores.map((s) => s.pre));
 
   return (
     <Details title="Último escaneo"
@@ -1217,9 +1222,19 @@ function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan | null }
           </div>
         )}
 
-        {/* Por sector: dónde miró y dónde profundizó — responde al "colapso sectorial". */}
+        {/* Por sector: dónde miró y dónde profundizó — responde al "colapso sectorial".
+            table-fixed + colgroup: el ancho de cada columna es fijo de verdad, así que la
+            tabla entera nunca pide más ancho del que tiene (nada de scroll interno) -- el
+            sector largo trunca con "…" en vez de estirar su columna. La barra de "peso" en sí
+            no necesitaba nada de esto: su bug era otro (ver `maxPre` arriba). */}
         {sectores.length > 0 && (
-          <table className={`mt-3 w-full text-[11px] ${NUMS}`}>
+          <table className={`mt-3 w-full table-fixed text-[11px] ${NUMS}`}>
+            <colgroup>
+              <col />
+              <col style={{ width: "3.5rem" }} />
+              <col style={{ width: "3.5rem" }} />
+              <col style={{ width: "5.5rem" }} />
+            </colgroup>
             <thead>
               <tr style={{ color: T.muted }}>
                 <th className="pb-1 text-left font-semibold">sector</th>
@@ -1231,10 +1246,10 @@ function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan | null }
             <tbody>
               {sectores.map((s) => (
                 <tr key={s.sector} style={{ color: T.ink2 }}>
-                  <td className="py-0.5">{s.sector}</td>
+                  <td className="max-w-0 truncate py-0.5 pr-2">{s.sector}</td>
                   <td className="py-0.5 text-right">{fmtNum(s.pre)}</td>
                   <td className="py-0.5 text-right" style={{ color: s.deep ? T.ink : T.muted }}>{s.deep}</td>
-                  <td className="w-[38%] py-0.5 pl-3">
+                  <td className="overflow-hidden py-0.5 pl-3">
                     <span className="block h-[6px] rounded-sm"
                           style={{ width: `${Math.max(2, (s.pre / maxPre) * 100)}%`, background: T.buy }} />
                   </td>
