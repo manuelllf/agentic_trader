@@ -1453,6 +1453,22 @@ function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => void; on
   const listoParaGate = candidato != null && !sinComprobar
     && !!candidato.filtro_sector_pass && !!candidato.estadistica_pass && candidato.gate_pass == null;
 
+  // Retoma el sondeo solo si YA había un gate en curso para este candidato -- buscar otro
+  // ticker y volver (o recargar) no debe hacer parecer que el clic no sirvió de nada cuando en
+  // realidad sigue corriendo por detrás (14-sep-2026).
+  useEffect(() => {
+    if (!candidato || !listoParaGate) return;
+    const id = candidato.id;
+    let cancelado = false;
+    getGateProgresoCandidato(id).then((p) => {
+      if (cancelado || p.status !== "running") return;
+      setBusy(true);
+      gatePollRef.current = setInterval(sondearGate, 3000);
+    }).catch(() => {});
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidato?.id]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6"
          onClick={onClose}>
@@ -1631,6 +1647,21 @@ function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; first: b
       }
     } catch { /* fallo puntual de red no corta el sondeo */ }
   }, [c.id, onCambio]);
+
+  // Retoma el sondeo solo si YA había un gate en curso para este candidato -- cambiar de
+  // pestaña (por revisar/evaluados) o recargar la página no debe hacer parecer que el clic no
+  // sirvió de nada cuando en realidad sigue corriendo por detrás (14-sep-2026).
+  useEffect(() => {
+    if (!listoParaGate) return;
+    let cancelado = false;
+    getGateProgresoCandidato(c.id).then((p) => {
+      if (cancelado || p.status !== "running") return;
+      setBusy(true);
+      gatePollRef.current = setInterval(sondearGate, 3000);
+    }).catch(() => {});
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.id]);
 
   const lanzarGate = async () => {
     setBusy(true);

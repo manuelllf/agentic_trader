@@ -118,9 +118,15 @@ class DeepSeekProvider:
         reasoning_effort: str | None = None,
         stage: str = "",
         recorder=None,  # noqa: ANN001  (app.llm.trace.LLMTrace; None = no se traza)
+        timeout: float = _HARD_TIMEOUT,
     ) -> None:
         self._model = model
         self._base_url = base_url.rstrip("/")
+        # 180s por defecto (el escaneo: prosa larga con razonamiento). El gate de momentum pasa
+        # uno propio mucho más corto -- una clasificación JSON de una frase no tiene motivo para
+        # tardar minutos, y colgada 15 (visto en producción 14-sep-2026) bloqueaba a Manuel sin
+        # avisar. Ver `news_gate.py`.
+        self._timeout = timeout
         # La etapa la fija quien crea el proveedor: el escaneo ya monta una instancia por etapa
         # (macro/prescore/mid/deep/constructor), así que no hace falta pasarla en cada llamada.
         self._stage = stage
@@ -204,9 +210,10 @@ class DeepSeekProvider:
             payload = self._payload(system, user, temperature, top_p)
             t0 = time.monotonic()
             try:
-                # `timeout` de httpx aplica al connect Y al read — un `_HARD_TIMEOUT` generoso
-                # (180s) directamente en el cliente, sin hilo ni executor de por medio.
-                with httpx.Client(timeout=_HARD_TIMEOUT) as client:
+                # `timeout` de httpx aplica al connect Y al read -- `self._timeout` directamente
+                # en el cliente, sin hilo ni executor de por medio (180s por defecto, ver
+                # `__init__`; el gate de momentum pasa uno más corto).
+                with httpx.Client(timeout=self._timeout) as client:
                     resp = client.post(
                         f"{self._base_url}/chat/completions",
                         headers=self._headers,

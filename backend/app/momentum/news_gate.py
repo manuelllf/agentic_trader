@@ -125,9 +125,17 @@ def evaluar(ticker: str, nombre: str, *, ath: float, entry_date: date, entry_pri
     if not settings.deepseek_api_key:
         raise RuntimeError("Sin DEEPSEEK_API_KEY configurada: no se puede evaluar el gate.")
     noticias = _noticias_para(ticker, desde, date.today())
-    llm = DeepSeekProvider(settings.deepseek_api_key, settings.llm_model,
+    # "deepseek-flash" fijo (V4.1 Flash) -- explícito y no via `settings.llm_model`: ese ajuste
+    # es el default de Alpha, pero cada escaneo de Alpha puede pisarlo con su propio modelo por
+    # etapa (pro, flash, lo que sea, ver "Configurar" en la sala). Omega no tiene ese selector --
+    # una única llamada de sí/no, siempre con el mismo modelo, pase lo que pase en Alpha.
+    # `timeout` corto (no los 180s del escaneo): una llamada colgada 15 minutos (visto en
+    # producción 14-sep-2026) dejaba a Manuel sin saber si reintentar o esperar -- 45s falla
+    # rápido y avisa, en vez de bloquear en silencio.
+    llm = DeepSeekProvider(settings.deepseek_api_key, "deepseek-flash",
                            base_url=settings.deepseek_base_url,
-                           reasoning_effort="low", stage="momentum_gate", recorder=recorder)
+                           reasoning_effort="low", stage="momentum_gate", recorder=recorder,
+                           timeout=45.0)
     raw = llm.chat(SYSTEM, _user_prompt(ticker, nombre, noticias, ath=ath, entry_date=entry_date,
                                         entry_price=entry_price, caida_pct=caida_pct),
                    temperature=0.0)
