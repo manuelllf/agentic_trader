@@ -21,6 +21,9 @@ _DDL = [
         dias integer, estado text, gate_resultado text, gate_detalle text,
         created_at timestamp, ath numeric, desde_noticias date)""",
     "create table momentum_universo_estado (ticker text primary key, mantener boolean)",
+    """create table momentum_ejecuciones (
+        id integer primary key autoincrement, senal_id integer, accion text,
+        acciones numeric, precio numeric, comision numeric, ejecutada_at timestamp, notas text)""",
 ]
 
 

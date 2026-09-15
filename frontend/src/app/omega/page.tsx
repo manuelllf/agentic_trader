@@ -273,8 +273,11 @@ function SalaMomentumRoom() {
 
   useEffect(() => { load(); }, [load]);
 
-  const activas = (alertas ?? []).filter((s) => s.estado === "nueva" || s.estado === "cuidado");
-  const abiertas = (alertas ?? []).filter((s) => s.estado === "ejecutada");
+  // "ejecutada" entra también aquí -- son las que de verdad necesitan una decisión tuya ahora
+  // (cerrar o aumentar), no solo las que aún no se han tocado. Antes tenían su propia sección
+  // aparte ("Posiciones abiertas", de solo lectura) que duplicaba exactamente este conjunto sin
+  // dar ninguna acción -- se retiró en vez de mantener el mismo dato en dos sitios distintos.
+  const activas = (alertas ?? []).filter((s) => s.estado === "nueva" || s.estado === "cuidado" || s.estado === "ejecutada");
   // Señales detectadas por el escaneo diario (gratis) que todavía no pasaron por el gate de
   // noticias (el único paso que gasta dinero real) -- ver doc §3, decidido 7-sep-2026.
   const pendientesGate = (alertas ?? []).filter((s) => s.gate_resultado == null);
@@ -501,53 +504,6 @@ function SalaMomentumRoom() {
           )}
         </Section>
 
-        {/* ---------- Posiciones abiertas ---------- */}
-        <Section title="Posiciones abiertas" count={abiertas.length}>
-          {abiertas.length === 0 ? (
-            <Empty>Ninguna todavía: aparecerán aquí en cuanto marques una alerta como &quot;ejecutada&quot;.</Empty>
-          ) : (
-            <div>
-              {abiertas.map((s, i) => {
-                // Sin objetivo fijo por precio (son tramos, ver doc §3) -- lo único que se puede
-                // avisar sin inventar un progreso falso es cuánto queda del tope real de 90 días.
-                const cercaDelTope = s.dias != null && s.dias >= 80;
-                // Retorno EN VIVO (precio de ahora vs TU coste real, ver `costeBase`) -- antes
-                // se pintaba el `ret` guardado en BD, que para una señal recién ejecutada está a
-                // null hasta que el job diario la recalcula (bug real: HQ marcada hoy no
-                // mostraba nada). Mismo criterio que "Historial" para las 'en curso' (más abajo).
-                const vivo = preciosVivos[s.ticker];
-                const ret = vivo != null ? (vivo / costeBase(s) - 1) * 100 : Number(s.ret);
-                return (
-                  <div key={s.id} onClick={() => setDetalleHistorial(s)}
-                       className="flex cursor-pointer items-center justify-between py-3 transition-colors hover:bg-white/5"
-                       style={{
-                         borderTop: i > 0 ? `1px solid ${T.grid}` : undefined,
-                         borderLeft: cercaDelTope ? `2px solid ${T.warn}` : undefined,
-                         paddingLeft: cercaDelTope ? "0.625rem" : undefined,
-                       }}>
-                    <div>
-                      <b style={{ color: T.ink }}>{s.ticker}</b>
-                      <span className="ml-2 text-[11px]" style={{ color: T.muted }}>
-                        {TIPO_LABEL[s.tipo]} · entró {fmtFecha(s.entry_date)}
-                        {s.dias != null && ` · ${s.dias}d abierta`}
-                      </span>
-                      {cercaDelTope && (
-                        <div className="mt-0.5 text-[10.5px] font-semibold" style={{ color: T.warn }}>
-                          cerca del tope de 90 días
-                        </div>
-                      )}
-                    </div>
-                    <span className={`font-bold ${NUMS}`}
-                          style={{ color: ret >= 0 ? T.good : T.bad }}>
-                      {fmtRet(ret)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Section>
-
         {/* ---------- Historial de señales ---------- */}
         <Section title="Historial de señales" count={historial?.length ?? 0}>
           <p className="mb-2 text-[10.5px]" style={{ color: T.muted }}>
@@ -557,14 +513,20 @@ function SalaMomentumRoom() {
           <div className="border-t" style={{ borderColor: T.grid }}>
             {(historial ?? []).slice(0, histVisibles).map((s, i) => {
               const ejecutada = s.estado === "ejecutada" || s.estado === "vendida";
-              const enCurso = !s.resuelta;
+              // Vendida a mano pero el job diario aún no la resolvió (`resuelta === false`): el
+              // resultado REAL es `cierre_manual`, no "en curso" -- ya no hay nada en marcha que
+              // seguir con precio en vivo (bug real, 15-sep-2026).
+              const cerradaAMano = s.estado === "vendida" && !s.resuelta && s.cierre_manual != null;
+              const enCurso = !s.resuelta && !cerradaAMano;
               // En curso: retorno en vivo contra TU coste real si la ejecutaste (`costeBase`),
               // si no contra la entrada de la señal (descartada, o pendiente) -- igual que en
               // Alertas activas. Si yfinance no responde, cae al ret guardado.
               const vivo = preciosVivos[s.ticker];
-              const ret = enCurso && vivo != null
-                ? (vivo / costeBase(s) - 1) * 100
-                : Number(s.ret);
+              const ret = cerradaAMano
+                ? Number(s.cierre_manual!.ret)
+                : enCurso && vivo != null
+                  ? (vivo / costeBase(s) - 1) * 100
+                  : Number(s.ret);
               return (
                 <div key={s.id} onClick={() => setDetalleHistorial(s)}
                      className="flex cursor-pointer items-center gap-3 px-3.5 py-3 transition-colors hover:bg-white/5"
@@ -597,7 +559,7 @@ function SalaMomentumRoom() {
                       {fmtRet(ret)}
                     </div>
                     <div className="text-[9.5px]" style={{ color: enCurso ? T.warn : T.muted }}>
-                      {enCurso ? `en curso · ${s.dias}d` : s.motivo}
+                      {enCurso ? `en curso · ${s.dias}d` : cerradaAMano ? "cerrada a mano" : s.motivo}
                     </div>
                   </div>
                 </div>
@@ -905,6 +867,44 @@ function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
   const [busy, setBusy] = useState<"guardar" | "descartar" | null>(null);
   const [err, setErr] = useState("");
 
+  // Posición ya ejecutada (estado === "ejecutada", de una visita anterior): cerrar (total o
+  // parcial) o aumentar -- formulario aparte del de compra inicial de arriba, mismo patrón.
+  const [modo, setModo] = useState<"cerrar" | "aumentar" | null>(null);
+  const [accionesForm, setAccionesForm] = useState("");
+  const [precioForm, setPrecioForm] = useState("");
+  const [comisionForm, setComisionForm] = useState("0");
+  const [notasForm, setNotasForm] = useState("");
+  const [busyForm, setBusyForm] = useState(false);
+  const [errForm, setErrForm] = useState("");
+  const [cerrado, setCerrado] = useState(false);
+
+  const abrirModo = (m: "cerrar" | "aumentar") => {
+    setModo(m);
+    setErrForm("");
+    setComisionForm("0");
+    setNotasForm("");
+    setAccionesForm(m === "cerrar" && s.posicion_abierta ? String(Number(s.posicion_abierta.acciones)) : "");
+    setPrecioForm(String(precioVivo ?? s.entry_price));
+  };
+
+  const submitForm = async () => {
+    const n = Number(accionesForm);
+    if (!n || n <= 0 || busyForm || !modo) return;
+    setBusyForm(true); setErrForm("");
+    try {
+      const r = await ejecutarSenal(s.id, {
+        accion: modo === "cerrar" ? "venta" : "compra",
+        acciones: n, precio: Number(precioForm), comision: Number(comisionForm) || 0,
+        notas: notasForm.trim() || undefined,
+      });
+      setCerrado(true);
+      setTimeout(() => onCambio(s.id, { estado: r.estado as Senal["estado"] }), 900);
+    } catch (e) {
+      setErrForm(e instanceof ApiError ? e.message : "No se pudo registrar la operación.");
+      setBusyForm(false);
+    }
+  };
+
   // Gate individual (9-sep-2026): mismo endpoint/hilo en segundo plano que el banner de arriba,
   // lanzado con un solo id -- no hace falta bajar a la caja naranja para evaluar una sola señal.
   // Solo UN gate corre a la vez en todo el backend (`gate_runner._running`); si ya hay uno en
@@ -981,7 +981,11 @@ function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
   // Precio en vivo si lo hay (referencia visual, best-effort) -- si no, el de siempre (cierre
   // guardado en el último escaneo). Nunca toca lo que se guarda ni cómo se resuelve la señal.
   const precioMostrado = precioVivo ?? precioHoy(s);
-  const retornoMostrado = precioVivo != null ? (precioVivo / Number(s.entry_price) - 1) * 100 : Number(s.ret);
+  // Contra TU coste real si ya la ejecutaste (`costeBase`, ver doc de esa función) -- antes
+  // esta tarjeta solo vivía en señales sin ejecutar, así que `entry_price` bastaba; ahora que
+  // también enseña posiciones ya ejecutadas (para poder cerrarlas/aumentarlas), hace falta el
+  // mismo criterio que ya usan "Posiciones abiertas" e "Historial".
+  const retornoMostrado = precioVivo != null ? (precioVivo / costeBase(s) - 1) * 100 : Number(s.ret);
 
   return (
     <div className="border-t pt-4" style={{ borderColor: T.grid }}>
@@ -1077,6 +1081,70 @@ function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
           </svg>
           Posición registrada
         </div>
+      ) : s.estado === "ejecutada" ? (
+        cerrado ? (
+          <div className="mt-2.5 flex items-center justify-center gap-1.5 rounded-full py-2 text-[12.5px] font-bold"
+               style={{ background: "rgba(51,193,90,0.14)", color: T.good }}>
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" stroke={T.good} fill="none" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3.5 8.5l3 3 6-7" />
+            </svg>
+            {modo === "cerrar" ? "Cierre registrado" : "Posición aumentada"}
+          </div>
+        ) : modo == null ? (
+          <div className="mt-2.5 border-t pt-2.5" style={{ borderColor: T.grid }}>
+            {s.posicion_abierta && (
+              <div className="text-[11px]" style={{ color: T.ink2 }}>
+                Abierto: <b className={NUMS} style={{ color: T.ink }}>{Number(s.posicion_abierta.acciones)}</b> acc.
+                @ <b className={NUMS} style={{ color: T.ink }}>${money(s.posicion_abierta.coste_medio)}</b>
+              </div>
+            )}
+            {s.dias != null && s.dias >= 80 && (
+              <div className="mt-1 text-[10.5px] font-semibold" style={{ color: T.warn }}>
+                cerca del tope de 90 días
+              </div>
+            )}
+            <div className="mt-2 flex gap-2">
+              <button onClick={() => abrirModo("cerrar")} className="flex-1 rounded-full border py-1.5 text-[12px] font-bold"
+                      style={{ background: T.panel2, borderColor: T.grid, color: T.ink }}>
+                Cerrar posición
+              </button>
+              <button onClick={() => abrirModo("aumentar")} className="flex-1 rounded-full border py-1.5 text-[12px] font-bold"
+                      style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>
+                Aumentar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-2.5 border-t pt-2.5" style={{ borderColor: T.grid }}>
+            <div className="grid grid-cols-3 gap-1.5">
+              <FormField label={modo === "cerrar" ? "Acciones a vender" : "Acciones"} value={accionesForm} onChange={setAccionesForm} placeholder="0" />
+              <FormField label="Precio ($)" value={precioForm} onChange={setPrecioForm} />
+              <FormField label="Comisión" value={comisionForm} onChange={setComisionForm} />
+            </div>
+            <div className="mt-1.5">
+              <label className="mb-1 block text-[9px] uppercase tracking-wide" style={{ color: T.muted }}>
+                Notas (opcional)
+              </label>
+              <textarea value={notasForm} onChange={(e) => setNotasForm(e.target.value)} rows={2}
+                        placeholder="Por qué, qué vigilar…"
+                        className="w-full resize-none rounded-lg px-2 py-1.5 text-[12px] outline-none"
+                        style={{ background: T.base, border: `1px solid ${T.ring}`, color: T.ink }} />
+            </div>
+            {errForm && <p className="mt-1.5 text-[11px]" style={{ color: T.bad }}>{errForm}</p>}
+            <div className="mt-2 flex gap-1.5">
+              <button onClick={() => { setModo(null); setErrForm(""); }} disabled={busyForm}
+                      className="rounded-full border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
+                      style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>
+                Volver
+              </button>
+              <button onClick={submitForm} disabled={busyForm || !accionesForm || Number(accionesForm) <= 0}
+                      className="flex-1 rounded-full py-1.5 text-[12px] font-bold disabled:opacity-40"
+                      style={{ background: T.ink, color: T.page }}>
+                {busyForm ? "Guardando…" : modo === "cerrar" ? "Confirmar venta" : "Guardar aumento"}
+              </button>
+            </div>
+          </div>
+        )
       ) : !open ? (
         <div className="mt-2.5 flex gap-2">
           <button onClick={descartar} disabled={busy != null}
@@ -1139,11 +1207,14 @@ function HistorialModal({ s, precioVivo, regimen, onClose }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const enCurso = !s.resuelta;
+  const cerradaAMano = s.estado === "vendida" && !s.resuelta && s.cierre_manual != null;
+  const enCurso = !s.resuelta && !cerradaAMano;
   const precioMostrado = enCurso ? (precioVivo ?? precioHoy(s)) : precioHoy(s);
-  const retornoMostrado = enCurso && precioVivo != null
-    ? (precioVivo / costeBase(s) - 1) * 100
-    : Number(s.ret);
+  const retornoMostrado = cerradaAMano
+    ? Number(s.cierre_manual!.ret)
+    : enCurso && precioVivo != null
+      ? (precioVivo / costeBase(s) - 1) * 100
+      : Number(s.ret);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6"
@@ -1168,7 +1239,7 @@ function HistorialModal({ s, precioVivo, regimen, onClose }: {
             </span>
             <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-wide"
                   style={enCurso ? { background: "rgba(250,178,25,0.14)", color: T.warn } : { background: "rgba(255,255,255,0.06)", color: T.ink2 }}>
-              {enCurso ? "en curso" : "resuelta"}
+              {enCurso ? "en curso" : cerradaAMano ? "cerrada a mano" : "resuelta"}
             </span>
             {!enCurso && s.motivo && (
               <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-wide"
@@ -1258,7 +1329,9 @@ function HistorialModal({ s, precioVivo, regimen, onClose }: {
             <span>Entró {fmtFecha(s.entry_date)}</span>
             {enCurso
               ? <span style={{ color: T.warn }}>{s.dias}d en seguimiento</span>
-              : s.exit_date && <span>Salió {fmtFecha(s.exit_date)} · {s.dias}d</span>}
+              : cerradaAMano
+                ? <span>{s.cierre_manual!.exit_date ? `Vendida ${fmtFecha(s.cierre_manual!.exit_date)}` : "Vendida a mano"}</span>
+                : s.exit_date && <span>Salió {fmtFecha(s.exit_date)} · {s.dias}d</span>}
           </div>
         </div>
       </div>

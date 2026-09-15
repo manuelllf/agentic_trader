@@ -135,12 +135,13 @@ def alertas(db: Session = Depends(get_db)) -> list[dict]:
     sus señales no cuentan como alerta activa."""
     rows = db.execute(text("""
         select * from momentum_senales
-        where resuelta = false and estado != 'descartada'
+        where resuelta = false and estado not in ('descartada', 'vendida')
           and ticker not in (select ticker from momentum_universo_estado where mantener = false)
         order by entry_date desc
     """)).mappings().all()
     hoy = date.today()
     ejecuciones = _ultimas_ejecuciones(db, [m["id"] for m in rows if m["estado"] == "ejecutada"])
+    posiciones = capital.posiciones_abiertas(db)
     out = []
     for m in rows:
         r = _row(dict(m))
@@ -154,25 +155,70 @@ def alertas(db: Session = Depends(get_db)) -> list[dict]:
         r["cuidado"] = dias > signals.CUIDADO_DIAS
         if m["estado"] == "ejecutada":
             r["ejecucion"] = ejecuciones.get(m["id"])
+            pos = posiciones.get(m["id"])
+            if pos:
+                r["posicion_abierta"] = {"acciones": str(pos["neto"]), "coste_medio": str(pos["coste_medio"])}
         out.append(r)
+    return out
+
+
+def _cierres_manuales(db: Session, senal_ids: list[int]) -> dict[int, dict]:
+    """Resultado real de una posición cerrada A MANO antes de que el job diario la resolviera
+    algorítmicamente: proceeds reales menos coste medio de compra. Aparte de `resuelta`/`ret`
+    de `momentum_senales` a propósito (ver `ejecutar()`) -- esto es lo que de verdad pasó con
+    tu dinero, no la resolución uniforme que usa /validacion para medir el patrón."""
+    if not senal_ids:
+        return {}
+    rows = db.execute(text("""
+        select senal_id,
+               sum(case when accion = 'compra' then acciones else 0 end) as compradas,
+               sum(case when accion = 'compra' then acciones * precio + comision else 0 end) as coste,
+               sum(case when accion = 'venta' then acciones else 0 end) as vendidas,
+               sum(case when accion = 'venta' then acciones * precio - comision else 0 end) as proceeds,
+               max(case when accion = 'venta' then ejecutada_at end) as exit_at
+        from momentum_ejecuciones
+        where senal_id in :ids
+        group by senal_id
+    """).bindparams(bindparam("ids", expanding=True)), {"ids": senal_ids}).mappings().all()
+    out: dict[int, dict] = {}
+    for r in rows:
+        compradas = Decimal(str(r["compradas"] or 0))
+        if compradas <= 0:
+            continue
+        coste_medio = Decimal(str(r["coste"])) / compradas
+        vendidas = Decimal(str(r["vendidas"] or 0))
+        coste_vendido = vendidas * coste_medio
+        if coste_vendido <= 0:
+            continue
+        ret = (Decimal(str(r["proceeds"] or 0)) / coste_vendido - 1) * 100
+        exit_at = r["exit_at"]
+        if isinstance(exit_at, str):
+            exit_at = datetime.fromisoformat(exit_at)
+        out[r["senal_id"]] = {
+            "acciones": str(vendidas), "ret": str(ret),
+            "exit_date": exit_at.date().isoformat() if exit_at else None,
+        }
     return out
 
 
 @router.get("/historial")
 def historial(db: Session = Depends(get_db)) -> list[dict]:
-    """Señales resueltas + las descartadas a mano que siguen abiertas. Una descartada NO
-    desaparece: sigue en el escaneo diario (`procesar_señales` la resuelve igual si cruza),
-    solo que aquí se ve en curso, con su retorno mark-to-market en vivo -- para ver "la
-    descarté y habría hecho X%". `dias` se recalcula aquí para las abiertas (como en /alertas),
+    """Señales resueltas + las descartadas/vendidas a mano que el algoritmo aún no ha resuelto.
+    Una descartada NO desaparece: sigue en el escaneo diario, se ve en curso con retorno
+    mark-to-market en vivo -- para ver "la descarté y habría hecho X%". Una vendida a mano
+    entra ya con su resultado REAL (`cierre_manual`), no espera a que el job diario la alcance
+    (bug real: antes se quedaba fantasma en Alertas activas trackeando precio en vivo de una
+    posición que ya no existía). `dias` se recalcula aquí para las abiertas (como en /alertas),
     el guardado se queda viejo."""
     rows = db.execute(text("""
         select * from momentum_senales
         where resuelta = true
-           or (estado = 'descartada' and resuelta = false)
+           or (estado in ('descartada', 'vendida') and resuelta = false)
         order by resuelta, entry_date desc
     """)).mappings().all()
     hoy = date.today()
     mantener = _mantener_map(db)
+    cierres = _cierres_manuales(db, [m["id"] for m in rows if m["estado"] == "vendida" and not m["resuelta"]])
     out = []
     for m in rows:
         r = _row(dict(m))
@@ -182,6 +228,8 @@ def historial(db: Session = Depends(get_db)) -> list[dict]:
             if isinstance(entry_date, str):
                 entry_date = date.fromisoformat(entry_date)
             r["dias"] = (hoy - entry_date).days
+            if m["estado"] == "vendida":
+                r["cierre_manual"] = cierres.get(m["id"])
         out.append(r)
     return out
 
@@ -300,18 +348,30 @@ class EjecucionIn(BaseModel):
 
 @router.post("/senales/{senal_id}/ejecutar")
 def ejecutar(senal_id: int, body: EjecucionIn, db: Session = Depends(get_db)) -> dict:
-    """Marcar ejecutada/vendida: SIEMPRE a mano, nunca dispara una orden. `acciones`/`precio`/
-    `comision` van editables desde la sala, prellenados con la señal pero el fill real puede
-    no cuadrar (ver doc §5)."""
-    senal = db.execute(text("select id, estado from momentum_senales where id = :id"),
+    """Marcar ejecutada/vendida/aumentada: SIEMPRE a mano, nunca dispara una orden. Admite
+    varias filas por señal -- aumentar una posición abierta, o cerrarla en varias veces -- el
+    estado se recalcula por ACCIONES NETAS tras esta fila, no a ciegas según su tipo (bug real:
+    una venta parcial marcaba la señal entera como 'vendida')."""
+    senal = db.execute(text("select id from momentum_senales where id = :id"),
                        {"id": senal_id}).mappings().first()
     if senal is None:
         raise HTTPException(404, "Señal no encontrada.")
+
+    neto_previo = Decimal(str(db.execute(text("""
+        select coalesce(sum(case when accion = 'compra' then acciones else -acciones end), 0)
+        from momentum_ejecuciones where senal_id = :id
+    """), {"id": senal_id}).scalar() or 0))
+
+    if body.accion == "venta" and Decimal(str(body.acciones)) > neto_previo:
+        raise HTTPException(400, f"Solo hay {neto_previo} acciones abiertas -- no puedes vender {body.acciones}.")
+
     db.execute(text("""
         insert into momentum_ejecuciones (senal_id, accion, acciones, precio, comision, notas)
         values (:senal_id, :accion, :acciones, :precio, :comision, :notas)
     """), {"senal_id": senal_id, **body.model_dump()})
-    nuevo_estado = "ejecutada" if body.accion == "compra" else "vendida"
+
+    delta = Decimal(str(body.acciones)) if body.accion == "compra" else -Decimal(str(body.acciones))
+    nuevo_estado = "ejecutada" if (neto_previo + delta) > 0 else "vendida"
     db.execute(text("update momentum_senales set estado = :estado where id = :id"),
               {"estado": nuevo_estado, "id": senal_id})
     db.commit()

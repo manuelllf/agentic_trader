@@ -29,53 +29,69 @@ def cash_disponible() -> dict[str, str] | None:
     return {k: str(v) for k, v in broker.raw_cash().items()}
 
 
-def capital_desplegado(db: Session) -> Decimal:
-    """Posiciones de momentum abiertas de verdad (compra reportada sin su venta): coste total
-    a precio de ejecución, comisión incluida."""
-    row = db.execute(text("""
-        select coalesce(sum(e.acciones * e.precio + e.comision), 0) as total
+def posiciones_abiertas(db: Session) -> dict[int, dict]:
+    """Acciones netas (compras - ventas) y coste medio de compra por señal -- SOLO señales con
+    neto > 0. Clave: senal_id. Reutilizable desde `routes.py` (la sala necesita saber cuántas
+    acciones quedan abiertas para poder cerrar una posición, total o en parte)."""
+    rows = db.execute(text("""
+        select e.senal_id, s.ticker, s.entry_price, s.ret,
+               sum(case when e.accion = 'compra' then e.acciones else 0 end) as compradas,
+               sum(case when e.accion = 'compra' then e.acciones * e.precio + e.comision else 0 end) as coste_compras,
+               sum(case when e.accion = 'venta' then e.acciones else 0 end) as vendidas
         from momentum_ejecuciones e
-        where e.accion = 'compra'
-          and not exists (
-            select 1 from momentum_ejecuciones v
-            where v.senal_id = e.senal_id and v.accion = 'venta'
-          )
-    """)).scalar()
-    return D(str(row or 0))
+        join momentum_senales s on s.id = e.senal_id
+        group by e.senal_id, s.ticker, s.entry_price, s.ret
+    """)).mappings().all()
+    out: dict[int, dict] = {}
+    for r in rows:
+        compradas = D(str(r["compradas"] or 0))
+        if compradas <= 0:
+            continue
+        neto = compradas - D(str(r["vendidas"] or 0))
+        if neto <= 0:
+            continue
+        out[r["senal_id"]] = {
+            "ticker": r["ticker"], "neto": neto, "coste_medio": D(str(r["coste_compras"])) / compradas,
+            "entry_price": D(str(r["entry_price"])), "ret": D(str(r["ret"] or 0)),
+        }
+    return out
+
+
+def capital_desplegado(db: Session) -> Decimal:
+    """Coste real de las acciones NETAS abiertas (compras - ventas), a precio medio de compra
+    -- antes bastaba con que existiera CUALQUIER venta para que la posición desapareciera del
+    cómputo entero, aunque quedaran acciones sin vender."""
+    return sum((p["neto"] * p["coste_medio"] for p in posiciones_abiertas(db).values()), ZERO)
 
 
 def pnl_abierto(db: Session) -> tuple[Decimal, Decimal]:
-    """($ , %) de las posiciones abiertas de verdad (compradas, sin venta reportada): valor a
-    precio de HOY (entry_price * (1 + ret/100), el mismo mark-to-market que ya usa la sala)
-    menos lo realmente invertido -- coste y comisión de compra incluidos."""
-    rows = db.execute(text("""
-        select s.entry_price, s.ret, e.acciones, e.precio, e.comision
-        from momentum_senales s
-        join momentum_ejecuciones e on e.senal_id = s.id and e.accion = 'compra'
-        where s.estado = 'ejecutada'
-          and not exists (
-            select 1 from momentum_ejecuciones v where v.senal_id = s.id and v.accion = 'venta'
-          )
-    """)).mappings().all()
+    """($ , %) de lo abierto de verdad: valor a precio EN VIVO (mismo `precio_vivo` que ya usa
+    la sala en cada tarjeta) menos lo invertido -- antes usaba el `ret` del job diario por
+    lotes, que durante el día no coincidía con el retorno en vivo que se ve en pantalla."""
+    from app.momentum import signals
     invertido = ZERO
     valor_hoy = ZERO
-    for r in rows:
-        acciones = D(str(r["acciones"]))
-        invertido += acciones * D(str(r["precio"])) + D(str(r["comision"]))
-        precio_hoy = D(str(r["entry_price"])) * (1 + D(str(r["ret"] or 0)) / 100)
-        valor_hoy += acciones * precio_hoy
+    for p in posiciones_abiertas(db).values():
+        invertido += p["neto"] * p["coste_medio"]
+        precio_hoy = signals.precio_vivo(p["ticker"])
+        if precio_hoy is None:
+            precio_hoy = float(p["entry_price"]) * (1 + float(p["ret"]) / 100)
+        valor_hoy += p["neto"] * D(str(precio_hoy))
     pnl = valor_hoy - invertido
     pct = (pnl / invertido * 100) if invertido else ZERO
     return pnl, pct
 
 
 def pnl_realizado(db: Session) -> tuple[Decimal, Decimal]:
-    """($ , %) de las posiciones ya vendidas: proceeds de venta menos coste de compra, ambos
-    con la comisión real que Manuel reportó en cada ejecución."""
+    """($ , %) de lo YA vendido: proceeds reales menos el coste medio ponderado de compra de
+    esas acciones concretas -- antes emparejaba el coste de TODAS las compras (también las
+    acciones que seguían abiertas) contra los proceeds de una venta parcial."""
     rows = db.execute(text("""
-        select
-          sum(case when accion = 'compra' then acciones * precio + comision else 0 end) as coste,
-          sum(case when accion = 'venta' then acciones * precio - comision else 0 end) as proceeds
+        select senal_id,
+               sum(case when accion = 'compra' then acciones else 0 end) as compradas,
+               sum(case when accion = 'compra' then acciones * precio + comision else 0 end) as coste_compras,
+               sum(case when accion = 'venta' then acciones else 0 end) as vendidas,
+               sum(case when accion = 'venta' then acciones * precio - comision else 0 end) as proceeds
         from momentum_ejecuciones
         group by senal_id
         having sum(case when accion = 'venta' then 1 else 0 end) > 0
@@ -83,9 +99,13 @@ def pnl_realizado(db: Session) -> tuple[Decimal, Decimal]:
     coste_total = ZERO
     pnl_total = ZERO
     for r in rows:
-        coste = D(str(r["coste"] or 0))
-        coste_total += coste
-        pnl_total += D(str(r["proceeds"] or 0)) - coste
+        compradas = D(str(r["compradas"] or 0))
+        if compradas <= 0:
+            continue
+        coste_medio = D(str(r["coste_compras"])) / compradas
+        coste_vendido = D(str(r["vendidas"] or 0)) * coste_medio
+        coste_total += coste_vendido
+        pnl_total += D(str(r["proceeds"] or 0)) - coste_vendido
     pct = (pnl_total / coste_total * 100) if coste_total else ZERO
     return pnl_total, pct
 

@@ -34,6 +34,15 @@ export type Senal = {
   // la señal como ejecutada (tabla aparte `momentum_ejecuciones`, antes se guardaba y nunca se
   // volvía a mostrar en ningún sitio -- ver Ejecucion más abajo).
   ejecucion?: Ejecucion | null;
+  // Solo en /alertas, solo si estado === "ejecutada": acciones netas que quedan abiertas de
+  // verdad (compras - ventas ya reportadas) y su coste medio ponderado -- para poder cerrar
+  // la posición (total o en parte) sabiendo cuánto hay de verdad.
+  posicion_abierta?: { acciones: number | string; coste_medio: number | string } | null;
+  // Solo en /historial, solo si estado === "vendida" y el job diario aún no la resolvió
+  // (resuelta === false): el resultado REAL de la venta, aparte de `ret`/`resuelta`/`motivo`
+  // (esos son la resolución algorítmica uniforme del patrón, para /validacion -- no lo que
+  // Manuel hizo de verdad).
+  cierre_manual?: { acciones: number | string; ret: number | string; exit_date: string | null } | null;
 };
 
 export type Ejecucion = {
