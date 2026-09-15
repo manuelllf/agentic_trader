@@ -56,6 +56,15 @@ function precioHoy(s: Senal): number {
   return Number(s.entry_price) * (1 + Number(s.ret ?? 0) / 100);
 }
 
+/** Coste real de la posición: si ya la ejecutaste, lo que DE VERDAD pagaste (`ejecucion.precio`)
+ *  -- no el `entry_price` teórico de la señal (bug real, 14-sep-2026: el retorno de una posición
+ *  ejecutada se calculaba contra el precio de la señal en vez de tu precio de compra real, así
+ *  que compras mejores que la señal salían en rojo y viceversa). Sin ejecución (todavía
+ *  pendiente, o descartada) cae al `entry_price` de siempre. */
+function costeBase(s: Senal): number {
+  return Number(s.ejecucion?.precio ?? s.entry_price);
+}
+
 /** Distancia extra al ATH real, solo para señales cuyo número principal ya va contra el pico
  *  local (zigzag): el ATH existe igual en esas filas, solo nunca se enseñaba. Null si no aporta
  *  nada -- falta el dato, o el pico local YA ES el ATH (mismo número dos veces es ruido). */
@@ -502,12 +511,12 @@ function SalaMomentumRoom() {
                 // Sin objetivo fijo por precio (son tramos, ver doc §3) -- lo único que se puede
                 // avisar sin inventar un progreso falso es cuánto queda del tope real de 90 días.
                 const cercaDelTope = s.dias != null && s.dias >= 80;
-                // Retorno EN VIVO (precio de ahora vs precio de la señal) -- antes se pintaba
-                // el `ret` guardado en BD, que para una señal recién ejecutada está a null hasta
-                // que el job diario la recalcula (bug real: HQ marcada hoy no mostraba nada).
-                // Mismo criterio que "Historial" para las 'en curso' (ver más abajo).
+                // Retorno EN VIVO (precio de ahora vs TU coste real, ver `costeBase`) -- antes
+                // se pintaba el `ret` guardado en BD, que para una señal recién ejecutada está a
+                // null hasta que el job diario la recalcula (bug real: HQ marcada hoy no
+                // mostraba nada). Mismo criterio que "Historial" para las 'en curso' (más abajo).
                 const vivo = preciosVivos[s.ticker];
-                const ret = vivo != null ? (vivo / Number(s.entry_price) - 1) * 100 : Number(s.ret);
+                const ret = vivo != null ? (vivo / costeBase(s) - 1) * 100 : Number(s.ret);
                 return (
                   <div key={s.id} onClick={() => setDetalleHistorial(s)}
                        className="flex cursor-pointer items-center justify-between py-3 transition-colors hover:bg-white/5"
@@ -549,11 +558,12 @@ function SalaMomentumRoom() {
             {(historial ?? []).slice(0, histVisibles).map((s, i) => {
               const ejecutada = s.estado === "ejecutada" || s.estado === "vendida";
               const enCurso = !s.resuelta;
-              // Descartada en curso: retorno en vivo (precio de ahora vs entrada), igual que
-              // en Alertas activas -- si yfinance no responde, cae al ret guardado.
+              // En curso: retorno en vivo contra TU coste real si la ejecutaste (`costeBase`),
+              // si no contra la entrada de la señal (descartada, o pendiente) -- igual que en
+              // Alertas activas. Si yfinance no responde, cae al ret guardado.
               const vivo = preciosVivos[s.ticker];
               const ret = enCurso && vivo != null
-                ? (vivo / Number(s.entry_price) - 1) * 100
+                ? (vivo / costeBase(s) - 1) * 100
                 : Number(s.ret);
               return (
                 <div key={s.id} onClick={() => setDetalleHistorial(s)}
@@ -1132,7 +1142,7 @@ function HistorialModal({ s, precioVivo, regimen, onClose }: {
   const enCurso = !s.resuelta;
   const precioMostrado = enCurso ? (precioVivo ?? precioHoy(s)) : precioHoy(s);
   const retornoMostrado = enCurso && precioVivo != null
-    ? (precioVivo / Number(s.entry_price) - 1) * 100
+    ? (precioVivo / costeBase(s) - 1) * 100
     : Number(s.ret);
 
   return (
