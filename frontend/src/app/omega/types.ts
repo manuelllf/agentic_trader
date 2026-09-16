@@ -30,6 +30,9 @@ export type Senal = {
   // hasta ahora solo se enseñaba cuando ref_label era el propio ATH. En zigzag (ref_label =
   // pico_referencia) existe igual, solo no se mostraba.
   ath?: number | string | null;
+  // Solo en tipo === "ambos": el pico local del leg zigzag, que perdía contra el ATH del leg
+  // suelo al fusionar (`_combinar_ambos`) y hasta ahora se tiraba sin más -- ya no se pierde.
+  ref_price_pico?: number | string | null;
   // Solo en /alertas, solo si estado === "ejecutada": lo que se escribió de verdad al marcar
   // la señal como ejecutada (tabla aparte `momentum_ejecuciones`, antes se guardaba y nunca se
   // volvía a mostrar en ningún sitio -- ver Ejecucion más abajo).
@@ -43,6 +46,12 @@ export type Senal = {
   // (esos son la resolución algorítmica uniforme del patrón, para /validacion -- no lo que
   // Manuel hizo de verdad).
   cierre_manual?: { acciones: number | string; ret: number | string; exit_date: string | null } | null;
+  // Peor cierre visto desde la entrada (entrada->salida si ya resolvió, entrada->hoy si sigue
+  // abierta, ver `resolver_salida` en signals.py) contra `entry_price`, y cuántos días tardó en
+  // tocarlo. Se recalcula cada escaneo mientras la señal no resuelva -- null si aún no hay
+  // ventana suficiente (menos de 4 sesiones desde la entrada).
+  caida_max_pct?: number | string | null;
+  dias_hasta_min?: number | null;
 };
 
 export type Ejecucion = {

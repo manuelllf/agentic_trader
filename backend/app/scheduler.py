@@ -200,6 +200,10 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
         # igual que ya se hacía con exit_date/motivo.
         ret_final = float(s["ret"]) if pd.notna(s.get("ret")) else None
         dias_final = int(s["dias"]) if pd.notna(s.get("dias")) else None
+        # Igual criterio que ret/dias: NaN (float) en cualquier señal con menos de 4 sesiones de
+        # datos -- se normaliza a None (ver `resolver_salida`, que ahora siempre los calcula).
+        caida_max_final = float(s["caida_max_pct"]) if pd.notna(s.get("caida_max_pct")) else None
+        dias_hasta_min_final = int(s["dias_hasta_min"]) if pd.notna(s.get("dias_hasta_min")) else None
         fila = db.execute(text("""
             select id, resuelta, estado, gate_resultado from momentum_senales
             where ticker=:t and tipo=:tp and entry_date=:d
@@ -209,11 +213,13 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
                 db.execute(text("""
                     update momentum_senales
                     set resuelta = true, exit_date = :exit_date, ret = :ret,
-                        motivo = :motivo, dias = :dias
+                        motivo = :motivo, dias = :dias, caida_max_pct = :caida_max_pct,
+                        dias_hasta_min = :dias_hasta_min
                     where id = :id
                 """), {
                     "exit_date": exit_final, "ret": ret_final, "motivo": motivo_final,
-                    "dias": dias_final, "id": fila["id"],
+                    "dias": dias_final, "caida_max_pct": caida_max_final,
+                    "dias_hasta_min": dias_hasta_min_final, "id": fila["id"],
                 })
                 if fila["estado"] == "ejecutada":
                     resueltas_ejecutadas.append(
@@ -226,20 +232,33 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
                   and fila["gate_resultado"] == "falla" and s.get("reactivar")):
                 db.execute(text("""
                     update momentum_senales
-                    set estado = 'nueva', gate_resultado = null, gate_detalle = ''
+                    set estado = 'nueva', gate_resultado = null, gate_detalle = '',
+                        caida_max_pct = :caida_max_pct, dias_hasta_min = :dias_hasta_min
                     where id = :id
-                """), {"id": fila["id"]})
+                """), {"caida_max_pct": caida_max_final, "dias_hasta_min": dias_hasta_min_final,
+                       "id": fila["id"]})
                 if s["ticker"] not in apagados:
                     reactivadas.append(s["ticker"])
+            elif not fila["resuelta"]:
+                # Sigue abierta, sin cruce ni reactivación: la ventana de caída máxima sigue
+                # creciendo cada día -- se refresca aquí (antes esto no se tocaba nunca hasta
+                # que la señal resolvía o se reactivaba, así que se quedaba congelado en null).
+                db.execute(text("""
+                    update momentum_senales
+                    set caida_max_pct = :caida_max_pct, dias_hasta_min = :dias_hasta_min
+                    where id = :id
+                """), {"caida_max_pct": caida_max_final, "dias_hasta_min": dias_hasta_min_final,
+                       "id": fila["id"]})
             continue
         db.execute(text("""
             insert into momentum_senales
               (ticker, sector, tipo, entry_date, entry_price, ref_label, ref_price,
                caida_pct, resuelta, exit_date, ret, motivo, dias, estado, ath, desde_noticias,
-               cesta_60d, gate_regimen)
+               cesta_60d, gate_regimen, ref_price_pico, caida_max_pct, dias_hasta_min)
             values (:ticker, :sector, :tipo, :entry_date, :entry_price, :ref_label,
                     :ref_price, :caida_pct, :resuelta, :exit_date, :ret, :motivo, :dias,
-                    'nueva', :ath, :desde_noticias, :cesta_60d, :gate_regimen)
+                    'nueva', :ath, :desde_noticias, :cesta_60d, :gate_regimen, :ref_price_pico,
+                    :caida_max_pct, :dias_hasta_min)
             on conflict (ticker, tipo, entry_date) do nothing
         """), {
             "ticker": s["ticker"], "sector": s["sector"], "tipo": s["tipo"],
@@ -250,6 +269,10 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
             "dias": dias_final, "ath": s["ath"], "desde_noticias": s["desde_noticias"].date(),
             "cesta_60d": cesta if entry_date == hoy else None,
             "gate_regimen": gate_regimen if entry_date == hoy else None,
+            # Solo presente en señales 'ambos' salidas de `_combinar_ambos` -- ausente en dicts
+            # construidos a mano (tests, `señales_de_ticker` suelto), de ahí el .get().
+            "ref_price_pico": s.get("ref_price_pico"),
+            "caida_max_pct": caida_max_final, "dias_hasta_min": dias_hasta_min_final,
         })
         if s["ticker"] not in apagados:
             nuevas += 1

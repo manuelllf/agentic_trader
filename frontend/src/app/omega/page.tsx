@@ -75,6 +75,15 @@ function distAth(s: Senal): number | null {
   return (1 - Number(s.entry_price) / ath) * 100;
 }
 
+/** El espejo de `distAth()`: distancia extra al pico local, solo para "ambos" (el número
+ *  principal ya va contra el ATH -- ver `_combinar_ambos` en signals.py). Antes ese pico se
+ *  tiraba sin más al fusionar zigzag+suelo; ahora se guarda en `ref_price_pico` y se enseña
+ *  igual que el caso contrario, para no perder esa referencia. */
+function distPicoLocal(s: Senal): number | null {
+  if (s.ref_price_pico == null) return null;
+  return -(Number(s.entry_price) / Number(s.ref_price_pico) - 1) * 100;
+}
+
 export default function SalaMomentum() {
   return (
     <AuthGate>
@@ -104,6 +113,7 @@ function SalaMomentumRoom() {
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
   const [histVisibles, setHistVisibles] = useState(5);
   const [detalleHistorial, setDetalleHistorial] = useState<Senal | null>(null);
+  const [universoAbierto, setUniversoAbierto] = useState<Validacion | null>(null);
 
   // Selector MANUAL del proveedor del gate (candidatos + señales) -- persistido en el backend,
   // no en el navegador: se queda así hasta que Manuel lo cambie, sea cual sea la pestaña o el
@@ -594,7 +604,7 @@ function SalaMomentumRoom() {
             Cada ticker con su resultado real acumulado. Apagar uno lo saca de alertas y recuentos
             pero se sigue escaneando, para ver si mejora y quieres reactivarlo.
           </p>
-          <UniversoTabla validacion={validacion ?? []} onCambio={actualizarValidacion} />
+          <UniversoTabla validacion={validacion ?? []} onAbrir={setUniversoAbierto} />
         </Collapsible>
       </div>
       {buscadorAbierto && (
@@ -603,6 +613,14 @@ function SalaMomentumRoom() {
       {detalleHistorial && (
         <HistorialModal s={detalleHistorial} precioVivo={preciosVivos[detalleHistorial.ticker] ?? null}
                         regimen={regimen} onClose={() => setDetalleHistorial(null)} />
+      )}
+      {universoAbierto && (
+        // Fuera de <table>/<tbody> a propósito (bug real: un <div fixed> dentro de <tbody> es
+        // HTML inválido y React lo marca como error de hidratación) -- mismo patrón que
+        // `HistorialModal` arriba, la fila solo dispara `onAbrir`.
+        <UniversoTickerModal v={universoAbierto} alertas={alertas ?? []} historial={historial ?? []}
+                            preciosVivos={preciosVivos} onCambio={actualizarValidacion}
+                            onClose={() => setUniversoAbierto(null)} />
       )}
     </div>
   );
@@ -1031,6 +1049,11 @@ function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
             {" "}· <b className={NUMS} style={{ color: T.bad }}>-{distAth(s)!.toFixed(1)}%</b> bajo el ATH (${money(s.ath!)})
           </>
         )}
+        {distPicoLocal(s) != null && (
+          <>
+            {" "}· <b className={NUMS} style={{ color: T.bad }}>-{distPicoLocal(s)!.toFixed(1)}%</b> bajo el último pico (${money(s.ref_price_pico!)})
+          </>
+        )}
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
@@ -1263,6 +1286,11 @@ function HistorialModal({ s, precioVivo, regimen, onClose }: {
                 {" "}· <b className={NUMS} style={{ color: T.bad }}>-{distAth(s)!.toFixed(1)}%</b> bajo el ATH (${money(s.ath!)})
               </>
             )}
+            {distPicoLocal(s) != null && (
+              <>
+                {" "}· <b className={NUMS} style={{ color: T.bad }}>-{distPicoLocal(s)!.toFixed(1)}%</b> bajo el último pico (${money(s.ref_price_pico!)})
+              </>
+            )}
           </div>
 
           <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
@@ -1354,11 +1382,11 @@ function FormField({ label, value, onChange, placeholder }: {
 }
 
 /** Universo: fusiona lo que antes eran "Validación histórica" + "Universo vigilado" (mismos
- *  34 tickers repetidos en dos acordeones) en una sola tabla. Cada fila se despliega para el
- *  diagnóstico + el toggle "mantener" -- ese solo importa en los bordes (revisar), no en los
- *  34 a la vez, así que no hace falta un interruptor permanente por fila. */
-function UniversoTabla({ validacion, onCambio }: {
-  validacion: Validacion[]; onCambio: (ticker: string, patch: Partial<Validacion>) => void;
+ *  34 tickers repetidos en dos acordeones) en una sola tabla. Cada fila abre un modal (16-sep-2026,
+ *  pedido explícito -- antes el histórico señal-por-señal solo se podía consultar por SQL) con
+ *  la lista completa de señales de ese ticker + el toggle "mantener". */
+function UniversoTabla({ validacion, onAbrir }: {
+  validacion: Validacion[]; onAbrir: (v: Validacion) => void;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -1374,38 +1402,23 @@ function UniversoTabla({ validacion, onCambio }: {
           </tr>
         </thead>
         <tbody>
-          {validacion.map((v, i) => <UniversoRow key={v.ticker} v={v} first={i === 0} onCambio={onCambio} />)}
+          {validacion.map((v, i) => <UniversoRow key={v.ticker} v={v} first={i === 0} onAbrir={onAbrir} />)}
         </tbody>
       </table>
     </div>
   );
 }
 
-function UniversoRow({ v, first, onCambio }: {
-  v: Validacion; first: boolean; onCambio: (ticker: string, patch: Partial<Validacion>) => void;
+function UniversoRow({ v, first, onAbrir }: {
+  v: Validacion; first: boolean; onAbrir: (v: Validacion) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const revisar = v.n === 0 || v.n === 1 || (v.pct_positivas ?? 100) < 90;
   const apagado = v.mantener === false;
-
-  const toggleMantener = async () => {
-    setBusy(true);
-    try {
-      const nuevo = apagado;  // apagado -> encender (true); activo -> apagar (false)
-      await setMantenerUniverso(v.ticker, nuevo);
-      onCambio(v.ticker, { mantener: nuevo });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const celda = "px-2.5 py-2";
   const borde = !first ? { borderTop: `1px solid ${T.grid}` } : undefined;
 
   return (
     <>
-      <tr onClick={() => setOpen((o) => !o)} className="cursor-pointer" style={{ ...borde, opacity: apagado ? 0.5 : 1 }}>
+      <tr onClick={() => onAbrir(v)} className="cursor-pointer" style={{ ...borde, opacity: apagado ? 0.5 : 1 }}>
         <td className={`${celda} ${MONO} font-semibold`} style={{ color: apagado ? T.warn : T.ink }}>
           {v.ticker}{apagado && <span className="ml-1.5 text-[9px] font-normal">apagado</span>}
         </td>
@@ -1415,29 +1428,171 @@ function UniversoRow({ v, first, onCambio }: {
           {v.media != null ? fmtRet(v.media) : "-"}
         </td>
         <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{v.pct_positivas ?? "-"}{v.pct_positivas != null && "%"}</td>
-        <td className={`${celda} text-right`} style={{ color: T.muted }}>{open ? "▴" : "▾"}</td>
+        <td className={`${celda} text-right`} style={{ color: T.muted }}>›</td>
       </tr>
-      {open && (
-        <tr style={{ background: T.panel2 }}>
-          <td colSpan={6} className="px-2.5 pb-3 pt-1">
-            <p className="text-[11.5px] leading-relaxed" style={{ color: T.ink2 }}>
-              {v.n === 0 ? "Cero entradas resueltas en el periodo."
-                : v.n === 1 ? `Mediana ${fmtRet(v.mediana)}. Muestra insuficiente (n=1) para confiar en el patrón.`
-                : revisar ? `Mediana ${fmtRet(v.mediana)}. ${v.pct_positivas}% de acierto: varianza más alta que el resto del universo.`
-                : `Mediana ${fmtRet(v.mediana)}. ${v.n} entradas resueltas (${v.sector}), ${v.pct_positivas}% positivas. Sigue cumpliendo el criterio de admisión.`}
-            </p>
-            {/* Siempre visible: `revisar` solo recomienda, no decide -- el control es tuyo. */}
-            <div className="mt-2.5 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: T.base }}>
-              <span className="text-[12px] font-semibold" style={{ color: T.ink2 }}>
-                Mantener en universo
-                {apagado && <span className="ml-1.5 font-normal" style={{ color: T.warn }}>· apagado, sigue en seguimiento</span>}
-              </span>
-              <Toggle checked={!apagado} onChange={toggleMantener} disabled={busy} />
-            </div>
-          </td>
-        </tr>
-      )}
     </>
+  );
+}
+
+/** Modal del histórico de un ticker del Universo (16-sep-2026): antes esto solo se podía mirar
+ *  a mano por SQL -- Manuel lo pidió explícitamente para no depender de pedírmelo cada vez.
+ *  Tamaño FIJO (mismo alto/ancho tenga el ticker 1 señal o 12) con scroll interno propio de la
+ *  tabla, no de la página -- así el modal nunca "salta" de tamaño entre tickers. */
+function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCambio, onClose }: {
+  v: Validacion; alertas: Senal[]; historial: Senal[]; preciosVivos: Record<string, number | null>;
+  onCambio: (ticker: string, patch: Partial<Validacion>) => void; onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const apagado = v.mantener === false;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const toggleMantener = async () => {
+    setBusy(true);
+    try {
+      const nuevo = apagado;
+      await setMantenerUniverso(v.ticker, nuevo);
+      onCambio(v.ticker, { mantener: nuevo });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Alertas (sin resolver) + Historial (resueltas, o descartadas/vendidas en seguimiento) de
+  // ESTE ticker -- los dos endpoints son conjuntos disjuntos por construcción (ver routes.py),
+  // así que concatenar no duplica nada.
+  const señales = useMemo(() => {
+    const propias = [...alertas, ...historial].filter((s) => s.ticker === v.ticker);
+    return propias.sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+  }, [alertas, historial, v.ticker]);
+
+  const resueltas = señales.filter((s) => s.resuelta && s.dias != null);
+  const diasMedios = resueltas.length
+    ? resueltas.reduce((acc, s) => acc + Number(s.dias), 0) / resueltas.length
+    : null;
+
+  const cols = ["Entrada", "Tipo", "Precio", "Caída ref.", "Caída ATH", "Resultado", "Días trade", "Caída máx.", "Días a fondo"];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={`Histórico de ${v.ticker}`}
+           className="flex w-full max-w-lg flex-col rounded-2xl border shadow-xl"
+           style={{ borderColor: T.ring, background: T.panel, height: "min(620px, 90vh)" }}
+           onClick={(e) => e.stopPropagation()}>
+        <div className="flex shrink-0 items-center justify-between border-b px-4 py-3" style={{ borderColor: T.grid }}>
+          <div className="flex items-baseline gap-1.5">
+            <span className={`text-[16px] font-bold ${MONO}`} style={{ color: T.ink }}>{v.ticker}</span>
+            <span className="text-[10.5px]" style={{ color: T.muted }}>{v.sector}</span>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
+        </div>
+
+        {/* Cuerpo con scroll interno propio -- el modal nunca crece ni encoge con el contenido. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto px-4 py-3">
+          {señales.length === 0 ? (
+            <p className="py-6 text-center text-[12px]" style={{ color: T.muted }}>Sin señales todavía.</p>
+          ) : (
+            <table className="w-full text-[10.5px]" style={{ minWidth: 720 }}>
+              <thead>
+                <tr style={{ color: T.muted }}>
+                  {cols.map((h, i) => (
+                    <th key={h} className={`sticky top-0 whitespace-nowrap px-1.5 pb-1.5 text-[8.5px] font-bold uppercase tracking-wide ${i >= 2 ? "text-right" : "text-left"}`}
+                        style={{ background: T.panel }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {señales.map((s, i) => (
+                  <UniversoSenalRow key={s.id} s={s} first={i === 0} precioVivo={preciosVivos[s.ticker] ?? null} />
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Agregados + apagar ticker -- siempre visibles, fuera del área con scroll. */}
+        <div className="shrink-0 border-t px-4 py-3" style={{ borderColor: T.grid }}>
+          <div className="grid grid-cols-4 gap-2">
+            <div>
+              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>n</div>
+              <b className={`${NUMS} text-[15px]`} style={{ color: T.ink }}>{v.n}</b>
+            </div>
+            <div>
+              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Media</div>
+              <b className={`${NUMS} text-[15px]`} style={{ color: v.media == null ? T.muted : v.media >= 0 ? T.good : T.bad }}>
+                {v.media != null ? fmtRet(v.media) : "-"}
+              </b>
+            </div>
+            <div>
+              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Mediana</div>
+              <b className={`${NUMS} text-[15px]`} style={{ color: v.mediana == null ? T.muted : v.mediana >= 0 ? T.good : T.bad }}>
+                {v.mediana != null ? fmtRet(v.mediana) : "-"}
+              </b>
+            </div>
+            <div>
+              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Días medios</div>
+              <b className={`${NUMS} text-[15px]`} style={{ color: T.ink }}>{diasMedios != null ? diasMedios.toFixed(0) : "-"}</b>
+            </div>
+          </div>
+          <div className="mt-3 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: T.base }}>
+            <span className="text-[12px] font-semibold" style={{ color: T.ink2 }}>
+              Mantener en universo
+              {apagado && <span className="ml-1.5 font-normal" style={{ color: T.warn }}>· apagado, sigue en seguimiento</span>}
+            </span>
+            <Toggle checked={!apagado} onChange={toggleMantener} disabled={busy} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Distancia vs ATH SIEMPRE con valor (a diferencia de `distAth`, pensada para el badge de una
+ *  sola señal): si la referencia YA es el ATH, es el mismo número que `caida_pct` -- no null. */
+function caidaVsAth(s: Senal): number | null {
+  if (s.ref_label === "ATH_referencia") return Number(s.caida_pct);
+  if (s.ath == null) return null;
+  return (1 - Number(s.entry_price) / Number(s.ath)) * 100;
+}
+
+function UniversoSenalRow({ s, first, precioVivo }: { s: Senal; first: boolean; precioVivo: number | null }) {
+  const celda = "px-1.5 py-1.5";
+  const borde = !first ? { borderTop: `1px solid ${T.grid}` } : undefined;
+
+  const cerradaAMano = s.estado === "vendida" && !s.resuelta && s.cierre_manual != null;
+  const enCurso = !s.resuelta && !cerradaAMano;
+  const ret = cerradaAMano ? Number(s.cierre_manual!.ret)
+    : enCurso && precioVivo != null ? (precioVivo / costeBase(s) - 1) * 100
+    : Number(s.ret);
+  const motivoTxt = cerradaAMano ? "cerrada a mano"
+    : enCurso ? (s.estado === "descartada" ? "descartada, en curso" : "en curso")
+    : s.motivo === "objetivo" ? "objetivo" : s.motivo === "tiempo" ? "90 días" : "-";
+
+  return (
+    <tr style={borde}>
+      <td className={`${celda} ${NUMS}`} style={{ color: T.ink2 }}>{fmtFecha(s.entry_date)}</td>
+      <td className={celda} style={{ color: T.muted }}>{TIPO_LABEL[s.tipo]}</td>
+      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink }}>${money(s.entry_price)}</td>
+      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.bad }}>-{Number(s.caida_pct).toFixed(1)}%</td>
+      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.bad }}>
+        {caidaVsAth(s) != null ? `-${caidaVsAth(s)!.toFixed(1)}%` : "-"}
+      </td>
+      <td className={`${celda} ${NUMS} text-right`} style={{ color: enCurso ? T.warn : ret >= 0 ? T.good : T.bad }}>
+        {ret != null && !Number.isNaN(ret) ? fmtRet(ret) : "-"}
+        <div className="text-[8.5px] font-normal" style={{ color: T.muted }}>{motivoTxt}</div>
+      </td>
+      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{s.dias ?? "-"}</td>
+      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.bad }}>
+        {s.caida_max_pct != null ? fmtRet(Number(s.caida_max_pct)) : "-"}
+      </td>
+      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{s.dias_hasta_min ?? "-"}</td>
+    </tr>
   );
 }
 

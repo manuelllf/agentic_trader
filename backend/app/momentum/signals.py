@@ -277,10 +277,16 @@ def resolver_salida(precios: pd.Series, aperturas: pd.Series, fecha_entrada, pre
     """Camina dia a dia desde la entrada usando el CIERRE para detectar el cruce (objetivo o
     tope de 90 dias). Una vez detectado, el precio que se registra es la APERTURA del dia
     siguiente. Si el cruce se detecta el ULTIMO dia disponible, la señal se deja abierta un
-    dia mas en vez de inventarse una apertura futura."""
+    dia mas en vez de inventarse una apertura futura.
+
+    De paso guarda `caida_max_pct`/`dias_hasta_min`: el peor cierre visto en la ventana (entrada
+    -> salida si ya resolvió, entrada -> hoy si sigue abierta) contra `precio_entrada`, y cuántos
+    días tardó en tocarlo. Se recalcula en cada escaneo mientras la señal siga sin resolver (ver
+    `procesar_señales` en scheduler.py) -- la ventana de una señal abierta sigue creciendo."""
     adelante = precios.loc[fecha_entrada:]
     if len(adelante) < 4:
-        return {"resuelta": False, "exit_date": None, "ret": None, "motivo": None, "dias": None}
+        return {"resuelta": False, "exit_date": None, "ret": None, "motivo": None, "dias": None,
+                "caida_max_pct": None, "dias_hasta_min": None}
     ret_3_sesiones = (adelante.iloc[3] / precio_entrada - 1) * 100
     objetivo = objetivo_por_arranque(ret_3_sesiones)
     indices = adelante.index
@@ -299,11 +305,18 @@ def resolver_salida(precios: pd.Series, aperturas: pd.Series, fecha_entrada, pre
             break  # detectado hoy mismo, sin apertura de manana todavia -- se queda abierta
         fecha_ejec = indices[i + 1]
         precio_ejec = aperturas.loc[fecha_ejec]
+        ventana = precios.loc[fecha_entrada:fecha_ejec]
+        min_precio, min_fecha = float(ventana.min()), ventana.idxmin()
         return {"resuelta": True, "exit_date": fecha_ejec, "ret": (precio_ejec / precio_entrada - 1) * 100,
-                "motivo": disparo, "dias": (fecha_ejec - fecha_entrada).days}
+                "motivo": disparo, "dias": (fecha_ejec - fecha_entrada).days,
+                "caida_max_pct": (min_precio / precio_entrada - 1) * 100,
+                "dias_hasta_min": (min_fecha - fecha_entrada).days}
     precio_hoy = precios.iloc[-1]
+    min_precio, min_fecha = float(adelante.min()), adelante.idxmin()
     return {"resuelta": False, "exit_date": None, "ret": (precio_hoy / precio_entrada - 1) * 100,
-            "motivo": None, "dias": (precios.index[-1] - fecha_entrada).days}
+            "motivo": None, "dias": (precios.index[-1] - fecha_entrada).days,
+            "caida_max_pct": (min_precio / precio_entrada - 1) * 100,
+            "dias_hasta_min": (min_fecha - fecha_entrada).days}
 
 
 def señales_de_ticker(ticker: str) -> list[dict]:
@@ -357,16 +370,25 @@ def _combinar_ambos(señales: list[dict]) -> list[dict]:
     combinadas = []
     for _, grupo in df.groupby(["ticker", "entry_date"]):
         if len(grupo) == 1:
-            combinadas.append(grupo.iloc[0].to_dict())
+            fila = grupo.iloc[0].to_dict()
+            fila["ref_price_pico"] = None
+            combinadas.append(fila)
         else:
             # La fila base tiene que ser la del leg que gana el máximo (zigzag vs suelo miden
             # la caída contra referencias distintas -- pico local vs ATH real): si no, el %
             # que se muestra queda emparejado con el ref_price/ref_label del OTRO leg (bug
             # real, 14-sep-2026: HQ mostraba -72% "bajo el pico de $19.93" cuando el 72% era
             # la caída contra el ATH de $38.39, no contra ese pico).
-            base = grupo.loc[grupo["caida_pct"].idxmax()].to_dict()
+            idx_base = grupo["caida_pct"].idxmax()
+            base = grupo.loc[idx_base].to_dict()
             base["tipo"] = "ambos"
             base["reactivar"] = bool(grupo["reactivar"].any())
+            # El leg perdedor (normalmente el zigzag, contra el pico local) no se tira sin más
+            # -- se guarda en `ref_price_pico` para no perder esa referencia (antes desaparecía
+            # del todo: bug real, 16-sep-2026, "si no perdemos info").
+            otros = grupo.drop(index=idx_base)
+            pico = otros.loc[otros["ref_label"] == "pico_referencia", "ref_price"]
+            base["ref_price_pico"] = float(pico.iloc[0]) if len(pico) else None
             combinadas.append(base)
     return sorted(combinadas, key=lambda r: r["entry_date"], reverse=True)
 

@@ -29,7 +29,7 @@ _DDL = """create table momentum_senales (
     caida_pct numeric, resuelta boolean, exit_date date, ret numeric, motivo text,
     dias integer, estado text, gate_resultado text, gate_detalle text,
     created_at timestamp, ath numeric, desde_noticias date, cesta_60d numeric,
-    gate_regimen boolean,
+    gate_regimen boolean, ref_price_pico numeric, caida_max_pct numeric, dias_hasta_min integer,
     unique (ticker, tipo, entry_date))"""
 
 
