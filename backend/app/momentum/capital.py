@@ -110,6 +110,49 @@ def pnl_realizado(db: Session) -> tuple[Decimal, Decimal]:
     return pnl_total, pct
 
 
+def retorno_combinado(db: Session) -> Decimal | None:
+    """(%) retorno money-weighted sobre el capital EXTERNO que de verdad has puesto en Omega --
+    no sobre el coste bruto de cada compra. Si reinviertes lo ganado en una venta en la
+    siguiente compra, ese dinero reciclado no cuenta como aportación nueva (sumar los costes
+    brutos de compra diluye el % de mentira: 17-sep-2026, verificado con el caso real
+    HQ->QBTS -- $250 de beneficio reinvertidos enteros no deben contar dos veces).
+
+    Simulación cronológica de una "caja" con TODAS las ejecuciones (cualquier ticker, orden
+    real): cada compra tira primero de lo ya recuperado en ventas anteriores; solo lo que la
+    caja no cubre es aportación tuya de verdad. None si nunca se ha aportado nada."""
+    from app.momentum import signals
+
+    filas = db.execute(text("""
+        select accion, acciones, precio, comision from momentum_ejecuciones order by ejecutada_at
+    """)).mappings().all()
+    caja = ZERO
+    aportado = ZERO
+    for f in filas:
+        importe = D(str(f["acciones"])) * D(str(f["precio"]))
+        comision = D(str(f["comision"]))
+        if f["accion"] == "compra":
+            coste = importe + comision
+            if caja >= coste:
+                caja -= coste
+            else:
+                aportado += coste - caja
+                caja = ZERO
+        else:
+            caja += importe - comision
+    if aportado <= 0:
+        return None
+
+    valor_abierto = ZERO
+    for p in posiciones_abiertas(db).values():
+        precio_hoy = signals.precio_vivo(p["ticker"])
+        if precio_hoy is None:
+            precio_hoy = float(p["entry_price"]) * (1 + float(p["ret"]) / 100)
+        valor_abierto += p["neto"] * D(str(precio_hoy))
+
+    valor_total_hoy = valor_abierto + caja
+    return (valor_total_hoy - aportado) / aportado * 100
+
+
 def resumen(db: Session) -> dict:
     """Todo lo que necesita la sección "Cuenta" de Omega."""
     desplegado = capital_desplegado(db)

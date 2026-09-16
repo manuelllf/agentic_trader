@@ -160,12 +160,15 @@ def test_overview_shape_empty_db(client) -> None:
     res = client.get("/overview")
     assert res.status_code == 200
     body = res.json()
-    assert set(body.keys()) == {"shadow", "real"}
+    assert set(body.keys()) == {"shadow", "real", "omega"}
     assert set(body["shadow"].keys()) == {"return_pct", "spy_pct", "alpha_pct", "since", "positions"}
     assert body["shadow"]["return_pct"] is None
     assert body["shadow"]["since"] is None
     assert body["shadow"]["positions"] == 0
     assert body["real"] == {"unrealized_pct": None}
+    # Sin tabla momentum_ejecuciones en esta BD de test (vive fuera del ORM, ver
+    # `overview()`): el cálculo falla y se traga en null, no tumba el resto del teaser.
+    assert body["omega"] == {"return_pct": None}
 
 
 def test_overview_real_side_only_unrealized_pct(db, client, monkeypatch) -> None:

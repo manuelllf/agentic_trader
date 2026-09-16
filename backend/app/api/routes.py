@@ -62,6 +62,7 @@ un feed de señales.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from decimal import Decimal
 from typing import Literal
@@ -80,6 +81,8 @@ from app.ledger import service as ledger
 from app.ledger.money import D, to_cents
 from app.models import Meta, Proposal, Score, Watchlist, utc_iso
 from app.schemas import ProposalOut, ScoreOut, WatchlistOut
+
+logger = logging.getLogger(__name__)
 
 public_router = APIRouter()   # sin token: lecturas y teaser de la portada
 router = APIRouter()          # exige require_auth (dependencies=[...] en main.py)
@@ -236,9 +239,11 @@ def history_series(
 @public_router.get("/overview")
 def overview(db: Session = Depends(get_db)) -> dict:
     """Teaser público de la portada: sombra completa (viene de /performance) + real SOLO el
-    % de P&L no realizado (nunca importes, tickers ni nº de posiciones — eso es privado)."""
+    % de P&L no realizado + Omega SOLO el % combinado (nunca importes, tickers ni nº de
+    posiciones — eso es privado, ver la regla arriba en el docstring del módulo)."""
     from app import tracking
     from app.models import BOOK_REAL
+    from app.momentum import capital as momentum_capital
 
     perf = tracking.performance(db)
     shadow = {
@@ -258,7 +263,20 @@ def overview(db: Session = Depends(get_db)) -> dict:
         if cost_basis > 0:
             real_pct = float((snap.unrealized_pnl / cost_basis * 100).quantize(Decimal("0.01")))
 
-    return {"shadow": shadow, "real": {"unrealized_pct": real_pct}}
+    # Las tablas momentum_* viven fuera del ORM (SQL manda, no Alembic) -- en algún entorno de
+    # test/dev sin ellas, un fallo aquí no debe tumbar el teaser entero de Alpha/Beta.
+    omega_pct: float | None = None
+    try:
+        combinado = momentum_capital.retorno_combinado(db)
+        omega_pct = float(combinado.quantize(Decimal("0.01"))) if combinado is not None else None
+    except Exception:  # noqa: BLE001
+        logger.exception("No se pudo calcular el retorno combinado de Omega para /overview")
+
+    return {
+        "shadow": shadow,
+        "real": {"unrealized_pct": real_pct},
+        "omega": {"return_pct": omega_pct},
+    }
 
 
 # ---- Escaneo ----------------------------------------------------------------

@@ -257,6 +257,13 @@ export interface Overview {
   real: {
     unrealized_pct: number | null;
   };
+  omega: {
+    // Retorno combinado (abierto + realizado) sobre el capital EXTERNO de verdad aportado a
+    // Omega -- no la suma de los dos porcentajes por separado, ni el coste bruto de cada
+    // compra: si reinviertes lo ganado, esa parte no cuenta como aportación nueva (ver
+    // `capital.retorno_combinado` en el backend). Solo el %, nunca importes ni posiciones.
+    return_pct: number | null;
+  };
 }
 
 export interface DemoStatus {

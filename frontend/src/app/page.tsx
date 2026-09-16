@@ -131,23 +131,6 @@ function HeroChart() {
   );
 }
 
-// Relleno de Omega en "Estado real": Alpha y Beta tienen un P&L real que enseñar en ese hueco
-// (número grande + mini-histórico); Omega no tiene cartera, así que un número falso ahí sería
-// peor que no tenerlo. Mismas velas en miniatura que la ilustración del hero, a la altura del
-// mini-histórico de sus hermanas -- ni un hueco vacío ni una palabra fingiendo ser una cifra
-// (feedback 12-sep-2026, "Momentum ahí enorme desentona").
-function MiniBars() {
-  const h = [8, 14, 10, 18, 13, 20, 15, 24, 18, 22];
-  return (
-    <svg viewBox="0 0 100 26" className="h-6 w-full" aria-hidden>
-      {h.map((v, i) => (
-        <rect key={i} x={i * 10.4} y={26 - v} width="6" height={v} rx="1"
-              fill={i === h.length - 1 ? ACCENT : "#383838"} />
-      ))}
-    </svg>
-  );
-}
-
 // Flecha de esquina: la card entera es el link, un botón "Entrar" encima era redundante
 // (feedback 9-sep-2026, "más minimalista").
 function CornerArrow({ color }: { color: string }) {
@@ -179,6 +162,7 @@ export default function Landing() {
 
   const shadow = data?.shadow;
   const real = data?.real;
+  const omega = data?.omega;
 
   return (
     <div className="relative isolate min-h-[100dvh] overflow-hidden bg-[#0A0A0A] text-[#A3A3A0]">
@@ -197,7 +181,7 @@ export default function Landing() {
           <Link href="/alpha" className="group relative flex flex-col justify-between rounded-xl border border-[#303030] bg-[#1C1C1C] p-2.5 transition hover:border-[#383838] sm:rounded-2xl sm:p-4">
             <CornerArrow color={ACCENT} />
             <span className="text-[22px] font-medium sm:text-[26px]" style={{ ...MARK, color: ACCENT }}>α</span>
-            <span className="mt-1 text-sm font-bold text-[#6E6E6B]">Cartera real</span>
+            <span className={`mt-1 text-sm font-bold tabular-nums ${pctTone(real?.unrealized_pct ?? null)}`}>{loading ? "—" : fmtPct(real?.unrealized_pct ?? null)}</span>
           </Link>
           <Link href="/beta" className="group relative flex flex-col justify-between rounded-xl border border-[#303030] bg-[#1C1C1C] p-2.5 transition hover:border-[#383838] sm:rounded-2xl sm:p-4">
             <CornerArrow color="#6E6E6B" />
@@ -207,7 +191,7 @@ export default function Landing() {
           <Link href="/omega" className="group relative flex flex-col justify-between rounded-xl border border-[#303030] bg-[#1C1C1C] p-2.5 transition hover:border-[#383838] sm:rounded-2xl sm:p-4">
             <CornerArrow color={ACCENT} />
             <span className="text-[22px] font-medium sm:text-[26px]" style={{ ...MARK, color: ACCENT }}>Ω</span>
-            <span className="mt-1 text-sm font-bold text-[#6E6E6B]">Momentum</span>
+            <span className={`mt-1 text-sm font-bold tabular-nums ${pctTone(omega?.return_pct ?? null)}`}>{loading ? "—" : fmtPct(omega?.return_pct ?? null)}</span>
           </Link>
         </div>
       </div>
@@ -309,13 +293,15 @@ export default function Landing() {
               </svg>
               Ω
             </span>
-            <p className="mt-2.5 max-w-[28ch] text-[15px] font-semibold leading-snug text-[#A3A3A0]">
-              Caídas técnicas + gate de noticias por LLM
-            </p>
-            <p className="mt-1 text-xs text-[#6E6E6B]">Nunca ejecuta sola</p>
-            <div className="mt-2 hidden sm:block">
-              <MiniBars />
-            </div>
+            {loading ? (
+              <div className="mt-2 h-8 w-20 animate-pulse rounded bg-white/5" />
+            ) : (
+              <span className={`mt-2 text-2xl font-bold tabular-nums tracking-tight sm:text-3xl ${pctTone(omega?.return_pct ?? null)}`}>
+                {fmtPct(omega?.return_pct ?? null)}
+              </span>
+            )}
+            <p className="mt-1.5 text-xs text-[#A3A3A0]">retorno combinado, abierto + realizado</p>
+            <p className="mt-0.5 text-[11px] text-[#6E6E6B]">Caídas técnicas + gate de noticias por LLM · nunca ejecuta sola</p>
             <p className="mt-1 text-[11px] text-[#6E6E6B]">Universo propio · acceso privado</p>
           </Link>
         </div>
