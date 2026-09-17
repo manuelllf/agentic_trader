@@ -23,6 +23,14 @@ const QWEN_MODEL = "qwen3.7-flash";
 const ALL_MODELS = [QWEN_MODEL, ...DEEPSEEK_MODELS] as const;
 const isQwen = (model: string) => model === QWEN_MODEL;
 
+// Jev (TypeSafe AI): decisión tipada con confianza calibrada, no texto -- SOLO el prescorer
+// (`scan_llm_stage._prescore_llm`, nunca `_llm_for`), evaluado y descartado para el resto: no
+// genera texto, así que macro/capa media/profundo/constructor lo dejarían roto (17-sep-2026,
+// ver docs/jev-typesafe-ai.md). Por eso no vive en ALL_MODELS.
+const JEV_MODEL = "jev-latest";
+const PRESCORE_MODELS = [...ALL_MODELS, JEV_MODEL] as const;
+const isJev = (model: string) => model === JEV_MODEL;
+
 // DeepSeek tiene 4 niveles; Qwen solo on/off (`enable_thinking`), representado con los mismos
 // dos valores del tipo compartido para no tocar el contrato del backend (ver StageLLMOverride).
 const DEEPSEEK_REASONINGS: ReasoningEffort[] = ["none", "low", "high", "max"];
@@ -32,7 +40,7 @@ const QWEN_REASONING_LABEL: Record<string, string> = { none: "sin razonamiento",
 type Stage = "macro" | "prescore" | "mid" | "deep" | "constructor";
 
 const MODELS_BY_STAGE: Record<Stage, readonly string[]> = {
-  macro: ALL_MODELS, prescore: ALL_MODELS, mid: ALL_MODELS,
+  macro: ALL_MODELS, prescore: PRESCORE_MODELS, mid: ALL_MODELS,
   deep: ALL_MODELS, constructor: ALL_MODELS,
 };
 
@@ -49,7 +57,7 @@ const STAGE_LABEL: Record<Stage, string> = {
 // modal vacío un instante.
 const FALLBACK: Record<Stage, Required<StageLLMOverride>> = {
   macro: { model: "deepseek-flash", reasoning_effort: "low", temperature: 0.3, top_p: 0.95 },
-  prescore: { model: "qwen3.7-flash", reasoning_effort: "none", temperature: 0.6, top_p: 0.95 },
+  prescore: { model: JEV_MODEL, reasoning_effort: "none", temperature: 0.6, top_p: 0.95 },
   mid: { model: "deepseek-flash", reasoning_effort: "none", temperature: 0.6, top_p: 0.95 },
   deep: { model: "deepseek-flash", reasoning_effort: "low", temperature: 0.3, top_p: 0.95 },
   constructor: { model: "deepseek-flash", reasoning_effort: "low", temperature: 0.3, top_p: 0.95 },
@@ -114,6 +122,11 @@ export function ScanConfigModal({ onClose, onApply, applied, target = "observato
       // reasoning_effort de DeepSeek ("low"/"max") colgando, lo baja a "none" para no mandar al
       // backend una combinación que no significa nada para ese proveedor.
       if (p.model && isQwen(p.model) && !QWEN_REASONINGS.includes(next.reasoning_effort)) {
+        next.reasoning_effort = "none";
+      }
+      // Jev no tiene reasoning en absoluto (el select queda deshabilitado con una sola opción,
+      // "no aplica") -- fijar "none" siempre al cambiar a Jev evita un value sin <option> real.
+      if (p.model && isJev(p.model)) {
         next.reasoning_effort = "none";
       }
       return { ...prev, [s]: next };
@@ -238,6 +251,7 @@ function StageRow({ stage, v, models, onChange }: {
   onChange: (p: Partial<StageLLMOverride>) => void;
 }) {
   const qwen = isQwen(v.model);
+  const jev = isJev(v.model);
   const reasonings = qwen ? QWEN_REASONINGS : DEEPSEEK_REASONINGS;
   return (
     <div className="rounded border px-2.5 py-2" style={{ borderColor: T.grid }}>
@@ -252,24 +266,27 @@ function StageRow({ stage, v, models, onChange }: {
             {models.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </Field>
-        {/* Selector distinto a propósito: Qwen no tiene niveles, solo on/off (`enable_thinking`,
-            ver QwenProvider) — mostrar los 4 niveles de DeepSeek sugeriría gradación que no existe. */}
-        <Field label={qwen ? "razonamiento" : "reasoning"}>
-          <select value={v.reasoning_effort}
+        {/* Jev no razona en texto ni muestrea -- decisión tipada de una sola pasada, sin
+            reasoning/temperature/top_p que configurar (el backend los ignora). Deshabilitados
+            en vez de ocultos, para que quede claro que "no aplica" y no que faltan por rellenar. */}
+        <Field label={jev ? "reasoning" : qwen ? "razonamiento" : "reasoning"} dim={jev}>
+          <select value={v.reasoning_effort} disabled={jev}
                   onChange={(e) => onChange({ reasoning_effort: e.target.value as ReasoningEffort })}
-                  className="cfg-select w-full rounded border px-1.5 py-1 text-[11px]"
+                  className="cfg-select w-full rounded border px-1.5 py-1 text-[11px] disabled:opacity-40"
                   style={{ borderColor: T.ring, color: T.ink, background: T.panel2 }}>
-            {reasonings.map((r) => (
-              <option key={r} value={r}>{qwen ? QWEN_REASONING_LABEL[r] : r}</option>
-            ))}
+            {jev
+              ? <option value="none">no aplica</option>
+              : reasonings.map((r) => (
+                  <option key={r} value={r}>{qwen ? QWEN_REASONING_LABEL[r] : r}</option>
+                ))}
           </select>
         </Field>
-        <Field label="temperatura">
-          <NumberStepper value={v.temperature} min={0} max={2} step={0.05}
+        <Field label="temperatura" dim={jev}>
+          <NumberStepper value={v.temperature} min={0} max={2} step={0.05} disabled={jev}
                          onChange={(temperature) => onChange({ temperature })} />
         </Field>
-        <Field label="top_p">
-          <NumberStepper value={v.top_p} min={0.01} max={1} step={0.01}
+        <Field label="top_p" dim={jev}>
+          <NumberStepper value={v.top_p} min={0.01} max={1} step={0.01} disabled={jev}
                          onChange={(top_p) => onChange({ top_p })} />
         </Field>
       </div>
@@ -279,23 +296,25 @@ function StageRow({ stage, v, models, onChange }: {
 
 // Sustituye el spinner nativo (blanco, fuera de tema) por dos botones ▲/▼ a medida — mismo
 // número de decimales que `step` para no acumular basura de coma flotante al pulsar.
-function NumberStepper({ value, min, max, step, onChange }: {
-  value: number; min: number; max: number; step: number; onChange: (v: number) => void;
+function NumberStepper({ value, min, max, step, disabled, onChange }: {
+  value: number; min: number; max: number; step: number; disabled?: boolean;
+  onChange: (v: number) => void;
 }) {
   const decimals = (step.toString().split(".")[1] || "").length;
   const clamp = (n: number) => Math.min(max, Math.max(min, Number(n.toFixed(decimals))));
   const bump = (dir: 1 | -1) => onChange(clamp(value + dir * step));
   return (
-    <div className="flex items-stretch overflow-hidden rounded border" style={{ borderColor: T.ring }}>
-      <input type="number" min={min} max={max} step={step} value={value}
+    <div className="flex items-stretch overflow-hidden rounded border opacity-100 disabled:opacity-40"
+         style={{ borderColor: T.ring, opacity: disabled ? 0.4 : 1 }}>
+      <input type="number" min={min} max={max} step={step} value={value} disabled={disabled}
              onChange={(e) => onChange(e.target.value === "" ? min : clamp(Number(e.target.value)))}
              className={`cfg-num w-full bg-transparent px-1.5 py-1 text-[11px] ${NUMS_CLASS}`}
              style={{ color: T.ink }} />
       <div className="flex flex-col border-l" style={{ borderColor: T.ring }}>
-        <button type="button" tabIndex={-1} aria-label="Subir" onClick={() => bump(1)}
+        <button type="button" tabIndex={-1} aria-label="Subir" disabled={disabled} onClick={() => bump(1)}
                 className="flex h-[13px] w-5 items-center justify-center text-[8px] leading-none hover:opacity-70"
                 style={{ color: T.muted, background: T.panel2 }}>▲</button>
-        <button type="button" tabIndex={-1} aria-label="Bajar" onClick={() => bump(-1)}
+        <button type="button" tabIndex={-1} aria-label="Bajar" disabled={disabled} onClick={() => bump(-1)}
                 className="flex h-[13px] w-5 items-center justify-center border-t text-[8px] leading-none hover:opacity-70"
                 style={{ color: T.muted, background: T.panel2, borderColor: T.ring }}>▼</button>
       </div>
