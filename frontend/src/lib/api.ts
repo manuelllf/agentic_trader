@@ -30,6 +30,9 @@ export class ApiError extends Error {
 const OFFLINE = "No hay conexión con el servidor. Reintenta en unos segundos.";
 
 /* ---- token de sesión (login) ---- */
+// Caché en memoria de `checkAuth()`: entrar en varias salas seguidas (Alpha, Omega) no debe
+// repetir /auth/check cada vez con un token que ya se sabía válido. Un 401 real la invalida.
+let authOk: boolean | null = null;
 const getToken = () => (typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null);
 export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
@@ -38,6 +41,7 @@ export const hasToken = () => !!getToken();
 /** 401 en cualquier llamada → sesión caducada: limpia el token y avisa al AuthGate. */
 function onUnauthorized() {
   clearToken();
+  authOk = false;
   if (typeof window !== "undefined") window.dispatchEvent(new Event("agentic-unauthorized"));
 }
 
@@ -140,16 +144,19 @@ export async function login(password: string): Promise<void> {
   if (!res.ok) throw new ApiError(`No se pudo iniciar sesión (${res.status}).`, "http", res.status);
   const data = (await res.json()) as { token: string };
   setToken(data.token);
+  authOk = true;
 }
 
 /** Comprueba el token guardado. true = sesión válida (o backend caído → no bloquea con login). */
 export async function checkAuth(): Promise<boolean> {
+  if (authOk != null) return authOk;
   try {
     const res = await request("/auth/check");   // request() ya añade el Authorization
-    return res.status !== 401;   // 401 → hay que loguear; cualquier otra cosa → deja pasar
+    authOk = res.status !== 401;   // 401 → hay que loguear; cualquier otra cosa → deja pasar
   } catch {
-    return true;                 // backend inalcanzable: la app mostrará su banner de conexión
+    authOk = true;                // backend inalcanzable: la app mostrará su banner de conexión
   }
+  return authOk;
 }
 
 export function logout() {
