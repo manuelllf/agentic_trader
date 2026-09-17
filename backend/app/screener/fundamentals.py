@@ -185,6 +185,27 @@ def _convertir_financieros_a_usd(info: dict, db) -> dict:  # noqa: ANN001
                 out.pop(campo, None)
             else:
                 out[campo] = usd
+    # Los 8 campos ya están en USD -- si `financialCurrency` se queda en "KRW", una relectura
+    # posterior (`foto_reciente`, que reconstruye desde lo YA convertido y persistido) volvería
+    # a aplicar la tasa una segunda vez sobre un valor que ya no la necesita. Marcar USD aquí
+    # hace que esa relectura vea `moneda == "USD"` y no toque nada -- doble conversión real,
+    # encontrada arreglando el guardarraíl de abajo, no solo hipotética.
+    out["financialCurrency"] = "USD"
+    # Guardarraíl: EV ya convertido que sigue sin cuadrar con market cap + deuda - caja (los
+    # tres en USD) es dato roto AGUAS ARRIBA en yfinance, no un problema de escala de divisa --
+    # verificado con SK hynix (17-sep-2026): con la tasa de cambio correcta el EV seguía
+    # negativo y no cuadraba. Mejor omitirlo (y sus dos ratios derivados, que heredan el mismo
+    # dato roto) que enseñar un número que ya no grita "divisa sin convertir" pero sigue mal.
+    ev = out.get("enterpriseValue")
+    mcap = numero_finito(info.get("marketCap"))
+    if ev is not None and mcap is not None:
+        esperado = mcap + (out.get("totalDebt") or 0) - (out.get("totalCash") or 0)
+        # Margen generoso (mitad/doble): esto no es para pillar diferencias normales de
+        # metodología (minoritarios, preferentes...), es para el caso "signo o magnitud distintos".
+        if esperado > 0 and (ev < 0 or ev > esperado * 1.5 or ev < esperado * 0.5):
+            out.pop("enterpriseValue", None)
+            out.pop("enterpriseToRevenue", None)
+            out.pop("enterpriseToEbitda", None)
     return out
 
 
@@ -504,11 +525,16 @@ def _fundamentals_text(info: dict, db=None) -> str:  # noqa: ANN001
     return "\n".join(lines)
 
 
-def _valores_crudos(info: dict) -> dict[str, float | str]:
+def _valores_crudos(info: dict, db=None) -> dict[str, float | str]:  # noqa: ANN001
     """Los mismos ~85 campos de `_fundamentals_text`, SIN formatear — lo que se persiste
     relacional en `fundamentals_snapshot_metric`. Mismo criterio de "ausente se omite" que
     `_fmt`; los numéricos pasan por `numero_finito` (mismo guardarraíl que evitó el fallo de
-    `Infinity`)."""
+    `Infinity`).
+
+    `db`: misma conversión a USD que `_fundamentals_text` — sin esto, lo persistido se quedaba
+    en la divisa nativa mientras el texto que vio el LLM ya iba en USD, dos fuentes de verdad
+    distintas para el mismo escaneo (bug real, encontrado auditando SKHY el 17-sep-2026)."""
+    info = _convertir_financieros_a_usd(info, db)
     out: dict[str, float | str] = {}
     for key, _label, kind in _FUNDAMENTAL_FIELDS:
         v = info.get(key)
@@ -684,7 +710,7 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
             name=info.get("shortName", ""),
             target_high=numero_finito(target_high),
             target_mean=numero_finito(target_mean),
-            fundamentales_crudos=_valores_crudos(info),
+            fundamentales_crudos=_valores_crudos(info, db),
             **metricas(info),
         )
         if db is not None:

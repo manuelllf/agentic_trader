@@ -286,7 +286,7 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str,
         name=info.get("shortName", ""),
         target_high=fund_mod.numero_finito(target_high),
         target_mean=fund_mod.numero_finito(target_mean),
-        fundamentales_crudos=fund_mod._valores_crudos(info),
+        fundamentales_crudos=fund_mod._valores_crudos(info, db),
         **fund_mod.metricas(info),
     )
     return data, None
