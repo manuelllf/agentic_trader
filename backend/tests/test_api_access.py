@@ -748,12 +748,12 @@ def test_demo_run_de_verdad_lee_el_body_que_manda_el_frontend(
     del `embed=True` -- todos los campos opcionales dejaban pasar un body mal envuelto sin 422."""
     capturado: dict = {}
     monkeypatch.setattr(
-        "app.api.routes.pipeline.start",
+        "app.api.routes_scan.pipeline.start",
         lambda **kw: capturado.update(kw) or True,
     )
-    monkeypatch.setattr("app.api.routes.settings.enable_llm", True)
+    monkeypatch.setattr("app.api.routes_scan.settings.enable_llm", True)
     # `llm_api_key_present` es una property derivada (sin setter) -- se satisface por debajo.
-    monkeypatch.setattr("app.api.routes.settings.deepseek_api_key", "fake-key")
+    monkeypatch.setattr("app.api.routes_scan.settings.deepseek_api_key", "fake-key")
 
     body = {"overrides": {"deep": {"model": "qwen3.7-flash", "reasoning_effort": "high"}}}
     r = client.post("/demo/run", json=body, headers={"Authorization": f"Bearer {token}"})
