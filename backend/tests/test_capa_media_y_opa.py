@@ -14,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import (
     models,  # noqa: F401  (registra las tablas)
+    scan_llm_stage,
     scan_service,
 )
 from app.db import Base
@@ -137,6 +138,7 @@ def _stub_llms(monkeypatch, prescore_scores: dict, mid_scores: dict, deep_replie
         return deep_llm   # sin model: macro, profundo y constructor
 
     monkeypatch.setattr(scan_service, "get_llm", fake_get_llm)
+    monkeypatch.setattr(scan_llm_stage, "get_llm", fake_get_llm)
     return prescore_llm, mid_llm, deep_llm
 
 
@@ -182,6 +184,7 @@ def test_reintento_de_profundo_espera_antes_de_disparar_de_nuevo(db, monkeypatch
         return deep_llm
 
     monkeypatch.setattr(scan_service, "get_llm", fake_get_llm)
+    monkeypatch.setattr(scan_llm_stage, "get_llm", fake_get_llm)
     _stub_common(monkeypatch)                          # deja el resto igual que los demás tests...
     esperas: list[float] = []
     monkeypatch.setattr(scan_service.time, "sleep", esperas.append)  # ...pero SÍ medimos la espera

@@ -12,7 +12,8 @@ from datetime import UTC, datetime
 
 from app import scan_progress
 from app.db import SessionLocal
-from app.scan_service import ScanCancelado, run_scan_and_store, write_scan_failure
+from app.scan_service import ScanCancelado, run_scan_and_store
+from app.scan_state import write_scan_failure
 
 _state: dict = {
     "status": "idle",       # idle | running | done | error

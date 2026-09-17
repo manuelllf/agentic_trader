@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import (
     models,  # noqa: F401  (registra las tablas)
+    scan_llm_stage,
     scan_service,
 )
 from app.db import Base
@@ -92,6 +93,7 @@ def _stub_common(monkeypatch, llm, symbols: list[str]) -> None:
     from app.screener import macro as macro_mod
 
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: llm)
+    monkeypatch.setattr(scan_llm_stage, "get_llm", lambda *a, **k: llm)
     monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
     # Clear always_deep_tickers so test-controlled ticker doesn't vanish from sample.
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])

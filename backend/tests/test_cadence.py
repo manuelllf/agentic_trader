@@ -12,7 +12,9 @@ from sqlalchemy.orm import sessionmaker
 
 from app import (
     models,  # noqa: F401  (registra las tablas)
+    scan_llm_stage,
     scan_service,
+    scan_state,
 )
 from app.db import Base
 from app.ledger import service as ledger
@@ -73,6 +75,7 @@ def _stub_scan(monkeypatch) -> None:
     from app.screener.fundamentals import NameData
 
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: FakeLLM(_FAKE_REPLY))
+    monkeypatch.setattr(scan_llm_stage, "get_llm", lambda *a, **k: FakeLLM(_FAKE_REPLY))
     monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
     monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)  # sin la pausa del reintento
@@ -140,6 +143,7 @@ def test_observatorio_actualiza_coincidencia_sin_borrar_el_resto(db, monkeypatch
     _stub_universo(monkeypatch, ["AAA"])
     otra_reply = _FAKE_REPLY.replace('"score": 90', '"score": 77')
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: FakeLLM(otra_reply))
+    monkeypatch.setattr(scan_llm_stage, "get_llm", lambda *a, **k: FakeLLM(otra_reply))
     result = scan_service.run_scan_and_store(db, sample_size=5, decide=False)
 
     rows = {s.ticker: s for s in db.query(models.Score).all()}
@@ -302,6 +306,8 @@ def test_profundo_no_parseable_no_puntua(db, monkeypatch) -> None:
     cero = _FAKE_REPLY.replace('"score": 90', '"score": 0')
     monkeypatch.setattr(scan_service, "get_llm",
                         lambda *a, **k: FakeLLM(_FAKE_REPLY if a else cero))
+    monkeypatch.setattr(scan_llm_stage, "get_llm",
+                        lambda *a, **k: FakeLLM(_FAKE_REPLY if a else cero))
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)
 
     assert db.query(models.Score).count() == 0                 # fuera del ranking
@@ -320,16 +326,16 @@ def test_cursor_rotatorio_no_avanza_si_el_escaneo_revienta(db, monkeypatch) -> N
 
     with pytest.raises(RuntimeError):
         scan_service.run_scan_and_store(db, sample_size=5, decide=False)
-    assert scan_service._scan_cursor(db) == 0                  # la franja no se consumió
+    assert scan_state._scan_cursor(db) == 0                  # la franja no se consumió
 
     _stub_scan(monkeypatch)                                    # el macro vuelve a funcionar
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)
-    assert scan_service._scan_cursor(db) == 5                  # escaneo completo → sí avanza
+    assert scan_state._scan_cursor(db) == 5                  # escaneo completo → sí avanza
 
 
 def test_scan_failure_writes_report(db) -> None:
     """Si el escaneo revienta entero, el envoltorio deja el informe con el error — antes,
     un cron caído era invisible en la web (seguía enseñando datos viejos sin señal)."""
-    scan_service.write_scan_failure(db, RuntimeError("boom"))
+    scan_state.write_scan_failure(db, RuntimeError("boom"))
     rep = _last_report(db)
     assert rep["error"] == "boom" and rep["mode"] is None and rep["issues"] == []

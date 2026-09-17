@@ -21,8 +21,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app import scan_service
 from app.config import settings
+from app.scan_llm_stage import DEFAULT_TEMPERATURE
 
 from . import (
     routes_admin,
@@ -66,10 +66,10 @@ def config() -> dict:
         # `temperature` va aquí también (no solo model/reasoning_effort): sin esto, el modal
         # partía de un 1.0 fijo en el frontend y el prescore=0.0 recién decidido se anulaba en
         # SILENCIO cada vez que se lanzaba una simulación — el override "ganaba" sobre el
-        # default de `settings` en `_stage_cfg` (ver `scan_service.py`).
+        # default de `settings` en `_stage_cfg` (ver `scan_llm_stage.py`).
         "llm_defaults": {
             "macro": {"model": settings.llm_model, "reasoning_effort": settings.macro_reasoning_effort,
-                      "temperature": scan_service.DEFAULT_TEMPERATURE},
+                      "temperature": DEFAULT_TEMPERATURE},
             "prescore": {
                 "model": (settings.qwen_model if settings.prescore_provider == "qwen"
                          else settings.prescore_model),
@@ -79,9 +79,9 @@ def config() -> dict:
             "mid": {"model": settings.mid_model, "reasoning_effort": settings.mid_reasoning_effort,
                     "temperature": settings.mid_temperature},
             "deep": {"model": settings.llm_model, "reasoning_effort": settings.deep_reasoning_effort,
-                     "temperature": scan_service.DEFAULT_TEMPERATURE},
+                     "temperature": DEFAULT_TEMPERATURE},
             "constructor": {"model": settings.llm_model, "reasoning_effort": settings.reasoning_effort,
-                            "temperature": scan_service.DEFAULT_TEMPERATURE},
+                            "temperature": DEFAULT_TEMPERATURE},
         },
     }
 

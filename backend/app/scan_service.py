@@ -33,11 +33,9 @@ Este módulo solo ORQUESTA. La matemática de cartera (selección, pesos, diff a
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
-import unicodedata
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -56,14 +54,12 @@ from app.llm import deepseek as deepseek_mod
 from app.llm import get_llm
 from app.llm.trace import LLMTrace
 from app.models import (
-    Meta,
     Proposal,
     ProposalItem,
     ProposalOmitted,
     ScanRun,
     ScanRunConstructionItem,
     ScanRunConstructionOmitted,
-    ScanRunCostBreakdown,
     ScanRunFailure,
     ScanRunFinalist,
     ScanRunFinalistNews,
@@ -72,8 +68,23 @@ from app.models import (
     ScanRunSector,
     ScanRunTiming,
     Score,
-    ScoreNews,
 )
+from app.scan_guardrails import (
+    _aparta_opadas,
+    _flag_consensus_echo,
+    _flag_constructor_backfill,
+    _flag_corporate_deal_targets,
+    _lista,
+    _log_funnel,
+)
+from app.scan_llm_stage import _llm_for, _prescore_llm, _sampling_kwargs, _stage_cfg
+from app.scan_persist import (
+    _guardar_cost_breakdown,
+    _guardar_news_used,
+    _guardar_trade_items,
+    _llm_usage,
+)
+from app.scan_state import _advance_scan_cursor, _memory_store, _scan_cursor, _write_scan_report
 from app.screener import fundamentals as fund_mod
 from app.screener import macro as macro_mod
 from app.screener import universe as universe_mod
@@ -114,382 +125,6 @@ _GATHER_PACE_S = 0.4
 # 180s cooldown tras última petición: no alcanza (Yahoo bloquea horas, no minutos).
 # Red de seguridad para fallos parciales, no arreglo del bloqueo.
 _GATHER_RETRY_COOLDOWN_S = 180.0
-_CURSOR_KEY = "scan_cursor"   # offset persistido de la ventana rotatoria del semanal
-_REPORT_KEY = "last_scan_report"   # informe del último escaneo (JSON en Meta; ver /scan/report)
-
-
-def _write_scan_report(db: Session, *, mode: str | None, result: dict | None,
-                       issues: list[str], error: str | None = None,
-                       changes: list[str] | None = None) -> None:
-    """Persiste informe de último escaneo en Meta (fuente de verdad de la web)."""
-    r = result or {}
-    report = {
-        "at": datetime.now(UTC).isoformat(),
-        "mode": mode, "error": error, "issues": issues, "changes": changes or [],
-        "universe": r.get("universe"),
-        "scanned": r.get("scanned"), "prescored": r.get("prescored"), "deep": r.get("deep"),
-        # Refreshed: solo observatorio (decisión reemplaza ranking entero, no refresca).
-        "refreshed": r.get("refreshed"),
-        "cost": r.get("cost"),
-        # Outlook de este escaneo (antes observatorio lo descartaba; ahora siempre visible).
-        "outlook": r.get("outlook"),
-    }
-    db.merge(Meta(key=_REPORT_KEY, value=json.dumps(report, ensure_ascii=False)))
-    db.commit()
-
-
-def write_scan_failure(db: Session, exc: Exception) -> None:
-    """Marca escaneo fallido en Meta (sin esto, cron caído pasa invisible en web)."""
-    db.rollback()   # la sesión puede venir sucia del fallo a mitad
-    _write_scan_report(db, mode=None, result=None, issues=[], error=str(exc))
-
-
-def _scan_cursor(db: Session) -> int:
-    """Offset actual de la ventana rotatoria (0 si aún no existe o está corrupto)."""
-    row = db.get(Meta, _CURSOR_KEY)
-    try:
-        return int(row.value) if row else 0
-    except (TypeError, ValueError):
-        return 0
-
-
-def _advance_scan_cursor(db: Session, step: int) -> None:
-    """Avanza el offset `step` posiciones para que el próximo semanal teja el siguiente tramo."""
-    row = db.get(Meta, _CURSOR_KEY)
-    if row:
-        row.value = str(_scan_cursor(db) + step)
-    else:
-        db.add(Meta(key=_CURSOR_KEY, value=str(step)))
-    db.commit()
-
-
-def _memory_store():
-    """Singleton de memoria vectorial; None si faltan deps o falla (es una mejora, no requisito)."""
-    try:
-        from app import memory
-        return memory.get_store()
-    except Exception:
-        logger.warning("Memoria vectorial no disponible — se omite.")
-        return None
-
-
-def _llm_usage(**etapas) -> dict:
-    """Suma el uso (llamadas/tokens/coste) de varias etapas nombradas. Tolera `None`/FakeLLM
-    sin `usage` (capa media desactivada, tests).
-
-    `by_model` desglosa por modelo (Flash del prescore vs V4-Pro del resto) y `by_stage` por
-    ETAPA — necesario aparte porque macro/profundo/constructor comparten el mismo modelo (V4-Pro)
-    desde que se dejó OpenRouter: sin `by_stage`, `by_model["deepseek-v4-pro"]` mezclaría las
-    tres y ScanRun.cost dejaría de decir en qué paso se fue el dinero, justo lo que `by_model`
-    existe para evitar.
-
-    `cache_hit/miss_tokens` y `peak_calls` vienen del proveedor: un escaneo caro puede serlo por
-    mal aprovechamiento de la caché (el tramo miss cuesta 30x el de hit) o por haber caído en
-    horario peak (el doble), y sin el desglose las dos causas son indistinguibles del total.
-    """
-    campos = ("calls", "prompt_tokens", "completion_tokens", "cache_hit_tokens",
-              "cache_miss_tokens", "peak_calls", "cost_usd")
-    total = dict.fromkeys(campos, 0)
-    total.update(by_model={}, by_stage={})
-    for etapa, llm in etapas.items():
-        u = getattr(llm, "usage", None)
-        if not isinstance(u, dict):
-            continue
-        for k in campos:
-            total[k] += u.get(k, 0)
-        for modelo, stats in (u.get("by_model") or {}).items():
-            acc = total["by_model"].setdefault(modelo, dict.fromkeys(campos, 0))
-            for k in campos:
-                acc[k] += stats.get(k, 0)
-        total["by_stage"][etapa] = {k: u.get(k, 0) for k in campos}
-    prompt_facturado = total["cache_hit_tokens"] + total["cache_miss_tokens"]
-    total["cache_hit_ratio"] = (
-        round(total["cache_hit_tokens"] / prompt_facturado, 4) if prompt_facturado else None
-    )
-    total["cost_usd"] = round(total["cost_usd"], 4)
-    return total
-
-
-def _sector(data_by_t: dict, ticker: str) -> str:
-    """Sector de un ticker (o 'UCITS' si es un instrumento del allowlist, que no se puntúa)."""
-    d = data_by_t.get(ticker)
-    return d.sector if d else "UCITS"
-
-
-def _guardar_news_used(db: Session, score_id: int, news: list[str] | None) -> None:
-    """Congela `NameData.news` como filas de `ScoreNews` — nunca como JSON. `None` = el gather no
-    trajo noticias (no se distingue de "trajo cero"; ningún lector lo necesitaba).
-
-    Borra las filas previas de este `score_id` antes de insertar: en un observatorio la fila de
-    `Score` se REUTILIZA (no se recrea, ver `run_scan_and_store`), así que sin este borrado las
-    noticias de escaneos anteriores se irían acumulando debajo de las nuevas en vez de reflejar
-    solo lo que entró al prompt en ESTE escaneo."""
-    db.query(ScoreNews).filter(ScoreNews.score_id == score_id).delete()
-    for i, texto in enumerate(news or []):
-        db.add(ScoreNews(score_id=score_id, posicion=i, texto=texto))
-
-
-def _guardar_trade_items(db: Session, model_cls: type, fk_field: str, fk_id: int,
-                         items: list[dict]) -> None:
-    """Filas hermanas de `_TradeItemColumns` (`ProposalItem`/`ScanRunConstructionItem`), mismo
-    shape que la salida de `portfolio_service.build_trades` — `posicion` conserva su orden."""
-    for i, it in enumerate(items):
-        db.add(model_cls(**{fk_field: fk_id}, posicion=i, ticker=it["ticker"], action=it["action"],
-                          score=it.get("score"),
-                          target_weight_pct=it.get("target_weight_pct") or 0.0,
-                          price=it.get("price"), target_price=it.get("target_price"),
-                          upside_pct=it.get("upside_pct"), high_52w=it.get("high_52w"),
-                          target_value=it.get("target_value", "0"),
-                          target_shares=it.get("target_shares") or 0.0,
-                          delta_shares=it.get("delta_shares") or 0.0,
-                          thesis=it.get("thesis", ""), edge=it.get("edge", ""),
-                          risk=it.get("risk", "")))
-
-
-def _guardar_cost_breakdown(db: Session, scan_run_id: int, cost: dict) -> None:
-    campos = ("calls", "prompt_tokens", "completion_tokens", "cache_hit_tokens",
-              "cache_miss_tokens", "peak_calls", "cost_usd")
-    for dimension, bucket in (("model", cost.get("by_model") or {}),
-                              ("stage", cost.get("by_stage") or {})):
-        for clave, stats in bucket.items():
-            db.add(ScanRunCostBreakdown(scan_run_id=scan_run_id, dimension=dimension, clave=clave,
-                                        **{k: stats.get(k, 0) for k in campos}))
-
-
-def _lista(ts: list[str], n: int = 10) -> str:
-    """Lista de tickers legible y acotada: 'A, B, C y 4 más'."""
-    return ", ".join(ts[:n]) + (f" y {len(ts) - n} más" if len(ts) > n else "")
-
-
-# Guardarraíl de operación corporativa en código: el prompt ya prohíbe mezclar enterprise value
-# con precio por acción y aun así falló una vez. Sin acentos porque el informe se normaliza antes.
-_CORP_DEAL_TERMS = ("adquisicion", "adquirir", "opa", "oferta en efectivo", "fusion",
-                    "merger", "takeover", "absorcion")
-
-
-def _sin_acentos(texto: str) -> str:
-    """Quita acentos/diacríticos para que la búsqueda de términos no dependa de cómo los escriba
-    el modelo (el informe viene en español, con o sin tildes según el caso)."""
-    return "".join(c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c))
-
-
-def _aparta_opadas(rows: list, issues: list[str]) -> list:
-    """Quita de la selección las empresas que el informe declara OPADAS (`under_acquisition`).
-
-    Con una oferta en efectivo sobre la mesa el precio queda clavado a ella: lo que queda por
-    ganar es el hueco hasta el cierre (caso real: ATKR cotizaba a 93,69 con oferta de 95 — un 1,4%)
-    a cambio de un riesgo binario de que la operación se caiga. No es la asimetría que busca la
-    estrategia, y el modelo le ponía 85 sobre 100 porque lee "incertidumbre eliminada" como algo
-    bueno. La fila del Score se queda con su nota y su informe: se aparta de la cartera, no se
-    borra de la traza.
-
-    `under_acquisition` a None NO es un "no": es que el modelo se saltó el campo (pasa en ~1 de
-    cada 10 respuestas de los modelos rápidos). Se avisa en vez de asumir, porque asumir el "no"
-    desactivaría el guardarraíl justo cuando falla. Sirve igual para `ScoreResult` que para filas
-    `Score` — ambas exponen `.ticker` y `.under_acquisition`.
-    """
-    opadas = [r.ticker for r in rows if getattr(r, "under_acquisition", None) is True]
-    if opadas:
-        issues.append("Fuera de la selección por oferta de adquisición en curso (lo declara el "
-                      "propio informe): " + _lista(opadas))
-    sin_respuesta = [r.ticker for r in rows if getattr(r, "under_acquisition", None) is None]
-    if sin_respuesta:
-        issues.append("Sin respuesta al campo de oferta de adquisición (no aparta a nadie): "
-                      + _lista(sin_respuesta))
-    return [r for r in rows if getattr(r, "under_acquisition", None) is not True]
-
-
-def _flag_constructor_backfill(construction, issues: list[str]) -> None:
-    """Avisa si la cartera final no es (del todo) convicción del LLM, sino relleno por score.
-
-    Antes `positions: 5` salía igual con el constructor sano o caído 3/3 — la única pista era
-    el summary, enterrado en un modal que nadie abre a tiempo. Ahora sale en `issues`.
-    """
-    if construction.summary == constructor_mod.FALLBACK_SUMMARY:
-        issues.append("Constructor caído (3 intentos fallidos): la cartera se rellenó "
-                      "automáticamente por score, sin tesis del LLM.")
-        return
-    n = portfolio.backfill_count(construction)
-    if n:
-        issues.append(f"El constructor solo fondeó {len(construction.positions) - n} de "
-                      f"{len(construction.positions)} posiciones; el resto se rellenó por score.")
-
-
-def _flag_corporate_deal_targets(
-    deep: dict, data_by_t: dict, issues: list[str],
-) -> tuple[dict, set]:
-    """Corrige en sitio `r.target_price` cuando el informe habla de una operación corporativa en
-    efectivo Y el objetivo del modelo supera el máximo del consenso en más de un 5%: ahí el
-    target_price del código pasa a ser el consenso, no el número (probablemente mal calculado)
-    del LLM. Sin `target_high` no se hace nada (no se inventa un techo). Devuelve
-    (target_raw, target_flagged) para que el caller los guarde en `Score`.
-
-    Sin efecto hoy: ya no se le pide target_price al profundo, siempre es None. Se queda
-    intacta por si algún día vuelve a pedirse."""
-    target_raw: dict[str, float] = {}
-    target_flagged: set[str] = set()
-    for ticker, r in deep.items():
-        data = data_by_t[ticker]
-        if r.target_price is None or not data.target_high:
-            continue
-        if r.target_price <= data.target_high * 1.05:
-            continue
-        texto = _sin_acentos((r.report or "").lower())
-        if not any(term in texto for term in _CORP_DEAL_TERMS):
-            continue
-        target_raw[ticker] = r.target_price
-        target_flagged.add(ticker)
-        issues.append(
-            f"{ticker}: el informe menciona una operación corporativa en efectivo y puso el "
-            f"objetivo en {r.target_price:.2f} frente al máximo del consenso de analistas "
-            f"({data.target_high:.2f}); se usa el consenso como objetivo efectivo.")
-        r.target_price = data.target_high
-    return target_raw, target_flagged
-
-
-def _flag_consensus_echo(deep: dict, data_by_t: dict) -> tuple[dict, set]:
-    """Detecta cuándo `target_price` coincide (<0,5%) con el consenso MEDIO de analistas
-    (publicado a 12-18 meses, no al mes que se le pide) — indicio de que el modelo copió el
-    número en vez de razonar el horizonte corto. A diferencia de `_flag_corporate_deal_targets`,
-    NO toca `target_price`: es puro telemetría para medir si el prompt mejora con el tiempo.
-    Devuelve (target_consensus_mean, target_echoed_consensus) para que el caller los guarde en
-    `Score`.
-
-    Sin efecto hoy: ya no se le pide target_price al profundo, siempre es None."""
-    target_consensus_mean: dict[str, float] = {}
-    echoed: set[str] = set()
-    for ticker, r in deep.items():
-        mean = data_by_t[ticker].target_mean
-        if r.target_price is None or not mean:
-            continue
-        if abs(r.target_price - mean) / mean < 0.005:
-            echoed.add(ticker)
-            target_consensus_mean[ticker] = mean
-    return target_consensus_mean, echoed
-
-
-def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, finalists: list,
-                data_by_t: dict, selected: list, construction, instr_prices: dict) -> None:
-    """Traza legible del embudo en los logs (Railway/consola): permite ver de un vistazo que el
-    corte ya no colapsa en un sector, y si algo va raro saber en qué paso. Best-effort."""
-    try:
-        def top(counter: Counter) -> str:
-            """TODOS los sectores del counter, no un top-N -- una lista recortada aquí se lee
-            como si el resto se hubiera descartado del embudo, cuando solo faltaba en el log."""
-            return ", ".join(f"{s}:{n}" for s, n in counter.most_common()) or "n/d"
-
-        fin_sectors = Counter(_sector(data_by_t, t) for t in finalists)
-        logger.info("── EMBUDO (%s) ──────────────────────────────", cadence)
-        logger.info("  muestra=%d · pre-scoreados=%d · sin datos=%d · finalistas=%d en %d sectores",
-                    len(sample), len(prescored), len(failed), len(finalists), len(fin_sectors))
-        logger.info("  pre-score por sector: %s", top(Counter(d.sector for _p, d in prescored)))
-        logger.info("  finalistas por sector: %s", top(fin_sectors))
-        # Confianza del prescore AGREGADA: el aviso por llamada inundaba (>350 líneas/escaneo) y
-        # Railway descarta líneas a ese volumen — en el escaneo grande solo sobrevivió el 1%.
-        confs = sorted(p.confidence for p, _d in prescored if p.confidence is not None)
-        if confs:
-            def cuantil(q: float) -> float:
-                return confs[min(len(confs) - 1, int(len(confs) * q))]
-            bajos = sum(1 for c in confs if c < scorer_mod._LOW_CONFIDENCE)
-            logger.info("  confianza prescore (n=%d): min=%.4f p25=%.4f mediana=%.4f max=%.4f · "
-                        "por debajo de %.2f: %d (%.0f%%)", len(confs), confs[0], cuantil(0.25),
-                        cuantil(0.50), confs[-1], scorer_mod._LOW_CONFIDENCE, bajos,
-                        bajos / len(confs) * 100)
-        sel = ", ".join(f"{r.ticker}[{_sector(data_by_t, r.ticker)}]={r.score}" for r in selected)
-        logger.info("  seleccionados (top-%d): %s", len(selected), sel or "ninguno")
-        # Orden en que el constructor los vio (barajado): sin esto no se distingue "eligió por
-        # convicción" de "se quedó con los primeros de la lista".
-        logger.info("  orden mostrado al constructor: %s",
-                    ", ".join(r.ticker for r in portfolio.orden_presentacion(selected)) or "n/d")
-        cartera = ", ".join(f"{p.ticker} {p.weight_pct:.0f}%[{_sector(data_by_t, p.ticker)}]"
-                            for p in construction.positions) or "vacía"
-        logger.info("  CARTERA: %s", cartera)
-        # La métrica que se está vigilando: ¿fondeó justo el top-N por score, o de verdad eligió?
-        fondeados = {p.ticker for p in construction.positions}
-        if fondeados and selected:
-            top_n = {r.ticker for r in selected[:len(fondeados)]}
-            logger.info("  ¿cartera == top-%d por score? %s", len(fondeados),
-                        "SÍ — colapsó al ranking" if fondeados == top_n else "no")
-        if instr_prices:
-            usados = [p.ticker for p in construction.positions if p.ticker in instr_prices]
-            logger.info("  UCITS disponibles=%d · usados=%s", len(instr_prices), usados or "—")
-        logger.info("──────────────────────────────────────────────")
-    except Exception:
-        logger.exception("No se pudo emitir la traza del embudo (no aborta el escaneo).")
-
-
-DEFAULT_TEMPERATURE = 0.3
-DEFAULT_TOP_P = 0.95
-# Se mandan en TODAS las etapas, tengan o no razonamiento activo — decisión explícita: aunque
-# api-docs.deepseek.com/guides/thinking_mode diga que el modo razonamiento ignora
-# `temperature`/`top_p`, no cuesta nada mandarlos igual (el campo se ignora, no rompe la
-# llamada) y así el comportamiento no depende de qué reasoning tenga cada etapa hoy — si mañana
-# alguna pasa a "none", ya lleva puestos los mismos valores que el resto sin tocar nada aquí.
-
-
-def _stage_cfg(overrides: dict | None, stage: str, default_model: str,
-              default_reasoning: str | None,
-              default_temperature: float = DEFAULT_TEMPERATURE) -> dict:
-    """Config efectiva de una etapa: lo que mande `overrides[stage]` gana, si no el default de
-    `settings` (modelo/reasoning) o `DEFAULT_TEMPERATURE`/`DEFAULT_TOP_P` (muestreo)."""
-    o = (overrides or {}).get(stage) or {}
-    return {
-        "model": o.get("model") or default_model,
-        "reasoning_effort": o.get("reasoning_effort", default_reasoning),
-        "temperature": o.get("temperature", default_temperature),
-        "top_p": o.get("top_p", DEFAULT_TOP_P),
-    }
-
-
-def _quiere_reasoning_qwen(reasoning_effort: str | None) -> bool:
-    """Qwen no tiene niveles (low/high/max) como DeepSeek, solo on/off — cualquier cosa que no
-    sea "none"/None del modal (que solo ofrece dos opciones para Qwen, ver ScanConfigModal) se
-    interpreta como razonamiento activo."""
-    return reasoning_effort not in (None, "none")
-
-
-def _llm_for(cfg: dict, stage: str = "", recorder=None):  # noqa: ANN001
-    """`get_llm()` con el `model` de la config, PERO solo como argumento posicional cuando hay
-    uno de verdad (override, o default de etapa como `prescore_model`/`mid_model`) — igual que
-    las llamadas de antes de este refactor. Sin esto, macro/deep/constructor (que antes NO
-    pasaban `model` en absoluto, cayendo al default interno de `get_llm()`) pasarían a llamarlo
-    siempre con un positional (aunque fuera `None`), cambiando la ARIDAD de la llamada — de lo
-    que dependen los fakes de test que distinguen la etapa mirando `*args` (ver
-    `test_cadence.py::test_profundo_no_parseable_...`).
-
-    Enruta a Qwen en CUALQUIER etapa cuando el modelo elegido es `settings.qwen_model` — antes
-    pedir Qwen fuera del prescore mandaba su nombre a DeepSeek en vez de al proveedor correcto."""
-    if cfg["model"] == settings.qwen_model and settings.dashscope_api_key:
-        return get_llm(cfg["model"], reasoning_effort=cfg["reasoning_effort"], stage=stage,
-                       recorder=recorder, provider="qwen",
-                       enable_thinking=_quiere_reasoning_qwen(cfg["reasoning_effort"]))
-    if cfg["model"]:
-        return get_llm(cfg["model"], reasoning_effort=cfg["reasoning_effort"],
-                       stage=stage, recorder=recorder)
-    return get_llm(reasoning_effort=cfg["reasoning_effort"], stage=stage, recorder=recorder)
-
-
-def _prescore_llm(cfg: dict, tiene_override: bool, recorder=None):  # noqa: ANN001
-    """Como `_llm_for`, pero el prescore además tiene un default de PRODUCCIÓN a Qwen
-    (`settings.prescore_provider`) cuando no hay override del modal — el resto de etapas no
-    tienen ese concepto, van a DeepSeek salvo que el modal pida Qwen explícitamente."""
-    if not tiene_override and settings.prescore_provider == "qwen" and settings.dashscope_api_key:
-        return get_llm(settings.qwen_model, reasoning_effort=cfg["reasoning_effort"],
-                       stage="prescore", recorder=recorder, provider="qwen",
-                       enable_thinking=_quiere_reasoning_qwen(cfg["reasoning_effort"]))
-    return _llm_for(cfg, "prescore", recorder)
-
-
-def _sampling_kwargs(cfg: dict) -> dict:
-    """`temperature`/`top_p` de la config efectiva (override o `DEFAULT_TEMPERATURE`/
-    `DEFAULT_TOP_P`, ver `_stage_cfg`) — nunca None, así que siempre van al `llm.chat()` de la
-    etapa, tenga o no razonamiento activo."""
-    kw = {}
-    if cfg.get("temperature") is not None:
-        kw["temperature"] = cfg["temperature"]
-    if cfg.get("top_p") is not None:
-        kw["top_p"] = cfg["top_p"]
-    return kw
 
 
 class ScanCancelado(RuntimeError):
