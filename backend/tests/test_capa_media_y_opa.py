@@ -130,10 +130,12 @@ def _stub_llms(monkeypatch, prescore_scores: dict, mid_scores: dict, deep_replie
         # se mira mid PRIMERO para no confundir su llamada con la del prescore.
         if model == scan_service.settings.mid_model:
             return mid_llm
-        # El prescore llega aquí con `settings.prescore_model` (override/DeepSeek) o con
-        # `settings.qwen_model` (default de producción, `prescore_provider="qwen"` — ver
-        # `scan_service._prescore_llm`); cualquiera de los dos es la llamada del prescore.
-        if model in (scan_service.settings.prescore_model, scan_service.settings.qwen_model):
+        # El prescore llega aquí con `settings.prescore_model` (override/DeepSeek), con
+        # `settings.qwen_model` (fallback de producción) o con `settings.jev_model` (default de
+        # producción desde 17-sep-2026, `prescore_provider="jev"` — ver
+        # `scan_llm_stage._prescore_llm`); cualquiera de los tres es la llamada del prescore.
+        if model in (scan_service.settings.prescore_model, scan_service.settings.qwen_model,
+                    scan_service.settings.jev_model):
             return prescore_llm
         return deep_llm   # sin model: macro, profundo y constructor
 
@@ -179,7 +181,8 @@ def test_reintento_de_profundo_espera_antes_de_disparar_de_nuevo(db, monkeypatch
     deep_llm = _DeepFallaUnaVez({"SOLO": _deep_ok("SOLO")}, falla_en="SOLO")
 
     def fake_get_llm(model: str | None = None, **_kwargs):
-        if model in (scan_service.settings.prescore_model, scan_service.settings.qwen_model):
+        if model in (scan_service.settings.prescore_model, scan_service.settings.qwen_model,
+                    scan_service.settings.jev_model):
             return prescore_llm
         return deep_llm
 

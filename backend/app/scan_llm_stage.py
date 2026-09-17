@@ -58,13 +58,29 @@ def _llm_for(cfg: dict, stage: str = "", recorder=None):  # noqa: ANN001
 
 
 def _prescore_llm(cfg: dict, tiene_override: bool, recorder=None):  # noqa: ANN001
-    """Como `_llm_for`, pero el prescore además tiene un default de PRODUCCIÓN a Qwen
+    """Como `_llm_for`, pero el prescore además tiene un default de PRODUCCIÓN
     (`settings.prescore_provider`) cuando no hay override del modal — el resto de etapas no
-    tienen ese concepto, van a DeepSeek salvo que el modal pida Qwen explícitamente."""
-    if not tiene_override and settings.prescore_provider == "qwen" and settings.dashscope_api_key:
-        return get_llm(settings.qwen_model, reasoning_effort=cfg["reasoning_effort"],
-                       stage="prescore", recorder=recorder, provider="qwen",
-                       enable_thinking=_quiere_reasoning_qwen(cfg["reasoning_effort"]))
+    tienen ese concepto, van a DeepSeek salvo que el modal pida Qwen explícitamente.
+
+    Jev SOLO se enruta aquí (nunca en `_llm_for`, que comparten macro/mid/profundo/constructor):
+    no genera texto, así que fuera del prescore no tiene nada que hacer (ver
+    docs/jev-typesafe-ai.md). Seleccionable desde el modal (mira `cfg["model"]` sin más
+    condición, igual que Qwen en `_llm_for`) Y default de producción (17-sep-2026).
+
+    Cascada de seguridad si el default es "jev" pero la key todavía no está puesta en algún
+    entorno (p. ej. Railway sin desplegar la variable): cae a Qwen, NUNCA directo a DeepSeek
+    (`_llm_for`) -- un hueco de config no debe disparar el coste al proveedor más caro de los
+    tres en silencio."""
+    if cfg["model"] == settings.jev_model and settings.typesafe_api_key:
+        return get_llm(cfg["model"], stage="prescore", recorder=recorder, provider="jev")
+    if not tiene_override:
+        if settings.prescore_provider == "jev" and settings.typesafe_api_key:
+            return get_llm(settings.jev_model, stage="prescore", recorder=recorder,
+                           provider="jev")
+        if (settings.prescore_provider in ("qwen", "jev")) and settings.dashscope_api_key:
+            return get_llm(settings.qwen_model, reasoning_effort=cfg["reasoning_effort"],
+                           stage="prescore", recorder=recorder, provider="qwen",
+                           enable_thinking=_quiere_reasoning_qwen(cfg["reasoning_effort"]))
     return _llm_for(cfg, "prescore", recorder)
 
 

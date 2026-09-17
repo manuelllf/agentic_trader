@@ -262,7 +262,11 @@ def prescore_one(
             else:
                 raw = llm.chat(system, user, temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-        sc = max(0.0, min(100.0, round(float(obj.get("score", 0)))))
+        # Sin redondear a entero: DeepSeek ya pide "whole number" en el propio prompt, así que
+        # esto no le cambia nada -- pero Jev devuelve una media ponderada con decimales
+        # (ver JevProvider) y redondearla a entero perdía justo la precisión que sirve para
+        # deshacer empates entre tickers.
+        sc = max(0.0, min(100.0, float(obj.get("score", 0))))
         if sc <= 0:
             return PrescoreResult(data.ticker, 0.0,
                                   error="SinNota: JSON válido sin score utilizable",

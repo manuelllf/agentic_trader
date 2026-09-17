@@ -10,6 +10,7 @@ from __future__ import annotations
 from app.config import settings
 from app.llm.base import LLMProvider
 from app.llm.deepseek import DeepSeekProvider
+from app.llm.jev import JevProvider
 from app.llm.openrouter import _PROVEEDORES_EXCLUIDOS_0731, OpenRouterProvider
 from app.llm.qwen import QwenProvider
 
@@ -31,6 +32,18 @@ def get_llm(model: str | None = None, reasoning_effort: str | None = "none",
     ~33x medido cuando está activo, así que el default es `False`.
     `timeout`: `None` = cada proveedor usa su default (180s, pensado para prosa larga con
     razonamiento). El gate de momentum pasa uno corto -- ver `news_gate.py`."""
+    if (provider or settings.llm_provider) == "jev":
+        if not settings.typesafe_api_key:
+            raise RuntimeError(
+                "TYPESAFE_API_KEY no configurada. Ponla en backend/.env (o en Railway) para "
+                "usar Jev."
+            )
+        kwargs = {"timeout": timeout} if timeout is not None else {}
+        return JevProvider(
+            api_key=settings.typesafe_api_key, model=model or settings.jev_model,
+            stage=stage, recorder=recorder, **kwargs,
+        )
+
     if (provider or settings.llm_provider) == "qwen":
         if not settings.dashscope_api_key:
             raise RuntimeError(

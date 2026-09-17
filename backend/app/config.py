@@ -55,9 +55,16 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     # Prescore por QwenCloud/DashScope: medido ~4x más barato que DeepSeek con el razonamiento
     # apagado, correlación ~0,75 (`scripts/compara_qwen_flash.py`). Solo esta etapa, no el resto.
-    prescore_provider: str = "qwen"       # "deepseek" | "qwen"
     dashscope_api_key: str = ""
     qwen_model: str = "qwen3.7-flash"
+    # Jev (TypeSafe AI): decisión tipada con confianza calibrada, no texto -- solo vale para el
+    # prescore (evaluado para el resto, descartado: no genera texto, ver docs/jev-typesafe-ai.md).
+    # Default de producción desde el 17-sep-2026 (decisión propia de Manuel, con los números de
+    # coste/sesgo/estabilidad de esa evaluación ya sobre la mesa) -- `_prescore_llm` cae a Qwen
+    # si la key todavía no está puesta en algún entorno, nunca directo a DeepSeek en silencio.
+    prescore_provider: str = "jev"       # "deepseek" | "qwen" | "jev"
+    typesafe_api_key: str = ""
+    jev_model: str = "jev-latest"
     # Solo /company-news (from/to acotado), para el gate de noticias del momentum -- no sustituye
     # al scraper de Yahoo, que sigue siendo la fuente para el resto (ver yahoo_scraper.py).
     finnhub_api_key: str = ""
