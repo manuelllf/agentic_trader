@@ -34,7 +34,7 @@ import type {
   TradeAction,
   WatchItem,
 } from "@/lib/types";
-import AlphaDoor from "@/components/AlphaDoor";
+import SalaDoor from "@/components/SalaDoor";
 import { fmtScore, fmtTime, money } from "@/lib/format";
 import { richText } from "@/lib/richText";
 import {
@@ -459,7 +459,10 @@ export default function SombraDashboard() {
           <Link href="/" className="text-[12px] font-semibold text-[#6E6E6B] transition-colors hover:underline">
             ← Portada
           </Link>
-          <AlphaDoor />
+          <div className="flex items-center gap-2">
+            <SalaDoor to="alpha" />
+            <SalaDoor to="omega" />
+          </div>
         </div>
 
         {/* ---------- cabecera: eyebrow + título + descripción, como Alpha y el resto de la
