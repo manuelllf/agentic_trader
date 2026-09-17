@@ -408,7 +408,7 @@ class ScanAudit(Base):
     __tablename__ = "scan_audit"
 
     id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
-    scan_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    scan_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
     ticker: Mapped[str] = mapped_column(String(16), index=True)
     sector: Mapped[str] = mapped_column(String(48), default="")
     prescore: Mapped[float | None] = mapped_column(Float)     # None si no se llegó a pre-scorear
@@ -576,19 +576,28 @@ class ScanRun(Base):
     def finalists(self) -> list[dict]:
         """Snapshot por ticker de los que llegaron al profundo (score, target, sector, precio, si
         se seleccionó/fondeó, su peso) — recuperación completa del escaneo (decida o no), porque
-        `Proposal` solo se escribe cuando `decide=True`."""
+        `Proposal` solo se escribe cuando `decide=True`.
+
+        Un solo LEFT JOIN con las noticias en vez de dos queries (finalistas, luego sus noticias
+        por `id`): contra Postgres remoto cada round-trip de más pesa, y aquí siempre hace falta
+        el mismo viaje de vuelta."""
         db = object_session(self)
         if db is None:
             return []
-        rows = (db.query(ScanRunFinalist).filter_by(scan_run_id=self.id)
-                .order_by(ScanRunFinalist.posicion).all())
-        ids = [r.id for r in rows]
+        rows = (
+            db.query(ScanRunFinalist, ScanRunFinalistNews)
+            .outerjoin(ScanRunFinalistNews,
+                       ScanRunFinalistNews.scan_run_finalist_id == ScanRunFinalist.id)
+            .filter(ScanRunFinalist.scan_run_id == self.id)
+            .order_by(ScanRunFinalist.posicion, ScanRunFinalistNews.posicion)
+            .all()
+        )
+        finalistas: dict[int, ScanRunFinalist] = {}
         news_by_finalist: dict[int, list[str]] = {}
-        if ids:
-            for n in (db.query(ScanRunFinalistNews)
-                     .filter(ScanRunFinalistNews.scan_run_finalist_id.in_(ids))
-                     .order_by(ScanRunFinalistNews.posicion).all()):
-                news_by_finalist.setdefault(n.scan_run_finalist_id, []).append(n.texto)
+        for r, n in rows:
+            finalistas.setdefault(r.id, r)
+            if n is not None:
+                news_by_finalist.setdefault(r.id, []).append(n.texto)
         return [{
             "ticker": r.ticker, "sector": r.sector, "prescore": r.prescore, "price": r.price,
             "market_cap": r.market_cap, "mid_score": r.mid_score, "deep_score": r.deep_score,
@@ -600,7 +609,7 @@ class ScanRun(Base):
             "target_echoed_consensus": r.target_echoed_consensus,
             "under_acquisition": r.under_acquisition,
             "news_used": news_by_finalist.get(r.id, []),
-        } for r in rows]
+        } for r in finalistas.values()]
 
     @property
     def construction(self) -> dict:
