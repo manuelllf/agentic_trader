@@ -40,16 +40,28 @@ def _approval_out(a) -> dict:  # noqa: ANN001
 @router.get("/real")
 def real_summary(db: Session = Depends(get_db)) -> dict:
     """Foto completa de Alpha: libro real vivo, rendimiento vs S&P, broker, pendientes."""
+    import threading
+
     from app import approvals as approvals_mod
     from app import tracking
     from app.brokers import get_broker
+    from app.db import SessionLocal
     from app.models import BOOK_REAL
 
-    # Reconcilia órdenes límite 'working' (fills que hayan entrado en IBKR). Best-effort.
-    try:
-        approvals_mod.reconcile_working(db)
-    except Exception:  # noqa: BLE001
-        pass
+    # Reconcilia órdenes límite 'working' en un hilo con su PROPIA sesión, sin bloquear la
+    # respuesta -- medido en vivo, el sondeo a IBKR (con su ritmo de espera entre órdenes) podía
+    # tardar varios segundos. El cron ya reconcilia cada 2 min aunque nadie tenga Alpha abierta
+    # (ver `_reconcile_job`); esto solo adelanta esa foto sin hacer esperar al usuario por ella.
+    def _reconcile_background() -> None:
+        bg_db = SessionLocal()
+        try:
+            approvals_mod.reconcile_working(bg_db)
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            bg_db.close()
+    threading.Thread(target=_reconcile_background, daemon=True).start()
+
     prices = tracking.live_prices([p.ticker for p in ledger.open_positions(db, BOOK_REAL)])
     snap = ledger.snapshot(db, price_lookup=lambda t: prices.get(t), book=BOOK_REAL)
     wallet = ledger.cash_by_currency(db, BOOK_REAL)   # caja propia del agente, EUR y USD por separado
