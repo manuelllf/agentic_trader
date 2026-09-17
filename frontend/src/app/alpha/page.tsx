@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
 import HistoryChart from "@/components/HistoryChart";
+import SalaDoor from "@/components/SalaDoor";
 import { fmtPct, fmtTime, money, qty4, signMoney } from "@/lib/format";
 import type { FunnelScan } from "@/lib/scan";
 import type {
@@ -100,7 +101,15 @@ function SalaRealRoom() {
   const hasLoadedOnce = useRef(false);   // primera carga: pantalla completa. Recargas después:
                                           // velo encima, sin desmontar nada (ver el `return`)
 
+  // Decidir dos propuestas seguidas (cada fila es independiente, sin cerrojo entre ellas)
+  // dispara dos `load()`/`loadCritical()` que pueden solaparse -- sin esto, la respuesta más
+  // lenta gana aunque sea la más vieja y pisa el estado ya al día con datos de antes de la
+  // segunda decisión. Un contador compartido: solo se aplica la respuesta de la llamada más
+  // reciente, la que llega tarde se descarta.
+  const loadSeqRef = useRef(0);
+
   const load = useCallback(async () => {
+    const miSeq = ++loadSeqRef.current;
     try {
       const [s, a, c, pp, st, sp, fxr, hs, sr, fn] = await Promise.all([
         getReal(), getApprovals(), getConfig().catch(() => null), getPersonal().catch(() => null),
@@ -108,7 +117,7 @@ function SalaRealRoom() {
         getFx().catch(() => null), getHistory("real").catch(() => null),
         getScanReport().catch(() => null), getScanFunnel(1).catch(() => null),
       ]);
-      if (!alive.current) return;   // desmontada: un GET lento no debe pintar nada
+      if (!alive.current || miSeq !== loadSeqRef.current) return;
       setSummary(s);
       setApprovals(a);
       if (c) setCfg(c);
@@ -121,7 +130,9 @@ function SalaRealRoom() {
       if (fn) setFunnel(fn.scans[0] ?? null);
       setError("");
     } catch (e) {
-      if (alive.current) setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
+      if (alive.current && miSeq === loadSeqRef.current) {
+        setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
+      }
     } finally {
       hasLoadedOnce.current = true;
       if (alive.current) setLoading(false);
@@ -134,14 +145,17 @@ function SalaRealRoom() {
   // no para decidir en el momento: se queda con lo último cargado y lo pone al día el sondeo
   // normal de 60s en menos de un minuto. 2 llamadas en vez de 10 → el velo dura una fracción.
   const loadCritical = useCallback(async () => {
+    const miSeq = ++loadSeqRef.current;
     try {
       const [s, a] = await Promise.all([getReal(), getApprovals()]);
-      if (!alive.current) return;
+      if (!alive.current || miSeq !== loadSeqRef.current) return;
       setSummary(s);
       setApprovals(a);
       setError("");
     } catch (e) {
-      if (alive.current) setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
+      if (alive.current && miSeq === loadSeqRef.current) {
+        setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
+      }
     } finally {
       if (alive.current) setLoading(false);
     }
@@ -438,9 +452,15 @@ function SalaRealRoom() {
         {/* Sin barra fija -- como la land, la navegación que hace falta vive en el flujo
             normal, no clavada arriba (feedback 12-sep-2026, "el header AI slop fuera"). El
             escaneo ya tiene su propio botón en Centro de operaciones más abajo. */}
-        <button onClick={exit} className="mb-4 text-[12px] font-semibold transition-colors hover:underline" style={{ color: T.muted }}>
-          ← Portada
-        </button>
+        <div className="mb-4 flex items-center justify-between">
+          <button onClick={exit} className="text-[12px] font-semibold transition-colors hover:underline" style={{ color: T.muted }}>
+            ← Portada
+          </button>
+          <div className="flex items-center gap-2">
+            <SalaDoor to="beta" />
+            <SalaDoor to="omega" />
+          </div>
+        </div>
 
         {/* ---------- cabecera: eyebrow + título + descripción, como el resto de la casa
             (ver /mockup). El badge dry-run/live va en la MISMA fila que el símbolo, no como
