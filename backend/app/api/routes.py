@@ -71,7 +71,8 @@ def config() -> dict:
             "macro": {"model": settings.llm_model, "reasoning_effort": settings.macro_reasoning_effort,
                       "temperature": DEFAULT_TEMPERATURE},
             "prescore": {
-                "model": (settings.qwen_model if settings.prescore_provider == "qwen"
+                "model": (settings.jev_model if settings.prescore_provider == "jev"
+                         else settings.qwen_model if settings.prescore_provider == "qwen"
                          else settings.prescore_model),
                 "reasoning_effort": settings.prescore_reasoning_effort,
                 "temperature": settings.prescore_temperature,

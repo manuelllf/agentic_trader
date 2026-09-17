@@ -301,6 +301,21 @@ def test_config_does_not_leak_sensitive_fields(client) -> None:
         assert set(etapa.keys()) == {"model", "reasoning_effort", "temperature"}
 
 
+def test_config_prescore_default_refleja_jev(client, monkeypatch) -> None:
+    """Bug real (17-sep-2026): la rama de `prescore_provider` en /config solo contemplaba
+    "qwen", así que con el default de producción ("jev") caía al `else` y devolvía
+    `prescore_model` ("deepseek-flash") -- el modal de simulación enseñaba DeepSeek como
+    default aunque el escaneo real ya corriera con Jev."""
+    from app.api import routes as routes_mod
+
+    monkeypatch.setattr(routes_mod.settings, "prescore_provider", "jev")
+    monkeypatch.setattr(routes_mod.settings, "jev_model", "jev-latest")
+
+    body = client.get("/config").json()
+
+    assert body["llm_defaults"]["prescore"]["model"] == "jev-latest"
+
+
 # ---- /admin/memory-status: diagnóstico de la memoria vectorial ---------------
 
 def test_memory_status_degrades_without_postgres(client, token, monkeypatch) -> None:

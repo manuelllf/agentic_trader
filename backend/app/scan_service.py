@@ -93,8 +93,16 @@ from app.screener import universe_global
 logger = logging.getLogger(__name__)
 
 # Concurrencia del prescore: mira `prescore_provider`, no `llm_provider` — mid/deep siguen en
-# DeepSeek pase lo que pase aquí (ver `_prescore_llm`).
-if settings.prescore_provider == "qwen" and settings.dashscope_api_key:
+# DeepSeek pase lo que pase aquí (ver `_prescore_llm`). Jev va PRIMERO y aparte: antes caía al
+# `elif` de abajo (mira `llm_provider`, no `prescore_provider`) y heredaba los 500 de DeepSeek
+# sin querer -- 15x el techo real de Jev.
+if settings.prescore_provider == "jev" and settings.typesafe_api_key:
+    # Techo documentado: 1.200 req/min = 20 req/s (docs.typesafe.ai/models, verificado
+    # 17-sep-2026). Latencia real medida en las pruebas de evaluación: 1,29-3,19s/llamada (ver
+    # docs/jev-typesafe-ai.md) -- con 20 hilos, incluso en el caso más rápido (~1,3s), el
+    # throughput sostenido queda en ~15 req/s, con margen bajo el techo.
+    _PRESCORE_WORKERS = 20
+elif settings.prescore_provider == "qwen" and settings.dashscope_api_key:
     _PRESCORE_WORKERS = 100  # QwenCloud: 15.000 RPM/cuenta documentado, sin medir en vivo aún.
 elif settings.llm_provider == "deepseek":
     _PRESCORE_WORKERS = 500   # Flash, triaje individual (1 llamada/ticker, fiel al paper)
@@ -137,6 +145,19 @@ def _revisar_cancelado(cancel_event: threading.Event | None) -> None:
     alguien ya pidió cancelar, pero no corta llamadas ya en vuelo dentro de una."""
     if cancel_event is not None and cancel_event.is_set():
         raise ScanCancelado("Escaneo cancelado por el usuario antes de completarse.")
+
+
+def _dormir_cancelable(seconds: float, cancel_event: threading.Event | None) -> None:
+    """Como `time.sleep(seconds)` pero en trozos de 1s -- el cooldown del gather_retry puede ser
+    de hasta 180s, y una espera de una sola pieza ignoraba una cancelación pedida durante ella
+    (el botón "Detener" parecía no hacer nada hasta que pasaban los 180s enteros)."""
+    fin = time.monotonic() + seconds
+    while True:
+        _revisar_cancelado(cancel_event)
+        restante = fin - time.monotonic()
+        if restante <= 0:
+            return
+        time.sleep(min(1.0, restante))
 
 
 def run_scan_and_store(db: Session, sample_size: int | None = None,
@@ -315,11 +336,18 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         return ticker, data, err
 
     def _run_gather(tickers: list[str]) -> list[tuple[str, object, str | None]]:
-        """Consume ex.map uno a uno para marcar progreso por nombre sin acumular en lista."""
+        """Consume ex.map uno a uno para marcar progreso por nombre sin acumular en lista.
+        Comprueba cancelación en cada nombre -- antes el gather (la etapa más larga del escaneo,
+        miles de tickers a 4 hilos) no miraba `cancel_event` en ningún punto, así que "Detener
+        escaneo" no hacía nada visible hasta que el gather entero terminaba solo."""
         out: list[tuple[str, object, str | None]] = []
         categorias: Counter[str] = Counter()
+        cancelado = False
         with ThreadPoolExecutor(max_workers=_GATHER_WORKERS) as ex:
             for t, d, e in ex.map(_gather, tickers):
+                if cancel_event is not None and cancel_event.is_set():
+                    cancelado = True
+                    break
                 out.append((t, d, e))
                 razon = f"{t}: {e}" if d is None and e else None
                 scan_progress.tick(ok=d is not None, reason=razon)
@@ -329,9 +357,15 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                     snap = scan_progress.snapshot()
                     logger.info("gather %d/%d: %d ok, %d fallidos",
                                len(out), len(tickers), snap["ok"], snap["fail"])
+            if cancelado:
+                # Mismo criterio que prescore/profundo: corta lo que no había arrancado, lo ya
+                # en vuelo (como mucho _GATHER_WORKERS peticiones) termina solo.
+                ex.shutdown(wait=False, cancel_futures=True)
         if categorias:
             logger.info("Gather terminado, fallos por tipo: %s",
                         ", ".join(f"{k}={v}" for k, v in categorias.most_common()))
+        if cancelado:
+            raise ScanCancelado("Escaneo cancelado por el usuario durante el gather.")
         return out
 
     scan_progress.set_stage("gather", total=len(sample), unit="tickers")
@@ -347,7 +381,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         # Reintento en bloque (no por ticker): miles de reintentos alargaría escaneo sin límite.
         espera = _GATHER_RETRY_COOLDOWN_S - (time.monotonic() - t_ultimo_gather)
         if espera > 0:
-            time.sleep(espera)
+            _dormir_cancelable(espera, cancel_event)
         scan_progress.set_stage("gather_retry", total=len(fallidos), unit="tickers")
         logger.info("Escaneo: iniciando GATHER_RETRY (%d nombres).", len(fallidos))
         t0 = time.monotonic()
