@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "@/components/AuthGate";
+import SalaDoor from "@/components/SalaDoor";
 import { ApiError, getFx } from "@/lib/api";
 import { money, signMoney } from "@/lib/format";
 import {
@@ -299,9 +300,15 @@ function SalaMomentumRoom() {
       <div className="mx-auto max-w-[1500px] px-4 pt-6 lg:px-6">
         {/* Sin barra fija -- como la land, la navegación que hace falta vive en el flujo
             normal, no clavada arriba (feedback 12-sep-2026, "el header AI slop fuera"). */}
-        <Link href="/" className="mb-4 inline-block text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
-          ← Portada
-        </Link>
+        <div className="mb-4 flex items-center justify-between">
+          <Link href="/" className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
+            ← Portada
+          </Link>
+          <div className="flex items-center gap-2">
+            <SalaDoor to="alpha" />
+            <SalaDoor to="beta" />
+          </div>
+        </div>
         {scanMsg && <AvisoTemporal texto={scanMsg} onCerrar={() => setScanMsg("")} />}
         {detectMsg && <AvisoTemporal texto={detectMsg} onCerrar={() => setDetectMsg("")} />}
 
@@ -390,7 +397,10 @@ function SalaMomentumRoom() {
               <div className="border-t pt-4" style={{ borderColor: T.grid }}>
                 <div className="grid grid-cols-2 gap-x-5 gap-y-5">
                   <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Capital total</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}
+                         title="Coste de compra de lo que sigue abierto ahora mismo -- no es la caja ni el valor a precio de hoy.">
+                      Capital desplegado
+                    </div>
                     <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: T.ink }}>${money(cuenta?.desplegado_usd ?? 0)}</div>
                   </div>
                   <div>
