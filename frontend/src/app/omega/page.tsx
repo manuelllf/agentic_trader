@@ -94,26 +94,34 @@ function SalaMomentumRoom() {
       return;
     }
     cargandoRef.current = true;
+    // Cuenta (IBKR real) puede tardar varios segundos -- medido en vivo, ~4s -- y no debe
+    // retrasar lo que ya está listo en ~100ms. Aparte del Promise.all, sin bloquear.
+    getCuenta().then(setCuenta).catch(() => {});
     try {
-      const [c, a, h, v, cd, fxr, reg] = await Promise.all([
-        getCuenta(), getAlertas(), getHistorial(), getValidacion(), getCandidatos(),
+      const [a, h, v, cd, fxr, reg] = await Promise.all([
+        getAlertas(), getHistorial(), getValidacion(), getCandidatos(),
         getFx().catch(() => null),
         // Termómetro de régimen: informativo, si falla (yfinance caído) no debe tumbar la carga.
         getRegimen().catch(() => null),
       ]);
-      setCuenta(c); setAlertas(a); setHistorial(h); setValidacion(v); setCandidatos(cd);
-      if (fxr?.rate) setFx(fxr.rate);
-      setRegimen(reg);
-      setError("");
-      // Precio en vivo (activas + descartadas que siguen en curso en el histórico): referencia
-      // visual aparte, sin esperar a que responda para terminar de cargar el resto -- si
-      // yfinance tarda o falla, no bloquea.
-      const tickersEnVivo = Array.from(new Set([
-        ...a.filter((s) => s.estado === "nueva" || s.estado === "cuidado" || s.estado === "ejecutada").map((s) => s.ticker),
-        ...h.filter((s) => !s.resuelta).map((s) => s.ticker),
-      ]));
-      if (tickersEnVivo.length) {
-        getPreciosVivos(tickersEnVivo).then(setPreciosVivos).catch(() => {});
+      // Si ya se pidió otra recarga mientras esta seguía en vuelo, esta respuesta puede no
+      // reflejar la acción que la disparó -- no la apliques, la encadenada de abajo ya la trae
+      // fresca (evita el "reaparece un instante" que describe el comentario de arriba).
+      if (!recargaPendienteRef.current) {
+        setAlertas(a); setHistorial(h); setValidacion(v); setCandidatos(cd);
+        if (fxr?.rate) setFx(fxr.rate);
+        setRegimen(reg);
+        setError("");
+        // Precio en vivo (activas + descartadas que siguen en curso en el histórico): referencia
+        // visual aparte, sin esperar a que responda para terminar de cargar el resto -- si
+        // yfinance tarda o falla, no bloquea.
+        const tickersEnVivo = Array.from(new Set([
+          ...a.filter((s) => s.estado === "nueva" || s.estado === "cuidado" || s.estado === "ejecutada").map((s) => s.ticker),
+          ...h.filter((s) => !s.resuelta).map((s) => s.ticker),
+        ]));
+        if (tickersEnVivo.length) {
+          getPreciosVivos(tickersEnVivo).then(setPreciosVivos).catch(() => {});
+        }
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Sin conexión con el backend.");
