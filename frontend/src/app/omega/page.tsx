@@ -231,11 +231,12 @@ function SalaMomentumRoom() {
 
   useEffect(() => { load(); }, [load]);
 
-  // "ejecutada" entra también aquí -- son las que de verdad necesitan una decisión tuya ahora
-  // (cerrar o aumentar), no solo las que aún no se han tocado. Antes tenían su propia sección
-  // aparte ("Posiciones abiertas", de solo lectura) que duplicaba exactamente este conjunto sin
-  // dar ninguna acción -- se retiró en vez de mantener el mismo dato en dos sitios distintos.
-  const activas = (alertas ?? []).filter((s) => s.estado === "nueva" || s.estado === "cuidado" || s.estado === "ejecutada");
+  // Separadas otra vez (18-sep-2026, feedback directo): la fusión de "nueva"/"cuidado" con
+  // "ejecutada" en un único carrusel mezclaba decisiones pendientes con posiciones que ya solo
+  // se vigilan -- mismo AlertaCard para las dos (ya distingue el formulario por `s.estado`), pero
+  // en dos secciones separadas para que no se confundan de un vistazo.
+  const alertasPendientes = (alertas ?? []).filter((s) => s.estado === "nueva" || s.estado === "cuidado");
+  const posicionesActivas = (alertas ?? []).filter((s) => s.estado === "ejecutada");
   // Señales detectadas por el escaneo diario (gratis) que todavía no pasaron por el gate de
   // noticias (el único paso que gasta dinero real) -- ver doc §3, decidido 7-sep-2026.
   const pendientesGate = (alertas ?? []).filter((s) => s.gate_resultado == null);
@@ -264,13 +265,13 @@ function SalaMomentumRoom() {
   // destacar ninguna — decide Manuel (ver doc §4, decidido 7-sep-2026).
   const empatesPorFecha = useMemo(() => {
     const grupos = new Map<string, Senal[]>();
-    for (const s of activas) {
+    for (const s of alertasPendientes) {
       const g = grupos.get(s.entry_date) ?? [];
       g.push(s);
       grupos.set(s.entry_date, g);
     }
     return grupos;
-  }, [activas]);
+  }, [alertasPendientes]);
 
   const conectado = cuenta?.cash != null;
 
@@ -458,16 +459,25 @@ function SalaMomentumRoom() {
           })()}
         </div>
 
-        {/* ---------- Alertas activas ---------- */}
-        <Section title="Alertas activas" count={activas.length}>
+        {/* ---------- Alertas activas: decisión pendiente (nueva/cuidado) ---------- */}
+        <Section title="Alertas activas" count={alertasPendientes.length}>
           {regimen && <RegimenChip regimen={regimen} />}
           <p className="mb-2 text-[10.5px]" style={{ color: T.muted }}>
             Sin caducidad: pasados 21 días se marcan &quot;cuidado&quot; (p75 de días-a-objetivo entre las ganadoras históricas).
           </p>
-          {activas.length === 0 ? (
+          {alertasPendientes.length === 0 ? (
             <Empty>Ninguna señal sin resolver ahora mismo.</Empty>
           ) : (
-            <AlertasCarrusel alertas={activas} empates={empatesPorFecha} preciosVivos={preciosVivos} regimen={regimen} onCambio={actualizarAlerta} />
+            <AlertasCarrusel alertas={alertasPendientes} empates={empatesPorFecha} preciosVivos={preciosVivos} regimen={regimen} onCambio={actualizarAlerta} />
+          )}
+        </Section>
+
+        {/* ---------- Posiciones activas: ya ejecutadas, solo cerrar/aumentar ---------- */}
+        <Section title="Posiciones activas" count={posicionesActivas.length}>
+          {posicionesActivas.length === 0 ? (
+            <Empty>Ninguna posición abierta ahora mismo.</Empty>
+          ) : (
+            <AlertasCarrusel alertas={posicionesActivas} empates={empatesPorFecha} preciosVivos={preciosVivos} regimen={regimen} onCambio={actualizarAlerta} />
           )}
         </Section>
 
