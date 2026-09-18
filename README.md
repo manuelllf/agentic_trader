@@ -62,7 +62,7 @@ Las que más forma le dan al sistema:
 
 ## Segunda estrategia: momentum (Omega)
 
-Independiente del ranker fundamental — universo propio de cíclicas puras (Espacio, IA-infra,
+Independiente del ranker fundamental: universo propio de cíclicas puras (Espacio, IA-infra,
 Quantum, cripto-IA, óptica-IA, biotech-IA), sin cartera ni capital compartido. Detecta caídas
 violentas por patrón técnico (zigzag / suelo múltiple); un LLM decide una única cosa, si la
 caída es miedo o negocio roto (gate de noticias, lista cerrada de motivos), nunca tamaño ni
@@ -72,7 +72,7 @@ reporta de vuelta.
 El universo no es una lista cerrada para siempre: un descubrimiento diario sobre menciones
 sociales (ApeWisdom) detecta rupturas fuera del universo fijo, las pasa por los mismos filtros
 objetivos y el mismo gate de noticias, y el usuario decide fila a fila si entran. Ni el filtro
-ni el gate deciden solos en ningún punto del sistema — solo informan; incorporar o descartar es
+ni el gate deciden solos en ningún punto del sistema: solo informan. Incorporar o descartar es
 siempre un clic humano, y esa decisión se propaga sola al resto (escaneo, validación, universo)
 sin tocar código.
 
@@ -82,7 +82,7 @@ sin tocar código.
 |-----------|---------------------------------------------------------------|
 | Backend   | Python 3.12 · FastAPI · SQLAlchemy 2 · Pydantic v2            |
 | Datos     | yfinance · screener público de NASDAQ                        |
-| LLM       | DeepSeek (API oficial directa) + Qwen (cribado inicial); capa de proveedor intercambiable |
+| LLM       | DeepSeek (macro, análisis profundo, constructor) + Jev de TypeSafe AI (cribado inicial, con Qwen y DeepSeek de reserva); capa de proveedor intercambiable |
 | Memoria   | pgvector + fastembed (embeddings locales, sin coste)         |
 | Bróker    | IBKR Web API (OAuth 1.0a headless, `ibind`)                  |
 | Scheduler | APScheduler                                                  |
