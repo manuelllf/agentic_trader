@@ -445,13 +445,13 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     _prescore_kw = _sampling_kwargs(prescore_cfg)
 
     def _pre_uno(d):
-        p = scorer_mod.prescore_one(prescore_llm, d, macro_block, medianas=medianas,
-                                    **_prescore_kw)
+        # Sin `medianas`: el prescore ya no compara contra la mediana de sector (ver
+        # `scorer._prescore_prompt`) -- capa media/profundo abajo sí la siguen usando.
+        p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
         for _ in range(2):   # mismo criterio que capa media/profundo: DOS reintentos, no uno
             if not p.error:
                 break
-            p = scorer_mod.prescore_one(prescore_llm, d, macro_block, medianas=medianas,
-                                        **_prescore_kw)
+            p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
         scan_progress.tick(ok=not p.error, reason=f"{p.ticker}: {p.error}" if p.error else None)
         return [(p, d)]
 

@@ -227,15 +227,19 @@ def _prescore_system() -> str:
                           else _PRESCORE_JSON)
 
 
-def _prescore_prompt(data: NameData, macro_block: str,
-                     medianas: dict[str, dict[str, float]] | None = None) -> str:
-    news = "; ".join(_titulo(n) for n in data.news) if data.news else "none"
+def _prescore_prompt(data: NameData, macro_block: str) -> str:
+    # Sin mediana de sector (a diferencia de capa media/profundo): el sector GICS mezcla negocios
+    # que no compiten entre sí, y la mediana sale dominada por cuántos nombres baratos hay, no por
+    # el comparable real de la empresa. Detalle y datos en docs/backlog.md.
+    # Titular completo, no solo el título: el ahorro de tokens es marginal frente al contexto
+    # que se pierde recortando el resumen.
+    news = "; ".join(data.news) if data.news else "none"
     name = f" ({data.name})" if data.name else ""
     return (
         f"Macro outlook: {macro_block}\n"
         f"{data.ticker}{name} — {data.sector}/{data.industry}\n"
         f"News: {news}\n"
-        f"Fundamentals:\n{_con_mediana(data.fundamentals_text, data.sector, medianas)}\n"
+        f"Fundamentals:\n{data.fundamentals_text}\n"
         f"Technical: {data.technical_text or 'n/d'}\n"
         f"Earnings: {data.earnings_text or 'n/d'}\n"
         "1-100 score (JSON)."
@@ -244,7 +248,7 @@ def _prescore_prompt(data: NameData, macro_block: str,
 
 def prescore_one(
     llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
-    top_p: float | None = 0.95, medianas: dict[str, dict[str, float]] | None = None,
+    top_p: float | None = 0.95,
 ) -> PrescoreResult:
     """Triaje de un ticker: best-effort 0 si falla. temperature=1.0 (DeepSeek para análisis).
     temperature/top_p mandados en todas etapas aunque reasoning los ignore."""
@@ -255,7 +259,7 @@ def prescore_one(
     chat_fn = getattr(llm, "chat_logprobs", None)
     try:
         with ticker_ctx(data.ticker):
-            system, user = _prescore_system(), _prescore_prompt(data, macro_block, medianas)
+            system, user = _prescore_system(), _prescore_prompt(data, macro_block)
             if chat_fn is not None:
                 raw, confidence = chat_fn(system, user, temperature=temperature, top_p=top_p)
                 raw = raw or ""
@@ -308,17 +312,12 @@ PRESCORE_BATCH_SYSTEM = (
 )
 
 
-def _titulo(item: str) -> str:
-    """Del titular enriquecido "título — resumen" que ahora trae `data.news`, se queda solo con
-    el título: el triaje por lotes corre ~3.000 veces por escaneo y necesita quedarse barato, así
-    que aquí NO viaja el resumen (eso es exclusivo de la capa media, que hace ~150 llamadas)."""
-    return item.split(" — ", 1)[0]
-
-
 def _prescore_batch_prompt(items: list[NameData], macro_block: str) -> str:
     partes = [f"Macro outlook: {macro_block}\n", "Companies (score each independently):\n"]
     for i, d in enumerate(items, 1):
-        news = "; ".join(_titulo(n) for n in d.news) if d.news else "none"
+        # Titular completo ("título — resumen"), no solo el título -- mismo motivo que
+        # `_prescore_prompt` (ver ahí): el ahorro de tokens es marginal frente al contexto perdido.
+        news = "; ".join(d.news) if d.news else "none"
         name = f" ({d.name})" if d.name else ""
         partes.append(
             f"{i}. {d.ticker}{name} — {d.sector}/{d.industry}\n"
