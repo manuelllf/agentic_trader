@@ -6,10 +6,31 @@
 // Mismo patrón de emergente que MemorySearch.tsx (velo + tarjeta + cerrar por X/Escape/click fuera).
 
 import { useEffect, useRef, useState } from "react";
-import { getScanFull, type ScanFull, type ScanFullFinalist } from "@/lib/api";
+import { getScanFull, type ScanFull } from "@/lib/api";
 import { fmtScore, fmtTime, money } from "@/lib/format";
 import { richText } from "@/lib/richText";
 import { NUMS, T } from "./tokens";
+
+// Columnas del grid de finalistas, ordenable por cualquiera (click en la cabecera).
+type FinalistSortKey = "ticker" | "sector" | "prescore" | "mid_score" | "deep_score" | "price" | "ath";
+const FINALIST_COLS: { key: FinalistSortKey; label: string; align: "left" | "right" }[] = [
+  { key: "ticker", label: "ticker", align: "left" },
+  { key: "sector", label: "sector", align: "left" },
+  { key: "prescore", label: "pre", align: "right" },
+  { key: "mid_score", label: "mid", align: "right" },
+  { key: "deep_score", label: "deep", align: "right" },
+  { key: "price", label: "$", align: "right" },
+  { key: "ath", label: "ATH", align: "right" },
+];
+// Estado como color de punto, no texto -- ya no hace falta la columna "seleccionado"/"en cartera".
+type Estado = "cartera" | "seleccionado" | "finalista" | "error";
+const ESTADO_DOT: Record<Estado, string> = {
+  cartera: T.good, seleccionado: T.buy, finalista: T.muted, error: T.bad,
+};
+const ESTADO_LABEL: Record<Estado, string> = {
+  cartera: "en cartera", seleccionado: "seleccionado", finalista: "solo finalista",
+  error: "informe ilegible",
+};
 
 export function ScanFullButton() {
   const [open, setOpen] = useState(false);
@@ -44,6 +65,33 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
       .catch((e) => setErr(e instanceof Error ? e.message : "No se pudo recuperar el escaneo."))
       .finally(() => setBusy(false));
   }, []);
+
+  const [sortCol, setSortCol] = useState<FinalistSortKey>("deep_score");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const sortBy = (col: FinalistSortKey) => () => {
+    setSortDir((d) => (sortCol === col && d === "desc" ? "asc" : "desc"));
+    setSortCol(col);
+  };
+
+  // Distancia al máximo de 52 semanas y estado (cartera/seleccionado/solo finalista) calculados
+  // aquí una vez, para ordenar y pintar el punto sin repetir la lógica en cada fila.
+  const finalistRows = (scan?.finalists ?? []).map((f) => ({
+    ...f,
+    ath: f.price != null && f.high_52w ? ((f.high_52w - f.price) / f.high_52w) * 100 : null,
+    estado: (f.error ? "error" : f.funded ? "cartera" : f.selected ? "seleccionado" : "finalista") as Estado,
+  }));
+  const sortedFinalists = [...finalistRows].sort((a, b) => {
+    const av = a[sortCol];
+    const bv = b[sortCol];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    const cmp = typeof av === "string" && typeof bv === "string"
+      ? av.localeCompare(bv) : (av as number) - (bv as number);
+    const primary = cmp * (sortDir === "asc" ? 1 : -1);
+    // Desempate estable por market cap, igual que el corte de finalistas del backend.
+    return primary !== 0 ? primary : (b.market_cap ?? 0) - (a.market_cap ?? 0);
+  });
 
   // Retorno objetivo ponderado: suma de peso × upside de cada posición fondeada con target
   // conocido — el mismo cálculo que hace el peso en la cartera, no una media simple.
@@ -195,28 +243,55 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
 
               <div className="mt-3">
                 <SectionTitle>Finalistas ({scan.finalists.length})</SectionTitle>
-                <table className={`mt-1.5 w-full text-[11px] ${NUMS}`}>
+                <div className="mb-1.5 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]" style={{ color: T.ink2 }}>
+                  {(["finalista", "seleccionado", "cartera", "error"] as Estado[]).map((e) => (
+                    <span key={e} className="inline-flex items-center gap-1.5">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: ESTADO_DOT[e] }} />
+                      {ESTADO_LABEL[e]}
+                    </span>
+                  ))}
+                </div>
+                <table className={`w-full table-fixed text-[11px] ${NUMS}`}>
+                  <colgroup>
+                    <col style={{ width: "4.2rem" }} />
+                    <col />
+                    <col style={{ width: "2.2rem" }} />
+                    <col style={{ width: "2.2rem" }} />
+                    <col style={{ width: "2.4rem" }} />
+                    <col style={{ width: "3.4rem" }} />
+                    <col style={{ width: "3.2rem" }} />
+                  </colgroup>
                   <thead>
                     <tr style={{ color: T.muted }}>
-                      <th className="pb-1 text-left font-semibold">ticker</th>
-                      <th className="pb-1 text-left font-semibold">sector</th>
-                      <th className="pb-1 text-right font-semibold">pre</th>
-                      <th className="pb-1 text-right font-semibold">mid</th>
-                      <th className="pb-1 text-right font-semibold">deep</th>
-                      <th className="pb-1 text-right font-semibold">precio</th>
-                      <th className="pb-1 text-right font-semibold">dist. ATH</th>
-                      <th className="pb-1 text-left font-semibold pl-2">estado</th>
+                      {FINALIST_COLS.map((c) => (
+                        <th key={c.key} className={`pb-1 font-semibold ${c.align === "right" ? "text-right" : "text-left"}`}>
+                          <button onClick={sortBy(c.key)} aria-label={`Ordenar por ${c.label}`}
+                                  className="inline-flex items-center gap-0.5 hover:opacity-80"
+                                  style={{ color: sortCol === c.key ? T.ink : T.muted }}>
+                            {c.label}
+                            {sortCol === c.key && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                          </button>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {[...scan.finalists]
-                      // Empate en deep_score (frecuente: el modelo colapsa en un puñado de notas,
-                      // ver auditoría 1-sep) desempatado por market cap desc — mismo criterio que
-                      // el backend en select_finalists/select_top, para que el orden no dependa
-                      // de en qué posición llegó el finalista desde la API.
-                      .sort((a, b) => (b.deep_score ?? -1) - (a.deep_score ?? -1)
-                                    || (b.market_cap ?? 0) - (a.market_cap ?? 0))
-                      .map((f) => <FinalistRow key={f.ticker} f={f} />)}
+                    {sortedFinalists.map((f) => (
+                      <tr key={f.ticker} className="border-t align-top" style={{ borderColor: T.grid }} title={f.headline || undefined}>
+                        <td className="py-1">
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: ESTADO_DOT[f.estado] }} />
+                            <b style={{ color: T.ink }}>{f.ticker}</b>
+                          </span>
+                        </td>
+                        <td className="max-w-0 truncate py-1" style={{ color: T.ink2 }}>{f.sector || "—"}</td>
+                        <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.prescore)}</td>
+                        <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.mid_score)}</td>
+                        <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(f.deep_score)}</td>
+                        <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.price != null ? `$${money(f.price)}` : "—"}</td>
+                        <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.ath != null ? `${f.ath.toFixed(1)}%` : "—"}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -249,21 +324,3 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-function FinalistRow({ f }: { f: ScanFullFinalist }) {
-  const estado = f.funded ? "en cartera" : f.selected ? "seleccionado" : f.error ? "informe ilegible" : "";
-  const color = f.funded ? T.good : f.selected ? T.buy : f.error ? T.bad : T.muted;
-  // Distancia al máximo de 52 semanas, calculada aquí (nunca por el LLM), igual que en la cartera.
-  const dist = f.price != null && f.high_52w ? ((f.high_52w - f.price) / f.high_52w) * 100 : null;
-  return (
-    <tr className="border-t align-top" style={{ borderColor: T.grid }} title={f.headline || undefined}>
-      <td className="py-1"><b style={{ color: T.ink }}>{f.ticker}</b></td>
-      <td className="py-1" style={{ color: T.ink2 }}>{f.sector || "—"}</td>
-      <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.prescore)}</td>
-      <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.mid_score)}</td>
-      <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(f.deep_score)}</td>
-      <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.price != null ? `$${money(f.price)}` : "—"}</td>
-      <td className="py-1 text-right" style={{ color: T.ink2 }}>{dist != null ? `${dist.toFixed(1)}%` : "—"}</td>
-      <td className="py-1 pl-2 text-left font-semibold" style={{ color }}>{estado}</td>
-    </tr>
-  );
-}
