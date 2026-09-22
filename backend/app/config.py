@@ -124,9 +124,10 @@ class Settings(BaseSettings):
     mid_model: str = "deepseek-flash"
     # Corte de finalistas al profundo: top-`deep_per_sector` (amplitud) ∪ posiciones ∪ seguimiento
     # personal ∪ watchlist ∪ mayores caps ∪ el resto por score, todo truncado a `deep_finalists_cap`.
-    # El carril sectorial vale 2 sin capa media (única garantía de ver cada sector); 1 con ella.
+    # El carril sectorial vale 2 en ambos casos: con 1, el carril "global" sin tope podía
+    # repartir casi todo el profundo a un solo sector con tailwind fuerte del momento.
     deep_per_sector: int = 2                             # top-N por sector (recall de amplitud)
-    deep_per_sector_mid: int = 1                         # ídem cuando hubo capa media
+    deep_per_sector_mid: int = 2                         # ídem cuando hubo capa media
     deep_watchlist: int = 5                              # + mejores de la watchlist (continuidad)
     deep_top_caps: int = 10                              # las N mayores caps SIEMPRE al profundo
     # Tope pensado para acotar gasto (coste lineal por llamada), no un límite de calidad. 100→70:

@@ -109,6 +109,8 @@ def _snapshot_text() -> tuple[str, list[str], str]:
     if c is not None:
         compacto.append(f"10y yield {float(c.iloc[-1]):.2f}%")
     # Nivel + 1m + 3m + distancia al máximo (en `lines`, no en `compacto` — ver `desde_max`).
+    # Oil fuera de `compacto`: es el único ligado a un sector entero (Energy), y se repetía
+    # sin filtro de relevancia en cada prompt de scoring aunque la empresa no tuviera nada que ver.
     for tk, label, fmt in (("DX-Y.NYB", "USD index", "{:,.1f}"),
                            ("GC=F", "Gold", "{:,.0f}"),
                            ("CL=F", "Oil (WTI)", "{:,.2f}")):
@@ -120,7 +122,8 @@ def _snapshot_text() -> tuple[str, list[str], str]:
         cola = f", {dm:.0f}% below its 52w high" if dm is not None else ""
         lines.append(f"{label}: {nivel} ({ta.pct_change_ndays(c, 21):+.1f}% 1m, "
                      f"{ta.pct_change_ndays(c, 63):+.1f}% 3m{cola})")
-        compacto.append(f"{label} {nivel} ({ta.pct_change_ndays(c, 21):+.0f}% 1m)")
+        if tk != "CL=F":
+            compacto.append(f"{label} {nivel} ({ta.pct_change_ndays(c, 21):+.0f}% 1m)")
     c = close("HYG")
     if c is not None:
         dm = desde_max(c)
