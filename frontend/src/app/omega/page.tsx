@@ -156,6 +156,16 @@ function SalaMomentumRoom() {
     setValidacion((prev) => prev?.map((v) => (v.ticker === ticker ? { ...v, ...patch } : v)) ?? prev);
     load();
   }, [load]);
+  // `universoAbierto` guarda solo el ticker del momento del clic (ver onAbrir); el objeto que de
+  // verdad se pinta en el modal sale SIEMPRE de `validacion`, la única fuente de verdad -- si no,
+  // el toggle "mantener" persistía bien pero el modal seguía enseñando el estado de antes de
+  // pulsarlo hasta cerrarlo y reabrirlo (bug real, 22-sep-2026).
+  const universoAbiertoLive = useMemo(
+    () => universoAbierto
+      ? (validacion ?? []).find((v) => v.ticker === universoAbierto.ticker) ?? universoAbierto
+      : null,
+    [universoAbierto, validacion],
+  );
 
   // Rescate manual del escaneo diario (cron 16:45 ET): gratis, sin gate. Separado de
   // "actualizar" a propósito -- ese solo relee lo que ya hay, esto hace una llamada a yfinance
@@ -581,11 +591,11 @@ function SalaMomentumRoom() {
         <HistorialModal s={detalleHistorial} precioVivo={preciosVivos[detalleHistorial.ticker] ?? null}
                         regimen={regimen} onClose={() => setDetalleHistorial(null)} />
       )}
-      {universoAbierto && (
+      {universoAbiertoLive && (
         // Fuera de <table>/<tbody> a propósito (bug real: un <div fixed> dentro de <tbody> es
         // HTML inválido y React lo marca como error de hidratación) -- mismo patrón que
         // `HistorialModal` arriba, la fila solo dispara `onAbrir`.
-        <UniversoTickerModal v={universoAbierto} alertas={alertas ?? []} historial={historial ?? []}
+        <UniversoTickerModal v={universoAbiertoLive} alertas={alertas ?? []} historial={historial ?? []}
                             preciosVivos={preciosVivos} onCambio={actualizarValidacion}
                             onClose={() => setUniversoAbierto(null)} />
       )}
