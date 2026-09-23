@@ -1,7 +1,9 @@
 // Service worker: instalación PWA + notificaciones push (VAPID).
 // El caché solo toca GETs del MISMO origen (nunca la API del backend, que vive en otro puerto).
-// v3: iconos de la PWA regenerados con el logo actual (línea de señal + punto de entrada).
-const CACHE = "agentic-v3";
+// v4: lo inmutable (`/_next/static`, con hash en el nombre, e iconos) sale de caché sin esperar
+// a la red; la página sigue yendo a red primero para no servir un despliegue viejo.
+const CACHE = "agentic-v4";
+const INMUTABLE = /^\/(_next\/static\/|icon-|apple-touch-icon|favicon)/;
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) =>
@@ -15,6 +17,18 @@ self.addEventListener("activate", (event) =>
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== self.location.origin) return;
+  if (INMUTABLE.test(url.pathname)) {
+    event.respondWith(
+      caches.match(event.request).then((hit) => hit || fetch(event.request).then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(event.request, copy)).catch(() => {});
+        }
+        return res;
+      }))
+    );
+    return;
+  }
   event.respondWith(
     fetch(event.request)
       .then((res) => {

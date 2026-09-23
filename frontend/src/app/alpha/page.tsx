@@ -110,24 +110,25 @@ function SalaRealRoom() {
 
   const load = useCallback(async () => {
     const miSeq = ++loadSeqRef.current;
+    const vigente = () => alive.current && miSeq === loadSeqRef.current;
+    // Lo que es para mirar se pinta al llegar: antes la sala entera esperaba a la más lenta
+    // (IBKR de la cartera personal, yfinance), aunque lo que se decide ya estuviera listo.
+    const pinta = <T,>(p: Promise<T>, set: (v: T) => void) =>
+      p.then((v) => { if (vigente()) set(v); }).catch(() => {});
+    pinta(getConfig(), setCfg);
+    pinta(getPersonal(), setPersonal);
+    pinta(getDemoStatus(), setScanStatus);
+    pinta(getPerformance(), setShadowPerf);
+    pinta(getFx(), (fxr) => { if (fxr?.rate) setFx(fxr.rate); });
+    pinta(getHistory("real"), (hs) => setHist(hs.series));
+    pinta(getScanReport(), (sr) => setReport(sr.report));
+    pinta(getScanFunnel(1), (fn) => setFunnel(fn.scans[0] ?? null));
     try {
-      const [s, a, c, pp, st, sp, fxr, hs, sr, fn] = await Promise.all([
-        getReal(), getApprovals(), getConfig().catch(() => null), getPersonal().catch(() => null),
-        getDemoStatus().catch(() => null), getPerformance().catch(() => null),
-        getFx().catch(() => null), getHistory("real").catch(() => null),
-        getScanReport().catch(() => null), getScanFunnel(1).catch(() => null),
-      ]);
-      if (!alive.current || miSeq !== loadSeqRef.current) return;
+      // Lo único con lo que se ACTÚA (y la caja contra la que se juzga): con esto ya se enseña.
+      const [s, a] = await Promise.all([getReal(), getApprovals()]);
+      if (!vigente()) return;
       setSummary(s);
       setApprovals(a);
-      if (c) setCfg(c);
-      if (pp) setPersonal(pp);
-      if (st) setScanStatus(st);
-      setShadowPerf(sp);
-      if (fxr?.rate) setFx(fxr.rate);
-      if (hs) setHist(hs.series);
-      if (sr) setReport(sr.report);
-      if (fn) setFunnel(fn.scans[0] ?? null);
       setError("");
     } catch (e) {
       if (alive.current && miSeq === loadSeqRef.current) {

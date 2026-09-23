@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -161,6 +162,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_LENTA_S = 1.0
+
+
+@app.middleware("http")
+async def _log_peticiones_lentas(request: Request, call_next):  # noqa: ANN001, ANN202
+    """Solo las que pasan de 1 s: sin métricas en Railway, es la única forma de ver cuál frena."""
+    t0 = time.monotonic()
+    respuesta = await call_next(request)
+    dur = time.monotonic() - t0
+    if dur >= _LENTA_S:
+        logging.getLogger(__name__).warning("Petición lenta: %s %s %.1fs (%s)", request.method,
+                                            request.url.path, dur, respuesta.status_code)
+    return respuesta
 
 
 def _sin_flotantes_no_finitos(x):  # noqa: ANN001, ANN202 — estructura arbitraria del detalle

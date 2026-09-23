@@ -6,6 +6,8 @@ entrada, para ver si el agente bate al índice durante la semana de shadow.
 
 from __future__ import annotations
 
+import logging
+import threading
 import time
 from decimal import Decimal
 
@@ -16,36 +18,46 @@ from app.ledger import service as ledger
 from app.ledger.money import D, to_cents
 from app.models import BOOK_SHADOW, Trade
 
+logger = logging.getLogger(__name__)
 ZERO = Decimal("0")
 _TTL = 60
-_cache: tuple[float, dict] | None = None
+_TIMEOUT_S = 6   # sin tope, un Yahoo lento colgaba la petición hasta el timeout del frontend
+# Caché POR TICKER: con una sola ranura, cada endpoint (cartera, EURUSD, outcomes) pisaba la del
+# anterior y casi nunca acertaba.
+_precios: dict[str, tuple[float, float]] = {}
+_lock = threading.Lock()
 
 
 def live_prices(tickers: list[str]) -> dict[str, float]:
-    """Último precio de cada ticker (cacheado 60s para no martillear yfinance en cada poll)."""
-    global _cache
-    tickers = [t for t in tickers if t]
+    """Último precio de cada ticker, cacheado 60s por ticker; solo descarga los que faltan."""
+    tickers = [t for t in dict.fromkeys(tickers) if t]
     if not tickers:
         return {}
     now = time.time()
-    if _cache and now - _cache[0] < _TTL and set(tickers) <= set(_cache[1]):
-        return _cache[1]
-    out: dict[str, float] = {}
-    try:
-        df = yf.download(tickers, period="5d", interval="1d", auto_adjust=True,
-                         group_by="ticker", threads=True, progress=False)
-        multi = getattr(df.columns, "nlevels", 1) > 1
-        for t in tickers:
-            try:
-                s = (df[t]["Close"] if multi else df["Close"]).dropna()
-                if len(s):
-                    out[t] = float(s.iloc[-1])
-            except Exception:
-                pass
-    except Exception:
-        pass
-    _cache = (now, out)
-    return out
+    with _lock:
+        faltan = [t for t in tickers if t not in _precios or now - _precios[t][0] >= _TTL]
+    if faltan:
+        nuevos: dict[str, float] = {}
+        try:
+            df = yf.download(faltan, period="5d", interval="1d", auto_adjust=True,
+                             group_by="ticker", threads=True, progress=False,
+                             timeout=_TIMEOUT_S)
+            multi = getattr(df.columns, "nlevels", 1) > 1
+            for t in faltan:
+                try:
+                    s = (df[t]["Close"] if multi else df["Close"]).dropna()
+                    if len(s):
+                        nuevos[t] = float(s.iloc[-1])
+                except Exception:
+                    pass
+        except Exception:
+            logger.warning("yfinance no devolvió precios para %d tickers", len(faltan))
+        with _lock:
+            for t, px in nuevos.items():
+                _precios[t] = (now, px)
+    with _lock:
+        # Un precio caducado es mejor que ninguno si Yahoo falla ahora.
+        return {t: _precios[t][1] for t in tickers if t in _precios}
 
 
 def _spy_price_at(ts) -> float | None:  # noqa: ANN001
@@ -70,11 +82,7 @@ def _spy_price_at(ts) -> float | None:  # noqa: ANN001
 
 
 def _spy_last() -> float | None:
-    try:
-        s = yf.Ticker("SPY").history(period="5d")["Close"].dropna()
-        return float(s.iloc[-1]) if len(s) else None
-    except Exception:
-        return None
+    return live_prices(["SPY"]).get("SPY")   # misma caché: antes descargaba en cada petición
 
 
 def _spy_reference(db: Session, book: str, first: Trade) -> float | None:

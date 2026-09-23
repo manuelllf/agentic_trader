@@ -129,38 +129,33 @@ export default function SombraDashboard() {
                                           // velo encima, sin desmontar nada (ver el `return`)
 
   const refresh = useCallback(async () => {
+    // Todo sale a la vez y cada sección se pinta cuando llega lo suyo: antes la pantalla de
+    // carga esperaba a la petición más lenta (hasta el timeout de 15 s si Yahoo se atascaba).
+    const pinta = <T,>(p: Promise<T>, set: (v: T) => void) =>
+      p.then((v) => { if (alive.current) set(v); }).catch(() => {});
+    pinta(getMacro(), setMacro);
+    pinta(getPerformance(), setPerf);
+    pinta(getDemoStatus(), setStatus);
+    pinta(getHistory("shadow"), (hs) => setHist(hs.series));
+    // Los tres son de doble nivel: sin sesión llegan igual, pero sin tickers ni scores.
+    pinta(getScanReport(), (sr) => setReport(sr.report));
+    pinta(getScanFunnel(1), (fn) => setFunnel(fn.scans[0] ?? null));
+    pinta(getScanOutcomes(6), (oc) => { setOutcomes(oc.scans); setOutBook(oc.book ?? null); });
+    // Sin sesión, ni se piden: scores/propuesta/watchlist son del método — evita 401 al aire.
+    const withSession = hasToken();
+    setAuthed(withSession);
+    if (withSession) {
+      pinta(getProposal(), setProposal);
+      pinta(getScores(), setScores);
+      pinta(getWatchlist(), setWatch);
+    } else {
+      setProposal(null); setScores([]); setWatch([]);
+    }
     try {
-      // El ledger es crítico (define la conexión); el resto degrada con gracia si falla.
+      // El ledger es lo único crítico (define la conexión): con él ya se enseña la sala.
       const l = await getLedger();
-      const [m, pf, st, hs, sr, fn, oc] = await Promise.all([
-        getMacro().catch(() => null),
-        getPerformance().catch(() => null),
-        getDemoStatus().catch(() => null),
-        getHistory("shadow").catch(() => null),
-        // Los tres son de doble nivel: sin sesión llegan igual, pero sin tickers ni scores.
-        getScanReport().catch(() => null),
-        getScanFunnel(1).catch(() => null),
-        getScanOutcomes(6).catch(() => null),
-      ]);
-      // Sin sesión, ni se piden: scores/propuesta/watchlist son del método — evita 401 al aire.
-      const withSession = hasToken();
-      let p: Proposal | null = null;
-      let s: ScoreRow[] = [];
-      let w: WatchItem[] = [];
-      if (withSession) {
-        [p, s, w] = await Promise.all([
-          getProposal().catch(() => null),
-          getScores().catch(() => []),
-          getWatchlist().catch(() => []),
-        ]);
-      }
       if (!alive.current) return;   // la página ya no está montada: un GET lento no pinta nada
-      setLedger(l); setProposal(p); setScores(s); setWatch(w); setMacro(m); setPerf(pf); setStatus(st);
-      if (hs) setHist(hs.series);
-      if (sr) setReport(sr.report);
-      if (fn) setFunnel(fn.scans[0] ?? null);
-      if (oc) { setOutcomes(oc.scans); setOutBook(oc.book ?? null); }
-      setAuthed(withSession);
+      setLedger(l);
       setError(null);
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : "No se pudo contactar con el backend.");

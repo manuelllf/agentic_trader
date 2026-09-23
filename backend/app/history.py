@@ -44,7 +44,7 @@ def _daily_closes(tickers: list[str], start: date) -> dict[str, dict[date, float
     out: dict[str, dict[date, float]] = {}
     try:
         df = yf.download(tickers, start=start, interval="1d", auto_adjust=True,
-                         group_by="ticker", threads=True, progress=False)
+                         group_by="ticker", threads=True, progress=False, timeout=10)
         multi = getattr(df.columns, "nlevels", 1) > 1
         for t in tickers:
             try:

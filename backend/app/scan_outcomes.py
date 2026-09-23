@@ -31,7 +31,7 @@ def _spy_closes():
         return _spy_cache[1]
     try:
         s = yf.Ticker("SPY").history(period="6mo", interval="1d",
-                                     auto_adjust=True)["Close"].dropna()
+                                     auto_adjust=True, timeout=6)["Close"].dropna()
         s.index = s.index.tz_localize(None)
     except Exception:
         logger.warning("SPY no disponible para la lectura de outcomes.")
