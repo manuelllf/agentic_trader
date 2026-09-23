@@ -121,6 +121,8 @@ class FundamentalsSnapshot(Base):
     # que motivó este cambio. Se reconstruye al leer con la MISMA función que lo genera en vivo
     # (`_fundamentals_text`), aplicada a las filas de `FundamentalsSnapshotMetric` — nunca se
     # reimplementa el formateo, así que el prompt reconstruido es idéntico al que se mandó.
+    # Histórico: ya no se escribe (se reconstruye con `_technical_text` a partir de precio/52w/beta,
+    # sin descargar histórico de precios). Se conserva para las filas capturadas antes del cambio.
     technical_text: Mapped[str | None] = mapped_column(Text)
     earnings_text: Mapped[str | None] = mapped_column(Text)
     # True = esta captura vino del universo global (HuggingFace, `alcance=global`); False = del
@@ -265,18 +267,6 @@ class Score(Base):
     target_price: Mapped[float | None] = mapped_column(Float)  # objetivo 3m del LLM
     held: Mapped[bool] = mapped_column(default=False)          # ¿está en cartera?
     on_watchlist: Mapped[bool] = mapped_column(default=False)
-    # target_raw/target_flagged: el objetivo TAL CUAL lo dijo el modelo cuando un guardarrail
-    # lo corrige después. Telemetría para auditar el guardarrail, nunca vuelve a un prompt.
-    target_raw: Mapped[float | None] = mapped_column(Float)
-    target_flagged: Mapped[bool] = mapped_column(default=False)
-    # target_consensus_mean/target_echoed_consensus: guardarraíl de ECO de consenso (ver
-    # `_flag_consensus_echo` en scan_service.py) — distinto del guardarraíl de arriba (oferta
-    # corporativa) y en columna propia porque no comparten motivo. A diferencia del de arriba,
-    # este NO corrige target_price: solo anota cuándo coincidió (<0,5%) con el consenso MEDIO de
-    # analistas (horizonte 12-18m) pese a pedirse a un mes, indicio de que lo copió en vez de
-    # razonar el horizonte corto. Telemetría, nunca vuelve a un prompt.
-    target_consensus_mean: Mapped[float | None] = mapped_column(Float)
-    target_echoed_consensus: Mapped[bool] = mapped_column(default=False)
     # ¿el informe declara que ESTA empresa está siendo comprada? Aparta de la selección (no del
     # ranking). NULL = el modelo no contestó al campo, que NO es lo mismo que un "no" — por eso
     # es nullable y no un booleano con default False.
@@ -446,8 +436,8 @@ class ScanAudit(Base):
 
 
 class ScanRun(Base):
-    """Una fila por escaneo, que NUNCA se sobrescribe: `Meta.last_scan_report` pisa al anterior,
-    esta tabla guarda qué vio y qué decidió cada escaneo."""
+    """Una fila por escaneo, que NUNCA se sobrescribe: qué vio y qué decidió cada uno. La última
+    es también el informe de `/scan/report`, incluida la de un escaneo que reventó (`error`)."""
 
     __tablename__ = "scan_runs"
 
@@ -455,6 +445,10 @@ class ScanRun(Base):
     scan_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
     cadence: Mapped[str] = mapped_column(String(32), default="")
     decide: Mapped[bool] = mapped_column(default=False)
+    # NULL = escaneo completo. Con texto, el escaneo reventó y el resto de columnas va a default.
+    error: Mapped[str | None] = mapped_column(Text)
+    # Nombres del ranking refrescados (solo observatorio; en decisión el ranking se rehace, NULL).
+    refreshed: Mapped[int | None] = mapped_column(Integer)
     regime: Mapped[str] = mapped_column(String(16), default="")
     vix: Mapped[float | None] = mapped_column(Float)
     outlook: Mapped[str] = mapped_column(Text, default="")
@@ -595,7 +589,6 @@ class ScanRun(Base):
             "high_52w": r.high_52w, "headline": r.headline,
             "report": r.report, "target_price": r.target_price, "selected": r.selected,
             "funded": r.funded, "weight_pct": r.weight_pct, "error": r.error,
-            "target_raw": r.target_raw, "target_flagged": r.target_flagged,
             "target_consensus_mean": r.target_consensus_mean,
             "target_echoed_consensus": r.target_echoed_consensus,
             "under_acquisition": r.under_acquisition,
@@ -704,8 +697,7 @@ class ScanRunFailure(Base):
 class ScanRunFinalist(Base):
     """Snapshot POR ESCANEO de cada finalista — a diferencia de `Score` (se pisa en cuanto el
     ticker se re-analiza), esta fila nunca se toca tras crearse. Es el archivo de verdad del
-    informe de ese mes/semana: `report` y los campos de guardarraíl del target viven aquí
-    completos, no solo en `Score`."""
+    informe de ese mes/semana: `report` vive aquí completo, no solo en `Score`."""
 
     __tablename__ = "scan_run_finalist"
 
@@ -729,11 +721,8 @@ class ScanRunFinalist(Base):
     funded: Mapped[bool] = mapped_column(default=False)
     weight_pct: Mapped[float | None] = mapped_column(Float)
     error: Mapped[str | None] = mapped_column(Text)
-    # Mismos 5 campos de guardarraíl que `Score` — sin ellos, auditar por qué el target de un
-    # escaneo viejo se corrigió (o si la empresa estaba opada) era imposible en cuanto `Score`
-    # se pisaba con el siguiente análisis de ese ticker.
-    target_raw: Mapped[float | None] = mapped_column(Float)
-    target_flagged: Mapped[bool] = mapped_column(default=False)
+    # Históricos: guardarraíl de eco de consenso ya retirado (ver scan_guardrails.py). Ya no se
+    # escriben en escaneos nuevos; se conservan aquí por ser el archivo de verdad de escaneos viejos.
     target_consensus_mean: Mapped[float | None] = mapped_column(Float)
     target_echoed_consensus: Mapped[bool] = mapped_column(default=False)
     under_acquisition: Mapped[bool | None] = mapped_column(Boolean)
@@ -769,6 +758,35 @@ class ScanRunConstructionOmitted(Base):
         BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
     ticker: Mapped[str] = mapped_column(String(16))
     reason: Mapped[str] = mapped_column(Text, default="")
+
+
+class ScanRunChange(Base):
+    """Novedades frente al escaneo anterior (entran/salen del ranking y de la watchlist)."""
+
+    __tablename__ = "scan_run_change"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    posicion: Mapped[int] = mapped_column(SmallInteger)
+    texto: Mapped[str] = mapped_column(Text)
+
+
+class ScanRunJevItem(Base):
+    """Cartera mecánica de Jev de ese escaneo (sombra sin dinero), como `ScanRunConstructionItem`
+    para la de DeepSeek. `scan_audit.jev_funded` se poda; esta no."""
+
+    __tablename__ = "scan_run_jev_item"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    scan_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    posicion: Mapped[int] = mapped_column(SmallInteger)
+    ticker: Mapped[str] = mapped_column(String(16))
+    industry: Mapped[str] = mapped_column(String(64), default="")
+    score: Mapped[float] = mapped_column(Float)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    weight_pct: Mapped[float] = mapped_column(Float)
 
 
 class LLMCall(Base):

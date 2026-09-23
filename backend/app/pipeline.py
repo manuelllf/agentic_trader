@@ -67,7 +67,7 @@ def _run(sample_size: int | None, decide: bool,
                           finished_at=datetime.now(UTC).isoformat())
         scan_progress.set_stage("error")
         try:
-            write_scan_failure(db, exc)   # el informe persistido sí sobrevive a reinicios
+            write_scan_failure(db, exc, decide)   # el informe persistido sí sobrevive a reinicios
         except Exception:
             pass
     finally:

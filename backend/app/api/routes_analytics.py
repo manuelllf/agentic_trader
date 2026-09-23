@@ -1,5 +1,5 @@
 """Analitica columnar (DuckDB leyendo Postgres sincronizado, solo lectura): coste/latencia
-por etapa, mediana de PE por sector, confianza del prescore, y el explorador de universo."""
+por etapa, confianza del prescore, y el explorador de universo."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -26,34 +26,6 @@ _ANALYTICS_QUERIES: dict[str, str] = {
         group by stage
         order by usd desc
     """,
-    # `es_dataset = false`: SOLO la foto del universo de escaneo. Sin este filtro entraban los
-    # ~34.000 del universo global y la mediana pasaba a ser la del mundo entero (Technology:
-    # 33,9 con NASDAQ, 28,6 mezclado) — otra pregunta distinta, no la que responde este panel.
-    "pe-sector": """
-        with ultima as (
-            select distinct on (ticker) ticker, sector, pe_trailing
-            from fundamentals_snapshot
-            where pe_trailing is not null and pe_trailing > 0
-              and es_dataset = false
-              and coalesce(lower(trim(sector)), '') not in ('', 'n/d', 'none', 'null')
-            {and_fecha}
-            order by ticker, captured_at desc
-        )
-        select sector,
-               count(*)                                       as nombres,
-               round(median(pe_trailing)::numeric, 2)         as mediana_pe
-        from ultima
-        group by sector
-        having count(*) >= 6
-        order by mediana_pe desc
-    """,
-    "pe-sector-fechas": """
-        select distinct strftime(captured_at::date, '%Y-%m-%d') as fecha
-        from fundamentals_snapshot
-        where pe_trailing is not null and pe_trailing > 0 and es_dataset = false
-        order by fecha desc
-        limit 60
-    """,
     "confianza-prescore": """
         select round(confidence::numeric, 1) as confianza,
                count(*)                      as llamadas
@@ -66,8 +38,7 @@ _ANALYTICS_QUERIES: dict[str, str] = {
 }
 
 
-def _run_analytics_query(nombre: str, scan_run_id: int | None = None,
-                         fecha: str | None = None) -> list[dict]:
+def _run_analytics_query(nombre: str, scan_run_id: int | None = None) -> list[dict]:
     """Abre el fichero DuckDB persistente (columnar de verdad, sincronizado desde Postgres por
     `app.analytics_sync.sync()` — ver ese módulo y `POST /admin/sync-analytics`) en modo
     solo-lectura y ejecuta una de las consultas predefinidas. Los datos son tan frescos como la
@@ -75,12 +46,10 @@ def _run_analytics_query(nombre: str, scan_run_id: int | None = None,
     segundo exacto, y a cambio no depende de Postgres estar despierto para responder.
 
     `scan_run_id` filtra `coste-etapa`/`confianza-prescore` a un único escaneo — sin él, agregan
-    TODA la vida de `llm_call` (todos los escaneos históricos mezclados). `pe-sector` lo ignora:
-    no depende de escaneo, usa el snapshot más reciente por ticker (o el de `fecha` si se pide).
+    TODA la vida de `llm_call` (todos los escaneos históricos mezclados).
     El valor llega tipado `int` desde FastAPI (`Query(None)`), así que es seguro interpolarlo en
-    el SQL de DuckDB; `fecha` se valida a mano (YYYY-MM-DD) por el mismo motivo."""
+    el SQL de DuckDB."""
     import os
-    import re
 
     import duckdb
 
@@ -97,47 +66,11 @@ def _run_analytics_query(nombre: str, scan_run_id: int | None = None,
     elif "{and_scan}" in sql:
         clause = f"and scan_run_id = {int(scan_run_id)}" if scan_run_id is not None else ""
         sql = sql.format(and_scan=clause)
-    elif "{and_fecha}" in sql:
-        if fecha is not None and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", fecha):
-            raise HTTPException(400, "fecha inválida, formato YYYY-MM-DD")
-        clause = f"and captured_at::date = '{fecha}'" if fecha is not None else ""
-        sql = sql.format(and_fecha=clause)
     con = duckdb.connect(db_path, read_only=True)
     try:
         return con.execute(sql).df().to_dict("records")
     finally:
         con.close()
-
-
-@router.get("/analytics/pe-sector")
-def analytics_pe_sector(fecha: str | None = Query(None)) -> dict:
-    """Mediana de `trailingPE` (yfinance) por sector, sobre el último snapshot de cada ticker del
-    UNIVERSO DE ESCANEO — el mismo campo y el mismo universo con los que se puntúa, no un
-    agregado de una fuente externa ni del universo global. `fecha` (YYYY-MM-DD, ver
-    /analytics/pe-sector/fechas) fija el snapshot de ese día en vez del más reciente."""
-    try:
-        return {"items": _run_analytics_query("pe-sector", fecha=fecha)}
-    except ImportError:
-        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001 — Postgres caído/ATTACH roto: mensaje legible, no 500
-        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
-
-
-@router.get("/analytics/pe-sector/fechas")
-def analytics_pe_sector_fechas() -> dict:
-    """Fechas con snapshot disponible (hasta 60, más reciente primero) — para el navegador de
-    `/analytics/pe-sector?fecha=`."""
-    try:
-        filas = _run_analytics_query("pe-sector-fechas")
-        return {"items": [str(f["fecha"]) for f in filas]}
-    except ImportError:
-        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
 
 
 @router.get("/analytics/coste-etapa")
@@ -177,7 +110,8 @@ def analytics_scans(db: Session = Depends(get_db)) -> dict:
     no DuckDB — no hace falta para leer `scan_runs`."""
     from app.models import ScanRun
 
-    rows = db.query(ScanRun).order_by(ScanRun.scan_at.desc()).limit(50).all()
+    rows = (db.query(ScanRun).filter(ScanRun.error.is_(None))
+            .order_by(ScanRun.scan_at.desc()).limit(50).all())
     return {"items": [
         {"id": r.id, "at": utc_iso(r.scan_at), "cadence": r.cadence} for r in rows
     ]}

@@ -96,32 +96,7 @@ class ScoreResult:
     raw: str | None = None
 
 
-# Etiquetas EXACTAS que emite `_fundamentals_text` para el P/E: la mediana se pega a esa línea y
-# nada más — el dato al lado del dato, sin una sola instrucción sobre qué hacer con él.
-_ETIQUETA_PE_TRAILING = "- P/E (trailing): "
-_ETIQUETA_PE_FORWARD = "- P/E (forward): "
-
-
-def _con_mediana(
-    fundamentals_text: str, sector: str, medianas: dict[str, dict[str, float]] | None,
-) -> str:
-    """Añade `(sector median X)` a las líneas de P/E trailing Y forward (por separado — un
-    sector puede tener mediana de uno y no del otro). Sin mediana para ese sector/campo, no
-    toca esa línea."""
-    entrada = (medianas or {}).get(sector)
-    if not entrada:
-        return fundamentals_text
-    lineas = fundamentals_text.split("\n")
-    for i, linea in enumerate(lineas):
-        if "trailing" in entrada and linea.startswith(_ETIQUETA_PE_TRAILING):
-            lineas[i] = f"{linea} (sector median {entrada['trailing']})"
-        elif "forward" in entrada and linea.startswith(_ETIQUETA_PE_FORWARD):
-            lineas[i] = f"{linea} (sector median {entrada['forward']})"
-    return "\n".join(lineas)
-
-
-def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None,
-                 medianas: dict[str, dict[str, float]] | None = None) -> str:
+def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> str:
     news = "\n".join(f"- {h}" for h in data.news) if data.news else "none"
     prior = (
         f"\nPrior view on this name (from our records): {prior_thesis}\n"
@@ -139,7 +114,7 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None,
         # existe y colaba la palabra "sector" como marco en cada llamada. El sector de ESTA empresa
         # sigue abajo, que es donde el paper lo pone.
         f"Company: {data.ticker} — sector {data.sector} / {data.industry}.\n"
-        f"Latest fundamentals:\n{_con_mediana(data.fundamentals_text, data.sector, medianas)}\n\n"
+        f"Latest fundamentals:\n{data.fundamentals_text}\n\n"
         f"Technical context: {data.technical_text or 'n/d'}\n"
         # Fecha de resultados como dato más del contexto, SIN regla de qué hacer con ella
         # (decisión pública del post de AXS: dato sí, instrucción no). Solo en el profundo.
@@ -150,8 +125,7 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None,
     )
 
 
-def _mid_prompt(data: NameData, macro_block: str,
-                medianas: dict[str, dict[str, float]] | None = None) -> str:
+def _mid_prompt(data: NameData, macro_block: str) -> str:
     # Todos los titulares, no solo los 3 primeros: la capa media decide quién llega al análisis
     # caro viendo un tercio de las noticias. En un escaneo real dio 100/100 a un nombre —el
     # único ≥90 de 2.594— y el profundo le puso 48 en cuanto vio la noticia que lo hundía (venta
@@ -167,7 +141,7 @@ def _mid_prompt(data: NameData, macro_block: str,
         f"Macro: {macro_block}\n"
         f"{data.ticker}{name} — {data.sector}/{data.industry}\n"
         f"News: {news}\n"
-        f"Fundamentals:\n{_con_mediana(data.fundamentals_text, data.sector, medianas)}\n"
+        f"Fundamentals:\n{data.fundamentals_text}\n"
         f"Technical: {data.technical_text or 'n/d'}\n"
         # Igual que en el lote barato (ver `_prescore_batch_prompt`): dato del calendario, sin
         # regla de qué hacer con él.
@@ -183,7 +157,7 @@ def _mid_prompt(data: NameData, macro_block: str,
 
 def mid_prescore(
     llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
-    top_p: float | None = 0.95, medianas: dict[str, dict[str, float]] | None = None,
+    top_p: float | None = 0.95,
 ) -> PrescoreResult:
     """Segunda opinión: best-effort 0 si falla, con error/raw para decidir reintento."""
     raw = ""
@@ -191,7 +165,7 @@ def mid_prescore(
         # `ticker_ctx`: el proveedor no sabe de qué nombre es la llamada; así la traza lo sabe
         # sin meter un parámetro de telemetría en la interfaz del LLM (ver `app/llm/trace.py`).
         with ticker_ctx(data.ticker):
-            raw = llm.chat(MID_SYSTEM, _mid_prompt(data, macro_block, medianas),
+            raw = llm.chat(MID_SYSTEM, _mid_prompt(data, macro_block),
                            temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)))))
@@ -230,9 +204,6 @@ def _prescore_system() -> str:
 
 
 def _prescore_prompt(data: NameData, macro_block: str) -> str:
-    # Sin mediana de sector (a diferencia de capa media/profundo): el sector GICS mezcla negocios
-    # que no compiten entre sí, y la mediana sale dominada por cuántos nombres baratos hay, no por
-    # el comparable real de la empresa. Detalle y datos en docs/backlog.md.
     # Titular completo, no solo el título: el ahorro de tokens es marginal frente al contexto
     # que se pierde recortando el resumen.
     news = "; ".join(data.news) if data.news else "none"
@@ -418,14 +389,13 @@ def prescore_batch(
 def score(
     llm: LLMProvider, data: NameData, macro_block: str, prior_thesis: str | None = None,
     temperature: float = 1.0, top_p: float | None = 0.95,
-    medianas: dict[str, dict[str, float]] | None = None,
 ) -> ScoreResult:
     """Puntúa un nombre. Best-effort: si el LLM falla/no parsea, score 0 (queda fuera), con
     `error`/`raw` para que el caller sepa POR QUÉ y decida si reintenta."""
     raw = ""
     try:
         with ticker_ctx(data.ticker):
-            raw = llm.chat(SYSTEM, _user_prompt(data, macro_block, prior_thesis, medianas),
+            raw = llm.chat(SYSTEM, _user_prompt(data, macro_block, prior_thesis),
                            temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)))))

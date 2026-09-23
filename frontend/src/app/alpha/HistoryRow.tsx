@@ -24,7 +24,7 @@ export function HistoryRow({ h }: { h: Approval }) {
         </span>
       </Td>
       <Td>
-        <span className="block max-w-[420px] truncate text-[12px]" style={{ color: T.muted }} title={h.result_msg}>
+        <span className="block max-w-[420px] whitespace-normal text-[12px] sm:truncate" style={{ color: T.muted }}>
           {h.quantity && h.fill_price ? `${qty4(h.quantity)} @ $${money(h.fill_price)} · ` : ""}
           {h.result_msg}
         </span>

@@ -7,8 +7,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getScanFull, type ScanFull } from "@/lib/api";
+import { InfoTip } from "@/components/InfoTip";
 import { fmtScore, fmtTime, money } from "@/lib/format";
 import { richText } from "@/lib/richText";
+import { useOrden } from "@/lib/useOrden";
 import { NUMS, T } from "./tokens";
 
 // Columnas del grid de finalistas, ordenable por cualquiera (click en la cabecera).
@@ -66,32 +68,19 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
       .finally(() => setBusy(false));
   }, []);
 
-  const [sortCol, setSortCol] = useState<FinalistSortKey>("deep_score");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const sortBy = (col: FinalistSortKey) => () => {
-    setSortDir((d) => (sortCol === col && d === "desc" ? "asc" : "desc"));
-    setSortCol(col);
-  };
-
   // Distancia al máximo de 52 semanas y estado (cartera/seleccionado/solo finalista) calculados
   // aquí una vez, para ordenar y pintar el punto sin repetir la lógica en cada fila.
-  const finalistRows = (scan?.finalists ?? []).map((f) => ({
-    ...f,
-    ath: f.price != null && f.high_52w ? ((f.high_52w - f.price) / f.high_52w) * 100 : null,
-    estado: (f.error ? "error" : f.funded ? "cartera" : f.selected ? "seleccionado" : "finalista") as Estado,
-  }));
-  const sortedFinalists = [...finalistRows].sort((a, b) => {
-    const av = a[sortCol];
-    const bv = b[sortCol];
-    if (av == null && bv == null) return 0;
-    if (av == null) return 1;
-    if (bv == null) return -1;
-    const cmp = typeof av === "string" && typeof bv === "string"
-      ? av.localeCompare(bv) : (av as number) - (bv as number);
-    const primary = cmp * (sortDir === "asc" ? 1 : -1);
-    // Desempate estable por market cap, igual que el corte de finalistas del backend.
-    return primary !== 0 ? primary : (b.market_cap ?? 0) - (a.market_cap ?? 0);
-  });
+  // Pre-ordenadas por market cap: mismo desempate estable que el corte de finalistas del backend.
+  const finalistRows = (scan?.finalists ?? [])
+    .map((f) => ({
+      ...f,
+      ath: f.price != null && f.high_52w ? ((f.high_52w - f.price) / f.high_52w) * 100 : null,
+      estado: (f.error ? "error" : f.funded ? "cartera" : f.selected ? "seleccionado" : "finalista") as Estado,
+    }))
+    .sort((a, b) => (b.market_cap ?? 0) - (a.market_cap ?? 0));
+  const { sorted: sortedFinalists, sortKey: sortCol, sortDir, toggle: sortBy, ariaSort } =
+    useOrden<typeof finalistRows[number], FinalistSortKey>(
+      finalistRows, (row, key) => row[key], { key: "deep_score", dir: "desc" });
 
   // Retorno objetivo ponderado: suma de peso × upside de cada posición fondeada con target
   // conocido — el mismo cálculo que hace el peso en la cartera, no una media simple.
@@ -150,7 +139,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                     {scan.cost.calls} llamadas ·{" "}
                     {/* Solo el estimado por tokens: medido contra el saldo ya liquidado, acierta
                         al 3%. El saldo leído al terminar el escaneo no, DeepSeek liquida tarde. */}
-                    ${money(scan.cost.cost_usd)} <span title="Estimado por tokens de cada respuesta">est.</span>
+                    ${money(scan.cost.cost_usd)} <span className="inline-flex items-center gap-0.5">est. <InfoTip text="Estimado por tokens de cada respuesta." /></span>
                   </span>
                 )}
               </div>
@@ -159,6 +148,25 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                 <div className="mt-3">
                   <SectionTitle>Macro</SectionTitle>
                   <div className="mt-1 leading-relaxed" style={{ color: T.ink2 }}>{richText(scan.outlook)}</div>
+                  {scan.macro_calendario && (
+                    <Plegable titulo="Calendario" cuenta="Wikipedia">{scan.macro_calendario}</Plegable>
+                  )}
+                  {scan.macro_eventos && (
+                    <Plegable titulo="Eventos de los últimos 7 días" cuenta="Wikipedia">
+                      {scan.macro_eventos}
+                    </Plegable>
+                  )}
+                  {(scan.macro_titulares ?? []).length > 0 && (
+                    <Plegable titulo="Titulares" cuenta={String(scan.macro_titulares!.length)}>
+                      <ul className="space-y-1 whitespace-normal">
+                        {scan.macro_titulares!.map((t, i) => (
+                          <li key={i}>
+                            {t.texto} <span style={{ color: T.muted }}>· {t.fuente}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </Plegable>
+                  )}
                 </div>
               )}
 
@@ -264,8 +272,9 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                   <thead>
                     <tr style={{ color: T.muted }}>
                       {FINALIST_COLS.map((c) => (
-                        <th key={c.key} className={`pb-1 font-semibold ${c.align === "right" ? "text-right" : "text-left"}`}>
-                          <button onClick={sortBy(c.key)} aria-label={`Ordenar por ${c.label}`}
+                        <th key={c.key} className={`pb-1 font-semibold ${c.align === "right" ? "text-right" : "text-left"}`}
+                            aria-sort={ariaSort(c.key)}>
+                          <button onClick={() => sortBy(c.key)} aria-label={`Ordenar por ${c.label}`}
                                   className="inline-flex items-center gap-0.5 hover:opacity-80"
                                   style={{ color: sortCol === c.key ? T.ink : T.muted }}>
                             {c.label}
@@ -277,11 +286,12 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                   </thead>
                   <tbody>
                     {sortedFinalists.map((f) => (
-                      <tr key={f.ticker} className="border-t align-top" style={{ borderColor: T.grid }} title={f.headline || undefined}>
+                      <tr key={f.ticker} className="border-t align-top" style={{ borderColor: T.grid }}>
                         <td className="py-1">
                           <span className="inline-flex items-center gap-1.5">
                             <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: ESTADO_DOT[f.estado] }} />
                             <b style={{ color: T.ink }}>{f.ticker}</b>
+                            {f.headline && <InfoTip text={f.headline} />}
                           </span>
                         </td>
                         <td className="max-w-0 truncate py-1" style={{ color: T.ink2 }}>{f.sector || "—"}</td>
@@ -312,6 +322,30 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Bloque largo del macro (Wikipedia, titulares): plegado por defecto, que en móvil ocupan pantallas.
+function Plegable({ titulo, cuenta, children }: {
+  titulo: string; cuenta: string; children: React.ReactNode;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div className="mt-1.5">
+      <button onClick={() => setAbierto(!abierto)} aria-expanded={abierto}
+              className="flex w-full items-center gap-1.5 py-1 text-left text-[12px] font-semibold"
+              style={{ color: T.ink2 }}>
+        <span style={{ color: T.muted }}>{abierto ? "▾" : "▸"}</span>
+        {titulo}
+        <span className={`font-normal ${NUMS}`} style={{ color: T.muted }}>{cuenta}</span>
+      </button>
+      {abierto && (
+        <div className="mt-1 whitespace-pre-line break-words text-[12px] leading-relaxed"
+             style={{ color: T.ink2 }}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }

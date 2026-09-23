@@ -125,17 +125,17 @@ def test_protected_endpoints_reject_without_token(client) -> None:
 
 
 def test_scan_report_shape(client, token, db) -> None:
-    """Sin informe → {"report": null}; con informe en Meta → lo devuelve tal cual."""
-    from app.models import Meta
+    """Sin escaneos → {"report": null}; con uno en `scan_runs` → el informe del último."""
+    from app.models import ScanRun
 
     headers = {"Authorization": f"Bearer {token}"}
     assert client.get("/scan/report", headers=headers).json() == {"report": None}
 
-    db.merge(Meta(key="last_scan_report",
-                  value='{"mode": "observatorio", "error": null, "issues": []}'))
+    db.add(ScanRun(cadence="observatorio/full", decide=False, counter_prescored=2600))
     db.commit()
     rep = client.get("/scan/report", headers=headers).json()["report"]
-    assert rep["mode"] == "observatorio" and rep["issues"] == []
+    assert rep["mode"] == "observatorio" and rep["issues"] == [] and rep["error"] is None
+    assert rep["prescored"] == 2600 and rep["jev_cartera"] == []
 
 
 def test_protected_endpoints_work_with_token(client, token) -> None:
@@ -581,16 +581,17 @@ def test_funnel_con_sesion_anade_el_detalle(client, db, token) -> None:
 
 def test_report_publico_oculta_las_novedades_del_ranking(client, db, token) -> None:
     """`changes` dice qué tickers entran y salen del ranking: eso es la cartera del método."""
-    import json
+    from app.models import ScanRun, ScanRunChange, ScanRunIssue
 
-    from app.models import Meta
-
-    db.add(Meta(key="last_scan_report", value=json.dumps(
-        {"at": "2026-07-28T14:15:00+00:00", "mode": "observatorio", "error": None,
-         "issues": ["algo"], "changes": ["entran ZZZ", "salen AAA"],
-         "outlook": "Veo rotación desde WWW hacia defensivos.",
-         "universe": {"fuente": "cierre", "size": 2600}, "scanned": 2601,
-         "prescored": 2600, "deep": 50, "cost": None})))
+    run = ScanRun(cadence="observatorio/full", decide=False,
+                  outlook="Veo rotación desde WWW hacia defensivos.", universe_fuente="cierre",
+                  universe_size=2600, counter_scanned=2601, counter_prescored=2600,
+                  counter_deep=50)
+    db.add(run)
+    db.flush()
+    db.add(ScanRunIssue(scan_run_id=run.id, posicion=0, texto="algo"))
+    db.add_all([ScanRunChange(scan_run_id=run.id, posicion=i, texto=t)
+                for i, t in enumerate(["entran ZZZ", "salen AAA"])])
     db.commit()
 
     anon = client.get("/scan/report").json()["report"]
@@ -713,15 +714,15 @@ def test_outcomes_de_escaneos_sin_jev_no_inventan_su_grupo(client, db, monkeypat
 
 
 def test_report_publico_oculta_la_cartera_jev(client, db, token) -> None:
-    import json
+    from app.models import ScanRun, ScanRunJevItem
 
-    from app.models import Meta
-
-    db.add(Meta(key="last_scan_report", value=json.dumps(
-        {"at": "2026-09-23T14:15:00+00:00", "mode": "observatorio", "error": None,
-         "issues": [], "changes": [], "outlook": "VIX 15.4.", "jev_macro": False,
-         "jev_cartera": [{"ticker": "MU", "industry": "Semiconductors", "score": 84.2,
-                          "confidence": 0.85, "weight_pct": 20.0}]})))
+    run = ScanRun(cadence="observatorio/full", decide=False, outlook="VIX 15.4.",
+                  jev_macro=False)
+    db.add(run)
+    db.flush()
+    db.add(ScanRunJevItem(scan_run_id=run.id, posicion=0, ticker="MU",
+                          industry="Semiconductors", score=84.2, confidence=0.85,
+                          weight_pct=20.0))
     db.commit()
 
     anon = client.get("/scan/report").json()["report"]

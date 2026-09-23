@@ -85,33 +85,14 @@ def _migrate_books(conn) -> None:  # noqa: ANN001
     # Carril de entrada. (`had_prior_thesis` ya no se crea ni se escribe; donde exista, se queda.)
     if sa and "entry_lane" not in sa:
         conn.execute(text("ALTER TABLE scan_audit ADD COLUMN entry_lane VARCHAR(12)"))
-    if sc and "target_raw" not in sc:
-        conn.execute(text("ALTER TABLE scores ADD COLUMN target_raw FLOAT"))
-    if sc and "target_flagged" not in sc:
-        conn.execute(text(
-            "ALTER TABLE scores ADD COLUMN target_flagged BOOLEAN NOT NULL DEFAULT 0"
-        ))
     # NULL = no respondió; 0 = verificado como falso.
     if sc and "under_acquisition" not in sc:
         conn.execute(text("ALTER TABLE scores ADD COLUMN under_acquisition BOOLEAN"))
-    # Guardarraíl de precio objetivo.
-    if sc and "target_consensus_mean" not in sc:
-        conn.execute(text("ALTER TABLE scores ADD COLUMN target_consensus_mean FLOAT"))
-    if sc and "target_echoed_consensus" not in sc:
-        conn.execute(text(
-            "ALTER TABLE scores ADD COLUMN target_echoed_consensus BOOLEAN NOT NULL DEFAULT 0"
-        ))
-    # `scan_run_finalist` pasa de resumen a archivo de verdad: informe completo + los mismos 5
-    # campos de guardarraíl que `scores` (que se pisa; esta fila no).
+    # `scan_run_finalist` pasa de resumen a archivo de verdad: informe completo y campos
+    # históricos (`scores` se pisa; esta fila no).
     srf = cols("scan_run_finalist")
     if srf and "report" not in srf:
         conn.execute(text("ALTER TABLE scan_run_finalist ADD COLUMN report TEXT"))
-    if srf and "target_raw" not in srf:
-        conn.execute(text("ALTER TABLE scan_run_finalist ADD COLUMN target_raw FLOAT"))
-    if srf and "target_flagged" not in srf:
-        conn.execute(text(
-            "ALTER TABLE scan_run_finalist ADD COLUMN target_flagged BOOLEAN NOT NULL DEFAULT 0"
-        ))
     if srf and "target_consensus_mean" not in srf:
         conn.execute(text("ALTER TABLE scan_run_finalist ADD COLUMN target_consensus_mean FLOAT"))
     if srf and "target_echoed_consensus" not in srf:

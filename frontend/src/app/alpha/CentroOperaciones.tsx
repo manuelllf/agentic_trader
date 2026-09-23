@@ -16,7 +16,7 @@ import {
 import { fmtNum } from "@/lib/scan";
 import type { AppConfig, DemoRunOverrides } from "@/lib/types";
 import { FotoGlobalPicker, UniversoGlobalSync } from "./FotoGlobalPicker";
-import { InfoTip } from "./InfoTip";
+import { InfoTip } from "@/components/InfoTip";
 import { ScanConfigModal } from "./ScanConfigModal";
 import { NUMS, T } from "./tokens";
 import { Checkbox, Toggle } from "./ui";
@@ -123,8 +123,8 @@ const ACCIONES: Record<Key, Accion> = {
   },
   anal: {
     t: "Analítica del método",
-    d: "Reconstruye el fichero DuckDB que alimenta las tablas de PER por sector, coste por etapa y "
-      + "confianza del prescore. Corre sola a diario.",
+    d: "Reconstruye el fichero DuckDB que alimenta las tablas de coste por etapa, confianza del "
+      + "prescore y el explorador de universo. Corre sola a diario.",
     cta: "Sincronizar", badges: [["~5 s", "neutro"]],
   },
 };

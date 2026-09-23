@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { searchMemory, type MemoryItem } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
-import { InfoTip } from "./InfoTip";
+import { InfoTip } from "@/components/InfoTip";
 import { NUMS, T } from "./tokens";
 
 const TITLES: Record<string, string> = {

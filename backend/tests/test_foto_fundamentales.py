@@ -86,10 +86,6 @@ def test_gather_reutiliza_la_foto_sin_tocar_yfinance(db, monkeypatch) -> None:
             self.info = {"sector": "Technology", "marketCap": 5e9, "shortName": "AAA Inc"}
             self.news = []
 
-        def history(self, **kwargs):
-            import pandas as pd
-            return pd.DataFrame()
-
     monkeypatch.setattr(fund_mod.yf, "Ticker", _TickerFalso)
 
     d1, err1 = fund_mod.gather("AAA", db=db)

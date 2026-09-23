@@ -189,7 +189,7 @@ def test_news_used_tambien_se_congela_en_observatorio(db, monkeypatch) -> None:
 
 def test_scan_run_finalist_guarda_informe_y_guardarrailes_completos(db, monkeypatch) -> None:
     """`ScanRunFinalist` (a diferencia de `Score`) es una fila nueva por escaneo, nunca se pisa:
-    tiene que llevar el informe completo, las noticias y los 5 campos de guardarraíl."""
+    tiene que llevar el informe completo, las noticias y el campo de guardarraíl de OPA."""
     llm = FakeLLM(_FAKE_REPLY)
     _stub_common(monkeypatch, llm, ["AAA"])
     _gather_stub(monkeypatch, news=["Titular uno", "Titular dos"])
@@ -200,9 +200,6 @@ def test_scan_run_finalist_guarda_informe_y_guardarrailes_completos(db, monkeypa
     finalist = next(f for f in run.finalists if f["ticker"] == "AAA")
     assert finalist["report"] == "informe"
     assert finalist["news_used"] == ["Titular uno", "Titular dos"]
-    # Los 5 campos de guardarraíl viajan aunque en este caso no se disparen (valores por defecto).
-    assert finalist["target_raw"] is None
-    assert finalist["target_flagged"] is False
     assert finalist["target_consensus_mean"] is None
     assert finalist["target_echoed_consensus"] is False
     assert finalist["under_acquisition"] is None

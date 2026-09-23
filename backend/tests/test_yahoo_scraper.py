@@ -131,17 +131,6 @@ def _qs_payload(*, sector="Technology", industry="Software", short_name="Acme Co
     }
 
 
-_CHART_PAYLOAD = {
-    "chart": {
-        "error": None,
-        "result": [{
-            "timestamp": [1700000000, 1700086400],
-            "indicators": {"quote": [{"close": [120.0, 121.0]}],
-                           "adjclose": [{"adjclose": [119.5, 120.5]}]},
-        }],
-    }
-}
-
 _NEWS_PAYLOAD = {
     "data": {"tickerStream": {"stream": [
         {"content": {"title": "Acme sube tras resultados",
@@ -152,8 +141,7 @@ _NEWS_PAYLOAD = {
 
 def test_gather_scraper_construye_namedata_con_exito() -> None:
     fake = _FakeSession(
-        gets=[_FakeResponse(status_code=200, json_data=_qs_payload()),
-              _FakeResponse(status_code=200, json_data=_CHART_PAYLOAD)],
+        gets=[_FakeResponse(status_code=200, json_data=_qs_payload())],
         posts=[_FakeResponse(status_code=200, json_data=_NEWS_PAYLOAD)],
     )
 
@@ -176,7 +164,7 @@ def test_gather_scraper_construye_namedata_con_exito() -> None:
 
 def test_gather_scraper_sin_datos_no_lanza_y_no_reintenta(monkeypatch) -> None:
     """200 OK pero sin sector/marketCap/shortName: "sin datos" genuino, se devuelve tal cual sin
-    excepción — y sin llegar siquiera a pedir histórico/noticias."""
+    excepción — y sin llegar siquiera a pedir noticias."""
     payload = {"quoteSummary": {"error": None, "result": [{
         "price": {}, "quoteType": {}, "defaultKeyStatistics": {}, "assetProfile": {},
         "summaryDetail": {}, "financialData": {},

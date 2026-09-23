@@ -45,7 +45,11 @@ export type Senal = {
   // (resuelta === false): el resultado REAL de la venta, aparte de `ret`/`resuelta`/`motivo`
   // (esos son la resolución algorítmica uniforme del patrón, para /validacion -- no lo que
   // Manuel hizo de verdad).
-  cierre_manual?: { acciones: number | string; ret: number | string; exit_date: string | null } | null;
+  // `ret` = lo que hiciste tú; `ret_sistema` = la salida del algoritmo sobre tu coste medio.
+  cierre_manual?: {
+    acciones: number | string; ret: number | string; ret_sistema?: number | string | null;
+    exit_date: string | null;
+  } | null;
   // Peor cierre visto desde la entrada (entrada->salida si ya resolvió, entrada->hoy si sigue
   // abierta, ver `resolver_salida` en signals.py) contra `entry_price`, y cuántos días tardó en
   // tocarlo. Se recalcula cada escaneo mientras la señal no resuelva -- null si aún no hay

@@ -184,12 +184,12 @@ def test_default_scan_decides_both_books(db, monkeypatch) -> None:
 # ---- informe persistido del escaneo (panel de errores) -----------------------
 
 def _last_report(db) -> dict:
-    return json.loads(db.get(models.Meta, "last_scan_report").value)
+    return scan_state.informe(db)
 
 
 def test_scan_writes_persistent_report(db, monkeypatch) -> None:
-    """Cada escaneo (observatorio y decisión) deja su informe en Meta con modo, contadores y
-    novedades; con el pipeline stubeado, cero incidencias."""
+    """Cada escaneo (observatorio y decisión) deja su fila en `scan_runs` con modo, contadores
+    y novedades; con el pipeline stubeado, cero incidencias."""
     _stub_scan(monkeypatch)
     ledger.allocate(db, 1000)
 
@@ -335,6 +335,50 @@ def test_cursor_rotatorio_no_avanza_si_el_escaneo_revienta(db, monkeypatch) -> N
 def test_scan_failure_writes_report(db) -> None:
     """Si el escaneo revienta entero, el envoltorio deja el informe con el error — antes,
     un cron caído era invisible en la web (seguía enseñando datos viejos sin señal)."""
-    scan_state.write_scan_failure(db, RuntimeError("boom"))
+    scan_state.write_scan_failure(db, RuntimeError("boom"), decide=True)
     rep = _last_report(db)
-    assert rep["error"] == "boom" and rep["mode"] is None and rep["issues"] == []
+    assert rep["error"] == "boom" and rep["mode"] == "decisión" and rep["issues"] == []
+    # Sin cifras del embudo ni coste: a 0 parecerían medidas reales.
+    assert rep["prescored"] is None and rep["cost"] is None and rep["universe"] is None
+
+
+def test_escaneo_reventado_no_se_cuela_en_el_detalle_ni_en_la_analitica(db) -> None:
+    """La fila del fallo es el informe, pero `/scan/full` y el navegador de analítica siguen en
+    el último escaneo completo."""
+    from app.api.routes_analytics import analytics_scans
+    from app.api.routes_scan import scan_full
+
+    db.add(models.ScanRun(cadence="decisión/full", decide=True, counter_deep=40))
+    db.commit()
+    scan_state.write_scan_failure(db, RuntimeError("boom"), decide=True)
+
+    assert scan_full(None, db)["scan"]["counters"]["deep"] == 40
+    assert [s["cadence"] for s in analytics_scans(db)["items"]] == ["decisión/full"]
+
+
+def test_detalle_del_escaneo_trae_el_macro_completo(db) -> None:
+    """El modal enseña lo que vio el profundo, no solo los datos: calendario, eventos, titulares."""
+    from app.api.routes_scan import scan_full
+
+    run = models.ScanRun(cadence="observatorio/full", outlook="VIX 15.3.",
+                         macro_wiki_scheduled="Oct 1: FOMC", macro_wiki_events="Sep 20: evento")
+    db.add(run)
+    db.flush()
+    db.add(models.ScanRunMacroHeadline(scan_run_id=run.id, fuente="gnews", posicion=0,
+                                       texto="Fed holds"))
+    db.commit()
+
+    s = scan_full(None, db)["scan"]
+    assert s["macro_calendario"] == "Oct 1: FOMC" and s["macro_eventos"] == "Sep 20: evento"
+    assert s["macro_titulares"] == [{"fuente": "gnews", "texto": "Fed holds"}]
+
+
+def test_informe_guarda_la_cartera_jev_y_las_novedades(db, monkeypatch) -> None:
+    """Relacional, no JSON: la cartera Jev y las novedades salen de las tablas hijas."""
+    from app.models import ScanRunJevItem
+
+    _stub_scan(monkeypatch)
+    scan_service.run_scan_and_store(db, sample_size=5)
+    rep = _last_report(db)
+    assert rep["changes"] and db.query(models.ScanRunChange).count() == len(rep["changes"])
+    assert rep["jev_cartera"] == [] and db.query(ScanRunJevItem).count() == 0   # prescore no Jev

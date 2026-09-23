@@ -1,49 +1,53 @@
-"""Estado del escaneo persistido en `Meta`: informe del último escaneo (lo que lee la web en
-`/scan/report`) y el cursor de la ventana rotatoria del semanal. Además, el singleton de
+"""Estado del escaneo: el informe del último (lo que lee la web en `/scan/report`, sacado de
+`scan_runs`) y el cursor de la ventana rotatoria del semanal en `Meta`. Además, el singleton de
 memoria vectorial (mejora opcional, nunca requisito del escaneo)."""
 from __future__ import annotations
 
-import json
 import logging
-from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import Meta
+from app.models import Meta, ScanRun, ScanRunChange, ScanRunJevItem, utc_iso
 
 logger = logging.getLogger(__name__)
 
 _CURSOR_KEY = "scan_cursor"   # offset persistido de la ventana rotatoria del semanal
-_REPORT_KEY = "last_scan_report"   # informe del último escaneo (JSON en Meta; ver /scan/report)
 
 
-def _write_scan_report(db: Session, *, mode: str | None, result: dict | None,
-                       issues: list[str], error: str | None = None,
-                       changes: list[str] | None = None) -> None:
-    """Persiste informe de último escaneo en Meta (fuente de verdad de la web)."""
-    r = result or {}
-    report = {
-        "at": datetime.now(UTC).isoformat(),
-        "mode": mode, "error": error, "issues": issues, "changes": changes or [],
-        "universe": r.get("universe"),
-        "scanned": r.get("scanned"), "prescored": r.get("prescored"), "deep": r.get("deep"),
-        # Refreshed: solo observatorio (decisión reemplaza ranking entero, no refresca).
-        "refreshed": r.get("refreshed"),
-        "cost": r.get("cost"),
-        # Datos de mercado del macro de este escaneo (ya no es una previsión escrita por un LLM).
-        "outlook": r.get("outlook"),
-        # Cartera de Jev (sombra sin dinero) y si su prescore vio el macro con contexto.
-        "jev_cartera": r.get("jev_cartera") or [],
-        "jev_macro": r.get("jev_macro"),
+def informe(db: Session) -> dict | None:
+    """El informe del último escaneo, completo o reventado. None si aún no hubo ninguno."""
+    run = db.query(ScanRun).order_by(ScanRun.scan_at.desc(), ScanRun.id.desc()).first()
+    if run is None:
+        return None
+    fallo = run.error is not None
+    changes = (db.query(ScanRunChange).filter_by(scan_run_id=run.id)
+               .order_by(ScanRunChange.posicion).all())
+    jev = (db.query(ScanRunJevItem).filter_by(scan_run_id=run.id)
+           .order_by(ScanRunJevItem.posicion).all())
+    return {
+        "at": utc_iso(run.scan_at),
+        "mode": "decisión" if run.decide else "observatorio",
+        "error": run.error, "issues": run.issues, "changes": [c.texto for c in changes],
+        # Reventado: sin cifras del embudo ni coste (a 0 parecerían medidas reales).
+        "universe": None if fallo else run.universe,
+        "scanned": None if fallo else run.counter_scanned,
+        "prescored": None if fallo else run.counter_prescored,
+        "deep": None if fallo else run.counter_deep,
+        "refreshed": run.refreshed,
+        "cost": None if fallo else run.cost,
+        "outlook": run.outlook or None,
+        "jev_cartera": [{"ticker": j.ticker, "industry": j.industry, "score": j.score,
+                         "confidence": j.confidence, "weight_pct": j.weight_pct} for j in jev],
+        "jev_macro": run.jev_macro,
     }
-    db.merge(Meta(key=_REPORT_KEY, value=json.dumps(report, ensure_ascii=False)))
-    db.commit()
 
 
-def write_scan_failure(db: Session, exc: Exception) -> None:
-    """Marca escaneo fallido en Meta (sin esto, cron caído pasa invisible en web)."""
+def write_scan_failure(db: Session, exc: Exception, decide: bool) -> None:
+    """Fila de `scan_runs` con el error: sin ella, un cron caído pasaría invisible en la web."""
     db.rollback()   # la sesión puede venir sucia del fallo a mitad
-    _write_scan_report(db, mode=None, result=None, issues=[], error=str(exc))
+    modo = "decisión" if decide else "observatorio"
+    db.add(ScanRun(cadence=f"{modo}/error", decide=decide, error=str(exc) or type(exc).__name__))
+    db.commit()
 
 
 def _scan_cursor(db: Session) -> int:

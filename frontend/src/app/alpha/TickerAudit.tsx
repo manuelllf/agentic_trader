@@ -8,7 +8,18 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchScanAudit, getScanOutcomes, type ScanAuditEntry } from "@/lib/api";
 import { fmtScore, fmtTime, money } from "@/lib/format";
+import { useOrden } from "@/lib/useOrden";
 import { NUMS, T } from "./tokens";
+
+type AuditSortKey = "at" | "stage" | "prescore" | "deep_score" | "price" | "weight_pct";
+const AUDIT_COLS: { key: AuditSortKey; label: string; align: "left" | "right" }[] = [
+  { key: "at", label: "fecha", align: "left" },
+  { key: "stage", label: "etapa", align: "left" },
+  { key: "prescore", label: "prescore", align: "right" },
+  { key: "deep_score", label: "deep", align: "right" },
+  { key: "price", label: "precio", align: "right" },
+  { key: "weight_pct", label: "peso", align: "right" },
+];
 
 export function TickerAudit({ ticker, onClose }: { ticker: string; onClose: () => void }) {
   const [scans, setScans] = useState<ScanAuditEntry[] | null>(null);
@@ -48,6 +59,9 @@ export function TickerAudit({ ticker, onClose }: { ticker: string; onClose: () =
 
     return () => { cancelled = true; };
   }, [ticker]);
+
+  const { sorted: sortedScans, sortKey, sortDir, toggle: sortBy, ariaSort } =
+    useOrden<ScanAuditEntry, AuditSortKey>(scans ?? [], (row, key) => row[key]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
@@ -92,16 +106,21 @@ export function TickerAudit({ ticker, onClose }: { ticker: string; onClose: () =
               <table className={`mt-1.5 w-full text-[11px] ${NUMS}`}>
                 <thead>
                   <tr style={{ color: T.muted }}>
-                    <th className="pb-1 text-left font-semibold">fecha</th>
-                    <th className="pb-1 text-left font-semibold">etapa</th>
-                    <th className="pb-1 text-right font-semibold">prescore</th>
-                    <th className="pb-1 text-right font-semibold">deep</th>
-                    <th className="pb-1 text-right font-semibold">precio</th>
-                    <th className="pb-1 text-right font-semibold">peso</th>
+                    {AUDIT_COLS.map((c) => (
+                      <th key={c.key} className={`pb-1 font-semibold ${c.align === "right" ? "text-right" : "text-left"}`}
+                          aria-sort={ariaSort(c.key)}>
+                        <button onClick={() => sortBy(c.key)} aria-label={`Ordenar por ${c.label}`}
+                                className="inline-flex items-center gap-0.5 hover:opacity-80"
+                                style={{ color: sortKey === c.key ? T.ink : T.muted }}>
+                          {c.label}
+                          {sortKey === c.key && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                        </button>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {scans.map((s, i) => (
+                  {sortedScans.map((s, i) => (
                     <tr key={`${s.at}-${i}`} className="border-t align-top" style={{ borderColor: T.grid }}>
                       <td className="py-1" style={{ color: T.ink2 }}>{fmtTime(s.at)}</td>
                       <td className="py-1" style={{ color: T.ink2 }}>{s.stage}</td>

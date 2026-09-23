@@ -1,11 +1,10 @@
-"""Guardarraíles en código sobre lo que dice el LLM (OPA en curso, objetivo calcado del
-consenso, operación corporativa mal leída, cartera rellenada por score sin convicción) más la
-traza legible del embudo en los logs — nada de esto pertenece al prompt: son cosas que el
-modelo ya falló una vez y que el código verifica siempre, no solo cuando el prompt se acuerda."""
+"""Guardarraíles en código sobre lo que dice el LLM (OPA en curso, cartera rellenada por score
+sin convicción) más la traza legible del embudo en los logs — nada de esto pertenece al prompt:
+son cosas que el modelo ya falló una vez y que el código verifica siempre, no solo cuando el
+prompt se acuerda."""
 from __future__ import annotations
 
 import logging
-import unicodedata
 from collections import Counter
 
 from app import portfolio_service as portfolio
@@ -19,18 +18,6 @@ logger = logging.getLogger(__name__)
 def _lista(ts: list[str], n: int = 10) -> str:
     """Lista de tickers legible y acotada: 'A, B, C y 4 más'."""
     return ", ".join(ts[:n]) + (f" y {len(ts) - n} más" if len(ts) > n else "")
-
-
-# Guardarraíl de operación corporativa en código: el prompt ya prohíbe mezclar enterprise value
-# con precio por acción y aun así falló una vez. Sin acentos porque el informe se normaliza antes.
-_CORP_DEAL_TERMS = ("adquisicion", "adquirir", "opa", "oferta en efectivo", "fusion",
-                    "merger", "takeover", "absorcion")
-
-
-def _sin_acentos(texto: str) -> str:
-    """Quita acentos/diacríticos para que la búsqueda de términos no dependa de cómo los escriba
-    el modelo (el informe viene en español, con o sin tildes según el caso)."""
-    return "".join(c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c))
 
 
 def _aparta_opadas(rows: list, issues: list[str]) -> list:
@@ -73,59 +60,6 @@ def _flag_constructor_backfill(construction, issues: list[str]) -> None:
     if n:
         issues.append(f"El constructor solo fondeó {len(construction.positions) - n} de "
                       f"{len(construction.positions)} posiciones; el resto se rellenó por score.")
-
-
-def _flag_corporate_deal_targets(
-    deep: dict, data_by_t: dict, issues: list[str],
-) -> tuple[dict, set]:
-    """Corrige en sitio `r.target_price` cuando el informe habla de una operación corporativa en
-    efectivo Y el objetivo del modelo supera el máximo del consenso en más de un 5%: ahí el
-    target_price del código pasa a ser el consenso, no el número (probablemente mal calculado)
-    del LLM. Sin `target_high` no se hace nada (no se inventa un techo). Devuelve
-    (target_raw, target_flagged) para que el caller los guarde en `Score`.
-
-    Sin efecto hoy: ya no se le pide target_price al profundo, siempre es None. Se queda
-    intacta por si algún día vuelve a pedirse."""
-    target_raw: dict[str, float] = {}
-    target_flagged: set[str] = set()
-    for ticker, r in deep.items():
-        data = data_by_t[ticker]
-        if r.target_price is None or not data.target_high:
-            continue
-        if r.target_price <= data.target_high * 1.05:
-            continue
-        texto = _sin_acentos((r.report or "").lower())
-        if not any(term in texto for term in _CORP_DEAL_TERMS):
-            continue
-        target_raw[ticker] = r.target_price
-        target_flagged.add(ticker)
-        issues.append(
-            f"{ticker}: el informe menciona una operación corporativa en efectivo y puso el "
-            f"objetivo en {r.target_price:.2f} frente al máximo del consenso de analistas "
-            f"({data.target_high:.2f}); se usa el consenso como objetivo efectivo.")
-        r.target_price = data.target_high
-    return target_raw, target_flagged
-
-
-def _flag_consensus_echo(deep: dict, data_by_t: dict) -> tuple[dict, set]:
-    """Detecta cuándo `target_price` coincide (<0,5%) con el consenso MEDIO de analistas
-    (publicado a 12-18 meses, no al mes que se le pide) — indicio de que el modelo copió el
-    número en vez de razonar el horizonte corto. A diferencia de `_flag_corporate_deal_targets`,
-    NO toca `target_price`: es puro telemetría para medir si el prompt mejora con el tiempo.
-    Devuelve (target_consensus_mean, target_echoed_consensus) para que el caller los guarde en
-    `Score`.
-
-    Sin efecto hoy: ya no se le pide target_price al profundo, siempre es None."""
-    target_consensus_mean: dict[str, float] = {}
-    echoed: set[str] = set()
-    for ticker, r in deep.items():
-        mean = data_by_t[ticker].target_mean
-        if r.target_price is None or not mean:
-            continue
-        if abs(r.target_price - mean) / mean < 0.005:
-            echoed.add(ticker)
-            target_consensus_mean[ticker] = mean
-    return target_consensus_mean, echoed
 
 
 def _log_funnel(cadence: str, sample: list, prescored: list, failed: list, finalists: list,

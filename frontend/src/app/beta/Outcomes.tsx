@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import type { OutcomeBook, OutcomeScan, OutcomeStats } from '@/lib/api';
+import { InfoTip } from '@/components/InfoTip';
+import { sortRows, useOrden } from '@/lib/useOrden';
 import { fmtDay, sign } from './helpers';
 import { Details } from './ui';
+
+type OutSortKey = "at" | "cartera" | "seleccionados" | "descartados" | "jev" | "spy";
+const outAccessor = (s: OutcomeScan, key: OutSortKey): string | number | null =>
+  key === "at" ? s.at
+  : key === "spy" ? s.groups.spy
+  : s.groups[key]?.avg ?? null;
 
 /** Un retorno medio de grupo, coloreado por signo y con el tamaño del grupo al lado. */
 export function OutPct({ s }: { s: OutcomeStats }) {
@@ -19,7 +27,10 @@ export function OutPct({ s }: { s: OutcomeStats }) {
 /** Una cohorte de la traza como fila de la tabla. En los observatorios, "en cartera" es la
  *  construcción HIPOTÉTICA de ese martes (nada se compró); el pie de la tabla lo aclara. */
 export function OutRow({ s, pct }: { s: OutcomeScan; pct: (v: number | null) => string }) {
+  const [abierta, setAbierta] = useState(false);
+  const tieneJev = !!s.jev?.length;
   return (
+    <>
     <tr className="border-t border-[#303030]">
       <td className="py-1.5 pr-3">
         del {fmtDay(s.at)} a hoy
@@ -28,9 +39,16 @@ export function OutRow({ s, pct }: { s: OutcomeScan; pct: (v: number | null) => 
       <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.cartera} /></td>
       <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.seleccionados} /></td>
       <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.descartados} /></td>
-      <td className="px-3 py-1.5 text-right"
-          title={s.jev?.length ? s.jev.map((p) => `${p.ticker} ${pct(p.ret)}`).join(" · ") : undefined}>
-        {s.groups.jev ? <OutPct s={s.groups.jev} /> : <span className="text-[#565654]">—</span>}
+      <td className="px-3 py-1.5 text-right">
+        {tieneJev ? (
+          <button onClick={() => setAbierta(!abierta)}
+                  className="inline-flex items-center gap-1 hover:opacity-80">
+            {s.groups.jev ? <OutPct s={s.groups.jev} /> : <span className="text-[#565654]">—</span>}
+            <span className="text-[#6E6E6B]">{abierta ? "▴" : "▾"}</span>
+          </button>
+        ) : (
+          s.groups.jev ? <OutPct s={s.groups.jev} /> : <span className="text-[#565654]">—</span>
+        )}
       </td>
       <td className="px-3 py-1.5 text-right">
         {s.groups.spy == null ? "—" : `${sign(s.groups.spy)}${s.groups.spy.toFixed(1)}%`}
@@ -39,6 +57,20 @@ export function OutRow({ s, pct }: { s: OutcomeScan; pct: (v: number | null) => 
         {s.corte.fuera.n ? `${pct(s.corte.fuera.avg)} / ${pct(s.corte.dentro.avg)}` : "—"}
       </td>
     </tr>
+    {abierta && tieneJev && (
+      <tr className="border-t border-[#232323] bg-[#1c1c1c]">
+        <td colSpan={7} className="px-3 py-1.5 text-[11px] text-[#A3A3A0]">
+          <span className="flex flex-wrap gap-x-3 gap-y-1">
+            {s.jev!.map((p) => (
+              <span key={p.ticker} className="tabular-nums">
+                {p.ticker} <span className="text-[#6E6E6B]">{pct(p.ret)}</span>
+              </span>
+            ))}
+          </span>
+        </td>
+      </tr>
+    )}
+    </>
   );
 }
 
@@ -56,10 +88,14 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
   // entre sí, y el semanal analiza otra franja); los observatorios quedan tras un toggle —
   // siguen alimentando "¿el score predice?", tirarlos del todo sería desperdiciar señal.
   const [verObs, setVerObs] = useState(false);
+  const decisiones = scans.filter((s) => s.mode === "decisión");
+  const observatoriosBase = scans.filter((s) => s.mode !== "decisión");
+  // Un solo control de orden para las dos cohortes -- comparten cabecera y columnas.
+  const { sorted: decisionesOrdenadas, sortKey, sortDir, toggle, ariaSort } =
+    useOrden<OutcomeScan, OutSortKey>(decisiones, outAccessor);
+  const observatorios = sortRows(observatoriosBase, outAccessor, sortKey, sortDir);
   if (!scans.length && !book) return null;
   const pct = (v: number | null) => (v == null ? "—" : `${sign(v)}${v.toFixed(1)}%`);
-  const decisiones = scans.filter((s) => s.mode === "decisión");
-  const observatorios = scans.filter((s) => s.mode !== "decisión");
   const mostrarObs = verObs || (!book && decisiones.length === 0);
   const masVieja = scans.length ? Math.max(...scans.map((s) => s.days)) : 0;
   const diasLibro = book?.since
@@ -80,14 +116,61 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
           <table className="w-full border-collapse whitespace-nowrap tabular-nums">
             <thead>
               <tr className="text-left text-[10px] uppercase tracking-wider text-[#6E6E6B]">
-                <th className="py-1.5 pr-3 font-semibold">Escaneo → hoy</th>
-                <th className="px-3 py-1.5 text-right font-semibold" title="media del grupo desde el precio del día del escaneo; entre paréntesis, cuántos nombres">En cartera</th>
-                <th className="px-3 py-1.5 text-right font-semibold" title="los del top-10 que el constructor dejó sin peso">Elegidos s/fondear</th>
-                <th className="px-3 py-1.5 text-right font-semibold" title="analizados a fondo y no seleccionados">Descartados</th>
-                <th className="px-3 py-1.5 text-right font-semibold" title="cartera mecánica de Jev: top 5 del prescore, máx. 2 por industria, 20% cada una · sombra sin dinero, rentabilidad bruta">Jev (sombra)</th>
-                <th className="px-3 py-1.5 text-right font-semibold" title="el índice en la misma ventana: la vara de medir">S&P 500</th>
-                <th className="px-3 py-1.5 text-right font-semibold" title="los 10 mejores pre-scores que no llegaron al profundo vs los 10 peores que sí entraron">
-                  Corte: fuera / dentro
+                <th className="py-1.5 pr-3 font-semibold" aria-sort={ariaSort("at")}>
+                  <button onClick={() => toggle("at")} aria-label="Ordenar por fecha del escaneo"
+                          className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                    Escaneo → hoy
+                    {sortKey === "at" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                  </button>
+                </th>
+                <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold" aria-sort={ariaSort("cartera")}>
+                  <span className="inline-flex items-center gap-1">
+                    <button onClick={() => toggle("cartera")} aria-label="Ordenar por en cartera"
+                            className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                      En cartera
+                      {sortKey === "cartera" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                    </button>
+                    <InfoTip text="Media del grupo desde el precio del día del escaneo; entre paréntesis, cuántos nombres." /></span>
+                </th>
+                <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold" aria-sort={ariaSort("seleccionados")}>
+                  <span className="inline-flex items-center gap-1">
+                    <button onClick={() => toggle("seleccionados")} aria-label="Ordenar por elegidos sin fondear"
+                            className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                      Elegidos s/fondear
+                      {sortKey === "seleccionados" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                    </button>
+                    <InfoTip text="Los del top-10 que el constructor dejó sin peso." /></span>
+                </th>
+                <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold" aria-sort={ariaSort("descartados")}>
+                  <span className="inline-flex items-center gap-1">
+                    <button onClick={() => toggle("descartados")} aria-label="Ordenar por descartados"
+                            className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                      Descartados
+                      {sortKey === "descartados" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                    </button>
+                    <InfoTip text="Analizados a fondo y no seleccionados." /></span>
+                </th>
+                <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold" aria-sort={ariaSort("jev")}>
+                  <span className="inline-flex items-center gap-1">
+                    <button onClick={() => toggle("jev")} aria-label="Ordenar por Jev sombra"
+                            className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                      Jev (sombra)
+                      {sortKey === "jev" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                    </button>
+                    <InfoTip text="Cartera mecánica de Jev: top 5 del prescore, máx. 2 por industria, 20% cada una · sombra sin dinero, rentabilidad bruta." /></span>
+                </th>
+                <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold" aria-sort={ariaSort("spy")}>
+                  <span className="inline-flex items-center gap-1">
+                    <button onClick={() => toggle("spy")} aria-label="Ordenar por S&P 500"
+                            className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                      S&P 500
+                      {sortKey === "spy" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                    </button>
+                    <InfoTip text="El índice en la misma ventana: la vara de medir." /></span>
+                </th>
+                <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold">
+                  <span className="inline-flex items-center gap-1">Corte: fuera / dentro
+                    <InfoTip text="Los 10 mejores pre-scores que no llegaron al profundo vs los 10 peores que sí entraron." /></span>
                 </th>
               </tr>
             </thead>
@@ -96,10 +179,12 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
                   mercado). La traza no alcanza a la decisión que lo compró, así que esta
                   fila es la única imagen real hasta que las cohortes nuevas maduren. */}
               {book && (
-                <tr className="border-t border-[#303030]"
-                    title="libro real a valor de mercado — anterior al inicio de la traza; el resto de columnas no puede reconstruirse">
+                <tr className="border-t border-[#303030]">
                   <td className="py-1.5 pr-3">
-                    cartera vigente{book.since ? ` · desde el ${fmtDay(book.since)}` : ""}
+                    <span className="inline-flex items-center gap-1">
+                      cartera vigente{book.since ? ` · desde el ${fmtDay(book.since)}` : ""}
+                      <InfoTip text="Libro real a valor de mercado — anterior al inicio de la traza; el resto de columnas no puede reconstruirse." />
+                    </span>
                     {diasLibro != null && <span className="text-[#6E6E6B]"> · {diasLibro} d</span>}
                   </td>
                   <td className="px-3 py-1.5 text-right">
@@ -121,7 +206,7 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
                   <td className="px-3 py-1.5 text-right text-[#565654]">—</td>
                 </tr>
               )}
-              {decisiones.map((s) => <OutRow key={s.at} s={s} pct={pct} />)}
+              {decisionesOrdenadas.map((s) => <OutRow key={s.at} s={s} pct={pct} />)}
               {observatorios.length > 0 && (
                 <tr className="border-t border-[#303030]">
                   <td colSpan={7} className="py-1.5">
@@ -165,11 +250,10 @@ export function ExportButtons({ onExport, msg, label }: {
     <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
       {msg && <span className="mr-auto text-[11px] text-[#6E6E6B]">{msg}</span>}
       <span className="text-[11px] text-[#6E6E6B]">{label ? `${label} · exportar tarjeta` : "Exportar tarjeta"}</span>
-      {([["x", "X", "16:9 · 1600×900"], ["linkedin", "LinkedIn", "1,91:1 · 1200×627"]] as const)
-        .map(([key, netLabel, ratio]) => (
+      {([["x", "X"], ["linkedin", "LinkedIn"]] as const)
+        .map(([key, netLabel]) => (
           <button
             key={key} onClick={() => onExport(key)}
-            title={`PNG ${ratio}, con cabecera, cifras y descargo legal dentro de la imagen`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-[#303030] px-2.5 py-1 text-[11px] font-medium text-[#6E6E6B] transition hover:bg-[#232323] hover:text-[#A3A3A0]"
           >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">

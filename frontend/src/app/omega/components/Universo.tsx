@@ -2,11 +2,19 @@
 // toggle de apagar el ticker).
 import { useEffect, useMemo, useState } from 'react';
 import { money } from '@/lib/format';
+import { useOrden } from '@/lib/useOrden';
 import { setMantenerUniverso } from '../api';
 import { caidaVsAth, costeBase, fmtFecha, fmtRet, TIPO_LABEL } from '../helpers';
 import { MONO, NUMS, T } from '../tokens';
 import type { Senal, Validacion } from '../types';
 import { Toggle } from './ui';
+
+type UniversoSortKey = "ticker" | "sector" | "n" | "media" | "pct_positivas";
+type SenalSortKey = "entry_date" | "tipo" | "entry_price" | "caida_pct" | "caidaAth" | "ret" | "dias" | "caida_max_pct" | "dias_hasta_min";
+const UNIVERSO_COLS: { key: UniversoSortKey; label: string }[] = [
+  { key: "ticker", label: "Ticker" }, { key: "sector", label: "Sector" },
+  { key: "n", label: "n" }, { key: "media", label: "Media" }, { key: "pct_positivas", label: "% pos" },
+];
 
 /** Universo: fusiona lo que antes eran "Validación histórica" + "Universo vigilado" (mismos
  *  34 tickers repetidos en dos acordeones) en una sola tabla. Cada fila abre un modal (16-sep-2026,
@@ -15,21 +23,29 @@ import { Toggle } from './ui';
 export function UniversoTabla({ validacion, onAbrir }: {
   validacion: Validacion[]; onAbrir: (v: Validacion) => void;
 }) {
+  const { sorted, sortKey, sortDir, toggle, ariaSort } =
+    useOrden<Validacion, UniversoSortKey>(validacion, (row, key) => row[key]);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-[11.5px]">
         <thead>
           <tr style={{ color: T.muted }}>
-            {["Ticker", "Sector", "n", "Media", "% pos"].map((h, i) => (
-              <th key={h} className={`whitespace-nowrap px-2.5 pb-2 text-[9px] font-bold uppercase tracking-wide ${i >= 2 ? "text-right" : "text-left"}`}>
-                {h}
+            {UNIVERSO_COLS.map((c, i) => (
+              <th key={c.key} className={`whitespace-nowrap px-2.5 pb-2 text-[9px] font-bold uppercase tracking-wide ${i >= 2 ? "text-right" : "text-left"}`}
+                  aria-sort={ariaSort(c.key)}>
+                <button onClick={() => toggle(c.key)} aria-label={`Ordenar por ${c.label}`}
+                        className="inline-flex items-center gap-0.5 hover:opacity-80"
+                        style={{ color: sortKey === c.key ? T.ink : T.muted }}>
+                  {c.label}
+                  {sortKey === c.key && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                </button>
               </th>
             ))}
             <th />
           </tr>
         </thead>
         <tbody>
-          {validacion.map((v, i) => <UniversoRow key={v.ticker} v={v} first={i === 0} onAbrir={onAbrir} />)}
+          {sorted.map((v, i) => <UniversoRow key={v.ticker} v={v} first={i === 0} onAbrir={onAbrir} />)}
         </tbody>
       </table>
     </div>
@@ -70,6 +86,7 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
   onCambio: (ticker: string, patch: Partial<Validacion>) => void; onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [errToggle, setErrToggle] = useState("");
   const apagado = v.mantener === false;
 
   useEffect(() => {
@@ -80,10 +97,13 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
 
   const toggleMantener = async () => {
     setBusy(true);
+    setErrToggle("");
     try {
       const nuevo = apagado;
       await setMantenerUniverso(v.ticker, nuevo);
       onCambio(v.ticker, { mantener: nuevo });
+    } catch (e) {
+      setErrToggle(e instanceof Error ? e.message : "No se pudo cambiar.");
     } finally {
       setBusy(false);
     }
@@ -102,7 +122,29 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
     ? resueltas.reduce((acc, s) => acc + Number(s.dias), 0) / resueltas.length
     : null;
 
-  const cols = ["Entrada", "Tipo", "Precio", "Caída ref.", "Caída ATH", "Resultado", "Días trade", "Caída máx.", "Días a fondo"];
+  // Filas con "resultado" ya resuelto (depende del precio en vivo, igual que en la fila): se
+  // ordena por ese mismo valor, no por el `ret` crudo guardado.
+  const señalesConRet = señales.map((s) => {
+    const cerradaAMano = s.estado === "vendida" && s.cierre_manual != null;
+    const enCurso = !s.resuelta && !cerradaAMano;
+    const ret = cerradaAMano ? Number(s.cierre_manual!.ret)
+      : enCurso && preciosVivos[s.ticker] != null ? (preciosVivos[s.ticker]! / costeBase(s) - 1) * 100
+      : Number(s.ret);
+    return { ...s, ret, caidaAth: caidaVsAth(s) };
+  });
+  const { sorted: señalesOrdenadas, sortKey: senalSortKey, sortDir: senalSortDir, toggle: toggleSenal, ariaSort: senalAriaSort } =
+    useOrden<typeof señalesConRet[number], SenalSortKey>(señalesConRet, (row, key) => {
+      if (key === "entry_price" || key === "caida_pct" || key === "caida_max_pct") return Number(row[key]);
+      return row[key] as string | number | null;
+    });
+
+  const cols: { key: SenalSortKey; label: string }[] = [
+    { key: "entry_date", label: "Entrada" }, { key: "tipo", label: "Tipo" },
+    { key: "entry_price", label: "Precio" }, { key: "caida_pct", label: "Caída ref." },
+    { key: "caidaAth", label: "Caída ATH" }, { key: "ret", label: "Resultado" },
+    { key: "dias", label: "Días trade" }, { key: "caida_max_pct", label: "Caída máx." },
+    { key: "dias_hasta_min", label: "Días a fondo" },
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6" onClick={onClose}>
@@ -126,16 +168,21 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
             <table className="w-full text-[10.5px]" style={{ minWidth: 720 }}>
               <thead>
                 <tr style={{ color: T.muted }}>
-                  {cols.map((h, i) => (
-                    <th key={h} className={`sticky top-0 whitespace-nowrap px-1.5 pb-1.5 text-[8.5px] font-bold uppercase tracking-wide ${i >= 2 ? "text-right" : "text-left"}`}
-                        style={{ background: T.panel }}>
-                      {h}
+                  {cols.map((c, i) => (
+                    <th key={c.key} className={`sticky top-0 whitespace-nowrap px-1.5 pb-1.5 text-[8.5px] font-bold uppercase tracking-wide ${i >= 2 ? "text-right" : "text-left"}`}
+                        style={{ background: T.panel }} aria-sort={senalAriaSort(c.key)}>
+                      <button onClick={() => toggleSenal(c.key)} aria-label={`Ordenar por ${c.label}`}
+                              className="inline-flex items-center gap-0.5 hover:opacity-80"
+                              style={{ color: senalSortKey === c.key ? T.ink : T.muted }}>
+                        {c.label}
+                        {senalSortKey === c.key && <span className="text-[8px]">{senalSortDir === "desc" ? "↓" : "↑"}</span>}
+                      </button>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {señales.map((s, i) => (
+                {señalesOrdenadas.map((s, i) => (
                   <UniversoSenalRow key={s.id} s={s} first={i === 0} precioVivo={preciosVivos[s.ticker] ?? null} />
                 ))}
               </tbody>
@@ -174,6 +221,7 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
             </span>
             <Toggle checked={!apagado} onChange={toggleMantener} disabled={busy} />
           </div>
+          {errToggle && <p className="mt-1.5 text-[11px]" style={{ color: T.bad }}>{errToggle}</p>}
         </div>
       </div>
     </div>
@@ -184,12 +232,14 @@ export function UniversoSenalRow({ s, first, precioVivo }: { s: Senal; first: bo
   const celda = "px-1.5 py-1.5";
   const borde = !first ? { borderTop: `1px solid ${T.grid}` } : undefined;
 
-  const cerradaAMano = s.estado === "vendida" && !s.resuelta && s.cierre_manual != null;
+  const cerradaAMano = s.estado === "vendida" && s.cierre_manual != null;
   const enCurso = !s.resuelta && !cerradaAMano;
   const ret = cerradaAMano ? Number(s.cierre_manual!.ret)
     : enCurso && precioVivo != null ? (precioVivo / costeBase(s) - 1) * 100
     : Number(s.ret);
-  const motivoTxt = cerradaAMano ? "cerrada a mano"
+  const solo = cerradaAMano && s.cierre_manual!.ret_sistema != null
+    ? Number(s.cierre_manual!.ret_sistema) : null;
+  const motivoTxt = cerradaAMano ? (solo != null ? `a mano · solo ${fmtRet(solo)}` : "cerrada a mano")
     : enCurso ? (s.estado === "descartada" ? "descartada, en curso" : "en curso")
     : s.motivo === "objetivo" ? "objetivo" : s.motivo === "tiempo" ? "90 días" : "-";
 

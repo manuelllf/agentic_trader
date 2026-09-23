@@ -2,7 +2,6 @@
 dos re-pasadas baratas (recheck/redeep) que no vuelven a escanear el universo."""
 from __future__ import annotations
 
-import json
 import re
 from typing import Literal
 
@@ -10,11 +9,11 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app import pipeline, scan_audit, scan_config
+from app import pipeline, scan_audit, scan_config, scan_state
 from app.auth import auth_optional
 from app.config import settings
 from app.db import get_db
-from app.models import Meta, utc_iso
+from app.models import utc_iso
 
 public_router = APIRouter()   # sin token: lecturas y teaser de la portada
 router = APIRouter()          # exige require_auth (montado en app/api/routes.py)
@@ -150,7 +149,7 @@ def scan_progress_status(authed: bool = Depends(auth_optional)) -> dict:
 
 @public_router.get("/scan/report")
 def scan_report(db: Session = Depends(get_db), authed: bool = Depends(auth_optional)) -> dict:
-    """Informe del ÚLTIMO escaneo (cron o manual), persistido en la BD: modo, universo,
+    """Informe del ÚLTIMO escaneo (cron o manual), leído de `scan_runs`: modo, universo,
     contadores, coste e incidencias — o el error si reventó entero. A diferencia de
     /demo/status (estado en memoria del runner manual), esto sobrevive a reinicios y también
     lo escribe el cron.
@@ -160,12 +159,8 @@ def scan_report(db: Session = Depends(get_db), authed: bool = Depends(auth_optio
     `jev_cartera` (nombres de la cartera de Jev) y `outlook`, que en escaneos viejos es texto
     libre del modelo y puede citar nombres.
     """
-    row = db.get(Meta, "last_scan_report")
-    if row is None:
-        return {"report": None}
-    try:
-        report = json.loads(row.value)
-    except ValueError:
+    report = scan_state.informe(db)
+    if report is None:
         return {"report": None}
     if not authed:
         report = {**report, "changes": [], "outlook": None, "jev_cartera": []}
@@ -223,16 +218,21 @@ def scan_full(at: str | None = None, db: Session = Depends(get_db)) -> dict:
     """
     from datetime import datetime
 
-    from app.models import ScanRun
+    from app.models import ScanRun, ScanRunMacroHeadline
 
-    q = db.query(ScanRun)
+    q = db.query(ScanRun).filter(ScanRun.error.is_(None))   # uno reventado no tiene qué mostrar
     row = (q.filter(ScanRun.scan_at == datetime.fromisoformat(at)).first() if at
            else q.order_by(ScanRun.scan_at.desc()).first())
     if row is None:
         return {"scan": None}
+    titulares = (db.query(ScanRunMacroHeadline).filter_by(scan_run_id=row.id)
+                 .order_by(ScanRunMacroHeadline.fuente, ScanRunMacroHeadline.posicion).all())
     return {"scan": {
         "at": utc_iso(row.scan_at), "cadence": row.cadence, "decide": row.decide,
         "regime": row.regime, "vix": row.vix, "outlook": row.outlook,
+        # El resto del bloque macro que vio el profundo/constructor (E), tal cual.
+        "macro_calendario": row.macro_wiki_scheduled, "macro_eventos": row.macro_wiki_events,
+        "macro_titulares": [{"fuente": t.fuente, "texto": t.texto} for t in titulares],
         "universe": row.universe, "counters": row.counters, "cost": row.cost,
         "issues": row.issues, "finalists": row.finalists, "construction": row.construction,
     }}

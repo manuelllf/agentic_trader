@@ -23,6 +23,7 @@ import {
   type ScanReport,
 } from "@/lib/api";
 import HistoryChart from "@/components/HistoryChart";
+import { InfoTip } from "@/components/InfoTip";
 import type {
   DemoStatus,
   HistoryPoint,
@@ -37,6 +38,7 @@ import type {
 import SalaDoor from "@/components/SalaDoor";
 import { fmtScore, fmtTime, money } from "@/lib/format";
 import { richText } from "@/lib/richText";
+import { useOrden } from "@/lib/useOrden";
 import {
   cascada, fmtNum, fmtScanCost, sectoresTop, universoLinea, type FunnelScan,
 } from "@/lib/scan";
@@ -89,6 +91,8 @@ function nextDecisionLabel(): string {
   if (d.getTime() <= now.getTime()) d = firstTue(now.getFullYear(), now.getMonth() + 1);
   return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
 }
+
+type PosSortKey = "label" | "weightPct" | "avg_cost" | "price" | "value" | "pct";
 
 /* ---------- page ---------- */
 export default function SombraDashboard() {
@@ -425,6 +429,21 @@ export default function SombraDashboard() {
   const investedPct = equity > 0 && ledger ? (Number(ledger.positions_value) / equity) * 100 : 0;
   const watchTop = [...watch].sort((a, b) => b.score - a.score);
 
+  // Filas de la cartera con sus valores derivados ya calculados, para poder ordenar por ellos.
+  const positionRows = (perf?.positions ?? []).map((p, i) => ({
+    p, i,
+    label: anon ? (p.label ?? `Posición ${i + 1}`) : (p.ticker ?? p.label ?? `Posición ${i + 1}`),
+    weightPct: !anon && equity > 0 && p.value ? (Number(p.value) / equity) * 100 : null,
+    avg_cost: p.avg_cost != null ? Number(p.avg_cost) : null,
+    price: p.price != null ? Number(p.price) : null,
+    value: p.value != null ? Number(p.value) : null,
+    pct: p.pnl_pct ?? p.unrealized_pct ?? 0,
+  }));
+  const {
+    sorted: sortedPositionRows, sortKey: posSortKey, sortDir: posSortDir,
+    toggle: togglePosSort, ariaSort: posAriaSort,
+  } = useOrden<typeof positionRows[number], PosSortKey>(positionRows, (row, key) => row[key]);
+
   // Carga completa (primer montaje o volver a la pestaña tras un rato fuera): nada de la sala
   // se pinta hasta que todo llegue a la vez, mismo criterio que Alpha.
   // Primera carga: nada montado todavía, un `return` completo no pierde ningún estado.
@@ -591,28 +610,70 @@ export default function SombraDashboard() {
                 <table className="w-full border-collapse whitespace-nowrap text-xs tabular-nums">
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-wider text-[#6E6E6B]">
-                      <th className="py-2 pr-3 font-semibold">Posición</th>
-                      {!anon && <th className="px-3 py-2 text-right font-semibold">Peso</th>}
-                      {!anon && <th className="px-3 py-2 text-right font-semibold">Coste medio</th>}
-                      {!anon && <th className="px-3 py-2 text-right font-semibold">Último</th>}
-                      {!anon && <th className="px-3 py-2 text-right font-semibold">Valor</th>}
-                      <th className="px-3 py-2 text-right font-semibold">P&L</th>
+                      <th className="py-2 pr-3 font-semibold" aria-sort={posAriaSort("label")}>
+                        <button onClick={() => togglePosSort("label")} aria-label="Ordenar por posición"
+                                className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                          Posición
+                          {posSortKey === "label" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
+                        </button>
+                      </th>
+                      {!anon && (
+                        <th className="px-3 py-2 text-right font-semibold" aria-sort={posAriaSort("weightPct")}>
+                          <button onClick={() => togglePosSort("weightPct")} aria-label="Ordenar por peso"
+                                  className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                            Peso
+                            {posSortKey === "weightPct" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
+                          </button>
+                        </th>
+                      )}
+                      {!anon && (
+                        <th className="px-3 py-2 text-right font-semibold" aria-sort={posAriaSort("avg_cost")}>
+                          <button onClick={() => togglePosSort("avg_cost")} aria-label="Ordenar por coste medio"
+                                  className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                            Coste medio
+                            {posSortKey === "avg_cost" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
+                          </button>
+                        </th>
+                      )}
+                      {!anon && (
+                        <th className="px-3 py-2 text-right font-semibold" aria-sort={posAriaSort("price")}>
+                          <button onClick={() => togglePosSort("price")} aria-label="Ordenar por último precio"
+                                  className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                            Último
+                            {posSortKey === "price" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
+                          </button>
+                        </th>
+                      )}
+                      {!anon && (
+                        <th className="px-3 py-2 text-right font-semibold" aria-sort={posAriaSort("value")}>
+                          <button onClick={() => togglePosSort("value")} aria-label="Ordenar por valor"
+                                  className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                            Valor
+                            {posSortKey === "value" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
+                          </button>
+                        </th>
+                      )}
+                      <th className="px-3 py-2 text-right font-semibold" aria-sort={posAriaSort("pct")}>
+                        <button onClick={() => togglePosSort("pct")} aria-label="Ordenar por P&L"
+                                className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
+                          P&L
+                          {posSortKey === "pct" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
+                        </button>
+                      </th>
                       <th className="w-6 py-2" />
                     </tr>
                   </thead>
                   <tbody>
-                    {perf.positions.map((p, i) => {
+                    {sortedPositionRows.map(({ p, i, label, weightPct }) => {
                       const up = Number(p.unrealized_pnl);
                       const pct = p.pnl_pct ?? p.unrealized_pct ?? 0;
                       const srow = p.ticker ? scores.find((s) => s.ticker === p.ticker) : undefined;
-                      const label = anon ? (p.label ?? `Posición ${i + 1}`) : p.ticker;
-                      const w = !anon && equity > 0 && p.value ? (Number(p.value) / equity) * 100 : null;
                       const open = !anon && openPos === p.ticker;
                       return (
                         <PositionRows
                           key={label ?? i} anon={anon} color={POS_COLOR[i % POS_COLOR.length]}
                           label={label ?? `Posición ${i + 1}`} sector={srow?.sector} pos={p}
-                          weightPct={w} up={up} pct={pct} open={open} srow={srow}
+                          weightPct={weightPct} up={up} pct={pct} open={open} srow={srow}
                           onToggle={() => p.ticker && setOpenPos(open ? null : p.ticker)}
                         />
                       );
@@ -758,13 +819,13 @@ export default function SombraDashboard() {
                   {watchTop.length > 0 && (
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       {watchTop.slice(0, 10).map((w) => (
-                        <button
-                          key={w.ticker} title={w.thesis}
-                          onClick={() => { setSectorF(null); setQ(w.ticker); }}
-                          className="inline-flex items-center gap-1 rounded-md bg-[#232323] px-2 py-0.5 text-[11px] font-medium text-[#A3A3A0] ring-1 ring-inset ring-white/10 transition hover:bg-[#1C1C1C] hover:ring-white/15"
-                        >
-                          {w.ticker}<span className="tabular-nums text-[#6E6E6B]">{fmtScore(w.score)}</span>
-                        </button>
+                        <span key={w.ticker} className="inline-flex items-center gap-1">
+                          <button onClick={() => { setSectorF(null); setQ(w.ticker); }}
+                                  className="inline-flex items-center gap-1 rounded-md bg-[#232323] px-2 py-0.5 text-[11px] font-medium text-[#A3A3A0] ring-1 ring-inset ring-white/10 transition hover:bg-[#1C1C1C] hover:ring-white/15">
+                            {w.ticker}<span className="tabular-nums text-[#6E6E6B]">{fmtScore(w.score)}</span>
+                          </button>
+                          {w.thesis && <InfoTip text={w.thesis} />}
+                        </span>
                       ))}
                       {watchTop.length > 10 && (
                         <span className="text-[11px] text-[#6E6E6B]">+{watchTop.length - 10} en seguimiento</span>

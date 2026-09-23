@@ -60,21 +60,21 @@ from app.models import (
     ProposalItem,
     ProposalOmitted,
     ScanRun,
+    ScanRunChange,
     ScanRunConstructionItem,
     ScanRunConstructionOmitted,
     ScanRunFailure,
     ScanRunFinalist,
     ScanRunFinalistNews,
     ScanRunIssue,
+    ScanRunJevItem,
     ScanRunMacroHeadline,
     ScanRunTiming,
     Score,
 )
 from app.scan_guardrails import (
     _aparta_opadas,
-    _flag_consensus_echo,
     _flag_constructor_backfill,
-    _flag_corporate_deal_targets,
     _lista,
     _log_funnel,
 )
@@ -85,7 +85,7 @@ from app.scan_persist import (
     _guardar_trade_items,
     _llm_usage,
 )
-from app.scan_state import _advance_scan_cursor, _memory_store, _scan_cursor, _write_scan_report
+from app.scan_state import _advance_scan_cursor, _memory_store, _scan_cursor
 from app.screener import fundamentals as fund_mod
 from app.screener import macro as macro_mod
 from app.screener import universe as universe_mod
@@ -125,6 +125,9 @@ else:
 # suele resolverse solo si se le da un respiro; reintentar sin esperar nada choca casi seguro
 # contra la misma ventana de rate limit.
 _RETRY_BACKOFF_S = 2.0
+# Proveedor de prescore caído (clave inválida, outage): sin este corte, cada uno de los ~3.000
+# nombres agota sus 2 reintentos igual, machacando un proveedor que ya no responde.
+_PRESCORE_CORTE_FALLOS = 50
 # Gather: 4 hilos vía yahoo_scraper (validado 100% limpio a 3.000/3.000 tickers reales, en
 # local, 24-ago-2026). 6 hilos ya cae a ~85% (bloqueo de Yahoo); 4 es el techo con margen.
 _GATHER_WORKERS = 4
@@ -431,25 +434,39 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     if not macro.get("datos"):
         issues.append("Datos de mercado del macro no disponibles (Yahoo): el bloque va sin ellos.")
 
-    # C.4: mediana de P/E por sector calculada sobre ESTE universo, con el mismo campo con el
-    # que se puntúa. Nunca de una fuente externa — mezclar metodologías daba el doble de
-    # diferencia en financieras. Va como dato pegado al P/E, sin instrucción.
-    medianas = (fund_mod.medianas_pe_por_sector(datos_ok)
-                if settings.sector_median_in_prompt else {})
-
     # 4) PASO 1 — prescore rápido (Flash) en lotes. Agrupa sobrecarga fija de llamadas.
     # Reintento lote (hasta 2 extra) vive en scorer.prescore_batch(), no aquí.
     _prescore_kw = _sampling_kwargs(prescore_cfg)
 
+    # Racha de fallos seguidos en `_pre_uno` = proveedor caído, no mala suerte por ticker.
+    # Lo comparten los hilos del pool, de ahí el lock.
+    _corte_lock = threading.Lock()
+    _corte_estado = {"consecutivos": 0, "cortado": False, "ultimo_error": None}
+
     def _pre_uno(d):
-        # Sin `medianas`: el prescore ya no compara contra la mediana de sector (ver
-        # `scorer._prescore_prompt`) -- capa media/profundo abajo sí la siguen usando.
+        if _corte_estado["cortado"]:
+            # Ya cortado: ni una llamada más al proveedor para los nombres aún sin arrancar.
+            return [(scorer_mod.PrescoreResult(
+                d.ticker, 0.0, error="Prescore cortado: proveedor caído"), d)]
         p = scorer_mod.prescore_one(prescore_llm, d, macro_block_pre, **_prescore_kw)
         for _ in range(2):   # mismo criterio que capa media/profundo: DOS reintentos, no uno
             if not p.error:
                 break
             p = scorer_mod.prescore_one(prescore_llm, d, macro_block_pre, **_prescore_kw)
         scan_progress.tick(ok=not p.error, reason=f"{p.ticker}: {p.error}" if p.error else None)
+        with _corte_lock:
+            if p.error:
+                _corte_estado["consecutivos"] += 1
+                _corte_estado["ultimo_error"] = p.error
+                if _corte_estado["consecutivos"] >= _PRESCORE_CORTE_FALLOS:
+                    if not _corte_estado["cortado"]:
+                        logger.error(
+                            "Prescore cortado: %d nombres seguidos fallaron (¿proveedor caído o "
+                            "clave inválida?). Último error: %s",
+                            _PRESCORE_CORTE_FALLOS, p.error)
+                    _corte_estado["cortado"] = True
+            else:
+                _corte_estado["consecutivos"] = 0
         return [(p, d)]
 
     def _pre_lote(lote: list):
@@ -495,6 +512,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             ex.shutdown(wait=False, cancel_futures=True)
     if cancelado:
         raise ScanCancelado("Escaneo cancelado por el usuario durante el prescore.")
+    if _corte_estado["cortado"]:
+        raise RuntimeError(
+            f"Prescore cortado: {_PRESCORE_CORTE_FALLOS} nombres seguidos fallaron (¿proveedor "
+            f"caído o clave inválida?). Último error: {_corte_estado['ultimo_error']}"
+        )
     timings["prescore"] = round(time.monotonic() - t0, 1)
     logger.info("Escaneo: PRESCORE completado en %.1fs.", timings["prescore"])
     results = [par for lote_res in por_lote for par in lote_res]   # aplanado, 1 par por ticker
@@ -539,14 +561,12 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         _mid_kw = _sampling_kwargs(mid_cfg)
 
         def _mid(ticker: str):
-            p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block,
-                                        medianas=medianas, **_mid_kw)
+            p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block, **_mid_kw)
             for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
                 if not p.error:
                     break
                 time.sleep(_RETRY_BACKOFF_S)
-                p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block,
-                                            medianas=medianas, **_mid_kw)
+                p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block, **_mid_kw)
             scan_progress.tick(ok=not p.error, reason=f"{ticker}: {p.error}" if p.error else None)
             return p
 
@@ -579,14 +599,12 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     _deep_kw = _sampling_kwargs(deep_cfg)
 
     def _deep(ticker: str):
-        r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, medianas=medianas,
-                             **_deep_kw)
+        r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, **_deep_kw)
         for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
             if not r.error:
                 break
             time.sleep(_RETRY_BACKOFF_S)
-            r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, medianas=medianas,
-                                 **_deep_kw)
+            r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, **_deep_kw)
         return r
 
     _revisar_cancelado(cancel_event)
@@ -622,13 +640,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         issues.append("Informe profundo no parseable tras reintento (fuera del ranking): "
                       + detalle)
 
-    # Guardarraíl de operación corporativa: corrige `target_price` EN SITIO antes de que nada
-    # aguas abajo (mapa de objetivos, upside, selección) lo use. Ver docstring de la función.
-    target_raw, target_flagged = _flag_corporate_deal_targets(deep, data_by_t, issues)
-    # Guardarraíl de eco de consenso: se calcula DESPUÉS del de arriba, sobre el target_price ya
-    # corregido si aplicó — solo telemetría, no cambia nada aguas abajo.
-    target_consensus_mean, target_echoed = _flag_consensus_echo(deep, data_by_t)
-
     price_map = {d.ticker: d.price for _p, d in prescored if d.price}
     instr_prices = instruments_mod.prices()        # {} si el allowlist UCITS está vacío
     price_map.update(instr_prices)
@@ -657,9 +668,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 headline=d.headline, report=d.report,
                 price=data.price, market_cap=data.market_cap, target_price=d.target_price,
                 held=ticker in held, on_watchlist=ticker in watch,  # provisional: resella al final
-                target_raw=target_raw.get(ticker), target_flagged=ticker in target_flagged,
-                target_consensus_mean=target_consensus_mean.get(ticker),
-                target_echoed_consensus=ticker in target_echoed,
                 under_acquisition=d.under_acquisition,
             )
             db.add(score_row)
@@ -675,10 +683,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             row.score, row.headline, row.report = d.score, d.headline, d.report
             row.price, row.market_cap = data.price, data.market_cap
             row.target_price, row.sector = d.target_price, data.sector
-            row.target_raw = target_raw.get(ticker)
-            row.target_flagged = ticker in target_flagged
-            row.target_consensus_mean = target_consensus_mean.get(ticker)
-            row.target_echoed_consensus = ticker in target_echoed
             row.under_acquisition = d.under_acquisition
             _guardar_news_used(db, row.id, data.news)
             refreshed += 1
@@ -882,13 +886,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         # Duración por fase, segundos (ver `timings` arriba) — clave ausente = fase no corrió.
         "timings": timings,
     }
-    try:   # el informe jamás debe tirar un escaneo ya completado
-        _write_scan_report(db, mode=modo, result=result, issues=issues, changes=changes)
-    except Exception:
-        logger.exception("No se pudo persistir el informe del escaneo.")
     try:
-        # Fila HISTÓRICA (nunca se pisa). `finalists`/`construction`: recuperación completa del
-        # escaneo, decida o no — `Proposal` solo existe cuando decide=True.
+        # Fila HISTÓRICA (nunca se pisa) y además el informe de `/scan/report`. `finalists`/
+        # `construction`: recuperación completa, decida o no — `Proposal` solo existe al decidir.
         pre_map = {p.ticker: p.score for p, _d in prescored}
         selected_set = {r.ticker for r in selected}
         funded_map = {p.ticker: p.weight_pct for p in construction.positions}
@@ -908,9 +908,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 "selected": t in selected_set, "funded": t in funded_map,
                 "weight_pct": funded_map.get(t),
                 "error": analizados[t].error if t in deep_caidos else None,
-                "target_raw": target_raw.get(t), "target_flagged": t in target_flagged,
-                "target_consensus_mean": target_consensus_mean.get(t),
-                "target_echoed_consensus": t in target_echoed,
                 "under_acquisition": deep[t].under_acquisition if t in deep else None,
             }
             for t in finalists
@@ -924,7 +921,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         )
         coste = result["cost"]
         run = ScanRun(
-            cadence=cadence, decide=decide, regime=macro.get("regime") or "",
+            cadence=cadence, decide=decide, refreshed=result["refreshed"],
+            regime=macro.get("regime") or "",
             vix=macro.get("vix"), outlook=macro.get("datos") or "", jev_macro=jev_macro,
             universe_fuente=universo_info["fuente"], universe_at=universo_info["at"],
             universe_dias=universo_info["dias"], universe_size=universo_info["size"],
@@ -953,6 +951,12 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             db.add(ScanRunTiming(scan_run_id=run.id, fase=fase, segundos=segundos))
         for i, texto in enumerate(issues):
             db.add(ScanRunIssue(scan_run_id=run.id, posicion=i, texto=texto))
+        for i, texto in enumerate(changes):
+            db.add(ScanRunChange(scan_run_id=run.id, posicion=i, texto=texto))
+        for i, j in enumerate(result["jev_cartera"]):
+            db.add(ScanRunJevItem(scan_run_id=run.id, posicion=i, ticker=j["ticker"],
+                                  industry=(j["industry"] or "")[:64], score=j["score"],
+                                  confidence=j["confidence"], weight_pct=j["weight_pct"]))
         for f in failures_detail:
             db.add(ScanRunFailure(scan_run_id=run.id, ticker=f["ticker"], etapa=f["etapa"],
                                   error=f["error"], raw=f["raw"]))

@@ -8,8 +8,8 @@ pidiendo un crumb que Yahoo nunca le da hasta que alguien acepta el consentimien
 
 Esto resuelve el consentimiento UNA vez por proceso (`consentir_y_crumb`), pide UN crumb y lo
 reutiliza para todo el escaneo (miles de peticiones), y llama a los mismos endpoints que usa
-yfinance por debajo (`v10/finance/quoteSummary`, `v8/finance/chart`, el mismo XHR de noticias
-de finance.yahoo.com) en vez de reinventar la API.
+yfinance por debajo (`v10/finance/quoteSummary`, el mismo XHR de noticias de finance.yahoo.com)
+en vez de reinventar la API.
 
 Concurrencia y ritmo (MEDIDOS en vivo contra Yahoo, no estimados): 2 hilos trabajadores + una
 pausa de 0,35-0,4s por hilo entre sus propias peticiones dieron 2.991/3.000 (99,7%) de éxito en
@@ -29,7 +29,6 @@ import re
 import time
 from typing import TYPE_CHECKING
 
-import pandas as pd
 from curl_cffi import requests as creq
 
 if TYPE_CHECKING:
@@ -99,38 +98,6 @@ def _sin_raw(valor: object) -> object:
     if isinstance(valor, dict) and "raw" in valor:
         return valor["raw"]
     return valor
-
-
-def _historico(s: creq.Session, ticker: str) -> pd.DataFrame | None:
-    """Histórico de 1 año/diario vía `v8/finance/chart` — mismo rango que
-    `yt.history(period="1y", interval="1d")` del gather de yfinance. NO fatal: si falla, el
-    técnico se construye sin histórico, mismo criterio de tolerancia que el bloque
-    try/except de `fundamentals.gather()` (un histórico caído no invalida el resto del nombre)."""
-    try:
-        # query2, no query1: es el subdominio que se usó en la tirada de 3.000 que dio 99,7%
-        # — mismo servicio (Yahoo balancea entre los dos), pero solo query2 está medido en vivo
-        # a este volumen; el crumb (otro endpoint, otro comportamiento) sí se pidió por query1.
-        url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}"
-        r = s.get(url, params={"range": "1y", "interval": "1d"}, timeout=15)
-        if r.status_code != 200:
-            return None
-        payload = r.json()
-        result = (payload.get("chart") or {}).get("result") or []
-        if not result:
-            return None
-        ch = result[0]
-        ts = ch.get("timestamp") or []
-        if not ts:
-            return None
-        quote = ((ch.get("indicators") or {}).get("quote") or [{}])[0]
-        adj = ((ch.get("indicators") or {}).get("adjclose") or [{}])[0]
-        # adjclose (ajustado a splits/dividendos) con fallback al close crudo del quote, igual que
-        # yfinance con `auto_adjust=True`.
-        closes = adj.get("adjclose") or quote.get("close") or []
-        hist = pd.DataFrame({"close": closes}, index=pd.to_datetime(ts, unit="s")).dropna()
-        return hist if not hist.empty else None
-    except Exception:
-        return None
 
 
 def _news_desde_stream(stream: list[dict], max_items: int = 8) -> list[str]:
@@ -218,7 +185,7 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str,
     from app.screener import fundamentals as fund_mod  # perezoso: evita el ciclo de imports
 
     q = query_symbol or ticker
-    # query2 (no query1): mismo motivo que en `_historico` — es lo medido en vivo a 3.000/3.000.
+    # query2 (no query1): es lo medido en vivo a 3.000/3.000.
     url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{q}"
     params = {"modules": MODULES, "corsDomain": "finance.yahoo.com", "crumb": crumb,
              "formatted": "false"}
@@ -266,20 +233,20 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str,
     if not (info.get("sector") or info.get("marketCap") or info.get("shortName")):
         return None, "sin sector/marketCap/shortName en quoteSummary (vacío o deslistado)"
 
-    hist = _historico(s, q)
     news = _noticias(s, q)
 
     price = info.get("currentPrice") or info.get("regularMarketPrice")
     mcap = info.get("marketCap")
     target_high = info.get("targetHighPrice")
     target_mean = info.get("targetMeanPrice")
+    precio_num = fund_mod.numero_finito(price)
     data = fund_mod.NameData(
         ticker=ticker,
         sector=info.get("sector", "n/d"),
         industry=info.get("industry", "n/d"),
-        price=fund_mod.numero_finito(price),
+        price=precio_num,
         fundamentals_text=fund_mod._fundamentals_text(info, db=db),
-        technical_text=fund_mod._technical_text(info, hist),
+        technical_text=fund_mod._technical_text(info, precio_num),
         market_cap=fund_mod.numero_finito(mcap),
         news=news,
         earnings_text=fund_mod._earnings_text(info),

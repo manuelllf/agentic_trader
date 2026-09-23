@@ -40,7 +40,7 @@ def _scan_job() -> None:
     except Exception as exc:
         logger.exception("Fallo en el job de escaneo")
         try:
-            write_scan_failure(db, exc)   # sin esto, un cron caído es invisible en la web
+            write_scan_failure(db, exc, decide=True)   # sin esto, un cron caído es invisible
         except Exception:
             logger.exception("Tampoco se pudo persistir el informe del fallo.")
     finally:

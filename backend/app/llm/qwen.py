@@ -24,7 +24,7 @@ from app.llm.trace import CallRecord, current_ticker
 _HARD_TIMEOUT = 180.0
 
 # USD por 1M de tokens (input, output). docs.qwencloud.com, hasta 32K de contexto -- revisar si
-# el prompt real del prescore (fundamentales + macro + medianas) se acerca a ese tope.
+# el prompt real del prescore (fundamentales + macro) se acerca a ese tope.
 _PRICING: dict[str, tuple[float, float]] = {
     "qwen3.7-flash": (0.03, 0.13),
 }

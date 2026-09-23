@@ -112,10 +112,16 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
     # `currentPrice` no es uno de los ~85 (viaja aparte, ya materializado en `row.price`) — se
     # inyecta solo para esta llamada, no contamina `fundamentales_crudos` del resultado.
     texto = _fundamentals_text({**metricas_crudas, "currentPrice": row.price}, db=db)
+    # `technical_text` igual: reconstruido con la MISMA función, no leído de la columna (ya no
+    # se escribe -- ver `_technical_text`). 52w viene de la foto, beta ya está en `metricas_crudas`.
+    tecnico = _technical_text(
+        {**metricas_crudas, "fiftyTwoWeekLow": row.low_52w, "fiftyTwoWeekHigh": row.high_52w},
+        row.price,
+    )
     return NameData(
         ticker=row.ticker, sector=row.sector or "n/d", industry=row.industry or "n/d",
         price=row.price, fundamentals_text=texto,
-        technical_text=row.technical_text or "", market_cap=row.market_cap,
+        technical_text=tecnico, market_cap=row.market_cap,
         news=noticias, earnings_text=row.earnings_text or "", name=row.name or "",
         target_high=row.target_high, target_mean=row.target_mean,
         pe_trailing=row.pe_trailing, pe_forward=row.pe_forward,
@@ -229,7 +235,7 @@ def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False) -> N
             target_high=data.target_high, target_mean=data.target_mean,
             pe_trailing=data.pe_trailing, pe_forward=data.pe_forward,
             high_52w=data.high_52w, low_52w=data.low_52w,
-            technical_text=data.technical_text, earnings_text=data.earnings_text,
+            earnings_text=data.earnings_text,
             es_dataset=es_dataset, currency=data.currency,
             financial_currency=data.fundamentales_crudos.get("financialCurrency"),
             market_cap_usd=_market_cap_usd(db, data.market_cap, data.currency),
@@ -373,12 +379,11 @@ class NameData:
     news: list[str] = field(default_factory=list)
     earnings_text: str = ""           # próxima fecha de resultados — dato para el PROFUNDO
     name: str = ""                      # nombre corto de la empresa
-    # target_high/target_mean: consenso de analistas, SOLO para los guardarraíles deterministas
-    # (target_flagged, `_flag_consensus_echo`) — desde el 19-ago ya NO viajan a ningún prompt.
+    # target_high/target_mean: consenso de analistas, NUNCA viajan a ningún prompt.
     target_high: float | None = None    # objetivo máximo del consenso, como NUMERO
     target_mean: float | None = None    # objetivo MEDIO del consenso, como NUMERO
     # Los mismos números que ya van dentro de `fundamentals_text`/`technical_text`, pero como
-    # NÚMERO: el texto no se puede agregar (mediana de P/E por sector, distancia al máximo).
+    # NÚMERO: el texto no se puede agregar (distancia al máximo, comparativas).
     pe_trailing: float | None = None
     pe_forward: float | None = None
     high_52w: float | None = None
@@ -420,58 +425,6 @@ def metricas(info: dict) -> dict:
         "low_52w": _num(info, "fiftyTwoWeekLow"),
         "currency": info.get("currency") or None,
     }
-
-
-# Mínimo de nombres para publicar la mediana de un sector: con 3 o 4 la mediana la mueve
-# cualquiera. Es el mismo suelo con el que se midieron las medianas del A/B.
-_MIN_POR_SECTOR = 6
-
-# "n/d" es el relleno que pone `gather()` cuando la fuente no trae sector, y el scraper puede
-# devolverlo vacío -- ninguno de los dos es un sector contra el que comparar un P/E.
-_NO_SECTOR = {"", "n/d", "none", "null"}
-
-
-def es_sector(valor: str | None) -> bool:
-    """False para ausencias disfrazadas de sector ("n/d", vacío): agruparlas da una "mediana del
-    sector desconocido" que no significa nada y que el prompt pegaría al P/E como si fuera real."""
-    return bool(valor) and valor.strip().lower() not in _NO_SECTOR
-
-
-def medianas_pe_por_sector(datos: list[NameData]) -> dict[str, dict[str, float]]:
-    """Mediana de P/E trailing Y forward por sector, calculada sobre el UNIVERSO PROPIO.
-
-    Nunca de una fuente externa: el numerador (`trailingPE`/`forwardPE` de yfinance) y el sector
-    salen de aquí, y mezclar metodologías da el doble de diferencia (Financial Services: 14,46
-    propio vs 7,35 de un agregado externo). Mediana y no media: un P/E de 300 no la destroza.
-    `{sector: {"trailing": x, "forward": y}}` — una clave falta si ese sector no llegó a
-    `_MIN_POR_SECTOR` muestras para ESE campo (trailing y forward pueden fallar por separado,
-    un nombre puede traer uno y no el otro).
-
-    Sesgo conocido y sin esconder: con el universo cortado a los ~3.000 de más volumen, esto es
-    la mediana de las GRANDES capitalizaciones del sector, no la del sector entero.
-    """
-    import statistics
-    from collections import defaultdict
-
-    trailing: dict[str, list[float]] = defaultdict(list)
-    forward: dict[str, list[float]] = defaultdict(list)
-    for d in datos:
-        if not es_sector(d.sector):
-            continue
-        if d.pe_trailing and d.pe_trailing > 0:
-            trailing[d.sector].append(d.pe_trailing)
-        if d.pe_forward and d.pe_forward > 0:
-            forward[d.sector].append(d.pe_forward)
-    out: dict[str, dict[str, float]] = {}
-    for sector in set(trailing) | set(forward):
-        entrada = {}
-        if len(trailing.get(sector, [])) >= _MIN_POR_SECTOR:
-            entrada["trailing"] = round(statistics.median(trailing[sector]), 2)
-        if len(forward.get(sector, [])) >= _MIN_POR_SECTOR:
-            entrada["forward"] = round(statistics.median(forward[sector]), 2)
-        if entrada:
-            out[sector] = entrada
-    return out
 
 
 def _fmt(value: object, kind: str) -> str | None:
@@ -547,11 +500,10 @@ def _valores_crudos(info: dict, db=None) -> dict[str, float | str]:  # noqa: ANN
     return out
 
 
-def _technical_text(info: dict, hist) -> str:
+def _technical_text(info: dict, price: float | None) -> str:
     parts: list[str] = []
-    if hist is not None and not hist.empty:
-        close = hist["close"]
-        parts.append(f"price ${float(close.iloc[-1]):.2f}")
+    if price is not None:
+        parts.append(f"price ${float(price):.2f}")
         # Sin MA50/MA200 (sí en el Exhibit 2B): penalizaban asimétrico — cotizar por debajo
         # restaba, por encima no sumaba. El 52w change va solo en `fundamentals_text` (campo 62).
     lo, hi = info.get("fiftyTwoWeekLow"), info.get("fiftyTwoWeekHigh")
@@ -680,13 +632,6 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
             motivo = "sin sector/marketCap/shortName en .info (vacío o deslistado)"
             logger.debug("Gather sin datos para %s: %s", ticker, motivo)
             return None, motivo
-        hist = None
-        try:
-            h = yt.history(period="1y", interval="1d", auto_adjust=True)
-            if h is not None and not h.empty:
-                hist = h.rename(columns=str.lower)
-        except Exception:
-            hist = None
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         mcap = info.get("marketCap")
         target_high = info.get("targetHighPrice")
@@ -697,7 +642,7 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
             industry=info.get("industry", "n/d"),
             price=numero_finito(price),
             fundamentals_text=_fundamentals_text(info, db=db),
-            technical_text=_technical_text(info, hist),
+            technical_text=_technical_text(info, numero_finito(price)),
             market_cap=numero_finito(mcap),
             news=_news(yt),
             earnings_text=_earnings_text(info),

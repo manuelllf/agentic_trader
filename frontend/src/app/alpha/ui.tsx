@@ -125,8 +125,24 @@ export function Field({ k, v }: { k: string; v: string }) {
   );
 }
 
-export function Th({ children, right }: { children: React.ReactNode; right?: boolean }) {
-  return <th className={`px-3 py-1.5 font-semibold ${right ? "text-right" : "text-left"}`}>{children}</th>;
+// `sort` opcional: cabecera-botón como en ScanFullModal (misma cabecera, sin ancho extra).
+export function Th({ children, right, sort }: {
+  children: React.ReactNode; right?: boolean;
+  sort?: { active: boolean; dir: "asc" | "desc"; onClick: () => void; ariaSort: "ascending" | "descending" | "none"; label: string };
+}) {
+  if (!sort) {
+    return <th className={`px-3 py-1.5 font-semibold ${right ? "text-right" : "text-left"}`}>{children}</th>;
+  }
+  return (
+    <th className={`px-3 py-1.5 font-semibold ${right ? "text-right" : "text-left"}`} aria-sort={sort.ariaSort}>
+      <button onClick={sort.onClick} aria-label={`Ordenar por ${sort.label}`}
+              className="inline-flex items-center gap-0.5 hover:opacity-80"
+              style={{ color: sort.active ? T.ink : T.muted }}>
+        {children}
+        {sort.active && <span className="text-[8px]">{sort.dir === "desc" ? "↓" : "↑"}</span>}
+      </button>
+    </th>
+  );
 }
 
 export function Td({ children, right, colSpan }: { children: React.ReactNode; right?: boolean; colSpan?: number }) {
@@ -138,7 +154,7 @@ export function SideTag({ action }: { action: TradeAction }) {
   return (
     <span className="inline-flex h-[20px] min-w-[20px] items-center justify-center rounded px-1 text-[10.5px] font-bold text-white"
           style={{ background: buy ? T.buy : T.bad }}
-          title={buy ? `compra (${action})` : `venta (${action})`}>
+          aria-label={buy ? `compra (${action})` : `venta (${action})`}>
       {buy ? "C" : "V"}
     </span>
   );

@@ -1,7 +1,7 @@
 """Tests de dos añadidos a scan_service: la capa media estratificada (repuntúa los mejores de
-cada sector con un modelo mejor antes del corte a finalistas) y el guardarraíl de operación
-corporativa (corrige en código un target_price que mezcla enterprise value con precio por
-acción). LLM falso y DB en memoria (patrón de test_escaneo_trazas.py) — nunca toca OpenRouter."""
+cada sector con un modelo mejor antes del corte a finalistas) y el guardarraíl de OPA (aparta de
+la cartera lo que el informe declara bajo oferta de adquisición). LLM falso y DB en memoria
+(patrón de test_escaneo_trazas.py) — nunca toca OpenRouter."""
 
 from __future__ import annotations
 
@@ -57,15 +57,14 @@ def _stub_common(monkeypatch) -> None:
     monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)  # sin la pausa del reintento
 
 
-def _gather_stub(monkeypatch, sectors: dict[str, str], target_high: dict[str, float] | None = None):
+def _gather_stub(monkeypatch, sectors: dict[str, str]):
     from app.screener import fundamentals as fund_mod
     from app.screener.fundamentals import NameData
 
-    th = target_high or {}
-    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None, **kw: (NameData(
+    monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, **kw: (NameData(
         ticker=t, sector=sectors[t], industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9,
-        news=[], target_high=th.get(t),
+        news=[],
     ), None))
 
 
@@ -342,59 +341,6 @@ def test_la_capa_media_tiene_tope_duro_de_candidatos(db, monkeypatch) -> None:
     # El recorte no es silencioso: queda en la traza del escaneo, que nunca se pisa.
     run = db.query(ScanRun).one()
     assert any("capa media" in i and "se recortan" in i for i in run.issues)
-
-
-# ---- (c)/(d) guardarraíl de operación corporativa ------------------------------
-
-_OPA_SECTORS = {"OPA1": "Industrials", "NORMAL": "Industrials"}
-_OPA_TARGET_HIGH = {"OPA1": 100.0, "NORMAL": 100.0}
-_OPA_REPLIES = {
-    "OPA1": {
-        "score": 85, "headline": "opa",
-        "report": "La compañía recibió una oferta de adquisición en efectivo de un fondo.",
-        "target_price": 120.0,   # 20% por encima del máximo del consenso (100)
-    },
-    "NORMAL": {
-        "score": 70, "headline": "normal",
-        "report": "Crecimiento sólido de ingresos y márgenes estables este trimestre.",
-        "target_price": 130.0,   # también por encima del consenso, pero SIN texto de operación
-    },
-}
-
-
-def test_opa_con_texto_de_adquisicion_y_target_disparado_queda_marcada(db, monkeypatch) -> None:
-    _stub_common(monkeypatch)
-    _stub_universo(monkeypatch, list(_OPA_SECTORS))
-    _gather_stub(monkeypatch, _OPA_SECTORS, _OPA_TARGET_HIGH)
-    prescore_scores = {t: 80.0 for t in _OPA_SECTORS}
-    _stub_llms(monkeypatch, prescore_scores, {}, _OPA_REPLIES)
-    monkeypatch.setattr(scan_service.settings, "mid_layer", False)
-
-    scan_service.run_scan_and_store(db, sample_size=2, decide=True)
-
-    opa = db.query(Score).filter(Score.ticker == "OPA1").one()
-    assert opa.target_flagged is True
-    assert opa.target_raw == 120.0
-    assert opa.target_price == 100.0                  # acotado al máximo del consenso
-
-    run = db.query(ScanRun).one()
-    assert any("OPA1" in i and "120" in i and "100" in i for i in run.issues)
-
-
-def test_informe_normal_con_target_alto_sin_texto_de_operacion_no_se_toca(db, monkeypatch) -> None:
-    _stub_common(monkeypatch)
-    _stub_universo(monkeypatch, list(_OPA_SECTORS))
-    _gather_stub(monkeypatch, _OPA_SECTORS, _OPA_TARGET_HIGH)
-    prescore_scores = {t: 80.0 for t in _OPA_SECTORS}
-    _stub_llms(monkeypatch, prescore_scores, {}, _OPA_REPLIES)
-    monkeypatch.setattr(scan_service.settings, "mid_layer", False)
-
-    scan_service.run_scan_and_store(db, sample_size=2, decide=True)
-
-    normal = db.query(Score).filter(Score.ticker == "NORMAL").one()
-    assert normal.target_flagged is False
-    assert normal.target_raw is None
-    assert normal.target_price == 130.0               # el modelo manda, no se corrige
 
 
 # ---- (e) la opada se aparta de la CARTERA, no del ranking -----------------------

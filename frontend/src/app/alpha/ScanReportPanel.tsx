@@ -1,11 +1,29 @@
 import type { ScanReport } from '@/lib/api';
+import { InfoTip } from '@/components/InfoTip';
 import { fmtTime } from '@/lib/format';
 import {
   cascada, fmtNum, fmtScanCost, sectoresTop, universoLinea, type FunnelScan,
 } from '@/lib/scan';
+import { useOrden } from '@/lib/useOrden';
 import { ScanFullButton } from './ScanFullModal';
 import { NUMS, T } from './tokens';
 import { Details } from './ui';
+
+type SectorSortKey = "sector" | "pre" | "deep" | "peso";
+const SECTOR_COLS: { key: SectorSortKey; label: string; align: "left" | "right" }[] = [
+  { key: "sector", label: "sector", align: "left" },
+  { key: "pre", label: "vistos", align: "right" },
+  { key: "deep", label: "a fondo", align: "right" },
+  { key: "peso", label: "peso", align: "left" },
+];
+
+type JevSortKey = "ticker" | "score" | "confidence" | "weight_pct";
+const JEV_COLS: { key: JevSortKey; label: string }[] = [
+  { key: "ticker", label: "ticker · industria" },
+  { key: "score", label: "nota" },
+  { key: "confidence", label: "confianza" },
+  { key: "weight_pct", label: "peso" },
+];
 
 /* Informe del último escaneo: una línea si fue sano; lista ámbar de incidencias; rojo si
    reventó entero. Fuente: /scan/report (persistido), no el estado en memoria del runner. */
@@ -21,6 +39,17 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
   // dónde se concentró el análisis caro. Sobre el total nunca se pasa de 100%, así que no hace
   // falta ningún techo artificial como antes.
   const totalDeep = Math.max(1, (scan?.sectores ?? []).reduce((acc, s) => acc + s.deep, 0));
+  const sectorRows = sectores.map((s) => ({ ...s, peso: s.deep / totalDeep }));
+  const {
+    sorted: sortedSectores, sortKey: sectorSortKey, sortDir: sectorSortDir,
+    toggle: toggleSector, ariaSort: sectorAriaSort,
+  } = useOrden<typeof sectorRows[number], SectorSortKey>(sectorRows, (row, key) => row[key]);
+
+  const jevRows = r.jev_cartera ?? [];
+  const {
+    sorted: sortedJev, sortKey: jevSortKey, sortDir: jevSortDir,
+    toggle: toggleJev, ariaSort: jevAriaSort,
+  } = useOrden<typeof jevRows[number], JevSortKey>(jevRows, (row, key) => row[key]);
 
   return (
     <Details title="Último escaneo"
@@ -49,15 +78,16 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
             {pasos.map((p, i) => (
               <div key={p.label} className="flex items-center gap-1.5">
                 {i > 0 && <span style={{ color: T.muted }} aria-hidden>→</span>}
-                <div className="rounded-md px-2.5 py-1.5" style={{ background: T.panel2 }} title={p.hint}>
+                <div className="rounded-md px-2.5 py-1.5" style={{ background: T.panel2 }}>
                   <p className={`text-[15px] font-bold leading-none ${NUMS}`} style={{ color: T.ink }}>
                     {fmtNum(p.value)}
                   </p>
-                  <p className="mt-0.5 text-[10.5px] leading-none" style={{ color: T.muted }}>
+                  <p className="mt-0.5 flex items-center gap-1 text-[10.5px] leading-none" style={{ color: T.muted }}>
                     {p.label}
                     {p.pctOfPrev != null && (
                       <span className={NUMS}> · {p.pctOfPrev < 1 ? p.pctOfPrev.toFixed(1) : Math.round(p.pctOfPrev)}%</span>
                     )}
+                    {p.hint && <InfoTip text={p.hint} />}
                   </p>
                 </div>
               </div>
@@ -84,14 +114,22 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
             </colgroup>
             <thead>
               <tr style={{ color: T.muted }}>
-                <th className="pb-1 text-left font-semibold">sector</th>
-                <th className="pb-1 text-right font-semibold">vistos</th>
-                <th className="pb-1 text-right font-semibold">a fondo</th>
-                <th className="pb-1 pl-3 text-left font-semibold">peso</th>
+                {SECTOR_COLS.map((c) => (
+                  <th key={c.key}
+                      className={`pb-1 font-semibold ${c.align === "right" ? "text-right" : c.key === "peso" ? "pl-3 text-left" : "text-left"}`}
+                      aria-sort={sectorAriaSort(c.key)}>
+                    <button onClick={() => toggleSector(c.key)} aria-label={`Ordenar por ${c.label}`}
+                            className="inline-flex items-center gap-0.5 hover:opacity-80"
+                            style={{ color: sectorSortKey === c.key ? T.ink : T.muted }}>
+                      {c.label}
+                      {sectorSortKey === c.key && <span className="text-[8px]">{sectorSortDir === "desc" ? "↓" : "↑"}</span>}
+                    </button>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {sectores.map((s) => (
+              {sortedSectores.map((s) => (
                 <tr key={s.sector} style={{ color: T.ink2 }}>
                   <td className="max-w-0 truncate py-0.5 pr-2">{s.sector}</td>
                   <td className="py-0.5 text-right">{fmtNum(s.pre)}</td>
@@ -126,14 +164,22 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
               </colgroup>
               <thead>
                 <tr style={{ color: T.muted }}>
-                  <th className="pb-1 text-left font-semibold">ticker · industria</th>
-                  <th className="pb-1 text-right font-semibold">nota</th>
-                  <th className="pb-1 text-right font-semibold">confianza</th>
-                  <th className="pb-1 text-right font-semibold">peso</th>
+                  {JEV_COLS.map((c) => (
+                    <th key={c.key}
+                        className={`pb-1 font-semibold ${c.key === "ticker" ? "text-left" : "text-right"}`}
+                        aria-sort={jevAriaSort(c.key)}>
+                      <button onClick={() => toggleJev(c.key)} aria-label={`Ordenar por ${c.label}`}
+                              className="inline-flex items-center gap-0.5 hover:opacity-80"
+                              style={{ color: jevSortKey === c.key ? T.ink : T.muted }}>
+                        {c.label}
+                        {jevSortKey === c.key && <span className="text-[8px]">{jevSortDir === "desc" ? "↓" : "↑"}</span>}
+                      </button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {(r.jev_cartera ?? []).map((p) => (
+                {sortedJev.map((p) => (
                   <tr key={p.ticker} className="align-top" style={{ color: T.ink2 }}>
                     <td className="max-w-0 py-0.5 pr-2">
                       <span className="block font-semibold" style={{ color: T.ink }}>{p.ticker}</span>

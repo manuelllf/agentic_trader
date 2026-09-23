@@ -15,7 +15,7 @@ import {
   subirUniversoGlobalCsv, syncUniversoGlobal, type UniversoGlobalOpciones,
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
-import { InfoTip } from "./InfoTip";
+import { InfoTip } from "@/components/InfoTip";
 import { NUM_INPUT, T } from "./tokens";
 
 // Link directo del CSV: para bajarlo a mano, revisarlo y subirlo si la red del propio servidor

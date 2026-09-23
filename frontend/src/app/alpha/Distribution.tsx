@@ -15,7 +15,7 @@ export function Distribution({ summary, equity, fx }: { summary: RealSummary; eq
     <div className="px-4 pb-1 pt-2.5">
       <div className="flex h-3 w-full gap-[2px] overflow-hidden rounded">
         {rows.map((r) => (
-          <div key={r.label} title={`${r.label} ${(r.value / total * 100).toFixed(1)}%`}
+          <div key={r.label}
                className="h-full rounded-[3px]"
                style={{ width: `${Math.max(0.75, (r.value / total) * 100)}%`, background: r.color }} />
         ))}

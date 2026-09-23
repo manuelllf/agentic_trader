@@ -1,6 +1,7 @@
 // Detalle de una fila de Historial: mismo lenguaje visual que AlertaCard pero de solo
 // lectura (ya esta descartada o resuelta, no hay nada que ejecutar aqui).
 import { useEffect } from 'react';
+import { InfoTip } from '@/components/InfoTip';
 import { money } from '@/lib/format';
 import {
   costeBase, distAth, distPicoLocal, esGateRegimen, fmtFecha, fmtRet, precioHoy,
@@ -23,7 +24,9 @@ export function HistorialModal({ s, precioVivo, regimen, onClose }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const cerradaAMano = s.estado === "vendida" && !s.resuelta && s.cierre_manual != null;
+  const cerradaAMano = s.estado === "vendida" && s.cierre_manual != null;
+  const soloSistema = cerradaAMano && s.cierre_manual!.ret_sistema != null
+    ? Number(s.cierre_manual!.ret_sistema) : null;
   const enCurso = !s.resuelta && !cerradaAMano;
   const precioMostrado = enCurso ? (precioVivo ?? precioHoy(s)) : precioHoy(s);
   const retornoMostrado = cerradaAMano
@@ -65,8 +68,9 @@ export function HistorialModal({ s, precioVivo, regimen, onClose }: {
             )}
             {s.mantener === false && <span className="text-[9px]" style={{ color: T.warn }}>apagado</span>}
             {esGateRegimen(s) && (
-              <span className="text-[9px] font-semibold" style={{ color: T.bad }} title={tituloRegimen(s, regimen)}>
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold" style={{ color: T.bad }}>
                 ⛔ régimen
+                <InfoTip text={tituloRegimen(s, regimen)} />
               </span>
             )}
           </div>
@@ -151,7 +155,10 @@ export function HistorialModal({ s, precioVivo, regimen, onClose }: {
             {enCurso
               ? <span style={{ color: T.warn }}>{s.dias}d en seguimiento</span>
               : cerradaAMano
-                ? <span>{s.cierre_manual!.exit_date ? `Vendida ${fmtFecha(s.cierre_manual!.exit_date)}` : "Vendida a mano"}</span>
+                ? <span>
+                    {s.cierre_manual!.exit_date ? `Vendida ${fmtFecha(s.cierre_manual!.exit_date)}` : "Vendida a mano"}
+                    {soloSistema != null && ` · sola habría hecho ${fmtRet(soloSistema)}`}
+                  </span>
                 : s.exit_date && <span>Salió {fmtFecha(s.exit_date)} · {s.dias}d</span>}
           </div>
         </div>

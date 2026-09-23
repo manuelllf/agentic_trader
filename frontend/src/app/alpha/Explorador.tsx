@@ -15,8 +15,11 @@ import {
 } from "@/lib/api";
 import type { ExplorerContar, ExplorerFiltros, ExplorerOpciones, ExplorerTickerRow } from "@/lib/types";
 import { fmtNum } from "@/lib/scan";
-import { InfoTip } from "./InfoTip";
+import { InfoTip } from "@/components/InfoTip";
+import { useOrden } from "@/lib/useOrden";
 import { NUM_INPUT, NUMS, T } from "./tokens";
+
+type TickerSortKey = "ticker" | "name" | "sector" | "country" | "market_cap_usd" | "price" | "pe_trailing" | "captured_at";
 
 const PAGE_SIZE = 25;
 const DEBOUNCE_MS = 400;
@@ -208,6 +211,17 @@ export function Explorador() {
   const mostrarFecha = !!(fechaDesde || fechaHasta);
   const numCols = mostrarFecha ? 8 : 7;
 
+  // Orden solo sobre la página cargada -- la paginación sigue siendo del servidor.
+  const { sorted: sortedItems, sortKey, sortDir, toggle: sortBy, ariaSort } =
+    useOrden<ExplorerTickerRow, TickerSortKey>(items, (row, key) => row[key]);
+  const cols: { key: TickerSortKey; label: string }[] = [
+    { key: "ticker", label: "Ticker" }, { key: "name", label: "Nombre" },
+    { key: "sector", label: "Sector" }, { key: "country", label: "País" },
+    { key: "market_cap_usd", label: "Cap" }, { key: "price", label: "Precio" },
+    { key: "pe_trailing", label: "PER" },
+    ...(mostrarFecha ? [{ key: "captured_at" as TickerSortKey, label: "Foto" }] : []),
+  ];
+
   return (
     <div className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between gap-2">
@@ -322,11 +336,15 @@ export function Explorador() {
             <table className={`w-full border-collapse whitespace-nowrap text-[11px] ${NUMS}`}>
               <thead>
                 <tr style={{ color: T.muted, background: T.panel2 }}>
-                  {(mostrarFecha
-                    ? ["Ticker", "Nombre", "Sector", "País", "Cap", "Precio", "PER", "Foto"]
-                    : ["Ticker", "Nombre", "Sector", "País", "Cap", "Precio", "PER"]
-                  ).map((c) => (
-                    <th key={c} className="px-2 py-1 text-left font-semibold">{c}</th>
+                  {cols.map((c) => (
+                    <th key={c.key} className="px-2 py-1 text-left font-semibold" aria-sort={ariaSort(c.key)}>
+                      <button onClick={() => sortBy(c.key)} aria-label={`Ordenar por ${c.label}`}
+                              className="inline-flex items-center gap-0.5 hover:opacity-80"
+                              style={{ color: sortKey === c.key ? T.ink : T.muted }}>
+                        {c.label}
+                        {sortKey === c.key && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                      </button>
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -335,7 +353,7 @@ export function Explorador() {
                   <tr><td colSpan={numCols} className="px-2 py-3 text-center" style={{ color: T.muted }}>Cargando…</td></tr>
                 ) : items.length === 0 ? (
                   <tr><td colSpan={numCols} className="px-2 py-3 text-center" style={{ color: T.muted }}>Sin resultados.</td></tr>
-                ) : items.map((r) => (
+                ) : sortedItems.map((r) => (
                   <tr key={r.ticker} className="border-t" style={{ borderColor: T.grid }}>
                     <td className="px-2 py-1 font-semibold" style={{ color: T.ink }}>{r.ticker}</td>
                     <td className="max-w-[160px] truncate px-2 py-1" style={{ color: T.ink2 }}>{r.name ?? "—"}</td>

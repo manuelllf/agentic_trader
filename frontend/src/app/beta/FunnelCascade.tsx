@@ -1,4 +1,5 @@
 import type { ScanReport } from '@/lib/api';
+import { InfoTip } from '@/components/InfoTip';
 import { cascada, fmtNum, fmtScanCost, sectoresTop, universoLinea, type FunnelScan } from '@/lib/scan';
 
 /** El embudo del escaneo: de todo el mercado mirado a los cinco que acaban en cartera.
@@ -30,18 +31,18 @@ export function FunnelCascade({ report, scan }: { report: ScanReport | null; sca
         {pasos.map((p, i) => (
           <div key={p.label} className="flex items-center gap-1.5">
             {i > 0 && <span className="text-[#565654]" aria-hidden>→</span>}
-            <div className="rounded-lg bg-[#232323] px-2.5 py-1.5 ring-1 ring-inset ring-white/10"
-                 title={p.hint}>
+            <div className="rounded-lg bg-[#232323] px-2.5 py-1.5 ring-1 ring-inset ring-white/10">
               <p className="text-[15px] font-semibold leading-none tabular-nums text-white">
                 {fmtNum(p.value)}
               </p>
-              <p className="mt-0.5 text-[10.5px] leading-none text-[#6E6E6B]">
+              <p className="mt-0.5 flex items-center gap-1 text-[10.5px] leading-none text-[#6E6E6B]">
                 {p.label}
                 {p.pctOfPrev != null && (
                   <span className="tabular-nums">
                     {" · "}{p.pctOfPrev < 1 ? p.pctOfPrev.toFixed(1) : Math.round(p.pctOfPrev)}%
                   </span>
                 )}
+                {p.hint && <InfoTip text={p.hint} />}
               </p>
             </div>
           </div>

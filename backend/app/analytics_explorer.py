@@ -23,8 +23,7 @@ _DISTRIBUCION_CAMPOS = ("market_cap_usd", "price", "pe_trailing", "pe_forward")
 class Filtros:
     """Todo opcional: sin nada puesto, la consulta es "todo lo capturado, última foto por
     ticker". `alcance` distingue universo de escaneo (NASDAQ) de universo global (HuggingFace) —
-    `None` no filtra por esto, mezcla los dos (a propósito: mismo motivo por el que `pe-sector`
-    SÍ filtra, aquí es el usuario quien decide, no una consulta fija con una sola intención)."""
+    `None` no filtra por esto, mezcla los dos (aquí es el usuario quien decide)."""
 
     fecha_desde: str | None = None
     fecha_hasta: str | None = None

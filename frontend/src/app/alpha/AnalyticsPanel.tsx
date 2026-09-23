@@ -1,4 +1,5 @@
 import { fmtTime } from '@/lib/format';
+import { useOrden } from '@/lib/useOrden';
 import { NUMS, T } from './tokens';
 
 /* Una tabla de "Analítica del método": columnas = claves del primer registro (no se tipa cada
@@ -41,6 +42,14 @@ export function AnalyticsTable({ title, state, nav }: {
   nav?: React.ReactNode;
 }) {
   const cols = state.data && state.data.length > 0 ? Object.keys(state.data[0]) : [];
+  const rows = state.data ?? [];
+  const { sorted, sortKey, sortDir, toggle, ariaSort } = useOrden<Record<string, unknown>, string>(
+    rows, (row, key) => {
+      const v = row[key];
+      if (v == null) return null;
+      if (typeof v === "number") return v;
+      return String(v);
+    });
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -60,11 +69,20 @@ export function AnalyticsTable({ title, state, nav }: {
           <table className={`w-full border-collapse whitespace-nowrap text-[11px] ${NUMS}`}>
             <thead>
               <tr style={{ color: T.muted, background: T.panel2 }}>
-                {cols.map((c) => <th key={c} className="px-2 py-1 text-left font-semibold">{c}</th>)}
+                {cols.map((c) => (
+                  <th key={c} className="px-2 py-1 text-left font-semibold" aria-sort={ariaSort(c)}>
+                    <button onClick={() => toggle(c)} aria-label={`Ordenar por ${c}`}
+                            className="inline-flex items-center gap-0.5 hover:opacity-80"
+                            style={{ color: sortKey === c ? T.ink : T.muted }}>
+                      {c}
+                      {sortKey === c && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                    </button>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {state.data.map((row, i) => (
+              {sorted.map((row, i) => (
                 <tr key={i} className="border-t" style={{ borderColor: T.grid }}>
                   {cols.map((c) => (
                     <td key={c} className="px-2 py-1" style={{ color: T.ink2 }}>

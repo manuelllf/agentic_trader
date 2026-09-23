@@ -162,11 +162,15 @@ def alertas(db: Session = Depends(get_db)) -> list[dict]:
     return out
 
 
-def _cierres_manuales(db: Session, senal_ids: list[int]) -> dict[int, dict]:
-    """Resultado real de una posición cerrada A MANO antes de que el job diario la resolviera
-    algorítmicamente: proceeds reales menos coste medio de compra. Aparte de `resuelta`/`ret`
-    de `momentum_senales` a propósito (ver `ejecutar()`) -- esto es lo que de verdad pasó con
-    tu dinero, no la resolución uniforme que usa /validacion para medir el patrón."""
+def _cierres_manuales(db: Session, senales: list[dict]) -> dict[int, dict]:
+    """Resultado real de una posición cerrada A MANO: proceeds reales menos coste medio de
+    compra. Aparte de `resuelta`/`ret` de `momentum_senales` a propósito (ver `ejecutar()`) --
+    esto es lo que de verdad pasó con tu dinero, no la resolución uniforme que usa /validacion.
+
+    `ret_sistema`: la salida del algoritmo (si ya resolvió) aplicada a TU coste medio -- lo que
+    habría dado dejarla correr sola desde tu entrada. Nunca sustituye a `ret`."""
+    por_id = {s["id"]: s for s in senales}
+    senal_ids = list(por_id)
     if not senal_ids:
         return {}
     rows = db.execute(text("""
@@ -194,8 +198,13 @@ def _cierres_manuales(db: Session, senal_ids: list[int]) -> dict[int, dict]:
         exit_at = r["exit_at"]
         if isinstance(exit_at, str):
             exit_at = datetime.fromisoformat(exit_at)
+        s = por_id[r["senal_id"]]
+        ret_sistema = None
+        if s["resuelta"] and s["ret"] is not None and s["entry_price"]:
+            salida = Decimal(str(s["entry_price"])) * (1 + Decimal(str(s["ret"])) / 100)
+            ret_sistema = str((salida / coste_medio - 1) * 100)
         out[r["senal_id"]] = {
-            "acciones": str(vendidas), "ret": str(ret),
+            "acciones": str(vendidas), "ret": str(ret), "ret_sistema": ret_sistema,
             "exit_date": exit_at.date().isoformat() if exit_at else None,
         }
     return out
@@ -218,7 +227,8 @@ def historial(db: Session = Depends(get_db)) -> list[dict]:
     """)).mappings().all()
     hoy = date.today()
     mantener = _mantener_map(db)
-    cierres = _cierres_manuales(db, [m["id"] for m in rows if m["estado"] == "vendida" and not m["resuelta"]])
+    # También las ya resueltas: si la cerraste a mano, tu cierre manda aunque el job la alcance.
+    cierres = _cierres_manuales(db, [dict(m) for m in rows if m["estado"] == "vendida"])
     out = []
     for m in rows:
         r = _row(dict(m))
@@ -228,8 +238,8 @@ def historial(db: Session = Depends(get_db)) -> list[dict]:
             if isinstance(entry_date, str):
                 entry_date = date.fromisoformat(entry_date)
             r["dias"] = (hoy - entry_date).days
-            if m["estado"] == "vendida":
-                r["cierre_manual"] = cierres.get(m["id"])
+        if m["estado"] == "vendida":
+            r["cierre_manual"] = cierres.get(m["id"])
         out.append(r)
     return out
 

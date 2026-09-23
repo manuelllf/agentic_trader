@@ -19,6 +19,7 @@ from app import (
     scan_config,
     scan_llm_stage,
     scan_service,
+    scan_state,
 )
 from app.db import Base
 from app.llm import jev as jev_mod
@@ -293,6 +294,10 @@ def test_escaneo_con_jev_guarda_su_cartera_y_sus_4_notas(db, monkeypatch) -> Non
     assert filas["A3"].jev_funded is False
     assert filas["A1"].jev_fundamentals == 800 and filas["A1"].jev_catalyst_conf == 800
     assert db.query(ScanRun).one().jev_macro is False
+    # El informe la lee de `scan_run_jev_item`, en el mismo orden y con su industria.
+    informe = scan_state.informe(db)
+    assert [p["ticker"] for p in informe["jev_cartera"]] == _ESPERADA
+    assert informe["jev_cartera"][0]["industry"] == "Semis" and informe["error"] is None
 
 
 def test_por_defecto_jev_ve_solo_datos_y_deepseek_el_macro_completo(db, monkeypatch) -> None:

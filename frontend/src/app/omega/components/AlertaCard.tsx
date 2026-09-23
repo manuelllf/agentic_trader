@@ -2,6 +2,7 @@
 // (compra inicial, cerrar/aumentar una posicion ya ejecutada, gate individual).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '@/lib/api';
+import { InfoTip } from '@/components/InfoTip';
 import { money } from '@/lib/format';
 import { descartarSenal, ejecutarSenal, getGateProgreso, lanzarGate } from '../api';
 import type { GateProgreso } from '../api';
@@ -304,8 +305,8 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
           </span>
           <div className="mt-1 whitespace-nowrap text-[9.5px] leading-tight" style={{ color: T.muted }}>
             {esGateRegimen(s) && (
-              <b style={{ color: T.bad }} title={tituloRegimen(s, regimen)}>
-                ⛔ régimen ·{" "}
+              <b className="inline-flex items-center gap-0.5" style={{ color: T.bad }}>
+                ⛔ régimen <InfoTip text={tituloRegimen(s, regimen)} /> ·{" "}
               </b>
             )}
             {s.cuidado && <b style={{ color: T.warn }}>CUIDADO · </b>}{fmtFecha(s.entry_date)} · {s.dias}d

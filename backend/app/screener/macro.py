@@ -96,7 +96,9 @@ def _datos_mercado() -> tuple[str, list[str]]:
             if t:
                 headlines.append(t.strip())
     except Exception:
-        pass
+        logger.warning("Titulares de Yahoo (SPY) fallaron", exc_info=True)
+    if not headlines:
+        logger.warning("Titulares de Yahoo (SPY) vacíos: el macro va solo con Google News/GDELT")
     if not partes:
         logger.warning("Datos macro vacíos: Yahoo no devolvió series utilizables")
     return " ".join(partes), headlines

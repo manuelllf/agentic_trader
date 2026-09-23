@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "@/components/AuthGate";
+import { InfoTip } from "@/components/InfoTip";
 import SalaDoor from "@/components/SalaDoor";
 import { ApiError, getFx } from "@/lib/api";
 import { money, signMoney } from "@/lib/format";
@@ -354,16 +355,16 @@ function SalaMomentumRoom() {
           <ActionChip onClick={escanear} busy={scanning}
                       label={scanning && scanProgreso?.status === "running" && scanProgreso.total > 0
                         ? `${scanProgreso.hecho}/${scanProgreso.total}` : "Señales"}
-                      title="Recalcular señales ahora (gratis, por si el cron 16:05 ET no ha corrido)">
+                      hint="Recalcular señales ahora (gratis, por si el cron 16:05 ET no ha corrido).">
             <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
           </ActionChip>
           <ActionChip onClick={detectarCandidatos} busy={detectando} label="Rupturas"
-                      title="Fuerza la detección de rupturas de ApeWisdom ahora (gratis, por si el cron 16:10 ET no ha corrido). Automático: solo mira lo que ApeWisdom ya trae."
+                      hint="Fuerza la detección de rupturas de ApeWisdom ahora (gratis, por si el cron 16:10 ET no ha corrido). Automático: solo mira lo que ApeWisdom ya trae."
                       stroke>
             <path d="M2 13h3l2-7 3 15 3-11 2 3h5" />
           </ActionChip>
           <ActionChip onClick={() => setBuscadorAbierto(true)} label="Tickers"
-                      title="Añade o revisa un ticker a mano, sin esperar a ApeWisdom" stroke>
+                      hint="Añade o revisa un ticker a mano, sin esperar a ApeWisdom." stroke>
             <circle cx="10" cy="10" r="6.5" />
             <path d="M20 20l-4.3-4.3M10 7v6M7 10h6" />
           </ActionChip>
@@ -408,9 +409,9 @@ function SalaMomentumRoom() {
               <div className="border-t pt-4" style={{ borderColor: T.grid }}>
                 <div className="grid grid-cols-2 gap-x-5 gap-y-5">
                   <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}
-                         title="Coste de compra de lo que sigue abierto ahora mismo -- no es la caja ni el valor a precio de hoy.">
+                    <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>
                       Capital desplegado
+                      <InfoTip text="Coste de compra de lo que sigue abierto ahora mismo -- no es la caja ni el valor a precio de hoy." />
                     </div>
                     <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: T.ink }}>${money(cuenta?.desplegado_usd ?? 0)}</div>
                   </div>
@@ -445,17 +446,18 @@ function SalaMomentumRoom() {
                   </div>
                 </div>
                 <div className="mt-4 flex items-baseline justify-between border-t pt-3.5"
-                     style={{ borderColor: T.grid }}
-                     title={`${cuenta?.gate_llamadas ?? 0} llamada(s) real(es), señales + candidatos`}>
+                     style={{ borderColor: T.grid }}>
                   <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Gate gasto</span>
                   <span className={`text-[13px] font-bold ${NUMS}`} style={{ color: T.warn }}>
                     ${money(cuenta?.gate_gastado_usd ?? 0, 2)}
                     <span className="ml-1.5 font-normal" style={{ color: T.muted }}>· {cuenta?.gate_llamadas ?? 0} llam.</span>
                   </span>
                 </div>
-                <div className="mt-2.5 flex items-center justify-between"
-                     title="Proveedor del gate (candidatos + señales) -- se queda así hasta que lo cambies, sin salto automático si uno falla.">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Gate modelo</span>
+                <div className="mt-2.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>
+                    Gate modelo
+                    <InfoTip text="Proveedor del gate (candidatos + señales) -- se queda así hasta que lo cambies, sin salto automático si uno falla." />
+                  </span>
                   <select value={gateProvider ?? ""} disabled={gateProvider == null || gateProviderBusy}
                           onChange={(e) => cambiarGateProvider(e.target.value as GateProvider)}
                           className="rounded-md px-2 py-1 text-[11.5px] font-bold disabled:opacity-40"
@@ -500,10 +502,11 @@ function SalaMomentumRoom() {
           <div className="border-t" style={{ borderColor: T.grid }}>
             {(historial ?? []).slice(0, histVisibles).map((s, i) => {
               const ejecutada = s.estado === "ejecutada" || s.estado === "vendida";
-              // Vendida a mano pero el job diario aún no la resolvió (`resuelta === false`): el
-              // resultado REAL es `cierre_manual`, no "en curso" -- ya no hay nada en marcha que
-              // seguir con precio en vivo (bug real, 15-sep-2026).
-              const cerradaAMano = s.estado === "vendida" && !s.resuelta && s.cierre_manual != null;
+              // Vendida a mano: el resultado REAL es `cierre_manual`, también cuando el job diario
+              // ya la resolvió por su cuenta (esa resolución va aparte, como "solo").
+              const cerradaAMano = s.estado === "vendida" && s.cierre_manual != null;
+              const soloSistema = cerradaAMano && s.cierre_manual!.ret_sistema != null
+                ? Number(s.cierre_manual!.ret_sistema) : null;
               const enCurso = !s.resuelta && !cerradaAMano;
               // En curso: retorno en vivo contra TU coste real si la ejecutaste (`costeBase`),
               // si no contra la entrada de la señal (descartada, o pendiente) -- igual que en
@@ -522,7 +525,7 @@ function SalaMomentumRoom() {
                         style={ejecutada
                           ? { background: T.entry, borderColor: T.entry }
                           : { borderColor: T.ring }}
-                        title={ejecutada ? "La ejecutaste" : enCurso ? "Descartada, sigue en seguimiento" : "No se ejecutó"}>
+                        aria-label={ejecutada ? "La ejecutaste" : enCurso ? "Descartada, sigue en seguimiento" : "No se ejecutó"}>
                     {ejecutada && (
                       <svg viewBox="0 0 16 16" className="h-3 w-3" stroke="#fff" fill="none" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M3.5 8.5l3 3 6-7" />
@@ -533,8 +536,10 @@ function SalaMomentumRoom() {
                     <b style={{ color: T.ink }}>{s.ticker}</b>
                     {s.mantener === false && <span className="ml-1.5 text-[9px]" style={{ color: T.warn }}>apagado</span>}
                     {esGateRegimen(s) && (
-                      <span className="ml-1.5 text-[9px]" style={{ color: T.bad }} title={tituloRegimen(s, regimen)}>
+                      <span className="ml-1.5 inline-flex items-center gap-0.5 text-[9px]" style={{ color: T.bad }}
+                            onClick={(e) => e.stopPropagation()}>
                         ⛔ régimen
+                        <InfoTip text={tituloRegimen(s, regimen)} />
                       </span>
                     )}
                     <span className="ml-2 text-[11px]" style={{ color: T.muted }}>
@@ -546,7 +551,10 @@ function SalaMomentumRoom() {
                       {fmtRet(ret)}
                     </div>
                     <div className="text-[9.5px]" style={{ color: enCurso ? T.warn : T.muted }}>
-                      {enCurso ? `en curso · ${s.dias}d` : cerradaAMano ? "cerrada a mano" : s.motivo}
+                      {enCurso ? `en curso · ${s.dias}d`
+                        : cerradaAMano
+                          ? soloSistema != null ? `a mano · solo ${fmtRet(soloSistema)}` : "cerrada a mano"
+                          : s.motivo}
                     </div>
                   </div>
                 </div>

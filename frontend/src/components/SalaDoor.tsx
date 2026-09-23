@@ -30,7 +30,6 @@ export default function SalaDoor({ to }: { to: keyof typeof SALAS }) {
       <button
         onClick={enter}
         className="text-[12px] font-semibold text-[#6E6E6B] transition-colors hover:underline"
-        title={sala.titulo}
       >
         {sala.nombre}
       </button>

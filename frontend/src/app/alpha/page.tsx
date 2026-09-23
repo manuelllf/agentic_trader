@@ -7,8 +7,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  approveTrade, fetchAnalyticsConfianzaPrescore, fetchAnalyticsCosteEtapa, fetchAnalyticsPeSector,
-  fetchAnalyticsPeSectorFechas, fetchAnalyticsScans,
+  approveTrade, fetchAnalyticsConfianzaPrescore, fetchAnalyticsCosteEtapa,
+  fetchAnalyticsScans,
   getApprovals, getConfig, getDemoStatus, getFx, getHistory,
   getPerformance, getPersonal, getPushKey, getReal, getScanFunnel, getScanReport, logout,
   reconcileApprovals, rejectTrade, resetShadow,
@@ -18,13 +18,15 @@ import {
 } from "@/lib/api";
 import AuthGate from "@/components/AuthGate";
 import HistoryChart from "@/components/HistoryChart";
+import { InfoTip } from "@/components/InfoTip";
 import SalaDoor from "@/components/SalaDoor";
 import { fmtPct, fmtTime, money, qty4, signMoney } from "@/lib/format";
 import type { FunnelScan } from "@/lib/scan";
 import type {
-  AppConfig, ApprovalsResponse, DemoStatus, HistoryPoint, Performance,
+  AppConfig, Approval, ApprovalsResponse, DemoStatus, HistoryPoint, Performance,
   PersonalSummary, RealSummary,
 } from "@/lib/types";
+import { useOrden } from "@/lib/useOrden";
 import { AnalyticsTable, ScanNav } from "./AnalyticsPanel";
 import { CapitalForm } from "./CapitalForm";
 import { CentroOperaciones } from "./CentroOperaciones";
@@ -38,6 +40,10 @@ import { ScanReportPanel } from "./ScanReportPanel";
 import { TickerAudit } from "./TickerAudit";
 import { NUMS, SANS, SERIES, T } from "./tokens";
 import { Details, Empty, Field, Kpi, Panel, SideTag, Td, Th } from "./ui";
+
+type PendingSortKey = "ticker" | "target_weight_pct" | "est_price" | "target_price" | "upside_pct" | "score";
+type PositionSortKey = "ticker" | "quantity" | "avg_cost" | "price" | "value" | "w" | "pnl";
+type PersonalSortKey = "ticker" | "quantity" | "price" | "value" | "pnl";
 
 /* ============================== página ============================== */
 
@@ -81,7 +87,6 @@ function SalaRealRoom() {
   // Analítica del método (DuckDB sobre Postgres): bajo demanda, cada tabla con su propio
   // estado — un 503 (DuckDB no instalado) en una no debe tragarse las otras dos.
   const [analyticsLoaded, setAnalyticsLoaded] = useState(false);
-  const [peSector, setPeSector] = useState<{ data: Record<string, unknown>[] | null; loading: boolean; error: string }>({ data: null, loading: false, error: "" });
   const [costeEtapa, setCosteEtapa] = useState<{ data: Record<string, unknown>[] | null; loading: boolean; error: string }>({ data: null, loading: false, error: "" });
   const [confianzaPrescore, setConfianzaPrescore] = useState<{ data: Record<string, unknown>[] | null; loading: boolean; error: string }>({ data: null, loading: false, error: "" });
   // Navegador de escaneo compartido por coste-etapa/confianza-prescore: -1 = "Total" (agregado
@@ -89,11 +94,6 @@ function SalaRealRoom() {
   const [analyticsScans, setAnalyticsScans] = useState<{ id: number; at: string; cadence: string }[]>([]);
   const [costeScanPos, setCosteScanPos] = useState(-1);
   const [confianzaScanPos, setConfianzaScanPos] = useState(-1);
-  // Navegador de fecha para PER por sector: -1 = snapshot más reciente de cada ticker (de
-  // siempre), 0 = el día más reciente CON fecha fija, 1 = el anterior, etc. Independiente de
-  // `analyticsScans` (que es de escaneos, no de días de captura).
-  const [peSectorFechas, setPeSectorFechas] = useState<string[]>([]);
-  const [peSectorPos, setPeSectorPos] = useState(-1);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);   // guard de desmontaje (mismo patrón que la portada)
@@ -183,16 +183,8 @@ function SalaRealRoom() {
     setAnalyticsLoaded(true);
     setCosteScanPos(-1);
     setConfianzaScanPos(-1);
-    setPeSectorPos(-1);
-    setPeSector({ data: null, loading: true, error: "" });
     setCosteEtapa({ data: null, loading: true, error: "" });
     setConfianzaPrescore({ data: null, loading: true, error: "" });
-    fetchAnalyticsPeSector()
-      .then((r) => setPeSector({ data: r.items, loading: false, error: "" }))
-      .catch((e) => setPeSector({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
-    fetchAnalyticsPeSectorFechas()
-      .then((r) => setPeSectorFechas(r.items))
-      .catch(() => setPeSectorFechas([]));
     fetchAnalyticsScans()
       .then((r) => setAnalyticsScans(r.items))
       .catch(() => setAnalyticsScans([]));
@@ -224,17 +216,6 @@ function SalaRealRoom() {
     fetchAnalyticsConfianzaPrescore(scanId)
       .then((r) => setConfianzaPrescore({ data: r.items, loading: false, error: "" }))
       .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
-  }
-
-  /** Recarga PER por sector para la fecha en `pos` (-1 = último snapshot de cada ticker, de
-   *  siempre). Navegador propio: no depende de `analyticsScans`, esta tabla nunca lo usó. */
-  function loadPeSectorForDate(pos: number) {
-    setPeSectorPos(pos);
-    const fecha = pos >= 0 ? peSectorFechas[pos] : undefined;
-    setPeSector((s) => ({ ...s, loading: true, error: "" }));
-    fetchAnalyticsPeSector(fecha)
-      .then((r) => setPeSector({ data: r.items, loading: false, error: "" }))
-      .catch((e) => setPeSector({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
   }
 
   useEffect(() => {
@@ -399,6 +380,45 @@ function SalaRealRoom() {
   // Escala común de las barras de P&L por posición (una vez, no dentro del map por fila).
   const maxAbs = Math.max(1e-9, ...(perf?.positions ?? []).map((x) => Math.abs(Number(x.unrealized_pnl))));
 
+  // Orden de las 3 tablas con cabecera (propuestas, posiciones, cartera personal) -- se llaman
+  // aquí, antes de cualquier return condicional, para no romper el orden de los hooks.
+  const {
+    sorted: sortedPending, sortKey: pendingSortKey, sortDir: pendingSortDir,
+    toggle: togglePending, ariaSort: pendingAriaSort,
+  } = useOrden<Approval, PendingSortKey>(pending, (row, key) => {
+    if (key === "est_price") return row.est_price != null ? Number(row.est_price) : null;
+    return row[key];
+  });
+
+  const positionRows = (summary?.positions ?? []).map((p, i) => {
+    const pr = perf?.positions.find((x) => x.ticker === p.ticker);
+    return {
+      ...p, i,
+      pnl: pr ? Number(pr.unrealized_pnl) : null,
+      pnlPct: pr?.pnl_pct ?? null,
+      w: equity > 0 ? (Number(p.value) / equity) * 100 : 0,
+    };
+  });
+  const {
+    sorted: sortedPositions, sortKey: posSortKey, sortDir: posSortDir,
+    toggle: togglePos, ariaSort: posAriaSort,
+  } = useOrden<typeof positionRows[number], PositionSortKey>(positionRows, (row, key) => {
+    if (key === "quantity" || key === "avg_cost" || key === "price" || key === "value") return Number(row[key]);
+    return row[key];
+  });
+
+  const personalRows = (personal?.positions ?? []).map((p) => ({
+    ...p, pnl: p.unrealized_pnl != null ? Number(p.unrealized_pnl) : null,
+  }));
+  const {
+    sorted: sortedPersonal, sortKey: persSortKey, sortDir: persSortDir,
+    toggle: togglePers, ariaSort: persAriaSort,
+  } = useOrden<typeof personalRows[number], PersonalSortKey>(personalRows, (row, key) => {
+    if (key === "quantity") return Number(row.quantity);
+    if (key === "price" || key === "value") return row[key] != null ? Number(row[key]) : null;
+    return row[key];
+  });
+
   // Primera carga: nada de la sala se pinta hasta que todo llegue junto — mejor un instante en
   // blanco que un hueco donde algo parezca al día sin serlo, con dinero real de por medio. No
   // hay nada montado todavía, así que un `return` completo no pierde ningún estado.
@@ -472,19 +492,19 @@ function SalaRealRoom() {
                style={{ color: T.buy, fontFamily: "var(--font-land-serif)", fontStyle: "italic",
                         fontOpticalSizing: "none", fontVariationSettings: '"opsz" 9' }}>
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: error ? T.bad : T.good }}
-                    title={error ? "sin conexión" : "conectado"} />
+                    role="status" aria-label={error ? "sin conexión" : "conectado"} />
               α
             </p>
             {summary && (
               // Un punto y una palabra, en píldora -- misma forma que el resto de badges de
               // cabecera (Beta, Omega): la única diferencia real de Alpha es que este no es
               // decorativo, distingue dinero de verdad de dinero de mentira.
-              <span title={summary.broker.detail}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide"
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide"
                     style={{ background: dry ? "rgba(250,178,25,0.14)" : "rgba(107,190,138,0.14)",
                              color: dry ? T.warn : T.good }}>
                 <span className="h-[7px] w-[7px] rounded-full" style={{ background: dry ? T.warn : T.good }} />
                 {dry ? "DRY-RUN" : "LIVE"}
+                <InfoTip text={summary.broker.detail} />
               </span>
             )}
           </div>
@@ -574,12 +594,18 @@ function SalaRealRoom() {
                   <table className="w-full border-collapse whitespace-nowrap text-[13px]">
                     <thead>
                       <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: T.muted }}>
-                        <Th> </Th><Th>Instrumento</Th><Th right>Peso obj.</Th><Th right>Precio</Th>
-                        <Th right>Obj. 3m</Th><Th right>Upside</Th><Th right>Score</Th><Th right>Decisión</Th>
+                        <Th> </Th>
+                        <Th sort={{ active: pendingSortKey === "ticker", dir: pendingSortDir, onClick: () => togglePending("ticker"), ariaSort: pendingAriaSort("ticker"), label: "instrumento" }}>Instrumento</Th>
+                        <Th right sort={{ active: pendingSortKey === "target_weight_pct", dir: pendingSortDir, onClick: () => togglePending("target_weight_pct"), ariaSort: pendingAriaSort("target_weight_pct"), label: "peso objetivo" }}>Peso obj.</Th>
+                        <Th right sort={{ active: pendingSortKey === "est_price", dir: pendingSortDir, onClick: () => togglePending("est_price"), ariaSort: pendingAriaSort("est_price"), label: "precio" }}>Precio</Th>
+                        <Th right sort={{ active: pendingSortKey === "target_price", dir: pendingSortDir, onClick: () => togglePending("target_price"), ariaSort: pendingAriaSort("target_price"), label: "objetivo a 3 meses" }}>Obj. 3m</Th>
+                        <Th right sort={{ active: pendingSortKey === "upside_pct", dir: pendingSortDir, onClick: () => togglePending("upside_pct"), ariaSort: pendingAriaSort("upside_pct"), label: "upside" }}>Upside</Th>
+                        <Th right sort={{ active: pendingSortKey === "score", dir: pendingSortDir, onClick: () => togglePending("score"), ariaSort: pendingAriaSort("score"), label: "score" }}>Score</Th>
+                        <Th right>Decisión</Th>
                       </tr>
                     </thead>
                     <tbody>
-                      {pending.map((a) => (
+                      {sortedPending.map((a) => (
                         <OrderRow key={a.id} a={a} dry={dry} onDecide={decide}
                                   expiryDays={cfg?.approval_expiry_days ?? 3} />
                       ))}
@@ -717,8 +743,8 @@ function SalaRealRoom() {
             {!analyticsLoaded ? (
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className="text-[12px]" style={{ color: T.muted }}>
-                  PER por sector, coste por etapa del embudo y confianza del prescore — 3
-                  consultas sobre un fichero DuckDB local, sincronizado desde Postgres a diario.
+                  Coste por etapa del embudo y confianza del prescore — consultas sobre un
+                  fichero DuckDB local, sincronizado desde Postgres a diario.
                 </p>
                 <button onClick={loadAnalytics}
                         className="shrink-0 rounded px-3 py-1.5 text-[11.5px] font-bold text-white transition-opacity hover:opacity-90"
@@ -728,14 +754,7 @@ function SalaRealRoom() {
               </div>
             ) : (
               <>
-                <div className="grid gap-4 p-4 lg:grid-cols-3">
-                  <AnalyticsTable title="PER por sector" state={peSector}
-                    nav={<ScanNav
-                      scans={peSectorFechas.map((f) => ({ id: f, at: f, cadence: "" }))}
-                      pos={peSectorPos} onMove={loadPeSectorForDate}
-                      totalLabel="Más reciente"
-                      formatLabel={(f) => new Date(f).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
-                    />} />
+                <div className="grid gap-4 p-4 lg:grid-cols-2">
                   <AnalyticsTable title="Coste por etapa" state={costeEtapa}
                     nav={<ScanNav scans={analyticsScans} pos={costeScanPos} onMove={loadCosteForScan} />} />
                   <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore}
@@ -766,26 +785,25 @@ function SalaRealRoom() {
                 <table className="w-full border-collapse whitespace-nowrap text-[13px]">
                   <thead>
                     <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: T.muted }}>
-                      <Th>Instrumento</Th><Th right>Cantidad</Th><Th right>Coste medio</Th>
-                      <Th right>Último</Th><Th right>Valor</Th><Th right>Peso</Th>
-                      <Th>P&L abierto</Th>
+                      <Th sort={{ active: posSortKey === "ticker", dir: posSortDir, onClick: () => togglePos("ticker"), ariaSort: posAriaSort("ticker"), label: "instrumento" }}>Instrumento</Th>
+                      <Th right sort={{ active: posSortKey === "quantity", dir: posSortDir, onClick: () => togglePos("quantity"), ariaSort: posAriaSort("quantity"), label: "cantidad" }}>Cantidad</Th>
+                      <Th right sort={{ active: posSortKey === "avg_cost", dir: posSortDir, onClick: () => togglePos("avg_cost"), ariaSort: posAriaSort("avg_cost"), label: "coste medio" }}>Coste medio</Th>
+                      <Th right sort={{ active: posSortKey === "price", dir: posSortDir, onClick: () => togglePos("price"), ariaSort: posAriaSort("price"), label: "último" }}>Último</Th>
+                      <Th right sort={{ active: posSortKey === "value", dir: posSortDir, onClick: () => togglePos("value"), ariaSort: posAriaSort("value"), label: "valor" }}>Valor</Th>
+                      <Th right sort={{ active: posSortKey === "w", dir: posSortDir, onClick: () => togglePos("w"), ariaSort: posAriaSort("w"), label: "peso" }}>Peso</Th>
+                      <Th sort={{ active: posSortKey === "pnl", dir: posSortDir, onClick: () => togglePos("pnl"), ariaSort: posAriaSort("pnl"), label: "P&L abierto" }}>P&L abierto</Th>
                     </tr>
                   </thead>
                   <tbody>
-                    {summary.positions.map((p, i) => {
-                      const pr = perf?.positions.find((x) => x.ticker === p.ticker);
-                      const pnl = pr ? Number(pr.unrealized_pnl) : null;
-                      const pnlPct = pr?.pnl_pct ?? null;
-                      const w = equity > 0 ? (Number(p.value) / equity) * 100 : 0;
-                      return (
+                    {sortedPositions.map((p) => (
                         <tr key={p.ticker} className="border-t" style={{ borderColor: T.grid }}>
                           <Td>
                             <span className="mr-2 inline-block h-2.5 w-2.5 rounded-sm align-middle"
-                                  style={{ background: SERIES[i % SERIES.length] }} />
+                                  style={{ background: SERIES[p.i % SERIES.length] }} />
                             <button onClick={() => setAuditTicker(p.ticker)}
                                     className="font-bold underline-offset-2 hover:underline"
                                     style={{ color: T.ink }}
-                                    title="Ver la historia de este ticker a través de los escaneos">
+                                    aria-label={`Ver la historia de ${p.ticker} a través de los escaneos`}>
                               {p.ticker}
                             </button>
                           </Td>
@@ -793,11 +811,10 @@ function SalaRealRoom() {
                           <Td right><span className={NUMS}>${money(p.avg_cost)}</span></Td>
                           <Td right><span className={NUMS}>${money(p.price)}</span></Td>
                           <Td right><span className={NUMS} style={{ color: T.ink }}>${money(p.value)}</span></Td>
-                          <Td right><span className={NUMS}>{w.toFixed(1)}%</span></Td>
-                          <Td><PnlBar value={pnl} maxAbs={maxAbs} pct={pnlPct} /></Td>
+                          <Td right><span className={NUMS}>{p.w.toFixed(1)}%</span></Td>
+                          <Td><PnlBar value={p.pnl} maxAbs={maxAbs} pct={p.pnlPct} /></Td>
                         </tr>
-                      );
-                    })}
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -860,9 +877,9 @@ function SalaRealRoom() {
                       ${money(personal.total_value)}
                     </div>
                     {fx && (
-                      <div className={`text-[10.5px] ${NUMS}`} style={{ color: T.muted }}
-                           title="al cambio EURUSD indicativo — como te lo consolida IBKR">
+                      <div className={`inline-flex items-center gap-1 text-[10.5px] ${NUMS}`} style={{ color: T.muted }}>
                         ≈ €{money(Number(personal.total_value) / fx, 0)}
+                        <InfoTip text="Al cambio EURUSD indicativo — como te lo consolida IBKR." />
                       </div>
                     )}
                   </div>
@@ -878,21 +895,23 @@ function SalaRealRoom() {
                   <table className="w-full border-collapse text-[12.5px]">
                     <thead>
                       <tr className="text-left text-[10px] uppercase tracking-wider" style={{ color: T.muted }}>
-                        <Th>Instr.</Th><Th right>Cant.</Th><Th right>Último</Th>
-                        <Th right>Valor</Th><Th right>P&L</Th>
+                        <Th sort={{ active: persSortKey === "ticker", dir: persSortDir, onClick: () => togglePers("ticker"), ariaSort: persAriaSort("ticker"), label: "instrumento" }}>Instr.</Th>
+                        <Th right sort={{ active: persSortKey === "quantity", dir: persSortDir, onClick: () => togglePers("quantity"), ariaSort: persAriaSort("quantity"), label: "cantidad" }}>Cant.</Th>
+                        <Th right sort={{ active: persSortKey === "price", dir: persSortDir, onClick: () => togglePers("price"), ariaSort: persAriaSort("price"), label: "último" }}>Último</Th>
+                        <Th right sort={{ active: persSortKey === "value", dir: persSortDir, onClick: () => togglePers("value"), ariaSort: persAriaSort("value"), label: "valor" }}>Valor</Th>
+                        <Th right sort={{ active: persSortKey === "pnl", dir: persSortDir, onClick: () => togglePers("pnl"), ariaSort: persAriaSort("pnl"), label: "P&L" }}>P&L</Th>
                       </tr>
                     </thead>
                     <tbody>
-                      {personal.positions.map((p) => {
-                        const pnl = p.unrealized_pnl != null ? Number(p.unrealized_pnl) : null;
-                        return (
+                      {sortedPersonal.map((p) => (
                           <tr key={`${p.ticker}-${p.description}`} className="border-t" style={{ borderColor: T.grid }}>
                             <Td>
                               <b style={{ color: T.ink }}>{p.ticker}</b>
                               {p.asset_class !== "STK" && (
-                                <span className="ml-1 rounded px-1 text-[9.5px] font-bold"
-                                      style={{ background: T.base, color: T.ink2 }} title={p.description}>
+                                <span className="ml-1 inline-flex items-center gap-0.5 rounded px-1 text-[9.5px] font-bold"
+                                      style={{ background: T.base, color: T.ink2 }}>
                                   {p.asset_class}
+                                  <InfoTip text={p.description} />
                                 </span>
                               )}
                             </Td>
@@ -902,7 +921,10 @@ function SalaRealRoom() {
                               <div className={NUMS} style={{ color: T.ink }}>
                                 {p.price ? `$${money(p.price)}` : "—"}
                                 {!p.live && p.price && (
-                                  <span className="ml-1 text-[9px]" style={{ color: T.muted }} title="precio del último sync (no cotiza en vivo)">sync</span>
+                                  <span className="ml-1 inline-flex items-center gap-0.5 text-[9px]" style={{ color: T.muted }}>
+                                    sync
+                                    <InfoTip text="Precio del último sync (no cotiza en vivo)." />
+                                  </span>
                                 )}
                               </div>
                               <div className={`text-[10px] ${NUMS}`} style={{ color: T.muted }}>
@@ -912,13 +934,12 @@ function SalaRealRoom() {
                             <Td right><span className={NUMS} style={{ color: T.ink }}>{p.value ? `$${money(p.value)}` : "—"}</span></Td>
                             <Td right>
                               <span className={`${NUMS} font-semibold`}
-                                    style={{ color: pnl == null ? T.muted : pnl >= 0 ? T.good : T.bad }}>
-                                {pnl != null ? signMoney(pnl) : "—"}
+                                    style={{ color: p.pnl == null ? T.muted : p.pnl >= 0 ? T.good : T.bad }}>
+                                {p.pnl != null ? signMoney(p.pnl) : "—"}
                               </span>
                             </Td>
                           </tr>
-                        );
-                      })}
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -976,8 +997,7 @@ function SalaRealRoom() {
                 {!pushOn ? (
                   <button onClick={enablePush}
                           className="underline decoration-dotted underline-offset-4"
-                          style={{ color: T.buy }}
-                          title="Suena cuando el agente propone. En iPhone: instala la app en pantalla de inicio.">
+                          style={{ color: T.buy }}>
                     Activar
                   </button>
                 ) : (
@@ -987,9 +1007,15 @@ function SalaRealRoom() {
                   </button>
                 )}
               </p>
-              <p style={{ color: T.muted }} title={summary?.broker.detail}>
+              {!pushOn && (
+                <p className="text-[11px]" style={{ color: T.muted }}>
+                  Suena cuando el agente propone. En iPhone: instala la app en pantalla de inicio.
+                </p>
+              )}
+              <p style={{ color: T.muted }}>
                 {dry ? "Bróker en dry-run" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a
                 límite (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado.
+                {summary?.broker.detail ? ` · ${summary.broker.detail}` : ""}
               </p>
               <p style={{ color: T.muted }}>
                 Reiniciar el libro <b>sombra</b> borra posiciones, operaciones y curva —
@@ -1016,8 +1042,7 @@ function SalaRealRoom() {
                 </span>
               )}
               <p>
-                <button onClick={logout} className="text-[12.5px]" style={{ color: T.ink2 }}
-                        title="Borra el token de sesión de este navegador y vuelve al login.">
+                <button onClick={logout} className="text-[12.5px]" style={{ color: T.ink2 }}>
                   Cerrar sesión
                 </button>
               </p>

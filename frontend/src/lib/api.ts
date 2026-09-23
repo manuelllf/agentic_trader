@@ -307,6 +307,10 @@ export interface ScanFull {
   regime: string;
   vix: number | null;
   outlook: string;
+  // Resto del macro que vio el profundo/constructor: Wikipedia (calendario, 7 días) y titulares.
+  macro_calendario?: string;
+  macro_eventos?: string;
+  macro_titulares?: { fuente: string; texto: string }[];
   universe: ScanReport["universe"];
   counters: Record<string, number>;
   cost: { calls: number; cost_usd: number } | null;
@@ -410,12 +414,6 @@ export const fetchScanAudit = (ticker: string) =>
   get<{ ticker: string; scans: ScanAuditEntry[] }>(`/scan/audit/${encodeURIComponent(ticker)}`);
 
 // ---- Analítica columnar (DuckDB leyendo Postgres) ----
-export const fetchAnalyticsPeSector = (fecha?: string) =>
-  get<{ items: Record<string, unknown>[] }>(
-    `/analytics/pe-sector${fecha ? `?fecha=${fecha}` : ""}`,
-  );
-export const fetchAnalyticsPeSectorFechas = () =>
-  get<{ items: string[] }>("/analytics/pe-sector/fechas");
 export const fetchAnalyticsCosteEtapa = (scanRunId?: number) =>
   get<{ items: Record<string, unknown>[] }>(
     `/analytics/coste-etapa${scanRunId != null ? `?scan_run_id=${scanRunId}` : ""}`,
