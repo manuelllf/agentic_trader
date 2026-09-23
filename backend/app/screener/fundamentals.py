@@ -3,8 +3,8 @@
 Junta lo que el paper mete en el prompt de puntuación: los fundamentales de yfinance `.info`
 (las ~97 variables SON este dict: valoración, márgenes, crecimiento, balance, short interest,
 targets de analistas, propiedad, riesgo de gobernanza), técnicos SOLO como contexto
-(MA50/200, 52 semanas, beta -- los únicos "technical indicators" que el Exhibit 2B enumera;
-el RSI no está en el paper y no se manda, ver `_technical_text`), la próxima fecha de
+(52 semanas y beta; el RSI no está en el paper y las medias móviles del Exhibit 2B se
+retiraron por penalizar asimétrico, ver `_technical_text`), la próxima fecha de
 resultados (dato, no regla) y titulares con su resumen. Todo gratis (yfinance).
 
 Tolerante a huecos: como el paper, "usamos la información más reciente disponible" — lo que
@@ -22,7 +22,6 @@ from datetime import UTC, datetime
 
 import yfinance as yf
 
-from app.screener import technicals as ta
 from app.screener import yahoo_scraper
 
 logger = logging.getLogger(__name__)
@@ -553,13 +552,8 @@ def _technical_text(info: dict, hist) -> str:
     if hist is not None and not hist.empty:
         close = hist["close"]
         parts.append(f"price ${float(close.iloc[-1]):.2f}")
-        # Solo lo que el paper pasa (Exhibit 2B): precio, MA50/200, 52w range, beta. El 52w change
-        # va UNA sola vez, en `fundamentals_text` (campo 62) — aquí lo duplicaba.
-        ma50, ma200 = ta.sma(close, 50), ta.sma(close, 200)
-        if ma50 == ma50:
-            parts.append(f"MA50 ${ma50:.2f}")
-        if ma200 == ma200:
-            parts.append(f"MA200 ${ma200:.2f}")
+        # Sin MA50/MA200 (sí en el Exhibit 2B): penalizaban asimétrico — cotizar por debajo
+        # restaba, por encima no sumaba. El 52w change va solo en `fundamentals_text` (campo 62).
     lo, hi = info.get("fiftyTwoWeekLow"), info.get("fiftyTwoWeekHigh")
     if lo and hi:
         parts.append(f"52w range ${lo:.2f}-${hi:.2f}")
