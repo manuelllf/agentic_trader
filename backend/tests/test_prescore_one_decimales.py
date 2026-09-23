@@ -53,3 +53,11 @@ def test_prescore_one_score_0_sigue_siendo_fallo_de_parseo() -> None:
 
     assert r.score == 0.0
     assert r.error is not None
+
+
+def test_prescore_one_recoge_las_dimensiones_de_jev() -> None:
+    llm = _LLMFalso('{"score": 51.25, "dimensiones": {"valuation": [3.0, 0.7]}}')
+
+    r = scorer_mod.prescore_one(llm, _data(), macro_block="n/d")
+
+    assert r.dimensiones == {"valuation": [3.0, 0.7]}

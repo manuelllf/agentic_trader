@@ -9,7 +9,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError, cancelDecision, cancelObservatorio, getConfig, getEstadoDatos, getScanDecideConfig,
-  recheck, redeep, runDemo, snapshotUniverse, startFoto, syncAnalytics, syncFx, fetchScanProgress,
+  getScanJevMacro, getScanMidLayer, putScanJevMacro, putScanMidLayer, recheck, redeep, runDemo,
+  snapshotUniverse, startFoto, syncAnalytics, syncFx, fetchScanProgress,
   type EstadoDatos, type ScanProgress, type ScanReport,
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
@@ -18,13 +19,12 @@ import { FotoGlobalPicker, UniversoGlobalSync } from "./FotoGlobalPicker";
 import { InfoTip } from "./InfoTip";
 import { ScanConfigModal } from "./ScanConfigModal";
 import { NUMS, T } from "./tokens";
-import { Checkbox } from "./ui";
+import { Checkbox, Toggle } from "./ui";
 
-// Mismas 5 etapas y orden que ScanConfigModal.STAGES -- solo para pintar el resumen "qué se va a
+// Mismas 4 etapas y orden que ScanConfigModal.STAGES -- solo para pintar el resumen "qué se va a
 // mandar", nunca para decidir nada (el override real vive en `overrides`, el default en `/config`).
 // Nombre distinto de `ETAPAS` (más abajo, las del progreso en vivo): representan cosas distintas.
 const ETAPAS_LLM: { key: keyof NonNullable<AppConfig["llm_defaults"]>; label: string }[] = [
-  { key: "macro", label: "Macro" },
   { key: "prescore", label: "Prescore" },
   { key: "mid", label: "Capa media" },
   { key: "deep", label: "Profundo" },
@@ -84,7 +84,7 @@ const ACCIONES: Record<Key, Accion> = {
     t: "Escaneo observatorio",
     d: "El circuito exacto del mensual con modelo y coste reales, sin proponer ni tocar ninguna "
       + "cartera. Refresca ranking, watchlist, memoria y traza.",
-    cta: "Lanzar observatorio", badges: [["≈ $1,60", "coste"], ["no toca cartera", "neutro"]],
+    cta: "Lanzar observatorio", badges: [["≈ $0,60", "coste"], ["no toca cartera", "neutro"]],
     uni: true, foto: true, cfg: true,
   },
   redeep: {
@@ -103,7 +103,7 @@ const ACCIONES: Record<Key, Accion> = {
   real: {
     t: "Escaneo con decisión",
     d: "Puntúa el universo, forma la cartera del mes y te la propone para tu sí o no.",
-    cta: "Lanzar con decisión", badges: [["≈ $1,60", "coste"], ["escribe cartera", "malo"]],
+    cta: "Lanzar con decisión", badges: [["≈ $0,60", "coste"], ["escribe cartera", "malo"]],
     peligro: true, uni: true, foto: true, cfg: true,
     aviso: "El único de la lista que escribe propuesta y ejecuta el libro sombra.",
   },
@@ -143,6 +143,34 @@ const TONOS: Record<Tono, { bg: string; fg: string }> = {
   neutro: { bg: "rgba(255,255,255,0.06)", fg: T.ink2 },
 };
 
+/** Interruptor persistido en el backend (vale para cron, decisión y observatorio). `valor` null =
+ *  aún sin leer. Lo pintado sale siempre de la respuesta del servidor, nunca de un cambio optimista. */
+function useInterruptor(leer: () => Promise<{ enabled: boolean }>,
+                        guardar: (v: boolean) => Promise<{ enabled: boolean }>) {
+  const [valor, setValor] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const refrescar = useCallback(() => {
+    leer().then((r) => setValor(r.enabled))
+      .catch(() => setErr("No se pudo leer el estado."));
+  }, [leer]);
+  useEffect(() => { refrescar(); }, [refrescar]);
+  async function cambiar() {
+    if (valor === null) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      setValor((await guardar(!valor)).enabled);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "No se pudo guardar.");
+      refrescar();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return { valor, busy, err, cambiar };
+}
+
 /** "hace 6 h" / "nunca" — la antigüedad importa más que la hora exacta para decidir si relanzar. */
 function hace(at: string | null): string {
   if (!at) return "nunca";
@@ -178,6 +206,8 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
   // `overrides` (que es solo del observatorio y no se guarda). `{}` = usa los defaults de /config.
   const [decideCfg, setDecideCfg] = useState<DemoRunOverrides | null>(null);
   const [cfgOpen, setCfgOpen] = useState(false);
+  const capaMedia = useInterruptor(getScanMidLayer, putScanMidLayer);
+  const jevMacro = useInterruptor(getScanJevMacro, putScanJevMacro);
   // Defaults reales de producción (mismo endpoint que el modal) -- el resumen de "qué se manda"
   // sale de aquí + `overrides`, nunca de un valor fijo en el frontend.
   const [llmDefaults, setLlmDefaults] = useState<AppConfig["llm_defaults"] | null>(null);
@@ -240,7 +270,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
     try {
       switch (sel) {
         case "obs":
-          await runDemo({ decide: false, forceMidLayer: true, modoUniverso: uni,
+          await runDemo({ decide: false, modoUniverso: uni,
                           reutilizarUltimaFoto: reFoto, overrides: overrides ?? undefined });
           onScanStarted();
           break;
@@ -452,8 +482,9 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                         {ETAPAS_LLM.map(({ key, label }) => {
                           const o = (sel === "real" ? decideCfg : overrides)?.[key];
                           const d = llmDefaults?.[key];
-                          const modelo = o?.model ?? d?.model ?? "…";
-                          const reasoning = o?.reasoning_effort ?? d?.reasoning_effort ?? "…";
+                          const apagada = key === "mid" && capaMedia.valor === false;
+                          const modelo = apagada ? "apagada" : o?.model ?? d?.model ?? "…";
+                          const reasoning = apagada ? "" : o?.reasoning_effort ?? d?.reasoning_effort ?? "…";
                           return (
                             <span key={key} className="contents">
                               <span>{label}:</span>
@@ -470,6 +501,17 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                       Configurar
                     </button>
                   </div>
+                )}
+                {a.cfg && (
+                  <FilaInterruptor titulo="Capa media" s={capaMedia} label="Usar capa media"
+                                   on="(activa · vale para todos los escaneos)"
+                                   off="(apagada · el profundo sale directo del prescore)" />
+                )}
+                {a.cfg && (
+                  <FilaInterruptor titulo="Macro en Jev" s={jevMacro}
+                                   label="Pasar eventos y titulares al prescore de Jev"
+                                   on="(datos + eventos + titulares · ≈ +$0,50 por escaneo)"
+                                   off="(solo datos de mercado · DeepSeek ve siempre el macro completo)" />
                 )}
                 {sel === "foto" && (
                   <FuenteToggle fuente={fotoFuente} onFuente={setFotoFuente} />
@@ -524,6 +566,24 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function FilaInterruptor({ titulo, s, label, on, off }: {
+  titulo: string; s: ReturnType<typeof useInterruptor>; label: string; on: string; off: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 py-1.5">
+      <span className="text-[11px]" style={{ color: T.ink2 }}>
+        {titulo}
+        <span className="ml-1 text-[9.5px]" style={{ color: T.muted }}>
+          {s.valor === null ? (s.err ? "" : "(leyendo…)") : s.valor ? on : off}
+        </span>
+        {s.err && <span className="block text-[9.5px]" style={{ color: T.bad }}>{s.err}</span>}
+      </span>
+      <Toggle checked={s.valor === true} onChange={s.cambiar}
+              disabled={s.valor === null || s.busy} label={label} />
     </div>
   );
 }

@@ -430,19 +430,24 @@ class ScanAudit(Base):
     # Sin saberlo no se puede evaluar si un carril aporta valor o solo ocupa hueco de otro mejor.
     # NULL = fila anterior a la columna.
     entry_lane: Mapped[str | None] = mapped_column(String(12), default=None)
+    # Prescore de Jev por pregunta: nivel 0-9 ×100 y confianza ×1000 (NULL si no fue Jev).
+    jev_fundamentals: Mapped[int | None] = mapped_column(SmallInteger)
+    jev_fundamentals_conf: Mapped[int | None] = mapped_column(SmallInteger)
+    jev_valuation: Mapped[int | None] = mapped_column(SmallInteger)
+    jev_valuation_conf: Mapped[int | None] = mapped_column(SmallInteger)
+    jev_financing: Mapped[int | None] = mapped_column(SmallInteger)
+    jev_financing_conf: Mapped[int | None] = mapped_column(SmallInteger)
+    jev_catalyst: Mapped[int | None] = mapped_column(SmallInteger)
+    jev_catalyst_conf: Mapped[int | None] = mapped_column(SmallInteger)
+    # ¿Entró en la cartera mecánica de Jev (sombra sin dinero)? NULL = fila anterior.
+    jev_funded: Mapped[bool | None] = mapped_column(default=None)
     # `had_prior_thesis` retirada: se alimentaba de la tesis de la watchlist, que ya no se usa
     # ni se alimenta — quedaba siempre en False. La columna sigue en las DB viejas, sin escribir.
 
 
 class ScanRun(Base):
-    """Una fila por escaneo, que NUNCA se sobrescribe.
-
-    Hoy el informe macro vive en `Meta.last_scan_report` y cada escaneo pisa al anterior, así
-    que la tesis macro de los escaneos previos se pierde sin dejar rastro. Aquí queda fijada:
-    `favored_sectors`/`avoided_sectors` es la INCLINACIÓN SECTORIAL que el macro emitió ese día
-    y que hasta ahora se calculaba, movía el escaneo entero y se tiraba — así era imposible
-    comprobar después si esa inclinación acertó.
-    """
+    """Una fila por escaneo, que NUNCA se sobrescribe: `Meta.last_scan_report` pisa al anterior,
+    esta tabla guarda qué vio y qué decidió cada escaneo."""
 
     __tablename__ = "scan_runs"
 
@@ -453,6 +458,8 @@ class ScanRun(Base):
     regime: Mapped[str] = mapped_column(String(16), default="")
     vix: Mapped[float | None] = mapped_column(Float)
     outlook: Mapped[str] = mapped_column(Text, default="")
+    # ¿El prescore de Jev vio el macro con contexto (E) o solo datos (B)? NULL = fila anterior.
+    jev_macro: Mapped[bool | None] = mapped_column(Boolean, default=None)
     # Bloques largos de eventos reales que vio el macro (Exhibit 2D: páginas de Wikipedia,
     # días pasados + calendario del año) -- titulares sueltos van a `ScanRunMacroHeadline`.
     macro_wiki_events: Mapped[str] = mapped_column(Text, default="")
@@ -488,22 +495,6 @@ class ScanRun(Base):
     # incluido), no solo cuando `decide=True`.
     construction_cash_pct: Mapped[float] = mapped_column(Float, default=0.0)
     construction_summary: Mapped[str] = mapped_column(Text, default="")
-
-    @property
-    def favored_sectors(self) -> list[str]:
-        return self._sectores("favored")
-
-    @property
-    def avoided_sectors(self) -> list[str]:
-        return self._sectores("avoided")
-
-    def _sectores(self, stance: str) -> list[str]:
-        db = object_session(self)
-        if db is None:
-            return []
-        rows = (db.query(ScanRunSector).filter_by(scan_run_id=self.id, stance=stance)
-                .order_by(ScanRunSector.id).all())
-        return [r.sector for r in rows]
 
     @property
     def universe(self) -> dict:
@@ -629,8 +620,8 @@ class ScanRun(Base):
 
 
 class ScanRunSector(Base):
-    """Inclinación sectorial que el macro emitió ese día — `stance` es 'favored'/'avoided'. Antes
-    dos listas JSON; una tabla con `stance` en vez de dos evita duplicar 8 columnas idénticas."""
+    """Histórico: inclinación sectorial ('favored'/'avoided') que emitía el macro antiguo. Ya no
+    se escribe; se conserva para leer los escaneos viejos."""
 
     __tablename__ = "scan_run_sector"
 
@@ -686,7 +677,7 @@ class ScanRunIssue(Base):
 class ScanRunMacroHeadline(Base):
     """Titulares que vio el macro de ESTE escaneo -- antes solo vivían en la caché de `Meta`
     (un blob JSON sin scan_run_id, podado con el tiempo), sin forma de comprobar después qué
-    vio realmente. `fuente` distingue yfinance/gnews/gdelt (ver `macro.get_macro_outlook`)."""
+    vio realmente. `fuente` distingue yfinance/gnews/gdelt (ver `macro.get_macro`)."""
 
     __tablename__ = "scan_run_macro_headline"
 

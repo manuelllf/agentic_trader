@@ -106,6 +106,52 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
           </table>
         )}
 
+        {(r.jev_cartera ?? []).length > 0 && (
+          <div className="mt-3">
+            <p className="mb-1 text-[11px] font-semibold" style={{ color: T.ink2 }}>
+              Cartera Jev
+              <span className="ml-1 font-normal" style={{ color: T.muted }}>
+                (sombra, sin dinero · top 5 del prescore, máx. 2 por industria
+                {r.jev_macro ? " · vio eventos y titulares" : " · solo datos de mercado"})
+              </span>
+            </p>
+            {/* Industria bajo el ticker y con salto de línea: en columna propia se quedaba en
+                ~60 px en móvil y cortaba hasta las cortas. */}
+            <table className={`w-full table-fixed text-[11px] ${NUMS}`}>
+              <colgroup>
+                <col />
+                <col style={{ width: "3rem" }} />
+                <col style={{ width: "4rem" }} />
+                <col style={{ width: "2.75rem" }} />
+              </colgroup>
+              <thead>
+                <tr style={{ color: T.muted }}>
+                  <th className="pb-1 text-left font-semibold">ticker · industria</th>
+                  <th className="pb-1 text-right font-semibold">nota</th>
+                  <th className="pb-1 text-right font-semibold">confianza</th>
+                  <th className="pb-1 text-right font-semibold">peso</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(r.jev_cartera ?? []).map((p) => (
+                  <tr key={p.ticker} className="align-top" style={{ color: T.ink2 }}>
+                    <td className="max-w-0 py-0.5 pr-2">
+                      <span className="block font-semibold" style={{ color: T.ink }}>{p.ticker}</span>
+                      <span className="block break-words text-[10.5px] leading-snug"
+                            style={{ color: T.muted }}>{p.industry}</span>
+                    </td>
+                    <td className="py-0.5 text-right">{p.score.toFixed(1)}</td>
+                    <td className="py-0.5 text-right">
+                      {p.confidence == null ? "—" : `${Math.round(p.confidence * 100)}%`}
+                    </td>
+                    <td className="py-0.5 text-right">{Math.round(p.weight_pct)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {(r.changes ?? []).length > 0 && (
           <ul className="mt-2 space-y-0.5">
             {(r.changes ?? []).map((c) => (

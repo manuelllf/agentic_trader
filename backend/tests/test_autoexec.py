@@ -179,9 +179,8 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
     ), None))
-    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
-        "regime": "neutral", "vix": 15.0, "outlook": "estable",
-        "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
+    monkeypatch.setattr(macro_mod, "get_macro", lambda db=None: {
+        "regime": "neutral", "vix": 15.0, "datos": "VIX 15.0.",
     })
     monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {"OLD": 100.0, "AAA": 100.0})
     # Sin caja/tope artificial: 1 sola posición al 100%, para que el resultado sea determinista.
@@ -236,9 +235,8 @@ def test_scan_failure_in_autoexec_never_fails_the_scan(db, monkeypatch) -> None:
         ticker=t, sector="Technology", industry="Software", price=100.0,
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9, news=[],
     ), None))
-    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
-        "regime": "neutral", "vix": 15.0, "outlook": "estable",
-        "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
+    monkeypatch.setattr(macro_mod, "get_macro", lambda db=None: {
+        "regime": "neutral", "vix": 15.0, "datos": "VIX 15.0.",
     })
     monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {"AAA": 100.0})
 

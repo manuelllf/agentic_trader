@@ -77,6 +77,22 @@ export function Checkbox({ checked, onChange, className }: {
   );
 }
 
+// Interruptor deslizante, mismo dibujo que el de Omega (`omega/components/ui.tsx`). El `before`
+// agranda la zona táctil a ~41×56 px sin cambiar el dibujo.
+export function Toggle({ checked, onChange, disabled, label }: {
+  checked: boolean; onChange: () => void; disabled?: boolean; label: string;
+}) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={label}
+            onClick={onChange} disabled={disabled}
+            className="relative h-[21px] w-9 shrink-0 rounded-full transition-colors before:absolute before:-inset-2.5 before:content-[''] disabled:opacity-50"
+            style={{ background: checked ? T.buy : T.grid }}>
+      <span className="absolute left-[2px] top-[2px] h-[17px] w-[17px] rounded-full bg-white transition-transform"
+            style={{ transform: checked ? "translateX(15px)" : "translateX(0)" }} />
+    </button>
+  );
+}
+
 export function Kpi({ label, value, sub, tone, big }: {
   label: string; value: string; sub?: string; tone?: "good" | "bad"; big?: boolean;
 }) {

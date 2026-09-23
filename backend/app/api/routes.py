@@ -68,8 +68,6 @@ def config() -> dict:
         # SILENCIO cada vez que se lanzaba una simulación — el override "ganaba" sobre el
         # default de `settings` en `_stage_cfg` (ver `scan_llm_stage.py`).
         "llm_defaults": {
-            "macro": {"model": settings.llm_model, "reasoning_effort": settings.macro_reasoning_effort,
-                      "temperature": DEFAULT_TEMPERATURE},
             "prescore": {
                 "model": (settings.jev_model if settings.prescore_provider == "jev"
                          else settings.qwen_model if settings.prescore_provider == "qwen"

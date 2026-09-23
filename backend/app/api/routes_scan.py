@@ -30,7 +30,6 @@ class StageLLMOverride(BaseModel):
 
 
 class DemoRunOverrides(BaseModel):
-    macro: StageLLMOverride | None = None
     prescore: StageLLMOverride | None = None
     mid: StageLLMOverride | None = None
     deep: StageLLMOverride | None = None
@@ -39,14 +38,14 @@ class DemoRunOverrides(BaseModel):
 
 @router.post("/demo/run")
 def demo_run(sample_size: int | None = None, decide: bool = True,
-            force_mid_layer: bool = False, reutilizar_ultima_foto: bool = False,
+            reutilizar_ultima_foto: bool = False,
             modo_universo: Literal["nasdaq", "global_topcap"] = "nasdaq",
             overrides: DemoRunOverrides | None = Body(None, embed=True),
             db: Session = Depends(get_db)) -> dict:
     # decide=False: escaneo de universo completo en producción real, con el modelo/coste
     # de verdad, que NO propone ni toca ninguna cartera — solo refresca ranking, watchlist,
-    # memoria y traza. force_mid_layer=True lo hace el circuito EXACTO de un mensual (capa
-    # media incluida) sin tocar el cron semanal. Es el botón "simulación" de Alpha.
+    # memoria y traza. Es el botón "simulación" de Alpha. Los interruptores (capa media, macro
+    # en Jev) valen igual aquí que en el mensual.
     # `overrides`: config por etapa del modal — cuerpo JSON opcional. Con `decide=True` y SIN
     # `overrides` en el cuerpo (el botón "Analizar y decidir"), se lee la config PERSISTIDA del
     # escaneo con decisión (`scan_config`), la misma que usa el cron mensual — así los dos
@@ -64,7 +63,7 @@ def demo_run(sample_size: int | None = None, decide: bool = True,
     if decide and llm_overrides is None:
         llm_overrides = scan_config.get_decide_overrides(db)
     started = pipeline.start(sample_size=sample_size, decide=decide,
-                             force_mid_layer=force_mid_layer, llm_overrides=llm_overrides,
+                             llm_overrides=llm_overrides,
                              reutilizar_ultima_foto=reutilizar_ultima_foto,
                              modo_universo=modo_universo)
     return {"started": started, **pipeline.get_status()}
@@ -87,6 +86,34 @@ def put_scan_decide_config(overrides: DemoRunOverrides = Body(..., embed=True),
     a escaneos FUTUROS; no relanza nada."""
     guardado = scan_config.set_decide_overrides(db, overrides.model_dump(exclude_none=True))
     return {"overrides": guardado}
+
+
+class InterruptorIn(BaseModel):
+    enabled: bool
+
+
+@router.get("/scan/mid-layer")
+def get_scan_mid_layer(db: Session = Depends(get_db)) -> dict:
+    """Interruptor de la capa media: vale para cron, "Analizar y decidir" y observatorio."""
+    return {"enabled": scan_config.mid_layer_activa(db)}
+
+
+@router.put("/scan/mid-layer")
+def put_scan_mid_layer(body: InterruptorIn, db: Session = Depends(get_db)) -> dict:
+    """Persistido hasta que se vuelva a cambiar; solo afecta a escaneos FUTUROS."""
+    return {"enabled": scan_config.set_mid_layer(db, body.enabled)}
+
+
+@router.get("/scan/jev-macro")
+def get_scan_jev_macro(db: Session = Depends(get_db)) -> dict:
+    """Interruptor "Macro en Jev": el prescore ve datos + eventos + titulares o solo datos."""
+    return {"enabled": scan_config.jev_macro_activa(db)}
+
+
+@router.put("/scan/jev-macro")
+def put_scan_jev_macro(body: InterruptorIn, db: Session = Depends(get_db)) -> dict:
+    """Persistido hasta que se vuelva a cambiar; solo afecta a escaneos FUTUROS."""
+    return {"enabled": scan_config.set_jev_macro(db, body.enabled)}
 
 
 @router.post("/demo/cancel-observatorio")
@@ -129,9 +156,9 @@ def scan_report(db: Session = Depends(get_db), authed: bool = Depends(auth_optio
     lo escribe el cron.
 
     DOBLE NIVEL: cómo se comportó el sistema es público, pero `changes` nombra los tickers que
-    entran y salen del ranking — eso es la cartera del método y solo se ve con sesión. `outlook`
-    (la tesis macro del escaneo) va por el mismo lado: es texto libre del modelo y puede citar
-    nombres, así que no se regala a puerta abierta aunque acabe publicado en una tarjeta.
+    entran y salen del ranking — eso es la cartera del método y solo se ve con sesión. Igual
+    `jev_cartera` (nombres de la cartera de Jev) y `outlook`, que en escaneos viejos es texto
+    libre del modelo y puede citar nombres.
     """
     row = db.get(Meta, "last_scan_report")
     if row is None:
@@ -141,7 +168,7 @@ def scan_report(db: Session = Depends(get_db), authed: bool = Depends(auth_optio
     except ValueError:
         return {"report": None}
     if not authed:
-        report = {**report, "changes": [], "outlook": None}
+        report = {**report, "changes": [], "outlook": None, "jev_cartera": []}
     return {"report": report}
 
 
@@ -162,12 +189,12 @@ def scan_funnel(limit: int = Query(8, ge=1, le=30), db: Session = Depends(get_db
 def scan_outcomes_view(limit: int = Query(8, ge=1, le=30), db: Session = Depends(get_db),
                        authed: bool = Depends(auth_optional)) -> dict:
     """La traza LEÍDA: retorno a hoy de cada grupo de cada cohorte (cartera · seleccionados
-    sin fondear · descartados del profundo · SPY), los pares score↔retorno y la frontera del
-    corte. Es la respuesta a "¿lo que compró lo hizo mejor que lo que descartó?".
+    sin fondear · descartados del profundo · cartera de Jev · SPY), los pares score↔retorno y
+    la frontera del corte. Es la respuesta a "¿lo que compró lo hizo mejor que lo que descartó?".
 
     DOBLE NIVEL: los agregados por grupo son comportamiento → públicos. Un ticker con su
-    score y su retorno es un feed de señales → los nombres (en `pairs` y en la frontera)
-    solo con sesión.
+    score y su retorno es un feed de señales → los nombres (en `pairs`, en la frontera y en la
+    cartera de Jev) solo con sesión.
     """
     from app import scan_outcomes
 
@@ -176,7 +203,8 @@ def scan_outcomes_view(limit: int = Query(8, ge=1, le=30), db: Session = Depends
         scans = [{**s,
                   "pairs": [{k: v for k, v in p.items() if k != "ticker"} for p in s["pairs"]],
                   "corte": {lado: {k: v for k, v in datos.items() if k != "nombres"}
-                            for lado, datos in s["corte"].items()}}
+                            for lado, datos in s["corte"].items()},
+                  "jev": []}
                  for s in scans]
     # La fila del libro real es agregado puro (retorno, S&P, nº posiciones): pública entera,
     # igual que /performance sin sesión.

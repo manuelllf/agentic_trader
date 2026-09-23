@@ -9,6 +9,9 @@ exactamente lo mismo. Es INDEPENDIENTE del observatorio a propósito: cada escan
 circuito por su cuenta.
 
 `None` guardado (o clave ausente) = el escaneo usa los defaults de `settings`, igual que antes.
+
+Los interruptores (capa media, macro en Jev) NO son por modo: valen igual para cron, decisión y
+observatorio.
 """
 
 from __future__ import annotations
@@ -17,10 +20,13 @@ import json
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import Meta
 
 _META_KEY = "scan_decide_llm_overrides"
-_STAGES = ("macro", "prescore", "mid", "deep", "constructor")
+_META_KEY_MID = "scan_mid_layer"
+_META_KEY_JEV_MACRO = "scan_jev_macro"
+_STAGES = ("prescore", "mid", "deep", "constructor")
 _CAMPOS = ("model", "reasoning_effort", "temperature", "top_p")
 
 
@@ -71,3 +77,41 @@ def _sanear(crudo: object) -> dict:
         if campos:
             out[etapa] = campos
     return out
+
+
+def _interruptor(db: Session, clave: str, default: bool) -> bool:
+    row = db.get(Meta, clave)
+    if row is None or row.value not in ("0", "1"):
+        return default
+    return row.value == "1"
+
+
+def _set_interruptor(db: Session, clave: str, activo: bool) -> bool:
+    row = db.get(Meta, clave)
+    valor = "1" if activo else "0"
+    if row:
+        row.value = valor
+    else:
+        db.add(Meta(key=clave, value=valor))
+    db.commit()
+    return activo
+
+
+def mid_layer_activa(db: Session) -> bool:
+    """Interruptor de la capa media de Alpha, para TODOS los escaneos (cron, decisión y
+    observatorio). Clave ausente = `settings.mid_layer`."""
+    return _interruptor(db, _META_KEY_MID, settings.mid_layer)
+
+
+def set_mid_layer(db: Session, activa: bool) -> bool:
+    return _set_interruptor(db, _META_KEY_MID, activa)
+
+
+def jev_macro_activa(db: Session) -> bool:
+    """¿El prescore de Jev ve el macro con contexto (E) o solo datos (B)? Vale para todos los
+    escaneos. Clave ausente = `settings.jev_macro`."""
+    return _interruptor(db, _META_KEY_JEV_MACRO, settings.jev_macro)
+
+
+def set_jev_macro(db: Session, activa: bool) -> bool:
+    return _set_interruptor(db, _META_KEY_JEV_MACRO, activa)

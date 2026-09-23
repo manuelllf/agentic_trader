@@ -12,9 +12,10 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 ## Cómo funciona
 
 Un escaneo programado recorre **~3.000 acciones cotizadas en EE. UU.** (ADRs incluidos) y las
-puntúa en tres pasos: un cribado rápido y barato sobre todo el universo, una segunda opinión
-sobre los mejores de cada sector, y un análisis profundo (informe + score) sobre hasta 100
-finalistas. La selección final es
+puntúa en dos pasos: un cribado sobre todo el universo (cuatro preguntas cerradas:
+fundamentales, valoración, riesgo de financiación y catalizador) y un análisis profundo
+(informe + score) sobre hasta 100 finalistas. Una segunda opinión intermedia sobre los mejores
+de cada sector existe tras un interruptor, apagada por defecto. La selección final es
 **determinista y vive en el código** (top-N por score, desempate por capitalización); el LLM
 solo reparte los pesos entre los ya seleccionados. Todo el dinero (tamaños, caja, P&L) lo
 calcula el código con aritmética exacta en `Decimal`, nunca el LLM.
@@ -30,6 +31,11 @@ Dos modos, con libros de capital separados:
 - **Alpha**: conectada a Interactive Brokers. El agente *propone*; el usuario decide
   (Sí / No) cada orden. Órdenes a límite y, por defecto, en modo simulación.
 
+Junto a ellas corre una **estrategia de control sin dinero**: los cinco mejores del cribado,
+con como mucho dos por industria y a partes iguales, sin análisis profundo ni constructor. No
+mueve capital, ni siquiera simulado; solo se mide su rentabilidad bruta frente a la cartera del
+método y al S&P 500, para saber cuánto aporta el paso caro.
+
 ## Decisiones de diseño
 
 Las que más forma le dan al sistema:
@@ -43,6 +49,10 @@ Las que más forma le dan al sistema:
   a los valores caros y deja pasar a los baratos ilíquidos. Además del suelo hay un **tope de
   nombres**: como el cribado gasta una llamada por acción, el coste no puede depender de lo
   movida que estuviera la sesión.
+- **El macro son datos, no una opinión.** Un resumen macro escrito por un modelo arrastraba
+  todo el análisis hacia un sector (en una prueba, 65-75% de la cartera en energía por la
+  narrativa del petróleo). Ahora cada análisis recibe los datos de mercado, el calendario, los
+  eventos recientes y los titulares tal cual, sin previsión, y juzga cada empresa por sí misma.
 - **Elegir y ponderar son pasos distintos.** Que el modelo hiciera las dos cosas hacía
   imposible saber si un acierto venía del análisis o del reparto. Ahora la selección es
   aritmética reproducible y el criterio del LLM queda confinado al peso.
@@ -82,7 +92,7 @@ sin tocar código.
 |-----------|---------------------------------------------------------------|
 | Backend   | Python 3.12 · FastAPI · SQLAlchemy 2 · Pydantic v2            |
 | Datos     | yfinance · screener público de NASDAQ                        |
-| LLM       | DeepSeek (macro, análisis profundo, constructor) + Jev de TypeSafe AI (cribado inicial, con Qwen y DeepSeek de reserva); capa de proveedor intercambiable |
+| LLM       | DeepSeek (análisis profundo, constructor) + Jev de TypeSafe AI (cribado inicial, con Qwen y DeepSeek de reserva); capa de proveedor intercambiable |
 | Memoria   | pgvector + fastembed (embeddings locales, sin coste)         |
 | Bróker    | IBKR Web API (OAuth 1.0a headless, `ibind`)                  |
 | Scheduler | APScheduler                                                  |

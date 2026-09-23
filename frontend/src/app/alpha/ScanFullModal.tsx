@@ -1,6 +1,6 @@
 "use client";
 
-// Detalle COMPLETO de un escaneo (mensual decidido o semanal observatorio): tesis macro,
+// Detalle COMPLETO de un escaneo (mensual decidido o semanal observatorio): macro,
 // finalistas con su score/target y la cartera formada. Sin esto la única fuente era /scan/report
 // (contadores) — una simulación se leía una vez y se perdía en cuanto terminaba el proceso.
 // Mismo patrón de emergente que MemorySearch.tsx (velo + tarjeta + cerrar por X/Escape/click fuera).
@@ -157,7 +157,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
 
               {scan.outlook && (
                 <div className="mt-3">
-                  <SectionTitle>Tesis macro</SectionTitle>
+                  <SectionTitle>Macro</SectionTitle>
                   <div className="mt-1 leading-relaxed" style={{ color: T.ink2 }}>{richText(scan.outlook)}</div>
                 </div>
               )}

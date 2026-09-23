@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     prescore_provider: str = "jev"       # "deepseek" | "qwen" | "jev"
     typesafe_api_key: str = ""
     jev_model: str = "jev-latest"
+    # Pesos de las 4 preguntas del prescore de Jev. Iguales: sin datos para estimarlos.
+    jev_pesos: dict[str, float] = {"fundamentals": 0.25, "valuation": 0.25, "financing": 0.25,
+                                   "catalyst": 0.25}
     # Solo /company-news (from/to acotado), para el gate de noticias del momentum -- no sustituye
     # al scraper de Yahoo, que sigue siendo la fuente para el resto (ver yahoo_scraper.py).
     finnhub_api_key: str = ""
@@ -72,12 +75,11 @@ class Settings(BaseSettings):
     # por posición (ver docs/momentum-sala-real-x.md §4). Editable por env hasta que haga falta
     # una UI propia; el valor no es una decisión de producto, solo un límite de partida.
     momentum_capital_tope_usd: float = 3000.0
-    # Reasoning caro solo donde hay pocas llamadas (macro/constructor=1, profundo≤100). "low" en
+    # Reasoning caro solo donde hay pocas llamadas (constructor=1, profundo≤100). "low" en
     # lotes de 20 degradó la granularidad del prescore (peor correlación con el profundo) y costó
     # 2,6× más — vuelve a "none", que da una nota limpia siempre.
     # "high" y no "max": es el default documentado de DeepSeek (el camino más probado) y la doc
     # no publica qué cambia internamente entre niveles — sin evidencia, el default gana.
-    macro_reasoning_effort: str | None = "low"
     prescore_reasoning_effort: str | None = "none"
     mid_reasoning_effort: str | None = "none"
     deep_reasoning_effort: str | None = "low"
@@ -96,9 +98,15 @@ class Settings(BaseSettings):
     # a propósito el alias sin versión (`deepseek-flash`, no `deepseek-v4-flash`): DeepSeek lo
     # reapunta a la última Flash y `deepseek-v4-pro` enruta también a Flash desde el 14-sep-2026,
     # así que el circuito sigue la versión vigente sin tocar código. V4.1 Flash salió el 10-sep.
-    llm_model: str = "deepseek-flash"      # profundo + macro + constructor
+    llm_model: str = "deepseek-flash"      # profundo + constructor
     prescore_model: str = "deepseek-flash"  # triaje: ranking 1-100 del universo
-    mid_layer: bool = True          # capa media: repuntúa los mejores de cada sector
+    # Capa media: repuntúa los mejores de cada sector. Default si el interruptor no se tocó.
+    mid_layer: bool = False
+    # Macro con contexto (E) en el prescore de Jev. Default si el interruptor no se tocó.
+    jev_macro: bool = False
+    # Cartera mecánica de Jev (sombra sin dinero): top N por nota, tope por industria.
+    jev_portfolio_n: int = 5
+    jev_max_por_industria: int = 2
     # C.4: mediana de P/E (trailing Y forward) del sector propio pegada a su línea de P/E, sin
     # instrucción — dato al lado del dato. Medido el 23-ago con datos reales pareados (mismo
     # ticker, con y sin mediana, flash/none/T=0): 44-44% del universo cambia de nota al activarla

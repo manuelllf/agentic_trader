@@ -28,6 +28,10 @@ export function OutRow({ s, pct }: { s: OutcomeScan; pct: (v: number | null) => 
       <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.cartera} /></td>
       <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.seleccionados} /></td>
       <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.descartados} /></td>
+      <td className="px-3 py-1.5 text-right"
+          title={s.jev?.length ? s.jev.map((p) => `${p.ticker} ${pct(p.ret)}`).join(" · ") : undefined}>
+        {s.groups.jev ? <OutPct s={s.groups.jev} /> : <span className="text-[#565654]">—</span>}
+      </td>
       <td className="px-3 py-1.5 text-right">
         {s.groups.spy == null ? "—" : `${sign(s.groups.spy)}${s.groups.spy.toFixed(1)}%`}
       </td>
@@ -80,6 +84,7 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
                 <th className="px-3 py-1.5 text-right font-semibold" title="media del grupo desde el precio del día del escaneo; entre paréntesis, cuántos nombres">En cartera</th>
                 <th className="px-3 py-1.5 text-right font-semibold" title="los del top-10 que el constructor dejó sin peso">Elegidos s/fondear</th>
                 <th className="px-3 py-1.5 text-right font-semibold" title="analizados a fondo y no seleccionados">Descartados</th>
+                <th className="px-3 py-1.5 text-right font-semibold" title="cartera mecánica de Jev: top 5 del prescore, máx. 2 por industria, 20% cada una · sombra sin dinero, rentabilidad bruta">Jev (sombra)</th>
                 <th className="px-3 py-1.5 text-right font-semibold" title="el índice en la misma ventana: la vara de medir">S&P 500</th>
                 <th className="px-3 py-1.5 text-right font-semibold" title="los 10 mejores pre-scores que no llegaron al profundo vs los 10 peores que sí entraron">
                   Corte: fuera / dentro
@@ -109,6 +114,7 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
                   </td>
                   <td className="px-3 py-1.5 text-right text-[#565654]">—</td>
                   <td className="px-3 py-1.5 text-right text-[#565654]">—</td>
+                  <td className="px-3 py-1.5 text-right text-[#565654]">—</td>
                   <td className="px-3 py-1.5 text-right">
                     {book.spy == null ? "—" : `${sign(book.spy)}${book.spy.toFixed(1)}%`}
                   </td>
@@ -118,7 +124,7 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
               {decisiones.map((s) => <OutRow key={s.at} s={s} pct={pct} />)}
               {observatorios.length > 0 && (
                 <tr className="border-t border-[#303030]">
-                  <td colSpan={6} className="py-1.5">
+                  <td colSpan={7} className="py-1.5">
                     <button onClick={() => setVerObs(!verObs)}
                             className="text-[11px] text-[#6E6E6B] hover:text-[#A3A3A0]">
                       {mostrarObs ? "▴ ocultar" : "▾ ver"} observatorios ({observatorios.length})
@@ -133,7 +139,8 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
         </div>
         <p className="mt-2 border-t border-[#303030] pt-2 text-[11px] text-[#6E6E6B]">
           retorno simple desde el precio del día del escaneo, a igual peso dentro de cada grupo ·
-          un profundo ilegible no cuenta como descarte
+          un profundo ilegible no cuenta como descarte · Jev (sombra) no mueve dinero: solo mide
+          su cartera mecánica
           {observatorios.length > 0 &&
             " · en los observatorios, «en cartera» es la construcción hipotética de ese martes, no el libro"}
           {masVieja > 0 && masVieja < 14 &&

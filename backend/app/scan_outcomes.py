@@ -12,6 +12,7 @@ import yfinance as yf
 from sqlalchemy import select
 
 from app import scan_audit
+from app.llm.jev import PREGUNTAS
 from app.models import ScanAudit, _utcnow, utc_iso
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,18 @@ def _stats(rets: list[float]) -> dict:
             "median": round(median(rets), 2)}
 
 
+def _posicion_jev(r: ScanAudit, ret: float | None) -> dict:
+    """Nota, confianza y las 4 preguntas de vuelta a su escala (nivel 0-9, confianza 0-1)."""
+    dims = {k: (getattr(r, f"jev_{k}"), getattr(r, f"jev_{k}_conf")) for k in PREGUNTAS}
+    confs = [c / 1000 for _n, c in dims.values() if c is not None]
+    return {
+        "ticker": r.ticker, "sector": r.sector, "prescore": r.prescore, "ret": ret,
+        "confidence": round(sum(confs) / len(confs), 3) if confs else None,
+        "dimensiones": {k: [n / 100, None if c is None else c / 1000]
+                        for k, (n, c) in dims.items() if n is not None},
+    }
+
+
 def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
     """Cohorts with returns (newest first); names always included.
 
@@ -78,9 +91,14 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
             .where(ScanAudit.scan_at == at, ScanAudit.reached_deep.is_(False),
                    ScanAudit.prescore.is_not(None), ScanAudit.price.is_not(None))
             .order_by(ScanAudit.prescore.desc()).limit(CORTE_N)).scalars())
+    # Cartera de Jev: sombra sin dinero, puede incluir nombres que no llegaron al profundo.
+    jev_rows = list(db.execute(
+        select(ScanAudit).where(ScanAudit.scan_at.in_(fechas),
+                                ScanAudit.jev_funded.is_(True))).scalars())
 
     tickers = ({r.ticker for r in deep_rows}
-               | {r.ticker for rs in fuera_by_scan.values() for r in rs})
+               | {r.ticker for rs in fuera_by_scan.values() for r in rs}
+               | {r.ticker for r in jev_rows})
     precios = live_prices(sorted(tickers))
 
     def _ret(r: ScanAudit) -> float | None:
@@ -119,6 +137,8 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
                     "nombres": [{"ticker": r.ticker, "prescore": r.prescore, "ret": _ret(r)}
                                 for r in rows]}
 
+        jev = sorted((r for r in jev_rows if r.scan_at == at), key=lambda r: -(r.prescore or 0))
+
         salida.append({
             "at": utc_iso(at),
             # From trace flag, not inferred; construction also recorded in observatories. NULL = observatory.
@@ -128,10 +148,13 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
                 "cartera": _grupo(cartera),
                 "seleccionados": _grupo(selec),
                 "descartados": _grupo(descartados),
+                # Equiponderada (20% cada una): la media simple ES su rentabilidad bruta.
+                "jev": _grupo(jev),
                 "spy": _spy_ret_since(at.date()),
             },
             "pairs": pares,
             "corte": {"fuera": _lado(fuera), "dentro": _lado(dentro)},
+            "jev": [_posicion_jev(r, _ret(r)) for r in jev],
         })
     return salida
 

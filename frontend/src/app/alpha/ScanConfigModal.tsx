@@ -19,13 +19,13 @@ import { T } from "./tokens";
 const DEEPSEEK_MODELS = ["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"] as const;
 const QWEN_MODEL = "qwen3.7-flash";
 // Cualquier etapa puede hablar con Qwen desde 28-ago (`scan_service._llm_for` enruta por modelo,
-// no solo el prescorer) — mismas opciones en las 5 etapas.
+// no solo el prescorer) — mismas opciones en las 4 etapas.
 const ALL_MODELS = [QWEN_MODEL, ...DEEPSEEK_MODELS] as const;
 const isQwen = (model: string) => model === QWEN_MODEL;
 
 // Jev (TypeSafe AI): decisión tipada con confianza calibrada, no texto -- SOLO el prescorer
 // (`scan_llm_stage._prescore_llm`, nunca `_llm_for`), evaluado y descartado para el resto: no
-// genera texto, así que macro/capa media/profundo/constructor lo dejarían roto (17-sep-2026,
+// genera texto, así que capa media/profundo/constructor lo dejarían roto (17-sep-2026,
 // ver docs/jev-typesafe-ai.md). Por eso no vive en ALL_MODELS.
 const JEV_MODEL = "jev-latest";
 const PRESCORE_MODELS = [...ALL_MODELS, JEV_MODEL] as const;
@@ -37,15 +37,14 @@ const DEEPSEEK_REASONINGS: ReasoningEffort[] = ["none", "low", "high", "max"];
 const QWEN_REASONINGS: ReasoningEffort[] = ["none", "high"];
 const QWEN_REASONING_LABEL: Record<string, string> = { none: "sin razonamiento", high: "con razonamiento (~33x coste)" };
 
-type Stage = "macro" | "prescore" | "mid" | "deep" | "constructor";
+// Sin etapa "macro": el bloque macro se arma en código, no lo escribe ningún modelo.
+type Stage = "prescore" | "mid" | "deep" | "constructor";
 
 const MODELS_BY_STAGE: Record<Stage, readonly string[]> = {
-  macro: ALL_MODELS, prescore: PRESCORE_MODELS, mid: ALL_MODELS,
-  deep: ALL_MODELS, constructor: ALL_MODELS,
+  prescore: PRESCORE_MODELS, mid: ALL_MODELS, deep: ALL_MODELS, constructor: ALL_MODELS,
 };
 
 const STAGE_LABEL: Record<Stage, string> = {
-  macro: "Macro",
   prescore: "Prescorer",
   mid: "Capa media",
   deep: "Scorer (profundo)",
@@ -56,14 +55,13 @@ const STAGE_LABEL: Record<Stage, string> = {
 // (config.py) — /config trae los reales en cuanto responde, esto es solo para no mostrar el
 // modal vacío un instante.
 const FALLBACK: Record<Stage, Required<StageLLMOverride>> = {
-  macro: { model: "deepseek-flash", reasoning_effort: "low", temperature: 0.3, top_p: 0.95 },
   prescore: { model: JEV_MODEL, reasoning_effort: "none", temperature: 0.6, top_p: 0.95 },
   mid: { model: "deepseek-flash", reasoning_effort: "none", temperature: 0.6, top_p: 0.95 },
   deep: { model: "deepseek-flash", reasoning_effort: "low", temperature: 0.3, top_p: 0.95 },
   constructor: { model: "deepseek-flash", reasoning_effort: "low", temperature: 0.3, top_p: 0.95 },
 };
 
-const STAGES: Stage[] = ["macro", "prescore", "mid", "deep", "constructor"];
+const STAGES: Stage[] = ["prescore", "mid", "deep", "constructor"];
 
 export function ScanConfigModal({ onClose, onApply, applied, target = "observatorio" }: {
   onClose: () => void;
@@ -136,8 +134,7 @@ export function ScanConfigModal({ onClose, onApply, applied, target = "observato
   // propiedad choca con `Object.prototype.constructor` y TS infiere mal el tipo del literal
   // vacío en ese caso.
   const construirOverrides = (): DemoRunOverrides => ({
-    macro: cfg.macro, prescore: cfg.prescore, mid: cfg.mid, deep: cfg.deep,
-    constructor: cfg.constructor,
+    prescore: cfg.prescore, mid: cfg.mid, deep: cfg.deep, constructor: cfg.constructor,
   });
 
   const apply = async () => {

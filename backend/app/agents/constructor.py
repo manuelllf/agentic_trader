@@ -32,8 +32,8 @@ FALLBACK_SUMMARY = "Sin propuesta (fallo del modelo)."
 
 SYSTEM = (
     "You are a portfolio manager doing the ALLOCATION step — the stocks were ALREADY SELECTED by "
-    "score. You receive the FULL reports of the SELECTED stocks (news, financials, valuation, "
-    "score) and a macro outlook. "
+    "score. You receive the FULL reports of the SELECTED stocks (news, financials, valuation) "
+    "and a macro outlook. "
     "Build a portfolio of EXACTLY {max_pos} names to perform well over the next month versus the "
     "S&P 500. "
     "HARD RULES: allocate ONLY among the listed candidates below (the selected stocks, plus any "

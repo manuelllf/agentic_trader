@@ -61,40 +61,34 @@ def test_clausula_nueva_del_profundo_sin_palabras_direccionales() -> None:
         assert palabra not in bajo
 
 
-def test_outlook_prompt_block_sin_tailwind_headwind_con_outlook() -> None:
-    """Outlook block excludes directional labels (tailwind/headwind)."""
-    macro = {
-        "regime": "neutral", "vix": 15.0, "outlook": "Texto del outlook.",
-        "favored_sectors": ["Technology"], "avoided_sectors": ["Energy"],
-    }
-    bloque = macro_mod.outlook_prompt_block(macro)
-    assert "tailwind" not in bloque.lower()
-    assert "headwind" not in bloque.lower()
-    assert "Texto del outlook." in bloque
+_MACRO = {
+    "regime": "risk-on", "vix": 14.9, "datos": "VIX 14.9. Gold 4,341 (+5% 1m).",
+    "wiki_scheduled_text": "Nov 3 - US elections.", "wiki_events_text": "Fed raises rates.",
+    "macro_headlines": {"yfinance": ["Y1"], "gnews": ["G1"], "gdelt": []},
+}
 
 
-def test_el_scoring_recibe_el_vix_pero_no_la_etiqueta_de_regimen() -> None:
-    """VIX is data; regime label is our conclusion, not sent to scorer."""
-    bloque = macro_mod.outlook_prompt_block(
-        {"regime": "risk-on", "vix": 14.9, "outlook": "Texto."})
-    assert "14.9" in bloque
+def test_bloque_solo_datos_no_lleva_eventos_ni_regimen() -> None:
+    """B: los números y nada más. El régimen es conclusión nuestra, no dato."""
+    bloque = macro_mod.bloque_macro(_MACRO, con_contexto=False)
+    assert bloque == "VIX 14.9. Gold 4,341 (+5% 1m)."
     for etiqueta in ("risk-on", "risk-off", "neutral", "Regime"):
         assert etiqueta not in bloque
 
 
-def test_el_macro_no_le_pide_al_modelo_el_regimen() -> None:
-    """Regime is deterministic (VIX + MA200); not asked of model."""
-    bajo = macro_mod._SYSTEM.lower()
-    assert "risk-on" not in bajo
-    assert '"regime"' not in bajo
+def test_bloque_con_contexto_lleva_calendario_eventos_y_titulares_en_crudo() -> None:
+    bloque = macro_mod.bloque_macro(_MACRO)
+    assert bloque.startswith("VIX 14.9.")
+    assert "Scheduled events (calendar):\nNov 3 - US elections." in bloque
+    assert "Recent events (last 7 days):\nFed raises rates." in bloque
+    assert "Recent market headlines:\n- Y1\n- G1" in bloque
+    assert "risk-on" not in bloque
 
 
-def test_el_macro_no_pide_ni_admite_tilt_sectorial() -> None:
-    """Removes sector question, not just response; blocks sectoral thinking."""
-    bajo = macro_mod._SYSTEM.lower()
-    assert "favored_sectors" not in bajo
-    assert "avoided_sectors" not in bajo
-    assert "do not name sectors" in bajo
+def test_el_macro_ya_no_llama_a_ningun_llm() -> None:
+    """Sin previsión escrita por un modelo: encadenaba narrativa hacia sectores enteros."""
+    assert not hasattr(macro_mod, "get_macro_outlook")
+    assert not hasattr(macro_mod, "_SYSTEM")
 
 
 def test_el_snapshot_no_manda_retornos_por_sector() -> None:
@@ -132,18 +126,6 @@ def test_una_respuesta_nula_no_tumba_el_escaneo() -> None:
     assert r.score == 0 and r.error                      # cae como fallo, no como excepción
     p = scorer_mod.mid_prescore(LLMNulo(), data, "VIX 15.0.")
     assert p.score == 0.0 and p.error
-
-
-def test_el_macro_va_al_prompt_en_ingles_y_a_la_web_en_espanol() -> None:
-    """Outlook in English to scorer; Spanish version for web/trace."""
-    assert '"outlook_en"' in macro_mod._SYSTEM and '"outlook_es"' in macro_mod._SYSTEM
-    bloque = macro_mod.outlook_prompt_block(
-        {"vix": 14.9, "outlook": "Texto en español.", "outlook_en": "Text in English."})
-    assert "Text in English." in bloque
-    assert "español" not in bloque
-    # Sin inglés (escaneos viejos, tests) cae al español: mejor idioma raro que macro vacío.
-    solo_es = macro_mod.outlook_prompt_block({"vix": 14.9, "outlook": "Solo español."})
-    assert "Solo español." in solo_es
 
 
 def test_el_profundo_ya_no_pide_precio_objetivo() -> None:
@@ -252,55 +234,19 @@ def test_ningun_prompt_promete_un_outlook_sectorial() -> None:
     assert "sector Technology" in scorer_user       # el de la empresa, que sí es del paper
 
 
-def test_el_macro_mira_al_proximo_mes_y_a_los_aranceles() -> None:
-    """Paper Exhibit 2D: one-month focus; includes tariffs forecasting."""
-    bajo = macro_mod._SYSTEM.lower()
-    assert "pay special attention to the next month" in bajo
-    assert "tariffs" in bajo
-    assert "interest rates" in bajo and "inflation" in bajo
-
-
-def test_el_macro_da_su_prevision_pero_comparada_con_el_mercado() -> None:
-    """Model opinion on forecasts vs. market expectations (not sector favoring). "Say where they
-    differ" pasó a "compare + if they match, say they match": obliga a enunciar las dos cifras
-    en vez de un diferencial suelto, y a no inventar la del mercado si no está en los datos."""
-    bajo = macro_mod._SYSTEM.lower()
-    assert "not only what analysts and the market expect" in bajo
-    assert "compare your forecasts with the market" in bajo
-    assert "write 'unknown'" in bajo
-    # Sigue sin poder hablar de sectores ni de qué favorecer: solo se acota el alcance de la
-    # opinión propia.
-    assert "do not name sectors" in bajo
-    assert "favour" in bajo and "would favour or avoid" in bajo
-
-
-def test_el_scoring_recibe_los_niveles_de_mercado_como_dato() -> None:
-    """Market levels (not ETF proxies) sent to scorer; prevents hallucination."""
-    bloque = macro_mod.outlook_prompt_block({
-        "vix": 14.9, "outlook_en": "Text.",
-        "market_line": "Gold 4,341 (+5% 1m). Oil (WTI) 78.18 (+8% 1m)",
-    })
-    assert "Gold 4,341" in bloque
-    assert "14.9" in bloque and "Text." in bloque
-    # Son NIVELES, no adjetivos ni distancia a máximos (eso es momentum, no dato de régimen).
-    for juicio in ("strong", "weak", "overbought", "oversold", "elevated", "cheap",
-                  "below 52w high", "del máximo de 52s"):
-        assert juicio not in bloque.lower()
-    # Un escaneo viejo (sin la clave) tiene que dar el bloque EXACTAMENTE como antes.
-    viejo = macro_mod.outlook_prompt_block({"vix": 14.9, "outlook_en": "Text."})
-    assert viejo == "VIX 14.9.\nText."
-
-
-def test_el_snapshot_usa_subyacentes_y_no_etfs() -> None:
-    """Futures (GC=F, CL=F) not ETF proxies (GLD, USO); avoids roll errors."""
+def test_los_datos_macro_usan_subyacentes_sin_petroleo_ni_momentum() -> None:
+    """Futuros, no ETFs proxy (errores de roll). Sin petróleo (ligado a un sector entero) ni
+    MA200/distancia al máximo, que viajan en cada prompt y premian lo que ya subió."""
     import inspect
 
-    codigo = "\n".join(linea for linea in inspect.getsource(macro_mod._snapshot_text).splitlines()
+    fuente = inspect.getsource(macro_mod._datos_mercado).replace(
+        macro_mod._datos_mercado.__doc__, "")
+    codigo = "\n".join(linea for linea in fuente.splitlines()
                        if not linea.strip().startswith("#"))
-    for subyacente in ("GC=F", "CL=F", "DX-Y.NYB"):
+    for subyacente in ("GC=F", "DX-Y.NYB", "^TNX", "^IRX"):
         assert subyacente in codigo
-    for proxy in ('"GLD"', '"USO"', '"UUP"'):
-        assert proxy not in codigo
+    for fuera in ('"GLD"', '"USO"', '"UUP"', "CL=F", "MA200", "52w", "sma("):
+        assert fuera not in codigo
     # HYG se queda (no hay índice de crédito gratis) pero SIN nivel y etiquetado como ETF.
     assert "HYG ETF" in codigo
 

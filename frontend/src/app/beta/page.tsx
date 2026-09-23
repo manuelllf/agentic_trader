@@ -264,8 +264,8 @@ export default function SombraDashboard() {
       const coste = fmtScanCost(report?.cost ?? null);
       const dia = fmtDay(report?.at ?? new Date().toISOString());
       const pasos = cascada(report, funnel);
-      // La tesis DE ESTE escaneo manda; la de la última decisión es el respaldo para informes
-      // viejos (anteriores a que el observatorio guardase la suya).
+      // El macro DE ESTE escaneo manda (datos de mercado; en escaneos viejos, la previsión del
+      // LLM); el resumen de la última decisión es el respaldo para informes sin él.
       const tesis = report?.outlook?.trim() || proposal?.macro_summary?.trim();
       const tesisPropia = !!report?.outlook?.trim();
       const panelPrincipal = esDecision
@@ -300,11 +300,11 @@ export default function SombraDashboard() {
           // Los números solos no concluyen nada: la tesis es el marco que los interpreta, y va
           // ÍNTEGRA y con su autoría — es del sistema, no mía.
           ...(tesis
-            ? [{ label: "SU TESIS MACRO",
-                 // Si la tesis no es de este escaneo, la tarjeta lo dice: emparejar la decisión
-                 // con un contexto de hace semanas sin avisar sería mentir.
+            ? [{ label: tesisPropia ? "EL MACRO QUE VIO" : "SU TESIS",
+                 // Si no es de este escaneo, la tarjeta lo dice: emparejar la decisión con un
+                 // contexto de hace semanas sin avisar sería mentir.
                  note: tesisPropia
-                   ? "íntegra, escrita por el propio sistema en este escaneo"
+                   ? "íntegro, tal como entró en este escaneo"
                    : `íntegra, de la decisión del ${fmtDay(proposal?.created_at ?? null)}`,
                  weight: esDecision ? 0.85 : 1.15, body: quoteSvg(tesis, theme) }]
             : []),
@@ -772,13 +772,11 @@ export default function SombraDashboard() {
                     </div>
                   )}
                   {report?.outlook && (
-                    // La tesis macro DE ESTE escaneo: se paga una llamada al modelo grande por
-                    // ella y solo se veía al exportar la tarjeta. Plegada y etiquetada como
-                    // lectura semanal — la que justificó la cartera vive en la tarjeta de la
-                    // decisión, y confundirlas sería mezclar dos fechas distintas.
+                    // El macro DE ESTE escaneo, plegado: el que acompañó a la cartera vive en la
+                    // tarjeta de la decisión, y confundirlos sería mezclar dos fechas distintas.
                     <details className="mt-2 border-t border-[#303030] pt-2">
                       <summary className="cursor-pointer list-none text-[11px] text-[#6E6E6B] hover:text-[#A3A3A0]">
-                        su lectura macro de esta semana ▾
+                        el macro de este escaneo ▾
                       </summary>
                       <div className="mt-1.5 text-[11.5px] italic leading-relaxed text-[#6E6E6B]">
                         “{richText(report.outlook)}”

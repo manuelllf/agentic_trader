@@ -106,6 +106,8 @@ PROTECTED_CALLS = [
     ("get", "/admin/memory-status", None),
     ("post", "/admin/universe-snapshot", None),
     ("get", "/fx", None),
+    ("get", "/scan/mid-layer", None),
+    ("get", "/scan/jev-macro", None),
 ]
 
 
@@ -658,6 +660,89 @@ def test_outcomes_mide_grupos_y_oculta_nombres_sin_sesion(client, db, token, mon
     assert {p["ticker"] for p in con["pairs"]} == {"AAA", "BBB", "CCC"}
     assert con["corte"]["fuera"]["nombres"][0]["ticker"] == "DDD"       # el mejor que quedó fuera
     assert con["corte"]["fuera"]["avg"] == 5.0                          # 200 → 210
+
+
+def test_outcomes_mide_la_cartera_jev_y_oculta_sus_nombres_sin_sesion(
+        client, db, token, monkeypatch) -> None:
+    """Jev entra aunque no llegue al profundo; sus 4 preguntas vuelven a su escala (0-9, 0-1)."""
+    from datetime import UTC, datetime
+
+    from app import scan_outcomes, tracking
+    from app.models import ScanAudit
+
+    at = datetime.now(UTC).replace(tzinfo=None)
+    db.add_all([
+        ScanAudit(scan_at=at, ticker="JJJ", sector="Tech", prescore=90.0, price=100.0,
+                  stage="prescore", decide=False, jev_funded=True,
+                  jev_fundamentals=790, jev_fundamentals_conf=910, jev_valuation=782,
+                  jev_valuation_conf=770, jev_financing=893, jev_financing_conf=970,
+                  jev_catalyst=559, jev_catalyst_conf=760),
+        ScanAudit(scan_at=at, ticker="KKK", sector="Energy", prescore=85.0, price=50.0,
+                  reached_deep=True, deep_score=70, stage="finalista", decide=False,
+                  jev_funded=True),
+        ScanAudit(scan_at=at, ticker="LLL", sector="Tech", prescore=80.0, price=10.0,
+                  stage="prescore", decide=False, jev_funded=False),
+    ])
+    db.commit()
+    monkeypatch.setattr(tracking, "live_prices",
+                        lambda _t: {"JJJ": 110.0, "KKK": 45.0, "LLL": 20.0})
+    monkeypatch.setattr(scan_outcomes, "_spy_ret_since", lambda _d: 1.0)
+
+    anon = client.get("/scan/outcomes").json()["scans"][0]
+    assert anon["groups"]["jev"] == {"n": 2, "avg": 0.0, "median": 0.0}   # +10% y -10%
+    assert anon["jev"] == [] and "JJJ" not in client.get("/scan/outcomes").text
+
+    con = client.get("/scan/outcomes",
+                     headers={"Authorization": f"Bearer {token}"}).json()["scans"][0]
+    jjj, kkk = con["jev"]                                     # ordenados por nota
+    assert (jjj["ticker"], jjj["ret"], kkk["ticker"]) == ("JJJ", 10.0, "KKK")
+    assert jjj["dimensiones"]["fundamentals"] == [7.9, 0.91]
+    assert jjj["confidence"] == pytest.approx((0.91 + 0.77 + 0.97 + 0.76) / 4, abs=1e-3)
+    assert kkk["dimensiones"] == {} and kkk["confidence"] is None   # fila sin las 4 notas
+
+
+def test_outcomes_de_escaneos_sin_jev_no_inventan_su_grupo(client, db, monkeypatch) -> None:
+    from app import scan_outcomes, tracking
+
+    _siembra_cohorte(db)
+    monkeypatch.setattr(tracking, "live_prices", lambda _t: {"AAA": 110.0})
+    monkeypatch.setattr(scan_outcomes, "_spy_ret_since", lambda _d: None)
+
+    s = client.get("/scan/outcomes").json()["scans"][0]
+    assert s["groups"]["jev"] == {"n": 0, "avg": None, "median": None}
+
+
+def test_report_publico_oculta_la_cartera_jev(client, db, token) -> None:
+    import json
+
+    from app.models import Meta
+
+    db.add(Meta(key="last_scan_report", value=json.dumps(
+        {"at": "2026-09-23T14:15:00+00:00", "mode": "observatorio", "error": None,
+         "issues": [], "changes": [], "outlook": "VIX 15.4.", "jev_macro": False,
+         "jev_cartera": [{"ticker": "MU", "industry": "Semiconductors", "score": 84.2,
+                          "confidence": 0.85, "weight_pct": 20.0}]})))
+    db.commit()
+
+    anon = client.get("/scan/report").json()["report"]
+    assert anon["jev_cartera"] == [] and "MU" not in client.get("/scan/report").text
+    assert anon["jev_macro"] is False                        # comportamiento, sin nombres
+
+    con = client.get("/scan/report", headers={"Authorization": f"Bearer {token}"}).json()
+    assert con["report"]["jev_cartera"][0]["ticker"] == "MU"
+
+
+@pytest.mark.parametrize("ruta", ["/scan/mid-layer", "/scan/jev-macro"])
+def test_interruptores_se_guardan_y_exigen_sesion(client, token, ruta) -> None:
+    h = {"Authorization": f"Bearer {token}"}
+    assert client.put(ruta, json={"enabled": True}).status_code == 401
+    assert client.put(ruta, json={"enabled": True}, headers=h).json() == {"enabled": True}
+    assert client.get(ruta, headers=h).json() == {"enabled": True}
+    assert client.put(ruta, json={"enabled": False}, headers=h).json() == {"enabled": False}
+    assert client.get(ruta, headers=h).json() == {"enabled": False}
+    # Un cuerpo sin booleano no cambia nada: 422, y lo guardado sigue igual.
+    assert client.put(ruta, json={"enabled": "quizá"}, headers=h).status_code == 422
+    assert client.get(ruta, headers=h).json() == {"enabled": False}
 
 
 def test_outcomes_modo_honesto_y_fila_del_libro(client, db, monkeypatch) -> None:

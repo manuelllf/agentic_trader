@@ -75,6 +75,8 @@ class PrescoreResult:
     # A.5.4: en 3-8 palabras, qué campo pesó más. None si el flag está apagado o el modelo se lo
     # saltó. Telemetría — no entra en ningún ranking ni vuelve a un prompt.
     driver: str | None = None
+    # Solo Jev: {pregunta: [nivel 0-9, confianza]} de las 4 preguntas del prescore.
+    dimensiones: dict[str, list[float]] | None = None
 
 
 @dataclass
@@ -278,7 +280,8 @@ def prescore_one(
         # Sin aviso por llamada: viaja en `PrescoreResult.confidence` y el escaneo lo resume
         # agregado (ver `_log_funnel`). Una línea por ticker inundaba y Railway las descartaba.
         driver = str(obj.get("driver") or "").strip() or None
-        return PrescoreResult(data.ticker, sc, confidence=confidence, driver=driver)
+        return PrescoreResult(data.ticker, sc, confidence=confidence, driver=driver,
+                              dimensiones=obj.get("dimensiones"))
     except Exception as exc:
         logger.warning("Pre-score no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
         return PrescoreResult(data.ticker, 0.0, error=f"{type(exc).__name__}: {exc}",

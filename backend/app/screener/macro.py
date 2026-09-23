@@ -1,34 +1,25 @@
-"""Contexto macro — régimen determinista + outlook forward escrito por el LLM.
+"""Contexto macro — régimen determinista + bloque común para los prompts, sin LLM.
 
-Dos funciones:
-- `get_macro_regime()`: barato, sin LLM (SPY vs MA200 + VIX → risk-on/neutral/risk-off). Para el
-  endpoint /macro y como fallback.
-- `get_macro_outlook(llm)`: como el paper (Exhibit 2C/2D) — snapshot GRATIS (índices, VIX, tipos
-  10a y 3m, dólar, oro/petróleo, crédito) + titulares yfinance + EVENTOS reales keyless
-  (Wikipedia Current Events, que usa el paper, + titulares macro) → el LLM escribe el outlook a
-  3 meses EN LOS DOS IDIOMAS: el inglés viaja a los prompts de scoring, el español a la web.
-  Sin tilt sectorial y sin etiqueta de régimen (ver `_SYSTEM`). Todo gratis y sin API key.
+- `get_macro_regime()`: SPY vs MA200 + VIX → risk-on/neutral/risk-off. Para /macro y la traza.
+- `get_macro(db)`: datos de mercado de Yahoo, eventos de Wikipedia (recientes y calendario) y
+  titulares macro, tal cual. Sin previsión: un resumen escrito por un LLM encadenaba narrativa
+  hacia sectores enteros (docs/plan-jev-pipeline.md, test P3/P3b).
+- `bloque_macro(macro, con_contexto)`: solo datos (B) o datos + eventos + titulares (E).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 
 import yfinance as yf
 
-from app.llm.base import LLMProvider
 from app.screener import technicals as ta
 
 logger = logging.getLogger(__name__)
 
 _TTL = 600
 _regime_cache: tuple[float, dict] | None = None
-_outlook_cache: tuple[float, dict] | None = None
-
-# SPDR sectoriales quitados: último canal de sesgo sectorial en scoring.
-# Macro ahora solo indicadores/eventos; sector entra por nombre, no por ranking global.
 
 
 def get_macro_regime() -> dict:
@@ -55,81 +46,48 @@ def get_macro_regime() -> dict:
     return regime
 
 
-def _snapshot_text() -> tuple[str, list[str], str]:
-    """Estado de mercado: texto largo (macro), lista de headlines, y línea compacta (scoring).
-    Tercer elemento viaja en cada prompt scoring con niveles de mercado clave."""
-    # SUBYACENTES vs ETFs: nivel exacto, no erosión roll. HYG etiquetado sin nivel.
-    lines: list[str] = []
-    # ^IRX (3m) y HYG (high yield): datos crudos sin interpretación ("apetito", "giro") — dato sí, conclusión no.
-    tickers = ["SPY", "QQQ", "IWM", "^VIX", "^TNX", "^IRX",
-               "DX-Y.NYB", "GC=F", "CL=F", "HYG"]
+def _datos_mercado() -> tuple[str, list[str]]:
+    """Línea de datos (B) y titulares de Yahoo. Sin petróleo, MA200 ni distancia al máximo:
+    viajan en cada prompt y empujaban hacia un sector o hacia lo que ya había subido."""
+    tickers = ["SPY", "QQQ", "IWM", "^VIX", "^TNX", "^IRX", "DX-Y.NYB", "GC=F", "HYG"]
     try:
         df = yf.download(tickers, period="1y", interval="1d", auto_adjust=True,
                          group_by="ticker", threads=True, progress=False)
     except Exception:
-        return "n/d", [], ""
+        logger.exception("Descarga de datos macro falló")
+        return "", []
 
     def close(tk: str):
         try:
             c = df[tk]["Close"].dropna()
-            return c if len(c) else None
+            return c if len(c) > 63 else None
         except Exception:
             return None
 
-    def desde_max(c) -> float | None:
-        """% por debajo del máximo de 52 semanas. Solo para `lines` (el propio agente macro):
-        sin el nivel real, se ha visto llamar "máximos" al oro estando un 23% por debajo (4.300
-        vs máximo de 5.600) — alucinación de nivel, no juicio de momentum. NO entra en
-        `compacto`/`market_line`, que repite en cada una de las ~2.600+ llamadas de scoring por
-        nombre — ahí sí era el mismo dato que el sesgo hacia ATH lee como "fortaleza"."""
-        mx = float(c.max())
-        return (mx - float(c.iloc[-1])) / mx * 100 if mx else None
+    def pp(c, n: int) -> float:
+        return float(c.iloc[-1]) - float(c.iloc[-1 - n])
 
-    # `lines` es prompt (va al agente macro): SIEMPRE en inglés, como el resto del sistema.
-    compacto: list[str] = []
-    for tk, label in (("SPY", "S&P 500"), ("QQQ", "Nasdaq 100"), ("IWM", "Small caps")):
-        c = close(tk)
-        if c is not None and len(c) > 200:
-            above = "above" if c.iloc[-1] > ta.sma(c, 200) else "below"
-            dm = desde_max(c)
-            lines.append(f"{label}: {ta.pct_change_ndays(c, 21):+.1f}% 1m, "
-                         f"{ta.pct_change_ndays(c, 63):+.1f}% 3m, {above} MA200"
-                         + (f", {dm:.0f}% below its 52w high" if dm is not None else ""))
-    vix = close("^VIX")
-    if vix is not None:
-        lines.append(f"VIX: {float(vix.iloc[-1]):.1f}")
-    # ^TNX y ^IRX ya vienen en % (4.54 = 4.54%), NO multiplicados por 10. Nada de dividir.
-    for tk, label in (("^IRX", "3m T-bill yield"), ("^TNX", "10y yield")):
+    partes: list[str] = []
+    c = close("^VIX")
+    if c is not None:
+        partes.append(f"VIX {float(c.iloc[-1]):.1f}.")
+    # ^TNX y ^IRX ya vienen en % (4.54 = 4.54%): el cambio va en puntos, no en % del nivel.
+    for tk, label in (("^TNX", "10y yield"), ("^IRX", "3m T-bill yield")):
         c = close(tk)
         if c is not None:
-            lines.append(f"{label}: {float(c.iloc[-1]):.2f}% "
-                         f"({ta.pct_change_ndays(c, 21):+.1f}% 1m, "
-                         f"{ta.pct_change_ndays(c, 63):+.1f}% 3m)")
-    c = close("^TNX")
-    if c is not None:
-        compacto.append(f"10y yield {float(c.iloc[-1]):.2f}%")
-    # Nivel + 1m + 3m + distancia al máximo (en `lines`, no en `compacto` — ver `desde_max`).
-    # Oil fuera de `compacto`: es el único ligado a un sector entero (Energy), y se repetía
-    # sin filtro de relevancia en cada prompt de scoring aunque la empresa no tuviera nada que ver.
-    for tk, label, fmt in (("DX-Y.NYB", "USD index", "{:,.1f}"),
-                           ("GC=F", "Gold", "{:,.0f}"),
-                           ("CL=F", "Oil (WTI)", "{:,.2f}")):
+            partes.append(f"{label} {float(c.iloc[-1]):.2f}% ({pp(c, 21):+.2f} pp 1m, "
+                          f"{pp(c, 63):+.2f} pp 3m).")
+    for tk, label, fmt in (("DX-Y.NYB", "USD index", "{:,.1f}"), ("GC=F", "Gold", "{:,.0f}")):
         c = close(tk)
-        if c is None:
-            continue
-        nivel = fmt.format(float(c.iloc[-1]))
-        dm = desde_max(c)
-        cola = f", {dm:.0f}% below its 52w high" if dm is not None else ""
-        lines.append(f"{label}: {nivel} ({ta.pct_change_ndays(c, 21):+.1f}% 1m, "
-                     f"{ta.pct_change_ndays(c, 63):+.1f}% 3m{cola})")
-        if tk != "CL=F":
-            compacto.append(f"{label} {nivel} ({ta.pct_change_ndays(c, 21):+.0f}% 1m)")
-    c = close("HYG")
-    if c is not None:
-        dm = desde_max(c)
-        lines.append(f"High yield credit (HYG ETF): {ta.pct_change_ndays(c, 21):+.1f}% 1m, "
-                     f"{ta.pct_change_ndays(c, 63):+.1f}% 3m"
-                     + (f", {dm:.0f}% below its 52w high" if dm is not None else ""))
+        if c is not None:
+            partes.append(f"{label} {fmt.format(float(c.iloc[-1]))} "
+                          f"({ta.pct_change_ndays(c, 21):+.0f}% 1m).")
+    for tk, label in (("HYG", "High yield credit (HYG ETF)"), ("SPY", "S&P 500"),
+                      ("QQQ", "Nasdaq 100"), ("IWM", "Small caps")):
+        c = close(tk)
+        if c is not None:
+            partes.append(f"{label} {ta.pct_change_ndays(c, 21):+.1f}% 1m, "
+                          f"{ta.pct_change_ndays(c, 63):+.1f}% 3m.")
 
     headlines: list[str] = []
     try:
@@ -139,113 +97,45 @@ def _snapshot_text() -> tuple[str, list[str], str]:
                 headlines.append(t.strip())
     except Exception:
         pass
-    return "\n".join(lines), headlines, ". ".join(compacto)
+    if not partes:
+        logger.warning("Datos macro vacíos: Yahoo no devolvió series utilizables")
+    return " ".join(partes), headlines
 
 
-_SYSTEM = (
-    "You are a macro strategist. Use ONLY the market snapshot, headlines and events "
-    "in the user message. Do not use outside knowledge. Do not invent officials, "
-    "titles, dates, percentages, rate paths, CPI prints, tariff rates or 'market consensus' "
-    "figures that are not explicitly written in those inputs — if a market/consensus figure "
-    "is not in the inputs, write 'unknown', do not guess it. "
-    "Write a concise 3-month forward outlook for US equities: your expectation for interest "
-    "rates, inflation, tariffs, the key upcoming economic/political events and their likely "
-    "market impact, and risk appetite. "
-    "PAY SPECIAL ATTENTION TO THE NEXT MONTH: it is the horizon of every decision this outlook "
-    "feeds. "
-    "For those forecasts give your own expectation grounded in the data and events above — "
-    "not only what analysts and the market expect. Compare your forecasts with the market's "
-    "expectations; if they match, say they match. "
-    "Include a compact forecast table for interest rates, inflation and tariffs for the next "
-    "month AND quarter: your forecast, the market/consensus if present in the inputs "
-    "(otherwise 'unknown'), and a one-line comparison. "
-    "Do NOT name sectors or industries, and do not say which parts of the market you "
-    "would favour or avoid. Be brief. "
-    'Respond ONLY in JSON: {"outlook_en": "...", "outlook_es": "..."}. Same content in both: '
-    "English for downstream prompts, Spanish for the human-facing report."
-)
-
-
-def get_macro_outlook(llm: LLMProvider, db=None, temperature: float = 1.0,
-                      top_p: float | None = 0.95) -> dict:  # noqa: ANN001
-    """Outlook a 3 meses (foco en próximo mes): 1 llamada V4-Pro, cacheado por escaneo.
-    `db` persiste caché de eventos y sesión; sin DB, re-consulta Wikipedia cada vez."""
-    global _outlook_cache
-    now = time.time()
-    if _outlook_cache is not None and now - _outlook_cache[0] < _TTL:
-        return _outlook_cache[1]
+def get_macro(db=None) -> dict:  # noqa: ANN001
+    """Todo lo que alimenta el bloque macro de un escaneo. `db` cachea los eventos en `Meta`."""
+    from app.screener import events as events_mod
 
     regime = get_macro_regime()
-    snapshot, headlines, market_line = _snapshot_text()
-    # Eventos/noticias GRATIS y keyless (fiel al Exhibit 2C/2D). Best-effort: si caen, se omiten.
-    from app.screener import events as events_mod
-    wiki_events = events_mod.wikipedia_current_events(days=7, db=db)   # eventos recientes macro
-    wiki_scheduled = events_mod.wikipedia_scheduled_events(db=db)      # calendario FUTURO (2D)
-    # Google News principal (0.7s, on-topic); GDELT reserva (keyless, 25s, a veces ruido y 429).
-    # GDELT cae atrás como fallback a primera fuente.
+    datos, headlines = _datos_mercado()
+    wiki_events = events_mod.wikipedia_current_events(days=7, db=db)
+    wiki_scheduled = events_mod.wikipedia_scheduled_events(db=db)
+    # Google News principal; GDELT solo de reserva (lento, a veces ruido y 429).
     gnews = events_mod.google_news_headlines(db=db)
     gdelt = events_mod.gdelt_headlines(db=db) if not gnews else []
-    result = {
+    return {
         "regime": regime.get("regime"),
         "vix": regime.get("vix"),
-        "outlook": "",        # español: web, informe y traza
-        "outlook_en": "",     # inglés: es el que viaja a los ~3.000 prompts de scoring
-        # Se mantienen SIEMPRE vacíos: ya no se le piden al modelo (ver `_SYSTEM`). Las claves
-        # siguen aquí porque `ScanRun` las persiste y los escaneos viejos sí las traen — así las
-        # filas históricas se leen igual y ninguna lectura se rompe.
-        "favored_sectors": [],
-        "avoided_sectors": [],
-        "snapshot": snapshot,
-        # Línea compacta de niveles de mercado que viaja DENTRO de cada prompt de scoring. El
-        # texto del outlook lo escribe el modelo y no se le puede obligar a citar el oro; esto es
-        # el dato, siempre, sin depender de qué le pareciera relevante al agente macro.
-        "market_line": market_line,
-        # Qué trajo cada fuente de eventos (chars/títulos): el informe del escaneo lo usa para
-        # avisar de fuentes caídas — un 403/rate-limit aquí es best-effort y no rompe nada,
-        # pero debe VERSE (estuvo semanas mudo).
+        "datos": datos,
+        # Qué trajo cada fuente: el informe del escaneo avisa de las caídas.
         "events": {"wiki": len(wiki_events), "sched": len(wiki_scheduled), "gdelt": len(gdelt),
                    "gnews": len(gnews)},
-        # Crudo para persistir (ver `_guardar_macro_headlines` en scan_service.py) -- antes solo
-        # vivían en la caché de `Meta` (un blob JSON sin scan_run_id, podado con el tiempo), sin
-        # forma de comprobar después qué vio realmente el macro de un escaneo concreto.
         "macro_headlines": {"yfinance": headlines, "gnews": gnews, "gdelt": gdelt},
         "wiki_events_text": wiki_events,
         "wiki_scheduled_text": wiki_scheduled,
     }
-    try:
-        all_headlines = headlines + gdelt + gnews
-        user = (
-            f"Market snapshot:\n{snapshot}\n\n"
-            f"Recent market headlines:\n" + "\n".join(f"- {h}" for h in all_headlines) + "\n\n"
-            f"Recent real-world events (economic & political, last 7 days):\n"
-            f"{wiki_events or 'n/d'}\n\n"
-            f"Upcoming scheduled events (economic & political calendar):\n"
-            f"{wiki_scheduled or 'n/d'}\n\n"
-            + "Write the 3-month forward outlook, taking these events into account, with special "
-              "attention to the next month."
-        )
-        raw = llm.chat(_SYSTEM, user, temperature=temperature, top_p=top_p)
-        data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-        # Si el modelo devolviera solo uno de los dos idiomas, cada campo cae al que haya: mejor
-        # un prompt con el idioma "equivocado" que un macro vacío en ~3.000 llamadas.
-        es = str(data.get("outlook_es") or data.get("outlook") or "").strip()
-        en = str(data.get("outlook_en") or "").strip()
-        result["outlook"] = es or en
-        result["outlook_en"] = en or es
-        _outlook_cache = (now, result)
-    except Exception:
-        logger.exception("Outlook macro LLM falló → uso solo el régimen determinista")
-    return result
 
 
-def outlook_prompt_block(macro: dict) -> str:
-    """Inyecta VIX + outlook en cada scoring (sin etiqueta régimen: dato sí, conclusión no).
-    Incluye market_line niveles clave para evitar que modelo se los invente."""
-    if not macro:
-        return "n/d"
-    texto = macro.get("outlook_en") or macro.get("outlook", "")
-    mercado = (macro.get("market_line") or "").strip()
-    cabecera = f"VIX {macro.get('vix', 'n/d')}."
-    if mercado:
-        cabecera = f"{cabecera} {mercado}."
-    return f"{cabecera}\n{texto}"
+def bloque_macro(macro: dict, con_contexto: bool = True) -> str:
+    """B = solo datos; E = datos + calendario + eventos de 7 días + titulares, en crudo."""
+    partes = [macro.get("datos") or "n/d"]
+    if con_contexto:
+        if macro.get("wiki_scheduled_text"):
+            partes.append("Scheduled events (calendar):\n" + macro["wiki_scheduled_text"].strip())
+        if macro.get("wiki_events_text"):
+            partes.append("Recent events (last 7 days):\n" + macro["wiki_events_text"].strip())
+        titulares = [h for fuente in ("yfinance", "gdelt", "gnews")
+                     for h in (macro.get("macro_headlines") or {}).get(fuente) or []]
+        if titulares:
+            partes.append("Recent market headlines:\n" + "\n".join(f"- {h}" for h in titulares))
+    return "\n".join(partes)

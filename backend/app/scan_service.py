@@ -4,17 +4,18 @@ Embudo para ir rápido y barato sin perder profundidad donde importa:
   1. universo ENTERO del screener de NASDAQ (~3.000 tras suelo de liquidez en dólares y tope
      `universe_max_names`; sin suelo de capitalización) — las posiciones abiertas y los tickers
      de `always_deep_tickers` van siempre dentro
-  2. outlook macro forward (1 llamada V4-Pro)
+  2. bloque macro común sin LLM: datos de mercado, eventos y titulares (ver `macro.get_macro`)
   3. PASO 1 — pre-score de todo el universo en paralelo, 1 llamada por nombre → ranking 1-100.
-     Lo sirve `prescore_provider` (hoy Qwen), no el V4-Pro del resto del embudo
-  3b. capa media (`mid_layer`): repuntúa los mejores de cada sector con V4-Pro — el carril
-     "global" del corte a finalistas sale de esa segunda opinión en vez de la frontera ruidosa
-     del pre-score barato
-  4. PASO 2 — informe PROFUNDO (V4-Pro) + price target en los finalistas (`deep_finalists_cap`)
+     Lo sirve `prescore_provider` (hoy Jev), no el DeepSeek del resto del embudo
+  3b. capa media (interruptor de Alpha, apagada por defecto): repuntúa los mejores de cada
+     sector — el carril "global" del corte a finalistas sale de esa segunda opinión
+  4. PASO 2 — informe PROFUNDO (DeepSeek) en los finalistas (`deep_finalists_cap`)
   5. el leaderboard persiste SOLO los analizados a fondo. La watchlist ya NO se alimenta: el
      paper no la tiene y dejó de dar acceso al profundo (ver donde se arma `always`)
   6. SELECCIÓN fiel al paper (código): top-N por score PROFUNDO, desempate por market cap →
-     el constructor (V4-Pro) solo ASIGNA PESOS a los ya seleccionados (Exhibit 2E)
+     el constructor (DeepSeek) solo ASIGNA PESOS a los ya seleccionados (Exhibit 2E)
+  6b. cartera de Jev (solo con prescore de Jev): top 5 del prescore, máx. 2 por industria, 20%
+     cada una. Sombra sin dinero: solo se guarda para medir su rentabilidad bruta
   7. traduce a trades con aritmética EXACTA (Decimal, nunca el LLM); SOLO si el escaneo DECIDE
      persiste la propuesta, ejecuta la sombra y propone a la real. Un escaneo con `decide=False`
      es OBSERVATORIO: aprende (ranking/memoria/traza) sin tocar libros
@@ -42,7 +43,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app import execution_service, scan_audit, scan_progress
+from app import execution_service, scan_audit, scan_config, scan_progress
 from app import instruments as instruments_mod
 from app import portfolio_service as portfolio
 from app import watchlist as watchlist_mod
@@ -52,6 +53,7 @@ from app.config import settings
 from app.ledger import service as ledger
 from app.llm import deepseek as deepseek_mod
 from app.llm import get_llm
+from app.llm.jev import JevProvider
 from app.llm.trace import LLMTrace
 from app.models import (
     Proposal,
@@ -65,7 +67,6 @@ from app.models import (
     ScanRunFinalistNews,
     ScanRunIssue,
     ScanRunMacroHeadline,
-    ScanRunSector,
     ScanRunTiming,
     Score,
 )
@@ -161,7 +162,7 @@ def _dormir_cancelable(seconds: float, cancel_event: threading.Event | None) -> 
 
 
 def run_scan_and_store(db: Session, sample_size: int | None = None,
-                       decide: bool = True, force_mid_layer: bool = False,
+                       decide: bool = True,
                        llm_overrides: dict | None = None,
                        reutilizar_ultima_foto: bool = False,
                        modo_universo: str = "nasdaq",
@@ -175,7 +176,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     mensual único y siempre decide — la señal del scorer es a un mes, así cada elección vive su
     mes y la curva mide la selección, no ruido semanal del LLM.
 
-    `llm_overrides`: {"macro"|"prescore"|"mid"|"deep"|"constructor": {"model", "reasoning_effort",
+    `llm_overrides`: {"prescore"|"mid"|"deep"|"constructor": {"model", "reasoning_effort",
     "temperature", "top_p"}} — SOLO para el botón "simulación" de Alpha (banco de pruebas de
     configuración con coste/modelo reales, sin tocar ninguna cartera). El cron y "Analizar
     mercado" no mandan nada, así que se comportan exactamente como antes (defaults de `settings`).
@@ -205,13 +206,12 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Config efectiva por etapa: override del caller (modal de "simulación") o default de
     # `settings` si no hay nada. `constructor_cfg` se calcula ya aquí aunque su LLM se cree más
     # tarde (lazy, ver más abajo) para no tener que releer `llm_overrides` en dos sitios.
-    # OJO con el default de "model" en macro/deep/constructor: se deja en `None` (no en
+    # OJO con el default de "model" en deep/constructor: se deja en `None` (no en
     # `settings.llm_model` explícito) a propósito — sin override, `get_llm(None, ...)` cae
     # DENTRO de `get_llm()` al mismo `settings.llm_model`, pero pasarlo aquí ya resuelto lo
     # volvía indistinguible de `settings.mid_model` (mismo string, "deepseek-v4-pro") para
     # cualquier caller que decida QUÉ etapa es mirando el modelo pasado a `get_llm()` (los tests
     # de la capa media, ver `_stub_llms` en `test_capa_media_y_opa.py`).
-    macro_cfg = _stage_cfg(llm_overrides, "macro", None, settings.macro_reasoning_effort)
     deep_cfg = _stage_cfg(llm_overrides, "deep", None, settings.deep_reasoning_effort)
     prescore_cfg = _stage_cfg(llm_overrides, "prescore", settings.prescore_model,
                               settings.prescore_reasoning_effort,
@@ -220,19 +220,17 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                         settings.mid_temperature)
     constructor_cfg = _stage_cfg(llm_overrides, "constructor", None, settings.reasoning_effort)
 
-    # Instancia PROPIA para el macro (antes compartía `deep_llm`): sin esto, su única llamada se
-    # mezclaba con las del profundo en `by_model` (ambos V4-Pro) y el desglose de coste por
-    # etapa de `_llm_usage` no podía separarlas.
     # Traza de llamadas (ver `app/llm/trace.py`): se acumula en memoria y se vuelca de una vez al
     # final, con el `ScanRun` ya escrito para poder referenciarlo.
     traza = LLMTrace()
-    macro_llm = _llm_for(macro_cfg, "macro", traza)
     deep_llm = _llm_for(deep_cfg, "deep", traza)
     prescore_llm = _prescore_llm(prescore_cfg, bool((llm_overrides or {}).get("prescore")), traza)
     # Capa media (opcional): repuntúa los mejores de cada sector con un modelo mejor que Flash
     # antes del corte a finalistas. Se crea aquí (como los otros dos) para que su coste entre en
     # `_llm_usage` aunque no llegue a usarse ninguna vez si `mid_layer` está desactivado.
-    mid_llm = _llm_for(mid_cfg, "mid", traza) if settings.mid_layer else None
+    # El interruptor de Alpha (`scan_config.mid_layer_activa`) manda sobre `settings.mid_layer`.
+    capa_media = scan_config.mid_layer_activa(db)
+    mid_llm = _llm_for(mid_cfg, "mid", traza) if capa_media else None
     # sample_size explícito (pruebas) manda; si no, TODO el universo salvo que se desactive.
     if sample_size is not None:
         n = sample_size
@@ -322,9 +320,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                       f"de liquidez y solo se escanearon los {universo_info['size']} de más "
                       "volumen. Conviene subir el suelo en dólares.")
 
-    # 2) Gather ANTES que el macro: si Yahoo está caído entero, mejor descubrirlo aquí (gratis)
-    # que después de haber pagado la llamada de macro (V4-Pro, reasoning alto, la más cara del
-    # embudo por llamada única).
+    # 2) Gather ANTES que el macro: si Yahoo está caído entero, se aborta sin descargar nada más.
     # _GATHER_WORKERS/PACE_S: validados en vivo (2 hilos, 0,4s pausa) para yahoo_scraper.
     fund_mod._GATHER_PACE_S = _GATHER_PACE_S
     ttl_h = float("inf") if reutilizar_ultima_foto else fund_mod._FOTO_TTL_H
@@ -397,25 +393,26 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     gather_errors = [(t, e) for t, d, e in gathered if d is None and e]
     datos_ok = [d for _t, d, _e in gathered if d is not None]
     if not datos_ok:
-        # Cero nombres útiles tras gather + reintento: Yahoo no está disponible (o el universo
-        # está roto). Abortar AQUÍ, antes del macro, es justo el ahorro que motiva este orden —
-        # sin datos que puntuar, pagar la llamada más cara del embudo no compra nada.
+        # Cero nombres útiles tras gather + reintento: Yahoo caído o universo roto.
         raise RuntimeError(
             f"Gather sin ningún dato útil: los {len(sample)} nombres fallaron (Yahoo caído o "
-            "universo roto). El escaneo se aborta antes del macro, sin gastar en él."
+            "universo roto). El escaneo se aborta antes del macro."
         )
 
-    # 3) Outlook macro forward (V4-Pro, 1 llamada) — ya con la certeza de que hay datos que
-    # puntuar con él.
+    # 3) Macro sin LLM. DeepSeek ve siempre el bloque con contexto (E); Jev, según su interruptor.
     _revisar_cancelado(cancel_event)
     scan_progress.set_stage("macro")
-    logger.info("Escaneo: iniciando MACRO (modelo=%s, reasoning=%s).",
-               macro_cfg["model"] or settings.llm_model, macro_cfg["reasoning_effort"])
+    logger.info("Escaneo: iniciando MACRO.")
     t0 = time.monotonic()
-    macro = macro_mod.get_macro_outlook(macro_llm, db, **_sampling_kwargs(macro_cfg))
-    macro_block = macro_mod.outlook_prompt_block(macro)
+    macro = macro_mod.get_macro(db)
+    macro_block = macro_mod.bloque_macro(macro)
+    es_jev = isinstance(prescore_llm, JevProvider)
+    jev_macro = scan_config.jev_macro_activa(db) if es_jev else None
+    macro_block_pre = macro_mod.bloque_macro(macro, con_contexto=jev_macro is not False)
     timings["macro"] = round(time.monotonic() - t0, 1)
-    logger.info("Escaneo: MACRO completado en %.1fs.", timings["macro"])
+    logger.info("Escaneo: MACRO completado en %.1fs (bloque %d chars, prescore %d chars, "
+                "Jev con contexto=%s, fuentes=%s).", timings["macro"], len(macro_block),
+                len(macro_block_pre), jev_macro, macro.get("events"))
 
     ev = macro.get("events")
     if ev is not None:
@@ -431,8 +428,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             else:
                 issues.append("Eventos macro: sin titulares — Google News y la reserva de "
                               "GDELT cayeron a la vez.")
-    if not macro.get("outlook"):
-        issues.append("Outlook macro del LLM caído — se usó solo el régimen determinista.")
+    if not macro.get("datos"):
+        issues.append("Datos de mercado del macro no disponibles (Yahoo): el bloque va sin ellos.")
 
     # C.4: mediana de P/E por sector calculada sobre ESTE universo, con el mismo campo con el
     # que se puntúa. Nunca de una fuente externa — mezclar metodologías daba el doble de
@@ -447,16 +444,16 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     def _pre_uno(d):
         # Sin `medianas`: el prescore ya no compara contra la mediana de sector (ver
         # `scorer._prescore_prompt`) -- capa media/profundo abajo sí la siguen usando.
-        p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
+        p = scorer_mod.prescore_one(prescore_llm, d, macro_block_pre, **_prescore_kw)
         for _ in range(2):   # mismo criterio que capa media/profundo: DOS reintentos, no uno
             if not p.error:
                 break
-            p = scorer_mod.prescore_one(prescore_llm, d, macro_block, **_prescore_kw)
+            p = scorer_mod.prescore_one(prescore_llm, d, macro_block_pre, **_prescore_kw)
         scan_progress.tick(ok=not p.error, reason=f"{p.ticker}: {p.error}" if p.error else None)
         return [(p, d)]
 
     def _pre_lote(lote: list):
-        notas = scorer_mod.prescore_batch(prescore_llm, lote, macro_block, **_prescore_kw)
+        notas = scorer_mod.prescore_batch(prescore_llm, lote, macro_block_pre, **_prescore_kw)
         par = [(notas[d.ticker], d) for d in lote]
         # Fallo de lote = mismo criterio que `pre_errors` más abajo (`p.error`, lote no
         # parseable/degenerado tras reintentos internos de `prescore_batch`).
@@ -522,10 +519,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # que deja de colapsar en defensivo-value.
     data_by_t = {d.ticker: d for _p, d in prescored}
 
-    # Capa media: top-N/sector repuntuados (segunda opinión, modelo mejor).
-    # Solo en decisiones (no semanal observatorio); force_mid_layer para simulación.
+    # Capa media: top-N/sector repuntuados (segunda opinión). El interruptor manda en todo escaneo.
     mid_scores: dict[str, float] | None = None
-    if settings.mid_layer and (decide or force_mid_layer):
+    if capa_media:
         mid_candidates = portfolio.top_por_sector(prescored, settings.mid_per_sector)
         if len(mid_candidates) > settings.mid_candidates_cap:
             sectores = {(d.sector or "").strip() for _p, d in prescored}
@@ -744,14 +740,25 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     high52_map = {t: d.high_52w for t, d in data_by_t.items()}
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map,
                                    high52_map)
-    macro_line = macro.get("outlook", "") or construction.summary
+    macro_line = construction.summary
+
+    # Cartera de Jev: sombra sin dinero, calculada en todo escaneo y sin llamadas.
+    jev_cartera: list = []
+    if es_jev:
+        opadas = {t for t, r in deep.items() if r.under_acquisition is True}
+        jev_cartera = portfolio.cartera_jev(prescored, opadas, settings.jev_portfolio_n,
+                                            settings.jev_max_por_industria)
+        if len(jev_cartera) < settings.jev_portfolio_n:
+            issues.append(f"Cartera Jev incompleta: {len(jev_cartera)} de "
+                          f"{settings.jev_portfolio_n} nombres (industria desconocida u opadas).")
 
     # Traza de auditoría del embudo (diagnóstico; nunca debe tirar el escaneo).
     try:
         scan_audit.record(db, prescored=prescored, failed=failed, finalists=finalists,
                           deep=deep, selected=selected, construction=construction,
                           pre_errors=pre_errors, deep_errors=deep_caidos, decide=decide,
-                          lanes=lanes, mid_scores=mid_scores)
+                          lanes=lanes, mid_scores=mid_scores,
+                          jev_cartera={p.ticker for p, _d in jev_cartera} if es_jev else None)
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
 
@@ -836,7 +843,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     timings["total"] = round(time.monotonic() - t_scan_inicio, 1)
     logger.info("Escaneo: TOTAL %.1fs. Por fase: %s", timings["total"],
                ", ".join(f"{fase}={dur}s" for fase, dur in timings.items() if fase != "total"))
-    coste = _llm_usage(macro=macro_llm, prescore=prescore_llm, mid=mid_llm,
+    coste = _llm_usage(prescore=prescore_llm, mid=mid_llm,
                        profundo=deep_llm, constructor=constructor_llm)
     # NO se relee el saldo al terminar: DeepSeek liquida con retraso y la resta salía a menos de
     # la mitad de lo real (medido: $0,04 al acabar vs $0,10 minutos después, con $0,103 estimados
@@ -865,7 +872,13 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         # coste con `by_stage` además de `by_model` (ver `_llm_usage`) — `mid_llm` puede ser None
         # (desactivada), se tolera igual que a un FakeLLM sin `usage`.
         "cost": coste,
-        "outlook": macro.get("outlook") or "",
+        "outlook": macro.get("datos") or "",
+        "jev_macro": jev_macro,
+        "jev_cartera": [
+            {"ticker": p.ticker, "industry": d.industry, "score": p.score,
+             "confidence": p.confidence, "weight_pct": round(100 / len(jev_cartera), 2)}
+            for p, d in jev_cartera
+        ],
         # Duración por fase, segundos (ver `timings` arriba) — clave ausente = fase no corrió.
         "timings": timings,
     }
@@ -874,12 +887,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     except Exception:
         logger.exception("No se pudo persistir el informe del escaneo.")
     try:
-        # Fila HISTÓRICA (nunca se pisa): la inclinación sectorial del macro hasta ahora se
-        # calculaba, movía el escaneo entero y se tiraba — aquí queda fijada para comprobar
-        # después si acertó. `by_model` va dentro de `cost` (ya lo trae `_llm_usage`).
-        # `finalists`/`construction`: recuperación completa del escaneo, decida o no —
-        # `Proposal` solo existe cuando decide=True, así que sin esto la cartera hipotética de
-        # un observatorio (y su tesis) se perdía en cuanto terminaba el proceso.
+        # Fila HISTÓRICA (nunca se pisa). `finalists`/`construction`: recuperación completa del
+        # escaneo, decida o no — `Proposal` solo existe cuando decide=True.
         pre_map = {p.ticker: p.score for p, _d in prescored}
         selected_set = {r.ticker for r in selected}
         funded_map = {p.ticker: p.weight_pct for p in construction.positions}
@@ -916,7 +925,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         coste = result["cost"]
         run = ScanRun(
             cadence=cadence, decide=decide, regime=macro.get("regime") or "",
-            vix=macro.get("vix"), outlook=macro.get("outlook") or "",
+            vix=macro.get("vix"), outlook=macro.get("datos") or "", jev_macro=jev_macro,
             universe_fuente=universo_info["fuente"], universe_at=universo_info["at"],
             universe_dias=universo_info["dias"], universe_size=universo_info["size"],
             universe_sobre_suelo=universo_info.get("sobre_suelo"),
@@ -939,10 +948,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             for i, texto in enumerate(titulares or []):
                 db.add(ScanRunMacroHeadline(scan_run_id=run.id, fuente=fuente, posicion=i,
                                             texto=texto))
-        for sector in macro.get("favored_sectors") or []:
-            db.add(ScanRunSector(scan_run_id=run.id, stance="favored", sector=sector))
-        for sector in macro.get("avoided_sectors") or []:
-            db.add(ScanRunSector(scan_run_id=run.id, stance="avoided", sector=sector))
         _guardar_cost_breakdown(db, run.id, coste)
         for fase, segundos in timings.items():
             db.add(ScanRunTiming(scan_run_id=run.id, fase=fase, segundos=segundos))
@@ -999,8 +1004,7 @@ def recheck(db: Session) -> dict:
     issues_recheck: list[str] = []
     selected = portfolio.select_top(
         _aparta_opadas(deep, issues_recheck), mcap_map, floor, settings.select_count)
-    last = db.query(Proposal).order_by(Proposal.created_at.desc()).first()
-    macro_block = (last.macro_summary if last else "") or "n/d"
+    macro_block = macro_mod.bloque_macro(macro_mod.get_macro(db))
 
     if not selected and not held:
         reason = (f"Ningún nombre del top alcanza el suelo ({floor})" if floor > 0
@@ -1020,7 +1024,7 @@ def recheck(db: Session) -> dict:
         _flag_constructor_backfill(construction, issues_recheck)
 
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
-    prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_block)
+    prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=construction.summary)
     db.add(prop)
     db.flush()
     _guardar_trade_items(db, ProposalItem, "proposal_id", prop.id, items)
@@ -1029,7 +1033,7 @@ def recheck(db: Session) -> dict:
     db.commit()
     try:
         from app import approvals as approvals_mod
-        approvals_mod.create_from_items(db, items, macro_block)
+        approvals_mod.create_from_items(db, items, construction.summary)
     except Exception:
         logger.exception("No se pudieron crear las aprobaciones del modo real.")
     return {"eligible": len(selected), "positions": len(construction.positions),
@@ -1053,8 +1057,7 @@ def redeep(db: Session) -> dict:
     watch = set(watchlist_mod.tickers(db))
 
     deep_llm = get_llm(reasoning_effort=settings.deep_reasoning_effort)
-    macro = macro_mod.get_macro_outlook(deep_llm, db)         # macro recién calculado
-    macro_block = macro_mod.outlook_prompt_block(macro)
+    macro_block = macro_mod.bloque_macro(macro_mod.get_macro(db))   # macro recién calculado
 
     def _one(ticker: str):
         data, _err = fund_mod.gather(ticker, db=db)
@@ -1109,7 +1112,7 @@ def redeep(db: Session) -> dict:
         _flag_constructor_backfill(construction, issues_redeep)
 
     items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
-    macro_line = macro.get("outlook", "") or construction.summary
+    macro_line = construction.summary
     prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_line)
     db.add(prop)
     db.flush()
@@ -1123,4 +1126,4 @@ def redeep(db: Session) -> dict:
     return {"redeep": len(results), "positions": len(construction.positions),
             "proposed": len([i for i in items if i["action"] != "mantener"]),
             "issues": issues_redeep,
-            "cost": _llm_usage(macro_profundo=deep_llm, constructor=constructor_llm)}
+            "cost": _llm_usage(profundo=deep_llm, constructor=constructor_llm)}

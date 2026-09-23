@@ -38,7 +38,6 @@ export interface AppConfig {
   limit_buffer_pct: number;
   approval_expiry_days: number;   // una propuesta sin decidir caduca a los N días
   llm_defaults: {
-    macro: LlmStageDefault;
     prescore: LlmStageDefault;
     mid: LlmStageDefault;
     deep: LlmStageDefault;
@@ -56,7 +55,6 @@ export interface StageLLMOverride {
 }
 
 export interface DemoRunOverrides {
-  macro?: StageLLMOverride;
   prescore?: StageLLMOverride;
   mid?: StageLLMOverride;
   deep?: StageLLMOverride;

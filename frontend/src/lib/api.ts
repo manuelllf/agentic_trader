@@ -166,15 +166,14 @@ export function logout() {
 
 export const getLedger = () => get<LedgerSnapshot>("/ledger");
 
-// Query params: decide=false for full universe without proposing; force_mid_layer=true runs exact monthly circuit.
-// overrides in body only (simulation config); "Analyze" never sends it, always uses production defaults.
+// Query params: decide=false for full universe without proposing. The switches (mid layer,
+// macro in Jev) apply the same to every scan. overrides in body only (simulation config).
 export const runDemo = (opts?: {
-  decide?: boolean; forceMidLayer?: boolean; overrides?: DemoRunOverrides;
+  decide?: boolean; overrides?: DemoRunOverrides;
   reutilizarUltimaFoto?: boolean; modoUniverso?: "nasdaq" | "global_topcap";
 }) => {
   const params = new URLSearchParams();
   if (opts?.decide === false) params.set("decide", "false");
-  if (opts?.forceMidLayer) params.set("force_mid_layer", "true");
   if (opts?.reutilizarUltimaFoto) params.set("reutilizar_ultima_foto", "true");
   if (opts?.modoUniverso === "global_topcap") params.set("modo_universo", "global_topcap");
   const qs = params.toString();
@@ -201,6 +200,14 @@ export const getScanDecideConfig = () =>
 // `Partial`: un `{}` borra la clave y vuelve a los defaults de producción; el backend sanea.
 export const putScanDecideConfig = (overrides: Partial<DemoRunOverrides>) =>
   put<{ overrides: DemoRunOverrides }>("/scan/decide-config", { overrides });
+// Interruptor de la capa media: persistido y válido para cron, decisión y observatorio.
+export const getScanMidLayer = () => get<{ enabled: boolean }>("/scan/mid-layer");
+export const putScanMidLayer = (enabled: boolean) =>
+  put<{ enabled: boolean }>("/scan/mid-layer", { enabled });
+// "Macro en Jev": el prescore ve datos + eventos + titulares (on) o solo datos (off).
+export const getScanJevMacro = () => get<{ enabled: boolean }>("/scan/jev-macro");
+export const putScanJevMacro = (enabled: boolean) =>
+  put<{ enabled: boolean }>("/scan/jev-macro", { enabled });
 export const getScores = () => get<ScoreRow[]>("/scores");  // default del backend: TODO lo profundo
 export const getProposal = () => get<Proposal | null>("/proposal");
 export const getWatchlist = () => get<WatchItem[]>("/watchlist");
@@ -227,7 +234,10 @@ export interface ScanReport {
   error: string | null;                        // != null → el escaneo entero falló
   issues: string[];
   changes?: string[];                          // novedades vs el escaneo anterior (ranking/watchlist)
-  outlook?: string | null;                      // tesis macro DE ESTE escaneo (solo con sesión)
+  outlook?: string | null;                      // datos de mercado del macro (solo con sesión)
+  /** Cartera de Jev de este escaneo: sombra sin dinero, 20% cada una (solo con sesión). */
+  jev_cartera?: JevPosicion[];
+  jev_macro?: boolean | null;                   // ¿el prescore de Jev vio eventos y titulares?
   /** Solo observatorio: nombres del ranking de la decisión refrescados por este escaneo. */
   refreshed?: number | null;
   /** Con qué universo se trabajó. `fuente`: "cierre" = la foto del último cierre (lo normal),
@@ -244,6 +254,13 @@ export interface ScanReport {
   prescored: number | null;
   deep: number | null;
   cost: { calls: number; cost_usd: number } | null;
+}
+export interface JevPosicion {
+  ticker: string;
+  industry: string;
+  score: number;
+  confidence: number | null;
+  weight_pct: number;
 }
 export const getScanReport = () => get<{ report: ScanReport | null }>("/scan/report");
 
@@ -305,8 +322,8 @@ export interface ScanFull {
 export const getScanFull = (at?: string) =>
   get<{ scan: ScanFull | null }>(`/scan/full${at ? `?at=${encodeURIComponent(at)}` : ""}`);
 
-/** Outcomes by group (held, selected, discarded, S&P): returns, pairs, and cut frontier.
- *  Without session: anonymized pairs and edges. */
+/** Outcomes by group (held, selected, discarded, Jev shadow, S&P): returns, pairs, and cut
+ *  frontier. Without session: anonymized pairs and edges, no Jev names. */
 export interface OutcomeStats {
   n: number;
   avg: number | null;
@@ -325,6 +342,7 @@ export interface OutcomeScan {
     cartera: OutcomeStats;
     seleccionados: OutcomeStats;
     descartados: OutcomeStats;
+    jev?: OutcomeStats;                         // ausente en respuestas de antes del cambio
     spy: number | null;
   };
   pairs: { ticker?: string; score: number; ret: number; funded: boolean }[];
@@ -332,6 +350,11 @@ export interface OutcomeScan {
     fuera: OutcomeStats & { nombres?: OutcomeName[] };
     dentro: OutcomeStats & { nombres?: OutcomeName[] };
   };
+  /** Cartera de Jev con sus 4 preguntas ([nivel 0-9, confianza]). Vacía sin sesión. */
+  jev?: {
+    ticker: string; sector: string; prescore: number | null; ret: number | null;
+    confidence: number | null; dimensiones: Record<string, [number, number]>;
+  }[];
 }
 /** La fila de LO REAL: el libro vigente desde su compra (ledger, a valor de mercado) + S&P
  *  en la misma ventana. Viaja aparte porque la traza no alcanza a la decisión que lo compró. */

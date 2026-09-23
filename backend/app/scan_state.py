@@ -30,8 +30,11 @@ def _write_scan_report(db: Session, *, mode: str | None, result: dict | None,
         # Refreshed: solo observatorio (decisión reemplaza ranking entero, no refresca).
         "refreshed": r.get("refreshed"),
         "cost": r.get("cost"),
-        # Outlook de este escaneo (antes observatorio lo descartaba; ahora siempre visible).
+        # Datos de mercado del macro de este escaneo (ya no es una previsión escrita por un LLM).
         "outlook": r.get("outlook"),
+        # Cartera de Jev (sombra sin dinero) y si su prescore vio el macro con contexto.
+        "jev_cartera": r.get("jev_cartera") or [],
+        "jev_macro": r.get("jev_macro"),
     }
     db.merge(Meta(key=_REPORT_KEY, value=json.dumps(report, ensure_ascii=False)))
     db.commit()

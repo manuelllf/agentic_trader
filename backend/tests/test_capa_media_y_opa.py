@@ -47,9 +47,8 @@ def _stub_common(monkeypatch) -> None:
     from app.screener import macro as macro_mod
 
     monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
-    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
-        "regime": "neutral", "vix": 15.0, "outlook": "estable",
-        "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
+    monkeypatch.setattr(macro_mod, "get_macro", lambda db=None: {
+        "regime": "neutral", "vix": 15.0, "datos": "VIX 15.0.",
     })
     monkeypatch.setattr(tracking, "live_prices", lambda tickers: dict.fromkeys(tickers, 100.0))
     monkeypatch.setattr(scan_service.settings, "max_position_pct", 100.0)
@@ -256,24 +255,62 @@ def test_capa_media_desactivada_usa_el_pre_score_crudo_como_antes(db, monkeypatc
     assert "mid_model" not in result["cost"]["by_model"]
 
 
-def test_observatorio_no_paga_la_capa_media(db, monkeypatch) -> None:
-    """El semanal no toca ningún libro: afinar con el modelo caro un ranking que no se ejecuta
-    no compra nada, así que la capa media queda reservada a los escaneos que deciden."""
+def test_interruptor_de_alpha_apaga_la_capa_media_aunque_settings_la_active(db, monkeypatch) -> None:
+    """El interruptor persistido (`scan_config.set_mid_layer`) manda sobre `settings.mid_layer`:
+    apagado, un escaneo con decisión se comporta como sin capa media (gana HA2 por pre-score)."""
+    from app import scan_config
+
     _stub_common(monkeypatch)
     _stub_universo(monkeypatch, list(_SECTORS))
     _gather_stub(monkeypatch, _SECTORS)
     _, mid_llm, _ = _stub_llms(monkeypatch, _PRESCORE, _MID, {"HA2": _deep_ok("HA2")})
 
     monkeypatch.setattr(scan_service.settings, "mid_layer", True)
-    monkeypatch.setattr(scan_service.settings, "mid_per_sector", 1)
     monkeypatch.setattr(scan_service.settings, "deep_per_sector", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_per_sector_mid", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_top_caps", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_watchlist", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_finalists_cap", 1)
+    scan_config.set_mid_layer(db, False)
+
+    result = scan_service.run_scan_and_store(db, sample_size=4, decide=True)
+
+    assert mid_llm.called == []
+    assert {s.ticker for s in db.query(Score).all()} == {"HA2"}
+    assert scan_config.mid_layer_activa(db) is False
+
+
+def test_interruptor_sin_guardar_cae_al_default_de_settings(db, monkeypatch) -> None:
+    from app import scan_config
+
+    monkeypatch.setattr(scan_service.settings, "mid_layer", True)
+    assert scan_config.mid_layer_activa(db) is True
+    monkeypatch.setattr(scan_service.settings, "mid_layer", False)
+    assert scan_config.mid_layer_activa(db) is False
+    scan_config.set_mid_layer(db, True)
+    assert scan_config.mid_layer_activa(db) is True
+
+
+def test_observatorio_pasa_la_capa_media_igual_que_la_decision(db, monkeypatch) -> None:
+    """El interruptor vale para todo escaneo: el observatorio tiene que medir el mismo circuito
+    que decidirá."""
+    _stub_common(monkeypatch)
+    _stub_universo(monkeypatch, list(_SECTORS))
+    _gather_stub(monkeypatch, _SECTORS)
+    _, mid_llm, _ = _stub_llms(monkeypatch, _PRESCORE, _MID, {"TA1": _deep_ok("TA1")})
+
+    monkeypatch.setattr(scan_service.settings, "mid_layer", True)
+    monkeypatch.setattr(scan_service.settings, "mid_per_sector", 1)
+    monkeypatch.setattr(scan_service.settings, "mid_candidates_cap", 2)
+    monkeypatch.setattr(scan_service.settings, "deep_per_sector", 0)
+    monkeypatch.setattr(scan_service.settings, "deep_per_sector_mid", 0)
     monkeypatch.setattr(scan_service.settings, "deep_top_caps", 0)
     monkeypatch.setattr(scan_service.settings, "deep_watchlist", 0)
     monkeypatch.setattr(scan_service.settings, "deep_finalists_cap", 1)
 
     scan_service.run_scan_and_store(db, sample_size=4, decide=False)
 
-    assert mid_llm.called == []
+    assert set(mid_llm.called) == {"TA1", "HA2"}
 
 
 def test_la_capa_media_tiene_tope_duro_de_candidatos(db, monkeypatch) -> None:

@@ -32,10 +32,20 @@ def _stage(reached_deep: bool, selected: bool, funded: bool) -> str:
     return "prescore"
 
 
+def _columnas_jev(dimensiones: dict | None) -> dict:
+    """Nivel ×100 y confianza ×1000 en `smallint` (ver `ScanAudit.jev_*`)."""
+    out: dict = {}
+    for k, (nivel, conf) in (dimensiones or {}).items():
+        out[f"jev_{k}"] = round(nivel * 100)
+        out[f"jev_{k}_conf"] = None if conf is None else round(conf * 1000)
+    return out
+
+
 def record(db, *, prescored: list, failed: list[str], finalists: list[str],
            deep: dict, selected: list, construction, pre_errors: list | None = None,
            deep_errors: list[str] | None = None, decide: bool | None = None,
-           lanes: dict[str, str] | None = None, mid_scores: dict[str, float] | None = None) -> None:
+           lanes: dict[str, str] | None = None, mid_scores: dict[str, float] | None = None,
+           jev_cartera: set[str] | None = None) -> None:
     """Añade la traza del embudo de ESTE escaneo (no borra las anteriores) y poda las viejas.
 
     `prescored` = [(PrescoreResult, NameData)]; `failed` = tickers sin datos; `deep` = {ticker:
@@ -50,6 +60,7 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
     `lanes` = {ticker: carril} devuelto por `select_finalists` (posición/seguimiento/caps/sector/
     global) — sin saber por qué carril entró un finalista no se puede evaluar si ese carril
     aporta valor o solo ocupa hueco de otro mejor.
+    `jev_cartera` = tickers de la cartera mecánica de Jev (None = no se calculó).
     Best-effort: el caller lo envuelve en try (un fallo aquí nunca debe tirar el escaneo).
     """
     finalist_set = set(finalists)
@@ -72,6 +83,8 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
             # Un profundo ilegible LLEGÓ al profundo (reached_deep se conserva) pero falló ahí.
             stage="deep_error" if t in deep_err_set else _stage(in_deep, is_sel, is_fund),
             entry_lane=lanes.get(t) if in_deep else None,
+            jev_funded=(t in jev_cartera) if jev_cartera is not None else None,
+            **_columnas_jev(p.dimensiones),
         ))
     for p, d in (pre_errors or []):
         # prescore=None a propósito: no hubo puntuación, hubo fallo (no cuenta como pre-scoreado).

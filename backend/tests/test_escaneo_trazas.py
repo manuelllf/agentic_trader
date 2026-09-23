@@ -98,9 +98,8 @@ def _stub_common(monkeypatch, llm, symbols: list[str]) -> None:
     # Clear always_deep_tickers so test-controlled ticker doesn't vanish from sample.
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])
     _stub_universo(monkeypatch, symbols)
-    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
-        "regime": "neutral", "vix": 15.0, "outlook": "estable",
-        "favored_sectors": ["Technology"], "avoided_sectors": ["Energy"], "snapshot": "n/d",
+    monkeypatch.setattr(macro_mod, "get_macro", lambda db=None: {
+        "regime": "neutral", "vix": 15.0, "datos": "VIX 15.0.",
     })
     monkeypatch.setattr(tracking, "live_prices", lambda tickers: dict.fromkeys(tickers, 100.0))
     monkeypatch.setattr(scan_service.settings, "max_position_pct", 100.0)
@@ -235,6 +234,7 @@ def test_mid_score_se_persiste_en_finalist_y_audit(db, monkeypatch) -> None:
     llm = FakeLLM(_FAKE_REPLY)
     _stub_common(monkeypatch, llm, ["AAA"])
     _gather_stub(monkeypatch)
+    monkeypatch.setattr(scan_service.settings, "mid_layer", True)
 
     scan_service.run_scan_and_store(db, sample_size=5, decide=True)
 
@@ -273,9 +273,8 @@ def test_titulares_y_eventos_del_macro_se_persisten(db, monkeypatch) -> None:
     llm = FakeLLM(_FAKE_REPLY)
     _stub_common(monkeypatch, llm, ["AAA"])
     _gather_stub(monkeypatch)
-    monkeypatch.setattr(macro_mod, "get_macro_outlook", lambda llm, db=None, **_kw: {
-        "regime": "neutral", "vix": 15.0, "outlook": "estable",
-        "favored_sectors": [], "avoided_sectors": [], "snapshot": "n/d",
+    monkeypatch.setattr(macro_mod, "get_macro", lambda db=None: {
+        "regime": "neutral", "vix": 15.0, "datos": "VIX 15.0.",
         "macro_headlines": {"yfinance": ["Y1"], "gnews": ["G1", "G2"], "gdelt": []},
         "wiki_events_text": "eventos de la semana", "wiki_scheduled_text": "calendario del año",
     })
@@ -308,9 +307,11 @@ def test_fallo_llm_se_reintenta_y_el_nombre_no_se_pierde(db, monkeypatch) -> Non
     assert db.query(Score).filter(Score.ticker == "AAA").count() == 1
 
 
-# ---- ScanRun: una fila por escaneo con los sectores del macro ------------------
+# ---- ScanRun: una fila por escaneo con el macro que vio ------------------------
 
-def test_scan_run_registra_sectores_favorecidos_y_evitados(db, monkeypatch) -> None:
+def test_scan_run_registra_el_macro_sin_sectores(db, monkeypatch) -> None:
+    from app.models import ScanRunSector
+
     llm = FakeLLM(_FAKE_REPLY)
     _stub_common(monkeypatch, llm, ["AAA"])
     _gather_stub(monkeypatch)
@@ -318,8 +319,8 @@ def test_scan_run_registra_sectores_favorecidos_y_evitados(db, monkeypatch) -> N
     scan_service.run_scan_and_store(db, sample_size=5, decide=True)
 
     run = db.query(ScanRun).one()
-    assert run.favored_sectors == ["Technology"]
-    assert run.avoided_sectors == ["Energy"]
+    assert db.query(ScanRunSector).count() == 0          # el macro ya no inclina sectores
+    assert run.outlook == "VIX 15.0."                   # guarda los datos, no una previsión
     assert run.regime == "neutral"
     assert run.decide is True
     assert "by_model" in run.cost
