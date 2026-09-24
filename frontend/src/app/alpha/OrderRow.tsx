@@ -58,13 +58,6 @@ export function OrderRow({ a, dry, onDecide, expiryDays }: {
         </Td>
         <Td right><span className={NUMS}>{a.target_weight_pct}%</span></Td>
         <Td right><span className={NUMS}>{a.est_price ? `$${money(a.est_price)}` : "—"}</span></Td>
-        <Td right><span className={NUMS}>{a.target_price ? `$${money(a.target_price)}` : "—"}</span></Td>
-        <Td right>
-          <span className={`font-semibold ${NUMS}`}
-                style={{ color: a.upside_pct == null ? T.muted : a.upside_pct >= 0 ? T.good : T.bad }}>
-            {a.upside_pct != null ? `${a.upside_pct > 0 ? "+" : ""}${a.upside_pct}%` : "—"}
-          </span>
-        </Td>
         <Td right>
           <span className={`inline-block min-w-[42px] rounded px-1.5 py-0.5 text-center text-[11.5px] font-bold ${NUMS}`}
                 style={{ background: T.base, color: T.ink }}>
@@ -88,7 +81,7 @@ export function OrderRow({ a, dry, onDecide, expiryDays }: {
       </tr>
       {open && (
         <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-          <Td colSpan={8}>
+          <Td colSpan={6}>
             <div className="max-w-[900px] space-y-1.5 whitespace-normal py-1 text-[12.5px] leading-relaxed">
               {a.thesis && <DetailLine k="Tesis" v={richText(a.thesis)} />}
               {a.edge && <DetailLine k="Ventaja" v={richText(a.edge)} />}

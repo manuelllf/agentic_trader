@@ -23,16 +23,8 @@ export function ScoreRowItem({ row }: { row: ScoreRow }) {
         )}
         <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-[#565654] transition group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
       </summary>
-      {(row.price != null || row.target_price != null) && (
-        <p className="mt-2 pl-16 text-xs tabular-nums text-[#6E6E6B]">
-          {row.price != null ? `$${money(row.price)}` : "—"}
-          {row.target_price != null && <> → objetivo ${money(row.target_price)}</>}
-          {row.price != null && row.target_price != null && (
-            <span className={`ml-1 font-semibold ${row.target_price >= row.price ? "text-[#6BBE8A]" : "text-[#E0776C]"}`}>
-              ({row.target_price >= row.price ? "+" : ""}{(((row.target_price / row.price) - 1) * 100).toFixed(1)}%)
-            </span>
-          )}
-        </p>
+      {row.price != null && (
+        <p className="mt-2 pl-16 text-xs tabular-nums text-[#6E6E6B]">${money(row.price)}</p>
       )}
       {row.headline && <p className="mt-2 pl-16 text-sm text-[#A3A3A0]">{richText(row.headline)}</p>}
       {row.report && <p className="mt-2 whitespace-pre-line pl-16 text-xs leading-relaxed text-[#6E6E6B]">{richText(row.report)}</p>}

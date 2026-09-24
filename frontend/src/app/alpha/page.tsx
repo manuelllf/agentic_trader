@@ -41,7 +41,7 @@ import { TickerAudit } from "./TickerAudit";
 import { NUMS, SANS, SERIES, T } from "./tokens";
 import { Details, Empty, Field, Kpi, Panel, SideTag, Td, Th } from "./ui";
 
-type PendingSortKey = "ticker" | "target_weight_pct" | "est_price" | "target_price" | "upside_pct" | "score";
+type PendingSortKey = "ticker" | "target_weight_pct" | "est_price" | "score";
 type PositionSortKey = "ticker" | "quantity" | "avg_cost" | "price" | "value" | "w" | "pnl";
 type PersonalSortKey = "ticker" | "quantity" | "price" | "value" | "pnl";
 
@@ -599,8 +599,6 @@ function SalaRealRoom() {
                         <Th sort={{ active: pendingSortKey === "ticker", dir: pendingSortDir, onClick: () => togglePending("ticker"), ariaSort: pendingAriaSort("ticker"), label: "instrumento" }}>Instrumento</Th>
                         <Th right sort={{ active: pendingSortKey === "target_weight_pct", dir: pendingSortDir, onClick: () => togglePending("target_weight_pct"), ariaSort: pendingAriaSort("target_weight_pct"), label: "peso objetivo" }}>Peso obj.</Th>
                         <Th right sort={{ active: pendingSortKey === "est_price", dir: pendingSortDir, onClick: () => togglePending("est_price"), ariaSort: pendingAriaSort("est_price"), label: "precio" }}>Precio</Th>
-                        <Th right sort={{ active: pendingSortKey === "target_price", dir: pendingSortDir, onClick: () => togglePending("target_price"), ariaSort: pendingAriaSort("target_price"), label: "objetivo a 3 meses" }}>Obj. 3m</Th>
-                        <Th right sort={{ active: pendingSortKey === "upside_pct", dir: pendingSortDir, onClick: () => togglePending("upside_pct"), ariaSort: pendingAriaSort("upside_pct"), label: "upside" }}>Upside</Th>
                         <Th right sort={{ active: pendingSortKey === "score", dir: pendingSortDir, onClick: () => togglePending("score"), ariaSort: pendingAriaSort("score"), label: "score" }}>Score</Th>
                         <Th right>Decisión</Th>
                       </tr>

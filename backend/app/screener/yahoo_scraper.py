@@ -237,8 +237,6 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str,
 
     price = info.get("currentPrice") or info.get("regularMarketPrice")
     mcap = info.get("marketCap")
-    target_high = info.get("targetHighPrice")
-    target_mean = info.get("targetMeanPrice")
     precio_num = fund_mod.numero_finito(price)
     data = fund_mod.NameData(
         ticker=ticker,
@@ -251,8 +249,6 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str,
         news=news,
         earnings_text=fund_mod._earnings_text(info),
         name=info.get("shortName", ""),
-        target_high=fund_mod.numero_finito(target_high),
-        target_mean=fund_mod.numero_finito(target_mean),
         fundamentales_crudos=fund_mod._valores_crudos(info, db),
         **fund_mod.metricas(info),
     )

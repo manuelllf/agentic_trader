@@ -281,7 +281,6 @@ export interface ScanFullFinalist {
   deep_score: number | null;
   high_52w: number | null;
   headline: string | null;
-  target_price: number | null;
   selected: boolean;
   funded: boolean;
   weight_pct: number | null;
@@ -293,8 +292,6 @@ export interface ScanFullPosition {
   score?: number | null;
   target_weight_pct?: number;
   price?: string | null;
-  target_price?: number | null;
-  upside_pct?: number | null;
   high_52w?: number | null;
   thesis?: string;
   edge?: string;

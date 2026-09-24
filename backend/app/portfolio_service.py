@@ -278,16 +278,8 @@ def _equity(db: Session, held: dict, price_map: dict) -> tuple[Decimal, Decimal]
     return cash, to_cents(cash + pos_value)
 
 
-def _upside(price, target: float | None) -> float | None:
-    """% de recorrido hasta el objetivo del LLM (None si falta dato)."""
-    if price is None or not target:
-        return None
-    p = float(price)
-    return round((target / p - 1) * 100, 1) if p else None
-
-
 def build_trades(db: Session, construction, held: dict, price_map: dict,
-                 score_map: dict, target_map: dict, high52_map: dict | None = None) -> list[dict]:
+                 score_map: dict, high52_map: dict | None = None) -> list[dict]:
     """Diff cartera objetivo vs actual → items con acción y aritmética exacta (Decimal).
     `high52_map` es opcional (None en recheck/redeep, que no repiten el gather) — sin él,
     `high_52w` sale `None` y la distancia al máximo no se puede calcular para esas filas."""
@@ -318,8 +310,6 @@ def build_trades(db: Session, construction, held: dict, price_map: dict,
         items.append({
             "ticker": tp.ticker, "action": action, "score": score_map.get(tp.ticker),
             "target_weight_pct": tp.weight_pct, "price": str(price) if price else None,
-            "target_price": target_map.get(tp.ticker),
-            "upside_pct": _upside(price, target_map.get(tp.ticker)),
             "high_52w": high52_map.get(tp.ticker),
             "target_value": str(tgt_value), "target_shares": float(tgt_shares),
             "delta_shares": float(delta),
@@ -334,7 +324,6 @@ def build_trades(db: Session, construction, held: dict, price_map: dict,
         items.append({
             "ticker": tk, "action": "vender", "score": score_map.get(tk),
             "target_weight_pct": 0.0, "price": str(price),
-            "target_price": target_map.get(tk), "upside_pct": _upside(price, target_map.get(tk)),
             "high_52w": high52_map.get(tk),
             "target_value": "0", "target_shares": 0.0,
             "delta_shares": round(float(-p.quantity), 3),

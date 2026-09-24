@@ -116,6 +116,7 @@ class FundamentalsSnapshot(Base):
     pe_forward: Mapped[float | None] = mapped_column(Float)
     high_52w: Mapped[float | None] = mapped_column(Float)
     low_52w: Mapped[float | None] = mapped_column(Float)
+    # Históricos: consenso de analistas, nunca iba a ningún prompt. Ya no se captura.
     # `fundamentals_text` (el prompt YA MONTADO) NO se persiste: era texto formateado con los
     # ~85 campos de abajo mezclados dentro de una cadena — la propia definición de "chapuza"
     # que motivó este cambio. Se reconstruye al leer con la MISMA función que lo genera en vivo
@@ -264,7 +265,7 @@ class Score(Base):
     report: Mapped[str] = mapped_column(Text, default="")    # Investment Report completo
     price: Mapped[float | None] = mapped_column(Float)         # precio al escanear
     market_cap: Mapped[float | None] = mapped_column(Float)    # para desempate por market cap (paper)
-    target_price: Mapped[float | None] = mapped_column(Float)  # objetivo 3m del LLM
+    target_price: Mapped[float | None] = mapped_column(Float)  # vacía, se borra tras el deploy
     held: Mapped[bool] = mapped_column(default=False)          # ¿está en cartera?
     on_watchlist: Mapped[bool] = mapped_column(default=False)
     # ¿el informe declara que ESTA empresa está siendo comprada? Aparta de la selección (no del
@@ -317,6 +318,7 @@ class _TradeItemColumns:
     target_value: Mapped[str] = mapped_column(String(32))
     target_shares: Mapped[float] = mapped_column(Float)
     delta_shares: Mapped[float] = mapped_column(Float)
+    # Históricos: objetivo a 3 meses del LLM, retirado del prompt. Ya no se escriben.
     thesis: Mapped[str] = mapped_column(Text, default="")
     edge: Mapped[str] = mapped_column(Text, default="")
     risk: Mapped[str] = mapped_column(Text, default="")
@@ -325,8 +327,7 @@ class _TradeItemColumns:
 def _trade_item_dict(r) -> dict:  # noqa: ANN001 — fila de ProposalItem o ScanRunConstructionItem
     return {
         "ticker": r.ticker, "action": r.action, "score": r.score,
-        "target_weight_pct": r.target_weight_pct, "price": r.price,
-        "target_price": r.target_price, "upside_pct": r.upside_pct, "high_52w": r.high_52w,
+        "target_weight_pct": r.target_weight_pct, "price": r.price, "high_52w": r.high_52w,
         "target_value": r.target_value, "target_shares": r.target_shares,
         "delta_shares": r.delta_shares, "thesis": r.thesis, "edge": r.edge, "risk": r.risk,
     }
@@ -587,7 +588,7 @@ class ScanRun(Base):
             "ticker": r.ticker, "sector": r.sector, "prescore": r.prescore, "price": r.price,
             "market_cap": r.market_cap, "mid_score": r.mid_score, "deep_score": r.deep_score,
             "high_52w": r.high_52w, "headline": r.headline,
-            "report": r.report, "target_price": r.target_price, "selected": r.selected,
+            "report": r.report, "selected": r.selected,
             "funded": r.funded, "weight_pct": r.weight_pct, "error": r.error,
             "target_consensus_mean": r.target_consensus_mean,
             "target_echoed_consensus": r.target_echoed_consensus,
@@ -716,7 +717,7 @@ class ScanRunFinalist(Base):
     high_52w: Mapped[float | None] = mapped_column(Float)   # para distancia al máximo, no editable
     headline: Mapped[str | None] = mapped_column(Text)
     report: Mapped[str | None] = mapped_column(Text)         # Investment Report completo, congelado
-    target_price: Mapped[float | None] = mapped_column(Float)
+    target_price: Mapped[float | None] = mapped_column(Float)  # histórico, ya no se escribe
     selected: Mapped[bool] = mapped_column(default=False)
     funded: Mapped[bool] = mapped_column(default=False)
     weight_pct: Mapped[float | None] = mapped_column(Float)
@@ -962,8 +963,8 @@ class Approval(Base):
     target_weight_pct: Mapped[float] = mapped_column(Float, default=0.0)
     score: Mapped[float | None] = mapped_column(Float)                  # entera
     est_price: Mapped[Decimal | None] = mapped_column(DecimalStr(32))   # precio al proponer
-    target_price: Mapped[float | None] = mapped_column(Float)           # objetivo 3m del LLM
-    upside_pct: Mapped[float | None] = mapped_column(Float)
+    target_price: Mapped[float | None] = mapped_column(Float)           # histórico, no se escribe
+    upside_pct: Mapped[float | None] = mapped_column(Float)             # histórico, no se escribe
     thesis: Mapped[str] = mapped_column(Text, default="")
     edge: Mapped[str] = mapped_column(Text, default="")
     risk: Mapped[str] = mapped_column(Text, default="")

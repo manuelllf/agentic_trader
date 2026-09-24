@@ -154,7 +154,6 @@ def test_gather_scraper_construye_namedata_con_exito() -> None:
     assert data.industry == "Software"
     assert data.name == "Acme Corp"
     assert data.market_cap == 5.0e9
-    assert data.target_high == 200.0
     assert data.price == 123.45
     assert "P/E (forward): 15.20" in data.fundamentals_text
     assert "52w range $80.00-$150.00" in data.technical_text

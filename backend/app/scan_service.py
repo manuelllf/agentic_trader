@@ -647,7 +647,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # score_map: profundo para finalistas, pre-score para resto (watchlist/display), ambos enteros.
     score_map = {p.ticker: (deep[p.ticker].score if p.ticker in deep else round(p.score))
                  for p, _d in prescored}
-    target_map = {t: r.target_price for t, r in deep.items()}
 
     # Última salida limpia: lo de aquí en adelante empieza a persistir de verdad (Score, memoria,
     # ScanRun...). Cancelar después de este punto ya no evita nada.
@@ -666,7 +665,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             score_row = Score(
                 ticker=ticker, sector=data.sector, score=d.score,
                 headline=d.headline, report=d.report,
-                price=data.price, market_cap=data.market_cap, target_price=d.target_price,
+                price=data.price, market_cap=data.market_cap,
                 held=ticker in held, on_watchlist=ticker in watch,  # provisional: resella al final
                 under_acquisition=d.under_acquisition,
             )
@@ -682,7 +681,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             data = data_by_t[ticker]
             row.score, row.headline, row.report = d.score, d.headline, d.report
             row.price, row.market_cap = data.price, data.market_cap
-            row.target_price, row.sector = d.target_price, data.sector
+            row.sector = data.sector
             row.under_acquisition = d.under_acquisition
             _guardar_news_used(db, row.id, data.news)
             refreshed += 1
@@ -742,8 +741,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
 
     # 8) Trades con aritmética exacta (la cartera que PROPONDRÍA hoy; solo se persiste al decidir).
     high52_map = {t: d.high_52w for t, d in data_by_t.items()}
-    items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map,
-                                   high52_map)
+    items = portfolio.build_trades(db, construction, held, price_map, score_map, high52_map)
     macro_line = construction.summary
 
     # Cartera de Jev: sombra sin dinero, calculada en todo escaneo y sin llamadas.
@@ -901,10 +899,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 "deep_score": deep[t].score if t in deep else None,
                 "high_52w": data_by_t[t].high_52w,
                 "headline": deep[t].headline if t in deep else None,
-                # Informe completo + guardarraíles del target: `Score` se pisa en cuanto ese
-                # ticker se re-analiza, esta fila no — es el archivo de verdad de esa fecha.
+                # Informe completo: `Score` se pisa en cuanto ese ticker se re-analiza, esta
+                # fila no — es el archivo de verdad de esa fecha.
                 "report": deep[t].report if t in deep else None,
-                "target_price": deep[t].target_price if t in deep else None,
                 "selected": t in selected_set, "funded": t in funded_map,
                 "weight_pct": funded_map.get(t),
                 "error": analizados[t].error if t in deep_caidos else None,
@@ -1002,7 +999,6 @@ def recheck(db: Session) -> dict:
     price_map = {r.ticker: r.price for r in deep if r.price}
     mcap_map = {r.ticker: (r.market_cap or 0.0) for r in deep}
     score_map = {r.ticker: r.score for r in deep}
-    target_map = {r.ticker: r.target_price for r in deep}
     # Mismo guardarraíl que el escaneo: `recheck` reconstruye sobre informes ya guardados, sin
     # esto una opada apartada volvería a entrar. Filas antiguas con el campo a NULL no se apartan.
     issues_recheck: list[str] = []
@@ -1027,7 +1023,7 @@ def recheck(db: Session) -> dict:
             settings.max_position_pct)
         _flag_constructor_backfill(construction, issues_recheck)
 
-    items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
+    items = portfolio.build_trades(db, construction, held, price_map, score_map)
     prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=construction.summary)
     db.add(prop)
     db.flush()
@@ -1083,7 +1079,7 @@ def redeep(db: Session) -> dict:
         d = data_by_t[t]
         score_row = Score(ticker=t, sector=d.sector, score=r.score, headline=r.headline,
                           report=r.report, price=d.price, market_cap=d.market_cap,
-                          target_price=r.target_price, held=t in held, on_watchlist=t in watch,
+                          held=t in held, on_watchlist=t in watch,
                           under_acquisition=r.under_acquisition)
         db.add(score_row)
         db.flush()
@@ -1093,7 +1089,6 @@ def redeep(db: Session) -> dict:
     mcap_map = {t: (data_by_t[t].market_cap or 0.0) for t in results}
     price_map = {t: data_by_t[t].price for t in results if data_by_t[t].price}
     score_map = {t: r.score for t, r in results.items()}
-    target_map = {t: r.target_price for t, r in results.items()}
     issues_redeep: list[str] = []
     selected = portfolio.select_top(
         _aparta_opadas(list(results.values()), issues_redeep),
@@ -1115,7 +1110,7 @@ def redeep(db: Session) -> dict:
             settings.max_position_pct)
         _flag_constructor_backfill(construction, issues_redeep)
 
-    items = portfolio.build_trades(db, construction, held, price_map, score_map, target_map)
+    items = portfolio.build_trades(db, construction, held, price_map, score_map)
     macro_line = construction.summary
     prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_line)
     db.add(prop)

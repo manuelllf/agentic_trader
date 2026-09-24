@@ -129,7 +129,7 @@ def test_build_trades_lleva_high_52w_cuando_se_pasa(db) -> None:
         cash_pct=0.0,
         positions=[constructor_mod.TargetPosition("AAA", 100.0, "t", "e", "r")],
     )
-    items = portfolio.build_trades(db, construction, {}, {"AAA": "10.00"}, {}, {},
+    items = portfolio.build_trades(db, construction, {}, {"AAA": "10.00"}, {},
                                    high52_map={"AAA": 12.0})
     assert items[0]["high_52w"] == 12.0
 
@@ -140,7 +140,7 @@ def test_build_trades_high_52w_none_sin_mapa(db) -> None:
         cash_pct=0.0,
         positions=[constructor_mod.TargetPosition("AAA", 100.0, "t", "e", "r")],
     )
-    items = portfolio.build_trades(db, construction, {}, {"AAA": "10.00"}, {}, {})
+    items = portfolio.build_trades(db, construction, {}, {"AAA": "10.00"}, {})
     assert items[0]["high_52w"] is None
 
 

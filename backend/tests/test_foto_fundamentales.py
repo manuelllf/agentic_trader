@@ -30,7 +30,7 @@ def _sample() -> NameData:
         fundamentals_text="- P/E (trailing): 20.00\n- Trading currency: USD",
         technical_text="RSI 55", market_cap=5e9,
         news=["más reciente", "segunda", "tercera"], earnings_text="10-Q el 12-sep",
-        name="AAA Inc", target_high=150.0, target_mean=130.0,
+        name="AAA Inc",
         pe_trailing=22.5, pe_forward=19.1, high_52w=110.0, low_52w=80.0,
         # Lo que de verdad se persiste (ver FundamentalsSnapshotMetric): en crudo, no el texto
         # ya montado de arriba — ese solo importa para el prompt EN VIVO, nunca para la BD.
@@ -54,7 +54,6 @@ def test_foto_guardar_y_leer_redondo(db) -> None:
     assert got.fundamentales_crudos == {"trailingPE": 20.0, "currency": "USD"}   # str y num
     assert got.news == ["más reciente", "segunda", "tercera"]   # orden intacto
     assert (got.industry, got.name, got.earnings_text) == ("Software", "AAA Inc", "10-Q el 12-sep")
-    assert (got.target_high, got.target_mean) == (150.0, 130.0)
     assert (got.pe_trailing, got.pe_forward) == (22.5, 19.1)
     assert (got.high_52w, got.low_52w) == (110.0, 80.0)
 

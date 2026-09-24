@@ -26,7 +26,6 @@ def _approval_out(a) -> dict:  # noqa: ANN001
         "ticker": a.ticker, "sector": a.sector, "action": a.action,
         "target_weight_pct": a.target_weight_pct, "score": a.score,
         "est_price": str(a.est_price) if a.est_price is not None else None,
-        "target_price": a.target_price, "upside_pct": a.upside_pct,
         "thesis": a.thesis, "edge": a.edge, "risk": a.risk,
         "macro_summary": a.macro_summary,
         "requested_quantity": str(a.requested_quantity) if a.requested_quantity is not None else None,

@@ -18,7 +18,6 @@ class ScoreOut(BaseModel):
     headline: str
     report: str
     price: float | None
-    target_price: float | None
     held: bool
     on_watchlist: bool
 

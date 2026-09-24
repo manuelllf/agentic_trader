@@ -54,8 +54,6 @@ def create_from_items(db: Session, items: list[dict], macro_summary: str) -> int
             target_weight_pct=float(it.get("target_weight_pct") or 0.0),
             score=it.get("score"),
             est_price=D(it["price"]) if it.get("price") else None,
-            target_price=it.get("target_price"),
-            upside_pct=it.get("upside_pct"),
             thesis=it.get("thesis", ""),
             edge=it.get("edge", ""),
             risk=it.get("risk", ""),

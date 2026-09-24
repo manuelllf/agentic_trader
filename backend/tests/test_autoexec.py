@@ -63,8 +63,7 @@ def _seed_proposal(db, items: list[dict]) -> None:
         db.add(ProposalItem(
             proposal_id=prop.id, posicion=i, ticker=it["ticker"], action=it["action"],
             score=it.get("score"), target_weight_pct=it.get("target_weight_pct") or 0.0,
-            price=it.get("price"), target_price=it.get("target_price"),
-            upside_pct=it.get("upside_pct"), target_value=it.get("target_value", "0"),
+            price=it.get("price"), target_value=it.get("target_value", "0"),
             target_shares=it.get("target_shares") or 0.0,
             delta_shares=it.get("delta_shares") or 0.0,
             thesis=it.get("thesis", ""), edge=it.get("edge", ""), risk=it.get("risk", ""),

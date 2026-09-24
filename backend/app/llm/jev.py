@@ -133,7 +133,7 @@ _QUESTIONS = {
             "Negative free cash flow caused by heavy investment while operating cash flow is "
             "positive is NOT a risk. For banks and insurers, high debt/equity is part of the "
             "business model and is not by itself a risk. A missing field is unknown, not bad. "
-            "Ignore growth, valuation, news and governance scores."),
+            "Ignore growth, valuation and news."),
     },
 }
 

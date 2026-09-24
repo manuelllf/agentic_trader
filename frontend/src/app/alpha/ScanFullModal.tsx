@@ -82,12 +82,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
     useOrden<typeof finalistRows[number], FinalistSortKey>(
       finalistRows, (row, key) => row[key], { key: "deep_score", dir: "desc" });
 
-  // Retorno objetivo ponderado: suma de peso × upside de cada posición fondeada con target
-  // conocido — el mismo cálculo que hace el peso en la cartera, no una media simple.
   const posiciones = (scan?.construction.items ?? []).filter((i) => i.action !== "vender");
-  const retornoPonderado = posiciones.some((p) => p.upside_pct != null)
-    ? posiciones.reduce((acc, p) => acc + (p.upside_pct ?? 0) * ((p.target_weight_pct ?? 0) / 100), 0)
-    : null;
 
   // Distancia al máximo de 52 semanas, calculada aquí (nunca por el LLM): % por debajo del high.
   const distAth = posiciones
@@ -180,14 +175,6 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
               <div className="mt-3">
                 <SectionTitle>
                   Cartera formada
-                  {retornoPonderado != null && (
-                    <span className="ml-2 font-normal normal-case" style={{ color: T.muted }}>
-                      · objetivo ponderado a 1 mes{" "}
-                      <b className={NUMS} style={{ color: retornoPonderado >= 0 ? T.good : T.bad }}>
-                        {retornoPonderado >= 0 ? "+" : ""}{retornoPonderado.toFixed(1)}%
-                      </b>
-                    </span>
-                  )}
                   {athMedia != null && (
                     <span className="ml-2 font-normal normal-case" style={{ color: T.muted }}>
                       · dist. a máximo <b className={NUMS} style={{ color: T.ink }}>{athMedia.toFixed(1)}%</b>

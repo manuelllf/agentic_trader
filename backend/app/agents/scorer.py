@@ -87,7 +87,6 @@ class ScoreResult:
     score: float
     headline: str
     report: str
-    target_price: float | None = None
     # None = el modelo NO contestó al campo (no es un "no"): pasa en ~1 de cada 10 respuestas de
     # los modelos rápidos, que devuelven JSON válido sin la clave. Tratarlo como False dejaría el
     # guardarraíl desactivado en silencio, justo en el caso que existe para cazar.
@@ -399,11 +398,6 @@ def score(
                            temperature=temperature, top_p=top_p) or ""
         obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         sc = max(0.0, min(100.0, round(float(obj.get("score", 0)))))
-        tp = obj.get("target_price")
-        try:
-            tp = float(tp) if tp is not None else None
-        except (TypeError, ValueError):
-            tp = None
         ua = obj.get("under_acquisition")
         # Solo un booleano de verdad cuenta: un "true" en texto o un 1 son respuestas que no
         # sabemos leer con seguridad, y aquí equivocarse cuesta una posición de la cartera.
@@ -419,7 +413,6 @@ def score(
             score=sc,
             headline=str(obj.get("headline", "")).strip(),
             report=str(obj.get("report", "")).strip(),
-            target_price=tp,
             under_acquisition=ua,
         )
     except Exception as exc:

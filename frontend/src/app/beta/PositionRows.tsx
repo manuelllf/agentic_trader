@@ -6,7 +6,7 @@ export function PositionRows({ anon, color, label, sector, pos, weightPct, up, p
   anon: boolean; color: string; label: string; sector?: string;
   pos: { avg_cost?: string | null; price?: string | null; value?: string | null };
   weightPct: number | null; up: number; pct: number; open: boolean;
-  srow?: { headline: string | null; score: number; target_price: number | null };
+  srow?: { headline: string | null; score: number };
   onToggle: () => void;
 }) {
   const clickable = !anon;
@@ -53,7 +53,7 @@ export function PositionRows({ anon, color, label, sector, pos, weightPct, up, p
             {srow?.headline
               ? <><span className="font-semibold text-[#A3A3A0]">Tesis</span> · {richText(srow.headline)}
                   <span className="ml-1 text-[#6E6E6B]">
-                    · score {fmtScore(srow.score)}{srow.target_price != null ? ` · objetivo $${money(srow.target_price)}` : ""}
+                    · score {fmtScore(srow.score)}
                   </span></>
               : "Sin tesis reciente para este nombre (saldrá en el próximo análisis a fondo)."}
           </td>

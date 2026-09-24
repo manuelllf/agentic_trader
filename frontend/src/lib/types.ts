@@ -70,7 +70,6 @@ export interface ScoreRow {
   headline: string;
   report: string;
   price: number | null;
-  target_price: number | null;
   held: boolean;
   on_watchlist: boolean;
 }
@@ -83,8 +82,6 @@ export interface ProposalItem {
   score: number | null;
   target_weight_pct: number;
   price: string | null;
-  target_price: number | null;
-  upside_pct: number | null;
   target_value: string;
   target_shares: number;
   delta_shares: number;
@@ -165,8 +162,6 @@ export interface Approval {
   target_weight_pct: number;
   score: number | null;
   est_price: string | null;
-  target_price: number | null;
-  upside_pct: number | null;
   thesis: string;
   edge: string;
   risk: string;

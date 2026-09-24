@@ -2,7 +2,7 @@
 
 Junta lo que el paper mete en el prompt de puntuación: los fundamentales de yfinance `.info`
 (las ~97 variables SON este dict: valoración, márgenes, crecimiento, balance, short interest,
-targets de analistas, propiedad, riesgo de gobernanza), técnicos SOLO como contexto
+propiedad; sin targets de analistas ni gobernanza de ISS), técnicos SOLO como contexto
 (52 semanas y beta; el RSI no está en el paper y las medias móviles del Exhibit 2B se
 retiraron por penalizar asimétrico, ver `_technical_text`), la próxima fecha de
 resultados (dato, no regla) y titulares con su resumen. Todo gratis (yfinance).
@@ -123,7 +123,6 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
         price=row.price, fundamentals_text=texto,
         technical_text=tecnico, market_cap=row.market_cap,
         news=noticias, earnings_text=row.earnings_text or "", name=row.name or "",
-        target_high=row.target_high, target_mean=row.target_mean,
         pe_trailing=row.pe_trailing, pe_forward=row.pe_forward,
         high_52w=row.high_52w, low_52w=row.low_52w, currency=row.currency,
         fundamentales_crudos=metricas_crudas,
@@ -232,7 +231,6 @@ def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False) -> N
         fila = FundamentalsSnapshot(
             ticker=ticker, sector=data.sector, industry=data.industry, name=data.name,
             price=data.price, market_cap=data.market_cap,
-            target_high=data.target_high, target_mean=data.target_mean,
             pe_trailing=data.pe_trailing, pe_forward=data.pe_forward,
             high_52w=data.high_52w, low_52w=data.low_52w,
             earnings_text=data.earnings_text,
@@ -318,17 +316,8 @@ _FUNDAMENTAL_FIELDS: list[tuple[str, str, str]] = [
     ("heldPercentInstitutions", "Institutional ownership", "pct"),
     ("shortPercentOfFloat", "Short % of float", "pct"),
     ("shortRatio", "Short ratio (days to cover)", "num"),
-    # Los 5 SÍ son del Exhibit 2B (campos 93-97, literales) -- no confundir con los campos 66-72
-    # (targets de analistas, nº de opiniones, recomendación), esos SÍ decisión propia fuera del
-    # prompt: el consenso se revisa DESPUÉS del movimiento de precio, es momentum disfrazado de
-    # fundamental, y colado como juicio experto esquiva la cláusula que protege a los caídos (el
-    # modelo no lo lee como dato de precio). Los targets siguen en `NameData` para los
-    # guardarraíles, que son telemetría y no tocan prompt.
-    ("auditRisk", "Audit risk (1-10)", "num"),
-    ("boardRisk", "Board risk (1-10)", "num"),
-    ("compensationRisk", "Comp risk (1-10)", "num"),
-    ("shareHolderRightsRisk", "Shareholder-rights risk (1-10)", "num"),
-    ("overallRisk", "Overall governance risk (1-10)", "num"),
+    # Fuera del Exhibit 2B a propósito: los 5 riesgos de gobernanza (campos 93-97) son la nota de
+    # ISS, opinión de un tercero que el modelo leía como dato; y los targets de analistas (66-72).
     # Completa el Exhibit 2B: lo que faltaba no era un hueco de código, era ausencia real de dato
     # en yfinance para nombres pequeños/extranjeros. Estos 20 se verificaron fiables.
     ("previousClose", "Previous close", "num"),
@@ -379,9 +368,6 @@ class NameData:
     news: list[str] = field(default_factory=list)
     earnings_text: str = ""           # próxima fecha de resultados — dato para el PROFUNDO
     name: str = ""                      # nombre corto de la empresa
-    # target_high/target_mean: consenso de analistas, NUNCA viajan a ningún prompt.
-    target_high: float | None = None    # objetivo máximo del consenso, como NUMERO
-    target_mean: float | None = None    # objetivo MEDIO del consenso, como NUMERO
     # Los mismos números que ya van dentro de `fundamentals_text`/`technical_text`, pero como
     # NÚMERO: el texto no se puede agregar (distancia al máximo, comparativas).
     pe_trailing: float | None = None
@@ -634,8 +620,6 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
             return None, motivo
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         mcap = info.get("marketCap")
-        target_high = info.get("targetHighPrice")
-        target_mean = info.get("targetMeanPrice")
         data = NameData(
             ticker=ticker,
             sector=info.get("sector", "n/d"),
@@ -647,8 +631,6 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
             news=_news(yt),
             earnings_text=_earnings_text(info),
             name=info.get("shortName", ""),
-            target_high=numero_finito(target_high),
-            target_mean=numero_finito(target_mean),
             fundamentales_crudos=_valores_crudos(info, db),
             **metricas(info),
         )
