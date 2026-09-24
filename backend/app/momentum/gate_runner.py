@@ -14,10 +14,11 @@ import threading
 import time
 from datetime import UTC, date, datetime
 
-from sqlalchemy import bindparam, text
+from sqlalchemy import bindparam, text, update
 
 from app.db import SessionLocal
 from app.llm.trace import CallRecord
+from app.models import MomentumGateLlamada, MomentumSenal
 from app.momentum import gate_config, gate_progress, news_gate, signals
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,21 @@ def _parse_fecha(v):  # noqa: ANN001
     return date.fromisoformat(v) if isinstance(v, str) else v
 
 
+def _traza(recorder: _Recorder, t0: float) -> dict:
+    """Columnas de coste y latencia de la llamada; sin traza, la latencia medida aquí."""
+    c = recorder.calls[0] if recorder.calls else None
+    return {
+        "terminado_at": datetime.now(UTC),
+        "model": c.model if c else None,
+        "reasoning_effort": c.reasoning_effort if c else None,
+        "prompt_cache_hit_tokens": c.prompt_cache_hit_tokens if c else None,
+        "prompt_cache_miss_tokens": c.prompt_cache_miss_tokens if c else None,
+        "completion_tokens": c.completion_tokens if c else None,
+        "cost_usd": c.cost_usd if c else None,
+        "latency_ms": c.latency_ms if c else int((time.monotonic() - t0) * 1000),
+    }
+
+
 def _run(ids: list[int]) -> None:
     global _running
     db = SessionLocal()
@@ -80,15 +96,11 @@ def _run(ids: list[int]) -> None:
             entry_date = _parse_fecha(m["entry_date"])
             desde = _parse_fecha(m["desde_noticias"])
 
-            lanzado_at = datetime.now(UTC)
-            llamada_id = db.execute(text("""
-                insert into momentum_gate_llamadas (senal_id, ticker, lanzado_at)
-                values (:senal_id, :ticker, :lanzado_at)
-                returning id
-            """), {
-                "senal_id": m["id"], "ticker": ticker, "lanzado_at": lanzado_at,
-            }).scalar()
+            llamada = MomentumGateLlamada(senal_id=m["id"], ticker=ticker,
+                                          lanzado_at=datetime.now(UTC))
+            db.add(llamada)
             db.commit()
+            fila = update(MomentumGateLlamada).where(MomentumGateLlamada.id == llamada.id)
 
             recorder = _Recorder()
             t0 = time.monotonic()
@@ -99,51 +111,17 @@ def _run(ids: list[int]) -> None:
                     caida_pct=float(m["caida_pct"]), desde=desde, recorder=recorder,
                     provider=provider,
                 )
-                c = recorder.calls[0] if recorder.calls else None
-                db.execute(text("""
-                    update momentum_gate_llamadas set terminado_at = :fin, model = :model,
-                        reasoning_effort = :re, prompt_cache_hit_tokens = :hit,
-                        prompt_cache_miss_tokens = :miss, completion_tokens = :ct,
-                        cost_usd = :cost, latency_ms = :lat, ok = true,
-                        pasa = :pasa, motivo = :motivo
-                    where id = :id
-                """), {
-                    "fin": datetime.now(UTC), "id": llamada_id,
-                    "model": c.model if c else None, "re": c.reasoning_effort if c else None,
-                    "hit": c.prompt_cache_hit_tokens if c else None,
-                    "miss": c.prompt_cache_miss_tokens if c else None,
-                    "ct": c.completion_tokens if c else None,
-                    "cost": c.cost_usd if c else None,
-                    "lat": c.latency_ms if c else int((time.monotonic() - t0) * 1000),
-                    "pasa": r.pasa, "motivo": r.motivo,
-                })
-                nuevo_estado = "nueva" if r.pasa else "descartada"
-                db.execute(text("""
-                    update momentum_senales
-                    set gate_resultado = :res, gate_detalle = :detalle, estado = :estado
-                    where id = :id
-                """), {"res": "pasa" if r.pasa else "falla", "detalle": r.motivo,
-                       "estado": nuevo_estado, "id": m["id"]})
+                db.execute(fila.values(**_traza(recorder, t0), ok=True,
+                                       pasa=r.pasa, motivo=r.motivo))
+                db.execute(update(MomentumSenal).where(MomentumSenal.id == m["id"]).values(
+                    gate_resultado="pasa" if r.pasa else "falla", gate_detalle=r.motivo,
+                    estado="nueva" if r.pasa else "descartada",
+                ))
                 db.commit()
                 gate_progress.tick(True)
             except Exception as exc:  # noqa: BLE001 -- una señal rota no debe tumbar el resto
-                c = recorder.calls[0] if recorder.calls else None
-                db.execute(text("""
-                    update momentum_gate_llamadas set terminado_at = :fin, model = :model,
-                        reasoning_effort = :re, prompt_cache_hit_tokens = :hit,
-                        prompt_cache_miss_tokens = :miss, completion_tokens = :ct,
-                        cost_usd = :cost, latency_ms = :lat, ok = false, error = :error
-                    where id = :id
-                """), {
-                    "fin": datetime.now(UTC), "id": llamada_id,
-                    "model": c.model if c else None, "re": c.reasoning_effort if c else None,
-                    "hit": c.prompt_cache_hit_tokens if c else None,
-                    "miss": c.prompt_cache_miss_tokens if c else None,
-                    "ct": c.completion_tokens if c else None,
-                    "cost": c.cost_usd if c else None,
-                    "lat": c.latency_ms if c else int((time.monotonic() - t0) * 1000),
-                    "error": str(exc),
-                })
+                db.rollback()
+                db.execute(fila.values(**_traza(recorder, t0), ok=False, error=str(exc)))
                 db.commit()
                 gate_progress.tick(False)
         gate_progress.terminar()

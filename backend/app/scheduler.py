@@ -168,9 +168,10 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
     `cesta_60d`/`gate_regimen` en NULL: la cesta de hoy no describe un régimen de hace meses. Si
     no se pasa `universo`, quedan NULL siempre (p.ej. en los tests)."""
     import pandas as pd
-    from sqlalchemy import text
+    from sqlalchemy import text, update
 
     from app import push
+    from app.models import MomentumSenal
     from app.momentum import regimen
 
     # Tickers apagados: se escanean y sus señales se guardan igual, pero no avisan ni cuentan
@@ -187,6 +188,7 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
     nuevas, tickers_nuevos = 0, []
     reactivadas = []            # descartadas de suelo que vuelven a zona de entrada (misma señal)
     resueltas_ejecutadas = []   # posiciones REALES (estado='ejecutada') que acaban de resolverse
+    añadidas: set[tuple] = set()
     for s in todas:
         entry_date = s["entry_date"].date()
         # `compute_signals()` pasa por un DataFrame internamente (para resolver 'ambos') --
@@ -210,18 +212,13 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
             where ticker=:t and tipo=:tp and entry_date=:d
         """), {"t": s["ticker"], "tp": s["tipo"], "d": entry_date}).mappings().first()
         if fila:
+            esta = update(MomentumSenal).where(MomentumSenal.id == fila["id"])
             if (not fila["resuelta"]) and s["resuelta"]:
-                db.execute(text("""
-                    update momentum_senales
-                    set resuelta = true, exit_date = :exit_date, ret = :ret,
-                        motivo = :motivo, dias = :dias, caida_max_pct = :caida_max_pct,
-                        dias_hasta_min = :dias_hasta_min
-                    where id = :id
-                """), {
-                    "exit_date": exit_final, "ret": ret_final, "motivo": motivo_final,
-                    "dias": dias_final, "caida_max_pct": caida_max_final,
-                    "dias_hasta_min": dias_hasta_min_final, "id": fila["id"],
-                })
+                db.execute(esta.values(
+                    resuelta=True, exit_date=exit_final, ret=ret_final, motivo=motivo_final,
+                    dias=dias_final, caida_max_pct=caida_max_final,
+                    dias_hasta_min=dias_hasta_min_final,
+                ))
                 if fila["estado"] == "ejecutada":
                     resueltas_ejecutadas.append(
                         {"ticker": s["ticker"], "ret": ret_final, "motivo": motivo_final})
@@ -231,50 +228,36 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
             # decisión explícita, se respeta hasta que la señal se resuelva.
             elif (not fila["resuelta"] and fila["estado"] == "descartada"
                   and fila["gate_resultado"] == "falla" and s.get("reactivar")):
-                db.execute(text("""
-                    update momentum_senales
-                    set estado = 'nueva', gate_resultado = null, gate_detalle = '',
-                        caida_max_pct = :caida_max_pct, dias_hasta_min = :dias_hasta_min
-                    where id = :id
-                """), {"caida_max_pct": caida_max_final, "dias_hasta_min": dias_hasta_min_final,
-                       "id": fila["id"]})
+                db.execute(esta.values(
+                    estado="nueva", gate_resultado=None, gate_detalle="",
+                    caida_max_pct=caida_max_final, dias_hasta_min=dias_hasta_min_final,
+                ))
                 if s["ticker"] not in apagados:
                     reactivadas.append(s["ticker"])
             elif not fila["resuelta"]:
                 # Sigue abierta, sin cruce ni reactivación: la ventana de caída máxima sigue
                 # creciendo cada día -- se refresca aquí (antes esto no se tocaba nunca hasta
                 # que la señal resolvía o se reactivaba, así que se quedaba congelado en null).
-                db.execute(text("""
-                    update momentum_senales
-                    set caida_max_pct = :caida_max_pct, dias_hasta_min = :dias_hasta_min
-                    where id = :id
-                """), {"caida_max_pct": caida_max_final, "dias_hasta_min": dias_hasta_min_final,
-                       "id": fila["id"]})
+                db.execute(esta.values(caida_max_pct=caida_max_final,
+                                       dias_hasta_min=dias_hasta_min_final))
             continue
-        db.execute(text("""
-            insert into momentum_senales
-              (ticker, sector, tipo, entry_date, entry_price, ref_label, ref_price,
-               caida_pct, resuelta, exit_date, ret, motivo, dias, estado, ath, desde_noticias,
-               cesta_60d, gate_regimen, ref_price_pico, caida_max_pct, dias_hasta_min)
-            values (:ticker, :sector, :tipo, :entry_date, :entry_price, :ref_label,
-                    :ref_price, :caida_pct, :resuelta, :exit_date, :ret, :motivo, :dias,
-                    'nueva', :ath, :desde_noticias, :cesta_60d, :gate_regimen, :ref_price_pico,
-                    :caida_max_pct, :dias_hasta_min)
-            on conflict (ticker, tipo, entry_date) do nothing
-        """), {
-            "ticker": s["ticker"], "sector": s["sector"], "tipo": s["tipo"],
-            "entry_date": entry_date, "entry_price": s["entry_price"],
-            "ref_label": s["ref_label"], "ref_price": s["ref_price"],
-            "caida_pct": s["caida_pct"], "resuelta": s["resuelta"],
-            "exit_date": exit_final, "ret": ret_final, "motivo": motivo_final,
-            "dias": dias_final, "ath": s["ath"], "desde_noticias": s["desde_noticias"].date(),
-            "cesta_60d": cesta if entry_date == hoy else None,
-            "gate_regimen": gate_regimen if entry_date == hoy else None,
+        clave = (s["ticker"], s["tipo"], entry_date)
+        if clave in añadidas:     # repetida en la misma tanda: la sesión aún no la ha volcado
+            continue
+        añadidas.add(clave)
+        db.add(MomentumSenal(
+            ticker=s["ticker"], sector=s["sector"], tipo=s["tipo"], entry_date=entry_date,
+            entry_price=s["entry_price"], ref_label=s["ref_label"], ref_price=s["ref_price"],
+            caida_pct=s["caida_pct"], resuelta=s["resuelta"], exit_date=exit_final,
+            ret=ret_final, motivo=motivo_final, dias=dias_final, estado="nueva", ath=s["ath"],
+            desde_noticias=s["desde_noticias"].date(),
+            cesta_60d=cesta if entry_date == hoy else None,
+            gate_regimen=gate_regimen if entry_date == hoy else None,
             # Solo presente en señales 'ambos' salidas de `_combinar_ambos` -- ausente en dicts
             # construidos a mano (tests, `señales_de_ticker` suelto), de ahí el .get().
-            "ref_price_pico": s.get("ref_price_pico"),
-            "caida_max_pct": caida_max_final, "dias_hasta_min": dias_hasta_min_final,
-        })
+            ref_price_pico=s.get("ref_price_pico"),
+            caida_max_pct=caida_max_final, dias_hasta_min=dias_hasta_min_final,
+        ))
         if s["ticker"] not in apagados:
             nuevas += 1
             tickers_nuevos.append(s["ticker"])

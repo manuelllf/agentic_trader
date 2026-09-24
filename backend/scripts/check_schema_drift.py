@@ -21,7 +21,7 @@ import sys
 
 from sqlalchemy import inspect
 
-from app import models  # noqa: F401  (registra las tablas en Base.metadata)
+from app import models  # registra las tablas en Base.metadata
 from app.config import settings
 from app.db import Base, engine
 
@@ -50,6 +50,8 @@ def _tipo_ddl(col_type, dialect) -> str:  # noqa: ANN001
 
 def comparar() -> list[str]:
     """Devuelve una lista de diferencias legibles; vacía si BD y modelo coinciden."""
+    # Sin esto, el reflejo de Postgres no conoce `vector` y lo da como NullType.
+    engine.dialect.ischema_names.setdefault("vector", models.Vector)
     insp = inspect(engine)
     diffs: list[str] = []
 

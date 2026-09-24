@@ -15,12 +15,13 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 import yfinance as yf
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.orm import Session
 
 from app import push
 from app.db import SessionLocal
 from app.llm.trace import CallRecord
+from app.models import MomentumCandidato, MomentumGateLlamada, MomentumUniverso
 from app.momentum import gate_config, news_gate, signals
 
 logger = logging.getLogger(__name__)
@@ -86,10 +87,8 @@ def detectar_rupturas(db: Session) -> int:
         """), {"t": ticker, "limite": limite}).first()
         if ya_existe:
             continue
-        db.execute(text("""
-            insert into momentum_candidatos (ticker, fecha_evaluacion, decision, decidido_por)
-            values (:t, :hoy, 'pendiente', 'sistema')
-        """), {"t": ticker, "hoy": hoy})
+        db.add(MomentumCandidato(ticker=ticker, fecha_evaluacion=hoy, decision="pendiente",
+                                 decidido_por="sistema"))
         creados += 1
         nuevos_tickers.append(ticker)
     db.commit()
@@ -118,13 +117,14 @@ def sincronizar_universo(db: Session) -> int:
         where c.decision = 'incorporado'
           and not exists (select 1 from momentum_universo u where u.ticker = c.ticker)
     """)).mappings().all()
+    añadidos: set[str] = set()     # un ticker puede venir de dos candidatos incorporados
     for r in nuevos:
         sector = (r["filtro_sector_detalle"] or "").split(" / ")[0].strip() or "Descubierto"
-        db.execute(text("""
-            insert into momentum_universo (ticker, sector, nombre, origen)
-            values (:t, :s, :n, 'incorporado')
-            on conflict (ticker) do nothing
-        """), {"t": r["ticker"], "s": sector, "n": r["nombre"] or r["ticker"]})
+        if r["ticker"] in añadidos or db.get(MomentumUniverso, r["ticker"]) is not None:
+            continue                   # nunca pisa una fila existente
+        añadidos.add(r["ticker"])
+        db.add(MomentumUniverso(ticker=r["ticker"], sector=sector,
+                                nombre=r["nombre"] or r["ticker"], origen="incorporado"))
     if nuevos:
         db.commit()
     rows = db.execute(text(
@@ -166,14 +166,12 @@ def crear_manual(ticker: str, db: Session) -> dict:
     """), {"t": ticker}).first()
     if ya_pendiente:
         raise ValueError("Ya hay un candidato pendiente con ese ticker.")
-    id_ = db.execute(text("""
-        insert into momentum_candidatos (ticker, fecha_evaluacion, decision, decidido_por)
-        values (:t, :hoy, 'pendiente', 'sistema')
-        returning id
-    """), {"t": ticker, "hoy": date.today()}).scalar()
+    nuevo = MomentumCandidato(ticker=ticker, fecha_evaluacion=date.today(), decision="pendiente",
+                              decidido_por="sistema")
+    db.add(nuevo)
     db.commit()
     return dict(db.execute(text("select * from momentum_candidatos where id = :id"),
-                           {"id": id_}).mappings().first())
+                           {"id": nuevo.id}).mappings().first())
 
 
 def _info_yfinance(ticker: str) -> dict:
@@ -234,15 +232,11 @@ def comprobar_filtros(candidato_id: int, db: Session) -> dict:
     estad_detalle = (_stats_estadistica(señales) if estad_pass
                      else "Sin ninguna entrada con el patrón zigzag/suelo.")
 
-    db.execute(text("""
-        update momentum_candidatos
-        set filtro_sector_pass = :sp, filtro_sector_detalle = :sd,
-            estadistica_pass = :ep, estadistica_detalle = :ed, nombre = :nombre
-        where id = :id
-    """), {
-        "sp": sector_pass, "sd": sector_detalle, "ep": estad_pass, "ed": estad_detalle,
-        "nombre": nombre or row["nombre"], "id": candidato_id,
-    })
+    db.execute(update(MomentumCandidato).where(MomentumCandidato.id == candidato_id).values(
+        filtro_sector_pass=sector_pass, filtro_sector_detalle=sector_detalle,
+        estadistica_pass=estad_pass, estadistica_detalle=estad_detalle,
+        nombre=nombre or row["nombre"],
+    ))
     db.commit()
     return dict(db.execute(text("select * from momentum_candidatos where id = :id"),
                            {"id": candidato_id}).mappings().first())
@@ -334,13 +328,11 @@ def _gate_en_segundo_plano(candidato_id: int, ticker: str, nombre: str | None,
 
 def _lanzar_gate_candidato(candidato_id: int, ticker: str, nombre: str | None, reciente: dict,
                           db: Session) -> None:
-    lanzado_at = datetime.now(UTC)
-    llamada_id = db.execute(text("""
-        insert into momentum_gate_llamadas (candidato_id, ticker, lanzado_at)
-        values (:candidato_id, :ticker, :lanzado_at)
-        returning id
-    """), {"candidato_id": candidato_id, "ticker": ticker, "lanzado_at": lanzado_at}).scalar()
+    llamada = MomentumGateLlamada(candidato_id=candidato_id, ticker=ticker,
+                                  lanzado_at=datetime.now(UTC))
+    db.add(llamada)
     db.commit()
+    fila = update(MomentumGateLlamada).where(MomentumGateLlamada.id == llamada.id)
 
     recorder = _Recorder()
     provider = gate_config.get_gate_provider(db)
@@ -353,38 +345,27 @@ def _lanzar_gate_candidato(candidato_id: int, ticker: str, nombre: str | None, r
         )
     except Exception as exc:
         c = recorder.calls[0] if recorder.calls else None
-        db.execute(text("""
-            update momentum_gate_llamadas set terminado_at = :fin, model = :model,
-                reasoning_effort = :re, cost_usd = :cost, latency_ms = :lat,
-                ok = false, error = :error
-            where id = :id
-        """), {
-            "fin": datetime.now(UTC), "id": llamada_id,
-            "model": c.model if c else None, "re": c.reasoning_effort if c else None,
-            "cost": c.cost_usd if c else None, "lat": c.latency_ms if c else None,
-            "error": str(exc),
-        })
+        db.execute(fila.values(
+            terminado_at=datetime.now(UTC), model=c.model if c else None,
+            reasoning_effort=c.reasoning_effort if c else None,
+            cost_usd=c.cost_usd if c else None, latency_ms=c.latency_ms if c else None,
+            ok=False, error=str(exc),
+        ))
         db.commit()
         raise
 
     c = recorder.calls[0] if recorder.calls else None
-    db.execute(text("""
-        update momentum_gate_llamadas set terminado_at = :fin, model = :model,
-            reasoning_effort = :re, prompt_cache_hit_tokens = :hit,
-            prompt_cache_miss_tokens = :miss, completion_tokens = :ct,
-            cost_usd = :cost, latency_ms = :lat, ok = true, pasa = :pasa, motivo = :motivo
-        where id = :id
-    """), {
-        "fin": datetime.now(UTC), "id": llamada_id,
-        "model": c.model if c else None, "re": c.reasoning_effort if c else None,
-        "hit": c.prompt_cache_hit_tokens if c else None,
-        "miss": c.prompt_cache_miss_tokens if c else None,
-        "ct": c.completion_tokens if c else None, "cost": c.cost_usd if c else None,
-        "lat": c.latency_ms if c else None, "pasa": r.pasa, "motivo": r.motivo,
-    })
+    db.execute(fila.values(
+        terminado_at=datetime.now(UTC), model=c.model if c else None,
+        reasoning_effort=c.reasoning_effort if c else None,
+        prompt_cache_hit_tokens=c.prompt_cache_hit_tokens if c else None,
+        prompt_cache_miss_tokens=c.prompt_cache_miss_tokens if c else None,
+        completion_tokens=c.completion_tokens if c else None,
+        cost_usd=c.cost_usd if c else None, latency_ms=c.latency_ms if c else None,
+        ok=True, pasa=r.pasa, motivo=r.motivo,
+    ))
     # El gate informa, no decide -- ni siquiera si pasa. Incorporar o descartar es SIEMPRE
     # tu clic explícito (corregido 8-sep-2026: antes esto se decidía solo).
-    db.execute(text("""
-        update momentum_candidatos set gate_pass = :gp, gate_detalle = :gd where id = :id
-    """), {"gp": r.pasa, "gd": r.motivo, "id": candidato_id})
+    db.execute(update(MomentumCandidato).where(MomentumCandidato.id == candidato_id)
+               .values(gate_pass=r.pasa, gate_detalle=r.motivo))
     db.commit()

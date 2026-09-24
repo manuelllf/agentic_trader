@@ -17,20 +17,26 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     SmallInteger,
     String,
     Text,
     UniqueConstraint,
+    cast,
+    func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import REAL as PG_REAL
 from sqlalchemy.orm import Mapped, mapped_column, object_session
+from sqlalchemy.types import UserDefinedType
 
 from app.db import Base
 from app.ledger.money import DecimalStr
@@ -110,13 +116,13 @@ class FundamentalsSnapshot(Base):
     name: Mapped[str | None] = mapped_column(String(128))
     price: Mapped[float | None] = mapped_column(Float)
     market_cap: Mapped[float | None] = mapped_column(Float)
+    # Históricos: consenso de analistas, nunca iba a ningún prompt. Ya no se captura.
     target_high: Mapped[float | None] = mapped_column(Float)
     target_mean: Mapped[float | None] = mapped_column(Float)
     pe_trailing: Mapped[float | None] = mapped_column(Float)
     pe_forward: Mapped[float | None] = mapped_column(Float)
     high_52w: Mapped[float | None] = mapped_column(Float)
     low_52w: Mapped[float | None] = mapped_column(Float)
-    # Históricos: consenso de analistas, nunca iba a ningún prompt. Ya no se captura.
     # `fundamentals_text` (el prompt YA MONTADO) NO se persiste: era texto formateado con los
     # ~85 campos de abajo mezclados dentro de una cadena — la propia definición de "chapuza"
     # que motivó este cambio. Se reconstruye al leer con la MISMA función que lo genera en vivo
@@ -312,13 +318,13 @@ class _TradeItemColumns:
     score: Mapped[float | None] = mapped_column(Float)
     target_weight_pct: Mapped[float] = mapped_column(Float)
     price: Mapped[str | None] = mapped_column(String(32))   # Decimal-as-str, como ya viaja hoy
+    # Históricos: objetivo a 3 meses del LLM, retirado del prompt. Ya no se escriben.
     target_price: Mapped[float | None] = mapped_column(Float)
     upside_pct: Mapped[float | None] = mapped_column(Float)
     high_52w: Mapped[float | None] = mapped_column(Float)   # para distancia al máximo, no editable
     target_value: Mapped[str] = mapped_column(String(32))
     target_shares: Mapped[float] = mapped_column(Float)
     delta_shares: Mapped[float] = mapped_column(Float)
-    # Históricos: objetivo a 3 meses del LLM, retirado del prompt. Ya no se escriben.
     thesis: Mapped[str] = mapped_column(Text, default="")
     edge: Mapped[str] = mapped_column(Text, default="")
     risk: Mapped[str] = mapped_column(Text, default="")
@@ -1045,3 +1051,174 @@ class PushSubscription(Base):
     endpoint: Mapped[str] = mapped_column(Text, unique=True, index=True)
     p256dh: Mapped[str] = mapped_column(Text)
     auth: Mapped[str] = mapped_column(Text)
+
+
+# ---- Tablas que la app lee y escribe con SQL crudo (memoria vectorial y Omega) ----------------
+# Declaradas para que la comprobación de deriva las cubra y el SQLite local las tenga; el código
+# no usa estas clases. Reflejan el SQL aplicado en Supabase: si cambia la BD, cambian aquí.
+
+
+class Vector(UserDefinedType):
+    """Columna pgvector sin depender del paquete `pgvector` (la búsqueda va en SQL crudo)."""
+
+    cache_ok = True
+
+    def __init__(self, dim: int | None = None) -> None:
+        self.dim = dim
+
+    def get_col_spec(self, **_kw) -> str:
+        return f"VECTOR({self.dim})" if self.dim else "VECTOR"
+
+    def bind_processor(self, dialect):  # noqa: ANN001, ANN201
+        def proceso(valor):  # noqa: ANN001, ANN202
+            if valor is None or isinstance(valor, str):
+                return valor
+            return "[" + ",".join(repr(float(x)) for x in valor) + "]"
+        return proceso
+
+    def bind_expression(self, bindvalue):  # noqa: ANN001, ANN201
+        return cast(bindvalue, self)   # el texto '[...]' llega como vector, no como text
+
+
+class Memory(Base):
+    __tablename__ = "memories"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), server_default=text("''"))
+    ticker: Mapped[str] = mapped_column(String(16), server_default=text("''"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MemoryChunk(Base):
+    __tablename__ = "memory_chunks"
+    __table_args__ = (UniqueConstraint("memory_id", "chunk_index"),)
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    memory_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("memories.id", ondelete="CASCADE"), index=True)
+    chunk_index: Mapped[int] = mapped_column(SmallInteger)
+    text: Mapped[str] = mapped_column(Text)
+    embedding = mapped_column(Vector(384), nullable=False)
+
+
+class MomentumUniverso(Base):
+    __tablename__ = "momentum_universo"
+    __table_args__ = (CheckConstraint("origen IN ('original', 'incorporado')"),)
+
+    ticker: Mapped[str] = mapped_column(String, primary_key=True)
+    sector: Mapped[str] = mapped_column(String)
+    nombre: Mapped[str] = mapped_column(String, server_default=text("''"))
+    origen: Mapped[str] = mapped_column(String)
+    creado_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MomentumUniversoEstado(Base):
+    __tablename__ = "momentum_universo_estado"
+
+    ticker: Mapped[str] = mapped_column(String(10), primary_key=True)
+    mantener: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    actualizado_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                     server_default=func.now())
+
+
+class MomentumSenal(Base):
+    __tablename__ = "momentum_senales"
+    __table_args__ = (UniqueConstraint("ticker", "tipo", "entry_date"),)
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(10))
+    sector: Mapped[str] = mapped_column(String(20))
+    tipo: Mapped[str] = mapped_column(String(10))
+    entry_date: Mapped[date] = mapped_column(Date)
+    entry_price: Mapped[Decimal] = mapped_column(Numeric)
+    ref_label: Mapped[str] = mapped_column(String(20))
+    ref_price: Mapped[Decimal] = mapped_column(Numeric)
+    caida_pct: Mapped[Decimal] = mapped_column(Numeric)
+    resuelta: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    exit_date: Mapped[date | None] = mapped_column(Date)
+    ret: Mapped[Decimal | None] = mapped_column(Numeric)
+    motivo: Mapped[str | None] = mapped_column(String(10))
+    dias: Mapped[int | None] = mapped_column(Integer)
+    estado: Mapped[str] = mapped_column(String(12), server_default=text("'nueva'"))
+    gate_resultado: Mapped[str | None] = mapped_column(String(10))
+    gate_detalle: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ath: Mapped[Decimal | None] = mapped_column(Numeric)
+    desde_noticias: Mapped[date | None] = mapped_column(Date)
+    cesta_60d: Mapped[Decimal | None] = mapped_column(Numeric)
+    gate_regimen: Mapped[bool | None] = mapped_column(Boolean)
+    ref_price_pico: Mapped[Decimal | None] = mapped_column(Numeric)
+    caida_max_pct: Mapped[Decimal | None] = mapped_column(Numeric)
+    dias_hasta_min: Mapped[int | None] = mapped_column(Integer)
+
+
+class MomentumEjecucion(Base):
+    __tablename__ = "momentum_ejecuciones"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    senal_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("momentum_senales.id"))
+    accion: Mapped[str] = mapped_column(String(10))
+    acciones: Mapped[Decimal] = mapped_column(Numeric)
+    precio: Mapped[Decimal] = mapped_column(Numeric)
+    comision: Mapped[Decimal] = mapped_column(Numeric, server_default=text("0"))
+    ejecutada_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                   server_default=func.now())
+    notas: Mapped[str] = mapped_column(Text, server_default=text("''"))
+
+
+class MomentumCandidato(Base):
+    __tablename__ = "momentum_candidatos"
+    __table_args__ = (UniqueConstraint("ticker", "fecha_evaluacion"),)
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(10))
+    nombre: Mapped[str] = mapped_column(String(80), server_default=text("''"))
+    fecha_evaluacion: Mapped[date] = mapped_column(Date)
+    filtro_sector_pass: Mapped[bool | None] = mapped_column(Boolean)
+    filtro_sector_detalle: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    estadistica_pass: Mapped[bool | None] = mapped_column(Boolean)
+    estadistica_detalle: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    gate_pass: Mapped[bool | None] = mapped_column(Boolean)
+    gate_detalle: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    decision: Mapped[str] = mapped_column(String(12), server_default=text("'pendiente'"))
+    decidido_por: Mapped[str] = mapped_column(String(20), server_default=text("'sistema'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MomentumApewisdom(Base):
+    __tablename__ = "momentum_apewisdom"
+    __table_args__ = (UniqueConstraint("fecha", "ticker"),
+                      Index("ix_momentum_apewisdom_ticker", "ticker", "fecha"))
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    fecha: Mapped[date] = mapped_column(Date)
+    ticker: Mapped[str] = mapped_column(Text)
+    rank: Mapped[int | None] = mapped_column(Integer)
+    mentions: Mapped[int | None] = mapped_column(Integer)
+    mentions_24h_ago: Mapped[int | None] = mapped_column(Integer)
+    upvotes: Mapped[int | None] = mapped_column(Integer)
+
+
+class MomentumGateLlamada(Base):
+    __tablename__ = "momentum_gate_llamadas"
+    __table_args__ = (Index("ix_momentum_gate_llamadas_senal", "senal_id"),
+                      Index("ix_momentum_gate_llamadas_ticker", "ticker", "lanzado_at"))
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    senal_id: Mapped[int | None] = mapped_column(BigInteger)
+    ticker: Mapped[str] = mapped_column(Text)
+    lanzado_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    terminado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    model: Mapped[str | None] = mapped_column(Text)
+    reasoning_effort: Mapped[str | None] = mapped_column(Text)
+    prompt_cache_hit_tokens: Mapped[int | None] = mapped_column(Integer)
+    prompt_cache_miss_tokens: Mapped[int | None] = mapped_column(Integer)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer)
+    cost_usd: Mapped[float | None] = mapped_column(Float)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    ok: Mapped[bool | None] = mapped_column(Boolean)
+    pasa: Mapped[bool | None] = mapped_column(Boolean)
+    motivo: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    candidato_id: Mapped[int | None] = mapped_column(Integer)

@@ -10,16 +10,17 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import bindparam, text
+from sqlalchemy import bindparam, text, update
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.models import MomentumCandidato, MomentumEjecucion, MomentumSenal, MomentumUniversoEstado
 from app.momentum import candidatos as candidatos_mod
 from app.momentum import capital, gate_config, gate_progress, gate_runner, signals
 
@@ -286,16 +287,12 @@ def set_mantener(ticker: str, body: MantenerIn, db: Session = Depends(get_db)) -
     candidatos_mod.sincronizar_universo(db)
     if ticker not in signals.UNIVERSO:
         raise HTTPException(404, "Ticker fuera del universo fijo.")
-    # Update-then-insert en vez de ON CONFLICT: portable entre Postgres (real) y SQLite (dev
-    # local), que difieren en la sintaxis del upsert y en la función de fecha por defecto.
-    existe = db.execute(text("select 1 from momentum_universo_estado where ticker = :t"),
-                        {"t": ticker}).first()
-    if existe:
-        db.execute(text("update momentum_universo_estado set mantener = :m where ticker = :t"),
-                  {"m": body.mantener, "t": ticker})
+    estado = db.get(MomentumUniversoEstado, ticker)
+    if estado is None:
+        db.add(MomentumUniversoEstado(ticker=ticker, mantener=body.mantener))
     else:
-        db.execute(text("insert into momentum_universo_estado (ticker, mantener) values (:t, :m)"),
-                  {"t": ticker, "m": body.mantener})
+        estado.mantener = body.mantener
+        estado.actualizado_at = datetime.now(UTC)
     db.commit()
     return {"ok": True, "ticker": ticker, "mantener": body.mantener}
 
@@ -375,15 +372,16 @@ def ejecutar(senal_id: int, body: EjecucionIn, db: Session = Depends(get_db)) ->
     if body.accion == "venta" and Decimal(str(body.acciones)) > neto_previo:
         raise HTTPException(400, f"Solo hay {neto_previo} acciones abiertas -- no puedes vender {body.acciones}.")
 
-    db.execute(text("""
-        insert into momentum_ejecuciones (senal_id, accion, acciones, precio, comision, notas)
-        values (:senal_id, :accion, :acciones, :precio, :comision, :notas)
-    """), {"senal_id": senal_id, **body.model_dump()})
+    # Dinero a NUMERIC exacto: Decimal desde el texto, nunca el float tal cual.
+    db.add(MomentumEjecucion(
+        senal_id=senal_id, accion=body.accion, acciones=Decimal(str(body.acciones)),
+        precio=Decimal(str(body.precio)), comision=Decimal(str(body.comision)), notas=body.notas,
+    ))
 
     delta = Decimal(str(body.acciones)) if body.accion == "compra" else -Decimal(str(body.acciones))
     nuevo_estado = "ejecutada" if (neto_previo + delta) > 0 else "vendida"
-    db.execute(text("update momentum_senales set estado = :estado where id = :id"),
-              {"estado": nuevo_estado, "id": senal_id})
+    db.execute(update(MomentumSenal).where(MomentumSenal.id == senal_id)
+               .values(estado=nuevo_estado))
     db.commit()
     return {"ok": True, "senal_id": senal_id, "estado": nuevo_estado}
 
@@ -396,8 +394,8 @@ def descartar(senal_id: int, db: Session = Depends(get_db)) -> dict:
                        {"id": senal_id}).mappings().first()
     if senal is None:
         raise HTTPException(404, "Señal no encontrada.")
-    db.execute(text("update momentum_senales set estado = 'descartada' where id = :id"),
-              {"id": senal_id})
+    db.execute(update(MomentumSenal).where(MomentumSenal.id == senal_id)
+               .values(estado="descartada"))
     db.commit()
     return {"ok": True, "senal_id": senal_id, "estado": "descartada"}
 
@@ -416,10 +414,8 @@ def decidir_candidato(candidato_id: int, body: CandidatoDecisionIn, db: Session 
                      {"id": candidato_id}).mappings().first()
     if row is None:
         raise HTTPException(404, "Candidato no encontrado.")
-    db.execute(text("""
-        update momentum_candidatos set decision = :decision, decidido_por = 'manual'
-        where id = :id
-    """), {"decision": body.decision, "id": candidato_id})
+    db.execute(update(MomentumCandidato).where(MomentumCandidato.id == candidato_id)
+               .values(decision=body.decision, decidido_por="manual"))
     db.commit()
     if body.decision == "incorporado":
         candidatos_mod.sincronizar_universo(db)

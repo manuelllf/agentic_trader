@@ -15,8 +15,10 @@ import logging
 from datetime import date
 
 import httpx
-from sqlalchemy import text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from app.models import MomentumApewisdom
 
 logger = logging.getLogger(__name__)
 
@@ -38,23 +40,18 @@ def capturar(db: Session) -> int:
     resultados = resp.json().get("results", [])
     hoy = date.today()
     guardadas = 0
+    # Los ya guardados hoy, más los de esta tanda: la sesión no vuelca hasta el commit.
+    vistos = set(db.scalars(select(MomentumApewisdom.ticker)
+                            .where(MomentumApewisdom.fecha == hoy)))
     for r in resultados:
         ticker = (r.get("ticker") or "").strip().upper()
-        if not ticker:
+        if not ticker or ticker in vistos:
             continue
-        existe = db.execute(text(
-            "select 1 from momentum_apewisdom where fecha = :f and ticker = :t"
-        ), {"f": hoy, "t": ticker}).first()
-        if existe:
-            continue
-        db.execute(text("""
-            insert into momentum_apewisdom
-              (fecha, ticker, rank, mentions, mentions_24h_ago, upvotes)
-            values (:f, :t, :rank, :mentions, :m24, :up)
-        """), {
-            "f": hoy, "t": ticker, "rank": _num(r.get("rank")), "mentions": _num(r.get("mentions")),
-            "m24": _num(r.get("mentions_24h_ago")), "up": _num(r.get("upvotes")),
-        })
+        vistos.add(ticker)
+        db.add(MomentumApewisdom(
+            fecha=hoy, ticker=ticker, rank=_num(r.get("rank")), mentions=_num(r.get("mentions")),
+            mentions_24h_ago=_num(r.get("mentions_24h_ago")), upvotes=_num(r.get("upvotes")),
+        ))
         guardadas += 1
     db.commit()
     return guardadas

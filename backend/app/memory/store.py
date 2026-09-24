@@ -99,7 +99,9 @@ class MemoryStore:
                 "La memoria vectorial requiere Postgres (pgvector) — DATABASE_URL apunta a "
                 f"{database_url.split(':', 1)[0]!r}, no a postgresql."
             )
+        self._url = database_url
         self._dsn = _pg_dsn(database_url)
+        self._sesiones = None
         self._model_name = model_name
         # En Railway cae en el mismo volumen que antes usaba el SQLite (`/data/fastembed_cache`,
         # ya existe) → el modelo ONNX (~0,22 GB) se descarga una sola vez, no en cada deploy.
@@ -123,6 +125,21 @@ class MemoryStore:
 
         return psycopg.connect(self._dsn)
 
+    def _sesion(self):  # noqa: ANN202
+        """Sesión ORM para las escrituras. Con la URL de la app reutiliza su engine (y su pool);
+        con otra (tests, scripts) abre uno propio una sola vez."""
+        if self._sesiones is None:
+            from sqlalchemy import create_engine
+            from sqlalchemy.orm import sessionmaker
+
+            from app import db as app_db
+            from app.config import settings
+
+            eng = (app_db.engine if self._url == settings.database_url
+                   else create_engine(self._url, pool_pre_ping=True))
+            self._sesiones = sessionmaker(bind=eng, expire_on_commit=False)
+        return self._sesiones()
+
     @staticmethod
     def _vec_literal(emb) -> str:  # noqa: ANN001
         return "[" + ",".join(repr(float(x)) for x in emb) + "]"
@@ -137,23 +154,19 @@ class MemoryStore:
         """
         if not text.strip():
             return -1
+        from app.models import Memory as MemoryRow
+        from app.models import MemoryChunk
+
         chunks = _chunk(text)
-        with self._connect() as conn, conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO memories (kind, ticker, text, created_at) "
-                "VALUES (%s, %s, %s, %s) RETURNING id",
-                (kind, ticker, text, datetime.now(UTC)),
-            )
-            rowid = cur.fetchone()[0]
+        with self._sesion() as db:
+            recuerdo = MemoryRow(kind=kind, ticker=ticker, text=text, created_at=datetime.now(UTC))
+            db.add(recuerdo)
+            db.flush()                                   # el id, para colgarle los trozos
             for i, chunk_text in enumerate(chunks):
-                emb = self._embed(chunk_text)
-                cur.execute(
-                    "INSERT INTO memory_chunks (memory_id, chunk_index, text, embedding) "
-                    "VALUES (%s, %s, %s, %s::vector)",
-                    (rowid, i, chunk_text, self._vec_literal(emb)),
-                )
-            conn.commit()
-        return int(rowid)
+                db.add(MemoryChunk(memory_id=recuerdo.id, chunk_index=i, text=chunk_text,
+                                   embedding=self._embed(chunk_text)))
+            db.commit()
+            return int(recuerdo.id)
 
     def _knn(self, emb, k: int, rowids: list[int] | None = None) -> list[Memory]:
         """KNN por distancia L2 (`<->`, mismo operador que usaba `sqlite-vec` por defecto — no
