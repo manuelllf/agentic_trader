@@ -1,33 +1,28 @@
 // Piezas de presentacion pura reutilizadas por varias tarjetas/modales de Omega: nada de
 // estado de negocio ni llamadas a la API aqui, solo layout.
 import { useEffect, useState } from 'react';
-import { InfoTip } from '@/components/InfoTip';
 import { NUMS, T } from '../tokens';
 import type { Regimen } from '../types';
 
-/** Botón de acción con icono + texto -- reemplaza los 4 iconos-solo + leyenda aparte de antes.
- *  Sin color propio: el texto ya dice lo que hace, ningún tono decorativo que aprender.
- *  `hint` (opcional) es la explicación larga, en un InfoTip aparte -- no el `title` nativo. */
-export function ActionChip({ onClick, label, hint, busy, stroke, children }: {
-  onClick: () => void; label: string; hint?: string; busy?: boolean; stroke?: boolean;
+/** Botón de acción, mismo patrón que los de las alertas ("Aumentar"): borde, sin relleno, 12 px
+ *  en seminegrita. En el móvil solo texto (4 en una fila no caben con icono); icono desde sm. */
+export function ActionChip({ onClick, label, busy, stroke, children }: {
+  onClick: () => void; label: string; busy?: boolean; stroke?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    // La píldora entera es el botón (zona táctil completa); el InfoTip va fuera, al lado.
-    <span className="inline-flex shrink-0 items-center gap-1.5">
-      <button onClick={onClick} disabled={busy}
-              className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium transition active:opacity-60 disabled:opacity-50"
-              style={{ borderColor: T.grid, background: T.panel2, color: T.ink2 }}>
-        <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 shrink-0 ${busy ? (stroke ? "animate-spin" : "animate-pulse") : ""}`}
-             fill={stroke ? "none" : "currentColor"}
-             stroke={stroke ? "currentColor" : undefined}
-             strokeWidth={stroke ? 2.2 : undefined} strokeLinecap={stroke ? "round" : undefined} strokeLinejoin={stroke ? "round" : undefined}>
-          {children}
-        </svg>
-        {label}
-      </button>
-      {hint && <InfoTip text={hint} />}
-    </span>
+    <button onClick={onClick} disabled={busy}
+            className="flex min-h-[40px] w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-1 text-[11px] font-semibold min-[360px]:text-[12px] transition active:opacity-60 disabled:opacity-50 sm:px-3"
+            style={{ borderColor: T.grid, background: "transparent", color: T.ink2 }}>
+      <svg viewBox="0 0 24 24" style={{ color: T.muted }}
+           className={`hidden h-3.5 w-3.5 shrink-0 sm:block ${busy ? (stroke ? "animate-spin" : "animate-pulse") : ""}`}
+           fill={stroke ? "none" : "currentColor"}
+           stroke={stroke ? "currentColor" : undefined}
+           strokeWidth={stroke ? 2.2 : undefined} strokeLinecap={stroke ? "round" : undefined} strokeLinejoin={stroke ? "round" : undefined}>
+        {children}
+      </svg>
+      {label}
+    </button>
   );
 }
 

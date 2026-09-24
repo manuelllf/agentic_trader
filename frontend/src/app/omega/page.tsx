@@ -349,22 +349,18 @@ function SalaMomentumRoom() {
           </p>
         </header>
 
-        {/* Fila propia, flotando en el flujo normal -- cada acción se distingue por su texto,
-            no por un color arbitrario (antes: iconos solos + leyenda aparte explicándolos). */}
-        <div className="mb-6 flex flex-wrap justify-center gap-2">
+        {/* Una fila centrada de 4 celdas iguales, también en el móvil. Cada acción se distingue
+            por su texto, no por un color. */}
+        <div className="mx-auto mb-6 grid max-w-[520px] grid-cols-4 gap-1 min-[360px]:gap-1.5">
           <ActionChip onClick={escanear} busy={scanning}
                       label={scanning && scanProgreso?.status === "running" && scanProgreso.total > 0
-                        ? `${scanProgreso.hecho}/${scanProgreso.total}` : "Señales"}
-                      hint="Recalcular señales ahora (gratis, por si el cron 16:05 ET no ha corrido).">
+                        ? `${scanProgreso.hecho}/${scanProgreso.total}` : "Señales"}>
             <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
           </ActionChip>
-          <ActionChip onClick={detectarCandidatos} busy={detectando} label="Rupturas"
-                      hint="Fuerza la detección de rupturas de ApeWisdom ahora (gratis, por si el cron 16:10 ET no ha corrido). Automático: solo mira lo que ApeWisdom ya trae."
-                      stroke>
+          <ActionChip onClick={detectarCandidatos} busy={detectando} label="Rupturas" stroke>
             <path d="M2 13h3l2-7 3 15 3-11 2 3h5" />
           </ActionChip>
-          <ActionChip onClick={() => setBuscadorAbierto(true)} label="Tickers"
-                      hint="Añade o revisa un ticker a mano, sin esperar a ApeWisdom." stroke>
+          <ActionChip onClick={() => setBuscadorAbierto(true)} label="Tickers" stroke>
             <circle cx="10" cy="10" r="6.5" />
             <path d="M20 20l-4.3-4.3M10 7v6M7 10h6" />
           </ActionChip>
