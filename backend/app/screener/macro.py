@@ -46,16 +46,16 @@ def get_macro_regime() -> dict:
     return regime
 
 
-def _datos_mercado() -> tuple[str, list[str]]:
-    """Línea de datos (B) y titulares de Yahoo. Sin petróleo, MA200 ni distancia al máximo:
-    viajan en cada prompt y empujaban hacia un sector o hacia lo que ya había subido."""
+def _datos_mercado() -> str:
+    """Línea de datos (B). Sin petróleo, MA200 ni distancia al máximo: viajan en cada prompt y
+    empujaban hacia un sector o hacia lo que ya había subido."""
     tickers = ["SPY", "QQQ", "IWM", "^VIX", "^TNX", "^IRX", "DX-Y.NYB", "GC=F", "HYG"]
     try:
         df = yf.download(tickers, period="1y", interval="1d", auto_adjust=True,
                          group_by="ticker", threads=True, progress=False)
     except Exception:
         logger.exception("Descarga de datos macro falló")
-        return "", []
+        return ""
 
     def close(tk: str):
         try:
@@ -89,19 +89,9 @@ def _datos_mercado() -> tuple[str, list[str]]:
             partes.append(f"{label} {ta.pct_change_ndays(c, 21):+.1f}% 1m, "
                           f"{ta.pct_change_ndays(c, 63):+.1f}% 3m.")
 
-    headlines: list[str] = []
-    try:
-        for item in (yf.Ticker("SPY").news or [])[:6]:
-            t = item.get("title") or (item.get("content") or {}).get("title")
-            if t:
-                headlines.append(t.strip())
-    except Exception:
-        logger.warning("Titulares de Yahoo (SPY) fallaron", exc_info=True)
-    if not headlines:
-        logger.warning("Titulares de Yahoo (SPY) vacíos: el macro va solo con Google News/GDELT")
     if not partes:
         logger.warning("Datos macro vacíos: Yahoo no devolvió series utilizables")
-    return " ".join(partes), headlines
+    return " ".join(partes)
 
 
 def get_macro(db=None) -> dict:  # noqa: ANN001
@@ -109,7 +99,7 @@ def get_macro(db=None) -> dict:  # noqa: ANN001
     from app.screener import events as events_mod
 
     regime = get_macro_regime()
-    datos, headlines = _datos_mercado()
+    datos = _datos_mercado()
     wiki_events = events_mod.wikipedia_current_events(days=7, db=db)
     wiki_scheduled = events_mod.wikipedia_scheduled_events(db=db)
     # Google News principal; GDELT solo de reserva (lento, a veces ruido y 429).
@@ -122,7 +112,7 @@ def get_macro(db=None) -> dict:  # noqa: ANN001
         # Qué trajo cada fuente: el informe del escaneo avisa de las caídas.
         "events": {"wiki": len(wiki_events), "sched": len(wiki_scheduled), "gdelt": len(gdelt),
                    "gnews": len(gnews)},
-        "macro_headlines": {"yfinance": headlines, "gnews": gnews, "gdelt": gdelt},
+        "macro_headlines": {"gnews": gnews, "gdelt": gdelt},
         "wiki_events_text": wiki_events,
         "wiki_scheduled_text": wiki_scheduled,
     }
@@ -136,7 +126,7 @@ def bloque_macro(macro: dict, con_contexto: bool = True) -> str:
             partes.append("Scheduled events (calendar):\n" + macro["wiki_scheduled_text"].strip())
         if macro.get("wiki_events_text"):
             partes.append("Recent events (last 7 days):\n" + macro["wiki_events_text"].strip())
-        titulares = [h for fuente in ("yfinance", "gdelt", "gnews")
+        titulares = [h for fuente in ("gdelt", "gnews")
                      for h in (macro.get("macro_headlines") or {}).get(fuente) or []]
         if titulares:
             partes.append("Recent market headlines:\n" + "\n".join(f"- {h}" for h in titulares))

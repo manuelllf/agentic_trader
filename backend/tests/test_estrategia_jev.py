@@ -151,14 +151,11 @@ def _df_mercado() -> pd.DataFrame:
 
 def test_datos_mercado_da_niveles_y_cambios_sin_petroleo(monkeypatch) -> None:
     monkeypatch.setattr(macro_mod.yf, "download", lambda *a, **k: _df_mercado())
-    monkeypatch.setattr(macro_mod.yf, "Ticker",
-                        lambda _t: SimpleNamespace(news=[{"title": " Fed holds "}, {}]))
-    datos, titulares = macro_mod._datos_mercado()
+    datos = macro_mod._datos_mercado()
     assert "10y yield 4.99% (+0.21 pp 1m, +0.63 pp 3m)." in datos
     assert datos.startswith("VIX ")
     for fuera in ("Oil", "WTI", "MA200", "52w"):
         assert fuera not in datos
-    assert titulares == ["Fed holds"]
 
 
 def test_datos_mercado_con_yahoo_caido_no_revienta(monkeypatch) -> None:
@@ -166,17 +163,16 @@ def test_datos_mercado_con_yahoo_caido_no_revienta(monkeypatch) -> None:
         raise RuntimeError("yahoo caído")
 
     monkeypatch.setattr(macro_mod.yf, "download", _boom)
-    assert macro_mod._datos_mercado() == ("", [])
+    assert macro_mod._datos_mercado() == ""
     assert macro_mod.bloque_macro({"datos": ""}) == "n/d"
 
 
 def test_datos_mercado_con_tabla_vacia_avisa_en_el_log(monkeypatch, caplog) -> None:  # noqa: ANN001
     """yfinance suele devolver un DataFrame vacío en vez de lanzar: tiene que dejar rastro."""
     monkeypatch.setattr(macro_mod.yf, "download", lambda *a, **k: pd.DataFrame())
-    monkeypatch.setattr(macro_mod.yf, "Ticker", lambda _t: SimpleNamespace(news=[]))
 
     with caplog.at_level("WARNING", logger=macro_mod.logger.name):
-        assert macro_mod._datos_mercado() == ("", [])
+        assert macro_mod._datos_mercado() == ""
     assert "Datos macro vacíos" in caplog.text
 
 
@@ -185,7 +181,7 @@ def test_get_macro_solo_usa_gdelt_si_google_news_falla(monkeypatch) -> None:
 
     llamadas: list[str] = []
     monkeypatch.setattr(macro_mod, "get_macro_regime", lambda: {"regime": "neutral", "vix": 15})
-    monkeypatch.setattr(macro_mod, "_datos_mercado", lambda: ("VIX 15.0.", ["Y1"]))
+    monkeypatch.setattr(macro_mod, "_datos_mercado", lambda: "VIX 15.0.")
     monkeypatch.setattr(events_mod, "wikipedia_current_events", lambda days, db=None: "ev")
     monkeypatch.setattr(events_mod, "wikipedia_scheduled_events", lambda db=None: "cal")
     monkeypatch.setattr(events_mod, "google_news_headlines", lambda db=None: [])
@@ -194,8 +190,8 @@ def test_get_macro_solo_usa_gdelt_si_google_news_falla(monkeypatch) -> None:
 
     m = macro_mod.get_macro()
     assert llamadas == ["gdelt"]
-    assert m["macro_headlines"] == {"yfinance": ["Y1"], "gnews": [], "gdelt": ["D1"]}
-    assert macro_mod.bloque_macro(m).endswith("Recent market headlines:\n- Y1\n- D1")
+    assert m["macro_headlines"] == {"gnews": [], "gdelt": ["D1"]}
+    assert macro_mod.bloque_macro(m).endswith("Recent market headlines:\n- D1")
 
 
 def test_bloque_con_contexto_omite_secciones_vacias() -> None:

@@ -64,7 +64,7 @@ def test_clausula_nueva_del_profundo_sin_palabras_direccionales() -> None:
 _MACRO = {
     "regime": "risk-on", "vix": 14.9, "datos": "VIX 14.9. Gold 4,341 (+5% 1m).",
     "wiki_scheduled_text": "Nov 3 - US elections.", "wiki_events_text": "Fed raises rates.",
-    "macro_headlines": {"yfinance": ["Y1"], "gnews": ["G1"], "gdelt": []},
+    "macro_headlines": {"gnews": ["G1"], "gdelt": ["D1"]},
 }
 
 
@@ -81,7 +81,7 @@ def test_bloque_con_contexto_lleva_calendario_eventos_y_titulares_en_crudo() -> 
     assert bloque.startswith("VIX 14.9.")
     assert "Scheduled events (calendar):\nNov 3 - US elections." in bloque
     assert "Recent events (last 7 days):\nFed raises rates." in bloque
-    assert "Recent market headlines:\n- Y1\n- G1" in bloque
+    assert "Recent market headlines:\n- D1\n- G1" in bloque
     assert "risk-on" not in bloque
 
 

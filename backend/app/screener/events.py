@@ -167,7 +167,7 @@ def _macro_sections_only(wt: str) -> str:
     return "\n".join(kept)
 
 
-def wikipedia_current_events(days: int = 7, max_chars: int = 12000, db=None) -> str:  # noqa: ANN001
+def wikipedia_current_events(days: int = 7, max_chars: int = 16000, db=None) -> str:  # noqa: ANN001
     """Eventos macro-relevantes de los últimos `days` días (portal diario, keyless, fiable).
 
     Se cachea DÍA A DÍA y solo se guarda lo ya filtrado. Un día pasado no vuelve a cambiar, así
@@ -195,7 +195,14 @@ def wikipedia_current_events(days: int = 7, max_chars: int = 12000, db=None) -> 
             out.append(f"[{d.isoformat()}]\n{macro}")
     if nuevo:
         _cache_save(db, cache)
-    return "\n\n".join(out)[:max_chars]
+    # Por días enteros, del más reciente hacia atrás: cortar a caracteres dejaba el día más viejo
+    # a media frase. Una semana normal ronda 13.500 caracteres.
+    dias: list[str] = []
+    for bloque in out:
+        if dias and len("\n\n".join([*dias, bloque])) > max_chars:
+            break
+        dias.append(bloque)
+    return "\n\n".join(dias)[:max_chars]
 
 
 def wikipedia_scheduled_events(year: int | None = None, max_chars: int = 3000,

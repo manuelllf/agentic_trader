@@ -118,6 +118,17 @@ def test_sin_db_sigue_funcionando_sin_cachear(monkeypatch) -> None:
     assert len(llamadas) == 4                          # sin caché, se repite
 
 
+def test_el_tope_corta_por_dias_enteros(monkeypatch) -> None:
+    """Si no cabe la semana, sobran los días más viejos enteros, nunca uno a media frase."""
+    dia = "'''Business and economy'''\n*" + "x" * 80 + ".\n"
+    monkeypatch.setattr(events, "_fetch_wikitext", lambda page, timeout=15.0: dia)
+    uno = events.wikipedia_current_events(days=1)
+
+    texto = events.wikipedia_current_events(days=3, max_chars=2 * len(uno) + 5)
+
+    assert texto.count("[") == 2 and texto.endswith(".")
+
+
 def test_un_403_no_se_reintenta(monkeypatch) -> None:
     """Un 403 es un bloqueo por política, no un fallo transitorio: reintentarlo siete veces por
     escaneo solo alarga el escaneo. Los 429/5xx sí se reintentan con espera creciente."""

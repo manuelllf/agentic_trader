@@ -14,6 +14,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import platformdirs
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -42,6 +43,9 @@ logging.basicConfig(level=logging.INFO)
 # dos loggers de terceros — los propios (`app.*`) se quedan en INFO.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
+# yfinance crea su carpeta de caché sin exist_ok: varios hilos a la vez chocan ("File exists")
+# y se quedan sin caché de zonas horarias. Creada aquí, antes del primer hilo, no hay carrera.
+os.makedirs(os.path.join(platformdirs.user_cache_dir(), "py-yfinance"), exist_ok=True)
 
 
 def _require_password_in_prod() -> None:
