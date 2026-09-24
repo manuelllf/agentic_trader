@@ -168,3 +168,26 @@ def series(db: Session, book: str) -> dict:
         })
         prev = r
     return {"book": book, "series": out}
+
+
+def rentabilidad_total(db: Session, book: str, precios: dict[str, float], spy_now: float | None,
+                       hoy: date | None = None) -> tuple[float | None, float | None]:
+    """Cartera y S&P desde la primera compra, en % y ponderado por tiempo como la curva: los
+    cierres hasta ayer encadenados y el tramo de hoy a precio vivo. (None, None) sin cierres.
+    El patrimonio de hoy sale de `_equity_at_close`, igual que cada punto de la curva."""
+    hoy = hoy or _market_date(datetime.now(UTC))
+    rows = list(db.scalars(select(EquitySnapshot).where(
+        EquitySnapshot.book == book, EquitySnapshot.day < hoy).order_by(EquitySnapshot.day)))
+    serie = series(db, book)["series"][:len(rows)]
+    if not rows or not serie or rows[-1].equity <= ZERO:
+        return None, None
+    ult, punto = rows[-1], serie[-1]
+    allocs = list(db.scalars(select(Allocation).where(Allocation.book == book)))
+    trades = list(db.scalars(select(Trade).where(Trade.book == book).order_by(Trade.created_at)))
+    equity_now = _equity_at_close(trades, allocs, {t: {hoy: px} for t, px in precios.items()},
+                                  hoy)
+    flows = sum((a.amount for a in allocs if _market_date(a.created_at) > ult.day), ZERO)
+    index = punto["index"] * max(0.0, float((equity_now - flows) / ult.equity))
+    spy = (punto["spy_index"] * spy_now / ult.spy_close
+           if (spy_now and ult.spy_close and punto["spy_index"] is not None) else None)
+    return round(index - 100, 2), (round(spy - 100, 2) if spy is not None else None)

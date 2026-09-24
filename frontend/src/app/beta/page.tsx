@@ -567,6 +567,13 @@ export default function SombraDashboard() {
                       <span className="ml-1.5 text-xs text-[#6E6E6B]">alpha</span>
                     </span>
                   )}
+                  {/* Secundario: solo lo que queda abierto tras la última rotación. */}
+                  {perf.open_return_pct != null && perf.open_return_pct !== perf.portfolio_return_pct && (
+                    <span>
+                      <span className="text-sm font-semibold text-[#6E6E6B]">{sign(perf.open_return_pct)}{perf.open_return_pct}%</span>
+                      <span className="ml-1.5 text-xs text-[#6E6E6B]">posiciones abiertas</span>
+                    </span>
+                  )}
                 </div>
               )}
               {hist.length >= 2 && (

@@ -94,6 +94,35 @@ def test_series_index_ignores_flows(db, monkeypatch) -> None:
     assert [p["spy_index"] for p in pts] == [100.0, 101.0, 100.0]
 
 
+def test_rentabilidad_total_encadena_la_curva_y_el_tramo_vivo(db, monkeypatch) -> None:
+    """Cierres hasta ayer (+10%) × hoy a precio vivo (1100 → 1210 = +10%) = +21%; una
+    aportación de hoy no cuenta como rentabilidad. S&P: 100 × 510/500 = +2%."""
+    _seed_book(db, monkeypatch)
+    history.record_snapshots(db, books=("shadow",))
+    d9 = date(2026, 7, 9)
+    ledger.allocate(db, 300)
+    _backdate(db, d9)
+
+    # Hoy: caja 500 + 300 aportados + 10 AAA a 71 = 1510.
+    ret, spy = history.rentabilidad_total(db, "shadow", {"AAA": 71.0}, 510.0, hoy=d9)
+
+    assert (ret, spy) == (21.0, 2.0)
+
+
+def test_rentabilidad_total_no_cuenta_el_cierre_de_hoy(db, monkeypatch) -> None:
+    """El snapshot del día en curso se reescribe al cierre: el tramo vivo sale del de ayer."""
+    _seed_book(db, monkeypatch)
+    history.record_snapshots(db, books=("shadow",))
+
+    ret, _ = history.rentabilidad_total(db, "shadow", {"AAA": 60.0}, 500.0, hoy=D8)
+
+    assert ret == 10.0     # 105 (cierre del 7) × 1100/1050
+
+
+def test_rentabilidad_total_sin_cierres_es_none(db) -> None:
+    assert history.rentabilidad_total(db, "shadow", {}, 500.0) == (None, None)
+
+
 def test_no_trades_no_curve(db, monkeypatch) -> None:
     """Sin primera compra no hay curva (aunque haya caja asignada), igual que /performance."""
     monkeypatch.setattr(history, "_daily_closes", lambda tickers, start: CLOSES)

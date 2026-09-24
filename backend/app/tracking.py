@@ -140,7 +140,7 @@ def performance(db: Session, book: str = BOOK_SHADOW) -> dict:
             "realized_pnl": str(to_cents(realized_by_t.get(p.ticker, ZERO))),
             "pnl_pct": round(float(px / p.avg_cost - 1) * 100, 2) if p.avg_cost else 0.0,
         })
-    port_ret = round(float(value / cost - 1) * 100, 2) if cost else 0.0
+    open_ret = round(float(value / cost - 1) * 100, 2) if cost else 0.0
     first = (db.query(Trade).filter(Trade.book == book)
              .order_by(Trade.created_at).first())
     # Benchmark simétrico: SPY desde el MISMO minuto de la primera compra (ref persistida).
@@ -148,12 +148,22 @@ def performance(db: Session, book: str = BOOK_SHADOW) -> dict:
     spy_last = _spy_last() if spy_ref else None
     spy_ret = (round((spy_last / spy_ref - 1) * 100, 2)
                if (spy_ref and spy_last) else None)
+    # La cifra principal es la de toda la vida del libro (la curva), no la de las posiciones que
+    # quedan abiertas tras la última rotación; esa va aparte como `open_return_pct`.
+    from app import history as history_mod
+    # Sin posiciones el libro está cerrado (el real quedó en céntimos de restos): no hay curva viva.
+    total, spy_total = (history_mod.rentabilidad_total(db, book, prices, spy_last)
+                        if first and positions else (None, None))
+    port_ret = total if total is not None else open_ret
+    if total is not None and spy_total is not None:
+        spy_ret = spy_total
     alpha = round(port_ret - spy_ret, 2) if spy_ret is not None else None
     return {
         "since": first.created_at.date().isoformat() if first else None,
         "cost_basis": str(to_cents(cost)),
         "market_value": str(to_cents(value)),
         "portfolio_return_pct": port_ret,
+        "open_return_pct": open_ret,
         "spy_return_pct": spy_ret,
         "spy_ref": round(spy_ref, 2) if spy_ref else None,   # precio SPY en la entrada
         "spy_last": round(spy_last, 2) if spy_last else None,  # último SPY

@@ -121,7 +121,8 @@ export interface Performance {
   since: string | null;
   cost_basis: string;
   market_value: string;
-  portfolio_return_pct: number;
+  portfolio_return_pct: number;   // toda la vida del libro, ponderada por tiempo (la curva)
+  open_return_pct?: number;       // solo las posiciones abiertas tras la última rotación
   spy_return_pct: number | null;
   spy_ref: number | null;    // precio del SPY en el minuto de la primera compra (persistido)
   spy_last: number | null;   // último precio del SPY
