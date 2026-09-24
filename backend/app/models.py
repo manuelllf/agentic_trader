@@ -271,7 +271,6 @@ class Score(Base):
     report: Mapped[str] = mapped_column(Text, default="")    # Investment Report completo
     price: Mapped[float | None] = mapped_column(Float)         # precio al escanear
     market_cap: Mapped[float | None] = mapped_column(Float)    # para desempate por market cap (paper)
-    target_price: Mapped[float | None] = mapped_column(Float)  # vacía, se borra tras el deploy
     held: Mapped[bool] = mapped_column(default=False)          # ¿está en cartera?
     on_watchlist: Mapped[bool] = mapped_column(default=False)
     # ¿el informe declara que ESTA empresa está siendo comprada? Aparta de la selección (no del
