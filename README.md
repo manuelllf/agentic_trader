@@ -27,7 +27,9 @@ corre el mismo circuito completo sin tocar ningún libro, para observar sin deci
 Dos modos, con libros de capital separados:
 
 - **Beta**: cartera simulada de seguimiento; mide el método frente al S&P 500 sin
-  dinero real, neto de comisiones simuladas.
+  dinero real, neto de comisiones simuladas. La cifra que manda es la de toda la vida de la
+  cartera, ponderada por tiempo (las aportaciones no cuentan como rentabilidad); la de las
+  posiciones abiertas tras la última rotación queda como dato secundario.
 - **Alpha**: conectada a Interactive Brokers. El agente *propone*; el usuario decide
   (Sí / No) cada orden. Órdenes a límite y, por defecto, en modo simulación.
 
@@ -53,6 +55,10 @@ Las que más forma le dan al sistema:
   todo el análisis hacia un sector (en una prueba, 65-75% de la cartera en energía por la
   narrativa del petróleo). Ahora cada análisis recibe los datos de mercado, el calendario, los
   eventos recientes y los titulares tal cual, sin previsión, y juzga cada empresa por sí misma.
+- **La opinión de terceros no entra como dato.** Los precios objetivo de analistas y las notas
+  de gobernanza de ISS no llegan a ningún prompt: el modelo los leía como hechos y penalizaba
+  por ellos. Tampoco las medias móviles de 50 y 200 sesiones: en un A/B con un modelo proxy,
+  estar por debajo costaba unos 6 puntos de nota y estar por encima no sumaba nada.
 - **Elegir y ponderar son pasos distintos.** Que el modelo hiciera las dos cosas hacía
   imposible saber si un acierto venía del análisis o del reparto. Ahora la selección es
   aritmética reproducible y el criterio del LLM queda confinado al peso.
@@ -65,6 +71,9 @@ Las que más forma le dan al sistema:
   la incorpora al coste medio, igual que hace el bróker. Sin eso, la rentabilidad simulada
   está inflada y cualquier comparación entre operar más o menos a menudo sale sesgada a favor
   de operar más: justo el sesgo que un simulador no se puede permitir.
+- **El esquema vive en la base de datos.** Cada cambio se aplica primero en SQL y el modelo del
+  código solo lo refleja; un script compara los dos y avisa de cualquier deriva. La aplicación
+  lee y escribe a través de esas clases, y nunca crea ni altera tablas contra la base real.
 - **La API tiene dos caras.** El mismo endpoint responde distinto con sesión y sin ella, según
   una regla única: *cómo se comporta el sistema es público; qué nombres elige, no*. Cuántas
   acciones sobreviven a cada etapa, por sector, es comportamiento; un ticker con su score
@@ -91,7 +100,7 @@ sin tocar código.
 | Área      | Tecnología                                                    |
 |-----------|---------------------------------------------------------------|
 | Backend   | Python 3.12 · FastAPI · SQLAlchemy 2 · Pydantic v2            |
-| Datos     | yfinance · screener público de NASDAQ                        |
+| Datos     | yfinance · screener público de NASDAQ · Wikipedia, Google News y GDELT (macro) |
 | LLM       | DeepSeek (análisis profundo, constructor) + Jev de TypeSafe AI (cribado inicial, con Qwen y DeepSeek de reserva); capa de proveedor intercambiable |
 | Memoria   | pgvector + fastembed (embeddings locales, sin coste)         |
 | Bróker    | IBKR Web API (OAuth 1.0a headless, `ibind`)                  |
