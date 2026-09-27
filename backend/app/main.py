@@ -33,6 +33,7 @@ from app.auth import (
 )
 from app.config import settings
 from app.db import init_db
+from app.liga.rutas import router as liga_router
 from app.momentum.routes import router as momentum_router
 from app.scheduler import start_scheduler, stop_scheduler
 
@@ -206,6 +207,8 @@ app.include_router(router, dependencies=[Depends(require_auth)])
 # Omega (momentum), 2ª estrategia independiente del ranker -- mismo candado, tablas
 # propias (momentum_*), sin ORM (ver app/momentum/routes.py).
 app.include_router(momentum_router, dependencies=[Depends(require_auth)])
+# La liga trae sus propias puertas por ruta (identidad de Supabase y RLS).
+app.include_router(liga_router)
 
 
 # ---- Público (sin token) ----------------------------------------------------

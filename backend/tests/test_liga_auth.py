@@ -163,6 +163,27 @@ def test_admin_con_2fa_entra_sin_2fa_403_y_el_resto_404(bd) -> None:  # noqa: AN
         assert e.value.status_code == codigo
 
 
+def test_yo_dice_quien_eres_y_si_ves_el_panel(bd) -> None:  # noqa: ANN001
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.liga.rutas import router
+
+    app = FastAPI()
+    app.include_router(router)
+    cliente = TestClient(app)
+    admin, usuario = bd("admin"), bd()
+
+    r = cliente.get("/liga/yo", headers={"Authorization": f"Bearer {_token(sub=usuario)}"})
+    assert r.status_code == 200
+    assert r.json() == {"alias": f"jugador_{usuario.replace('-', '')[:12]}", "plan": "gratis",
+                        "roles": ["usuario"], "admin": False, "aal2": False}
+    r = cliente.get("/liga/yo", headers={"Authorization": f"Bearer {_token(sub=admin)}"})
+    assert (r.json()["admin"], r.json()["aal2"], r.json()["roles"]) == \
+        (True, False, ["usuario", "admin"])
+    assert cliente.get("/liga/yo").status_code == 401
+
+
 def test_la_sesion_de_usuario_es_su_usuario_en_postgres(bd) -> None:  # noqa: ANN001
     from sqlalchemy import text
 
