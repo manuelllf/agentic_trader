@@ -5,6 +5,8 @@ Modelo (app personal de un solo usuario):
 - `POST /auth/login` compara la contraseña (tiempo constante) y devuelve un TOKEN firmado
   con HMAC-SHA256 usando la propia contraseña como clave. El token lleva su timestamp y caduca.
 - `require_auth` protege TODA la API menos /health y /auth/login: exige `Authorization: Bearer`.
+  También vale la sesión de Supabase de un admin con 2FA (`app/liga/auth.py`), que sustituirá a
+  la contraseña cuando el login de la liga esté probado.
 - Si `APP_PASSWORD` está vacía (dev local), la auth se DESACTIVA (nada de candado en local).
 
 La seguridad real está en el backend (sin token válido → 401 y nada se ejecuta). El candado
@@ -22,6 +24,7 @@ import time
 from fastapi import Header, HTTPException
 
 from app.config import settings
+from app.liga.auth import comprobar_admin, es_jwt, verificar
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +72,9 @@ def require_auth(authorization: str = Header(default="")) -> None:
     if not auth_enabled():
         return
     token = authorization.removeprefix("Bearer ").strip()
+    if token and es_jwt(token):  # sesión de Supabase: rol admin en la BD y 2FA
+        comprobar_admin(verificar(token))
+        return
     if not verify_token(token):
         raise HTTPException(status_code=401, detail="No autorizado. Inicia sesión.")
 
@@ -80,6 +86,12 @@ def auth_optional(authorization: str = Header(default="")) -> bool:
     if not auth_enabled():
         return True
     token = authorization.removeprefix("Bearer ").strip()
+    if token and es_jwt(token):
+        try:
+            comprobar_admin(verificar(token))
+        except HTTPException:
+            return False
+        return True
     return verify_token(token)
 
 

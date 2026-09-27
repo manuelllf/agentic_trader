@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     app_password: str = ""
     auth_token_days: int = 0     # validez del token de sesión en días; 0 = NO caduca nunca
                                  # (sesión permanente en el navegador; revocable cambiando la contraseña)
+    # Supabase Auth (https://<proyecto>.supabase.co). Los JWT se verifican con su JWKS público:
+    # no hace falta ningún secreto. Vacía = sin cuentas de usuario (503 en lo que las necesite).
+    supabase_url: str = ""
 
     # LLM. Método = ranker fundamental (whitepaper DeepSeek): V4-Pro razonador en TODO
     # (scorer por nombre + outlook macro + construcción). enable_llm=False → escaneo no falla.
