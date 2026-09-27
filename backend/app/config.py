@@ -114,6 +114,9 @@ class Settings(BaseSettings):
     # (se calcula y se tira). APAGADO hasta que se resuelva la contaminación y se decida dónde
     # guardarlo.
     prescore_driver: bool = False           # A.5.4
+    # Logprobs del prescore y la capa media en Postgres: solo servían para E[score], aparcado.
+    # El histórico vive en DuckDB; encenderlo vuelve a llenar `llm_call_logprob`.
+    guardar_logprobs: bool = False
     # Sectores grandes (Financial Services, Consumer Cyclical...) mandaban solo 10 a la capa
     # media: un #11-15 genuinamente bueno no tenía oportunidad de competir en el carril global.
     mid_per_sector: int = 16        # cuántos por sector entran a la capa media

@@ -94,6 +94,7 @@ class LLMTrace:
         concurrentes: el problema que evitaba el bulk (saturar el pool desde 500 hilos) no
         aplica aquí, este flush corre en un único hilo al final del escaneo.
         """
+        from app.config import settings
         from app.models import LLMCall, LLMCallLogprob
 
         with self._lock:
@@ -104,6 +105,8 @@ class LLMTrace:
             fila = LLMCall(scan_run_id=scan_run_id, **{
                 k: v for k, v in vars(c).items() if k != "notas"})
             db.add(fila)
+            if not (settings.guardar_logprobs and c.notas):
+                continue
             db.flush()   # asigna fila.id sin comprometer la transacción
             for n in c.notas:
                 db.add(LLMCallLogprob(llm_call_id=fila.id, parte=n.parte,
