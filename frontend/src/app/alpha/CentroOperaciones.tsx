@@ -8,10 +8,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ApiError, cancelDecision, cancelObservatorio, getConfig, getEstadoDatos, getScanDecideConfig,
-  getScanJevMacro, getScanMidLayer, putScanJevMacro, putScanMidLayer, recheck, redeep, runDemo,
-  snapshotUniverse, startFoto, syncAnalytics, syncFx, fetchScanProgress,
-  type EstadoDatos, type ScanProgress, type ScanReport,
+  ApiError, cancelDecision, cancelObservatorio, getConfig, getEstadoDatos, getPodaEstado,
+  getPodaPrevia, getScanDecideConfig, getScanJevMacro, getScanMidLayer, putScanJevMacro,
+  putScanMidLayer, recheck, redeep, runDemo, snapshotUniverse, startFoto, startPoda,
+  syncAnalytics, syncFx, fetchScanProgress,
+  type EstadoDatos, type PodaEstado, type PodaPrevia, type ScanProgress, type ScanReport,
 } from "@/lib/api";
 import { fmtNum } from "@/lib/scan";
 import type { AppConfig, DemoRunOverrides } from "@/lib/types";
@@ -31,7 +32,7 @@ const ETAPAS_LLM: { key: keyof NonNullable<AppConfig["llm_defaults"]>; label: st
   { key: "constructor", label: "Constructor" },
 ];
 
-type Key = "obs" | "redeep" | "recomp" | "real" | "foto" | "fundam" | "fx" | "anal";
+type Key = "obs" | "redeep" | "recomp" | "real" | "foto" | "fundam" | "fx" | "anal" | "poda";
 type ModoUniverso = "nasdaq" | "global_topcap";
 type Fuente = "nasdaq" | "global";
 type Tono = "coste" | "info" | "malo" | "neutro";
@@ -46,11 +47,12 @@ interface Accion {
   foto?: boolean;        // casilla de reutilizar foto
   cfg?: boolean;         // modelo por etapa
   fuente?: boolean;      // selector NASDAQ/Global (ver FOTO_INFO/FUND_INFO)
+  poda?: boolean;        // vista previa de lo que se borra
   aviso?: string;
 }
 
 const PAGO: Key[] = ["obs", "redeep", "recomp", "real"];
-const GRATIS: Key[] = ["foto", "fundam", "fx", "anal"];
+const GRATIS: Key[] = ["foto", "fundam", "fx", "anal", "poda"];
 
 // "foto"/"fundam" son NASDAQ o Global según `fotoFuente`/`fundFuente` -- el contenido real
 // (descripción, botón, badge) sale de aquí en vez de `ACCIONES`, que es estático.
@@ -126,6 +128,14 @@ const ACCIONES: Record<Key, Accion> = {
     d: "Reconstruye el fichero DuckDB que alimenta las tablas de coste por etapa, confianza del "
       + "prescore y el explorador de universo. Corre sola a diario.",
     cta: "Sincronizar", badges: [["~5 s", "neutro"]],
+  },
+  poda: {
+    t: "Poda de lo archivado",
+    d: "Borra de Postgres las métricas y titulares de fotos viejas y el texto de las llamadas a "
+      + "la IA de más de 3 meses. Solo lo que ya está en el archivo DuckDB: se quedan la última "
+      + "captura de cada empresa, las 2 últimas fotos y lo que usaron los escaneos de decisión.",
+    cta: "Podar", badges: [["libera espacio", "neutro"]], poda: true,
+    aviso: "Borra de Postgres. Lo borrado sigue en el archivo DuckDB.",
   },
 };
 
@@ -219,11 +229,51 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
   // pasa por `/demo/status`, así que su "en marcha" se sigue aquí.
   const [fotoPropia, setFotoPropia] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Poda: `null` = sin leer, `false` = no se pudo leer (con motivo aparte).
+  const [podaPrevia, setPodaPrevia] = useState<PodaPrevia | null | false>(null);
+  const [podaMotivo, setPodaMotivo] = useState<string | null>(null);
+  const [podaEnMarcha, setPodaEnMarcha] = useState(false);
+
+  const leerPoda = useCallback(() => {
+    setPodaPrevia(null);
+    setPodaMotivo(null);
+    getPodaPrevia()
+      .then((r) => {
+        setPodaPrevia(r.previa);
+        if (r.estado.status === "running") setPodaEnMarcha(true);
+      })
+      .catch((e) => {
+        setPodaPrevia(false);
+        setPodaMotivo(e instanceof Error ? e.message : "No se pudo leer la vista previa.");
+      });
+  }, []);
+  useEffect(() => { if (sel === "poda") leerPoda(); }, [sel, leerPoda]);
 
   const refrescarEstado = useCallback(() => {
     getEstadoDatos().then(setEstado).catch(() => setEstado(false));
   }, []);
   useEffect(() => { refrescarEstado(); }, [refrescarEstado]);
+
+  // Avance de la poda en marcha (corre en el backend; la vista solo lo sigue).
+  useEffect(() => {
+    if (!podaEnMarcha) return;
+    const t = setInterval(async () => {
+      try {
+        const e = await getPodaEstado();
+        if (e.status === "running") {
+          setMsg({ text: textoAvancePoda(e) });
+          return;
+        }
+        setPodaEnMarcha(false);
+        setMsg(e.status === "done"
+          ? { text: textoResultadoPoda(e) }
+          : { text: e.error ?? "La poda falló.", bad: true });
+        refrescarEstado();
+        leerPoda();
+      } catch { /* un fallo puntual de red no corta el seguimiento */ }
+    }, 2000);
+    return () => clearInterval(t);
+  }, [podaEnMarcha, leerPoda, refrescarEstado]);
   useEffect(() => {
     getConfig().then((c) => c.llm_defaults && setLlmDefaults(c.llm_defaults)).catch(() => {});
   }, []);
@@ -262,6 +312,9 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
     || (sel === "fundam" && fundFuente === "global");
   const cargando = estado === false ? "sin leer" : "…";
   const elegir = (k: Key) => { setSel(k); setArmed(false); setMsg(null); };
+  // Sin vista previa, o sin nada que podar, no se lanza a ciegas.
+  const podaBloqueada = sel === "poda" && (podaEnMarcha || !podaPrevia
+    || podaPrevia.metricas.filas + podaPrevia.titulares.filas + podaPrevia.texto_llm.llamadas === 0);
 
   async function lanzar() {
     setArmed(false);
@@ -320,6 +373,11 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
           onLoadAnalytics();
           break;
         }
+        case "poda":
+          await startPoda();
+          setPodaEnMarcha(true);
+          setMsg({ text: "Poda en marcha…" });
+          break;
       }
     } catch (e) {
       // "anal"/"fx" hacen trabajo real y síncrono en el backend (reconstruir DuckDB, o levantar
@@ -521,7 +579,8 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                 )}
                 {sel === "foto" && fotoFuente === "global" && <div className="py-1"><UniversoGlobalSync /></div>}
                 {sel === "fundam" && fundFuente === "global" && <div className="py-1"><FotoGlobalPicker /></div>}
-                {!a.uni && !a.foto && !a.cfg && !a.fuente && (
+                {a.poda && <PodaResumen previa={podaPrevia} motivo={podaMotivo} />}
+                {!a.uni && !a.foto && !a.cfg && !a.fuente && !a.poda && (
                   <p className="py-1 text-[10.5px]" style={{ color: T.muted }}>Sin opciones — se lanza tal cual.</p>
                 )}
               </div>
@@ -534,7 +593,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                       <span className="flex-1 text-[10.5px]" style={{ color: T.warn }}>
                         {PAGO.includes(sel) ? "Cuesta dinero real. " : ""}¿Confirmas?
                       </span>
-                      <button onClick={lanzar} disabled={busy}
+                      <button onClick={lanzar} disabled={busy || podaBloqueada}
                               className="rounded-full px-3.5 py-1.5 text-[11.5px] font-bold transition-opacity hover:opacity-90 disabled:opacity-50"
                               style={a.peligro ? { background: T.bad, color: "#fff" }
                                 : PAGO.includes(sel) ? { background: T.warn, color: "#0d0d0d" }
@@ -548,7 +607,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                       </button>
                     </>
                   ) : (
-                    <button onClick={() => setArmed(true)} disabled={busy}
+                    <button onClick={() => setArmed(true)} disabled={busy || podaBloqueada}
                             className="rounded-full px-3.5 py-1.5 text-[11.5px] font-bold transition-opacity hover:opacity-90 disabled:opacity-50"
                             style={a.peligro ? { background: T.bad, color: "#fff" }
                               : PAGO.includes(sel) ? { background: T.warn, color: "#0d0d0d" }
@@ -566,6 +625,90 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+const FASES_PODA: Record<string, string> = {
+  preparando: "Preparando",
+  fundamentals_snapshot_metric: "Borrando métricas",
+  fundamentals_snapshot_news: "Borrando titulares",
+  llm_call: "Vaciando el texto de las llamadas",
+  vacuum: "Dejando el hueco listo para reutilizar",
+};
+
+function textoAvancePoda(e: PodaEstado): string {
+  const fase = FASES_PODA[e.fase ?? ""] ?? "Podando";
+  return e.total ? `${fase}: ${fmtNum(e.hechas)} de ${fmtNum(e.total)}.` : `${fase}…`;
+}
+
+type ResultadoTabla = { borradas?: number; vaciadas?: number; sin_archivar?: number };
+
+function textoResultadoPoda(e: PodaEstado): string {
+  const r = (e.result ?? {}) as Record<string, ResultadoTabla>;
+  const m = r.fundamentals_snapshot_metric ?? {};
+  const n = r.fundamentals_snapshot_news ?? {};
+  const l = r.llm_call ?? {};
+  const sin = (m.sin_archivar ?? 0) + (n.sin_archivar ?? 0) + (l.sin_archivar ?? 0);
+  return `Poda hecha: ${fmtNum(m.borradas ?? 0)} métricas, ${fmtNum(n.borradas ?? 0)} titulares `
+    + `y el texto de ${fmtNum(l.vaciadas ?? 0)} llamadas.`
+    + (sin ? ` ${fmtNum(sin)} filas no estaban en el archivo y se quedan.` : "");
+}
+
+function fechaCorta(iso: string): string {
+  return new Date(iso).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+}
+
+/** Lo que borraría la poda ahora: sale de `GET /admin/poda`, recalculado al elegirla. */
+function PodaResumen({ previa, motivo }: { previa: PodaPrevia | null | false; motivo: string | null }) {
+  if (previa === null) {
+    return <p className="py-1 text-[10.5px]" style={{ color: T.muted }}>Calculando qué se puede podar…</p>;
+  }
+  if (previa === false) {
+    return <p className="py-1 text-[10.5px]" style={{ color: T.warn }}>{motivo}</p>;
+  }
+  const nada = previa.metricas.filas + previa.titulares.filas + previa.texto_llm.llamadas === 0;
+  const sinArchivar = previa.metricas.sin_archivar + previa.titulares.sin_archivar
+    + previa.texto_llm.sin_archivar;
+  const visibles = previa.fotos.slice(0, 6);
+  return (
+    <div className="py-1.5 text-[11px] leading-relaxed" style={{ color: T.ink2 }}>
+      {nada ? (
+        <p style={{ color: T.muted }}>Nada que podar ahora: todo lo que hay se queda por las reglas.</p>
+      ) : (
+        <>
+          <p>
+            Deja libres unos <span className={NUMS} style={{ color: T.ink }}>
+              {previa.mb_total.toLocaleString("es-ES", { maximumFractionDigits: 1 })} MB
+            </span> para lo que entre después.
+          </p>
+          <ul className="mt-1">
+            {visibles.map((f) => (
+              <li key={`${f.grupo}-${f.alcance}`} className={NUMS}>
+                {f.grupo.startsWith("foto ") ? `Foto ${f.grupo.slice(5)}` : "Capturas"} del{" "}
+                {fechaCorta(f.desde)}{f.alcance === "global" ? " (global)" : ""}: {fmtNum(f.empresas)} empresas
+              </li>
+            ))}
+            {previa.fotos.length > visibles.length && (
+              <li style={{ color: T.muted }}>y {previa.fotos.length - visibles.length} grupos más</li>
+            )}
+          </ul>
+          <p className={`mt-1 ${NUMS}`}>
+            {fmtNum(previa.metricas.filas)} métricas · {fmtNum(previa.titulares.filas)} titulares ·
+            texto de {fmtNum(previa.texto_llm.llamadas)} llamadas
+          </p>
+        </>
+      )}
+      {sinArchivar > 0 && (
+        <p className="mt-1" style={{ color: T.warn }}>
+          {fmtNum(sinArchivar)} filas no están en el archivo y no se tocan.
+        </p>
+      )}
+      <p className="mt-1 text-[9.5px]" style={{ color: T.muted }}>
+        Se quedan la última captura de cada empresa, las {previa.reglas.fotos_completas} últimas
+        fotos, lo que usaron los escaneos de decisión de los últimos {previa.reglas.dias_decision}{" "}
+        días y todo lo de las últimas {previa.reglas.horas_intocables} h.
+      </p>
     </div>
   );
 }

@@ -462,6 +462,30 @@ export interface EstadoDatos {
  *  operaciones. Sin esto los chips tendrían que inventarse la antigüedad. */
 export const getEstadoDatos = () => get<EstadoDatos>("/admin/estado-datos");
 
+export interface PodaTabla { filas: number; sin_archivar: number; mb: number }
+export interface PodaPrevia {
+  reglas: { fotos_completas: number; dias_decision: number; dias_texto_llm: number;
+            horas_intocables: number };
+  marcas_archivo: Record<string, number>;
+  fotos: { grupo: string; alcance: string; empresas: number; desde: string; hasta: string }[];
+  metricas: PodaTabla;
+  titulares: PodaTabla;
+  texto_llm: { llamadas: number; sin_archivar: number; mb: number };
+  mb_total: number;
+}
+export interface PodaEstado {
+  status: "idle" | "running" | "done" | "error";
+  fase: string | null;
+  hechas: number;
+  total: number;
+  result: Record<string, unknown> | null;
+  error: string | null;
+}
+/** Vista previa de la poda de lo archivado: qué borraría y cuánto libera. No toca nada. */
+export const getPodaPrevia = () => get<{ previa: PodaPrevia; estado: PodaEstado }>("/admin/poda");
+export const startPoda = () => post<PodaEstado>("/admin/poda");
+export const getPodaEstado = () => get<PodaEstado>("/admin/poda/estado");
+
 export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
 export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
 export const reconcileApprovals = () => post<{ reconciled: number }>("/approvals/reconcile");

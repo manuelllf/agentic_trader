@@ -215,6 +215,35 @@ def admin_universo_global_contar(
     return {"count": universe_global.contar(db, countries=countries, exchanges=exchanges)}
 
 
+@router.get("/admin/poda")
+def admin_poda_vista_previa(db: Session = Depends(get_db)) -> dict:
+    """Qué borraría ahora la poda de lo archivado (ver `app/poda.py`), cuánto libera y hasta
+    dónde llega el archivo DuckDB. No toca nada."""
+    from app import poda
+
+    try:
+        return {"previa": poda.vista_previa(db), "estado": poda.get_status()}
+    except poda.ArchivoNoDisponible as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@router.post("/admin/poda")
+def admin_poda() -> dict:
+    """Lanza la poda en segundo plano; el avance se consulta en `GET /admin/poda/estado`."""
+    from app import poda
+
+    if not poda.start():
+        raise HTTPException(409, "Ya hay una poda, un escaneo o una foto en marcha.")
+    return poda.get_status()
+
+
+@router.get("/admin/poda/estado")
+def admin_poda_estado() -> dict:
+    from app import poda
+
+    return poda.get_status()
+
+
 @router.get("/admin/memory-status")
 def admin_memory_status() -> dict:
     """Diagnóstico read-only de la memoria vectorial: ruta, nº de recuerdos y si las deps están
