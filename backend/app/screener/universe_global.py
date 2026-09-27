@@ -100,49 +100,53 @@ def _recortar(valor: str | None, tope: int) -> str | None:
     return valor[:tope]
 
 
-def _insertar_filas(db, filas, sync_at: datetime, ya_insertados: set[str] | None = None) -> int:  # noqa: ANN001
-    """Lógica común de inserción, sea el origen la descarga o un CSV subido a mano.
-
-    `ya_insertados` (tickers ya en BD para este `sync_at`, de un intento anterior que se cortó
-    a mitad) se salta en vez de reinsertar -- retomar es gratis porque el dataset es casi
-    estático, y descargar nada de nuevo lo que ya teníamos sería tirar minutos de descarga real.
-
-    Log de progreso cada lote (no solo al final): si el proceso muere a mitad, antes no quedaba
-    NINGÚN rastro en logs de por dónde iba -- ahora sí."""
-    from app.models import UniverseTicker
-
-    vistos = ya_insertados or set()
-    total, lote = len(vistos), []
+def _registros(filas) -> list[dict]:  # noqa: ANN001
+    """Las filas del CSV ya limpias, una por ticker (manda la primera que aparece). Lo mismo
+    sirve para insertar y para comparar con la tanda anterior."""
+    vistos: set[str] = set()
+    out = []
     for fila in filas:
         ticker = (fila.get("ticker") or "").strip()
         if not ticker or ticker in vistos:
             continue
         vistos.add(ticker)
-        registro = {"synced_at": sync_at, "source": DATASET}
-        for col, campo in _COLUMNAS:
-            registro[campo] = _recortar((fila.get(col) or "").strip() or None,
-                                        _TOPES.get(campo, 64))
-        lote.append(registro)
-        if len(lote) >= _LOTE:
-            db.bulk_insert_mappings(UniverseTicker, lote)
-            total, lote = total + len(lote), []
-            logger.info("Universo global: %d filas insertadas hasta ahora.", total)
-    if lote:
+        out.append({campo: _recortar((fila.get(col) or "").strip() or None, _TOPES.get(campo, 64))
+                    for col, campo in _COLUMNAS})
+    return out
+
+
+def _igual_que_la_ultima(db, registros: list[dict]) -> bool:  # noqa: ANN001
+    """True si el fichero trae exactamente lo que ya guarda la última tanda. El dataset casi no
+    cambia: guardar otra copia idéntica eran 25 MB al mes sin nada nuevo."""
+    from app.models import UniverseTicker
+
+    ultimo = ultimo_sync(db)
+    if ultimo is None:
+        return False
+    cols = [getattr(UniverseTicker, campo) for _, campo in _COLUMNAS]
+    en_bd = set(db.query(*cols).filter(UniverseTicker.synced_at == ultimo).all())
+    nuevos = {tuple(r[campo] for _, campo in _COLUMNAS) for r in registros}
+    return en_bd == nuevos
+
+
+def _insertar_filas(db, registros: list[dict], sync_at: datetime) -> int:  # noqa: ANN001
+    """Inserta la tanda entera en una transacción, sea el origen la descarga o un CSV subido a
+    mano. Log de progreso por lote: si el proceso muere a mitad, queda rastro de por dónde iba."""
+    from app.models import UniverseTicker
+
+    total = 0
+    for i in range(0, len(registros), _LOTE):
+        lote = [{"synced_at": sync_at, "source": DATASET, **r} for r in registros[i:i + _LOTE]]
         db.bulk_insert_mappings(UniverseTicker, lote)
         total += len(lote)
+        logger.info("Universo global: %d filas insertadas hasta ahora.", total)
     db.commit()
     return total
 
 
-def sincronizar(db, url: str = URL_CSV) -> dict:  # noqa: ANN001
-    """Descarga el universo y lo añade como tanda nueva. No pisa la anterior (append-only).
-
-    HuggingFace corta la conexión de vez en cuando a mitad de la descarga. Como el dataset es
-    prácticamente estático, un reintento retoma donde se quedó (salta los tickers que ya están
-    insertados para este `sync_at`) en vez de tirar lo ya descargado y empezar de cero."""
-    from app.models import UniverseTicker
-
-    sync_at = datetime.now(UTC)
+def _descargar(url: str) -> list[dict]:
+    """Descarga el CSV entero antes de escribir nada. HuggingFace corta a veces a mitad
+    ("incomplete chunked read"): se reintenta desde cero, que con ~63.000 filas son segundos."""
     ultimo_error: Exception | None = None
     for intento in range(_REINTENTOS):
         if intento > 0:
@@ -150,40 +154,45 @@ def sincronizar(db, url: str = URL_CSV) -> dict:  # noqa: ANN001
             logger.warning("Universo global: reintentando descarga tras fallo (%s), espera %.0fs.",
                           ultimo_error, espera)
             time.sleep(espera)
-        ya = {t for (t,) in db.query(UniverseTicker.ticker)
-              .filter(UniverseTicker.synced_at == sync_at).all()}
         try:
-            total = _insertar_filas(db, _filas(url), sync_at, ya_insertados=ya)
-            break
+            return _registros(_filas(url))
         except httpx.HTTPError as exc:
             ultimo_error = exc
-    else:
-        raise RuntimeError(
-            f"Descarga del universo global falló tras {_REINTENTOS} intentos: {ultimo_error}"
-        ) from ultimo_error
+    raise RuntimeError(
+        f"Descarga del universo global falló tras {_REINTENTOS} intentos: {ultimo_error}"
+    ) from ultimo_error
 
+
+def _guardar_tanda(db, registros: list[dict], source: str) -> dict:  # noqa: ANN001
+    """Añade la tanda nueva (append-only) salvo que sea idéntica a la última."""
+    from app.models import utc_iso
+
+    if _igual_que_la_ultima(db, registros):
+        ultimo = ultimo_sync(db)
+        logger.info("Universo global sin cambios desde %s: no se guarda otra copia.", ultimo)
+        return {"tickers": len(registros), "synced_at": utc_iso(ultimo), "podadas": 0,
+                "sin_cambios": True, "source": source}
+    sync_at = datetime.now(UTC)
+    total = _insertar_filas(db, registros, sync_at)
     _resolver_todo(db, sync_at)
     podadas = _podar(db)
     logger.info("Universo global sincronizado: %d tickers (%d filas de syncs viejos podadas).",
                 total, podadas)
     return {"tickers": total, "synced_at": sync_at.isoformat(), "podadas": podadas,
-            "source": DATASET}
+            "sin_cambios": False, "source": source}
+
+
+def sincronizar(db, url: str = URL_CSV) -> dict:  # noqa: ANN001
+    """Descarga el universo y lo añade como tanda nueva si ha cambiado algo."""
+    return _guardar_tanda(db, _descargar(url), DATASET)
 
 
 def sincronizar_desde_archivo(db, contenido: bytes) -> dict:  # noqa: ANN001
     """Igual que `sincronizar()` pero desde un CSV ya descargado a mano (mismo formato que
     `URL_CSV`) -- para cuando la red de HuggingFace no coopera y toca revisar el fichero antes
     de subirlo, o simplemente evitar la descarga en el propio servidor."""
-    sync_at = datetime.now(UTC)
     filas = csv.DictReader(io.StringIO(contenido.decode("utf-8-sig")))
-    total = _insertar_filas(db, filas, sync_at)
-
-    _resolver_todo(db, sync_at)
-    podadas = _podar(db)
-    logger.info("Universo global sincronizado desde archivo: %d tickers (%d filas viejas podadas).",
-                total, podadas)
-    return {"tickers": total, "synced_at": sync_at.isoformat(), "podadas": podadas,
-            "source": f"{DATASET} (subido a mano)"}
+    return _guardar_tanda(db, _registros(filas), f"{DATASET} (subido a mano)")
 
 
 def _heredar_simbolos(db, sync_at: datetime) -> int:  # noqa: ANN001

@@ -544,7 +544,8 @@ export interface UniversoGlobalSyncEstado {
   status: "idle" | "running" | "done" | "error";
   started_at: string | null;
   finished_at: string | null;
-  result: { tickers: number; synced_at: string; podadas: number; source: string } | null;
+  result: { tickers: number; synced_at: string; podadas: number; sin_cambios?: boolean;
+            source: string } | null;
   error: string | null;
 }
 /** Lanza en segundo plano la descarga del CSV completo de HuggingFace (~63.000 filas) —

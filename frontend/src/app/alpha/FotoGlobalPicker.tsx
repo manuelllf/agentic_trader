@@ -80,7 +80,9 @@ export function UniversoGlobalSync() {
         syncPollRef.current = null;
         setSyncing(false);
         if (st.status === "done" && st.result) {
-          setMsg({ text: `Universo global sincronizado: ${fmtNum(st.result.tickers)} tickers.` });
+          setMsg({ text: st.result.sin_cambios
+            ? `Sin cambios desde la última sincronización (${fmtNum(st.result.tickers)} tickers): no se guarda otra copia.`
+            : `Universo global sincronizado: ${fmtNum(st.result.tickers)} tickers.` });
           await cargarOpciones();
         } else {
           setMsg({ text: st.error ?? "No se pudo sincronizar.", bad: true });
