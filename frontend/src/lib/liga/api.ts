@@ -70,3 +70,255 @@ export async function getYo(): Promise<Yo | null> {
     return null;
   }
 }
+
+// ---- Estrategias (crear/editar, receta, pruebas, ficha...) -------------------------------------
+//
+// Mensajes de error: el `detail` que manda la API ya está en castellano y se enseña tal cual
+// (DESIGN.md §10); `SIN_SESION`/`SIN_RED` son los únicos que inventamos aquí.
+
+const SIN_SESION = "Tu sesión ha caducado. Vuelve a entrar.";
+const SIN_RED = "No se pudo hablar con el servidor. Prueba otra vez en un momento.";
+
+export type Escudo = {
+  forma: "circulo" | "escudo" | "hexagono";
+  dibujo: "liso" | "mitades" | "diagonal" | "franja";
+  color1: string;
+  color2: string | null;
+  iniciales: string | null;
+};
+
+export type EstadoEstrategia = "borrador" | "apuntada" | "jugando" | "retirada" | string;
+
+export type Estrategia = {
+  id: string;
+  nombre: string;
+  escudo: Escudo;
+  visibilidad: "privada" | "publicada";
+  declara_posiciones: "si" | "no" | null;
+  destacable: boolean;
+  estado: EstadoEstrategia;
+  cada_dia_1: "revisar" | "mantener";
+  oculta: boolean;
+  receta_id: number | null;
+  creada: string;
+  actualizada: string;
+};
+
+export type ParametroRegla = {
+  nombre: string;
+  etiqueta: string;
+  tipo: string;
+  minimo: number | null;
+  maximo: number | null;
+  paso: number | null;
+  defecto: number | string | null;
+};
+
+export type ReglaCatalogo = { clave: string; titulo: string; parametros: ParametroRegla[] };
+
+export type Catalogo = {
+  version: number;
+  sectores: Record<string, string>;
+  reglas: ReglaCatalogo[];
+  pesos: { claves: string[]; etiquetas: Record<string, string>; maximo: number; paso: number };
+  n_empresas: number[];
+  repartos: string[];
+  max_por_sector: number;
+  max_excluidas: number;
+  tope_pregunta: number;
+};
+
+export type ReglaElegida = { clave: string; params: Record<string, unknown> };
+
+export type Receta = {
+  id: number;
+  idea: string | null;
+  reglas: ReglaElegida[];
+  excluidas: string[];
+  catalogo_version: number;
+  pregunta: string | null;
+  pesos: Record<string, number>;
+  n_empresas: number;
+  reparto: string;
+  max_por_sector: number;
+  creada: string;
+};
+
+export type RecetaEntrada = {
+  idea?: string | null;
+  reglas: ReglaElegida[];
+  excluidas: string[];
+  pregunta?: string | null;
+  pesos: Record<string, number>;
+  n_empresas: number;
+  reparto: string;
+  max_por_sector: number;
+};
+
+export type EmpresaElegida = {
+  ticker: string;
+  nombre: string | null;
+  sector: string | null;
+  peso: number;
+  porque: string;
+};
+
+export type Prueba = {
+  id: string;
+  foto_id: number;
+  scan_run_id: number;
+  plan_b: boolean;
+  catalogo_version: number;
+  evaluadas: number;
+  pasan: number;
+  elegidas: EmpresaElegida[];
+  saltadas_por_sector: number;
+  sin_peso: number;
+  sin_notas: number;
+  sin_respuesta: number;
+  caja_pct: number;
+};
+
+export type PorQue = { ticker: string; motivo: string };
+export type EmpresaBusqueda = { ticker: string; nombre: string | null; sector: string | null };
+
+export type JornadaFicha = { numero: number; rentabilidad: number | null; puntos: number | null };
+export type Posicion = { ticker: string; peso: number };
+
+export type Ficha = {
+  id: string;
+  nombre: string;
+  escudo: Escudo;
+  casa: "alpha" | "omega" | "lambda" | null;
+  autor: string | null;
+  estado: string;
+  visibilidad: string;
+  es_dueno: boolean;
+  jornadas: JornadaFicha[];
+  receta: Receta | null;
+  posiciones: Posicion[];
+};
+
+async function llamar<T>(
+  ruta: string,
+  opciones: RequestInit = {},
+  conSesion = true,
+): Promise<T | string> {
+  const cabeceras: Record<string, string> = { ...(opciones.headers as Record<string, string> ?? {}) };
+  if (conSesion) {
+    const sesion = await tokenSesion();
+    if (!sesion) return SIN_SESION;
+    cabeceras.Authorization = `Bearer ${sesion.token}`;
+  }
+  if (opciones.body) cabeceras["Content-Type"] = "application/json";
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${ruta}`, { ...opciones, headers: cabeceras, cache: "no-store" });
+  } catch {
+    return SIN_RED;
+  }
+  if (res.status === 204) return undefined as T;
+  const cuerpo = await res.json().catch(() => null);
+  if (res.ok) return cuerpo as T;
+  const detalle = (cuerpo as { detail?: unknown } | null)?.detail;
+  if (typeof detalle === "string") return detalle;
+  return SIN_RED;
+}
+
+/** Catálogo de reglas, pesos y opciones de la receta. Público: no hace falta sesión. */
+export async function getCatalogo(): Promise<Catalogo | string> {
+  return llamar<Catalogo>("/liga/catalogo", {}, false);
+}
+
+export async function misEstrategias(): Promise<Estrategia[] | string> {
+  return llamar<Estrategia[]>("/liga/estrategias");
+}
+
+export async function verEstrategia(id: string): Promise<Estrategia | string> {
+  return llamar<Estrategia>(`/liga/estrategias/${id}`);
+}
+
+export async function crearEstrategia(
+  nombre: string, escudo: Escudo,
+): Promise<Estrategia | string> {
+  return llamar<Estrategia>("/liga/estrategias", {
+    method: "POST", body: JSON.stringify({ nombre, escudo }),
+  });
+}
+
+export type EstrategiaPatch = Partial<{
+  nombre: string;
+  forma: Escudo["forma"];
+  dibujo: Escudo["dibujo"];
+  color1: string;
+  color2: string;
+  iniciales: string | null;
+  visibilidad: "privada" | "publicada";
+  declara_posiciones: "si" | "no";
+  cada_dia_1: "revisar" | "mantener";
+}>;
+
+export async function actualizarEstrategia(
+  id: string, cambios: EstrategiaPatch,
+): Promise<Estrategia | string> {
+  return llamar<Estrategia>(`/liga/estrategias/${id}`, {
+    method: "PATCH", body: JSON.stringify(cambios),
+  });
+}
+
+export async function borrarEstrategia(id: string): Promise<true | string> {
+  const r = await llamar<undefined>(`/liga/estrategias/${id}`, { method: "DELETE" });
+  return typeof r === "string" ? r : true;
+}
+
+export async function crearReceta(
+  id: string, receta: RecetaEntrada,
+): Promise<Receta | string> {
+  return llamar<Receta>(`/liga/estrategias/${id}/receta`, {
+    method: "POST", body: JSON.stringify(receta),
+  });
+}
+
+export async function apuntar(id: string): Promise<Estrategia | string> {
+  return llamar<Estrategia>(`/liga/estrategias/${id}/apuntar`, { method: "POST" });
+}
+
+export async function desapuntar(id: string): Promise<Estrategia | string> {
+  return llamar<Estrategia>(`/liga/estrategias/${id}/desapuntar`, { method: "POST" });
+}
+
+export async function cadaDia1(
+  id: string, opcion: "revisar" | "mantener",
+): Promise<Estrategia | string> {
+  return llamar<Estrategia>(`/liga/estrategias/${id}/cada-dia-1`, {
+    method: "POST", body: JSON.stringify({ opcion }),
+  });
+}
+
+export async function excluirEmpresa(id: string, ticker: string): Promise<Receta | string> {
+  return llamar<Receta>(`/liga/estrategias/${id}/exclusiones/${encodeURIComponent(ticker)}`, {
+    method: "POST",
+  });
+}
+
+export async function quitarExclusion(id: string, ticker: string): Promise<Receta | string> {
+  return llamar<Receta>(`/liga/estrategias/${id}/exclusiones/${encodeURIComponent(ticker)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function probarEstrategia(id: string): Promise<Prueba | string> {
+  return llamar<Prueba>(`/liga/estrategias/${id}/pruebas`, { method: "POST" });
+}
+
+export async function porQueNoSale(id: string, ticker: string): Promise<PorQue | string> {
+  return llamar<PorQue>(`/liga/estrategias/${id}/por-que/${encodeURIComponent(ticker)}`);
+}
+
+export async function buscarUniverso(q: string): Promise<EmpresaBusqueda[] | string> {
+  return llamar<EmpresaBusqueda[]>(`/liga/universo/buscar?q=${encodeURIComponent(q)}`);
+}
+
+export async function getFicha(id: string): Promise<Ficha | string> {
+  return llamar<Ficha>(`/liga/fichas/${id}`);
+}

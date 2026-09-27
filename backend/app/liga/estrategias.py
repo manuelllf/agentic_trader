@@ -162,12 +162,17 @@ class Contexto:
     notas: dict[str, NotasJev]
 
 
+def _sin_foto(e: ErrorProceso) -> HTTPException:
+    # El texto del proceso es para el admin («lánzala desde Alpha»); el usuario solo ve el estado.
+    return HTTPException(e.codigo, "Todavía no hay foto del mes: llega con la próxima jornada.")
+
+
 def _contexto_desde(db: Session, foto_id: int | None) -> Contexto:
     try:
         foto = _foto(db, foto_id)
         scan_run_id, avisos = _escaneo(db, foto, None)
     except ErrorProceso as e:
-        raise HTTPException(e.codigo, str(e)) from e
+        raise _sin_foto(e) from e
     empresas = tuple(procesos_datos.cargar_empresas(db, foto.id))
     notas = procesos_datos.cargar_notas(db, scan_run_id)
     return Contexto(foto.id, scan_run_id, bool(avisos), empresas, notas)
@@ -212,7 +217,7 @@ def buscar_universo(q: str, limite: int = 20) -> list[dict]:
         try:
             foto = _foto(db, None)
         except ErrorProceso as e:
-            raise HTTPException(e.codigo, str(e)) from e
+            raise _sin_foto(e) from e
         filas = db.execute(text("""
             select ticker, name, sector from (
                 select distinct on (s.ticker) s.ticker, s.name, s.sector

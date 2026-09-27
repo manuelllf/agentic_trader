@@ -220,3 +220,214 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 }
 .lg .cuenta-item:active { background: var(--surface); }
 .lg .cuenta-item.salir { color: var(--ink2); font-weight: 400; }
+
+/* ---- Cabecera de app + pestañas (DESIGN.md §5) --------------------------------------------- */
+
+.lg .cab {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 14px 16px 4px;
+}
+.lg .cab-r { display: flex; gap: 6px; align-items: center; }
+
+.lg .scroll {
+  flex: 1; width: 100%; max-width: 480px; margin: 0 auto; padding: 4px 16px 100px;
+}
+
+.lg .tabbar {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 12;
+  width: 100%; max-width: 480px; box-sizing: border-box;
+  display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line);
+  background: var(--bg); padding-bottom: env(safe-area-inset-bottom);
+}
+.lg .tabbar button, .lg .tabbar a {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-height: 60px; border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 700;
+  color: var(--muted); text-decoration: none; cursor: pointer;
+}
+.lg .tabbar svg { width: 24px; height: 24px; }
+.lg .tabbar button[aria-current="page"], .lg .tabbar a[aria-current="page"] { color: var(--ink); }
+
+/* ---- Pantalla y secciones genéricas ---------------------------------------------------------- */
+
+.lg .h1 { margin-top: 8px; font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
+.lg .meta { margin-top: 4px; font-size: 15px; line-height: 1.45; color: var(--muted); }
+.lg .sec { margin-top: 28px; }
+.lg .sec-t {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px;
+  font-size: 18px; font-weight: 700; color: var(--ink);
+}
+.lg .sec-t small { font-size: 14px; font-weight: 400; color: var(--muted); }
+.lg .fine { margin-top: 10px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+
+/* ---- Segmentado (`.seg`) y opción de radio (`.opt`) --------------------------------------------- */
+
+.lg .seg { display: flex; gap: 4px; padding: 4px; background: var(--surface); border-radius: 14px; }
+.lg .seg button {
+  flex: 1; min-height: 40px; padding: 0 12px; border: 0; background: none; border-radius: 10px;
+  font: inherit; font-size: 15px; font-weight: 700; color: var(--muted); cursor: pointer;
+}
+.lg .seg button[aria-pressed="true"] {
+  background: var(--raised); color: var(--ink); box-shadow: 0 1px 3px var(--shadow);
+}
+.lg .seg.sm { padding: 3px; gap: 2px; border-radius: 10px; }
+.lg .seg.sm button { min-height: 28px; padding: 0 9px; border-radius: 8px; font-size: 12.5px; }
+
+.lg .opt {
+  display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 14px 16px; border: 0;
+  border-radius: 16px; background: var(--surface); text-align: left; cursor: pointer; font: inherit;
+}
+.lg .opt + .opt { margin-top: 8px; }
+.lg .opt[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
+.lg .opt .dot {
+  flex: 0 0 20px; height: 20px; margin-top: 2px; border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--line2);
+}
+.lg .opt[aria-checked="true"] .dot { box-shadow: inset 0 0 0 6px var(--ink); }
+.lg .opt b { display: block; font-size: 16px; color: var(--ink); }
+.lg .opt span { display: block; margin-top: 2px; font-size: 14px; line-height: 1.4; color: var(--muted); }
+.lg .opt[disabled] { opacity: .5; cursor: not-allowed; }
+
+/* ---- Campos de Crear ---------------------------------------------------------------------------- */
+
+.lg .field { margin-top: 30px; }
+.lg .field .lbl { display: block; margin-bottom: 10px; }
+.lg .lbl small { display: block; margin-top: 3px; font-size: 14.5px; font-weight: 400; letter-spacing: 0; color: var(--muted); }
+.lg textarea.inp { min-height: 112px; resize: vertical; }
+.lg .sub-lbl { margin: 20px 0 8px; font-size: 16px; font-weight: 700; color: var(--ink); }
+
+.lg .rulec {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px;
+  border-radius: 14px; background: var(--surface);
+}
+.lg .rulec + .rulec { margin-top: 8px; }
+.lg .rulec b { display: block; font-size: 16px; color: var(--ink); }
+.lg .rulec span { display: block; margin-top: 2px; font-size: 13.5px; line-height: 1.4; color: var(--muted); }
+.lg .rulec button {
+  flex: 0 0 36px; height: 36px; border: 0; background: none; border-radius: 10px; font-size: 20px;
+  color: var(--muted); cursor: pointer;
+}
+.lg .rules { display: grid; gap: 8px; }
+.lg .rule-params { display: grid; gap: 10px; margin-top: 10px; }
+.lg .rule-sectores { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.lg .rule-sectores button {
+  min-height: 36px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--surface2);
+  font: inherit; font-size: 13.5px; font-weight: 700; color: var(--ink2); cursor: pointer;
+}
+.lg .rule-sectores button[aria-pressed="true"] { background: var(--accent); color: var(--btn-ink); }
+
+.lg .starters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.lg .starter {
+  min-height: 42px; padding: 0 15px; border: 0; border-radius: 999px; background: var(--surface);
+  font: inherit; font-size: 15px; color: var(--ink); cursor: pointer;
+}
+.lg .count {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 14px;
+  font-size: 15px; color: var(--ink2);
+}
+.lg .count b { font-size: 21px; font-weight: 800; color: var(--ink); }
+
+.lg .rng { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 12px; margin-top: 14px; }
+.lg .rng label { font-size: 15.5px; color: var(--ink); }
+.lg .rng output { font-size: 15px; font-weight: 800; }
+.lg .rng input {
+  grid-column: 1 / -1; width: 100%; height: 32px; margin: 0; accent-color: var(--accent);
+}
+
+.lg .wrow { display: grid; grid-template-columns: 1fr 48px; align-items: center; gap: 6px 10px; margin-top: 12px; font-size: 15.5px; color: var(--ink); }
+.lg .wrow .num { text-align: right; font-weight: 700; }
+.lg .wbar { grid-column: 1 / -1; height: 8px; border-radius: 999px; background: var(--surface2); overflow: hidden; }
+.lg .wbar i { display: block; height: 100%; border-radius: 999px; background: var(--ink2); }
+.lg .wrow.own .wbar i { background: var(--accent); }
+
+.lg .recipe { display: grid; grid-template-columns: 76px 1fr; align-items: baseline; gap: 10px 14px; }
+.lg .recipe b { font-size: 22px; font-weight: 800; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lg .recipe span { font-size: 15.5px; line-height: 1.45; color: var(--ink2); }
+.lg .recipe-note { margin-top: 14px; font-size: 15.5px; line-height: 1.5; color: var(--ink2); }
+
+.lg .lock { margin-top: 12px; padding: 18px 16px; border-radius: 16px; background: var(--surface); font-size: 15.5px; line-height: 1.5; color: var(--ink2); }
+.lg .lock .btn { margin-top: 14px; }
+
+.lg .callout { margin-top: 18px; padding: 14px 16px; border-radius: 16px; background: var(--surface); font-size: 15px; line-height: 1.5; color: var(--ink2); }
+.lg .callout b { color: var(--ink); }
+
+.lg .review { margin-top: 26px; }
+.lg .review h3 { font-size: 17px; font-weight: 800; }
+.lg .review p { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 15.5px; line-height: 1.5; color: var(--ink2); }
+
+.lg .cta { display: grid; gap: 10px; margin-top: 30px; }
+
+/* ---- «Si jugara hoy»: filas `.pick` -------------------------------------------------------------- */
+
+.lg .pick { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; min-height: 78px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.lg .pick b { display: block; font-size: 16.5px; color: var(--ink); }
+.lg .pick > div > span { display: block; font-size: 13.5px; color: var(--muted); }
+.lg .pick small { display: block; margin-top: 4px; font-size: 14px; line-height: 1.4; color: var(--ink2); }
+.lg .pick .new { display: inline; font-size: 14px; font-weight: 700; color: var(--accent); }
+.lg .pick-r { display: grid; justify-items: end; gap: 6px; }
+.lg .pick-r .num { font-size: 16px; font-weight: 800; color: var(--ink); }
+.lg .pick-r button {
+  min-height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--surface);
+  font: inherit; font-size: 14px; font-weight: 700; color: var(--ink2); cursor: pointer;
+}
+.lg .links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; }
+.lg .link {
+  display: inline-flex; align-items: center; min-height: 36px; border: 0; background: none;
+  font: inherit; font-size: 14.5px; font-weight: 700; color: var(--accent); cursor: pointer; padding: 0;
+}
+.lg .sugg { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.lg .sugg button {
+  min-height: 42px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--surface);
+  font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; text-align: left;
+}
+.lg .why { margin-top: 12px; font-size: 16.5px; line-height: 1.5; font-weight: 700; color: var(--ink); }
+
+/* ---- Escudo: editor inline ------------------------------------------------------------------------ */
+
+.lg .crest-ed { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
+.lg .crest-btn { flex: 0 0 auto; border: 0; background: none; border-radius: 16px; padding: 0; cursor: pointer; }
+.lg .crest-acts { display: grid; gap: 8px; flex: 1; }
+.lg .ce-top { display: grid; place-items: center; padding: 6px 0 10px; }
+.lg .tiles { display: grid; gap: 8px; }
+.lg .tiles.t3 { grid-template-columns: repeat(3, 1fr); }
+.lg .tiles.t4 { grid-template-columns: repeat(4, 1fr); }
+.lg .tile {
+  display: grid; justify-items: center; gap: 6px; padding: 12px 4px 10px; border: 0; border-radius: 14px;
+  background: var(--surface); font: inherit; font-size: 13.5px; font-weight: 700; color: var(--ink2);
+  cursor: pointer;
+}
+.lg .tile[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accent); color: var(--ink); }
+.lg .mini { margin: 18px 0 8px; font-size: 15px; font-weight: 700; color: var(--ink2); }
+.lg .swg { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-top: 12px; }
+.lg .swb {
+  position: relative; aspect-ratio: 1; border: 0; padding: 0; border-radius: 50%; cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--crest-ring);
+}
+.lg .swb[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px var(--crest-ring), 0 0 0 3px var(--bg), 0 0 0 5px var(--accent);
+}
+.lg .colors { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; }
+.lg .colors label { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--ink); }
+.lg input[type=color] {
+  width: 54px; height: 44px; padding: 3px; border: 1.5px solid var(--line2); border-radius: 12px;
+  background: var(--bg); cursor: pointer;
+}
+.lg .inp.ini { width: 84px; min-height: 44px; padding: 8px 10px; text-align: center; text-transform: uppercase; font-weight: 800; }
+
+/* ---- Mías: `.li` (fila de lista) y créditos ------------------------------------------------------ */
+
+.lg .li {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 74px; padding: 12px 0;
+  border: 0; background: none; border-bottom: 1px solid var(--line); text-align: left; cursor: pointer;
+  font: inherit; color: inherit;
+}
+.lg .li .t { flex: 1; min-width: 0; }
+.lg .li b { display: block; font-size: 16.5px; color: var(--ink); }
+.lg .li small { display: block; margin-top: 3px; font-size: 14px; line-height: 1.4; color: var(--muted); }
+.lg .li .status { font-size: 13.5px; font-weight: 700; color: var(--accent); }
+.lg .li-acts { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
+
+.lg .toast {
+  position: fixed; left: 12px; right: 12px; bottom: 74px; z-index: 40; padding: 14px 16px;
+  border-radius: 16px; background: var(--ink); color: var(--bg); font-size: 15px; line-height: 1.45;
+  max-width: 480px; margin: 0 auto;
+}

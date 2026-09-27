@@ -1,4 +1,6 @@
+export * from "./BarraPestanas";
 export * from "./Boton";
+export * from "./CabeceraApp";
 export * from "./Cargando";
 export * from "./Chip";
 export * from "./Cifra";
@@ -6,5 +8,7 @@ export * from "./Clasificacion";
 export * from "./ErrorLiga";
 export * from "./Escudo";
 export * from "./FilaEquipo";
+export * from "./OpcionRadio";
+export * from "./Segmentado";
 export * from "./Tarjeta";
 export * from "./Vacio";
