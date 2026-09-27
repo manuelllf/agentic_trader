@@ -90,6 +90,22 @@ class Watchlist(Base):
     last_high: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class Foto(Base):
+    """Una captura de fundamentales lanzada desde Alpha. Nace `capturando` y se cierra de golpe
+    (`completa`, `cortada` o `fallida`): quien necesite una foto entera filtra `completa` y nunca
+    ve una a medias. La BD solo admite una `capturando` a la vez."""
+
+    __tablename__ = "foto"
+
+    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
+    alcance: Mapped[str] = mapped_column(Text)                 # nasdaq | global
+    inicio: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    fin: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    estado: Mapped[str] = mapped_column(Text, default="capturando")
+    pedidos: Mapped[int | None] = mapped_column(Integer)
+    capturados: Mapped[int | None] = mapped_column(Integer)
+
+
 class FundamentalsSnapshot(Base):
     """Foto versionada de `screener.fundamentals.gather()`, append-only. Sustituye al cache.
 
@@ -147,6 +163,9 @@ class FundamentalsSnapshot(Base):
     # `market_cap` en USD -- se rellena en el gather y se recalcula cada noche (ver
     # `scheduler._fx_job`) para que un movimiento de divisa se note sin re-capturar fundamentales.
     market_cap_usd: Mapped[float | None] = mapped_column(Float)
+    # Foto de Alpha a la que pertenece. NULL = captura suelta de un escaneo, o anterior a que las
+    # fotos tuvieran identidad.
+    foto_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("foto.id"))
 
 
 class FundamentalsSnapshotNews(Base):
@@ -437,6 +456,9 @@ class ScanAudit(Base):
     jev_catalyst_conf: Mapped[int | None] = mapped_column(SmallInteger)
     # ¿Entró en la cartera mecánica de Jev (sombra sin dinero)? NULL = fila anterior.
     jev_funded: Mapped[bool | None] = mapped_column(default=None)
+    # Su escaneo. NULL = lote sin ScanRun (el del 4-ago, o uno cuyo ScanRun no se pudo guardar).
+    scan_run_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"))
     # `had_prior_thesis` retirada: se alimentaba de la tesis de la watchlist, que ya no se usa
     # ni se alimenta — quedaba siempre en False. La columna sigue en las DB viejas, sin escribir.
 
@@ -460,6 +482,8 @@ class ScanRun(Base):
     outlook: Mapped[str] = mapped_column(Text, default="")
     # ¿El prescore de Jev vio el macro con contexto (E) o solo datos (B)? NULL = fila anterior.
     jev_macro: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    # Foto de Alpha de la que salieron (casi) todos sus datos. NULL = se capturó por su cuenta.
+    foto_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("foto.id"))
     # Bloques largos de eventos reales que vio el macro (Exhibit 2D: páginas de Wikipedia,
     # días pasados + calendario del año) -- titulares sueltos van a `ScanRunMacroHeadline`.
     macro_wiki_events: Mapped[str] = mapped_column(Text, default="")

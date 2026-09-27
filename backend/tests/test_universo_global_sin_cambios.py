@@ -58,4 +58,5 @@ def test_ticker_repetido_en_el_csv_cuenta_una_vez(db):
     repetido = _BASE + "AAA,NASDAQ,Otra Alfa,Stock,Technology,United States,US,US0000000009\n"
     out = universe_global.sincronizar_desde_archivo(db, (_CABECERA + repetido).encode())
     assert out["tickers"] == 2
-    assert db.query(UniverseTicker.name).filter(UniverseTicker.ticker == "AAA").scalar() == "Alfa Inc"
+    nombre = db.query(UniverseTicker.name).filter(UniverseTicker.ticker == "AAA").scalar()
+    assert nombre == "Alfa Inc"

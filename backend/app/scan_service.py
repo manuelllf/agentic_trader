@@ -164,6 +164,16 @@ def _dormir_cancelable(seconds: float, cancel_event: threading.Event | None) -> 
         time.sleep(min(1.0, restante))
 
 
+def _foto_de_los_datos(datos: list) -> int | None:
+    """La foto de Alpha de la que sale al menos el 90 % de los datos del escaneo, o None si
+    se capturó por su cuenta o mezclando fotos."""
+    cuenta = Counter(d.foto_id for d in datos if getattr(d, "foto_id", None) is not None)
+    if not cuenta:
+        return None
+    foto_id, n = cuenta.most_common(1)[0]
+    return foto_id if n >= 0.9 * len(datos) else None
+
+
 def run_scan_and_store(db: Session, sample_size: int | None = None,
                        decide: bool = True,
                        llm_overrides: dict | None = None,
@@ -755,12 +765,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                           f"{settings.jev_portfolio_n} nombres (industria desconocida u opadas).")
 
     # Traza de auditoría del embudo (diagnóstico; nunca debe tirar el escaneo).
+    audit_at = None
     try:
-        scan_audit.record(db, prescored=prescored, failed=failed, finalists=finalists,
-                          deep=deep, selected=selected, construction=construction,
-                          pre_errors=pre_errors, deep_errors=deep_caidos, decide=decide,
-                          lanes=lanes, mid_scores=mid_scores,
-                          jev_cartera={p.ticker for p, _d in jev_cartera} if es_jev else None)
+        audit_at = scan_audit.record(
+            db, prescored=prescored, failed=failed, finalists=finalists,
+            deep=deep, selected=selected, construction=construction,
+            pre_errors=pre_errors, deep_errors=deep_caidos, decide=decide,
+            lanes=lanes, mid_scores=mid_scores,
+            jev_cartera={p.ticker for p, _d in jev_cartera} if es_jev else None)
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
 
@@ -936,6 +948,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             construction_cash_pct=construction.cash_pct, construction_summary=construction.summary,
             macro_wiki_events=macro.get("wiki_events_text") or "",
             macro_wiki_scheduled=macro.get("wiki_scheduled_text") or "",
+            foto_id=_foto_de_los_datos(datos_ok),
         )
         db.add(run)
         db.flush()   # necesita el id para todas las filas hermanas de abajo
@@ -975,6 +988,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     except Exception:
         logger.exception("No se pudo persistir ScanRun (no aborta el escaneo).")
         scan_run_id = None
+    if scan_run_id is not None and audit_at is not None:
+        try:
+            scan_audit.enlazar(db, audit_at, scan_run_id)
+        except Exception:
+            logger.exception("No se pudo enlazar la auditoría con su escaneo (no aborta).")
     try:
         # Va fuera del try de arriba: si `ScanRun` falla, la traza se guarda igual (suelta, sin
         # escaneo al que colgarse) — es justo cuando más falta hace.

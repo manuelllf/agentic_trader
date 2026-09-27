@@ -69,9 +69,38 @@ def _tickers(db, alcance: str, limite: int | None,  # noqa: ANN001
     return nombres[:limite] if limite else nombres
 
 
+def _abrir_foto(db, alcance: str, pedidos: int) -> int:  # noqa: ANN001
+    """Crea la fila `capturando`. Si queda otra `capturando`, es de un proceso que murió a mitad
+    (reinicio o deploy): se cierra como `fallida`, porque la BD solo admite una a la vez."""
+    from app.models import Foto
+
+    ahora = datetime.now(UTC)
+    db.query(Foto).filter(Foto.estado == "capturando").update(
+        {"estado": "fallida", "fin": ahora}, synchronize_session=False)
+    foto = Foto(alcance=alcance, inicio=ahora, estado="capturando", pedidos=pedidos)
+    db.add(foto)
+    db.commit()
+    return foto.id
+
+
+def _cerrar_foto(db, foto_id: int, estado: str, capturados: int) -> None:  # noqa: ANN001
+    """Publica la foto de golpe: una sola sentencia la saca de `capturando`."""
+    from app.models import Foto
+
+    db.query(Foto).filter(Foto.id == foto_id, Foto.estado == "capturando").update(
+        {"estado": estado, "fin": datetime.now(UTC), "capturados": capturados},
+        synchronize_session=False)
+    db.commit()
+
+
 def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: ANN001
             countries: list[str] | None = None, exchanges: list[str] | None = None) -> dict:
     """Recorre el universo pedido y guarda una foto por nombre. No puntúa nada.
+
+    Siempre dato fresco (`ttl_h=0`): una foto es el mercado de un momento, no una mezcla con
+    capturas de horas antes. Nace `capturando` y se cierra `completa` solo si se recorrieron
+    todos los nombres (los que Yahoo no tiene cuentan como recorridos); `cortada` si saltó el
+    circuit breaker y `fallida` si el proceso reventó.
 
     Cola + workers (no `ThreadPoolExecutor.map`): con `.map` TODA la lista se lanza a la cola
     de una vez, así que un corte a mitad de tanda no frena los hilos ya en marcha. Con cola
@@ -85,6 +114,7 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
     scan_progress.reset()
     scan_progress.set_stage("foto", total=len(nombres), unit="tickers")
     inicio = datetime.now(UTC)
+    foto_id = _abrir_foto(db, alcance, len(nombres))
 
     cola: queue.Queue[tuple[str, str | None]] = queue.Queue()
     for t in nombres:
@@ -102,8 +132,14 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
                 ticker, yahoo_symbol = cola.get_nowait()
             except queue.Empty:
                 return
-            data, err = fund_mod.gather(ticker, db=db, yahoo_symbol=yahoo_symbol,
-                                        es_dataset=(alcance == "global"))
+            try:
+                data, err = fund_mod.gather(ticker, db=db, yahoo_symbol=yahoo_symbol,
+                                            es_dataset=(alcance == "global"), ttl_h=0,
+                                            foto_id=foto_id)
+            except Exception as exc:  # noqa: BLE001 — un fallo de BD no puede matar el hilo
+                with fund_mod._FOTO_LOCK:
+                    db.rollback()
+                data, err = None, f"{type(exc).__name__}: {exc}"
             with stats_lock:
                 if data is not None:
                     stats["ok"] += 1
@@ -123,24 +159,34 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
                     logger.info("foto (%s) %d/%d: %d ok, %d fallidos",
                                alcance, hechos, len(nombres), stats["ok"], stats["fallos"])
 
-    hilos = [threading.Thread(target=_worker, daemon=True)
-             for _ in range(scan_service._GATHER_WORKERS)]
-    for h in hilos:
-        h.start()
-    for h in hilos:
-        h.join()
+    try:
+        hilos = [threading.Thread(target=_worker, daemon=True)
+                 for _ in range(scan_service._GATHER_WORKERS)]
+        for h in hilos:
+            h.start()
+        for h in hilos:
+            h.join()
+    except BaseException:
+        db.rollback()
+        _cerrar_foto(db, foto_id, "fallida", stats["ok"])
+        raise
     scan_progress.set_stage("done")
 
     dur = (datetime.now(UTC) - inicio).total_seconds()
     cortado = bool(motivo_corte)
+    recorridos = stats["ok"] + stats["fallos"]
+    estado = ("cortada" if cortado
+              else "completa" if recorridos == len(nombres) else "fallida")
+    _cerrar_foto(db, foto_id, estado, stats["ok"])
     if cortado:
         logger.warning("Foto (%s) CORTADA: %s", alcance, motivo_corte[0])
-    logger.info("Foto (%s): %d/%d nombres capturados en %.0fs.",
-               alcance, stats["ok"], len(nombres), dur)
+    logger.info("Foto %d (%s, %s): %d/%d nombres capturados en %.0fs.",
+               foto_id, alcance, estado, stats["ok"], len(nombres), dur)
     if categorias:
         logger.info("Foto (%s), fallos por tipo: %s",
                     alcance, ", ".join(f"{k}={v}" for k, v in categorias.most_common()))
-    return {"alcance": alcance, "pedidos": len(nombres), "capturados": stats["ok"],
+    return {"foto_id": foto_id, "estado": estado, "alcance": alcance,
+            "pedidos": len(nombres), "capturados": stats["ok"],
             "sin_datos": stats["fallos"], "segundos": round(dur, 1),
             "at": inicio.isoformat(), "cortado": cortado,
             "motivo_corte": motivo_corte[0] if motivo_corte else None}

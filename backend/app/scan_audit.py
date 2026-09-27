@@ -45,8 +45,9 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
            deep: dict, selected: list, construction, pre_errors: list | None = None,
            deep_errors: list[str] | None = None, decide: bool | None = None,
            lanes: dict[str, str] | None = None, mid_scores: dict[str, float] | None = None,
-           jev_cartera: set[str] | None = None) -> None:
+           jev_cartera: set[str] | None = None):  # noqa: ANN201
     """Añade la traza del embudo de ESTE escaneo (no borra las anteriores) y poda las viejas.
+    Devuelve el `scan_at` del lote: el escaneo lo usa para colgarle su `scan_run_id`.
 
     `prescored` = [(PrescoreResult, NameData)]; `failed` = tickers sin datos; `deep` = {ticker:
     ScoreResult} (solo los VÁLIDOS: un profundo no parseable no tiene score que guardar);
@@ -96,6 +97,16 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
 
     db.query(ScanAudit).filter(ScanAudit.scan_at < now - timedelta(days=RETENTION_DAYS)).delete()
     db.commit()
+    return now
+
+
+def enlazar(db, scan_at, scan_run_id: int) -> int:  # noqa: ANN001
+    """Cuelga del escaneo las filas de su lote (todas llevan el mismo `scan_at` exacto)."""
+    n = (db.query(ScanAudit)
+         .filter(ScanAudit.scan_at == scan_at, ScanAudit.scan_run_id.is_(None))
+         .update({"scan_run_id": scan_run_id}, synchronize_session=False))
+    db.commit()
+    return n
 
 
 def scan_dates(db, limit: int = 8) -> list:  # noqa: ANN001

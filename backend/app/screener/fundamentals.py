@@ -125,7 +125,7 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
         news=noticias, earnings_text=row.earnings_text or "", name=row.name or "",
         pe_trailing=row.pe_trailing, pe_forward=row.pe_forward,
         high_52w=row.high_52w, low_52w=row.low_52w, currency=row.currency,
-        fundamentales_crudos=metricas_crudas,
+        fundamentales_crudos=metricas_crudas, foto_id=row.foto_id,
     )
 
 
@@ -213,20 +213,23 @@ def _convertir_financieros_a_usd(info: dict, db) -> dict:  # noqa: ANN001
     return out
 
 
-def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False) -> None:  # noqa: ANN001
+def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False,  # noqa: ANN001
+                 foto_id: int | None = None) -> None:
     """Añade una foto NUEVA (nunca pisa la anterior): es el histórico, no un cache. Columnas
     propias, nunca un blob — ver `app.models.FundamentalsSnapshot`. Los ~85 campos de
     `fundamentals_text` se guardan en crudo (`FundamentalsSnapshotMetric`), NUNCA el texto ya
     formateado: es lo que se le mandó al LLM, no un dato — se reconstruye al leer.
 
     `es_dataset`: de qué universo vino ESTA captura (global/HuggingFace o NASDAQ/escaneo)
-    — no cambia la identidad (`ticker`), solo la etiqueta de origen de la fila."""
+    — no cambia la identidad (`ticker`), solo la etiqueta de origen de la fila.
+    `foto_id`: la foto de Alpha que está capturando (None = captura suelta de un escaneo)."""
     from app.models import (
         FundamentalsSnapshot,
         FundamentalsSnapshotMetric,
         FundamentalsSnapshotNews,
     )
 
+    data.foto_id = foto_id
     with _FOTO_LOCK:
         fila = FundamentalsSnapshot(
             ticker=ticker, sector=data.sector, industry=data.industry, name=data.name,
@@ -237,6 +240,7 @@ def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False) -> N
             es_dataset=es_dataset, currency=data.currency,
             financial_currency=data.fundamentales_crudos.get("financialCurrency"),
             market_cap_usd=_market_cap_usd(db, data.market_cap, data.currency),
+            foto_id=foto_id,
         )
         db.add(fila)
         db.flush()   # asigna fila.id sin comprometer la transacción, para las hermanas
@@ -380,6 +384,9 @@ class NameData:
     # sin formatear. Es lo que se persiste (`fundamentals_snapshot_metric`, relacional, nunca
     # texto ni JSON); `fundamentals_text` sigue viajando al prompt tal cual, sin tocar.
     fundamentales_crudos: dict[str, float | str] = field(default_factory=dict)
+    # Foto de Alpha de la que sale este dato (None = captura suelta). El escaneo lo usa para
+    # apuntar en `ScanRun.foto_id` de qué foto salieron sus datos.
+    foto_id: int | None = None
 
 
 def numero_finito(v: object) -> float | None:
@@ -563,7 +570,8 @@ def _gather_scraper_con_backoff(s, crumb: str, ticker: str,  # noqa: ANN001
 
 
 def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN001
-          es_dataset: bool = False, ttl_h: float = _FOTO_TTL_H) -> tuple[NameData | None, str | None]:
+          es_dataset: bool = False, ttl_h: float = _FOTO_TTL_H,
+          foto_id: int | None = None) -> tuple[NameData | None, str | None]:
     """Baja .info + histórico + noticias: devuelve (datos, motivo_si_None) o (data, None).
     Motor: yahoo_scraper primario; fallback yfinance. Reutiliza la foto reciente si cae dentro
     de `ttl_h`. PACE_S fijado por scan_service.
@@ -573,8 +581,9 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
     (el del dataset) sigue siendo la identidad bajo la que se guarda/lee la foto.
     `es_dataset`: solo etiqueta de qué universo vino esta captura (ver `foto_guardar`).
     `ttl_h`: ventana de reutilización — `float("inf")` = usa la última foto que haya, sin
-    importar su antigüedad (botón "reutilizar última foto" de Alpha)."""
-    if db is not None:
+    importar su antigüedad (botón "reutilizar última foto" de Alpha); 0 = siempre fresco.
+    `foto_id`: la foto de Alpha a la que pertenece esta captura (ver `foto_guardar`)."""
+    if db is not None and ttl_h > 0:
         cached = foto_reciente(db, ticker, ttl_h=ttl_h)
         if cached is not None:
             return cached, None
@@ -604,7 +613,7 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
                 time.sleep(_GATHER_PACE_S)
             if data is not None:
                 if db is not None:
-                    foto_guardar(db, ticker, data, es_dataset=es_dataset)
+                    foto_guardar(db, ticker, data, es_dataset=es_dataset, foto_id=foto_id)
                 return data, None
             # "sin_datos" genuino (200 OK, ticker vacío/deslistado): NO se reintenta por
             # yfinance — medido que los mismos tickers fallan igual en los dos sitios.
@@ -635,7 +644,7 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
             **metricas(info),
         )
         if db is not None:
-            foto_guardar(db, ticker, data, es_dataset=es_dataset)
+            foto_guardar(db, ticker, data, es_dataset=es_dataset, foto_id=foto_id)
         return data, None
     except Exception as exc:
         # Entero, sin cortar a 300: acaba en `ScanRun.failures` y un 401 de Yahoo trae el cuerpo
