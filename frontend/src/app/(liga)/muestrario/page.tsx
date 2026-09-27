@@ -44,6 +44,26 @@ export default function Muestrario() {
         No existe en producción.
       </p>
 
+      <Seccion titulo="Cuenta">
+        <p className="fine">Cabecera con sesión y el menú abierto (el de verdad se abre al tocar).</p>
+        <div className="sencilla-top" style={{ marginTop: 12, paddingBottom: 150 }}>
+          <span className="wordmark">liguilla</span>
+          <div className="cuenta">
+            <button type="button" className="cuenta-boton" aria-expanded="true">
+              <span>admin</span>
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8"
+                      strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <div className="cuenta-menu" role="menu">
+              <a className="cuenta-item" role="menuitem" href="#">Panel de control</a>
+              <button type="button" className="cuenta-item" role="menuitem">Salir</button>
+            </div>
+          </div>
+        </div>
+      </Seccion>
+
       <Seccion titulo="Escudo">
         <p className="fine">Formas × dibujos, y los tres de la casa con su glifo.</p>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>

@@ -200,5 +200,23 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .qr { display: block; width: 200px; height: 200px; margin: 4px auto 0; padding: 10px;
   border-radius: 16px; background: #FFFFFF; }
 .lg .secreto { font-size: 15px; word-break: break-all; color: var(--ink2); }
-.lg .sesion { display: flex; align-items: center; gap: 4px; }
-.lg .sesion .alias { font-size: 15px; color: var(--muted); margin-right: 4px; }
+.lg .cuenta { position: relative; }
+.lg .cuenta-boton {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px 0 12px;
+  border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 16px;
+  font-weight: 700; cursor: pointer;
+}
+.lg .cuenta-boton svg { color: var(--muted); }
+.lg .cuenta-boton[aria-expanded="true"] svg { transform: rotate(180deg); }
+.lg .cuenta-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; min-width: 208px;
+  display: flex; flex-direction: column; padding: 6px; border-radius: 16px;
+  background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 14px 34px -16px var(--shadow);
+}
+.lg .cuenta-item {
+  display: flex; align-items: center; min-height: 48px; padding: 0 14px; border: 0;
+  border-radius: 10px; background: transparent; color: var(--ink); font: inherit;
+  font-size: 16px; font-weight: 700; text-align: left; text-decoration: none; cursor: pointer;
+}
+.lg .cuenta-item:active { background: var(--surface); }
+.lg .cuenta-item + .cuenta-item { color: var(--ink2); font-weight: 400; }
