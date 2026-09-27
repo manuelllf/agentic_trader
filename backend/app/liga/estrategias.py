@@ -266,3 +266,57 @@ def resultado_prueba(prueba_id: uuid.UUID, ctx: Contexto, seleccion: Seleccion, 
         "sin_peso": len(seleccion.sin_peso), "sin_notas": sin_notas,
         "sin_respuesta": sin_respuesta, "caja_pct": seleccion.caja_pct,
     }
+
+
+# --- Copiar una estrategia (Pro; plan §11 y §2.1: «copiar» es de Pro) -----------------------------
+
+_LARGO_NOMBRE = 28
+_SUFIJO_COPIA = " (copia)"
+
+
+def nombre_copia(nombre: str) -> str:
+    """El nombre de origen con el sufijo, recortado al límite de la maqueta."""
+    base = nombre[: _LARGO_NOMBRE - len(_SUFIJO_COPIA)].rstrip()
+    return (base + _SUFIJO_COPIA)[:_LARGO_NOMBRE]
+
+
+def copiar_estrategia(db: Session, origen_id: uuid.UUID) -> RecetaModelo:
+    """Estrategia y receta nuevas a nombre del que llama, a partir de una que puede ver (RLS
+    decide: la suya o una publicada visible si es Pro). Las de la casa no se copian nunca, y sin
+    receta visible no hay qué copiar."""
+    if not db.execute(text("select liga.es_pro()")).scalar_one():
+        raise HTTPException(403, "Copiar una estrategia es de Pro.")
+    origen = db.execute(text("""
+        select tipo, nombre, forma, dibujo, color1, color2, iniciales, receta_id
+        from liga.estrategias where id = :i
+    """), {"i": origen_id}).one_or_none()
+    if origen is None:
+        raise HTTPException(404, "No existe esa estrategia.")
+    if origen.tipo == "casa":
+        raise HTTPException(403, "Las estrategias de la casa no se copian.")
+    if origen.receta_id is None:
+        raise HTTPException(409, "Esa estrategia todavía no tiene ninguna receta.")
+    receta = db.get(RecetaModelo, origen.receta_id)
+    if receta is None:
+        raise HTTPException(404, "No puedes ver la receta de esa estrategia.")
+    nueva_estrategia = db.execute(text("""
+        insert into liga.estrategias (nombre, forma, dibujo, color1, color2, iniciales)
+        values (:nombre, :forma, :dibujo, :color1, :color2, :iniciales)
+        returning id
+    """), {"nombre": nombre_copia(origen.nombre), "forma": origen.forma, "dibujo": origen.dibujo,
+           "color1": origen.color1, "color2": origen.color2,
+           "iniciales": origen.iniciales}).one()
+    nueva_receta = RecetaModelo(
+        estrategia_id=nueva_estrategia.id, idea=receta.idea, reglas=receta.reglas,
+        excluidas=list(receta.excluidas or []), catalogo_version=receta.catalogo_version,
+        pregunta=receta.pregunta, peso_negocio=receta.peso_negocio,
+        peso_precio=receta.peso_precio, peso_deuda=receta.peso_deuda,
+        peso_pronto=receta.peso_pronto, peso_pregunta=receta.peso_pregunta,
+        n_empresas=receta.n_empresas, reparto=receta.reparto,
+        max_por_sector=receta.max_por_sector)
+    db.add(nueva_receta)
+    db.flush()
+    db.execute(text("update liga.estrategias set receta_id = :r where id = :e"),
+              {"r": nueva_receta.id, "e": nueva_estrategia.id})
+    db.refresh(nueva_receta)
+    return nueva_receta

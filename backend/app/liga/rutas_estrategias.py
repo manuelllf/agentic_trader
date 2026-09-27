@@ -506,3 +506,18 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
                  for j in jornadas],
         receta=receta_out,
         posiciones=[PosicionOut(ticker=p.ticker, peso=p.peso) for p in posiciones])
+
+
+# ---- Copiar (Pro) ---------------------------------------------------------------------------
+
+
+@router.post("/estrategias/{id}/copiar", response_model=EstrategiaOut, status_code=201)
+def copiar(id: uuid.UUID, db: Session = Depends(db_usuario)) -> EstrategiaOut:
+    try:
+        with db.begin_nested():
+            nueva_receta = estrategias.copiar_estrategia(db, id)
+    except DBAPIError as e:
+        raise estrategias.mapear_error(e) from e
+    fila = db.execute(text(f"select {_CAMPOS_ESTRATEGIA} from liga.estrategias where id = :i"),
+                      {"i": nueva_receta.estrategia_id}).one()
+    return _a_salida(fila)
