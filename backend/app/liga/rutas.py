@@ -5,19 +5,23 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.liga import acceso, rutas_estrategias, rutas_ligas, rutas_publicas
+from app.liga import acceso, cuenta, rutas_estrategias, rutas_ligas, rutas_publicas
+from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_usuario
 
 router = APIRouter(prefix="/liga", tags=["liga"])
 router.include_router(rutas_publicas.router)
 router.include_router(rutas_estrategias.router)
 router.include_router(rutas_ligas.router)
+
+# Exporta recorre toda su cuenta: como las pruebas de estrategias.py, cara de abusar sin freno.
+_LIMITE_EXPORTAR = acceso.LimiteFrecuencia(tope=3, ventana_s=60 * 60)
 
 
 class Yo(BaseModel):
@@ -79,3 +83,37 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
         raise HTTPException(404, "No encontramos tu perfil.")
     return Yo(alias=fila.alias, plan="pro" if fila.pro else "gratis", roles=list(fila.roles),
               admin=fila.admin, aal2=fila.aal2)
+
+
+# ---- Exportar y baja (plan §15, D17) --------------------------------------------------------
+
+
+@router.get("/yo/exportar")
+def exportar_datos(ident: Identidad = Depends(require_usuario),
+                   db: Session = Depends(db_usuario)) -> dict:
+    if not _LIMITE_EXPORTAR.permitido(ident.uid):
+        raise HTTPException(429, "Demasiadas descargas seguidas. Espera un poco.")
+    return cuenta.exportar(db)
+
+
+class BajaIn(BaseModel):
+    confirmacion: str = Field(min_length=1, max_length=40)
+
+
+@router.delete("/yo", status_code=204, response_class=Response)
+def borrar_cuenta(body: BajaIn, ident: Identidad = Depends(require_usuario),
+                  db: Session = Depends(db_usuario)) -> Response:
+    """Confirmación = escribir el propio alias. Un admin no puede darse de baja a sí mismo (se
+    quedaría el sistema sin nadie que gestione la liga): que otro admin le quite antes el rol."""
+    fila = db.execute(text("""
+        select p.alias, liga.authorize('admin.liga') as admin
+        from liga.perfiles p where p.id = (select auth.uid())
+    """)).one_or_none()
+    if fila is None:
+        raise HTTPException(404, "No encontramos tu perfil.")
+    if fila.admin:
+        raise HTTPException(409, "Como administrador no puedes darte de baja tú mismo.")
+    if body.confirmacion.strip().lower() != fila.alias:
+        raise HTTPException(422, "Escribe tu nombre de usuario tal cual para confirmar la baja.")
+    cuenta.borrar_cuenta(ident.uid)
+    return Response(status_code=204)

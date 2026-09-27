@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     # Clave publicable (pública por diseño): solo para pedir la sesión al entrar por alias.
     supabase_publishable_key: str = ""
+    # Clave secreta (`sb_secret_...`, Railway únicamente): solo para la baja de cuenta (borrar el
+    # usuario en Supabase Auth, plan §15/D17). Nunca se registra en logs. Va en la cabecera
+    # `apikey`, nunca en `Authorization: Bearer` (esa cabecera espera un JWT con las claves
+    # nuevas y la petición cae con «Invalid JWT»); vacía = la baja responde 503.
+    supabase_secret_key: str = ""
 
     # LLM. Método = ranker fundamental (whitepaper DeepSeek): V4-Pro razonador en TODO
     # (scorer por nombre + outlook macro + construcción). enable_llm=False → escaneo no falla.
