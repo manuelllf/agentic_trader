@@ -337,19 +337,18 @@ def _apewisdom_job() -> None:
         db.close()
 
 
+def trigger_escaneo_mensual() -> CronTrigger:
+    """Primer martes del mes, como dicen Alpha y Beta: casi siempre es día de bolsa y
+    `universe_for_scan` parte de la foto del cierre del lunes."""
+    return CronTrigger(day="1st tue", hour=settings.scan_cron_hour,
+                       minute=settings.scan_cron_minute, timezone=settings.scan_timezone)
+
+
 def start_scheduler() -> None:
     if not settings.enable_scheduler:
         logger.info("Scheduler desactivado (ENABLE_SCHEDULER=false)")
         return
-    # Día 1 del mes: puede caer en fin de semana, y no pasa nada — `universe_for_scan` usa la
-    # foto del último cierre (el job diario la mantiene fresca), no depende de que el mercado
-    # esté abierto ese día exacto.
-    trigger = CronTrigger(
-        day=1,
-        hour=settings.scan_cron_hour,
-        minute=settings.scan_cron_minute,
-        timezone=settings.scan_timezone,
-    )
+    trigger = trigger_escaneo_mensual()
     # Gracia de misfire: con el default (~1 s), un proceso ocupado/reiniciándose justo a la hora
     # del cron SALTARÍA el escaneo en silencio hasta el mes siguiente (snapshot y reconcile
     # se auto-curan huecos; el escaneo no). Un día de margen lo cubre; coalesce=True evita
@@ -410,7 +409,7 @@ def start_scheduler() -> None:
     )
     scheduler.start()
     logger.info(
-        "Scheduler arrancado: escaneo mensual día 1 %02d:%02d %s",
+        "Scheduler arrancado: escaneo mensual el primer martes a las %02d:%02d %s",
         settings.scan_cron_hour, settings.scan_cron_minute, settings.scan_timezone,
     )
 

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     duckdb_path: str = "analytics.duckdb"
 
     # Cron anclado a la hora del MERCADO (no UTC): sobrevive al cambio de horario y cae con la
-    # foto ya asentada tras el retraso de 15 min de yfinance. Mensual, día 1 (ver scheduler.py):
+    # foto ya asentada tras el retraso de 15 min de yfinance. Mensual, primer martes (ver scheduler.py):
     # el semanal (muestra rotatoria, sin capa media, sin decisión) se retiró — el mercado no
     # cambia lo bastante en una semana para justificar 750 llamadas de pago sin conocimiento
     # nuevo (ver docs/plan-datos-observability.md).
