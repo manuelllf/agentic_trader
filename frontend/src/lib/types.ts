@@ -113,7 +113,8 @@ export interface PerfPosition {
   cost_basis?: string;
   unrealized_pnl: string;
   realized_pnl?: string;
-  pnl_pct?: number;
+  dividends?: string;       // cobrados por la posición abierta (netos en el libro real)
+  pnl_pct?: number;         // con dividendos
   unrealized_pct?: number;
 }
 

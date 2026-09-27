@@ -180,6 +180,10 @@ class Settings(BaseSettings):
     watchlist_max: int = 50          # tope de nombres (protege la exploración random)
     watchlist_stale_days: int = 28   # caduca si no vuelve a puntuar alto en N días
 
+    # Retención de EE. UU. sobre dividendos con el W-8BEN: el dinero real (libro real, posiciones
+    # de Omega) los cobra netos; el sombra, la liga y el S&P de referencia, brutos.
+    retencion_dividendos: float = 0.15
+
     # Comisión SIMULADA (tarifa IBKR): solo la cobran sombra y real-en-dry-run — con bróker en
     # vivo se apunta la de IBKR real. Sin ella la curva mediría rentabilidad bruta inobtenible.
     commission_per_share: float = 0.005   # $/acción

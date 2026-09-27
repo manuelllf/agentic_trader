@@ -49,14 +49,18 @@ def allocate(
 
 def available_cash(db: Session, book: str = BOOK_SHADOW) -> Decimal:
     """Caja disponible EN USD = Σ asignaciones en USD − coste de compras + ingresos de ventas
-    + USD entrado por conversión automática de divisa. Para el desglose EUR/USD completo del
-    libro real (nunca el total de la cuenta IBKR, que está mezclada con lo personal), ver
-    `cash_by_currency`."""
+    + USD entrado por conversión automática de divisa + dividendos cobrados (derivados, ver
+    `dividendos.py`). Para el desglose EUR/USD completo del libro real (nunca el total de la
+    cuenta IBKR, que está mezclada con lo personal), ver `cash_by_currency`."""
+    from app.ledger import dividendos
+
     allocs = db.scalars(
         select(Allocation).where(Allocation.book == book, Allocation.currency == "USD")
     ).all()
     cash = sum((a.amount for a in allocs), ZERO)
-    for t in db.scalars(select(Trade).where(Trade.book == book)).all():
+    trades = list(db.scalars(select(Trade).where(Trade.book == book)).all())
+    cash += dividendos.total(db, book, trades)
+    for t in trades:
         # Cada trade LIQUIDA en céntimos enteros (como un bróker real): se redondea el bruto
         # ANTES de sumar, no la suma al final. Así la caja es cent-exacta y coincide siempre
         # con el chequeo de record_buy → nunca falla por un descuadre sub-céntimo.

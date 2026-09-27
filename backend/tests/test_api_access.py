@@ -388,11 +388,13 @@ def test_universe_snapshot_reports_failure_without_500(client, token, monkeypatc
 def _seed_real_history(db) -> None:
     from datetime import date
 
-    from app.models import BOOK_REAL, EquitySnapshot
+    from app.models import BOOK_REAL, EquitySnapshot, PrecioCierre
 
     db.add_all([
-        EquitySnapshot(day=date(2026, 7, 8), book=BOOK_REAL, equity=1000, spy_close=500.0),
-        EquitySnapshot(day=date(2026, 7, 9), book=BOOK_REAL, equity=1050, spy_close=505.0),
+        EquitySnapshot(day=date(2026, 7, 8), book=BOOK_REAL, equity=1000),
+        EquitySnapshot(day=date(2026, 7, 9), book=BOOK_REAL, equity=1050),
+        PrecioCierre(ticker="SPY", dia=date(2026, 7, 8), cierre=500, fuente="prueba"),
+        PrecioCierre(ticker="SPY", dia=date(2026, 7, 9), cierre=505, fuente="prueba"),
     ])
     db.commit()
 
@@ -406,6 +408,7 @@ def test_history_real_without_token_hides_equity(db, client) -> None:
     assert len(pts) == 2
     assert all("equity" not in p for p in pts)
     assert pts[1]["index"] == 105.0
+    assert pts[1]["spy_index"] == 101.0
 
 
 def test_history_real_with_token_shows_equity(db, client, token) -> None:
@@ -607,6 +610,24 @@ def test_report_publico_oculta_las_novedades_del_ranking(client, db, token) -> N
 
 # ---- la traza LEÍDA: /scan/outcomes y /scan/audit/{ticker} -------------------
 
+_BASES = {"AAA": 100.0, "BBB": 100.0, "CCC": 50.0, "DDD": 200.0, "EEE": 10.0,
+          "JJJ": 100.0, "KKK": 50.0, "LLL": 10.0}
+
+
+def _cierres_de_prueba(monkeypatch, ahora: dict[str, float], spy_pct: float | None) -> None:
+    """Serie de dos puntos por ticker: el cierre del día del escaneo (`_BASES`) y el de ahora."""
+    from datetime import UTC, datetime, timedelta
+
+    from app import scan_outcomes
+    from app.precios import fecha_mercado
+
+    d0 = fecha_mercado(datetime.now(UTC))
+    series = {t: [(d0, _BASES[t]), (d0 + timedelta(days=1), px)] for t, px in ahora.items()}
+    if spy_pct is not None:
+        series["SPY"] = [(d0, 100.0), (d0 + timedelta(days=1), 100.0 + spy_pct)]
+    monkeypatch.setattr(scan_outcomes, "_cierres_ajustados", lambda _t, _d: series)
+
+
 def _siembra_cohorte(db) -> None:
     """Una cohorte con las cuatro suertes: fondeado, seleccionado sin fondear, descartado,
     fuera del corte — y un profundo ilegible que NO debe contar como descarte del criterio."""
@@ -635,13 +656,9 @@ def _siembra_cohorte(db) -> None:
 def test_outcomes_mide_grupos_y_oculta_nombres_sin_sesion(client, db, token, monkeypatch) -> None:
     """La pregunta central del experimento, con la regla de siempre: el retorno POR GRUPO es
     comportamiento (público); un ticker con su score y su retorno es un feed de señales."""
-    from app import scan_outcomes, tracking
-
     _siembra_cohorte(db)
-    monkeypatch.setattr(tracking, "live_prices",
-                        lambda _t: {"AAA": 110.0, "BBB": 95.0, "CCC": 60.0,
-                                    "DDD": 210.0, "EEE": 11.0})
-    monkeypatch.setattr(scan_outcomes, "_spy_ret_since", lambda _d: 1.5)
+    _cierres_de_prueba(monkeypatch, {"AAA": 110.0, "BBB": 95.0, "CCC": 60.0,
+                                     "DDD": 210.0, "EEE": 11.0}, 1.5)
 
     anon = client.get("/scan/outcomes").json()["scans"][0]
     g = anon["groups"]
@@ -668,7 +685,6 @@ def test_outcomes_mide_la_cartera_jev_y_oculta_sus_nombres_sin_sesion(
     """Jev entra aunque no llegue al profundo; sus 4 preguntas vuelven a su escala (0-9, 0-1)."""
     from datetime import UTC, datetime
 
-    from app import scan_outcomes, tracking
     from app.models import ScanAudit
 
     at = datetime.now(UTC).replace(tzinfo=None)
@@ -685,9 +701,7 @@ def test_outcomes_mide_la_cartera_jev_y_oculta_sus_nombres_sin_sesion(
                   stage="prescore", decide=False, jev_funded=False),
     ])
     db.commit()
-    monkeypatch.setattr(tracking, "live_prices",
-                        lambda _t: {"JJJ": 110.0, "KKK": 45.0, "LLL": 20.0})
-    monkeypatch.setattr(scan_outcomes, "_spy_ret_since", lambda _d: 1.0)
+    _cierres_de_prueba(monkeypatch, {"JJJ": 110.0, "KKK": 45.0, "LLL": 20.0}, 1.0)
 
     anon = client.get("/scan/outcomes").json()["scans"][0]
     assert anon["groups"]["jev"] == {"n": 2, "avg": 0.0, "median": 0.0}   # +10% y -10%
@@ -703,11 +717,8 @@ def test_outcomes_mide_la_cartera_jev_y_oculta_sus_nombres_sin_sesion(
 
 
 def test_outcomes_de_escaneos_sin_jev_no_inventan_su_grupo(client, db, monkeypatch) -> None:
-    from app import scan_outcomes, tracking
-
     _siembra_cohorte(db)
-    monkeypatch.setattr(tracking, "live_prices", lambda _t: {"AAA": 110.0})
-    monkeypatch.setattr(scan_outcomes, "_spy_ret_since", lambda _d: None)
+    _cierres_de_prueba(monkeypatch, {"AAA": 110.0}, None)
 
     s = client.get("/scan/outcomes").json()["scans"][0]
     assert s["groups"]["jev"] == {"n": 0, "avg": None, "median": None}
@@ -753,7 +764,7 @@ def test_outcomes_modo_honesto_y_fila_del_libro(client, db, monkeypatch) -> None
     viaja aparte en `book`, porque la traza no alcanza a la decisión que compró la cartera."""
     from datetime import UTC, datetime
 
-    from app import scan_outcomes, tracking
+    from app import scan_outcomes
     from app.models import ScanAudit
 
     # Cohorte SIN flag (como las filas de julio, anteriores a la columna) → observatorio.
@@ -762,8 +773,7 @@ def test_outcomes_modo_honesto_y_fila_del_libro(client, db, monkeypatch) -> None
                      reached_deep=True, deep_score=88, selected=True, funded=True,
                      weight_pct=40.0, stage="cartera"))
     db.commit()
-    monkeypatch.setattr(tracking, "live_prices", lambda _t: {"AAA": 110.0})
-    monkeypatch.setattr(scan_outcomes, "_spy_ret_since", lambda _d: 1.0)
+    _cierres_de_prueba(monkeypatch, {"AAA": 110.0}, 1.0)
     monkeypatch.setattr(scan_outcomes, "book_row",
                         lambda _db: {"since": "2026-07-18", "ret": 4.2, "spy": 2.0, "n": 5})
 

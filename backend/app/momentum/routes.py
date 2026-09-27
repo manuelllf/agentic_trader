@@ -185,6 +185,9 @@ def _cierres_manuales(db: Session, senales: list[dict]) -> dict[int, dict]:
         where senal_id in :ids
         group by senal_id
     """).bindparams(bindparam("ids", expanding=True)), {"ids": senal_ids}).mappings().all()
+    from app.ledger import dividendos
+
+    cobrado = dividendos.por_senal(dividendos.cobros_omega(db))
     out: dict[int, dict] = {}
     for r in rows:
         compradas = Decimal(str(r["compradas"] or 0))
@@ -195,7 +198,9 @@ def _cierres_manuales(db: Session, senales: list[dict]) -> dict[int, dict]:
         coste_vendido = vendidas * coste_medio
         if coste_vendido <= 0:
             continue
-        ret = (Decimal(str(r["proceeds"] or 0)) / coste_vendido - 1) * 100
+        # Cerrada del todo: los dividendos netos que cobró entran en su resultado real.
+        divs = cobrado.get(r["senal_id"], Decimal("0")) if vendidas >= compradas else Decimal("0")
+        ret = ((Decimal(str(r["proceeds"] or 0)) + divs) / coste_vendido - 1) * 100
         exit_at = r["exit_at"]
         if isinstance(exit_at, str):
             exit_at = datetime.fromisoformat(exit_at)

@@ -1009,11 +1009,13 @@ class Approval(Base):
 
 
 class EquitySnapshot(Base):
-    """Cierre diario del patrimonio de un libro + cierre del SPY (la curva histórica).
+    """Cierre diario del patrimonio de un libro (la curva histórica). El S&P de referencia sale
+    de `PrecioCierre`.
 
     Una fila por (día de mercado, libro). El job diario upserta el día en curso y RELLENA los
-    huecos reproduciendo el log inmutable (asignaciones + trades) con cierres históricos de
-    yfinance — un backend caído un día no agujerea la curva. Ver `app/history.py`.
+    huecos reproduciendo el log inmutable (asignaciones + trades + dividendos derivados) con los
+    cierres de `precio_cierre` — un backend caído un día no agujerea la curva. Ver
+    `app/history.py`.
     """
 
     __tablename__ = "equity_snapshots"
@@ -1023,7 +1025,21 @@ class EquitySnapshot(Base):
     day: Mapped[date] = mapped_column(Date, index=True)
     book: Mapped[str] = mapped_column(String(8), index=True)
     equity: Mapped[Decimal] = mapped_column(DecimalStr(32))   # caja + posiciones al cierre
-    spy_close: Mapped[float | None] = mapped_column(Float)    # benchmark del mismo día
+
+
+class PrecioCierre(Base):
+    """Cierre de un ticker un día de bolsa, tal como se negoció, con el dividendo de fecha ex y el
+    split que entra en vigor ese día. Nada ajustado: la rentabilidad se calcula al leer (ver
+    `app/precios.py`). Solo tickers de alguna cartera y el SPY."""
+
+    __tablename__ = "precio_cierre"
+
+    ticker: Mapped[str] = mapped_column(String(16), primary_key=True)
+    dia: Mapped[date] = mapped_column(Date, primary_key=True)
+    cierre: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+    dividendo: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=Decimal("0"))
+    split: Mapped[Decimal] = mapped_column(Numeric(10, 6), default=Decimal("1"))
+    fuente: Mapped[str] = mapped_column(String(16))
 
 
 class Meta(Base):

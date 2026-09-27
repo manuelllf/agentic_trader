@@ -24,6 +24,9 @@ _DDL = [
     """create table momentum_ejecuciones (
         id integer primary key autoincrement, senal_id integer, accion text,
         acciones numeric, precio numeric, comision numeric, ejecutada_at timestamp, notas text)""",
+    """create table precio_cierre (
+        ticker text, dia date, cierre numeric, dividendo numeric default 0,
+        split numeric default 1, fuente text, primary key (ticker, dia))""",
 ]
 
 

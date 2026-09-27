@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.brokers import ibkr_web
@@ -32,7 +32,11 @@ def cash_disponible() -> dict[str, str] | None:
 def posiciones_abiertas(db: Session) -> dict[int, dict]:
     """Acciones netas (compras - ventas) y coste medio de compra por señal -- SOLO señales con
     neto > 0. Clave: senal_id. Reutilizable desde `routes.py` (la sala necesita saber cuántas
-    acciones quedan abiertas para poder cerrar una posición, total o en parte)."""
+    acciones quedan abiertas para poder cerrar una posición, total o en parte). Lleva los
+    dividendos netos que ha cobrado la señal (ver `ledger/dividendos.py`)."""
+    from app.ledger import dividendos
+
+    cobrado = dividendos.por_senal(dividendos.cobros_omega(db))
     rows = db.execute(text("""
         select e.senal_id, s.ticker, s.entry_price, s.ret,
                sum(case when e.accion = 'compra' then e.acciones else 0 end) as compradas,
@@ -53,6 +57,7 @@ def posiciones_abiertas(db: Session) -> dict[int, dict]:
         out[r["senal_id"]] = {
             "ticker": r["ticker"], "neto": neto, "coste_medio": D(str(r["coste_compras"])) / compradas,
             "entry_price": D(str(r["entry_price"])), "ret": D(str(r["ret"] or 0)),
+            "dividendos": cobrado.get(r["senal_id"], ZERO),
         }
     return out
 
@@ -66,8 +71,9 @@ def capital_desplegado(db: Session) -> Decimal:
 
 def pnl_abierto(db: Session) -> tuple[Decimal, Decimal]:
     """($ , %) de lo abierto de verdad: valor a precio EN VIVO (mismo `precio_vivo` que ya usa
-    la sala en cada tarjeta) menos lo invertido -- antes usaba el `ret` del job diario por
-    lotes, que durante el día no coincidía con el retorno en vivo que se ve en pantalla."""
+    la sala en cada tarjeta) más los dividendos netos cobrados, menos lo invertido -- antes
+    usaba el `ret` del job diario por lotes, que durante el día no coincidía con el retorno en
+    vivo que se ve en pantalla."""
     from app.momentum import signals
     invertido = ZERO
     valor_hoy = ZERO
@@ -76,16 +82,20 @@ def pnl_abierto(db: Session) -> tuple[Decimal, Decimal]:
         precio_hoy = signals.precio_vivo(p["ticker"])
         if precio_hoy is None:
             precio_hoy = float(p["entry_price"]) * (1 + float(p["ret"]) / 100)
-        valor_hoy += p["neto"] * D(str(precio_hoy))
+        valor_hoy += p["neto"] * D(str(precio_hoy)) + p["dividendos"]
     pnl = valor_hoy - invertido
     pct = (pnl / invertido * 100) if invertido else ZERO
     return pnl, pct
 
 
 def pnl_realizado(db: Session) -> tuple[Decimal, Decimal]:
-    """($ , %) de lo YA vendido: proceeds reales menos el coste medio ponderado de compra de
-    esas acciones concretas -- antes emparejaba el coste de TODAS las compras (también las
-    acciones que seguían abiertas) contra los proceeds de una venta parcial."""
+    """($ , %) de lo YA vendido: proceeds reales (más los dividendos netos de las posiciones
+    ya cerradas del todo) menos el coste medio ponderado de compra de esas acciones concretas
+    -- antes emparejaba el coste de TODAS las compras (también las acciones que seguían
+    abiertas) contra los proceeds de una venta parcial."""
+    from app.ledger import dividendos
+
+    cobrado = dividendos.por_senal(dividendos.cobros_omega(db))
     rows = db.execute(text("""
         select senal_id,
                sum(case when accion = 'compra' then acciones else 0 end) as compradas,
@@ -102,10 +112,13 @@ def pnl_realizado(db: Session) -> tuple[Decimal, Decimal]:
         compradas = D(str(r["compradas"] or 0))
         if compradas <= 0:
             continue
+        vendidas = D(str(r["vendidas"] or 0))
         coste_medio = D(str(r["coste_compras"])) / compradas
-        coste_vendido = D(str(r["vendidas"] or 0)) * coste_medio
+        coste_vendido = vendidas * coste_medio
         coste_total += coste_vendido
         pnl_total += D(str(r["proceeds"] or 0)) - coste_vendido
+        if vendidas >= compradas:          # cerrada del todo: sus dividendos ya son realizados
+            pnl_total += cobrado.get(r["senal_id"], ZERO)
     pct = (pnl_total / coste_total * 100) if coste_total else ZERO
     return pnl_total, pct
 
@@ -118,19 +131,31 @@ def retorno_combinado(db: Session) -> Decimal | None:
     HQ->QBTS -- $250 de beneficio reinvertidos enteros no deben contar dos veces).
 
     Simulación cronológica de una "caja" con TODAS las ejecuciones (cualquier ticker, orden
-    real): cada compra tira primero de lo ya recuperado en ventas anteriores; solo lo que la
-    caja no cubre es aportación tuya de verdad. None si nunca se ha aportado nada."""
+    real) y los dividendos netos cobrados en su fecha ex: cada compra tira primero de lo ya
+    recuperado en ventas y dividendos anteriores; solo lo que la caja no cubre es aportación tuya
+    de verdad. None si nunca se ha aportado nada."""
+    from app.ledger import dividendos
+    from app.models import MomentumEjecucion
     from app.momentum import signals
+    from app.precios import fecha_mercado
 
-    filas = db.execute(text("""
-        select accion, acciones, precio, comision from momentum_ejecuciones order by ejecutada_at
-    """)).mappings().all()
+    ejecuciones = sorted(db.execute(
+        select(MomentumEjecucion.accion, MomentumEjecucion.acciones, MomentumEjecucion.precio,
+               MomentumEjecucion.comision, MomentumEjecucion.ejecutada_at)).all(),
+        key=lambda e: e.ejecutada_at)
+    # Por día de bolsa, y dentro del día el dividendo primero: lo cobra quien tenía la acción
+    # la víspera. Las ejecuciones, en su orden real.
+    eventos = [(c.dia, 0, i, c.importe, None) for i, c in enumerate(dividendos.cobros_omega(db))]
+    eventos += [(fecha_mercado(e.ejecutada_at), 1, i, None, e) for i, e in enumerate(ejecuciones)]
     caja = ZERO
     aportado = ZERO
-    for f in filas:
-        importe = D(str(f["acciones"])) * D(str(f["precio"]))
-        comision = D(str(f["comision"]))
-        if f["accion"] == "compra":
+    for _dia, _tipo, _i, dividendo, f in sorted(eventos, key=lambda ev: ev[:3]):
+        if f is None:
+            caja += dividendo
+            continue
+        importe = D(str(f.acciones)) * D(str(f.precio))
+        comision = D(str(f.comision))
+        if f.accion == "compra":
             coste = importe + comision
             if caja >= coste:
                 caja -= coste

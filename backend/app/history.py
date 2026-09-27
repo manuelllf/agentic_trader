@@ -1,12 +1,14 @@
-"""Curva histórica — cierre diario del patrimonio por libro vs S&P 500 (gratis, solo yfinance).
+"""Curva histórica — cierre diario del patrimonio por libro vs S&P 500, con dividendos.
 
 Dos piezas:
-- `record_snapshots`: upserta el cierre de HOY y rellena los huecos desde el último snapshot
-  reproduciendo el log inmutable (asignaciones + trades) con cierres históricos. Idempotente:
-  correrlo dos veces deja lo mismo. Lo llama el job diario del scheduler y el arranque.
+- `record_snapshots`: trae a `precio_cierre` los cierres que falten (lo que ha estado en alguna
+  cartera y el SPY), upserta el cierre de HOY y rellena los huecos desde el último snapshot
+  reproduciendo el log inmutable (asignaciones + trades + dividendos cobrados) con esos
+  cierres. Idempotente. Lo llama el job diario del scheduler y el arranque.
 - `series`: la curva para el frontend, en índice base 100 PONDERADO POR TIEMPO: las
   aportaciones/retiradas del usuario no cuentan como rentabilidad (se descuentan del retorno
-  de su día), así la comparación contra el S&P es honesta con flujos de por medio.
+  de su día), así la comparación contra el S&P es honesta con flujos de por medio. El S&P es
+  su rentabilidad total, con los dividendos igual que la cartera (netos en el libro real).
 
 La réplica de caja usa el MISMO criterio cent-exacto que `ledger.available_cash` (cada trade
 liquida redondeado a céntimos antes de sumar).
@@ -17,44 +19,53 @@ from __future__ import annotations
 import logging
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app import precios as precios_mod
+from app.ledger import dividendos
 from app.ledger.money import D, to_cents
-from app.models import BOOK_REAL, BOOK_SHADOW, Allocation, EquitySnapshot, Trade
+from app.models import (
+    BOOK_REAL,
+    BOOK_SHADOW,
+    Allocation,
+    EquitySnapshot,
+    MomentumEjecucion,
+    MomentumSenal,
+    Trade,
+)
 
 logger = logging.getLogger(__name__)
 ZERO = Decimal("0")
+_market_date = precios_mod.fecha_mercado
 
 
-def _market_date(ts: datetime) -> date:
-    """Fecha de mercado de un timestamp de la BD (UTC naive) en la zona de la bolsa."""
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=UTC)
-    return ts.astimezone(ZoneInfo(settings.scan_timezone)).date()
+def _inicio_por_ticker(db: Session) -> dict[str, date]:
+    """Primer día en cartera de cada ticker (libros de Alpha y posiciones de Omega); el SPY,
+    desde el primero de todos."""
+    inicio: dict[str, date] = {}
+    filas = [*db.execute(select(Trade.ticker, func.min(Trade.created_at)).group_by(Trade.ticker)),
+             *db.execute(select(MomentumSenal.ticker, func.min(MomentumEjecucion.ejecutada_at))
+                         .join(MomentumSenal, MomentumSenal.id == MomentumEjecucion.senal_id)
+                         .group_by(MomentumSenal.ticker))]
+    for ticker, ts in filas:
+        if ts is not None:
+            d = _market_date(ts)
+            inicio[ticker] = min(d, inicio.get(ticker, d))
+    if inicio:
+        inicio[precios_mod.REFERENCIA] = min(inicio.values())
+    return inicio
 
 
-def _daily_closes(tickers: list[str], start: date) -> dict[str, dict[date, float]]:
-    """Cierres diarios por ticker desde `start` (incluye el día en curso si el mercado abrió)."""
-    import yfinance as yf
-
-    out: dict[str, dict[date, float]] = {}
+def actualizar_precios(db: Session) -> int:
+    """Pone `precio_cierre` al día para todo lo que ha estado en alguna cartera y el SPY."""
     try:
-        df = yf.download(tickers, start=start, interval="1d", auto_adjust=True,
-                         group_by="ticker", threads=True, progress=False, timeout=10)
-        multi = getattr(df.columns, "nlevels", 1) > 1
-        for t in tickers:
-            try:
-                s = (df[t]["Close"] if multi else df["Close"]).dropna()
-                out[t] = {idx.date(): float(v) for idx, v in s.items()}
-            except Exception:
-                pass
+        return precios_mod.al_dia(db, _inicio_por_ticker(db))
     except Exception:
-        logger.exception("yfinance no devolvió cierres históricos")
-    return out
+        db.rollback()
+        logger.exception("No se pudieron traer los cierres a precio_cierre")
+        return 0
 
 
 def _close_on(closes: dict[date, float] | None, day: date) -> float | None:
@@ -92,48 +103,60 @@ def _equity_at_close(trades: list[Trade], allocs: list[Allocation],
     return to_cents(cash) + value
 
 
-def record_snapshots(db: Session, books: tuple[str, ...] = (BOOK_SHADOW, BOOK_REAL)) -> int:
-    """Upserta los cierres pendientes de cada libro. Devuelve cuántas filas se escribieron."""
+def record_snapshots(db: Session, books: tuple[str, ...] = (BOOK_SHADOW, BOOK_REAL),
+                     desde_cero: bool = False) -> int:
+    """Upserta los cierres pendientes de cada libro. Devuelve cuántas filas se escribieron.
+    `desde_cero` rehace la curva entera (tras cambiar cómo se calcula)."""
+    actualizar_precios(db)
     written = 0
     for book in books:
         try:
-            written += _record_book(db, book)
+            written += _record_book(db, book, desde_cero)
         except Exception:
+            db.rollback()
             logger.exception("Snapshot de la curva falló (book=%s)", book)
     return written
 
 
-def _record_book(db: Session, book: str) -> int:
+def _record_book(db: Session, book: str, desde_cero: bool = False) -> int:
     trades = list(db.scalars(
         select(Trade).where(Trade.book == book).order_by(Trade.created_at)))
     if not trades:
         return 0  # la curva empieza con la primera compra (igual que /performance)
     start = _market_date(trades[0].created_at)
     # Desde el último snapshot INCLUSIVE: el día en curso se reescribe con el cierre definitivo.
-    last = db.scalar(select(func.max(EquitySnapshot.day))
-                     .where(EquitySnapshot.book == book))
+    last = None if desde_cero else db.scalar(
+        select(func.max(EquitySnapshot.day)).where(EquitySnapshot.book == book))
     from_day = max(start, last) if last else start
 
     tickers = sorted({t.ticker for t in trades})
-    closes = _daily_closes([*tickers, "SPY"], start)
-    spy = closes.get("SPY")
-    if not spy:
-        return 0  # sin benchmark no hay días de mercado que apuntar (se reintenta mañana)
+    cierres = precios_mod.series(db, [*tickers, precios_mod.REFERENCIA], desde=start)
+    dias = [c.dia for c in cierres.get(precios_mod.REFERENCIA, []) if c.dia >= from_day]
+    if not dias:
+        return 0  # sin cierres del SPY no hay días de bolsa que apuntar (se reintenta mañana)
+    closes = {t: {c.dia: c.cierre for c in lista} for t, lista in cierres.items()}
     allocs = list(db.scalars(select(Allocation).where(Allocation.book == book)))
+    cobros = dividendos.cobros(db, book, trades)
 
     n = 0
-    for day in sorted(d for d in spy if from_day <= d):
-        equity = _equity_at_close(trades, allocs, closes, day)
+    for day in dias:
+        equity = (_equity_at_close(trades, allocs, closes, day)
+                  + sum((c.importe for c in cobros if c.dia <= day), ZERO))
         row = db.scalar(select(EquitySnapshot).where(
             EquitySnapshot.day == day, EquitySnapshot.book == book))
         if row is None:
-            db.add(EquitySnapshot(day=day, book=book, equity=equity, spy_close=spy.get(day)))
+            db.add(EquitySnapshot(day=day, book=book, equity=equity))
         else:
             row.equity = equity
-            row.spy_close = spy.get(day)
         n += 1
     db.commit()
     return n
+
+
+def _indice_sp(db: Session, book: str, desde: date, hasta: date) -> dict[date, float]:
+    """Rentabilidad total del S&P (SPY) con los dividendos como los cobra este libro."""
+    serie = precios_mod.serie(db, precios_mod.REFERENCIA, desde=desde, hasta=hasta)
+    return precios_mod.indice(serie, float(dividendos.parte_cobrada(book)))
 
 
 def series(db: Session, book: str) -> dict:
@@ -144,12 +167,15 @@ def series(db: Session, book: str) -> dict:
     """
     rows = list(db.scalars(select(EquitySnapshot).where(EquitySnapshot.book == book)
                            .order_by(EquitySnapshot.day)))
+    if not rows:
+        return {"book": book, "series": []}
     alloc_days = [(_market_date(a.created_at), a.amount)
                   for a in db.scalars(select(Allocation).where(Allocation.book == book))]
+    sp = _indice_sp(db, book, rows[0].day, rows[-1].day)
 
     out: list[dict] = []
     index = 100.0
-    spy_base: float | None = None
+    sp_base: float | None = None
     prev: EquitySnapshot | None = None
     for r in rows:
         if prev is not None and prev.equity > ZERO:
@@ -157,14 +183,14 @@ def series(db: Session, book: str) -> dict:
             # (incluye fines de semana — el lunes descuenta lo del sábado).
             flows = sum((amt for d, amt in alloc_days if prev.day < d <= r.day), ZERO)
             index *= max(0.0, float((r.equity - flows) / prev.equity))
-        if spy_base is None and r.spy_close:
-            spy_base = r.spy_close
-        spy_index = round(r.spy_close / spy_base * 100, 2) if (r.spy_close and spy_base) else None
+        nivel = sp.get(r.day)
+        if sp_base is None and nivel:
+            sp_base = nivel
         out.append({
             "date": r.day.isoformat(),
             "equity": str(r.equity),
             "index": round(index, 2),
-            "spy_index": spy_index,
+            "spy_index": round(nivel / sp_base * 100, 2) if (nivel and sp_base) else None,
         })
         prev = r
     return {"book": book, "series": out}
@@ -174,7 +200,8 @@ def rentabilidad_total(db: Session, book: str, precios: dict[str, float], spy_no
                        hoy: date | None = None) -> tuple[float | None, float | None]:
     """Cartera y S&P desde la primera compra, en % y ponderado por tiempo como la curva: los
     cierres hasta ayer encadenados y el tramo de hoy a precio vivo. (None, None) sin cierres.
-    El patrimonio de hoy sale de `_equity_at_close`, igual que cada punto de la curva."""
+    El patrimonio de hoy sale de `_equity_at_close` más los dividendos cobrados, igual que cada
+    punto de la curva."""
     hoy = hoy or _market_date(datetime.now(UTC))
     rows = list(db.scalars(select(EquitySnapshot).where(
         EquitySnapshot.book == book, EquitySnapshot.day < hoy).order_by(EquitySnapshot.day)))
@@ -184,10 +211,13 @@ def rentabilidad_total(db: Session, book: str, precios: dict[str, float], spy_no
     ult, punto = rows[-1], serie[-1]
     allocs = list(db.scalars(select(Allocation).where(Allocation.book == book)))
     trades = list(db.scalars(select(Trade).where(Trade.book == book).order_by(Trade.created_at)))
-    equity_now = _equity_at_close(trades, allocs, {t: {hoy: px} for t, px in precios.items()},
-                                  hoy)
+    equity_now = (_equity_at_close(trades, allocs, {t: {hoy: px} for t, px in precios.items()},
+                                   hoy)
+                  + dividendos.total(db, book, trades, hasta=hoy))
     flows = sum((a.amount for a in allocs if _market_date(a.created_at) > ult.day), ZERO)
     index = punto["index"] * max(0.0, float((equity_now - flows) / ult.equity))
-    spy = (punto["spy_index"] * spy_now / ult.spy_close
-           if (spy_now and ult.spy_close and punto["spy_index"] is not None) else None)
+    cierre_ult = precios_mod.cierre_en(
+        precios_mod.serie(db, precios_mod.REFERENCIA, hasta=ult.day), ult.day)
+    spy = (punto["spy_index"] * spy_now / cierre_ult
+           if (spy_now and cierre_ult and punto["spy_index"] is not None) else None)
     return round(index - 100, 2), (round(spy - 100, 2) if spy is not None else None)

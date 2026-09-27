@@ -14,9 +14,12 @@ from decimal import Decimal
 import yfinance as yf
 from sqlalchemy.orm import Session
 
+from app import precios
+from app.ledger import dividendos
 from app.ledger import service as ledger
 from app.ledger.money import D, to_cents
 from app.models import BOOK_SHADOW, Trade
+from app.precios import fecha_mercado
 
 logger = logging.getLogger(__name__)
 ZERO = Decimal("0")
@@ -114,39 +117,69 @@ def _spy_reference(db: Session, book: str, first: Trade) -> float | None:
     return px
 
 
+def _dividendos_de_la_posicion(cobros: list, trades: list[Trade], ticker: str) -> Decimal:
+    """Lo cobrado por la posición abierta de `ticker` desde que se abrió (la última vez que pasó
+    de no tener acciones a tenerlas)."""
+    acciones, apertura = ZERO, None
+    for t in trades:
+        if t.ticker != ticker:
+            continue
+        antes = acciones
+        acciones += t.quantity if t.side == "buy" else -t.quantity
+        if antes <= ZERO < acciones:
+            apertura = fecha_mercado(t.created_at)
+    if apertura is None:
+        return ZERO
+    return sum((c.importe for c in cobros if c.ticker == ticker and c.dia > apertura), ZERO)
+
+
+def _sp_desde(db: Session, book: str, ref: float, desde, ultimo: float) -> float:  # noqa: ANN001
+    """% del S&P desde `ref` con sus dividendos cobrados como los cobra el libro (sin
+    reinvertir: es el tramo corto sin curva todavía)."""
+    divs = sum(c.dividendo for c in precios.serie(db, precios.REFERENCIA, desde=desde)
+               if c.dia > desde)
+    return round(((ultimo + divs * float(dividendos.parte_cobrada(book))) / ref - 1) * 100, 2)
+
+
 def performance(db: Session, book: str = BOOK_SHADOW) -> dict:
-    """Rentabilidad de la cartera (a precio vivo) vs S&P 500 desde la primera compra."""
+    """Rentabilidad de la cartera (a precio vivo, con dividendos) vs S&P 500 desde la primera
+    compra."""
     positions = ledger.open_positions(db, book)
     prices = live_prices([p.ticker for p in positions])
+    trades = db.query(Trade).filter(Trade.book == book).order_by(Trade.created_at).all()
+    cobros = dividendos.cobros(db, book, trades)
     # P&L realizado por ticker (ventas ya hechas) → para el detalle por acción.
     realized_by_t: dict[str, Decimal] = {}
-    for t in db.query(Trade).filter(Trade.book == book).all():
+    for t in trades:
         if t.realized_pnl is not None:
             realized_by_t[t.ticker] = realized_by_t.get(t.ticker, ZERO) + t.realized_pnl
     cost = ZERO
     value = ZERO
+    divs_total = ZERO
     rows = []
     for p in positions:
         px = D(prices[p.ticker]) if p.ticker in prices else p.avg_cost
         c = to_cents(p.quantity * p.avg_cost)   # coste base (céntimos)
         v = to_cents(p.quantity * px)           # valor de mercado (céntimos)
+        divs = _dividendos_de_la_posicion(cobros, trades, p.ticker)
         cost += c
         value += v
+        divs_total += divs
         rows.append({
             "ticker": p.ticker, "quantity": str(p.quantity),
             "avg_cost": str(p.avg_cost), "price": str(to_cents(px)),
             "value": str(v), "cost_basis": str(c),
             "unrealized_pnl": str(v - c),
+            "dividends": str(divs),
             "realized_pnl": str(to_cents(realized_by_t.get(p.ticker, ZERO))),
-            "pnl_pct": round(float(px / p.avg_cost - 1) * 100, 2) if p.avg_cost else 0.0,
+            "pnl_pct": round(float((v + divs) / c - 1) * 100, 2) if c else 0.0,
         })
-    open_ret = round(float(value / cost - 1) * 100, 2) if cost else 0.0
-    first = (db.query(Trade).filter(Trade.book == book)
-             .order_by(Trade.created_at).first())
+    open_ret = round(float((value + divs_total) / cost - 1) * 100, 2) if cost else 0.0
+    first = trades[0] if trades else None
     # Benchmark simétrico: SPY desde el MISMO minuto de la primera compra (ref persistida).
     spy_ref = _spy_reference(db, book, first) if first else None
     spy_last = _spy_last() if spy_ref else None
-    spy_ret = (round((spy_last / spy_ref - 1) * 100, 2)
+    spy_ret = (_sp_desde(db, book, spy_ref, fecha_mercado(first.created_at), spy_last)
                if (spy_ref and spy_last) else None)
     # La cifra principal es la de toda la vida del libro (la curva), no la de las posiciones que
     # quedan abiertas tras la última rotación; esa va aparte como `open_return_pct`.

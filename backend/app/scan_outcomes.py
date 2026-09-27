@@ -1,54 +1,72 @@
 """Audit trace reader: compares returns by funnel group (cartera/seleccionados/descartados/SPY).
 
+Rentabilidad total, con dividendos, para todos los grupos y el SPY: cierres ajustados de una
+misma serie, desde el cierre del día del escaneo. Son carteras hipotéticas, no dinero: dividendos
+brutos, y no se guardan en `precio_cierre` (serían cientos de tickers que no están en ninguna
+cartera).
+
 Offline evaluation; never sent back to model."""
 
 from __future__ import annotations
 
 import logging
 import time
+from datetime import date, timedelta
 from statistics import median
 
-import yfinance as yf
 from sqlalchemy import select
 
 from app import scan_audit
 from app.llm.jev import PREGUNTAS
 from app.models import ScanAudit, _utcnow, utc_iso
+from app.precios import REFERENCIA, fecha_mercado
 
 logger = logging.getLogger(__name__)
 
 CORTE_N = 10  # Cut boundary: N worst admitted vs N best rejected.
 
-_SPY_TTL = 900
-_spy_cache: tuple[float, object] | None = None
+_TTL = 900
+_cache: dict = {}
 
 
-def _spy_closes():
-    """Daily SPY closes (6mo) cached; one series for all cohorts."""
-    global _spy_cache
-    now = time.time()
-    if _spy_cache and now - _spy_cache[0] < _SPY_TTL:
-        return _spy_cache[1]
+def _cierres_ajustados(tickers: list[str], desde: date) -> dict[str, list[tuple[date, float]]]:
+    """Cierres ajustados (dividendos reinvertidos) desde `desde`, cacheados 15 min: entre dos
+    puntos de la misma serie, la rentabilidad es la total. El último punto es el precio de hoy
+    si la bolsa está abierta."""
+    import yfinance as yf
+
+    clave = (tuple(sorted(tickers)), desde)
+    ahora = time.time()
+    if clave in _cache and ahora - _cache[clave][0] < _TTL:
+        return _cache[clave][1]
     try:
-        s = yf.Ticker("SPY").history(period="6mo", interval="1d",
-                                     auto_adjust=True, timeout=6)["Close"].dropna()
-        s.index = s.index.tz_localize(None)
+        df = yf.download(sorted(tickers), start=desde, interval="1d", auto_adjust=True,
+                         group_by="ticker", threads=True, progress=False, timeout=10)
     except Exception:
-        logger.warning("SPY no disponible para la lectura de outcomes.")
-        return None
-    _spy_cache = (now, s)
-    return s
+        logger.warning("Yahoo no devolvió cierres para la lectura de outcomes.")
+        return {}
+    multi = getattr(df.columns, "nlevels", 1) > 1
+    out: dict[str, list[tuple[date, float]]] = {}
+    for t in tickers:
+        try:
+            s = (df[t]["Close"] if multi else df["Close"]).dropna()
+        except Exception:
+            continue
+        if len(s):
+            out[t] = [(i.date(), float(v)) for i, v in s.items()]
+    _cache.clear()                     # una sola entrada: la de los escaneos que se miran ahora
+    _cache[clave] = (ahora, out)
+    return out
 
 
-def _spy_ret_since(day) -> float | None:  # noqa: ANN001
-    """% del SPY desde el cierre del día del escaneo hasta el último cierre."""
-    s = _spy_closes()
-    if s is None or not len(s):
+def _ret_desde(serie: list[tuple[date, float]] | None, dia: date) -> float | None:
+    """% desde el cierre de `dia` (o el último anterior) hasta el último punto de la serie."""
+    if not serie:
         return None
-    base = s.loc[:str(day)]
-    if not len(base):
+    base = [v for d, v in serie if d <= dia]
+    if not base or not base[-1]:
         return None
-    return round((float(s.iloc[-1]) / float(base.iloc[-1]) - 1) * 100, 2)
+    return round((serie[-1][1] / base[-1] - 1) * 100, 2)
 
 
 def _stats(rets: list[float]) -> dict:
@@ -74,8 +92,6 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
     """Cohorts with returns (newest first); names always included.
 
     Route determines visibility (public aggregate vs signals with session)."""
-    from app.tracking import live_prices
-
     fechas = scan_audit.scan_dates(db, limit)
     if not fechas:
         return []
@@ -98,14 +114,12 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
 
     tickers = ({r.ticker for r in deep_rows}
                | {r.ticker for rs in fuera_by_scan.values() for r in rs}
-               | {r.ticker for r in jev_rows})
-    precios = live_prices(sorted(tickers))
+               | {r.ticker for r in jev_rows} | {REFERENCIA})
+    desde = min(fecha_mercado(at) for at in fechas) - timedelta(days=7)
+    series = _cierres_ajustados(sorted(tickers), desde)
 
     def _ret(r: ScanAudit) -> float | None:
-        px = precios.get(r.ticker)
-        if not px or not r.price:
-            return None
-        return round((px / r.price - 1) * 100, 2)
+        return _ret_desde(series.get(r.ticker), fecha_mercado(r.scan_at))
 
     # DB stores UTC naive; subtract naive from naive.
     hoy = _utcnow().replace(tzinfo=None)
@@ -150,7 +164,7 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
                 "descartados": _grupo(descartados),
                 # Equiponderada (20% cada una): la media simple ES su rentabilidad bruta.
                 "jev": _grupo(jev),
-                "spy": _spy_ret_since(at.date()),
+                "spy": _ret_desde(series.get(REFERENCIA), fecha_mercado(at)),
             },
             "pairs": pares,
             "corte": {"fuera": _lado(fuera), "dentro": _lado(dentro)},

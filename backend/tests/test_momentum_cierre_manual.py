@@ -58,3 +58,22 @@ def test_sin_resolver_no_hay_resultado_del_sistema(db) -> None:
     (s,) = historial(db)
     assert float(s["cierre_manual"]["ret"]) == pytest.approx(25.5, abs=0.1)
     assert s["cierre_manual"]["ret_sistema"] is None
+
+
+def test_los_dividendos_netos_entran_en_tu_cierre(db) -> None:
+    """Compra el 10, fecha ex el 15, venta el 20: cobras 100 × 0,50 $ menos el 15 % de EE. UU."""
+    db.execute(text("""
+        insert into momentum_senales (ticker, tipo, entry_date, entry_price, resuelta, estado)
+        values ('HQ', 'zigzag', '2026-09-10', 10, false, 'vendida')"""))
+    sid = db.execute(text("select max(id) from momentum_senales")).scalar()
+    for accion, precio, at in (("compra", 10, "2026-09-10 15:00:00"),
+                               ("venta", 11, "2026-09-20 15:00:00")):
+        db.execute(text("""
+            insert into momentum_ejecuciones (senal_id, accion, acciones, precio, comision,
+                ejecutada_at) values (:s, :a, 100, :p, 0, :at)"""),
+                   {"s": sid, "a": accion, "p": precio, "at": at})
+    db.execute(text("""insert into precio_cierre (ticker, dia, cierre, dividendo, split, fuente)
+                       values ('HQ', '2026-09-15', 10.5, 0.5, 1, 'prueba')"""))
+    db.commit()
+    (s,) = historial(db)
+    assert float(s["cierre_manual"]["ret"]) == pytest.approx(14.25)   # (1.100 + 42,50) / 1.000

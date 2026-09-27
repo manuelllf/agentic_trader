@@ -58,8 +58,7 @@ def test_reset_shadow_keeps_capital_and_leaves_real_untouched(db) -> None:
     ledger.record_buy(db, "HIG", "5", "100", "S-REF", book=BOOK_SHADOW)   # sombra: caja 1500 + posición
     ledger.allocate(db, 500, book=BOOK_REAL)
     ledger.record_buy(db, "CP", "3", "50", "R-REF", book=BOOK_REAL)       # real: no debe tocarse
-    db.add(EquitySnapshot(day=date(2026, 7, 14), book=BOOK_SHADOW,
-                          equity=Decimal("2000.00"), spy_close=750.0))
+    db.add(EquitySnapshot(day=date(2026, 7, 14), book=BOOK_SHADOW, equity=Decimal("2000.00")))
     db.add(Meta(key="spy_ref:shadow:1", value="750.0"))
     db.commit()
 
