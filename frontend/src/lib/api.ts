@@ -1,4 +1,5 @@
 // Cliente HTTP hacia el backend FastAPI.
+import { supabase, tokenSesion } from "./liga/supabase";
 import type { FunnelScan } from "./scan";
 import type {
   AppConfig, Approval, ApprovalsResponse, DemoRunOverrides, DemoStatus, EquityHistory,
@@ -48,7 +49,9 @@ function onUnauthorized() {
 async function request(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  const token = getToken();
+  // La sesión de la cuenta solo abre las salas con el 2FA superado; si no, la contraseña de siempre.
+  const sesion = await tokenSesion();
+  const token = sesion?.aal === "aal2" ? sesion.token : getToken();
   const headers = {
     ...(init?.headers as Record<string, string> | undefined),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -152,15 +155,17 @@ export async function checkAuth(): Promise<boolean> {
   if (authOk != null) return authOk;
   try {
     const res = await request("/auth/check");   // request() ya añade el Authorization
-    authOk = res.status !== 401;   // 401 → hay que loguear; cualquier otra cosa → deja pasar
+    // 401 → hay que entrar; 403/404 → una cuenta que no es admin (o sin 2FA). Lo demás deja pasar.
+    authOk = ![401, 403, 404].includes(res.status);
   } catch {
     authOk = true;                // backend inalcanzable: la app mostrará su banner de conexión
   }
   return authOk;
 }
 
-export function logout() {
+export async function logout() {
   clearToken();
+  await supabase()?.auth.signOut();
   if (typeof window !== "undefined") window.location.reload();
 }
 

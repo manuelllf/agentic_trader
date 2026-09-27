@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Sesion } from "./_sesion/Sesion";
 
 // Página de espera mientras se construye la liguilla (LIGA_ENABLED apagado).
 export const metadata: Metadata = {
@@ -12,6 +13,7 @@ export default function Proximamente() {
     <main className="sencilla">
       <header className="sencilla-top">
         <span className="wordmark">liguilla</span>
+        <Sesion />
       </header>
 
       <section className="sencilla-cuerpo" aria-labelledby="titular">

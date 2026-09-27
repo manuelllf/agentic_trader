@@ -182,3 +182,23 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .esqueleto { display: flex; flex-direction: column; }
 .lg .esqueleto-fila { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
 .lg .esqueleto-bloque { flex: 0 0 auto; border-radius: 6px; background: var(--surface2); }
+
+/* Cuenta: entrar y verificación en dos pasos. */
+.lg .form { display: flex; flex-direction: column; gap: 22px; margin-top: 28px; }
+.lg .campo { display: flex; flex-direction: column; gap: 8px; }
+.lg .lbl { font-size: 19px; font-weight: 800; letter-spacing: -.01em; color: var(--ink); }
+.lg .inp {
+  width: 100%; min-height: 52px; padding: 12px 16px; border: 1.5px solid var(--line2);
+  border-radius: 16px; background: var(--bg); color: var(--ink); font: inherit;
+  font-size: 17px; line-height: 1.45;
+}
+.lg .inp:focus { outline: none; border-color: var(--ink2); }
+.lg .inp::placeholder { color: var(--muted); }
+.lg .inp.codigo { font-size: 24px; font-weight: 800; letter-spacing: .3em; text-align: center; }
+.lg .aviso { font-size: 16px; line-height: 1.5; color: var(--bad); }
+.lg .nota { font-size: 16px; line-height: 1.5; color: var(--ink2); }
+.lg .qr { display: block; width: 200px; height: 200px; margin: 4px auto 0; padding: 10px;
+  border-radius: 16px; background: #FFFFFF; }
+.lg .secreto { font-size: 15px; word-break: break-all; color: var(--ink2); }
+.lg .sesion { display: flex; align-items: center; gap: 4px; }
+.lg .sesion .alias { font-size: 15px; color: var(--muted); margin-right: 4px; }

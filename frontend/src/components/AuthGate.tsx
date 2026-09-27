@@ -77,6 +77,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
             >
               {busy ? "Entrando…" : "Entrar"}
             </button>
+            <a href={`/entrar?next=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/admin")}`}
+               className="block py-3 text-center text-[12.5px]" style={{ color: "#898781" }}>
+              Entrar con tu cuenta
+            </a>
           </form>
         )}
       </div>
