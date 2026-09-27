@@ -72,10 +72,11 @@ export function Sesion() {
       </button>
       {abierto && (
         <div className="cuenta-menu" role="menu">
+          <Link href="/cuenta" role="menuitem" className="cuenta-item">Tu cuenta</Link>
           {yo?.admin && (
             <Link href={panel} role="menuitem" className="cuenta-item">Panel de control</Link>
           )}
-          <button type="button" role="menuitem" className="cuenta-item" onClick={salir}>
+          <button type="button" role="menuitem" className="cuenta-item salir" onClick={salir}>
             Salir
           </button>
         </div>

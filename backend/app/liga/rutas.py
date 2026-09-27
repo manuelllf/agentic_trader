@@ -8,6 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.liga import acceso, rutas_publicas
@@ -39,6 +40,28 @@ class Sesion(BaseModel):
 def entrar(body: EntrarIn, request: Request) -> Sesion:
     """Pública y sin BD de usuario: resuelve el alias en un servicio acotado (`acceso`)."""
     return Sesion(**acceso.entrar_con_alias(body.usuario, body.clave, acceso.ip_cliente(request)))
+
+
+class CambioYo(BaseModel):
+    alias: str = Field(min_length=1, max_length=40)
+
+
+@router.patch("/yo", response_model=Yo)
+def cambiar_yo(body: CambioYo, db: Session = Depends(db_usuario)) -> Yo:
+    """Cambiar el alias. Formato, nombres reservados y unicidad los decide la BD."""
+    alias = body.alias.strip().lower()
+    try:
+        with db.begin_nested():
+            db.execute(text("update liga.perfiles set alias = :a where id = (select auth.uid())"),
+                       {"a": alias})
+    except IntegrityError as e:
+        diag = getattr(e.orig, "diag", None)
+        if getattr(e.orig, "sqlstate", None) == "23505":
+            raise HTTPException(409, "Ese nombre ya lo tiene otra persona.") from e
+        if diag is not None and diag.constraint_name == "alias_formato":
+            raise HTTPException(422, "De 3 a 20 caracteres: minúsculas, números, _ o punto.") from e
+        raise HTTPException(422, "Ese nombre está reservado. Prueba con otro.") from e
+    return yo(db)
 
 
 @router.get("/yo", response_model=Yo)

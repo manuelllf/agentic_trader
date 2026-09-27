@@ -57,8 +57,9 @@ export default function Muestrario() {
               </svg>
             </button>
             <div className="cuenta-menu" role="menu">
+              <a className="cuenta-item" role="menuitem" href="#">Tu cuenta</a>
               <a className="cuenta-item" role="menuitem" href="#">Panel de control</a>
-              <button type="button" className="cuenta-item" role="menuitem">Salir</button>
+              <button type="button" className="cuenta-item salir" role="menuitem">Salir</button>
             </div>
           </div>
         </div>

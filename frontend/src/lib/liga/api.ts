@@ -37,6 +37,25 @@ export async function entrarConAlias(
   return error ? "No se pudo entrar ahora. Prueba en un momento." : null;
 }
 
+/** Cambia el alias. Devuelve el perfil nuevo o el motivo por el que no se pudo. */
+export async function cambiarAlias(alias: string): Promise<Yo | string> {
+  const sesion = await tokenSesion();
+  if (!sesion) return "Tu sesión ha caducado. Vuelve a entrar.";
+  try {
+    const res = await fetch(`${API_URL}/liga/yo`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${sesion.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ alias }),
+      cache: "no-store",
+    });
+    if (res.ok) return (await res.json()) as Yo;
+    const cuerpo = (await res.json().catch(() => ({}))) as { detail?: unknown };
+    return typeof cuerpo.detail === "string" ? cuerpo.detail : "No se pudo guardar. Prueba otra vez.";
+  } catch {
+    return "No se pudo guardar. Prueba otra vez.";
+  }
+}
+
 /** Quién eres según el backend; null sin sesión o si no responde. */
 export async function getYo(): Promise<Yo | null> {
   const sesion = await tokenSesion();

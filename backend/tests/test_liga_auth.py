@@ -181,6 +181,19 @@ def test_yo_dice_quien_eres_y_si_ves_el_panel(bd) -> None:  # noqa: ANN001
         (True, False, ["usuario", "admin"])
     assert cliente.get("/liga/yo").status_code == 401
 
+    # Cambiar el alias: la BD decide formato, reservados y unicidad.
+    cab = {"Authorization": f"Bearer {_token(sub=usuario)}"}
+    nuevo = f"nuevo_{usuario[:6]}"
+    r = cliente.patch("/liga/yo", json={"alias": f"  {nuevo.upper()} "}, headers=cab)
+    assert (r.status_code, r.json()["alias"]) == (200, nuevo)
+    assert cliente.patch("/liga/yo", json={"alias": "a b"}, headers=cab).status_code == 422
+    assert cliente.patch("/liga/yo", json={"alias": "alpha"}, headers=cab).status_code == 422
+    assert cliente.patch("/liga/yo", json={"alias": "admin"}, headers=cab).status_code == 422
+    otro = bd()
+    r = cliente.patch("/liga/yo", json={"alias": nuevo},
+                      headers={"Authorization": f"Bearer {_token(sub=otro)}"})
+    assert r.status_code == 409
+
 
 def test_la_sesion_de_usuario_es_su_usuario_en_postgres(bd) -> None:  # noqa: ANN001
     from sqlalchemy import text

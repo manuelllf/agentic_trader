@@ -219,4 +219,4 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   font-size: 16px; font-weight: 700; text-align: left; text-decoration: none; cursor: pointer;
 }
 .lg .cuenta-item:active { background: var(--surface); }
-.lg .cuenta-item + .cuenta-item { color: var(--ink2); font-weight: 400; }
+.lg .cuenta-item.salir { color: var(--ink2); font-weight: 400; }
