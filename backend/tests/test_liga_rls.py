@@ -139,6 +139,11 @@ def test_alias_reservado_o_con_mayusculas_no_entra(cx):
     _como(cx, a)
     _falla(cx, "update liga.perfiles set alias = 'alpha' where id = %s", (a,))
     _falla(cx, "update liga.perfiles set alias = 'Mayus' where id = %s", (a,))
+    _falla(cx, "update liga.perfiles set alias = 'admin' where id = %s", (a,))
+    jefe = _usuario(cx, rol="admin")
+    _como(cx, jefe, aal="aal2")
+    assert cx.execute("update liga.perfiles set alias = 'admin' where id = %s",
+                      (jefe,)).rowcount == 1
 
 
 def test_nadie_se_da_roles_ni_planes(cx):
