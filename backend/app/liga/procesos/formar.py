@@ -27,6 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import precios
+from app.liga import gestion
 from app.liga.models import Inscripcion, Jornada, Posicion, Receta
 from app.liga.motor.catalogo import EmpresaFoto, RecetaNoValida
 from app.liga.motor.rentabilidad import pesos_mantenidos
@@ -349,6 +350,7 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
     j.estado = "formada"
     db.execute(text("update liga.temporadas set estado = 'en_juego' "
                     "where id = :t and estado = 'programada'"), {"t": j.temporada_id})
+    pro_mensual = gestion.dar_creditos_pro_mensual(db, j.id, actor)
     auditar(db, "proceso.formar", f"jornada:{j.id}",
             {"inscripciones": len(entradas), "omitidas": len(plan.omitidas),
              "sin_precio": sorted(sin_precio),
@@ -356,5 +358,5 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
     db.commit()
     return para_json({"jornada_id": j.id, "estado": j.estado, "inscripciones": len(entradas),
                       "sin_precio": sorted(sin_precio), "plan_b": ctx.plan_b,
-                      **_resumen(plan)})
+                      "pro_mensual": pro_mensual, **_resumen(plan)})
 

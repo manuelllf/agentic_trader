@@ -101,3 +101,23 @@ def comprobar_admin(ident: Identidad) -> Identidad:
 
 def require_admin(ident: Identidad = Depends(require_usuario)) -> Identidad:
     return comprobar_admin(ident)
+
+
+def require_permiso(permiso: str):  # noqa: ANN201 — fábrica de puertas, como `comprobar_admin`
+    """Fábrica de una puerta por permiso de `liga.authorize` (moderación, etc.), sin exigir 2FA:
+    a quien no lo tiene, 404 (no se revela que la ruta existe)."""
+
+    def _comprobar(ident: Identidad = Depends(require_usuario)) -> Identidad:
+        from app.liga.db import sesion_como
+
+        with sesion_como(ident) as db:
+            tiene = db.execute(text("select liga.authorize(cast(:p as liga.permiso))"),
+                              {"p": permiso}).scalar()
+        if not tiene:
+            raise HTTPException(404, "Not Found")
+        return ident
+
+    return _comprobar
+
+
+require_moderador = require_permiso("moderacion.revisar")
