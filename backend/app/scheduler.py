@@ -267,7 +267,7 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
         plural = "es" if nuevas != 1 else ""
         push.send_to_all(
             db, title=f"Omega: {nuevas} señal{plural} nueva{plural and 's'}",
-            body=", ".join(tickers_nuevos), url="/omega", tag="agentic-omega",
+            body=", ".join(tickers_nuevos), url="/admin/omega", tag="agentic-omega",
         )
     if reactivadas:
         logger.info("Momentum: %s señal(es) de suelo reactivada(s) (vuelven a zona).",
@@ -275,14 +275,14 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
         plural = "es" if len(reactivadas) != 1 else ""
         push.send_to_all(
             db, title=f"Omega: {len(reactivadas)} señal{plural} vuelve{'n' if plural else ''} a zona",
-            body=", ".join(dict.fromkeys(reactivadas)), url="/omega", tag="agentic-omega",
+            body=", ".join(dict.fromkeys(reactivadas)), url="/admin/omega", tag="agentic-omega",
         )
     for r in resueltas_ejecutadas:
         motivo_txt = "objetivo alcanzado" if r["motivo"] == "objetivo" else "90 días cumplidos"
         push.send_to_all(
             db, title=f"Omega: {r['ticker']} -- {motivo_txt}",
             body=f"Resultado {r['ret']:+.1f}%. Revisa si toca vender.",
-            url="/omega", tag="agentic-omega",
+            url="/admin/omega", tag="agentic-omega",
         )
     return {"nuevas": nuevas, "reactivadas": len(reactivadas),
             "resueltas": len(resueltas_ejecutadas)}

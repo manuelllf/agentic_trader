@@ -313,8 +313,8 @@ function SalaMomentumRoom() {
         {/* Sin barra fija -- como la land, la navegación que hace falta vive en el flujo
             normal, no clavada arriba (feedback 12-sep-2026, "el header AI slop fuera"). */}
         <div className="mb-4 flex items-center justify-between">
-          <Link href="/" className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
-            ← Portada
+          <Link href="/admin" className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
+            ← Salas
           </Link>
           <div className="flex items-center gap-2">
             <SalaDoor to="alpha" />

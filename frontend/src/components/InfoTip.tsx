@@ -5,7 +5,7 @@
  *  que la UI por defecto quede limpia y el porqué siga a un toque de distancia. */
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { T } from "@/app/alpha/tokens";
+import { T } from "@/app/(admin)/admin/alpha/tokens";
 
 const MARGEN_PX = 8;   // separación mínima al borde de la pantalla
 const ANCHO_PX = 224;

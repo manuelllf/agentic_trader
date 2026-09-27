@@ -9,9 +9,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const SALAS = {
-  alpha: { href: "/alpha", nombre: "Alpha", titulo: "Cuenta real: el agente propone, tú decides" },
-  beta: { href: "/beta", nombre: "Beta", titulo: "Réplica pública en papel del mismo método" },
-  omega: { href: "/omega", nombre: "Omega", titulo: "Caza rotación antes de que tenga nombre en ningún radar" },
+  alpha: { href: "/admin/alpha", nombre: "Alpha", titulo: "Cuenta real: el agente propone, tú decides" },
+  beta: { href: "/admin/beta", nombre: "Beta", titulo: "Réplica en papel del mismo método" },
+  omega: { href: "/admin/omega", nombre: "Omega", titulo: "Caza rotación antes de que tenga nombre en ningún radar" },
 } as const;
 
 export default function SalaDoor({ to }: { to: keyof typeof SALAS }) {

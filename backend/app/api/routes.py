@@ -10,11 +10,9 @@ importa `main.py`. Cada dominio vive en su propio fichero:
 - `routes_personal.py`  — cartera personal de Manuel (solo lectura, intocable para el agente).
 - `routes_push.py`      — web push.
 
-Dos routers: `public_router` (sin token, lecturas y teaser de portada) y `router` (exige
-`require_auth`, enganchado en `main.py`). Cinco endpoints son de DOBLE NIVEL vía
-`auth_optional` (nunca dan 401: sin sesión devuelven agregados/anonimizado; con sesión, todo):
-`/ledger`, `/performance`, `/scan/report`, `/scan/funnel`, `/scan/outcomes`. La regla que separa
-las dos caras: cómo se comporta el sistema es público, QUÉ nombres elige el método no lo es.
+Dos routers, los dos detrás de `require_auth` en `main.py` desde que las salas dejaron de tener
+cara pública: `public_router` (lo que antes veía la portada) y `router`. Los endpoints de doble
+nivel (`auth_optional`) ya siempre llegan con sesión.
 """
 
 from __future__ import annotations
@@ -35,7 +33,7 @@ from . import (
     routes_scan,
 )
 
-public_router = APIRouter()   # sin token: lecturas y teaser de la portada
+public_router = APIRouter()   # lo que veía la portada; también exige sesión (main.py)
 router = APIRouter()          # exige require_auth (dependencies=[...] en main.py)
 
 public_router.include_router(routes_capital.public_router)

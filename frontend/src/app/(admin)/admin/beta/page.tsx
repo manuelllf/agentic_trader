@@ -22,6 +22,7 @@ import {
   type OutcomeScan,
   type ScanReport,
 } from "@/lib/api";
+import AuthGate from "@/components/AuthGate";
 import HistoryChart from "@/components/HistoryChart";
 import { InfoTip } from "@/components/InfoTip";
 import type {
@@ -95,7 +96,16 @@ function nextDecisionLabel(): string {
 type PosSortKey = "label" | "weightPct" | "avg_cost" | "price" | "value" | "pct";
 
 /* ---------- page ---------- */
+// Beta deja de ser pública: sus datos solo los ve el admin, como Alpha y Omega.
 export default function SombraDashboard() {
+  return (
+    <AuthGate>
+      <SombraRoom />
+    </AuthGate>
+  );
+}
+
+function SombraRoom() {
   const [ledger, setLedger] = useState<LedgerSnapshot | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [scores, setScores] = useState<ScoreRow[]>([]);
@@ -470,8 +480,8 @@ export default function SombraDashboard() {
         {/* Sin barra fija -- como la land, la navegación que hace falta vive en el flujo
             normal, no clavada arriba (feedback 12-sep-2026, "el header AI slop fuera"). */}
         <div className="mb-4 flex items-center justify-between">
-          <Link href="/" className="text-[12px] font-semibold text-[#6E6E6B] transition-colors hover:underline">
-            ← Portada
+          <Link href="/admin" className="text-[12px] font-semibold text-[#6E6E6B] transition-colors hover:underline">
+            ← Salas
           </Link>
           <div className="flex items-center gap-2">
             <SalaDoor to="alpha" />

@@ -72,7 +72,7 @@ def unsubscribe(db: Session, endpoint: str) -> None:
 
 
 def send_to_all(
-    db: Session, title: str, body: str, url: str = "/alpha", tag: str = "agentic-alpha",
+    db: Session, title: str, body: str, url: str = "/admin/alpha", tag: str = "agentic-alpha",
 ) -> int:
     """Empuja a todos los dispositivos suscritos. Poda suscripciones muertas (404/410).
 

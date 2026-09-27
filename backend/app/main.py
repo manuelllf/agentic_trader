@@ -199,11 +199,9 @@ async def _validation_422(_request: Request, exc: RequestValidationError) -> JSO
     detail = _sin_flotantes_no_finitos(jsonable_encoder({"detail": exc.errors()}))
     return JSONResponse(status_code=422, content=detail)
 
-# Lecturas y teaser de portada (public_router): sin token. Todo lo que muta estado, revela las
-# picks del método o expone Alpha/personal (router) exige token vía require_auth. /ledger
-# y /performance son de doble nivel (auth_optional dentro del propio endpoint). Público además:
-# /health, /, /auth/login.
-app.include_router(public_router)
+# Las salas ya no tienen cara pública (la portada vieja y Beta pública se retiraron): todo lo
+# suyo exige token. Público solo /health, / y /auth/login.
+app.include_router(public_router, dependencies=[Depends(require_auth)])
 app.include_router(router, dependencies=[Depends(require_auth)])
 # Omega (momentum), 2ª estrategia independiente del ranker -- mismo candado, tablas
 # propias (momentum_*), sin ORM (ver app/momentum/routes.py).

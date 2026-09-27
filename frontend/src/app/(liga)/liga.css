@@ -1,0 +1,106 @@
+/* Liguilla: tokens y piezas base de docs/liguilla/DESIGN.md. Solo viven dentro de .lg: las salas
+   no cargan esta hoja. Tres estados de tema: sin sello (sigue al sistema), claro y oscuro. */
+
+.lg {
+  --bg: #FFFFFF; --surface: #F2F3F5; --surface2: #E6E8EB; --raised: #FFFFFF;
+  --line: #E4E6E9; --line2: #CFD3D8;
+  --ink: #111315; --ink2: #41464C; --muted: #646D76;
+  --good: #12804A; --bad: #C0392B; --good-bg: #E3F3EA; --bad-bg: #FBE9E6; --flat-bg: #ECEEF1;
+  --accent: #0B6E68; --accent-bg: #E3F1F0; --btn: #0B6E68; --btn-ink: #FFFFFF;
+  --crest-ring: rgba(0, 0, 0, .14); --shadow: rgba(17, 19, 21, .10);
+  --alpha: #1DE27A; --omega: #FF6B1A; --lambda: #D8D4CB; --lambda-line: #8F8A80;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .lg {
+    --bg: #0E0F10; --surface: #18191B; --surface2: #24272A; --raised: #2A2D31;
+    --line: #26292C; --line2: #3A3E43;
+    --ink: #F3F4F4; --ink2: #C9CDD1; --muted: #9AA1A8;
+    --good: #5CC98A; --bad: #F08A7E; --good-bg: rgba(92, 201, 138, .15);
+    --bad-bg: rgba(240, 138, 126, .15); --flat-bg: rgba(255, 255, 255, .08);
+    --accent: #4FA39D; --accent-bg: rgba(79, 163, 157, .16); --btn: #4FA39D; --btn-ink: #0E0F10;
+    --crest-ring: rgba(255, 255, 255, .18); --shadow: rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+}
+
+html[data-theme="dark"] .lg {
+  --bg: #0E0F10; --surface: #18191B; --surface2: #24272A; --raised: #2A2D31;
+  --line: #26292C; --line2: #3A3E43;
+  --ink: #F3F4F4; --ink2: #C9CDD1; --muted: #9AA1A8;
+  --good: #5CC98A; --bad: #F08A7E; --good-bg: rgba(92, 201, 138, .15);
+  --bad-bg: rgba(240, 138, 126, .15); --flat-bg: rgba(255, 255, 255, .08);
+  --accent: #4FA39D; --accent-bg: rgba(79, 163, 157, .16); --btn: #4FA39D; --btn-ink: #0E0F10;
+  --crest-ring: rgba(255, 255, 255, .18); --shadow: rgba(0, 0, 0, .5);
+  color-scheme: dark;
+}
+
+/* El body también pinta su fondo: sin esto, el rebote del scroll enseña blanco en oscuro. */
+body { margin: 0; }
+body:has(> .lg) { background: #FFFFFF; }
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) body:has(> .lg) { background: #0E0F10; }
+}
+html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
+
+.lg {
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--ink2);
+  font-family: var(--font-lg), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+.lg *, .lg *::before, .lg *::after { box-sizing: border-box; }
+.lg h1, .lg h2, .lg h3, .lg p, .lg ul { margin: 0; }
+.lg h1, .lg h2, .lg h3 { color: var(--ink); text-wrap: balance; }
+.lg p { text-wrap: pretty; }
+.lg a { color: inherit; }
+.lg :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lg .num { font-variant-numeric: tabular-nums; }
+
+.lg .wordmark {
+  font-size: 25px; font-weight: 800; letter-spacing: -.03em; color: var(--ink);
+  text-decoration: none;
+}
+
+.lg .btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 52px;
+  padding: 0 20px; border: 0; border-radius: 14px; background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 16px; font-weight: 700; text-decoration: none; cursor: pointer;
+}
+.lg .btn.pri { background: var(--btn); color: var(--btn-ink); }
+.lg .btn.wide { width: 100%; }
+
+/* Página sencilla de una sola columna: la de espera y la 404. */
+.lg .sencilla {
+  display: flex; flex-direction: column; min-height: 100dvh;
+  width: 100%; max-width: 480px; margin: 0 auto; padding: 18px 16px 28px;
+}
+.lg .sencilla-top { display: flex; align-items: center; justify-content: space-between; }
+.lg .sencilla-cuerpo {
+  flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px;
+  padding: 56px 0;
+}
+.lg .sencilla-cuerpo h1 { font-size: 41px; line-height: 1; font-weight: 800; letter-spacing: -.04em; }
+.lg .sencilla-lema { font-size: 20px; line-height: 1.35; font-weight: 700; color: var(--ink); }
+.lg .sencilla-cuerpo p { font-size: 16.5px; line-height: 1.6; }
+.lg .sencilla-dato {
+  padding: 14px 16px; border-radius: 16px; background: var(--surface);
+  font-size: 15px; line-height: 1.5;
+}
+.lg .sencilla-dato b { color: var(--ink); }
+.lg .sencilla-pie {
+  border-top: 1px solid var(--line); padding-top: 14px; font-size: 14px; line-height: 1.5;
+  color: var(--muted);
+}
+.lg .marcador404 {
+  font-size: 15px; font-weight: 700; color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg *, .lg *::before, .lg *::after { animation: none !important; transition: none !important; }
+}

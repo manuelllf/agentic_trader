@@ -357,7 +357,7 @@ function SalaRealRoom() {
 
   const exit = () => {
     setLeaving(true);
-    setTimeout(() => router.push("/"), 430);
+    setTimeout(() => router.push("/admin"), 430);
   };
 
   const perf = summary?.performance;
@@ -475,7 +475,7 @@ function SalaRealRoom() {
             escaneo ya tiene su propio botón en Centro de operaciones más abajo. */}
         <div className="mb-4 flex items-center justify-between">
           <button onClick={exit} className="text-[12px] font-semibold transition-colors hover:underline" style={{ color: T.muted }}>
-            ← Portada
+            ← Salas
           </button>
           <div className="flex items-center gap-2">
             <SalaDoor to="beta" />
@@ -853,7 +853,7 @@ function SalaRealRoom() {
             <span style={{ color: T.ink2 }}>Sombra <b className={NUMS} style={{ color: (shadowPerf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(shadowPerf?.portfolio_return_pct)}</b></span>
             <span style={{ color: T.ink2 }}>Real <b className={NUMS} style={{ color: (perf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(perf?.portfolio_return_pct)}</b></span>
             <span style={{ color: T.ink2 }}>S&amp;P <b className={NUMS} style={{ color: T.ink }}>{fmtPct(shadowPerf?.spy_return_pct ?? perf?.spy_return_pct)}</b></span>
-            <Link href="/beta" className="ml-auto text-[11.5px] font-semibold hover:underline" style={{ color: T.buy }}>
+            <Link href="/admin/beta" className="ml-auto text-[11.5px] font-semibold hover:underline" style={{ color: T.buy }}>
               Ver sombra →
             </Link>
           </div>

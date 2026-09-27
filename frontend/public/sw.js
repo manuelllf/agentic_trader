@@ -2,7 +2,7 @@
 // El caché solo toca GETs del MISMO origen (nunca la API del backend, que vive en otro puerto).
 // v4: lo inmutable (`/_next/static`, con hash en el nombre, e iconos) sale de caché sin esperar
 // a la red; la página sigue yendo a red primero para no servir un despliegue viejo.
-const CACHE = "agentic-v4";
+const CACHE = "agentic-v5";
 const INMUTABLE = /^\/(_next\/static\/|icon-|apple-touch-icon|favicon)/;
 
 self.addEventListener("install", () => self.skipWaiting());
@@ -43,7 +43,7 @@ self.addEventListener("fetch", (event) => {
 // ---- Push: el timbre de Alpha ----------------------------------------
 
 self.addEventListener("push", (event) => {
-  let data = { title: "Agentic Trader", body: "Nueva alerta.", url: "/alpha", tag: "agentic-alpha" };
+  let data = { title: "Agentic Trader", body: "Nueva alerta.", url: "/admin/alpha", tag: "agentic-alpha" };
   try {
     data = { ...data, ...event.data.json() };
   } catch {
@@ -62,7 +62,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/alpha";
+  const url = event.notification.data?.url || "/admin/alpha";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((tabs) => {
       for (const tab of tabs) {

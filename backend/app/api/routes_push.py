@@ -48,5 +48,6 @@ def push_test(db: Session = Depends(get_db)) -> dict:
     from app import push
 
     sent = push.send_to_all(db, "Agentic Trader — Alpha",
-                            "Canal de alertas operativo. Así llegarán las propuestas.", "/alpha")
+                            "Canal de alertas operativo. Así llegarán las propuestas.",
+                            "/admin/alpha")
     return {"sent": sent}

@@ -1,8 +1,9 @@
-"""Tests del reparto público/protegido de la API y del teaser `/overview` de la portada.
+"""Tests de acceso a la API de las salas: nada es público salvo /health y el login.
 
 Monta una app FastAPI mínima con los mismos dos routers que `main.py` (sin lifespan: nada de
 scheduler ni init_db real) para poder golpear los endpoints con `TestClient` sobre una BD en
-memoria, igual que el resto de tests usa una sesión SQLite `:memory:`.
+memoria, igual que el resto de tests usa una sesión SQLite `:memory:`. `client` va con sesión
+por defecto; `anon`, sin ella.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ def db():
 
 
 @pytest.fixture
-def client(db, monkeypatch, tmp_path):
+def api(db, monkeypatch, tmp_path):
     monkeypatch.setattr(auth.settings, "app_password", PASSWORD)
     # memory_db_path ya solo sirve para derivar el directorio de caché del embedder (ver
     # app/memory/_cache_dir()) — aislado en un tmp para no tocar el real durante los tests.
@@ -58,7 +59,7 @@ def client(db, monkeypatch, tmp_path):
         lambda db: {"at": "2026-07-28T20:30:00+00:00", "size": 123},
     )
     app = FastAPI()
-    app.include_router(public_router)
+    app.include_router(public_router, dependencies=[Depends(auth.require_auth)])
     app.include_router(router, dependencies=[Depends(auth.require_auth)])
     # El mismo handler 422 de la app real: el eco de inf/nan debe sanearse también aquí.
     from fastapi.exceptions import RequestValidationError
@@ -66,28 +67,38 @@ def client(db, monkeypatch, tmp_path):
     from app.main import _validation_422
     app.add_exception_handler(RequestValidationError, _validation_422)
     app.dependency_overrides[get_db] = lambda: db
-    return TestClient(app)
+    return app
 
 
 @pytest.fixture
-def token(client) -> str:
-    # `client` ya fijó APP_PASSWORD vía monkeypatch antes de que esto se ejecute.
+def token(api) -> str:
+    # `api` ya fijó APP_PASSWORD vía monkeypatch antes de que esto se ejecute.
     return auth.login(PASSWORD)
 
 
-# ---- reparto público / protegido --------------------------------------------
+@pytest.fixture
+def client(api, token):
+    return TestClient(api, headers={"Authorization": f"Bearer {token}"})
 
-PUBLIC_GET_PATHS = [
+
+@pytest.fixture
+def anon(api):
+    return TestClient(api)
+
+
+# ---- nada público -------------------------------------------------------------
+
+ANTES_PUBLICAS = [
     "/overview", "/ledger", "/performance", "/macro", "/config", "/demo/status",
     "/history", "/history?book=real", "/scan/report", "/scan/funnel", "/scan/outcomes",
 ]
 
 
-def test_public_endpoints_respond_without_token(client) -> None:
-    """Ninguno de los públicos debe exigir sesión (auth activa con APP_PASSWORD puesta)."""
-    for path in PUBLIC_GET_PATHS:
-        res = client.get(path)
-        assert res.status_code != 401, f"{path} no debería exigir token (dio {res.status_code})"
+def test_las_salas_ya_no_tienen_cara_publica(anon) -> None:
+    """La portada vieja y Beta pública se retiraron: lo que antes se veía sin sesión, ya no."""
+    for path in ANTES_PUBLICAS:
+        res = anon.get(path)
+        assert res.status_code == 401, f"{path} debería exigir token (dio {res.status_code})"
 
 
 PROTECTED_CALLS = [
@@ -118,9 +129,9 @@ def _call(client, method: str, path: str, body: dict | None, headers: dict | Non
     return getattr(client, method)(path, **kwargs)
 
 
-def test_protected_endpoints_reject_without_token(client) -> None:
+def test_protected_endpoints_reject_without_token(anon) -> None:
     for method, path, body in PROTECTED_CALLS:
-        res = _call(client, method, path, body)
+        res = _call(anon, method, path, body)
         assert res.status_code == 401, f"{method.upper()} {path} debería exigir token"
 
 
@@ -158,7 +169,7 @@ def test_protected_endpoints_work_with_token(client, token) -> None:
 # ---- /overview ----------------------------------------------------------------
 
 def test_overview_shape_empty_db(client) -> None:
-    """BD vacía: la portada no debe reventar, todo en null/0 y sin exigir sesión."""
+    """BD vacía: el resumen no debe reventar, todo en null/0."""
     res = client.get("/overview")
     assert res.status_code == 200
     body = res.json()
@@ -211,25 +222,7 @@ def test_overview_shadow_reuses_performance(db, client, monkeypatch) -> None:
     assert body["shadow"]["positions"] == 1
 
 
-# ---- /ledger y /performance: doble nivel (auth_optional) ---------------------
-
-def test_ledger_without_token_hides_positions_but_keeps_aggregates(db, client, monkeypatch) -> None:
-    """Sin sesión: los agregados (cifras de un sleeve virtual) se ven, pero `positions` viene
-    vacío — no se puede reconstruir la cartera del método desde fuera."""
-    from app import tracking
-    from app.ledger import service as ledger
-
-    monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {"AAA": 110.0})
-    ledger.allocate(db, 1000)
-    ledger.record_buy(db, "AAA", 10, 100, "seed")
-
-    res = client.get("/ledger")
-    assert res.status_code == 200
-    body = res.json()
-    assert body["positions"] == []
-    assert body["cash"] is not None and body["equity"] is not None
-    assert "AAA" not in res.text
-
+# ---- /ledger y /performance ----------------------------------------------------
 
 def test_ledger_with_token_shows_full_positions(db, client, monkeypatch, token) -> None:
     """Con sesión: el detalle completo de siempre, con ticker por posición."""
@@ -247,29 +240,6 @@ def test_ledger_with_token_shows_full_positions(db, client, monkeypatch, token) 
     assert body["positions"][0]["ticker"] == "AAA"
 
 
-def test_performance_without_token_anonymizes_positions(db, client, monkeypatch) -> None:
-    """Sin sesión: cada posición pierde ticker/cantidad/coste — solo queda un label genérico y
-    el P&L relativo. Los agregados (rentabilidad, alpha...) siguen intactos."""
-    from app import tracking
-    from app.ledger import service as ledger
-
-    monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {"AAA": 110.0})
-    monkeypatch.setattr(tracking, "_spy_reference", lambda *a, **k: None)  # sin red para el SPY
-    ledger.allocate(db, 1000)
-    ledger.record_buy(db, "AAA", 10, 100, "seed")
-
-    res = client.get("/performance")
-    assert res.status_code == 200
-    assert "AAA" not in res.text
-    assert '"ticker"' not in res.text
-    body = res.json()
-    assert body["portfolio_return_pct"] == 10.0  # (110-100)/100 * 100
-    assert len(body["positions"]) == 1
-    pos = body["positions"][0]
-    assert set(pos.keys()) == {"label", "unrealized_pnl", "unrealized_pct"}
-    assert pos["label"] == "Posición 1"
-
-
 def test_performance_with_token_shows_tickers(db, client, monkeypatch, token) -> None:
     """Con sesión: la respuesta completa de siempre, con ticker por posición."""
     from app import tracking
@@ -284,6 +254,7 @@ def test_performance_with_token_shows_tickers(db, client, monkeypatch, token) ->
     assert res.status_code == 200
     body = res.json()
     assert body["positions"][0]["ticker"] == "AAA"
+    assert body["portfolio_return_pct"] == 10.0  # (110-100)/100 * 100
 
 
 def test_config_does_not_leak_sensitive_fields(client) -> None:
@@ -353,8 +324,8 @@ def test_memory_status_reports_connection_failure_without_crashing(client, token
 
 # ---- /admin/universe-snapshot: relanzar a mano la foto del universo ---------
 
-def test_universe_snapshot_requires_token(client) -> None:
-    assert client.post("/admin/universe-snapshot").status_code == 401
+def test_universe_snapshot_requires_token(anon) -> None:
+    assert anon.post("/admin/universe-snapshot").status_code == 401
 
 
 def test_universe_snapshot_ok_with_size(client, token, monkeypatch) -> None:
@@ -399,22 +370,13 @@ def _seed_real_history(db) -> None:
     db.commit()
 
 
-def test_history_real_without_token_hides_equity(db, client) -> None:
-    """Sin sesión: fechas e índices (el % que la portada ya presume), jamás importes."""
-    _seed_real_history(db)
-    res = client.get("/history?book=real")
-    assert res.status_code == 200
-    pts = res.json()["series"]
-    assert len(pts) == 2
-    assert all("equity" not in p for p in pts)
-    assert pts[1]["index"] == 105.0
-    assert pts[1]["spy_index"] == 101.0
-
-
 def test_history_real_with_token_shows_equity(db, client, token) -> None:
     _seed_real_history(db)
     res = client.get("/history?book=real", headers={"Authorization": f"Bearer {token}"})
-    assert [p["equity"] for p in res.json()["series"]] == ["1000", "1050"]
+    pts = res.json()["series"]
+    assert [p["equity"] for p in pts] == ["1000", "1050"]
+    assert pts[1]["index"] == 105.0
+    assert pts[1]["spy_index"] == 101.0
 
 
 def test_history_rejects_unknown_book(client) -> None:
@@ -531,7 +493,7 @@ def test_docs_disabled_with_password() -> None:
         importlib.reload(main_mod)  # deja el módulo como estaba para el resto de tests
 
 
-# ---- embudo del escaneo: agregado público, detalle con sesión ----------------
+# ---- embudo del escaneo --------------------------------------------------------
 
 def _sembrar_embudo(db) -> None:
     """Traza de un escaneo: 3 nombres puntuados, 2 al profundo, 1 en cartera, 1 sin datos."""
@@ -553,20 +515,16 @@ def _sembrar_embudo(db) -> None:
     db.commit()
 
 
-def test_funnel_publico_cuenta_etapas_sin_revelar_tickers(client, db) -> None:
-    """Sin sesión, el embudo describe el COMPORTAMIENTO (cuántos por etapa y sector) y no
-    identifica a nadie: es lo que puede acompañar a un post sin ser un feed de señales."""
+def test_funnel_cuenta_etapas_por_sector(client, db) -> None:
+    """El embudo describe el comportamiento: cuántos por etapa y sector."""
     _sembrar_embudo(db)
-    body = client.get("/scan/funnel").json()
-    scan = body["scans"][0]
+    scan = client.get("/scan/funnel").json()["scans"][0]
 
     assert (scan["pre"], scan["deep"], scan["sel"], scan["funded"]) == (3, 2, 1, 1)
     assert scan["sin_datos"] == 1
     assert {s["sector"] for s in scan["sectores"]} == {"Technology", "Finance"}
     assert scan["sectores"][0] == {"sector": "Technology", "pre": 2, "deep": 2, "sel": 1,
                                    "funded": 1}          # ordenado por nº de pre-scoreados
-    assert "nombres" not in scan, "sin sesión NO puede viajar el detalle por ticker"
-    assert "AAA" not in client.get("/scan/funnel").text
 
 
 def test_funnel_con_sesion_anade_el_detalle(client, db, token) -> None:
@@ -582,8 +540,8 @@ def test_funnel_con_sesion_anade_el_detalle(client, db, token) -> None:
     assert scan["nombres"][0]["deep_score"] == 84
 
 
-def test_report_publico_oculta_las_novedades_del_ranking(client, db, token) -> None:
-    """`changes` dice qué tickers entran y salen del ranking: eso es la cartera del método."""
+def test_report_lleva_las_novedades_del_ranking(client, db, token) -> None:
+    """`changes` dice qué tickers entran y salen del ranking; `outlook`, la tesis del macro."""
     from app.models import ScanRun, ScanRunChange, ScanRunIssue
 
     run = ScanRun(cadence="observatorio/full", decide=False,
@@ -597,15 +555,10 @@ def test_report_publico_oculta_las_novedades_del_ranking(client, db, token) -> N
                 for i, t in enumerate(["entran ZZZ", "salen AAA"])])
     db.commit()
 
-    anon = client.get("/scan/report").json()["report"]
-    assert anon["changes"] == [] and "ZZZ" not in client.get("/scan/report").text
-    # La tesis es texto libre del modelo y puede citar nombres: mismo lado que `changes`.
-    assert anon["outlook"] is None and "WWW" not in client.get("/scan/report").text
-    assert anon["prescored"] == 2600 and anon["issues"] == ["algo"]   # el resto sí se ve
-
     con = client.get("/scan/report", headers={"Authorization": f"Bearer {token}"}).json()["report"]
     assert con["changes"] == ["entran ZZZ", "salen AAA"]
     assert con["outlook"].startswith("Veo rotación")
+    assert con["prescored"] == 2600 and con["issues"] == ["algo"]
 
 
 # ---- la traza LEÍDA: /scan/outcomes y /scan/audit/{ticker} -------------------
@@ -653,35 +606,28 @@ def _siembra_cohorte(db) -> None:
     db.commit()
 
 
-def test_outcomes_mide_grupos_y_oculta_nombres_sin_sesion(client, db, token, monkeypatch) -> None:
-    """La pregunta central del experimento, con la regla de siempre: el retorno POR GRUPO es
-    comportamiento (público); un ticker con su score y su retorno es un feed de señales."""
+def test_outcomes_mide_grupos_con_sus_nombres(client, db, token, monkeypatch) -> None:
+    """La pregunta central del experimento: el retorno POR GRUPO, y los nombres detrás."""
     _siembra_cohorte(db)
     _cierres_de_prueba(monkeypatch, {"AAA": 110.0, "BBB": 95.0, "CCC": 60.0,
                                      "DDD": 210.0, "EEE": 11.0}, 1.5)
 
-    anon = client.get("/scan/outcomes").json()["scans"][0]
-    g = anon["groups"]
+    con = client.get("/scan/outcomes",
+                     headers={"Authorization": f"Bearer {token}"}).json()["scans"][0]
+    g = con["groups"]
     assert g["cartera"] == {"n": 1, "avg": 10.0, "median": 10.0}        # 100 → 110
     assert g["seleccionados"]["avg"] == -5.0                            # 100 → 95
     assert g["descartados"]["avg"] == 20.0                              # 50 → 60
     assert g["spy"] == 1.5
-    assert anon["mode"] == "decisión"
+    assert con["mode"] == "decisión"
     # El profundo ilegible (EEE) no es un descarte del criterio: fuera de grupos y pares.
-    assert {p["score"] for p in anon["pairs"]} == {88, 85, 60}
-    assert all("ticker" not in p for p in anon["pairs"])                # sin nombres
-    assert "nombres" not in anon["corte"]["fuera"] and "nombres" not in anon["corte"]["dentro"]
-    assert "AAA" not in client.get("/scan/outcomes").text
-
-    con = client.get("/scan/outcomes",
-                     headers={"Authorization": f"Bearer {token}"}).json()["scans"][0]
+    assert {p["score"] for p in con["pairs"]} == {88, 85, 60}
     assert {p["ticker"] for p in con["pairs"]} == {"AAA", "BBB", "CCC"}
     assert con["corte"]["fuera"]["nombres"][0]["ticker"] == "DDD"       # el mejor que quedó fuera
     assert con["corte"]["fuera"]["avg"] == 5.0                          # 200 → 210
 
 
-def test_outcomes_mide_la_cartera_jev_y_oculta_sus_nombres_sin_sesion(
-        client, db, token, monkeypatch) -> None:
+def test_outcomes_mide_la_cartera_jev(client, db, token, monkeypatch) -> None:
     """Jev entra aunque no llegue al profundo; sus 4 preguntas vuelven a su escala (0-9, 0-1)."""
     from datetime import UTC, datetime
 
@@ -703,12 +649,9 @@ def test_outcomes_mide_la_cartera_jev_y_oculta_sus_nombres_sin_sesion(
     db.commit()
     _cierres_de_prueba(monkeypatch, {"JJJ": 110.0, "KKK": 45.0, "LLL": 20.0}, 1.0)
 
-    anon = client.get("/scan/outcomes").json()["scans"][0]
-    assert anon["groups"]["jev"] == {"n": 2, "avg": 0.0, "median": 0.0}   # +10% y -10%
-    assert anon["jev"] == [] and "JJJ" not in client.get("/scan/outcomes").text
-
     con = client.get("/scan/outcomes",
                      headers={"Authorization": f"Bearer {token}"}).json()["scans"][0]
+    assert con["groups"]["jev"] == {"n": 2, "avg": 0.0, "median": 0.0}   # +10% y -10%
     jjj, kkk = con["jev"]                                     # ordenados por nota
     assert (jjj["ticker"], jjj["ret"], kkk["ticker"]) == ("JJJ", 10.0, "KKK")
     assert jjj["dimensiones"]["fundamentals"] == [7.9, 0.91]
@@ -724,7 +667,7 @@ def test_outcomes_de_escaneos_sin_jev_no_inventan_su_grupo(client, db, monkeypat
     assert s["groups"]["jev"] == {"n": 0, "avg": None, "median": None}
 
 
-def test_report_publico_oculta_la_cartera_jev(client, db, token) -> None:
+def test_report_lleva_la_cartera_jev(client, db, token) -> None:
     from app.models import ScanRun, ScanRunJevItem
 
     run = ScanRun(cadence="observatorio/full", decide=False, outlook="VIX 15.4.",
@@ -736,18 +679,15 @@ def test_report_publico_oculta_la_cartera_jev(client, db, token) -> None:
                           weight_pct=20.0))
     db.commit()
 
-    anon = client.get("/scan/report").json()["report"]
-    assert anon["jev_cartera"] == [] and "MU" not in client.get("/scan/report").text
-    assert anon["jev_macro"] is False                        # comportamiento, sin nombres
-
     con = client.get("/scan/report", headers={"Authorization": f"Bearer {token}"}).json()
     assert con["report"]["jev_cartera"][0]["ticker"] == "MU"
+    assert con["report"]["jev_macro"] is False
 
 
 @pytest.mark.parametrize("ruta", ["/scan/mid-layer", "/scan/jev-macro"])
-def test_interruptores_se_guardan_y_exigen_sesion(client, token, ruta) -> None:
+def test_interruptores_se_guardan_y_exigen_sesion(client, anon, token, ruta) -> None:
     h = {"Authorization": f"Bearer {token}"}
-    assert client.put(ruta, json={"enabled": True}).status_code == 401
+    assert anon.put(ruta, json={"enabled": True}).status_code == 401
     assert client.put(ruta, json={"enabled": True}, headers=h).json() == {"enabled": True}
     assert client.get(ruta, headers=h).json() == {"enabled": True}
     assert client.put(ruta, json={"enabled": False}, headers=h).json() == {"enabled": False}
@@ -782,11 +722,11 @@ def test_outcomes_modo_honesto_y_fila_del_libro(client, db, monkeypatch) -> None
     assert body["book"] == {"since": "2026-07-18", "ret": 4.2, "spy": 2.0, "n": 5}
 
 
-def test_historia_de_un_ticker_es_privada(client, db, token) -> None:
+def test_historia_de_un_ticker_es_privada(client, anon, db, token) -> None:
     """La historia de un ticker (¿es estable el criterio?) lleva nombre y scores: sin cara
     pública. Con sesión devuelve los escaneos del más reciente al más viejo."""
     _siembra_cohorte(db)
-    assert client.get("/scan/audit/AAA").status_code == 401
+    assert anon.get("/scan/audit/AAA").status_code == 401
 
     res = client.get("/scan/audit/aaa", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 200

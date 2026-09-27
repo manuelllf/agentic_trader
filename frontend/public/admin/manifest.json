@@ -1,11 +1,13 @@
 {
   "name": "Agentic Trader",
   "short_name": "Agentic",
-  "description": "Tres estrategias de inversión sistemática sobre todo el mercado de EE. UU., medidas en público",
-  "start_url": "/",
+  "description": "Las salas de Agentic Trader: Alpha, Beta y Omega",
+  "id": "/admin/",
+  "start_url": "/admin/alpha",
+  "scope": "/admin/",
   "display": "standalone",
-  "background_color": "#131313",
-  "theme_color": "#131313",
+  "background_color": "#0A0A0A",
+  "theme_color": "#0A0A0A",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

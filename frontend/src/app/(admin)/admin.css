@@ -1,24 +1,28 @@
 @import "tailwindcss";
 
+/* Solo las salas (Alpha, Beta, Omega) cargan esta hoja: la liguilla tiene la suya. */
 :root {
   --background: #0A0A0A;
   --foreground: #A3A3A0;
-  --font-land-serif: "Fraunces", ui-serif, Georgia, serif;
+  --font-land-serif: "Fraunces", ui-serif, Georgia, serif;   /* firma en itálica de cada sala */
 }
 
-/* Toda la app (Land, Alpha, Beta, X) es oscura de verdad, nunca clara -- con `light` aquí el
-   navegador pintaba scrollbar y controles nativos (checkboxes, marcador de <details>...) en su
-   versión clara encima de un fondo casi negro: exactamente el "nativo, no integrado" del
-   feedback 9-sep-2026. */
+/* Las salas son oscuras de verdad, nunca claras -- con `light` aquí el navegador pintaba
+   scrollbar y controles nativos (checkboxes, marcador de <details>...) en su versión clara
+   encima de un fondo casi negro: exactamente el "nativo, no integrado" del feedback 9-sep-2026. */
 html {
   color-scheme: dark;
 }
 
 body {
   color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--background);
   min-height: 100dvh;
+}
+
+/* La variable de Geist la pone el layout de admin en este contenedor, no en <html>. */
+.salas {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 /* ---- Alpha: entrada desde el fundido oscuro ---- */

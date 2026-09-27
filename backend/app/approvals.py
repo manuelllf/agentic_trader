@@ -67,7 +67,7 @@ def create_from_items(db: Session, items: list[dict], macro_summary: str) -> int
             db,
             title="Agentic Trader — Alpha",
             body=f"{created} operación(es) esperan tu decisión. Sí ejecuta, No descarta.",
-            url="/alpha",
+            url="/admin/alpha",
         )
     return created
 
