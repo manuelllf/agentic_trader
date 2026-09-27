@@ -179,12 +179,14 @@ class Receta(LigaBase):
 
 
 class Inscripcion(LigaBase):
+    """`receta_id` nulo solo en los equipos de la casa (lo guarda `liga.inscripciones_guarda`)."""
+
     __tablename__ = "inscripciones"
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     jornada_id: Mapped[int] = mapped_column(Integer, ForeignKey("liga.jornadas.id"))
     estrategia_id: Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("liga.estrategias.id"))
-    receta_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("liga.recetas.id"))
+    receta_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("liga.recetas.id"))
     n_pasan: Mapped[int | None] = mapped_column(Integer)
     estado: Mapped[str] = mapped_column(Text, server_default=DB)
 

@@ -26,6 +26,7 @@ from app.auth import auth_enabled, require_auth
 from app.config import settings
 from app.db import init_db
 from app.liga.rutas import router as liga_router
+from app.liga.rutas_admin import router as liga_admin_router
 from app.momentum.routes import router as momentum_router
 from app.scheduler import start_scheduler, stop_scheduler
 
@@ -200,6 +201,7 @@ app.include_router(router, dependencies=[Depends(require_auth)])
 app.include_router(momentum_router, dependencies=[Depends(require_auth)])
 # La liga trae sus propias puertas por ruta (identidad de Supabase y RLS).
 app.include_router(liga_router)
+app.include_router(liga_admin_router)
 
 
 # ---- Público (sin token) ----------------------------------------------------

@@ -337,6 +337,14 @@ def _apewisdom_job() -> None:
         db.close()
 
 
+def _liga_diario_job() -> None:
+    """Cierres diarios de la liga. El propio proceso comprueba que sea día de bolsa (calendario
+    NYSE) y que su interruptor en `liga.ajustes` esté encendido; si no, no hace nada."""
+    from app.liga.procesos import diario
+
+    diario.job()
+
+
 def trigger_escaneo_mensual() -> CronTrigger:
     """Primer martes del mes, como dicen Alpha y Beta: casi siempre es día de bolsa y
     `universe_for_scan` parte de la foto del cierre del lunes."""
@@ -406,6 +414,12 @@ def start_scheduler() -> None:
         _apewisdom_job,
         CronTrigger(day_of_week="mon-fri", hour=16, minute=10, timezone=settings.scan_timezone),
         id="apewisdom_capture", replace_existing=True, misfire_grace_time=3600, coalesce=True,
+    )
+    # Liga: cierres de lo que está en cartera + SPY, 17:15 ET (cierre + margen de la fuente).
+    scheduler.add_job(
+        _liga_diario_job,
+        CronTrigger(day_of_week="mon-fri", hour=17, minute=15, timezone="America/New_York"),
+        id="liga_diario", replace_existing=True, misfire_grace_time=3600, coalesce=True,
     )
     scheduler.start()
     logger.info(
