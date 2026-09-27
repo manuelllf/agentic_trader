@@ -10,10 +10,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.liga import acceso
+from app.liga import acceso, rutas_publicas
 from app.liga.db import db_usuario
 
 router = APIRouter(prefix="/liga", tags=["liga"])
+router.include_router(rutas_publicas.router)
 
 
 class Yo(BaseModel):
