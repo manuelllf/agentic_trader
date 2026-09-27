@@ -19,7 +19,6 @@ from app import (
 from app.api.routes import public_router, router
 from app.db import Base, get_db
 
-PASSWORD = "clave-test-memoria-1"
 
 
 @pytest.fixture
@@ -34,8 +33,7 @@ def db():
 
 
 @pytest.fixture
-def client(db, monkeypatch):
-    monkeypatch.setattr(auth.settings, "app_password", PASSWORD)
+def client(db, token_admin):
     app = FastAPI()
     app.include_router(public_router)
     app.include_router(router, dependencies=[Depends(auth.require_auth)])
@@ -44,8 +42,8 @@ def client(db, monkeypatch):
 
 
 @pytest.fixture
-def token(client) -> str:
-    return auth.login(PASSWORD)
+def token(client, token_admin) -> str:
+    return token_admin
 
 
 def test_memory_search_sin_token_da_401(client) -> None:

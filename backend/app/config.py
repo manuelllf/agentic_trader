@@ -39,12 +39,9 @@ class Settings(BaseSettings):
     # CORS: orígenes permitidos del frontend, separados por coma.
     cors_origins: str = "http://localhost:3000"
 
-    # Contraseña única (env APP_PASSWORD). Vacía = auth desactivada (dev local sin candado).
-    app_password: str = ""
-    auth_token_days: int = 0     # validez del token de sesión en días; 0 = NO caduca nunca
-                                 # (sesión permanente en el navegador; revocable cambiando la contraseña)
     # Supabase Auth (https://<proyecto>.supabase.co). Los JWT se verifican con su JWKS público:
-    # no hace falta ningún secreto. Vacía = sin cuentas de usuario (503 en lo que las necesite).
+    # no hace falta ningún secreto. Vacía = auth desactivada (dev local, sin candado); en Railway
+    # el backend no arranca sin ella.
     supabase_url: str = ""
     # Clave publicable (pública por diseño): solo para pedir la sesión al entrar por alias.
     supabase_publishable_key: str = ""

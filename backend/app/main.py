@@ -15,22 +15,14 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import platformdirs
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
 from app.api.routes import public_router, router
-from app.auth import (
-    auth_enabled,
-    clear_login_failures,
-    login,
-    login_blocked,
-    register_login_failure,
-    require_auth,
-)
+from app.auth import auth_enabled, require_auth
 from app.config import settings
 from app.db import init_db
 from app.liga.rutas import router as liga_router
@@ -49,14 +41,14 @@ logging.getLogger("apscheduler").setLevel(logging.WARNING)
 os.makedirs(os.path.join(platformdirs.user_cache_dir(), "py-yfinance"), exist_ok=True)
 
 
-def _require_password_in_prod() -> None:
-    """Fail-closed: en la nube (Railway) sin APP_PASSWORD la auth queda DESACTIVADA y la API
+def _require_auth_in_prod() -> None:
+    """Fail-closed: en la nube (Railway) sin SUPABASE_URL la auth queda DESACTIVADA y la API
     entera sería pública — incluido /admin/seed, que reemplaza la BD. Mejor no arrancar."""
-    if os.getenv("RAILWAY_ENVIRONMENT_NAME") and not settings.app_password:
+    if os.getenv("RAILWAY_ENVIRONMENT_NAME") and not auth_enabled():
         logging.getLogger(__name__).critical(
-            "APP_PASSWORD vacía en producción: la API quedaría PÚBLICA. "
+            "SUPABASE_URL vacía en producción: la API quedaría PÚBLICA. "
             "El backend se niega a arrancar (auth fail-closed).")
-        raise RuntimeError("APP_PASSWORD obligatoria en producción.")
+        raise RuntimeError("SUPABASE_URL obligatoria en producción.")
 
 
 def _verify_db_writable() -> None:
@@ -85,7 +77,7 @@ def _verify_db_writable() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    _require_password_in_prod()  # lo primero: sin candado en la nube, no se arranca
+    _require_auth_in_prod()    # lo primero: sin candado en la nube, no se arranca
     _materialize_ibkr_pems()   # antes que nada: el reconcile de abajo ya puede tocar el broker
     init_db()
     _verify_db_writable()      # sin escritura en /data no se arranca (ver docstring)
@@ -150,10 +142,9 @@ def _reconcile_on_startup() -> None:
         db.close()
 
 
-# Con contraseña puesta (= prod), la superficie de exploración (docs/redoc/openapi) se apaga:
-# el esquema entero de la API no se regala a quien pase por ahí. En dev local (sin APP_PASSWORD)
-# /docs sigue disponible.
-_HIDE_DOCS = bool(settings.app_password)
+# Con auth (= prod), la superficie de exploración (docs/redoc/openapi) se apaga: el esquema entero
+# de la API no se regala a quien pase por ahí. En dev local (sin SUPABASE_URL) /docs sigue.
+_HIDE_DOCS = auth_enabled()
 app = FastAPI(
     title="Agentic Trader API", version="0.1.0", lifespan=lifespan,
     docs_url=None if _HIDE_DOCS else "/docs",
@@ -201,7 +192,7 @@ async def _validation_422(_request: Request, exc: RequestValidationError) -> JSO
     return JSONResponse(status_code=422, content=detail)
 
 # Las salas ya no tienen cara pública (la portada vieja y Beta pública se retiraron): todo lo
-# suyo exige token. Público solo /health, / y /auth/login.
+# suyo exige la sesión de admin con 2FA. Público solo /health y /.
 app.include_router(public_router, dependencies=[Depends(require_auth)])
 app.include_router(router, dependencies=[Depends(require_auth)])
 # Omega (momentum), 2ª estrategia independiente del ranker -- mismo candado, tablas
@@ -227,38 +218,7 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-class LoginIn(BaseModel):
-    password: str
-
-
-def _client_ip(request: Request) -> str:
-    """IP del cliente para el rate-limit: primer salto del X-Forwarded-For (lo pone el edge
-    de Railway) o la conexión directa. Falsificable por el cliente — por eso el limitador
-    lleva también un tope GLOBAL de respaldo."""
-    fwd = request.headers.get("x-forwarded-for", "")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else "?"
-
-
-@app.post("/auth/login")
-def auth_login(body: LoginIn, request: Request) -> dict:
-    """Devuelve un token de sesión si la contraseña es correcta. Solo los FALLOS consumen
-    rate-limit; demasiados → 429 con Retry-After (frena la fuerza bruta)."""
-    ip = _client_ip(request)
-    wait = login_blocked(ip)
-    if wait:
-        raise HTTPException(429, "Demasiados intentos fallidos. Vuelve a intentarlo en un rato.",
-                            headers={"Retry-After": str(wait)})
-    token = login(body.password)
-    if token is None:
-        register_login_failure(ip)
-        raise HTTPException(status_code=401, detail="Contraseña incorrecta.")
-    clear_login_failures(ip)
-    return {"token": token, "auth_enabled": auth_enabled()}
-
-
 @app.get("/auth/check", dependencies=[Depends(require_auth)])
 def auth_check() -> dict:
-    """Valida el token guardado en el navegador (200 si vale, 401 si no)."""
+    """¿Esta sesión abre las salas? 200 sí; 401 sin sesión, 403 sin 2FA, 404 si no es admin."""
     return {"ok": True}

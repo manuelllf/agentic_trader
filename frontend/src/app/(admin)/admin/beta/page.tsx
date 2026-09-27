@@ -17,7 +17,6 @@ import {
   getScanReport,
   getScores,
   getWatchlist,
-  hasToken,
   type OutcomeBook,
   type OutcomeScan,
   type ScanReport,
@@ -151,16 +150,11 @@ function SombraRoom() {
     pinta(getScanReport(), (sr) => setReport(sr.report));
     pinta(getScanFunnel(1), (fn) => setFunnel(fn.scans[0] ?? null));
     pinta(getScanOutcomes(6), (oc) => { setOutcomes(oc.scans); setOutBook(oc.book ?? null); });
-    // Sin sesión, ni se piden: scores/propuesta/watchlist son del método — evita 401 al aire.
-    const withSession = hasToken();
-    setAuthed(withSession);
-    if (withSession) {
-      pinta(getProposal(), setProposal);
-      pinta(getScores(), setScores);
-      pinta(getWatchlist(), setWatch);
-    } else {
-      setProposal(null); setScores([]); setWatch([]);
-    }
+    // Beta vive tras el candado de admin: aquí siempre hay sesión.
+    setAuthed(true);
+    pinta(getProposal(), setProposal);
+    pinta(getScores(), setScores);
+    pinta(getWatchlist(), setWatch);
     try {
       // El ledger es lo único crítico (define la conexión): con él ya se enseña la sala.
       const l = await getLedger();

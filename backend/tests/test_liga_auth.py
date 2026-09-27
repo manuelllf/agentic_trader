@@ -84,21 +84,19 @@ def test_sin_cabecera_es_anonimo_y_con_token_malo_401() -> None:
     assert e.value.status_code == 401
 
 
-def test_las_salas_aceptan_la_sesion_de_admin_y_siguen_con_la_contrasena(monkeypatch) -> None:  # noqa: ANN001
-    monkeypatch.setattr(auth_salas.settings, "app_password", "clave-salas-test")
+def test_las_salas_abren_con_la_sesion_de_admin_y_con_nada_mas(monkeypatch) -> None:  # noqa: ANN001
     vistos = []
     monkeypatch.setattr(auth_salas, "comprobar_admin", lambda ident: vistos.append(ident.uid))
     uid = str(uuid.uuid4())
     auth_salas.require_auth(f"Bearer {_token(sub=uid, aal='aal2')}")
     assert vistos == [uid]
-    auth_salas.require_auth(f"Bearer {auth_salas.login('clave-salas-test')}")
-    with pytest.raises(HTTPException):
-        auth_salas.require_auth("Bearer 123.firma-mala")
+    # El token de la antigua contraseña (`ts.firma`) ya no abre nada.
+    with pytest.raises(HTTPException) as e:
+        auth_salas.require_auth("Bearer 1790000000.abcdef0123456789")
+    assert e.value.status_code == 401
 
 
 def test_quien_no_es_admin_no_entra_a_las_salas(monkeypatch) -> None:  # noqa: ANN001
-    monkeypatch.setattr(auth_salas.settings, "app_password", "clave-salas-test")
-
     def no_admin(_ident):  # noqa: ANN001, ANN202
         raise HTTPException(404, "Not Found")
 

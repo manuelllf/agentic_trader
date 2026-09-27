@@ -47,11 +47,6 @@ def _cliente_jwks() -> jwt.PyJWKClient:
         return _jwks
 
 
-def es_jwt(token: str) -> bool:
-    """El token de la contraseña de las salas es `ts.firma`; un JWT tiene tres partes."""
-    return token.count(".") == 2
-
-
 def verificar(token: str) -> Identidad:
     emisor = _emisor()
     try:

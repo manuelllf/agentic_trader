@@ -19,7 +19,6 @@ from app import models  # noqa: F401  (registra las tablas)
 from app.api.routes import public_router, router
 from app.db import Base, get_db
 
-PASSWORD = "clave-test-decide-cfg"
 
 
 @pytest.fixture
@@ -34,8 +33,7 @@ def db():
 
 
 @pytest.fixture
-def client(db, monkeypatch):
-    monkeypatch.setattr(auth.settings, "app_password", PASSWORD)
+def client(db, token_admin):
     app = FastAPI()
     app.include_router(public_router)
     app.include_router(router, dependencies=[Depends(auth.require_auth)])
@@ -44,8 +42,8 @@ def client(db, monkeypatch):
 
 
 @pytest.fixture
-def headers(client) -> dict:
-    return {"Authorization": f"Bearer {auth.login(PASSWORD)}"}
+def headers(client, token_admin) -> dict:
+    return {"Authorization": f"Bearer {token_admin}"}
 
 
 # ---- saneado ---------------------------------------------------------------

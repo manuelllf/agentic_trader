@@ -18,7 +18,6 @@ const TIMEOUT_MS = 15_000;
 // los dos usaba esto y ambos disparan un LLM real). 90s da margen de verdad sin dejar un botón
 // colgado para siempre si el backend está de verdad caído.
 const TIMEOUT_SYNC_MS = 90_000;
-const TOKEN_KEY = "agentic_token";
 
 /** Error de red tipado: el backend no respondió (caído, CORS, timeout). */
 export class ApiError extends Error {
@@ -30,18 +29,12 @@ export class ApiError extends Error {
 
 const OFFLINE = "No hay conexión con el servidor. Reintenta en unos segundos.";
 
-/* ---- token de sesión (login) ---- */
+/* ---- sesión: la cuenta de admin con 2FA ---- */
 // Caché en memoria de `checkAuth()`: entrar en varias salas seguidas (Alpha, Omega) no debe
-// repetir /auth/check cada vez con un token que ya se sabía válido. Un 401 real la invalida.
+// repetir /auth/check cada vez con una sesión que ya se sabía válida. Un 401 real la invalida.
 let authOk: boolean | null = null;
-const getToken = () => (typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null);
-export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
-export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
-/** true si hay un token guardado (no valida que siga vigente — eso lo decide el backend). */
-export const hasToken = () => !!getToken();
-/** 401 en cualquier llamada → sesión caducada: limpia el token y avisa al AuthGate. */
+/** 401 en cualquier llamada → sesión caducada: avisa al AuthGate. */
 function onUnauthorized() {
-  clearToken();
   authOk = false;
   if (typeof window !== "undefined") window.dispatchEvent(new Event("agentic-unauthorized"));
 }
@@ -49,9 +42,9 @@ function onUnauthorized() {
 async function request(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  // La sesión de la cuenta solo abre las salas con el 2FA superado; si no, la contraseña de siempre.
+  // Solo una sesión con el 2FA superado abre las salas; sin ella ni se manda.
   const sesion = await tokenSesion();
-  const token = sesion?.aal === "aal2" ? sesion.token : getToken();
+  const token = sesion?.aal === "aal2" ? sesion.token : null;
   const headers = {
     ...(init?.headers as Record<string, string> | undefined),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -130,27 +123,9 @@ async function postFile<T>(path: string, field: string, file: File): Promise<T> 
   return res.json() as Promise<T>;
 }
 
-/* ---- login / sesión ---- */
+/* ---- sesión ---- */
 
-/** Inicia sesión con la contraseña. Guarda el token si es correcta; lanza si no.
- *  Va por `request()`: mismo timeout de 15 s y mismo mapeo de red que el resto — un backend
- *  colgado ya no deja el botón en "Entrando…" hasta el timeout del navegador. */
-export async function login(password: string): Promise<void> {
-  const res = await request("/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
-  });
-  if (res.status === 401) throw new ApiError("Contraseña incorrecta.", "http", 401);
-  if (res.status === 429)
-    throw new ApiError("Demasiados intentos fallidos. Espera unos minutos.", "http", 429);
-  if (!res.ok) throw new ApiError(`No se pudo iniciar sesión (${res.status}).`, "http", res.status);
-  const data = (await res.json()) as { token: string };
-  setToken(data.token);
-  authOk = true;
-}
-
-/** Comprueba el token guardado. true = sesión válida (o backend caído → no bloquea con login). */
+/** ¿Abre las salas esta sesión? true = sí (o backend caído → no bloquea: sale su banner). */
 export async function checkAuth(): Promise<boolean> {
   if (authOk != null) return authOk;
   try {
@@ -164,7 +139,6 @@ export async function checkAuth(): Promise<boolean> {
 }
 
 export async function logout() {
-  clearToken();
   await supabase()?.auth.signOut();
   if (typeof window !== "undefined") window.location.reload();
 }

@@ -22,7 +22,6 @@ from app import models  # noqa: F401  (registra las tablas)
 from app.api.routes import public_router, router
 from app.db import Base, get_db
 
-PASSWORD = "clave-test-portada-1"
 
 
 @pytest.fixture
@@ -39,8 +38,7 @@ def db():
 
 
 @pytest.fixture
-def api(db, monkeypatch, tmp_path):
-    monkeypatch.setattr(auth.settings, "app_password", PASSWORD)
+def api(db, monkeypatch, tmp_path, token_admin):
     # memory_db_path ya solo sirve para derivar el directorio de caché del embedder (ver
     # app/memory/_cache_dir()) — aislado en un tmp para no tocar el real durante los tests.
     monkeypatch.setattr(auth.settings, "memory_db_path", str(tmp_path / "mem.db"))
@@ -71,9 +69,8 @@ def api(db, monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def token(api) -> str:
-    # `api` ya fijó APP_PASSWORD vía monkeypatch antes de que esto se ejecute.
-    return auth.login(PASSWORD)
+def token(api, token_admin) -> str:
+    return token_admin
 
 
 @pytest.fixture
@@ -472,24 +469,24 @@ def test_allocate_negative_withdrawal_still_works(db, client, token) -> None:
     assert res.json()["cash"] == "60.00"
 
 
-def test_docs_disabled_with_password() -> None:
-    """Con APP_PASSWORD puesta (= prod), /docs, /redoc y /openapi.json no existen (404) y la
-    raíz no los anuncia. Reconstruye la app real de main.py con la contraseña activa."""
+def test_docs_disabled_with_auth() -> None:
+    """Con auth (= prod), /docs, /redoc y /openapi.json no existen (404) y la raíz no los
+    anuncia. Reconstruye la app real de main.py con la auth encendida."""
     import importlib
 
     from app import main as main_mod
     from app.config import settings as cfg
 
-    old = cfg.app_password
+    old = cfg.supabase_url
     try:
-        cfg.app_password = "clave-prod"
+        cfg.supabase_url = "https://pruebas.supabase.co"
         m = importlib.reload(main_mod)
         c = TestClient(m.app)   # sin `with`: no arranca el lifespan (ni scheduler ni init_db)
         for path in ("/docs", "/redoc", "/openapi.json"):
             assert c.get(path).status_code == 404, f"{path} debería estar apagado en prod"
         assert "docs" not in c.get("/").json()
     finally:
-        cfg.app_password = old
+        cfg.supabase_url = old
         importlib.reload(main_mod)  # deja el módulo como estaba para el resto de tests
 
 
