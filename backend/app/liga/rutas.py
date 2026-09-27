@@ -5,11 +5,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.liga import acceso
 from app.liga.db import db_usuario
 
 router = APIRouter(prefix="/liga", tags=["liga"])
@@ -21,6 +22,22 @@ class Yo(BaseModel):
     roles: list[str]
     admin: bool   # enseña el «Panel de control»; entrar en las salas pide además el 2FA
     aal2: bool
+
+
+class EntrarIn(BaseModel):
+    usuario: str = Field(min_length=1, max_length=40)
+    clave: str = Field(min_length=1, max_length=200)
+
+
+class Sesion(BaseModel):
+    access_token: str
+    refresh_token: str
+
+
+@router.post("/entrar", response_model=Sesion)
+def entrar(body: EntrarIn, request: Request) -> Sesion:
+    """Pública y sin BD de usuario: resuelve el alias en un servicio acotado (`acceso`)."""
+    return Sesion(**acceso.entrar_con_alias(body.usuario, body.clave, acceso.ip_cliente(request)))
 
 
 @router.get("/yo", response_model=Yo)

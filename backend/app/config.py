@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     # Supabase Auth (https://<proyecto>.supabase.co). Los JWT se verifican con su JWKS público:
     # no hace falta ningún secreto. Vacía = sin cuentas de usuario (503 en lo que las necesite).
     supabase_url: str = ""
+    # Clave publicable (pública por diseño): solo para pedir la sesión al entrar por alias.
+    supabase_publishable_key: str = ""
 
     # LLM. Método = ranker fundamental (whitepaper DeepSeek): V4-Pro razonador en TODO
     # (scorer por nombre + outlook macro + construcción). enable_llm=False → escaneo no falla.

@@ -11,6 +11,10 @@ from app.liga.rutas import router
 
 PUERTAS = {db.db_anon, db.db_usuario, auth.require_usuario, auth.require_admin}
 PROHIBIDAS = {db.db_sistema, get_db}
+# Públicas sin sesión de BD, cada una con su motivo. Nada entra aquí por comodidad.
+SIN_PUERTA = {
+    "/liga/entrar",  # aún no hay usuario: resuelve el alias en un servicio acotado y con límite
+}
 
 
 def _llamadas(dependant) -> set:  # noqa: ANN001
@@ -26,5 +30,5 @@ def test_cada_ruta_tiene_puerta_y_ninguna_es_de_sistema() -> None:
     assert rutas
     for r in rutas:
         llamadas = _llamadas(r.dependant)
-        assert llamadas & PUERTAS, f"{r.path} no declara quién puede entrar"
+        assert r.path in SIN_PUERTA or llamadas & PUERTAS, f"{r.path} no declara quién entra"
         assert not llamadas & PROHIBIDAS, f"{r.path} usa una sesión de sistema"

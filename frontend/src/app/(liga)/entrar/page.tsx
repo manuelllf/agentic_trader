@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Boton } from "../_ui";
+import { entrarConAlias } from "@/lib/liga/api";
 import { destinoSeguro, useSupabase } from "@/lib/liga/supabase";
 
 type Paso = "credenciales" | "codigo";
@@ -32,9 +33,16 @@ export default function Entrar() {
     setOcupado(true);
     setError("");
     try {
-      const { error: fallo } = await sb.auth.signInWithPassword({ email: email.trim(), password: clave });
+      let fallo: string | null;
+      if (email.includes("@")) {
+        const { error: e } = await sb.auth.signInWithPassword({ email: email.trim(), password: clave });
+        fallo = !e ? null : e.status === 429 ? "Demasiados intentos. Espera unos minutos."
+          : "El usuario o la contraseña no coinciden. Revísalos y prueba otra vez.";
+      } else {
+        fallo = await entrarConAlias(sb, email, clave);
+      }
       if (fallo) {
-        setError("El email o la contraseña no coinciden. Revísalos y prueba otra vez.");
+        setError(fallo);
         return;
       }
       const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
@@ -90,10 +98,11 @@ export default function Entrar() {
             <h1 id="titular">Entrar</h1>
             <form className="form" onSubmit={entrar}>
               <label className="campo">
-                <span className="lbl">Email</span>
-                <input className="inp" type="email" autoComplete="email" required
-                       inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                       placeholder="nombre@correo.es" />
+                <span className="lbl">Email o nombre de usuario</span>
+                <input className="inp" type="text" autoComplete="username" required
+                       autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                       value={email} onChange={(e) => setEmail(e.target.value)}
+                       placeholder="lucia_invierte" />
               </label>
               <label className="campo">
                 <span className="lbl">Contraseña</span>
