@@ -24,6 +24,8 @@ from sqlalchemy import inspect
 from app import models  # registra las tablas en Base.metadata
 from app.config import settings
 from app.db import Base, engine
+from app.liga.models import ESQUEMA as ESQUEMA_LIGA
+from app.liga.models import LigaBase
 
 
 # Alias que Postgres resuelve al mismo tipo físico pero SQLAlchemy compila con otro nombre:
@@ -54,18 +56,26 @@ def comparar() -> list[str]:
     engine.dialect.ischema_names.setdefault("vector", models.Vector)
     insp = inspect(engine)
     diffs: list[str] = []
+    for esquema, metadata in ((None, Base.metadata), (ESQUEMA_LIGA, LigaBase.metadata)):
+        diffs += _comparar_esquema(insp, esquema, metadata)
+    return diffs
 
-    tablas_bd = set(insp.get_table_names())
-    tablas_modelo = set(Base.metadata.tables.keys())
+
+def _comparar_esquema(insp, esquema: str | None, metadata) -> list[str]:  # noqa: ANN001
+    diffs: list[str] = []
+    prefijo = f"{esquema}." if esquema else ""
+    tablas_bd = {prefijo + t for t in insp.get_table_names(schema=esquema)}
+    tablas_modelo = set(metadata.tables.keys())
 
     for solo_bd in sorted(tablas_bd - tablas_modelo):
-        diffs.append(f"tabla '{solo_bd}' existe en la BD pero no en models.py")
+        diffs.append(f"tabla '{solo_bd}' existe en la BD pero no en los modelos")
     for solo_modelo in sorted(tablas_modelo - tablas_bd):
-        diffs.append(f"tabla '{solo_modelo}' está en models.py pero no existe en la BD")
+        diffs.append(f"tabla '{solo_modelo}' está en los modelos pero no existe en la BD")
 
     for tabla in sorted(tablas_bd & tablas_modelo):
-        cols_bd = {c["name"]: c for c in insp.get_columns(tabla)}
-        cols_modelo = {c.name: c for c in Base.metadata.tables[tabla].columns}
+        nombre_bd = tabla.removeprefix(prefijo)
+        cols_bd = {c["name"]: c for c in insp.get_columns(nombre_bd, schema=esquema)}
+        cols_modelo = {c.name: c for c in metadata.tables[tabla].columns}
 
         for solo_bd in sorted(set(cols_bd) - set(cols_modelo)):
             diffs.append(f"{tabla}.{solo_bd}: columna en la BD, ausente en models.py")
