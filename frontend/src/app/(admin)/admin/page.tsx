@@ -1,7 +1,6 @@
 "use client";
 
-// Entrada del admin: las tres salas. Por ahora con la contraseña de siempre (AuthGate); el
-// acceso con cuenta y 2FA la sustituye cuando exista.
+// Panel de control: las salas y la liguilla, tras el candado de admin con 2FA (AuthGate).
 
 import Link from "next/link";
 import AuthGate from "@/components/AuthGate";
@@ -10,6 +9,7 @@ const SALAS = [
   { href: "/admin/alpha", nombre: "Alpha", texto: "Cuenta real: el agente propone, tú decides." },
   { href: "/admin/beta", nombre: "Beta", texto: "Réplica en papel del mismo método." },
   { href: "/admin/omega", nombre: "Omega", texto: "Caídas fuertes, con la IA de filtro." },
+  { href: "/admin/liga", nombre: "Liguilla", texto: "Temporadas, jornadas y sus procesos." },
 ];
 
 export default function Admin() {
