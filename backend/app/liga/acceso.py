@@ -67,6 +67,28 @@ class LimiteFallos:
 limite = LimiteFallos(por_ip=5, global_=50, ventana_s=15 * 60)
 
 
+class LimiteFrecuencia:
+    """Como mucho `tope` llamadas por `ventana_s` segundos y clave (aquí, el usuario). En
+    memoria: vale mientras la liga sea un solo proceso (plan §11)."""
+
+    def __init__(self, tope: int, ventana_s: int) -> None:
+        self.tope, self.ventana_s = tope, ventana_s
+        self._golpes: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def permitido(self, clave: str) -> bool:
+        ahora = time.time()
+        with self._lock:
+            corte = ahora - self.ventana_s
+            vivos = [t for t in self._golpes.get(clave, []) if t > corte]
+            if len(vivos) >= self.tope:
+                self._golpes[clave] = vivos
+                return False
+            vivos.append(ahora)
+            self._golpes[clave] = vivos
+            return True
+
+
 def ip_cliente(request: Request) -> str:
     fwd = request.headers.get("x-forwarded-for", "")
     if fwd:

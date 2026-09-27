@@ -11,11 +11,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.liga import acceso, rutas_publicas
+from app.liga import acceso, rutas_estrategias, rutas_publicas
 from app.liga.db import db_usuario
 
 router = APIRouter(prefix="/liga", tags=["liga"])
 router.include_router(rutas_publicas.router)
+router.include_router(rutas_estrategias.router)
 
 
 class Yo(BaseModel):
