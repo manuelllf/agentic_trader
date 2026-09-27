@@ -102,7 +102,7 @@ export default function Entrar() {
                 <input className="inp" type="text" autoComplete="username" required
                        autoCapitalize="none" autoCorrect="off" spellCheck={false}
                        value={email} onChange={(e) => setEmail(e.target.value)}
-                       placeholder="lucia_invierte" />
+                       placeholder="tu_usuario o tu@correo.es" />
               </label>
               <label className="campo">
                 <span className="lbl">Contraseña</span>
