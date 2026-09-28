@@ -74,13 +74,17 @@ def detectar_salida(cierres: Sequence[Cierre], entrada_dia: date, entrada_precio
     reimplementadas: objetivo por arranque a 3 sesiones o tope de 90 días) pero la venta es
     SIEMPRE al cierre del día del disparo -- nunca a la apertura del día siguiente como hace la
     sala real: en la liga el precio siempre es un cierre (regla del proyecto). `None` = sigue
-    abierta a `hasta` (o aún no hay 4 cierres para fijar el objetivo)."""
+    abierta a `hasta` (o aún no hay 4 cierres para fijar el objetivo).
+
+    El objetivo nace del retorno a 3 sesiones, así que solo se evalúa desde ese cuarto cierre: la
+    sala real mira también las sesiones 1 y 2 con esa ventaja de saber el futuro; en la liga un
+    cruce antes de conocer el objetivo ni vende ni puede tapar las salidas posteriores."""
     serie = sorted((c for c in cierres if entrada_dia <= c.dia <= hasta), key=lambda c: c.dia)
     if len(serie) < 4:
         return None
     ret_3_sesiones = (serie[3].cierre / entrada_precio - 1) * 100
     objetivo = objetivo_por_arranque(ret_3_sesiones)
-    for c in serie[1:]:
+    for c in serie[3:]:
         dias = (c.dia - entrada_dia).days
         if c.cierre / entrada_precio - 1 >= objetivo:
             return c.dia, c.cierre, "objetivo"
@@ -112,8 +116,6 @@ def simular(carry_over: Sequence[Operacion], alertas: Sequence[Alerta],
         for numero, op in list(abiertos.items()):
             salida = detectar_salida(cierres.get(op.ticker, ()), op.entrada_dia,
                                      op.entrada_precio, dia)
-            # No se exige `salida[0] == dia`: el objetivo no se conoce hasta el cuarto cierre, y
-            # un cruce de la sesión 1 o 2 solo aparece entonces (con su día y su cierre).
             if salida is not None:
                 dia_s, precio_s, motivo = salida
                 resultado.append(replace(op, salida_dia=dia_s, salida_precio=precio_s,
