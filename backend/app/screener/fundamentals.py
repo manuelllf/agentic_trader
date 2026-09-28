@@ -107,6 +107,10 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
                            for m in db.query(FundamentalsSnapshotMetric)
                            .filter(FundamentalsSnapshotMetric.fundamentals_snapshot_id == row.id)
                            .all()}
+    # B6: `foto_guardar` ya no escribe las 11 claves repetidas -- se reponen aquí desde su
+    # duplicado (todavía en `metricas_crudas`) o su columna, mismo valor que antes de B6, así el
+    # texto reconstruido (y el `fundamentales_crudos` que devuelve esta función) no cambian.
+    metricas_crudas = _reponer_claves_repetidas(metricas_crudas, row)
     # Reconstruye el prompt con la MISMA función que lo monta en vivo (`_fundamentals_text`):
     # nunca se reimplementa el formateo, así que el texto reconstruido es idéntico al original.
     # `currentPrice` no es uno de los ~85 (viaja aparte, ya materializado en `row.price`) — se
@@ -213,12 +217,61 @@ def _convertir_financieros_a_usd(info: dict, db) -> dict:  # noqa: ANN001
     return out
 
 
+# B6 (docs/liguilla/cambios-bbdd.md): 11 de las ~85 claves de `_valores_crudos` repiten, al
+# 100 %, otra clave de la propia foto o una columna ya existente de `FundamentalsSnapshot` --
+# comprobado en la foto del 23-sep. `foto_guardar` deja de escribirlas (fila de métrica y
+# `metricas` jsonb); `_reponer_claves_repetidas` las repone al leer, así el prompt no cambia.
+_CLAVES_REPETIDAS_B6 = frozenset({
+    # Duplican otra clave de la misma foto (la que se queda, entre paréntesis):
+    "regularMarketPreviousClose",   # = previousClose
+    "regularMarketOpen",            # = open
+    "regularMarketDayLow",          # = dayLow
+    "regularMarketDayHigh",         # = dayHigh
+    "regularMarketVolume",          # = volume
+    "averageDailyVolume10Day",      # = averageVolume10days
+    # Ya son columna propia de FundamentalsSnapshot:
+    "marketCap", "trailingPE", "forwardPE", "currency", "financialCurrency",
+})
+
+# Duplicado (regularMarket*/alt) -> clave que SÍ se guarda, para reponerlo al leer.
+_ALIAS_REPETIDOS_B6 = {
+    "regularMarketPreviousClose": "previousClose",
+    "regularMarketOpen": "open",
+    "regularMarketDayLow": "dayLow",
+    "regularMarketDayHigh": "dayHigh",
+    "regularMarketVolume": "volume",
+    "averageDailyVolume10Day": "averageVolume10days",
+}
+
+
+def _reponer_claves_repetidas(crudas: dict, row) -> dict:  # noqa: ANN001
+    """Copia de `crudas` con las 11 claves de `_CLAVES_REPETIDAS_B6` repuestas -- 5 desde su
+    duplicado (todavía en `crudas`) y 6 desde la columna de `row` (`FundamentalsSnapshot`).
+    Mismo valor que se guardaba antes de B6: el texto reconstruido no cambia."""
+    out = dict(crudas)
+    for repetida, original in _ALIAS_REPETIDOS_B6.items():
+        if original in out:
+            out[repetida] = out[original]
+    for repetida, valor in (
+        ("marketCap", row.market_cap), ("trailingPE", row.pe_trailing),
+        ("forwardPE", row.pe_forward), ("currency", row.currency),
+        ("financialCurrency", row.financial_currency),
+    ):
+        if valor is not None:
+            out[repetida] = valor
+    return out
+
+
 def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False,  # noqa: ANN001
                  foto_id: int | None = None) -> None:
     """Añade una foto NUEVA (nunca pisa la anterior): es el histórico, no un cache. Columnas
     propias, nunca un blob — ver `app.models.FundamentalsSnapshot`. Los ~85 campos de
     `fundamentals_text` se guardan en crudo (`FundamentalsSnapshotMetric`), NUNCA el texto ya
-    formateado: es lo que se le mandó al LLM, no un dato — se reconstruye al leer.
+    formateado: es lo que se le mandó al LLM, no un dato — se reconstruye al leer. B6: 11 de esas
+    claves no se guardan (repiten otra clave o una columna, ver `_CLAVES_REPETIDAS_B6`). B7 fase 1
+    (doble escritura): la misma foto, ya sin esas 11, va también en `metricas`/`titulares`
+    (columnas de la propia fila) -- los lectores siguen en las tablas de siempre, esto solo
+    prepara el terreno para dejar de escribirlas (ver `compara_b7.py`/`rellenar_b7.py`).
 
     `es_dataset`: de qué universo vino ESTA captura (global/HuggingFace o NASDAQ/escaneo)
     — no cambia la identidad (`ticker`), solo la etiqueta de origen de la fila.
@@ -230,6 +283,8 @@ def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False,  # n
     )
 
     data.foto_id = foto_id
+    crudas_a_guardar = {clave: valor for clave, valor in data.fundamentales_crudos.items()
+                        if clave not in _CLAVES_REPETIDAS_B6}
     with _FOTO_LOCK:
         fila = FundamentalsSnapshot(
             ticker=ticker, sector=data.sector, industry=data.industry, name=data.name,
@@ -241,13 +296,15 @@ def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False,  # n
             financial_currency=data.fundamentales_crudos.get("financialCurrency"),
             market_cap_usd=_market_cap_usd(db, data.market_cap, data.currency),
             foto_id=foto_id,
+            metricas=crudas_a_guardar or None,
+            titulares=list(data.news) or None,
         )
         db.add(fila)
         db.flush()   # asigna fila.id sin comprometer la transacción, para las hermanas
         for i, titular in enumerate(data.news):
             db.add(FundamentalsSnapshotNews(
                 fundamentals_snapshot_id=fila.id, posicion=i, texto=titular))
-        for clave, valor in data.fundamentales_crudos.items():
+        for clave, valor in crudas_a_guardar.items():
             db.add(FundamentalsSnapshotMetric(
                 fundamentals_snapshot_id=fila.id, clave=clave,
                 valor_num=valor if isinstance(valor, float) else None,

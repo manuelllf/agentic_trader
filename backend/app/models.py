@@ -33,7 +33,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import REAL as PG_REAL
 from sqlalchemy.orm import Mapped, mapped_column, object_session
 from sqlalchemy.types import UserDefinedType
@@ -166,6 +166,12 @@ class FundamentalsSnapshot(Base):
     # Foto de Alpha a la que pertenece. NULL = captura suelta de un escaneo, o anterior a que las
     # fotos tuvieran identidad.
     foto_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("foto.id"))
+    # B7 fase 1: mismos datos que `FundamentalsSnapshotMetric`/`FundamentalsSnapshotNews`, en la
+    # propia fila (doble escritura mientras los lectores siguen en las tablas viejas -- ver
+    # `foto_guardar` y `docs/liguilla/cambios-bbdd.md`). NULL en filas viejas hasta rellenar_b7.
+    metricas: Mapped[dict | None] = mapped_column(JSON_PG)
+    titulares: Mapped[list[str] | None] = mapped_column(
+        JSON().with_variant(ARRAY(Text), "postgresql"))
 
 
 class FundamentalsSnapshotNews(Base):
