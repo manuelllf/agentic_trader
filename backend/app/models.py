@@ -35,6 +35,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import REAL as PG_REAL
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, object_session
 from sqlalchemy.types import UserDefinedType
 
@@ -51,6 +52,10 @@ JSON_PG = JSON().with_variant(JSONB(), "postgresql")
 # la columna como alias del rowid y autorrellena el id. Con BigInteger fijo, cada INSERT sin id
 # explícito falla por NOT NULL en SQLite — medido al correr los tests tras el cambio.
 PK_ID = BigInteger().with_variant(Integer(), "sqlite")
+
+# Saneamiento 10 (rastro de quién y cuándo): uuid real en Postgres, texto en SQLite (que no
+# tiene ese tipo) -- mismo patrón que JSON_PG/PK_ID de arriba.
+UUID_ACTOR = String(36).with_variant(PG_UUID(as_uuid=False), "postgresql")
 
 BOOK_SHADOW = "shadow"
 BOOK_REAL = "real"
@@ -88,6 +93,9 @@ class Watchlist(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     last_high: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class Foto(Base):
@@ -104,6 +112,10 @@ class Foto(Base):
     estado: Mapped[str] = mapped_column(Text, default="capturando")
     pedidos: Mapped[int | None] = mapped_column(Integer)
     capturados: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class FundamentalsSnapshot(Base):
@@ -186,6 +198,7 @@ class FundamentalsSnapshotNews(Base):
         BigInteger, ForeignKey("fundamentals_snapshot.id", ondelete="CASCADE"), index=True)
     posicion: Mapped[int] = mapped_column(SmallInteger)
     texto: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class FundamentalsSnapshotMetric(Base):
@@ -205,6 +218,7 @@ class FundamentalsSnapshotMetric(Base):
     clave: Mapped[str] = mapped_column(String(48))
     valor_num: Mapped[float | None] = mapped_column(Float)
     valor_texto: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class UniverseTicker(Base):
@@ -373,6 +387,9 @@ class Proposal(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     cash_target_pct: Mapped[float] = mapped_column(Float, default=0.0)
     macro_summary: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
     @property
     def items(self) -> list[dict]:
@@ -525,6 +542,9 @@ class ScanRun(Base):
     # incluido), no solo cuando `decide=True`.
     construction_cash_pct: Mapped[float] = mapped_column(Float, default=0.0)
     construction_summary: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
     @property
     def universe(self) -> dict:
@@ -887,6 +907,7 @@ class LLMCallLogprob(Base):
     token: Mapped[str] = mapped_column(String(8))
     # REAL en Postgres (una probabilidad no necesita DOUBLE PRECISION); Float genérico en SQLite.
     logprob: Mapped[float] = mapped_column(Float().with_variant(PG_REAL(), "postgresql"))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # ---------------------------------------------------------------------------
@@ -909,6 +930,9 @@ class Allocation(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     book: Mapped[str] = mapped_column(String(8), default=BOOK_SHADOW, index=True)
     currency: Mapped[str] = mapped_column(String(8), default="USD")
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class Trade(Base):
@@ -926,6 +950,9 @@ class Trade(Base):
     order_ref: Mapped[str] = mapped_column(String(48), index=True)  # etiqueta AGENT-<uuid>
     realized_pnl: Mapped[Decimal | None] = mapped_column(DecimalStr(32))  # solo en ventas
     book: Mapped[str] = mapped_column(String(8), default=BOOK_SHADOW, index=True)
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class CurrencyConversion(Base):
@@ -970,6 +997,9 @@ class Position(Base):
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     order_ref: Mapped[str] = mapped_column(String(48), default="")
     book: Mapped[str] = mapped_column(String(8), default=BOOK_SHADOW, index=True)
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 # ---------------------------------------------------------------------------
@@ -1012,6 +1042,9 @@ class Approval(Base):
     quantity: Mapped[Decimal | None] = mapped_column(DecimalStr(32))    # acciones YA ejecutadas (acumulado)
     fill_price: Mapped[Decimal | None] = mapped_column(DecimalStr(32))  # precio medio de ejecución
     result_msg: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class EquitySnapshot(Base):
@@ -1046,6 +1079,10 @@ class PrecioCierre(Base):
     dividendo: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=Decimal("0"))
     split: Mapped[Decimal] = mapped_column(Numeric(10, 6), default=Decimal("1"))
     fuente: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class Meta(Base):
@@ -1059,6 +1096,10 @@ class Meta(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class PersonalPosition(Base):
@@ -1096,6 +1137,9 @@ class PushSubscription(Base):
     endpoint: Mapped[str] = mapped_column(Text, unique=True, index=True)
     p256dh: Mapped[str] = mapped_column(Text)
     auth: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 # ---- Tablas que la app lee y escribe con SQL crudo (memoria vectorial y Omega) ----------------
@@ -1156,6 +1200,9 @@ class MomentumUniverso(Base):
     nombre: Mapped[str] = mapped_column(String, server_default=text("''"))
     origen: Mapped[str] = mapped_column(String)
     creado_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class MomentumUniversoEstado(Base):
@@ -1165,6 +1212,9 @@ class MomentumUniversoEstado(Base):
     mantener: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     actualizado_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
                                                      server_default=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class MomentumSenal(Base):
@@ -1196,6 +1246,9 @@ class MomentumSenal(Base):
     ref_price_pico: Mapped[Decimal | None] = mapped_column(Numeric)
     caida_max_pct: Mapped[Decimal | None] = mapped_column(Numeric)
     dias_hasta_min: Mapped[int | None] = mapped_column(Integer)
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class MomentumEjecucion(Base):
@@ -1229,6 +1282,9 @@ class MomentumCandidato(Base):
     decision: Mapped[str] = mapped_column(String(12), server_default=text("'pendiente'"))
     decidido_por: Mapped[str] = mapped_column(String(20), server_default=text("'sistema'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(UUID_ACTOR)
 
 
 class MomentumApewisdom(Base):

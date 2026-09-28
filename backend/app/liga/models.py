@@ -53,6 +53,9 @@ class Perfil(LigaBase):
     alias: Mapped[str] = mapped_column(Text)
     oculto: Mapped[bool] = mapped_column(Boolean, server_default=DB)
     creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
 class PerfilPrivado(LigaBase):
@@ -61,6 +64,10 @@ class PerfilPrivado(LigaBase):
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
     tema: Mapped[str] = mapped_column(Text, server_default=DB)
     baja_solicitada: Mapped[datetime | None] = mapped_column(TSTZ)
+    creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
 class RolUsuario(LigaBase):
@@ -69,6 +76,7 @@ class RolUsuario(LigaBase):
     usuario_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
     rol: Mapped[str] = mapped_column(Rol, primary_key=True)
     concedido: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
 
 
 class PermisoRol(LigaBase):
@@ -112,6 +120,10 @@ class Temporada(LigaBase):
     n_jornadas: Mapped[int] = mapped_column(SmallInteger)
     cuenta: Mapped[bool] = mapped_column(Boolean)
     estado: Mapped[str] = mapped_column(Text, server_default=DB)
+    creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
 class Jornada(LigaBase):
@@ -128,6 +140,10 @@ class Jornada(LigaBase):
     foto_id: Mapped[int | None] = mapped_column(BigInteger)
     scan_run_id: Mapped[int | None] = mapped_column(BigInteger)
     sp_rentabilidad: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
 class Estrategia(LigaBase):
@@ -153,6 +169,8 @@ class Estrategia(LigaBase):
         BigInteger, ForeignKey("liga.recetas.id", use_alter=True))
     creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     actualizada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
 class Receta(LigaBase):
@@ -176,6 +194,7 @@ class Receta(LigaBase):
     reparto: Mapped[str] = mapped_column(Text)
     max_por_sector: Mapped[int] = mapped_column(SmallInteger)
     creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
 
 
 class Inscripcion(LigaBase):
@@ -189,6 +208,10 @@ class Inscripcion(LigaBase):
     receta_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("liga.recetas.id"))
     n_pasan: Mapped[int | None] = mapped_column(Integer)
     estado: Mapped[str] = mapped_column(Text, server_default=DB)
+    creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
 class Posicion(LigaBase):
@@ -225,6 +248,9 @@ class LigaPrivada(LigaBase):
     cupo: Mapped[int] = mapped_column(SmallInteger, server_default=DB)
     oculta: Mapped[bool] = mapped_column(Boolean, server_default=DB)
     creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
 class MiembroLiga(LigaBase):
@@ -234,6 +260,7 @@ class MiembroLiga(LigaBase):
         UUID, ForeignKey("liga.ligas_privadas.id"), primary_key=True)
     usuario_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
     unido: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
 
 
 # ---- IA y créditos -------------------------------------------------------------------------------
@@ -249,6 +276,8 @@ class Prueba(LigaBase):
     n_evaluadas: Mapped[int] = mapped_column(Integer, server_default=DB)
     idempotencia: Mapped[str] = mapped_column(Text)
     creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
 class RespuestaIA(LigaBase):
@@ -264,6 +293,7 @@ class RespuestaIA(LigaBase):
     seguridad: Mapped[str] = mapped_column(Text)
     llm_call_id: Mapped[int | None] = mapped_column(BigInteger)
     creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
 
 
 class Lectura(LigaBase):
@@ -276,6 +306,7 @@ class Lectura(LigaBase):
     fuentes: Mapped[list] = mapped_column(JSONB, server_default=DB)
     llm_call_id: Mapped[int | None] = mapped_column(BigInteger)
     creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
 
 
 class MovimientoCredito(LigaBase):
@@ -303,6 +334,8 @@ class Ajuste(LigaBase):
     valor: Mapped[dict] = mapped_column(JSONB)
     actualizado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
 
 
 class Auditoria(LigaBase):
@@ -314,6 +347,29 @@ class Auditoria(LigaBase):
     objeto: Mapped[str | None] = mapped_column(Text)
     detalle: Mapped[dict] = mapped_column(JSONB, server_default=DB)
     creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+
+
+class OmegaOperacion(LigaBase):
+    """Una operación (compra→venta) de un hueco virtual de Omega en la liga. `salida_dia` nulo =
+    sigue abierta (se actualiza la misma fila el día que cierra, no nace una nueva)."""
+
+    __tablename__ = "omega_operaciones"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    jornada_id: Mapped[int] = mapped_column(Integer, ForeignKey("liga.jornadas.id"))
+    numero: Mapped[int] = mapped_column(SmallInteger)
+    senal_id: Mapped[int | None] = mapped_column(BigInteger)
+    ticker: Mapped[str] = mapped_column(Text)
+    entrada_dia: Mapped[date] = mapped_column(Date)
+    entrada_precio: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+    market_cap_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    salida_dia: Mapped[date | None] = mapped_column(Date)
+    salida_precio: Mapped[Decimal | None] = mapped_column(Numeric(14, 4))
+    motivo: Mapped[str | None] = mapped_column(Text)
+    creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
 class Reporte(LigaBase):

@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import UTC, date, datetime, timedelta
-from decimal import ROUND_DOWN, Decimal
+from decimal import Decimal
 
 import pytest
 
@@ -22,6 +22,7 @@ from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app import precios  # noqa: E402
+from app.liga.models import Jornada  # noqa: E402
 from app.liga.motor import calendario  # noqa: E402
 from app.liga.motor.puntos import resultado_jornada  # noqa: E402
 from app.liga.motor.rentabilidad import pesos_mantenidos  # noqa: E402
@@ -33,10 +34,10 @@ from app.liga.procesos import (  # noqa: E402
     estado,
     formar,
     foto,
+    omega,
     temporadas,
 )
 from app.models import (  # noqa: E402
-    Approval,
     Foto,
     FundamentalsSnapshot,
     FundamentalsSnapshotMetric,
@@ -73,7 +74,11 @@ SIN_PRECIO = {"ZQL"}          # la fuente no la devuelve: no se puede comprar
 LAMBDA = ["ZQL", "ZQA", "ZQD", "ZQF", "ZQH"]
 ALPHA = [("ZQB", "comprar", 30.0), ("ZQE", "comprar", 25.0), ("ZQG", "ampliar", 25.0),
          ("ZQI", "recortar", 10.0), ("ZQJ", "vender", 0.0)]
-VETADA = "ZQE"
+# Alertas de Omega de enero: (ticker, instante UTC, caída). ZQA y ZQB llegan a la vez: gana la
+# caída más fuerte. La quinta espera a que un hueco quede libre.
+ALERTAS = [("ZQA", "2027-01-05 15:00+00", 30), ("ZQB", "2027-01-05 15:00+00", 40),
+           ("ZQC", "2027-01-06 15:00+00", 25), ("ZQD", "2027-01-07 15:00+00", 25),
+           ("ZQF", "2027-01-08 15:00+00", 25)]
 
 
 def _crece(ticker: str) -> float:
@@ -86,6 +91,7 @@ class Mercado:
     def __init__(self) -> None:
         self.hasta = date(2026, 12, 31)
         self.pedidos: list[tuple[str, ...]] = []
+        self.saltos: dict[str, tuple[date, float]] = {}   # ticker: (desde qué día, multiplicador)
 
     def descargar(self, tickers: list[str], desde: date) -> dict[str, list[precios.Cierre]]:
         self.pedidos.append(tuple(tickers))
@@ -95,7 +101,9 @@ class Mercado:
             if t in SIN_PRECIO:
                 continue
             base = 50.0 if t != "SPY" else 600.0
-            out[t] = [precios.Cierre(d, round(base * (1 + _crece(t)) ** i, 4))
+            dia_salto, mult = self.saltos.get(t, (date.max, 1.0))
+            out[t] = [precios.Cierre(d, round(base * (1 + _crece(t)) ** i
+                                              * (mult if d >= dia_salto else 1.0), 4))
                       for i, d in enumerate(dias)]
         return out
 
@@ -187,18 +195,13 @@ def mundo(fabrica, mercado) -> dict:  # noqa: ANN001
         db.add(ScanRunConstructionItem(scan_run_id=run.id, posicion=i, ticker=t, action=accion,
                                        target_weight_pct=w, target_value="0", target_shares=0.0,
                                        delta_shares=0.0))
-    db.add(Approval(ticker=VETADA, action="comprar", status="rejected", target_weight_pct=25.0,
-                    created_at=scan_at - timedelta(minutes=2),
-                    decided_at=scan_at + timedelta(minutes=10)))
-    # Omega: solo lo de esta prueba, con una posición abierta antes del corte.
-    db.execute(text("delete from momentum_ejecuciones"))
-    senal = db.execute(text(
-        "insert into momentum_senales (ticker, sector, tipo, entry_date, entry_price, ref_label, "
-        "ref_price, caida_pct, estado) values ('ZQH', 'Industrials', 'suelo', '2026-12-10', 50, "
-        "'max', 70, 30, 'ejecutada') returning id")).scalar()
-    db.execute(text(
-        "insert into momentum_ejecuciones (senal_id, accion, acciones, precio, comision, "
-        "ejecutada_at) values (:s, 'compra', 10, 50, 0, '2026-12-15 15:00+00')"), {"s": senal})
+    # Omega: solo alertas de esta prueba (se deshacen con la transacción).
+    for t, momento, caida in ALERTAS:
+        db.execute(text(
+            "insert into momentum_senales (ticker, sector, tipo, entry_date, entry_price, "
+            "ref_label, ref_price, caida_pct, estado, created_at) values (:t, 'Industrials', "
+            "'suelo', :d, 50, 'max', 70, :c, 'nueva', :m)"),
+            {"t": t, "d": momento[:10], "c": caida, "m": momento})
     uid = _usuario(db)
     ids["reglas"] = _estrategia(db, uid, "Solo notas")
     ids["pregunta"] = _estrategia(db, uid, "Con pregunta", pregunta="¿Tiene ventaja?", n=3,
@@ -290,14 +293,11 @@ def test_un_mes_entero_dos_veces_sin_duplicar(fabrica, mercado, mundo) -> None: 
     assert all("ZQL" not in i["pos"] for i in ins.values())
     assert ins["lambda"]["pos"] == dict.fromkeys(["ZQA", "ZQD", "ZQF", "ZQH"], Decimal("20"))
     assert ins["lambda"]["fila"].receta_id is None
-    # Alpha: la compra vetada antes del corte, a caja; la venta (peso 0) no entra.
-    assert ins["alpha"]["pos"] == {"ZQB": Decimal(30), "ZQG": Decimal(25), "ZQI": Decimal(10)}
-    # Omega: 10 acciones de ZQH al cierre del día base sobre su capital (posición + libre).
-    valor = 10 * _cuenta(fabrica, "select cierre from precio_cierre where ticker = 'ZQH' "
-                                  "and dia = '2026-12-31'")
-    libre = Decimal(3000) - Decimal(500)                     # tope menos lo invertido a coste
-    esperado = (valor / (valor + libre) * 100).quantize(Decimal("1e-4"), rounding=ROUND_DOWN)
-    assert ins["omega"]["pos"] == {"ZQH": esperado}
+    # Alpha: la propuesta tal cual, sin vetos; la venta (peso 0) no entra.
+    assert ins["alpha"]["pos"] == {"ZQB": Decimal(30), "ZQE": Decimal(25), "ZQG": Decimal(25),
+                                   "ZQI": Decimal(10)}
+    # Omega nace en caja: sus huecos se llenan con las alertas durante el mes.
+    assert ins["omega"]["pos"] == {}
     reglas = ins[mundo["reglas"]]
     assert list(reglas["pos"]) == ["ZQA", "ZQB", "ZQD", "ZQE", "ZQF"]   # 2 por sector como mucho
     assert reglas["fila"].n_pasan == len(EMPRESAS) - 1 and reglas["fila"].estado == "formada"
@@ -411,17 +411,95 @@ def test_una_estrategia_de_usuario_no_se_inscribe_sin_receta(fabrica, mundo) -> 
     db.close()
 
 
-def test_omega_no_juega_si_opero_despues_del_corte(fabrica, mercado, mundo) -> None:  # noqa: ANN001
+def _huecos(fabrica, jornada_id: int) -> list[tuple]:  # noqa: ANN001
     with comun.sesion(fabrica) as db:
-        db.execute(text(
-            "insert into momentum_ejecuciones (senal_id, accion, acciones, precio, comision, "
-            "ejecutada_at) select senal_id, 'venta', 10, 55, 0, '2027-01-04 15:00+00' "
-            "from momentum_ejecuciones limit 1"))
+        return [tuple(f) for f in db.execute(text(
+            "select numero, ticker, entrada_dia, salida_dia, motivo from liga.omega_operaciones "
+            "where jornada_id = :j order by numero, entrada_dia"), {"j": jornada_id}).all()]
+
+
+def _omega_fila(fabrica, jornada_id: int) -> dict:  # noqa: ANN001
+    filas = diario.tabla_provisional(jornada_id, fabrica=fabrica)["filas"]
+    return next(f for f in filas if f["casa_clave"] == "omega")
+
+
+def test_omega_llena_sus_huecos_con_las_alertas_y_repetir_no_duplica(fabrica, mercado,
+                                                                    mundo) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    mercado.hasta = date(2027, 1, 12)
+    hecho = diario.ejecutar(fabrica)
+    assert hecho["omega"][0]["nuevas"] == 4
+    huecos = _huecos(fabrica, ene)
+    # Mismo instante: primero la caída más fuerte (ZQB antes que ZQA); la quinta espera.
+    assert [(h[0], h[1], h[2]) for h in huecos] == [
+        (1, "ZQB", date(2027, 1, 5)), (2, "ZQA", date(2027, 1, 5)),
+        (3, "ZQC", date(2027, 1, 6)), (4, "ZQD", date(2027, 1, 7))]
+    assert all(h[3] is None for h in huecos)
+    sql_aud = "select count(*) from liga.auditoria where accion = 'proceso.diario.omega'"
+    n_aud = _cuenta(fabrica, sql_aud)
+    diario.ejecutar(fabrica)                                  # el mismo día otra vez
+    assert _huecos(fabrica, ene) == huecos
+    assert _cuenta(fabrica, sql_aud) == n_aud
+    assert Decimal(_omega_fila(fabrica, ene)["rentabilidad"]) != 0
+
+
+def test_omega_libera_el_hueco_al_salir_y_lo_rellena_compuesto(fabrica, mercado,
+                                                              mundo) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    mercado.saltos = {"ZQA": (date(2027, 1, 14), 1.5)}         # +50 %: pasa el objetivo
+    mercado.hasta = date(2027, 1, 12)
+    diario.ejecutar(fabrica)
+    assert len(_huecos(fabrica, ene)) == 4
+    mercado.hasta = date(2027, 1, 20)
+    diario.ejecutar(fabrica)
+    huecos = _huecos(fabrica, ene)
+    assert (2, "ZQA", date(2027, 1, 5), date(2027, 1, 14), "objetivo") in huecos
+    assert (2, "ZQF", date(2027, 1, 14), None, None) in huecos   # el hueco libre, con la quinta
+    diario.ejecutar(fabrica)                                  # repetir no cambia lo escrito
+    assert _huecos(fabrica, ene) == huecos
+    # El hueco 2 compuso el +50 % sobre 500 $ de un total de 2.000 $: más de un 10 % en total.
+    assert Decimal(_omega_fila(fabrica, ene)["rentabilidad"]) > Decimal("10")
+
+
+def test_omega_pasa_lo_abierto_a_la_jornada_siguiente(fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    _cerrar_mes(fabrica, mercado, ene)
+    assert len(_huecos(fabrica, ene)) == 4
+    _formar_mes(fabrica, mercado, mundo["febrero"], FEBRERO)
+    with comun.sesion(fabrica) as db:
+        ops = omega.operaciones(db, db.get(Jornada, mundo["febrero"]))
+    assert sorted(o.ticker for o in ops) == ["ZQA", "ZQB", "ZQC", "ZQD"]   # siguen abiertas
+    assert _huecos(fabrica, mundo["febrero"]) == []
+
+
+def test_la_liga_nunca_escribe_en_las_tablas_de_omega(fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    tablas = ("momentum_senales", "momentum_ejecuciones", "momentum_candidatos",
+              "momentum_universo", "momentum_universo_estado")
+    sql_marcas = "select count(*) from momentum_senales where updated_at is not null"
+    antes = {t: _cuenta(fabrica, f"select count(*) from {t}") for t in tablas}
+    marcas = _cuenta(fabrica, sql_marcas)
+    _formar_mes(fabrica, mercado, mundo["enero"], ENERO)
+    _cerrar_mes(fabrica, mercado, mundo["enero"])
+    assert {t: _cuenta(fabrica, f"select count(*) from {t}") for t in tablas} == antes
+    assert _cuenta(fabrica, sql_marcas) == marcas
+
+
+def test_lambda_sin_detalle_usa_los_fondeados_de_scan_audit(fabrica, mercado,
+                                                            mundo) -> None:  # noqa: ANN001
+    with comun.sesion(fabrica) as db:
+        db.execute(text("delete from scan_run_jev_item where scan_run_id = :s"),
+                   {"s": mundo["scan"]})
+        db.execute(text("update scan_audit set jev_funded = true where scan_run_id = :s "
+                        "and ticker in ('ZQA', 'ZQD', 'ZQF')"), {"s": mundo["scan"]})
         db.commit()
     foto.ejecutar(mundo["enero"], fabrica=fabrica)
     hecho = formar.ejecutar(mundo["enero"], fabrica=fabrica, ahora=ENERO)
-    assert hecho["casa"]["omega"]["juega"] is False
-    assert "omega" not in _inscripciones(fabrica, mundo["enero"])
+    assert hecho["casa"]["lambda"]["juega"] is True
+    pesos = _inscripciones(fabrica, mundo["enero"])["lambda"]["pos"]
+    assert set(pesos) == {"ZQA", "ZQD", "ZQF"} and len(set(pesos.values())) == 1
 
 
 def _saltar_pretemporada(fabrica, mundo: dict) -> None:  # noqa: ANN001

@@ -6,11 +6,25 @@ los endpoints `def` en un threadpool, así que no bloqueamos el event loop."""
 from __future__ import annotations
 
 from collections.abc import Generator
+from contextvars import ContextVar, Token
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
+
+# Actor de esta request para `public.tocar_auditoria()` (saneamiento 10): lo deja
+# `app.auth.require_auth` con el uid del admin; vacío = proceso de sistema (scheduler, scripts),
+# que nunca pasa por esa dependencia -> NULL en `created_by`/`updated_by`.
+_actor: ContextVar[str | None] = ContextVar("actor", default=None)
+
+
+def set_actor(uid: str | None) -> Token:
+    return _actor.set(uid)
+
+
+def reset_actor(token: Token) -> None:
+    _actor.reset(token)
 
 # `check_same_thread` solo aplica a SQLite; permite usar la conexión desde el
 # threadpool de FastAPI y desde el scheduler.
@@ -20,6 +34,17 @@ connect_args = (
 
 engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+@event.listens_for(Session, "after_begin")
+def _marcar_actor(session, transaction, connection) -> None:  # noqa: ANN001, ARG001
+    """Dentro de cada transacción, deja `app.actor` para `public.tocar_auditoria()`. Solo en
+    Postgres (SQLite de tests no tiene `set_config`); sin actor en el contextvar, no hace nada."""
+    if connection.dialect.name != "postgresql":
+        return
+    uid = _actor.get()
+    if uid:
+        connection.execute(text("select set_config('app.actor', :uid, true)"), {"uid": uid})
 
 
 class Base(DeclarativeBase):

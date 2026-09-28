@@ -154,6 +154,13 @@ export default function FichaPage() {
             </div>
           )}
 
+          {ficha.casa === "omega" && (
+            <div className="sec">
+              <div className="sec-t">Su cartera</div>
+              <p className="fine">Cambia durante el mes.</p>
+            </div>
+          )}
+
           {!ficha.casa && (
             <p className="fine">
               Estrategia de un usuario, no una recomendación de la plataforma. Todo es en papel:

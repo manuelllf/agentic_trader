@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app import precios
 from app.liga.models import Jornada
-from app.liga.procesos import datos
+from app.liga.procesos import datos, omega
 from app.liga.procesos.comun import (
     ErrorProceso,
     Fabrica,
@@ -77,6 +77,8 @@ def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
                 if j.estado != "formada":
                     raise ErrorProceso(f"La jornada está {j.estado}: solo se cierra una formada.")
                 inicio = dict.fromkeys(_tickers(db, j.id) + [SPY], j.dia_base)
+                for t, desde in omega.inicios(db, [j]).items():
+                    inicio[t] = min(inicio.get(t, desde), desde)
                 precios.al_dia(db, inicio)
             with sesion(fabrica) as db:
                 return _escribir(db, jornada_id, actor)
@@ -90,6 +92,7 @@ def _escribir(db: Session, jornada_id: int, actor: str | None) -> dict:
     motivos = motivos_no_lista(db, j)
     if motivos:
         raise ErrorProceso(" ".join(motivos))
+    omega.sincronizar(db, j, j.dia_fin, actor)
     calculo = calcular(db, j, j.dia_fin)
     errores = [f"{f['nombre']}: {f['error']}" for f in calculo["filas"] if f.get("error")]
     if errores:

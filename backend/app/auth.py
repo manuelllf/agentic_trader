@@ -10,26 +10,34 @@ La seguridad real está en el backend. El candado del frontend es solo UX.
 from __future__ import annotations
 
 from fastapi import Header, HTTPException
+from fastapi.concurrency import run_in_threadpool
 
 from app.config import settings
-from app.liga.auth import comprobar_admin, verificar
+from app.db import set_actor
+from app.liga.auth import Identidad, comprobar_admin, verificar
 
 
 def auth_enabled() -> bool:
     return bool(settings.supabase_url)
 
 
-def _admin(authorization: str) -> None:
+def _admin(authorization: str) -> Identidad:
     token = authorization.removeprefix("Bearer ").strip()
     if not token:
         raise HTTPException(status_code=401, detail="No autorizado. Inicia sesión.")
-    comprobar_admin(verificar(token))
+    ident = verificar(token)
+    comprobar_admin(ident)  # valida rol + 2FA; lanza si no cumple (el valor de vuelta no importa)
+    return ident
 
 
-def require_auth(authorization: str = Header(default="")) -> None:
-    """Dependencia FastAPI: sesión de admin con 2FA, salvo que la auth esté desactivada."""
+async def require_auth(authorization: str = Header(default="")) -> None:
+    """Dependencia FastAPI: sesión de admin con 2FA, salvo que la auth esté desactivada. Deja su
+    uid en el contextvar de `app.db` (saneamiento 10, `public.tocar_auditoria()`). Es `async` a
+    propósito: una dependencia síncrona corre en un hilo con una copia del contexto y su
+    `set_actor` no llegaría a la ruta. La verificación (puede tocar la red) va a un hilo."""
     if auth_enabled():
-        _admin(authorization)
+        ident = await run_in_threadpool(_admin, authorization)
+        set_actor(ident.uid)
 
 
 def auth_optional(authorization: str = Header(default="")) -> bool:

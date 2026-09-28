@@ -11,7 +11,7 @@ import logging
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app import precios
@@ -19,7 +19,7 @@ from app.liga.models import Jornada
 from app.liga.motor import calendario
 from app.liga.motor.puntos import resultado_jornada
 from app.liga.motor.rentabilidad import rentabilidad_cartera, rentabilidad_sp
-from app.liga.procesos import datos
+from app.liga.procesos import datos, omega
 from app.liga.procesos.comun import (
     ErrorProceso,
     Fabrica,
@@ -70,16 +70,19 @@ def calcular(db: Session, j: Jornada, dia: date) -> dict:
         fila = {"inscripcion_id": f.id, "estrategia_id": f.estrategia_id, "nombre": f.nombre,
                 "tipo": f.tipo, "casa_clave": f.casa_clave, "estado": f.estado}
         try:
-            r = rentabilidad_cartera(pos[f.id], cierres, j.dia_base, dia) if pos[f.id] \
-                else Decimal("0.0000")
+            if f.casa_clave == "omega":
+                r, sin_cierre = omega.rentabilidad(db, j, dia)
+            else:
+                r = rentabilidad_cartera(pos[f.id], cierres, j.dia_base, dia) if pos[f.id] \
+                    else Decimal("0.0000")
+                sin_cierre = sorted(t for t, _ in pos[f.id]
+                                    if not any(c.dia == dia for c in cierres.get(t, [])))
         except ValueError as e:
             salida.append({**fila, "rentabilidad": None, "error": str(e)})
             continue
         res = resultado_jornada(r, sp)
         salida.append({**fila, "rentabilidad": r, "dif": res.dif, "letra": res.letra,
-                       "puntos": res.puntos, "sin_cierre": sorted(
-                           t for t, _ in pos[f.id]
-                           if not any(c.dia == dia for c in cierres.get(t, [])))})
+                       "puntos": res.puntos, "sin_cierre": sin_cierre})
     salida.sort(key=lambda x: (x["rentabilidad"] is None, -(x["rentabilidad"] or 0)))
     return {"dia": dia, "sp_rentabilidad": sp, "filas": salida}
 
@@ -100,8 +103,14 @@ def tabla_provisional(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
 # --- El proceso ----------------------------------------------------------------------------------
 
 
+def _formadas(db: Session) -> list[Jornada]:
+    return list(db.scalars(select(Jornada).where(Jornada.estado == "formada")
+                           .order_by(Jornada.dia_base, Jornada.id)))
+
+
 def _inicios(db: Session) -> dict[str, date]:
-    """Cada ticker en cartera de una jornada formada, desde su día base; y el S&P."""
+    """Cada ticker en cartera de una jornada formada, desde su día base; el S&P; y lo que Omega
+    puede comprar o ya tiene abierto."""
     inicio = dict(db.execute(text("""
         select p.ticker, min(j.dia_base) from liga.posiciones p
         join liga.inscripciones i on i.id = p.inscripcion_id
@@ -112,6 +121,8 @@ def _inicios(db: Session) -> dict[str, date]:
                       ).scalar()
     if base is not None:
         inicio[SPY] = min(inicio.get(SPY, base), base)
+    for t, desde in omega.inicios(db, _formadas(db)).items():
+        inicio[t] = min(inicio.get(t, desde), desde)
     return inicio
 
 
@@ -145,9 +156,11 @@ def ejecutar(fabrica: Fabrica = fabrica_sistema, actor: str | None = None) -> di
         with candado("diario", fabrica), sesion(fabrica) as db:
             inicio = _inicios(db)
             filas = precios.al_dia(db, inicio) if inicio else 0
+            huecos = [omega.sincronizar(db, j, ultimo, actor) for j in _formadas(db)
+                      if (ultimo := ultimo_dia(db, j)) is not None]
             auditar(db, "proceso.diario", None, {"tickers": len(inicio), "filas": filas}, actor)
             db.commit()
-            return {"tickers": len(inicio), "filas": filas}
+            return {"tickers": len(inicio), "filas": filas, "omega": huecos}
     except Exception as e:
         auditar_fallo(fabrica, "diario", None, e, actor)
         raise

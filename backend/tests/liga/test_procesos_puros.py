@@ -55,26 +55,10 @@ def test_porcentajes_que_se_pasan_de_100_se_escalan_y_los_ceros_fuera() -> None:
     assert sum(p for _, p in pesos) == Decimal("100.0000")
 
 
-def test_alpha_quita_las_compras_vetadas_y_su_peso_va_a_caja() -> None:
-    items = [("PR", "ampliar", 25.0), ("FRO", "comprar", 30.0), ("CF", "recortar", 10.0),
-             ("NEM", "vender", 0.0), ("SHEL", "mantener", 35.0)]
-    pesos, quitados = casa.pesos_alpha(items, {"FRO", "CF", "NEM"})
-    assert quitados == ["FRO"]              # vetar un recorte o una venta no añade nada
-    assert pesos == [("PR", Decimal("25.0000")), ("CF", Decimal("10.0000")),
-                     ("SHEL", Decimal("35.0000"))]
-
-
-def test_omega_pesa_sobre_su_capital_con_la_caja_libre() -> None:
-    pesos = casa.pesos_omega({"AAA": Decimal(600), "BBB": Decimal(400)}, Decimal(1000))
-    assert pesos == [("AAA", Decimal("30.0000")), ("BBB", Decimal("20.0000"))]
-    assert casa.pesos_omega({}, Decimal(3000)) == []
-
-
-def test_omega_sin_precio_de_alguna_no_juega() -> None:
-    c = casa.cartera_omega({"AAA": Decimal(10)}, {}, Decimal(0), date(2026, 12, 31))
-    assert c.posiciones is None and "AAA" in c.motivo
-    vacia = casa.cartera_omega({}, {}, Decimal(3000), date(2026, 12, 31))
-    assert vacia.posiciones == () and "caja" in vacia.motivo
+def test_lambda_de_scan_audit_reparte_a_partes_iguales() -> None:
+    tickers = ["AGI", "AU", "MU", "TER", "TSM"]
+    pesos = casa.pesos_desde_porcentajes((t, Decimal(100) / 5) for t in tickers)
+    assert pesos == [(t, Decimal("20.0000")) for t in tickers]
 
 
 # ---- pregunta propia ----------------------------------------------------------------------------

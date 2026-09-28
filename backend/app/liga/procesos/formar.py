@@ -91,14 +91,13 @@ class Plan:
     entradas: list[Entrada] = field(default_factory=list)
     omitidas: list[dict] = field(default_factory=list)
     casa: dict[str, casa.CarteraCasa] = field(default_factory=dict)
-    omega_netos: dict[str, Decimal] | None = None
     avisos: list[str] = field(default_factory=list)
 
     @property
     def tickers(self) -> set[str]:
         t = {tk for e in self.entradas for tk, _ in e.posiciones}
         t |= {tk for c in self.casa.values() for tk, _ in (c.posiciones or ())}
-        return t | set(self.omega_netos or {})
+        return t
 
 
 def motivos_no_lista(j: Jornada, ahora: datetime | None) -> list[str]:
@@ -234,11 +233,11 @@ def planificar(db: Session, ctx: Contexto, excluir: set[str]) -> Plan:
                                      len(sel.pasan), "seleccion"))
 
     plan.casa["lambda"] = casa.cartera_lambda(db, ctx.scan_run_id, ctx.plan_b)
-    plan.casa["alpha"] = casa.cartera_alpha(db, ctx.scan_run_id, ctx.plan_b, ctx.corte)
-    netos, motivo = casa.omega_abiertas(db, ctx.corte)
-    plan.omega_netos = netos
-    if netos is None:
-        plan.casa["omega"] = casa.CarteraCasa("omega", None, motivo)
+    plan.casa["alpha"] = casa.cartera_alpha(db, ctx.scan_run_id, ctx.plan_b)
+    # Omega ya no es sus posiciones reales del corte (omega_huecos.md): nace con los 4 huecos
+    # vacíos (juega en caja) y `diario` los va llenando con sus alertas según llegan durante el
+    # mes -- así juega aunque nada se ejecute de verdad en la sala.
+    plan.casa["omega"] = casa.CarteraCasa("omega", ())
     for clave in ("lambda", "alpha"):
         c = plan.casa[clave]
         if c.posiciones is None:
@@ -252,26 +251,10 @@ def planificar(db: Session, ctx: Contexto, excluir: set[str]) -> Plan:
     return plan
 
 
-def completar_omega(db: Session, plan: Plan, dia_base: date) -> None:
-    """Omega se valora con los cierres del día base: solo cuando ya están guardados."""
-    if "omega" not in plan.casa:
-        netos = plan.omega_netos or {}
-        plan.casa["omega"] = casa.cartera_omega(netos, _cierres(db, set(netos), dia_base),
-                                                casa.omega_libre(db), dia_base)
-
-
 def entradas_casa(plan: Plan, ids: dict[str, uuid.UUID]) -> list[Entrada]:
     return [Entrada(ids[clave], casa.CASAS[clave][0], None, list(c.posiciones), None,
                     f"casa:{clave}")
             for clave, c in plan.casa.items() if c.posiciones is not None and clave in ids]
-
-
-def _cierres(db: Session, tickers: set[str], dia: date) -> dict[str, Decimal]:
-    if not tickers:
-        return {}
-    return {t: Decimal(c) for t, c in db.execute(text(
-        "select ticker, cierre from precio_cierre where dia = :d and ticker = any(:t)"),
-        {"d": dia, "t": sorted(tickers)}).all()}
 
 
 def _precios_y_plan(fabrica: Fabrica, ctx: Contexto) -> tuple[Plan, set[str]]:
@@ -344,7 +327,6 @@ def vista_previa(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
             return para_json({"jornada_id": j.id, "listo": False, "motivos": motivos})
         ctx = contexto(db, j)
         plan = planificar(db, ctx, set())
-        completar_omega(db, plan, j.dia_base)
         tickers = plan.tickers | {SPY}
         sin_precio = sorted(tickers - datos.con_cierre(db, tickers, j.dia_base))
         return para_json({
@@ -387,7 +369,6 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
     if (j.foto_id, j.scan_run_id) != (ctx.foto_id, ctx.scan_run_id):
         raise ErrorProceso("La foto de la jornada cambió mientras se formaba: vuelve a lanzarlo.")
     ids = casa.asegurar(db)["ids"]
-    completar_omega(db, plan, j.dia_base)
     for c in plan.casa.values():
         if c.posiciones is None:
             logger.info("Jornada %s: %s no juega. %s", j.id, c.clave, c.motivo)
