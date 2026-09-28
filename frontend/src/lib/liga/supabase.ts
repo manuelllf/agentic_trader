@@ -48,6 +48,6 @@ export async function tokenSesion(): Promise<{ token: string; aal: string } | nu
 }
 
 /** Solo rutas propias, para que `?next=` no pueda mandar a otra web. */
-export function destinoSeguro(next: string | null, porDefecto = "/"): string {
+export function destinoSeguro(next: string | null, porDefecto = "/liga"): string {
   return next && next.startsWith("/") && !next.startsWith("//") ? next : porDefecto;
 }

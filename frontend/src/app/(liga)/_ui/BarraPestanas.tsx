@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 // en línea (nada de librería de iconos).
 const PESTANAS = [
   {
-    href: "/", clave: "liga", texto: "Liga",
+    href: "/liga", clave: "liga", texto: "Liga",
     icono: <path d="M3 20h18M5 20v-6h4v6M10 20V8h4v12M15 20v-9h4v9" />,
   },
   {
@@ -43,7 +43,7 @@ export function BarraPestanas() {
         const activa = p.clave === "crear" ? ruta?.startsWith("/crear")
           : p.clave === "mias" ? ruta?.startsWith("/mias")
           : p.clave === "privadas" ? ruta?.startsWith("/privadas")
-          : p.clave === "liga" ? (ruta === "/" || ruta?.startsWith("/ficha"))
+          : p.clave === "liga" ? (ruta === "/liga" || ruta?.startsWith("/ficha"))
           : false;
         return (
           <Link key={p.clave} href={p.href} aria-current={activa ? "page" : undefined}>

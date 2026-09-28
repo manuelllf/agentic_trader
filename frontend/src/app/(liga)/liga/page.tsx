@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import {
   BarraPestanas, CabeceraApp, Cargando, Clasificacion as TablaClasificacion, Escudo, ErrorLiga,
   FilaEquipo, HuecoClasificacion, Segmentado, Vacio,
-} from "./_ui";
+} from "../_ui";
 import {
   getClasificacion, getJornadaPublica, getPortada, getYo,
   type Clasificacion, type EquipoPublico, type JornadaDetalle, type Portada, type Yo,

@@ -18,7 +18,7 @@ export default function Entrar() {
   const [codigo, setCodigo] = useState("");
   const [error, setError] = useState("");
   const [ocupado, setOcupado] = useState(false);
-  const [destino, setDestino] = useState("/");
+  const [destino, setDestino] = useState("/liga");
   const sb = useSupabase();
 
   useEffect(() => {
