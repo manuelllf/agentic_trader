@@ -49,5 +49,13 @@ export async function tokenSesion(): Promise<{ token: string; aal: string } | nu
 
 /** Solo rutas propias, para que `?next=` no pueda mandar a otra web. */
 export function destinoSeguro(next: string | null, porDefecto = "/liga"): string {
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : porDefecto;
+  if (!next || !next.startsWith("/")) return porDefecto;
+  // `/\evil.com` o `/%09/evil.com` se leen como otra web: solo vale lo que sigue en este origen.
+  try {
+    const url = new globalThis.URL(next, "https://origen.invalido");
+    if (url.origin !== "https://origen.invalido") return porDefecto;
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return porDefecto;
+  }
 }
