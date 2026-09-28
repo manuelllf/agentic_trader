@@ -257,6 +257,63 @@ def test_sin_creditos_suficientes_da_402(api) -> None:  # noqa: ANN001
     assert r.status_code == 402, r.text
 
 
+def test_jev_falla_para_todas_no_cobra_nada(api, monkeypatch) -> None:  # noqa: ANN001
+    """Hallazgo de dinero #4: si el proveedor falla para TODAS las candidatas que faltaban (0
+    entregadas), no se cobra el precio entero -- la reserva se devuelve entera."""
+    cliente, cab, usuario, foto_con_escaneo, cx, _llamadas = api
+    foto_con_escaneo()
+    uid = usuario(creditos=100)
+    eid = _crear_con_pregunta(cliente, cab, uid)
+
+    import app.llm.jev as jev_mod
+
+    def _fallo(*, api_key, model, stage, state, pregunta, recorder=None, timeout=30.0):  # noqa: ANN001
+        info = {"tokens_entrada": 10, "tokens_salida": 0, "coste_usd": 0.0000001,
+               "latencia_ms": 50, "ok": False, "error": "TimeoutError: el proveedor no responde"}
+        return None, info
+
+    monkeypatch.setattr(jev_mod, "preguntar_noul", _fallo)
+
+    r = cliente.post(f"/liga/estrategias/{eid}/pruebas",
+                     json={"con_pregunta": True, "idempotencia": uuid.uuid4().hex},
+                     headers=cab(uid))
+    assert r.status_code == 200, r.text
+    cuerpo = r.json()
+    assert cuerpo["pregunta_nuevas"] == 0
+    assert cuerpo["creditos_cobrados"] == "0"
+    saldo = cx.execute("select saldo from liga.v_saldo where usuario_id = %s",
+                      (uuid.UUID(uid),)).fetchone()[0]
+    assert saldo == 100  # nada entregado -> nada cobrado, la reserva vuelve entera
+
+
+def test_fallo_tras_responder_la_pregunta_devuelve_la_reserva_entera(api, monkeypatch) -> None:  # noqa: ANN001
+    """Hallazgo CRÍTICO de dinero #1: si algo revienta DESPUÉS de responder la pregunta (créditos
+    ya reservados) pero ANTES de liquidar (aquí, `crear_prueba_sistema`), la reserva no debe
+    quedarse descontada para siempre -- tiene que devolverse entera."""
+    cliente, cab, usuario, foto_con_escaneo, cx, llamadas = api
+    foto_con_escaneo()
+    uid = usuario(creditos=100)
+    eid = _crear_con_pregunta(cliente, cab, uid)
+
+    from app.liga import estrategias as estrategias_mod
+
+    def _revienta(*_args, **_kwargs):  # noqa: ANN003, ANN202
+        raise RuntimeError("fallo simulado tras responder la pregunta")
+
+    monkeypatch.setattr(estrategias_mod, "crear_prueba_sistema", _revienta)
+
+    with pytest.raises(RuntimeError):
+        cliente.post(f"/liga/estrategias/{eid}/pruebas",
+                     json={"con_pregunta": True, "idempotencia": uuid.uuid4().hex},
+                     headers=cab(uid))
+    # La pregunta SÍ se respondió (créditos reservados y gastados en la llamada a Jev)...
+    assert llamadas
+    # ...pero como todo lo posterior está en el mismo `try`, la reserva entera vuelve al usuario.
+    saldo = cx.execute("select saldo from liga.v_saldo where usuario_id = %s",
+                      (uuid.UUID(uid),)).fetchone()[0]
+    assert saldo == 100
+
+
 def test_sin_con_pregunta_no_cobra_ni_llama(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, foto_con_escaneo, cx, llamadas = api
     foto_con_escaneo()

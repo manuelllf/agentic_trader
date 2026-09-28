@@ -7,7 +7,10 @@ porqués»). Cada lectura o escritura de sistema abre su propia sesión y la cie
 
 from __future__ import annotations
 
+import logging
+import threading
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from fastapi import HTTPException
@@ -42,12 +45,18 @@ from app.liga.procesos import datos as procesos_datos
 from app.liga.procesos.comun import ErrorProceso, fabrica_sistema
 from app.liga.procesos.foto import _escaneo, _foto  # noqa: PLC2701 — reuso deliberado (plan §7)
 
+logger = logging.getLogger("app.liga")
+
 # --- Errores de la BD a 4xx en castellano --------------------------------------------------------
 
 
 def mapear_error(e: DBAPIError) -> HTTPException:
-    """El texto ya viene en castellano (lo pone el disparador o el `check`); solo hace falta
-    elegir el código HTTP según el tipo de violación."""
+    """El texto de un `raise exception '...' using errcode = ...` propio (un trigger del plan
+    §7) ya viene en castellano, pensado para el usuario -- se reenvía tal cual. Pero una
+    violación NATIVA de `CHECK`/`NOT NULL`/FK que no pasa por ningún trigger con mensaje propio
+    trae el texto genérico de Postgres, que nombra tablas y constraints internas
+    (`diag.constraint_name` viene relleno en ese caso; en un `raise exception` a mano, no) --
+    esa se cambia por un mensaje genérico y el original se queda solo en el log."""
     orig = e.orig
     sqlstate = getattr(orig, "sqlstate", None)
     diag = getattr(orig, "diag", None)
@@ -56,6 +65,11 @@ def mapear_error(e: DBAPIError) -> HTTPException:
         return HTTPException(403, mensaje)
     if sqlstate == "23505":
         return HTTPException(409, mensaje)
+    constraint = getattr(diag, "constraint_name", None) if diag is not None else None
+    if constraint:
+        logger.warning("Error de BD sin mensaje propio (sqlstate=%s, constraint=%s): %s",
+                       sqlstate, constraint, mensaje)
+        return HTTPException(422, "Esos datos no son válidos.")
     return HTTPException(422, mensaje)
 
 
@@ -170,14 +184,43 @@ def _sin_foto(e: ErrorProceso) -> HTTPException:
     return HTTPException(e.codigo, "Todavía no hay foto del mes: llega con la próxima jornada.")
 
 
+# Caché en memoria de proceso de lo pesado de una foto (universo + notas: ~14 500 filas +
+# ~41 000 de notas en el volumen real, plan §6): una foto completa NUNCA cambia una vez
+# publicada, así que basta con un LRU minúsculo -- hoy solo hay una foto "actual" a la vez, pero
+# `foto_y_notas_de` recalcula pruebas pasadas de fotos anteriores (hallazgo de rendimiento:
+# `probar`/`coste_prueba`/`por_que` repetían este escaneo entero en cada petición de cada
+# usuario, sin ninguna caché).
+_CACHE_CTX_MAX = 2
+_cache_ctx_lock = threading.Lock()
+_cache_ctx: OrderedDict[
+    tuple[int, int], tuple[tuple[EmpresaFoto, ...], dict[str, NotasJev]]] = OrderedDict()
+
+
+def _empresas_y_notas(db: Session, foto_id: int,
+                      scan_run_id: int) -> tuple[tuple[EmpresaFoto, ...], dict[str, NotasJev]]:
+    clave = (foto_id, scan_run_id)
+    with _cache_ctx_lock:
+        en_cache = _cache_ctx.get(clave)
+        if en_cache is not None:
+            _cache_ctx.move_to_end(clave)
+            return en_cache
+    empresas = tuple(procesos_datos.cargar_empresas(db, foto_id))
+    notas = procesos_datos.cargar_notas(db, scan_run_id)
+    with _cache_ctx_lock:
+        _cache_ctx[clave] = (empresas, notas)
+        _cache_ctx.move_to_end(clave)
+        while len(_cache_ctx) > _CACHE_CTX_MAX:
+            _cache_ctx.popitem(last=False)
+    return empresas, notas
+
+
 def _contexto_desde(db: Session, foto_id: int | None) -> Contexto:
     try:
         foto = _foto(db, foto_id)
         scan_run_id, avisos = _escaneo(db, foto, None)
     except ErrorProceso as e:
         raise _sin_foto(e) from e
-    empresas = tuple(procesos_datos.cargar_empresas(db, foto.id))
-    notas = procesos_datos.cargar_notas(db, scan_run_id)
+    empresas, notas = _empresas_y_notas(db, foto.id, scan_run_id)
     return Contexto(foto.id, scan_run_id, bool(avisos), empresas, notas)
 
 

@@ -26,6 +26,7 @@ from app.auth import auth_enabled, require_auth
 from app.config import settings
 from app.db import init_db
 from app.liga.filtro_logs import instalar as instalar_filtro_logs
+from app.liga.filtro_logs import instalar_en_uvicorn as instalar_filtro_logs_uvicorn
 from app.liga.rutas import router as liga_router
 from app.liga.rutas_admin import router as liga_admin_router
 from app.liga.rutas_gestion import router_moderacion as liga_moderacion_router
@@ -40,8 +41,11 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
 # Red de seguridad (plan §14, F8.7): redacta JWT, claves de Supabase y emails de lo que salga por
-# cualquier handler del logger raíz, aunque un `logger.*` se equivocara.
+# cualquier handler del logger raíz, aunque un `logger.*` se equivocara. Uvicorn no propaga sus
+# propios loggers (`propagate=False` de fábrica): el filtro del raíz no los alcanza, hace falta
+# instalarlo también ahí (`uvicorn.access` traza método/ruta/query de cada petición).
 instalar_filtro_logs()
+instalar_filtro_logs_uvicorn()
 # yfinance crea su carpeta de caché sin exist_ok: varios hilos a la vez chocan ("File exists")
 # y se quedan sin caché de zonas horarias. Creada aquí, antes del primer hilo, no hay carrera.
 os.makedirs(os.path.join(platformdirs.user_cache_dir(), "py-yfinance"), exist_ok=True)

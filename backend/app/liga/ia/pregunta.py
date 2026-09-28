@@ -102,30 +102,42 @@ def responder_pendientes(*, pregunta: str, foto_id: int, empresas: dict[str, Emp
     faltan = [t for t in candidatas if t not in ya]
     coste_total = 0.0
     nuevas = 0
-    for ticker in faltan:
-        empresa = empresas.get(ticker)
-        if empresa is None:
-            continue
-        resultado, llamada = comun.llamar_ia_jev(
-            finalidad=finalidad, modelo=_MODELO, state=estado_empresa(empresa), pregunta=pregunta,
-            fabrica=fabrica)
-        coste_total += llamada.coste_usd
-        if resultado is None:
-            comun.registrar_llamada(finalidad=finalidad, usuario_id=usuario_id, llamada=llamada,
-                                    fabrica=fabrica)
-            continue
-        p, _confianza = resultado
-        si, seguridad = _seguridad(p)
-        db = f()
-        try:
+    if not faltan:
+        return ResultadoPregunta(respuestas=ya, evaluadas=len(candidatas),
+                                 desde_cache=len(candidatas), nuevas=0, coste_usd=0.0)
+    # Una sola comprobación del interruptor/tope para todo el lote (hasta 300 candidatas), no una
+    # por candidata (hallazgo de rendimiento: cada una abría 2-3 consultas más de las que hacen
+    # falta). Si no está disponible, `HTTPException(503)` sube tal cual -- el llamador decide.
+    comun.verificar_disponible(finalidad, fabrica)
+    # Una única sesión de sistema para los `INSERT` de `respuestas_ia` de todo el lote (antes: una
+    # sesión nueva por candidata nueva, con su propio commit).
+    db = f()
+    try:
+        for ticker in faltan:
+            empresa = empresas.get(ticker)
+            if empresa is None:
+                continue
+            resultado, llamada = comun.llamar_ia_jev(
+                finalidad=finalidad, modelo=_MODELO, state=estado_empresa(empresa),
+                pregunta=pregunta, fabrica=fabrica, verificar=False)
+            coste_total += llamada.coste_usd
+            if resultado is None:
+                comun.registrar_llamada(finalidad=finalidad, usuario_id=usuario_id,
+                                        llamada=llamada, fabrica=fabrica)
+                continue
+            p, _confianza = resultado
+            si, seguridad = _seguridad(p)
             llm_call_id = comun.registrar_llamada(finalidad=finalidad, usuario_id=usuario_id,
                                                   llamada=llamada, fabrica=fabrica)
             try:
-                db.add(RespuestaIA(pregunta_hash=pregunta_hash, ticker=ticker, foto_id=foto_id,
-                                   si=si, seguridad=seguridad, llm_call_id=llm_call_id))
-                db.commit()
+                # `begin_nested` = savepoint: si esta fila choca (unique concurrente), solo se
+                # deshace ELLA, no el resto del lote ya escrito en esta misma sesión compartida.
+                with db.begin_nested():
+                    db.add(RespuestaIA(pregunta_hash=pregunta_hash, ticker=ticker,
+                                       foto_id=foto_id, si=si, seguridad=seguridad,
+                                       llm_call_id=llm_call_id))
+                    db.flush()
             except Exception:
-                db.rollback()
                 # Ya la escribió otra petición concurrente con la misma pregunta/ticker/foto
                 # (unique): no es un fallo, se relee de la caché.
                 fila = db.execute(text("""
@@ -135,10 +147,14 @@ def responder_pendientes(*, pregunta: str, foto_id: int, empresas: dict[str, Emp
                 if fila is not None:
                     ya[ticker] = Respuesta(fila.si, fila.seguridad)
                 continue
-        finally:
-            db.close()
-        ya[ticker] = Respuesta(si, seguridad)
-        nuevas += 1
+            ya[ticker] = Respuesta(si, seguridad)
+            nuevas += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
     return ResultadoPregunta(respuestas=ya, evaluadas=len(candidatas), desde_cache=len(candidatas)
                              - nuevas, nuevas=nuevas, coste_usd=coste_total)
 

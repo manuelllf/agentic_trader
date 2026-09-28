@@ -31,6 +31,9 @@ class FiltroDatosPersonales(logging.Filter):
         return True
 
 
+_LOGGERS_PROPIOS_UVICORN = ("uvicorn", "uvicorn.error", "uvicorn.access")
+
+
 def instalar(logger_raiz: logging.Logger | None = None) -> None:
     """Añade el filtro a cada `Handler` del logger raíz (o del que se le pase). Idempotente: no
     lo duplica si ya está puesto (recarga en caliente, tests)."""
@@ -38,3 +41,13 @@ def instalar(logger_raiz: logging.Logger | None = None) -> None:
     for handler in raiz.handlers:
         if not any(isinstance(f, FiltroDatosPersonales) for f in handler.filters):
             handler.addFilter(FiltroDatosPersonales())
+
+
+def instalar_en_uvicorn() -> None:
+    """Uvicorn configura sus propios loggers (`uvicorn`, `uvicorn.error`, `uvicorn.access`) con
+    sus propios handlers y `propagate=False`: no pasan por el logger raíz, así que `instalar()`
+    solo (llamada con el raíz) nunca los alcanza -- `uvicorn.access` traza método/ruta/query de
+    CADA petición, la última barrera de este módulo se los saltaba. Se añade el mismo filtro a
+    cada uno de sus `Handler`, igual que hace `instalar()` con el raíz."""
+    for nombre in _LOGGERS_PROPIOS_UVICORN:
+        instalar(logging.getLogger(nombre))

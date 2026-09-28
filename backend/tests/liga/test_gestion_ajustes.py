@@ -59,3 +59,79 @@ def test_multiplicador_misma_regla_que_dolares() -> None:
 
 def test_clave_desconocida_no_esta_en_el_catalogo() -> None:
     assert "lo.que.sea" not in gestion.CATALOGO
+
+
+# ---- caché de `liga.ajustes` (hallazgos de latencia #3 y seguridad #2) ------------------------
+
+
+class _FilaFalsa:
+    def __init__(self, clave: str, valor: object) -> None:
+        self.clave = clave
+        self.valor = valor
+
+
+class _ResultadoFalso:
+    def __init__(self, filas: list[_FilaFalsa]) -> None:
+        self._filas = filas
+
+    def all(self) -> list[_FilaFalsa]:
+        return self._filas
+
+
+class _DBFalsa:
+    def __init__(self, valores: dict[str, object], contador: dict[str, int]) -> None:
+        self._valores = valores
+        self._contador = contador
+
+    def execute(self, _stmt, params):  # noqa: ANN001, ANN201
+        self._contador["consultas"] += 1
+        claves = params["c"]
+        return _ResultadoFalso([_FilaFalsa(c, self._valores[c]) for c in claves
+                                if c in self._valores])
+
+    def close(self) -> None:
+        pass
+
+
+def test_ajuste_booleano_no_va_a_bd_dentro_del_ttl(monkeypatch) -> None:  # noqa: ANN001
+    contador = {"consultas": 0}
+    db_falsa = _DBFalsa({"liga.visible": True}, contador)
+    monkeypatch.setattr(gestion, "fabrica_sistema", lambda: db_falsa)
+    gestion.invalidar_cache_ajustes()
+
+    assert gestion.liga_visible() is True
+    assert gestion.liga_visible() is True
+    assert gestion.liga_visible() is True
+    # Las tres lecturas caen en la misma sesión de proceso (TTL de 15 s): una sola ida a la BD,
+    # no una por petición pública (antes: una sesión de sistema nueva en CADA lectura).
+    assert contador["consultas"] == 1
+
+
+def test_invalidar_cache_ajustes_fuerza_una_lectura_nueva(monkeypatch) -> None:  # noqa: ANN001
+    contador = {"consultas": 0}
+    db_falsa = _DBFalsa({"liga.visible": True}, contador)
+    monkeypatch.setattr(gestion, "fabrica_sistema", lambda: db_falsa)
+    gestion.invalidar_cache_ajustes()
+
+    assert gestion.liga_visible() is True
+    assert contador["consultas"] == 1
+    # Un admin apaga la liga: `restablecer_ajuste`/`actualizar_ajuste` invalidan la clave -- el
+    # siguiente lector del MISMO proceso ve el cambio al instante, no tras el TTL.
+    db_falsa._valores["liga.visible"] = False  # noqa: SLF001
+    gestion.invalidar_cache_ajustes("liga.visible")
+    assert gestion.liga_visible() is False
+    assert contador["consultas"] == 2
+
+
+def test_invalidar_cache_ajustes_sin_clave_limpia_todo(monkeypatch) -> None:  # noqa: ANN001
+    contador = {"consultas": 0}
+    db_falsa = _DBFalsa({"liga.visible": True, "liga.registro.abierto": True}, contador)
+    monkeypatch.setattr(gestion, "fabrica_sistema", lambda: db_falsa)
+    gestion.invalidar_cache_ajustes()
+
+    assert gestion.liga_visible() is True
+    assert gestion.registro_abierto() is True
+    assert contador["consultas"] == 2
+    gestion.invalidar_cache_ajustes()
+    assert gestion.liga_visible() is True
+    assert contador["consultas"] == 3

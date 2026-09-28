@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -90,10 +90,12 @@ def mis_ligas(ident: Identidad = Depends(require_usuario),
 
 
 @router.post("/ligas", response_model=LigaResumenOut, status_code=201)
-def crear_liga(body: LigaCrear, ident: Identidad = Depends(require_usuario),
+def crear_liga(body: LigaCrear, background_tasks: BackgroundTasks,
+              ident: Identidad = Depends(require_usuario),
               db: Session = Depends(db_usuario)) -> LigaResumenOut:
     fila = ligas.crear_liga(db, body.nombre, body.cupo)
-    moderacion.evaluar("liga", str(fila.id), body.nombre)
+    moderacion.evaluar_lista(body.nombre)
+    background_tasks.add_task(moderacion.evaluar_en_fondo, "liga", str(fila.id), body.nombre)
     return _resumen(fila, ident.uid, 1)
 
 

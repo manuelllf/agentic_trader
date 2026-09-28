@@ -209,6 +209,53 @@ def test_ver_lectura_solo_si_la_compraste(api) -> None:  # noqa: ANN001
     assert r2.status_code == 200 and r2.json()["ticker"] == "ZSA"
 
 
+def test_comprar_la_misma_lectura_a_la_vez_no_duplica_el_cobro(api) -> None:  # noqa: ANN001
+    """Hallazgo de dinero #5: dos peticiones casi simultáneas al MISMO ticker (doble click,
+    reintento de red, dos pestañas) no deben cobrar dos veces -- la idempotencia se deriva en el
+    servidor de (usuario, lectura), no de una clave que manda el cliente distinta en cada click."""
+    import threading
+
+    from app.liga.ia import lectura as lectura_mod
+
+    cliente, cab, usuario, foto_con_escaneo, finalista, cx = api
+    fid, rid = foto_con_escaneo()
+    finalista(rid, "ZSA", "Informe de ZSA.")
+    uid = usuario(creditos=100)
+    _crear_y_probar(cliente, cab, uid)
+    # La fila de `liga.lecturas` se crea aparte, fuera de la carrera: la creación concurrente de
+    # la MISMA lectura nueva es una carrera distinta (de creación, no de dinero) y no es lo que
+    # este test comprueba -- aquí solo importa que el COBRO no se duplique.
+    assert lectura_mod.obtener_o_crear("ZSA", fid, rid, uid) is not None
+
+    respuestas: list = []
+    lock = threading.Lock()
+
+    def _pedir() -> None:
+        r = cliente.post("/liga/lecturas/ZSA", json={"idempotencia": uuid.uuid4().hex},
+                         headers=cab(uid))
+        with lock:
+            respuestas.append(r)
+
+    hilos = [threading.Thread(target=_pedir) for _ in range(6)]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+
+    assert all(r.status_code == 200 for r in respuestas), [r.text for r in respuestas]
+    total_cobrado = sum(int(r.json()["creditos_cobrados"]) for r in respuestas)
+    assert total_cobrado == 5  # una sola vez, sea cual sea el orden real de llegada
+
+    saldo = cx.execute("select saldo from liga.v_saldo where usuario_id = %s",
+                      (uuid.UUID(uid),)).fetchone()[0]
+    assert saldo == 95
+    n_movimientos = cx.execute(
+        "select count(*) from liga.creditos_movimientos "
+        "where usuario_id = %s and motivo = 'lectura'",
+        (uuid.UUID(uid),)).fetchone()[0]
+    assert n_movimientos == 1
+
+
 def test_leer_mi_cartera_cobra_solo_las_no_compradas(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, foto_con_escaneo, finalista, cx = api
     _fid, rid = foto_con_escaneo()

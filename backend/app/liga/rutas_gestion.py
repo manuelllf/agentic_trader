@@ -307,6 +307,7 @@ def actualizar_ajuste(clave: str, body: AjusteIn, ident: Identidad = Depends(req
             """), {"c": clave, "v": json.dumps(valor), "a": ident.uid}).one()
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
+    gestion.invalidar_cache_ajustes(clave)
     return _ajuste_out(fila.clave, fila.valor, fila.actualizado, fila.actualizado_por)
 
 

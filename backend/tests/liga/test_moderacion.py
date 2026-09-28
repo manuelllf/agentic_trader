@@ -128,3 +128,49 @@ def test_interruptor_apagado_se_sigue_solo_con_la_lista(entorno, monkeypatch) ->
     monkeypatch.setattr(app_llm, "get_llm", _get_llm_de("block"))  # ni se llega a mirar
     r = moderacion.evaluar("estrategia", estrategia_id, "Texto normal")
     assert r.permitido is True
+
+
+# ---- segundo plano (hallazgo crítico de latencia #1: el modelo no bloquea la petición) --------
+
+
+def test_evaluar_lista_nunca_llama_al_modelo(entorno, monkeypatch) -> None:  # noqa: ANN001
+    _, estrategia_id = entorno
+    llamado = {"veces": 0}
+
+    def _get_llm(**kwargs):  # noqa: ANN003, ANN202
+        llamado["veces"] += 1
+        return _FakeLLM(json.dumps({"veredicto": "allow"}))
+
+    monkeypatch.setattr(app_llm, "get_llm", _get_llm)
+    # Ni bloqueada ni nada que mirar: `evaluar_lista` no toca el modelo bajo ningún concepto,
+    # así que puede quedarse síncrona dentro de la petición sin añadir latencia del proveedor.
+    moderacion.evaluar_lista("Texto normal")
+    assert llamado["veces"] == 0
+
+
+def test_evaluar_en_fondo_bloquea_oculta_lo_ya_guardado(entorno, monkeypatch) -> None:  # noqa: ANN001
+    cx, estrategia_id = entorno
+    monkeypatch.setattr(app_llm, "get_llm", _get_llm_de("block"))
+    # Simula lo que hace una ruta: primero guarda (aquí ya está guardada por el fixture), la
+    # respuesta ya salió, y DESPUÉS corre el modelo como tarea de fondo.
+    moderacion.evaluar_en_fondo("estrategia", estrategia_id,
+                                "Texto normal pero el modelo lo bloquea")
+    oculta = cx.execute("select oculta from liga.estrategias where id = %s",
+                        (estrategia_id,)).fetchone()[0]
+    assert oculta is True
+    accion = cx.execute(
+        "select accion from liga.auditoria where objeto = %s order by creada desc limit 1",
+        (f"estrategia:{estrategia_id}",)).fetchone()
+    assert accion is not None and accion[0] == "ia.moderacion.oculta"
+
+
+def test_evaluar_en_fondo_en_duda_deja_visible_y_reporta(entorno, monkeypatch) -> None:  # noqa: ANN001
+    cx, estrategia_id = entorno
+    monkeypatch.setattr(app_llm, "get_llm", _get_llm_de("doubt"))
+    moderacion.evaluar_en_fondo("estrategia", estrategia_id, "Un nombre ambiguo")
+    oculta = cx.execute("select oculta from liga.estrategias where id = %s",
+                        (estrategia_id,)).fetchone()[0]
+    assert oculta is False
+    reporte = cx.execute("select estado from liga.reportes where objeto_id = %s",
+                         (estrategia_id,)).fetchone()
+    assert reporte is not None and reporte[0] == "abierto"

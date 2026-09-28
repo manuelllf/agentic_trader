@@ -14,7 +14,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -240,7 +240,8 @@ def mis_estrategias(db: Session = Depends(db_usuario)) -> list[EstrategiaOut]:
 
 
 @router.post("/estrategias", response_model=EstrategiaOut, status_code=201)
-def crear_estrategia(body: EstrategiaCrear, db: Session = Depends(db_usuario)) -> EstrategiaOut:
+def crear_estrategia(body: EstrategiaCrear, background_tasks: BackgroundTasks,
+                     db: Session = Depends(db_usuario)) -> EstrategiaOut:
     body.nombre = nombres.validar_nombre(body.nombre)
     try:
         with db.begin_nested():
@@ -253,7 +254,8 @@ def crear_estrategia(body: EstrategiaCrear, db: Session = Depends(db_usuario)) -
                    "color2": body.escudo.color2, "iniciales": body.escudo.iniciales}).one()
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
-    moderacion.evaluar("estrategia", str(fila.id), body.nombre)
+    moderacion.evaluar_lista(body.nombre)
+    background_tasks.add_task(moderacion.evaluar_en_fondo, "estrategia", str(fila.id), body.nombre)
     return _a_salida(fila)
 
 
@@ -267,7 +269,7 @@ def ver_estrategia(id: uuid.UUID, db: Session = Depends(db_usuario)) -> Estrateg
 
 
 @router.patch("/estrategias/{id}", response_model=EstrategiaOut)
-def actualizar_estrategia(id: uuid.UUID, body: EstrategiaPatch,
+def actualizar_estrategia(id: uuid.UUID, body: EstrategiaPatch, background_tasks: BackgroundTasks,
                           db: Session = Depends(db_usuario)) -> EstrategiaOut:
     cambios = body.model_dump(exclude_unset=True)
     if not cambios:
@@ -286,7 +288,9 @@ def actualizar_estrategia(id: uuid.UUID, body: EstrategiaPatch,
     if fila is None:
         raise HTTPException(404, "No existe esa estrategia.")
     if "nombre" in cambios:
-        moderacion.evaluar("estrategia", str(fila.id), cambios["nombre"])
+        moderacion.evaluar_lista(cambios["nombre"])
+        background_tasks.add_task(moderacion.evaluar_en_fondo, "estrategia", str(fila.id),
+                                  cambios["nombre"])
     return _a_salida(fila)
 
 
@@ -310,7 +314,8 @@ def borrar_estrategia(id: uuid.UUID, db: Session = Depends(db_usuario)) -> Respo
 
 
 @router.post("/estrategias/{id}/receta", response_model=RecetaOut, status_code=201)
-def crear_receta(id: uuid.UUID, body: RecetaIn, db: Session = Depends(db_usuario)) -> RecetaOut:
+def crear_receta(id: uuid.UUID, body: RecetaIn, background_tasks: BackgroundTasks,
+                 db: Session = Depends(db_usuario)) -> RecetaOut:
     validada = estrategias.validar_entrada(
         body.idea, [r.model_dump() for r in body.reglas], body.excluidas, body.pregunta,
         body.pesos, body.n_empresas, body.reparto, body.max_por_sector)
@@ -332,7 +337,8 @@ def crear_receta(id: uuid.UUID, body: RecetaIn, db: Session = Depends(db_usuario
         raise estrategias.mapear_error(e) from e
     db.refresh(nueva)
     if body.pregunta:
-        moderacion.evaluar("pregunta", str(id), body.pregunta)
+        moderacion.evaluar_lista(body.pregunta)
+        background_tasks.add_task(moderacion.evaluar_en_fondo, "pregunta", str(id), body.pregunta)
     return _receta_out(nueva)
 
 
@@ -447,35 +453,53 @@ def probar(id: uuid.UUID, body: PruebaIn | None = Body(default=None),
 
     con_pregunta = bool(body and body.con_pregunta and receta.pregunta)
     resultado_pregunta = None
-    creditos = None
+    creditos_reservados = None
+    creditos_cobrados = None
+    clave = None
     if con_pregunta:
         if not body.idempotencia:
             raise HTTPException(422, "Falta la clave de idempotencia.")
         candidatas = estrategias.candidatas_pregunta_de(ctx, receta)
-        creditos = precios.precio_pregunta(len(candidatas))
+        creditos_reservados = precios.precio_pregunta(len(candidatas))
         clave = f"pregunta:{body.idempotencia}"
-        comun.reservar_creditos(ident.uid, creditos, f"reserva:{clave}")
-        try:
+        comun.reservar_creditos(ident.uid, creditos_reservados, f"reserva:{clave}")
+
+    # TODO lo que puede fallar entre reservar y liquidar va en el mismo `try`: si `_seleccionar_
+    # con` o `crear_prueba_sistema` lanzan DESPUÉS de responder la pregunta, antes solo se
+    # devolvía la reserva si fallaba `responder_pendientes` -- el resto de la reserva se quedaba
+    # descontada para siempre sin liquidación ni devolución (hallazgo crítico de dinero #1).
+    try:
+        if con_pregunta:
             resultado_pregunta = ia_pregunta.responder_pendientes(
                 pregunta=receta.pregunta, foto_id=ctx.foto_id,
                 empresas={e.ticker: e for e in ctx.empresas}, candidatas=candidatas,
                 usuario_id=ident.uid)
-        except Exception:
-            comun.devolver_reserva(ident.uid, creditos, clave)
-            raise
+        seleccion = _seleccionar_con(ctx, receta)
+        prueba_id = estrategias.crear_prueba_sistema(ident.uid, receta.id, ctx.foto_id,
+                                                     len(seleccion.filas))
+    except Exception:
+        if con_pregunta:
+            comun.devolver_reserva(ident.uid, creditos_reservados, clave)
+        raise
 
-    seleccion = _seleccionar_con(ctx, receta)
-    prueba_id = estrategias.crear_prueba_sistema(ident.uid, receta.id, ctx.foto_id,
-                                                 len(seleccion.filas))
     if con_pregunta:
-        comun.liquidar_creditos(ident.uid, creditos, creditos, "prueba",
-                                f"pregunta:{body.idempotencia}", prueba_id=prueba_id)
+        # Se cobra solo lo que de verdad se entregó (caché + nuevas resueltas), no el precio
+        # entero si el proveedor falló para todas las candidatas que faltaban (hallazgo #4).
+        entregadas = len(resultado_pregunta.respuestas)
+        creditos_cobrados = precios.precio_pregunta(entregadas) if entregadas else Decimal(0)
+        if creditos_cobrados > 0:
+            comun.liquidar_creditos(ident.uid, creditos_reservados, creditos_cobrados, "prueba",
+                                    clave, prueba_id=prueba_id)
+        else:
+            # `creditos_movimientos.importe` no admite 0 (check `<> 0`): sin nada entregado no
+            # hay cobro que liquidar, solo se devuelve la reserva entera.
+            comun.devolver_reserva(ident.uid, creditos_reservados, clave)
 
     salida = estrategias.resultado_prueba(prueba_id, ctx, seleccion, receta)
     if resultado_pregunta is not None:
         salida["pregunta_desde_cache"] = resultado_pregunta.desde_cache
         salida["pregunta_nuevas"] = resultado_pregunta.nuevas
-        salida["creditos_cobrados"] = creditos
+        salida["creditos_cobrados"] = creditos_cobrados
     return PruebaOut(**salida)
 
 
@@ -583,7 +607,8 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
 
 
 @router.post("/estrategias/{id}/copiar", response_model=EstrategiaOut, status_code=201)
-def copiar(id: uuid.UUID, db: Session = Depends(db_usuario)) -> EstrategiaOut:
+def copiar(id: uuid.UUID, background_tasks: BackgroundTasks,
+          db: Session = Depends(db_usuario)) -> EstrategiaOut:
     try:
         with db.begin_nested():
             nueva_receta = estrategias.copiar_estrategia(db, id)
@@ -591,5 +616,6 @@ def copiar(id: uuid.UUID, db: Session = Depends(db_usuario)) -> EstrategiaOut:
         raise estrategias.mapear_error(e) from e
     fila = db.execute(text(f"select {_CAMPOS_ESTRATEGIA} from liga.estrategias where id = :i"),
                       {"i": nueva_receta.estrategia_id}).one()
-    moderacion.evaluar("estrategia", str(fila.id), fila.nombre)
+    moderacion.evaluar_lista(fila.nombre)
+    background_tasks.add_task(moderacion.evaluar_en_fondo, "estrategia", str(fila.id), fila.nombre)
     return _a_salida(fila)

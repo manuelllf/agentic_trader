@@ -86,7 +86,7 @@ def leer_a_fondo(ticker: str, body: LecturaIn,
     if r is None:
         raise HTTPException(503, "No se pudo generar la lectura ahora. Prueba en un momento.")
     ya = lectura.ya_comprada(ident.uid, r.id)
-    cobrados = Decimal(0) if ya else lectura.comprar(ident.uid, r.id, body.idempotencia)
+    cobrados = Decimal(0) if ya else lectura.comprar(ident.uid, r.id)
     return LecturaOut(id=r.id, ticker=r.ticker, texto=r.texto, fuentes=r.fuentes,
                       ya_comprada=ya, creditos_cobrados=cobrados)
 

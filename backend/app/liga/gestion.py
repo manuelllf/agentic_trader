@@ -12,6 +12,8 @@ no hace falta nada de este módulo para eso.
 
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -120,6 +122,7 @@ def restablecer_ajuste(clave: str, actor: str) -> None:
         db.commit()
     finally:
         db.close()
+    invalidar_cache_ajustes(clave)
 
 
 def valor_efectivo(clave: str, valor: Any) -> Any:
@@ -158,16 +161,54 @@ def validar_ajuste(clave: str, valor: Any) -> Any:
     return float(decimal_valor)
 
 
+# Caché en memoria de proceso de `liga.ajustes` (hallazgos de latencia #3 y de seguridad #2):
+# `liga.visible`/`liga.registro.abierto` se leían con una sesión de sistema NUEVA en cada
+# petición pública (2-3 conexiones extra por `GET /liga/publico/*`, confirmado con el contador
+# de round trips) para dos interruptores que un admin cambia rarísima vez. TTL corto (no hace
+# falta exactitud al segundo para un interruptor de emergencia) e invalidación inmediata al
+# escribir desde este mismo proceso (`restablecer_ajuste` aquí, `actualizar_ajuste` en
+# `rutas_gestion`) para que un admin vea su propio cambio sin esperar al TTL.
+_CACHE_AJUSTES_TTL_S = 15.0
+_cache_ajustes_lock = threading.Lock()
+_cache_ajustes: dict[str, tuple[float, Any]] = {}
+
+
+def _leer_ajustes_cacheados(claves: tuple[str, ...]) -> dict[str, Any]:
+    ahora = time.monotonic()
+    with _cache_ajustes_lock:
+        faltan = [c for c in claves if c not in _cache_ajustes or _cache_ajustes[c][0] < ahora]
+    if faltan:
+        db = fabrica_sistema()
+        try:
+            filas = db.execute(text(
+                "select clave, valor from liga.ajustes where clave = any(:c)"),
+                {"c": faltan}).all()
+        finally:
+            db.close()
+        encontradas = {f.clave: f.valor for f in filas}
+        vencimiento = ahora + _CACHE_AJUSTES_TTL_S
+        with _cache_ajustes_lock:
+            for c in faltan:
+                _cache_ajustes[c] = (vencimiento, encontradas.get(c))
+    with _cache_ajustes_lock:
+        return {c: _cache_ajustes[c][1] for c in claves}
+
+
+def invalidar_cache_ajustes(clave: str | None = None) -> None:
+    """Se llama justo después de escribir en `liga.ajustes` desde este proceso: la próxima
+    lectura vuelve a ir a la BD en vez de esperar al TTL. `None` limpia toda la caché."""
+    with _cache_ajustes_lock:
+        if clave is None:
+            _cache_ajustes.clear()
+        else:
+            _cache_ajustes.pop(clave, None)
+
+
 def _ajuste_booleano(clave: str, por_defecto: bool) -> bool:
-    """Un ajuste de `liga.ajustes` leído como sistema: RLS solo deja verlo al admin (plan §7.3),
-    y estos dos los consulta cualquier petición pública. Ausente = comportamiento de hoy."""
-    db = fabrica_sistema()
-    try:
-        valor = db.execute(text("select valor from liga.ajustes where clave = :c"),
-                           {"c": clave}).scalar()
-        return por_defecto if valor is None else bool(valor)
-    finally:
-        db.close()
+    """Un ajuste de `liga.ajustes`, con caché de proceso: RLS solo deja verlo al admin (plan
+    §7.3), y estos dos los consulta cualquier petición pública. Ausente = comportamiento de hoy."""
+    valor = _leer_ajustes_cacheados((clave,))[clave]
+    return por_defecto if valor is None else bool(valor)
 
 
 def registro_abierto() -> bool:
@@ -337,7 +378,7 @@ def estado_ia() -> dict:
         tope = db.execute(text("select valor from liga.ajustes where clave = :c"),
                           {"c": CLAVE_TOPE_MENSUAL}).scalar()
         finalidades = [
-            {"finalidad": f, "funciona": (razon := ia_comun.razon_no_disponible(f)) is None,
+            {"finalidad": f, "funciona": (razon := ia_comun.razon_no_disponible(f, db=db)) is None,
              "razon": razon}
             for f in _FINALIDADES_COSTE
         ]
@@ -356,19 +397,24 @@ def estado_ia() -> dict:
 def dar_creditos_pro_mensual(db: Session, jornada_id: int, actor: str | None) -> dict:
     """Créditos Pro del mes (plan §16), en la misma transacción que forma la jornada: idempotente
     por usuario y jornada gracias a la propia `cargar_creditos`. Sin importe decidido todavía en
-    `liga.ajustes` (`creditos.pro_mensual`), no da nada — se deja para cuando se fije la cifra."""
+    `liga.ajustes` (`creditos.pro_mensual`), no da nada — se deja para cuando se fije la cifra.
+
+    Una sola sentencia (set-based): antes era un `for` en Python con un round trip por usuario
+    Pro, dentro del candado `formar` (hallazgo de procesos: escala mal si crecen los usuarios
+    Pro, alarga cuánto tiempo se sostiene el candado)."""
     importe = db.execute(text("select valor from liga.ajustes where clave = :c"),
                          {"c": CLAVE_PRO_MENSUAL}).scalar()
     if importe is None:
         return {"dado": False, "motivo": "sin importe definido en liga.ajustes"}
-    usuarios = db.execute(text(
-        "select distinct usuario_id from liga.planes_usuario where plan = 'pro' "
-        "and desde <= now() and (hasta is null or hasta > now())")).scalars().all()
     idem = f"pro_mensual:{jornada_id}"
-    for u in usuarios:
-        db.execute(text(
-            "select liga.cargar_creditos(:u, cast(:i as numeric), 'pro_mensual', :k)"),
-            {"u": u, "i": str(importe), "k": idem})
+    usuarios = db.execute(text("""
+        select u.usuario_id,
+               liga.cargar_creditos(u.usuario_id, cast(:i as numeric), 'pro_mensual', :k)
+        from (
+            select distinct usuario_id from liga.planes_usuario
+            where plan = 'pro' and desde <= now() and (hasta is null or hasta > now())
+        ) u
+    """), {"i": str(importe), "k": idem}).scalars().all()
     if usuarios:
         auditar(db, "proceso.formar.pro_mensual", f"jornada:{jornada_id}",
                 {"usuarios": len(usuarios), "importe": str(importe)}, actor)

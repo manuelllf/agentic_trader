@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import Literal
 
@@ -19,6 +20,16 @@ from sqlalchemy import text
 from app.liga.ia import comun
 from app.liga.ia.bloqueo import tiene_bloqueada
 from app.liga.procesos.comun import auditar, fabrica_sistema
+
+# Tabla + columna que oculta cada tipo de reporte, igual que `rutas_gestion._OCULTAR_TABLA`: aquí
+# hace falta su propia copia porque `evaluar_en_fondo` oculta sola cuando el MODELO dice `block`
+# (antes solo lo hacía un moderador humano desde el panel de admin).
+_OCULTAR_TABLA = {
+    "alias": ("liga.perfiles", "oculto"),
+    "estrategia": ("liga.estrategias", "oculta"),
+    "pregunta": ("liga.estrategias", "oculta"),
+    "liga": ("liga.ligas_privadas", "oculta"),
+}
 
 logger = logging.getLogger("app.liga.ia")
 
@@ -88,11 +99,58 @@ def _reportar_dudoso(tipo: TipoReporte, objeto_id: str, texto: str) -> None:
         db.close()
 
 
-def evaluar(tipo: TipoReporte, objeto_id: str, texto: str) -> Moderacion:
-    """422 si la lista de bloqueo o el modelo lo bloquean; en duda, se permite pero se abre un
-    reporte para que lo revise un moderador humano."""
+def evaluar_lista(texto: str) -> None:
+    """Solo la lista de bloqueo: síncrona y barata, así que se queda DENTRO de la petición (422
+    si coincide, con el mismo efecto de siempre: la transacción de la ruta se deshace entera).
+    El modelo, que puede tardar hasta 20 s esperando al proveedor, se mueve a segundo plano --
+    ver `evaluar_en_fondo` (hallazgo crítico de latencia: la moderación no debe bloquear un
+    cambio de alias, guardar una receta o crear una liga)."""
     if tiene_bloqueada(texto):
         raise HTTPException(422, "Ese nombre no está permitido.")
+
+
+def _ocultar_bloqueado(tipo: TipoReporte, objeto_id: str, texto: str) -> None:
+    """El modelo dijo `block` DESPUÉS de que la escritura ya se guardó (se movió a segundo plano,
+    no se puede deshacer el commit): se oculta el objeto ya existente, auditado, igual que haría
+    un moderador humano desde `/liga/moderacion/ocultar`."""
+    tabla_columna = _OCULTAR_TABLA.get(tipo)
+    if tabla_columna is None:
+        return
+    try:
+        objetivo = uuid.UUID(objeto_id)
+    except ValueError:
+        return
+    tabla, columna = tabla_columna
+    db = fabrica_sistema()
+    try:
+        afectado = db.execute(text(f"update {tabla} set {columna} = true where id = :o"),  # noqa: S608
+                              {"o": objetivo}).rowcount
+        if afectado:
+            auditar(db, "ia.moderacion.oculta", f"{tipo}:{objeto_id}"[:120],
+                   {"motivo": f"Bloqueado por el modelo (segundo plano): {texto[:350]}"}, None)
+            db.commit()
+        else:
+            db.rollback()
+    finally:
+        db.close()
+
+
+def evaluar_en_fondo(tipo: TipoReporte, objeto_id: str, texto: str) -> None:
+    """El modelo, como tarea de fondo (FastAPI `BackgroundTasks`) DESPUÉS de que la petición ya
+    respondió: nunca añade su latencia (hasta 20 s) a la espera del usuario. Si bloquea, oculta lo
+    ya guardado; si duda, abre un reporte para un moderador humano -- mismo resultado que antes,
+    solo que fuera del camino síncrono."""
+    veredicto = _veredicto_modelo(texto)
+    if veredicto == "block":
+        _ocultar_bloqueado(tipo, objeto_id, texto)
+    elif veredicto == "doubt":
+        _reportar_dudoso(tipo, objeto_id, texto)
+
+
+def evaluar(tipo: TipoReporte, objeto_id: str, texto: str) -> Moderacion:
+    """Todo síncrono (lista + modelo): se mantiene para quien no pueda usar `BackgroundTasks`
+    (tests, scripts). Las rutas HTTP usan `evaluar_lista` + `evaluar_en_fondo`."""
+    evaluar_lista(texto)
     veredicto = _veredicto_modelo(texto)
     if veredicto == "block":
         raise HTTPException(422, "Ese nombre no está permitido.")
