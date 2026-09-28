@@ -32,6 +32,9 @@ export default function Cuenta() {
   const [confirmacion, setConfirmacion] = useState("");
   const [errorBaja, setErrorBaja] = useState("");
   const [dandoBaja, setDandoBaja] = useState(false);
+  const [claveNueva, setClaveNueva] = useState("");
+  const [cambiando, setCambiando] = useState(false);
+  const [avisoClave, setAvisoClave] = useState<{ tipo: "bien" | "mal"; texto: string } | null>(null);
 
   // El campo del nombre parte del valor de `yo` la primera vez que llega (viene de la caché
   // compartida, `SesionContext`); si el usuario ya está escribiendo no se pisa en la revalidación
@@ -57,6 +60,26 @@ export default function Cuenta() {
       setAviso({ tipo: "bien", texto: "Guardado. Ya sales con este nombre." });
     }
     setOcupado(false);
+  };
+
+  const cambiarClave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cambiando || !sb) return;
+    setCambiando(true);
+    setAvisoClave(null);
+    const { error } = await sb.auth.updateUser({ password: claveNueva });
+    if (error) {
+      setAvisoClave({
+        tipo: "mal",
+        texto: error.status === 422
+          ? "Esa contraseña no vale (o es igual a la actual). Prueba con otra más larga."
+          : "No se pudo cambiar ahora. Prueba otra vez.",
+      });
+    } else {
+      setClaveNueva("");
+      setAvisoClave({ tipo: "bien", texto: "Contraseña cambiada." });
+    }
+    setCambiando(false);
   };
 
   const descargarDatos = async () => {
@@ -137,6 +160,23 @@ export default function Cuenta() {
                 )}
               </div>
             </div>
+
+            <form className="form" onSubmit={cambiarClave}>
+              <label className="campo">
+                <span className="lbl">Cambiar contraseña</span>
+                <input className="inp" type="password" autoComplete="new-password" minLength={8}
+                       required value={claveNueva} onChange={(e) => setClaveNueva(e.target.value)} />
+                <span className="nota">Mínimo 8 caracteres.</span>
+              </label>
+              {avisoClave && (
+                <p className={avisoClave.tipo === "mal" ? "aviso" : "nota"} role="status">
+                  {avisoClave.texto}
+                </p>
+              )}
+              <Boton type="submit" ancho="completo" disabled={cambiando || claveNueva.length < 8}>
+                {cambiando ? "Cambiando…" : "Cambiar contraseña"}
+              </Boton>
+            </form>
 
             <div className="form">
               <div className="campo">

@@ -11,10 +11,10 @@ import json
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
@@ -53,6 +53,21 @@ class ListaUsuarios(BaseModel):
 class RolIn(BaseModel):
     rol: Literal["usuario", "moderador", "admin"]
     conceder: bool
+
+
+class AltaIn(BaseModel):
+    email: Annotated[str, StringConstraints(
+        strip_whitespace=True, to_lower=True, max_length=254,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
+    alias: str | None = Field(default=None, max_length=20)
+
+
+class AltaOut(BaseModel):
+    id: str
+    email: str
+    alias: str
+    alias_aplicado: bool
+    clave_temporal: str
 
 
 class PlanIn(BaseModel):
@@ -177,6 +192,14 @@ def listar_usuarios(alias: str = "", desde: int = Query(0, ge=0),
         offset :desde limit :cuantos
     """), {"a": alias.strip(), "patron": patron, "desde": desde, "cuantos": cuantos}).all()
     return ListaUsuarios(total=total, filas=[_usuario_out(f) for f in filas])
+
+
+@router_admin.post("/usuarios", response_model=AltaOut, status_code=201)
+def alta_usuario(body: AltaIn, response: Response,
+                 ident: Identidad = Depends(require_admin)) -> AltaOut:
+    response.headers["Cache-Control"] = "no-store"
+    alias = body.alias.strip().lower() if body.alias and body.alias.strip() else None
+    return AltaOut(**gestion.alta_usuario(body.email, alias, ident.uid))
 
 
 @router_admin.get("/usuarios/{id}", response_model=UsuarioDetalleOut)

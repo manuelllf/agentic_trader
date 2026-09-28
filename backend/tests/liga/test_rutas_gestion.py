@@ -169,6 +169,76 @@ def test_rol_plan_y_suspender_tienen_efecto_inmediato(api) -> None:  # noqa: ANN
     assert r.json()["suspendido"] is False
 
 
+def test_alta_de_usuario_desde_admin(api, monkeypatch) -> None:  # noqa: ANN001
+    from types import SimpleNamespace
+
+    from app.liga import gestion
+
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    a2 = cab(admin, aal="aal2")
+    monkeypatch.setattr(gestion.settings, "supabase_url", "https://proyecto.supabase.co")
+    monkeypatch.setattr(gestion.settings, "supabase_secret_key", "sb_secret_prueba")
+    nuevos: list[str] = []
+    enviado: dict = {}
+
+    def _post_falso(url, headers, json, timeout):  # noqa: ANN001, ANN202
+        enviado.update(url=url, headers=headers, json=json)
+        if json["email"] == "repetido@prueba.local":
+            return SimpleNamespace(status_code=422, text='{"error_code":"email_exists"}')
+        uid = str(uuid.uuid4())
+        cx.execute("insert into auth.users (id, email) values (%s, %s)", (uid, json["email"]))
+        nuevos.append(uid)
+        return SimpleNamespace(status_code=200, text="", json=lambda: {"id": uid})
+
+    monkeypatch.setattr(gestion.httpx, "post", _post_falso)
+    try:
+        # Sin sesión de admin: nada.
+        r = cliente.post("/liga/admin/usuarios", json={"email": "a@prueba.local"},
+                         headers=cab(usuario()))
+        assert r.status_code == 404 and not nuevos
+
+        r = cliente.post("/liga/admin/usuarios",
+                         json={"email": " Colega@Prueba.Local ", "alias": "Colega_1"}, headers=a2)
+        assert r.status_code == 201, r.text
+        assert r.headers["cache-control"] == "no-store"
+        cuerpo = r.json()
+        assert cuerpo["email"] == "colega@prueba.local" and cuerpo["alias"] == "colega_1"
+        assert cuerpo["alias_aplicado"] is True and len(cuerpo["clave_temporal"]) >= 12
+        assert enviado["json"]["email_confirm"] is True
+        assert enviado["json"]["password"] == cuerpo["clave_temporal"]
+        assert "Authorization" not in enviado["headers"]
+        fila = cx.execute("select alias from liga.perfiles where id = %s",
+                          (cuerpo["id"],)).fetchone()
+        assert fila == ("colega_1",)
+        aud = cx.execute("select count(*) from liga.auditoria where accion = 'admin.usuario.alta' "
+                         "and objeto = %s", (f"usuario:{cuerpo['id']}",)).fetchone()
+        assert aud == (1,)
+
+        # Alias reservado: la cuenta se crea con el suyo por defecto y se avisa.
+        r = cliente.post("/liga/admin/usuarios",
+                         json={"email": "otro@prueba.local", "alias": "alpha"}, headers=a2)
+        assert r.status_code == 201, r.text
+        assert r.json()["alias_aplicado"] is False and r.json()["alias"].startswith("jugador_")
+
+        # Correo que ya existe.
+        r = cliente.post("/liga/admin/usuarios", json={"email": "repetido@prueba.local"},
+                         headers=a2)
+        assert r.status_code == 409
+
+        # Correo mal escrito: ni se llama a Supabase.
+        antes = len(nuevos)
+        r = cliente.post("/liga/admin/usuarios", json={"email": "sin-arroba"}, headers=a2)
+        assert r.status_code == 422 and len(nuevos) == antes
+    finally:
+        cx.execute("set session_replication_role = replica")
+        for uid in nuevos:
+            cx.execute("delete from liga.auditoria where objeto = %s", (f"usuario:{uid}",))
+        cx.execute("set session_replication_role = origin")
+        for uid in nuevos:
+            cx.execute("delete from auth.users where id = %s", (uid,))
+
+
 # ---- créditos: conceder es idempotente -----------------------------------------------------------
 
 

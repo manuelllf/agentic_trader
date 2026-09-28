@@ -12,6 +12,8 @@ no hace falta nada de este módulo para eso.
 
 from __future__ import annotations
 
+import logging
+import secrets
 import threading
 import time
 from dataclasses import dataclass
@@ -19,11 +21,17 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
+import httpx
+from fastapi import HTTPException
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.liga.ia import comun as ia_comun
 from app.liga.procesos.comun import auditar, fabrica_sistema
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -217,6 +225,56 @@ def registro_abierto() -> bool:
 
 def liga_visible() -> bool:
     return _ajuste_booleano(CLAVE_LIGA_VISIBLE, por_defecto=True)
+
+
+def alta_usuario(email: str, alias: str | None, actor: str) -> dict:
+    """Alta a mano desde admin: crea la cuenta en Supabase Auth ya confirmada (no manda correo, no
+    hace falta SMTP) con una contraseña temporal que solo se devuelve aquí, una vez. El trigger
+    `liga.alta_usuario` crea perfil, datos privados y rol; el alias, si viene y vale, se fija
+    después: si la BD lo rechaza (formato, reservado, repetido) la cuenta queda con el suyo por
+    defecto y se avisa, sin deshacer el alta."""
+    if not settings.supabase_secret_key or not settings.supabase_url:
+        raise HTTPException(503, "El alta de usuarios todavía no está activada.")
+    clave = secrets.token_urlsafe(9)
+    try:
+        r = httpx.post(
+            f"{settings.supabase_url.rstrip('/')}/auth/v1/admin/users",
+            # Solo `apikey`: las claves `sb_secret_...` no valen en `Authorization: Bearer`.
+            headers={"apikey": settings.supabase_secret_key},
+            json={"email": email, "password": clave, "email_confirm": True},
+            timeout=10)
+    except httpx.HTTPError as e:
+        raise HTTPException(503, "No se pudo dar de alta ahora. Prueba en un momento.") from e
+    if r.status_code in (409, 422):
+        existe = "email_exists" in r.text or "already" in r.text.lower()
+        raise HTTPException(
+            409 if existe else 422,
+            "Ese correo ya tiene cuenta." if existe else "Ese correo no vale.")
+    if r.status_code not in (200, 201):
+        logger.warning("Supabase Auth respondió %s al dar de alta una cuenta", r.status_code)
+        raise HTTPException(503, "No se pudo dar de alta ahora. Prueba en un momento.")
+    uid = r.json()["id"]
+
+    db = fabrica_sistema()
+    try:
+        aplicado = False
+        if alias:
+            try:
+                with db.begin_nested():
+                    db.execute(text(
+                        "update liga.perfiles set alias = :a where id = cast(:u as uuid)"),
+                        {"a": alias, "u": uid})
+                aplicado = True
+            except DBAPIError:
+                aplicado = False
+        final = db.execute(text(
+            "select alias from liga.perfiles where id = cast(:u as uuid)"), {"u": uid}).scalar()
+        auditar(db, "admin.usuario.alta", f"usuario:{uid}", {"alias": final}, actor)
+        db.commit()
+    finally:
+        db.close()
+    return {"id": uid, "email": email, "alias": final,
+            "alias_aplicado": aplicado or not alias, "clave_temporal": clave}
 
 
 def conceder_rol(usuario_id: str, rol: str, conceder: bool, actor: str) -> None:
