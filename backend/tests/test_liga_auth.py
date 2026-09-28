@@ -6,6 +6,7 @@ la BD corre contra el Postgres de pruebas de la liga y se salta sin `LIGA_TEST_D
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 import uuid
@@ -88,11 +89,11 @@ def test_las_salas_abren_con_la_sesion_de_admin_y_con_nada_mas(monkeypatch) -> N
     vistos = []
     monkeypatch.setattr(auth_salas, "comprobar_admin", lambda ident: vistos.append(ident.uid))
     uid = str(uuid.uuid4())
-    auth_salas.require_auth(f"Bearer {_token(sub=uid, aal='aal2')}")
+    asyncio.run(auth_salas.require_auth(f"Bearer {_token(sub=uid, aal='aal2')}"))
     assert vistos == [uid]
     # El token de la antigua contraseña (`ts.firma`) ya no abre nada.
     with pytest.raises(HTTPException) as e:
-        auth_salas.require_auth("Bearer 1790000000.abcdef0123456789")
+        asyncio.run(auth_salas.require_auth("Bearer 1790000000.abcdef0123456789"))
     assert e.value.status_code == 401
 
 
@@ -102,7 +103,7 @@ def test_quien_no_es_admin_no_entra_a_las_salas(monkeypatch) -> None:  # noqa: A
 
     monkeypatch.setattr(auth_salas, "comprobar_admin", no_admin)
     with pytest.raises(HTTPException) as e:
-        auth_salas.require_auth(f"Bearer {_token()}")
+        asyncio.run(auth_salas.require_auth(f"Bearer {_token()}"))
     assert e.value.status_code == 404
     assert auth_salas.auth_optional(f"Bearer {_token()}") is False
 

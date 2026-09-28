@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import pytest
@@ -14,16 +15,16 @@ from app.liga.acceso import LimiteFallos
 def test_auth_disabled_without_supabase(monkeypatch) -> None:  # noqa: ANN001
     monkeypatch.setattr(auth.settings, "supabase_url", "")
     assert auth.auth_enabled() is False
-    auth.require_auth(authorization="")          # sin candado en local: no lanza
+    asyncio.run(auth.require_auth(authorization=""))     # sin candado en local: no lanza
     assert auth.auth_optional(authorization="") is True
 
 
 def test_la_sesion_de_admin_abre_y_lo_demas_no(token_admin) -> None:  # noqa: ANN001
-    auth.require_auth(authorization=f"Bearer {token_admin}")
+    asyncio.run(auth.require_auth(authorization=f"Bearer {token_admin}"))
     assert auth.auth_optional(authorization=f"Bearer {token_admin}") is True
     for cabecera in ("", "Bearer ", "Bearer basura"):
         with pytest.raises(HTTPException) as e:
-            auth.require_auth(authorization=cabecera)
+            asyncio.run(auth.require_auth(authorization=cabecera))
         assert e.value.status_code == 401
         assert auth.auth_optional(authorization=cabecera) is False
 
@@ -35,7 +36,7 @@ def test_sin_2fa_o_sin_rol_admin_no_abre(token_admin, monkeypatch, codigo) -> No
 
     monkeypatch.setattr(auth, "comprobar_admin", rechaza)
     with pytest.raises(HTTPException) as e:
-        auth.require_auth(authorization=f"Bearer {token_admin}")
+        asyncio.run(auth.require_auth(authorization=f"Bearer {token_admin}"))
     assert e.value.status_code == codigo
 
 

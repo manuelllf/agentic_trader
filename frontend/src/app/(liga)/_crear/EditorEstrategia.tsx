@@ -17,8 +17,8 @@ import {
   actualizarEstrategia, apuntar, buscarUniverso, convertirFrase, costeProbarConPregunta,
   crearEstrategia, crearReceta, excluirEmpresa, getCatalogo, getFicha,
   leerAFondo, leerMiCartera, porQueNoSale, probarEstrategia, quitarExclusion, verEstrategia,
-  type Catalogo, type CostePregunta, type EmpresaBusqueda, type Estrategia, type Lectura,
-  type Prueba, type ReglaElegida,
+  type Catalogo, type CostePregunta, type EmpresaBusqueda, type Estrategia, type EstrategiaPatch,
+  type Lectura, type Prueba, type ReglaElegida,
 } from "@/lib/liga/api";
 import { invalidar, obtener } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
@@ -235,7 +235,8 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       idActual = creada.id;
       setId(idActual);
       setEstrategia(creada);
-      router.replace(`/crear/${idActual}`, { scroll: false });
+      // Solo cambia la URL: `router.replace` monta la otra página y el editor pierde lo que hay.
+      window.history.replaceState(null, "", `/crear/${idActual}`);
     } else if (estrategia && (estrategia.nombre !== nombre.trim()
       || estrategia.escudo.forma !== escudo.forma || estrategia.escudo.dibujo !== escudo.dibujo
       || estrategia.escudo.color1 !== escudo.color1 || estrategia.escudo.color2 !== escudo.color2
@@ -395,6 +396,19 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     setOcupado(true);
     const idActual = await guardar();
     if (idActual) {
+      // Visibilidad, declaración y «Cada día 1» solo se guardan aquí: sin esto se quedan en pantalla.
+      const cambios: EstrategiaPatch = {};
+      if (visibilidad !== (estrategia?.visibilidad ?? "privada")) cambios.visibilidad = visibilidad;
+      if (visibilidad === "publicada" && declaraPosiciones
+          && declaraPosiciones !== estrategia?.declara_posiciones) {
+        cambios.declara_posiciones = declaraPosiciones;
+      }
+      if (cadaDia1Opcion !== (estrategia?.cada_dia_1 ?? "revisar")) cambios.cada_dia_1 = cadaDia1Opcion;
+      if (Object.keys(cambios).length > 0) {
+        const guardada = await actualizarEstrategia(idActual, cambios);
+        if (typeof guardada === "string") { setError(guardada); setOcupado(false); return; }
+        setEstrategia(guardada);
+      }
       const r = await apuntar(idActual);
       if (typeof r === "string") { setError(r); setOcupado(false); return; }
       // La lista de «Mías» ya cacheada (si el usuario vino de ahí) queda desfasada: se invalida
@@ -735,10 +749,13 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
             <div style={{ marginTop: 10 }}>
               <Segmentado etiquetaGrupo="Declaración de posiciones"
                           opciones={[{ valor: "si", etiqueta: "Sí" }, { valor: "no", etiqueta: "No" }]}
-                          valor={declaraPosiciones ?? "no"}
+                          valor={declaraPosiciones ?? ""}
                           onChange={(v) => setDeclaraPosiciones(v as "si" | "no")} />
             </div>
-            <p className="fine">Es obligatorio para publicar y se muestra junto a tu estrategia.</p>
+            <p className="fine">
+              Es obligatorio para publicar y se muestra junto a tu estrategia.
+              {!declaraPosiciones && " Elige una respuesta para poder apuntarla."}
+            </p>
           </div>
         )}
       </div>
