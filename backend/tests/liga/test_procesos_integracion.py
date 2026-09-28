@@ -40,7 +40,6 @@ from app.liga.procesos import (  # noqa: E402
 from app.models import (  # noqa: E402
     Foto,
     FundamentalsSnapshot,
-    FundamentalsSnapshotMetric,
     ScanAudit,
     ScanRun,
     ScanRunConstructionItem,
@@ -173,13 +172,11 @@ def mundo(fabrica, mercado) -> dict:  # noqa: ANN001
         s = FundamentalsSnapshot(ticker=t, captured_at=FOTO_FIN, sector=sector, industry=industria,
                                  name=f"Empresa {t}", price=50.0, market_cap=1e9 * (20 - i),
                                  market_cap_usd=1e9 * (20 - i), pe_trailing=15.0,
-                                 high_52w=60.0, foto_id=f.id)
+                                 high_52w=60.0, foto_id=f.id,
+                                 metricas={"totalDebt": 1e8, "totalCash": 2e8, "ebitda": 5e8,
+                                           "dividendYield": 1.5})
         db.add(s)
         db.flush()
-        for clave, valor in (("totalDebt", 1e8), ("totalCash", 2e8), ("ebitda", 5e8),
-                             ("dividendYield", 1.5)):
-            db.add(FundamentalsSnapshotMetric(fundamentals_snapshot_id=s.id, clave=clave,
-                                              valor_num=valor))
     scan_at = FOTO_FIN + timedelta(minutes=15)
     run = ScanRun(scan_at=scan_at, cadence="decisión/full", decide=True, foto_id=f.id)
     db.add(run)

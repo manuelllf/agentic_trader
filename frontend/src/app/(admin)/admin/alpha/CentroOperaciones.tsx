@@ -131,11 +131,10 @@ const ACCIONES: Record<Key, Accion> = {
   },
   poda: {
     t: "Poda de lo archivado",
-    d: "Borra de Postgres las métricas y titulares de fotos viejas y el texto de las llamadas a "
-      + "la IA de más de 3 meses. Solo lo que ya está en el archivo DuckDB: se quedan la última "
-      + "captura de cada empresa, las 2 últimas fotos y lo que usaron los escaneos de decisión.",
+    d: "Vacía de Postgres el texto de las llamadas a la IA de más de 3 meses. Solo lo que ya "
+      + "está en el archivo DuckDB; tokens, coste y latencia se quedan.",
     cta: "Podar", badges: [["libera espacio", "neutro"]], poda: true,
-    aviso: "Borra de Postgres. Lo borrado sigue en el archivo DuckDB.",
+    aviso: "Vacía texto en Postgres. Lo vaciado sigue en el archivo DuckDB.",
   },
 };
 
@@ -314,7 +313,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
   const elegir = (k: Key) => { setSel(k); setArmed(false); setMsg(null); };
   // Sin vista previa, o sin nada que podar, no se lanza a ciegas.
   const podaBloqueada = sel === "poda" && (podaEnMarcha || !podaPrevia
-    || podaPrevia.metricas.filas + podaPrevia.titulares.filas + podaPrevia.texto_llm.llamadas === 0);
+    || podaPrevia.texto_llm.llamadas === 0);
 
   async function lanzar() {
     setArmed(false);
@@ -631,8 +630,6 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
 
 const FASES_PODA: Record<string, string> = {
   preparando: "Preparando",
-  fundamentals_snapshot_metric: "Borrando métricas",
-  fundamentals_snapshot_news: "Borrando titulares",
   llm_call: "Vaciando el texto de las llamadas",
   vacuum: "Dejando el hueco listo para reutilizar",
 };
@@ -642,21 +639,14 @@ function textoAvancePoda(e: PodaEstado): string {
   return e.total ? `${fase}: ${fmtNum(e.hechas)} de ${fmtNum(e.total)}.` : `${fase}…`;
 }
 
-type ResultadoTabla = { borradas?: number; vaciadas?: number; sin_archivar?: number };
+type ResultadoTabla = { vaciadas?: number; sin_archivar?: number };
 
 function textoResultadoPoda(e: PodaEstado): string {
   const r = (e.result ?? {}) as Record<string, ResultadoTabla>;
-  const m = r.fundamentals_snapshot_metric ?? {};
-  const n = r.fundamentals_snapshot_news ?? {};
   const l = r.llm_call ?? {};
-  const sin = (m.sin_archivar ?? 0) + (n.sin_archivar ?? 0) + (l.sin_archivar ?? 0);
-  return `Poda hecha: ${fmtNum(m.borradas ?? 0)} métricas, ${fmtNum(n.borradas ?? 0)} titulares `
-    + `y el texto de ${fmtNum(l.vaciadas ?? 0)} llamadas.`
+  const sin = l.sin_archivar ?? 0;
+  return `Poda hecha: texto de ${fmtNum(l.vaciadas ?? 0)} llamadas vaciado.`
     + (sin ? ` ${fmtNum(sin)} filas no estaban en el archivo y se quedan.` : "");
-}
-
-function fechaCorta(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
 }
 
 /** Lo que borraría la poda ahora: sale de `GET /admin/poda`, recalculado al elegirla. */
@@ -667,10 +657,8 @@ function PodaResumen({ previa, motivo }: { previa: PodaPrevia | null | false; mo
   if (previa === false) {
     return <p className="py-1 text-[10.5px]" style={{ color: T.warn }}>{motivo}</p>;
   }
-  const nada = previa.metricas.filas + previa.titulares.filas + previa.texto_llm.llamadas === 0;
-  const sinArchivar = previa.metricas.sin_archivar + previa.titulares.sin_archivar
-    + previa.texto_llm.sin_archivar;
-  const visibles = previa.fotos.slice(0, 6);
+  const nada = previa.texto_llm.llamadas === 0;
+  const sinArchivar = previa.texto_llm.sin_archivar;
   return (
     <div className="py-1.5 text-[11px] leading-relaxed" style={{ color: T.ink2 }}>
       {nada ? (
@@ -682,20 +670,8 @@ function PodaResumen({ previa, motivo }: { previa: PodaPrevia | null | false; mo
               {previa.mb_total.toLocaleString("es-ES", { maximumFractionDigits: 1 })} MB
             </span> para lo que entre después.
           </p>
-          <ul className="mt-1">
-            {visibles.map((f) => (
-              <li key={`${f.grupo}-${f.alcance}`} className={NUMS}>
-                {f.grupo.startsWith("foto ") ? `Foto ${f.grupo.slice(5)}` : "Capturas"} del{" "}
-                {fechaCorta(f.desde)}{f.alcance === "global" ? " (global)" : ""}: {fmtNum(f.empresas)} empresas
-              </li>
-            ))}
-            {previa.fotos.length > visibles.length && (
-              <li style={{ color: T.muted }}>y {previa.fotos.length - visibles.length} grupos más</li>
-            )}
-          </ul>
           <p className={`mt-1 ${NUMS}`}>
-            {fmtNum(previa.metricas.filas)} métricas · {fmtNum(previa.titulares.filas)} titulares ·
-            texto de {fmtNum(previa.texto_llm.llamadas)} llamadas
+            Se vacía el texto de {fmtNum(previa.texto_llm.llamadas)} llamadas
           </p>
         </>
       )}
@@ -705,9 +681,7 @@ function PodaResumen({ previa, motivo }: { previa: PodaPrevia | null | false; mo
         </p>
       )}
       <p className="mt-1 text-[9.5px]" style={{ color: T.muted }}>
-        Se quedan la última captura de cada empresa, las {previa.reglas.fotos_completas} últimas
-        fotos, lo que usaron los escaneos de decisión de los últimos {previa.reglas.dias_decision}{" "}
-        días y todo lo de las últimas {previa.reglas.horas_intocables} h.
+        Solo se vacía el texto de las llamadas de más de {previa.reglas.dias_texto_llm} días.
       </p>
     </div>
   );

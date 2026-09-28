@@ -455,14 +455,9 @@ export interface EstadoDatos {
  *  operaciones. Sin esto los chips tendrían que inventarse la antigüedad. */
 export const getEstadoDatos = () => get<EstadoDatos>("/admin/estado-datos");
 
-export interface PodaTabla { filas: number; sin_archivar: number; mb: number }
 export interface PodaPrevia {
-  reglas: { fotos_completas: number; dias_decision: number; dias_texto_llm: number;
-            horas_intocables: number };
+  reglas: { dias_texto_llm: number };
   marcas_archivo: Record<string, number>;
-  fotos: { grupo: string; alcance: string; empresas: number; desde: string; hasta: string }[];
-  metricas: PodaTabla;
-  titulares: PodaTabla;
   texto_llm: { llamadas: number; sin_archivar: number; mb: number };
   mb_total: number;
 }

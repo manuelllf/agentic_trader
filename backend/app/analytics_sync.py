@@ -37,10 +37,18 @@ _EXCLUIDAS = {
     # detectado 5-sep-2026 tras un aviso de Supabase por bandwidth, ~710 MB/día (~21 GB/mes)
     # contra un free tier de 5.5 GB. Del 9-sep-2026 en adelante se sincronizan por delta
     # (`_INCREMENTALES` de abajo) en vez de excluirse del todo.
-    "fundamentals_snapshot_metric",
     "llm_call_logprob",
     "llm_call",
+    # Las copias de DuckDB son ya el único sitio con el histórico podado: si la tabla siguiera en
+    # Postgres, el reemplazo diario las pisaría con menos filas.
+    "fundamentals_snapshot_metric",
     "fundamentals_snapshot_news",
+}
+
+# Columnas que el reemplazo diario NO trae de Postgres (pesan y crecen sin parar): su histórico
+# se archiva por delta en `fundamentals_snapshot_datos` (`_INCREMENTALES`).
+_SELECT_REEMPLAZO = {
+    "fundamentals_snapshot": "* exclude (metricas, titulares)",
 }
 
 # Tablas que se archivan por DELTA (nunca `CREATE OR REPLACE`, eso fue el bug de bandwidth del
@@ -48,7 +56,8 @@ _EXCLUIDAS = {
 # vez que corre (tabla aún no existe en este fichero DuckDB): pull completo, fija la marca de
 # agua en el `id` máximo. Siguientes veces: solo `id > marca_de_agua`, insertado sin más.
 #
-# Formato: {nombre_en_duckdb: (referencia_en_postgres, columna_id)}.
+# Formato: {nombre_en_duckdb: (fuente_en_postgres, columna_id)}. La fuente es una tabla o una
+# subconsulta entre paréntesis con alias (`(select ...) as d`).
 #
 # La poda del 9-sep-2026 (ver docs/momentum-sala-real-x.md -- no, esto es del ranker:
 # `fundamentals_snapshot` guardaba el dataset global/HuggingFace entero sin que `foto_reciente`
@@ -59,8 +68,9 @@ _EXCLUIDAS = {
 # -- las 5 entradas `..._archivo` ya no existen como fuente y se retiraron de aquí. DuckDB es
 # ahora el único sitio donde vive ese histórico.
 _INCREMENTALES: dict[str, tuple[str, str]] = {
-    "fundamentals_snapshot_metric": ("pg.fundamentals_snapshot_metric", "id"),
-    "fundamentals_snapshot_news": ("pg.fundamentals_snapshot_news", "id"),
+    "fundamentals_snapshot_datos": (
+        "(select id, metricas, titulares from pg.fundamentals_snapshot "
+        "where metricas is not null or titulares is not null) as d", "id"),
     "llm_call": ("pg.llm_call", "id"),
     "llm_call_logprob": ("pg.llm_call_logprob", "id"),
 }
@@ -146,7 +156,8 @@ def sync(path: str | None = None) -> dict[str, int]:
         con.execute(f"attach '{_pg_dsn(url)}' as pg (type postgres, read_only)")
         counts: dict[str, int] = {}
         for tabla in tablas:
-            con.execute(f"create or replace table {tabla} as select * from pg.{tabla}")
+            columnas = _SELECT_REEMPLAZO.get(tabla, "*")
+            con.execute(f"create or replace table {tabla} as select {columnas} from pg.{tabla}")
             counts[tabla] = con.execute(f"select count(*) from {tabla}").fetchone()[0]
         existentes = _tablas_existentes_duckdb(con)
         counts.update(_sync_incremental(con, existentes))

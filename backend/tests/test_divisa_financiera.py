@@ -72,7 +72,7 @@ def test_fundamentals_text_muestra_el_valor_ya_convertido(db) -> None:
 
 
 def test_valores_crudos_tambien_convierte(db) -> None:
-    """Bug real (17-sep-2026): lo persistido en fundamentals_snapshot_metric se quedaba en la
+    """Bug real (17-sep-2026): lo persistido en `metricas` se quedaba en la
     divisa nativa mientras el texto que vio el LLM ya iba en USD -- dos fuentes de verdad
     distintas del mismo escaneo."""
     db.add(FxRate(synced_at=datetime.now(UTC), currency_code="TWD", usd_per_unit=0.0315))

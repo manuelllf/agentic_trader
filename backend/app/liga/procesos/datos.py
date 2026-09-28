@@ -4,6 +4,7 @@ forma del motor. Nada se copia: la foto, las notas de Jev y los precios se leen 
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -18,7 +19,7 @@ from app.liga.motor.catalogo import EmpresaFoto
 from app.liga.motor.seleccion import NotasJev, Respuesta
 from app.liga.motor.seleccion import Receta as RecetaMotor
 
-# Métricas de la foto que usa el catálogo (claves de yfinance en `fundamentals_snapshot_metric`).
+# Métricas de la foto que usa el catálogo (claves de yfinance en `fundamentals_snapshot.metricas`).
 _METRICAS = {
     "dividendYield": "dividend_yield_pct",
     "revenueGrowth": "crecimiento_ventas",
@@ -41,24 +42,25 @@ def cargar_empresas(db: Session, foto_id: int) -> list[EmpresaFoto]:
     """Las empresas de una foto, una por ticker (si se capturó dos veces, la última)."""
     filas = db.execute(text("""
         select distinct on (s.ticker) s.id, s.ticker, s.name, s.sector, s.industry,
-               s.market_cap_usd, s.price, s.high_52w, s.pe_trailing
+               s.market_cap_usd, s.price, s.high_52w, s.pe_trailing, s.metricas
         from fundamentals_snapshot s
         where s.foto_id = :f
         order by s.ticker, s.id desc
     """), {"f": foto_id}).all()
-    metricas: dict[int, dict[str, float]] = {}
-    for sid, clave, valor in db.execute(text("""
-        select m.fundamentals_snapshot_id, m.clave, m.valor_num
-        from fundamentals_snapshot_metric m
-        join fundamentals_snapshot s on s.id = m.fundamentals_snapshot_id
-        where s.foto_id = :f and m.clave = any(:claves) and m.valor_num is not null
-    """), {"f": foto_id, "claves": list(_METRICAS)}).all():
-        metricas.setdefault(sid, {})[_METRICAS[clave]] = valor
     return [EmpresaFoto(ticker=f.ticker, nombre=_texto(f.name), sector=_texto(f.sector),
                         industria=_texto(f.industry), market_cap_usd=f.market_cap_usd,
                         precio=f.price, max_52s=f.high_52w, per=f.pe_trailing,
-                        **metricas.get(f.id, {}))
+                        **_metricas_catalogo(f.metricas))
             for f in filas]
+
+
+def _metricas_catalogo(metricas: dict | str | None) -> dict[str, float]:
+    """Las métricas del catálogo que vengan como número real en el jsonb de la foto."""
+    if isinstance(metricas, str):
+        metricas = json.loads(metricas)
+    return {destino: float(v) for clave, destino in _METRICAS.items()
+            if isinstance(v := (metricas or {}).get(clave), (int, float))
+            and not isinstance(v, bool)}
 
 
 def cargar_notas(db: Session, scan_run_id: int) -> dict[str, NotasJev]:

@@ -154,7 +154,7 @@ class FundamentalsSnapshot(Base):
     # `fundamentals_text` (el prompt YA MONTADO) NO se persiste: era texto formateado con los
     # ~85 campos de abajo mezclados dentro de una cadena — la propia definición de "chapuza"
     # que motivó este cambio. Se reconstruye al leer con la MISMA función que lo genera en vivo
-    # (`_fundamentals_text`), aplicada a las filas de `FundamentalsSnapshotMetric` — nunca se
+    # (`_fundamentals_text`), aplicada a `metricas` — nunca se
     # reimplementa el formateo, así que el prompt reconstruido es idéntico al que se mandó.
     # Histórico: ya no se escribe (se reconstruye con `_technical_text` a partir de precio/52w/beta,
     # sin descargar histórico de precios). Se conserva para las filas capturadas antes del cambio.
@@ -169,8 +169,8 @@ class FundamentalsSnapshot(Base):
     # falta para saber qué tasa de `FxRate` aplicarle a `market_cap`.
     currency: Mapped[str | None] = mapped_column(String(8))
     # Divisa de los ESTADOS FINANCIEROS (yfinance "financialCurrency") -- distinta de `currency`
-    # para extranjeras (TSM cotiza en USD pero reporta en NTD). Columna propia (no solo el EAV)
-    # para que `fx._divisas_activas()` pueda pedir su tasa sin unir contra `..._metric`.
+    # para extranjeras (TSM cotiza en USD pero reporta en NTD). Columna propia (no solo en
+    # `metricas`) para que `fx._divisas_activas()` la consulte sin abrir el jsonb.
     financial_currency: Mapped[str | None] = mapped_column(String(8))
     # `market_cap` en USD -- se rellena en el gather y se recalcula cada noche (ver
     # `scheduler._fx_job`) para que un movimiento de divisa se note sin re-capturar fundamentales.
@@ -178,47 +178,11 @@ class FundamentalsSnapshot(Base):
     # Foto de Alpha a la que pertenece. NULL = captura suelta de un escaneo, o anterior a que las
     # fotos tuvieran identidad.
     foto_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("foto.id"))
-    # B7 fase 1: mismos datos que `FundamentalsSnapshotMetric`/`FundamentalsSnapshotNews`, en la
-    # propia fila (doble escritura mientras los lectores siguen en las tablas viejas -- ver
-    # `foto_guardar` y `docs/liguilla/cambios-bbdd.md`). NULL en filas viejas hasta rellenar_b7.
+    # Los ~85 campos crudos de `.info` (sin las 11 claves repetidas) y los titulares en orden
+    # (más reciente primero); NULL si la captura no tuvo ninguno.
     metricas: Mapped[dict | None] = mapped_column(JSON_PG)
     titulares: Mapped[list[str] | None] = mapped_column(
         JSON().with_variant(ARRAY(Text), "postgresql"))
-
-
-class FundamentalsSnapshotNews(Base):
-    """Titulares de una foto, uno por fila — hermanas de `FundamentalsSnapshot` por FK, nunca
-    una lista serializada. `NameData.news` es `list[str]`; `posicion` conserva el orden original
-    (más reciente primero, tal como lo entrega la fuente)."""
-
-    __tablename__ = "fundamentals_snapshot_news"
-
-    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
-    fundamentals_snapshot_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("fundamentals_snapshot.id", ondelete="CASCADE"), index=True)
-    posicion: Mapped[int] = mapped_column(SmallInteger)
-    texto: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
-class FundamentalsSnapshotMetric(Base):
-    """Los ~85 campos crudos de `.info` (Exhibit 2B del paper) que antes vivían formateados
-    DENTRO de `fundamentals_text` — uno por fila, nunca texto ni JSON. `clave` es el nombre de
-    campo de yfinance (`trailingPE`, `beta`...); solo uno de `valor_num`/`valor_texto` va
-    relleno (3 de los ~85 son texto: `currency`, `financialCurrency`, `lastSplitFactor`)."""
-
-    __tablename__ = "fundamentals_snapshot_metric"
-    __table_args__ = (
-        Index("ix_fundamentals_snapshot_metric_snapshot_id", "fundamentals_snapshot_id"),
-    )
-
-    id: Mapped[int] = mapped_column(PK_ID, primary_key=True)
-    fundamentals_snapshot_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("fundamentals_snapshot.id", ondelete="CASCADE"))
-    clave: Mapped[str] = mapped_column(String(48))
-    valor_num: Mapped[float | None] = mapped_column(Float)
-    valor_texto: Mapped[str | None] = mapped_column(String(32))
-    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class UniverseTicker(Base):

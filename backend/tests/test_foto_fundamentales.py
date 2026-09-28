@@ -32,7 +32,7 @@ def _sample() -> NameData:
         news=["más reciente", "segunda", "tercera"], earnings_text="10-Q el 12-sep",
         name="AAA Inc",
         pe_trailing=22.5, pe_forward=19.1, high_52w=110.0, low_52w=80.0,
-        # Lo que de verdad se persiste (ver FundamentalsSnapshotMetric): en crudo, no el texto
+        # Lo que de verdad se persiste (`metricas`): en crudo, no el texto
         # ya montado de arriba — ese solo importa para el prompt EN VIVO, nunca para la BD.
         # Claves fuera de las 11 de B6 (ver test_b6_b7_dorado.py para esas): esta ronda prueba el
         # mecanismo general, no el reponer de las repetidas.
@@ -65,6 +65,34 @@ def test_foto_guardar_y_leer_redondo(db) -> None:
     assert (got.industry, got.name, got.earnings_text) == ("Software", "AAA Inc", "10-Q el 12-sep")
     assert (got.pe_trailing, got.pe_forward) == (22.5, 19.1)
     assert (got.high_52w, got.low_52w) == (110.0, 80.0)
+
+
+def test_foto_guardar_descarta_no_finitos_y_lee_enteros_como_float(db) -> None:
+    """jsonb rechaza NaN/Infinity; y un entero exacto que vuelve del jsonb sigue siendo float."""
+    datos = _sample()
+    datos.fundamentales_crudos = {"beta": 1.1, "trailingEps": float("nan"),
+                                  "pegRatio": float("inf")}
+    fund_mod.foto_guardar(db, "AAA", datos)
+    assert db.query(FundamentalsSnapshot).one().metricas == {"beta": 1.1}
+
+    fila = db.query(FundamentalsSnapshot).one()
+    fila.metricas = {"beta": 2, "lastSplitFactor": "2:1"}
+    db.commit()
+    got = fund_mod.foto_reciente(db, "AAA")
+    assert got.fundamentales_crudos["beta"] == 2.0
+    assert isinstance(got.fundamentales_crudos["beta"], float)
+
+
+def test_foto_sin_metricas_ni_titulares_se_lee_vacia(db) -> None:
+    datos = _sample()
+    datos.fundamentales_crudos = {}
+    datos.news = []
+    fund_mod.foto_guardar(db, "AAA", datos)
+    fila = db.query(FundamentalsSnapshot).one()
+    assert (fila.metricas, fila.titulares) == (None, None)
+    got = fund_mod.foto_reciente(db, "AAA")
+    assert got.news == []
+    assert got.fundamentales_crudos == {"marketCap": 5e9, "trailingPE": 22.5, "forwardPE": 19.1}
 
 
 def test_sin_foto_devuelve_none(db) -> None:

@@ -74,14 +74,10 @@ def _scraper_session() -> tuple[yahoo_scraper.creq.Session, str] | None:
 
 def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | None:  # noqa: ANN001
     """Última foto de este ticker si cae dentro de la ventana. Sustituye la lectura del cache."""
-    from app.models import (
-        FundamentalsSnapshot,
-        FundamentalsSnapshotMetric,
-        FundamentalsSnapshotNews,
-    )
+    from app.models import FundamentalsSnapshot
 
-    # `_FOTO_LOCK` cubre TODO acceso a `db` (lectura y escritura, incluidas noticias/métricas
-    # hermanas): `gather()` llama a `foto_reciente`/`foto_guardar` con el MISMO `db` desde
+    # `_FOTO_LOCK` cubre TODO acceso a `db` (lectura y escritura):
+    # `gather()` llama a `foto_reciente`/`foto_guardar` con el MISMO `db` desde
     # `_GATHER_WORKERS` hilos a la vez, y una `Session` de SQLAlchemy no es thread-safe ni para
     # LEER — sin el lock, "This session is provisioning a new connection; concurrent operations
     # are not permitted" (visto en producción, 23-ago).
@@ -98,18 +94,15 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
         at = at if at.tzinfo is not None else at.replace(tzinfo=UTC)
         if (datetime.now(UTC) - at).total_seconds() / 3600 >= ttl_h:
             return None
-        noticias = [n.texto for n in
-                   db.query(FundamentalsSnapshotNews)
-                   .filter(FundamentalsSnapshotNews.fundamentals_snapshot_id == row.id)
-                   .order_by(FundamentalsSnapshotNews.posicion)
-                   .all()]
-        metricas_crudas = {m.clave: (m.valor_num if m.valor_num is not None else m.valor_texto)
-                           for m in db.query(FundamentalsSnapshotMetric)
-                           .filter(FundamentalsSnapshotMetric.fundamentals_snapshot_id == row.id)
-                           .all()}
-    # B6: `foto_guardar` ya no escribe las 11 claves repetidas -- se reponen aquí desde su
-    # duplicado (todavía en `metricas_crudas`) o su columna, mismo valor que antes de B6, así el
-    # texto reconstruido (y el `fundamentales_crudos` que devuelve esta función) no cambian.
+        noticias = list(row.titulares or [])
+        # jsonb devuelve int para los enteros exactos: se vuelve a float para que el texto
+        # reconstruido sea idéntico al de la lectura relacional de antes.
+        metricas_crudas = {
+            clave: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
+            for clave, v in (row.metricas or {}).items()}
+    # `foto_guardar` no escribe las 11 claves repetidas (B6): se reponen aquí desde su
+    # duplicado (todavía en `metricas_crudas`) o su columna, así el texto reconstruido y el
+    # `fundamentales_crudos` que devuelve esta función no cambian.
     metricas_crudas = _reponer_claves_repetidas(metricas_crudas, row)
     # Reconstruye el prompt con la MISMA función que lo monta en vivo (`_fundamentals_text`):
     # nunca se reimplementa el formateo, así que el texto reconstruido es idéntico al original.
@@ -266,25 +259,23 @@ def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False,  # n
                  foto_id: int | None = None) -> None:
     """Añade una foto NUEVA (nunca pisa la anterior): es el histórico, no un cache. Columnas
     propias, nunca un blob — ver `app.models.FundamentalsSnapshot`. Los ~85 campos de
-    `fundamentals_text` se guardan en crudo (`FundamentalsSnapshotMetric`), NUNCA el texto ya
-    formateado: es lo que se le mandó al LLM, no un dato — se reconstruye al leer. B6: 11 de esas
-    claves no se guardan (repiten otra clave o una columna, ver `_CLAVES_REPETIDAS_B6`). B7 fase 1
-    (doble escritura): la misma foto, ya sin esas 11, va también en `metricas`/`titulares`
-    (columnas de la propia fila) -- los lectores siguen en las tablas de siempre, esto solo
-    prepara el terreno para dejar de escribirlas (ver `compara_b7.py`/`rellenar_b7.py`).
+    `fundamentals_text` se guardan en crudo (`metricas`) y los titulares en `titulares`, NUNCA
+    el texto ya formateado: es lo que se le mandó al LLM, no un dato — se reconstruye al leer.
+    11 de esas claves no se guardan (repiten otra clave o una columna, ver
+    `_CLAVES_REPETIDAS_B6`).
 
     `es_dataset`: de qué universo vino ESTA captura (global/HuggingFace o NASDAQ/escaneo)
     — no cambia la identidad (`ticker`), solo la etiqueta de origen de la fila.
     `foto_id`: la foto de Alpha que está capturando (None = captura suelta de un escaneo)."""
-    from app.models import (
-        FundamentalsSnapshot,
-        FundamentalsSnapshotMetric,
-        FundamentalsSnapshotNews,
-    )
+    from app.models import FundamentalsSnapshot
 
     data.foto_id = foto_id
-    crudas_a_guardar = {clave: valor for clave, valor in data.fundamentales_crudos.items()
-                        if clave not in _CLAVES_REPETIDAS_B6}
+    # jsonb rechaza NaN/Infinity: aunque `_valores_crudos` ya filtra, un valor no finito no
+    # puede tumbar el INSERT.
+    crudas_a_guardar = {
+        clave: valor for clave, valor in data.fundamentales_crudos.items()
+        if clave not in _CLAVES_REPETIDAS_B6
+        and not (isinstance(valor, float) and not math.isfinite(valor))}
     with _FOTO_LOCK:
         fila = FundamentalsSnapshot(
             ticker=ticker, sector=data.sector, industry=data.industry, name=data.name,
@@ -300,16 +291,6 @@ def foto_guardar(db, ticker: str, data: NameData, es_dataset: bool = False,  # n
             titulares=list(data.news) or None,
         )
         db.add(fila)
-        db.flush()   # asigna fila.id sin comprometer la transacción, para las hermanas
-        for i, titular in enumerate(data.news):
-            db.add(FundamentalsSnapshotNews(
-                fundamentals_snapshot_id=fila.id, posicion=i, texto=titular))
-        for clave, valor in crudas_a_guardar.items():
-            db.add(FundamentalsSnapshotMetric(
-                fundamentals_snapshot_id=fila.id, clave=clave,
-                valor_num=valor if isinstance(valor, float) else None,
-                valor_texto=valor if isinstance(valor, str) else None,
-            ))
         db.commit()
 
 # Variables fundamentales relevantes de .info (mapean a la lista del Exhibit 2B del paper).
@@ -438,8 +419,8 @@ class NameData:
     # Divisa nativa (yfinance "currency") -- para convertir `market_cap` a USD (ver `FxRate`).
     currency: str | None = None
     # Los ~85 campos de `fundamentals_text` (Exhibit 2B), EN CRUDO — clave de yfinance → valor
-    # sin formatear. Es lo que se persiste (`fundamentals_snapshot_metric`, relacional, nunca
-    # texto ni JSON); `fundamentals_text` sigue viajando al prompt tal cual, sin tocar.
+    # sin formatear. Es lo que se persiste (`metricas`, nunca el
+    # texto formateado); `fundamentals_text` sigue viajando al prompt tal cual, sin tocar.
     fundamentales_crudos: dict[str, float | str] = field(default_factory=dict)
     # Foto de Alpha de la que sale este dato (None = captura suelta). El escaneo lo usa para
     # apuntar en `ScanRun.foto_id` de qué foto salieron sus datos.
@@ -529,7 +510,7 @@ def _fundamentals_text(info: dict, db=None) -> str:  # noqa: ANN001
 
 def _valores_crudos(info: dict, db=None) -> dict[str, float | str]:  # noqa: ANN001
     """Los mismos ~85 campos de `_fundamentals_text`, SIN formatear — lo que se persiste
-    relacional en `fundamentals_snapshot_metric`. Mismo criterio de "ausente se omite" que
+    en `FundamentalsSnapshot.metricas`. Mismo criterio de "ausente se omite" que
     `_fmt`; los numéricos pasan por `numero_finito` (mismo guardarraíl que evitó el fallo de
     `Infinity`).
 
