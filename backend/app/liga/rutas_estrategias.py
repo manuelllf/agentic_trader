@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.liga import acceso, estrategias
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_anon, db_usuario
+from app.liga.ia import moderacion
 from app.liga.models import Receta as RecetaModelo
 from app.liga.motor.catalogo import RecetaNoValida
 from app.liga.motor.seleccion import explicar, seleccionar
@@ -233,6 +234,7 @@ def crear_estrategia(body: EstrategiaCrear, db: Session = Depends(db_usuario)) -
                    "color2": body.escudo.color2, "iniciales": body.escudo.iniciales}).one()
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
+    moderacion.evaluar("estrategia", str(fila.id), body.nombre)
     return _a_salida(fila)
 
 
@@ -262,6 +264,8 @@ def actualizar_estrategia(id: uuid.UUID, body: EstrategiaPatch,
         raise estrategias.mapear_error(e) from e
     if fila is None:
         raise HTTPException(404, "No existe esa estrategia.")
+    if "nombre" in cambios:
+        moderacion.evaluar("estrategia", str(fila.id), cambios["nombre"])
     return _a_salida(fila)
 
 
@@ -306,6 +310,8 @@ def crear_receta(id: uuid.UUID, body: RecetaIn, db: Session = Depends(db_usuario
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
     db.refresh(nueva)
+    if body.pregunta:
+        moderacion.evaluar("pregunta", str(id), body.pregunta)
     return _receta_out(nueva)
 
 
@@ -520,4 +526,5 @@ def copiar(id: uuid.UUID, db: Session = Depends(db_usuario)) -> EstrategiaOut:
         raise estrategias.mapear_error(e) from e
     fila = db.execute(text(f"select {_CAMPOS_ESTRATEGIA} from liga.estrategias where id = :i"),
                       {"i": nueva_receta.estrategia_id}).one()
+    moderacion.evaluar("estrategia", str(fila.id), fila.nombre)
     return _a_salida(fila)

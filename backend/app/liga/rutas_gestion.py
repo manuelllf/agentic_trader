@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -277,6 +277,34 @@ def actualizar_ajuste(clave: str, body: AjusteIn, ident: Identidad = Depends(req
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
     return AjusteOut(**fila._mapping)
+
+
+# ---- Coste de IA (plan §10 y §16, F6.5) ---------------------------------------------------------
+
+
+class FilaCosteIA(BaseModel):
+    finalidad: Literal["conversor", "pregunta", "lectura", "moderacion"]
+    pagado_usd: Decimal
+    cobrado_usd: Decimal
+    llamadas: int
+    cache_hits: int
+    ratio: Decimal | None
+    bajo_objetivo: bool
+
+
+class CosteIAOut(BaseModel):
+    mes: str
+    filas: list[FilaCosteIA]
+    total_pagado_usd: Decimal
+    total_cobrado_usd: Decimal
+    tope_mensual_usd: Decimal | None
+    margen_objetivo: Decimal
+
+
+@router_admin.get("/coste-ia", response_model=CosteIAOut)
+def coste_ia(mes: str = Query(pattern=r"^\d{4}-\d{2}$")) -> CosteIAOut:
+    anio, numero_mes = (int(p) for p in mes.split("-"))
+    return CosteIAOut(**gestion.coste_ia(date(anio, numero_mes, 1)))
 
 
 # ---- Auditoría -------------------------------------------------------------------------------

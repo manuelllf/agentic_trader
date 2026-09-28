@@ -12,7 +12,8 @@ no hace falta nada de este módulo para eso.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -21,7 +22,13 @@ from app.liga.procesos.comun import auditar, fabrica_sistema
 
 # Únicas claves de `liga.ajustes` que la ruta genérica de admin deja tocar; el interruptor del
 # diario ya tiene su propia ruta (`/liga/admin/procesos/diario/interruptor`) y se queda ahí.
-AJUSTES_CONOCIDOS = frozenset({"creditos.pro_mensual"})
+AJUSTES_CONOCIDOS = frozenset({
+    "creditos.pro_mensual",
+    # IA de la liga (plan §10, F6): un interruptor por finalidad (ausente = apagado), el tope
+    # mensual en dólares que los apaga todos, y el margen objetivo del panel de coste.
+    "ia.conversor.activo", "ia.pregunta.activo", "ia.lectura.activo", "ia.moderacion.activo",
+    "ia.tope_mensual_usd", "ia.margen_objetivo",
+})
 CLAVE_PRO_MENSUAL = "creditos.pro_mensual"
 
 
@@ -89,6 +96,78 @@ def otorgar_creditos(usuario_id: str, importe: str, motivo: str, idempotencia: s
                 {"importe": importe, "motivo": motivo, "idempotencia": idempotencia}, actor)
         db.commit()
         return str(saldo)
+    finally:
+        db.close()
+
+
+# ---- Panel de coste de IA (plan §10 y §16, F6.5) --------------------------------------------
+
+# Finalidad → (stage de `llm_call`, motivo de `creditos_movimientos` que la cobra de verdad; None
+# = gratis). El «reserva»/«devolucion» de una pregunta o lectura de pago se anulan entre sí; solo
+# el motivo de liquidación es lo que de verdad se ha cobrado.
+_FINALIDADES_COSTE = {
+    "conversor": ("liga_conversor", None),
+    "pregunta": ("liga_pregunta", "prueba"),
+    "lectura": ("liga_lectura", "lectura"),
+    "moderacion": ("liga_moderacion", None),
+}
+CLAVE_TOPE_MENSUAL = "ia.tope_mensual_usd"
+CLAVE_MARGEN_OBJETIVO = "ia.margen_objetivo"
+_MARGEN_OBJETIVO_DEFECTO = Decimal(3)
+_USD_POR_CREDITO = Decimal("0.01")
+
+
+def coste_ia(mes: date) -> dict:
+    """Lo que pagamos y lo que cobramos por finalidad en el mes dado (día 1), en dólares
+    contados, no estimados (plan §10.5): sin atribuir coste unidad a unidad. `mes` es el primer
+    día del mes en curso; el rango va hasta el primer día del mes siguiente."""
+    siguiente = date(mes.year + (mes.month == 12), mes.month % 12 + 1, 1)
+    db = fabrica_sistema()
+    try:
+        margen_objetivo = db.execute(
+            text("select valor from liga.ajustes where clave = :c"),
+            {"c": CLAVE_MARGEN_OBJETIVO}).scalar()
+        margen_objetivo = Decimal(str(margen_objetivo)) if margen_objetivo is not None \
+            else _MARGEN_OBJETIVO_DEFECTO
+        tope_mensual = db.execute(
+            text("select valor from liga.ajustes where clave = :c"),
+            {"c": CLAVE_TOPE_MENSUAL}).scalar()
+
+        filas = []
+        total_pagado = Decimal(0)
+        total_cobrado = Decimal(0)
+        for finalidad, (stage, motivo) in _FINALIDADES_COSTE.items():
+            pagado = db.execute(text("""
+                select coalesce(sum(cost_usd), 0)::numeric as pagado, count(*) as llamadas
+                from llm_call where stage = :stage and at >= :desde and at < :hasta
+            """), {"stage": stage, "desde": mes, "hasta": siguiente}).one()
+            cobrado_creditos = Decimal(0)
+            if motivo is not None:
+                cobrado_creditos = db.execute(text("""
+                    select coalesce(sum(-importe), 0) from liga.creditos_movimientos
+                    where motivo = :motivo and importe < 0 and creado >= :desde and creado < :hasta
+                """), {"motivo": motivo, "desde": mes, "hasta": siguiente}).scalar_one()
+            cache_hits = db.execute(text("""
+                select count(*) from liga.auditoria
+                where accion = :accion and (detalle->>'cache') = 'true'
+                  and creada >= :desde and creada < :hasta
+            """), {"accion": f"ia.{finalidad}", "desde": mes, "hasta": siguiente}).scalar_one()
+            pagado_usd = Decimal(str(pagado.pagado))
+            cobrado_usd = (cobrado_creditos * _USD_POR_CREDITO).quantize(Decimal("0.0001"))
+            ratio = (cobrado_usd / pagado_usd) if pagado_usd > 0 else None
+            total_pagado += pagado_usd
+            total_cobrado += cobrado_usd
+            filas.append({
+                "finalidad": finalidad, "pagado_usd": pagado_usd, "cobrado_usd": cobrado_usd,
+                "llamadas": pagado.llamadas, "cache_hits": cache_hits, "ratio": ratio,
+                "bajo_objetivo": ratio is not None and ratio < margen_objetivo,
+            })
+        return {
+            "mes": mes.isoformat(), "filas": filas, "total_pagado_usd": total_pagado,
+            "total_cobrado_usd": total_cobrado,
+            "tope_mensual_usd": Decimal(str(tope_mensual)) if tope_mensual is not None else None,
+            "margen_objetivo": margen_objetivo,
+        }
     finally:
         db.close()
 

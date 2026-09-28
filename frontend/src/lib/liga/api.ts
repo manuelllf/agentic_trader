@@ -327,6 +327,23 @@ export async function copiarEstrategia(id: string): Promise<Estrategia | string>
   return llamar<Estrategia>(`/liga/estrategias/${id}/copiar`, { method: "POST" });
 }
 
+// ---- Conversor: frase libre → reglas sugeridas (plan §10, F6-A) --------------------------------
+
+export type ConvertirResultado = {
+  reglas: ReglaElegida[];
+  pesos: Record<string, number> | null;
+  pregunta: string | null;
+  nombre: string | null;
+  usos_hoy: number;
+  usos_tope: number;
+};
+
+export async function convertirFrase(frase: string): Promise<ConvertirResultado | string> {
+  return llamar<ConvertirResultado>("/liga/convertir", {
+    method: "POST", body: JSON.stringify({ frase }),
+  });
+}
+
 // ---- Público: portada y clasificación (sin sesión, D3) ------------------------------------------
 
 export type CasaClave = "alpha" | "omega" | "lambda";

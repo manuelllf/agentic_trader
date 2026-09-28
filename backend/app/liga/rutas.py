@@ -11,14 +11,16 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.liga import acceso, cuenta, rutas_estrategias, rutas_ligas, rutas_publicas
+from app.liga import acceso, cuenta, rutas_estrategias, rutas_ia, rutas_ligas, rutas_publicas
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_usuario
+from app.liga.ia import moderacion
 
 router = APIRouter(prefix="/liga", tags=["liga"])
 router.include_router(rutas_publicas.router)
 router.include_router(rutas_estrategias.router)
 router.include_router(rutas_ligas.router)
+router.include_router(rutas_ia.router)
 
 # Exporta recorre toda su cuenta: como las pruebas de estrategias.py, cara de abusar sin freno.
 _LIMITE_EXPORTAR = acceso.LimiteFrecuencia(tope=3, ventana_s=60 * 60)
@@ -53,13 +55,16 @@ class CambioYo(BaseModel):
 
 
 @router.patch("/yo", response_model=Yo)
-def cambiar_yo(body: CambioYo, db: Session = Depends(db_usuario)) -> Yo:
-    """Cambiar el alias. Formato, nombres reservados y unicidad los decide la BD."""
+def cambiar_yo(body: CambioYo, ident: Identidad = Depends(require_usuario),
+              db: Session = Depends(db_usuario)) -> Yo:
+    """Cambiar el alias. Formato, nombres reservados y unicidad los decide la BD; la moderación
+    (lista + modelo) va después: si bloquea, deshace el cambio (misma transacción)."""
     alias = body.alias.strip().lower()
     try:
         with db.begin_nested():
             db.execute(text("update liga.perfiles set alias = :a where id = (select auth.uid())"),
                        {"a": alias})
+        moderacion.evaluar("alias", ident.uid, alias)
     except IntegrityError as e:
         diag = getattr(e.orig, "diag", None)
         if getattr(e.orig, "sqlstate", None) == "23505":

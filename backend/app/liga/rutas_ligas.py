@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.liga import acceso, estrategias, ligas
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_usuario
+from app.liga.ia import moderacion
 
 router = APIRouter(tags=["liga-ligas"])
 
@@ -92,6 +93,7 @@ def mis_ligas(ident: Identidad = Depends(require_usuario),
 def crear_liga(body: LigaCrear, ident: Identidad = Depends(require_usuario),
               db: Session = Depends(db_usuario)) -> LigaResumenOut:
     fila = ligas.crear_liga(db, body.nombre, body.cupo)
+    moderacion.evaluar("liga", str(fila.id), body.nombre)
     return _resumen(fila, ident.uid, 1)
 
 
@@ -190,7 +192,8 @@ def expulsar(id: uuid.UUID, alias: str, ident: Identidad = Depends(require_usuar
     if objetivo is None or str(objetivo) == ident.uid:
         raise HTTPException(404, "No existe ese miembro en tu liga.")
     fila = db.execute(text(
-        "delete from liga.miembros_liga where liga_id = :i and usuario_id = :u returning usuario_id"),
+        "delete from liga.miembros_liga where liga_id = :i and usuario_id = :u "
+        "returning usuario_id"),
         {"i": id, "u": objetivo}).one_or_none()
     if fila is None:
         raise HTTPException(404, "No existe ese miembro en tu liga.")

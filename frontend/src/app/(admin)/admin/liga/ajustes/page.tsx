@@ -12,7 +12,11 @@ type Ajuste = { clave: string; valor: unknown; actualizado: string; actualizado_
 
 // Misma lista que `gestion.AJUSTES_CONOCIDOS` en el backend; si la API no la conoce, el PUT
 // devuelve 422 y el mensaje se enseña tal cual.
-const CLAVES_CONOCIDAS = ["creditos.pro_mensual"];
+const CLAVES_CONOCIDAS = [
+  "creditos.pro_mensual",
+  "ia.conversor.activo", "ia.pregunta.activo", "ia.lectura.activo", "ia.moderacion.activo",
+  "ia.tope_mensual_usd", "ia.margen_objetivo",
+];
 
 const error = (e: unknown) => (e instanceof ApiError ? e.message : "Algo falló. Reintenta.");
 const FECHA = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });

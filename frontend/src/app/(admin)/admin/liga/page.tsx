@@ -91,6 +91,7 @@ function Liga() {
           { href: "/admin/liga/moderacion", texto: "Moderación" },
           { href: "/admin/liga/ajustes", texto: "Ajustes" },
           { href: "/admin/liga/auditoria", texto: "Auditoría" },
+          { href: "/admin/liga/coste-ia", texto: "Coste de IA" },
         ].map((l) => (
           <Link key={l.href} href={l.href}
                 className="min-h-[40px] rounded-lg px-3 py-2 font-bold text-white"

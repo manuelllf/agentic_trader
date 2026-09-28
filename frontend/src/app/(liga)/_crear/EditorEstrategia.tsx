@@ -14,9 +14,9 @@ import {
   escudoAleatorio, luminancia, PALETA, type EscudoValor,
 } from "../_ui";
 import {
-  actualizarEstrategia, apuntar, buscarUniverso, crearEstrategia, crearReceta, excluirEmpresa,
-  getCatalogo, getCreditos, getFicha, getYo, porQueNoSale, probarEstrategia, quitarExclusion,
-  verEstrategia,
+  actualizarEstrategia, apuntar, buscarUniverso, convertirFrase, crearEstrategia, crearReceta,
+  excluirEmpresa, getCatalogo, getCreditos, getFicha, getYo, porQueNoSale, probarEstrategia,
+  quitarExclusion, verEstrategia,
   type Catalogo, type EmpresaBusqueda, type Estrategia, type Prueba, type ReglaElegida, type Yo,
 } from "@/lib/liga/api";
 import { useSupabase } from "@/lib/liga/supabase";
@@ -90,6 +90,11 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   const [buscaQ, setBuscaQ] = useState("");
   const [sugerencias, setSugerencias] = useState<EmpresaBusqueda[]>([]);
   const [porque, setPorque] = useState<{ ticker: string; nombre: string; texto: string } | null>(null);
+
+  const [convFrase, setConvFrase] = useState("");
+  const [convOcupado, setConvOcupado] = useState(false);
+  const [convError, setConvError] = useState<string | null>(null);
+  const [convUsos, setConvUsos] = useState<{ hoy: number; tope: number } | null>(null);
 
   const nombreRef = useRef<HTMLInputElement>(null);
 
@@ -307,6 +312,29 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       texto: typeof r === "string" ? r : r.motivo });
   }
 
+  async function usarConversor() {
+    if (!convFrase.trim()) return;
+    setConvOcupado(true);
+    setConvError(null);
+    const r = await convertirFrase(convFrase.trim());
+    setConvOcupado(false);
+    if (typeof r === "string") { setConvError(r); return; }
+    setConvUsos({ hoy: r.usos_hoy, tope: r.usos_tope });
+    // Solo rellena el borrador: nada se guarda hasta que el usuario pulse «Ver qué entrarían hoy»
+    // o «Apuntarme», igual que si lo hubiera construido a mano.
+    const clavesConocidas = new Set((catalogo as Catalogo).reglas.map((c) => c.clave));
+    const reglasNuevas = r.reglas.filter(
+      (nueva) => clavesConocidas.has(nueva.clave) && !b!.reglas.some((x) => x.clave === nueva.clave),
+    );
+    actualizarB({
+      reglas: [...b!.reglas, ...reglasNuevas],
+      pesos: r.pesos ? { ...b!.pesos, ...r.pesos } : b!.pesos,
+      pregunta: pro && r.pregunta ? r.pregunta : b!.pregunta,
+    });
+    if (r.nombre && !nombre.trim()) setNombre(r.nombre);
+    setConvFrase("");
+  }
+
   async function apuntarse() {
     setOcupado(true);
     const idActual = await guardar();
@@ -390,6 +418,26 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         {b.reglas.length === 0 && (
           <p className="fine" style={{ marginTop: 0 }}>Sin reglas, pasan todas las empresas.</p>
         )}
+      </div>
+
+      <div className="field">
+        <label className="lbl" htmlFor="convFrase">
+          ¿No encuentras el filtro? Descríbelo
+          <small>
+            La IA sugiere reglas del catálogo a partir de tu frase; tú decides si te las quedas.
+            {convUsos && ` Te quedan ${Math.max(0, convUsos.tope - convUsos.hoy)} usos hoy.`}
+          </small>
+        </label>
+        <textarea id="convFrase" className="inp" maxLength={300} rows={2}
+                  placeholder="p. ej. empresas grandes, con poca deuda, que no estén caras"
+                  value={convFrase} onChange={(e) => setConvFrase(e.target.value)} />
+        <div style={{ marginTop: 8 }}>
+          <Boton variante="secundario" disabled={convOcupado || !convFrase.trim()}
+                 onClick={usarConversor}>
+            {convOcupado ? "Pensando…" : "Convertir en reglas"}
+          </Boton>
+        </div>
+        {convError && <p className="fine" style={{ color: "var(--danger, #e66767)" }}>{convError}</p>}
       </div>
 
       <div className="field">
