@@ -1,6 +1,6 @@
 // Cliente de la API de la liga (`/liga/*`). Manda el token de Supabase; las salas usan lib/api.ts.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { tokenSesion } from "./supabase";
+import { sesionCaducada, tokenSesion } from "./supabase";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -223,6 +223,10 @@ async function llamar<T>(
     // red: se deja subir para que quien la canceló la distinga de una respuesta real.
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     return SIN_RED;
+  }
+  if (res.status === 401 && conSesion) {
+    void sesionCaducada();
+    return SIN_SESION;
   }
   if (res.status === 204) return undefined as T;
   const cuerpo = await res.json().catch(() => null);

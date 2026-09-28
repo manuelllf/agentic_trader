@@ -43,9 +43,16 @@ export function SesionProvider({ children }: { children: ReactNode }) {
       setEmail(data.session?.user.email ?? null);
       setEstado(data.session ? "dentro" : "fuera");
     });
+    let uidAnterior: string | null | undefined;
     const { data: sub } = sb.auth.onAuthStateChange((_evento, sesion) => {
       setEmail(sesion?.user.email ?? null);
       setEstado(sesion ? "dentro" : "fuera");
+      // Otra pestaña cerró o cambió de cuenta: lo cacheado era de la anterior.
+      const uid = sesion?.user.id ?? null;
+      if (uidAnterior !== undefined && uid !== uidAnterior) {
+        invalidar("yo", "creditos", "mis-estrategias", "mis-ligas");
+      }
+      uidAnterior = uid;
     });
     return () => {
       vivo = false;

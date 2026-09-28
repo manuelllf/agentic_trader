@@ -10,9 +10,19 @@ import { ApiError, get, post } from "@/lib/api";
 
 type Reporte = {
   id: number; autor_id: string | null; tipo: "alias" | "estrategia" | "liga" | "pregunta";
-  objeto_id: string; motivo: string; estado: string; creado: string;
+  objeto_id: string; motivo: string; estado: string; creado: string; contenido: string | null;
 };
 type ListaReportes = { total: number; filas: Reporte[] };
+
+const QUE: Record<Reporte["tipo"], string> = {
+  alias: "Alias", estrategia: "Nombre de estrategia", liga: "Nombre de liga",
+  pregunta: "Pregunta de una estrategia",
+};
+// Ocultar una pregunta oculta la estrategia entera (lo único que moderación puede tocar).
+const OCULTAR: Record<Reporte["tipo"], string> = {
+  alias: "este alias", estrategia: "esta estrategia", liga: "esta liga",
+  pregunta: "la estrategia de esta pregunta",
+};
 
 const CUANTOS = 50;
 const error = (e: unknown) => (e instanceof ApiError ? e.message : "Algo falló. Reintenta.");
@@ -31,7 +41,7 @@ function Moderacion() {
   useEffect(cargar, [cargar]);
 
   const ocultar = async (r: Reporte) => {
-    if (!window.confirm(`¿Ocultar ${r.tipo === "liga" ? "esta liga" : r.tipo === "alias" ? "este alias" : "esta estrategia"}? El reporte quedará resuelto.`)) return;
+    if (!window.confirm(`¿Ocultar ${OCULTAR[r.tipo]}? El reporte quedará resuelto.`)) return;
     setOcupado(r.id); setFallo("");
     try {
       await post("/liga/moderacion/ocultar", { reporte_id: r.id });
@@ -51,13 +61,20 @@ function Moderacion() {
       ) : lista.filas.length === 0 ? (
         <p className="mt-6" style={{ color: "#898781" }}>Sin reportes pendientes.</p>
       ) : (
+        <>
+        {lista.total > lista.filas.length && (
+          <p className="mt-4" style={{ color: "#e6a667" }}>
+            Hay {lista.total} reportes; aquí salen los {lista.filas.length} más antiguos.
+          </p>
+        )}
         <ul className="mt-4 border-t" style={{ borderColor: "#303030" }}>
           {lista.filas.map((r) => (
             <li key={r.id} className="border-b py-3" style={{ borderColor: "#303030" }}>
-              <p className="text-white">
-                {r.tipo} <span style={{ color: "#898781" }}>· {r.objeto_id}</span>
+              <p style={{ color: "#898781" }}>{QUE[r.tipo]}</p>
+              <p className="mt-1 break-words text-[15px] text-white">
+                {r.contenido ?? "(ya no existe o no se puede leer)"}
               </p>
-              <p className="mt-1" style={{ color: "#898781" }}>{r.motivo}</p>
+              <p className="mt-1" style={{ color: "#898781" }}>Motivo: {r.motivo}</p>
               <p className="mt-1 text-[11.5px]" style={{ color: "#67665f" }}>
                 {CUANDO.format(new Date(r.creado))}
               </p>
@@ -69,6 +86,7 @@ function Moderacion() {
             </li>
           ))}
         </ul>
+        </>
       )}
     </main>
   );

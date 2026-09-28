@@ -33,9 +33,17 @@ const OFFLINE = "No hay conexión con el servidor. Reintenta en unos segundos.";
 // Caché en memoria de `checkAuth()`: entrar en varias salas seguidas (Alpha, Omega) no debe
 // repetir /auth/check cada vez con una sesión que ya se sabía válida. Un 401 real la invalida.
 let authOk: boolean | null = null;
+// El último rechazo fue un 401 (token caducado o revocado) y no un 403/404 (cuenta sin permiso).
+let rechazoPorSesion = false;
+/** ¿El servidor rechazó el token en vez de negar el permiso? Decide entre «entra otra vez» y
+ *  «aquí no hay nada». */
+export function sesionRechazada(): boolean {
+  return rechazoPorSesion;
+}
 /** 401 en cualquier llamada → sesión caducada: avisa al AuthGate. */
 function onUnauthorized() {
   authOk = false;
+  rechazoPorSesion = true;
   if (typeof window !== "undefined") window.dispatchEvent(new Event("agentic-unauthorized"));
 }
 
@@ -146,6 +154,7 @@ export async function checkAuth(): Promise<boolean> {
     const res = await request("/auth/check");   // request() ya añade el Authorization
     // 401 → hay que entrar; 403/404 → una cuenta que no es admin (o sin 2FA). Lo demás deja pasar.
     authOk = ![401, 403, 404].includes(res.status);
+    rechazoPorSesion = res.status === 401;
   } catch {
     authOk = true;                // backend inalcanzable: la app mostrará su banner de conexión
   }

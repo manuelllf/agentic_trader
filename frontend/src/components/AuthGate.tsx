@@ -6,8 +6,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { checkAuth } from "@/lib/api";
-import { tokenSesion } from "@/lib/liga/supabase";
+import { checkAuth, sesionRechazada } from "@/lib/api";
+import { sesionCaducada, tokenSesion } from "@/lib/liga/supabase";
 
 type State = "checking" | "in" | "out";
 
@@ -29,6 +29,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       if (ok) { setState("in"); return; }
       const a = await desvio();
       if (a) window.location.replace(a);
+      else if (sesionRechazada()) await sesionCaducada();  // token caducado: a entrar de nuevo
       else if (alive) setState("out");
     };
     checkAuth().then(decidir);

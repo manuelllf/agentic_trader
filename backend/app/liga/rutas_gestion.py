@@ -141,6 +141,7 @@ class ReporteOut(BaseModel):
     motivo: str
     estado: str
     creado: datetime
+    contenido: str | None = None    # lo reportado: alias, nombre de la estrategia o liga, pregunta
 
 
 class ListaReportes(BaseModel):
@@ -432,10 +433,24 @@ def listar_reportes(desde: int = Query(0, ge=0), cuantos: int = Query(50, ge=1, 
                     db: Session = Depends(db_usuario)) -> ListaReportes:
     total = db.execute(text(
         "select count(*) from liga.reportes where estado = 'abierto'")).scalar_one()
+    # `contenido`: qué se reportó, para que quien modera no decida a ciegas. Se compara como texto
+    # (`id::text = objeto_id`) por si algún `objeto_id` no fuera un uuid válido.
     filas = db.execute(text("""
-        select id, autor_id::text as autor_id, tipo, objeto_id, motivo, estado, creado
-        from liga.reportes where estado = 'abierto'
-        order by creado offset :desde limit :cuantos
+        select r.id, r.autor_id::text as autor_id, r.tipo, r.objeto_id, r.motivo, r.estado,
+               r.creado,
+               case r.tipo
+                 when 'alias' then (select p.alias from liga.perfiles p
+                                    where p.id::text = r.objeto_id)
+                 when 'estrategia' then (select e.nombre from liga.estrategias e
+                                         where e.id::text = r.objeto_id)
+                 when 'liga' then (select l.nombre from liga.ligas_privadas l
+                                   where l.id::text = r.objeto_id)
+                 when 'pregunta' then (select rc.pregunta from liga.recetas rc
+                                       where rc.estrategia_id::text = r.objeto_id
+                                       order by rc.creada desc limit 1)
+               end as contenido
+        from liga.reportes r where r.estado = 'abierto'
+        order by r.creado offset :desde limit :cuantos
     """), {"desde": desde, "cuantos": cuantos}).all()
     return ListaReportes(total=total, filas=[ReporteOut(**f._mapping) for f in filas])
 

@@ -431,6 +431,8 @@ def test_moderador_oculta_una_estrategia_reportada(api) -> None:  # noqa: ANN001
     r = cliente.get("/liga/moderacion/reportes", headers=cab(moderador))
     assert r.status_code == 200
     assert any(f["id"] == rid for f in r.json()["filas"])
+    # Quien modera ve lo reportado, no solo un identificador.
+    assert next(f for f in r.json()["filas"] if f["id"] == rid)["contenido"] == "Ofensiva"
 
     r = cliente.post("/liga/moderacion/ocultar", json={"reporte_id": rid}, headers=cab(moderador))
     assert r.status_code == 200 and r.json()["estado"] == "resuelto"

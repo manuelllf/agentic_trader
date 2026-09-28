@@ -47,6 +47,20 @@ export async function tokenSesion(): Promise<{ token: string; aal: string } | nu
   return token ? { token, aal: aalDe(token) } : null;
 }
 
+/** El servidor rechazó el token (caducado o revocado): se cierra la sesión local y se lleva a
+ *  entrar, para volver después a donde se estaba. En la propia pantalla de entrar no hace nada. */
+export async function sesionCaducada(): Promise<void> {
+  if (typeof window === "undefined") return;
+  const aqui = window.location.pathname + window.location.search;
+  if (aqui.startsWith("/entrar")) return;
+  try {
+    await supabase()?.auth.signOut();
+  } catch {
+    // Sin red o sin sesión que cerrar: se va a entrar igualmente.
+  }
+  window.location.assign(`/entrar?next=${encodeURIComponent(aqui)}`);
+}
+
 /** Solo rutas propias, para que `?next=` no pueda mandar a otra web. */
 export function destinoSeguro(next: string | null, porDefecto = "/liga"): string {
   if (!next || !next.startsWith("/")) return porDefecto;
