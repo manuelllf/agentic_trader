@@ -55,6 +55,13 @@ def _stub_common(monkeypatch) -> None:
     monkeypatch.setattr(scan_service.settings, "min_positions", 1)
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
     monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)  # sin la pausa del reintento
+    # `prescore_model`/`mid_model` COMPARTEN el mismo valor por defecto ("deepseek-flash") --
+    # `_stub_llms`/`fake_get_llm` solo puede distinguir la llamada del prescore de la de la capa
+    # media porque en PRODUCCIÓN el prescore se enruta a Jev (`jev_model`, distinto de
+    # `mid_model`) cuando hay `TYPESAFE_API_KEY`. Sin `.env` (CI) esa key está vacía y las dos
+    # etapas colapsan en el mismo modelo, mandando también el prescore a `mid_llm` -- se fija
+    # aquí para no depender de si el `.env` local trae la key de verdad.
+    monkeypatch.setattr(scan_service.settings, "typesafe_api_key", "fake-key")
 
 
 def _gather_stub(monkeypatch, sectors: dict[str, str]):

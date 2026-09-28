@@ -73,10 +73,13 @@ def test_default_cae_a_qwen_si_falta_la_key_de_jev(monkeypatch) -> None:  # noqa
 
 
 def test_default_cae_a_deepseek_si_no_hay_ninguna_key(monkeypatch) -> None:  # noqa: ANN001
-    """Sin ninguna de las dos keys, la última red es la de siempre (`_llm_for` -> DeepSeek)."""
+    """Sin ninguna de las dos keys, la última red es la de siempre (`_llm_for` -> DeepSeek).
+    La propia DeepSeek necesita su key para construirse (`get_llm`) -- se fija aquí una falsa
+    para no depender de si el `.env` local tiene una de verdad (CI no tiene `.env`)."""
     monkeypatch.setattr(stage_mod.settings, "prescore_provider", "jev")
     monkeypatch.setattr(stage_mod.settings, "typesafe_api_key", "")
     monkeypatch.setattr(stage_mod.settings, "dashscope_api_key", "")
+    monkeypatch.setattr(stage_mod.settings, "deepseek_api_key", "fake")
 
     llm = stage_mod._prescore_llm(_cfg("deepseek-v4-flash"), tiene_override=False)
 
