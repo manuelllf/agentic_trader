@@ -258,6 +258,26 @@ def test_razon_tope_del_mes_alcanzado(entorno) -> None:  # noqa: ANN001
         settings.enable_llm, settings.deepseek_api_key = previo_llm, previa_key
 
 
+def test_tope_mal_guardado_para_la_ia_y_lo_dice_sin_romper_el_panel(entorno) -> None:  # noqa: ANN001
+    """Un `true` en el tope (visto en producción) no es un tope de 1 $ ni un 500 en Ajustes."""
+    from app.config import settings
+    from app.liga import gestion
+
+    cx, _usuario = entorno
+    cx.execute("insert into liga.ajustes (clave, valor) values ('ia.conversor.activo', 'true')")
+    cx.execute("insert into liga.ajustes (clave, valor) values ('ia.tope_mensual_usd', 'true')")
+    previo_llm, previa_key = settings.enable_llm, settings.deepseek_api_key
+    settings.enable_llm, settings.deepseek_api_key = True, "sk-lo-que-sea"
+    try:
+        assert comun.razon_no_disponible("conversor") == "Tope mensual mal configurado"
+        estado = gestion.estado_ia()
+        assert estado["tope_mensual_usd"] is None
+        assert next(f for f in estado["finalidades"]
+                    if f["finalidad"] == "conversor")["razon"] == "Tope mensual mal configurado"
+    finally:
+        settings.enable_llm, settings.deepseek_api_key = previo_llm, previa_key
+
+
 def test_razon_ninguna_cuando_funciona(entorno) -> None:  # noqa: ANN001
     from app.config import settings
 

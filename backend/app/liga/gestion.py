@@ -362,6 +362,24 @@ _MARGEN_OBJETIVO_DEFECTO = Decimal(3)
 _USD_POR_CREDITO = Decimal("0.01")
 
 
+def _tope_para_panel(valor: object) -> Decimal | None:
+    """El panel enseña «sin tope» ante un valor mal guardado; la IA ya queda parada por su lado
+    (`ia.comun.razon_no_disponible`) y el motivo sale en el estado de cada finalidad."""
+    try:
+        return ia_comun.tope_mensual(valor)
+    except ValueError:
+        return None
+
+
+def _decimal_o(valor: object, defecto: Decimal) -> Decimal:
+    if valor is None or isinstance(valor, bool):
+        return defecto
+    try:
+        return Decimal(str(valor))
+    except InvalidOperation:
+        return defecto
+
+
 def coste_ia(mes: date) -> dict:
     """Lo que pagamos y lo que cobramos por finalidad en el mes dado (día 1), en dólares
     contados, no estimados (plan §10.5): sin atribuir coste unidad a unidad. `mes` es el primer
@@ -372,8 +390,7 @@ def coste_ia(mes: date) -> dict:
         margen_objetivo = db.execute(
             text("select valor from liga.ajustes where clave = :c"),
             {"c": CLAVE_MARGEN_OBJETIVO}).scalar()
-        margen_objetivo = Decimal(str(margen_objetivo)) if margen_objetivo is not None \
-            else _MARGEN_OBJETIVO_DEFECTO
+        margen_objetivo = _decimal_o(margen_objetivo, _MARGEN_OBJETIVO_DEFECTO)
         tope_mensual = db.execute(
             text("select valor from liga.ajustes where clave = :c"),
             {"c": CLAVE_TOPE_MENSUAL}).scalar()
@@ -410,7 +427,7 @@ def coste_ia(mes: date) -> dict:
         return {
             "mes": mes.isoformat(), "filas": filas, "total_pagado_usd": total_pagado,
             "total_cobrado_usd": total_cobrado,
-            "tope_mensual_usd": Decimal(str(tope_mensual)) if tope_mensual is not None else None,
+            "tope_mensual_usd": _tope_para_panel(tope_mensual),
             "margen_objetivo": margen_objetivo,
         }
     finally:
@@ -445,7 +462,7 @@ def estado_ia() -> dict:
             "deepseek_key_presente": settings.llm_api_key_present,
             "typesafe_key_presente": bool(settings.typesafe_api_key),
             "gasto_mes_usd": Decimal(str(gastado)),
-            "tope_mensual_usd": Decimal(str(tope)) if tope is not None else None,
+            "tope_mensual_usd": _tope_para_panel(tope),
             "finalidades": finalidades,
         }
     finally:

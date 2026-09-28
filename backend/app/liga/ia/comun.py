@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
@@ -34,6 +34,22 @@ _STAGE = {
 }
 
 _CLAVE_TOPE = "ia.tope_mensual_usd"
+
+
+def tope_mensual(valor: object) -> Decimal | None:
+    """Importe del tope mensual guardado en `liga.ajustes`, o None si no hay. `ValueError` si lo
+    guardado no es un importe (un `true` colado por error: `float(True)` sería un tope de 1 $)."""
+    if valor is None:
+        return None
+    if isinstance(valor, bool) or not isinstance(valor, (int, float, str)):
+        raise ValueError(f"tope mensual no válido: {valor!r}")
+    try:
+        importe = Decimal(str(valor))
+    except InvalidOperation as e:
+        raise ValueError(f"tope mensual no válido: {valor!r}") from e
+    if not importe.is_finite() or importe < 0:
+        raise ValueError(f"tope mensual no válido: {valor!r}")
+    return importe
 
 
 @dataclass(frozen=True)
@@ -88,15 +104,21 @@ def razon_no_disponible(finalidad: str, fabrica: Fabrica | None = None,
                             {"c": _clave_interruptor(finalidad)}).scalar()
         if not activo:
             return "Apagado aquí"
-        tope = db.execute(text("select valor from liga.ajustes where clave = :c"),
-                          {"c": _CLAVE_TOPE}).scalar()
+        try:
+            tope = tope_mensual(db.execute(text("select valor from liga.ajustes where clave = :c"),
+                                           {"c": _CLAVE_TOPE}).scalar())
+        except ValueError:
+            # Con el gasto en juego no se adivina: sin tope válido, la IA queda parada y el panel
+            # de ajustes lo dice.
+            logger.error("El ajuste %s no es un importe: IA parada hasta corregirlo", _CLAVE_TOPE)
+            return "Tope mensual mal configurado"
         if tope is None:
             return None
         gastado = db.execute(text("""
             select coalesce(sum(cost_usd), 0) from llm_call
             where stage = any(:etapas) and at >= date_trunc('month', now())
         """), {"etapas": list(_STAGE.values())}).scalar_one()
-        if float(gastado) >= float(tope):
+        if Decimal(str(gastado)) >= tope:
             return "Tope del mes alcanzado"
         return None
     finally:

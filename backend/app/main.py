@@ -162,26 +162,37 @@ app = FastAPI(
     openapi_url=None if _HIDE_DOCS else "/openapi.json",
 )
 
+_LENTA_S = 1.0
+
+
+@app.middleware("http")
+async def _log_peticiones_lentas(request: Request, call_next):  # noqa: ANN001, ANN202
+    """Solo las que pasan de 1 s: sin métricas en Railway, es la única forma de ver cuál frena.
+    Un error no controlado se convierte aquí en un 500 normal: si escapara, lo respondería el
+    servidor sin cabeceras CORS y el navegador lo enseñaría como «sin conexión»."""
+    t0 = time.monotonic()
+    try:
+        respuesta = await call_next(request)
+    except Exception:
+        logging.getLogger(__name__).exception("Error no controlado: %s %s", request.method,
+                                              request.url.path)
+        return JSONResponse({"detail": "Error interno. Reintenta en un momento."},
+                            status_code=500)
+    dur = time.monotonic() - t0
+    if dur >= _LENTA_S:
+        logging.getLogger(__name__).warning("Petición lenta: %s %s %.1fs (%s)", request.method,
+                                            request.url.path, dur, respuesta.status_code)
+    return respuesta
+
+
+# Se añade DESPUÉS del middleware de arriba para quedar por fuera: así también cubre el 500 que
+# ese middleware fabrica (el último que se añade es la capa más externa).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-_LENTA_S = 1.0
-
-
-@app.middleware("http")
-async def _log_peticiones_lentas(request: Request, call_next):  # noqa: ANN001, ANN202
-    """Solo las que pasan de 1 s: sin métricas en Railway, es la única forma de ver cuál frena."""
-    t0 = time.monotonic()
-    respuesta = await call_next(request)
-    dur = time.monotonic() - t0
-    if dur >= _LENTA_S:
-        logging.getLogger(__name__).warning("Petición lenta: %s %s %.1fs (%s)", request.method,
-                                            request.url.path, dur, respuesta.status_code)
-    return respuesta
 
 
 def _sin_flotantes_no_finitos(x):  # noqa: ANN001, ANN202 — estructura arbitraria del detalle
