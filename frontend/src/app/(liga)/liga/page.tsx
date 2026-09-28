@@ -10,18 +10,19 @@
 // etiqueta neutra («de la comunidad») para las que no son de la casa ni la propia.
 
 import type { CSSProperties } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarraPestanas, CabeceraApp, Cargando, Clasificacion as TablaClasificacion, Escudo, ErrorLiga,
   FilaEquipo, HuecoClasificacion, Segmentado, Vacio,
 } from "../_ui";
 import {
-  getClasificacion, getJornadaPublica, getPortada, getYo,
-  type Clasificacion, type EquipoPublico, type JornadaDetalle, type Portada, type Yo,
+  getClasificacion, getJornadaPublica, getPortada,
+  type Clasificacion, type EquipoPublico, type JornadaDetalle, type Portada,
 } from "@/lib/liga/api";
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
-import { useSupabase } from "@/lib/liga/supabase";
+import { useSesion } from "../_sesion/SesionContext";
+import { useCache } from "@/lib/liga/cache";
 
 type Vista = "tabla" | "jornada";
 
@@ -40,42 +41,28 @@ const Chevron = () => (
 
 export default function Liga() {
   const router = useRouter();
-  const sb = useSupabase();
-  const [yo, setYo] = useState<Yo | null>(null);
+  const { yo } = useSesion();
   const [vista, setVista] = useState<Vista>("tabla");
-  const [portada, setPortada] = useState<Portada | string | null>(null);
-  const [clasificacion, setClasificacion] = useState<Clasificacion | string | null>(null);
-  const [jornada, setJornada] = useState<JornadaDetalle | string | null>(null);
 
-  useEffect(() => {
-    if (!sb) return;
-    (async () => {
-      const { data } = await sb.auth.getSession();
-      if (data.session) setYo(await getYo());
-    })();
-  }, [sb]);
-
-  useEffect(() => { (async () => setPortada(await getPortada()))(); }, []);
-
-  useEffect(() => {
-    if (vista !== "tabla" || clasificacion !== null) return;
-    if (typeof portada !== "object" || !portada || portada.temporada === null) return;
-    (async () => setClasificacion(await getClasificacion()))();
-  }, [vista, clasificacion, portada]);
-
-  useEffect(() => {
-    if (vista !== "jornada" || jornada !== null || typeof portada !== "object" || !portada) return;
-    const id = portada.en_juego?.id;
-    if (id == null) return;
-    (async () => setJornada(await getJornadaPublica(id)))();
-  }, [vista, jornada, portada]);
+  // Caché compartida (`lib/liga/cache.ts`): al volver a «Liga» se pinta lo último bueno al
+  // instante y se revalida en segundo plano, en vez de repetir el esqueleto (H1/M6 del informe).
+  const { datos: portada, cargando: cargandoPortada, refrescar: refrescarPortada } =
+    useCache<Portada | string>("portada", getPortada);
+  const hayTemporada = typeof portada === "object" && !!portada && portada.temporada !== null;
+  const { datos: clasificacion, refrescar: refrescarClasificacion } =
+    useCache<Clasificacion | string>(vista === "tabla" && hayTemporada ? "clasificacion" : null, getClasificacion);
+  const idEnJuego = typeof portada === "object" && portada ? portada.en_juego?.id ?? null : null;
+  const { datos: jornada, refrescar: refrescarJornada } = useCache<JornadaDetalle | string>(
+    vista === "jornada" && idEnJuego != null ? `jornada:${idEnJuego}` : null,
+    () => getJornadaPublica(idEnJuego as number),
+  );
 
   const abrir = (id: string) => router.push(`/ficha/${id}`);
 
-  if (portada === null) {
+  if (cargandoPortada) {
     return (
       <main className="scroll">
-        <CabeceraApp plan={yo?.plan} />
+        <CabeceraApp />
         <h1 className="h1">Liga</h1>
         <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
         <BarraPestanas />
@@ -86,20 +73,21 @@ export default function Liga() {
   if (typeof portada === "string") {
     return (
       <main className="scroll">
-        <CabeceraApp plan={yo?.plan} />
+        <CabeceraApp />
         <h1 className="h1">Liga</h1>
         <ErrorLiga titulo="No se pudo cargar la liga" mensaje={portada}
-                   accion={{ texto: "Reintentar", onClick: () => window.location.reload() }} />
+                   accion={{ texto: "Reintentar", onClick: refrescarPortada }} />
         <BarraPestanas />
       </main>
     );
   }
+  if (!portada) return null;
 
   const { temporada } = portada;
 
   return (
     <main className="scroll">
-      <CabeceraApp plan={yo?.plan} />
+      <CabeceraApp />
       <h1 className="h1">Liga</h1>
 
       {temporada === null ? (
@@ -144,12 +132,11 @@ export default function Liga() {
           </div>
 
           {vista === "tabla" ? (
-            clasificacion === null ? (
+            clasificacion === undefined ? (
               <div style={{ marginTop: 20 }}><Cargando filas={5} /></div>
             ) : typeof clasificacion === "string" ? (
               <ErrorLiga titulo="No se pudo cargar la clasificación" mensaje={clasificacion}
-                         accion={{ texto: "Reintentar",
-                                   onClick: () => { setClasificacion(null); } }} />
+                         accion={{ texto: "Reintentar", onClick: refrescarClasificacion }} />
             ) : clasificacion.filas.length === 0 ? (
               <Vacio titulo="Aún no juegas nadie"
                      texto="Nadie se ha apuntado todavía a esta temporada."
@@ -183,7 +170,7 @@ export default function Liga() {
                 </div>
               </div>
             )
-          ) : jornada === null ? (
+          ) : jornada === undefined ? (
             portada.en_juego ? <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
               : (
                 <Vacio titulo="Todavía no hay jornada en juego"
@@ -191,7 +178,7 @@ export default function Liga() {
               )
           ) : typeof jornada === "string" ? (
             <ErrorLiga titulo="No se pudo cargar este mes" mensaje={jornada}
-                       accion={{ texto: "Reintentar", onClick: () => { setJornada(null); } }} />
+                       accion={{ texto: "Reintentar", onClick: refrescarJornada }} />
           ) : (
             <VistaJornada detalle={jornada} miAlias={yo?.alias ?? null} onAbrir={abrir} />
           )}

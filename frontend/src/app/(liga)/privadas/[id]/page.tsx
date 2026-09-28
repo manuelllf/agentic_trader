@@ -5,47 +5,31 @@
 // referencia» de la maqueta (necesitarían la clasificación general por cada estrategia de la
 // casa: fuera del alcance de F7, ver el informe).
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { BarraPestanas, Boton, CabeceraApp, Cargando, ErrorLiga } from "../../_ui";
 import {
-  expulsarDeLiga, getYo, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle, type Yo,
+  expulsarDeLiga, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle,
 } from "@/lib/liga/api";
-import { useSupabase } from "@/lib/liga/supabase";
+import { useCache } from "@/lib/liga/cache";
+import { useSesionRequerida } from "../../_sesion/SesionContext";
 import { claseSigno, porcentaje } from "@/lib/liga/format";
 
 export default function PrivadaDetalle() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const sb = useSupabase();
-  const [sesionLista, setSesionLista] = useState(false);
-  const [yo, setYo] = useState<Yo | null>(null);
-  const [liga, setLiga] = useState<LigaDetalle | string | null>(null);
+  const { estado } = useSesionRequerida(`/privadas/${id}`);
+  const sesionLista = estado !== "cargando";
+
+  // Clave por `id` de la liga: igual que en la ficha, así cambiar de liga rápido nunca deja que
+  // una respuesta vieja pise la de la liga que se está mirando ahora (M5 del informe).
+  const { datos: liga, cargando, refrescar: cargar } = useCache<LigaDetalle | string>(
+    sesionLista && estado === "dentro" ? `liga:${id}` : null, () => verLiga(id),
+  );
   const [ocupada, setOcupada] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
-
-  useEffect(() => {
-    if (sb === undefined) return;
-    if (sb === null) { setSesionLista(true); return; }
-    (async () => {
-      const { data } = await sb.auth.getSession();
-      if (!data.session) {
-        window.location.replace(`/entrar?next=${encodeURIComponent(`/privadas/${id}`)}`);
-        return;
-      }
-      setYo(await getYo());
-      setSesionLista(true);
-    })();
-  }, [sb, id]);
-
-  async function cargar() {
-    setLiga(await verLiga(id));
-  }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `cargar` solo depende de `id`, ya en la lista
-  useEffect(() => { if (sesionLista) cargar(); }, [sesionLista, id]);
 
   async function copiarCodigo(codigo: string) {
     try {
@@ -64,7 +48,7 @@ export default function PrivadaDetalle() {
     const r = await rotarCodigoLiga(id);
     setOcupada(false);
     if (typeof r === "string") { setAviso(r); return; }
-    await cargar();
+    cargar();
   }
 
   async function salir() {
@@ -85,12 +69,12 @@ export default function PrivadaDetalle() {
     const r = await expulsarDeLiga(id, alias);
     setOcupada(false);
     if (typeof r === "string") { setAviso(r); return; }
-    await cargar();
+    cargar();
   }
 
   return (
     <main className="scroll">
-      <CabeceraApp plan={yo?.plan} />
+      <CabeceraApp />
       <Link href="/privadas" className="back">
         <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor"
              strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -99,12 +83,12 @@ export default function PrivadaDetalle() {
         Ligas privadas
       </Link>
 
-      {!sesionLista || liga === null ? (
+      {!sesionLista || cargando ? (
         <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
       ) : typeof liga === "string" ? (
         <ErrorLiga titulo="No se pudo cargar la liga" mensaje={liga}
                    accion={{ texto: "Reintentar", onClick: cargar }} />
-      ) : (
+      ) : !liga ? null : (
         <>
           <h1 className="h1">{liga.nombre}</h1>
           <p className="meta">{liga.n_miembros} de {liga.cupo} estrategias.</p>

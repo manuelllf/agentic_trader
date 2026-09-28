@@ -46,7 +46,8 @@ jobs:
             timeout 120s uv run pytest "$f" -q
             codigo=$?
             echo "::endgroup::"
-            if [ "$codigo" -ne 0 ]; then
+            # 5 = nada que ejecutar: los ficheros que solo corren contra Postgres se saltan enteros.
+            if [ "$codigo" -ne 0 ] && [ "$codigo" -ne 5 ]; then
               echo "FALLÓ: $f (código $codigo)"
               fallo=1
             fi

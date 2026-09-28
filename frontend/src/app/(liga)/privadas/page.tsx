@@ -5,44 +5,24 @@
 // una y unirse por código.
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BarraPestanas, Boton, CabeceraApp, Cargando, ErrorLiga, Vacio } from "../_ui";
-import {
-  crearLiga, getYo, misLigas, unirseLiga, type LigaResumen, type Yo,
-} from "@/lib/liga/api";
-import { useSupabase } from "@/lib/liga/supabase";
+import { crearLiga, misLigas, unirseLiga, type LigaResumen } from "@/lib/liga/api";
+import { useCache } from "@/lib/liga/cache";
+import { useSesionRequerida } from "../_sesion/SesionContext";
 
 export default function Privadas() {
-  const sb = useSupabase();
-  const [sesionLista, setSesionLista] = useState(false);
-  const [yo, setYo] = useState<Yo | null>(null);
-  const [ligas, setLigas] = useState<LigaResumen[] | string | null>(null);
+  const { estado, yo } = useSesionRequerida("/privadas");
+  const sesionLista = estado !== "cargando";
+  const esPro = yo?.plan === "pro";
+
+  const { datos: ligas, cargando, refrescar: cargar } = useCache<LigaResumen[] | string>(
+    sesionLista && estado === "dentro" && esPro ? "mis-ligas" : null, misLigas,
+  );
   const [nombre, setNombre] = useState("");
   const [codigo, setCodigo] = useState("");
   const [ocupada, setOcupada] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (sb === undefined) return;
-    if (sb === null) { setSesionLista(true); return; }
-    (async () => {
-      const { data } = await sb.auth.getSession();
-      if (!data.session) {
-        window.location.replace("/entrar?next=/privadas");
-        return;
-      }
-      setYo(await getYo());
-      setSesionLista(true);
-    })();
-  }, [sb]);
-
-  async function cargar() {
-    setLigas(await misLigas());
-  }
-
-  useEffect(() => {
-    if (sesionLista && yo?.plan === "pro") cargar();
-  }, [sesionLista, yo]);
 
   async function alCrear(e: React.FormEvent) {
     e.preventDefault();
@@ -53,7 +33,7 @@ export default function Privadas() {
     setOcupada(false);
     if (typeof r === "string") { setAviso(r); return; }
     setNombre("");
-    await cargar();
+    cargar();
   }
 
   async function alUnirse(e: React.FormEvent) {
@@ -65,18 +45,18 @@ export default function Privadas() {
     setOcupada(false);
     if (typeof r === "string") { setAviso(r); return; }
     setCodigo("");
-    await cargar();
+    cargar();
   }
 
   return (
     <main className="scroll">
-      <CabeceraApp plan={yo?.plan} />
+      <CabeceraApp />
       <h1 className="h1">Ligas privadas</h1>
       <p className="meta">Las mismas jornadas, solo con quien tú invites.</p>
 
-      {!sesionLista || (yo?.plan === "pro" && ligas === null) ? (
+      {!sesionLista || (esPro && cargando) ? (
         <div style={{ marginTop: 20 }}><Cargando filas={3} /></div>
-      ) : yo?.plan !== "pro" ? (
+      ) : !esPro ? (
         <div className="empty">
           <h2>Tu liga, con los tuyos</h2>
           <p>

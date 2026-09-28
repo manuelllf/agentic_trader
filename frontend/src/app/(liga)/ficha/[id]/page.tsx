@@ -10,16 +10,15 @@
 // puntos» ni el gráfico de temporada de la maqueta — solo la tabla mes a mes con lo que sí hay
 // (rentabilidad y puntos).
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   BarraPestanas, Boton, CabeceraApp, Cargando, CASA, Cifra, Escudo, ErrorLiga,
 } from "../../_ui";
-import {
-  copiarEstrategia, getFicha, getYo, reportar, type Ficha, type Yo,
-} from "@/lib/liga/api";
-import { useSupabase } from "@/lib/liga/supabase";
+import { copiarEstrategia, getFicha, reportar, type Ficha } from "@/lib/liga/api";
+import { useCache } from "@/lib/liga/cache";
+import { useSesionRequerida } from "../../_sesion/SesionContext";
 
 const ETIQUETA_PESO: Record<string, string> = {
   negocio: "El negocio", precio: "El precio", deuda: "La deuda", pronto: "Algo a favor pronto",
@@ -36,31 +35,17 @@ function subtitulo(f: Ficha, esMia: boolean): string {
 export default function FichaPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const sb = useSupabase();
-  const [sesionLista, setSesionLista] = useState(false);
-  const [yo, setYo] = useState<Yo | null>(null);
-  const [ficha, setFicha] = useState<Ficha | string | null>(null);
+  const { estado, yo } = useSesionRequerida(`/ficha/${id}`);
+  const sesionLista = estado !== "cargando";
+
+  // Clave por `id`: al navegar entre fichas (back/forward, o de una a otra) cada una tiene su
+  // propia entrada en la caché, así que una respuesta lenta de la ficha anterior nunca puede
+  // pisar la de la que se está mirando ahora (M5 del informe de fluidez).
+  const { datos: ficha, cargando: cargandoFicha, refrescar: refrescarFicha } = useCache<Ficha | string>(
+    sesionLista && estado === "dentro" ? `ficha:${id}` : null, () => getFicha(id),
+  );
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (sb === undefined) return;
-    if (sb === null) { setSesionLista(true); return; }
-    (async () => {
-      const { data } = await sb.auth.getSession();
-      if (!data.session) {
-        window.location.replace(`/entrar?next=${encodeURIComponent(`/ficha/${id}`)}`);
-        return;
-      }
-      setYo(await getYo());
-      setSesionLista(true);
-    })();
-  }, [sb, id]);
-
-  useEffect(() => {
-    if (!sesionLista) return;
-    (async () => setFicha(await getFicha(id)))();
-  }, [sesionLista, id]);
 
   async function alCopiar() {
     setOcupado(true);
@@ -82,7 +67,7 @@ export default function FichaPage() {
 
   return (
     <main className="scroll">
-      <CabeceraApp plan={yo?.plan} />
+      <CabeceraApp />
       <Link href="/liga" className="back" style={{ marginTop: 4 }}>
         <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor"
              strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -91,12 +76,12 @@ export default function FichaPage() {
         Volver a la liga
       </Link>
 
-      {!sesionLista || ficha === null ? (
+      {cargandoFicha ? (
         <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
       ) : typeof ficha === "string" ? (
         <ErrorLiga titulo="No se pudo cargar la ficha" mensaje={ficha}
-                   accion={{ texto: "Reintentar", onClick: () => { setFicha(null); } }} />
-      ) : (
+                   accion={{ texto: "Reintentar", onClick: refrescarFicha }} />
+      ) : !ficha ? null : (
         <>
           <div className="fh" style={{ marginTop: 16 }}>
             <Escudo valor={ficha.escudo} etiqueta={`Escudo de ${ficha.nombre}`} tamano={52} />

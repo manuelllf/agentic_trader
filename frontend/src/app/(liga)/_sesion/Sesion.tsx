@@ -2,37 +2,19 @@
 
 // Cabecera de sesión: «Entrar» sin cuenta; con cuenta, un botón con el alias que abre un menú
 // corto (Panel de control solo al admin, y Salir). Se abre al tocar, nunca al pasar por encima.
+//
+// Lee de `SesionContext` (montado una vez en `(liga)/layout.tsx`): no vuelve a pedir la sesión ni
+// `Yo` al cambiar de pestaña, así que ya no se remonta ni parpadea en cada navegación. El hueco
+// "cargando" solo se ve una vez, en la primera carga de la app entera.
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { getYo, type Yo } from "@/lib/liga/api";
-import { supabase } from "@/lib/liga/supabase";
-
-type Estado = { tipo: "cargando" } | { tipo: "fuera" } | { tipo: "dentro"; yo: Yo | null };
+import { useSesion } from "./SesionContext";
 
 export function Sesion() {
-  const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
+  const { estado, yo, cerrarSesion } = useSesion();
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const sb = supabase();
-    if (!sb) {
-      setEstado({ tipo: "fuera" });
-      return;
-    }
-    let vivo = true;
-    sb.auth.getSession().then(async ({ data }) => {
-      if (!vivo) return;
-      if (!data.session) {
-        setEstado({ tipo: "fuera" });
-        return;
-      }
-      const yo = await getYo();
-      if (vivo) setEstado({ tipo: "dentro", yo });
-    });
-    return () => { vivo = false; };
-  }, []);
 
   useEffect(() => {
     if (!abierto) return;
@@ -49,16 +31,14 @@ export function Sesion() {
   }, [abierto]);
 
   const salir = async () => {
-    await supabase()?.auth.signOut();
     setAbierto(false);
-    setEstado({ tipo: "fuera" });
+    await cerrarSesion();
   };
 
-  if (estado.tipo === "cargando") return null;
-  if (estado.tipo === "fuera") {
+  if (estado === "cargando") return <span className="cuenta-hueco" aria-hidden="true" />;
+  if (estado === "fuera") {
     return <Link href="/entrar" className="btn small discreto">Entrar</Link>;
   }
-  const { yo } = estado;
   const panel = yo?.aal2 ? "/admin" : "/cuenta/verificacion?next=/admin";
   return (
     <div className="cuenta" ref={caja}>

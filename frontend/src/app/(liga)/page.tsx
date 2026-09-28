@@ -7,11 +7,11 @@
 // /liga en cuanto se sabe (sin parpadeo de la portada).
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import { CASA, Escudo, PALETA, escudoCasa, type DibujoEscudo, type EscudoValor, type FormaEscudo } from "./_ui";
 import { getCatalogo, type Catalogo } from "@/lib/liga/api";
-import { useSupabase } from "@/lib/liga/supabase";
+import { useCache } from "@/lib/liga/cache";
+import { useRedirigirSiHaySesion } from "./_sesion/SesionContext";
 
 type Opcion = { clave: string; frase: string };
 
@@ -51,36 +51,13 @@ function vivas(opciones: Opcion[], claves: Set<string> | null): Opcion[] {
 }
 
 export default function Portada() {
-  const router = useRouter();
-  const sb = useSupabase();
-  const [sesion, setSesion] = useState<"cargando" | "fuera" | "dentro">("cargando");
-  const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
+  const sesion = useRedirigirSiHaySesion();
+  const { datos: catalogoDatos } = useCache<Catalogo | string>("catalogo", getCatalogo);
+  const catalogo = catalogoDatos && typeof catalogoDatos === "object" ? catalogoDatos : null;
   const [a, setA] = useState(0);
   const [b, setB] = useState(0);
   const [c, setC] = useState(0);
   const [tocado, setTocado] = useState(false);
-
-  useEffect(() => {
-    if (sb === undefined) return;
-    if (sb === null) { setSesion("fuera"); return; }
-    let vivo = true;
-    (async () => {
-      const { data } = await sb.auth.getSession();
-      if (vivo) setSesion(data.session ? "dentro" : "fuera");
-    })();
-    return () => { vivo = false; };
-  }, [sb]);
-
-  useEffect(() => {
-    if (sesion === "dentro") router.replace("/liga");
-  }, [sesion, router]);
-
-  useEffect(() => {
-    (async () => {
-      const r = await getCatalogo();
-      if (typeof r === "object") setCatalogo(r);
-    })();
-  }, []);
 
   const claves = useMemo(
     () => (catalogo ? new Set(catalogo.reglas.map((r) => r.clave)) : null),

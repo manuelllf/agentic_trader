@@ -15,12 +15,13 @@ import {
 } from "../_ui";
 import {
   actualizarEstrategia, apuntar, buscarUniverso, convertirFrase, costeProbarConPregunta,
-  crearEstrategia, crearReceta, excluirEmpresa, getCatalogo, getCreditos, getFicha, getYo,
+  crearEstrategia, crearReceta, excluirEmpresa, getCatalogo, getFicha,
   leerAFondo, leerMiCartera, porQueNoSale, probarEstrategia, quitarExclusion, verEstrategia,
   type Catalogo, type CostePregunta, type EmpresaBusqueda, type Estrategia, type Lectura,
-  type Prueba, type ReglaElegida, type Yo,
+  type Prueba, type ReglaElegida,
 } from "@/lib/liga/api";
-import { useSupabase } from "@/lib/liga/supabase";
+import { invalidar, obtener } from "@/lib/liga/cache";
+import { useSesionRequerida } from "../_sesion/SesionContext";
 import { miles } from "@/lib/liga/format";
 
 const RUTA_ACTUAL = (id?: string) => (id ? `/crear/${id}` : "/crear");
@@ -64,10 +65,8 @@ const ETIQUETA_SECTOR_LIMITE = (n: number) =>
 
 export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?: string }) {
   const router = useRouter();
-  const sb = useSupabase();
-  const [sesionLista, setSesionLista] = useState(false);
-  const [yo, setYo] = useState<Yo | null>(null);
-  const [creditosSaldo, setCreditosSaldo] = useState<number | undefined>(undefined);
+  const { estado, yo } = useSesionRequerida(RUTA_ACTUAL(estrategiaIdInicial));
+  const sesionLista = estado !== "cargando";
 
   const [catalogo, setCatalogo] = useState<Catalogo | string | null>(null);
   const [id, setId] = useState<string | undefined>(estrategiaIdInicial);
@@ -101,36 +100,32 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   const [convUsos, setConvUsos] = useState<{ hoy: number; tope: number } | null>(null);
 
   const nombreRef = useRef<HTMLInputElement>(null);
+  const buscaId = useRef(0);
+  const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const buscaAbort = useRef<AbortController | null>(null);
 
-  // Sesión: sin ella, a /entrar (DESIGN.md no lo dice pero Cuenta hace lo mismo).
-  useEffect(() => {
-    if (sb === undefined) return;
-    if (sb === null) { setSesionLista(true); return; }
-    (async () => {
-      const { data } = await sb.auth.getSession();
-      if (!data.session) {
-        window.location.replace(`/entrar?next=${encodeURIComponent(RUTA_ACTUAL(estrategiaIdInicial))}`);
-        return;
-      }
-      setYo(await getYo());
-      setSesionLista(true);
-      const c = await getCreditos();
-      if (typeof c !== "string") setCreditosSaldo(c.saldo);
-    })();
-  }, [sb, estrategiaIdInicial]);
+  // Limpieza al desmontar: no dejar un timer o una petición colgando.
+  useEffect(() => () => {
+    if (buscaTimer.current) clearTimeout(buscaTimer.current);
+    buscaAbort.current?.abort();
+  }, []);
 
-  // Catálogo + (si se edita) la estrategia y su receta vigente.
+  // Catálogo (caché compartida con la portada y `crear/[id]`, ver H3 del informe de fluidez) +
+  // (si se edita) la estrategia y su receta vigente.
   useEffect(() => {
-    if (!sesionLista) return;
+    if (!sesionLista || estado !== "dentro") return;
+    let vivo = true;
     (async () => {
       setCargandoInicial(true);
-      const cat = await getCatalogo();
+      const cat = await obtener("catalogo", getCatalogo);
+      if (!vivo) return;
       setCatalogo(cat);
       if (typeof cat === "string") { setCargandoInicial(false); return; }
       if (estrategiaIdInicial) {
         const [est, ficha] = await Promise.all([
           verEstrategia(estrategiaIdInicial), getFicha(estrategiaIdInicial),
         ]);
+        if (!vivo) return;
         if (typeof est === "string") { setErrorCarga(est); setCargandoInicial(false); return; }
         setEstrategia(est);
         setNombre(est.nombre);
@@ -150,7 +145,8 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       }
       setCargandoInicial(false);
     })();
-  }, [sesionLista, estrategiaIdInicial]);
+    return () => { vivo = false; };
+  }, [sesionLista, estado, estrategiaIdInicial]);
 
   const pro = yo?.plan === "pro";
   const totalPesos = useMemo(
@@ -279,7 +275,10 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     setOcupado(true);
     const p = await probarEstrategia(id, { idempotencia: crypto.randomUUID() });
     setPrueba(p);
-    if (typeof p !== "string") setCostePregunta(null);   // ya está cobrada y en caché
+    if (typeof p !== "string") {
+      setCostePregunta(null);   // ya está cobrada y en caché
+      invalidar("creditos");    // gasta créditos: el chip de la cabecera tiene que refrescarse
+    }
     setOcupado(false);
   }
 
@@ -288,6 +287,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     setLectura(null);
     const r = await leerAFondo(ticker, crypto.randomUUID());
     setLectura(r);
+    if (typeof r !== "string") invalidar("creditos");
     setLeyendo(null);
   }
 
@@ -296,6 +296,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     setLeyendo("cartera");
     setLectura(null);
     const r = await leerMiCartera(id, crypto.randomUUID());
+    if (typeof r !== "string") invalidar("creditos");
     setLectura(typeof r === "string" ? r : r.lecturas);
     setLeyendo(null);
   }
@@ -329,15 +330,35 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     setOcupado(false);
   }
 
-  async function buscar(q: string) {
+  // Debounce (~200 ms) + AbortController + un número de petición: si el usuario sigue
+  // escribiendo, la respuesta de la letra anterior se descarta aunque llegue tarde (H4 del
+  // informe de fluidez: antes «Ap»/«App»/«Appl»/«Apple» salían las cuatro a la vez y podía
+  // ganar la más vieja).
+  function buscar(q: string) {
     setBuscaQ(q);
     setPorque(null);
+    if (buscaTimer.current) clearTimeout(buscaTimer.current);
+    buscaAbort.current?.abort();
     if (q.trim().length < 1) { setSugerencias([]); return; }
-    const r = await buscarUniverso(q.trim());
-    setSugerencias(typeof r === "string" ? [] : r);
+    const miPeticion = ++buscaId.current;
+    buscaTimer.current = setTimeout(async () => {
+      const controlador = new AbortController();
+      buscaAbort.current = controlador;
+      let r: EmpresaBusqueda[] | string;
+      try {
+        r = await buscarUniverso(q.trim(), controlador.signal);
+      } catch {
+        return; // cancelada a propósito: ya hay una búsqueda más nueva en marcha
+      }
+      if (miPeticion !== buscaId.current) return; // respuesta obsoleta, se descarta
+      setSugerencias(typeof r === "string" ? [] : r);
+    }, 200);
   }
 
   async function preguntarPorQue(emp: EmpresaBusqueda) {
+    buscaId.current += 1; // descarta cualquier búsqueda en marcha: ya se ha elegido una empresa
+    if (buscaTimer.current) clearTimeout(buscaTimer.current);
+    buscaAbort.current?.abort();
     setSugerencias([]);
     setBuscaQ(emp.nombre ?? emp.ticker);
     if (!id) { setPorque({ ticker: emp.ticker, nombre: emp.nombre ?? emp.ticker,
@@ -376,6 +397,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     if (idActual) {
       const r = await apuntar(idActual);
       if (typeof r === "string") { setError(r); setOcupado(false); return; }
+      // La lista de «Mías» ya cacheada (si el usuario vino de ahí) queda desfasada: se invalida
+      // para que la próxima vez que se mire se pida entera, en vez de enseñar el estado viejo.
+      invalidar("mis-estrategias");
       router.push("/mias");
       return;
     }
@@ -386,7 +410,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
   return (
     <main className="scroll">
-      <CabeceraApp plan={yo?.plan} creditosSaldo={creditosSaldo} />
+      <CabeceraApp conCreditos />
       <h1 className="h1">{estrategiaIdInicial ? "Editar estrategia" : "Nueva estrategia"}</h1>
       <p className="meta">
         Se aplica a unas 3.000 empresas de EE. UU., con los datos del día 1 de cada mes.

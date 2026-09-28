@@ -6,9 +6,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Boton, Cargando } from "../_ui";
-import { cambiarAlias, getYo, type Yo } from "@/lib/liga/api";
+import { cambiarAlias } from "@/lib/liga/api";
 import { borrarMiCuenta, exportarMisDatos } from "@/lib/liga/cuenta";
 import { useSupabase } from "@/lib/liga/supabase";
+import { fijar } from "@/lib/liga/cache";
+import { useSesionRequerida } from "../_sesion/SesionContext";
 
 /** Dispara la descarga de un fichero de texto sin subirlo a ningún sitio: todo en el navegador. */
 function descargar(nombre: string, texto: string): void {
@@ -21,9 +23,9 @@ function descargar(nombre: string, texto: string): void {
 
 export default function Cuenta() {
   const sb = useSupabase();
-  const [yo, setYo] = useState<Yo | null>(null);
-  const [email, setEmail] = useState("");
+  const { yo, email } = useSesionRequerida("/cuenta");
   const [alias, setAlias] = useState("");
+  const [aliasListo, setAliasListo] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "bien" | "mal"; texto: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [descargando, setDescargando] = useState(false);
@@ -31,20 +33,15 @@ export default function Cuenta() {
   const [errorBaja, setErrorBaja] = useState("");
   const [dandoBaja, setDandoBaja] = useState(false);
 
+  // El campo del nombre parte del valor de `yo` la primera vez que llega (viene de la caché
+  // compartida, `SesionContext`); si el usuario ya está escribiendo no se pisa en la revalidación
+  // de fondo.
   useEffect(() => {
-    if (!sb) return;
-    (async () => {
-      const { data } = await sb.auth.getSession();
-      if (!data.session) {
-        window.location.replace("/entrar?next=/cuenta");
-        return;
-      }
-      setEmail(data.session.user.email ?? "");
-      const perfil = await getYo();
-      setYo(perfil);
-      setAlias(perfil?.alias ?? "");
-    })();
-  }, [sb]);
+    if (yo && !aliasListo) {
+      setAlias(yo.alias);
+      setAliasListo(true);
+    }
+  }, [yo, aliasListo]);
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +52,7 @@ export default function Cuenta() {
     if (typeof fuera === "string") {
       setAviso({ tipo: "mal", texto: fuera });
     } else {
-      setYo(fuera);
+      fijar("yo", fuera);
       setAlias(fuera.alias);
       setAviso({ tipo: "bien", texto: "Guardado. Ya sales con este nombre." });
     }

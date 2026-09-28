@@ -218,7 +218,10 @@ async function llamar<T>(
   let res: Response;
   try {
     res = await fetch(`${API_URL}${ruta}`, { ...opciones, headers: cabeceras, cache: "no-store" });
-  } catch {
+  } catch (err) {
+    // Una petición cancelada a propósito (AbortController, p. ej. el buscador) no es un error de
+    // red: se deja subir para que quien la canceló la distinga de una respuesta real.
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
     return SIN_RED;
   }
   if (res.status === 204) return undefined as T;
@@ -337,8 +340,14 @@ export async function porQueNoSale(id: string, ticker: string): Promise<PorQue |
   return llamar<PorQue>(`/liga/estrategias/${id}/por-que/${encodeURIComponent(ticker)}`);
 }
 
-export async function buscarUniverso(q: string): Promise<EmpresaBusqueda[] | string> {
-  return llamar<EmpresaBusqueda[]>(`/liga/universo/buscar?q=${encodeURIComponent(q)}`);
+/** `senal` (AbortController) para que quien busca en un input pueda descartar una respuesta que
+ *  ya no toca porque el usuario ha seguido escribiendo (ver H4 del informe de fluidez). */
+export async function buscarUniverso(
+  q: string, senal?: AbortSignal,
+): Promise<EmpresaBusqueda[] | string> {
+  return llamar<EmpresaBusqueda[]>(
+    `/liga/universo/buscar?q=${encodeURIComponent(q)}`, { signal: senal },
+  );
 }
 
 export async function getFicha(id: string): Promise<Ficha | string> {

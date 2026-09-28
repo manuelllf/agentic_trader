@@ -203,6 +203,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   border-radius: 16px; background: #FFFFFF; }
 .lg .secreto { font-size: 15px; word-break: break-all; color: var(--ink2); }
 .lg .cuenta { position: relative; }
+.lg .cuenta-hueco { display: inline-block; min-width: 44px; min-height: 44px; }
 .lg .cuenta-boton {
   display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px 0 12px;
   border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 16px;

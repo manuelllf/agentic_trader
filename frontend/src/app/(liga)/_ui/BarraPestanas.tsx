@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useSesion } from "../_sesion/SesionContext";
+import { getCreditos, getPortada, misEstrategias, misLigas } from "@/lib/liga/api";
+import { precargar } from "@/lib/liga/cache";
 
 // `.tabbar` de la maqueta (DESIGN.md §5 y §6): Liga, Privadas, Crear y Mías, iconos de trazo
 // en línea (nada de librería de iconos).
@@ -37,6 +41,32 @@ const PESTANAS = [
 
 export function BarraPestanas() {
   const ruta = usePathname();
+  const router = useRouter();
+  const { estado } = useSesion();
+
+  // Precarga tanto el código (`router.prefetch`, de más al `<Link>` que ya lo hace solo al
+  // entrar en el viewport) como los datos de las otras pestañas, después del primer pintado: al
+  // tocarlas ya están calientes en la caché de módulo (`lib/liga/cache.ts`) y pintan al instante.
+  useEffect(() => {
+    for (const p of PESTANAS) router.prefetch(p.href);
+    const calentar = () => {
+      if (estado === "dentro") {
+        precargar("mis-estrategias", misEstrategias);
+        precargar("mis-ligas", misLigas);
+        precargar("creditos", getCreditos);
+      } else if (estado === "fuera") {
+        precargar("portada", getPortada);
+      }
+    };
+    const ric = window.requestIdleCallback as typeof window.requestIdleCallback | undefined;
+    if (ric) {
+      const idle = ric(calentar);
+      return () => window.cancelIdleCallback(idle);
+    }
+    const timer = window.setTimeout(calentar, 200);
+    return () => window.clearTimeout(timer);
+  }, [estado, router]);
+
   return (
     <nav className="tabbar" aria-label="Secciones">
       {PESTANAS.map((p) => {
@@ -46,7 +76,7 @@ export function BarraPestanas() {
           : p.clave === "liga" ? (ruta === "/liga" || ruta?.startsWith("/ficha"))
           : false;
         return (
-          <Link key={p.clave} href={p.href} aria-current={activa ? "page" : undefined}>
+          <Link key={p.clave} href={p.href} prefetch aria-current={activa ? "page" : undefined}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}
                  strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               {p.icono}
