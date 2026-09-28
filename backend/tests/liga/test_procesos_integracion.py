@@ -424,6 +424,82 @@ def test_omega_no_juega_si_opero_despues_del_corte(fabrica, mercado, mundo) -> N
     assert "omega" not in _inscripciones(fabrica, mundo["enero"])
 
 
+def _saltar_pretemporada(fabrica, mundo: dict) -> None:  # noqa: ANN001
+    """La pretemporada (oct-dic 2026, no cuenta) también nace `programada` sin foto -- para que
+    "la jornada siguiente" del auto sea de verdad la de enero, se marca ya resuelta (como si ya
+    se hubiera jugado), igual que en producción el tiempo la habría dejado atrás."""
+    with comun.sesion(fabrica) as db:
+        db.execute(text(
+            "update liga.jornadas set foto_id = :f, scan_run_id = :s "
+            "where temporada_id = (select id from liga.temporadas where nombre = :p)"),
+            {"f": mundo["foto"], "s": mundo["scan"], "p": temporadas.PRETEMPORADA})
+        db.commit()
+
+
+def test_foto_auto_designa_la_jornada_siguiente_sin_foto(fabrica, mundo) -> None:  # noqa: ANN001
+    _saltar_pretemporada(fabrica, mundo)
+    d = foto.auto_desde_escaneo(mundo["scan"], fabrica=fabrica)
+    assert (d["foto_id"], d["scan_run_id"], d["plan_b"]) == (mundo["foto"], mundo["scan"], False)
+    assert d["cambiada"] is True
+    assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] == mundo["foto"]
+    with comun.sesion(fabrica) as db:
+        fila = db.execute(text(
+            "select detalle from liga.auditoria where accion = 'proceso.foto' "
+            "and objeto = :o order by id desc limit 1"),
+            {"o": f"jornada:{mundo['enero']}"}).one()
+    assert fila.detalle["auto"] is True
+
+
+def test_foto_auto_apagada_no_toca_nada(fabrica, mundo) -> None:  # noqa: ANN001
+    with comun.sesion(fabrica) as db:
+        db.execute(text(
+            "insert into liga.ajustes (clave, valor) values ('procesos.foto.auto', 'false')"))
+        db.commit()
+    assert foto.auto_desde_escaneo(mundo["scan"], fabrica=fabrica) is None
+    assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] is None
+    assert _cuenta(fabrica, "select count(*) from liga.auditoria "
+                           "where accion like 'proceso.foto.auto%'") == 0
+
+
+def test_foto_auto_sin_jornada_programada_audita_omitido(fabrica, mundo) -> None:  # noqa: ANN001
+    _saltar_pretemporada(fabrica, mundo)
+    foto.ejecutar(mundo["enero"], fabrica=fabrica)
+    foto.ejecutar(mundo["febrero"], mundo["foto"], mundo["scan"], fabrica=fabrica)
+    with comun.sesion(fabrica) as db:
+        # El resto de Temporada 1 (marzo-diciembre) también nace `programada` sin foto -- se
+        # marca resuelta igual que la pretemporada para dejar de verdad cero candidatos.
+        db.execute(text(
+            "update liga.jornadas set foto_id = :f, scan_run_id = :s where numero > 2 "
+            "and temporada_id = (select id from liga.temporadas where nombre = :t)"),
+            {"f": mundo["foto"], "s": mundo["scan"], "t": temporadas.TEMPORADA_1})
+        db.commit()
+    assert foto.auto_desde_escaneo(mundo["scan"], fabrica=fabrica) is None
+    with comun.sesion(fabrica) as db:
+        fila = db.execute(text(
+            "select objeto, detalle from liga.auditoria "
+            "where accion = 'proceso.foto.auto.omitido' order by id desc limit 1")).one()
+    assert fila.objeto == f"escaneo:{mundo['scan']}"
+    assert "sin foto" in fila.detalle["razon"]
+
+
+def test_foto_auto_no_lanza_con_escaneo_invalido(fabrica, mundo) -> None:  # noqa: ANN001
+    """Escaneo que no es de decisión: `_designar` lo rechaza (`ErrorProceso`) y se audita como
+    omitido en vez de propagar -- el escaneo que llama a esto nunca debe reventar por esto."""
+    with comun.sesion(fabrica) as db:
+        otro = ScanRun(scan_at=FOTO_FIN, cadence="observatorio/full", decide=False,
+                      foto_id=mundo["foto"])
+        db.add(otro)
+        db.commit()
+        otro_id = otro.id
+    assert foto.auto_desde_escaneo(otro_id, fabrica=fabrica) is None
+    assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] is None
+    with comun.sesion(fabrica) as db:
+        fila = db.execute(text(
+            "select detalle from liga.auditoria where accion = 'proceso.foto.auto.omitido' "
+            "order by id desc limit 1")).one()
+    assert "decisión" in fila.detalle["razon"]
+
+
 def test_el_interruptor_enciende_el_diario(fabrica, mercado, mundo) -> None:  # noqa: ANN001
     _formar_mes(fabrica, mercado, mundo["enero"], ENERO)
     martes = datetime(2027, 1, 5, 22, 15, tzinfo=UTC)

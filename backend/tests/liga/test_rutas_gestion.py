@@ -218,7 +218,7 @@ def test_ajustes_trae_metadato_y_efectivo_por_defecto(api) -> None:  # noqa: ANN
     assert set(filas) == {
         "liga.registro.abierto", "liga.visible", "ia.conversor.activo", "ia.pregunta.activo",
         "ia.lectura.activo", "ia.moderacion.activo", "ia.tope_mensual_usd", "ia.margen_objetivo",
-        "creditos.pro_mensual",
+        "creditos.pro_mensual", "procesos.foto.auto",
     }
     registro = filas["liga.registro.abierto"]
     assert registro["valor"] is None and registro["efectivo"] is True

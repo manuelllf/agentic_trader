@@ -993,6 +993,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             scan_audit.enlazar(db, audit_at, scan_run_id)
         except Exception:
             logger.exception("No se pudo enlazar la auditoría con su escaneo (no aborta).")
+    if decide and scan_run_id is not None:
+        # Liga (backlog): designa sola la foto+escaneo de la próxima jornada sin foto -- sesión
+        # y candado propios, nunca deben tocar ni frenar el escaneo de las salas.
+        try:
+            from app.liga.procesos import foto as liga_foto
+            liga_foto.auto_desde_escaneo(scan_run_id)
+        except Exception:
+            logger.exception("No se pudo designar la foto automática de la liga (no aborta).")
     try:
         # Va fuera del try de arriba: si `ScanRun` falla, la traza se guarda igual (suelta, sin
         # escaneo al que colgarse) — es justo cuando más falta hace.

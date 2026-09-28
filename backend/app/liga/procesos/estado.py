@@ -34,6 +34,12 @@ def general(fabrica: Fabrica = fabrica_sistema) -> dict:
             select distinct on (accion) accion, objeto, detalle, creada from liga.auditoria
             where accion like 'proceso.%' order by accion, creada desc, id desc
         """)).all()}
+        # Última designación de foto por jornada (auto o a mano) -- para que la pantalla lo diga
+        # sin adivinar; None = nunca se le tocó la foto por proceso (dato viejo o migrado a mano).
+        foto_auto = {a.objeto: bool((a.detalle or {}).get("auto")) for a in db.execute(text("""
+            select distinct on (objeto) objeto, detalle from liga.auditoria
+            where accion = 'proceso.foto' order by objeto, creada desc, id desc
+        """)).all()}
         return para_json({
             "diario_activo": diario.activo(db),
             "temporadas": [{
@@ -47,6 +53,8 @@ def general(fabrica: Fabrica = fabrica_sistema) -> dict:
                     "plan_b": j.plan_b if j.scan_run_id is not None else None,
                     "inscripciones": j.inscripciones, "sp_rentabilidad": j.sp_rentabilidad,
                     "siguiente": _siguiente(j),
+                    "foto_auto": foto_auto.get(f"jornada:{j.id}") if j.foto_id is not None
+                        else None,
                 } for j in jornadas if j.temporada_id == t.id],
             } for t in temporadas],
             "ultimo_intento": {p: _intento(ultimos, p) for p in PROCESOS},

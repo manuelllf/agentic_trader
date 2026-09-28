@@ -31,7 +31,7 @@ class AjusteMeta:
     la app cuando la clave no está en `liga.ajustes` -- tiene que coincidir con el código real
     (`gestion.py`/`ia/comun.py`), no es solo decorativo."""
 
-    grupo: Literal["Emergencia", "IA", "Créditos"]
+    grupo: Literal["Emergencia", "IA", "Créditos", "Procesos"]
     titulo: str
     ayuda: str
     tipo: Literal["interruptor", "entero", "dolares", "multiplicador"]
@@ -93,11 +93,20 @@ CATALOGO: dict[str, AjusteMeta] = {
         ayuda="Créditos que se dan cada mes, en automático, a cada usuario Pro. Sin valor: no "
               "se da nada todavía.",
         tipo="dolares", unidad="créditos/mes", minimo=Decimal(0), maximo=None, defecto=None),
+    # Foto automática de la jornada (backlog, plan §8/§13): al terminar el escaneo mensual de
+    # decisión, designa sola la foto+escaneo de la próxima jornada sin foto. Encendido por
+    # defecto; el botón manual sigue de reserva si se apaga o si algo no encaja.
+    "procesos.foto.auto": AjusteMeta(
+        grupo="Procesos", titulo="Foto automática de la jornada",
+        ayuda="Al terminar el escaneo mensual de decisión, designa sola la foto y el escaneo de "
+              "la próxima jornada sin foto. Apagado: solo vale el botón manual.",
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True),
 }
 AJUSTES_CONOCIDOS = frozenset(CATALOGO)
 CLAVE_PRO_MENSUAL = "creditos.pro_mensual"
 CLAVE_REGISTRO_ABIERTO = "liga.registro.abierto"
 CLAVE_LIGA_VISIBLE = "liga.visible"
+CLAVE_FOTO_AUTO = "procesos.foto.auto"
 
 
 def restablecer_ajuste(clave: str, actor: str) -> None:

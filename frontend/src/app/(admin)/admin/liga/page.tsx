@@ -16,7 +16,7 @@ type Jornada = {
   id: number; numero: number; dia_inicio: string; dia_fin: string; cierre_inscripcion: string;
   estado: "programada" | "formada" | "cerrada"; foto_id: number | null; scan_run_id: number | null;
   plan_b: boolean | null; inscripciones: number; sp_rentabilidad: string | null;
-  siguiente: "foto" | "formar" | "cerrar" | null;
+  siguiente: "foto" | "formar" | "cerrar" | null; foto_auto: boolean | null;
 };
 type Temporada = { id: number; nombre: string; cuenta: boolean; estado: string; jornadas: Jornada[] };
 type Estado = {
@@ -189,7 +189,8 @@ function Liga() {
                     </div>
                     <p className="mt-0.5 text-[12px]" style={{ color: "#898781" }}>
                       {DIA.format(new Date(j.dia_inicio))}–{DIA.format(new Date(j.dia_fin))}
-                      {j.foto_id ? ` · foto ${j.foto_id}` : ""}
+                      {j.foto_id ? ` · foto ${j.foto_id}${j.foto_auto === true ? " (automática)"
+                          : j.foto_auto === false ? " (manual)" : ""}` : ""}
                       {j.scan_run_id ? ` · escaneo ${j.scan_run_id}${j.plan_b ? " (plan B)" : ""}` : ""}
                       {j.inscripciones ? ` · ${j.inscripciones} en juego` : ""}
                       {j.sp_rentabilidad != null ? ` · S&P ${j.sp_rentabilidad} %` : ""}

@@ -157,3 +157,54 @@ def ejecutar(jornada_id: int, foto_id: int | None = None, scan_run_id: int | Non
     except Exception as e:
         auditar_fallo(fabrica, "foto", f"jornada:{jornada_id}", e, actor)
         raise
+
+
+def _omitir_auto(db: Session, objeto: str | None, razon: str) -> None:
+    auditar(db, "proceso.foto.auto.omitido", objeto, {"razon": razon}, None)
+    db.commit()
+
+
+def auto_desde_escaneo(scan_run_id: int, fabrica: Fabrica = fabrica_sistema) -> dict | None:
+    """Al terminar un escaneo de decisión con éxito (llamado solo desde `scan_service`, nunca a
+    mano): designa foto+escaneo en la jornada `programada` más próxima sin foto, si el
+    interruptor `procesos.foto.auto` (gestion.CATALOGO) está encendido.
+
+    Reusa `_designar` -- las mismas reglas que valida `vista_previa` -- pasando el `foto_id`
+    propio de ESTE escaneo (`scan_runs.foto_id`): así el resultado normal sale sin avisos (mismo
+    par foto/escaneo, sin plan B). Cualquier aviso (foto tardía sobre el corte, plan B por foto
+    sin notas propias) es motivo de NO designar sola: mejor que el admin lo mire a mano con el
+    botón manual. Nunca lanza -- un fallo queda solo en la auditoría, jamás rompe el escaneo."""
+    from app.liga import gestion
+
+    try:
+        with candado("foto", fabrica), sesion(fabrica) as db:
+            activo = db.execute(text("select valor from liga.ajustes where clave = :c"),
+                                {"c": gestion.CLAVE_FOTO_AUTO}).scalar()
+            if not gestion.valor_efectivo(gestion.CLAVE_FOTO_AUTO, activo):
+                return None
+            fila = db.execute(text(
+                "select id from liga.jornadas where estado = 'programada' and foto_id is null "
+                "order by dia_inicio limit 1")).one_or_none()
+            if fila is None:
+                _omitir_auto(db, f"escaneo:{scan_run_id}", "No hay jornada programada sin foto.")
+                return None
+            foto_id_escaneo = db.execute(text("select foto_id from scan_runs where id = :s"),
+                                         {"s": scan_run_id}).scalar()
+            j = jornada_bloqueada(db, fila.id)
+            try:
+                d = _designar(db, j, foto_id_escaneo, scan_run_id)
+            except ErrorProceso as e:
+                _omitir_auto(db, f"jornada:{j.id}", str(e))
+                return None
+            if d.avisos:
+                _omitir_auto(db, f"jornada:{j.id}", " · ".join(d.avisos))
+                return None
+            j.foto_id, j.scan_run_id = d.foto_id, d.scan_run_id
+            auditar(db, "proceso.foto", f"jornada:{j.id}",
+                    {"foto_id": d.foto_id, "scan_run_id": d.scan_run_id, "plan_b": d.plan_b,
+                     "auto": True}, None)
+            db.commit()
+            return _salida(j, d, cambiada=True)
+    except Exception as e:
+        auditar_fallo(fabrica, "foto.auto", f"escaneo:{scan_run_id}", e, None)
+        return None
