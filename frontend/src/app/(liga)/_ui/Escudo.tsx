@@ -71,6 +71,13 @@ export interface EscudoProps {
   tamano?: number;
 }
 
+/** El glifo de casa alpha («α») es una minúscula sin astil: a igual fontSize se ve más pequeño
+ *  que Ω (mayúscula, altura de caja completa) y λ (con astil ascendente). Se compensa solo aquí,
+ *  por glifo, sin tocar los otros dos ni pasar a mayúscula «Α» (DESIGN.md, feedback de Manuel). */
+const AJUSTE_GLIFO: Record<string, { escala: number; dy: number }> = {
+  α: { escala: 1.22, dy: 0.6 },
+};
+
 export function Escudo({ valor, etiqueta, tamano = 34 }: EscudoProps) {
   const id = useId();
   const d = FORMAS[valor.forma] ?? FORMAS.circulo;
@@ -80,6 +87,7 @@ export function Escudo({ valor, etiqueta, tamano = 34 }: EscudoProps) {
   const tintaIniciales = claro ? "#111315" : "#FFFFFF";
   const haloIniciales = claro ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.4)";
   const ini = (valor.iniciales || "").slice(0, 2);
+  const ajuste = AJUSTE_GLIFO[ini];
 
   return (
     <svg
@@ -120,12 +128,12 @@ export function Escudo({ valor, etiqueta, tamano = 34 }: EscudoProps) {
       {ini && (
         <text
           x={20}
-          y={21.5}
+          y={21.5 + (ajuste?.dy ?? 0)}
           textAnchor="middle"
           dominantBaseline="middle"
           fontFamily="var(--font-lg)"
           fontWeight={800}
-          fontSize={ini.length > 1 ? 14 : 19}
+          fontSize={(ini.length > 1 ? 14 : 19) * (ajuste?.escala ?? 1)}
           fill={tintaIniciales}
           stroke={valor.dibujo === "liso" ? "none" : haloIniciales}
           strokeWidth={valor.dibujo === "liso" ? 0 : 3}

@@ -36,7 +36,9 @@ const CALIDAD: Opcion[] = [
 ];
 
 const FORMAS: FormaEscudo[] = ["circulo", "escudo", "hexagono"];
-const DIBUJOS: DibujoEscudo[] = ["liso", "mitades", "diagonal", "franja"];
+// Sin "liso": el escudo del jugador siempre lleva dibujo de dos colores, nunca un círculo plano
+// (brief 27-sep), incluso en el estado inicial (a=b=c=0).
+const DIBUJOS: DibujoEscudo[] = ["mitades", "diagonal", "franja"];
 const NOM1 = ["Foso", "Cauce", "Terreno", "Rumbo", "Margen", "Cierre", "Suelo", "Puerto"];
 const NOM2 = ["ancho", "firme", "limpio", "curtido", "sereno", "corto", "fértil", "seguro"];
 
@@ -154,13 +156,13 @@ export default function Portada() {
 
         <div className="land-crest land-in" style={{ ["--d" as string]: "200ms" }}>
           <div className="land-crest-pop" key={`${ai}-${bi}-${ci}`}>
-            <Escudo valor={escudo} etiqueta={`Escudo de ${nombre}`} tamano={68} />
+            <Escudo valor={escudo} etiqueta={`Escudo de ${nombre}`} tamano={96} />
           </div>
           <p className="land-nombre">{nombre}</p>
         </div>
 
         <div className="land-vs land-in" style={{ ["--d" as string]: "340ms" }}>
-          <Escudo valor={escudo} etiqueta={`Escudo de ${nombre}`} tamano={30} />
+          <Escudo valor={escudo} etiqueta={`Escudo de ${nombre}`} tamano={34} />
           <span className="land-vs-x">contra</span>
           <span className="land-sp">el S&amp;P 500</span>
           <span className="land-rivales" aria-hidden="true">
