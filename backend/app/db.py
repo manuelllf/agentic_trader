@@ -32,7 +32,11 @@ connect_args = (
     {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
 )
 
-engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
+# Las peticiones de IA retienen su conexión durante minutos; con las 5+10 por defecto unas pocas
+# dejaban sin conexión al resto. Los límites de `liga.acceso` acotan cuántas hay a la vez.
+_pool = {} if settings.database_url.startswith("sqlite") else {"pool_size": 10, "max_overflow": 10}
+engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True,
+                       **_pool)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

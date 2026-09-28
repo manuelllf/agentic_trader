@@ -78,6 +78,9 @@ def _reunir(ticker: str, db: Session) -> tuple[str | None, str | None]:
     from app.screener import fundamentals as fund_mod
     from app.screener import macro as macro_mod
 
+    # `gather` y `get_macro` usan las cachés de datos compartidas (una captura suelta en
+    # `fundamentals_snapshot` y el macro en `meta`), las mismas que rellena cualquier escaneo:
+    # no tocan carteras, operaciones ni nada de las salas.
     data, error = fund_mod.gather(ticker, db=db)
     if data is None:
         logger.warning("Lectura de %s: no se pudo reunir sus datos (%s)", ticker, error)

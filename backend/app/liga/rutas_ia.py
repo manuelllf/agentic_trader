@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.liga import estrategias, limites
+from app.liga import acceso, estrategias, limites
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_usuario
 from app.liga.ia import conversor, lectura
@@ -40,7 +40,7 @@ class ConvertirOut(BaseModel):
     usos_tope: int
 
 
-@router.post("/convertir", response_model=ConvertirOut)
+@router.post("/convertir", response_model=ConvertirOut, dependencies=[Depends(acceso.ocupar_ia)])
 def convertir(body: ConvertirIn, ident: Identidad = Depends(require_usuario)) -> ConvertirOut:
     sugerencia, usos = conversor.convertir(ident.uid, body.frase)
     return ConvertirOut(
@@ -105,7 +105,8 @@ def ver_lectura(id: int, db: Session = Depends(db_usuario)) -> LecturaOut:  # no
                       creditos_cobrados=Decimal(0))
 
 
-@router.post("/estrategias/{id}/lecturas", response_model=LecturaCarteraOut)
+@router.post("/estrategias/{id}/lecturas", response_model=LecturaCarteraOut,
+             dependencies=[Depends(acceso.ocupar_ia)])
 def leer_cartera(id: uuid.UUID, body: LecturaIn, ident: Identidad = Depends(require_usuario),  # noqa: A002
                  db: Session = Depends(db_usuario)) -> LecturaCarteraOut:
     """«Leer mi cartera» (solo el dueño): una lectura por cada elegida de su última prueba que

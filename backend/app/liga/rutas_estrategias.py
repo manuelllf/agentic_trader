@@ -36,6 +36,7 @@ router = APIRouter(tags=["liga-estrategias"])
 # Las expuestas y abusables si se piden sin freno: recorren la foto entera cada vez.
 _LIMITE_PRUEBAS = acceso.LimiteFrecuencia(tope=20, ventana_s=60)
 _LIMITE_BUSCAR = acceso.LimiteFrecuencia(tope=30, ventana_s=60)
+_LIMITE_CALCULOS = acceso.LimiteFrecuencia(tope=30, ventana_s=60)
 
 _CAMPOS_ESTRATEGIA = """
     id, nombre, forma, dibujo, color1, color2, iniciales, visibilidad, declara_posiciones,
@@ -433,6 +434,12 @@ def _receta_de(db: Session, estrategia_id: uuid.UUID, dueno: str | None = None) 
     return receta
 
 
+def _exigir_calculo_disponible(uid: str) -> None:
+    """Cada una de estas rutas recorre unas 14.500 empresas: acotadas por usuario."""
+    if not _LIMITE_CALCULOS.permitido(uid):
+        raise HTTPException(429, "Demasiadas consultas seguidas. Espera un poco.")
+
+
 def _seleccionar_con(ctx: estrategias.Contexto, receta: RecetaModelo):  # noqa: ANN202
     respuestas = estrategias.respuestas_sistema(receta.pregunta, ctx.foto_id)
     try:
@@ -441,7 +448,8 @@ def _seleccionar_con(ctx: estrategias.Contexto, receta: RecetaModelo):  # noqa: 
         raise HTTPException(422, " ".join(e.errores)) from e
 
 
-@router.post("/estrategias/{id}/pruebas", response_model=PruebaOut)
+@router.post("/estrategias/{id}/pruebas", response_model=PruebaOut,
+             dependencies=[Depends(acceso.ocupar_ia)])
 def probar(id: uuid.UUID, body: PruebaIn | None = Body(default=None),
           ident: Identidad = Depends(require_usuario),
           db: Session = Depends(db_usuario)) -> PruebaOut:
@@ -509,6 +517,7 @@ def probar(id: uuid.UUID, body: PruebaIn | None = Body(default=None),
 def coste_prueba(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
                  db: Session = Depends(db_usuario)) -> CostePreguntaOut:
     """Cuántas respuestas faltan en caché y el precio en créditos de «Probar con tu pregunta»."""
+    _exigir_calculo_disponible(ident.uid)
     receta = _receta_de(db, id, dueno=ident.uid)
     if not receta.pregunta:
         return CostePreguntaOut(evaluadas=0, en_cache=0, faltan=0, creditos=Decimal(0))
@@ -519,7 +528,9 @@ def coste_prueba(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
 
 
 @router.get("/pruebas/{id}", response_model=PruebaOut)
-def ver_prueba(id: uuid.UUID, db: Session = Depends(db_usuario)) -> PruebaOut:
+def ver_prueba(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
+              db: Session = Depends(db_usuario)) -> PruebaOut:
+    _exigir_calculo_disponible(ident.uid)
     fila = db.execute(text("select id, receta_id, foto_id from liga.pruebas where id = :i"),
                       {"i": id}).one_or_none()
     if fila is None:
@@ -536,7 +547,9 @@ def ver_prueba(id: uuid.UUID, db: Session = Depends(db_usuario)) -> PruebaOut:
 
 
 @router.get("/estrategias/{id}/por-que/{ticker}", response_model=PorQueOut)
-def por_que(id: uuid.UUID, ticker: str, db: Session = Depends(db_usuario)) -> PorQueOut:
+def por_que(id: uuid.UUID, ticker: str, ident: Identidad = Depends(require_usuario),
+            db: Session = Depends(db_usuario)) -> PorQueOut:
+    _exigir_calculo_disponible(ident.uid)
     t = _ticker(ticker)
     receta = _receta_de(db, id)
     ctx = estrategias.foto_y_notas_actuales()

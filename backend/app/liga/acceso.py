@@ -9,13 +9,15 @@ import re
 import threading
 import time
 import uuid
+from collections.abc import Iterator
 
 import httpx
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy import text
 
 from app.config import settings
 from app.db import SessionLocal
+from app.liga.auth import Identidad, require_usuario
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +89,44 @@ class LimiteFrecuencia:
             vivos.append(ahora)
             self._golpes[clave] = vivos
             return True
+
+
+class LimiteSimultaneas:
+    """Peticiones caras (bucles de llamadas a la IA) en marcha a la vez: una por usuario y `total`
+    en todo el servidor. Cada una tiene una conexión de BD y un hilo ocupados durante minutos; sin
+    tope, unas pocas bastan para dejar sin conexiones al resto. En memoria: un solo proceso."""
+
+    def __init__(self, total: int) -> None:
+        self.total = total
+        self._activas: set[str] = set()
+        self._lock = threading.Lock()
+
+    def entrar(self, clave: str) -> None:
+        with self._lock:
+            if clave in self._activas:
+                raise HTTPException(429, "Ya tienes una petición de IA en marcha. Espera a que "
+                                         "termine.")
+            if len(self._activas) >= self.total:
+                raise HTTPException(503, "Hay mucha gente usando la IA ahora mismo. Prueba en "
+                                         "un momento.", headers={"Retry-After": "20"})
+            self._activas.add(clave)
+
+    def salir(self, clave: str) -> None:
+        with self._lock:
+            self._activas.discard(clave)
+
+
+ia_en_marcha = LimiteSimultaneas(total=8)
+
+
+def ocupar_ia(ident: Identidad = Depends(require_usuario)) -> Iterator[None]:
+    """Dependencia de las rutas que encadenan llamadas a la IA (probar con pregunta, convertir,
+    leer la cartera): mientras dura la petición, ese usuario no puede lanzar otra."""
+    ia_en_marcha.entrar(ident.uid)
+    try:
+        yield
+    finally:
+        ia_en_marcha.salir(ident.uid)
 
 
 def ip_cliente(request: Request) -> str:
