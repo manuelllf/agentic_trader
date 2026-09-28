@@ -19,7 +19,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.liga.ia import comun, precios
@@ -131,6 +131,13 @@ def _nueva_llamada(ticker: str, foto_id: int, usuario_id: str | None) -> Lectura
         db.commit()
         db.refresh(lectura)
         return lectura
+    except IntegrityError:
+        # Otra petición generó la misma lectura mientras esta esperaba a la IA: se usa la suya.
+        db.rollback()
+        existente = _de_cache(db, ticker, foto_id)
+        if existente is None:
+            raise
+        return existente
     except Exception:
         db.rollback()
         raise

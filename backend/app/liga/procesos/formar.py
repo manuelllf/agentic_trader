@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -53,6 +54,7 @@ logger = logging.getLogger(__name__)
 
 SPY = precios.REFERENCIA
 _VUELTAS_PRECIOS = 4
+_MIN_CAIDA_FUENTE = 5    # sin cierre para más de esto (y más de un 20 %): la fuente está caída
 
 
 @dataclass
@@ -176,9 +178,15 @@ def rellenar_preguntas(db: Session, ctx: Contexto, fabrica: Fabrica | None = Non
         return
     empresas = {e.ticker: e for e in ctx.empresas}
     for texto, tickers in preguntas.items():
-        ia_pregunta.responder_pendientes(pregunta=texto, foto_id=ctx.foto_id, empresas=empresas,
-                                         candidatas=sorted(tickers), usuario_id=None,
-                                         fabrica=fabrica)
+        try:
+            ia_pregunta.responder_pendientes(pregunta=texto, foto_id=ctx.foto_id,
+                                             empresas=empresas, candidatas=sorted(tickers),
+                                             usuario_id=None, fabrica=fabrica)
+        except HTTPException:
+            # El tope mensual se gastó (o se apagó la IA) a mitad: el resto sigue con la caché.
+            logger.warning("Formar: la IA dejó de estar disponible; el resto de preguntas "
+                           "sigue con lo que hay en caché")
+            return
 
 
 def _mantenidas(db: Session, estrategia_id: uuid.UUID,
@@ -272,6 +280,17 @@ def _precios_y_plan(fabrica: Fabrica, ctx: Contexto) -> tuple[Plan, set[str]]:
             pedidos |= faltan
         with sesion(fabrica) as db:
             nuevos = tickers - datos.con_cierre(db, tickers, ctx.dia_base) - sin_precio
+        if nuevos:
+            # La fuente falla a ratos y `al_dia` lo traga: un segundo intento antes de dar un
+            # valor por sin precio (la jornada, una vez formada, ya no se corrige).
+            with sesion(fabrica) as db:
+                precios.al_dia(db, dict.fromkeys(sorted(nuevos), ctx.dia_base))
+            with sesion(fabrica) as db:
+                nuevos = tickers - datos.con_cierre(db, tickers, ctx.dia_base) - sin_precio
+        if len(nuevos) > max(_MIN_CAIDA_FUENTE, len(tickers) // 5):
+            raise ErrorProceso(
+                f"La fuente de precios no responde para {len(nuevos)} de {len(tickers)} valores: "
+                "no se forma la jornada con tantos huecos. Vuelve a intentarlo en un rato.")
         if SPY in nuevos:
             raise ErrorProceso(f"No hay cierre del S&P (SPY) del {ctx.dia_base}: espera al "
                                "cierre de ese día.")

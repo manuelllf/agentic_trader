@@ -618,3 +618,41 @@ def test_el_interruptor_enciende_el_diario(fabrica, mercado, mundo) -> None:  # 
     assert diario.estado(fabrica)["activo"] is True
     diario.interruptor(False, fabrica)
     assert diario.job(fabrica, martes) is None
+
+
+def test_un_fallo_puntual_de_la_fuente_no_deja_un_valor_sin_precio(fabrica, mercado, mundo,
+                                                                   monkeypatch) -> None:  # noqa: ANN001
+    """Un valor cuya primera descarga falla se reintenta antes de darlo por sin precio: la
+    jornada, una vez formada, ya no se corrige."""
+    ene = mundo["enero"]
+    entregar = mercado.descargar
+    fallos = {"ZQA": 1}                        # ZQA no llega a la primera
+
+    def con_un_fallo(tickers, desde):  # noqa: ANN001, ANN202
+        salida = entregar(tickers, desde)
+        if fallos.get("ZQA") and "ZQA" in salida:
+            fallos["ZQA"] -= 1
+            del salida["ZQA"]
+        return salida
+
+    monkeypatch.setattr(precios, "descargar", con_un_fallo)
+    foto.ejecutar(ene, fabrica=fabrica)
+    hecho = formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    assert hecho["sin_precio"] == ["ZQL"]                     # solo la que de verdad no tiene
+    assert "ZQA" in _inscripciones(fabrica, ene)["lambda"]["pos"]
+
+
+def test_si_la_fuente_esta_caida_no_se_forma_la_jornada(fabrica, mercado, mundo,
+                                                        monkeypatch) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    entregar = mercado.descargar
+
+    def caida(tickers, desde):  # noqa: ANN001, ANN202
+        salida = entregar(tickers, desde)
+        return {t: v for t, v in salida.items() if t == "SPY"}    # solo el SPY llega
+
+    monkeypatch.setattr(precios, "descargar", caida)
+    foto.ejecutar(ene, fabrica=fabrica)
+    with pytest.raises(comun.ErrorProceso, match="fuente de precios no responde"):
+        formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    assert _cuenta(fabrica, "select count(*) from liga.inscripciones") == 0
