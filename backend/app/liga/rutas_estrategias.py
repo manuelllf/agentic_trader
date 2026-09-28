@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.liga import acceso, estrategias
+from app.liga import acceso, estrategias, limites, nombres
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_anon, db_usuario
 from app.liga.ia import comun, moderacion, precios
@@ -241,6 +241,7 @@ def mis_estrategias(db: Session = Depends(db_usuario)) -> list[EstrategiaOut]:
 
 @router.post("/estrategias", response_model=EstrategiaOut, status_code=201)
 def crear_estrategia(body: EstrategiaCrear, db: Session = Depends(db_usuario)) -> EstrategiaOut:
+    body.nombre = nombres.validar_nombre(body.nombre)
     try:
         with db.begin_nested():
             fila = db.execute(text(f"""
@@ -271,6 +272,8 @@ def actualizar_estrategia(id: uuid.UUID, body: EstrategiaPatch,
     cambios = body.model_dump(exclude_unset=True)
     if not cambios:
         raise HTTPException(422, "No hay ningún cambio que guardar.")
+    if "nombre" in cambios:
+        cambios["nombre"] = nombres.validar_nombre(cambios["nombre"])
     set_sql = ", ".join(f"{c} = :{c}" for c in cambios)
     try:
         with db.begin_nested():
@@ -438,6 +441,7 @@ def probar(id: uuid.UUID, body: PruebaIn | None = Body(default=None),
           db: Session = Depends(db_usuario)) -> PruebaOut:
     if not _LIMITE_PRUEBAS.permitido(ident.uid):
         raise HTTPException(429, "Demasiadas pruebas seguidas. Espera un poco.")
+    limites.exigir_prueba_disponible(ident.uid)
     receta = _receta_de(db, id, dueno=ident.uid)
     ctx = estrategias.foto_y_notas_actuales()
 

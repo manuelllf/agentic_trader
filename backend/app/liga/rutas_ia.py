@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.liga import estrategias
+from app.liga import estrategias, limites
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_usuario
 from app.liga.ia import conversor, lectura
@@ -75,6 +75,7 @@ def leer_a_fondo(ticker: str, body: LecturaIn,
                  ident: Identidad = Depends(require_usuario)) -> LecturaOut:
     """Solo de una empresa entre las posiciones actuales o la última prueba del usuario (plan
     §10): el resto, 404, para no convertir esto en un buscador de informes gratis."""
+    limites.exigir_lectura_disponible(ident.uid)
     t = ticker.strip().upper()
     ctx = estrategias.contexto_lectura(ident.uid, t)
     if ctx is None:
@@ -109,6 +110,7 @@ def leer_cartera(id: uuid.UUID, body: LecturaIn, ident: Identidad = Depends(requ
                  db: Session = Depends(db_usuario)) -> LecturaCarteraOut:
     """«Leer mi cartera» (solo el dueño): una lectura por cada elegida de su última prueba que
     no tuviera ya comprada."""
+    limites.exigir_lectura_disponible(ident.uid)
     dueno = db.execute(text("select dueno_id::text as d from liga.estrategias where id = :i"),
                        {"i": id}).one_or_none()
     if dueno is None or dueno.d != ident.uid:

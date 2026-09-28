@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.liga import nombres
 from app.liga.models import Receta as RecetaModelo
 from app.liga.motor.catalogo import CATALOGO, CATALOGO_VERSION, SECTORES_ES, EmpresaFoto
 from app.liga.motor.seleccion import (
@@ -377,7 +378,8 @@ def copiar_estrategia(db: Session, origen_id: uuid.UUID) -> RecetaModelo:
         insert into liga.estrategias (nombre, forma, dibujo, color1, color2, iniciales)
         values (:nombre, :forma, :dibujo, :color1, :color2, :iniciales)
         returning id
-    """), {"nombre": nombre_copia(origen.nombre), "forma": origen.forma, "dibujo": origen.dibujo,
+    """), {"nombre": nombres.validar_nombre(nombre_copia(origen.nombre)), "forma": origen.forma,
+           "dibujo": origen.dibujo,
            "color1": origen.color1, "color2": origen.color2,
            "iniciales": origen.iniciales}).one()
     nueva_receta = RecetaModelo(

@@ -5,13 +5,14 @@ admin). Cada ruta exige admin con 2FA (`require_admin`); lo vigila `test_liga_pu
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from app.liga import rutas_gestion
+from app.liga import copia, rutas_gestion
 from app.liga.auth import Identidad, require_admin
 from app.liga.procesos import cerrar, diario, estado, formar, foto, temporadas
 from app.liga.procesos.comun import ErrorProceso
@@ -140,6 +141,19 @@ def cerrar_vista_previa(body: JornadaIn) -> dict:
 @_procesos.post("/cerrar/ejecutar", dependencies=ADMIN)
 def cerrar_ejecutar(body: JornadaIn, ident: Identidad = Depends(require_admin)) -> dict:
     return _llamar(cerrar.ejecutar, body.jornada_id, actor=ident.uid)
+
+
+# ---- Copia de seguridad del esquema `liga` (plan §8.5 y §14) -------------------------------------
+
+
+@router.get("/copia", dependencies=ADMIN)
+def descargar_copia(ident: Identidad = Depends(require_admin)) -> Response:
+    """Streaming a mano no compensa (el esquema entero pesa MB, no GB, plan §6.2): se genera en
+    memoria y se manda de una vez, como cualquier descarga de admin."""
+    contenido = copia.generar(actor=ident.uid)
+    nombre = f"liga_copia_{datetime.now(UTC):%Y%m%d_%H%M%S}.tar.gz"
+    return Response(content=contenido, media_type="application/gzip",
+                    headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
 
 
 # ---- Usuarios, créditos, ajustes y auditoría (plan F5.5) -----------------------------------------

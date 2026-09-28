@@ -22,11 +22,16 @@ def liga(monkeypatch):  # noqa: ANN001, ANN201
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
+    import app.db as app_db
     from app.liga import db as liga_db
     from app.liga.rutas import router
 
     motor = create_engine(URL.replace("postgresql://", "postgresql+psycopg://", 1))
-    monkeypatch.setattr(liga_db, "SessionLocal", sessionmaker(bind=motor))
+    fabrica = sessionmaker(bind=motor)
+    monkeypatch.setattr(liga_db, "SessionLocal", fabrica)
+    # `exigir_visible` (plan §14) y otros servicios de sistema abren su sesión con
+    # `app.db.SessionLocal` directamente (`fabrica_sistema`), no con la de `app.liga.db`.
+    monkeypatch.setattr(app_db, "SessionLocal", fabrica)
     app = FastAPI()
     app.include_router(router)
     cx = psycopg.connect(URL, autocommit=True)

@@ -11,7 +11,15 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.liga import acceso, cuenta, rutas_estrategias, rutas_ia, rutas_ligas, rutas_publicas
+from app.liga import (
+    acceso,
+    cuenta,
+    limites,
+    rutas_estrategias,
+    rutas_ia,
+    rutas_ligas,
+    rutas_publicas,
+)
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_usuario
 from app.liga.ia import moderacion
@@ -58,7 +66,10 @@ class CambioYo(BaseModel):
 def cambiar_yo(body: CambioYo, ident: Identidad = Depends(require_usuario),
               db: Session = Depends(db_usuario)) -> Yo:
     """Cambiar el alias. Formato, nombres reservados y unicidad los decide la BD; la moderación
-    (lista + modelo) va después: si bloquea, deshace el cambio (misma transacción)."""
+    (lista + modelo) va después: si bloquea, deshace el cambio (misma transacción). El tope
+    persistente (plan §14: 3 cada 30 días) se audita aparte porque `liga.auditoria` le está
+    vetada a `authenticated`."""
+    limites.exigir_cambio_alias_disponible(ident.uid)
     alias = body.alias.strip().lower()
     try:
         with db.begin_nested():
@@ -72,6 +83,7 @@ def cambiar_yo(body: CambioYo, ident: Identidad = Depends(require_usuario),
         if diag is not None and diag.constraint_name == "alias_formato":
             raise HTTPException(422, "De 3 a 20 caracteres: minúsculas, números, _ o punto.") from e
         raise HTTPException(422, "Ese nombre está reservado. Prueba con otro.") from e
+    limites.auditar_cambio_alias(ident.uid, alias)
     return yo(db)
 
 

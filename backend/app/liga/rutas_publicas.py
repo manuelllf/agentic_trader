@@ -13,9 +13,18 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.liga import gestion
 from app.liga.db import db_anon
 
-router = APIRouter(prefix="/publico")
+
+def exigir_visible() -> None:
+    """Interruptor de emergencia (plan §14, `liga.visible`): apagado, lo público responde 503 con
+    un mensaje tranquilo. El admin no pasa por aquí (entra por `/liga/entrar`, sin esta puerta)."""
+    if not gestion.liga_visible():
+        raise HTTPException(503, "La liga está en mantenimiento. Vuelve en un rato.")
+
+
+router = APIRouter(prefix="/publico", dependencies=[Depends(exigir_visible)])
 
 
 class EscudoOut(BaseModel):
@@ -87,6 +96,7 @@ class Portada(BaseModel):
     proxima: JornadaOut | None       # la siguiente que admite inscripciones
     en_juego: JornadaOut | None
     ultima_cerrada: JornadaDetalle | None
+    registro_abierto: bool           # interruptor de emergencia (plan §14, `liga.registro.abierto`)
 
 
 _EQUIPO = """
@@ -188,4 +198,5 @@ def portada(db: Session = Depends(db_anon)) -> Portada:
                          "dia_inicio"),
         en_juego=_jornada(db, "estado = 'formada'", {}, "dia_inicio desc"),
         ultima_cerrada=_detalle(db, cerrada) if cerrada else None,
+        registro_abierto=gestion.registro_abierto(),
     )

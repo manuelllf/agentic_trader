@@ -28,8 +28,33 @@ AJUSTES_CONOCIDOS = frozenset({
     # mensual en dólares que los apaga todos, y el margen objetivo del panel de coste.
     "ia.conversor.activo", "ia.pregunta.activo", "ia.lectura.activo", "ia.moderacion.activo",
     "ia.tope_mensual_usd", "ia.margen_objetivo",
+    # Interruptores de emergencia (plan §14): ausente = comportamiento de hoy (registro abierto,
+    # liga visible). El del diario ya tiene su propia ruta y se queda fuera de esta lista.
+    "liga.registro.abierto", "liga.visible",
 })
 CLAVE_PRO_MENSUAL = "creditos.pro_mensual"
+CLAVE_REGISTRO_ABIERTO = "liga.registro.abierto"
+CLAVE_LIGA_VISIBLE = "liga.visible"
+
+
+def _ajuste_booleano(clave: str, por_defecto: bool) -> bool:
+    """Un ajuste de `liga.ajustes` leído como sistema: RLS solo deja verlo al admin (plan §7.3),
+    y estos dos los consulta cualquier petición pública. Ausente = comportamiento de hoy."""
+    db = fabrica_sistema()
+    try:
+        valor = db.execute(text("select valor from liga.ajustes where clave = :c"),
+                           {"c": clave}).scalar()
+        return por_defecto if valor is None else bool(valor)
+    finally:
+        db.close()
+
+
+def registro_abierto() -> bool:
+    return _ajuste_booleano(CLAVE_REGISTRO_ABIERTO, por_defecto=True)
+
+
+def liga_visible() -> bool:
+    return _ajuste_booleano(CLAVE_LIGA_VISIBLE, por_defecto=True)
 
 
 def conceder_rol(usuario_id: str, rol: str, conceder: bool, actor: str) -> None:

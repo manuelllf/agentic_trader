@@ -7,6 +7,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, get, post } from "@/lib/api";
+import { tokenSesion } from "@/lib/liga/supabase";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type Intento = { cuando: string; ok: boolean; objeto: string | null; detalle: unknown } | null;
 type Jornada = {
@@ -48,6 +51,7 @@ function Liga() {
   const [previa, setPrevia] = useState<unknown>(null);
   const [hecho, setHecho] = useState<unknown>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [copiaOcupado, setCopiaOcupado] = useState(false);
 
   const cargar = useCallback(() => {
     get<Estado>("/liga/admin/procesos/estado").then(setEstado).catch((e) => setFallo(error(e)));
@@ -68,6 +72,27 @@ function Liga() {
       setHecho(await post(`/liga/admin/procesos/${accion.proceso}/ejecutar`, accion.cuerpo, 90_000));
       cargar();
     } catch (e) { setFallo(error(e)); } finally { setOcupado(false); }
+  };
+
+  const descargarCopia = async () => {
+    setCopiaOcupado(true); setFallo("");
+    try {
+      const sesion = await tokenSesion();
+      const token = sesion?.aal === "aal2" ? sesion.token : null;
+      const r = await fetch(`${API_URL}/liga/admin/copia`, {
+        cache: "no-store",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!r.ok) throw new ApiError(`No se pudo generar la copia (${r.status}).`, "http", r.status);
+      const nombre = /filename="([^"]+)"/.exec(r.headers.get("content-disposition") ?? "")?.[1]
+        ?? "liga_copia.tar.gz";
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = nombre;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) { setFallo(error(e)); } finally { setCopiaOcupado(false); }
   };
 
   const interruptor = async () => {
@@ -99,6 +124,11 @@ function Liga() {
             {l.texto}
           </Link>
         ))}
+        <button type="button" onClick={descargarCopia} disabled={copiaOcupado}
+                className="min-h-[40px] rounded-lg px-3 py-2 font-bold text-white disabled:opacity-40"
+                style={{ background: "#2c2c2a" }}>
+          {copiaOcupado ? "Generando copia…" : "Descargar copia de la liga"}
+        </button>
       </section>
 
       {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}

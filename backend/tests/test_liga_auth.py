@@ -120,10 +120,15 @@ def bd(monkeypatch):  # noqa: ANN001, ANN201
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
+    import app.db as app_db
     from app.liga import db as liga_db
 
     motor = create_engine(URL.replace("postgresql://", "postgresql+psycopg://", 1))
-    monkeypatch.setattr(liga_db, "SessionLocal", sessionmaker(bind=motor))
+    fabrica = sessionmaker(bind=motor)
+    monkeypatch.setattr(liga_db, "SessionLocal", fabrica)
+    # Los servicios de sistema (p. ej. `limites`, plan §14) abren su sesión con
+    # `app.db.SessionLocal` directamente (`fabrica_sistema`), no con la de `app.liga.db`.
+    monkeypatch.setattr(app_db, "SessionLocal", fabrica)
     cx = psycopg.connect(URL, autocommit=True)
     creados: list[uuid.UUID] = []
 
@@ -140,6 +145,12 @@ def bd(monkeypatch):  # noqa: ANN001, ANN201
     try:
         yield usuario
     finally:
+        # `liga.auditoria` es de solo añadir (disparador `solo_anadir`): un cambio de alias deja
+        # una fila que sobrevive a la baja del usuario (`actor_id` no lleva FK, plan §15).
+        cx.execute("set session_replication_role = replica")
+        for uid in creados:
+            cx.execute("delete from liga.auditoria where actor_id = %s", (uid,))
+        cx.execute("set session_replication_role = origin")
         for uid in creados:
             cx.execute("delete from auth.users where id = %s", (uid,))
         cx.close()

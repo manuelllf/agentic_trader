@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.liga import acceso, estrategias
+from app.liga import acceso, estrategias, nombres
 from app.liga.procesos.comun import auditar, fabrica_sistema
 
 # Sin ambigüedades (nada de I/O/0/1), igual que el `check` de `codigo` en el SQL.
@@ -45,6 +45,7 @@ def unirse_con_codigo(db: Session, uid: str, codigo: str) -> uuid.UUID:
 
 def crear_liga(db: Session, nombre: str, cupo: int):  # noqa: ANN201 — Row de la BD, como en estrategias.py
     """Nace visible y con el dueño ya dentro (`liga.dueno_se_une`); Pro lo exige `ligas_guarda`."""
+    nombre = nombres.validar_nombre(nombre)
     for _ in range(_INTENTOS_CODIGO):
         codigo = generar_codigo()
         try:
