@@ -656,3 +656,15 @@ def test_si_la_fuente_esta_caida_no_se_forma_la_jornada(fabrica, mercado, mundo,
     with pytest.raises(comun.ErrorProceso, match="fuente de precios no responde"):
         formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
     assert _cuenta(fabrica, "select count(*) from liga.inscripciones") == 0
+
+
+def test_una_cuenta_suspendida_no_se_inscribe_en_la_jornada(fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    with comun.sesion(fabrica) as db:
+        db.execute(text(
+            "delete from liga.roles_usuario where rol = 'usuario' and usuario_id = "
+            "(select dueno_id from liga.estrategias where id = :e)"), {"e": mundo["reglas"]})
+        db.commit()
+    foto.ejecutar(ene, fabrica=fabrica)
+    formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    assert set(_inscripciones(fabrica, ene)) == {"alpha", "omega", "lambda"}

@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.errores import codigo_error, mensaje_interno
 from app.liga import nombres
 from app.liga.models import Receta as RecetaModelo
 from app.liga.motor.catalogo import CATALOGO, CATALOGO_VERSION, SECTORES_ES, EmpresaFoto
@@ -49,6 +50,10 @@ logger = logging.getLogger("app.liga")
 
 # --- Errores de la BD a 4xx en castellano --------------------------------------------------------
 
+# Códigos con que los disparadores y funciones propios hacen `raise exception '...'` (sql/liga):
+# su mensaje está escrito para la persona.
+_SQLSTATE_PROPIOS = {"P0001", "P0002", "23514"}
+
 
 def mapear_error(e: DBAPIError) -> HTTPException:
     """El texto de un `raise exception '...' using errcode = ...` propio (un trigger del plan
@@ -70,7 +75,19 @@ def mapear_error(e: DBAPIError) -> HTTPException:
         logger.warning("Error de BD sin mensaje propio (sqlstate=%s, constraint=%s): %s",
                        sqlstate, constraint, mensaje)
         return HTTPException(422, "Esos datos no son válidos.")
-    return HTTPException(422, mensaje)
+    # Un NOT NULL nativo trae la columna; el `raise exception ... errcode '23502'` de un
+    # disparador propio, no.
+    columna = getattr(diag, "column_name", None) if diag is not None else None
+    if sqlstate in _SQLSTATE_PROPIOS or (sqlstate == "23502" and not columna):
+        return HTTPException(422, mensaje)
+    if sqlstate and sqlstate[:2] in ("22", "23"):    # dato fuera de rango o de formato
+        logger.warning("Dato rechazado por la BD (sqlstate=%s): %s", sqlstate, mensaje)
+        return HTTPException(422, "Esos datos no son válidos.")
+    # Conexión caída, tiempo agotado, sintaxis...: no es algo que la persona pueda corregir ni
+    # debe leer (nombra host, rol o tablas). Se registra con un código y se le da una salida.
+    codigo = codigo_error()
+    logger.error("Error de BD no controlado [%s] (sqlstate=%s): %s", codigo, sqlstate, mensaje)
+    return HTTPException(503, mensaje_interno(codigo))
 
 
 # --- Catálogo para el constructor -----------------------------------------------------------------

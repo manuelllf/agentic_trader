@@ -29,6 +29,7 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
     import app.db as app_db
     from app.liga import auth
     from app.liga import db as liga_db
+    from app.liga.rutas import router as router_liga
     from app.liga.rutas_admin import router as router_admin
     from app.liga.rutas_gestion import router_moderacion
 
@@ -56,6 +57,7 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
         return {"Authorization": f"Bearer {token(uid, aal)}"}
 
     app = FastAPI()
+    app.include_router(router_liga)
     app.include_router(router_admin)
     app.include_router(router_moderacion)
     cliente = TestClient(app)
@@ -446,3 +448,83 @@ def test_moderador_oculta_una_estrategia_reportada(api) -> None:  # noqa: ANN001
 
     cx.execute("delete from liga.reportes where id = %s", (rid,))
     cx.execute("delete from liga.estrategias where id = %s", (eid,))
+
+
+# ---- avisos de error -----------------------------------------------------------------------------
+
+
+def test_aviso_de_error_con_y_sin_sesion_y_el_admin_lo_resuelve(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    jugador = usuario()
+    a2 = cab(admin, aal="aal2")
+    cuerpo = {"codigo": "a1b2c3", "pantalla": "/crear",
+              "mensaje": "Algo ha fallado. (código a1b2c3)",
+              "nota": "Pulsé Guardar", "contexto": {"navegador": "Safari", "ancho": 390}}
+    try:
+        # Sin sesión también se puede avisar.
+        r = cliente.post("/liga/errores", json=cuerpo)
+        assert r.status_code == 201 and r.json() == {"ok": True}
+        # Con sesión queda quién avisó.
+        r = cliente.post("/liga/errores", json={**cuerpo, "codigo": "d4e5f6"}, headers=cab(jugador))
+        assert r.status_code == 201
+
+        # Un usuario normal no los ve; el admin sí, con el alias de quien avisó.
+        assert cliente.get("/liga/admin/errores", headers=cab(jugador)).status_code == 404
+        r = cliente.get("/liga/admin/errores", headers=a2)
+        assert r.status_code == 200
+        por_codigo = {f["codigo"]: f for f in r.json()["filas"]}
+        assert por_codigo["a1b2c3"]["alias"] is None
+        assert por_codigo["d4e5f6"]["alias"] and por_codigo["d4e5f6"]["nota"] == "Pulsé Guardar"
+        assert por_codigo["d4e5f6"]["contexto"]["navegador"] == "Safari"
+
+        aviso = por_codigo["a1b2c3"]["id"]
+        r = cliente.post(f"/liga/admin/errores/{aviso}/resolver", headers=a2)
+        assert r.status_code == 200 and r.json()["estado"] == "resuelto"
+        abiertos = cliente.get("/liga/admin/errores", headers=a2).json()["filas"]
+        codigos = {f["codigo"] for f in abiertos}
+        assert "a1b2c3" not in codigos and "d4e5f6" in codigos
+        assert cliente.post("/liga/admin/errores/999999999/resolver", headers=a2).status_code == 404
+
+        # Datos fuera de límites: 422, no una nota enorme.
+        demasiado = cliente.post("/liga/errores", json={**cuerpo, "mensaje": "x" * 501})
+        assert demasiado.status_code == 422
+    finally:
+        cx.execute("delete from liga.avisos_error where codigo in ('a1b2c3', 'd4e5f6')")
+
+
+def test_los_avisos_de_error_tienen_limite_por_persona(api) -> None:  # noqa: ANN001
+    from app.liga import rutas
+
+    cliente, cab, usuario, cx = api
+    jugador = usuario()
+    rutas._LIMITE_AVISOS._golpes.clear()
+    try:
+        codigos = [cliente.post("/liga/errores", json={"pantalla": "/x", "mensaje": "fallo"},
+                                headers=cab(jugador)).status_code for _ in range(8)]
+        assert codigos[:6] == [201] * 6 and codigos[6:] == [429, 429]
+    finally:
+        rutas._LIMITE_AVISOS._golpes.clear()
+        cx.execute("delete from liga.avisos_error where pantalla = '/x'")
+
+
+# ---- cuentas suspendidas -------------------------------------------------------------------------
+
+
+def test_una_cuenta_suspendida_no_puede_gastar_ia_pero_la_activa_si_entra(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    jugador = usuario()
+    a2 = cab(admin, aal="aal2")
+    peticion = {"frase": "empresas grandes y baratas"}
+
+    r = cliente.post("/liga/convertir", json=peticion, headers=cab(jugador))
+    assert r.status_code != 403                     # activa: la puerta la deja pasar
+    r = cliente.post(f"/liga/admin/usuarios/{jugador}/suspender", json={"suspendido": True},
+                     headers=a2)
+    assert r.status_code == 200
+
+    for ruta, cuerpo in (("/liga/convertir", peticion),
+                         ("/liga/lecturas/AAPL", {"idempotencia": "clave-de-prueba-1"})):
+        r = cliente.post(ruta, json=cuerpo, headers=cab(jugador))
+        assert r.status_code == 403 and "suspendida" in r.json()["detail"], (ruta, r.text)

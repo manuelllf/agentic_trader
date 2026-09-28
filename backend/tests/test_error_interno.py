@@ -24,7 +24,10 @@ def test_un_error_interno_responde_500_con_cabeceras_cors() -> None:
         cliente = TestClient(app, raise_server_exceptions=False)
         r = cliente.get("/__boom", headers={"Origin": origen})
         assert r.status_code == 500
-        assert r.json() == {"detail": "Error interno. Reintenta en un momento."}
+        codigo = r.json()["codigo"]
+        assert len(codigo) == 6
+        assert r.json()["detail"] == f"Algo ha fallado. Puedes reintentarlo o avisarnos. (código {codigo})"
+        assert "fallo de prueba" not in r.text            # nada interno llega a la persona
         assert r.headers.get("access-control-allow-origin") == origen
     finally:
         app.router.routes = [x for x in app.router.routes if getattr(x, "path", "") != "/__boom"]

@@ -14,13 +14,14 @@ from sqlalchemy.orm import Session
 from app.liga import (
     acceso,
     cuenta,
+    gestion,
     limites,
     rutas_estrategias,
     rutas_ia,
     rutas_ligas,
     rutas_publicas,
 )
-from app.liga.auth import Identidad, require_usuario
+from app.liga.auth import Identidad, identidad_opcional, require_usuario
 from app.liga.db import db_usuario
 from app.liga.ia import moderacion
 
@@ -50,6 +51,31 @@ class EntrarIn(BaseModel):
 class Sesion(BaseModel):
     access_token: str
     refresh_token: str
+
+
+class AvisoErrorIn(BaseModel):
+    codigo: str | None = Field(default=None, max_length=20)
+    pantalla: str = Field(min_length=1, max_length=200)
+    mensaje: str = Field(min_length=1, max_length=500)
+    nota: str | None = Field(default=None, max_length=1000)
+    contexto: dict[str, str | int | float | bool | None] = Field(default_factory=dict,
+                                                                  max_length=12)
+
+
+# Sin sesión también se puede avisar (un fallo al entrar es justo cuando más falta hace); el
+# límite por persona o por IP frena el abuso.
+_LIMITE_AVISOS = acceso.LimiteFrecuencia(tope=6, ventana_s=10 * 60)
+
+
+@router.post("/errores", status_code=201)
+def avisar_error(body: AvisoErrorIn, request: Request,
+                 ident: Identidad | None = Depends(identidad_opcional)) -> dict:
+    """«Reportar este error»: deja una nota para el admin, con el código que vio la persona."""
+    if not _LIMITE_AVISOS.permitido(ident.uid if ident else acceso.ip_cliente(request)):
+        raise HTTPException(429, "Ya nos has avisado varias veces. Danos un rato para mirarlo.")
+    gestion.registrar_aviso_error(ident.uid if ident else None, body.codigo, body.pantalla,
+                                  body.mensaje, body.nota, body.contexto)
+    return {"ok": True}
 
 
 @router.post("/entrar", response_model=Sesion)

@@ -126,6 +126,8 @@ _ESTRATEGIAS = text("""
               order by r.creada desc, r.id desc limit 1)) as receta_id
     from liga.estrategias e
     where e.tipo = 'usuario' and e.estado in ('apuntada', 'jugando') and e.dueno_id is not null
+      and exists (select 1 from liga.roles_usuario r
+                  where r.usuario_id = e.dueno_id and r.rol = 'usuario')   -- no suspendida
     order by e.creada, e.id
 """)
 

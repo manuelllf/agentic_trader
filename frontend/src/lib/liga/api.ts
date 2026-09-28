@@ -447,7 +447,9 @@ export type FilaJornadaPublica = {
   puntos: number | null;
 };
 
-export type JornadaDetalle = { jornada: JornadaPublica; filas: FilaJornadaPublica[] };
+export type JornadaDetalle = {
+  jornada: JornadaPublica; total: number; filas: FilaJornadaPublica[];
+};
 
 export type Portada = {
   temporada: TemporadaPublica | null;

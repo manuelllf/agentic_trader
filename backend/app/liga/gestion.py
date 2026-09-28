@@ -12,6 +12,7 @@ no hace falta nada de este módulo para eso.
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import threading
@@ -28,6 +29,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.config import settings
 from app.liga.ia import comun as ia_comun
+from app.liga.models import AvisoError
 from app.liga.procesos.comun import auditar, fabrica_sistema
 
 logger = logging.getLogger(__name__)
@@ -273,6 +275,24 @@ def alta_usuario(email: str, alias: str | None, actor: str) -> dict:
         db.close()
     return {"id": uid, "email": email, "alias": final,
             "alias_aplicado": aplicado or not alias, "clave_temporal": clave}
+
+
+def registrar_aviso_error(usuario_id: str | None, codigo: str | None, pantalla: str, mensaje: str,
+                          nota: str | None, contexto: dict) -> None:
+    """Deja la nota para el admin. Se escribe como sistema porque quien avisa puede no tener
+    sesión; el contexto es técnico y pequeño: si se pasa de tamaño, se descarta antes que romper
+    el aviso."""
+    contexto = {str(k)[:40]: (v[:200] if isinstance(v, str) else v) for k, v in contexto.items()}
+    if len(json.dumps(contexto, default=str)) > 1500:
+        contexto = {}
+    db = fabrica_sistema()
+    try:
+        db.add(AvisoError(codigo=codigo, usuario_id=usuario_id, creado_por=usuario_id,
+                          pantalla=pantalla, mensaje=mensaje, nota=nota, contexto=contexto))
+        db.commit()
+    finally:
+        db.close()
+    logger.warning("Aviso de error [%s] en %s: %s", codigo or "sin código", pantalla, mensaje[:200])
 
 
 def conceder_rol(usuario_id: str, rol: str, conceder: bool, actor: str) -> None:

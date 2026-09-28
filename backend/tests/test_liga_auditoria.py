@@ -19,6 +19,7 @@ pytestmark = pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DA
 #           columna "quién actualizó" o None). None = no le corresponde, con el motivo al lado.
 RASTRO = {
     "ajustes": ("creado", "creado_por", "actualizado", "actualizado_por"),
+    "avisos_error": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "auditoria": ("creada", "actor_id", None, None),  # es su propia bitácora, solo_anadir
     "consentimientos": ("aceptado", "usuario_id", None, None),  # solo_anadir
     "creditos_movimientos": ("creado", "creado_por", None, None),  # solo_anadir

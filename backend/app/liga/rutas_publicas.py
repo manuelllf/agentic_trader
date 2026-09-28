@@ -88,7 +88,13 @@ class FilaJornada(BaseModel):
 
 class JornadaDetalle(BaseModel):
     jornada: JornadaOut
+    total: int                       # inscritas en la jornada; `filas` trae las mejores
     filas: list[FilaJornada]
+
+
+# La portada y la jornada se piden sin sesión y en cada visita: acotadas para que crecer la liga
+# no las haga cada vez más pesadas.
+_TOPE_FILAS_JORNADA = 200
 
 
 class Portada(BaseModel):
@@ -143,9 +149,12 @@ def _detalle(db: Session, j: JornadaOut) -> JornadaDetalle:
         left join liga.resultados r on r.inscripcion_id = i.id
         where i.jornada_id = :j
         order by r.puntos desc nulls last, r.rentabilidad desc nulls last, e.creada
-    """), {"j": j.id}).all()
+        limit :tope
+    """), {"j": j.id, "tope": _TOPE_FILAS_JORNADA}).all()
+    total = db.execute(text("select count(*) from liga.inscripciones where jornada_id = :j"),
+                       {"j": j.id}).scalar_one()
     sp = j.sp_rentabilidad
-    return JornadaDetalle(jornada=j, filas=[
+    return JornadaDetalle(jornada=j, total=total, filas=[
         FilaJornada(equipo=_equipo(f), rentabilidad=f.rentabilidad, puntos=f.puntos,
                     dif_sp=(f.rentabilidad - sp) if f.rentabilidad is not None and sp is not None
                     else None)

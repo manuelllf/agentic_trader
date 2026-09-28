@@ -121,3 +121,17 @@ def require_permiso(permiso: str):  # noqa: ANN201 — fábrica de puertas, como
 
 
 require_moderador = require_permiso("moderacion.revisar")
+
+
+def require_jugador(ident: Identidad = Depends(require_usuario)) -> Identidad:
+    """Quien tiene su cuenta suspendida (sin el rol `usuario`) conserva la sesión pero no puede
+    gastar: lo caro (IA, créditos) pasa por aquí. A diferencia de moderación, se le dice por qué."""
+    from app.liga.db import sesion_como
+
+    with sesion_como(ident) as db:
+        activa = db.execute(text("select liga.authorize(cast('liga.jugar' as liga.permiso))")
+                            ).scalar()
+    if not activa:
+        raise HTTPException(403, "Tu cuenta está suspendida. Si crees que es un error, "
+                                 "escríbenos.")
+    return ident

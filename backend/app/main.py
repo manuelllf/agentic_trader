@@ -25,6 +25,7 @@ from app.api.routes import public_router, router
 from app.auth import auth_enabled, require_auth
 from app.config import settings
 from app.db import init_db
+from app.errores import codigo_error, mensaje_interno
 from app.liga.filtro_logs import instalar as instalar_filtro_logs
 from app.liga.filtro_logs import instalar_en_uvicorn as instalar_filtro_logs_uvicorn
 from app.liga.rutas import router as liga_router
@@ -174,9 +175,10 @@ async def _log_peticiones_lentas(request: Request, call_next):  # noqa: ANN001, 
     try:
         respuesta = await call_next(request)
     except Exception:
-        logging.getLogger(__name__).exception("Error no controlado: %s %s", request.method,
-                                              request.url.path)
-        return JSONResponse({"detail": "Error interno. Reintenta en un momento."},
+        codigo = codigo_error()
+        logging.getLogger(__name__).exception("Error no controlado [%s]: %s %s", codigo,
+                                              request.method, request.url.path)
+        return JSONResponse({"detail": mensaje_interno(codigo), "codigo": codigo},
                             status_code=500)
     dur = time.monotonic() - t0
     if dur >= _LENTA_S:

@@ -17,7 +17,7 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.db import SessionLocal
-from app.liga.auth import Identidad, require_usuario
+from app.liga.auth import Identidad, require_jugador
 
 logger = logging.getLogger(__name__)
 
@@ -119,9 +119,10 @@ class LimiteSimultaneas:
 ia_en_marcha = LimiteSimultaneas(total=8)
 
 
-def ocupar_ia(ident: Identidad = Depends(require_usuario)) -> Iterator[None]:
+def ocupar_ia(ident: Identidad = Depends(require_jugador)) -> Iterator[None]:
     """Dependencia de las rutas que encadenan llamadas a la IA (probar con pregunta, convertir,
-    leer la cartera): mientras dura la petición, ese usuario no puede lanzar otra."""
+    leer la cartera): solo cuentas activas y, mientras dura la petición, ese usuario no puede
+    lanzar otra."""
     ia_en_marcha.entrar(ident.uid)
     try:
         yield

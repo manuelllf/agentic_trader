@@ -149,6 +149,23 @@ class ListaReportes(BaseModel):
     filas: list[ReporteOut]
 
 
+class AvisoErrorOut(BaseModel):
+    id: int
+    codigo: str | None
+    alias: str | None        # quién avisó; None si no tenía sesión
+    pantalla: str
+    mensaje: str
+    nota: str | None
+    contexto: dict
+    estado: Literal["abierto", "resuelto"]
+    creado: datetime
+
+
+class ListaAvisosError(BaseModel):
+    total: int
+    filas: list[AvisoErrorOut]
+
+
 class OcultarIn(BaseModel):
     reporte_id: int = Field(gt=0)
 
@@ -278,6 +295,39 @@ def otorgar_creditos(body: CreditoIn, ident: Identidad = Depends(require_admin),
         from liga.creditos_movimientos where usuario_id = :u and idempotencia = :k
     """), {"u": body.usuario_id, "k": body.idempotencia}).one()
     return MovimientoOut(**fila._mapping)
+
+
+# ---- Avisos de error -------------------------------------------------------------------------
+
+_AVISO_CAMPOS = """
+    a.id, a.codigo, p.alias, a.pantalla, a.mensaje, a.nota, a.contexto, a.estado, a.creado
+"""
+
+
+@router_admin.get("/errores", response_model=ListaAvisosError)
+def listar_errores(estado: Literal["abierto", "resuelto"] = "abierto",
+                   desde: int = Query(0, ge=0), cuantos: int = Query(50, ge=1, le=100),
+                   db: Session = Depends(db_usuario)) -> ListaAvisosError:
+    total = db.execute(text("select count(*) from liga.avisos_error where estado = :e"),
+                       {"e": estado}).scalar_one()
+    filas = db.execute(text(f"""
+        select {_AVISO_CAMPOS} from liga.avisos_error a
+        left join liga.perfiles p on p.id = a.usuario_id
+        where a.estado = :e order by a.creado desc offset :desde limit :cuantos
+    """), {"e": estado, "desde": desde, "cuantos": cuantos}).all()
+    return ListaAvisosError(total=total, filas=[AvisoErrorOut(**f._mapping) for f in filas])
+
+
+@router_admin.post("/errores/{id}/resolver", response_model=AvisoErrorOut)
+def resolver_error(id: int, db: Session = Depends(db_usuario)) -> AvisoErrorOut:  # noqa: A002
+    if db.execute(text("update liga.avisos_error set estado = 'resuelto' where id = :i "
+                       "returning id"), {"i": id}).one_or_none() is None:
+        raise HTTPException(404, "No existe ese aviso.")
+    f = db.execute(text(f"""
+        select {_AVISO_CAMPOS} from liga.avisos_error a
+        left join liga.perfiles p on p.id = a.usuario_id where a.id = :i
+    """), {"i": id}).one()
+    return AvisoErrorOut(**f._mapping)
 
 
 # ---- Ajustes ---------------------------------------------------------------------------------

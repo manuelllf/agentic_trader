@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.liga import acceso, estrategias, limites
-from app.liga.auth import Identidad, require_usuario
+from app.liga.auth import Identidad, require_jugador, require_usuario
 from app.liga.db import db_usuario
 from app.liga.ia import conversor, lectura
 from app.liga.ia.conversor import LARGO_FRASE, TOPE_DIARIO
@@ -72,7 +72,7 @@ class LecturaCarteraOut(BaseModel):
 
 @router.post("/lecturas/{ticker}", response_model=LecturaOut)
 def leer_a_fondo(ticker: str, body: LecturaIn,
-                 ident: Identidad = Depends(require_usuario)) -> LecturaOut:
+                 ident: Identidad = Depends(require_jugador)) -> LecturaOut:
     """Solo de una empresa entre las posiciones actuales o la última prueba del usuario (plan
     §10): el resto, 404, para no convertir esto en un buscador de informes gratis."""
     limites.exigir_lectura_disponible(ident.uid)

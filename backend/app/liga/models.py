@@ -372,6 +372,25 @@ class OmegaOperacion(LigaBase):
     actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
+class AvisoError(LigaBase):
+    """Un error que alguien reportó desde la web, con el código que vio. Solo admin."""
+
+    __tablename__ = "avisos_error"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    codigo: Mapped[str | None] = mapped_column(Text)
+    usuario_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    pantalla: Mapped[str] = mapped_column(Text)
+    mensaje: Mapped[str] = mapped_column(Text)
+    nota: Mapped[str | None] = mapped_column(Text)
+    contexto: Mapped[dict] = mapped_column(JSONB, server_default=DB)
+    estado: Mapped[str] = mapped_column(Text, server_default=DB)
+    creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
+
+
 class Reporte(LigaBase):
     __tablename__ = "reportes"
 
