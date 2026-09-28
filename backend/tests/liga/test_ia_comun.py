@@ -188,3 +188,84 @@ def test_reserva_sin_saldo_da_402(entorno) -> None:  # noqa: ANN001
     with pytest.raises(HTTPException) as exc:
         comun.reservar_creditos(uid, Decimal(10), "reserva:sin-saldo")
     assert exc.value.status_code == 402
+
+
+# ---- razon_no_disponible: el motivo que enseña el panel de ajustes al admin (plan §10, F6) ------
+
+
+def test_razon_falta_enable_llm(entorno) -> None:  # noqa: ANN001
+    from app.config import settings
+
+    previo = settings.enable_llm
+    settings.enable_llm = False
+    try:
+        assert comun.razon_no_disponible("conversor") == "Falta ENABLE_LLM en Railway"
+    finally:
+        settings.enable_llm = previo
+
+
+def test_razon_sin_clave_deepseek(entorno) -> None:  # noqa: ANN001
+    from app.config import settings
+
+    previo_llm, previa_key = settings.enable_llm, settings.deepseek_api_key
+    settings.enable_llm, settings.deepseek_api_key = True, ""
+    try:
+        assert comun.razon_no_disponible("conversor") == "Sin clave de DeepSeek"
+    finally:
+        settings.enable_llm, settings.deepseek_api_key = previo_llm, previa_key
+
+
+def test_razon_sin_clave_jev(entorno) -> None:  # noqa: ANN001
+    from app.config import settings
+
+    previo_llm, previa_key = settings.enable_llm, settings.typesafe_api_key
+    settings.enable_llm, settings.typesafe_api_key = True, ""
+    try:
+        assert comun.razon_no_disponible("pregunta") == "Sin clave de Jev"
+    finally:
+        settings.enable_llm, settings.typesafe_api_key = previo_llm, previa_key
+
+
+def test_razon_apagado_aqui(entorno) -> None:  # noqa: ANN001
+    from app.config import settings
+
+    _cx, _usuario = entorno
+    previo_llm, previa_key = settings.enable_llm, settings.deepseek_api_key
+    settings.enable_llm, settings.deepseek_api_key = True, "sk-lo-que-sea"
+    try:
+        # Sin fila en `liga.ajustes`: el interruptor de la finalidad está ausente = apagado.
+        assert comun.razon_no_disponible("conversor") == "Apagado aquí"
+    finally:
+        settings.enable_llm, settings.deepseek_api_key = previo_llm, previa_key
+
+
+def test_razon_tope_del_mes_alcanzado(entorno) -> None:  # noqa: ANN001
+    from app.config import settings
+
+    cx, _usuario = entorno
+    cx.execute("insert into liga.ajustes (clave, valor) values ('ia.conversor.activo', 'true')")
+    cx.execute("insert into liga.ajustes (clave, valor) values ('ia.tope_mensual_usd', '0.01')")
+    cx.execute("""
+        insert into llm_call (at, stage, model, prompt_cache_hit_tokens,
+                              prompt_cache_miss_tokens, completion_tokens, cost_usd, ok)
+        values (now(), 'liga_conversor', 'deepseek-flash', 0, 100, 50, 0.02, true)
+    """)
+    previo_llm, previa_key = settings.enable_llm, settings.deepseek_api_key
+    settings.enable_llm, settings.deepseek_api_key = True, "sk-lo-que-sea"
+    try:
+        assert comun.razon_no_disponible("conversor") == "Tope del mes alcanzado"
+    finally:
+        settings.enable_llm, settings.deepseek_api_key = previo_llm, previa_key
+
+
+def test_razon_ninguna_cuando_funciona(entorno) -> None:  # noqa: ANN001
+    from app.config import settings
+
+    cx, _usuario = entorno
+    cx.execute("insert into liga.ajustes (clave, valor) values ('ia.conversor.activo', 'true')")
+    previo_llm, previa_key = settings.enable_llm, settings.deepseek_api_key
+    settings.enable_llm, settings.deepseek_api_key = True, "sk-lo-que-sea"
+    try:
+        assert comun.razon_no_disponible("conversor") is None
+    finally:
+        settings.enable_llm, settings.deepseek_api_key = previo_llm, previa_key

@@ -206,6 +206,123 @@ def test_ajustes_solo_claves_conocidas(api) -> None:  # noqa: ANN001
     cx.execute("delete from liga.ajustes where clave = 'creditos.pro_mensual'")
 
 
+def test_ajustes_trae_metadato_y_efectivo_por_defecto(api) -> None:  # noqa: ANN001
+    """Sin fila guardada: `valor` None, `efectivo` = el `defecto` del catálogo, con su texto."""
+    cliente, cab, usuario, _cx = api
+    admin = usuario(rol="admin")
+    a2 = cab(admin, aal="aal2")
+
+    r = cliente.get("/liga/admin/ajustes", headers=a2)
+    assert r.status_code == 200
+    filas = {f["clave"]: f for f in r.json()}
+    assert set(filas) == {
+        "liga.registro.abierto", "liga.visible", "ia.conversor.activo", "ia.pregunta.activo",
+        "ia.lectura.activo", "ia.moderacion.activo", "ia.tope_mensual_usd", "ia.margen_objetivo",
+        "creditos.pro_mensual",
+    }
+    registro = filas["liga.registro.abierto"]
+    assert registro["valor"] is None and registro["efectivo"] is True
+    assert registro["grupo"] == "Emergencia" and registro["tipo"] == "interruptor"
+    assert registro["titulo"] and registro["ayuda"]
+
+    conversor = filas["ia.conversor.activo"]
+    assert conversor["defecto"] is False and conversor["efectivo"] is False
+
+    margen = filas["ia.margen_objetivo"]
+    assert float(margen["defecto"]) == 3.0 and float(margen["efectivo"]) == 3.0
+
+
+def test_ajustes_valida_por_tipo(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    a2 = cab(admin, aal="aal2")
+
+    r = cliente.put("/liga/admin/ajustes/ia.conversor.activo", json={"valor": "si"}, headers=a2)
+    assert r.status_code == 422 and "interruptor" in r.json()["detail"]
+
+    r = cliente.put("/liga/admin/ajustes/ia.conversor.activo", json={"valor": True}, headers=a2)
+    assert r.status_code == 200 and r.json()["valor"] is True
+
+    r = cliente.put("/liga/admin/ajustes/ia.tope_mensual_usd", json={"valor": -1}, headers=a2)
+    assert r.status_code == 422 and "negativo" in r.json()["detail"]
+
+    r = cliente.put("/liga/admin/ajustes/ia.tope_mensual_usd", json={"valor": "no numero"},
+                    headers=a2)
+    assert r.status_code == 422
+
+    r = cliente.put("/liga/admin/ajustes/ia.tope_mensual_usd", json={"valor": 5}, headers=a2)
+    assert r.status_code == 200 and r.json()["valor"] == 5.0
+
+    cx.execute("delete from liga.ajustes where clave = any(%s)",
+              (["ia.conversor.activo", "ia.tope_mensual_usd"],))
+
+
+def test_ajustes_restablecer_vuelve_al_defecto(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    a2 = cab(admin, aal="aal2")
+
+    r = cliente.put("/liga/admin/ajustes/liga.visible", json={"valor": False}, headers=a2)
+    assert r.status_code == 200 and r.json()["valor"] is False
+
+    r = cliente.delete("/liga/admin/ajustes/liga.visible", headers=a2)
+    assert r.status_code == 200
+    cuerpo = r.json()
+    assert cuerpo["valor"] is None and cuerpo["efectivo"] is True
+
+    fila = cx.execute("select 1 from liga.ajustes where clave = 'liga.visible'").fetchone()
+    assert fila is None
+
+
+# ---- IA: estado real («funciona» o por qué no) ---------------------------------------------------
+
+
+def test_ia_estado_solo_admin(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, _cx = api
+    normal = usuario()
+    admin = usuario(rol="admin")
+
+    assert cliente.get("/liga/admin/ia/estado", headers=cab(normal)).status_code == 404
+    r = cliente.get("/liga/admin/ia/estado", headers=cab(admin, aal="aal2"))
+    assert r.status_code == 200, r.text
+
+
+def test_ia_estado_da_razones(api, monkeypatch) -> None:  # noqa: ANN001
+    from app.config import settings
+
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    a2 = cab(admin, aal="aal2")
+
+    monkeypatch.setattr(settings, "enable_llm", False)
+    r = cliente.get("/liga/admin/ia/estado", headers=a2)
+    assert r.status_code == 200
+    cuerpo = r.json()
+    assert cuerpo["enable_llm"] is False
+    assert all(f["funciona"] is False and f["razon"] == "Falta ENABLE_LLM en Railway"
+              for f in cuerpo["finalidades"])
+
+    monkeypatch.setattr(settings, "enable_llm", True)
+    monkeypatch.setattr(settings, "deepseek_api_key", "")
+    monkeypatch.setattr(settings, "typesafe_api_key", "")
+    r = cliente.get("/liga/admin/ia/estado", headers=a2)
+    cuerpo = r.json()
+    assert cuerpo["deepseek_key_presente"] is False
+    assert cuerpo["typesafe_key_presente"] is False
+    por_finalidad = {f["finalidad"]: f for f in cuerpo["finalidades"]}
+    assert por_finalidad["conversor"]["razon"] == "Sin clave de DeepSeek"
+    assert por_finalidad["pregunta"]["razon"] == "Sin clave de Jev"
+
+    monkeypatch.setattr(settings, "deepseek_api_key", "sk-lo-que-sea")
+    cx.execute("insert into liga.ajustes (clave, valor) values ('ia.conversor.activo', 'true')")
+    r = cliente.get("/liga/admin/ia/estado", headers=a2)
+    por_finalidad = {f["finalidad"]: f for f in r.json()["finalidades"]}
+    assert por_finalidad["conversor"]["funciona"] is True
+    assert por_finalidad["lectura"]["razon"] == "Apagado aquí"
+
+    cx.execute("delete from liga.ajustes where clave = 'ia.conversor.activo'")
+
+
 # ---- auditoría: lo que hicieron las rutas de arriba queda apuntado -------------------------------
 
 

@@ -12,29 +12,141 @@ no hace falta nada de este módulo para eso.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from typing import Any, Literal
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.liga.ia import comun as ia_comun
 from app.liga.procesos.comun import auditar, fabrica_sistema
+
+
+@dataclass(frozen=True)
+class AjusteMeta:
+    """Lo que el panel de ajustes necesita para explicarse solo (feedback de Manuel: los
+    interruptores de hoy no dicen qué hacen ni si van). `defecto` es el valor que usa de verdad
+    la app cuando la clave no está en `liga.ajustes` -- tiene que coincidir con el código real
+    (`gestion.py`/`ia/comun.py`), no es solo decorativo."""
+
+    grupo: Literal["Emergencia", "IA", "Créditos"]
+    titulo: str
+    ayuda: str
+    tipo: Literal["interruptor", "entero", "dolares", "multiplicador"]
+    unidad: str | None
+    minimo: Decimal | None
+    maximo: Decimal | None
+    defecto: Any
+
 
 # Únicas claves de `liga.ajustes` que la ruta genérica de admin deja tocar; el interruptor del
 # diario ya tiene su propia ruta (`/liga/admin/procesos/diario/interruptor`) y se queda ahí.
-AJUSTES_CONOCIDOS = frozenset({
-    "creditos.pro_mensual",
-    # IA de la liga (plan §10, F6): un interruptor por finalidad (ausente = apagado), el tope
-    # mensual en dólares que los apaga todos, y el margen objetivo del panel de coste.
-    "ia.conversor.activo", "ia.pregunta.activo", "ia.lectura.activo", "ia.moderacion.activo",
-    "ia.tope_mensual_usd", "ia.margen_objetivo",
+CATALOGO: dict[str, AjusteMeta] = {
     # Interruptores de emergencia (plan §14): ausente = comportamiento de hoy (registro abierto,
     # liga visible). El del diario ya tiene su propia ruta y se queda fuera de esta lista.
-    "liga.registro.abierto", "liga.visible",
-})
+    "liga.registro.abierto": AjusteMeta(
+        grupo="Emergencia", titulo="Registro de nuevos usuarios",
+        ayuda="Deja que se registre gente nueva en la liga. Apagado: nadie nuevo puede "
+              "registrarse (los que ya están, siguen jugando).",
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True),
+    "liga.visible": AjusteMeta(
+        grupo="Emergencia", titulo="Liga visible sin iniciar sesión",
+        ayuda="Enseña la liga a quien no ha iniciado sesión. Apagado: solo se ve iniciando "
+              "sesión.",
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True),
+    # IA de la liga (plan §10, F6): un interruptor por finalidad (ausente = apagado), el tope
+    # mensual en dólares que los apaga todos, y el margen objetivo del panel de coste.
+    "ia.conversor.activo": AjusteMeta(
+        grupo="IA", titulo="Conversor de frase a reglas",
+        ayuda="Deja convertir una frase en lenguaje natural en reglas de estrategia con IA. "
+              "Apagado: esa conversión no está disponible.",
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=False),
+    "ia.pregunta.activo": AjusteMeta(
+        grupo="IA", titulo="Pregunta a la IA sobre una empresa",
+        ayuda="Deja preguntar a la IA (Jev) sobre una empresa dentro de una prueba. Apagado: "
+              "esa pregunta no está disponible.",
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=False),
+    "ia.lectura.activo": AjusteMeta(
+        grupo="IA", titulo="Lectura de resultados con IA",
+        ayuda="Genera un texto que explica los resultados de una estrategia. Apagado: no se "
+              "genera esa lectura.",
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=False),
+    "ia.moderacion.activo": AjusteMeta(
+        grupo="IA", titulo="Moderación automática con IA",
+        ayuda="Ayuda a revisar con IA el contenido reportado. Apagado: la moderación es solo "
+              "manual.",
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=False),
+    "ia.tope_mensual_usd": AjusteMeta(
+        grupo="IA", titulo="Tope de gasto mensual en IA",
+        ayuda="Si el gasto real del mes en IA llega a este importe, se apagan todas las "
+              "llamadas de IA hasta el mes siguiente. Sin valor: no hay tope.",
+        tipo="dolares", unidad="$/mes", minimo=Decimal(0), maximo=None, defecto=None),
+    "ia.margen_objetivo": AjusteMeta(
+        grupo="IA", titulo="Margen objetivo del panel de coste",
+        ayuda="Cuántas veces por encima del coste real se marca una finalidad como rentable en "
+              "el panel de coste. No apaga nada, solo colorea el panel.",
+        tipo="multiplicador", unidad="×", minimo=Decimal(0), maximo=None, defecto=3.0),
+    "creditos.pro_mensual": AjusteMeta(
+        grupo="Créditos", titulo="Créditos mensuales para Pro",
+        ayuda="Créditos que se dan cada mes, en automático, a cada usuario Pro. Sin valor: no "
+              "se da nada todavía.",
+        tipo="dolares", unidad="créditos/mes", minimo=Decimal(0), maximo=None, defecto=None),
+}
+AJUSTES_CONOCIDOS = frozenset(CATALOGO)
 CLAVE_PRO_MENSUAL = "creditos.pro_mensual"
 CLAVE_REGISTRO_ABIERTO = "liga.registro.abierto"
 CLAVE_LIGA_VISIBLE = "liga.visible"
+
+
+def restablecer_ajuste(clave: str, actor: str) -> None:
+    """Vuelve una clave a su valor por defecto borrando la fila. `liga.ajustes` no tiene GRANT
+    de `delete` para `authenticated` (solo `insert`/`update`, plan §7.3 no lo previó) -- como
+    `liga.roles_usuario`, esta escritura pasa por su propia sesión de sistema."""
+    db = fabrica_sistema()
+    try:
+        db.execute(text("delete from liga.ajustes where clave = :c"), {"c": clave})
+        auditar(db, "admin.ajuste.restablecer", clave, {}, actor)
+        db.commit()
+    finally:
+        db.close()
+
+
+def valor_efectivo(clave: str, valor: Any) -> Any:
+    """Lo que la app usa de verdad ahora mismo: el valor guardado, o el `defecto` del catálogo
+    si la clave no está en `liga.ajustes`."""
+    return CATALOGO[clave].defecto if valor is None else valor
+
+
+def validar_ajuste(clave: str, valor: Any) -> Any:
+    """Valor normalizado listo para `jsonb`, o levanta `ValueError` con el mensaje en español
+    que ve el admin (la ruta lo convierte en 422)."""
+    meta = CATALOGO[clave]
+    if meta.tipo == "interruptor":
+        if not isinstance(valor, bool):
+            raise ValueError(f"«{meta.titulo}» es un interruptor: manda true o false.")
+        return valor
+    if meta.tipo == "entero":
+        if not isinstance(valor, int) or isinstance(valor, bool):
+            raise ValueError(f"«{meta.titulo}» tiene que ser un número entero.")
+        if meta.minimo is not None and valor < meta.minimo:
+            raise ValueError(f"«{meta.titulo}» no puede ser menor que {meta.minimo}.")
+        if meta.maximo is not None and valor > meta.maximo:
+            raise ValueError(f"«{meta.titulo}» no puede ser mayor que {meta.maximo}.")
+        return valor
+    # "dolares" / "multiplicador": decimal >= 0 con 2 decimales.
+    if isinstance(valor, bool):
+        raise ValueError(f"«{meta.titulo}» tiene que ser un número.")
+    try:
+        decimal_valor = Decimal(str(valor)).quantize(Decimal("0.01"))
+    except InvalidOperation as e:
+        raise ValueError(f"«{meta.titulo}» tiene que ser un número.") from e
+    if decimal_valor < (meta.minimo or Decimal(0)):
+        raise ValueError(f"«{meta.titulo}» no puede ser negativo.")
+    if meta.maximo is not None and decimal_valor > meta.maximo:
+        raise ValueError(f"«{meta.titulo}» no puede ser mayor que {meta.maximo}.")
+    return float(decimal_valor)
 
 
 def _ajuste_booleano(clave: str, por_defecto: bool) -> bool:
@@ -192,6 +304,41 @@ def coste_ia(mes: date) -> dict:
             "total_cobrado_usd": total_cobrado,
             "tope_mensual_usd": Decimal(str(tope_mensual)) if tope_mensual is not None else None,
             "margen_objetivo": margen_objetivo,
+        }
+    finally:
+        db.close()
+
+
+# ---- Estado real de la IA (plan §10, F6): «si va o no va», visto desde /liga/admin/ajustes ---
+
+
+def estado_ia() -> dict:
+    """El estado que de verdad usa la app ahora mismo, no lo que hay guardado: `ENABLE_LLM` de
+    este despliegue, si las claves de proveedor están puestas (nunca su valor), el gasto del mes
+    frente al tope y, por finalidad, si funciona y por qué no si no funciona -- reusa
+    `ia.comun.razon_no_disponible`, no duplica la lógica."""
+    from app.config import settings
+
+    db = fabrica_sistema()
+    try:
+        gastado = db.execute(text("""
+            select coalesce(sum(cost_usd), 0) from llm_call
+            where stage = any(:etapas) and at >= date_trunc('month', now())
+        """), {"etapas": [s for s, _ in _FINALIDADES_COSTE.values()]}).scalar_one()
+        tope = db.execute(text("select valor from liga.ajustes where clave = :c"),
+                          {"c": CLAVE_TOPE_MENSUAL}).scalar()
+        finalidades = [
+            {"finalidad": f, "funciona": (razon := ia_comun.razon_no_disponible(f)) is None,
+             "razon": razon}
+            for f in _FINALIDADES_COSTE
+        ]
+        return {
+            "enable_llm": settings.enable_llm,
+            "deepseek_key_presente": settings.llm_api_key_present,
+            "typesafe_key_presente": bool(settings.typesafe_api_key),
+            "gasto_mes_usd": Decimal(str(gastado)),
+            "tope_mensual_usd": Decimal(str(tope)) if tope is not None else None,
+            "finalidades": finalidades,
         }
     finally:
         db.close()

@@ -52,10 +52,20 @@ def _clave_interruptor(finalidad: str) -> str:
     return f"ia.{finalidad}.activo"
 
 
-def verificar_disponible(finalidad: str, fabrica: Fabrica | None = None) -> None:
-    """503 si el LLM no está activo en este despliegue, si el interruptor de la finalidad está
-    apagado (ausente = apagado) o si el tope mensual ya se ha gastado. Se consulta como sistema:
-    `liga.ajustes` solo lo lee el admin por RLS, y esta finalidad la piden usuarios normales.
+# Finalidad → clave del proveedor que usa de verdad (`pregunta` es Jev/TypeSafe, el resto
+# DeepSeek vía `llm_api_key_present`); lo usa `razon_no_disponible` y el panel de ajustes.
+def _clave_presente(finalidad: str) -> bool:
+    from app.config import settings
+
+    if finalidad == "pregunta":
+        return bool(settings.typesafe_api_key)
+    return settings.llm_api_key_present
+
+
+def razon_no_disponible(finalidad: str, fabrica: Fabrica | None = None) -> str | None:
+    """`None` si la finalidad funciona ahora mismo; si no, el motivo en español (el mismo texto
+    que enseña el panel de ajustes al admin). Única fuente de verdad: `verificar_disponible` y
+    la ruta `/liga/admin/ia/estado` llaman aquí en vez de duplicar la lógica.
 
     `fabrica`: por defecto la del sistema (`app.db.SessionLocal`, igual en producción a la que
     usan los procesos); un proceso con su PROPIA fábrica (tests, savepoints) la pasa para leer
@@ -63,25 +73,37 @@ def verificar_disponible(finalidad: str, fabrica: Fabrica | None = None) -> None
     from app.config import settings
 
     if not settings.enable_llm:
-        raise HTTPException(503, "Esta función de IA está apagada ahora mismo.")
+        return "Falta ENABLE_LLM en Railway"
+    if not _clave_presente(finalidad):
+        return "Sin clave de Jev" if finalidad == "pregunta" else "Sin clave de DeepSeek"
     db = (fabrica or fabrica_sistema)()
     try:
         activo = db.execute(text("select valor from liga.ajustes where clave = :c"),
                             {"c": _clave_interruptor(finalidad)}).scalar()
         if not activo:
-            raise HTTPException(503, "Esta función de IA está apagada ahora mismo.")
+            return "Apagado aquí"
         tope = db.execute(text("select valor from liga.ajustes where clave = :c"),
                           {"c": _CLAVE_TOPE}).scalar()
         if tope is None:
-            return
+            return None
         gastado = db.execute(text("""
             select coalesce(sum(cost_usd), 0) from llm_call
             where stage = any(:etapas) and at >= date_trunc('month', now())
         """), {"etapas": list(_STAGE.values())}).scalar_one()
         if float(gastado) >= float(tope):
-            raise HTTPException(503, "Esta función de IA está apagada ahora mismo.")
+            return "Tope del mes alcanzado"
+        return None
     finally:
         db.close()
+
+
+def verificar_disponible(finalidad: str, fabrica: Fabrica | None = None) -> None:
+    """503 si el LLM no está activo en este despliegue, si falta la clave del proveedor, si el
+    interruptor de la finalidad está apagado (ausente = apagado) o si el tope mensual ya se ha
+    gastado. Se consulta como sistema: `liga.ajustes` solo lo lee el admin por RLS, y esta
+    finalidad la piden usuarios normales."""
+    if razon_no_disponible(finalidad, fabrica) is not None:
+        raise HTTPException(503, "Esta función de IA está apagada ahora mismo.")
 
 
 def llamar_ia(*, finalidad: str, usuario_id: str | None, modelo: str, system: str, user: str,

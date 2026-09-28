@@ -106,6 +106,20 @@ export async function put<T>(path: string, body?: unknown, timeoutMs?: number): 
   return res.json() as Promise<T>;
 }
 
+/** Como `post()` pero DELETE — mismo manejo de 401 y de `detail` de error. */
+export async function del<T>(path: string): Promise<T> {
+  const res = await request(path, { method: "DELETE" });
+  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new ApiError(
+      (detail as { detail?: string }).detail ?? `La operación falló (${res.status}).`,
+      "http", res.status,
+    );
+  }
+  return res.json() as Promise<T>;
+}
+
 /** Como `post()` pero multipart (subida de fichero) — sin `Content-Type` a mano, el navegador
  *  pone el boundary. */
 async function postFile<T>(path: string, field: string, file: File): Promise<T> {

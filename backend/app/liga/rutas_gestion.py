@@ -90,8 +90,17 @@ class AjusteIn(BaseModel):
 
 class AjusteOut(BaseModel):
     clave: str
+    grupo: Literal["Emergencia", "IA", "Créditos"]
+    titulo: str
+    ayuda: str
+    tipo: Literal["interruptor", "entero", "dolares", "multiplicador"]
+    unidad: str | None
+    minimo: Decimal | None
+    maximo: Decimal | None
+    defecto: Any
     valor: Any
-    actualizado: datetime
+    efectivo: Any
+    actualizado: datetime | None
     actualizado_por: str | None
 
 
@@ -250,13 +259,31 @@ def otorgar_creditos(body: CreditoIn, ident: Identidad = Depends(require_admin),
 # ---- Ajustes ---------------------------------------------------------------------------------
 
 
+def _ajuste_out(clave: str, valor: Any, actualizado: datetime | None,
+               actualizado_por: str | None) -> AjusteOut:
+    meta = gestion.CATALOGO[clave]
+    return AjusteOut(
+        clave=clave, grupo=meta.grupo, titulo=meta.titulo, ayuda=meta.ayuda, tipo=meta.tipo,
+        unidad=meta.unidad, minimo=meta.minimo, maximo=meta.maximo, defecto=meta.defecto,
+        valor=valor, efectivo=gestion.valor_efectivo(clave, valor), actualizado=actualizado,
+        actualizado_por=actualizado_por)
+
+
 @router_admin.get("/ajustes", response_model=list[AjusteOut])
 def listar_ajustes(db: Session = Depends(db_usuario)) -> list[AjusteOut]:
     filas = db.execute(text("""
         select clave, valor, actualizado, actualizado_por::text as actualizado_por
         from liga.ajustes where clave = any(:claves)
     """), {"claves": list(gestion.AJUSTES_CONOCIDOS)}).all()
-    return [AjusteOut(**f._mapping) for f in filas]
+    guardadas = {f.clave: f for f in filas}
+    salida = []
+    for clave in gestion.CATALOGO:
+        f = guardadas.get(clave)
+        if f is None:
+            salida.append(_ajuste_out(clave, None, None, None))
+        else:
+            salida.append(_ajuste_out(clave, f.valor, f.actualizado, f.actualizado_por))
+    return salida
 
 
 @router_admin.put("/ajustes/{clave}", response_model=AjusteOut)
@@ -264,6 +291,10 @@ def actualizar_ajuste(clave: str, body: AjusteIn, ident: Identidad = Depends(req
                      db: Session = Depends(db_usuario)) -> AjusteOut:
     if clave not in gestion.AJUSTES_CONOCIDOS:
         raise HTTPException(422, "Esa clave no se gestiona desde aquí.")
+    try:
+        valor = gestion.validar_ajuste(clave, body.valor)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
     try:
         with db.begin_nested():
             fila = db.execute(text("""
@@ -273,10 +304,43 @@ def actualizar_ajuste(clave: str, body: AjusteIn, ident: Identidad = Depends(req
                   set valor = excluded.valor, actualizado = now(),
                       actualizado_por = excluded.actualizado_por
                 returning clave, valor, actualizado, actualizado_por::text as actualizado_por
-            """), {"c": clave, "v": json.dumps(body.valor), "a": ident.uid}).one()
+            """), {"c": clave, "v": json.dumps(valor), "a": ident.uid}).one()
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
-    return AjusteOut(**fila._mapping)
+    return _ajuste_out(fila.clave, fila.valor, fila.actualizado, fila.actualizado_por)
+
+
+@router_admin.delete("/ajustes/{clave}", response_model=AjusteOut)
+def restablecer_ajuste(clave: str, ident: Identidad = Depends(require_admin)) -> AjusteOut:
+    """Vuelve al valor por defecto: borra la fila (no la deja en null; `valor` no admite null)."""
+    if clave not in gestion.AJUSTES_CONOCIDOS:
+        raise HTTPException(422, "Esa clave no se gestiona desde aquí.")
+    gestion.restablecer_ajuste(clave, ident.uid)
+    return _ajuste_out(clave, None, None, None)
+
+
+# ---- Estado real de la IA (plan §10, F6) ------------------------------------------------------
+
+
+class FinalidadEstadoOut(BaseModel):
+    finalidad: Literal["conversor", "pregunta", "lectura", "moderacion"]
+    funciona: bool
+    razon: str | None
+
+
+class EstadoIAOut(BaseModel):
+    enable_llm: bool
+    deepseek_key_presente: bool
+    typesafe_key_presente: bool
+    gasto_mes_usd: Decimal
+    tope_mensual_usd: Decimal | None
+    finalidades: list[FinalidadEstadoOut]
+
+
+@router_admin.get("/ia/estado", response_model=EstadoIAOut,
+                  dependencies=[Depends(require_admin)])
+def ia_estado() -> EstadoIAOut:
+    return EstadoIAOut(**gestion.estado_ia())
 
 
 # ---- Coste de IA (plan §10 y §16, F6.5) ---------------------------------------------------------
