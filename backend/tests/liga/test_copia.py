@@ -109,7 +109,7 @@ def test_copia_restaura_con_las_mismas_filas_por_tabla(bd_origen, tmp_path) -> N
         volcado_auth = _en_contenedor("pg_dump", "-U", "postgres", "-d", "postgres",
                                       "--schema=auth", "--no-owner", "--no-privileges")
         volcado_auth = "\n".join(
-            linea for linea in volcado_auth.splitlines() if "liga_alta_usuario" not in linea)
+            linea for linea in volcado_auth.splitlines() if "EXECUTE FUNCTION liga." not in linea)
         _en_contenedor("psql", "-U", "postgres", "-d", bd_nueva, "-v", "ON_ERROR_STOP=1",
                        entrada=volcado_auth)
         for numero in range(1, copia.VERSION_ESQUEMA + 1):

@@ -27,7 +27,6 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import precios
-from app.liga import gestion
 from app.liga.ia import comun as ia_comun
 from app.liga.ia import pregunta as ia_pregunta
 from app.liga.models import Inscripcion, Jornada, Posicion, Receta
@@ -387,26 +386,11 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
     j.estado = "formada"
     db.execute(text("update liga.temporadas set estado = 'en_juego' "
                     "where id = :t and estado = 'programada'"), {"t": j.temporada_id})
-    # Aislado con un savepoint propio: un fallo aquí (dato corrupto en `liga.ajustes`,
-    # restricción inesperada) no debe tirar abajo TODA la formación de la jornada -- solo afecta
-    # al reparto de créditos gratuitos mensuales, se ve auditado y se puede repetir a mano
-    # (`dar_creditos_pro_mensual` es idempotente por jornada).
-    try:
-        with db.begin_nested():
-            pro_mensual = gestion.dar_creditos_pro_mensual(db, j.id, actor)
-    except Exception as exc:
-        logger.warning("Jornada %s: no se pudieron dar los créditos Pro del mes", j.id,
-                       exc_info=True)
-        pro_mensual = {"dado": False, "motivo": "fallo al conceder créditos Pro (ver auditoría)"}
-        with db.begin_nested():
-            auditar(db, "proceso.formar.pro_mensual.fallo", f"jornada:{j.id}",
-                    {"error": str(exc)[:500]}, actor)
     auditar(db, "proceso.formar", f"jornada:{j.id}",
             {"inscripciones": len(entradas), "omitidas": len(plan.omitidas),
              "sin_precio": sorted(sin_precio),
              "casa": {c.clave: c.motivo for c in plan.casa.values()}}, actor)
     db.commit()
     return para_json({"jornada_id": j.id, "estado": j.estado, "inscripciones": len(entradas),
-                      "sin_precio": sorted(sin_precio), "plan_b": ctx.plan_b,
-                      "pro_mensual": pro_mensual, **_resumen(plan)})
+                      "sin_precio": sorted(sin_precio), "plan_b": ctx.plan_b, **_resumen(plan)})
 

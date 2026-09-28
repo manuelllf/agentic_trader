@@ -3,7 +3,7 @@
 // Auditoría: rastro paginado, filtrable por prefijo de acción (p. ej. «admin.» o «liga.»).
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, get } from "@/lib/api";
 
@@ -24,11 +24,15 @@ function Auditoria() {
   const [lista, setLista] = useState<ListaAuditoria | null>(null);
   const [fallo, setFallo] = useState("");
 
+  // Solo vale la última petición lanzada: una respuesta lenta anterior no pisa a la nueva.
+  const ultima = useRef(0);
   const cargar = useCallback((p: string, d: number) => {
     setFallo("");
+    const n = ++ultima.current;
     const q = new URLSearchParams({ accion_prefix: p, desde: String(d), cuantos: String(CUANTOS) });
     get<ListaAuditoria>(`/liga/admin/auditoria?${q.toString()}`)
-      .then(setLista).catch((e) => setFallo(error(e)));
+      .then((r) => { if (n === ultima.current) setLista(r); })
+      .catch((e) => { if (n === ultima.current) setFallo(error(e)); });
   }, []);
   useEffect(() => { cargar(buscando, desde); }, [cargar, buscando, desde]);
 

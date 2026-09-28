@@ -66,6 +66,7 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["con_bienvenida: deja que las cuentas nuevas reciban el regalo de bienvenida"]
 
 [tool.mypy]
 python_version = "3.12"

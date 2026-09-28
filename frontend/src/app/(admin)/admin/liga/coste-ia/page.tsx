@@ -4,7 +4,7 @@
 // contra lo que cobramos (créditos liquidados a dólares) — cifras contadas, no estimadas.
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, get } from "@/lib/api";
 
@@ -30,9 +30,14 @@ function CosteIAPanel() {
   const [datos, setDatos] = useState<CosteIA | null>(null);
   const [fallo, setFallo] = useState("");
 
+  // Solo vale la última petición lanzada: una respuesta lenta de otro mes no pisa a la nueva.
+  const ultima = useRef(0);
   const cargar = useCallback((m: string) => {
     setDatos(null); setFallo("");
-    get<CosteIA>(`/liga/admin/coste-ia?mes=${m}`).then(setDatos).catch((e) => setFallo(error(e)));
+    const n = ++ultima.current;
+    get<CosteIA>(`/liga/admin/coste-ia?mes=${m}`)
+      .then((r) => { if (n === ultima.current) setDatos(r); })
+      .catch((e) => { if (n === ultima.current) setFallo(error(e)); });
   }, []);
   useEffect(() => cargar(mes), [cargar, mes]);
 

@@ -267,13 +267,13 @@ def test_ajustes_solo_claves_conocidas(api) -> None:  # noqa: ANN001
     admin = usuario(rol="admin")
     a2 = cab(admin, aal="aal2")
 
-    r = cliente.put("/liga/admin/ajustes/creditos.pro_mensual", json={"valor": 2.5}, headers=a2)
+    r = cliente.put("/liga/admin/ajustes/creditos.bienvenida", json={"valor": 2.5}, headers=a2)
     assert r.status_code == 200 and r.json()["valor"] == 2.5
 
     r = cliente.put("/liga/admin/ajustes/lo.que.sea", json={"valor": True}, headers=a2)
     assert r.status_code == 422
 
-    cx.execute("delete from liga.ajustes where clave = 'creditos.pro_mensual'")
+    cx.execute("delete from liga.ajustes where clave = 'creditos.bienvenida'")
 
 
 def test_ajustes_trae_metadato_y_efectivo_por_defecto(api) -> None:  # noqa: ANN001
@@ -288,7 +288,7 @@ def test_ajustes_trae_metadato_y_efectivo_por_defecto(api) -> None:  # noqa: ANN
     assert set(filas) == {
         "liga.registro.abierto", "liga.visible", "ia.conversor.activo", "ia.pregunta.activo",
         "ia.lectura.activo", "ia.moderacion.activo", "ia.tope_mensual_usd", "ia.margen_objetivo",
-        "creditos.pro_mensual", "procesos.foto.auto",
+        "creditos.bienvenida", "procesos.foto.auto",
     }
     registro = filas["liga.registro.abierto"]
     assert registro["valor"] is None and registro["efectivo"] is True

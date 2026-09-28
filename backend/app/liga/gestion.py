@@ -25,7 +25,6 @@ import httpx
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.liga.ia import comun as ia_comun
@@ -98,11 +97,11 @@ CATALOGO: dict[str, AjusteMeta] = {
         ayuda="Cuántas veces por encima del coste real se marca una finalidad como rentable en "
               "el panel de coste. No apaga nada, solo colorea el panel.",
         tipo="multiplicador", unidad="×", minimo=Decimal(0), maximo=None, defecto=3.0),
-    "creditos.pro_mensual": AjusteMeta(
-        grupo="Créditos", titulo="Créditos mensuales para Pro",
-        ayuda="Créditos que se dan cada mes, en automático, a cada usuario Pro. Sin valor: no "
-              "se da nada todavía.",
-        tipo="dolares", unidad="créditos/mes", minimo=Decimal(0), maximo=None, defecto=None),
+    "creditos.bienvenida": AjusteMeta(
+        grupo="Créditos", titulo="Créditos de bienvenida",
+        ayuda="Créditos que recibe una sola vez cada cuenta nueva al crearse. Solo afecta a las "
+              "cuentas que se creen desde ahora; 0 lo apaga.",
+        tipo="dolares", unidad="créditos", minimo=Decimal(0), maximo=None, defecto=15),
     # Foto automática de la jornada (backlog, plan §8/§13): al terminar el escaneo mensual de
     # decisión, designa sola la foto+escaneo de la próxima jornada sin foto. Encendido por
     # defecto; el botón manual sigue de reserva si se apaga o si algo no encaja.
@@ -113,7 +112,6 @@ CATALOGO: dict[str, AjusteMeta] = {
         tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True),
 }
 AJUSTES_CONOCIDOS = frozenset(CATALOGO)
-CLAVE_PRO_MENSUAL = "creditos.pro_mensual"
 CLAVE_REGISTRO_ABIERTO = "liga.registro.abierto"
 CLAVE_LIGA_VISIBLE = "liga.visible"
 CLAVE_FOTO_AUTO = "procesos.foto.auto"
@@ -468,29 +466,3 @@ def estado_ia() -> dict:
     finally:
         db.close()
 
-
-def dar_creditos_pro_mensual(db: Session, jornada_id: int, actor: str | None) -> dict:
-    """Créditos Pro del mes (plan §16), en la misma transacción que forma la jornada: idempotente
-    por usuario y jornada gracias a la propia `cargar_creditos`. Sin importe decidido todavía en
-    `liga.ajustes` (`creditos.pro_mensual`), no da nada — se deja para cuando se fije la cifra.
-
-    Una sola sentencia (set-based): antes era un `for` en Python con un round trip por usuario
-    Pro, dentro del candado `formar` (hallazgo de procesos: escala mal si crecen los usuarios
-    Pro, alarga cuánto tiempo se sostiene el candado)."""
-    importe = db.execute(text("select valor from liga.ajustes where clave = :c"),
-                         {"c": CLAVE_PRO_MENSUAL}).scalar()
-    if importe is None:
-        return {"dado": False, "motivo": "sin importe definido en liga.ajustes"}
-    idem = f"pro_mensual:{jornada_id}"
-    usuarios = db.execute(text("""
-        select u.usuario_id,
-               liga.cargar_creditos(u.usuario_id, cast(:i as numeric), 'pro_mensual', :k)
-        from (
-            select distinct usuario_id from liga.planes_usuario
-            where plan = 'pro' and desde <= now() and (hasta is null or hasta > now())
-        ) u
-    """), {"i": str(importe), "k": idem}).scalars().all()
-    if usuarios:
-        auditar(db, "proceso.formar.pro_mensual", f"jornada:{jornada_id}",
-                {"usuarios": len(usuarios), "importe": str(importe)}, actor)
-    return {"dado": True, "usuarios": len(usuarios), "importe": str(importe)}

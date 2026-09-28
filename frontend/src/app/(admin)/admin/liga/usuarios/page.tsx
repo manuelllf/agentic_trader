@@ -4,7 +4,7 @@
 // están los roles, el plan, el saldo y las escrituras.
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, get, post } from "@/lib/api";
 
@@ -118,11 +118,16 @@ function Usuarios() {
   const [fallo, setFallo] = useState("");
   const [cargando, setCargando] = useState(false);
 
+  // Solo vale la última petición lanzada: una respuesta lenta anterior no pisa a la nueva.
+  const ultima = useRef(0);
   const cargar = useCallback((a: string, d: number) => {
     setCargando(true); setFallo("");
+    const n = ++ultima.current;
     const q = new URLSearchParams({ alias: a, desde: String(d), cuantos: String(CUANTOS) });
     get<ListaUsuarios>(`/liga/admin/usuarios?${q.toString()}`)
-      .then(setLista).catch((e) => setFallo(error(e))).finally(() => setCargando(false));
+      .then((r) => { if (n === ultima.current) setLista(r); })
+      .catch((e) => { if (n === ultima.current) setFallo(error(e)); })
+      .finally(() => { if (n === ultima.current) setCargando(false); });
   }, []);
 
   useEffect(() => { cargar(buscando, desde); }, [cargar, buscando, desde]);
