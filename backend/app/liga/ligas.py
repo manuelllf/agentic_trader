@@ -14,6 +14,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.liga import acceso, estrategias
+from app.liga.procesos.comun import auditar, fabrica_sistema
 
 # Sin ambigüedades (nada de I/O/0/1), igual que el `check` de `codigo` en el SQL.
 _ALFABETO_CODIGO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -59,6 +60,17 @@ def crear_liga(db: Session, nombre: str, cupo: int):  # noqa: ANN201 — Row de 
                 continue
             raise estrategias.mapear_error(e) from e
     raise HTTPException(503, "No se pudo generar un código nuevo. Prueba otra vez.")
+
+
+def auditar_expulsion(liga_id: uuid.UUID, expulsado_id: str, actor: str) -> None:
+    """`liga.auditoria` no tiene INSERT para `authenticated`: se apunta como sistema, aparte de
+    la transacción del delete (RLS ya decidió si procedía)."""
+    db = fabrica_sistema()
+    try:
+        auditar(db, "liga.expulsar", f"liga:{liga_id}", {"expulsado": expulsado_id}, actor)
+        db.commit()
+    finally:
+        db.close()
 
 
 def regenerar_codigo(db: Session, liga_id: uuid.UUID):  # noqa: ANN201 — Row o None

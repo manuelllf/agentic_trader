@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { BarraPestanas, Boton, CabeceraApp, Cargando, ErrorLiga } from "../../_ui";
 import {
-  getYo, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle, type Yo,
+  expulsarDeLiga, getYo, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle, type Yo,
 } from "@/lib/liga/api";
 import { useSupabase } from "@/lib/liga/supabase";
 import { claseSigno, porcentaje } from "@/lib/liga/format";
@@ -76,6 +76,18 @@ export default function PrivadaDetalle() {
     router.push("/privadas");
   }
 
+  async function expulsar(alias: string) {
+    if (!window.confirm(
+      `¿Expulsar a ${alias}? Si no quieres que vuelva, cambia el código.`,
+    )) return;
+    setOcupada(true);
+    setAviso(null);
+    const r = await expulsarDeLiga(id, alias);
+    setOcupada(false);
+    if (typeof r === "string") { setAviso(r); return; }
+    await cargar();
+  }
+
   return (
     <main className="scroll">
       <CabeceraApp plan={yo?.plan} />
@@ -111,6 +123,14 @@ export default function PrivadaDetalle() {
                   <span className="nm">
                     <b>{m.alias}</b>
                     {m.es_yo && <span className="sub"><span className="tag">la tuya</span></span>}
+                    {liga.es_dueno && !m.es_yo && (
+                      <span className="sub">
+                        <Boton variante="discreto" tamano="pequeno" disabled={ocupada}
+                               onClick={() => expulsar(m.alias)}>
+                          Expulsar
+                        </Boton>
+                      </span>
+                    )}
                   </span>
                 </span>
                 <span className={`vs num ${m.dif_sp != null ? claseSigno(m.dif_sp) : "fl"}`}>

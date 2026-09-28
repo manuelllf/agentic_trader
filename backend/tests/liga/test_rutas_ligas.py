@@ -204,6 +204,73 @@ def test_ajeno_no_ve_una_liga_de_la_que_no_es_miembro(api) -> None:  # noqa: ANN
     assert liga["id"] not in {x["id"] for x in mias}
 
 
+def _alias_de(cliente, cab, uid: str, liga_id: str) -> str:  # noqa: ANN001
+    detalle = cliente.get(f"/liga/ligas/{liga_id}", headers=cab(uid)).json()
+    return next(m["alias"] for m in detalle["miembros"] if m["es_yo"])
+
+
+def test_duena_expulsa_a_un_miembro(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario = api
+    duena = usuario(pro=True)
+    liga = cliente.post("/liga/ligas", json={"nombre": "Expulsable"}, headers=cab(duena)).json()
+
+    amigo = usuario(pro=True)
+    cliente.post("/liga/ligas/unirse", json={"codigo": liga["codigo"]}, headers=cab(amigo))
+    alias_amigo = _alias_de(cliente, cab, amigo, liga["id"])
+
+    r = cliente.delete(f"/liga/ligas/{liga['id']}/miembros/{alias_amigo}", headers=cab(duena))
+    assert r.status_code == 204, r.text
+    assert cliente.get(f"/liga/ligas/{liga['id']}", headers=cab(amigo)).status_code == 404
+
+    # Puede volver a unirse con el mismo código: expulsar no lo veta.
+    r = cliente.post("/liga/ligas/unirse", json={"codigo": liga["codigo"]}, headers=cab(amigo))
+    assert r.status_code == 200, r.text
+
+
+def test_expulsar_solo_lo_puede_la_duena_y_no_a_si_misma(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario = api
+    duena = usuario(pro=True)
+    liga = cliente.post("/liga/ligas", json={"nombre": "Blindada"}, headers=cab(duena)).json()
+
+    amigo = usuario(pro=True)
+    cliente.post("/liga/ligas/unirse", json={"codigo": liga["codigo"]}, headers=cab(amigo))
+    alias_duena = _alias_de(cliente, cab, duena, liga["id"])
+
+    # Un miembro cualquiera no puede expulsar a otro (ni siquiera a sí mismo por esta puerta).
+    otro = usuario(pro=True)
+    cliente.post("/liga/ligas/unirse", json={"codigo": liga["codigo"]}, headers=cab(otro))
+    alias_otro = _alias_de(cliente, cab, otro, liga["id"])
+    r = cliente.delete(f"/liga/ligas/{liga['id']}/miembros/{alias_otro}", headers=cab(amigo))
+    assert r.status_code == 404, r.text
+
+    # Ni la dueña se expulsa a sí misma.
+    r = cliente.delete(f"/liga/ligas/{liga['id']}/miembros/{alias_duena}", headers=cab(duena))
+    assert r.status_code == 404, r.text
+
+    # Alias que no existe en la liga: también 404, sin filtrar si el alias existe en otro sitio.
+    r = cliente.delete(f"/liga/ligas/{liga['id']}/miembros/no-existe", headers=cab(duena))
+    assert r.status_code == 404, r.text
+
+
+def test_expulsado_puede_volver_a_unirse_pero_no_tras_rotar_el_codigo(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario = api
+    duena = usuario(pro=True)
+    liga = cliente.post("/liga/ligas", json={"nombre": "Rotada"}, headers=cab(duena)).json()
+
+    amigo = usuario(pro=True)
+    cliente.post("/liga/ligas/unirse", json={"codigo": liga["codigo"]}, headers=cab(amigo))
+    alias_amigo = _alias_de(cliente, cab, amigo, liga["id"])
+    codigo_viejo = liga["codigo"]
+
+    assert cliente.delete(f"/liga/ligas/{liga['id']}/miembros/{alias_amigo}",
+                          headers=cab(duena)).status_code == 204
+    nueva = cliente.post(f"/liga/ligas/{liga['id']}/codigo", headers=cab(duena)).json()
+    assert nueva["codigo"] != codigo_viejo
+
+    r = cliente.post("/liga/ligas/unirse", json={"codigo": codigo_viejo}, headers=cab(amigo))
+    assert r.status_code == 422, r.text
+
+
 def test_solo_la_duena_rota_el_codigo(api) -> None:  # noqa: ANN001
     cliente, cab, usuario = api
     duena = usuario(pro=True)

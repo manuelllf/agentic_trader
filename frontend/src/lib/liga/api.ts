@@ -458,6 +458,12 @@ export async function rotarCodigoLiga(id: string): Promise<LigaResumen | string>
   return llamar<LigaResumen>(`/liga/ligas/${id}/codigo`, { method: "POST" });
 }
 
+export async function expulsarDeLiga(id: string, alias: string): Promise<true | string> {
+  const r = await llamar<undefined>(`/liga/ligas/${id}/miembros/${encodeURIComponent(alias)}`,
+    { method: "DELETE" });
+  return typeof r === "string" ? r : true;
+}
+
 export type MovimientoCredito = { id: number; importe: number; motivo: string; creado: string };
 export type Creditos = { saldo: number; total: number; movimientos: MovimientoCredito[] };
 

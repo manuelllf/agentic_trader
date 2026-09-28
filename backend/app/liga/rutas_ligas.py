@@ -176,6 +176,27 @@ def salir(id: uuid.UUID, db: Session = Depends(db_usuario)) -> None:
         raise HTTPException(404, "No estabas en esa liga.")
 
 
+@router.delete("/ligas/{id}/miembros/{alias}", status_code=204)
+def expulsar(id: uuid.UUID, alias: str, ident: Identidad = Depends(require_usuario),
+            db: Session = Depends(db_usuario)) -> None:
+    """El dueño expulsa a otro miembro. RLS sola dejaría borrar la propia fila por la política de
+    «salir» (aunque sea el dueño): uno mismo se veta a mano, por aquí no. No veta al expulsado:
+    para que no vuelva, el dueño rota el código."""
+    objetivo = db.execute(text("""
+        select m.usuario_id from liga.miembros_liga m
+        join liga.perfiles p on p.id = m.usuario_id
+        where m.liga_id = :i and p.alias = :alias
+    """), {"i": id, "alias": alias}).scalar_one_or_none()
+    if objetivo is None or str(objetivo) == ident.uid:
+        raise HTTPException(404, "No existe ese miembro en tu liga.")
+    fila = db.execute(text(
+        "delete from liga.miembros_liga where liga_id = :i and usuario_id = :u returning usuario_id"),
+        {"i": id, "u": objetivo}).one_or_none()
+    if fila is None:
+        raise HTTPException(404, "No existe ese miembro en tu liga.")
+    ligas.auditar_expulsion(id, str(fila.usuario_id), ident.uid)
+
+
 @router.post("/ligas/{id}/codigo", response_model=LigaResumenOut)
 def rotar_codigo(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
                  db: Session = Depends(db_usuario)) -> LigaResumenOut:
