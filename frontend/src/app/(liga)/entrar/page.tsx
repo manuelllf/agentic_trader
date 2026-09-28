@@ -87,7 +87,7 @@ export default function Entrar() {
         <Link href="/" className="wordmark">liguilla</Link>
       </header>
 
-      <section className="sencilla-cuerpo" aria-labelledby="titular">
+      <section className="sencilla-cuerpo arriba" aria-labelledby="titular">
         {sb === null ? (
           <>
             <h1 id="titular">Entrar</h1>

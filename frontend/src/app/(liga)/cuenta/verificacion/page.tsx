@@ -100,7 +100,7 @@ export default function Verificacion() {
         <Link href="/" className="wordmark">liguilla</Link>
       </header>
 
-      <section className="sencilla-cuerpo" aria-labelledby="titular">
+      <section className="sencilla-cuerpo arriba" aria-labelledby="titular">
         <h1 id="titular">Verificación en dos pasos</h1>
         {sb === null ? (
           <p className="nota">Las cuentas todavía no están abiertas.</p>
