@@ -191,6 +191,30 @@ def test_baja_sin_clave_secreta_responde_503(api, monkeypatch) -> None:  # noqa:
     assert llamadas == []
 
 
+def test_borrar_la_cuenta_retira_y_oculta_sus_estrategias_que_jugaban(api) -> None:  # noqa: ANN001
+    """Sin esto la estrategia huérfana seguiría inscribiéndose cada jornada (y pagando su pregunta)
+    y, si era pública, seguiría enseñando sus reglas a los Pro."""
+    cliente, cab, usuario, existe, borrar_de_verdad, _llamadas, cx, creado = api
+    uid = usuario("baja_juega", pro=True)
+    eid = _crear_estrategia(cliente, cab, uid, "Jugaba", creado)
+    r = cliente.post(f"/liga/estrategias/{eid}/receta", json=RECETA_BASICA, headers=cab(uid))
+    assert r.status_code == 201, r.text
+    borrador = _crear_estrategia(cliente, cab, uid, "Sin apuntar", creado)
+    cx.execute("update liga.estrategias set estado = 'apuntada', visibilidad = 'publicada', "
+               "declara_posiciones = 'no', receta_id = (select max(id) from liga.recetas "
+               "where estrategia_id = %s) where id = %s", (eid, eid))
+
+    borrar_de_verdad(uid)
+    assert not existe(uid)
+
+    jugaba = cx.execute("select estado, visibilidad, dueno_id from liga.estrategias where id = %s",
+                        (eid,)).fetchone()
+    assert jugaba == ("retirada", "privada", None)
+    sin_apuntar = cx.execute("select estado, visibilidad from liga.estrategias where id = %s",
+                             (borrador,)).fetchone()
+    assert sin_apuntar == ("borrador", "privada")
+
+
 def test_baja_feliz_deja_la_estrategia_retirada_y_borra_lo_personal(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, existe, borrar_de_verdad, llamadas, cx, creado = api
     uid = usuario("baja_bien", pro=True)

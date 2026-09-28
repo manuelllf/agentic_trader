@@ -113,6 +113,18 @@ def test_detecta_salida_por_tiempo():
     assert (salida[0] - D0).days >= 90
 
 
+def test_objetivo_cruzado_antes_de_la_sesion_3_tambien_vende():
+    """El objetivo se fija con el retorno a 3 sesiones: si el precio ya lo había cruzado en la
+    sesión 1, se sabe al cuarto cierre y el hueco tiene que salir en ese momento, no quedarse
+    abierto para siempre."""
+    precios = [100, 112, 105, 102, 101, 101, 101, 101]
+    cierres = {"AAA": [Cierre(D0 + timedelta(days=i), p) for i, p in enumerate(precios)]}
+    ops = simular((), [Alerta("AAA", _t(D0), 10)], cierres, D0, D0 + timedelta(days=7))
+    (op,) = ops
+    assert not op.abierta
+    assert (op.salida_dia, op.salida_precio, op.motivo) == (D0 + timedelta(days=1), 112, "objetivo")
+
+
 def test_sin_cuatro_cierres_no_hay_salida_todavia():
     serie = [Cierre(D0, 100), Cierre(D0 + timedelta(days=1), 200)]
     assert detectar_salida(serie, D0, 100, D0 + timedelta(days=1)) is None

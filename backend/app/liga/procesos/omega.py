@@ -46,10 +46,15 @@ def capitalizacion_yfinance(ticker: str) -> Decimal | None:
 def alertas(db: Session, desde: date, hasta: date,
             capitalizacion: Capitalizacion | None = None) -> list[Alerta]:
     """Filas de `momentum_senales` llegadas entre esos días de bolsa (hora de Nueva York). Llegada:
-    `created_at`; sin él, el cierre de `entry_date`. Las descartadas no cuentan."""
+    `created_at`; sin él, el cierre de `entry_date`. Las descartadas no cuentan, ni las señales
+    históricas que el escáner inserta ya resueltas al incorporar un ticker (salieron antes de
+    "llegar"): no son alertas de hoy."""
     filas = db.execute(text("""
         select id, ticker, created_at, entry_date, caida_pct from momentum_senales
         where estado <> 'descartada'
+          and not (resuelta and exit_date is not null and exit_date <
+                   (coalesce(created_at, entry_date::timestamptz)
+                    at time zone 'America/New_York')::date)
           and coalesce(created_at, entry_date::timestamptz) >= :d
           and coalesce(created_at, entry_date::timestamptz) < :h
     """), {"d": datetime.combine(desde - timedelta(days=1), time(0), tzinfo=TZ_BOLSA),

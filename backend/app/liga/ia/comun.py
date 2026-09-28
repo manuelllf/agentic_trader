@@ -278,16 +278,18 @@ def liquidar_creditos(usuario_id: str, importe_reservado: Decimal, importe_real:
     dos veces (cada movimiento lleva su propia idempotencia derivada de ella)."""
     db = fabrica_sistema()
     try:
+        # Primero se devuelve la reserva y luego se cobra: con el saldo justo, cobrar antes
+        # dejaría el saldo por debajo de cero (la reserva ya está restada) y fallaría.
+        db.execute(text(
+            "select liga.cargar_creditos(cast(:u as uuid), cast(:i as numeric), "
+            "'devolucion', :k)"),
+            {"u": usuario_id, "i": str(importe_reservado), "k": f"devolucion:{clave}"})
         db.execute(text(
             "select liga.cargar_creditos(cast(:u as uuid), cast(:i as numeric), :m, :k, "
             "cast(:p as uuid), :l)"),
             {"u": usuario_id, "i": str(-importe_real), "m": motivo_cobro,
              "k": f"{motivo_cobro}:{clave}", "p": str(prueba_id) if prueba_id else None,
              "l": lectura_id})
-        db.execute(text(
-            "select liga.cargar_creditos(cast(:u as uuid), cast(:i as numeric), "
-            "'devolucion', :k)"),
-            {"u": usuario_id, "i": str(importe_reservado), "k": f"devolucion:{clave}"})
         db.commit()
     finally:
         db.close()

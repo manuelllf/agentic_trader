@@ -246,6 +246,45 @@ def test_reintentar_con_la_misma_clave_no_cobra_dos_veces(api) -> None:  # noqa:
     assert saldo == 99
 
 
+def test_misma_clave_con_otra_receta_es_un_gasto_nuevo(api) -> None:  # noqa: ANN001
+    """Reutilizar la clave con otra pregunta no puede lanzar llamadas sin reservar ni cobrar."""
+    cliente, cab, usuario, foto_con_escaneo, cx, llamadas = api
+    foto_con_escaneo()
+    uid = usuario(creditos=100)
+    eid = _crear_con_pregunta(cliente, cab, uid)
+    idem = uuid.uuid4().hex
+    r = cliente.post(f"/liga/estrategias/{eid}/pruebas",
+                     json={"con_pregunta": True, "idempotencia": idem}, headers=cab(uid))
+    assert r.status_code == 200, r.text
+
+    otra = {**RECETA_CON_PREGUNTA, "pregunta": "¿Genera caja de forma recurrente?"}
+    r = cliente.post(f"/liga/estrategias/{eid}/receta", json=otra, headers=cab(uid))
+    assert r.status_code == 201, r.text
+    llamadas.clear()
+    r = cliente.post(f"/liga/estrategias/{eid}/pruebas",
+                     json={"con_pregunta": True, "idempotencia": idem}, headers=cab(uid))
+    assert r.status_code == 200, r.text
+    assert llamadas, "la pregunta nueva sí llama al proveedor"
+    saldo = cx.execute("select saldo from liga.v_saldo where usuario_id = %s",
+                      (uuid.UUID(uid),)).fetchone()[0]
+    assert saldo == 98
+
+
+def test_con_el_saldo_justo_se_puede_pagar_la_prueba(api) -> None:  # noqa: ANN001
+    """Con exactamente el precio en saldo, reservar deja 0 y liquidar no puede fallar por ello."""
+    cliente, cab, usuario, foto_con_escaneo, cx, _llamadas = api
+    foto_con_escaneo()
+    uid = usuario(creditos=1)
+    eid = _crear_con_pregunta(cliente, cab, uid)
+    r = cliente.post(f"/liga/estrategias/{eid}/pruebas",
+                     json={"con_pregunta": True, "idempotencia": uuid.uuid4().hex},
+                     headers=cab(uid))
+    assert r.status_code == 200, r.text
+    saldo = cx.execute("select saldo from liga.v_saldo where usuario_id = %s",
+                      (uuid.UUID(uid),)).fetchone()[0]
+    assert saldo == 0
+
+
 def test_sin_creditos_suficientes_da_402(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, foto_con_escaneo, _cx, _llamadas = api
     foto_con_escaneo()

@@ -124,7 +124,7 @@ _ESTRATEGIAS = text("""
              (select r.id from liga.recetas r where r.estrategia_id = e.id and r.creada <= :corte
               order by r.creada desc, r.id desc limit 1)) as receta_id
     from liga.estrategias e
-    where e.tipo = 'usuario' and e.estado in ('apuntada', 'jugando')
+    where e.tipo = 'usuario' and e.estado in ('apuntada', 'jugando') and e.dueno_id is not null
     order by e.creada, e.id
 """)
 

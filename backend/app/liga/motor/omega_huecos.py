@@ -112,7 +112,9 @@ def simular(carry_over: Sequence[Operacion], alertas: Sequence[Alerta],
         for numero, op in list(abiertos.items()):
             salida = detectar_salida(cierres.get(op.ticker, ()), op.entrada_dia,
                                      op.entrada_precio, dia)
-            if salida is not None and salida[0] == dia:
+            # No se exige `salida[0] == dia`: el objetivo no se conoce hasta el cuarto cierre, y
+            # un cruce de la sesión 1 o 2 solo aparece entonces (con su día y su cierre).
+            if salida is not None:
                 dia_s, precio_s, motivo = salida
                 resultado.append(replace(op, salida_dia=dia_s, salida_precio=precio_s,
                                          motivo=motivo))
