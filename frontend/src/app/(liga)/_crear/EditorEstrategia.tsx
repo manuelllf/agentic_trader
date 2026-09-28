@@ -15,7 +15,8 @@ import {
 } from "../_ui";
 import {
   actualizarEstrategia, apuntar, buscarUniverso, crearEstrategia, crearReceta, excluirEmpresa,
-  getCatalogo, getFicha, getYo, porQueNoSale, probarEstrategia, quitarExclusion, verEstrategia,
+  getCatalogo, getCreditos, getFicha, getYo, porQueNoSale, probarEstrategia, quitarExclusion,
+  verEstrategia,
   type Catalogo, type EmpresaBusqueda, type Estrategia, type Prueba, type ReglaElegida, type Yo,
 } from "@/lib/liga/api";
 import { useSupabase } from "@/lib/liga/supabase";
@@ -65,6 +66,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   const sb = useSupabase();
   const [sesionLista, setSesionLista] = useState(false);
   const [yo, setYo] = useState<Yo | null>(null);
+  const [creditosSaldo, setCreditosSaldo] = useState<number | undefined>(undefined);
 
   const [catalogo, setCatalogo] = useState<Catalogo | string | null>(null);
   const [id, setId] = useState<string | undefined>(estrategiaIdInicial);
@@ -103,6 +105,8 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       }
       setYo(await getYo());
       setSesionLista(true);
+      const c = await getCreditos();
+      if (typeof c !== "string") setCreditosSaldo(c.saldo);
     })();
   }, [sb, estrategiaIdInicial]);
 
@@ -319,7 +323,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
   return (
     <main className="scroll">
-      <CabeceraApp plan={yo?.plan} />
+      <CabeceraApp plan={yo?.plan} creditosSaldo={creditosSaldo} />
       <h1 className="h1">{estrategiaIdInicial ? "Editar estrategia" : "Nueva estrategia"}</h1>
       <p className="meta">
         Se aplica a unas 3.000 empresas de EE. UU., con los datos del día 1 de cada mes.

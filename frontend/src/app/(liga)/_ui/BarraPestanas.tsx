@@ -4,15 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 // `.tabbar` de la maqueta (DESIGN.md §5 y §6): Liga, Privadas, Crear y Mías, iconos de trazo
-// en línea (nada de librería de iconos). Liga y Privadas todavía no existen como pantallas
-// propias (F7 solo construye Crear y Mías): de momento llevan a «/», la página de espera.
+// en línea (nada de librería de iconos).
 const PESTANAS = [
   {
     href: "/", clave: "liga", texto: "Liga",
     icono: <path d="M3 20h18M5 20v-6h4v6M10 20V8h4v12M15 20v-9h4v9" />,
   },
   {
-    href: "/", clave: "privadas", texto: "Privadas",
+    href: "/privadas", clave: "privadas", texto: "Privadas",
     icono: (
       <>
         <circle cx="9" cy="8" r="3.2" />
@@ -43,6 +42,8 @@ export function BarraPestanas() {
       {PESTANAS.map((p) => {
         const activa = p.clave === "crear" ? ruta?.startsWith("/crear")
           : p.clave === "mias" ? ruta?.startsWith("/mias")
+          : p.clave === "privadas" ? ruta?.startsWith("/privadas")
+          : p.clave === "liga" ? (ruta === "/" || ruta?.startsWith("/ficha"))
           : false;
         return (
           <Link key={p.clave} href={p.href} aria-current={activa ? "page" : undefined}>

@@ -1,16 +1,16 @@
 "use client";
 
 // Pantalla «Mías» (DESIGN.md §7 «Mías»): lista de mis estrategias con su estado, apuntar/
-// desapuntar, «Cada día 1» y el borrado de un borrador. La maqueta añade un bloque de créditos
-// de IA con «Recargar»: `/liga/yo` no da un saldo en euros (no hay endpoint de créditos todavía),
-// así que ese bloque se omite en vez de inventar una cifra (gap de backend, ver el informe de F7).
+// desapuntar, «Cada día 1» y el borrado de un borrador. El saldo de créditos (F7) sale en el chip
+// de la cabecera (`GET /liga/creditos`); la maqueta también pone un botón «Recargar», pero no hay
+// pasarela de pago todavía, así que aquí solo se enseña el saldo (gap, ver el informe de F7).
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { BarraPestanas, Boton, CabeceraApp, Cargando, Escudo, ErrorLiga, Segmentado, Vacio }
   from "../_ui";
 import {
-  borrarEstrategia, cadaDia1, desapuntar, apuntar as apuntarApi, getYo, misEstrategias,
+  borrarEstrategia, cadaDia1, desapuntar, apuntar as apuntarApi, getCreditos, getYo, misEstrategias,
   type Estrategia, type Yo,
 } from "@/lib/liga/api";
 import { useSupabase } from "@/lib/liga/supabase";
@@ -24,6 +24,7 @@ export default function Mias() {
   const [sesionLista, setSesionLista] = useState(false);
   const [yo, setYo] = useState<Yo | null>(null);
   const [estrategias, setEstrategias] = useState<Estrategia[] | string | null>(null);
+  const [creditosSaldo, setCreditosSaldo] = useState<number | undefined>(undefined);
   const [ocupada, setOcupada] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
@@ -38,6 +39,8 @@ export default function Mias() {
       }
       setYo(await getYo());
       setSesionLista(true);
+      const c = await getCreditos();
+      if (typeof c !== "string") setCreditosSaldo(c.saldo);
     })();
   }, [sb]);
 
@@ -84,7 +87,7 @@ export default function Mias() {
 
   return (
     <main className="scroll">
-      <CabeceraApp plan={yo?.plan} />
+      <CabeceraApp plan={yo?.plan} creditosSaldo={creditosSaldo} />
       <h1 className="h1">Mis estrategias</h1>
       <p className="meta">
         {yo?.plan === "pro"

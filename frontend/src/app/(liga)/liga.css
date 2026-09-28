@@ -433,3 +433,122 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   border-radius: 16px; background: var(--ink); color: var(--bg); font-size: 15px; line-height: 1.45;
   max-width: 480px; margin: 0 auto;
 }
+
+/* ---- Liga (marcador, este mes) y ficha (hoja) --------------------------------------------------- */
+
+.lg .board {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px;
+  padding: 14px 16px; border-radius: 18px; background: var(--btn); color: var(--btn-ink);
+}
+.lg .board b { display: block; font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
+.lg .board span { display: block; margin-top: 2px; font-size: 14px; opacity: .88; }
+.lg .board .r { text-align: right; }
+
+.lg .grp { margin: 24px 0 2px; font-size: 16px; font-weight: 700; color: var(--ink); }
+.lg .grp small { font-size: 14px; font-weight: 400; color: var(--muted); }
+
+.lg .jr {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: center; column-gap: 10px;
+  width: 100%; min-height: 64px; border: 0; background: none; border-bottom: 1px solid var(--line);
+  text-align: left; font: inherit; color: inherit; cursor: pointer;
+}
+.lg .jr .ret { font-size: 16px; font-weight: 800; }
+.lg .jr.spx {
+  min-height: 48px; margin: 6px 0; padding: 0 14px; border: 0; border-radius: 12px;
+  background: var(--surface); cursor: default;
+}
+.lg .jr.casa { background: color-mix(in srgb, var(--hc) 16%, transparent); }
+
+.lg .legend { display: grid; gap: 8px; margin-top: 16px; font-size: 14.5px; line-height: 1.5; color: var(--ink2); }
+.lg .legend2 { display: flex; gap: 18px; margin-top: 8px; font-size: 14px; color: var(--muted); }
+.lg .legend2 i {
+  display: inline-block; width: 18px; height: 0; margin-right: 6px; vertical-align: middle;
+  border-top: 2.5px solid var(--ink);
+}
+.lg .legend2 i.d { border-top: 2px dashed var(--muted); }
+
+.lg .sheet {
+  position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--bg);
+}
+.lg .sheet-h {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 14px 6px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.lg .back {
+  display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 10px;
+  border: 0; background: none; font: inherit; font-size: 16px; font-weight: 700; color: var(--ink);
+  cursor: pointer; text-decoration: none;
+}
+.lg .sheet-b { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 18px 16px 32px; }
+.lg .sheet-f {
+  display: flex; gap: 10px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line); background: var(--bg);
+}
+
+.lg .fh { display: flex; align-items: center; gap: 14px; }
+.lg .fh h2 { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+.lg .fh p { margin-top: 2px; font-size: 15px; color: var(--muted); }
+
+.lg .story { margin-top: 20px; font-size: 20px; line-height: 1.35; font-weight: 700; color: var(--ink); }
+.lg .story .num { font-weight: 800; }
+
+.lg .chart { margin-top: 18px; }
+.lg .chart svg { display: block; width: 100%; height: auto; }
+.lg .chart text { font-size: 11px; fill: var(--muted); }
+.lg .chart .grid { stroke: var(--line); }
+.lg .chart .zero { stroke: var(--line2); }
+.lg .chart .sep { stroke: var(--line2); stroke-dasharray: 2 4; }
+.lg .chart .sp { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.lg .chart .me { fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linejoin: round; }
+.lg .chart .dot { fill: var(--ink); }
+.lg .chart .end { fill: var(--ink); font-weight: 800; }
+
+.lg .month {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px;
+  min-height: 52px; border-bottom: 1px solid var(--line); font-size: 15.5px;
+}
+.lg .month .s { font-size: 14px; color: var(--muted); }
+.lg .res { padding: 4px 10px; border-radius: 999px; font-size: 13.5px; font-weight: 700; }
+.lg .res.G { background: var(--good-bg); color: var(--good); }
+.lg .res.E { background: var(--flat-bg); color: var(--ink2); }
+.lg .res.P { background: var(--bad-bg); color: var(--bad); }
+
+.lg .prose { font-size: 16.5px; line-height: 1.6; color: var(--ink2); }
+.lg .q { padding: 14px 16px; border-radius: 16px; background: var(--surface); font-size: 17px; line-height: 1.45; color: var(--ink); }
+
+.lg .prow {
+  display: grid; grid-template-columns: minmax(0, 1fr) 46px 62px; align-items: center; column-gap: 10px;
+  min-height: 58px; border-bottom: 1px solid var(--line);
+}
+.lg .prow b {
+  display: block; font-size: 16px; color: var(--ink); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lg .prow span { display: block; font-size: 13.5px; color: var(--muted); }
+.lg .prow .c { text-align: right; font-size: 15px; font-weight: 700; }
+.lg .prow.veto b { color: var(--muted); text-decoration: line-through; }
+
+.lg details.more { margin-top: 26px; border-top: 1px solid var(--line); }
+.lg details.more summary {
+  display: flex; align-items: center; justify-content: space-between; min-height: 54px; font-size: 17px;
+  font-weight: 700; color: var(--ink); cursor: pointer; list-style: none;
+}
+.lg details.more summary::-webkit-details-marker { display: none; }
+.lg details.more summary::after { content: "+"; font-size: 24px; font-weight: 400; color: var(--muted); }
+.lg details.more[open] summary::after { content: "−"; }
+.lg .kvl div {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px;
+  border-bottom: 1px solid var(--line); font-size: 15.5px;
+}
+.lg .kvl span { color: var(--ink2); }
+.lg .kvl b { font-weight: 800; }
+.lg .decl { margin-top: 24px; font-size: 15px; line-height: 1.5; color: var(--ink2); }
+
+/* ---- Privadas: código de invitación y filas de referencia --------------------------------------- */
+
+.lg .code {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 10px 10px 18px;
+  border-radius: 16px; background: var(--surface); font-size: 21px; font-weight: 800; letter-spacing: .08em;
+  color: var(--ink);
+}
+.lg .code .btn { min-height: 42px; padding: 0 14px; background: var(--raised); font-size: 15px; letter-spacing: 0; }

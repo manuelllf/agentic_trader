@@ -322,3 +322,156 @@ export async function buscarUniverso(q: string): Promise<EmpresaBusqueda[] | str
 export async function getFicha(id: string): Promise<Ficha | string> {
   return llamar<Ficha>(`/liga/fichas/${id}`);
 }
+
+export async function copiarEstrategia(id: string): Promise<Estrategia | string> {
+  return llamar<Estrategia>(`/liga/estrategias/${id}/copiar`, { method: "POST" });
+}
+
+// ---- Público: portada y clasificación (sin sesión, D3) ------------------------------------------
+
+export type CasaClave = "alpha" | "omega" | "lambda";
+
+export type EquipoPublico = {
+  id: string;
+  nombre: string;
+  escudo: Escudo;
+  casa: CasaClave | null;
+  autor: string | null;
+};
+
+export type TemporadaPublica = {
+  id: number;
+  nombre: string;
+  cuenta: boolean;
+  estado: string;
+  n_jornadas: number;
+};
+
+export type JornadaPublica = {
+  id: number;
+  temporada_id: number;
+  numero: number;
+  dia_inicio: string;
+  dia_fin: string;
+  cierre_inscripcion: string;
+  estado: string;
+  sp_rentabilidad: number | null;
+};
+
+export type FilaJornadaPublica = {
+  equipo: EquipoPublico;
+  rentabilidad: number | null;
+  dif_sp: number | null;
+  puntos: number | null;
+};
+
+export type JornadaDetalle = { jornada: JornadaPublica; filas: FilaJornadaPublica[] };
+
+export type Portada = {
+  temporada: TemporadaPublica | null;
+  proxima: JornadaPublica | null;
+  en_juego: JornadaPublica | null;
+  ultima_cerrada: JornadaDetalle | null;
+};
+
+export type FilaClasificacion = {
+  posicion: number;
+  equipo: EquipoPublico;
+  puntos: number;
+  jornadas: number;
+  ganadas: number;
+  empatadas: number;
+  perdidas: number;
+  dif_sp: number;
+};
+
+export type Clasificacion = { temporada: TemporadaPublica; total: number; filas: FilaClasificacion[] };
+
+export async function getPortada(): Promise<Portada | string> {
+  return llamar<Portada>("/liga/publico/portada", {}, false);
+}
+
+export async function getClasificacion(
+  opciones: { temporada?: number; desde?: number; cuantos?: number } = {},
+): Promise<Clasificacion | string> {
+  const q = new URLSearchParams();
+  if (opciones.temporada != null) q.set("temporada", String(opciones.temporada));
+  q.set("desde", String(opciones.desde ?? 0));
+  q.set("cuantos", String(opciones.cuantos ?? 50));
+  return llamar<Clasificacion>(`/liga/publico/clasificacion?${q.toString()}`, {}, false);
+}
+
+export async function getJornadaPublica(id: number): Promise<JornadaDetalle | string> {
+  return llamar<JornadaDetalle>(`/liga/publico/jornada/${id}`, {}, false);
+}
+
+// ---- Ligas privadas (Pro), créditos y reportes ---------------------------------------------------
+
+export type LigaResumen = {
+  id: string;
+  nombre: string;
+  cupo: number;
+  oculta: boolean;
+  creada: string;
+  es_dueno: boolean;
+  codigo: string | null;
+  n_miembros: number;
+};
+
+export type MiembroLiga = {
+  alias: string;
+  es_yo: boolean;
+  unido: string;
+  puntos: number | null;
+  jornadas: number | null;
+  dif_sp: number | null;
+};
+
+export type LigaDetalle = LigaResumen & { miembros: MiembroLiga[] };
+
+export async function misLigas(): Promise<LigaResumen[] | string> {
+  return llamar<LigaResumen[]>("/liga/ligas");
+}
+
+export async function crearLiga(nombre: string, cupo?: number): Promise<LigaResumen | string> {
+  return llamar<LigaResumen>("/liga/ligas", {
+    method: "POST", body: JSON.stringify(cupo ? { nombre, cupo } : { nombre }),
+  });
+}
+
+export async function unirseLiga(codigo: string): Promise<LigaResumen | string> {
+  return llamar<LigaResumen>("/liga/ligas/unirse", {
+    method: "POST", body: JSON.stringify({ codigo }),
+  });
+}
+
+export async function verLiga(id: string): Promise<LigaDetalle | string> {
+  return llamar<LigaDetalle>(`/liga/ligas/${id}`);
+}
+
+export async function salirLiga(id: string): Promise<true | string> {
+  const r = await llamar<undefined>(`/liga/ligas/${id}/yo`, { method: "DELETE" });
+  return typeof r === "string" ? r : true;
+}
+
+export async function rotarCodigoLiga(id: string): Promise<LigaResumen | string> {
+  return llamar<LigaResumen>(`/liga/ligas/${id}/codigo`, { method: "POST" });
+}
+
+export type MovimientoCredito = { id: number; importe: number; motivo: string; creado: string };
+export type Creditos = { saldo: number; total: number; movimientos: MovimientoCredito[] };
+
+export async function getCreditos(): Promise<Creditos | string> {
+  return llamar<Creditos>("/liga/creditos");
+}
+
+export type TipoReporte = "alias" | "estrategia" | "liga" | "pregunta";
+
+export async function reportar(
+  tipo: TipoReporte, objetoId: string, motivo: string,
+): Promise<true | string> {
+  const r = await llamar<unknown>("/liga/reportes", {
+    method: "POST", body: JSON.stringify({ tipo, objeto_id: objetoId, motivo }),
+  });
+  return typeof r === "string" ? r : true;
+}

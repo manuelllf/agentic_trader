@@ -51,6 +51,11 @@ export function euros(valor: number, decimales = 2): string {
   return (r < 0 ? MENOS : "") + texto + ESPACIO_DURO + "€";
 }
 
+/** El libro (`liga.creditos_movimientos`) ya cuenta en créditos (1 crédito = 0,01 $): sin conversión. */
+export function creditos(saldo: number): string {
+  return `${miles(Math.round(saldo))} créditos`;
+}
+
 /** Miles con punto separador, sin decimales (recuento de empresas, posiciones en la tabla...). */
 export function miles(valor: number): string {
   const negativo = valor < 0;
