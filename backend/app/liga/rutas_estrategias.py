@@ -14,7 +14,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session
 from app.liga import acceso, estrategias
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_anon, db_usuario
-from app.liga.ia import moderacion
+from app.liga.ia import comun, moderacion, precios
+from app.liga.ia import pregunta as ia_pregunta
 from app.liga.models import Receta as RecetaModelo
 from app.liga.motor.catalogo import RecetaNoValida
 from app.liga.motor.seleccion import explicar, seleccionar
@@ -145,6 +146,23 @@ class PruebaOut(BaseModel):
     sin_notas: int
     sin_respuesta: int
     caja_pct: Decimal
+    # Solo con `con_pregunta` (F6-B): cuántas de las candidatas venían de caché, cuántas se
+    # evaluaron de nuevo y los créditos que se han cobrado por esta prueba.
+    pregunta_desde_cache: int | None = None
+    pregunta_nuevas: int | None = None
+    creditos_cobrados: Decimal | None = None
+
+
+class PruebaIn(BaseModel):
+    con_pregunta: bool = False
+    idempotencia: str | None = Field(default=None, min_length=8, max_length=80)
+
+
+class CostePreguntaOut(BaseModel):
+    evaluadas: int
+    en_cache: int
+    faltan: int
+    creditos: Decimal
 
 
 class PorQueOut(BaseModel):
@@ -415,16 +433,59 @@ def _seleccionar_con(ctx: estrategias.Contexto, receta: RecetaModelo):  # noqa: 
 
 
 @router.post("/estrategias/{id}/pruebas", response_model=PruebaOut)
-def probar(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
+def probar(id: uuid.UUID, body: PruebaIn | None = Body(default=None),
+          ident: Identidad = Depends(require_usuario),
           db: Session = Depends(db_usuario)) -> PruebaOut:
     if not _LIMITE_PRUEBAS.permitido(ident.uid):
         raise HTTPException(429, "Demasiadas pruebas seguidas. Espera un poco.")
     receta = _receta_de(db, id, dueno=ident.uid)
     ctx = estrategias.foto_y_notas_actuales()
+
+    con_pregunta = bool(body and body.con_pregunta and receta.pregunta)
+    resultado_pregunta = None
+    creditos = None
+    if con_pregunta:
+        if not body.idempotencia:
+            raise HTTPException(422, "Falta la clave de idempotencia.")
+        candidatas = estrategias.candidatas_pregunta_de(ctx, receta)
+        creditos = precios.precio_pregunta(len(candidatas))
+        clave = f"pregunta:{body.idempotencia}"
+        comun.reservar_creditos(ident.uid, creditos, f"reserva:{clave}")
+        try:
+            resultado_pregunta = ia_pregunta.responder_pendientes(
+                pregunta=receta.pregunta, foto_id=ctx.foto_id,
+                empresas={e.ticker: e for e in ctx.empresas}, candidatas=candidatas,
+                usuario_id=ident.uid)
+        except Exception:
+            comun.devolver_reserva(ident.uid, creditos, clave)
+            raise
+
     seleccion = _seleccionar_con(ctx, receta)
     prueba_id = estrategias.crear_prueba_sistema(ident.uid, receta.id, ctx.foto_id,
                                                  len(seleccion.filas))
-    return PruebaOut(**estrategias.resultado_prueba(prueba_id, ctx, seleccion, receta))
+    if con_pregunta:
+        comun.liquidar_creditos(ident.uid, creditos, creditos, "prueba",
+                                f"pregunta:{body.idempotencia}", prueba_id=prueba_id)
+
+    salida = estrategias.resultado_prueba(prueba_id, ctx, seleccion, receta)
+    if resultado_pregunta is not None:
+        salida["pregunta_desde_cache"] = resultado_pregunta.desde_cache
+        salida["pregunta_nuevas"] = resultado_pregunta.nuevas
+        salida["creditos_cobrados"] = creditos
+    return PruebaOut(**salida)
+
+
+@router.get("/estrategias/{id}/pruebas/coste", response_model=CostePreguntaOut)
+def coste_prueba(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
+                 db: Session = Depends(db_usuario)) -> CostePreguntaOut:
+    """Cuántas respuestas faltan en caché y el precio en créditos de «Probar con tu pregunta»."""
+    receta = _receta_de(db, id, dueno=ident.uid)
+    if not receta.pregunta:
+        return CostePreguntaOut(evaluadas=0, en_cache=0, faltan=0, creditos=Decimal(0))
+    ctx = estrategias.foto_y_notas_actuales()
+    candidatas = estrategias.candidatas_pregunta_de(ctx, receta)
+    return CostePreguntaOut(**ia_pregunta.coste_pendiente(
+        pregunta=receta.pregunta, foto_id=ctx.foto_id, candidatas=candidatas))
 
 
 @router.get("/pruebas/{id}", response_model=PruebaOut)

@@ -28,10 +28,12 @@ from sqlalchemy.orm import Session
 
 from app import precios
 from app.liga import gestion
+from app.liga.ia import comun as ia_comun
+from app.liga.ia import pregunta as ia_pregunta
 from app.liga.models import Inscripcion, Jornada, Posicion, Receta
 from app.liga.motor.catalogo import EmpresaFoto, RecetaNoValida
 from app.liga.motor.rentabilidad import pesos_mantenidos
-from app.liga.motor.seleccion import NotasJev, seleccionar
+from app.liga.motor.seleccion import NotasJev, candidatas_pregunta, seleccionar
 from app.liga.procesos import casa, datos
 from app.liga.procesos.comun import (
     ErrorProceso,
@@ -126,6 +128,59 @@ _ESTRATEGIAS = text("""
     where e.tipo = 'usuario' and e.estado in ('apuntada', 'jugando')
     order by e.creada, e.id
 """)
+
+
+_TOKENS_ESTIMADOS_PREGUNTA = 200  # bloque de estado + pregunta, medida de sobra (F6-B)
+
+
+def _preguntas_de_las_estrategias(db: Session, ctx: Contexto) -> dict[str, set[str]]:
+    """Pregunta propia -> candidatas (unión de todas las recetas vigentes que la comparten). Las
+    «mantener» no vuelven a preguntar: conservan lo del mes pasado, sin selección nueva."""
+    preguntas: dict[str, set[str]] = {}
+    for fila in db.execute(_ESTRATEGIAS, {"corte": ctx.corte}).all():
+        if fila.receta_id is None or fila.cada_dia_1 == "mantener":
+            continue
+        receta = db.get(Receta, fila.receta_id)
+        if receta is None or not receta.pregunta:
+            continue
+        candidatas = candidatas_pregunta(list(ctx.empresas), datos.receta_motor(receta), ctx.notas)
+        preguntas.setdefault(receta.pregunta, set()).update(candidatas)
+    return preguntas
+
+
+def preview_preguntas(db: Session, ctx: Contexto, fabrica: Fabrica | None = None) -> dict:
+    """Cuántas respuestas de la pregunta propia faltan en caché y un coste estimado en dólares
+    (no exacto: el precio real de Jev depende de los tokens de cada llamada, que no se conocen
+    sin llamar; se estima con un tamaño de estado típico). `fabrica`: ver `rellenar_preguntas`."""
+    faltan = 0
+    for texto, tickers in _preguntas_de_las_estrategias(db, ctx).items():
+        info = ia_pregunta.coste_pendiente(pregunta=texto, foto_id=ctx.foto_id,
+                                           candidatas=sorted(tickers), fabrica=fabrica)
+        faltan += info["faltan"]
+    coste_usd = round(faltan * _TOKENS_ESTIMADOS_PREGUNTA * 0.042 / 1_000_000, 4)
+    return {"pregunta_pendientes": faltan, "pregunta_coste_estimado_usd": str(coste_usd)}
+
+
+def rellenar_preguntas(db: Session, ctx: Contexto, fabrica: Fabrica | None = None) -> None:
+    """Antes de formar, rellena lo que falte de la pregunta propia a coste del sistema (nunca se
+    cobra créditos en la jornada, plan §10). Si la IA está apagada o el tope mensual ya se gastó,
+    se sigue solo con lo que ya haya en caché -- el motor ya sabe tratar una empresa
+    `SIN_RESPUESTA`. `fabrica`: por defecto la del sistema, igual en producción a la que usa la
+    propia jornada; un proceso con la suya propia (tests, savepoints) la pasa para leer y
+    escribir en la misma conexión."""
+    preguntas = _preguntas_de_las_estrategias(db, ctx)
+    if not preguntas:
+        return
+    try:
+        ia_comun.verificar_disponible("pregunta", fabrica)
+    except Exception:  # noqa: BLE001 -- apagado, tope gastado o sistema de IA no alcanzable:
+        # se forma igual, solo con lo que ya haya en caché (nunca bloquea la jornada por esto).
+        return
+    empresas = {e.ticker: e for e in ctx.empresas}
+    for texto, tickers in preguntas.items():
+        ia_pregunta.responder_pendientes(pregunta=texto, foto_id=ctx.foto_id, empresas=empresas,
+                                         candidatas=sorted(tickers), usuario_id=None,
+                                         fabrica=fabrica)
 
 
 def _mantenidas(db: Session, estrategia_id: uuid.UUID,
@@ -299,7 +354,7 @@ def vista_previa(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
             "n_estrategias": len(plan.entradas), "n_omitidas": len(plan.omitidas),
             "tickers": len(tickers), "sin_precio": sin_precio,
             "casa_por_crear": casa.casas_que_faltan(db),
-            "coste_ia": "0",  # la pregunta propia solo sale de la caché en esta fase
+            **preview_preguntas(db, ctx, fabrica),
             **_resumen(plan),
         })
 
@@ -314,6 +369,7 @@ def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema, actor: str | N
                 if motivos:
                     raise ErrorProceso(" ".join(motivos))
                 ctx = contexto(db, j)
+                rellenar_preguntas(db, ctx, fabrica)
             plan, sin_precio = _precios_y_plan(fabrica, ctx)
             with sesion(fabrica) as db:
                 return _escribir(db, jornada_id, ctx, plan, sin_precio, ahora, actor)

@@ -32,6 +32,8 @@ from app.liga.motor.seleccion import (
     NotasJev,
     Respuesta,
     Seleccion,
+    candidatas_pregunta,
+    seleccionar,
 )
 from app.liga.motor.seleccion import Receta as RecetaMotor
 from app.liga.motor.seleccion import validar_receta as _validar_receta_motor
@@ -207,6 +209,12 @@ def respuestas_sistema(pregunta: str | None, foto_id: int) -> dict[str, Respuest
         db.close()
 
 
+def candidatas_pregunta_de(ctx: Contexto, receta: RecetaModelo) -> list[str]:
+    """Las hasta `TOPE_PREGUNTA` candidatas a las que se pregunta de verdad (F6-B): el motor ya
+    define ese conjunto, solo hace falta traducir la receta guardada a la del motor."""
+    return candidatas_pregunta(list(ctx.empresas), procesos_datos.receta_motor(receta), ctx.notas)
+
+
 def buscar_universo(q: str, limite: int = 20) -> list[dict]:
     """Ticker, nombre y sector de la última foto completa: nunca el resto de las métricas."""
     termino = q.strip()
@@ -271,6 +279,67 @@ def resultado_prueba(prueba_id: uuid.UUID, ctx: Contexto, seleccion: Seleccion, 
         "sin_peso": len(seleccion.sin_peso), "sin_notas": sin_notas,
         "sin_respuesta": sin_respuesta, "caja_pct": seleccion.caja_pct,
     }
+
+
+# --- «Leer a fondo» / «Leer mi cartera» (F6-B): qué puede leer cada usuario -----------------------
+
+
+def contexto_lectura(usuario_id: str, ticker: str) -> tuple[int, int] | None:
+    """(foto_id, scan_run_id) desde donde se puede leer esta empresa para este usuario: sus
+    posiciones actuales, o si no, las elegidas de su última prueba (cualquiera de sus
+    estrategias). `None` si no puede leerla — el ticker no es suyo en ningún sentido."""
+    db = fabrica_sistema()
+    try:
+        fila = db.execute(text("""
+            select j.foto_id, j.scan_run_id from liga.posiciones p
+            join liga.inscripciones i on i.id = p.inscripcion_id
+            join liga.estrategias e on e.id = i.estrategia_id
+            join liga.jornadas j on j.id = i.jornada_id
+            where e.dueno_id = cast(:u as uuid) and p.ticker = :t
+            order by j.numero desc limit 1
+        """), {"u": usuario_id, "t": ticker}).one_or_none()
+        if fila is not None:
+            return fila.foto_id, fila.scan_run_id
+        prueba = db.execute(text("""
+            select receta_id, foto_id from liga.pruebas where usuario_id = cast(:u as uuid)
+            order by creada desc limit 1
+        """), {"u": usuario_id}).one_or_none()
+        if prueba is None:
+            return None
+        receta = db.get(RecetaModelo, prueba.receta_id)
+        if receta is None:
+            return None
+        ctx = _contexto_desde(db, prueba.foto_id)
+        respuestas = procesos_datos.cargar_respuestas(db, receta.pregunta, ctx.foto_id)
+    finally:
+        db.close()
+    seleccion = seleccionar(list(ctx.empresas), procesos_datos.receta_motor(receta), ctx.notas,
+                            respuestas)
+    if any(el.ticker == ticker for el in seleccion.elegidas):
+        return ctx.foto_id, ctx.scan_run_id
+    return None
+
+
+def cartera_estrategia(estrategia_id: uuid.UUID) -> tuple[int, int, list[str]] | None:
+    """(foto_id, scan_run_id, tickers) de la última prueba de ESTA estrategia (para «Leer mi
+    cartera», que es del dueño de una receta concreta). `None` sin receta o sin prueba todavía."""
+    db = fabrica_sistema()
+    try:
+        fila = db.execute(text(
+            "select receta_id from liga.estrategias where id = :e"), {"e": estrategia_id}
+        ).one_or_none()
+        if fila is None or fila.receta_id is None:
+            return None
+        receta = db.get(RecetaModelo, fila.receta_id)
+        if receta is None:
+            return None
+        ctx = _contexto_desde(db, None)
+        respuestas = procesos_datos.cargar_respuestas(db, receta.pregunta, ctx.foto_id)
+    finally:
+        db.close()
+    seleccion = seleccionar(list(ctx.empresas), procesos_datos.receta_motor(receta), ctx.notas,
+                            respuestas)
+    return ctx.foto_id, ctx.scan_run_id, [el.ticker for el in seleccion.elegidas]
 
 
 # --- Copiar una estrategia (Pro; plan §11 y §2.1: «copiar» es de Pro) -----------------------------

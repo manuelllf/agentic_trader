@@ -177,6 +177,10 @@ export type Prueba = {
   sin_notas: number;
   sin_respuesta: number;
   caja_pct: number;
+  // Solo si se probó «con tu pregunta» (F6-B).
+  pregunta_desde_cache?: number | null;
+  pregunta_nuevas?: number | null;
+  creditos_cobrados?: number | null;
 };
 
 export type PorQue = { ticker: string; motivo: string };
@@ -307,8 +311,26 @@ export async function quitarExclusion(id: string, ticker: string): Promise<Recet
   });
 }
 
-export async function probarEstrategia(id: string): Promise<Prueba | string> {
-  return llamar<Prueba>(`/liga/estrategias/${id}/pruebas`, { method: "POST" });
+export async function probarEstrategia(
+  id: string, conPregunta?: { idempotencia: string },
+): Promise<Prueba | string> {
+  return llamar<Prueba>(`/liga/estrategias/${id}/pruebas`, {
+    method: "POST",
+    body: JSON.stringify(conPregunta ? { con_pregunta: true, ...conPregunta } : {}),
+  });
+}
+
+export type CostePregunta = {
+  evaluadas: number;
+  en_cache: number;
+  faltan: number;
+  creditos: number;
+};
+
+/** Coste en créditos de «Probar con tu pregunta»: cuántas de las candidatas faltan por
+ *  evaluar (F6-B, plan §10). Cero créditos si la receta no tiene pregunta propia. */
+export async function costeProbarConPregunta(id: string): Promise<CostePregunta | string> {
+  return llamar<CostePregunta>(`/liga/estrategias/${id}/pruebas/coste`);
 }
 
 export async function porQueNoSale(id: string, ticker: string): Promise<PorQue | string> {
@@ -325,6 +347,36 @@ export async function getFicha(id: string): Promise<Ficha | string> {
 
 export async function copiarEstrategia(id: string): Promise<Estrategia | string> {
   return llamar<Estrategia>(`/liga/estrategias/${id}/copiar`, { method: "POST" });
+}
+
+// ---- «Leer a fondo» / «Leer mi cartera» (plan §10, F6-B) ---------------------------------------
+
+export type Lectura = {
+  id: number;
+  ticker: string;
+  texto: string;
+  fuentes: unknown[];
+  ya_comprada: boolean;
+  creditos_cobrados: number;
+};
+
+export async function leerAFondo(ticker: string, idempotencia: string): Promise<Lectura | string> {
+  return llamar<Lectura>(`/liga/lecturas/${encodeURIComponent(ticker)}`, {
+    method: "POST", body: JSON.stringify({ idempotencia }),
+  });
+}
+
+export async function verLectura(id: number): Promise<Lectura | string> {
+  return llamar<Lectura>(`/liga/lecturas/${id}`);
+}
+
+export async function leerMiCartera(
+  estrategiaId: string, idempotencia: string,
+): Promise<{ lecturas: Lectura[]; creditos_cobrados: number } | string> {
+  return llamar<{ lecturas: Lectura[]; creditos_cobrados: number }>(
+    `/liga/estrategias/${estrategiaId}/lecturas`,
+    { method: "POST", body: JSON.stringify({ idempotencia }) },
+  );
 }
 
 // ---- Conversor: frase libre → reglas sugeridas (plan §10, F6-A) --------------------------------

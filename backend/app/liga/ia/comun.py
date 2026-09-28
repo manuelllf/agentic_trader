@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from app.liga.procesos.comun import auditar, fabrica_sistema
+from app.liga.procesos.comun import Fabrica, auditar, fabrica_sistema
 
 logger = logging.getLogger("app.liga.ia")
 
@@ -52,15 +52,19 @@ def _clave_interruptor(finalidad: str) -> str:
     return f"ia.{finalidad}.activo"
 
 
-def verificar_disponible(finalidad: str) -> None:
+def verificar_disponible(finalidad: str, fabrica: Fabrica | None = None) -> None:
     """503 si el LLM no está activo en este despliegue, si el interruptor de la finalidad está
     apagado (ausente = apagado) o si el tope mensual ya se ha gastado. Se consulta como sistema:
-    `liga.ajustes` solo lo lee el admin por RLS, y esta finalidad la piden usuarios normales."""
+    `liga.ajustes` solo lo lee el admin por RLS, y esta finalidad la piden usuarios normales.
+
+    `fabrica`: por defecto la del sistema (`app.db.SessionLocal`, igual en producción a la que
+    usan los procesos); un proceso con su PROPIA fábrica (tests, savepoints) la pasa para leer
+    de la misma conexión -- ver `procesos.formar.rellenar_preguntas`."""
     from app.config import settings
 
     if not settings.enable_llm:
         raise HTTPException(503, "Esta función de IA está apagada ahora mismo.")
-    db = fabrica_sistema()
+    db = (fabrica or fabrica_sistema)()
     try:
         activo = db.execute(text("select valor from liga.ajustes where clave = :c"),
                             {"c": _clave_interruptor(finalidad)}).scalar()
@@ -81,7 +85,7 @@ def verificar_disponible(finalidad: str) -> None:
 
 
 def llamar_ia(*, finalidad: str, usuario_id: str | None, modelo: str, system: str, user: str,
-             temperature: float = 0.0) -> tuple[str | None, LlamadaIA]:
+             temperature: float = 0.0, timeout: float = 20) -> tuple[str | None, LlamadaIA]:
     """Una llamada real y barata al proveedor configurado, con su propia traza (nunca la de un
     escaneo). Nunca lanza por un fallo del proveedor: `contenido` sale `None` y `llamada.ok` en
     falso, para que el llamador registre el intento igualmente y decida el mensaje al usuario."""
@@ -97,9 +101,9 @@ def llamar_ia(*, finalidad: str, usuario_id: str | None, modelo: str, system: st
             self.ultima = call
 
     recorder = _Recorder()
-    # Corto: la moderación corre dentro de la petición del usuario, con su transacción abierta.
+    # Corto por defecto: la moderación corre dentro de la petición, con su transacción abierta.
     llm = get_llm(model=modelo, reasoning_effort="none", stage=_STAGE[finalidad],
-                 recorder=recorder, timeout=20)
+                 recorder=recorder, timeout=timeout)
     contenido: str | None = None
     fallo: str | None = None
     try:
@@ -121,14 +125,46 @@ def llamar_ia(*, finalidad: str, usuario_id: str | None, modelo: str, system: st
     return contenido, llamada
 
 
+def llamar_ia_jev(*, finalidad: str, modelo: str, state: str, pregunta: str,
+                  fabrica: Fabrica | None = None
+                  ) -> tuple[tuple[float, float | None] | None, LlamadaIA]:
+    """Como `llamar_ia`, pero para la pregunta propia con Jev (primitiva noul, F6-B): Jev no es
+    un modelo de chat (`app/llm/jev.py`), así que no encaja en `get_llm().chat()`. Devuelve
+    `(p, confianza) | None` y su `LlamadaIA` para registrar igual que cualquier otra llamada."""
+    verificar_disponible(finalidad, fabrica)
+    from app.config import settings
+    from app.llm.jev import preguntar_noul
+
+    if not settings.typesafe_api_key:
+        raise HTTPException(503, "Esta función de IA está apagada ahora mismo.")
+
+    class _Recorder:
+        def __init__(self) -> None:
+            self.ultima = None
+
+        def record(self, call) -> None:  # noqa: ANN001
+            self.ultima = call
+
+    recorder = _Recorder()
+    resultado, info = preguntar_noul(
+        api_key=settings.typesafe_api_key, model=modelo, stage=_STAGE[finalidad], state=state,
+        pregunta=pregunta, recorder=recorder)
+    llamada = LlamadaIA(
+        modelo=modelo, tokens_entrada=info["tokens_entrada"], tokens_salida=info["tokens_salida"],
+        coste_usd=info["coste_usd"], latencia_ms=info["latencia_ms"], ok=info["ok"],
+        error=info["error"])
+    return resultado, llamada
+
+
 def registrar_llamada(*, finalidad: str, usuario_id: str | None, llamada: LlamadaIA,
-                      creditos: Decimal | None = None, cache: bool = False) -> int | None:
+                      creditos: Decimal | None = None, cache: bool = False,
+                      fabrica: Fabrica | None = None) -> int | None:
     """Fila de `llm_call` (sin texto; se salta si es acierto de caché) + auditoría + un log
     limpio. `creditos` es el movimiento neto de este uso (negativo cobrado, positivo devuelto);
-    `None` si es gratis."""
+    `None` si es gratis. `fabrica`: ver `verificar_disponible`."""
     from app.models import LLMCall
 
-    db = fabrica_sistema()
+    db = (fabrica or fabrica_sistema)()
     llm_call_id: int | None = None
     try:
         if not cache:
@@ -228,3 +264,21 @@ def devolver_reserva(usuario_id: str, importe_reservado: Decimal, clave: str) ->
         db.commit()
     finally:
         db.close()
+
+
+def saldo(usuario_id: str) -> Decimal:
+    """Saldo en créditos (suma del libro), leído como sistema."""
+    db = fabrica_sistema()
+    try:
+        valor = db.execute(text(
+            "select saldo from liga.v_saldo where usuario_id = cast(:u as uuid)"),
+            {"u": usuario_id}).scalar()
+        return Decimal(valor or 0)
+    finally:
+        db.close()
+
+
+def exigir_saldo(usuario_id: str, importe: Decimal) -> None:
+    """Antes de pagar una generación: sin saldo para cobrarla, 402 y no se llama a nadie."""
+    if saldo(usuario_id) < importe:
+        raise HTTPException(402, "No te quedan créditos suficientes.")

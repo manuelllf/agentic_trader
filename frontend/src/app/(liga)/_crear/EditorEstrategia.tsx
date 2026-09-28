@@ -14,10 +14,11 @@ import {
   escudoAleatorio, luminancia, PALETA, type EscudoValor,
 } from "../_ui";
 import {
-  actualizarEstrategia, apuntar, buscarUniverso, convertirFrase, crearEstrategia, crearReceta,
-  excluirEmpresa, getCatalogo, getCreditos, getFicha, getYo, porQueNoSale, probarEstrategia,
-  quitarExclusion, verEstrategia,
-  type Catalogo, type EmpresaBusqueda, type Estrategia, type Prueba, type ReglaElegida, type Yo,
+  actualizarEstrategia, apuntar, buscarUniverso, convertirFrase, costeProbarConPregunta,
+  crearEstrategia, crearReceta, excluirEmpresa, getCatalogo, getCreditos, getFicha, getYo,
+  leerAFondo, leerMiCartera, porQueNoSale, probarEstrategia, quitarExclusion, verEstrategia,
+  type Catalogo, type CostePregunta, type EmpresaBusqueda, type Estrategia, type Lectura,
+  type Prueba, type ReglaElegida, type Yo,
 } from "@/lib/liga/api";
 import { useSupabase } from "@/lib/liga/supabase";
 import { miles } from "@/lib/liga/format";
@@ -87,6 +88,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
   const [prueba, setPrueba] = useState<Prueba | string | null>(null);
   const [cambio, setCambio] = useState<{ entra: string; sale: string } | null>(null);
+  const [costePregunta, setCostePregunta] = useState<CostePregunta | null>(null);
+  const [leyendo, setLeyendo] = useState<string | null>(null);      // ticker en curso, o "cartera"
+  const [lectura, setLectura] = useState<Lectura | Lectura[] | string | null>(null);
   const [buscaQ, setBuscaQ] = useState("");
   const [sugerencias, setSugerencias] = useState<EmpresaBusqueda[]>([]);
   const [porque, setPorque] = useState<{ ticker: string; nombre: string; texto: string } | null>(null);
@@ -257,12 +261,43 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     setOcupado(true);
     setPrueba(null);
     setCambio(null);
+    setCostePregunta(null);
     const idActual = await guardar();
     if (idActual) {
       const p = await probarEstrategia(idActual);
       setPrueba(p);
+      if (b?.pregunta && pro) {
+        const c = await costeProbarConPregunta(idActual);
+        if (typeof c !== "string") setCostePregunta(c);
+      }
     }
     setOcupado(false);
+  }
+
+  async function probarConPregunta() {
+    if (!id) return;
+    setOcupado(true);
+    const p = await probarEstrategia(id, { idempotencia: crypto.randomUUID() });
+    setPrueba(p);
+    if (typeof p !== "string") setCostePregunta(null);   // ya está cobrada y en caché
+    setOcupado(false);
+  }
+
+  async function leerFicha(ticker: string) {
+    setLeyendo(ticker);
+    setLectura(null);
+    const r = await leerAFondo(ticker, crypto.randomUUID());
+    setLectura(r);
+    setLeyendo(null);
+  }
+
+  async function leerCarteraCompleta() {
+    if (!id) return;
+    setLeyendo("cartera");
+    setLectura(null);
+    const r = await leerMiCartera(id, crypto.randomUUID());
+    setLectura(typeof r === "string" ? r : r.lecturas);
+    setLeyendo(null);
   }
 
   async function cambiarEmpresa(ticker: string) {
@@ -523,6 +558,13 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         {typeof prueba === "string" && (
           <p className="fine" style={{ textAlign: "center" }} role="status">{prueba}</p>
         )}
+        {typeof prueba === "object" && prueba && b?.pregunta && pro && costePregunta && costePregunta.faltan > 0 && (
+          <Boton variante="secundario" ancho="completo" style={{ marginTop: 8 }}
+                 disabled={ocupado} onClick={probarConPregunta}>
+            {ocupado ? "Preguntando…"
+              : `Probar con tu pregunta · ${costePregunta.creditos} crédito${costePregunta.creditos === 1 ? "" : "s"}`}
+          </Boton>
+        )}
         {typeof prueba === "object" && prueba && (
           <div style={{ marginTop: 14 }}>
             <p className="meta">
@@ -545,6 +587,10 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                           Deshacer
                         </button>
                       )}
+                      <button type="button" className="link" disabled={leyendo === e.ticker}
+                              onClick={() => leerFicha(e.ticker)}>
+                        {leyendo === e.ticker ? "Leyendo…" : "Leer a fondo · 5 créditos"}
+                      </button>
                     </div>
                   </div>
                   <div className="pick-r">
@@ -561,6 +607,34 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                 Solo {prueba.elegidas.length} cumplen tus reglas; el {Math.round(prueba.caja_pct)}&nbsp;%
                 restante se queda en caja.
               </p>
+            )}
+            {prueba.elegidas.length > 0 && (
+              <Boton variante="secundario" ancho="completo" style={{ marginTop: 8 }}
+                     disabled={leyendo === "cartera"} onClick={leerCarteraCompleta}>
+                {leyendo === "cartera" ? "Leyendo…"
+                  : `Leer mi cartera · hasta ${prueba.elegidas.length * 5} créditos`}
+              </Boton>
+            )}
+            {leyendo === null && lectura !== null && (
+              <div className="field" style={{ marginTop: 10 }}>
+                {typeof lectura === "string" && <p className="fine" role="status">{lectura}</p>}
+                {!Array.isArray(lectura) && lectura && typeof lectura !== "string" && (
+                  <div className="pick" style={{ display: "block" }}>
+                    <b>{lectura.ticker}</b>
+                    <p className="meta" style={{ whiteSpace: "pre-wrap" }}>{lectura.texto}</p>
+                    <button type="button" className="link" onClick={() => setLectura(null)}>Cerrar</button>
+                  </div>
+                )}
+                {Array.isArray(lectura) && lectura.map((l) => (
+                  <div className="pick" style={{ display: "block" }} key={l.id}>
+                    <b>{l.ticker}</b>
+                    <p className="meta" style={{ whiteSpace: "pre-wrap" }}>{l.texto}</p>
+                  </div>
+                ))}
+                {Array.isArray(lectura) && (
+                  <button type="button" className="link" onClick={() => setLectura(null)}>Cerrar</button>
+                )}
+              </div>
             )}
           </div>
         )}

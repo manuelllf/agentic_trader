@@ -238,6 +238,52 @@ class JevProvider:
         return raw, nota["confidence"]
 
 
+def preguntar_noul(*, api_key: str, model: str, stage: str, state: str, pregunta: str,
+                   recorder=None, timeout: float = _HARD_TIMEOUT) -> tuple[  # noqa: ANN001
+                       tuple[float, float | None] | None, dict]:
+    """Una única pregunta Noul (sí/no como probabilidad 0-1) sobre `state` -- fuera del prescore
+    (liga F6-B, pregunta propia). Nunca lanza: `None` si el proveedor no responde, con su propia
+    traza igual que `JevProvider._request`. Fuera de la clase porque el prescore no la necesita y
+    su `_QUESTIONS` es fijo; esto es la extensión mínima que pide F6-B."""
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {"state": state, "model": model,
+              "questions": {"pregunta": {"type": "noul", "instructions": pregunta}}}
+    t0 = time.monotonic()
+    p: float | None = None
+    confianza: float | None = None
+    error: str | None = None
+    data: dict | None = None
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(_ENDPOINT, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        respuesta = (data.get("answers") or {}).get("pregunta") or {}
+        crudo = respuesta.get("value")
+        p = None if crudo is None else max(0.0, min(1.0, float(crudo)))
+        crudo_c = respuesta.get("confidence")
+        confianza = None if crudo_c is None else float(crudo_c)
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+    usage = (data or {}).get("usage") or {}
+    pin, pout = _PRICING.get(model, (0.0, 0.0))
+    pt = int(usage.get("input_tokens", 0) or 0)
+    ct = int(usage.get("output_tokens", 0) or 0)
+    coste = (pt * pin + ct * pout) / 1_000_000
+    latencia_ms = int((time.monotonic() - t0) * 1000)
+    if recorder is not None:
+        recorder.record(CallRecord(
+            at=datetime.now(UTC), stage=stage, ticker=current_ticker(), model=model,
+            reasoning_effort="none", content=(str(p) if p is not None else None), reasoning=None,
+            confidence=confianza, prompt_cache_hit_tokens=0, prompt_cache_miss_tokens=pt,
+            completion_tokens=ct, cost_usd=coste, latency_ms=latencia_ms,
+            ok=error is None, error=error, notas=[]))
+    info = {"tokens_entrada": pt, "tokens_salida": ct, "coste_usd": coste,
+           "latencia_ms": latencia_ms, "ok": error is None, "error": error}
+    resultado = (p, confianza) if (p is not None and error is None) else None
+    return resultado, info
+
+
 def _combinar(answers: dict) -> dict:
     """Media ponderada de los 4 niveles (0-9) a escala 1-100, nunca 0: `prescore_one` lee
     sc<=0 como "sin nota", y el nivel 0 es una respuesta válida. Sin confianza en alguna
