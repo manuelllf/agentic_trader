@@ -25,6 +25,8 @@ import { useSesionRequerida } from "../_sesion/SesionContext";
 import { miles } from "@/lib/liga/format";
 
 const RUTA_ACTUAL = (id?: string) => (id ? `/crear/${id}` : "/crear");
+const AVISO_LECTURA =
+  "Análisis automático hecho con IA sobre datos públicos. Puede contener errores y no es una recomendación de inversión.";
 
 type Borrador = {
   reglas: ReglaElegida[];
@@ -660,6 +662,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                   <div className="pick" style={{ display: "block" }}>
                     <b>{lectura.ticker}</b>
                     <p className="meta" style={{ whiteSpace: "pre-wrap" }}>{lectura.texto}</p>
+                    <p className="fine">{AVISO_LECTURA}</p>
                     <button type="button" className="link" onClick={() => setLectura(null)}>Cerrar</button>
                   </div>
                 )}
@@ -669,6 +672,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                     <p className="meta" style={{ whiteSpace: "pre-wrap" }}>{l.texto}</p>
                   </div>
                 ))}
+                {Array.isArray(lectura) && lectura.length > 0 && (
+                  <p className="fine">{AVISO_LECTURA}</p>
+                )}
                 {Array.isArray(lectura) && (
                   <button type="button" className="link" onClick={() => setLectura(null)}>Cerrar</button>
                 )}

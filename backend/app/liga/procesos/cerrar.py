@@ -57,8 +57,15 @@ def vista_previa(jornada_id: int, fabrica: Fabrica = fabrica_sistema) -> dict:
         motivos = motivos_no_lista(db, j)
         if j.estado != "formada" or motivos:
             return para_json({"jornada_id": j.id, "listo": False, "motivos": motivos})
+        calculo = calcular(db, j, j.dia_fin)
         return para_json({"jornada_id": j.id, "listo": True, "motivos": [],
-                          **calcular(db, j, j.dia_fin)})
+                          "faltan_cierres": _sin_cierre(calculo), **calculo})
+
+
+def _sin_cierre(calculo: dict) -> list[str]:
+    """Valores en cartera a los que les falta el cierre del último día: sin él, el cálculo usaría
+    su cierre anterior y el resultado, que ya no se corrige, quedaría con un precio viejo."""
+    return sorted({t for f in calculo["filas"] for t in f.get("sin_cierre") or []})
 
 
 def _tickers(db: Session, jornada_id: int) -> list[str]:
@@ -69,7 +76,10 @@ def _tickers(db: Session, jornada_id: int) -> list[str]:
 
 
 def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
-             actor: str | None = None) -> dict:
+             actor: str | None = None, aceptar_sin_cierre: bool = False) -> dict:
+    """`aceptar_sin_cierre`: cerrar aunque a algún valor le falte el cierre del último día (una
+    suspendida o retirada de bolsa); usa su último cierre conocido y queda anotado en la
+    auditoría. Sin él, la jornada no se cierra: casi siempre es un fallo puntual de la fuente."""
     try:
         with candado("cerrar", fabrica):
             with sesion(fabrica) as db:
@@ -81,13 +91,13 @@ def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
                     inicio[t] = min(inicio.get(t, desde), desde)
                 precios.al_dia(db, inicio)
             with sesion(fabrica) as db:
-                return _escribir(db, jornada_id, actor)
+                return _escribir(db, jornada_id, actor, aceptar_sin_cierre)
     except Exception as e:
         auditar_fallo(fabrica, "cerrar", f"jornada:{jornada_id}", e, actor)
         raise
 
 
-def _escribir(db: Session, jornada_id: int, actor: str | None) -> dict:
+def _escribir(db: Session, jornada_id: int, actor: str | None, aceptar_sin_cierre: bool) -> dict:
     j = jornada_bloqueada(db, jornada_id)
     motivos = motivos_no_lista(db, j)
     if motivos:
@@ -97,6 +107,12 @@ def _escribir(db: Session, jornada_id: int, actor: str | None) -> dict:
     errores = [f"{f['nombre']}: {f['error']}" for f in calculo["filas"] if f.get("error")]
     if errores:
         raise ErrorProceso("No se puede calcular: " + " · ".join(errores))
+    faltan = _sin_cierre(calculo)
+    if faltan and not aceptar_sin_cierre:
+        raise ErrorProceso(
+            f"Faltan los cierres del {j.dia_fin} de: {', '.join(faltan)}. Suele ser un fallo "
+            "puntual de la fuente: vuelve a intentarlo. Si esos valores no cotizan (suspendidos "
+            "o retirados), ciérrala aceptando su último cierre conocido.")
     for f in calculo["filas"]:
         db.execute(text("""
             insert into liga.resultados (inscripcion_id, rentabilidad, puntos)
@@ -113,7 +129,8 @@ def _escribir(db: Session, jornada_id: int, actor: str | None) -> dict:
           select 1 from liga.jornadas j where j.temporada_id = t.id and j.estado <> 'cerrada')
     """), {"t": j.temporada_id})
     auditar(db, "proceso.cerrar", f"jornada:{j.id}",
-            {"resultados": len(calculo["filas"]), "sp_rentabilidad": calculo["sp_rentabilidad"]},
+            {"resultados": len(calculo["filas"]), "sp_rentabilidad": calculo["sp_rentabilidad"],
+             "sin_cierre_aceptado": faltan},
             actor)
     db.commit()
     return para_json({"jornada_id": j.id, "estado": j.estado, **calculo})

@@ -353,6 +353,39 @@ def test_un_mes_entero_dos_veces_sin_duplicar(fabrica, mercado, mundo) -> None: 
     assert ultimo["cerrar"]["ok"] and ultimo["formar"]["ok"]
 
 
+def test_no_se_cierra_con_un_cierre_que_falta_salvo_que_se_acepte(fabrica, mercado, mundo,  # noqa: ANN001
+                                                                   monkeypatch) -> None:
+    """Los resultados no se corrigen: si a un valor en cartera le falta el cierre del último día,
+    cerrar con su cierre anterior fijaría un precio viejo para siempre."""
+    ene = mundo["enero"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    with comun.sesion(fabrica) as db:
+        dia_fin = db.execute(text("select dia_fin from liga.jornadas where id = :j"),
+                             {"j": ene}).scalar()
+    entregar = mercado.descargar
+
+    def sin_el_ultimo_de_zqb(tickers, desde):  # noqa: ANN001, ANN202
+        salida = entregar(tickers, desde)
+        if "ZQB" in salida:                       # ZQB está en la cartera de Alpha
+            salida["ZQB"] = [c for c in salida["ZQB"] if c.dia < dia_fin]
+        return salida
+
+    monkeypatch.setattr(precios, "descargar", sin_el_ultimo_de_zqb)
+    mercado.hasta = dia_fin
+    diario.ejecutar(fabrica)
+
+    prev = cerrar.vista_previa(ene, fabrica=fabrica)
+    assert prev["listo"] is True and prev["faltan_cierres"] == ["ZQB"]
+    with pytest.raises(comun.ErrorProceso, match=r"Faltan los cierres.*ZQB"):
+        cerrar.ejecutar(ene, fabrica=fabrica)
+    assert _cuenta(fabrica, "select count(*) from liga.resultados") == 0
+
+    hecho = cerrar.ejecutar(ene, fabrica=fabrica, aceptar_sin_cierre=True)
+    assert hecho["estado"] == "cerrada"
+    assert _cuenta(fabrica, "select count(*) from liga.auditoria where accion = 'proceso.cerrar' "
+                            "and detalle->'sin_cierre_aceptado' = cast('[\"ZQB\"]' as jsonb)") == 1
+
+
 def test_mantener_conserva_sus_valores_con_los_pesos_de_fin_de_mes(fabrica, mercado,
                                                                   mundo) -> None:  # noqa: ANN001
     _formar_mes(fabrica, mercado, mundo["enero"], ENERO)

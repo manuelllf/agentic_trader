@@ -153,8 +153,8 @@ def valor_hueco(numero: int, operaciones: Sequence[Operacion],
         if not serie or serie[0].dia != op.entrada_dia:
             raise ValueError(f"hueco {numero} ({op.ticker}): falta el cierre de su entrada "
                              f"({op.entrada_dia})")
-        if serie[-1].dia < fin:
-            raise ValueError(f"hueco {numero} ({op.ticker}): falta el cierre del {fin}")
+        # Sin el cierre de `fin` se usa el último conocido, igual que en las demás carteras; el
+        # llamador lo avisa en `sin_cierre` y `cerrar` no cierra hasta que se acepte.
         niveles = indice(serie, dividendos=1.0)
         nivel_fin = niveles[max(d for d in niveles if d <= fin)]
         factor *= Decimal(repr(nivel_fin))

@@ -31,6 +31,10 @@ class FotoIn(JornadaIn):
     scan_run_id: int | None = Field(default=None, gt=0)
 
 
+class CerrarIn(JornadaIn):
+    aceptar_sin_cierre: bool = False
+
+
 class InterruptorIn(BaseModel):
     activo: bool
 
@@ -139,8 +143,9 @@ def cerrar_vista_previa(body: JornadaIn) -> dict:
 
 
 @_procesos.post("/cerrar/ejecutar", dependencies=ADMIN)
-def cerrar_ejecutar(body: JornadaIn, ident: Identidad = Depends(require_admin)) -> dict:
-    return _llamar(cerrar.ejecutar, body.jornada_id, actor=ident.uid)
+def cerrar_ejecutar(body: CerrarIn, ident: Identidad = Depends(require_admin)) -> dict:
+    return _llamar(cerrar.ejecutar, body.jornada_id, actor=ident.uid,
+                   aceptar_sin_cierre=body.aceptar_sin_cierre)
 
 
 # ---- Copia de seguridad del esquema `liga` (plan §8.5 y §14) -------------------------------------

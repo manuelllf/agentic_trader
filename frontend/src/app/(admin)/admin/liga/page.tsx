@@ -52,6 +52,10 @@ function Liga() {
   const [hecho, setHecho] = useState<unknown>(null);
   const [ocupado, setOcupado] = useState(false);
   const [copiaOcupado, setCopiaOcupado] = useState(false);
+  const [aceptarSinCierre, setAceptarSinCierre] = useState(false);
+  // Al cerrar: valores en cartera a los que les falta el cierre del último día (viene en la vista previa).
+  const faltanCierres = accion?.proceso === "cerrar"
+    ? ((previa as { faltan_cierres?: string[] } | null)?.faltan_cierres ?? []) : [];
 
   const cargar = useCallback(() => {
     get<Estado>("/liga/admin/procesos/estado").then(setEstado).catch((e) => setFallo(error(e)));
@@ -60,6 +64,7 @@ function Liga() {
 
   const abrir = async (a: Accion) => {
     setAccion(a); setPrevia(null); setHecho(null); setFallo(""); setOcupado(true);
+    setAceptarSinCierre(false);
     try {
       setPrevia(await post(`/liga/admin/procesos/${a.proceso}/vista-previa`, a.cuerpo, 90_000));
     } catch (e) { setFallo(error(e)); } finally { setOcupado(false); }
@@ -69,7 +74,9 @@ function Liga() {
     if (!accion) return;
     setOcupado(true); setFallo("");
     try {
-      setHecho(await post(`/liga/admin/procesos/${accion.proceso}/ejecutar`, accion.cuerpo, 90_000));
+      const cuerpo = accion.proceso === "cerrar" && aceptarSinCierre
+        ? { ...accion.cuerpo, aceptar_sin_cierre: true } : accion.cuerpo;
+      setHecho(await post(`/liga/admin/procesos/${accion.proceso}/ejecutar`, cuerpo, 90_000));
       cargar();
     } catch (e) { setFallo(error(e)); } finally { setOcupado(false); }
   };
@@ -220,8 +227,22 @@ function Liga() {
                 <>
                   <p className="mt-2" style={{ color: "#898781" }}>Vista previa: todavía no se ha escrito nada.</p>
                   <Resultado datos={previa} />
+                  {faltanCierres.length > 0 && (
+                    <label className="mt-3 flex min-h-[44px] items-start gap-3 rounded-lg p-3"
+                           style={{ background: "#2a2216", color: "#e6c067" }}>
+                      <input type="checkbox" checked={aceptarSinCierre}
+                             onChange={(e) => setAceptarSinCierre(e.target.checked)}
+                             className="mt-0.5 h-5 w-5 shrink-0" />
+                      <span>
+                        Falta el cierre del último día de {faltanCierres.join(", ")}. Suele ser un
+                        fallo puntual de la fuente: reintenta antes. Si no cotizan (suspendidos o
+                        retirados), marca esto para cerrar con su último cierre conocido.
+                      </span>
+                    </label>
+                  )}
                   <div className="mt-3 flex gap-2">
-                    <button type="button" onClick={ejecutar} disabled={ocupado}
+                    <button type="button" onClick={ejecutar}
+                            disabled={ocupado || (faltanCierres.length > 0 && !aceptarSinCierre)}
                             className="min-h-[44px] flex-1 rounded-lg px-4 font-bold text-white disabled:opacity-40"
                             style={{ background: "#3987e5" }}>
                       {ocupado ? "Ejecutando…" : "Ejecutar"}
