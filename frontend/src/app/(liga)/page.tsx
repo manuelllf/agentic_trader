@@ -184,6 +184,12 @@ export default function Portada() {
         <Link href="/entrar?next=/crear" className="btn pri wide">Crea la tuya</Link>
         <Link href="/liga" className="btn discreto">Ver la liga</Link>
       </div>
+
+      <p className="land-legal land-in" style={{ ["--d" as string]: "620ms" }}>
+        <Link href="/legal/privacidad">Privacidad</Link>
+        <Link href="/legal/terminos">Términos</Link>
+        <Link href="/legal/cookies">Cookies</Link>
+      </p>
     </main>
   );
 }

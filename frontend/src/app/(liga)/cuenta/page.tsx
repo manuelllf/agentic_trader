@@ -175,6 +175,12 @@ export default function Cuenta() {
                 {dandoBaja ? "Borrando…" : "Borrar mi cuenta"}
               </Boton>
             </form>
+
+            <p className="legal-nav">
+              <Link href="/legal/privacidad">Privacidad</Link>
+              <Link href="/legal/terminos">Términos</Link>
+              <Link href="/legal/cookies">Cookies</Link>
+            </p>
           </>
         )}
       </section>

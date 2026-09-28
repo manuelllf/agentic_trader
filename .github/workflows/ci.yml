@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "20260927_liguilla"]
+  pull_request:
+    branches: [main, "20260927_liguilla"]
+
+jobs:
+  backend-lint:
+    name: Backend · ruff
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --extra dev
+      # Solo la liguilla bloquea: el resto arrastra deuda previa (imports sin ordenar). B008 =
+      # `Depends` como valor por defecto, el idioma de FastAPI del código.
+      - run: uv run ruff check app/liga tests/liga --ignore B008
+      - run: uv run ruff check . --exit-zero --statistics
+
+  backend-tests:
+    name: Backend · pytest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --extra dev
+      # TODO (después de F8): levantar un servicio de Postgres con el esquema `liga` (migraciones +
+      # RLS) y exportar LIGA_TEST_DATABASE_URL, para que tests/liga/*.py y tests/test_liga_*.py
+      # corran de verdad en CI en vez de saltarse (hoy se saltan solos sin esa variable — ver
+      # `pytestmark = pytest.mark.skipif(not URL, ...)` en cada fichero — así que esta tanda solo
+      # cubre el resto del backend).
+      - name: pytest, un fichero por vez y con tiempo máximo (nunca la batería entera junta)
+        run: |
+          set -uo pipefail
+          fallo=0
+          for f in $(find tests -name 'test_*.py' | sort); do
+            echo "::group::$f"
+            timeout 120s uv run pytest "$f" -q
+            codigo=$?
+            echo "::endgroup::"
+            if [ "$codigo" -ne 0 ]; then
+              echo "FALLÓ: $f (código $codigo)"
+              fallo=1
+            fi
+          done
+          exit "$fallo"
+
+  backend-audit:
+    name: Backend · pip-audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --extra dev
+      # Solo informa por ahora: hay avisos conocidos sin triar todavía. Cuando se haga la primera
+      # pasada de limpieza, quitar `continue-on-error` para que CI corte en adelante.
+      - name: pip-audit (no bloquea el build todavía)
+        continue-on-error: true
+        run: uv run --with pip-audit pip-audit
+
+  frontend:
+    name: Frontend · lint, tipos, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      # Vars públicas ficticias: CI no tiene backend ni Supabase reales, pero `next build` necesita
+      # que existan para no fallar en el prerender de las páginas que las leen.
+      - name: build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: dummy-ci-key
+        run: npm run build
+      - name: npm audit (no bloquea el build todavía)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  frontend-sin-dangerously-set-inner-html:
+    name: Frontend · sin dangerouslySetInnerHTML en la liguilla
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Plan §14 "Salidas": ningún dangerouslySetInnerHTML con texto de usuario. Se limita a
+      # frontend/src/app/(liga) (la liguilla, pública) — /admin son las salas de siempre, fuera de
+      # este brief.
+      - name: buscar dangerouslySetInnerHTML
+        run: |
+          if grep -rl "dangerouslySetInnerHTML" "frontend/src/app/(liga)" 2>/dev/null; then
+            echo "dangerouslySetInnerHTML encontrado bajo frontend/src/app/(liga) — prohibido (plan §14)."
+            exit 1
+          fi
+          echo "OK: sin dangerouslySetInnerHTML en frontend/src/app/(liga)."

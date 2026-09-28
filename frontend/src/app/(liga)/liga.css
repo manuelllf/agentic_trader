@@ -594,6 +594,14 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .land-cta { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .lg .land-cta .btn.discreto { min-height: 40px; }
 
+/* Línea diminuta al pie de la portada (legal, tarea 8.3): no cuenta como bloque nuevo de la
+   pantalla sin scroll, solo texto suelto pegado al borde inferior seguro. */
+.lg .land-legal {
+  flex: 0 0 auto; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;
+  font-size: 11px; color: var(--muted); padding-bottom: env(safe-area-inset-bottom);
+}
+.lg .land-legal a { text-decoration: underline; text-underline-offset: 2px; }
+
 .lg .land-in { animation: land-in .5s cubic-bezier(.2, .8, .2, 1) both; animation-delay: var(--d, 0ms); }
 
 @keyframes land-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -602,3 +610,24 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
   50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); }
 }
+
+/* ---- Páginas legales (tarea 8.3): texto largo, con scroll normal (no `.sencilla`, pensada para
+   una pantalla corta y centrada) --------------------------------------------------------------- */
+.lg .legal-cuerpo {
+  flex: 1; width: 100%; max-width: 480px; margin: 0 auto; padding: 4px 16px 48px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.lg .legal-aviso {
+  margin: 8px 0 18px; padding: 10px 12px; border-radius: 10px;
+  background: var(--bad-bg); color: var(--bad); font-size: 13.5px; font-weight: 700;
+}
+.lg .legal-cuerpo h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 4px; }
+.lg .legal-cuerpo h2 {
+  font-size: 17px; font-weight: 800; margin-top: 22px; margin-bottom: 2px;
+}
+.lg .legal-cuerpo p, .lg .legal-cuerpo li { font-size: 14.5px; line-height: 1.55; }
+.lg .legal-cuerpo ul { padding-left: 20px; display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.lg .legal-cuerpo li { list-style: disc; }
+.lg .legal-cuerpo a { text-decoration: underline; text-underline-offset: 2px; }
+.lg .legal-fecha { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.lg .legal-nav { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 28px; font-size: 13px; }
