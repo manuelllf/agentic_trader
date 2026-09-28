@@ -22,13 +22,13 @@ from app.liga.procesos.comun import auditar, fabrica_sistema
 TABLAS = (
     "perfiles", "perfiles_privados", "roles_usuario", "planes_usuario",
     "consentimientos", "temporadas", "jornadas", "estrategias", "recetas", "inscripciones",
-    "posiciones", "resultados", "ligas_privadas", "miembros_liga", "pruebas", "respuestas_ia",
+    "posiciones", "resultados", "omega_operaciones", "ligas_privadas", "miembros_liga", "pruebas", "respuestas_ia",
     "lecturas", "creditos_movimientos", "ajustes", "auditoria", "reportes",
 )
 
 # El número más alto de `sql/liga/NNN_*.sql` aplicado (plan §6.3): se guarda en el manifiesto
 # para saber, al restaurar, qué migraciones hacen falta antes de cargar los datos.
-VERSION_ESQUEMA = 10
+VERSION_ESQUEMA = 13
 
 
 def _copiar_tabla(cursor, tabla: str) -> bytes:  # noqa: ANN001 — cursor de psycopg (DBAPI)

@@ -25,9 +25,12 @@ def admin_estado_datos(db: Session = Depends(get_db)) -> dict:
     from app.screener import universe as universe_mod
 
     def _foto(es_dataset: bool) -> dict:
-        at, n = (db.query(func.max(FundamentalsSnapshot.captured_at),
-                         func.count(func.distinct(FundamentalsSnapshot.ticker)))
-                .filter(FundamentalsSnapshot.es_dataset.is_(es_dataset)).one())
+        filtro = FundamentalsSnapshot.es_dataset.is_(es_dataset)
+        at = db.query(func.max(FundamentalsSnapshot.captured_at)).filter(filtro).scalar()
+        # Agrupar antes de contar: `count(distinct)` junto a `max` recorre el índice a saltos
+        # (2,5 s con 20.000 filas); el DISTINCT en subconsulta va con hash (20 ms).
+        distintos = db.query(FundamentalsSnapshot.ticker).filter(filtro).distinct().subquery()
+        n = db.query(func.count()).select_from(distintos).scalar()
         return {"at": utc_iso(at) if at else None, "n": n or 0}
 
     # "elegibles" = lo que pasa precio/cap/tipo de instrumento; "a_escanear" = tras liquidez y

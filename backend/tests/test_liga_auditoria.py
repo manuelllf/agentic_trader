@@ -73,6 +73,14 @@ def test_toda_tabla_de_liga_esta_clasificada(cx) -> None:
     assert _tablas(cx) == set(RASTRO)
 
 
+def test_toda_tabla_de_liga_entra_en_la_copia(cx) -> None:
+    """Lo que no está en `copia.TABLAS` no se guarda en la copia de seguridad."""
+    from app.liga.copia import TABLAS
+
+    # `permisos_rol` es configuración sembrada por la propia migración, no datos.
+    assert _tablas(cx) - {"permisos_rol"} == set(TABLAS)
+
+
 @pytest.mark.parametrize("tabla", sorted(RASTRO))
 def test_tabla_tiene_sus_columnas_de_rastro(cx, tabla: str) -> None:
     cols = _columnas(cx, tabla)
