@@ -85,6 +85,21 @@ function Liga() {
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>Liguilla</h1>
 
+      <section className="mt-4 flex flex-wrap gap-2">
+        {[
+          { href: "/admin/liga/usuarios", texto: "Usuarios" },
+          { href: "/admin/liga/moderacion", texto: "Moderación" },
+          { href: "/admin/liga/ajustes", texto: "Ajustes" },
+          { href: "/admin/liga/auditoria", texto: "Auditoría" },
+        ].map((l) => (
+          <Link key={l.href} href={l.href}
+                className="min-h-[40px] rounded-lg px-3 py-2 font-bold text-white"
+                style={{ background: "#2c2c2a" }}>
+            {l.texto}
+          </Link>
+        ))}
+      </section>
+
       {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
       {!estado ? (
         !fallo && <p className="mt-6" style={{ color: "#898781" }}>Cargando…</p>
