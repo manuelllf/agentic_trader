@@ -108,6 +108,20 @@ def _tablas_existentes_duckdb(con) -> set[str]:  # noqa: ANN001
     return {t for (t,) in filas}
 
 
+def _alinear_columnas(con, tabla: str, fuente: str) -> list[str]:  # noqa: ANN001
+    """Las columnas de `fuente`, tras añadir a la tabla archivada las que Postgres haya ganado
+    desde que se creó (las filas ya archivadas quedan con ese valor vacío). Sin esto, una
+    migración que añade una columna rompía el archivo: `insert ... select *` exige mismo ancho."""
+    fuente_cols = con.execute(f"describe select * from {fuente}").fetchall()
+    destino = {c for (c,) in con.execute(
+        "select column_name from duckdb_columns() "
+        "where table_name = ? and database_name = current_database()", [tabla]).fetchall()}
+    for nombre, tipo, *_ in fuente_cols:
+        if nombre not in destino:
+            con.execute(f'alter table {tabla} add column "{nombre}" {tipo}')
+    return [f'"{nombre}"' for nombre, *_ in fuente_cols]
+
+
 def _sync_incremental(con, existentes: set[str]) -> dict[str, int]:  # noqa: ANN001
     """Archiva por delta las tablas de `_INCREMENTALES`. Ver docstring del diccionario."""
     con.execute(
@@ -122,8 +136,10 @@ def _sync_incremental(con, existentes: set[str]) -> dict[str, int]:  # noqa: ANN
                 "select ultimo_id from _sync_watermark where tabla = ?", [tabla]
             ).fetchone()
             ultimo_id = fila[0] if fila else 0
+            columnas = ", ".join(_alinear_columnas(con, tabla, fuente))
             con.execute(
-                f"insert into {tabla} select * from {fuente} where {columna_id} > {ultimo_id}"
+                f"insert into {tabla} ({columnas}) select {columnas} from {fuente} "
+                f"where {columna_id} > {ultimo_id}"
             )
         nuevo_max = con.execute(
             f"select coalesce(max({columna_id}), 0) from {tabla}"

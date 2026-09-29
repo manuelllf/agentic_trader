@@ -59,6 +59,24 @@ def test_archivo_incremental_de_metricas_y_titulares(con, monkeypatch) -> None:
     assert con.execute("select ultimo_id from _sync_watermark").fetchone() == (4,)
 
 
+def test_una_columna_nueva_en_postgres_no_rompe_el_archivo_incremental(con, monkeypatch) -> None:
+    # Producción: `llm_call_logprob` ganó una columna (auditoría) y el `insert ... select *` sobre
+    # la tabla archivada, creada con el esquema viejo, reventaba: "6 columns but 7 values".
+    monkeypatch.setattr(sync_mod, "_INCREMENTALES", {"logprob": ("pg.logprob", "id")})
+    con.execute("create table pg.logprob (id bigint, token varchar)")
+    con.execute("insert into pg.logprob values (1, 'a'), (2, 'b')")
+    sync_mod._sync_incremental(con, sync_mod._tablas_existentes_duckdb(con))
+
+    con.execute("alter table pg.logprob add column created_at varchar")
+    con.execute("insert into pg.logprob values (3, 'c', '2026-09-29')")
+    counts = sync_mod._sync_incremental(con, sync_mod._tablas_existentes_duckdb(con))
+
+    assert counts == {"logprob": 3}
+    # Lo archivado antes queda como estaba (columna nueva vacía) y lo nuevo trae su valor.
+    assert con.execute("select id, token, created_at from logprob order by id").fetchall() == [
+        (1, "a", None), (2, "b", None), (3, "c", "2026-09-29")]
+
+
 def test_reemplazo_diario_deja_fuera_metricas_y_titulares(con) -> None:
     _insertar(con, [(1, "AAA", '{"beta": 1.1}', ["uno"])])
     columnas = sync_mod._SELECT_REEMPLAZO["fundamentals_snapshot"]
