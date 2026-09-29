@@ -24,6 +24,7 @@ import {
 import { invalidar, obtener } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { miles } from "@/lib/liga/format";
+import { tomarIdea } from "@/lib/liga/idea";
 
 const RUTA_ACTUAL = (id?: string) => (id ? `/crear/${id}` : "/crear");
 const AVISO_LECTURA =
@@ -101,6 +102,8 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   const [convOcupado, setConvOcupado] = useState(false);
   const [convError, setConvError] = useState<string | null>(null);
   const [convUsos, setConvUsos] = useState<{ hoy: number; tope: number } | null>(null);
+  // La idea escrita en la portada llega puesta en «Descríbelo»; no se envía hasta que se pulsa.
+  useEffect(() => { const idea = tomarIdea(); if (idea) setConvFrase(idea); }, []);
 
   const nombreRef = useRef<HTMLInputElement>(null);
   const buscaId = useRef(0);

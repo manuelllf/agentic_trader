@@ -597,8 +597,10 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 }
 .lg .lnd-sub { display: none; font-size: clamp(16px, 1.6vw, 20px); color: var(--ink2); max-width: 52ch; }
 .lg .lnd-centro { grid-area: centro; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.lg .lnd-cta { grid-area: cta; display: flex; align-items: center; gap: 6px; }
-.lg .lnd-cta .btn.pri { flex: 1; animation: lnd-latido 1.6s ease-in-out calc(var(--t0) + 5s) 3; }
+.lg .lnd-nav { display: flex; align-items: center; }
+.lg .lnd-cta { grid-area: cta; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lg .lnd-cta .inp { flex: 1; min-width: 0; min-height: 52px; }
+.lg .lnd-cta .btn.pri { flex: none; animation: lnd-latido 1.6s ease-in-out calc(var(--t0) + 5s) 3; }
 .lg .lnd-legal {
   grid-area: leg; display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; font-size: 12px;
   color: var(--muted);
@@ -606,7 +608,6 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .lnd-legal span { flex-basis: 100%; }
 .lg .lnd-legal a { display: inline-flex; align-items: center; min-height: 36px; text-decoration: underline; text-underline-offset: 2px; }
 
-.lg .lnd-centro .seg button { white-space: nowrap; }
 .lg .lnd-esc { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .lg .lnd-b { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .lg .lnd-esc > .lnd-b:first-child { flex-direction: row; align-items: center; gap: 14px; }
@@ -705,9 +706,9 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
     grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "top top" "cab cta" "centro centro" "leg leg";
   }
   .lg .lnd-sub { display: block; }
-  .lg .lnd-cta { align-self: end; }
-  .lg .lnd-cta .btn.pri { flex: none; min-height: 56px; padding: 0 34px; font-size: 18px; }
-  .lg .lnd-centro .seg { align-self: flex-start; min-width: 380px; }
+  .lg .lnd-cta { align-self: end; width: min(560px, 42vw); }
+  .lg .lnd-cta .inp, .lg .lnd-cta .btn.pri { min-height: 56px; font-size: 17px; }
+  .lg .lnd-cta .btn.pri { padding: 0 30px; }
   .lg .lnd-esc { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); gap: 32px; align-items: start; }
   .lg .lnd-esc > .lnd-b:first-child { flex-direction: column; align-items: flex-start; gap: 22px; }
   .lg .lnd-frase { font-size: clamp(22px, 2.1vw, 28px); }
