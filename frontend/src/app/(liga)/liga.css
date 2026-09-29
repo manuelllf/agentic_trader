@@ -572,12 +572,12 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 
 /* ---- Portada sin sesión: una pantalla que se juega sola ------------------------------------------
    Nada de tamaños fijos en móvil: `--u` sale del ancho y del alto reales (svh, estable con las
-   barras de Safari y Chrome) y todo se mide en múltiplos de `--u`. Termina sin bucle. */
+   barras de Safari y Chrome) y todo se mide en múltiplos de `--u`. Si no cabe, crece: no recorta. */
 
 .lg .lnd {
   --u: max(.8px, min(calc(100vw / 390), calc(100svh / 760)));
   --t0: 5.6s;
-  position: relative; height: 100svh; width: 100%; max-width: 1240px; margin: 0 auto;
+  position: relative; min-height: 100svh; width: 100%; max-width: 1240px; margin: 0 auto;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(var(--u) * 12);
   grid-template-areas: "top" "cab" "centro" "cta" "leg";
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
@@ -599,7 +599,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .lnd-cab { grid-area: cab; display: flex; flex-direction: column; gap: calc(var(--u) * 6); }
 .lg .lnd-cab h1 { font-size: max(20px, calc(var(--u) * 26)); line-height: 1.1; font-weight: 800; letter-spacing: -.035em; }
 .lg .lnd-sub { display: none; font-size: 20px; color: var(--ink2); max-width: 52ch; }
-.lg .lnd-centro { grid-area: centro; display: flex; flex-direction: column; justify-content: flex-start; gap: calc(var(--u) * 10); min-width: 0; min-height: 0; overflow: hidden; }
+.lg .lnd-centro { grid-area: centro; display: flex; flex-direction: column; justify-content: flex-start; gap: calc(var(--u) * 10); min-width: 0; }
 .lg .lnd-cta { grid-area: cta; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .lg .lnd-cta .btn.pri {
   flex: 1; min-height: max(44px, calc(var(--u) * 52)); font-size: max(15px, calc(var(--u) * 17));
@@ -708,11 +708,10 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 
 @media (min-width: 880px) {
   .lg .lnd {
-    --u: 1px; --t0: 4.2s; height: auto; min-height: 100dvh; gap: 18px 40px; padding-left: 40px; padding-right: 40px;
+    --u: 1px; --t0: 4.2s; min-height: 100dvh; gap: 18px 40px; padding-left: 40px; padding-right: 40px;
     grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "top top" "cab cta" "centro centro" "leg leg";
     grid-template-rows: auto auto 1fr auto;
   }
-  .lg .lnd-centro { overflow: visible; }
   .lg .lnd-cab h1 { font-size: 50px; }
   .lg .lnd-sub { display: block; }
   .lg .lnd-cta { align-self: end; }
