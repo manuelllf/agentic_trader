@@ -5,10 +5,12 @@ Postgres se simula con un segundo fichero DuckDB adjuntado como `pg`: la sintaxi
 
 from __future__ import annotations
 
-import duckdb
 import pytest
 
 from app import analytics_sync as sync_mod
+
+# `duckdb` es un extra (`analytics`), no una dependencia base: sin él, todo el fichero se salta.
+duckdb = pytest.importorskip("duckdb")
 
 
 @pytest.fixture

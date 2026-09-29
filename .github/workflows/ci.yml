@@ -31,7 +31,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
-      - run: uv sync --extra dev
+      # `analytics` (duckdb) para que corran de verdad las pruebas del archivo histórico.
+      - run: uv sync --extra dev --extra analytics
       # TODO (después de F8): levantar un servicio de Postgres con el esquema `liga` (migraciones +
       # RLS) y exportar LIGA_TEST_DATABASE_URL, para que tests/liga/*.py y tests/test_liga_*.py
       # corran de verdad en CI en vez de saltarse (hoy se saltan solos sin esa variable — ver
