@@ -135,6 +135,17 @@ def test_clasificacion_y_jornada_como_las_ve_cualquiera(liga) -> None:  # noqa: 
     assert c["filas"][1]["equipo"]["autor"] == f"marta_{sufijo}"
     assert c["filas"][1]["ganadas"] == 1 and c["filas"][1]["perdidas"] == 1
 
+    # Con página de una fila, las de un autor que quedan fuera vienen aparte y con su posición.
+    pagina = cliente.get(f"/liga/publico/clasificacion?temporada={tid}&cuantos=1"
+                         f"&alias=marta_{sufijo}").json()
+    assert [f["equipo"]["nombre"] for f in pagina["filas"]] == ["Sin autor visible"]
+    assert [(f["posicion"], f["equipo"]["nombre"]) for f in pagina["mias"]] == [(2, "Foso ancho")]
+    # Si ya salen en la página, no se repiten; y sin alias no hay «mias».
+    assert cliente.get(f"/liga/publico/clasificacion?temporada={tid}&alias=marta_{sufijo}"
+                       ).json()["mias"] == []
+    assert cliente.get(f"/liga/publico/clasificacion?temporada={tid}&cuantos=1"
+                       ).json()["mias"] == []
+
     d = cliente.get(f"/liga/publico/jornada/{j2}").json()
     assert [(f["equipo"]["nombre"], f["puntos"], f["dif_sp"]) for f in d["filas"]] == \
         [("Sin autor visible", 3, "1.0000"), ("Foso ancho", 0, "-1.0000")]

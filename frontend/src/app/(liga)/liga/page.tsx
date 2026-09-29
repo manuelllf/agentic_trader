@@ -18,7 +18,8 @@ import {
 } from "../_ui";
 import {
   getClasificacion, getJornadaPublica, getPortada,
-  type Clasificacion, type EquipoPublico, type JornadaDetalle, type Portada,
+  type Clasificacion, type EquipoPublico, type FilaClasificacion, type JornadaDetalle,
+  type Portada,
 } from "@/lib/liga/api";
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
 import { useSesion } from "../_sesion/SesionContext";
@@ -50,7 +51,10 @@ export default function Liga() {
     useCache<Portada | string>("portada", getPortada);
   const hayTemporada = typeof portada === "object" && !!portada && portada.temporada !== null;
   const { datos: clasificacion, refrescar: refrescarClasificacion } =
-    useCache<Clasificacion | string>(vista === "tabla" && hayTemporada ? "clasificacion" : null, getClasificacion);
+    useCache<Clasificacion | string>(
+      vista === "tabla" && hayTemporada ? `clasificacion:${yo?.alias ?? ""}` : null,
+      () => getClasificacion({ alias: yo?.alias }),
+    );
   const idEnJuego = typeof portada === "object" && portada ? portada.en_juego?.id ?? null : null;
   const { datos: jornada, refrescar: refrescarJornada } = useCache<JornadaDetalle | string>(
     vista === "jornada" && idEnJuego != null ? `jornada:${idEnJuego}` : null,
@@ -58,6 +62,21 @@ export default function Liga() {
   );
 
   const abrir = (id: string) => router.push(`/ficha/${id}`);
+
+  const filaDe = (f: FilaClasificacion) => (
+    <FilaEquipo
+      key={f.equipo.id}
+      puesto={f.posicion}
+      nombre={f.equipo.nombre}
+      escudo={f.equipo.escudo}
+      etiqueta={etiquetaEquipo(f.equipo, yo?.alias ?? null)}
+      vsIndice={f.dif_sp}
+      puntos={f.puntos}
+      tipo={f.equipo.casa ? "casa" : (yo && f.equipo.autor === yo.alias) ? "mia" : "normal"}
+      colorCasa={f.equipo.casa ? { alpha: "#1DE27A", omega: "#FF6B1A", lambda: "#8F8A80" }[f.equipo.casa] : undefined}
+      onClick={() => abrir(f.equipo.id)}
+    />
+  );
 
   if (cargandoPortada) {
     return (
@@ -146,23 +165,13 @@ export default function Liga() {
             ) : (
               <div className="sec" style={{ marginTop: 20 }}>
                 <TablaClasificacion>
-                  {clasificacion.filas.map((f) => (
-                    <FilaEquipo
-                      key={f.equipo.id}
-                      puesto={f.posicion}
-                      nombre={f.equipo.nombre}
-                      escudo={f.equipo.escudo}
-                      etiqueta={etiquetaEquipo(f.equipo, yo?.alias ?? null)}
-                      vsIndice={f.dif_sp}
-                      puntos={f.puntos}
-                      tipo={f.equipo.casa ? "casa" : (yo && f.equipo.autor === yo.alias) ? "mia" : "normal"}
-                      colorCasa={f.equipo.casa ? { alpha: "#1DE27A", omega: "#FF6B1A", lambda: "#8F8A80" }[f.equipo.casa] : undefined}
-                      onClick={() => abrir(f.equipo.id)}
-                    />
-                  ))}
+                  {clasificacion.filas.map(filaDe)}
                   {clasificacion.total > clasificacion.filas.length && (
-                    <HuecoClasificacion>y {clasificacion.total - clasificacion.filas.length} más</HuecoClasificacion>
+                    <HuecoClasificacion>
+                      y {clasificacion.total - clasificacion.filas.length - clasificacion.mias.length} más
+                    </HuecoClasificacion>
                   )}
+                  {clasificacion.mias.map(filaDe)}
                 </TablaClasificacion>
                 <div className="legend">
                   <p>α Alpha, Ω Omega y λ Lambda son de la casa y juegan con las mismas reglas.</p>

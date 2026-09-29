@@ -77,6 +77,9 @@ class Clasificacion(BaseModel):
     temporada: TemporadaOut
     total: int
     filas: list[FilaClasificacion]
+    # Las del `alias` pedido que quedan fuera de esta página, con su posición real: quien juega
+    # se ve aunque esté más abajo de la fila 50. Todo esto ya es público.
+    mias: list[FilaClasificacion] = []
 
 
 class FilaJornada(BaseModel):
@@ -122,6 +125,12 @@ def _equipo(f) -> EquipoOut:  # noqa: ANN001
                          iniciales=f.iniciales))
 
 
+def _fila(posicion: int, f) -> FilaClasificacion:  # noqa: ANN001
+    return FilaClasificacion(
+        posicion=posicion, equipo=_equipo(f), puntos=f.puntos, jornadas=f.jornadas,
+        ganadas=f.ganadas, empatadas=f.empatadas, perdidas=f.perdidas, dif_sp=f.dif_sp)
+
+
 def _temporada(db: Session, temporada_id: int | None) -> TemporadaOut | None:
     """La pedida; si no, la que está en juego; si no, la próxima; si no, la última cerrada."""
     filtro = "where id = :t" if temporada_id else ""
@@ -164,6 +173,7 @@ def _detalle(db: Session, j: JornadaOut) -> JornadaDetalle:
 @router.get("/clasificacion", response_model=Clasificacion)
 def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
                   cuantos: int = Query(50, ge=1, le=100),
+                  alias: str | None = Query(None, min_length=1, max_length=20),
                   db: Session = Depends(db_anon)) -> Clasificacion:
     """Puntos, luego diferencia compuesta contra el S&P, luego fecha de alta (plan §8)."""
     t = _temporada(db, temporada)
@@ -181,11 +191,20 @@ def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
         order by c.puntos desc, c.dif_sp desc, e.creada, e.id
         offset :desde limit :cuantos
     """), {"t": t.id, "desde": desde, "cuantos": cuantos}).all()
-    return Clasificacion(temporada=t, total=total, filas=[
-        FilaClasificacion(posicion=desde + i + 1, equipo=_equipo(f), puntos=f.puntos,
-                          jornadas=f.jornadas, ganadas=f.ganadas, empatadas=f.empatadas,
-                          perdidas=f.perdidas, dif_sp=f.dif_sp)
-        for i, f in enumerate(filas)])
+    fuera = []
+    if alias:
+        fuera = db.execute(text(f"""
+            select * from (
+              select {_EQUIPO}, c.puntos, c.jornadas, c.ganadas, c.empatadas, c.perdidas, c.dif_sp,
+                     row_number() over (order by c.puntos desc, c.dif_sp desc, e.creada, e.id) as pos
+              {base}
+            ) r
+            where r.alias = :alias and r.pos > :ultima
+            order by r.pos limit 10
+        """), {"t": t.id, "alias": alias.strip().lower(), "ultima": desde + cuantos}).all()
+    return Clasificacion(
+        temporada=t, total=total, filas=[_fila(desde + i + 1, f) for i, f in enumerate(filas)],
+        mias=[_fila(f.pos, f) for f in fuera])
 
 
 @router.get("/jornada/{jornada_id}", response_model=JornadaDetalle)
