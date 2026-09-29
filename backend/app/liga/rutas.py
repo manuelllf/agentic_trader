@@ -33,6 +33,7 @@ router.include_router(rutas_ia.router)
 
 # Exporta recorre toda su cuenta: como las pruebas de estrategias.py, cara de abusar sin freno.
 _LIMITE_EXPORTAR = acceso.LimiteFrecuencia(tope=3, ventana_s=60 * 60)
+_LIMITE_BAJA = acceso.LimiteFrecuencia(tope=5, ventana_s=15 * 60)
 
 
 class Yo(BaseModel):
@@ -144,12 +145,13 @@ def exportar_datos(ident: Identidad = Depends(require_usuario),
 
 class BajaIn(BaseModel):
     confirmacion: str = Field(min_length=1, max_length=40)
+    clave: str = Field(min_length=1, max_length=200)
 
 
 @router.delete("/yo", status_code=204, response_class=Response)
 def borrar_cuenta(body: BajaIn, ident: Identidad = Depends(require_usuario),
                   db: Session = Depends(db_usuario)) -> Response:
-    """Confirmación = escribir el propio alias. Un admin no puede darse de baja a sí mismo (se
+    """Confirmación = escribir el propio alias y la contraseña. Un admin no puede darse de baja a sí mismo (se
     quedaría el sistema sin nadie que gestione la liga): que otro admin le quite antes el rol."""
     fila = db.execute(text("""
         select p.alias, liga.authorize('admin.liga') as admin
@@ -161,5 +163,9 @@ def borrar_cuenta(body: BajaIn, ident: Identidad = Depends(require_usuario),
         raise HTTPException(409, "Como administrador no puedes darte de baja tú mismo.")
     if body.confirmacion.strip().lower() != fila.alias:
         raise HTTPException(422, "Escribe tu nombre de usuario tal cual para confirmar la baja.")
+    if not _LIMITE_BAJA.permitido(ident.uid):
+        raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
+    if not acceso.clave_correcta(ident.uid, body.clave):
+        raise HTTPException(403, "La contraseña no es correcta.")
     cuenta.borrar_cuenta(ident.uid)
     return Response(status_code=204)

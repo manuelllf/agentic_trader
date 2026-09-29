@@ -43,7 +43,10 @@ def _cliente_jwks() -> jwt.PyJWKClient:
     with _jwks_lock:
         if _jwks is None:
             _jwks = jwt.PyJWKClient(_emisor() + "/.well-known/jwks.json",
-                                    cache_keys=True, lifespan=3600, timeout=5)
+                                    cache_keys=True, lifespan=3600, timeout=5,
+                                    # Un `kid` desconocido fuerza recarga: sin ventana, tokens
+                                    # inventados harían una descarga a Supabase por petición.
+                                    cooldown_duration=60)
         return _jwks
 
 

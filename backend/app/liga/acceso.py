@@ -18,6 +18,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.db import SessionLocal
 from app.liga.auth import Identidad, require_jugador
+from app.liga.procesos.comun import fabrica_sistema
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,15 @@ def _pedir_sesion(email: str, clave: str) -> dict | None:
         logger.warning("Supabase Auth respondió %s al entrar por alias", r.status_code)
         raise HTTPException(503, "No se pudo entrar ahora. Prueba en un momento.")
     return r.json() if r.status_code == 200 else None
+
+
+def clave_correcta(uid: str, clave: str) -> bool:
+    """Vuelve a comprobar la contraseña contra Supabase Auth, para lo que no se deshace: una
+    sesión robada no basta, hay que saberla. Solo dice sí o no."""
+    with fabrica_sistema() as db:
+        email = db.execute(text("select email from auth.users where id = cast(:u as uuid)"),
+                           {"u": uid}).scalar()
+    return bool(email) and _pedir_sesion(email, clave) is not None
 
 
 def entrar_con_alias(usuario: str, clave: str, ip: str) -> dict:

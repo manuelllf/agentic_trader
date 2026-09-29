@@ -98,7 +98,7 @@ requires-dist = [
     { name = "pycryptodome", specifier = ">=3.23.0" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.6" },
-    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.9" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.15" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "python-multipart", specifier = ">=0.0.12" },
     { name = "pywebpush", specifier = ">=2.3.0" },

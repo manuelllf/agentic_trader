@@ -18,6 +18,7 @@ URL = os.environ.get("LIGA_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DATABASE_URL)")
 
 EMISOR = "https://proyecto.supabase.co"
+CLAVE_BUENA = "la-contrasena-buena"
 
 
 @pytest.fixture
@@ -53,6 +54,14 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
         return SimpleNamespace(status_code=204)
 
     monkeypatch.setattr(cuenta.httpx, "delete", _delete_falso)
+
+    from app.liga import acceso
+    from app.liga import rutas as rutas_liga
+
+    # Supabase Auth simulado: solo acepta la contraseña buena.
+    monkeypatch.setattr(acceso, "_pedir_sesion",
+                        lambda _email, clave: {"access_token": "t"} if clave == CLAVE_BUENA else None)
+    monkeypatch.setattr(rutas_liga, "_LIMITE_BAJA", acceso.LimiteFrecuencia(tope=5, ventana_s=60))
 
     motor = create_engine(URL.replace("postgresql://", "postgresql+psycopg://", 1))
     fabrica_sesion = sessionmaker(bind=motor)
@@ -163,16 +172,39 @@ def test_exportar_solo_trae_lo_propio(api) -> None:  # noqa: ANN001
 def test_baja_con_confirmacion_equivocada_no_hace_nada(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
     uid = usuario("baja_mal")
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "no-soy-yo"}, headers=cab(uid))
+    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "no-soy-yo", "clave": CLAVE_BUENA}, headers=cab(uid))
     assert r.status_code == 422, r.text
     assert existe(uid)
     assert llamadas == []
 
 
+def test_baja_con_contrasena_mala_o_sin_ella_no_hace_nada(api) -> None:  # noqa: ANN001
+    """Una sesión robada no basta para borrar la cuenta: hay que saber la contraseña."""
+    cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
+    uid = usuario("baja_clave")
+    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_clave", "clave": "otra"},
+                        headers=cab(uid))
+    assert r.status_code == 403, r.text
+    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_clave"}, headers=cab(uid))
+    assert r.status_code == 422, r.text
+    assert existe(uid)
+    assert llamadas == []
+
+
+def test_probar_contrasenas_en_la_baja_tiene_tope(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
+    uid = usuario("baja_tope")
+    cuerpo = {"confirmacion": "baja_tope", "clave": "otra"}
+    codigos = [cliente.request("DELETE", "/liga/yo", json=cuerpo, headers=cab(uid)).status_code
+               for _ in range(6)]
+    assert codigos == [403] * 5 + [429]
+    assert existe(uid) and llamadas == []
+
+
 def test_admin_no_puede_darse_de_baja_a_si_mismo(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
     uid = usuario("baja_admin", rol="admin")
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_admin"}, headers=cab(uid))
+    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_admin", "clave": CLAVE_BUENA}, headers=cab(uid))
     assert r.status_code == 409, r.text
     assert existe(uid)
     assert llamadas == []
@@ -184,7 +216,7 @@ def test_baja_sin_clave_secreta_responde_503(api, monkeypatch) -> None:  # noqa:
     monkeypatch.setattr(auth.settings, "supabase_secret_key", "")
     cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
     uid = usuario("baja_sin_clave")
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_sin_clave"},
+    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_sin_clave", "clave": CLAVE_BUENA},
                        headers=cab(uid))
     assert r.status_code == 503, r.text
     assert existe(uid)
@@ -222,7 +254,7 @@ def test_baja_feliz_deja_la_estrategia_retirada_y_borra_lo_personal(api) -> None
     r = cliente.post(f"/liga/estrategias/{eid}/receta", json=RECETA_BASICA, headers=cab(uid))
     assert r.status_code == 201, r.text
 
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_bien"}, headers=cab(uid))
+    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_bien", "clave": CLAVE_BUENA}, headers=cab(uid))
     assert r.status_code == 204, r.text
     assert len(llamadas) == 1 and uid in llamadas[0]
 

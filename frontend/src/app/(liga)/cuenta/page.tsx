@@ -30,6 +30,7 @@ export default function Cuenta() {
   const [ocupado, setOcupado] = useState(false);
   const [descargando, setDescargando] = useState(false);
   const [confirmacion, setConfirmacion] = useState("");
+  const [claveBaja, setClaveBaja] = useState("");
   const [errorBaja, setErrorBaja] = useState("");
   const [dandoBaja, setDandoBaja] = useState(false);
   const [claveNueva, setClaveNueva] = useState("");
@@ -99,7 +100,7 @@ export default function Cuenta() {
     if (dandoBaja || !sb) return;
     setDandoBaja(true);
     setErrorBaja("");
-    const fuera = await borrarMiCuenta(confirmacion.trim());
+    const fuera = await borrarMiCuenta(confirmacion.trim(), claveBaja);
     if (fuera) {
       setErrorBaja(fuera);
       setDandoBaja(false);
@@ -212,9 +213,15 @@ export default function Cuenta() {
                        autoCorrect="off" spellCheck={false}
                        onChange={(e) => setConfirmacion(e.target.value)} />
               </label>
+              <label className="campo">
+                <span className="lbl">Tu contraseña</span>
+                <input className="inp" type="password" autoComplete="current-password"
+                       value={claveBaja} onChange={(e) => setClaveBaja(e.target.value)} />
+              </label>
               {errorBaja && <p className="aviso" role="alert">{errorBaja}</p>}
               <Boton type="submit" ancho="completo"
-                     disabled={dandoBaja || confirmacion.trim().toLowerCase() !== yo.alias}>
+                     disabled={dandoBaja || !claveBaja
+                       || confirmacion.trim().toLowerCase() !== yo.alias}>
                 {dandoBaja ? "Borrando…" : "Borrar mi cuenta"}
               </Boton>
             </form>
