@@ -219,3 +219,17 @@ def test_reconstruir_dos_veces_con_los_mismos_datos_da_el_mismo_resultado():
     ops1 = simular((), alertas, cierres, D0, hoy)
     ops2 = simular((), alertas, cierres, D0, hoy)
     assert ops1 == ops2
+
+
+def test_una_alerta_sin_cierre_ese_dia_no_entra_con_el_precio_de_otro_dia():
+    # BBB no cotiza en D0 (falta su cierre): entrar ese día con el cierre anterior dejaría una
+    # operación cuyo día de entrada no tiene cierre, y `valor_hueco` reventaría al cerrar la
+    # jornada. Entra el primer día que sí tiene cierre.
+    alertas = [Alerta("BBB", _t(D0), 10)]
+    previo = Cierre(D0 - timedelta(days=2), 40.0)
+    cierres = {"AAA": _serie_plana(D0, 5, 100),
+               "BBB": [previo] + _serie_plana(D0 + timedelta(days=2), 3, 50)}
+    ops = simular((), alertas, cierres, D0, D0 + timedelta(days=4))
+    assert [(o.ticker, o.entrada_dia, o.entrada_precio) for o in ops] == \
+        [("BBB", D0 + timedelta(days=2), 50)]
+    assert rentabilidad_mes(ops, cierres, D0, D0 + timedelta(days=4)) == Decimal("0.0000")

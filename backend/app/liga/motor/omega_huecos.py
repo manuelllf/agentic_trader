@@ -20,7 +20,7 @@ from decimal import Decimal
 
 from app.liga.motor.formato import redondear
 from app.momentum.signals import TOPE_DIAS, objetivo_por_arranque
-from app.precios import Cierre, cierre_en, indice
+from app.precios import Cierre, indice
 
 N_HUECOS = 4
 CAPITAL_HUECO_USD = Decimal(500)
@@ -127,7 +127,10 @@ def simular(carry_over: Sequence[Operacion], alertas: Sequence[Alerta],
                             if a.momento.date() <= dia and a.ticker not in usados), None)
             if elegida is None:
                 continue
-            precio = cierre_en(list(cierres.get(elegida.ticker, ())), dia)
+            # El cierre de ESE día, no el último anterior: una entrada sin cierre propio dejaría
+            # una operación que `valor_hueco` no sabe valorar.
+            precio = next((c.cierre for c in cierres.get(elegida.ticker, ()) if c.dia == dia),
+                          None)
             if precio is None or precio <= 0:
                 continue  # sin cierre ese día -- se reintenta el día siguiente con la misma alerta
             abiertos[numero] = Operacion(numero, elegida.ticker, dia, precio,
