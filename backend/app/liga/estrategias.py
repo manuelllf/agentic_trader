@@ -124,6 +124,13 @@ def validar_entrada(idea: str | None, reglas: list[dict], excluidas: list[str],
                     pregunta: str | None, pesos: dict[str, int], n_empresas: int, reparto: str,
                     max_por_sector: int) -> RecetaMotor:
     """La receta de la petición, validada con el motor; `HTTPException(422)` si no vale."""
+    tiene_pregunta = bool((pregunta or "").strip())
+    if tiene_pregunta and not pesos.get("pregunta"):
+        raise HTTPException(422, "Escribiste una pregunta pero no le has dado peso. Súbele el peso "
+                                 "o quítala.")
+    if pesos.get("pregunta") and not tiene_pregunta:
+        raise HTTPException(422, "Le has dado peso a tu pregunta pero no la has escrito. "
+                                 "Escríbela o pon su peso a 0.")
     limpias = tuple(sorted({t.strip().upper() for t in excluidas if t.strip()}))
     receta = RecetaMotor(reglas=reglas, excluidas=limpias, pesos=pesos, n_empresas=n_empresas,
                          reparto=reparto, max_por_sector=max_por_sector,

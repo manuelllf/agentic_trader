@@ -318,13 +318,14 @@ def borrar_estrategia(id: uuid.UUID, db: Session = Depends(db_usuario)) -> Respo
 @router.post("/estrategias/{id}/receta", response_model=RecetaOut, status_code=201)
 def crear_receta(id: uuid.UUID, body: RecetaIn,
                  db: Session = Depends(db_usuario)) -> RecetaOut:
+    pregunta = (body.pregunta or "").strip() or None
     validada = estrategias.validar_entrada(
-        body.idea, [r.model_dump() for r in body.reglas], body.excluidas, body.pregunta,
+        body.idea, [r.model_dump() for r in body.reglas], body.excluidas, pregunta,
         body.pesos, body.n_empresas, body.reparto, body.max_por_sector)
     nueva = RecetaModelo(
         estrategia_id=id, idea=body.idea, reglas=validada.reglas,
         excluidas=list(validada.excluidas), catalogo_version=validada.catalogo_version,
-        pregunta=body.pregunta, peso_negocio=validada.pesos["negocio"],
+        pregunta=pregunta, peso_negocio=validada.pesos["negocio"],
         peso_precio=validada.pesos["precio"], peso_deuda=validada.pesos["deuda"],
         peso_pronto=validada.pesos["pronto"], peso_pregunta=validada.pesos["pregunta"],
         n_empresas=validada.n_empresas, reparto=validada.reparto,
@@ -338,8 +339,8 @@ def crear_receta(id: uuid.UUID, body: RecetaIn,
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
     db.refresh(nueva)
-    if body.pregunta:
-        moderacion.evaluar_lista(body.pregunta)
+    if pregunta:
+        moderacion.evaluar_lista(pregunta)
     return _receta_out(nueva)
 
 

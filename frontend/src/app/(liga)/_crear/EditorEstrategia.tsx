@@ -23,6 +23,7 @@ import {
 import { invalidar, obtener } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { miles } from "@/lib/liga/format";
+import { pesosCoherentes } from "@/lib/liga/receta";
 const RUTA_ACTUAL = (id?: string) => (id ? `/crear/${id}` : "/crear");
 const AVISO_LECTURA =
   "Análisis automático hecho con IA sobre datos públicos. Puede contener errores y no es una recomendación de inversión.";
@@ -150,8 +151,11 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   }, [sesionLista, estado, estrategiaIdInicial]);
 
   const pro = yo?.plan === "pro";
+  // Los porcentajes son la parte de cada peso sobre los que se ven: sin pregunta, no cuenta.
   const totalPesos = useMemo(
-    () => (b ? Object.values(b.pesos).reduce((a, v) => a + v, 0) || 1 : 1), [b],
+    () => (b ? Object.entries(b.pesos)
+      .reduce((a, [k, v]) => a + (k === "pregunta" && !b.pregunta.trim() ? 0 : v), 0) || 1 : 1),
+    [b],
   );
 
   if (!sesionLista || cargandoInicial) {
@@ -246,9 +250,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       if (typeof cambiada === "string") { setError(cambiada); return null; }
       setEstrategia(cambiada);
     }
+    const { pregunta, pesos } = pesosCoherentes(pro ? b!.pregunta : "", b!.pesos);
     const receta = await crearReceta(idActual, {
-      reglas: b!.reglas, excluidas: b!.excluidas, pregunta: pro ? (b!.pregunta || null) : null,
-      pesos: { ...b!.pesos, pregunta: pro ? b!.pesos.pregunta : 0 }, n_empresas: b!.n_empresas,
+      reglas: b!.reglas, excluidas: b!.excluidas, pregunta, pesos, n_empresas: b!.n_empresas,
       reparto: b!.reparto, max_por_sector: b!.max_por_sector,
     });
     if (typeof receta === "string") { setError(receta); return null; }
@@ -384,10 +388,11 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     const reglasNuevas = r.reglas.filter(
       (nueva) => clavesConocidas.has(nueva.clave) && !b!.reglas.some((x) => x.clave === nueva.clave),
     );
+    const pregunta = pro && r.pregunta ? r.pregunta : b!.pregunta;
     actualizarB({
       reglas: [...b!.reglas, ...reglasNuevas],
-      pesos: r.pesos ? { ...b!.pesos, ...r.pesos } : b!.pesos,
-      pregunta: pro && r.pregunta ? r.pregunta : b!.pregunta,
+      pesos: pesosCoherentes(pregunta, r.pesos ? { ...b!.pesos, ...r.pesos } : b!.pesos).pesos,
+      pregunta,
     });
     if (r.nombre && !nombre.trim()) setNombre(r.nombre);
     setConvFrase("");
@@ -421,7 +426,8 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     setOcupado(false);
   }
 
-  const wkeys = catalogo.pesos.claves.filter((k) => pro || k !== "pregunta");
+  // «Tu pregunta» solo pesa si hay pregunta escrita.
+  const wkeys = catalogo.pesos.claves.filter((k) => k !== "pregunta" || (pro && b.pregunta.trim()));
 
   return (
     <main className="scroll">
@@ -527,7 +533,11 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         {pro ? (
           <textarea id="cQ" className="inp" maxLength={160}
                     placeholder="Algo que no se pueda medir con un número"
-                    value={b.pregunta} onChange={(e) => actualizarB({ pregunta: e.target.value })} />
+                    value={b.pregunta}
+                    onChange={(e) => actualizarB({
+                      pregunta: e.target.value,
+                      pesos: pesosCoherentes(e.target.value, b.pesos).pesos,
+                    })} />
         ) : (
           <div className="lock">
             Escribir tu propia pregunta es de Pro.
