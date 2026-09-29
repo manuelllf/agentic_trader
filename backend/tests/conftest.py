@@ -12,6 +12,28 @@ def _sin_espera_de_reintento_del_gather(monkeypatch) -> None:  # noqa: ANN001
     monkeypatch.setattr(scan_service, "_GATHER_RETRY_COOLDOWN_S", 0.0)
 
 
+@pytest.fixture(autouse=True)
+def _sin_regalo_de_bienvenida(request):  # noqa: ANN001, ANN201
+    """Las cuentas nuevas reciben créditos de bienvenida (sql 015); casi todas las pruebas de
+    créditos parten de saldo 0, así que el regalo se apaga en la BD de pruebas salvo en las
+    marcadas con `@pytest.mark.con_bienvenida`."""
+    import os
+
+    url = os.environ.get("LIGA_TEST_DATABASE_URL")
+    if not url or request.node.get_closest_marker("con_bienvenida"):
+        yield
+        return
+    psycopg = pytest.importorskip("psycopg")
+    with psycopg.connect(url, autocommit=True) as cx:
+        cx.execute("insert into liga.ajustes (clave, valor) values ('creditos.bienvenida', '0') "
+                   "on conflict (clave) do update set valor = '0'")
+    try:
+        yield
+    finally:
+        with psycopg.connect(url, autocommit=True) as cx:
+            cx.execute("delete from liga.ajustes where clave = 'creditos.bienvenida'")
+
+
 TOKEN_ADMIN = "token-de-admin-de-pruebas"
 
 
