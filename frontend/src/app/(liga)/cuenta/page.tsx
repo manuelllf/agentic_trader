@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Boton, Cargando } from "../_ui";
+import { Boton, Cargando, ErrorLiga } from "../_ui";
 import { cambiarAlias } from "@/lib/liga/api";
 import { borrarMiCuenta, exportarMisDatos } from "@/lib/liga/cuenta";
 import { useSupabase } from "@/lib/liga/supabase";
@@ -23,7 +23,7 @@ function descargar(nombre: string, texto: string): void {
 
 export default function Cuenta() {
   const sb = useSupabase();
-  const { yo, email } = useSesionRequerida("/cuenta");
+  const { yo, yoFallo, refrescarYo, email } = useSesionRequerida("/cuenta");
   const [alias, setAlias] = useState("");
   const [aliasListo, setAliasListo] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "bien" | "mal"; texto: string } | null>(null);
@@ -120,7 +120,13 @@ export default function Cuenta() {
         {sb === null ? (
           <p className="nota">Las cuentas todavía no están abiertas.</p>
         ) : !yo ? (
-          <Cargando filas={2} />
+          yoFallo ? (
+            <ErrorLiga titulo="No hemos podido cargar tu cuenta"
+                       mensaje="Puede ser un fallo puntual. Reinténtalo en unos segundos."
+                       accion={{ texto: "Reintentar", onClick: refrescarYo }} />
+          ) : (
+            <Cargando filas={2} />
+          )
         ) : (
           <>
             <form className="form" onSubmit={guardar}>

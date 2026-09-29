@@ -1,3 +1,4 @@
+export * from "./AvisoErrores";
 export * from "./BarraPestanas";
 export * from "./Boton";
 export * from "./CabeceraApp";

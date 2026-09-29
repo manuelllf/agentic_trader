@@ -121,6 +121,7 @@ function Liga() {
         {[
           { href: "/admin/liga/usuarios", texto: "Usuarios" },
           { href: "/admin/liga/moderacion", texto: "Moderación" },
+          { href: "/admin/liga/errores", texto: "Errores" },
           { href: "/admin/liga/ajustes", texto: "Ajustes" },
           { href: "/admin/liga/auditoria", texto: "Auditoría" },
           { href: "/admin/liga/coste-ia", texto: "Coste de IA" },

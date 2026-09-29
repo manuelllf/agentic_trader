@@ -170,6 +170,17 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .chev { flex: 0 0 18px; color: var(--muted); }
 .lg .gap { padding: 12px 0; border-bottom: 1px solid var(--line); text-align: center; font-size: 14px; color: var(--muted); }
 
+/* Aviso de error: sobre la barra de pestañas (60 px), sin tapar la pantalla ni bloquearla. */
+.lg .aviso-error {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 14;
+  bottom: calc(68px + env(safe-area-inset-bottom));
+  width: calc(100% - 24px); max-width: 456px; box-sizing: border-box;
+  padding: 12px 14px; border-radius: 16px; background: var(--raised);
+  box-shadow: 0 0 0 1px var(--line2), 0 14px 34px -12px var(--shadow);
+}
+.lg .aviso-error p { font-size: 15px; line-height: 1.4; color: var(--ink); }
+.lg .aviso-error-botones { display: flex; gap: 8px; margin-top: 10px; }
+
 .lg .tarjeta { padding: 12px 14px; border-radius: 14px; background: var(--surface); }
 .lg .tarjeta.elevada {
   padding: 16px; border-radius: 22px; background: var(--raised);

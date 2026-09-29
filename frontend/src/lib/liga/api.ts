@@ -1,5 +1,6 @@
 // Cliente de la API de la liga (`/liga/*`). Manda el token de Supabase; las salas usan lib/api.ts.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { avisarError } from "./errores";
 import { sesionCaducada, tokenSesion } from "./supabase";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -222,6 +223,8 @@ async function llamar<T>(
     // Una petición cancelada a propósito (AbortController, p. ej. el buscador) no es un error de
     // red: se deja subir para que quien la canceló la distinga de una respuesta real.
     if (err instanceof DOMException && err.name === "AbortError") throw err;
+    // Sin internet no hay nada que reportar: el aviso es para cuando el fallo es nuestro.
+    if (typeof navigator === "undefined" || navigator.onLine) avisarError(SIN_RED);
     return SIN_RED;
   }
   if (res.status === 401 && conSesion) {
@@ -232,8 +235,10 @@ async function llamar<T>(
   const cuerpo = await res.json().catch(() => null);
   if (res.ok) return cuerpo as T;
   const detalle = (cuerpo as { detail?: unknown } | null)?.detail;
-  if (typeof detalle === "string") return detalle;
-  return SIN_RED;
+  const mensaje = typeof detalle === "string" ? detalle : SIN_RED;
+  // Un 5xx es un fallo nuestro: además del mensaje en su pantalla, sale el aviso para reportarlo.
+  if (res.status >= 500) avisarError(mensaje);
+  return mensaje;
 }
 
 /** Catálogo de reglas, pesos y opciones de la receta. Público: no hace falta sesión. */

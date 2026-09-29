@@ -19,6 +19,9 @@ export type EstadoSesion = "cargando" | "fuera" | "dentro";
 type ContextoSesion = {
   estado: EstadoSesion;
   yo: Yo | null;
+  /** Con sesión, pero `GET /liga/yo` no ha dado nada: para enseñar un error con salida en vez de
+   *  un esqueleto eterno. */
+  yoFallo: boolean;
   email: string | null;
   refrescarYo: () => void;
   cerrarSesion: () => Promise<void>;
@@ -38,6 +41,9 @@ export function SesionProvider({ children }: { children: ReactNode }) {
       return;
     }
     let vivo = true;
+    // Si la sesión no llega a resolverse (red, almacenamiento bloqueado), no se queda todo en
+    // blanco esperándola: se sigue como visitante.
+    const limite = setTimeout(() => setEstado((e) => (e === "cargando" ? "fuera" : e)), 6000);
     sb.auth.getSession().then(({ data }) => {
       if (!vivo) return;
       setEmail(data.session?.user.email ?? null);
@@ -56,6 +62,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
     });
     return () => {
       vivo = false;
+      clearTimeout(limite);
       sub.subscription.unsubscribe();
     };
   }, [sb]);
@@ -69,7 +76,8 @@ export function SesionProvider({ children }: { children: ReactNode }) {
   };
 
   const valor = useMemo<ContextoSesion>(
-    () => ({ estado, yo: yo ?? null, email, refrescarYo: refrescar, cerrarSesion }),
+    () => ({ estado, yo: yo ?? null, yoFallo: yo === null, email, refrescarYo: refrescar,
+             cerrarSesion }),
     [estado, yo, email, refrescar],
   );
 
