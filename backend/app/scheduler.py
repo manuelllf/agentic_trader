@@ -345,6 +345,17 @@ def _liga_diario_job() -> None:
     diario.job()
 
 
+def _reservas_huerfanas_job() -> None:
+    """Repone los créditos reservados por una prueba que murió con el proceso (reinicio o
+    despliegue a mitad de la llamada a la IA)."""
+    from app.liga.ia import comun
+
+    try:
+        comun.devolver_reservas_huerfanas()
+    except Exception:
+        logger.exception("No se pudieron devolver las reservas de créditos abandonadas")
+
+
 def trigger_escaneo_mensual() -> CronTrigger:
     """Primer martes del mes, como dicen Alpha y Beta: casi siempre es día de bolsa y
     `universe_for_scan` parte de la foto del cierre del lunes."""
@@ -421,6 +432,8 @@ def start_scheduler() -> None:
         CronTrigger(day_of_week="mon-fri", hour=17, minute=15, timezone="America/New_York"),
         id="liga_diario", replace_existing=True, misfire_grace_time=3600, coalesce=True,
     )
+    scheduler.add_job(_reservas_huerfanas_job, "interval", minutes=10,
+                      id="reservas_huerfanas", replace_existing=True, coalesce=True)
     scheduler.start()
     logger.info(
         "Scheduler arrancado: escaneo mensual el primer martes a las %02d:%02d %s",

@@ -8,6 +8,7 @@ traza) y `registrar_llamada` (lo que se persiste). Todo abre y cierra su propia 
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -274,6 +275,14 @@ def veces_hoy(finalidad: str, usuario_id: str) -> int:
 # ---- Créditos: reserva, liquidación y devolución -------------------------------------------------
 
 
+def clave_cobro(finalidad: str, clave_cliente: str, *piezas: object) -> str:
+    """Clave de un gasto de créditos: `finalidad:` + hash de lo que lo identifica. Largo fijo
+    (la BD admite 80 y de ella cuelgan `reserva:`, `devolucion:` y `prueba:`), y un mismo gasto
+    repetido da la misma clave mientras cualquier pieza distinta da otra."""
+    huella = hashlib.sha256("\x1f".join((clave_cliente, *map(str, piezas))).encode()).hexdigest()
+    return f"{finalidad}:{huella[:32]}"
+
+
 def reservar_creditos(usuario_id: str, importe: Decimal, idempotencia: str) -> None:
     """Reserva (movimiento negativo) el importe estimado antes de lanzar el gasto; 402 si no
     alcanza el saldo. Idempotente: repetir la misma clave no reserva dos veces."""
@@ -329,6 +338,33 @@ def devolver_reserva(usuario_id: str, importe_reservado: Decimal, clave: str) ->
         db.commit()
     finally:
         db.close()
+
+
+def devolver_reservas_huerfanas(antiguedad_minutos: int = 30) -> int:
+    """Devuelve las reservas que nadie cerró (el proceso se reinició entre reservar y liquidar):
+    ninguna prueba dura tanto, así que las de esa edad sin `devolucion:` ya no las espera nadie.
+    Idempotente —misma clave que `devolver_reserva`— y devuelve cuántas repuso."""
+    db = fabrica_sistema()
+    try:
+        filas = db.execute(text("""
+            select usuario_id, -importe, 'devolucion:' || substr(idempotencia, 9) as clave
+            from liga.creditos_movimientos r
+            where motivo = 'reserva' and creado < now() - make_interval(mins => :m)
+              and not exists (
+                select 1 from liga.creditos_movimientos d
+                where d.usuario_id = r.usuario_id
+                  and d.idempotencia = 'devolucion:' || substr(r.idempotencia, 9))
+        """), {"m": antiguedad_minutos}).all()  # substr(.., 9): lo que sigue a «reserva:»
+        for usuario_id, importe, clave in filas:
+            db.execute(text(
+                "select liga.cargar_creditos(cast(:u as uuid), cast(:i as numeric), "
+                "'devolucion', :k)"), {"u": str(usuario_id), "i": str(importe), "k": clave})
+        db.commit()
+    finally:
+        db.close()
+    if filas:
+        logger.warning("Reservas de créditos abandonadas devueltas: %d", len(filas))
+    return len(filas)
 
 
 def saldo(usuario_id: str) -> Decimal:

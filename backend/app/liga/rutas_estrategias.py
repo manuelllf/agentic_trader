@@ -471,7 +471,7 @@ def probar(id: uuid.UUID, body: PruebaIn | None = Body(default=None),
         creditos_reservados = precios.precio_pregunta(len(candidatas))
         # Atada a receta y foto: la misma clave con otra pregunta u otra foto es un gasto nuevo,
         # no un reintento (si no, reutilizar la clave lanzaría las llamadas sin reservar ni cobrar).
-        clave = f"pregunta:{body.idempotencia}:{receta.id}:{ctx.foto_id}"
+        clave = comun.clave_cobro("pregunta", body.idempotencia, receta.id, ctx.foto_id)
         comun.reservar_creditos(ident.uid, creditos_reservados, f"reserva:{clave}")
 
     # TODO lo que puede fallar entre reservar y liquidar va en el mismo `try`: si `_seleccionar_
