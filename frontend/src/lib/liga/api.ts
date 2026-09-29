@@ -57,19 +57,19 @@ export async function cambiarAlias(alias: string): Promise<Yo | string> {
   }
 }
 
-/** Quién eres según el backend; null sin sesión o si no responde. */
+/** Quién eres según el backend; null sin sesión o sin perfil, y lanza si no responde. */
 export async function getYo(): Promise<Yo | null> {
   const sesion = await tokenSesion();
   if (!sesion) return null;
-  try {
-    const res = await fetch(`${API_URL}/liga/yo`, {
-      headers: { Authorization: `Bearer ${sesion.token}` },
-      cache: "no-store",
-    });
-    return res.ok ? ((await res.json()) as Yo) : null;
-  } catch {
-    return null;
-  }
+  // null solo cuando de verdad no hay perfil o sesión (401/404). Un fallo de red o del servidor
+  // lanza, para que la caché no lo guarde como si fuera un dato («no tienes perfil»).
+  const res = await fetch(`${API_URL}/liga/yo`, {
+    headers: { Authorization: `Bearer ${sesion.token}` },
+    cache: "no-store",
+  });
+  if (res.ok) return (await res.json()) as Yo;
+  if (res.status === 401 || res.status === 404) return null;
+  throw new Error(`GET /liga/yo respondió ${res.status}`);
 }
 
 // ---- Estrategias (crear/editar, receta, pruebas, ficha...) -------------------------------------

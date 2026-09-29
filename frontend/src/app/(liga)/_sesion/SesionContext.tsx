@@ -67,7 +67,8 @@ export function SesionProvider({ children }: { children: ReactNode }) {
     };
   }, [sb]);
 
-  const { datos: yo, refrescar } = useCache<Yo | null>(estado === "dentro" ? "yo" : null, getYo);
+  const { datos: yo, fallo: yoFalla, refrescar } =
+    useCache<Yo | null>(estado === "dentro" ? "yo" : null, getYo);
 
   const cerrarSesion = async () => {
     await supabase()?.auth.signOut();
@@ -76,9 +77,9 @@ export function SesionProvider({ children }: { children: ReactNode }) {
   };
 
   const valor = useMemo<ContextoSesion>(
-    () => ({ estado, yo: yo ?? null, yoFallo: yo === null, email, refrescarYo: refrescar,
-             cerrarSesion }),
-    [estado, yo, email, refrescar],
+    () => ({ estado, yo: yo ?? null, yoFallo: yoFalla || yo === null, email,
+             refrescarYo: refrescar, cerrarSesion }),
+    [estado, yo, yoFalla, email, refrescar],
   );
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;

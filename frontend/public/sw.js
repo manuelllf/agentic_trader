@@ -2,7 +2,7 @@
 // El caché solo toca GETs del MISMO origen (nunca la API del backend, que vive en otro puerto).
 // v4: lo inmutable (`/_next/static`, con hash en el nombre, e iconos) sale de caché sin esperar
 // a la red; la página sigue yendo a red primero para no servir un despliegue viejo.
-const CACHE = "agentic-v5";
+const CACHE = "agentic-v6";   // sube al cambiar qué se guarda: la activación borra las anteriores
 const INMUTABLE = /^\/(_next\/static\/|icon-|apple-touch-icon|favicon)/;
 
 self.addEventListener("install", () => self.skipWaiting());
@@ -32,8 +32,12 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(event.request, copy)).catch(() => {});
+        // Solo respuestas buenas: guardar un 404 o un 500 haría que sin conexión se sirviera
+        // el error en lugar de la última página que funcionó.
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(event.request, copy)).catch(() => {});
+        }
         return res;
       })
       .catch(() => caches.match(event.request))

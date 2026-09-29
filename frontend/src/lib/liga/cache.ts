@@ -16,6 +16,14 @@ type Entrada<T> = { datos: T };
 const cache = new Map<string, Entrada<unknown>>();
 const enVuelo = new Map<string, Promise<unknown>>();
 const suscriptores = new Map<string, Set<() => void>>();
+// Claves cuya última petición falló y no tienen dato: es un fallo, no un dato, así que no se
+// guarda como si lo fuera; la siguiente lectura o «reintentar» vuelve a pedir.
+const fallidas = new Set<string>();
+
+/** ¿La última petición de `clave` falló (y no hay dato guardado)? */
+export function haFallado(clave: string): boolean {
+  return fallidas.has(clave);
+}
 
 function notificar(clave: string): void {
   suscriptores.get(clave)?.forEach((fn) => fn());
@@ -40,12 +48,15 @@ function pedir<T>(clave: string, fetcher: () => Promise<T>): Promise<T> {
   const p = fetcher()
     .then((datos) => {
       cache.set(clave, { datos });
+      fallidas.delete(clave);
       enVuelo.delete(clave);
       notificar(clave);
       return datos;
     })
     .catch((err) => {
       enVuelo.delete(clave);
+      fallidas.add(clave);
+      notificar(clave);
       throw err;
     });
   enVuelo.set(clave, p);
@@ -74,6 +85,7 @@ export function mutar<T>(clave: string, actualizador: (anterior: T | undefined) 
 export function invalidar(...claves: string[]): void {
   for (const c of claves) {
     cache.delete(c);
+    fallidas.delete(c);
     notificar(c);
   }
 }
@@ -101,7 +113,7 @@ export async function obtener<T>(clave: string, fetcher: () => Promise<T>): Prom
 export function useCache<T>(
   clave: string | null,
   fetcher: () => Promise<T>,
-): { datos: T | undefined; cargando: boolean; refrescar: () => void } {
+): { datos: T | undefined; cargando: boolean; fallo: boolean; refrescar: () => void } {
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
@@ -114,6 +126,8 @@ export function useCache<T>(
     [clave],
   );
   const datos = useSyncExternalStore(suscribirClave, leer, leer);
+  const leerFallo = useCallback(() => (clave ? fallidas.has(clave) : false), [clave]);
+  const fallo = useSyncExternalStore(suscribirClave, leerFallo, leerFallo) && datos === undefined;
 
   useEffect(() => {
     // Revalida siempre que cambie la clave (incluye la primera vez): stale-while-revalidate.
@@ -124,5 +138,5 @@ export function useCache<T>(
     if (clave) pedir(clave, fetcherRef.current).catch(() => {});
   }, [clave]);
 
-  return { datos, cargando: !!clave && datos === undefined, refrescar };
+  return { datos, cargando: !!clave && datos === undefined && !fallo, fallo, refrescar };
 }
