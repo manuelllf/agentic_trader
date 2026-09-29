@@ -13,6 +13,16 @@ def _sin_espera_de_reintento_del_gather(monkeypatch) -> None:  # noqa: ANN001
 
 
 @pytest.fixture(autouse=True)
+def _claves_de_ia_de_prueba(monkeypatch) -> None:  # noqa: ANN001
+    """Ningún test depende del `.env` de quien lo corre: las claves son falsas, así que una llamada
+    real a un proveedor fallaría en vez de gastar. Los tests de «sin clave» las vacían a mano."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "deepseek_api_key", "clave-de-prueba")
+    monkeypatch.setattr(settings, "typesafe_api_key", "clave-de-prueba")
+
+
+@pytest.fixture(autouse=True)
 def _sin_regalo_de_bienvenida(request):  # noqa: ANN001, ANN201
     """Las cuentas nuevas reciben créditos de bienvenida (sql 015); casi todas las pruebas de
     créditos parten de saldo 0, así que el regalo se apaga en la BD de pruebas salvo en las
