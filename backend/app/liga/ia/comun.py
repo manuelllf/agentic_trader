@@ -26,13 +26,9 @@ logger = logging.getLogger("app.liga.ia")
 
 TZ_MADRID = ZoneInfo("Europe/Madrid")
 
-# Las cuatro finalidades del plan §10; `stage` es lo que se guarda en `llm_call.stage`
-# (`String(16)`: todas caben) y en el nombre de la acción de auditoría (`ia.<finalidad>`).
-FINALIDADES = ("conversor", "pregunta", "lectura", "moderacion")
-_STAGE = {
-    "conversor": "liga_conversor", "pregunta": "liga_pregunta",
-    "lectura": "liga_lectura", "moderacion": "liga_moderacion",
-}
+# `stage` es lo que se guarda en `llm_call.stage` (`String(16)`) y en la acción de auditoría.
+FINALIDADES = ("conversor", "pregunta", "lectura")
+_STAGE = {"conversor": "liga_conversor", "pregunta": "liga_pregunta", "lectura": "liga_lectura"}
 
 _CLAVE_TOPE = "ia.tope_mensual_usd"
 
@@ -276,9 +272,8 @@ def veces_hoy(finalidad: str, usuario_id: str) -> int:
 
 
 def clave_cobro(finalidad: str, clave_cliente: str, *piezas: object) -> str:
-    """Clave de un gasto de créditos: `finalidad:` + hash de lo que lo identifica. Largo fijo
-    (la BD admite 80 y de ella cuelgan `reserva:`, `devolucion:` y `prueba:`), y un mismo gasto
-    repetido da la misma clave mientras cualquier pieza distinta da otra."""
+    """Clave de un gasto: `finalidad:` más un hash corto de sus piezas. Largo fijo, para que
+    con los prefijos `reserva:` o `devolucion:` quepa siempre en los 80 caracteres de la BD."""
     huella = hashlib.sha256("\x1f".join((clave_cliente, *map(str, piezas))).encode()).hexdigest()
     return f"{finalidad}:{huella[:32]}"
 
@@ -341,9 +336,8 @@ def devolver_reserva(usuario_id: str, importe_reservado: Decimal, clave: str) ->
 
 
 def devolver_reservas_huerfanas(antiguedad_minutos: int = 30) -> int:
-    """Devuelve las reservas que nadie cerró (el proceso se reinició entre reservar y liquidar):
-    ninguna prueba dura tanto, así que las de esa edad sin `devolucion:` ya no las espera nadie.
-    Idempotente —misma clave que `devolver_reserva`— y devuelve cuántas repuso."""
+    """Devuelve las reservas de más de `antiguedad_minutos` que nadie cerró (el proceso murió a
+    medias). Usa la clave de `devolver_reserva`, así que repetirlo no devuelve dos veces."""
     db = fabrica_sistema()
     try:
         filas = db.execute(text("""

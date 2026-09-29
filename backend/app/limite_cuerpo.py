@@ -1,8 +1,5 @@
-"""Tope al tamaño del cuerpo de una petición.
-
-Sin él, cualquiera puede mandar un JSON de cientos de MB: el servidor lo lee entero y lo parsea
-antes de que ninguna validación de campos lo vea. Se corta aquí, por la cabecera si la trae y
-contando los bytes si llega troceado."""
+"""Tope al tamaño del cuerpo de una petición, antes de leerlo y validarlo. Corta por la
+cabecera de longitud si la trae y, si no, contando los bytes que llegan."""
 
 from __future__ import annotations
 

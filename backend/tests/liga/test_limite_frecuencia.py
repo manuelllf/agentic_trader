@@ -1,4 +1,4 @@
-"""Límite de frecuencia en memoria: cuenta por ventana y no acumula claves de gente que ya se fue."""
+"""Límite de frecuencia en memoria: cuenta por ventana y olvida las claves ya caducadas."""
 
 from __future__ import annotations
 

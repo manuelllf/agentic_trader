@@ -222,9 +222,7 @@ def test_reconstruir_dos_veces_con_los_mismos_datos_da_el_mismo_resultado():
 
 
 def test_una_alerta_sin_cierre_ese_dia_no_entra_con_el_precio_de_otro_dia():
-    # BBB no cotiza en D0 (falta su cierre): entrar ese día con el cierre anterior dejaría una
-    # operación cuyo día de entrada no tiene cierre, y `valor_hueco` reventaría al cerrar la
-    # jornada. Entra el primer día que sí tiene cierre.
+    # BBB no tiene cierre en D0: entra el primer día que sí lo tiene, con ese precio.
     alertas = [Alerta("BBB", _t(D0), 10)]
     previo = Cierre(D0 - timedelta(days=2), 40.0)
     cierres = {"AAA": _serie_plana(D0, 5, 100),

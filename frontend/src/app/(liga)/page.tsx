@@ -165,6 +165,7 @@ export default function Portada() {
       </div>
 
       <p className="land-legal land-in" style={{ ["--d" as string]: "620ms" }}>
+        <Link href="/legal/aviso">Aviso legal</Link>
         <Link href="/legal/privacidad">Privacidad</Link>
         <Link href="/legal/terminos">Términos</Link>
         <Link href="/legal/cookies">Cookies</Link>

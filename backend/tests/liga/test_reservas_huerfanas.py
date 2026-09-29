@@ -1,6 +1,5 @@
-"""Una reserva de créditos que nunca se liquida ni se devuelve (el proceso murió a mitad de la
-prueba) se devuelve sola pasado un rato; y la clave de cobro cabe siempre en el límite de la BD,
-venga la clave del cliente como venga. Contra el Postgres de pruebas."""
+"""Las reservas de créditos que nadie cierra se devuelven solas, y la clave de cobro cabe
+siempre en el límite de la BD. Contra el Postgres de pruebas."""
 
 from __future__ import annotations
 

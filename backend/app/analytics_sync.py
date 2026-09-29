@@ -109,9 +109,8 @@ def _tablas_existentes_duckdb(con) -> set[str]:  # noqa: ANN001
 
 
 def _alinear_columnas(con, tabla: str, fuente: str) -> list[str]:  # noqa: ANN001
-    """Las columnas de `fuente`, tras añadir a la tabla archivada las que Postgres haya ganado
-    desde que se creó (las filas ya archivadas quedan con ese valor vacío). Sin esto, una
-    migración que añade una columna rompía el archivo: `insert ... select *` exige mismo ancho."""
+    """Las columnas de `fuente`, añadiendo a la tabla archivada las que le falten. Las filas ya
+    archivadas quedan con esa columna vacía."""
     fuente_cols = con.execute(f"describe select * from {fuente}").fetchall()
     destino = {c for (c,) in con.execute(
         "select column_name from duckdb_columns() "

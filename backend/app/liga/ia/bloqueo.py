@@ -1,7 +1,6 @@
 """Lista de bloqueo de moderación (plan §10, F6-A): insultos y palabrotas en español e inglés.
 Normaliza minúsculas, tildes/diacríticos y leetspeak básico para que un acento o un "0" por "o"
-no la esquiven. Lista corta y a mano — no pretende ser exhaustiva; el modelo barato
-(`moderacion.py`) cubre lo que se le escapa."""
+no la esquiven. Lista corta y a mano; lo que se le escapa lo revisa una persona."""
 
 from __future__ import annotations
 

@@ -62,8 +62,7 @@ def test_archivo_incremental_de_metricas_y_titulares(con, monkeypatch) -> None:
 
 
 def test_una_columna_nueva_en_postgres_no_rompe_el_archivo_incremental(con, monkeypatch) -> None:
-    # Producción: `llm_call_logprob` ganó una columna (auditoría) y el `insert ... select *` sobre
-    # la tabla archivada, creada con el esquema viejo, reventaba: "6 columns but 7 values".
+    # Una columna nueva en Postgres no puede romper el `insert` sobre la tabla ya archivada.
     monkeypatch.setattr(sync_mod, "_INCREMENTALES", {"logprob": ("pg.logprob", "id")})
     con.execute("create table pg.logprob (id bigint, token varchar)")
     con.execute("insert into pg.logprob values (1, 'a'), (2, 'b')")

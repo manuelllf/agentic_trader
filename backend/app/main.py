@@ -188,10 +188,8 @@ async def _log_peticiones_lentas(request: Request, call_next):  # noqa: ANN001, 
     return respuesta
 
 
-# Lo que la gente manda a la liga cabe de sobra en 1 MB (la receta más grande pesa unos KB).
 app.add_middleware(CuerpoAcotado, maximo=1024 * 1024, prefijo="/liga")
-# Se añade DESPUÉS de los de arriba para quedar por fuera: así también cubre el 500 y el 413 que
-# fabrican (el último que se añade es la capa más externa).
+# CORS va el último para quedar por fuera y cubrir también el 500 y el 413 que fabrican los otros.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,

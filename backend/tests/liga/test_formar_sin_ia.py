@@ -1,6 +1,5 @@
-"""Formar contesta las preguntas propias con la IA del sistema, pero nunca depende de ella: si está
-apagada, el tope mensual se gastó antes de empezar o se gasta a mitad, la jornada se forma igual
-con lo que haya en caché. Sin base de datos: se sustituyen la lista de preguntas y la IA."""
+"""Formar no depende de la IA: si está apagada o el tope se gasta, sigue con la caché. Sin base
+de datos, con la lista de preguntas y la IA sustituidas."""
 
 from __future__ import annotations
 

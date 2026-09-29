@@ -14,7 +14,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Path, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -245,7 +245,7 @@ def mis_estrategias(db: Session = Depends(db_usuario)) -> list[EstrategiaOut]:
 
 
 @router.post("/estrategias", response_model=EstrategiaOut, status_code=201)
-def crear_estrategia(body: EstrategiaCrear, background_tasks: BackgroundTasks,
+def crear_estrategia(body: EstrategiaCrear,
                      db: Session = Depends(db_usuario)) -> EstrategiaOut:
     body.nombre = nombres.validar_nombre(body.nombre)
     try:
@@ -260,7 +260,6 @@ def crear_estrategia(body: EstrategiaCrear, background_tasks: BackgroundTasks,
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
     moderacion.evaluar_lista(body.nombre)
-    background_tasks.add_task(moderacion.evaluar_en_fondo, "estrategia", str(fila.id), body.nombre)
     return _a_salida(fila)
 
 
@@ -274,7 +273,7 @@ def ver_estrategia(id: uuid.UUID, db: Session = Depends(db_usuario)) -> Estrateg
 
 
 @router.patch("/estrategias/{id}", response_model=EstrategiaOut)
-def actualizar_estrategia(id: uuid.UUID, body: EstrategiaPatch, background_tasks: BackgroundTasks,
+def actualizar_estrategia(id: uuid.UUID, body: EstrategiaPatch,
                           db: Session = Depends(db_usuario)) -> EstrategiaOut:
     cambios = body.model_dump(exclude_unset=True)
     if not cambios:
@@ -294,8 +293,6 @@ def actualizar_estrategia(id: uuid.UUID, body: EstrategiaPatch, background_tasks
         raise HTTPException(404, "No existe esa estrategia.")
     if "nombre" in cambios:
         moderacion.evaluar_lista(cambios["nombre"])
-        background_tasks.add_task(moderacion.evaluar_en_fondo, "estrategia", str(fila.id),
-                                  cambios["nombre"])
     return _a_salida(fila)
 
 
@@ -319,7 +316,7 @@ def borrar_estrategia(id: uuid.UUID, db: Session = Depends(db_usuario)) -> Respo
 
 
 @router.post("/estrategias/{id}/receta", response_model=RecetaOut, status_code=201)
-def crear_receta(id: uuid.UUID, body: RecetaIn, background_tasks: BackgroundTasks,
+def crear_receta(id: uuid.UUID, body: RecetaIn,
                  db: Session = Depends(db_usuario)) -> RecetaOut:
     validada = estrategias.validar_entrada(
         body.idea, [r.model_dump() for r in body.reglas], body.excluidas, body.pregunta,
@@ -343,7 +340,6 @@ def crear_receta(id: uuid.UUID, body: RecetaIn, background_tasks: BackgroundTask
     db.refresh(nueva)
     if body.pregunta:
         moderacion.evaluar_lista(body.pregunta)
-        background_tasks.add_task(moderacion.evaluar_en_fondo, "pregunta", str(id), body.pregunta)
     return _receta_out(nueva)
 
 
@@ -626,8 +622,7 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
 
 
 @router.post("/estrategias/{id}/copiar", response_model=EstrategiaOut, status_code=201)
-def copiar(id: uuid.UUID, background_tasks: BackgroundTasks,
-          db: Session = Depends(db_usuario)) -> EstrategiaOut:
+def copiar(id: uuid.UUID, db: Session = Depends(db_usuario)) -> EstrategiaOut:
     try:
         with db.begin_nested():
             nueva_receta = estrategias.copiar_estrategia(db, id)
@@ -636,5 +631,4 @@ def copiar(id: uuid.UUID, background_tasks: BackgroundTasks,
     fila = db.execute(text(f"select {_CAMPOS_ESTRATEGIA} from liga.estrategias where id = :i"),
                       {"i": nueva_receta.estrategia_id}).one()
     moderacion.evaluar_lista(fila.nombre)
-    background_tasks.add_task(moderacion.evaluar_en_fondo, "estrategia", str(fila.id), fila.nombre)
     return _a_salida(fila)

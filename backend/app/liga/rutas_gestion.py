@@ -400,7 +400,7 @@ def restablecer_ajuste(clave: str, ident: Identidad = Depends(require_admin)) ->
 
 
 class FinalidadEstadoOut(BaseModel):
-    finalidad: Literal["conversor", "pregunta", "lectura", "moderacion"]
+    finalidad: Literal["conversor", "pregunta", "lectura"]
     funciona: bool
     razon: str | None
 
@@ -424,7 +424,7 @@ def ia_estado() -> EstadoIAOut:
 
 
 class FilaCosteIA(BaseModel):
-    finalidad: Literal["conversor", "pregunta", "lectura", "moderacion"]
+    finalidad: Literal["conversor", "pregunta", "lectura"]
     pagado_usd: Decimal
     cobrado_usd: Decimal
     llamadas: int

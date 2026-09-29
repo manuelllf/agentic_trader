@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -90,14 +90,11 @@ class CambioYo(BaseModel):
 
 
 @router.patch("/yo", response_model=Yo)
-def cambiar_yo(body: CambioYo, background_tasks: BackgroundTasks,
-              ident: Identidad = Depends(require_usuario),
+def cambiar_yo(body: CambioYo, ident: Identidad = Depends(require_usuario),
               db: Session = Depends(db_usuario)) -> Yo:
-    """Cambiar el alias. Formato, nombres reservados y unicidad los decide la BD; la lista de
-    bloqueo va después, todavía dentro de la petición: si bloquea, deshace el cambio (misma
-    transacción). El modelo (hasta 20 s de proveedor) corre en segundo plano, sobre el alias ya
-    guardado -- nunca añade su latencia a la respuesta. El tope persistente (plan §14: 3 cada 30
-    días) se audita aparte porque `liga.auditoria` le está vetada a `authenticated`."""
+    """Cambiar el alias. Formato, reservados y unicidad los decide la BD; la lista de bloqueo va
+    después, dentro de la misma transacción, y si bloquea deshace el cambio. El tope de cambios
+    se audita aparte porque `liga.auditoria` le está vetada a `authenticated`."""
     limites.exigir_cambio_alias_disponible(ident.uid)
     alias = body.alias.strip().lower()
     try:
@@ -113,7 +110,6 @@ def cambiar_yo(body: CambioYo, background_tasks: BackgroundTasks,
             raise HTTPException(422, "De 3 a 20 caracteres: minúsculas, números, _ o punto.") from e
         raise HTTPException(422, "Ese nombre está reservado. Prueba con otro.") from e
     limites.auditar_cambio_alias(ident.uid, alias)
-    background_tasks.add_task(moderacion.evaluar_en_fondo, "alias", ident.uid, alias)
     return yo(db)
 
 
@@ -151,8 +147,8 @@ class BajaIn(BaseModel):
 @router.delete("/yo", status_code=204, response_class=Response)
 def borrar_cuenta(body: BajaIn, ident: Identidad = Depends(require_usuario),
                   db: Session = Depends(db_usuario)) -> Response:
-    """Confirmación = escribir el propio alias y la contraseña. Un admin no puede darse de baja a sí mismo (se
-    quedaría el sistema sin nadie que gestione la liga): que otro admin le quite antes el rol."""
+    """Confirmación = escribir el propio alias y la contraseña. Un admin no puede darse de baja
+    a sí mismo (se quedaría sin nadie que gestione la liga): otro admin le quita antes el rol."""
     fila = db.execute(text("""
         select p.alias, liga.authorize('admin.liga') as admin
         from liga.perfiles p where p.id = (select auth.uid())

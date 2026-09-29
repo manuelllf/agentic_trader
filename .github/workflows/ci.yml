@@ -28,16 +28,33 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Postgres desechable por ejecución (con pgvector, como Supabase): sin datos reales, se crea y
+    # se tira en cada CI. Las pruebas de créditos, permisos (RLS) y auditoría corren aquí contra él.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s
+          --health-retries 12
+    env:
+      LIGA_TEST_DATABASE_URL: postgresql://postgres:ci@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
-      # `analytics` (duckdb) para que corran de verdad las pruebas del archivo histórico.
-      - run: uv sync --extra dev --extra analytics
-      # TODO (después de F8): levantar un servicio de Postgres con el esquema `liga` (migraciones +
-      # RLS) y exportar LIGA_TEST_DATABASE_URL, para que tests/liga/*.py y tests/test_liga_*.py
-      # corran de verdad en CI en vez de saltarse (hoy se saltan solos sin esa variable — ver
-      # `pytestmark = pytest.mark.skipif(not URL, ...)` en cada fichero — así que esta tanda solo
-      # cubre el resto del backend).
+      # `analytics` (duckdb) para las pruebas del archivo histórico; `postgres` (psycopg) para las
+      # que hablan con la base de pruebas.
+      - run: uv sync --extra dev --extra analytics --extra postgres
+      # El esquema sale de `pg_dump -s` de la base local (ver tests/esquema_ci.sql, cabecera): hay
+      # que regenerarlo al cambiar la BD; `test_esquema_ci` avisa si se queda atrás.
+      - name: Cargar el esquema en la base de pruebas
+        run: |
+          export PGPASSWORD=ci
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f tests/prelude_ci.sql
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f tests/esquema_ci.sql
       - name: pytest, un fichero por vez y con tiempo máximo (nunca la batería entera junta)
         run: |
           set -uo pipefail

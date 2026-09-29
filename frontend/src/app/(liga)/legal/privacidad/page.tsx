@@ -1,111 +1,127 @@
 import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
+import { Contacto, TITULAR } from "../datos";
 
 export const metadata = { title: "Privacidad — liguilla" };
 
-// Grounded in plan-implementacion.md §0, §5, §10, §15, §16, D12, D17 (27/28-sep-2026) y en el
-// código real (no en lo que el plan dice que "se hará"): la liguilla guarda la sesión en
-// localStorage del navegador (`src/lib/liga/supabase.ts`, clave `liguilla-sesion`), no en
-// cookies; no hay pasarela de pago ni Turnstile integrados todavía (§16, §5.1); solo se manda a
-// la IA el texto de la regla o la pregunta, nunca datos personales (§10).
+// Solo lista los servicios que reciben datos de personas usuarias (no las fuentes de mercado).
+// Si se añade un proveedor, un dato o una analítica, actualizar esta página y la de cookies.
 export default function Privacidad() {
   return (
-    <PlantillaLegal titulo="Política de privacidad">
-      <p className="legal-fecha">Última actualización: borrador, sin fecha de entrada en vigor.</p>
-
-      <h2>Quién trata tus datos</h2>
+    <PlantillaLegal
+      titulo="Política de privacidad"
+      resumen={[
+        "Guardamos lo necesario para jugar: correo, nombre de jugador, estrategias y créditos.",
+        "Sin publicidad ni analítica. No vendemos ni cedemos tus datos.",
+        "La IA es opcional. Si la usas, el texto que escribes se envía a un proveedor (DeepSeek, en China; Jev, en EE. UU.), nunca tu correo.",
+        "Descarga tus datos o borra tu cuenta al momento desde Tu cuenta.",
+      ]}
+    >
+      <h2>Responsable</h2>
       <p>
-        [Titular: nombre y NIF] es responsable del tratamiento de los datos que recogemos a través de
-        liguilla. Puedes escribirnos a [correo de contacto] para cualquier cuestión sobre esta
-        política.
+        {TITULAR.nombre} ({TITULAR.ubicacion}). Contacto: <Contacto />. Más datos en el{" "}
+        <Link href="/legal/aviso">aviso legal</Link>.
       </p>
 
-      <h2>Qué datos recogemos</h2>
+      <h2>Qué datos tratamos</h2>
       <ul>
-        <li>Al registrarte: correo electrónico, contraseña (cifrada por Supabase Auth, nunca en
-          claro) y año de nacimiento, para comprobar que tienes 14 años o más.</li>
-        <li>Un alias público, distinto de tu nombre real, que es lo único que ven el resto de
-          jugadores. Tu correo nunca se enseña a nadie.</li>
-        <li>Las estrategias que creas: la frase que escribes, las reglas que eliges y, si la usas, la
-          pregunta de sí o no que le haces a la IA sobre alguna empresa.</li>
-        <li>Registros de uso de la IA (finalidad, modelo, número de tokens, coste y si hubo error),
-          <b> sin el contenido</b> de tu pregunta ni la respuesta completa, que solo se guarda en su
-          propia tabla, ligada a tu cuenta.</li>
-        <li>Movimientos de créditos y del plan (Gratis o Pro), para poder enseñarte tu saldo y su
-          historial.</li>
-        <li>Datos técnicos mínimos para que la sesión funcione y para detectar abusos (dirección IP en
-          los registros del servidor, por el tiempo que se indica más abajo).</li>
+        <li><b>Cuenta</b>: correo, contraseña (cifrada por Supabase; no la vemos), fechas de alta y
+          de acceso, y la IP y el dispositivo de tus sesiones, que Supabase registra por seguridad.</li>
+        <li><b>Perfil</b>: un nombre de jugador (alias) distinto de tu nombre real, que es lo único
+          que ven los demás, y tu tema claro u oscuro. Tu correo no se enseña a nadie.</li>
+        <li><b>Lo que creas</b>: nombre y escudo de tus estrategias, sus reglas, la frase con que las
+          describes, tu pregunta de sí o no, sus resultados y el nombre de tus ligas privadas.</li>
+        <li><b>Créditos y plan</b>: saldo, movimientos y si tienes el plan Pro.</li>
+        <li><b>Uso de la IA</b>: para qué fue, modelo, tokens, coste y si falló; sin el contenido
+          de tu frase ni de la respuesta.</li>
+        <li><b>Reportes y errores</b>: el motivo de un reporte; en un aviso de error, la pantalla, un
+          código, tu nota opcional y datos técnicos mínimos.</li>
+        <li><b>Constancias</b>: qué documentos legales aceptaste y cuándo, y un registro interno de
+          acciones importantes sobre tu cuenta.</li>
       </ul>
       <p>
-        No pedimos ni guardamos datos bancarios: no hay pasarela de pago conectada todavía (ver
-        <Link href="/legal/terminos"> Términos</Link>).
+        No recogemos tu nombre real, teléfono, dirección, fecha de nacimiento, ubicación ni datos
+        bancarios.
       </p>
 
-      <h2>Para qué los usamos y con qué base legal</h2>
+      <h2>Para qué y con qué base legal</h2>
       <ul>
-        <li><b>Prestarte el servicio</b> (ejecución del contrato): crear tu cuenta, jugar tus
-          estrategias, calcular la clasificación, gestionar tus créditos.</li>
-        <li><b>Tu consentimiento</b>: al registrarte aceptas estos textos (versionados) y, si usas la
-          IA, el uso de tu frase o tu pregunta para generarla.</li>
-        <li><b>Interés legítimo</b>: seguridad, prevención de abusos (límites de uso, moderación) y
-          estadísticas agregadas de la liga, que no identifican a nadie.</li>
+        <li><b>Darte el servicio</b> (art. 6.1.b RGPD): cuenta, estrategias, clasificación y
+          créditos.</li>
+        <li><b>Seguridad y buen uso</b> (art. 6.1.f): límites de uso, prevención de abusos y
+          moderación de nombres y textos públicos. Puedes oponerte (ver «Tus derechos»).</li>
+        <li><b>Funciones de IA</b> (art. 6.1.a): al pulsar el botón, tras el aviso que ves junto a
+          él, consientes que ese texto se envíe al proveedor indicado abajo.</li>
+        <li><b>Obligación legal</b> (art. 6.1.c): si una autoridad competente lo exige.</li>
       </ul>
 
-      <h2>A quién se lo pasamos (encargados del tratamiento)</h2>
+      <h2>Inteligencia artificial y transferencias</h2>
+      <p>Es opcional; puedes jugar solo con las reglas del catálogo. Lo que se envía:</p>
       <ul>
-        <li><b>Supabase</b> (autenticación y base de datos; región de la Unión Europea): guarda tu
-          correo, tu contraseña cifrada y el resto de datos de la tabla anterior.</li>
-        <li><b>Railway</b>: aloja el servidor que ejecuta la liguilla.</li>
-        <li><b>Vercel</b>: aloja esta web.</li>
-        <li><b>DeepSeek</b> y <b>Jev/TypeSafe</b>: convierten tu frase en reglas, responden tu
-          pregunta de sí o no y generan las lecturas a fondo. Solo reciben el texto de la regla o la
-          pregunta —<b> nunca tu correo, tu nombre real ni ningún otro dato personal</b>.</li>
-        <li>Un proveedor de envío de correo [por confirmar: Resend o Brevo], solo para los correos de
-          confirmación, entrada y recuperación de contraseña.</li>
+        <li><b>Tu frase</b> («Descríbelo con tus palabras») → <b>DeepSeek</b> (China).</li>
+        <li><b>Tu pregunta de sí o no</b> → <b>Jev, de TypeSafe AI</b> (Estados Unidos), junto con
+          datos públicos de cada empresa. Es encargado del tratamiento, con las cláusulas
+          contractuales tipo de la UE, y no entrena sus modelos con lo que recibe.</li>
+        <li>Las lecturas a fondo usan solo datos públicos de empresas. La moderación de nombres es
+          por lista de palabras y revisión humana.</li>
       </ul>
       <p>
-        Supabase, DeepSeek y Jev/TypeSafe pueden tratar datos fuera de la Unión Europea según su
-        propia infraestructura; en ese caso se aplican sus garantías contractuales estándar de
-        transferencia. Ninguno de ellos recibe tu correo ni tu nombre real salvo Supabase, que es
-        quien gestiona tu cuenta.
+        DeepSeek trata los datos en China, fuera de la protección del RGPD, y no ofrece cláusulas
+        contractuales tipo; según su política, puede usarlos para mejorar sus servicios. Por eso
+        solo se usa con tu consentimiento expreso (art. 49.1.a RGPD), que das al pulsar el botón
+        tras leer el aviso. No escribas datos personales en la frase ni en la pregunta.
+      </p>
+      <p>
+        No tomamos decisiones sobre ti basadas solo en un tratamiento automatizado. La IA sugiere y
+        tú decides; sus resultados van marcados como generados por IA.
+      </p>
+
+      <h2>Quién más ve tus datos</h2>
+      <p>No vendemos ni cedemos tus datos. Los tratan por nuestra cuenta, como encargados (art. 28 RGPD):</p>
+      <ul>
+        <li><b>Supabase</b>: cuentas y base de datos, en la UE (Irlanda).</li>
+        <li><b>Railway</b>: servidor de la aplicación, en Ámsterdam (UE).</li>
+        <li><b>Vercel</b>: sirve esta web; ve tu IP al entrar, como cualquier servidor web.</li>
+      </ul>
+      <p>
+        Las tres tienen matriz en Estados Unidos. Si un dato sale de la UE, lo hace con las
+        cláusulas contractuales tipo de la Comisión Europea (Supabase, Railway) o con el Marco de
+        Privacidad de Datos UE-EE. UU. (Vercel).
       </p>
 
       <h2>Cuánto tiempo los guardamos</h2>
       <ul>
-        <li>Los datos de tu cuenta, mientras la tengas abierta.</li>
-        <li>Las pruebas de estrategias (backtests que no llegas a publicar), 90 días.</li>
-        <li>Los registros técnicos del servidor, 30 días.</li>
-        <li>Si publicas una estrategia y luego te das de baja, la estrategia se queda en la
-          clasificación histórica marcada como «Estrategia retirada», sin ningún dato que te
-          identifique.</li>
+        <li>Tus datos de cuenta, mientras la tengas. Al borrarla desaparecen tu correo, perfil,
+          créditos, pruebas y consentimientos.</li>
+        <li>Las estrategias que jugaron se quedan en la clasificación histórica como «Estrategia
+          retirada», sin tu alias, sin mostrar sus reglas y sin volver a jugar.</li>
+        <li>Los reportes y avisos de error se conservan sin tu identificador; el registro interno
+          conserva un número interno sin nombre ni correo.</li>
+        <li>Los registros técnicos de los servidores, el tiempo que fija cada proveedor.</li>
+        <li>Las copias de seguridad pueden conservar tus datos un tiempo tras la baja; si se
+          restaurara una, no se recuperan cuentas ya borradas.</li>
       </ul>
 
       <h2>Tus derechos</h2>
       <p>
-        Puedes acceder, rectificar, portar o borrar tus datos, y oponerte u limitar su tratamiento,
-        desde <Link href="/cuenta">Tu cuenta</Link>:
-      </p>
-      <ul>
-        <li><b>Exportar mis datos</b>: descarga un fichero con tu información en formato legible por
-          máquina (JSON), al momento.</li>
-        <li><b>Darte de baja</b>: borra tu cuenta de inmediato. Tus datos personales desaparecen en
-          cascada; tus estrategias publicadas quedan anonimizadas en la clasificación (ver arriba).
-          No hay periodo de espera ni proceso manual.</li>
-      </ul>
-      <p>
-        También puedes reclamar ante la Agencia Española de Protección de Datos (aepd.es) si crees
-        que no hemos tratado tus datos correctamente.
+        Acceso, rectificación, supresión, limitación, oposición, portabilidad y retirada del
+        consentimiento. Desde <Link href="/cuenta">Tu cuenta</Link>, al momento: descargar tus
+        datos (JSON), cambiar tu nombre y tu contraseña, y borrar la cuenta (te pide tu nombre de
+        jugador y tu contraseña; no se puede deshacer). Para lo demás, contacta a través de{" "}
+        <Contacto />. También puedes reclamar ante la Agencia Española de Protección de Datos
+        (aepd.es).
       </p>
 
-      <h2>Menores</h2>
+      <h2>Seguridad y menores</h2>
       <p>
-        Recomendamos liguilla a partir de 14 años. No pedimos documentación que lo acredite; al
-        registrarte declaras tu año de nacimiento bajo tu responsabilidad.
+        Las conexiones van cifradas y la base de datos solo deja a cada persona leer sus propios
+        datos. liguilla es para mayores de 14 años (art. 7 de la Ley Orgánica 3/2018).
       </p>
 
-      <h2>Cambios en esta política</h2>
+      <h2>Cambios</h2>
       <p>
-        Si cambiamos algo importante, te lo diremos dentro de la app antes de que entre en vigor.
+        Si cambia algo importante, te lo diremos en la app antes de que aplique. La fecha y la
+        versión de arriba indican la vigente.
       </p>
     </PlantillaLegal>
   );

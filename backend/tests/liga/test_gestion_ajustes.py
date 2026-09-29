@@ -11,7 +11,7 @@ from app.liga import gestion
 def test_catalogo_cubre_las_mismas_claves_que_antes() -> None:
     assert gestion.AJUSTES_CONOCIDOS == frozenset({
         "creditos.bienvenida",
-        "ia.conversor.activo", "ia.pregunta.activo", "ia.lectura.activo", "ia.moderacion.activo",
+        "ia.conversor.activo", "ia.pregunta.activo", "ia.lectura.activo",
         "ia.tope_mensual_usd", "ia.margen_objetivo",
         "liga.registro.abierto", "liga.visible",
         "procesos.foto.auto",

@@ -84,11 +84,6 @@ CATALOGO: dict[str, AjusteMeta] = {
         ayuda="Genera un texto que explica los resultados de una estrategia. Apagado: no se "
               "genera esa lectura.",
         tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=False),
-    "ia.moderacion.activo": AjusteMeta(
-        grupo="IA", titulo="Moderación automática con IA",
-        ayuda="Ayuda a revisar con IA el contenido reportado. Apagado: la moderación es solo "
-              "manual.",
-        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=False),
     "ia.tope_mensual_usd": AjusteMeta(
         grupo="IA", titulo="Tope de gasto mensual en IA",
         ayuda="Si el gasto real del mes en IA llega a este importe, se apagan todas las "
@@ -372,7 +367,6 @@ _FINALIDADES_COSTE = {
     "conversor": ("liga_conversor", None),
     "pregunta": ("liga_pregunta", "prueba"),
     "lectura": ("liga_lectura", "lectura"),
-    "moderacion": ("liga_moderacion", None),
 }
 CLAVE_TOPE_MENSUAL = "ia.tope_mensual_usd"
 CLAVE_MARGEN_OBJETIVO = "ia.margen_objetivo"

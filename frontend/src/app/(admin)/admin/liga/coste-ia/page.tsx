@@ -9,7 +9,7 @@ import AuthGate from "@/components/AuthGate";
 import { ApiError, get } from "@/lib/api";
 
 type FilaCoste = {
-  finalidad: "conversor" | "pregunta" | "lectura" | "moderacion";
+  finalidad: "conversor" | "pregunta" | "lectura";
   pagado_usd: string; cobrado_usd: string; llamadas: number; cache_hits: number;
   ratio: string | null; bajo_objetivo: boolean;
 };
@@ -19,7 +19,7 @@ type CosteIA = {
 };
 
 const ETIQUETA: Record<string, string> = {
-  conversor: "Conversor", pregunta: "Pregunta", lectura: "Lectura a fondo", moderacion: "Moderación",
+  conversor: "Conversor", pregunta: "Pregunta", lectura: "Lectura a fondo",
 };
 const error = (e: unknown) => (e instanceof ApiError ? e.message : "Algo falló. Reintenta.");
 const mesActual = () => new Date().toISOString().slice(0, 7);

@@ -196,7 +196,8 @@ def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
         fuera = db.execute(text(f"""
             select * from (
               select {_EQUIPO}, c.puntos, c.jornadas, c.ganadas, c.empatadas, c.perdidas, c.dif_sp,
-                     row_number() over (order by c.puntos desc, c.dif_sp desc, e.creada, e.id) as pos
+                     row_number() over (
+                       order by c.puntos desc, c.dif_sp desc, e.creada, e.id) as pos
               {base}
             ) r
             where r.alias = :alias and r.pos > :ultima

@@ -227,6 +227,7 @@ export default function Cuenta() {
             </form>
 
             <p className="legal-nav">
+              <Link href="/legal/aviso">Aviso legal</Link>
               <Link href="/legal/privacidad">Privacidad</Link>
               <Link href="/legal/terminos">Términos</Link>
               <Link href="/legal/cookies">Cookies</Link>

@@ -21,6 +21,11 @@ EMISOR = "https://proyecto.supabase.co"
 CLAVE_BUENA = "la-contrasena-buena"
 
 
+def _baja(cliente, cab, uid: str, confirmacion: str, clave: str = CLAVE_BUENA):  # noqa: ANN001, ANN202
+    cuerpo = {"confirmacion": confirmacion, "clave": clave}
+    return cliente.request("DELETE", "/liga/yo", json=cuerpo, headers=cab(uid))
+
+
 @pytest.fixture
 def api(monkeypatch):  # noqa: ANN001, ANN201
     psycopg = pytest.importorskip("psycopg")
@@ -60,7 +65,7 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
 
     # Supabase Auth simulado: solo acepta la contraseña buena.
     monkeypatch.setattr(acceso, "_pedir_sesion",
-                        lambda _email, clave: {"access_token": "t"} if clave == CLAVE_BUENA else None)
+                        lambda _e, clave: {"access_token": "t"} if clave == CLAVE_BUENA else None)
     monkeypatch.setattr(rutas_liga, "_LIMITE_BAJA", acceso.LimiteFrecuencia(tope=5, ventana_s=60))
 
     motor = create_engine(URL.replace("postgresql://", "postgresql+psycopg://", 1))
@@ -172,7 +177,7 @@ def test_exportar_solo_trae_lo_propio(api) -> None:  # noqa: ANN001
 def test_baja_con_confirmacion_equivocada_no_hace_nada(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
     uid = usuario("baja_mal")
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "no-soy-yo", "clave": CLAVE_BUENA}, headers=cab(uid))
+    r = _baja(cliente, cab, uid, "no-soy-yo")
     assert r.status_code == 422, r.text
     assert existe(uid)
     assert llamadas == []
@@ -204,7 +209,7 @@ def test_probar_contrasenas_en_la_baja_tiene_tope(api) -> None:  # noqa: ANN001
 def test_admin_no_puede_darse_de_baja_a_si_mismo(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
     uid = usuario("baja_admin", rol="admin")
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_admin", "clave": CLAVE_BUENA}, headers=cab(uid))
+    r = _baja(cliente, cab, uid, "baja_admin")
     assert r.status_code == 409, r.text
     assert existe(uid)
     assert llamadas == []
@@ -216,8 +221,7 @@ def test_baja_sin_clave_secreta_responde_503(api, monkeypatch) -> None:  # noqa:
     monkeypatch.setattr(auth.settings, "supabase_secret_key", "")
     cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
     uid = usuario("baja_sin_clave")
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_sin_clave", "clave": CLAVE_BUENA},
-                       headers=cab(uid))
+    r = _baja(cliente, cab, uid, "baja_sin_clave")
     assert r.status_code == 503, r.text
     assert existe(uid)
     assert llamadas == []
@@ -254,7 +258,7 @@ def test_baja_feliz_deja_la_estrategia_retirada_y_borra_lo_personal(api) -> None
     r = cliente.post(f"/liga/estrategias/{eid}/receta", json=RECETA_BASICA, headers=cab(uid))
     assert r.status_code == 201, r.text
 
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_bien", "clave": CLAVE_BUENA}, headers=cab(uid))
+    r = _baja(cliente, cab, uid, "baja_bien")
     assert r.status_code == 204, r.text
     assert len(llamadas) == 1 and uid in llamadas[0]
 

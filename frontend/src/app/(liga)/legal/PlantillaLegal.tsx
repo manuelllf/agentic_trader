@@ -1,11 +1,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { FECHA_LEGAL, VERSION_LEGAL } from "./datos";
 
-// Envoltorio común de las tres páginas legales (tarea 8.3). Servidor, sin `useSupabase`: son
-// públicas y no dependen de si hay sesión, así que no hace falta cliente.
+// Envoltorio de las páginas legales. `resumen` es la primera capa: lo esencial en pocas líneas.
 export function PlantillaLegal({
-  titulo, children,
-}: { titulo: string; children: ReactNode }) {
+  titulo, resumen, children,
+}: { titulo: string; resumen?: ReactNode[]; children: ReactNode }) {
   return (
     <main className="sencilla">
       <header className="sencilla-top">
@@ -13,10 +13,19 @@ export function PlantillaLegal({
       </header>
 
       <div className="legal-cuerpo">
-        <p className="legal-aviso">Borrador pendiente de revisión legal.</p>
         <h1>{titulo}</h1>
+        <p className="legal-fecha">Última actualización: {FECHA_LEGAL} · versión {VERSION_LEGAL}</p>
+        {resumen && (
+          <section className="legal-resumen" aria-label="En breve">
+            <h2>En breve</h2>
+            <ul>
+              {resumen.map((linea, i) => <li key={i}>{linea}</li>)}
+            </ul>
+          </section>
+        )}
         {children}
         <nav className="legal-nav" aria-label="Otros documentos legales">
+          <Link href="/legal/aviso">Aviso legal</Link>
           <Link href="/legal/privacidad">Privacidad</Link>
           <Link href="/legal/terminos">Términos</Link>
           <Link href="/legal/cookies">Cookies</Link>

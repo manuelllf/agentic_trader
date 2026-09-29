@@ -8,6 +8,7 @@
 // de hojas entero solo para estas dos pantallas (se nota en el informe).
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   BarraPestanas, Boton, CabeceraApp, Cargando, Escudo, ErrorLiga, OpcionRadio, Segmentado,
@@ -512,6 +513,11 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
             {convOcupado ? "Pensando…" : "Convertir en reglas"}
           </Boton>
         </div>
+        <p className="fine">
+          Al pulsar, tu frase se envía a DeepSeek (servidores en China). No escribas datos
+          personales.{" "}
+          <Link href="/legal/privacidad">Más información</Link>
+        </p>
         {convError && <p className="fine" style={{ color: "var(--danger, #e66767)" }}>{convError}</p>}
       </div>
 
@@ -533,6 +539,12 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
             Escribir tu propia pregunta es de Pro.
             <div><Boton variante="principal" disabled>Pasar a Pro · 4,99&nbsp;€ al mes</Boton></div>
           </div>
+        )}
+        {pro && (
+          <p className="fine">
+            Tu pregunta se envía a Jev (TypeSafe AI, EE. UU.). No escribas datos personales.{" "}
+            <Link href="/legal/privacidad">Más información</Link>
+          </p>
         )}
       </div>
 

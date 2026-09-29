@@ -18,7 +18,7 @@ type Ajuste = {
   actualizado: string | null; actualizado_por: string | null;
 };
 
-type Finalidad = "conversor" | "pregunta" | "lectura" | "moderacion";
+type Finalidad = "conversor" | "pregunta" | "lectura";
 type EstadoIA = {
   enable_llm: boolean; deepseek_key_presente: boolean; typesafe_key_presente: boolean;
   gasto_mes_usd: string; tope_mensual_usd: string | null;
@@ -28,7 +28,7 @@ type EstadoIA = {
 // Solo los interruptores de IA llevan finalidad (para el chip «Funciona»/razón de /ia/estado).
 const FINALIDAD_POR_CLAVE: Record<string, Finalidad> = {
   "ia.conversor.activo": "conversor", "ia.pregunta.activo": "pregunta",
-  "ia.lectura.activo": "lectura", "ia.moderacion.activo": "moderacion",
+  "ia.lectura.activo": "lectura",
 };
 const ORDEN_GRUPOS: Grupo[] = ["Emergencia", "IA", "Créditos"];
 
