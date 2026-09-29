@@ -578,8 +578,9 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   position: relative; min-height: 100dvh; width: 100%; max-width: 1240px; margin: 0 auto;
   display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 12px;
   grid-template-areas: "top" "cab" "centro" "cta" "leg";
+  grid-template-rows: auto auto 1fr auto auto;
   padding: max(10px, env(safe-area-inset-top)) 18px max(10px, env(safe-area-inset-bottom));
-  box-sizing: border-box; overflow-x: clip;
+  box-sizing: border-box; overflow: clip;
 }
 /* Las líneas de un campo, casi invisibles: el círculo central y la de medio campo. */
 .lg .lnd::before {
@@ -596,11 +597,10 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   font-size: clamp(25px, 7vw, 50px); line-height: 1.08; font-weight: 800; letter-spacing: -.035em;
 }
 .lg .lnd-sub { display: none; font-size: clamp(16px, 1.6vw, 20px); color: var(--ink2); max-width: 52ch; }
-.lg .lnd-centro { grid-area: centro; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.lg .lnd-centro { grid-area: centro; display: flex; flex-direction: column; justify-content: flex-start; gap: 10px; min-width: 0; }
 .lg .lnd-nav { display: flex; align-items: center; }
 .lg .lnd-cta { grid-area: cta; display: flex; align-items: center; gap: 6px; min-width: 0; }
-.lg .lnd-cta .inp { flex: 1; min-width: 0; min-height: 52px; }
-.lg .lnd-cta .btn.pri { flex: none; animation: lnd-latido 1.6s ease-in-out calc(var(--t0) + 5s) 3; }
+.lg .lnd-cta .btn.pri { flex: 1; animation: lnd-latido 1.6s ease-in-out calc(var(--t0) + 5s) 3; }
 .lg .lnd-legal {
   grid-area: leg; display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; font-size: 12px;
   color: var(--muted);
@@ -700,15 +700,23 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   .lg .lnd-lab-a { animation: lnd-salir .3s ease 5.2s forwards; }
 }
 
+/* Pantallas cortas: sin la leyenda de las fichas y con todo un poco más apretado, para no hacer scroll. */
+@media (max-width: 879px) and (max-height: 700px) {
+  .lg .lnd { gap: 8px; }
+  .lg .lnd-cab h1 { font-size: 22px; }
+  .lg .lnd-nota { display: none; }
+  .lg .lnd-legal a { min-height: 30px; }
+}
+
 @media (min-width: 880px) {
   .lg .lnd {
     --t0: 4.2s; gap: 18px 40px; padding-left: 40px; padding-right: 40px;
     grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "top top" "cab cta" "centro centro" "leg leg";
+    grid-template-rows: auto auto 1fr auto;
   }
   .lg .lnd-sub { display: block; }
-  .lg .lnd-cta { align-self: end; width: min(560px, 42vw); }
-  .lg .lnd-cta .inp, .lg .lnd-cta .btn.pri { min-height: 56px; font-size: 17px; }
-  .lg .lnd-cta .btn.pri { padding: 0 30px; }
+  .lg .lnd-cta { align-self: end; }
+  .lg .lnd-cta .btn.pri { flex: none; min-height: 56px; padding: 0 34px; font-size: 18px; }
   .lg .lnd-esc { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); gap: 32px; align-items: start; }
   .lg .lnd-esc > .lnd-b:first-child { flex-direction: column; align-items: flex-start; gap: 22px; }
   .lg .lnd-frase { font-size: clamp(22px, 2.1vw, 28px); }
@@ -722,6 +730,15 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   .lg .lnd-conclusion { font-size: 16px; }
   .lg .lnd-tabla { display: block; }
   .lg .lnd-puesto { display: none; }
+}
+
+@media (min-width: 880px) and (max-height: 840px) {
+  .lg .lnd { gap: 12px 40px; }
+  .lg .lnd-cab h1 { font-size: 38px; }
+  .lg .lnd-sub { display: none; }
+  .lg .lnd-emp li { min-height: 44px; padding: 4px 14px; }
+  .lg .lnd-tabla li { min-height: 30px; }
+  .lg .lnd-esc { gap: 24px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

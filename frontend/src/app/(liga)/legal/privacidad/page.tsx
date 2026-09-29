@@ -50,8 +50,8 @@ export default function Privacidad() {
           créditos.</li>
         <li><b>Seguridad y buen uso</b> (art. 6.1.f): límites de uso, prevención de abusos y
           moderación de nombres y textos públicos. Puedes oponerte (ver «Tus derechos»).</li>
-        <li><b>Funciones de IA</b> (art. 6.1.a): al pulsar el botón, tras el aviso que ves junto a
-          él, consientes que ese texto se envíe al proveedor indicado abajo.</li>
+        <li><b>Funciones de IA</b> (art. 6.1.a): al pulsar el botón consientes que ese texto se
+          envíe al proveedor indicado abajo.</li>
         <li><b>Obligación legal</b> (art. 6.1.c): si una autoridad competente lo exige.</li>
       </ul>
 
@@ -68,8 +68,8 @@ export default function Privacidad() {
       <p>
         DeepSeek trata los datos en China, fuera de la protección del RGPD, y no ofrece cláusulas
         contractuales tipo; según su política, puede usarlos para mejorar sus servicios. Por eso
-        solo se usa con tu consentimiento expreso (art. 49.1.a RGPD), que das al pulsar el botón
-        tras leer el aviso. No escribas datos personales en la frase ni en la pregunta.
+        solo se usa con tu consentimiento expreso (art. 49.1.a RGPD), que das al pulsar el botón.
+        No escribas datos personales en la frase ni en la pregunta.
       </p>
       <p>
         No tomamos decisiones sobre ti basadas solo en un tratamiento automatizado. La IA sugiere y

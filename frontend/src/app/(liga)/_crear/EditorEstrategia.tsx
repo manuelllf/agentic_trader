@@ -8,7 +8,6 @@
 // de hojas entero solo para estas dos pantallas (se nota en el informe).
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   BarraPestanas, Boton, CabeceraApp, Cargando, Escudo, ErrorLiga, OpcionRadio, Segmentado,
@@ -24,8 +23,6 @@ import {
 import { invalidar, obtener } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { miles } from "@/lib/liga/format";
-import { tomarIdea } from "@/lib/liga/idea";
-
 const RUTA_ACTUAL = (id?: string) => (id ? `/crear/${id}` : "/crear");
 const AVISO_LECTURA =
   "Análisis automático hecho con IA sobre datos públicos. Puede contener errores y no es una recomendación de inversión.";
@@ -102,8 +99,6 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   const [convOcupado, setConvOcupado] = useState(false);
   const [convError, setConvError] = useState<string | null>(null);
   const [convUsos, setConvUsos] = useState<{ hoy: number; tope: number } | null>(null);
-  // La idea escrita en la portada llega puesta en «Descríbelo»; no se envía hasta que se pulsa.
-  useEffect(() => { const idea = tomarIdea(); if (idea) setConvFrase(idea); }, []);
 
   const nombreRef = useRef<HTMLInputElement>(null);
   const buscaId = useRef(0);
@@ -516,11 +511,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
             {convOcupado ? "Pensando…" : "Convertir en reglas"}
           </Boton>
         </div>
-        <p className="fine">
-          Al pulsar, tu frase se envía a DeepSeek (servidores en China). No escribas datos
-          personales.{" "}
-          <Link href="/legal/privacidad">Más información</Link>
-        </p>
+        <p className="fine">Al pulsar, tu frase se envía a DeepSeek. No escribas datos personales.</p>
         {convError && <p className="fine" style={{ color: "var(--danger, #e66767)" }}>{convError}</p>}
       </div>
 
@@ -545,8 +536,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         )}
         {pro && (
           <p className="fine">
-            Tu pregunta se envía a Jev (TypeSafe AI, EE. UU.). No escribas datos personales.{" "}
-            <Link href="/legal/privacidad">Más información</Link>
+            Tu pregunta se envía a Jev (TypeSafe AI, EE. UU.). No escribas datos personales.
           </p>
         )}
       </div>

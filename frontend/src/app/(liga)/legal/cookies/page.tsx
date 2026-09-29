@@ -3,15 +3,15 @@ import { PlantillaLegal } from "../PlantillaLegal";
 
 export const metadata = { title: "Cookies — liguilla" };
 
-// Guarda la sesión (`lib/liga/supabase.ts`) y la idea de la portada (`lib/liga/idea.ts`). Si se
-// añade algo (captcha, analítica), actualizar esta página antes de desplegarlo.
+// La sesión en `localStorage` (`lib/liga/supabase.ts`) es lo único que guarda la web pública.
+// Si se añade algo (captcha, analítica), actualizar esta página antes de desplegarlo.
 export default function Cookies() {
   return (
     <PlantillaLegal
       titulo="Política de cookies"
       resumen={[
         "No usamos cookies, ni propias ni de terceros. Sin analítica ni publicidad.",
-        "Solo guardamos en el navegador tu sesión y, un momento, la idea que escribas en la portada.",
+        "Solo guardamos tu sesión en el navegador, para que no tengas que entrar cada vez.",
         "Por eso no hay banner: no hay nada que aceptar.",
       ]}
     >
@@ -26,12 +26,6 @@ export default function Cookies() {
             <td>Mantener tu sesión iniciada. Es necesario para el servicio que pides, por eso no
               requiere tu consentimiento.</td>
             <td>Hasta que cierres sesión o borres los datos del sitio.</td>
-          </tr>
-          <tr>
-            <td>liguilla-idea (almacenamiento de sesión)</td>
-            <td>Guardar la idea que escribes en la portada mientras entras, para que llegue al
-              editor. No se envía a ningún sitio. También es necesaria para lo que pides.</td>
-            <td>Hasta que el editor la recoge, o hasta que cierres la pestaña.</td>
           </tr>
         </tbody>
       </table>
