@@ -18,8 +18,7 @@ import threading
 from collections import Counter
 from datetime import UTC, datetime
 
-from app import scan_progress
-from app.db import SessionLocal
+from app import proceso_hijo, scan_progress
 
 logger = logging.getLogger(__name__)
 
@@ -194,10 +193,12 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
 
 def _run(alcance: str, limite: int | None,
         countries: list[str] | None, exchanges: list[str] | None) -> None:
-    db = SessionLocal()
     try:
-        result = capturar(db, alcance=alcance, limite=limite,
-                          countries=countries, exchanges=exchanges)
+        scan_progress.reset()
+        result = proceso_hijo.ejecutar(
+            "app.tareas_hijo:foto",
+            {"alcance": alcance, "limite": limite, "countries": countries, "exchanges": exchanges},
+            on_estado=scan_progress.aplicar)
         with _lock:
             _state.update(status="done", result=result, error=None,
                           finished_at=datetime.now(UTC).isoformat())
@@ -207,8 +208,6 @@ def _run(alcance: str, limite: int | None,
             _state.update(status="error", error=str(exc),
                           finished_at=datetime.now(UTC).isoformat())
         scan_progress.set_stage("error")
-    finally:
-        db.close()
 
 
 def start(alcance: str = "nasdaq", limite: int | None = None,

@@ -7,6 +7,10 @@ WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
+# glibc crea hasta 8 arenas de memoria por CPU visible (48 en Railway, aunque el plan dé 8), una
+# por hilo, y lo que se libera en una no lo reutiliza otra: la RAM sube y no baja. Con 2 se comparten.
+ENV MALLOC_ARENA_MAX=2
+
 # Primero los metadatos para cachear la capa de dependencias.
 COPY pyproject.toml uv.lock ./
 COPY app ./app

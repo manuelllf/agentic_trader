@@ -21,6 +21,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app import recursos
 from app.api.routes import public_router, router
 from app.auth import auth_enabled, require_auth
 from app.config import settings
@@ -183,8 +184,10 @@ async def _log_peticiones_lentas(request: Request, call_next):  # noqa: ANN001, 
                             status_code=500)
     dur = time.monotonic() - t0
     if dur >= _LENTA_S:
-        logging.getLogger(__name__).warning("Petición lenta: %s %s %.1fs (%s)", request.method,
-                                            request.url.path, dur, respuesta.status_code)
+        rss = recursos.rss_mb()
+        logging.getLogger(__name__).warning(
+            "Petición lenta: %s %s %.1fs (%s)%s", request.method, request.url.path, dur,
+            respuesta.status_code, "" if rss is None else f", {rss:.0f} MB")
     return respuesta
 
 

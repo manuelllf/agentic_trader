@@ -15,10 +15,9 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app import scan_config
+from app import proceso_hijo, recursos, scan_config, scan_progress
 from app.config import settings
 from app.db import SessionLocal
-from app.scan_service import run_scan_and_store
 from app.scan_state import write_scan_failure
 
 logger = logging.getLogger(__name__)
@@ -35,7 +34,11 @@ def _scan_job() -> None:
         # Config por etapa guardada para el escaneo con decisión (misma que usa el botón
         # "Analizar y decidir"); `None` = defaults de `settings`, comportamiento de siempre.
         overrides = scan_config.get_decide_overrides(db)
-        result = run_scan_and_store(db, sample_size=None, decide=True, llm_overrides=overrides)
+        scan_progress.reset()
+        result = proceso_hijo.ejecutar(
+            "app.tareas_hijo:escaneo",
+            {"sample_size": None, "decide": True, "llm_overrides": overrides},
+            on_estado=scan_progress.aplicar)
         logger.info("Escaneo completado: %s", result)
     except Exception as exc:
         logger.exception("Fallo en el job de escaneo")
@@ -47,6 +50,7 @@ def _scan_job() -> None:
         db.close()
 
 
+@recursos.medido("cierre de la curva")
 def _snapshot_job() -> None:
     """Cierre diario: la curva histórica (equity por libro + SPY) y la FOTO DEL UNIVERSO.
 
@@ -70,6 +74,7 @@ def _snapshot_job() -> None:
         db.close()
 
 
+@recursos.medido("foto del universo")
 def _universe_job() -> None:
     """Fotografía el universo tras el cierre US, y REINTENTA cada 2h esa misma noche.
 
@@ -92,6 +97,7 @@ def _universe_job() -> None:
         db.close()
 
 
+@recursos.medido("universo global")
 def _universo_global_job() -> None:
     """Sincroniza el universo global de HuggingFace, mensual. El catálogo de tickers no se
     mueve rápido; esto solo ensancha lo que se puede FOTOGRAFIAR, el escaneo sigue en NASDAQ."""
@@ -107,6 +113,7 @@ def _universo_global_job() -> None:
         db.close()
 
 
+@recursos.medido("tasas de cambio")
 def _fx_job() -> None:
     """Tasas de cambio a USD + recálculo de `market_cap_usd` (ver `app/screener/fx.py`) --
     5:00 Europa/Madrid, antes de la analítica, para que el scan "top market cap global" del día
@@ -127,10 +134,8 @@ def _analytics_sync_job() -> None:
     """Reconstruye el fichero DuckDB persistente de `/analytics/*` desde Postgres. Fuera de
     horas de mercado, a propósito no atado a ningún escaneo — la analítica acepta estar hasta
     24h desatualizada (ver `app/analytics_sync.py`), así que basta con una pasada diaria."""
-    from app import analytics_sync
-
     try:
-        counts = analytics_sync.sync()
+        counts = proceso_hijo.ejecutar("app.tareas_hijo:analitica")
         logger.info("Analítica DuckDB sincronizada: %s", counts)
     except Exception:
         logger.exception("No se pudo sincronizar la analítica DuckDB")
@@ -308,6 +313,7 @@ def run_momentum_scan(db) -> dict:  # noqa: ANN001 — Session, evitar el import
     return {**resultado, "total_universo": len(todas)}
 
 
+@recursos.medido("escaneo de Omega")
 def _momentum_scan_job() -> None:
     """Wrapper del cron: abre su propia sesión y se traga el error (logueado) -- un cron caído
     no puede tirar el proceso. El rescate manual (`run_momentum_scan` desde el endpoint) SÍ deja
@@ -321,6 +327,7 @@ def _momentum_scan_job() -> None:
         db.close()
 
 
+@recursos.medido("ApeWisdom")
 def _apewisdom_job() -> None:
     """Wrapper del cron: captura (fase 1) + detección de rupturas de menciones (fase 2, gratis,
     sin LLM -- ver `momentum/candidatos.py`). Si ApeWisdom cae o cambia de forma, se loguea y no
@@ -337,6 +344,7 @@ def _apewisdom_job() -> None:
         db.close()
 
 
+@recursos.medido("cierres de la liga")
 def _liga_diario_job() -> None:
     """Cierres diarios de la liga. El propio proceso comprueba que sea día de bolsa (calendario
     NYSE) y que su interruptor en `liga.ajustes` esté encendido; si no, no hace nada."""
@@ -434,6 +442,8 @@ def start_scheduler() -> None:
     )
     scheduler.add_job(_reservas_huerfanas_job, "interval", minutes=10,
                       id="reservas_huerfanas", replace_existing=True, coalesce=True)
+    scheduler.add_job(recursos.registrar_estado, "interval", minutes=10,
+                      id="memoria_proceso", replace_existing=True, coalesce=True)
     scheduler.start()
     logger.info(
         "Scheduler arrancado: escaneo mensual el primer martes a las %02d:%02d %s",

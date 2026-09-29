@@ -10,6 +10,7 @@ Offline evaluation; never sent back to model."""
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import date, timedelta
 from statistics import median
@@ -27,6 +28,7 @@ CORTE_N = 10  # Cut boundary: N worst admitted vs N best rejected.
 
 _TTL = 900
 _cache: dict = {}
+_lock = threading.Lock()
 
 
 def _cierres_ajustados(tickers: list[str], desde: date) -> dict[str, list[tuple[date, float]]]:
@@ -36,27 +38,30 @@ def _cierres_ajustados(tickers: list[str], desde: date) -> dict[str, list[tuple[
     import yfinance as yf
 
     clave = (tuple(sorted(tickers)), desde)
-    ahora = time.time()
-    if clave in _cache and ahora - _cache[clave][0] < _TTL:
-        return _cache[clave][1]
-    try:
-        df = yf.download(sorted(tickers), start=desde, interval="1d", auto_adjust=True,
-                         group_by="ticker", threads=True, progress=False, timeout=10)
-    except Exception:
-        logger.warning("Yahoo no devolvió cierres para la lectura de outcomes.")
-        return {}
-    multi = getattr(df.columns, "nlevels", 1) > 1
-    out: dict[str, list[tuple[date, float]]] = {}
-    for t in tickers:
+    # Con el candado, dos visitas a la vez no descargan cientos de tickers por duplicado: la
+    # segunda espera y encuentra la caché ya puesta.
+    with _lock:
+        ahora = time.time()
+        if clave in _cache and ahora - _cache[clave][0] < _TTL:
+            return _cache[clave][1]
         try:
-            s = (df[t]["Close"] if multi else df["Close"]).dropna()
+            df = yf.download(sorted(tickers), start=desde, interval="1d", auto_adjust=True,
+                             group_by="ticker", threads=True, progress=False, timeout=10)
         except Exception:
-            continue
-        if len(s):
-            out[t] = [(i.date(), float(v)) for i, v in s.items()]
-    _cache.clear()                     # una sola entrada: la de los escaneos que se miran ahora
-    _cache[clave] = (ahora, out)
-    return out
+            logger.warning("Yahoo no devolvió cierres para la lectura de outcomes.")
+            return {}
+        multi = getattr(df.columns, "nlevels", 1) > 1
+        out: dict[str, list[tuple[date, float]]] = {}
+        for t in tickers:
+            try:
+                s = (df[t]["Close"] if multi else df["Close"]).dropna()
+            except Exception:
+                continue
+            if len(s):
+                out[t] = [(i.date(), float(v)) for i, v in s.items()]
+        _cache.clear()                 # una sola entrada: la de los escaneos que se miran ahora
+        _cache[clave] = (ahora, out)
+        return out
 
 
 def _ret_desde(serie: list[tuple[date, float]] | None, dia: date) -> float | None:

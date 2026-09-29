@@ -72,6 +72,7 @@ from app.models import (
     ScanRunTiming,
     Score,
 )
+from app.proceso_hijo import Cancelado
 from app.scan_guardrails import (
     _aparta_opadas,
     _flag_constructor_backfill,
@@ -139,7 +140,7 @@ _GATHER_PACE_S = 0.4
 _GATHER_RETRY_COOLDOWN_S = 180.0
 
 
-class ScanCancelado(RuntimeError):
+class ScanCancelado(Cancelado):
     """Distinto de un RuntimeError normal para que `pipeline._run()` marque status="cancelled"
     en vez de "error" -- mismo camino de aborto, pero no es un fallo, es lo que se pidió."""
 

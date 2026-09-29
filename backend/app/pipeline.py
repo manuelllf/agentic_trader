@@ -1,8 +1,8 @@
 """Runner del escaneo en segundo plano.
 
 El escaneo (pre-score Flash del universo entero + informe V4-Pro en los finalistas) tarda
-~15 min → se ejecuta en un hilo aparte y la web consulta el estado. El propio servicio borra
-scores/propuesta previos y persiste la foto nueva.
+~15 min → se ejecuta en un proceso hijo, vigilado desde un hilo, y la web consulta el estado.
+El propio servicio borra scores/propuesta previos y persiste la foto nueva.
 """
 
 from __future__ import annotations
@@ -10,9 +10,8 @@ from __future__ import annotations
 import threading
 from datetime import UTC, datetime
 
-from app import scan_progress
+from app import proceso_hijo, scan_progress
 from app.db import SessionLocal
-from app.scan_service import ScanCancelado, run_scan_and_store
 from app.scan_state import write_scan_failure
 
 _state: dict = {
@@ -46,17 +45,17 @@ def cancel(decide: bool) -> bool:
 
 def _run(sample_size: int | None, decide: bool,
         llm_overrides: dict | None, reutilizar_ultima_foto: bool, modo_universo: str) -> None:
-    db = SessionLocal()
     try:
-        result = run_scan_and_store(db, sample_size=sample_size, decide=decide,
-                                    llm_overrides=llm_overrides,
-                                    reutilizar_ultima_foto=reutilizar_ultima_foto,
-                                    modo_universo=modo_universo,
-                                    cancel_event=_cancel_event)
+        scan_progress.reset()
+        result = proceso_hijo.ejecutar(
+            "app.tareas_hijo:escaneo",
+            {"sample_size": sample_size, "decide": decide, "llm_overrides": llm_overrides,
+             "reutilizar_ultima_foto": reutilizar_ultima_foto, "modo_universo": modo_universo},
+            cancel_event=_cancel_event, on_estado=scan_progress.aplicar)
         with _lock:
             _state.update(status="done", result=result, error=None,
                           finished_at=datetime.now(UTC).isoformat())
-    except ScanCancelado as exc:
+    except proceso_hijo.Cancelado as exc:
         with _lock:
             _state.update(status="cancelled", error=str(exc),
                           finished_at=datetime.now(UTC).isoformat())
@@ -66,12 +65,13 @@ def _run(sample_size: int | None, decide: bool,
             _state.update(status="error", error=str(exc),
                           finished_at=datetime.now(UTC).isoformat())
         scan_progress.set_stage("error")
+        db = SessionLocal()
         try:
             write_scan_failure(db, exc, decide)   # el informe persistido sí sobrevive a reinicios
         except Exception:
             pass
-    finally:
-        db.close()
+        finally:
+            db.close()
 
 
 def start(sample_size: int | None = None, decide: bool = True,

@@ -72,15 +72,17 @@ def admin_sync_analytics() -> dict:
     """Reconstruye el fichero DuckDB persistente de `/analytics/*` desde Postgres (ver
     `app/analytics_sync.sync`). También corre solo, una vez al día (ver `scheduler.py`) — esto
     es para no esperar hasta la próxima pasada tras un escaneo nuevo."""
-    from app import analytics_sync
+    from app import proceso_hijo
 
     try:
-        counts = analytics_sync.sync()
-    except ImportError:
-        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
-    except RuntimeError as exc:
-        raise HTTPException(503, str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001 — Postgres caído/ATTACH roto: mensaje legible, no 500
+        counts = proceso_hijo.ejecutar("app.tareas_hijo:analitica")
+    except proceso_hijo.ProcesoHijoError as exc:
+        if exc.tipo in ("ImportError", "ModuleNotFoundError"):
+            raise HTTPException(
+                503, "DuckDB no está instalado (extra `analytics` del backend).") from exc
+        if exc.tipo == "RuntimeError":
+            raise HTTPException(503, str(exc)) from exc
+        # Postgres caído o ATTACH roto: mensaje legible, no 500.
         raise HTTPException(503, f"No se pudo sincronizar: {exc}") from exc
     return {"ok": True, "counts": counts}
 

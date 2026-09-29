@@ -114,7 +114,10 @@ class MemoryStore:
         if self._embedder is None:
             from fastembed import TextEmbedding  # import perezoso
 
-            self._embedder = TextEmbedding(model_name=self._model_name, cache_dir=self._cache_dir)
+            from app.recursos import hilos_calculo
+
+            self._embedder = TextEmbedding(model_name=self._model_name, cache_dir=self._cache_dir,
+                                           threads=hilos_calculo())
         return list(self._embedder.embed([text]))[0]
 
     def _connect(self):  # noqa: ANN001

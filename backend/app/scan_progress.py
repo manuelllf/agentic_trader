@@ -50,6 +50,12 @@ def tick(ok: bool, reason: str | None = None) -> None:
             _state["last_fail"] = reason if reason else "(sin motivo registrado)"
 
 
+def aplicar(estado: dict) -> None:
+    """Copia el progreso que cuenta el proceso hijo, que es quien lleva el escaneo de verdad."""
+    with _lock:
+        _state.update(estado)
+
+
 def snapshot() -> dict:
     with _lock:
         return dict(_state)

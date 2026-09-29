@@ -19,6 +19,7 @@ import logging
 import os
 
 from app.config import settings
+from app.recursos import hilos_calculo
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,7 @@ def sync(path: str | None = None) -> dict[str, int]:
 
     con = duckdb.connect(db_path)
     try:
+        con.execute(f"set threads = {hilos_calculo()}")
         con.execute("install postgres; load postgres;")
         tablas = _tablas_publicas(con, url)
         con.execute(f"attach '{_pg_dsn(url)}' as pg (type postgres, read_only)")

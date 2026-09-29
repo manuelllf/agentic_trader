@@ -124,12 +124,13 @@ def test_scan_job_pasa_overrides_guardados(db, monkeypatch) -> None:
     capturado = {}
     monkeypatch.setattr(scheduler, "SessionLocal", lambda: db)
 
-    def _fake_run(session, **kw):
-        capturado.update(kw)
+    def _fake_hijo(tarea, args=None, **kw):
+        capturado.update(tarea=tarea, **args)
         return {"ok": True}
 
-    monkeypatch.setattr(scheduler, "run_scan_and_store", _fake_run)
+    monkeypatch.setattr(scheduler.proceso_hijo, "ejecutar", _fake_hijo)
     scheduler._scan_job()
 
+    assert capturado["tarea"] == "app.tareas_hijo:escaneo"
     assert capturado["decide"] is True
     assert capturado["llm_overrides"] == {"deep": {"model": "deepseek-flash"}}
