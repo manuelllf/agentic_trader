@@ -1,5 +1,5 @@
-// Datos de EJEMPLO de la portada: una idea con empresas inventadas y seis meses inventados. No son
-// resultados reales y la pantalla lo dice. Solo la regla de puntos coincide con la de la liga.
+// Datos de EJEMPLO de la portada: empresas conocidas solo como ilustración y seis meses inventados,
+// sin cifras inventadas por empresa. La pantalla lo dice; solo la regla de puntos es la real.
 
 import type { EscudoValor } from "../_ui";
 
@@ -26,15 +26,15 @@ export function puntos(tu: number, sp: number): 0 | 1 | 3 {
 }
 
 export const EJEMPLO: Idea = {
-  frases: ["Empresas pequeñas", "que casi no deben nada", "y crecen cada año"],
-  nombre: "Brote creciente",
-  escudo: { forma: "escudo", dibujo: "mitades", color1: "#0B6E68", color2: "#F2C94C", iniciales: "BC" },
+  frases: ["Empresas grandes", "con caja de sobra", "y márgenes altos"],
+  nombre: "Pilar de caja",
+  escudo: { forma: "escudo", dibujo: "mitades", color1: "#0B6E68", color2: "#F2C94C", iniciales: "PC" },
   empresas: [
-    { nombre: "Astilleros Norte", porque: "deuda 0,1× · margen 24 %", peso: 24 },
-    { nombre: "Molino Verde", porque: "caja neta · crece 18 %", peso: 22 },
-    { nombre: "Cobre Ibérico", porque: "deuda 0,2× · crece 15 %", peso: 20 },
-    { nombre: "Faro Software", porque: "sin deuda · margen 31 %", peso: 18 },
-    { nombre: "Nube Sur", porque: "deuda 0,1× · crece 22 %", peso: 16 },
+    { nombre: "Microsoft", porque: "MSFT · margen alto · caja neta", peso: 24 },
+    { nombre: "Apple", porque: "AAPL · margen alto · mucha caja", peso: 22 },
+    { nombre: "NVIDIA", porque: "NVDA · crece · margen alto", peso: 20 },
+    { nombre: "Alphabet", porque: "GOOGL · caja neta · margen alto", peso: 18 },
+    { nombre: "iShares MSCI World", porque: "IWDA · ETF · cientos de empresas", peso: 16 },
   ],
   tu: [4.2, -5.6, 2.8, -2.9, 4.8, 1.0],
   conclusion: "Gana en los meses de subida y cae más que el mercado cuando baja.",
