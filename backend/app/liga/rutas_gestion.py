@@ -80,7 +80,9 @@ class SuspenderIn(BaseModel):
 
 class CreditoIn(BaseModel):
     usuario_id: uuid.UUID
-    importe: Decimal = Field(gt=0)
+    # La columna es numeric(12,4): más de 4 decimales se redondearían y más de 8 cifras enteras
+    # la desbordarían. Un regalo de más de un millón de créditos es un error de dedo.
+    importe: Decimal = Field(gt=0, le=1_000_000, decimal_places=4)
     motivo: Literal["regalo", "ajuste"] = "regalo"
     idempotencia: str = Field(min_length=8, max_length=80)
 

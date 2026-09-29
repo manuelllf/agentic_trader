@@ -76,12 +76,17 @@ class LimiteFrecuencia:
     def __init__(self, tope: int, ventana_s: int) -> None:
         self.tope, self.ventana_s = tope, ventana_s
         self._golpes: dict[str, list[float]] = {}
+        self._barrido = 0.0
         self._lock = threading.Lock()
 
     def permitido(self, clave: str) -> bool:
         ahora = time.time()
         with self._lock:
             corte = ahora - self.ventana_s
+            if ahora - self._barrido >= self.ventana_s:
+                # Sin esto cada IP o uid que pasó una vez se quedaría en el dict para siempre.
+                self._golpes = {k: v for k, v in self._golpes.items() if v and v[-1] > corte}
+                self._barrido = ahora
             vivos = [t for t in self._golpes.get(clave, []) if t > corte]
             if len(vivos) >= self.tope:
                 self._golpes[clave] = vivos

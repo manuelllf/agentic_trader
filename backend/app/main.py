@@ -31,6 +31,7 @@ from app.liga.filtro_logs import instalar_en_uvicorn as instalar_filtro_logs_uvi
 from app.liga.rutas import router as liga_router
 from app.liga.rutas_admin import router as liga_admin_router
 from app.liga.rutas_gestion import router_moderacion as liga_moderacion_router
+from app.limite_cuerpo import CuerpoAcotado
 from app.momentum.routes import router as momentum_router
 from app.scheduler import start_scheduler, stop_scheduler
 
@@ -187,8 +188,10 @@ async def _log_peticiones_lentas(request: Request, call_next):  # noqa: ANN001, 
     return respuesta
 
 
-# Se añade DESPUÉS del middleware de arriba para quedar por fuera: así también cubre el 500 que
-# ese middleware fabrica (el último que se añade es la capa más externa).
+# Lo que la gente manda a la liga cabe de sobra en 1 MB (la receta más grande pesa unos KB).
+app.add_middleware(CuerpoAcotado, maximo=1024 * 1024, prefijo="/liga")
+# Se añade DESPUÉS de los de arriba para quedar por fuera: así también cubre el 500 y el 413 que
+# fabrican (el último que se añade es la capa más externa).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,

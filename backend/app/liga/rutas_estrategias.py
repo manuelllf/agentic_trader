@@ -12,9 +12,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Path, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -32,6 +32,9 @@ from app.liga.procesos import datos
 from app.liga.rutas_publicas import EscudoOut
 
 router = APIRouter(tags=["liga-estrategias"])
+
+# Un ticker en la URL: ninguno real pasa de 16 caracteres; así no se busca ni se registra basura.
+Ticker = Annotated[str, Path(min_length=1, max_length=16)]
 
 # Las expuestas y abusables si se piden sin freno: recorren la foto entera cada vez.
 _LIMITE_PRUEBAS = acceso.LimiteFrecuencia(tope=20, ventana_s=60)
@@ -92,18 +95,19 @@ class EstrategiaOut(BaseModel):
 
 
 class ReglaIn(BaseModel):
-    clave: str
+    clave: str = Field(max_length=40)
     params: dict = Field(default_factory=dict)
 
 
 class RecetaIn(BaseModel):
     idea: str | None = Field(default=None, max_length=400)
-    reglas: list[ReglaIn] = Field(default_factory=list)
-    excluidas: list[str] = Field(default_factory=list)
+    reglas: list[ReglaIn] = Field(default_factory=list, max_length=30)
+    excluidas: list[Annotated[str, Field(max_length=16)]] = Field(default_factory=list,
+                                                                  max_length=100)
     pregunta: str | None = Field(default=None, max_length=160)
-    pesos: dict[str, int]
+    pesos: dict[str, int] = Field(max_length=10)
     n_empresas: int
-    reparto: str
+    reparto: str = Field(max_length=20)
     max_por_sector: int
 
 
@@ -396,7 +400,7 @@ def _ticker(t: str) -> str:
 
 
 @router.post("/estrategias/{id}/exclusiones/{ticker}", response_model=RecetaOut)
-def excluir(id: uuid.UUID, ticker: str, db: Session = Depends(db_usuario)) -> RecetaOut:
+def excluir(id: uuid.UUID, ticker: Ticker, db: Session = Depends(db_usuario)) -> RecetaOut:
     t = _ticker(ticker)
     try:
         with db.begin_nested():
@@ -407,7 +411,7 @@ def excluir(id: uuid.UUID, ticker: str, db: Session = Depends(db_usuario)) -> Re
 
 
 @router.delete("/estrategias/{id}/exclusiones/{ticker}", response_model=RecetaOut)
-def quitar_exclusion(id: uuid.UUID, ticker: str, db: Session = Depends(db_usuario)) -> RecetaOut:
+def quitar_exclusion(id: uuid.UUID, ticker: Ticker, db: Session = Depends(db_usuario)) -> RecetaOut:
     t = _ticker(ticker)
     try:
         with db.begin_nested():
@@ -547,7 +551,7 @@ def ver_prueba(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
 
 
 @router.get("/estrategias/{id}/por-que/{ticker}", response_model=PorQueOut)
-def por_que(id: uuid.UUID, ticker: str, ident: Identidad = Depends(require_usuario),
+def por_que(id: uuid.UUID, ticker: Ticker, ident: Identidad = Depends(require_usuario),
             db: Session = Depends(db_usuario)) -> PorQueOut:
     _exigir_calculo_disponible(ident.uid)
     t = _ticker(ticker)
