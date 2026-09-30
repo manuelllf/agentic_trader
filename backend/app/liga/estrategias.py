@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -212,7 +213,7 @@ def _sin_foto(e: ErrorProceso) -> HTTPException:
     return HTTPException(
         e.codigo,
         "Todavía no hay datos de este mes para probar tu estrategia. Se cargan con el escaneo "
-        "mensual, el primer día de bolsa.")
+        "mensual, la tarde del último día de bolsa.")
 
 
 # Caché en memoria de proceso de lo pesado de una foto (universo + notas: ~14 500 filas +
@@ -296,6 +297,39 @@ def candidatas_pregunta_de(ctx: Contexto, receta: RecetaModelo) -> list[str]:
     """Las hasta `TOPE_PREGUNTA` candidatas a las que se pregunta de verdad (F6-B): el motor ya
     define ese conjunto, solo hace falta traducir la receta guardada a la del motor."""
     return candidatas_pregunta(list(ctx.empresas), procesos_datos.receta_motor(receta), ctx.notas)
+
+
+# Cuántas estrategias de usuario están apuntadas a la próxima jornada, para la portada pública. Es
+# solo un número (nada de quién ni cuáles) y se guarda 30 s: la portada se pide sin sesión.
+_APUNTADAS_TTL = 30.0
+_apuntadas_cache: dict[str, float] = {}
+_apuntadas_candado = threading.Lock()
+
+
+def olvidar_apuntadas() -> None:
+    with _apuntadas_candado:
+        _apuntadas_cache.clear()
+
+
+def contar_apuntadas() -> int:
+    """Estrategias de usuario en estado «apuntada» (las que `formar` meterá en la próxima
+    jornada), sin contar las de cuentas suspendidas, igual que la formación."""
+    with _apuntadas_candado:
+        hasta, cuantas = _apuntadas_cache.get("hasta", 0.0), _apuntadas_cache.get("n", 0.0)
+        if time.monotonic() < hasta:
+            return int(cuantas)
+        db = fabrica_sistema()
+        try:
+            n = db.execute(text("""
+                select count(*) from liga.estrategias e
+                where e.tipo = 'usuario' and e.estado = 'apuntada' and e.dueno_id is not null
+                  and exists (select 1 from liga.roles_usuario r
+                              where r.usuario_id = e.dueno_id and r.rol = 'usuario')
+            """)).scalar_one()
+        finally:
+            db.close()
+        _apuntadas_cache.update({"hasta": time.monotonic() + _APUNTADAS_TTL, "n": float(n)})
+        return int(n)
 
 
 def buscar_universo(q: str, limite: int = 20) -> list[dict]:

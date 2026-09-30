@@ -463,6 +463,9 @@ export type Portada = {
   proxima: JornadaPublica | null;
   en_juego: JornadaPublica | null;
   ultima_cerrada: JornadaDetalle | null;
+  /** Estrategias de usuario apuntadas a la próxima jornada, y las que juegan la que está en curso. */
+  apuntadas?: number;
+  inscritas_en_juego?: number;
 };
 
 export type FilaClasificacion = {

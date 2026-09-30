@@ -636,7 +636,7 @@ function SalaRealRoom() {
                     <b style={{ color: T.ink2 }}>2</b> · análisis
                   </p>
                   <p className="text-[12.5px] leading-relaxed" style={{ color: T.ink2 }}>
-                    El agente escanea el primer día de bolsa del mes a las 10:15 (hora
+                    El agente escanea el último día de bolsa del mes, tras el cierre, a las 16:45 (hora
                     del mercado US) y decide la cartera (sombra y propuestas aquí) — o al
                     momento con «Analizar mercado» arriba.
                   </p>

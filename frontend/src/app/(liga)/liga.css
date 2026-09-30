@@ -126,7 +126,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .chip {
   display: inline-flex; align-items: center; min-height: 30px; padding: 0 11px; border: 0;
   border-radius: 999px; background: var(--surface); font: inherit; font-size: 13.5px;
-  font-weight: 700; color: var(--ink2);
+  font-weight: 700; color: var(--ink2); white-space: nowrap;
 }
 
 .lg .btn.full { flex: 1; }
@@ -243,10 +243,11 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 /* ---- Cabecera de app + pestañas (DESIGN.md §5) --------------------------------------------- */
 
 .lg .cab {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 14px 16px 4px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 4px 8px; padding: 14px 16px 4px;
 }
-.lg .cab-r { display: flex; gap: 6px; align-items: center; }
+/* Con poco ancho los chips pasan a una segunda línea en vez de partir su texto. */
+.lg .cab-r { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
 
 .lg .scroll {
   flex: 1; width: 100%; max-width: 480px; margin: 0 auto; padding: 4px 16px 100px;
@@ -449,6 +450,21 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .li small { display: block; margin-top: 3px; font-size: 14px; line-height: 1.4; color: var(--muted); }
 .lg .li .status { font-size: 13.5px; font-weight: 700; color: var(--accent); }
 .lg .li-acts { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
+/* Bloque de una estrategia en Mías: la fila y, debajo, «Cada día 1» con su control a su ancho
+   natural (dentro de la columna del nombre quedaba estrecho y se salía de la píldora). */
+.lg .li-bloque { border-bottom: 1px solid var(--line); container-type: inline-size; }
+/* El bloque mide su propio ancho (no el del móvil): si no caben nombre y botones en una línea, los
+   botones bajan debajo del nombre, alineados con él, en vez de estrechar el texto. */
+@container (max-width: 420px) {
+  .lg .li-bloque .li { flex-wrap: wrap; }
+  .lg .li-bloque .li .t { flex: 1 1 calc(100% - 46px); }
+  .lg .li-bloque .li-acts { flex: 1 1 100%; padding-left: 46px; flex-wrap: wrap; }
+}
+.lg .li-bloque .li { border-bottom: 0; }
+.lg .li-dia1 { display: flex; align-items: center; gap: 12px; padding: 0 0 14px 46px; }
+.lg .li-dia1 > span { font-size: 14px; color: var(--muted); }
+.lg .li-dia1 .seg { width: auto; flex: 0 0 auto; }
+.lg .li-dia1 .seg button { flex: 0 0 auto; white-space: nowrap; }
 
 .lg .toast {
   position: fixed; left: 12px; right: 12px; bottom: 74px; z-index: 40; padding: 14px 16px;

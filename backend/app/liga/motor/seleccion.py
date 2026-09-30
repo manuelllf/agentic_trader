@@ -4,10 +4,11 @@ Reproduce `pick()`, `reason()` y `explain()` de la maqueta B sobre datos reales 
 
 1. Fuera las que no cumplen alguna regla, las que el usuario quitó a mano y las que la IA no
    puntuó este mes (sin las 4 notas de Jev no hay nota).
-2. Nota de 0 a 10: media ponderada, con los pesos de la receta, de las 4 notas de Jev (su escala
-   de 0 a 9 se pasa a 0-10) y de la respuesta a la pregunta propia, si pesa. Si pesa y una
-   empresa no tiene respuesta (la pregunta solo se hace a `candidatas_pregunta`, tope D7), no
-   pasa: entraría sin que se le preguntara, por delante de las que contestaron que no.
+2. Nota (de 0 a 10 por dentro, sobre 100 al enseñarla): media ponderada, con los pesos de la
+   receta, de las 4 notas de Jev (su escala de 0 a 9 se pasa a 0-10) y de la respuesta a la
+   pregunta propia, si pesa. Si pesa y una empresa no tiene respuesta (la pregunta solo se hace
+   a `candidatas_pregunta`, tope D7), no pasa: entraría sin que se le preguntara, por delante de
+   las que contestaron que no.
 3. Orden por nota; a igual nota, la de más capitalización (y el ticker, para que sea determinista).
 4. Entran las N primeras, respetando el máximo por sector.
 5. Pesos a partes iguales (100/N) o proporcionales a la nota. Si solo pasan k < N, entre todas
@@ -416,7 +417,8 @@ def _truncar(x: Fraction) -> Decimal:
 
 def _porque(f: FilaSeleccion) -> str:
     """El porqué de cada elegida, como `reason()` de la maqueta."""
-    nota = f"Nota {cifra(f.nota_exacta or 0, 1)}."
+    # La cuenta interna va de 0 a 10; al usuario se le enseña sobre 100, como el resto de la marca.
+    nota = f"Nota {cifra((f.nota_exacta or 0) * 10, 0)}."
     if f.respuesta is not None:
         si = "sí" if f.respuesta.si else "no"
         return f"La IA contesta que {si}, con seguridad {f.respuesta.seguridad}. {nota}"

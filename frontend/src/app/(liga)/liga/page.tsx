@@ -40,6 +40,56 @@ const Chevron = () => (
   </svg>
 );
 
+const horaLocal = (iso: string) =>
+  new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+
+const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+
+/** Quién juega ahora o está apuntado: la clasificación de la temporada solo suma jornadas
+ *  cerradas, así que no sirve para contar a los que están jugando este mes. */
+function resumenJuego(p: Portada): string {
+  const jugando = p.inscritas_en_juego ?? 0, apuntadas = p.apuntadas ?? 0;
+  if (p.en_juego) return `${plural(jugando, "estrategia juega", "estrategias juegan")} este mes.`;
+  if (apuntadas > 0) {
+    const fechaInicio = p.proxima ? ` para la jornada ${p.proxima.numero}` : "";
+    return `${plural(apuntadas, "estrategia apuntada", "estrategias apuntadas")}${fechaInicio}.`;
+  }
+  return "Todavía no hay estrategias apuntadas.";
+}
+
+/** Lo que se enseña en «Este mes» mientras no hay jornada formada: que ya viene, o que ya cerró la
+ *  inscripción y solo falta formarla (se forma sola el primer día de bolsa, tras el corte y antes de abrir el mercado). */
+function SinJornada({ portada }: { portada: Portada }) {
+  const p = portada.proxima;
+  if (!p) {
+    return (
+      <Vacio titulo="Todavía no hay jornada en juego"
+             texto="Cuando empiece la jornada de este mes verás aquí cómo va cada estrategia." />
+    );
+  }
+  const apuntadas = portada.apuntadas ?? 0;
+  const cerrada = new Date(p.cierre_inscripcion).getTime() < Date.now();
+  const cuantas = apuntadas > 0 ? `${plural(apuntadas, "estrategia apuntada", "estrategias apuntadas")}. ` : "";
+  return cerrada ? (
+    <Vacio titulo={`Jornada ${p.numero}: estrategias fijadas`}
+           texto={`${cuantas}Ya no se pueden cambiar para esta jornada. Se forma sola el primer día de bolsa, justo antes de que abra el mercado, con las notas oficiales de la tarde anterior. En cuanto esté formada verás aquí la clasificación en directo.`} />
+  ) : (
+    <Vacio titulo={`La jornada ${p.numero} empieza el ${fecha(p.dia_inicio)}`}
+           texto={`${cuantas}Puedes apuntar y cambiar tu estrategia hasta el ${fecha(p.cierre_inscripcion)} a las ${horaLocal(p.cierre_inscripcion)}.`} />
+  );
+}
+
+function textoSinClasificacion(p: Portada): string {
+  if (p.en_juego) {
+    return "Los puntos se suman cuando se cierra cada jornada. Mira «Este mes» para ver cómo va la que está en juego.";
+  }
+  const apuntadas = p.apuntadas ?? 0;
+  if (apuntadas > 0) {
+    return `${plural(apuntadas, "estrategia espera", "estrategias esperan")} a que empiece la jornada${p.proxima ? ` el ${fecha(p.proxima.dia_inicio)}` : ""}.`;
+  }
+  return "Nadie se ha apuntado todavía a esta temporada.";
+}
+
 export default function Liga() {
   const router = useRouter();
   const { yo } = useSesion();
@@ -138,10 +188,7 @@ export default function Liga() {
             </div>
           )}
           <p className="meta" style={{ marginTop: 10 }}>
-            Temporada {temporada.nombre}.{" "}
-            {typeof clasificacion === "object" && clasificacion
-              ? `Juegan ${clasificacion.total} estrategias.`
-              : ""}
+            Temporada {temporada.nombre}. {resumenJuego(portada)}
           </p>
 
           <div style={{ marginTop: 16 }}>
@@ -157,8 +204,8 @@ export default function Liga() {
               <ErrorLiga titulo="No se pudo cargar la clasificación" mensaje={clasificacion}
                          accion={{ texto: "Reintentar", onClick: refrescarClasificacion }} />
             ) : clasificacion.filas.length === 0 ? (
-              <Vacio titulo="Todavía no juega nadie"
-                     texto="Nadie se ha apuntado todavía a esta temporada."
+              <Vacio titulo="Todavía no hay clasificación"
+                     texto={textoSinClasificacion(portada)}
                      accion={yo
                        ? { texto: "Crear la mía", onClick: () => { window.location.href = "/crear"; } }
                        : { texto: "Entrar", onClick: () => { window.location.href = "/entrar"; } }} />
@@ -182,8 +229,7 @@ export default function Liga() {
           ) : jornada === undefined ? (
             portada.en_juego ? <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
               : (
-                <Vacio titulo="Todavía no hay jornada en juego"
-                       texto="Cuando empiece la jornada de este mes verás aquí cómo va cada estrategia." />
+                <SinJornada portada={portada} />
               )
           ) : typeof jornada === "string" ? (
             <ErrorLiga titulo="No se pudo cargar este mes" mensaje={jornada}

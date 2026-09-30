@@ -58,7 +58,9 @@ def _llm_call(cx, stage: str, cuando: datetime, coste: float) -> None:  # noqa: 
 
 def test_pagado_y_cobrado_por_finalidad_en_el_mes(entorno) -> None:  # noqa: ANN001
     cx, uid = entorno
-    mes = date.today().replace(day=1)
+    # El mes de la BASE (UTC), no el del ordenador: entre las 00:00 y las 02:00 de Madrid del día 1
+    # el ordenador ya está en el mes nuevo y la base todavía en el anterior.
+    mes = cx.execute("select date_trunc('month', now())::date").fetchone()[0]
     dentro = datetime.combine(mes, datetime.min.time()) + timedelta(days=1, hours=12)
     fuera = datetime.combine(mes, datetime.min.time()) - timedelta(days=5)
 

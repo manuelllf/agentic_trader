@@ -18,13 +18,14 @@ no duplica nada.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app import precios
@@ -43,6 +44,7 @@ from app.liga.procesos.comun import (
     auditar_fallo,
     candado,
     fabrica_sistema,
+    hoy_bolsa,
     jornada,
     jornada_bloqueada,
     para_json,
@@ -415,3 +417,75 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
     return para_json({"jornada_id": j.id, "estado": j.estado, "inscripciones": len(entradas),
                       "sin_precio": sorted(sin_precio), "plan_b": ctx.plan_b, **_resumen(plan)})
 
+
+
+# --- El del scheduler ---------------------------------------------------------------------------
+
+AJUSTE_AUTO = "procesos.formar.auto"
+_AVISO_CADA_S = 1800.0     # si algo impide formar: un aviso cada media hora, no cada 5 min
+VENTANA_AUTO = timedelta(minutes=30)  # solo se intenta formar sola la media hora tras el corte
+_ultimo_aviso: dict[int, float] = {}
+_abandonadas_avisadas: set[int] = set()
+
+
+def _avisar(db: Session, titulo: str, cuerpo: str) -> None:
+    """Aviso por push a los administradores; nunca deja que un fallo de aviso tire el proceso."""
+    try:
+        from app import push
+
+        push.send_to_all(db, title=titulo, body=cuerpo, url="/admin", tag="agentic-liga")
+    except Exception:
+        logger.exception("No se pudo avisar por push")
+
+
+def _auto_activo(db: Session) -> bool:
+    """Encendido salvo que alguien lo apague a propósito (interruptor de emergencia)."""
+    valor = db.execute(text("select valor from liga.ajustes where clave = :c"),
+                       {"c": AJUSTE_AUTO}).scalar()
+    return valor is not False
+
+
+def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None,
+        reloj=time.monotonic) -> dict | None:  # noqa: ANN001 — reloj inyectable en pruebas
+    """Forma sola la jornada que ya puede formarse: sigue programada, está dentro de sus fechas y ha
+    pasado su corte, hasta media hora después. Corre cada 5 minutos (unos 6 intentos), así que un
+    reinicio o una fuente de precios caída se resuelven solos, pero no hay reintentos infinitos:
+    pasada la media hora deja de intentarlo y avisa una sola vez: hay que formarla desde Admin.
+
+    Las entradas de cada estrategia son las del corte (receta vigente, foto y escaneo designados),
+    así que formarla con unos minutos u horas de retraso no cambia el resultado. Si falta la foto o
+    el escaneo, o falla la fuente de precios, se registra y avisa por push (como mucho cada media
+    hora); nunca tira el scheduler. El botón de Admin queda como salvavidas."""
+    jornada_id = None
+    try:
+        hoy = hoy_bolsa(ahora)
+        with sesion(fabrica) as db:
+            if not _auto_activo(db):
+                return None
+            ahora_t = ahora_utc(ahora)
+            vivas = db.scalars(select(Jornada).where(
+                Jornada.estado == "programada", Jornada.dia_inicio <= hoy, Jornada.dia_fin >= hoy,
+                Jornada.cierre_inscripcion <= ahora_t).order_by(Jornada.dia_inicio)).all()
+            listas = [j for j in vivas if ahora_t - j.cierre_inscripcion <= VENTANA_AUTO]
+            for j in vivas:
+                if j not in listas and j.id not in _abandonadas_avisadas:
+                    _abandonadas_avisadas.add(j.id)
+                    _avisar(db, "Liguilla: la jornada no se formó sola",
+                            f"La jornada {j.numero} sigue sin formar media hora después del corte: "
+                            "fórmala desde Admin.")
+            if not listas:
+                return None
+            jornada_id = listas[0].id
+        hecho = ejecutar(jornada_id, fabrica=fabrica, ahora=ahora)
+        _ultimo_aviso.pop(jornada_id, None)
+        return hecho
+    except Exception as e:
+        logger.exception("No se pudo formar la jornada %s", jornada_id)
+        clave = jornada_id or 0
+        ahora_s = reloj()
+        if ahora_s - _ultimo_aviso.get(clave, -_AVISO_CADA_S) < _AVISO_CADA_S:
+            return None
+        _ultimo_aviso[clave] = ahora_s
+        with sesion(fabrica) as db:
+            _avisar(db, "Liguilla: no se pudo formar la jornada", str(e)[:140])
+        return None

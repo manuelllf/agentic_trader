@@ -120,20 +120,12 @@ export default function Mias() {
         <div className="sec" style={{ marginTop: 14 }}>
           <div style={{ borderTop: "1px solid var(--line)" }}>
             {estrategias.map((e) => (
-              <div key={e.id} className="li" style={{ cursor: "default" }}>
+              <div key={e.id} className="li-bloque">
+              <div className="li" style={{ cursor: "default" }}>
                 <Escudo valor={e.escudo} etiqueta={`Escudo de ${e.nombre}`} tamano={34} />
                 <span className="t">
                   <b>{e.nombre}</b>
                   <small>{ETIQUETA_ESTADO[e.estado] ?? e.estado}</small>
-                  {(e.estado === "apuntada" || e.estado === "jugando") && (
-                    <div style={{ marginTop: 8, maxWidth: 220 }}>
-                      <Segmentado<"revisar" | "mantener"> pequeno etiquetaGrupo={`Cada día 1 de ${e.nombre}`}
-                                  opciones={[{ valor: "revisar", etiqueta: "Revisar" },
-                                             { valor: "mantener", etiqueta: "Mantener" }]}
-                                  valor={e.cada_dia_1 === "mantener" ? "mantener" : "revisar"}
-                                  onChange={(v) => alCambiarCadaDia1(e.id, v)} />
-                    </div>
-                  )}
                 </span>
                 <div className="li-acts">
                   <Link href={`/crear/${e.id}`} className="btn small">Editar</Link>
@@ -155,6 +147,17 @@ export default function Mias() {
                     </Boton>
                   )}
                 </div>
+              </div>
+              {(e.estado === "apuntada" || e.estado === "jugando") && (
+                <div className="li-dia1">
+                  <span>Cada día 1</span>
+                  <Segmentado<"revisar" | "mantener"> pequeno etiquetaGrupo={`Cada día 1 de ${e.nombre}`}
+                              opciones={[{ valor: "revisar", etiqueta: "Revisar" },
+                                         { valor: "mantener", etiqueta: "Mantener" }]}
+                              valor={e.cada_dia_1 === "mantener" ? "mantener" : "revisar"}
+                              onChange={(v) => alCambiarCadaDia1(e.id, v)} />
+                </div>
+              )}
               </div>
             ))}
           </div>

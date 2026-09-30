@@ -60,7 +60,7 @@ def test_entran_las_n_mejores_a_partes_iguales_y_la_cartera_suma_100():
                                             Decimal("33.3333")]
     assert s.caja_pct == Decimal("0.0000")
     assert [f.ticker for f in s.pasan] == ["B", "D", "C", "A", "E"]
-    assert s.elegidas[0].porque == "Destaca en «que el negocio vaya bien». Nota 10."
+    assert s.elegidas[0].porque == "Destaca en «que el negocio vaya bien». Nota 100."
 
 
 def test_a_igual_nota_decide_la_capitalizacion_y_luego_el_ticker():
@@ -205,7 +205,7 @@ def test_la_pregunta_entra_en_la_media_y_sin_respuesta_no_se_pasa():
     assert s.fila("SI").nota_exacta == (5 + Fraction("9.2")) / 2        # 7,1
     assert s.fila("NO").nota_exacta == (10 + Fraction("1.2")) / 2       # 5,6
     assert [e.ticker for e in s.elegidas] == ["SI", "NO"]
-    assert s.elegidas[0].porque == "La IA contesta que sí, con seguridad alta. Nota 7,1."
+    assert s.elegidas[0].porque == "La IA contesta que sí, con seguridad alta. Nota 71."
     assert s.fila("SINPREGUNTA").fallo == SIN_RESPUESTA
     assert explicar("SINPREGUNTA", s, r) == f"SINPREGUNTA Inc no entra: {SIN_RESPUESTA}."
 

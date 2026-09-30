@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 
 from app.liga.motor.calendario import (
-    TZ_MADRID,
+    TZ_NUEVA_YORK,
     dias_de_bolsa,
     es_dia_de_bolsa,
+    es_ultimo_dia_de_bolsa,
     jornada_del_mes,
 )
 
@@ -63,13 +64,34 @@ def test_dias_de_bolsa_incluye_los_extremos_y_salta_el_4_de_julio_observado():
     assert dias_de_bolsa(date(2026, 7, 4), date(2026, 7, 5)) == []
 
 
-def test_cierre_de_inscripcion_es_las_2359_de_madrid_del_dia_base_en_invierno_y_en_verano():
+def test_el_corte_es_las_0900_de_nueva_york_del_dia_de_inicio_en_invierno_y_en_verano():
     invierno = jornada_del_mes(2027, 1).cierre_inscripcion
     assert invierno.tzinfo is not None
-    assert invierno.astimezone(UTC) == datetime(2026, 12, 31, 22, 59, tzinfo=UTC)
+    assert invierno.astimezone(UTC) == datetime(2027, 1, 4, 14, 0, tzinfo=UTC)
     verano = jornada_del_mes(2026, 7).cierre_inscripcion
-    assert verano == datetime(2026, 6, 30, 23, 59, tzinfo=TZ_MADRID)
-    assert verano.utcoffset() == timedelta(hours=2)
+    assert verano == datetime(2026, 7, 1, 9, 0, tzinfo=TZ_NUEVA_YORK)
+    assert verano.utcoffset() == timedelta(hours=-4)
+
+
+def test_el_corte_cae_siempre_antes_de_la_apertura_y_despues_del_cierre_anterior():
+    for mes in range(1, 13):
+        j = jornada_del_mes(2027, mes)
+        apertura = datetime.combine(j.dia_inicio, time(9, 30), tzinfo=TZ_NUEVA_YORK)
+        cierre_base = datetime.combine(j.dia_base, time(16, 0), tzinfo=TZ_NUEVA_YORK)
+        assert cierre_base < j.cierre_inscripcion < apertura
+
+
+@pytest.mark.parametrize(("dia", "esperado"), [
+    (date(2026, 9, 30), True),      # miércoles
+    (date(2026, 10, 30), True),     # viernes; el 31 es sábado
+    (date(2026, 10, 29), False),
+    (date(2026, 10, 31), False),
+    (date(2026, 12, 31), True),
+    (date(2027, 5, 28), True),      # el 31 es festivo (Memorial Day)
+    (date(2027, 5, 31), False),
+])
+def test_ultimo_dia_de_bolsa(dia, esperado):
+    assert es_ultimo_dia_de_bolsa(dia) is esperado
 
 
 def test_las_jornadas_de_un_anio_se_encadenan_sin_huecos():

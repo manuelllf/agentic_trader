@@ -27,14 +27,16 @@ class Settings(BaseSettings):
     duckdb_path: str = "analytics.duckdb"
 
     # Cron anclado a la hora del MERCADO (no UTC): sobrevive al cambio de horario y cae con la
-    # foto ya asentada tras el retraso de 15 min de yfinance. Mensual, primer día de bolsa (ver
+    # foto ya asentada tras el retraso de 15 min de yfinance. Mensual, último día de bolsa (ver
     # scheduler.py):
     # el semanal (muestra rotatoria, sin capa media, sin decisión) se retiró — el mercado no
     # cambia lo bastante en una semana para justificar 750 llamadas de pago sin conocimiento
     # nuevo (ver docs/plan-datos-observability.md).
     enable_scheduler: bool = True
-    scan_cron_hour: int = 10
-    scan_cron_minute: int = 15
+    # Escaneo mensual con decisión: el último día de bolsa, 16:45 ET (tras el cierre y la foto del
+    # universo de las 16:30), para que la jornada siguiente tenga notas oficiales antes del corte.
+    scan_cron_hour: int = 16
+    scan_cron_minute: int = 45
     # ancla a la bolsa US (sobrevive al horario de verano)
     scan_timezone: str = "America/New_York"
 

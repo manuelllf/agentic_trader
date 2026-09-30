@@ -79,20 +79,18 @@ const SECTION = "border-t border-[#303030] pt-4";
 const SOMBRA_SANS = "var(--font-sombra-sans), ui-sans-serif, system-ui, sans-serif";
 const SOMBRA_MONO = "var(--font-sombra-mono), ui-monospace, 'SFMono-Regular', monospace";
 
-/** Próximo primer día de bolsa del mes (la fecha de la próxima DECISIÓN de cartera). Aproximado:
- *  primer día laborable, saltando el 1 de enero; la fecha exacta la marca el calendario NYSE del
+/** Próximo último día de bolsa del mes (la fecha de la próxima DECISIÓN de cartera). Aproximado:
+ *  último día laborable del mes (sin festivos); la fecha exacta la marca el calendario NYSE del
  *  scheduler. */
 function nextDecisionLabel(): string {
-  const firstSession = (y: number, m: number) => {
-    const d = new Date(y, m, 1);
-    while (d.getDay() === 0 || d.getDay() === 6 || (m === 0 && d.getDate() === 1)) {
-      d.setDate(d.getDate() + 1);
-    }
+  const lastSession = (y: number, m: number) => {
+    const d = new Date(y, m + 1, 0, 23, 59);
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
     return d;
   };
   const now = new Date();
-  let d = firstSession(now.getFullYear(), now.getMonth());
-  if (d.getTime() <= now.getTime()) d = firstSession(now.getFullYear(), now.getMonth() + 1);
+  let d = lastSession(now.getFullYear(), now.getMonth());
+  if (d.getTime() <= now.getTime()) d = lastSession(now.getFullYear(), now.getMonth() + 1);
   return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
 }
 

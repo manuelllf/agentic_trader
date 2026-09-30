@@ -367,11 +367,11 @@ def _reservas_huerfanas_job() -> None:
 
 
 def trigger_escaneo_mensual() -> CronTrigger:
-    """Cada día laborable de la primera semana del mes. `_escaneo_mensual_job` deja pasar solo el
-    primer día de BOLSA (si el 1 cae en fin de semana o festivo, es el lunes siguiente): así el
-    escaneo coincide con el día en que empieza la jornada de la liga y parte de la foto del cierre
-    anterior."""
-    return CronTrigger(day="1-7", day_of_week="mon-fri", hour=settings.scan_cron_hour,
+    """Cada día laborable del final del mes, 16:45 de Nueva York. `_escaneo_mensual_job` deja pasar
+    solo el último día de BOLSA (si el mes acaba en fin de semana o festivo, es el viernes o el
+    jueves anterior): el escaneo corre tras el cierre y la jornada siguiente tiene notas oficiales
+    antes del corte de las 09:00 ET del día 1."""
+    return CronTrigger(day="24-31", day_of_week="mon-fri", hour=settings.scan_cron_hour,
                        minute=settings.scan_cron_minute, timezone=settings.scan_timezone)
 
 
@@ -379,9 +379,16 @@ def _escaneo_mensual_job(hoy: date | None = None) -> None:
     from app.liga.motor import calendario
 
     hoy = hoy or datetime.now(ZoneInfo(settings.scan_timezone)).date()
-    if not calendario.es_primer_dia_de_bolsa(hoy):
+    if not calendario.es_ultimo_dia_de_bolsa(hoy):
         return
     _scan_job()
+
+
+@recursos.medido("formación de la jornada")
+def _liga_formar_job() -> None:
+    from app.liga.procesos import formar
+
+    formar.job()
 
 
 def start_scheduler() -> None:
@@ -447,6 +454,10 @@ def start_scheduler() -> None:
         CronTrigger(day_of_week="mon-fri", hour=16, minute=10, timezone=settings.scan_timezone),
         id="apewisdom_capture", replace_existing=True, misfire_grace_time=3600, coalesce=True,
     )
+    # Liga: formar la jornada que ya puede formarse (pasado su corte de las 09:00 ET del día 1).
+    # Cada 5 minutos: si falta algo o el proceso se reinicia, vuelve a intentarlo solo.
+    scheduler.add_job(_liga_formar_job, "interval", minutes=5, id="liga_formar",
+                      replace_existing=True, coalesce=True)
     # Liga: cierres de lo que está en cartera + SPY, 17:15 ET (cierre + margen de la fuente).
     scheduler.add_job(
         _liga_diario_job,
@@ -459,7 +470,7 @@ def start_scheduler() -> None:
                       id="memoria_proceso", replace_existing=True, coalesce=True)
     scheduler.start()
     logger.info(
-        "Scheduler arrancado: escaneo mensual el primer día de bolsa a las %02d:%02d %s",
+        "Scheduler arrancado: escaneo mensual el último día de bolsa a las %02d:%02d %s",
         settings.scan_cron_hour, settings.scan_cron_minute, settings.scan_timezone,
     )
 

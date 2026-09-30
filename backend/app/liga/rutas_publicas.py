@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.liga import gestion
+from app.liga import estrategias, gestion
 from app.liga.db import db_anon
 from app.liga.procesos import diario
 
@@ -107,10 +107,12 @@ _TOPE_VIVA = 5000     # la tabla viva ordena en memoria: se leen todas las visib
 
 class Portada(BaseModel):
     temporada: TemporadaOut | None
-    proxima: JornadaOut | None       # la siguiente que admite inscripciones
+    proxima: JornadaOut | None       # la siguiente por empezar (inscripción abierta o cerrada)
     en_juego: JornadaOut | None
     ultima_cerrada: JornadaDetalle | None
     registro_abierto: bool           # interruptor de emergencia (plan §14, `liga.registro.abierto`)
+    apuntadas: int = 0               # estrategias de usuario apuntadas a la próxima jornada
+    inscritas_en_juego: int = 0      # estrategias que juegan la jornada en curso, casa incluida
 
 
 _EQUIPO = """
@@ -260,13 +262,16 @@ def _en_juego(db: Session) -> JornadaOut | None:
 @router.get("/portada", response_model=Portada)
 def portada(db: Session = Depends(db_anon)) -> Portada:
     """Solo datos reales: si aún no hay jornadas, la portada lo dice (plan §17)."""
-    hoy = {"hoy": datetime.now().astimezone()}
     cerrada = _jornada(db, "estado = 'cerrada'", {}, "dia_fin desc")
+    en_juego = _en_juego(db)
+    inscritas = db.execute(text("select count(*) from liga.inscripciones where jornada_id = :j"),
+                           {"j": en_juego.id}).scalar_one() if en_juego else 0
     return Portada(
         temporada=_temporada(db, None),
-        proxima=_jornada(db, "estado = 'programada' and cierre_inscripcion > :hoy", hoy,
-                         "dia_inicio"),
-        en_juego=_en_juego(db),
+        proxima=_jornada(db, "estado = 'programada'", {}, "dia_inicio"),
+        en_juego=en_juego,
         ultima_cerrada=_detalle(db, cerrada) if cerrada else None,
         registro_abierto=gestion.registro_abierto(),
+        apuntadas=estrategias.contar_apuntadas(),
+        inscritas_en_juego=inscritas,
     )

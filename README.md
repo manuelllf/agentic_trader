@@ -22,7 +22,7 @@ de cada sector existe tras un interruptor, apagada por defecto. La selección fi
 solo reparte los pesos entre los ya seleccionados. Todo el dinero (tamaños, caja, P&L) lo
 calcula el código con aritmética exacta en `Decimal`, nunca el LLM.
 
-La **decisión** de cartera es mensual (el primer día de bolsa del mes), porque el análisis razona a un mes vista y
+La **decisión** de cartera es mensual (el último día de bolsa del mes, tras el cierre), porque el análisis razona a un mes vista y
 rebalancear más a menudo sería operar su propio ruido. Un botón de simulación en Alpha
 corre el mismo circuito completo sin tocar ningún libro, para observar sin decidir.
 

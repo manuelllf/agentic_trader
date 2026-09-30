@@ -108,6 +108,12 @@ CATALOGO: dict[str, AjusteMeta] = {
               "la próxima jornada sin foto. Apagado: solo vale el botón manual.",
         tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True),
 }
+CATALOGO["procesos.formar.auto"] = AjusteMeta(
+    grupo="Procesos", titulo="Formar la jornada sola",
+    ayuda="Cada 5 minutos comprueba si hay una jornada que ya puede formarse (pasado su corte de "
+          "las 09:00 de Nueva York del primer día de bolsa, con su foto y su escaneo designados) "
+          "y la forma. Es el camino normal. Apagado (emergencia): solo vale el botón de Admin.",
+    tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True)
 AJUSTES_CONOCIDOS = frozenset(CATALOGO)
 CLAVE_REGISTRO_ABIERTO = "liga.registro.abierto"
 CLAVE_LIGA_VISIBLE = "liga.visible"

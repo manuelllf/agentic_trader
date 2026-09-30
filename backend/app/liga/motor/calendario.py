@@ -3,7 +3,11 @@
 Una jornada es un mes de bolsa: la cartera se fija con el cierre de `dia_base` (último día de
 bolsa del mes anterior) y juega de `dia_inicio` a `dia_fin` (primer y último día de bolsa del
 mes). Los fines de semana y festivos se saltan solos con `exchange_calendars`. Todo va en fecha de
-bolsa; lo único con hora es el cierre de inscripción, a las 23:59 de Madrid del `dia_base`.
+bolsa. Lo único con hora es el cierre de inscripción (el corte): las 09:00 de Nueva York del
+`dia_inicio`, media hora antes de la apertura. Se ancla a la hora de Nueva York y no a la de Madrid
+porque las dos cambian de horario en fechas distintas y el corte tiene que caer siempre antes de la
+apertura. Así nadie fija su estrategia sabiendo cómo se mueve el mercado ese día, pero sí después
+del escaneo oficial, que corre la tarde del último día de bolsa.
 """
 
 from __future__ import annotations
@@ -23,8 +27,8 @@ CALENDARIO = "XNYS"
 # Rango explícito: sin `end`, la librería solo llega a un año vista y la temporada lo supera.
 DESDE = date(2000, 1, 1)
 HASTA = date(2045, 12, 31)
-TZ_MADRID = ZoneInfo("Europe/Madrid")
-HORA_CIERRE_INSCRIPCION = time(23, 59)
+TZ_NUEVA_YORK = ZoneInfo("America/New_York")
+HORA_CIERRE_INSCRIPCION = time(9, 0)
 
 
 @dataclass(frozen=True)
@@ -80,8 +84,17 @@ def jornada_del_mes(anio: int, mes: int) -> FechasJornada:
         dia_base=dia_base,
         dia_inicio=dias[0],
         dia_fin=dias[-1],
-        cierre_inscripcion=datetime.combine(dia_base, HORA_CIERRE_INSCRIPCION, tzinfo=TZ_MADRID),
+        cierre_inscripcion=datetime.combine(dias[0], HORA_CIERRE_INSCRIPCION, tzinfo=TZ_NUEVA_YORK),
     )
+
+
+def es_ultimo_dia_de_bolsa(d: date) -> bool:
+    """Si `d` es la última sesión de su mes: el día en que corre el escaneo con decisión, tras el
+    cierre, para que la jornada del mes siguiente tenga notas oficiales antes del corte."""
+    if not es_dia_de_bolsa(d):
+        return False
+    ultimo = calendar.monthrange(d.year, d.month)[1]
+    return not dias_de_bolsa(d, d.replace(day=ultimo))[1:]
 
 
 def es_primer_dia_de_bolsa(d: date) -> bool:

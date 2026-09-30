@@ -27,7 +27,7 @@ const PASOS: Paso[] = [
   },
   {
     titulo: "Se ordenan y se reparte",
-    texto: "Con tus pesos sale una nota de 0 a 10 por empresa. Se ordenan y, si empatan, gana la de más capitalización. Entran las primeras N respetando tu tope por sector. Lo que no llega a N se queda en caja.",
+    texto: "Con tus pesos sale una nota de 0 a 100 por empresa. Se ordenan y, si empatan, gana la de más capitalización. Entran las primeras N respetando tu tope por sector. Lo que no llega a N se queda en caja.",
     quien: "codigo",
   },
   {
@@ -113,7 +113,7 @@ export default function ComoFunciona() {
               <div><b>8</b><small>Financiación · peso 20 %</small></div>
               <div><b>6</b><small>Catalizador · peso 20 %</small></div>
             </div>
-            <p className="cf-total">Nota con tus pesos: <b>6,4</b> de 10</p>
+            <p className="cf-total">Nota con tus pesos: <b>64</b> de 100</p>
             <p className="cf-porque">Entra: la cuarta entre las que pasan tus reglas, sin pasarse del tope de 2 empresas por sector.</p>
           </div>
         </section>
@@ -123,6 +123,7 @@ export default function ComoFunciona() {
           <ul className="cf-lista">
             <li><b>Las reglas están versionadas.</b> Cada estrategia guarda con qué versión del catálogo jugó.</li>
             <li><b>Los resultados oficiales no se reescriben.</b> Se fijan al cerrar la jornada y se quedan así.</li>
+            <li><b>Todos fijan con las mismas notas.</b> Las notas oficiales se generan la tarde del último día de bolsa y el corte es antes de que abra el mercado del día 1, así que puedes ver tu estrategia con ellas y nadie conoce el movimiento del día cuando la fija.</li>
             <li><b>La casa puntúa como tú.</b> Alpha, Omega y Lambda juegan la misma jornada, contra el mismo S&amp;P y con los mismos puntos; sus carteras vienen de los métodos del sistema y no se publican.</li>
             <li><b>Todo lo que hace la administración deja registro.</b></li>
           </ul>
