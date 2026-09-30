@@ -71,7 +71,8 @@ def test_size_to_weight_rate_none_y_cero_se_comportan_igual(db) -> None:
                                         eur_usd_rate=None)
     rate_cero, _ = ledger.size_to_weight(db, BOOK_REAL, "AAA", "comprar", 100, Decimal("10"),
                                          eur_usd_rate=Decimal("0"))
-    assert sin_rate == rate_cero == Decimal("10.0000")   # los 500 EUR no cuentan en ninguno de los dos
+    # los 500 EUR no cuentan en ninguno de los dos
+    assert sin_rate == rate_cero == Decimal("10.0000")
 
 
 def test_size_to_weight_solo_eur_sin_cambio_no_ve_capital(db) -> None:
@@ -279,7 +280,8 @@ def test_approve_reconcilia_auto_fx_antes_de_mover_el_libro(db, monkeypatch) -> 
     """Caja real: $5 + €50. El sizing (con el cambio indicativo) pide más de lo que hay en $ —
     IBKR cubre el resto con su auto-FX, y el libro tiene que verlo ANTES de `record_buy` o la
     compra se rechazaría por falta de caja USD aunque la operación sea correcta."""
-    from app import approvals as approvals_mod, tracking
+    from app import approvals as approvals_mod
+    from app import tracking
 
     monkeypatch.setattr(tracking, "live_prices",
                         lambda tickers: {t: 100.0 for t in tickers} | {"EURUSD=X": 1.16})
@@ -360,7 +362,8 @@ def test_approve_falla_limpio_si_el_auto_fx_no_se_encuentra(db, monkeypatch) -> 
     compra NO debe apuntarse a medias: `record_buy` rechaza por caja insuficiente, la aprobación
     queda 'failed' con un motivo legible, y no se crea ni Trade ni Position ni conversión — nada
     dangling, nada que reconciliar a mano después."""
-    from app import approvals as approvals_mod, tracking
+    from app import approvals as approvals_mod
+    from app import tracking
     from app.models import BOOK_REAL, Position, Trade
 
     monkeypatch.setattr(tracking, "live_prices",
@@ -388,7 +391,8 @@ def test_reconcile_working_reintenta_sin_corromper_si_falta_el_fx(db, monkeypatc
     log y un rollback de ESA aprobación — la aprobación se queda 'working' (no 'failed', no
     'executed' a medias) para poder reintentarse en el siguiente sondeo, y el capital no se
     mueve ni un céntimo mientras tanto."""
-    from app import approvals as approvals_mod, tracking
+    from app import approvals as approvals_mod
+    from app import tracking
 
     monkeypatch.setattr(tracking, "live_prices",
                         lambda tickers: {t: 100.0 for t in tickers} | {"EURUSD=X": 1.16})
@@ -410,7 +414,8 @@ def test_reconcile_working_reintenta_sin_corromper_si_falta_el_fx(db, monkeypatc
     broker = _WorkingLuegoFilledSinFx()
     monkeypatch.setattr(approvals_mod, "get_broker", lambda: broker)
     out = approve(db, a.id)
-    assert out.status == "working"                          # enviada, sin auto-FX que reconciliar aún
+    # enviada, sin auto-FX que reconciliar aún
+    assert out.status == "working"
 
     changed = approvals_mod.reconcile_working(db)
     assert changed == 0                                      # el fallo no cuenta como cambio real

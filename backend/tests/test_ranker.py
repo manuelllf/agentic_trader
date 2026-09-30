@@ -9,9 +9,11 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app import models  # noqa: F401  (registra las tablas)
+from app import (
+    models,  # noqa: F401  (registra las tablas)
+    scan_service,
+)
 from app import portfolio_service as portfolio
-from app import scan_service
 from app import watchlist as wl
 from app.agents import constructor as constructor_mod
 from app.agents import scorer as scorer_mod
@@ -108,8 +110,10 @@ def test_constructor_enforces_rules() -> None:
         '{"ticker": "BBB", "weight_pct": 30, "thesis": "t", "edge": "e", "risk": "r"},'
         '{"ticker": "CCC", "weight_pct": 20, "thesis": "t", "edge": "e", "risk": "r"},'
         '{"ticker": "DDD", "weight_pct": 20, "thesis": "t", "edge": "e", "risk": "r"},'
-        '{"ticker": "EEE", "weight_pct": 20, "thesis": "t", "edge": "e", "risk": "r"},'  # 5ª → fuera (max 4)
-        '{"ticker": "ZZZ", "weight_pct": 10, "thesis": "t", "edge": "e", "risk": "r"}'   # no puntuada → fuera
+        # 5ª → fuera (max 4)
+        '{"ticker": "EEE", "weight_pct": 20, "thesis": "t", "edge": "e", "risk": "r"},'
+        # no puntuada → fuera
+        '{"ticker": "ZZZ", "weight_pct": 10, "thesis": "t", "edge": "e", "risk": "r"}'
         '], "summary": "s"}'
     )
     valid = {"AAA", "BBB", "CCC", "DDD", "EEE"}  # ZZZ no está
@@ -236,7 +240,8 @@ def test_watchlist_staleness(db) -> None:
     old = datetime.now(UTC) - timedelta(days=40)
     db.add(Watchlist(ticker="OLD", score=88, thesis="t", first_seen=old, last_seen=old, last_high=old))
     db.commit()
-    wl.update(db, [("OLD", 78, "sigue ok")])  # 78: sobre evict pero bajo entry → last_high NO se refresca
+    # 78: sobre evict pero bajo entry → last_high NO se refresca
+    wl.update(db, [("OLD", 78, "sigue ok")])
     assert wl.tickers(db) == []               # caduca por antigüedad (>28d sin puntuar alto)
 
 
@@ -308,9 +313,11 @@ def test_el_tope_recorta_por_volumen_y_devuelve_alfabetico(monkeypatch) -> None:
     monkeypatch.setattr(universe_mod.settings, "universe_min_dollar_volume", 1_000_000)
     monkeypatch.setattr(universe_mod.settings, "universe_max_names", 2)
     filas = [
-        ("ZZZ", 10.0, 900_000, 1e9, "Zzz Inc. Common Stock"),   # $9M → el que más mueve, pero último alfabéticamente
+        # $9M → el que más mueve, pero último alfabéticamente
+        ("ZZZ", 10.0, 900_000, 1e9, "Zzz Inc. Common Stock"),
         ("AAA", 10.0, 800_000, 1e9, "Aaa Inc. Common Stock"),   # $8M
-        ("MMM", 10.0, 700_000, 1e9, "Mmm Inc. Common Stock"),   # $7M → se cae por el tope, no por iliquidez
+        # $7M → se cae por el tope, no por iliquidez
+        ("MMM", 10.0, 700_000, 1e9, "Mmm Inc. Common Stock"),
     ]
     assert universe_mod._liquidos(filas) == ["AAA", "ZZZ"]
 

@@ -20,7 +20,6 @@ from app.api.routes import public_router, router
 from app.db import Base, get_db
 
 
-
 @pytest.fixture
 def db():
     engine = create_engine(

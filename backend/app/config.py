@@ -27,14 +27,16 @@ class Settings(BaseSettings):
     duckdb_path: str = "analytics.duckdb"
 
     # Cron anclado a la hora del MERCADO (no UTC): sobrevive al cambio de horario y cae con la
-    # foto ya asentada tras el retraso de 15 min de yfinance. Mensual, primer martes (ver scheduler.py):
+    # foto ya asentada tras el retraso de 15 min de yfinance. Mensual, primer martes (ver
+    # scheduler.py):
     # el semanal (muestra rotatoria, sin capa media, sin decisión) se retiró — el mercado no
     # cambia lo bastante en una semana para justificar 750 llamadas de pago sin conocimiento
     # nuevo (ver docs/plan-datos-observability.md).
     enable_scheduler: bool = True
     scan_cron_hour: int = 10
     scan_cron_minute: int = 15
-    scan_timezone: str = "America/New_York"    # ancla a la bolsa US (sobrevive al horario de verano)
+    # ancla a la bolsa US (sobrevive al horario de verano)
+    scan_timezone: str = "America/New_York"
 
     # CORS: orígenes permitidos del frontend, separados por coma.
     cors_origins: str = "http://localhost:3000"
@@ -135,7 +137,8 @@ class Settings(BaseSettings):
     # con `mid_temperature`/`mid_reasoning_effort`, sin medir el resultado completo todavía.
     mid_model: str = "deepseek-flash"
     # Corte de finalistas al profundo: top-`deep_per_sector` (amplitud) ∪ posiciones ∪ seguimiento
-    # personal ∪ watchlist ∪ mayores caps ∪ el resto por score, todo truncado a `deep_finalists_cap`.
+    # personal ∪ watchlist ∪ mayores caps ∪ el resto por score, todo truncado a
+    # `deep_finalists_cap`.
     # El carril sectorial vale 2 en ambos casos: con 1, el carril "global" sin tope podía
     # repartir casi todo el profundo a un solo sector con tailwind fuerte del momento.
     deep_per_sector: int = 2                             # top-N por sector (recall de amplitud)
@@ -171,14 +174,18 @@ class Settings(BaseSettings):
     # Tope duro por dinero negociado: sin él, el tamaño del universo (y el coste del pre-score,
     # 1 llamada/nombre) queda al azar de lo movida que estuviera la sesión de la foto.
     universe_max_names: int = 3_000
-    universe_min_price: float = 0                         # sin suelo real hoy -- liquidez ya filtra lo ilíquido
+    # sin suelo real hoy -- liquidez ya filtra lo ilíquido
+    universe_min_price: float = 0
     # Universo alternativo del modal de simulación: top N por market cap USD del universo
     # global, filtrado a mercados operables en IBKR (ver `universe_global.top_market_cap_usd`).
     global_topcap_size: int = 3_000
-    scan_full_universe: bool = True  # mensual: pre-score TODO el universo (cobertura total, ~15 min)
-    scan_sample_size: int = 750     # semanal: ventana rotatoria (teje el universo en varias semanas)
+    # mensual: pre-score TODO el universo (cobertura total, ~15 min)
+    scan_full_universe: bool = True
+    # semanal: ventana rotatoria (teje el universo en varias semanas)
+    scan_sample_size: int = 750
     leaderboard_size: int = 20      # cuántos muestra el panel además de la cartera
-    min_buy_score: int = 0          # 0 = SIN suelo (fiel al paper: entra por score, sin nota mínima)
+    # 0 = SIN suelo (fiel al paper: entra por score, sin nota mínima)
+    min_buy_score: int = 0
 
     # Watchlist relacional — memoria de scores altos: entran siempre al escaneo y sus mejores
     # pasan al análisis profundo (continuidad entre escaneos).

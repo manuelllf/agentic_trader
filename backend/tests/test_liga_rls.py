@@ -162,7 +162,8 @@ def test_consentimientos_se_apuntan_y_no_se_tocan(cx):
     _falla(cx, "delete from liga.consentimientos")
 
 
-# ---- estrategias y recetas -------------------------------------------------------------------------
+# ---- estrategias y recetas
+# -------------------------------------------------------------------------
 
 def test_el_borrador_es_solo_de_su_dueno(cx):
     a, b = _usuario(cx), _usuario(cx)
@@ -217,7 +218,8 @@ def test_transiciones_de_estado_permitidas(cx):
     a = _usuario(cx)
     eid = _estrategia(cx, a)
     _como(cx, a)
-    _falla(cx, "update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))  # sin receta
+    # sin receta
+    _falla(cx, "update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))
     rid = _receta(cx, a, eid)
     cx.execute("update liga.estrategias set receta_id = %s where id = %s", (rid, eid))
     cx.execute("update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))
@@ -372,7 +374,8 @@ def test_los_resultados_son_publicos_y_no_se_tocan(cx):
                "values (%s, 9, 3)", (iid,))
 
 
-# ---- ligas privadas ----------------------------------------------------------------------------------
+# ---- ligas privadas
+# ----------------------------------------------------------------------------------
 
 def test_ligas_privadas_solo_con_pro_y_por_codigo(cx):
     p, q, g, fuera = (_usuario(cx, pro=True), _usuario(cx, pro=True), _usuario(cx),
@@ -410,7 +413,8 @@ def test_el_cupo_de_una_liga_se_respeta(cx):
     _falla(cx, "select liga.unirse_liga('HJKLMNPQ')")
 
 
-# ---- créditos ------------------------------------------------------------------------------------------
+# ---- créditos
+# ------------------------------------------------------------------------------------------
 
 def test_los_creditos_solo_los_mueve_el_sistema(cx):
     a, b = _usuario(cx), _usuario(cx)
@@ -459,7 +463,8 @@ def test_lecturas_solo_si_las_compraste(cx):
     assert _filas(cx, "select id from liga.lecturas") == []
 
 
-# ---- admin y salas ----------------------------------------------------------------------------------
+# ---- admin y salas
+# ----------------------------------------------------------------------------------
 
 def test_admin_sin_2fa_no_toca_las_salas_ni_la_liga(cx):
     adm, a = _usuario(cx, rol="admin"), _usuario(cx)
@@ -494,7 +499,8 @@ def test_el_hook_pone_rol_y_plan_en_el_token(cx):
     assert claims["user_role"] == "admin" and claims["plan"] == "pro"
 
 
-# ---- cobertura -----------------------------------------------------------------------------------------
+# ---- cobertura
+# -----------------------------------------------------------------------------------------
 
 def test_toda_tabla_tiene_rls_y_politicas(cx):
     _sistema(cx)

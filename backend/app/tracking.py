@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from datetime import UTC
 from decimal import Decimal
 
 import yfinance as yf
@@ -68,7 +69,7 @@ def _spy_price_at(ts) -> float | None:  # noqa: ANN001
 
     Se usa UNA vez por libro — justo tras la primera compra — y el valor se persiste en Meta,
     así que la ventana de 7 días nunca nos limita."""
-    from datetime import timedelta, timezone as tz
+    from datetime import timedelta
 
     try:
         day = ts.date()
@@ -76,7 +77,7 @@ def _spy_price_at(ts) -> float | None:  # noqa: ANN001
             start=day, end=day + timedelta(days=1), interval="1m")["Close"].dropna()
         if s.empty:
             return None
-        target = ts.replace(tzinfo=tz.utc) if ts.tzinfo is None else ts  # BD guarda UTC naive
+        target = ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts  # BD guarda UTC naive
         idx = s.index.tz_convert("UTC")
         after = s[idx >= target]
         return float(after.iloc[0] if len(after) else s.iloc[-1])

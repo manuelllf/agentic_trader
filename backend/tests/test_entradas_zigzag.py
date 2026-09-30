@@ -39,5 +39,6 @@ def test_el_disparo_bloqueado_consume_el_tramo():
 def test_ath_min_0_recupera_el_comportamiento_viejo():
     # El mismo -42% que el filtro bloquea, con ath_min=0 SI dispara (comportamiento pre-filtro).
     px = _serie([100.0] * 10 + [58.0] * 6)
-    assert signals.entradas_zigzag(px, [], 0.40) == []                    # filtro por defecto (0.45)
+    # filtro por defecto (0.45)
+    assert signals.entradas_zigzag(px, [], 0.40) == []
     assert len(signals.entradas_zigzag(px, [], 0.40, ath_min=0.0)) == 1   # sin filtro

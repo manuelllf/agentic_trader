@@ -55,7 +55,8 @@ class DryRunBroker:
         if not rate:
             return BrokerResult(ok=False, fill_price=None, simulated=True, status="rejected",
                                 message="Sin cambio EUR/USD ahora mismo — conversión no ejecutada.")
-        px = D(str(rate))                              # el cambio conserva sus decimales (no céntimos)
+        # el cambio conserva sus decimales (no céntimos)
+        px = D(str(rate))
         usd = to_cents(D(str(eur)) * px)
         return BrokerResult(
             ok=True, fill_price=px, simulated=True, status="filled",

@@ -64,6 +64,14 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# Los parámetros de las rutas de FastAPI se declaran así (`db = Depends(get_db)`): no es un
+# valor calculado al definir la función, es el propio mecanismo del framework.
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Body", "fastapi.Path",
+    "fastapi.Cookie", "fastapi.Form", "fastapi.File", "fastapi.Security",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["con_bienvenida: deja que las cuentas nuevas reciban el regalo de bienvenida"]

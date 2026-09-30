@@ -14,11 +14,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import auth, scan_config
-from app import models  # noqa: F401  (registra las tablas)
+from app import (
+    auth,
+    models,  # noqa: F401  (registra las tablas)
+    scan_config,
+)
 from app.api.routes import public_router, router
 from app.db import Base, get_db
-
 
 
 @pytest.fixture

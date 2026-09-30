@@ -277,7 +277,7 @@ class MemoryStore:
         """Sin conexión persistente que cerrar: cada método abre/cierra la suya (ver
         `_connect`). Se queda como no-op para no romper `reset_store()`/el context manager."""
 
-    def __enter__(self) -> "MemoryStore":
+    def __enter__(self) -> MemoryStore:
         return self
 
     def __exit__(self, *_exc) -> None:  # noqa: ANN002

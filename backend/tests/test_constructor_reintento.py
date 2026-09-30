@@ -37,7 +37,8 @@ def test_una_respuesta_vacia_no_cuesta_la_cartera() -> None:
     r = _construye(llm)
     assert llm.llamadas == 2
     assert [p.ticker for p in r.positions] == ["AAA", "BBB"]
-    # 60+40 with cap 35 clamp to 35+35=70, leaving 30% cash. Full invest rounding happens in service.
+    # 60+40 with cap 35 clamp to 35+35=70, leaving 30% cash. Full invest rounding happens in
+    # service.
     assert [p.weight_pct for p in r.positions] == [35.0, 35.0]
     assert r.cash_pct == 30.0
     assert r.summary == "resumen"

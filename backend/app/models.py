@@ -220,7 +220,8 @@ class NasdaqSnapshotTicker(Base):
     `universe.py::_podar`).
 
     Guarda precio, volumen, market cap y nombre del cierre; los filtros de riesgo (precio, cap,
-    tipo de instrumento) se aplican a LECTURA en `universe.py`, no aquí -- nada se descarta al capturar.
+    tipo de instrumento) se aplican a LECTURA en `universe.py`, no aquí -- nada se descarta al
+    capturar.
     """
 
     __tablename__ = "nasdaq_snapshot_ticker"
@@ -273,7 +274,8 @@ class Score(Base):
     headline: Mapped[str] = mapped_column(Text, default="")  # tesis de una línea
     report: Mapped[str] = mapped_column(Text, default="")    # Investment Report completo
     price: Mapped[float | None] = mapped_column(Float)         # precio al escanear
-    market_cap: Mapped[float | None] = mapped_column(Float)    # para desempate por market cap (paper)
+    # para desempate por market cap (paper)
+    market_cap: Mapped[float | None] = mapped_column(Float)
     held: Mapped[bool] = mapped_column(default=False)          # ¿está en cartera?
     on_watchlist: Mapped[bool] = mapped_column(default=False)
     # ¿el informe declara que ESTA empresa está siendo comprada? Aparta de la selección (no del
@@ -742,7 +744,8 @@ class ScanRunFinalist(Base):
     weight_pct: Mapped[float | None] = mapped_column(Float)
     error: Mapped[str | None] = mapped_column(Text)
     # Históricos: guardarraíl de eco de consenso ya retirado (ver scan_guardrails.py). Ya no se
-    # escriben en escaneos nuevos; se conservan aquí por ser el archivo de verdad de escaneos viejos.
+    # escriben en escaneos nuevos; se conservan aquí por ser el archivo de verdad de escaneos
+    # viejos.
     target_consensus_mean: Mapped[float | None] = mapped_column(Float)
     target_echoed_consensus: Mapped[bool] = mapped_column(default=False)
     under_acquisition: Mapped[bool | None] = mapped_column(Boolean)
@@ -939,7 +942,8 @@ class CurrencyConversion(Base):
     external_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     order_ref: Mapped[str] = mapped_column(String(48), index=True)  # el order_ref que la disparó
     eur_amount: Mapped[Decimal] = mapped_column(DecimalStr(32))    # EUR vendidos (positivo)
-    usd_amount: Mapped[Decimal] = mapped_column(DecimalStr(32))    # USD brutos recibidos (net_amount)
+    # USD brutos recibidos (net_amount)
+    usd_amount: Mapped[Decimal] = mapped_column(DecimalStr(32))
     rate: Mapped[Decimal] = mapped_column(DecimalStr(32))          # precio del par en el fill
     fee: Mapped[Decimal] = mapped_column(DecimalStr(32), default=Decimal("0"))
     book: Mapped[str] = mapped_column(String(8), default=BOOK_REAL, index=True)
@@ -1001,9 +1005,11 @@ class Approval(Base):
 
     # Resultado de la ejecución (solo si status=executed/working/failed).
     order_ref: Mapped[str] = mapped_column(String(48), default="")      # coid propio (idempotencia)
-    broker_order_id: Mapped[str | None] = mapped_column(String(48))     # id de orden en IBKR (reconciliar)
+    # id de orden en IBKR (reconciliar)
+    broker_order_id: Mapped[str | None] = mapped_column(String(48))
     requested_quantity: Mapped[Decimal | None] = mapped_column(DecimalStr(32))  # acciones PEDIDAS
-    quantity: Mapped[Decimal | None] = mapped_column(DecimalStr(32))    # acciones YA ejecutadas (acumulado)
+    # acciones YA ejecutadas (acumulado)
+    quantity: Mapped[Decimal | None] = mapped_column(DecimalStr(32))
     fill_price: Mapped[Decimal | None] = mapped_column(DecimalStr(32))  # precio medio de ejecución
     result_msg: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str | None] = mapped_column(UUID_ACTOR)

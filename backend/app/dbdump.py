@@ -67,7 +67,7 @@ def export_all(conn: Connection) -> dict:
     for t in _table_names(conn):
         res = conn.exec_driver_sql(f'SELECT * FROM "{t}"')
         cols = list(res.keys())
-        tables[t] = [dict(zip(cols, row)) for row in res.fetchall()]
+        tables[t] = [dict(zip(cols, row, strict=True)) for row in res.fetchall()]
     return {"version": 1, "tables": tables}
 
 

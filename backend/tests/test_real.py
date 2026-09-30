@@ -52,10 +52,11 @@ def test_books_are_independent(db) -> None:
 
 
 def test_reset_shadow_keeps_capital_and_leaves_real_untouched(db) -> None:
-    from app.models import BOOK_SHADOW, EquitySnapshot, Meta, Position, Trade
+    from app.models import BOOK_SHADOW, EquitySnapshot, Meta
 
     ledger.allocate(db, 2000, book=BOOK_SHADOW)
-    ledger.record_buy(db, "HIG", "5", "100", "S-REF", book=BOOK_SHADOW)   # sombra: caja 1500 + posición
+    # sombra: caja 1500 + posición
+    ledger.record_buy(db, "HIG", "5", "100", "S-REF", book=BOOK_SHADOW)
     ledger.allocate(db, 500, book=BOOK_REAL)
     ledger.record_buy(db, "CP", "3", "50", "R-REF", book=BOOK_REAL)       # real: no debe tocarse
     db.add(EquitySnapshot(day=date(2026, 7, 14), book=BOOK_SHADOW, equity=Decimal("2000.00")))
@@ -65,7 +66,8 @@ def test_reset_shadow_keeps_capital_and_leaves_real_untouched(db) -> None:
     out = ledger.reset_shadow_book(db)
 
     assert out["ok"] and out["deleted"]["positions"] == 1 and out["deleted"]["trades"] == 1
-    assert ledger.available_cash(db, BOOK_SHADOW) == Decimal("2000.00")   # capital conservado (todo en caja)
+    # capital conservado (todo en caja)
+    assert ledger.available_cash(db, BOOK_SHADOW) == Decimal("2000.00")
     assert ledger.open_positions(db, BOOK_SHADOW) == []                   # sin holdings
     assert db.query(EquitySnapshot).filter(EquitySnapshot.book == BOOK_SHADOW).count() == 0
     assert db.query(Meta).filter(Meta.key.like("spy_ref:shadow:%")).count() == 0

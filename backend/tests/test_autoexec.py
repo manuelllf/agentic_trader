@@ -169,7 +169,8 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
     fake_llm = FakeLLM(_FAKE_REPLY)
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: fake_llm)
     monkeypatch.setattr(scan_llm_stage, "get_llm", lambda *a, **k: fake_llm)
-    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)  # memoria fuera del test (embeddings)
+    # memoria fuera del test (embeddings)
+    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
     monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
@@ -225,7 +226,8 @@ def test_scan_failure_in_autoexec_never_fails_the_scan(db, monkeypatch) -> None:
     fake_llm = FakeLLM(_FAKE_REPLY)
     monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: fake_llm)
     monkeypatch.setattr(scan_llm_stage, "get_llm", lambda *a, **k: fake_llm)
-    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)  # memoria fuera del test (embeddings)
+    # memoria fuera del test (embeddings)
+    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
     monkeypatch.setattr(universe_mod, "build_universe", lambda: ["AAA"])
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (

@@ -55,7 +55,8 @@ SYSTEM = (
 
 MID_SYSTEM = (
     _SCORE_CORE +
-    # Headline se omite: no se consume (scan_service, traza, watchlist, web). ~20 tokens de salida sin uso.
+    # Headline se omite: no se consume (scan_service, traza, watchlist, web). ~20 tokens de salida
+    # sin uso.
     'Respond ONLY in JSON: {"score": <number 0-100, whole number>}.'
 )
 

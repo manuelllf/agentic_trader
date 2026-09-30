@@ -4,6 +4,7 @@ Sin red, sin LLM real."""
 
 from __future__ import annotations
 
+from app import portfolio_service as portfolio
 from app.agents.scorer import (
     MID_SYSTEM,
     PRESCORE_BATCH_SYSTEM,
@@ -12,7 +13,6 @@ from app.agents.scorer import (
     _mid_prompt,
     _user_prompt,
 )
-from app import portfolio_service as portfolio
 from app.screener import macro as macro_mod
 from app.screener.fundamentals import NameData
 

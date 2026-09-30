@@ -63,7 +63,8 @@ def real_summary(db: Session = Depends(get_db)) -> dict:
 
     prices = tracking.live_prices([p.ticker for p in ledger.open_positions(db, BOOK_REAL)])
     snap = ledger.snapshot(db, price_lookup=lambda t: prices.get(t), book=BOOK_REAL)
-    wallet = ledger.cash_by_currency(db, BOOK_REAL)   # caja propia del agente, EUR y USD por separado
+    # caja propia del agente, EUR y USD por separado
+    wallet = ledger.cash_by_currency(db, BOOK_REAL)
     eur_rate = tracking.live_prices(["EURUSD=X"]).get("EURUSD=X")
     # + el EUR propio del agente al cambio del momento, o el libro parecería más pobre de lo
     # que es solo por tener euros sin invertir.

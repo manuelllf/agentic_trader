@@ -18,7 +18,15 @@ from app import (
 )
 from app.db import Base
 from app.ledger import service as ledger
-from app.models import Proposal, ProposalItem, ScanAudit, ScanRun, ScanRunConstructionItem, Score, Watchlist
+from app.models import (
+    Proposal,
+    ProposalItem,
+    ScanAudit,
+    ScanRun,
+    ScanRunConstructionItem,
+    Score,
+    Watchlist,
+)
 
 
 @pytest.fixture

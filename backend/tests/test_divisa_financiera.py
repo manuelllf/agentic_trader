@@ -67,7 +67,8 @@ def test_fundamentals_text_muestra_el_valor_ya_convertido(db) -> None:
     db.commit()
 
     texto = fund_mod._fundamentals_text(_info_twd(), db=db)
-    # 4.44T NTD * 0.0315 = 139.88B USD, no los 4.44T (billones) que salían con la divisa sin convertir.
+    # 4.44T NTD * 0.0315 = 139.88B USD, no los 4.44T (billones) que salían con la divisa sin
+    # convertir.
     assert "Revenue: $139.88B" in texto
 
 

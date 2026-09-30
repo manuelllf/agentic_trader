@@ -26,5 +26,5 @@ def personal_sync(db: Session = Depends(get_db)) -> dict:
     try:
         n = personal.sync_from_ibkr(db)
     except Exception as exc:  # noqa: BLE001 — motivo legible en el panel
-        raise HTTPException(502, f"No se pudo sincronizar con IBKR: {exc}")
+        raise HTTPException(502, f"No se pudo sincronizar con IBKR: {exc}") from exc
     return {"synced": n, **personal.summary(db)}

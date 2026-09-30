@@ -497,7 +497,8 @@ def _fmt(value: object, kind: str) -> str | None:
 
 def _fundamentals_text(info: dict, db=None) -> str:  # noqa: ANN001
     """Omite campos sin dato (no escribe "n/d"): "none" engaña; ausente no. `db`: convierte los
-    campos de estados financieros a USD si vienen en otra divisa (ver `_convertir_financieros_a_usd`)
+    campos de estados financieros a USD si vienen en otra divisa (ver
+    `_convertir_financieros_a_usd`)
     -- opcional, para no romper los scripts de reconstrucción que llaman esto sin sesión real."""
     info = _convertir_financieros_a_usd(info, db)
     lines = []

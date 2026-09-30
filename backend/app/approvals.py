@@ -123,7 +123,8 @@ def approve(db: Session, approval_id: int) -> Approval:
 
     try:
         qty, side = _sizing(db, a)
-        a.requested_quantity = qty          # lo PEDIDO: reconcile lo necesita si IBKR no da cantidad
+        # lo PEDIDO: reconcile lo necesita si IBKR no da cantidad
+        a.requested_quantity = qty
         result = broker.place_order(a.ticker, side, qty, order_ref=a.order_ref)
         a.broker_order_id = result.order_id
         _apply_result(db, a, side, result, requested=qty)

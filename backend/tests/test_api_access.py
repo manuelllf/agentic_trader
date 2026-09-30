@@ -8,8 +8,6 @@ por defecto; `anon`, sin ella.
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
@@ -17,11 +15,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import auth
-from app import models  # noqa: F401  (registra las tablas)
+from app import (
+    auth,
+    models,  # noqa: F401  (registra las tablas)
+)
 from app.api.routes import public_router, router
 from app.db import Base, get_db
-
 
 
 @pytest.fixture

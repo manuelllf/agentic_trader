@@ -76,7 +76,8 @@ def test_alcance_true_false_y_none_se_distinguen() -> None:
 def test_pais_y_mercado_van_al_where_del_universo_no_del_snapshot() -> None:
     snap_sql, snap_params = construir_snapshot_where(Filtros(paises=["Spain"], mercados=["NASDAQ"]))
     uni_sql, uni_params = construir_universo_where(Filtros(paises=["Spain"], mercados=["NASDAQ"]))
-    assert snap_sql == "1=1" and snap_params == []          # no son columnas de fundamentals_snapshot
+    # no son columnas de fundamentals_snapshot
+    assert snap_sql == "1=1" and snap_params == []
     assert "country in (?)" in uni_sql and "exchange in (?)" in uni_sql
     assert uni_params == ["Spain", "NASDAQ"]
 

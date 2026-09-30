@@ -141,7 +141,8 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
         selec = [r for r in validos if r.selected and not r.funded]
         descartados = [r for r in validos if not r.selected]
 
-        # funded travels even without session; portfolio membership is public behavior (holdings count).
+        # funded travels even without session; portfolio membership is public behavior (holdings
+        # count).
         pares = [{"ticker": r.ticker, "score": r.deep_score, "ret": _ret(r),
                   "funded": bool(r.funded)}
                  for r in validos if r.deep_score is not None and _ret(r) is not None]
@@ -160,7 +161,8 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
 
         salida.append({
             "at": utc_iso(at),
-            # From trace flag, not inferred; construction also recorded in observatories. NULL = observatory.
+            # From trace flag, not inferred; construction also recorded in observatories. NULL =
+            # observatory.
             "mode": "decisión" if any(r.decide for r in cohorte) else "observatorio",
             "days": max(0, (hoy - at.replace(tzinfo=None)).days),
             "groups": {

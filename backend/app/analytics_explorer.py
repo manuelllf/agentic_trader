@@ -27,7 +27,8 @@ class Filtros:
 
     fecha_desde: str | None = None
     fecha_hasta: str | None = None
-    alcance: bool | None = None          # `es_dataset`: True = global, False = escaneo, None = ambos
+    # `es_dataset`: True = global, False = escaneo, None = ambos
+    alcance: bool | None = None
     sectores: list[str] = field(default_factory=list)
     industrias: list[str] = field(default_factory=list)
     paises: list[str] = field(default_factory=list)

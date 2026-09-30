@@ -80,8 +80,9 @@ def analytics_coste_etapa(scan_run_id: int | None = Query(None)) -> dict:
     la tabla (todos los escaneos históricos mezclados); con él, un único escaneo."""
     try:
         return {"items": _run_analytics_query("coste-etapa", scan_run_id)}
-    except ImportError:
-        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except ImportError as exc:
+        raise HTTPException(
+            503, "DuckDB no está instalado (extra `analytics` del backend).") from exc
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -95,8 +96,9 @@ def analytics_confianza_prescore(scan_run_id: int | None = Query(None)) -> dict:
     la tabla; con él, un único escaneo."""
     try:
         return {"items": _run_analytics_query("confianza-prescore", scan_run_id)}
-    except ImportError:
-        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except ImportError as exc:
+        raise HTTPException(
+            503, "DuckDB no está instalado (extra `analytics` del backend).") from exc
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -158,8 +160,9 @@ def analytics_explorar_opciones() -> dict:
 
     try:
         return opciones_fn(default_path())
-    except ImportError:
-        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except ImportError as exc:
+        raise HTTPException(
+            503, "DuckDB no está instalado (extra `analytics` del backend).") from exc
     except FileNotFoundError as exc:
         raise HTTPException(503, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -190,8 +193,9 @@ def analytics_explorar_contar(
     )
     try:
         return contar_fn(default_path(), f)
-    except ImportError:
-        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except ImportError as exc:
+        raise HTTPException(
+            503, "DuckDB no está instalado (extra `analytics` del backend).") from exc
     except FileNotFoundError as exc:
         raise HTTPException(503, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -222,8 +226,9 @@ def analytics_explorar_tickers(
     )
     try:
         return tickers_fn(default_path(), f, limit, offset)
-    except ImportError:
-        raise HTTPException(503, "DuckDB no está instalado (extra `analytics` del backend).")
+    except ImportError as exc:
+        raise HTTPException(
+            503, "DuckDB no está instalado (extra `analytics` del backend).") from exc
     except FileNotFoundError as exc:
         raise HTTPException(503, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

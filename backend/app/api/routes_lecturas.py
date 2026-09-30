@@ -37,7 +37,7 @@ def proposal_execute_item(ticker: str, db: Session = Depends(get_db)) -> dict:
     try:
         res = execution_service.execute_proposal_item(db, ticker.upper())
     except (LookupError, ValueError, ledger.InsufficientFunds, ledger.InsufficientShares) as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
     return {**res, "ledger": ledger_snapshot(db)}
 
 
@@ -47,7 +47,7 @@ def proposal_execute_all(db: Session = Depends(get_db)) -> dict:
     try:
         res = execution_service.execute_proposal_all(db)
     except LookupError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
     return {**res, "ledger": ledger_snapshot(db)}
 
 

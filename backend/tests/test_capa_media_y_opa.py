@@ -279,7 +279,7 @@ def test_interruptor_de_alpha_apaga_la_capa_media_aunque_settings_la_active(db, 
     monkeypatch.setattr(scan_service.settings, "deep_finalists_cap", 1)
     scan_config.set_mid_layer(db, False)
 
-    result = scan_service.run_scan_and_store(db, sample_size=4, decide=True)
+    scan_service.run_scan_and_store(db, sample_size=4, decide=True)
 
     assert mid_llm.called == []
     assert {s.ticker for s in db.query(Score).all()} == {"HA2"}

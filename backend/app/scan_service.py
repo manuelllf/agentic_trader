@@ -604,7 +604,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         top_caps=settings.deep_top_caps, mid_scores=mid_scores, tracked=personal)
 
     # 5) PASO 2 — profundo (V4-Pro) + price target en finalistas.
-    # Memoria vectorial solo al final (remember). Tesis previa quitada: cada escaneo juzga desde cero.
+    # Memoria vectorial solo al final (remember). Tesis previa quitada: cada escaneo juzga desde
+    # cero.
     store = _memory_store()
 
     _deep_kw = _sampling_kwargs(deep_cfg)

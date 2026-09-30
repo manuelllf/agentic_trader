@@ -222,7 +222,8 @@ def entradas_suelo(precios: pd.Series, aperturas: pd.Series, ath: float,
         # Fecha hasta la que este nivel no puede volver a disparar: la salida de la entrada
         # anterior. `None` cuando no hay entrada abierta pendiente en este nivel.
         bloqueado_hasta = None
-        abierta_idx = None            # indice en `entradas` de la entrada de este nivel sin resolver
+        # indice en `entradas` de la entrada de este nivel sin resolver
+        abierta_idx = None
         for fecha, precio_hoy in vigilancia.items():
             if fecha < EVAL_START:
                 continue
@@ -419,9 +420,9 @@ if __name__ == "__main__":
     # CLI de siempre: igual comportamiento que backtest_canonico_momentum.py (imprime tabla +
     # agregados, escribe senales.csv). Solo para uso manual/análisis -- el job de producción
     # llama a compute_signals() directamente.
+    import csv
     import statistics
     from datetime import date, datetime
-    import csv
 
     hoy_real = date.today()
     print(f"Ejecutado el {hoy_real.isoformat()} -- ventana {EVAL_START.date()} -> hoy\n")

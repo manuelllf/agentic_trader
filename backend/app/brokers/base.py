@@ -100,7 +100,7 @@ class Broker(Protocol):
         """
         ...
 
-    def fx_conversions_for(self, broker_order_id: str) -> list["FxFill"]:
+    def fx_conversions_for(self, broker_order_id: str) -> list[FxFill]:
         """Ejecuciones EUR.USD que IBKR generó SOLA en la misma orden (auto-FX al comprar sin
         caja USD suficiente) — emparejadas por MISMO `trade_time` que la ejecución de la
         acción, no por `order_id` (la conversión lleva uno propio, generado por IBKR). Excluye

@@ -6,8 +6,6 @@ falso, sin red."""
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

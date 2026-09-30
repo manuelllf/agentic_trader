@@ -124,7 +124,8 @@ def _from_nasdaq() -> list[tuple[str, float, float, float | None, str]]:
     if not rows:
         raise RuntimeError(f"NASDAQ no devolvió listado en {_NASDAQ_RETRIES} intentos")
 
-    # Dedup de clases: por empresa, nos quedamos con la más LÍQUIDA → {company_key: (sym, px, vol, cap, name)}
+    # Dedup de clases: por empresa, nos quedamos con la más LÍQUIDA → {company_key: (sym, px, vol,
+    # cap, name)}
     best: dict[str, tuple[str, float, float, float | None, str]] = {}
     for row in rows:
         symbol = _norm_symbol((row.get("symbol") or "").strip().upper())
