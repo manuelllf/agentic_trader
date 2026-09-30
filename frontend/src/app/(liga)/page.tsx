@@ -41,6 +41,7 @@ export default function Portada() {
 
       <p className="lnd-legal">
         <span>Juego en papel, sin dinero real. La escena es un ejemplo con cifras inventadas; las empresas son solo ilustración, no una recomendación.</span>
+        <Link href="/como-funciona">Cómo funciona</Link>
         <Link href="/legal/aviso">Aviso legal</Link>
         <Link href="/legal/privacidad">Privacidad</Link>
         <Link href="/legal/terminos">Términos</Link>

@@ -777,3 +777,52 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .legal-cuerpo a { text-decoration: underline; text-underline-offset: 2px; }
 .lg .legal-fecha { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .lg .legal-nav { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 28px; font-size: 13px; }
+
+/* Cómo funciona (/como-funciona): página pública de método. Los pasos son una secuencia real. */
+.lg .cf .cf-cuerpo { padding: 8px 0 40px; max-width: 560px; }
+.lg .cf-cerrar { font-size: 15px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.lg .cf-eyebrow { margin-top: 10px; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.lg .cf-cuerpo h1 { margin-top: 6px; font-size: 29px; line-height: 1.08; font-weight: 800; letter-spacing: -.025em; }
+.lg .cf-lead { margin-top: 12px; font-size: 17px; line-height: 1.5; color: var(--ink2); }
+.lg .cf-pasos { margin: 26px 0 0; padding: 0; list-style: none; }
+.lg .cf-paso { position: relative; display: grid; grid-template-columns: 34px 1fr; column-gap: 12px; padding-bottom: 22px; }
+.lg .cf-paso:not(:last-child)::before { content: ""; position: absolute; left: 16px; top: 34px; bottom: 4px; width: 2px; background: var(--line2); }
+.lg .cf-n { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--btn-ink); font-weight: 800; font-size: 16px; }
+.lg .cf-paso h2 { padding-top: 4px; font-size: 19px; line-height: 1.2; font-weight: 800; letter-spacing: -.01em; }
+.lg .cf-paso p { margin-top: 6px; font-size: 16px; }
+.lg .cf-etiquetas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.lg .cf-cifra { padding: 3px 10px; border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lg .cf-quien { padding: 3px 10px; border-radius: 999px; font-size: 13.5px; font-weight: 600; }
+.lg .cf-quien.ia { background: var(--accent-bg); color: var(--accent); }
+.lg .cf-quien.codigo { background: var(--good-bg); color: var(--good); }
+.lg .cf-paso .cf-extra { font-size: 14.5px; color: var(--muted); }
+.lg .cf-sec { margin-top: 30px; }
+.lg .cf-sec h2 { font-size: 20px; font-weight: 800; letter-spacing: -.015em; }
+.lg .cf-sub { margin-top: 4px; font-size: 15px; color: var(--muted); }
+.lg .cf-dos { display: grid; gap: 12px; margin-top: 14px; }
+.lg .cf-caja { padding: 16px; border-radius: 18px; background: var(--surface); }
+.lg .cf-caja h3 { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; }
+.lg .cf-punto { width: 10px; height: 10px; border-radius: 50%; }
+.lg .cf-punto.ia { background: var(--accent); }
+.lg .cf-punto.codigo { background: var(--good); }
+.lg .cf-caja ul { margin-top: 10px; padding-left: 18px; font-size: 15.5px; }
+.lg .cf-caja li { margin-top: 4px; }
+.lg .cf-caja p { margin-top: 10px; font-size: 14.5px; color: var(--muted); }
+.lg .cf-ejemplo { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line2); border-radius: 18px; }
+.lg .cf-rotulo { font-size: 12.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.lg .cf-emp { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 6px; }
+.lg .cf-emp b { color: var(--ink); font-size: 17px; }
+.lg .cf-emp span { font-size: 14px; color: var(--muted); }
+.lg .cf-notas { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.lg .cf-notas div { padding: 8px 10px; border-radius: 12px; background: var(--surface); font-size: 14px; }
+.lg .cf-notas b { display: block; color: var(--ink); font-size: 20px; font-variant-numeric: tabular-nums; }
+.lg .cf-notas small { color: var(--muted); font-size: 12.5px; }
+.lg .cf-total { margin-top: 10px; font-size: 15px; }
+.lg .cf-total b { color: var(--ink); }
+.lg .cf-porque { margin-top: 8px; font-size: 15px; color: var(--ink2); }
+.lg .cf-lista { margin-top: 14px; padding-left: 18px; font-size: 15.5px; display: grid; gap: 8px; }
+.lg .cf-lista b { color: var(--ink); }
+.lg .cf-callout { margin-top: 14px; padding: 14px 16px; border-radius: 16px; background: var(--accent-bg); font-size: 15.5px; color: var(--ink2); }
+.lg .cf-callout b { color: var(--ink); }
+.lg .cf-cta { display: grid; gap: 10px; margin-top: 28px; }
+.lg .cf-pie { margin-top: 22px; font-size: 13.5px; color: var(--muted); }

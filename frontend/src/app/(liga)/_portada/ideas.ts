@@ -19,10 +19,10 @@ export const MESES = ["Abr", "May", "Jun", "Jul", "Ago", "Sep"];
 /** El S&P 500 de esos mismos meses. */
 export const SP = [2.9, -3.4, 1.2, -1.8, 3.0, 0.9];
 
-/** 3 puntos si le ganas por más de medio punto, 0 si pierdes por más, 1 si estás en medio. */
+/** 3 puntos si le ganas por más de 0,2 puntos, 0 si pierdes por más, 1 si estás en medio. */
 export function puntos(tu: number, sp: number): 0 | 1 | 3 {
   const d = Math.round((tu - sp) * 10) / 10;
-  return d > 0.5 ? 3 : d < -0.5 ? 0 : 1;
+  return d > 0.2 ? 3 : d < -0.2 ? 0 : 1;
 }
 
 export const EJEMPLO: Idea = {

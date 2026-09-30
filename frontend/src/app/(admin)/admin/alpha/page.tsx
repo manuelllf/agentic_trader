@@ -636,10 +636,9 @@ function SalaRealRoom() {
                     <b style={{ color: T.ink2 }}>2</b> · análisis
                   </p>
                   <p className="text-[12.5px] leading-relaxed" style={{ color: T.ink2 }}>
-                    El agente escanea cada martes a las 10:15 (hora del mercado US) para
-                    aprender — ranking, watchlist y memoria. La decisión de cartera (sombra y
-                    propuestas aquí) llega el primer martes del mes — o al momento con
-                    «Analizar mercado» arriba.
+                    El agente escanea el primer día de bolsa del mes a las 10:15 (hora
+                    del mercado US) y decide la cartera (sombra y propuestas aquí) — o al
+                    momento con «Analizar mercado» arriba.
                   </p>
                   <p className="mt-1.5 text-[11px]" style={{ color: T.muted }}>
                     {report ? `Último análisis: ${fmtTime(report.at)}.` : "Aún sin análisis."}

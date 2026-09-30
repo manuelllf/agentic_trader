@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.liga import gestion
 from app.liga.db import db_anon
+from app.liga.procesos import diario
 
 
 def exigir_visible() -> None:
@@ -93,11 +94,15 @@ class JornadaDetalle(BaseModel):
     jornada: JornadaOut
     total: int                       # inscritas en la jornada; `filas` trae las mejores
     filas: list[FilaJornada]
+    # Jornada en juego: las cifras son las del último cierre guardado (`hasta`), no las oficiales.
+    provisional: bool = False
+    hasta: date | None = None
 
 
 # La portada y la jornada se piden sin sesión y en cada visita: acotadas para que crecer la liga
 # no las haga cada vez más pesadas.
 _TOPE_FILAS_JORNADA = 200
+_TOPE_VIVA = 5000     # la tabla viva ordena en memoria: se leen todas las visibles, no solo 200
 
 
 class Portada(BaseModel):
@@ -150,24 +155,55 @@ def _jornada(db: Session, where: str, params: dict, orden: str) -> JornadaOut | 
     return JornadaOut(**f._mapping) if f else None
 
 
+def _con_sp_vivo(j: JornadaOut) -> JornadaOut:
+    """El S&P del mes en curso, hasta el último cierre guardado (la jornada formada aún no lo
+    tiene guardado: se fija al cerrarla)."""
+    if j.estado != "formada":
+        return j
+    v = diario.vivo(j.id)
+    return j.model_copy(update={"sp_rentabilidad": v["sp"]}) if v else j
+
+
+def _filas_vivas(filas: list[FilaJornada], vivo: dict, ids: list) -> list[FilaJornada]:
+    """Las filas de una jornada en juego con la rentabilidad y los puntos provisionales, de
+    mejor a peor. Una inscripción sin cálculo (precio que falta) queda al final, sin cifras."""
+    por = vivo["por_inscripcion"]
+    salida = []
+    for fila, iid in zip(filas, ids, strict=True):
+        f = por.get(iid)
+        if f is None or f.get("rentabilidad") is None:
+            salida.append(fila)
+            continue
+        salida.append(fila.model_copy(update={
+            "rentabilidad": f["rentabilidad"], "dif_sp": f["dif"], "puntos": f["puntos"]}))
+    salida.sort(key=lambda f: (f.rentabilidad is None, -(f.rentabilidad or 0)))
+    return salida
+
+
 def _detalle(db: Session, j: JornadaOut) -> JornadaDetalle:
+    en_juego = j.estado == "formada"
     filas = db.execute(text(f"""
-        select {_EQUIPO}, r.rentabilidad, r.puntos
+        select i.id as iid, {_EQUIPO}, r.rentabilidad, r.puntos
         from liga.inscripciones i
         {_JOIN_EQUIPO.format(col="i.estrategia_id")}
         left join liga.resultados r on r.inscripcion_id = i.id
         where i.jornada_id = :j
         order by r.puntos desc nulls last, r.rentabilidad desc nulls last, e.creada
         limit :tope
-    """), {"j": j.id, "tope": _TOPE_FILAS_JORNADA}).all()
+    """), {"j": j.id, "tope": _TOPE_VIVA if en_juego else _TOPE_FILAS_JORNADA}).all()
     total = db.execute(text("select count(*) from liga.inscripciones where jornada_id = :j"),
                        {"j": j.id}).scalar_one()
     sp = j.sp_rentabilidad
-    return JornadaDetalle(jornada=j, total=total, filas=[
-        FilaJornada(equipo=_equipo(f), rentabilidad=f.rentabilidad, puntos=f.puntos,
-                    dif_sp=(f.rentabilidad - sp) if f.rentabilidad is not None and sp is not None
-                    else None)
-        for f in filas])
+    salida = [FilaJornada(equipo=_equipo(f), rentabilidad=f.rentabilidad, puntos=f.puntos,
+                          dif_sp=(f.rentabilidad - sp) if f.rentabilidad is not None
+                          and sp is not None else None)
+              for f in filas]
+    vivo = diario.vivo(j.id) if en_juego else None
+    if vivo:
+        salida = _filas_vivas(salida, vivo, [f.iid for f in filas])[:_TOPE_FILAS_JORNADA]
+        j = j.model_copy(update={"sp_rentabilidad": vivo["sp"]})
+    return JornadaDetalle(jornada=j, total=total, filas=salida, provisional=bool(vivo),
+                          hasta=vivo["dia"] if vivo else None)
 
 
 @router.get("/clasificacion", response_model=Clasificacion)
@@ -216,6 +252,11 @@ def jornada(jornada_id: int, db: Session = Depends(db_anon)) -> JornadaDetalle:
     return _detalle(db, j)
 
 
+def _en_juego(db: Session) -> JornadaOut | None:
+    j = _jornada(db, "estado = 'formada'", {}, "dia_inicio desc")
+    return _con_sp_vivo(j) if j else None
+
+
 @router.get("/portada", response_model=Portada)
 def portada(db: Session = Depends(db_anon)) -> Portada:
     """Solo datos reales: si aún no hay jornadas, la portada lo dice (plan §17)."""
@@ -225,7 +266,7 @@ def portada(db: Session = Depends(db_anon)) -> Portada:
         temporada=_temporada(db, None),
         proxima=_jornada(db, "estado = 'programada' and cierre_inscripcion > :hoy", hoy,
                          "dia_inicio"),
-        en_juego=_jornada(db, "estado = 'formada'", {}, "dia_inicio desc"),
+        en_juego=_en_juego(db),
         ultima_cerrada=_detalle(db, cerrada) if cerrada else None,
         registro_abierto=gestion.registro_abierto(),
     )

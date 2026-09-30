@@ -8,6 +8,8 @@ con el ajuste `procesos.diario.activo` de `liga.ajustes` (apagado si no existe).
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -98,6 +100,45 @@ def tabla_provisional(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
         if dia is None:
             raise ErrorProceso(f"Sin cierre del S&P del día base ({j.dia_base}).")
         return para_json({"jornada_id": j.id, "estado": j.estado, **calcular(db, j, dia)})
+
+
+# --- La tabla viva de la jornada en juego (pública) ---------------------------------------------
+
+_VIVO_TTL = 120.0   # segundos: la tabla pública no recalcula en cada visita
+_vivo_cache: dict[int, tuple[float, dict | None]] = {}
+_vivo_candado = threading.Lock()
+
+
+def vivo(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
+         reloj=time.monotonic) -> dict | None:  # noqa: ANN001 — reloj inyectable en pruebas
+    """Rentabilidad y puntos de cada inscripción de una jornada formada con el último cierre
+    guardado, para la clasificación pública del mes. `None` si la jornada no está en juego o no
+    se pudo calcular (la web enseña entonces «sin resultados» en vez de fallar). Solo devuelve
+    números por inscripción: las carteras no salen de aquí. Se guarda unos minutos en memoria."""
+    with _vivo_candado:
+        hit = _vivo_cache.get(jornada_id)
+        if hit is not None and reloj() - hit[0] < _VIVO_TTL:
+            return hit[1]
+        try:
+            with sesion(fabrica) as db:
+                j = jornada(db, jornada_id)
+                dia = ultimo_dia(db, j) if j.estado == "formada" else None
+                valor = None
+                if dia is not None:
+                    r = calcular(db, j, dia)
+                    valor = {"dia": dia, "sp": r["sp_rentabilidad"],
+                             "por_inscripcion": {f["inscripcion_id"]: f for f in r["filas"]}}
+        except Exception:
+            logger.exception("No se pudo calcular la tabla viva de la jornada %s", jornada_id)
+            valor = None
+        _vivo_cache[jornada_id] = (reloj(), valor)
+        return valor
+
+
+def olvidar_vivo() -> None:
+    """Vacía la caché (al cerrar la jornada o en pruebas)."""
+    with _vivo_candado:
+        _vivo_cache.clear()
 
 
 # --- El proceso ----------------------------------------------------------------------------------

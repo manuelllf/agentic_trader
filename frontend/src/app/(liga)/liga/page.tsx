@@ -206,14 +206,15 @@ function VistaJornada({
   if (conDatos.length === 0) {
     return (
       <p className="callout" style={{ marginTop: 20 }}>
-        Esta jornada todavía no tiene resultados: se calculan al cerrar el día 1 del mes que viene.
+        Esta jornada todavía no tiene cierres: la tabla se rellena sola con el primer cierre de
+        bolsa después de empezar.
       </p>
     );
   }
   const grupos: Record<"G" | "E" | "P", typeof conDatos> = { G: [], E: [], P: [] };
   for (const f of conDatos) {
     const dif = f.dif_sp ?? 0;
-    grupos[dif > 0.5 ? "G" : dif >= -0.5 ? "E" : "P"].push(f);
+    grupos[dif > 0.2 ? "G" : dif >= -0.2 ? "E" : "P"].push(f);
   }
   const sp = detalle.jornada.sp_rentabilidad;
   const fila = (f: (typeof conDatos)[number]) => (
@@ -234,6 +235,12 @@ function VistaJornada({
   );
   return (
     <div className="sec" style={{ marginTop: 20 }}>
+      {detalle.provisional && detalle.hasta && (
+        <p className="meta">
+          En directo · al cierre del {fecha(detalle.hasta)}. Los puntos se fijan al cerrar la
+          jornada.
+        </p>
+      )}
       {sp != null && (
         <div className="jr spx">
           <span className="nm"><b>S&amp;P 500</b></span>
@@ -243,7 +250,7 @@ function VistaJornada({
       )}
       <p className="grp">Ganando el mes <small>{grupos.G.length}</small></p>
       {grupos.G.map(fila)}
-      <p className="grp">Empatando <small>a medio punto o menos del S&amp;P</small></p>
+      <p className="grp">Empatando <small>a 0,2 puntos o menos del S&amp;P</small></p>
       {grupos.E.map(fila)}
       <p className="grp">Perdiendo <small>{grupos.P.length}</small></p>
       {grupos.P.map(fila)}

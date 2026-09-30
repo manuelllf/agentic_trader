@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { EJEMPLO, MESES, SP, puntos, puntosTotales, tablaDe } from "./ideas";
 
 describe("portada: ejemplo", () => {
-  it("la regla de puntos es la de la liga: más de medio punto gana, menos de medio pierde", () => {
-    expect(puntos(3.5, 3.0)).toBe(1); // justo medio punto: empate
-    expect(puntos(3.6, 3.0)).toBe(3);
-    expect(puntos(2.5, 3.0)).toBe(1);
-    expect(puntos(2.4, 3.0)).toBe(0);
+  it("la regla de puntos es la de la liga: más de 0,2 puntos gana, menos de 0,2 pierde", () => {
+    expect(puntos(3.2, 3.0)).toBe(1); // justo 0,2: empate
+    expect(puntos(3.3, 3.0)).toBe(3);
+    expect(puntos(2.8, 3.0)).toBe(1);
+    expect(puntos(2.7, 3.0)).toBe(0);
   });
 
   it("tiene seis meses, cinco empresas y sus pesos suman 100", () => {

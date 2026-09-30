@@ -546,7 +546,8 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         )}
         {pro && (
           <p className="fine">
-            Tu pregunta se envía a Jev (TypeSafe AI, EE. UU.). No escribas datos personales.
+            Tu pregunta se envía a Jev (TypeSafe AI, EE. UU.). No escribas datos personales.{" "}
+            <a href="/como-funciona">Cómo se usa tu pregunta</a>
           </p>
         )}
       </div>
@@ -714,6 +715,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
             </div>
           )}
           {porque && <p className="why">{porque.nombre}: {porque.texto}</p>}
+          <p className="fine"><a href="/como-funciona">Cómo se eligen las empresas</a></p>
         </div>
       </div>
 

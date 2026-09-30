@@ -151,6 +151,7 @@ export default function FichaPage() {
                   <span className="c num fl">—</span>
                 </div>
               ))}
+              <p className="fine"><Link href="/como-funciona">Cómo se eligen las empresas</Link></p>
             </div>
           )}
 

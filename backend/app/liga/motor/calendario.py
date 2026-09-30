@@ -84,6 +84,14 @@ def jornada_del_mes(anio: int, mes: int) -> FechasJornada:
     )
 
 
+def es_primer_dia_de_bolsa(d: date) -> bool:
+    """Si `d` es la primera sesión de su mes (el día en que empieza la jornada y corre el escaneo de
+    decisión de Alpha)."""
+    if not es_dia_de_bolsa(d):
+        return False
+    return not dias_de_bolsa(d.replace(day=1), d)[:-1]
+
+
 def _fecha(d: date) -> date:
     # Un datetime pasaría por date, y con zona horaria su «día» sería ambiguo.
     if isinstance(d, datetime) or not isinstance(d, date):

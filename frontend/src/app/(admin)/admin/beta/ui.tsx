@@ -55,7 +55,7 @@ export function Empty({ running }: { running: boolean }) {
       <p className="mt-3 max-w-sm text-sm text-[#6E6E6B]">
         {running
           ? "El agente puntúa el universo y construye la cartera…"
-          : "El agente escanea cada semana para aprender y decide cartera el primer martes del mes (o al lanzarlo desde Alpha). Cuando decida, aquí aparece la cartera, ya ejecutada en el libro sombra."}
+          : "El agente escanea y decide la cartera el primer día de bolsa del mes (o al lanzarlo desde Alpha). Cuando decida, aquí aparece la cartera, ya ejecutada en el libro sombra."}
       </p>
     </div>
   );

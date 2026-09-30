@@ -418,8 +418,11 @@ def test_plan_b_sin_escaneo_propio(fabrica, mercado, mundo) -> None:  # noqa: AN
     assert (d["foto_id"], d["scan_run_id"], d["plan_b"]) == (nueva_id, mundo["scan"], True)
     assert foto.estado(mundo["enero"], fabrica=fabrica)["plan_b"] is True
     prev = formar.vista_previa(mundo["enero"], fabrica=fabrica, ahora=ENERO)
-    assert prev["casa"]["lambda"]["juega"] is False and prev["casa"]["alpha"]["juega"] is False
-    assert "plan B" in prev["casa"]["lambda"]["motivo"]
+    # La casa entra siempre: en plan B juega con la cartera de su último escaneo de decisión.
+    assert prev["casa"]["lambda"]["juega"] is True and prev["casa"]["alpha"]["juega"] is True
+    assert prev["casa"]["lambda"]["posiciones"] and prev["casa"]["alpha"]["posiciones"]
+    assert any("Plan B" in a for a in prev["casa"]["lambda"]["avisos"])
+    assert any("Plan B" in a for a in prev["casa"]["alpha"]["avisos"])
 
 
 def test_otra_instancia_con_el_candado_no_deja_formar(fabrica, mercado, mundo) -> None:  # noqa: ANN001

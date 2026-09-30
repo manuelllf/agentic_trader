@@ -7,7 +7,9 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 > Proyecto personal. No es asesoramiento financiero. Por defecto funciona en simulación
 > (`DRY_RUN`): no envía órdenes al bróker.
 
-**En producción:** <https://agentic-trader-manuelllf.vercel.app> · acceso privado (login).
+**En producción:** <https://agentic-trader-manuelllf.vercel.app>. La **liguilla** (ver abajo) está en
+beta cerrada, por invitación; las salas de administración viven bajo `/admin`, solo con una cuenta
+de administrador y verificación en dos pasos.
 
 ## Cómo funciona
 
@@ -20,7 +22,7 @@ de cada sector existe tras un interruptor, apagada por defecto. La selección fi
 solo reparte los pesos entre los ya seleccionados. Todo el dinero (tamaños, caja, P&L) lo
 calcula el código con aritmética exacta en `Decimal`, nunca el LLM.
 
-La **decisión** de cartera es mensual (día 1), porque el análisis razona a un mes vista y
+La **decisión** de cartera es mensual (el primer día de bolsa del mes), porque el análisis razona a un mes vista y
 rebalancear más a menudo sería operar su propio ruido. Un botón de simulación en Alpha
 corre el mismo circuito completo sin tocar ningún libro, para observar sin decidir.
 
@@ -37,6 +39,35 @@ Junto a ellas corre una **estrategia de control sin dinero**: los cinco mejores 
 con como mucho dos por industria y a partes iguales, sin análisis profundo ni constructor. No
 mueve capital, ni siquiera simulado; solo se mide su rentabilidad bruta frente a la cartera del
 método y al S&P 500, para saber cuánto aporta el paso caro.
+
+## La liguilla
+
+Un producto encima del mismo motor: una **liga de estrategias en papel contra el S&P 500**. Cada
+persona escribe una idea en una frase, un modelo la convierte en reglas explícitas (sector,
+tamaño, valoración, pesos de las cuatro notas del cribado y, si quiere, una pregunta propia sobre
+las empresas) y cada mes esa estrategia juega una jornada.
+
+- **La IA puntúa; la selección es aritmética.** Un LLM (Jev) pone cuatro notas cerradas a cada
+  empresa del universo y, si la estrategia lo pide, contesta su pregunta propia; otro modelo
+  traduce la frase a reglas y explica los resultados. A partir de esas notas, el orden, los
+  filtros, el tope por sector y los pesos son código determinista sobre una foto mensual del
+  universo, igual para todas las estrategias, y cada empresa que no pasa sabe decir por qué. Dadas
+  las notas, el resultado es reproducible; las notas las pone el modelo, iguales para todas las
+  estrategias, y cada empresa deja constancia de la suya.
+- **Jornadas mensuales, todas con los mismos cierres.** Arrancan el primer día de bolsa del mes
+  (calendario NYSE) y comparan la rentabilidad, con dividendos, contra el S&P 500 en la misma
+  ventana: ganar por más de 0,2 puntos vale 3, empatar 1 y perder 0. Comparar ventanas distintas
+  es comparar mercados.
+- **Ranking en directo.** El mes en juego se ve con el último cierre guardado, marcado como
+  provisional; los puntos oficiales se fijan al cerrar la jornada y el registro no cambia después.
+- **Equipos de la casa.** Alpha, Omega y Lambda (los tres métodos del sistema) juegan todas las
+  jornadas, contra el mismo S&P 500 y con los mismos puntos; la liga solo lee de las salas, nunca escribe en ellas ni toca
+  la cartera personal.
+- **Ligas privadas, copiar estrategias y créditos de IA** prepago para las llamadas que cuestan
+  dinero. Todavía sin pasarela de pago: los concede el administrador.
+- **Cada petición es su usuario en Postgres.** Seguridad a nivel de fila con políticas por rol
+  probadas con una identidad real, la API de datos de la base sin esquemas expuestos, y un tope de
+  gasto mensual que apaga toda la IA de la liga si se alcanza.
 
 ## Decisiones de diseño
 
@@ -104,6 +135,8 @@ sin tocar código.
 | LLM       | DeepSeek (análisis profundo, constructor) + Jev de TypeSafe AI (cribado inicial, con Qwen y DeepSeek de reserva); capa de proveedor intercambiable |
 | Memoria   | pgvector + fastembed (embeddings locales, sin coste)         |
 | Bróker    | IBKR Web API (OAuth 1.0a headless, `ibind`)                  |
+| Cuentas   | Supabase Auth (JWT verificado por JWKS, TOTP) · RLS por rol   |
+| Calendario | `exchange_calendars` (NYSE) para las jornadas               |
 | Scheduler | APScheduler                                                  |
 | DB        | Postgres (Supabase) en producción; SQLite por defecto en local |
 | Frontend  | Next.js 15 · React 19 · TypeScript · Tailwind v4             |
@@ -114,8 +147,9 @@ sin tocar código.
 ```
 agentic_trading/
 ├── backend/     # FastAPI: escaneo, scoring, libros de capital, bróker, aprobaciones,
-│                #   momentum (2ª estrategia, independiente)
-└── frontend/    # Next.js: Beta + Alpha + Omega (momentum)
+│                #   momentum (2ª estrategia, independiente) y la liga (app/liga)
+└── frontend/    # Next.js: la liguilla (pública, móvil primero) y, bajo /admin,
+                 #   las salas Beta, Alpha y Omega (momentum)
 ```
 
 ## Puesta en marcha
@@ -131,7 +165,7 @@ uv run uvicorn app.main:app --reload
 ```
 
 La documentación OpenAPI (`/docs`, `/redoc`, `/openapi.json`) solo se sirve en desarrollo: con
-`APP_PASSWORD` definida queda desactivada, para no publicar la superficie de la API.
+`SUPABASE_URL` definida (producción) queda desactivada, para no publicar la superficie de la API.
 
 Variables de entorno en `backend/.env` (no versionado). Para el escaneo con LLM hace falta
 `DEEPSEEK_API_KEY` (proveedor por defecto; `OPENROUTER_API_KEY` es opcional, solo para pruebas
@@ -149,6 +183,8 @@ npm run dev
 
 ## Modelo de seguridad
 
+- Las salas de administración solo abren con una cuenta con rol de administrador y segundo
+  factor; no hay contraseña compartida.
 - Nada se ejecuta en la cuenta real sin una aprobación explícita del usuario por cada orden.
 - `DRY_RUN` activo por defecto: las aprobaciones se registran, pero no se envían órdenes.
 - Las órdenes son a límite, nunca a mercado.

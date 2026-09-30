@@ -9,8 +9,10 @@
 - Omega: no sale de las posiciones de la sala; nace en caja y `procesos.omega` va llenando sus
   4 huecos con las alertas durante el mes.
 
-Nunca se lee `personal_positions` ni se llama a IBKR. Si un equipo no tiene datos del mes, no
-juega esa jornada (y se dice por qué): nunca se inventan posiciones.
+Nunca se lee `personal_positions` ni se llama a IBKR. Los tres equipos entran SIEMPRE en la
+jornada: Lambda y Alpha con la cartera del escaneo de decisión de la jornada o, si ese no la
+guardó (o es plan B), con la del último escaneo de decisión que sí la tenga; y si no existe
+ninguna, juegan en caja. Nunca se inventan posiciones.
 """
 
 from __future__ import annotations
@@ -38,7 +40,8 @@ Pesos = tuple[tuple[str, Decimal], ...]
 
 @dataclass(frozen=True)
 class CarteraCasa:
-    """`posiciones` None: no juega esta jornada, y `motivo` dice por qué."""
+    """`posiciones` vacías: juega en caja, y `motivo` dice por qué. `None` ya no lo devuelve la
+    casa (siempre juega), pero `formar` lo sigue tolerando."""
 
     clave: str
     posiciones: Pesos | None
@@ -100,37 +103,73 @@ def pesos_desde_porcentajes(
 # --- Carteras del mes ---------------------------------------------------------------------------
 
 
-def cartera_lambda(db: Session, scan_run_id: int, plan_b: bool) -> CarteraCasa:
+_ESCANEOS_ATRAS = 6   # escaneos de decisión anteriores que se prueban antes de jugar en caja
+
+
+def _escaneos_de_decision(db: Session, scan_run_id: int) -> list[int]:
+    """El de la jornada y, por si no guardó cartera, los de decisión anteriores, del más
+    reciente al más viejo."""
+    previos = db.execute(text("""
+        select id from scan_runs
+        where decide and error is null
+          and scan_at < (select scan_at from scan_runs where id = :s)
+        order by scan_at desc, id desc limit :n
+    """), {"s": scan_run_id, "n": _ESCANEOS_ATRAS}).scalars().all()
+    return [scan_run_id, *previos]
+
+
+def _avisos_de_origen(clave: str, escaneo: int, scan_run_id: int, plan_b: bool) -> tuple[str, ...]:
+    """Qué escaneo puso la cartera cuando no es el de la jornada, o es plan B."""
+    if escaneo != scan_run_id:
+        return (f"{CASAS[clave][0]} juega con la cartera del escaneo {escaneo}: el {scan_run_id} "
+                "no la guardó.",)
     if plan_b:
-        return CarteraCasa("lambda", None, "La jornada va con el plan B: este mes no hay cartera "
-                                           "de Jev de un escaneo propio.")
+        return (f"Plan B: {CASAS[clave][0]} juega con la cartera de su último escaneo de decisión "
+                f"({escaneo}), no la de un escaneo de la foto de la jornada.",)
+    return ()
+
+
+def _en_caja(clave: str, motivo: str) -> CarteraCasa:
+    return CarteraCasa(clave, (), motivo, ())
+
+
+def _pesos_lambda(db: Session, s: int) -> list[tuple[str, Decimal]]:
     items = db.execute(text(
         "select ticker, weight_pct from scan_run_jev_item where scan_run_id = :s "
-        "order by posicion"), {"s": scan_run_id}).all()
+        "order by posicion"), {"s": s}).all()
     pesos = pesos_desde_porcentajes((t, w) for t, w in items)
     if not pesos:
         # Hay escaneos con la cartera de Jev solo en la auditoría, con los fondeados a partes
         # iguales.
         fondeados = sorted(set(db.execute(text(
             "select ticker from scan_audit where scan_run_id = :s and jev_funded"),
-            {"s": scan_run_id}).scalars()))
-        pesos = pesos_desde_porcentajes((t, Decimal(100) / len(fondeados)) for t in fondeados)
-    if not pesos:
-        return CarteraCasa("lambda", None, f"El escaneo {scan_run_id} no guardó cartera de Jev.")
-    return CarteraCasa("lambda", tuple(pesos))
+            {"s": s}).scalars()))
+        if fondeados:
+            pesos = pesos_desde_porcentajes((t, Decimal(100) / len(fondeados)) for t in fondeados)
+    return pesos
+
+
+def cartera_lambda(db: Session, scan_run_id: int, plan_b: bool) -> CarteraCasa:
+    for s in _escaneos_de_decision(db, scan_run_id):
+        pesos = _pesos_lambda(db, s)
+        if pesos:
+            return CarteraCasa("lambda", tuple(pesos), None,
+                               _avisos_de_origen("lambda", s, scan_run_id, plan_b))
+    return _en_caja("lambda", "Ningún escaneo de decisión guardó la cartera de Jev: Lambda juega "
+                              "en caja.")
+
+
+def _pesos_alpha(db: Session, s: int) -> list[tuple[str, Decimal]]:
+    return pesos_desde_porcentajes((t, float(w or 0)) for t, w in db.execute(text(
+        "select ticker, target_weight_pct from scan_run_construction_item "
+        "where scan_run_id = :s order by posicion"), {"s": s}).all())
 
 
 def cartera_alpha(db: Session, scan_run_id: int, plan_b: bool) -> CarteraCasa:
-    if plan_b:
-        return CarteraCasa("alpha", None, "La jornada va con el plan B: este mes no hay "
-                                          "propuesta de un escaneo de decisión propio.")
-    run = db.execute(text("select decide from scan_runs where id = :s"),
-                     {"s": scan_run_id}).one_or_none()
-    if run is None or not run.decide:
-        return CarteraCasa("alpha", None, f"El escaneo {scan_run_id} no es de decisión.")
-    pesos = pesos_desde_porcentajes((t, float(w or 0)) for t, w in db.execute(text(
-        "select ticker, target_weight_pct from scan_run_construction_item "
-        "where scan_run_id = :s order by posicion"), {"s": scan_run_id}).all())
-    if not pesos:
-        return CarteraCasa("alpha", None, f"El escaneo {scan_run_id} no guardó propuesta.")
-    return CarteraCasa("alpha", tuple(pesos))
+    for s in _escaneos_de_decision(db, scan_run_id):
+        pesos = _pesos_alpha(db, s)
+        if pesos:
+            return CarteraCasa("alpha", tuple(pesos), None,
+                               _avisos_de_origen("alpha", s, scan_run_id, plan_b))
+    return _en_caja("alpha", "Ningún escaneo de decisión guardó una propuesta: Alpha juega en "
+                             "caja.")

@@ -1,7 +1,7 @@
 """Puntos de la liga (plan §8): el resultado de cada jornada contra el S&P y la clasificación.
 
 La banda va sobre la diferencia redondeada a una décima, la cifra que ve el usuario: más de
-+0,5 gana (3 puntos), de −0,5 a +0,5 empata (1) y por debajo de −0,5 pierde (0). La
++0,2 gana (3 puntos), de −0,2 a +0,2 empata (1) y por debajo de −0,2 pierde (0). La
 clasificación va por puntos, luego por la diferencia de la temporada contra el S&P (con las
 rentabilidades compuestas, incluido el mes en curso) y luego por la fecha de alta, la más antigua
 primero.
@@ -16,7 +16,7 @@ from decimal import Decimal, localcontext
 
 from app.liga.motor.formato import redondear
 
-BANDA = Decimal("0.5")
+BANDA = Decimal("0.2")
 PUNTOS = {"G": 3, "E": 1, "P": 0}
 _LETRAS = {puntos: letra for letra, puntos in PUNTOS.items()}
 
@@ -60,8 +60,8 @@ class Puesto:
 def resultado_jornada(rent: Decimal, rent_sp: Decimal) -> Resultado:
     """Resultado con las rentabilidades de la jornada en % (las guardadas, con 4 decimales).
 
-    Se redondea la diferencia exacta, la mitad hacia fuera (`formato.redondear`): +0,55 es +0,6
-    y gana; +0,54 es +0,5 y empata; −0,55 es −0,6 y pierde."""
+    Se redondea la diferencia exacta, la mitad hacia fuera (`formato.redondear`): +0,25 es +0,3
+    y gana; +0,24 es +0,2 y empata; −0,25 es −0,3 y pierde."""
     dif = redondear(_decimal(rent) - _decimal(rent_sp), 1)
     if dif == 0:
         dif = abs(dif)  # nunca «−0,0»

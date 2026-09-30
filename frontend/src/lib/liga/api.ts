@@ -454,6 +454,8 @@ export type FilaJornadaPublica = {
 
 export type JornadaDetalle = {
   jornada: JornadaPublica; total: number; filas: FilaJornadaPublica[];
+  /** Jornada en juego: cifras del último cierre (`hasta`), no las oficiales. */
+  provisional?: boolean; hasta?: string | null;
 };
 
 export type Portada = {
