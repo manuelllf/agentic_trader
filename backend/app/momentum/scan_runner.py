@@ -54,7 +54,8 @@ def _run() -> None:
         # El detalle entero (incl. el SQL y los parámetros de un error de SQLAlchemy) va SOLO al
         # log del servidor -- al panel del usuario un mensaje corto, nunca el stacktrace.
         logger.exception("Fallo en el escaneo manual de momentum")
-        scan_progress.terminar(error="No se pudo completar el escaneo. Revisa los logs del servidor.")
+        scan_progress.terminar(
+            error="No se pudo completar el escaneo. Revisa los logs del servidor.")
     finally:
         db.close()
         with _lock:

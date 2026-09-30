@@ -77,7 +77,8 @@ def regimen_actual(db: Session = Depends(get_db)) -> dict:
 
 def _mantener_map(db: Session) -> dict[str, bool]:
     """Overrides de 'mantener en universo' -- sin fila = True por defecto (ver doc §5)."""
-    rows = db.execute(text("select ticker, mantener from momentum_universo_estado")).mappings().all()
+    rows = db.execute(
+        text("select ticker, mantener from momentum_universo_estado")).mappings().all()
     return {r["ticker"]: bool(r["mantener"]) for r in rows}
 
 
@@ -158,7 +159,8 @@ def alertas(db: Session = Depends(get_db)) -> list[dict]:
             r["ejecucion"] = ejecuciones.get(m["id"])
             pos = posiciones.get(m["id"])
             if pos:
-                r["posicion_abierta"] = {"acciones": str(pos["neto"]), "coste_medio": str(pos["coste_medio"])}
+                r["posicion_abierta"] = {"acciones": str(pos["neto"]),
+                                         "coste_medio": str(pos["coste_medio"])}
         out.append(r)
     return out
 
@@ -177,9 +179,11 @@ def _cierres_manuales(db: Session, senales: list[dict]) -> dict[int, dict]:
     rows = db.execute(text("""
         select senal_id,
                sum(case when accion = 'compra' then acciones else 0 end) as compradas,
-               sum(case when accion = 'compra' then acciones * precio + comision else 0 end) as coste,
+               sum(case when accion = 'compra'
+                        then acciones * precio + comision else 0 end) as coste,
                sum(case when accion = 'venta' then acciones else 0 end) as vendidas,
-               sum(case when accion = 'venta' then acciones * precio - comision else 0 end) as proceeds,
+               sum(case when accion = 'venta'
+                        then acciones * precio - comision else 0 end) as proceeds,
                max(case when accion = 'venta' then ejecutada_at end) as exit_at
         from momentum_ejecuciones
         where senal_id in :ids
@@ -267,7 +271,8 @@ def validacion(db: Session = Depends(get_db)) -> list[dict]:
     for ticker in signals.UNIVERSO:
         rs = por_ticker.get(ticker, [])
         n = len(rs)
-        base = {"ticker": ticker, "sector": signals.SECTOR[ticker], "mantener": mantener.get(ticker, True)}
+        base = {"ticker": ticker, "sector": signals.SECTOR[ticker],
+                "mantener": mantener.get(ticker, True)}
         if n == 0:
             out.append({**base, "n": 0, "media": None, "mediana": None, "pct_positivas": None})
             continue
@@ -347,7 +352,8 @@ def admin_detectar_candidatos(db: Session = Depends(get_db)) -> dict:
     except Exception:  # noqa: BLE001
         # Detalle entero al log; al panel, mensaje corto (nunca el SQL/stacktrace en la cara).
         logger.exception("Fallo en la detección manual de rupturas")
-        return {"ok": False, "error": "No se pudo completar la detección. Revisa los logs del servidor."}
+        return {"ok": False,
+                "error": "No se pudo completar la detección. Revisa los logs del servidor."}
 
 
 class EjecucionIn(BaseModel):
@@ -375,7 +381,8 @@ def ejecutar(senal_id: int, body: EjecucionIn, db: Session = Depends(get_db)) ->
     """), {"id": senal_id}).scalar() or 0))
 
     if body.accion == "venta" and Decimal(str(body.acciones)) > neto_previo:
-        raise HTTPException(400, f"Solo hay {neto_previo} acciones abiertas -- no puedes vender {body.acciones}.")
+        raise HTTPException(
+            400, f"Solo hay {neto_previo} acciones abiertas -- no puedes vender {body.acciones}.")
 
     # Dinero a NUMERIC exacto: Decimal desde el texto, nunca el float tal cual.
     db.add(MomentumEjecucion(
@@ -410,7 +417,8 @@ class CandidatoDecisionIn(BaseModel):
 
 
 @router.post("/candidatos/{candidato_id}/decision")
-def decidir_candidato(candidato_id: int, body: CandidatoDecisionIn, db: Session = Depends(get_db)) -> dict:
+def decidir_candidato(candidato_id: int, body: CandidatoDecisionIn,
+                      db: Session = Depends(get_db)) -> dict:
     """Decisión SIEMPRE de Manuel, nunca automática -- ni el filtro ni el gate deciden por él
     (corregido 8-sep-2026, era un sesgo real). Si incorpora, se propaga al universo real
     (escaneo, validación, universo) Y se calcula ya su historial/alerta activa -- como

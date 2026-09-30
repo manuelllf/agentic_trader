@@ -105,7 +105,8 @@ def test_size_to_weight_clamps_to_cash(db) -> None:
     """Comprar al 100% con un precio que no divide exacto: floor de acciones → coste ≤ caja,
     y reintentar una posición ya cubierta da error claro (idempotente)."""
     service.allocate(db, 100)
-    qty, side = service.size_to_weight(db, models.BOOK_SHADOW, "AAA", "comprar", 100, Decimal("30.01"))
+    qty, side = service.size_to_weight(
+        db, models.BOOK_SHADOW, "AAA", "comprar", 100, Decimal("30.01"))
     service.record_buy(db, "AAA", qty, Decimal("30.01"), order_ref="t", book=models.BOOK_SHADOW)
     assert service.available_cash(db, models.BOOK_SHADOW) >= Decimal("0.00")
     with pytest.raises(InsufficientFunds):   # ya cubre el peso objetivo
@@ -138,7 +139,8 @@ def test_la_compra_reserva_su_comision_y_no_revienta(db) -> None:
     """Al 100% invertido el objetivo cae JUSTO en la caja libre; si el sizing no reservase la
     comisión, `record_buy` rechazaría la compra entera por céntimos."""
     service.allocate(db, 1000)
-    qty, side = service.size_to_weight(db, models.BOOK_SHADOW, "AAA", "comprar", 100, Decimal("100"))
+    qty, side = service.size_to_weight(
+        db, models.BOOK_SHADOW, "AAA", "comprar", 100, Decimal("100"))
     assert side == "buy" and qty == Decimal("9.9900")          # 999 / 100, con $1 reservado
 
     from app import commissions

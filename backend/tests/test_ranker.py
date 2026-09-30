@@ -238,7 +238,8 @@ def test_watchlist_entry_and_eviction(db) -> None:
 
 def test_watchlist_staleness(db) -> None:
     old = datetime.now(UTC) - timedelta(days=40)
-    db.add(Watchlist(ticker="OLD", score=88, thesis="t", first_seen=old, last_seen=old, last_high=old))
+    db.add(Watchlist(ticker="OLD", score=88, thesis="t", first_seen=old, last_seen=old,
+                     last_high=old))
     db.commit()
     # 78: sobre evict pero bajo entry → last_high NO se refresca
     wl.update(db, [("OLD", 78, "sigue ok")])
@@ -578,7 +579,8 @@ def test_constructor_registra_por_que_dejo_fuera_a_los_demas() -> None:
     """Omitted reasons recorded for later criterion auditing."""
     reply = json.dumps({
         "cash_pct": 0,
-        "positions": [{"ticker": "AAA", "weight_pct": 100, "thesis": "t", "edge": "e", "risk": "r"}],
+        "positions": [{"ticker": "AAA", "weight_pct": 100, "thesis": "t", "edge": "e",
+                       "risk": "r"}],
         "omitted": [
             {"ticker": "BBB", "reason": "Menor recorrido al objetivo."},
             {"ticker": "AAA", "reason": "contradictorio: AAA sí se fondeó"},

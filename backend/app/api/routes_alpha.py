@@ -28,7 +28,8 @@ def _approval_out(a) -> dict:  # noqa: ANN001
         "est_price": str(a.est_price) if a.est_price is not None else None,
         "thesis": a.thesis, "edge": a.edge, "risk": a.risk,
         "macro_summary": a.macro_summary,
-        "requested_quantity": str(a.requested_quantity) if a.requested_quantity is not None else None,
+        "requested_quantity": (
+            str(a.requested_quantity) if a.requested_quantity is not None else None),
         "quantity": str(a.quantity) if a.quantity is not None else None,
         "fill_price": str(a.fill_price) if a.fill_price is not None else None,
         "result_msg": a.result_msg, "order_ref": a.order_ref,

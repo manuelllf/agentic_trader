@@ -170,7 +170,8 @@ def test_overview_shape_empty_db(client) -> None:
     assert res.status_code == 200
     body = res.json()
     assert set(body.keys()) == {"shadow", "real", "omega"}
-    assert set(body["shadow"].keys()) == {"return_pct", "spy_pct", "alpha_pct", "since", "positions"}
+    assert set(body["shadow"].keys()) == {
+        "return_pct", "spy_pct", "alpha_pct", "since", "positions"}
     assert body["shadow"]["return_pct"] is None
     assert body["shadow"]["since"] is None
     assert body["shadow"]["positions"] == 0
@@ -752,7 +753,8 @@ def test_estado_datos_devuelve_las_cuatro_fuentes(client, token, db) -> None:
     assert d["foto_nasdaq"]["n"] == 1 and d["foto_global"]["n"] == 1
     assert d["fx"]["n"] == 1
     assert d["universo"]["elegibles"] == 1 and d["universo"]["a_escanear"] == 1
-    assert d["universo"]["at"] and d["foto_nasdaq"]["at"] and d["foto_global"]["at"] and d["fx"]["at"]
+    assert (d["universo"]["at"] and d["foto_nasdaq"]["at"] and d["foto_global"]["at"]
+            and d["fx"]["at"])
 
 
 def test_estado_datos_universo_elegibles_vs_a_escanear(client, token, db) -> None:
@@ -774,7 +776,8 @@ def test_estado_datos_universo_elegibles_vs_a_escanear(client, token, db) -> Non
     assert 1.0 * 1.0 < settings.universe_min_dollar_volume  # confirma la premisa del test
 
     r = client.get("/admin/estado-datos", headers={"Authorization": f"Bearer {token}"})
-    assert r.json()["universo"] == {"at": r.json()["universo"]["at"], "elegibles": 2, "a_escanear": 1}
+    assert r.json()["universo"] == {
+        "at": r.json()["universo"]["at"], "elegibles": 2, "a_escanear": 1}
 
 
 def test_estado_datos_con_la_base_vacia_no_revienta(client, token) -> None:

@@ -40,7 +40,8 @@ def posiciones_abiertas(db: Session) -> dict[int, dict]:
     rows = db.execute(text("""
         select e.senal_id, s.ticker, s.entry_price, s.ret,
                sum(case when e.accion = 'compra' then e.acciones else 0 end) as compradas,
-               sum(case when e.accion = 'compra' then e.acciones * e.precio + e.comision else 0 end) as coste_compras,
+               sum(case when e.accion = 'compra'
+                        then e.acciones * e.precio + e.comision else 0 end) as coste_compras,
                sum(case when e.accion = 'venta' then e.acciones else 0 end) as vendidas
         from momentum_ejecuciones e
         join momentum_senales s on s.id = e.senal_id
@@ -55,7 +56,8 @@ def posiciones_abiertas(db: Session) -> dict[int, dict]:
         if neto <= 0:
             continue
         out[r["senal_id"]] = {
-            "ticker": r["ticker"], "neto": neto, "coste_medio": D(str(r["coste_compras"])) / compradas,
+            "ticker": r["ticker"], "neto": neto,
+            "coste_medio": D(str(r["coste_compras"])) / compradas,
             "entry_price": D(str(r["entry_price"])), "ret": D(str(r["ret"] or 0)),
             "dividendos": cobrado.get(r["senal_id"], ZERO),
         }
@@ -99,9 +101,11 @@ def pnl_realizado(db: Session) -> tuple[Decimal, Decimal]:
     rows = db.execute(text("""
         select senal_id,
                sum(case when accion = 'compra' then acciones else 0 end) as compradas,
-               sum(case when accion = 'compra' then acciones * precio + comision else 0 end) as coste_compras,
+               sum(case when accion = 'compra'
+                        then acciones * precio + comision else 0 end) as coste_compras,
                sum(case when accion = 'venta' then acciones else 0 end) as vendidas,
-               sum(case when accion = 'venta' then acciones * precio - comision else 0 end) as proceeds
+               sum(case when accion = 'venta'
+                        then acciones * precio - comision else 0 end) as proceeds
         from momentum_ejecuciones
         group by senal_id
         having sum(case when accion = 'venta' then 1 else 0 end) > 0

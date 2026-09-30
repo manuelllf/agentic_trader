@@ -22,7 +22,8 @@ _MAX_ROWS_TOTAL = 200_000   # el snapshot real ronda ~100 filas; el tope es anti
 
 def _table_names(conn: Connection) -> list[str]:
     res = conn.exec_driver_sql(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name NOT LIKE 'sqlite_%' ORDER BY name"
     )
     return [r[0] for r in res.fetchall()]
 

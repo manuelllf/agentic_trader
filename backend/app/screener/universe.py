@@ -173,7 +173,8 @@ def _liquidos(filas: list[tuple[str, float, float, float | None, str]]) -> list[
     """Eligible universe: price/cap/common-stock filters + dollar-volume floor + hard cap.
 
     Returned alphabetically (not by volume) for stable rotation in sample_for_scan."""
-    return sorted(sym for sym, _px, _vol, _cap, _name in _sobre_suelo(filas)[:settings.universe_max_names])
+    tope = settings.universe_max_names
+    return sorted(sym for sym, _px, _vol, _cap, _name in _sobre_suelo(filas)[:tope])
 
 
 def build_universe(force_refresh: bool = False) -> list[str]:
@@ -319,7 +320,8 @@ def sample_for_scan(always_include: list[str], n: int | None, offset: int = 0,
                     universe: list[str] | None = None) -> list[str]:
     """Names to scan: always_include (positions/watchlist) + rotating universe window.
 
-    If n is None: full universe. Else: rotating window (wraps) for weekly coverage without repeat."""
+    If n is None: full universe. Else: rotating window (wraps) for weekly coverage without
+    repeat."""
     always = list(dict.fromkeys(t.upper() for t in always_include if t))  # dedup, mantiene orden
     if universe is None:                       # sin universo dado, en vivo (tests y usos sueltos)
         universe = build_universe()

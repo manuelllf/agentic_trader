@@ -47,7 +47,8 @@ def db():
                            poolclass=StaticPool)
     s = sessionmaker(bind=engine)()
     s.execute(text(_DDL))
-    s.execute(text("create table momentum_universo_estado (ticker text primary key, mantener boolean)"))
+    s.execute(text(
+        "create table momentum_universo_estado (ticker text primary key, mantener boolean)"))
     s.commit()
     yield s
     s.close()
@@ -101,7 +102,8 @@ def test_reactivar_devuelve_una_VETADA_POR_GATE_a_nueva(db) -> None:
     db.execute(text("""
         insert into momentum_senales (ticker, sector, tipo, entry_date, entry_price, ref_label,
             ref_price, caida_pct, resuelta, estado, gate_resultado, gate_detalle)
-        values ('RKLB','Space','suelo',:d,63,'ATH_referencia',150,58,false,'descartada','falla','roto')
+        values ('RKLB','Space','suelo',:d,63,'ATH_referencia',150,58,false,
+                'descartada','falla','roto')
     """), {"d": hoy - timedelta(days=30)})
     db.commit()
 
@@ -133,7 +135,9 @@ def test_reactivar_NO_toca_un_descarte_a_mano(db) -> None:
     s.update(entry_date=pd.Timestamp(hoy - timedelta(days=20)), entry_price=22.0, reactivar=True)
     res = procesar_señales(db, [s])
     assert res["reactivadas"] == 0
-    assert db.execute(text("select estado from momentum_senales where ticker='PL'")).scalar() == "descartada"
+    estado = db.execute(
+        text("select estado from momentum_senales where ticker='PL'")).scalar()
+    assert estado == "descartada"
 
 
 def test_reactivar_no_toca_una_ya_nueva_ni_una_resuelta(db) -> None:
@@ -147,7 +151,8 @@ def test_reactivar_no_toca_una_ya_nueva_ni_una_resuelta(db) -> None:
     db.commit()
     for tk in ("AAA", "BBB"):
         s = _senal_sin_resolver(tk)
-        s.update(entry_date=pd.Timestamp(hoy - timedelta(days=20)), entry_price=10.0, reactivar=True)
+        s.update(entry_date=pd.Timestamp(hoy - timedelta(days=20)), entry_price=10.0,
+                 reactivar=True)
         procesar_señales(db, [s])
     estados = dict(db.execute(text("select ticker, estado from momentum_senales")).all())
     assert estados == {"AAA": "nueva", "BBB": "nueva"}   # ninguna cambió por reactivar
@@ -189,7 +194,8 @@ def test_cesta_60d_se_congela_solo_en_senales_nuevas(db, monkeypatch) -> None:
     # se queda con el valor congelado que tenía al nacer.
     monkeypatch.setattr("app.momentum.regimen.cesta_60d", lambda universo: +5.0)
     s = _senal_sin_resolver("CONU")
-    s.update(resuelta=True, ret=12.0, motivo="objetivo", dias=15.0, exit_date=pd.Timestamp(date.today()))
+    s.update(resuelta=True, ret=12.0, motivo="objetivo", dias=15.0,
+             exit_date=pd.Timestamp(date.today()))
     procesar_señales(db, [s], universo=["CONU"])
     fila = db.execute(text(
         "select cesta_60d, gate_regimen, resuelta from momentum_senales where ticker='CONU'"

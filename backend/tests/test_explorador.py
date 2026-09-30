@@ -27,7 +27,8 @@ def test_fecha_mal_formada_revienta_claro() -> None:
 
 
 def test_rango_de_fechas_liga_ambos_extremos() -> None:
-    sql, params = construir_snapshot_where(Filtros(fecha_desde="2026-06-01", fecha_hasta="2026-08-01"))
+    sql, params = construir_snapshot_where(
+        Filtros(fecha_desde="2026-06-01", fecha_hasta="2026-08-01"))
     assert "captured_at >= ?" in sql
     assert "captured_at < ?" in sql   # hasta = final de ese día, no el día a secas
     assert params == ["2026-06-01", "2026-08-01"]

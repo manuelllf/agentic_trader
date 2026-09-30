@@ -622,7 +622,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     _revisar_cancelado(cancel_event)
     scan_progress.set_stage("deep", total=len(finalists), unit="finalistas")
     logger.info("Escaneo: iniciando DEEP (%d finalistas, modelo=%s, reasoning=%s).",
-               len(finalists), deep_cfg["model"] or settings.llm_model, deep_cfg["reasoning_effort"])
+               len(finalists), deep_cfg["model"] or settings.llm_model,
+               deep_cfg["reasoning_effort"])
     t0 = time.monotonic()
     analizados: dict[str, scorer_mod.ScoreResult] = {}
     with ThreadPoolExecutor(max_workers=_DEEP_WORKERS) as ex:

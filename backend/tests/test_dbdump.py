@@ -43,7 +43,8 @@ def test_export_import_roundtrip(db) -> None:
     out = dbdump.import_all(db.connection(), snap)   # reimporta el MISMO snapshot
     db.commit()
     assert out["ok"] is True
-    assert dbdump.export_all(db.connection())["tables"]["allocations"] == snap["tables"]["allocations"]
+    exportado = dbdump.export_all(db.connection())
+    assert exportado["tables"]["allocations"] == snap["tables"]["allocations"]
 
 
 def test_import_replaces_everything(db) -> None:

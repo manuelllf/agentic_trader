@@ -360,7 +360,8 @@ class Proposal(Base):
     @property
     def items(self) -> list[dict]:
         """[{ticker, action, target_weight_pct, shares, est_value, thesis, edge, risk, score}],
-        reconstruido desde `ProposalItem` (hermanas, orden `posicion`) — nunca guardado como JSON."""
+        reconstruido desde `ProposalItem` (hermanas, orden `posicion`), nunca guardado como
+        JSON."""
         db = object_session(self)
         if db is None:
             return []

@@ -211,7 +211,8 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
         # Igual criterio que ret/dias: NaN (float) en cualquier señal con menos de 4 sesiones de
         # datos -- se normaliza a None (ver `resolver_salida`, que ahora siempre los calcula).
         caida_max_final = float(s["caida_max_pct"]) if pd.notna(s.get("caida_max_pct")) else None
-        dias_hasta_min_final = int(s["dias_hasta_min"]) if pd.notna(s.get("dias_hasta_min")) else None
+        dias_hasta_min_final = (
+            int(s["dias_hasta_min"]) if pd.notna(s.get("dias_hasta_min")) else None)
         fila = db.execute(text("""
             select id, resuelta, estado, gate_resultado from momentum_senales
             where ticker=:t and tipo=:tp and entry_date=:d
@@ -279,7 +280,8 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
                     len(reactivadas))
         plural = "es" if len(reactivadas) != 1 else ""
         push.send_to_all(
-            db, title=f"Omega: {len(reactivadas)} señal{plural} vuelve{'n' if plural else ''} a zona",
+            db,
+            title=f"Omega: {len(reactivadas)} señal{plural} vuelve{'n' if plural else ''} a zona",
             body=", ".join(dict.fromkeys(reactivadas)), url="/admin/omega", tag="agentic-omega",
         )
     for r in resueltas_ejecutadas:

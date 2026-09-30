@@ -75,9 +75,11 @@ def config() -> dict:
             },
             "mid": {"model": settings.mid_model, "reasoning_effort": settings.mid_reasoning_effort,
                     "temperature": settings.mid_temperature},
-            "deep": {"model": settings.llm_model, "reasoning_effort": settings.deep_reasoning_effort,
+            "deep": {"model": settings.llm_model,
+                     "reasoning_effort": settings.deep_reasoning_effort,
                      "temperature": DEFAULT_TEMPERATURE},
-            "constructor": {"model": settings.llm_model, "reasoning_effort": settings.reasoning_effort,
+            "constructor": {"model": settings.llm_model,
+                            "reasoning_effort": settings.reasoning_effort,
                             "temperature": DEFAULT_TEMPERATURE},
         },
     }

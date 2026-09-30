@@ -131,7 +131,8 @@ def test_execute_proposal_all_rerun_is_noop(db, monkeypatch) -> None:
     assert second["executed"] == []                      # nada que ejecutar de nuevo
     assert len(second["skipped"]) == 1                    # AAA: "ya cubre el peso objetivo"
     assert ledger.available_cash(db, BOOK_SHADOW) == cash_after
-    assert [(p.ticker, p.quantity) for p in ledger.open_positions(db, BOOK_SHADOW)] == positions_after
+    abiertas = ledger.open_positions(db, BOOK_SHADOW)
+    assert [(p.ticker, p.quantity) for p in abiertas] == positions_after
 
 
 def test_execute_proposal_all_skips_mantener(db) -> None:
@@ -200,7 +201,8 @@ def test_scan_auto_executes_shadow_book_sells_first(db, monkeypatch) -> None:
     assert ledger.available_cash(db, BOOK_SHADOW) == Decimal("0.00")
 
     # order_ref filtra el trade semilla (la compra inicial de OLD, previa al escaneo).
-    trades = (db.query(Trade).filter(Trade.book == BOOK_SHADOW, Trade.order_ref.like("shadow-prop%"))
+    trades = (db.query(Trade)
+              .filter(Trade.book == BOOK_SHADOW, Trade.order_ref.like("shadow-prop%"))
               .order_by(Trade.id).all())
     sides = [t.side for t in trades]
     assert sides == ["sell", "buy"]  # la venta de OLD corrió ANTES que la compra de AAA

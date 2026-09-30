@@ -274,7 +274,8 @@ def objetivo_por_arranque(retorno_3_sesiones: float) -> float:
     return 0.11
 
 
-def resolver_salida(precios: pd.Series, aperturas: pd.Series, fecha_entrada, precio_entrada: float) -> dict:
+def resolver_salida(precios: pd.Series, aperturas: pd.Series, fecha_entrada,
+                    precio_entrada: float) -> dict:
     """Camina dia a dia desde la entrada usando el CIERRE para detectar el cruce (objetivo o
     tope de 90 dias). Una vez detectado, el precio que se registra es la APERTURA del dia
     siguiente. Si el cruce se detecta el ULTIMO dia disponible, la señal se deja abierta un
@@ -308,7 +309,8 @@ def resolver_salida(precios: pd.Series, aperturas: pd.Series, fecha_entrada, pre
         precio_ejec = aperturas.loc[fecha_ejec]
         ventana = precios.loc[fecha_entrada:fecha_ejec]
         min_precio, min_fecha = float(ventana.min()), ventana.idxmin()
-        return {"resuelta": True, "exit_date": fecha_ejec, "ret": (precio_ejec / precio_entrada - 1) * 100,
+        return {"resuelta": True, "exit_date": fecha_ejec,
+                "ret": (precio_ejec / precio_entrada - 1) * 100,
                 "motivo": disparo, "dias": (fecha_ejec - fecha_entrada).days,
                 "caida_max_pct": (min_precio / precio_entrada - 1) * 100,
                 "dias_hasta_min": (min_fecha - fecha_entrada).days}
@@ -429,20 +431,23 @@ if __name__ == "__main__":
     combinadas = compute_signals()
     resueltas = [r for r in combinadas if r["resuelta"]]
     abiertas = [r for r in combinadas if not r["resuelta"]]
-    print(f"Total señales: {len(combinadas)}  resueltas: {len(resueltas)}  abiertas: {len(abiertas)}\n")
+    print(f"Total señales: {len(combinadas)}  resueltas: {len(resueltas)}  "
+          f"abiertas: {len(abiertas)}\n")
 
     print("=== Alertas activas (sin resolver), mas reciente primero ===")
     for r in abiertas:
         dias = (pd.Timestamp.now(tz="America/New_York") - r["entry_date"]).days
         cuidado = " [CUIDADO]" if dias > CUIDADO_DIAS else ""
-        print(f"  {r['ticker']:5s} {r['tipo']:6s} {r['entry_date'].date()}  entrada ${r['entry_price']:.2f}  "
+        print(f"  {r['ticker']:5s} {r['tipo']:6s} {r['entry_date'].date()}  "
+              f"entrada ${r['entry_price']:.2f}  "
               f"caida {r['caida_pct']:.1f}%  hoy {r['ret']:+.1f}%  hace {dias}d{cuidado}")
 
     print("\n=== Agregados globales ===")
     if resueltas:
         rets = [r["ret"] for r in resueltas]
         print(f"  Resueltas: n={len(rets)} media={statistics.mean(rets):+.1f}% "
-              f"mediana={statistics.median(rets):+.1f}% positivas={sum(1 for x in rets if x>0)/len(rets)*100:.0f}%")
+              f"mediana={statistics.median(rets):+.1f}% "
+              f"positivas={sum(1 for x in rets if x>0)/len(rets)*100:.0f}%")
 
     print("\n=== Validacion por ticker ===")
     for ticker in UNIVERSO:
@@ -466,4 +471,5 @@ if __name__ == "__main__":
             exit_val = r.get("exit_date")
             fila["exit_date"] = exit_val.date().isoformat() if pd.notna(exit_val) else ""
             w.writerow(fila)
-    print(f"\nGuardado: {out_path} ({len(combinadas)} filas) -- generado el {datetime.now().isoformat()}")
+    print(f"\nGuardado: {out_path} ({len(combinadas)} filas) -- "
+          f"generado el {datetime.now().isoformat()}")

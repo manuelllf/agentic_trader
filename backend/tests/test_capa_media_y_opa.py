@@ -261,7 +261,8 @@ def test_capa_media_desactivada_usa_el_pre_score_crudo_como_antes(db, monkeypatc
     assert "mid_model" not in result["cost"]["by_model"]
 
 
-def test_interruptor_de_alpha_apaga_la_capa_media_aunque_settings_la_active(db, monkeypatch) -> None:
+def test_interruptor_de_alpha_apaga_la_capa_media_aunque_settings_la_active(
+        db, monkeypatch) -> None:
     """El interruptor persistido (`scan_config.set_mid_layer`) manda sobre `settings.mid_layer`:
     apagado, un escaneo con decisión se comporta como sin capa media (gana HA2 por pre-score)."""
     from app import scan_config

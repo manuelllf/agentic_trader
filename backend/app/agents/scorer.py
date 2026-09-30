@@ -324,8 +324,8 @@ def prescore_batch(
     llm: LLMProvider, items: list[NameData], macro_block: str, temperature: float = 1.0,
     top_p: float | None = 0.95,
 ) -> dict[str, PrescoreResult]:
-    """Prescore de un lote en una llamada. Reintento interno (hasta 3 total) por JSON roto/degenerado.
-    Si un ticker ausente en respuesta válida, NO se reintenta lote entero."""
+    """Prescore de un lote en una llamada. Reintento interno (hasta 3 total) por JSON
+    roto/degenerado. Si un ticker ausente en respuesta válida, NO se reintenta lote entero."""
     wanted = {d.ticker for d in items}
     user = _prescore_batch_prompt(items, macro_block)
     raw = ""

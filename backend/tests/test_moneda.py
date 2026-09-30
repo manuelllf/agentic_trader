@@ -56,7 +56,8 @@ def test_size_to_weight_suma_eur_al_cambio_solo_si_se_pide(db) -> None:
 
 def test_cash_by_currency_libro_vacio_no_revienta(db) -> None:
     """Sin ninguna asignación todavía: cero limpio en las dos divisas, no un error ni None."""
-    assert ledger.cash_by_currency(db, BOOK_REAL) == {"USD": Decimal("0.00"), "EUR": Decimal("0.00")}
+    assert ledger.cash_by_currency(db, BOOK_REAL) == {
+        "USD": Decimal("0.00"), "EUR": Decimal("0.00")}
     assert ledger.available_cash(db, BOOK_REAL) == Decimal("0.00")
 
 
@@ -382,7 +383,8 @@ def test_approve_falla_limpio_si_el_auto_fx_no_se_encuentra(db, monkeypatch) -> 
     assert db.query(Position).filter(Position.book == BOOK_REAL).count() == 0
     assert db.query(CurrencyConversion).count() == 0
     # Y el capital sigue intacto — nada se movió por el intento fallido.
-    assert ledger.cash_by_currency(db, BOOK_REAL) == {"USD": Decimal("5.00"), "EUR": Decimal("50.00")}
+    assert ledger.cash_by_currency(db, BOOK_REAL) == {
+        "USD": Decimal("5.00"), "EUR": Decimal("50.00")}
 
 
 def test_reconcile_working_reintenta_sin_corromper_si_falta_el_fx(db, monkeypatch) -> None:
@@ -422,6 +424,7 @@ def test_reconcile_working_reintenta_sin_corromper_si_falta_el_fx(db, monkeypatc
     refreshed = db.get(Approval, a.id)
     assert refreshed.status == "working"                     # NO 'failed': se reintentará solo
     assert refreshed.quantity in (None, Decimal("0"))         # nada se apuntó a medias
-    assert ledger.cash_by_currency(db, BOOK_REAL) == {"USD": Decimal("5.00"), "EUR": Decimal("50.00")}
+    assert ledger.cash_by_currency(db, BOOK_REAL) == {
+        "USD": Decimal("5.00"), "EUR": Decimal("50.00")}
     # Y el motivo del atasco se ve en el panel — no un log que el usuario nunca llega a leer.
     assert "falló" in refreshed.result_msg.lower() or "fall" in refreshed.result_msg.lower()

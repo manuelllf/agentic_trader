@@ -207,7 +207,8 @@ def wikipedia_current_events(days: int = 7, max_chars: int = 16000, db=None) -> 
 
 def wikipedia_scheduled_events(year: int | None = None, max_chars: int = 3000,
                                db=None) -> str:  # noqa: ANN001
-    """Calendario FUTURO: sección 'Predicted and scheduled events' de la página del año (Exhibit 2D).
+    """Calendario FUTURO: sección 'Predicted and scheduled events' de la página del año
+    (Exhibit 2D).
 
     Cacheado 24 h: un calendario anual no cambia de hora en hora.
     """

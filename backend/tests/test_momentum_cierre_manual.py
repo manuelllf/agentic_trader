@@ -30,7 +30,8 @@ def _senal(db, *, resuelta: bool, ret: float | None) -> int:
         insert into momentum_senales (ticker, tipo, entry_date, entry_price, ret, resuelta,
             estado, motivo)
         values ('HQ', 'zigzag', :d, 10.675, :ret, :r, 'vendida', :m)
-    """), {"d": date(2026, 9, 14), "ret": ret, "r": resuelta, "m": "objetivo" if resuelta else None})
+    """), {"d": date(2026, 9, 14), "ret": ret, "r": resuelta,
+           "m": "objetivo" if resuelta else None})
     sid = db.execute(text("select max(id) from momentum_senales")).scalar()
     for accion, n, precio, com in (("compra", 95, 10.35, 0.24), ("compra", 3, 10.35, 0),
                                    ("venta", 98, 13, 0.71)):

@@ -87,7 +87,8 @@ def update(db: Session, scored: list[tuple[str, float, str]]) -> None:
 
     # Tope de tamaño: si sobra, caen las de menor score (protege la exploración random).
     if len(existing) > settings.watchlist_max:
-        extra = sorted(existing.values(), key=lambda x: x.score, reverse=True)[settings.watchlist_max:]
+        por_score = sorted(existing.values(), key=lambda x: x.score, reverse=True)
+        extra = por_score[settings.watchlist_max:]
         for w in extra:
             db.delete(w)
 

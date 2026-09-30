@@ -135,7 +135,8 @@ class IbkrWebBroker:
             logger.warning("No se pudo obtener precio de referencia para conid %s", conid)
         return None
 
-    def place_order(self, ticker: str, side: str, quantity: Decimal, order_ref: str = "") -> BrokerResult:
+    def place_order(self, ticker: str, side: str, quantity: Decimal,
+                    order_ref: str = "") -> BrokerResult:
         """Orden LÍMITE ya aprobada por el usuario (NUNCA a mercado). side: 'buy' | 'sell'.
 
         El límite se fija sobre el precio de referencia de IBKR ± `limit_buffer_pct` (límite
@@ -244,7 +245,8 @@ class IbkrWebBroker:
         if o is None:
             return BrokerResult(ok=True, fill_price=None, simulated=False, status="working",
                                 order_id=order_id, message=f"Orden {order_id}: sin datos aún.")
-        raw = str(o.get("status") or o.get("order_status") or o.get("orderStatus") or "").lower().strip()
+        raw = str(o.get("status") or o.get("order_status") or o.get("orderStatus")
+                  or "").lower().strip()
         filled = self._num(o, "filledQuantity", "filled_quantity", "cumQuantity", "filled")
         avg = self._num(o, "avgPrice", "avg_price", "average_price", "avgprice")
         if raw in self._FILLED:
@@ -434,7 +436,8 @@ class IbkrWebBroker:
             return {
                 "mode": "live", "live": True,
                 "detail": (f"IBKR Web API conectado (cuenta {self._account})." if healthy
-                           else "IBKR Web API: sesión no saludable (revisa credenciales/activación)."),
+                           else "IBKR Web API: sesión no saludable "
+                                "(revisa credenciales/activación)."),
             }
         except Exception as exc:  # noqa: BLE001
             return {"mode": "live", "live": True, "detail": f"IBKR sin conexión: {exc}"}

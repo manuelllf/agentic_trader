@@ -128,7 +128,8 @@ def _run(ids: list[int]) -> None:
     except Exception:  # noqa: BLE001 -- fallo antes/entre señales (la query, etc.)
         # Detalle completo al log; al panel del usuario, mensaje corto (nunca el SQL/stacktrace).
         logger.exception("Fallo en el gate de momentum")
-        gate_progress.terminar(error="No se pudo completar la evaluación. Revisa los logs del servidor.")
+        gate_progress.terminar(
+            error="No se pudo completar la evaluación. Revisa los logs del servidor.")
     finally:
         db.close()
         with _lock:

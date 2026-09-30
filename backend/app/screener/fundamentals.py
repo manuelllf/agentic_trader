@@ -573,7 +573,8 @@ def _recorta_palabra(texto: str, max_chars: int) -> str:
 
 
 def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
-    """Titulares + resumen (Exhibit 2A: "headlines with summaries"). Recortado a 300 chars/palabra."""
+    """Titulares + resumen (Exhibit 2A: "headlines with summaries"). Recortado a 300
+    chars/palabra."""
     out: list[str] = []
     try:
         for item in (yt.news or [])[:max_items]:

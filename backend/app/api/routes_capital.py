@@ -41,7 +41,8 @@ def _anonymize_positions(rows: list[dict]) -> list[dict]:
     """Quita la identidad de cada posición (ticker, cantidad, coste...) dejando solo el P&L
     relativo, para que el rendimiento se pueda presumir sin regalar la cartera del método."""
     return [
-        {"label": f"Posición {i}", "unrealized_pnl": r["unrealized_pnl"], "unrealized_pct": r["pnl_pct"]}
+        {"label": f"Posición {i}", "unrealized_pnl": r["unrealized_pnl"],
+         "unrealized_pct": r["pnl_pct"]}
         for i, r in enumerate(rows, start=1)
     ]
 

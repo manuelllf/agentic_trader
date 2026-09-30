@@ -34,7 +34,8 @@ _CHUNK_WORDS = 90
 _CHUNK_OVERLAP = 15
 
 
-def _chunk(text: str, words_per_chunk: int = _CHUNK_WORDS, overlap: int = _CHUNK_OVERLAP) -> list[str]:
+def _chunk(text: str, words_per_chunk: int = _CHUNK_WORDS,
+           overlap: int = _CHUNK_OVERLAP) -> list[str]:
     """Trocea `text` en solapes de `words_per_chunk` palabras. Un texto que ya cabe en una sola
     ventana devuelve `[text]` sin tocar — es el caso de todo lo guardado antes de este cambio."""
     words = text.split()

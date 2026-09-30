@@ -17,7 +17,8 @@ import pytest
 psycopg = pytest.importorskip("psycopg")
 
 URL = os.environ.get("LIGA_TEST_DATABASE_URL")
-pytestmark = pytest.mark.skipif(not URL, reason="Sin BD de pruebas de la liga (LIGA_TEST_DATABASE_URL)")
+pytestmark = pytest.mark.skipif(
+    not URL, reason="Sin BD de pruebas de la liga (LIGA_TEST_DATABASE_URL)")
 
 
 @pytest.fixture
@@ -406,7 +407,8 @@ def test_ligas_privadas_solo_con_pro_y_por_codigo(cx):
 def test_el_cupo_de_una_liga_se_respeta(cx):
     p, q, r = _usuario(cx, pro=True), _usuario(cx, pro=True), _usuario(cx, pro=True)
     _como(cx, p)
-    cx.execute("insert into liga.ligas_privadas (nombre, codigo, cupo) values ('Dos', 'HJKLMNPQ', 2)")
+    cx.execute("insert into liga.ligas_privadas (nombre, codigo, cupo) "
+               "values ('Dos', 'HJKLMNPQ', 2)")
     _como(cx, q)
     cx.execute("select liga.unirse_liga('HJKLMNPQ')")
     _como(cx, r)
