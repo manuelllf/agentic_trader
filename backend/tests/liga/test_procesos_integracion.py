@@ -671,3 +671,38 @@ def test_una_cuenta_suspendida_no_se_inscribe_en_la_jornada(fabrica, mercado, mu
     foto.ejecutar(ene, fabrica=fabrica)
     formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
     assert set(_inscripciones(fabrica, ene)) == {"alpha", "omega", "lambda"}
+
+
+def test_para_probar_vale_un_escaneo_con_notas_aunque_no_sea_de_decision(fabrica, mundo) -> None:  # noqa: ANN001
+    """Antes de que llegue el escaneo de decisión del mes, el editor prueba con el último escaneo
+    que tenga notas de Jev; la jornada oficial sigue exigiendo uno de decisión."""
+    from app.liga import estrategias
+    from app.liga.procesos import foto as foto_proceso
+    from app.liga.procesos.comun import ErrorProceso
+
+    db = fabrica()
+    db.execute(text("update scan_runs set decide = false"))
+    db.execute(text("update scan_audit set decide = false"))
+    db.commit()
+    # Oficial: ya no hay escaneo de decisión con notas.
+    with pytest.raises(ErrorProceso):
+        foto_proceso._escaneo(db, foto_proceso._foto(db, None), None)
+    # Para probar: sí, y avisa de qué escaneo son las notas.
+    ctx = estrategias._contexto_desde(db, None)
+    assert ctx.notas and ctx.empresas
+    assert ctx.plan_b is True
+    db.close()
+
+
+def test_sin_ningun_escaneo_con_notas_sigue_sin_poder_probar(fabrica, mundo) -> None:  # noqa: ANN001
+    from fastapi import HTTPException
+
+    from app.liga import estrategias
+
+    db = fabrica()
+    db.execute(text("update scan_audit set jev_fundamentals = null"))
+    db.commit()
+    with pytest.raises(HTTPException) as e:
+        estrategias._contexto_desde(db, None)
+    assert "Todavía no hay datos de este mes" in e.value.detail
+    db.close()

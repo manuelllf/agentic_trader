@@ -75,6 +75,23 @@ _ESCANEOS = """
 """
 
 
+_ESCANEO_CON_NOTAS = """
+    select r.id, r.scan_at from scan_runs r
+    where r.error is null
+      and exists (select 1 from scan_audit a
+                  where a.scan_run_id = r.id and a.jev_fundamentals is not null)
+    order by r.scan_at desc, r.id desc limit 1
+"""
+
+
+def escaneo_para_probar(db: Session) -> tuple[int, str] | None:
+    """El último escaneo con notas de Jev, sea de decisión o no: sirve para PROBAR una estrategia
+    antes de que exista el de decisión del mes. La jornada oficial sigue pidiendo el de decisión
+    (`_escaneo`). Devuelve el id y el día del escaneo, o None si no hay ninguno."""
+    fila = db.execute(text(_ESCANEO_CON_NOTAS)).one_or_none()
+    return (fila.id, fila.scan_at.strftime("%Y-%m-%d")) if fila else None
+
+
 def _escaneo(db: Session, foto, scan_run_id: int | None) -> tuple[int, list[str]]:  # noqa: ANN001
     if scan_run_id is not None:
         fila = db.execute(text("select id, decide, error from scan_runs where id = :s"),

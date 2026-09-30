@@ -36,6 +36,9 @@ html[data-theme="dark"] .lg {
   color-scheme: dark;
 }
 
+/* Sin rebote ni «tirar para refrescar» en la liga: es una app con barra de pestañas fija. */
+html:has(body > .lg), body:has(> .lg) { overscroll-behavior-y: none; }
+
 /* El body también pinta su fondo: sin esto, el rebote del scroll enseña blanco en oscuro. */
 body { margin: 0; }
 body:has(> .lg) { background: #FFFFFF; }
@@ -45,7 +48,9 @@ body:has(> .lg) { background: #FFFFFF; }
 html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 
 .lg {
-  min-height: 100dvh;
+  /* svh y no dvh: nunca es mayor que el área visible, así una pantalla corta no deja franja de
+     scroll aunque el móvil cuente mal la barra del sistema. */
+  min-height: 100svh;
   background: var(--bg);
   color: var(--ink2);
   font-family: var(--font-lg), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -77,7 +82,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 
 /* Página sencilla de una sola columna: la de espera y la 404. */
 .lg .sencilla {
-  display: flex; flex-direction: column; min-height: 100dvh;
+  display: flex; flex-direction: column; min-height: 100svh;
   width: 100%; max-width: 480px; margin: 0 auto; padding: 18px 16px 28px;
 }
 .lg .sencilla-top { display: flex; align-items: center; justify-content: space-between; }

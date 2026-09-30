@@ -158,11 +158,15 @@ export default function Cuenta() {
               <div className="campo">
                 <span className="lbl">Verificación en dos pasos</span>
                 <span className="nota">
-                  {yo.aal2 ? "Activada y superada en esta sesión." : "Pide un código de tu app al entrar."}
+                  {yo.aal2
+                    ? "Activada y superada en esta sesión."
+                    : yo.admin
+                      ? "Obligatoria para el Panel de control: pide un código de tu app al entrar."
+                      : "Opcional. Si la activas, al entrar te pedimos un código de tu app de verificación."}
                 </span>
                 {!yo.aal2 && (
                   <Link href="/cuenta/verificacion?next=/cuenta" className="btn small">
-                    Activarla o pasar el código
+                    {yo.admin ? "Activarla o pasar el código" : "Activarla (opcional)"}
                   </Link>
                 )}
               </div>

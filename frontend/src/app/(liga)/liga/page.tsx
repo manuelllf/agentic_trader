@@ -157,7 +157,7 @@ export default function Liga() {
               <ErrorLiga titulo="No se pudo cargar la clasificación" mensaje={clasificacion}
                          accion={{ texto: "Reintentar", onClick: refrescarClasificacion }} />
             ) : clasificacion.filas.length === 0 ? (
-              <Vacio titulo="Aún no juegas nadie"
+              <Vacio titulo="Todavía no juega nadie"
                      texto="Nadie se ha apuntado todavía a esta temporada."
                      accion={yo
                        ? { texto: "Crear la mía", onClick: () => { window.location.href = "/crear"; } }

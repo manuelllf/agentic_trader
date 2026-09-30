@@ -44,7 +44,11 @@ from app.liga.motor.seleccion import Receta as RecetaMotor
 from app.liga.motor.seleccion import validar_receta as _validar_receta_motor
 from app.liga.procesos import datos as procesos_datos
 from app.liga.procesos.comun import ErrorProceso, fabrica_sistema
-from app.liga.procesos.foto import _escaneo, _foto  # noqa: PLC2701 — reuso deliberado (plan §7)
+from app.liga.procesos.foto import (  # noqa: PLC2701 — reuso deliberado (plan §7)
+    _escaneo,
+    _foto,
+    escaneo_para_probar,
+)
 
 logger = logging.getLogger("app.liga")
 
@@ -205,7 +209,10 @@ class Contexto:
 
 def _sin_foto(e: ErrorProceso) -> HTTPException:
     # El texto del proceso es para el admin («lánzala desde Alpha»); el usuario solo ve el estado.
-    return HTTPException(e.codigo, "Todavía no hay foto del mes: llega con la próxima jornada.")
+    return HTTPException(
+        e.codigo,
+        "Todavía no hay datos de este mes para probar tu estrategia. Se cargan con el escaneo "
+        "mensual, el primer día de bolsa.")
 
 
 # Caché en memoria de proceso de lo pesado de una foto (universo + notas: ~14 500 filas +
@@ -241,7 +248,15 @@ def _empresas_y_notas(db: Session, foto_id: int,
 def _contexto_desde(db: Session, foto_id: int | None) -> Contexto:
     try:
         foto = _foto(db, foto_id)
-        scan_run_id, avisos = _escaneo(db, foto, None)
+        try:
+            scan_run_id, avisos = _escaneo(db, foto, None)
+        except ErrorProceso:
+            # Aún no hay escaneo de decisión con notas (el primero del mes llega el día 1): para
+            # probar vale el último con notas de Jev. La jornada oficial no pasa por aquí.
+            alternativo = escaneo_para_probar(db)
+            if alternativo is None:
+                raise
+            scan_run_id, avisos = alternativo[0], [f"Notas del escaneo del {alternativo[1]}."]
     except ErrorProceso as e:
         raise _sin_foto(e) from e
     empresas, notas = _empresas_y_notas(db, foto.id, scan_run_id)
