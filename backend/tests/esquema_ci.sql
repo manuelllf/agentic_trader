@@ -1,4 +1,4 @@
--- migraciones-liga: 016
+-- migraciones-liga: 017
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -2016,6 +2016,7 @@ CREATE TABLE liga.pruebas (
     usuario_id uuid NOT NULL,
     receta_id bigint NOT NULL,
     foto_id bigint NOT NULL,
+    scan_run_id bigint,
     estado text DEFAULT 'pendiente'::text NOT NULL,
     n_evaluadas integer DEFAULT 0 NOT NULL,
     idempotencia text NOT NULL,

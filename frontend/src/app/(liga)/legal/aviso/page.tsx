@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
 import { Contacto, TITULAR } from "../datos";
 
-export const metadata = { title: "Aviso legal — liguilla" };
+export const metadata = { title: "Aviso legal — índicem" };
 
 // Solo nombre, lugar y contacto mientras no haya actividad económica; al cobrar hay que añadir
 // NIF y domicilio.
@@ -16,7 +16,7 @@ export default function Aviso() {
         <li><b>Contacto</b>: <Contacto /></li>
       </ul>
       <p>
-        liguilla es un juego gratuito de simulación, sin publicidad ni cobros. Si eso cambia, este
+        índicem es un juego gratuito de simulación, sin publicidad ni cobros. Si eso cambia, este
         aviso se completará con el NIF y el domicilio del titular antes de cobrar nada.
       </p>
 

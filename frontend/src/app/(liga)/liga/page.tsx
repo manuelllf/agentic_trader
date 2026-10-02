@@ -10,8 +10,8 @@
 // etiqueta neutra («de la comunidad») para las que no son de la casa ni la propia.
 
 import type { CSSProperties } from "react";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   BarraPestanas, CabeceraApp, Cargando, Clasificacion as TablaClasificacion, Escudo, ErrorLiga,
   FilaEquipo, HuecoClasificacion, Segmentado, Vacio,
@@ -91,14 +91,24 @@ function textoSinClasificacion(p: Portada): string {
 }
 
 export default function Liga() {
+  return <Suspense fallback={<Cargando />}><LigaContenido /></Suspense>;
+}
+
+function LigaContenido() {
   const router = useRouter();
+  const parametros = useSearchParams();
   const { yo } = useSesion();
-  const [vista, setVista] = useState<Vista>("tabla");
+  const vista: Vista = parametros.get("vista") === "jornada" ? "jornada" : "tabla";
+  const setVista = (valor: Vista) => {
+    const query = new URLSearchParams(parametros.toString());
+    if (valor === "jornada") query.set("vista", valor); else query.delete("vista");
+    router.replace(`/liga${query.size ? `?${query}` : ""}`, { scroll: false });
+  };
 
   // Caché compartida (`lib/liga/cache.ts`): al volver a «Liga» se pinta lo último bueno al
   // instante y se revalida en segundo plano, en vez de repetir el esqueleto (H1/M6 del informe).
   const { datos: portada, cargando: cargandoPortada, refrescar: refrescarPortada } =
-    useCache<Portada | string>("portada", getPortada);
+    useCache<Portada | string>("portada", getPortada, 120000);
   const hayTemporada = typeof portada === "object" && !!portada && portada.temporada !== null;
   const { datos: clasificacion, refrescar: refrescarClasificacion } =
     useCache<Clasificacion | string>(
@@ -109,6 +119,7 @@ export default function Liga() {
   const { datos: jornada, refrescar: refrescarJornada } = useCache<JornadaDetalle | string>(
     vista === "jornada" && idEnJuego != null ? `jornada:${idEnJuego}` : null,
     () => getJornadaPublica(idEnJuego as number),
+    120000,
   );
 
   const abrir = (id: string) => router.push(`/ficha/${id}`);
@@ -283,8 +294,10 @@ function VistaJornada({
     <div className="sec" style={{ marginTop: 20 }}>
       {detalle.provisional && detalle.hasta && (
         <p className="meta">
-          En directo · al cierre del {fecha(detalle.hasta)}. Los puntos se fijan al cerrar la
-          jornada.
+          {detalle.en_vivo ? "Cotizaciones provisionales" : `Último cierre disponible · ${fecha(detalle.hasta)}`}
+          {detalle.actualizado && ` · consultadas a las ${new Date(detalle.actualizado).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}`}
+          . Se actualiza cada dos minutos. Los puntos se fijan al cerrar la jornada.
+          {!!detalle.precios_pendientes && ` ${detalle.precios_pendientes} cotizaciones pendientes de actualizar.`}
         </p>
       )}
       {sp != null && (

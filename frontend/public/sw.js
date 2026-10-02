@@ -1,15 +1,14 @@
 // Service worker: instalación PWA + notificaciones push (VAPID).
 // El caché solo toca GETs del MISMO origen (nunca la API del backend, que vive en otro puerto).
-// v4: lo inmutable (`/_next/static`, con hash en el nombre, e iconos) sale de caché sin esperar
-// a la red; la página sigue yendo a red primero para no servir un despliegue viejo.
-const CACHE = "agentic-v6";   // sube al cambiar qué se guarda: la activación borra las anteriores
-const INMUTABLE = /^\/(_next\/static\/|icon-|apple-touch-icon|favicon)/;
+// Solo recursos estáticos y páginas públicas; nunca sesión, HTML privado ni respuestas RSC.
+const CACHE = "indicem-v7";
+const INMUTABLE = /^\/_next\/static\//;
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) =>
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => /^(agentic-|indicem-)/.test(k) && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   )
 );
@@ -29,6 +28,10 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
+  const publica = event.request.mode === "navigate"
+    && (url.pathname === "/" || url.pathname === "/como-funciona" || url.pathname.startsWith("/legal/"));
+  const marca = /^\/(?:favicon\.(?:svg|ico)|marca\.svg|icon-[\w-]+\.png|apple-touch-icon\.png|manifest\.webmanifest|admin\/manifest\.json)$/.test(url.pathname);
+  if (!publica && !marca) return;
   event.respondWith(
     fetch(event.request)
       .then((res) => {
@@ -40,14 +43,14 @@ self.addEventListener("fetch", (event) => {
         }
         return res;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => (await caches.match(event.request)) || Response.error())
   );
 });
 
 // ---- Push: el timbre de Alpha ----------------------------------------
 
 self.addEventListener("push", (event) => {
-  let data = { title: "Agentic Trader", body: "Nueva alerta.", url: "/admin/alpha", tag: "agentic-alpha" };
+  let data = { title: "índicem", body: "Nueva alerta.", url: "/admin/alpha", tag: "agentic-alpha" };
   try {
     data = { ...data, ...event.data.json() };
   } catch {

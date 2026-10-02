@@ -220,7 +220,7 @@ function SombraRoom() {
       await downloadChartCard({
         preset,
         title: "¿Bate al mercado?",
-        subtitle: "Agentic Trader · ranker fundamental sistemático",
+        subtitle: "índicem · ranker fundamental sistemático",
         badges: [
           ...(perf?.since ? [{ text: `desde el ${fmtDay(perf.since)}` }] : []),
           { text: `datos a ${fmtDay(hoy.toISOString().slice(0, 10))}` },
@@ -243,7 +243,7 @@ function SombraRoom() {
           body: svg as SVGSVGElement,
         }],
         footer: "No constituye recomendación de inversión · operaciones simuladas, sin dinero real · rentabilidad neta de comisiones simuladas",
-        filename: `agentic-trader-${hoy.toISOString().slice(0, 10)}`,
+        filename: `indicem-${hoy.toISOString().slice(0, 10)}`,
       });
       setExportMsg("");
     } catch (e) {
@@ -293,7 +293,7 @@ function SombraRoom() {
       await downloadChartCard({
         preset,
         title: esDecision ? "La rotación de la cartera" : "El embudo del escaneo",
-        subtitle: "Agentic Trader · ranker fundamental sistemático",
+        subtitle: "índicem · ranker fundamental sistemático",
         badges: [
           { text: `${esDecision ? "decisión mensual" : "observatorio semanal"} · ${dia}` },
           ...(macro ? [{ text: `${macro.regime}${macro.vix != null ? ` · VIX ${macro.vix}` : ""}`,
@@ -317,7 +317,7 @@ function SombraRoom() {
         footer: esDecision
           ? "No constituye recomendación de inversión · pesos objetivo, no ejecutados · operaciones simuladas, sin dinero real"
           : "No constituye recomendación de inversión · agregados por etapa y sector, sin nombres · operaciones simuladas, sin dinero real",
-        filename: `agentic-trader-${esDecision ? "rotacion" : "embudo"}-${(report?.at ?? new Date().toISOString()).slice(0, 10)}`,
+        filename: `indicem-${esDecision ? "rotacion" : "embudo"}-${(report?.at ?? new Date().toISOString()).slice(0, 10)}`,
       });
       setExportEmbudoMsg("");
     } catch (e) {
@@ -359,7 +359,7 @@ function SombraRoom() {
       await downloadChartCard({
         preset,
         title: "¿Eligió bien?",
-        subtitle: "Agentic Trader · ranker fundamental sistemático",
+        subtitle: "índicem · ranker fundamental sistemático",
         badges: [
           { text: `${c.mode} del ${fmtDay(c.at)}` },
           { text: `${c.days} día${c.days === 1 ? "" : "s"} de mercado después` },
@@ -370,7 +370,7 @@ function SombraRoom() {
           body: groupBarsSvg(barras, theme, frontera),
         }],
         footer: "No constituye recomendación de inversión · agregados de la traza de auditoría, sin nombres · operaciones simuladas, sin dinero real",
-        filename: `agentic-trader-eligio-bien-${c.at.slice(0, 10)}`,
+        filename: `indicem-eligio-bien-${c.at.slice(0, 10)}`,
       });
       setExportGruposMsg("");
     } catch (e) {
@@ -393,7 +393,7 @@ function SombraRoom() {
       await downloadChartCard({
         preset,
         title: "¿El score predice?",
-        subtitle: "Agentic Trader · ranker fundamental sistemático",
+        subtitle: "índicem · ranker fundamental sistemático",
         badges: [
           { text: `${c.mode} del ${fmtDay(c.at)}` },
           { text: `${c.days} día${c.days === 1 ? "" : "s"} de mercado después` },
@@ -405,7 +405,7 @@ function SombraRoom() {
           body: scatterSvg(c.pairs.map((p) => ({ score: p.score, ret: p.ret, funded: p.funded })), theme),
         }],
         footer: "No constituye recomendación de inversión · agregados de la traza de auditoría, sin nombres · operaciones simuladas, sin dinero real",
-        filename: `agentic-trader-score-predice-${c.at.slice(0, 10)}`,
+        filename: `indicem-score-predice-${c.at.slice(0, 10)}`,
       });
       setExportScoreMsg("");
     } catch (e) {

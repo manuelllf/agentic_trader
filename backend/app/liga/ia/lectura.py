@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -30,6 +31,8 @@ logger = logging.getLogger("app.liga.ia")
 
 _MODELO = "deepseek-flash"
 _LARGO_TEXTO = 20000
+_GENERACIONES: set[tuple[str, int]] = set()
+_CANDADO_GENERACIONES = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -70,7 +73,7 @@ def _desde_finalista(db: Session, ticker: str, foto_id: int, scan_run_id: int) -
     return lectura
 
 
-def _reunir(ticker: str, db: Session) -> tuple[str | None, str | None]:
+def _reunir(ticker: str, db: Session, foto_id: int) -> tuple[str | None, str | None]:
     """Datos + bloque macro para el prompt (`gather` sí necesita la sesión: mira si hay foto
     reciente reutilizable). Vive en su propia función para que la sesión de BD se pueda cerrar
     ANTES de la llamada al proveedor -- ver `_nueva_llamada`."""
@@ -81,7 +84,8 @@ def _reunir(ticker: str, db: Session) -> tuple[str | None, str | None]:
     # `gather` y `get_macro` usan las cachés de datos compartidas (una captura suelta en
     # `fundamentals_snapshot` y el macro en `meta`), las mismas que rellena cualquier escaneo:
     # no tocan carteras, operaciones ni nada de las salas.
-    data, error = fund_mod.gather(ticker, db=db)
+    data = fund_mod.foto_reciente(db, ticker, foto_id=foto_id)
+    error = "Sin datos de esta empresa en la foto de la prueba."
     if data is None:
         logger.warning("Lectura de %s: no se pudo reunir sus datos (%s)", ticker, error)
         return None, error
@@ -101,7 +105,7 @@ def _nueva_llamada(ticker: str, foto_id: int, usuario_id: str | None) -> Lectura
 
     db = fabrica_sistema()
     try:
-        user_prompt, _error = _reunir(ticker, db)
+        user_prompt, _error = _reunir(ticker, db, foto_id)
     finally:
         db.close()
     if user_prompt is None:
@@ -147,6 +151,28 @@ def _nueva_llamada(ticker: str, foto_id: int, usuario_id: str | None) -> Lectura
 
 def obtener_o_crear(ticker: str, foto_id: int, scan_run_id: int,
                     usuario_id: str | None = None) -> LecturaResultado | None:
+    db = fabrica_sistema()
+    try:
+        fila = _de_cache(db, ticker, foto_id)
+        if fila is not None:
+            return LecturaResultado(fila.id, fila.ticker, fila.foto_id, fila.texto,
+                                    list(fila.fuentes or []), de_cache=True)
+    finally:
+        db.close()
+    clave = (ticker, foto_id)
+    with _CANDADO_GENERACIONES:
+        if clave in _GENERACIONES:
+            raise HTTPException(409, "Este informe ya se está preparando. Ábrelo en unos momentos.")
+        _GENERACIONES.add(clave)
+    try:
+        return _obtener_o_crear(ticker, foto_id, scan_run_id, usuario_id)
+    finally:
+        with _CANDADO_GENERACIONES:
+            _GENERACIONES.discard(clave)
+
+
+def _obtener_o_crear(ticker: str, foto_id: int, scan_run_id: int,
+                     usuario_id: str | None = None) -> LecturaResultado | None:
     """La lectura de una empresa para esta foto, por el camino más barato que haya. `None` si no
     hay informe reutilizable y la llamada nueva falla."""
     db = fabrica_sistema()

@@ -39,10 +39,15 @@ function aalDe(token: string): string {
 
 /** Token de la sesión (ya refrescado si hacía falta) y su nivel. Solo para elegir qué mandar:
  *  quien decide es el backend. */
-export async function tokenSesion(): Promise<{ token: string; aal: string } | null> {
+export async function tokenSesion(signal?: AbortSignal): Promise<{ token: string; aal: string } | null> {
   const sb = supabase();
   if (!sb) return null;
-  const { data } = await sb.auth.getSession();
+  const { data } = await new Promise<Awaited<ReturnType<typeof sb.auth.getSession>>>((resolve, reject) => {
+    const abortar = () => reject(new DOMException("Sesión cancelada", "AbortError"));
+    if (signal?.aborted) { abortar(); return; }
+    signal?.addEventListener("abort", abortar, { once: true });
+    sb.auth.getSession().then(resolve, reject).finally(() => signal?.removeEventListener("abort", abortar));
+  });
   const token = data.session?.access_token;
   return token ? { token, aal: aalDe(token) } : null;
 }

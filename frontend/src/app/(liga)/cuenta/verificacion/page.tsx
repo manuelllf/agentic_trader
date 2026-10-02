@@ -97,7 +97,7 @@ export default function Verificacion() {
   return (
     <main className="sencilla">
       <header className="sencilla-top">
-        <Link href="/" className="wordmark">liguilla</Link>
+        <Link href="/" className="wordmark">índicem</Link>
       </header>
 
       <section className="sencilla-cuerpo arriba" aria-labelledby="titular">

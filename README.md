@@ -1,4 +1,4 @@
-# Agentic Trader
+# índicem
 
 Asistente personal de inversión sistemática. Un ranker fundamental basado en LLM puntúa
 acciones de EE. UU. a partir de sus fundamentales, valoración, noticias y contexto macro, y
@@ -7,7 +7,7 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 > Proyecto personal. No es asesoramiento financiero. Por defecto funciona en simulación
 > (`DRY_RUN`): no envía órdenes al bróker.
 
-**En producción:** <https://agentic-trader-manuelllf.vercel.app>. La **liguilla** (ver abajo) está en
+**En producción:** <https://agentic-trader-manuelllf.vercel.app>. **índicem** (ver abajo) está en
 beta cerrada, por invitación; las salas de administración viven bajo `/admin`, solo con una cuenta
 de administrador y verificación en dos pasos.
 
@@ -40,7 +40,7 @@ con como mucho dos por industria y a partes iguales, sin análisis profundo ni c
 mueve capital, ni siquiera simulado; solo se mide su rentabilidad bruta frente a la cartera del
 método y al S&P 500, para saber cuánto aporta el paso caro.
 
-## La liguilla
+## La liga de índicem
 
 Un producto encima del mismo motor: una **liga de estrategias en papel contra el S&P 500**. Cada
 persona escribe una idea en una frase, un modelo la convierte en reglas explícitas (sector,
@@ -148,7 +148,7 @@ sin tocar código.
 agentic_trading/
 ├── backend/     # FastAPI: escaneo, scoring, libros de capital, bróker, aprobaciones,
 │                #   momentum (2ª estrategia, independiente) y la liga (app/liga)
-└── frontend/    # Next.js: la liguilla (pública, móvil primero) y, bajo /admin,
+└── frontend/    # Next.js: índicem (pública, móvil primero) y, bajo /admin,
                  #   las salas Beta, Alpha y Omega (momentum)
 ```
 

@@ -487,7 +487,7 @@ def probar(id: uuid.UUID, body: PruebaIn | None = Body(default=None),
                 usuario_id=ident.uid)
         seleccion = _seleccionar_con(ctx, receta)
         prueba_id = estrategias.crear_prueba_sistema(ident.uid, receta.id, ctx.foto_id,
-                                                     len(seleccion.filas))
+                                                     len(seleccion.filas), ctx.scan_run_id)
     except Exception:
         if con_pregunta:
             comun.devolver_reserva(ident.uid, creditos_reservados, clave)

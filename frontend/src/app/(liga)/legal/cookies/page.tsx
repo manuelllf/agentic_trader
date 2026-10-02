@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
 
-export const metadata = { title: "Cookies — liguilla" };
+export const metadata = { title: "Cookies — índicem" };
 
 // La sesión en `localStorage` (`lib/liga/supabase.ts`) es lo único que guarda la web pública.
 // Si se añade algo (captcha, analítica), actualizar esta página antes de desplegarlo.

@@ -9,7 +9,7 @@ const SALAS = [
   { href: "/admin/alpha", nombre: "Alpha", texto: "Cuenta real: el agente propone, tú decides." },
   { href: "/admin/beta", nombre: "Beta", texto: "Réplica en papel del mismo método." },
   { href: "/admin/omega", nombre: "Omega", texto: "Caídas fuertes, con la IA de filtro." },
-  { href: "/admin/liga", nombre: "Liguilla", texto: "Temporadas, jornadas y sus procesos." },
+  { href: "/admin/liga", nombre: "índicem", texto: "Temporadas, jornadas y sus procesos." },
 ];
 
 export default function Admin() {

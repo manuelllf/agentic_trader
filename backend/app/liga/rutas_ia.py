@@ -54,6 +54,8 @@ def convertir(body: ConvertirIn, ident: Identidad = Depends(require_usuario)) ->
 
 class LecturaIn(BaseModel):
     idempotencia: str = Field(min_length=8, max_length=80)
+    estrategia_id: uuid.UUID | None = None
+    prueba_id: uuid.UUID | None = None
 
 
 class LecturaOut(BaseModel):
@@ -77,7 +79,11 @@ def leer_a_fondo(ticker: str, body: LecturaIn,
     §10): el resto, 404, para no convertir esto en un buscador de informes gratis."""
     limites.exigir_lectura_disponible(ident.uid)
     t = ticker.strip().upper()
-    ctx = estrategias.contexto_lectura(ident.uid, t)
+    if body.estrategia_id is not None:
+        cartera = estrategias.cartera_prueba(ident.uid, body.estrategia_id, body.prueba_id)
+        ctx = cartera[:2] if cartera is not None and t in cartera[2] else None
+    else:
+        ctx = estrategias.contexto_lectura(ident.uid, t)
     if ctx is None:
         raise HTTPException(404, "Esa empresa no está entre tus elegidas ahora mismo.")
     foto_id, scan_run_id = ctx
@@ -103,6 +109,24 @@ def ver_lectura(id: int, db: Session = Depends(db_usuario)) -> LecturaOut:  # no
     return LecturaOut(id=fila.id, ticker=fila.ticker, texto=fila.texto,
                       fuentes=list(fila.fuentes or []), ya_comprada=True,
                       creditos_cobrados=Decimal(0))
+
+
+@router.get("/estrategias/{id}/lecturas", response_model=list[LecturaOut])
+def lecturas_compradas(id: uuid.UUID, prueba_id: uuid.UUID | None = None,  # noqa: A002
+                      ident: Identidad = Depends(require_usuario),
+                      db: Session = Depends(db_usuario)) -> list[LecturaOut]:
+    cartera = estrategias.cartera_prueba(ident.uid, id, prueba_id)
+    if cartera is None:
+        raise HTTPException(404, "No existe esa prueba de tu estrategia.")
+    foto_id, _, tickers = cartera
+    filas = db.execute(text("""
+        select l.id, l.ticker, l.texto, l.fuentes from liga.lecturas l
+        where l.foto_id = :f and l.ticker = any(:t)
+          and exists (select 1 from liga.creditos_movimientos m
+                      where m.lectura_id = l.id and m.usuario_id = cast(:u as uuid))
+    """), {"f": foto_id, "t": tickers, "u": ident.uid}).all()
+    return [LecturaOut(id=f.id, ticker=f.ticker, texto=f.texto, fuentes=list(f.fuentes or []),
+                       ya_comprada=True, creditos_cobrados=Decimal(0)) for f in filas]
 
 
 @router.post("/estrategias/{id}/lecturas", response_model=LecturaCarteraOut,

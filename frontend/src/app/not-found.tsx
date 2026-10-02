@@ -4,11 +4,12 @@ import Link from "next/link";
 export default function NoEncontrada() {
   return (
     <div className="lg">
-      <main className="sencilla">
+      <main className="sencilla no-encontrada">
         <header className="sencilla-top">
-          <Link href="/" className="wordmark">liguilla</Link>
+          <Link href="/" className="wordmark">índicem</Link>
         </header>
 
+        <span className="codigo404" aria-hidden="true">404</span>
         <section className="sencilla-cuerpo" aria-labelledby="titular">
           <p className="marcador404 num">Error 404</p>
           <h1 id="titular">Fuera de juego</h1>

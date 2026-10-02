@@ -37,7 +37,7 @@ export default function Muestrario() {
   }
 
   return (
-    <main className="scroll" style={{ maxWidth: 480, margin: "0 auto" }}>
+    <main className="scroll">
       <h1 className="h1">Muestrario</h1>
       <p className="meta">
         Piezas de <code>_ui</code> con valores de ejemplo (inventados, solo para esta pantalla).
@@ -47,7 +47,7 @@ export default function Muestrario() {
       <Seccion titulo="Cuenta">
         <p className="fine">Cabecera con sesión y el menú abierto (el de verdad se abre al tocar).</p>
         <div className="sencilla-top" style={{ marginTop: 12, paddingBottom: 150 }}>
-          <span className="wordmark">liguilla</span>
+          <span className="wordmark">índicem</span>
           <div className="cuenta">
             <button type="button" className="cuenta-boton" aria-expanded="true">
               <span>admin</span>

@@ -21,7 +21,7 @@ export function CabeceraApp({ conCreditos = false }: { conCreditos?: boolean } =
   const saldo = creditos && typeof creditos === "object" ? creditos.saldo : undefined;
   return (
     <header className="cab">
-      <Link href="/" className="wordmark">liguilla</Link>
+      <Link href="/" className="wordmark">índicem</Link>
       <div className="cab-r">
         {yo && <Chip>{yo.plan === "pro" ? "Pro" : "Gratis"}</Chip>}
         {conCreditos && saldo != null && (

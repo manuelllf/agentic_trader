@@ -29,6 +29,16 @@ _EMPRESAS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def sin_llm_real(monkeypatch):  # noqa: ANN001, ANN201
+    from app.liga.ia import comun
+
+    def prohibida(**_kwargs):  # noqa: ANN003, ANN202
+        raise AssertionError("Este fichero no puede llamar a una API LLM.")
+
+    monkeypatch.setattr(comun, "llamar_ia", prohibida)
+
+
 @pytest.fixture
 def api(monkeypatch):  # noqa: ANN001, ANN201
     import jwt
@@ -191,6 +201,24 @@ def test_lectura_de_empresa_ajena_es_404(api) -> None:  # noqa: ANN001
     r = cliente.post("/liga/lecturas/ZSD", json={"idempotencia": uuid.uuid4().hex},
                      headers=cab(uid))
     assert r.status_code == 404, r.text
+
+
+def test_contexto_explicito_y_recuperacion_solo_del_dueno(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, foto_con_escaneo, finalista, _cx = api
+    _fid, rid = foto_con_escaneo()
+    finalista(rid, "ZSA", "Informe comprado de la prueba original.")
+    uid = usuario(creditos=100)
+    eid, prueba = _crear_y_probar(cliente, cab, uid)
+    ruta = f"/liga/estrategias/{eid}/lecturas?prueba_id={prueba['id']}"
+    assert cliente.get(ruta, headers=cab(uid)).json() == []
+    compra = cliente.post("/liga/lecturas/ZSA", headers=cab(uid), json={
+        "idempotencia": uuid.uuid4().hex, "estrategia_id": eid, "prueba_id": prueba["id"]})
+    assert compra.status_code == 200, compra.text
+    recuperadas = cliente.get(ruta, headers=cab(uid))
+    assert recuperadas.status_code == 200
+    assert recuperadas.json()[0]["id"] == compra.json()["id"]
+    assert recuperadas.json()[0]["creditos_cobrados"] == "0"
+    assert cliente.get(ruta, headers=cab(usuario())).status_code == 404
 
 
 def test_ver_lectura_solo_si_la_compraste(api) -> None:  # noqa: ANN001

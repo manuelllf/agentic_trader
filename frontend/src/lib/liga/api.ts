@@ -59,17 +59,10 @@ export async function cambiarAlias(alias: string): Promise<Yo | string> {
 
 /** Quién eres según el backend; null sin sesión o sin perfil, y lanza si no responde. */
 export async function getYo(): Promise<Yo | null> {
-  const sesion = await tokenSesion();
-  if (!sesion) return null;
-  // null solo cuando de verdad no hay perfil o sesión (401/404). Un fallo de red o del servidor
-  // lanza, para que la caché no lo guarde como si fuera un dato («no tienes perfil»).
-  const res = await fetch(`${API_URL}/liga/yo`, {
-    headers: { Authorization: `Bearer ${sesion.token}` },
-    cache: "no-store",
-  });
-  if (res.ok) return (await res.json()) as Yo;
-  if (res.status === 401 || res.status === 404) return null;
-  throw new Error(`GET /liga/yo respondió ${res.status}`);
+  const resultado = await llamar<Yo>("/liga/yo");
+  if (resultado === SIN_SESION || resultado === "No encontramos tu perfil.") return null;
+  if (typeof resultado === "string") throw new Error(resultado);
+  return resultado;
 }
 
 // ---- Estrategias (crear/editar, receta, pruebas, ficha...) -------------------------------------
@@ -208,18 +201,27 @@ async function llamar<T>(
   ruta: string,
   opciones: RequestInit = {},
   conSesion = true,
+  timeout = opciones.method && opciones.method !== "GET" ? 60000 : 15000,
 ): Promise<T | string> {
+  const ctrl = new AbortController();
+  const abortar = () => ctrl.abort();
+  opciones.signal?.addEventListener("abort", abortar, { once: true });
+  if (opciones.signal?.aborted) ctrl.abort();
+  let agotado = false;
+  const timer = setTimeout(() => { agotado = true; ctrl.abort(); }, timeout);
+  try {
   const cabeceras: Record<string, string> = { ...(opciones.headers as Record<string, string> ?? {}) };
   if (conSesion) {
-    const sesion = await tokenSesion();
+    const sesion = await tokenSesion(ctrl.signal);
     if (!sesion) return SIN_SESION;
     cabeceras.Authorization = `Bearer ${sesion.token}`;
   }
   if (opciones.body) cabeceras["Content-Type"] = "application/json";
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${ruta}`, { ...opciones, headers: cabeceras, cache: "no-store" });
+    res = await fetch(`${API_URL}${ruta}`, { ...opciones, signal: ctrl.signal, headers: cabeceras, cache: "no-store" });
   } catch (err) {
+    if (agotado) return "La petición está tardando demasiado. Puedes volver a intentarlo.";
     // Una petición cancelada a propósito (AbortController, p. ej. el buscador) no es un error de
     // red: se deja subir para que quien la canceló la distinga de una respuesta real.
     if (err instanceof DOMException && err.name === "AbortError") throw err;
@@ -232,13 +234,20 @@ async function llamar<T>(
     return SIN_SESION;
   }
   if (res.status === 204) return undefined as T;
-  const cuerpo = await res.json().catch(() => null);
+  const cuerpo = await res.json();
   if (res.ok) return cuerpo as T;
   const detalle = (cuerpo as { detail?: unknown } | null)?.detail;
   const mensaje = typeof detalle === "string" ? detalle : SIN_RED;
   // Un 5xx es un fallo nuestro: además del mensaje en su pantalla, sale el aviso para reportarlo.
   if (res.status >= 500) avisarError(mensaje);
   return mensaje;
+  } catch (err) {
+    if (opciones.signal?.aborted) throw err;
+    return agotado ? "La petición está tardando demasiado. Puedes volver a intentarlo." : SIN_RED;
+  } finally {
+    clearTimeout(timer);
+    opciones.signal?.removeEventListener("abort", abortar);
+  }
 }
 
 /** Catálogo de reglas, pesos y opciones de la receta. Público: no hace falta sesión. */
@@ -329,7 +338,7 @@ export async function probarEstrategia(
   return llamar<Prueba>(`/liga/estrategias/${id}/pruebas`, {
     method: "POST",
     body: JSON.stringify(conPregunta ? { con_pregunta: true, ...conPregunta } : {}),
-  });
+  }, true, 210000);
 }
 
 export type CostePregunta = {
@@ -378,10 +387,15 @@ export type Lectura = {
   creditos_cobrados: number;
 };
 
-export async function leerAFondo(ticker: string, idempotencia: string): Promise<Lectura | string> {
+export async function leerAFondo(ticker: string, idempotencia: string,
+  contexto?: { estrategia_id: string; prueba_id: string }): Promise<Lectura | string> {
   return llamar<Lectura>(`/liga/lecturas/${encodeURIComponent(ticker)}`, {
-    method: "POST", body: JSON.stringify({ idempotencia }),
-  });
+    method: "POST", body: JSON.stringify({ idempotencia, ...contexto }),
+  }, true, 210000);
+}
+
+export async function lecturasCompradas(estrategiaId: string, pruebaId: string): Promise<Lectura[] | string> {
+  return llamar<Lectura[]>(`/liga/estrategias/${estrategiaId}/lecturas?prueba_id=${encodeURIComponent(pruebaId)}`);
 }
 
 export async function verLectura(id: number): Promise<Lectura | string> {
@@ -394,6 +408,7 @@ export async function leerMiCartera(
   return llamar<{ lecturas: Lectura[]; creditos_cobrados: number }>(
     `/liga/estrategias/${estrategiaId}/lecturas`,
     { method: "POST", body: JSON.stringify({ idempotencia }) },
+    true, 210000,
   );
 }
 
@@ -411,7 +426,7 @@ export type ConvertirResultado = {
 export async function convertirFrase(frase: string): Promise<ConvertirResultado | string> {
   return llamar<ConvertirResultado>("/liga/convertir", {
     method: "POST", body: JSON.stringify({ frase }),
-  });
+  }, true, 60000);
 }
 
 // ---- Público: portada y clasificación (sin sesión, D3) ------------------------------------------
@@ -456,6 +471,7 @@ export type JornadaDetalle = {
   jornada: JornadaPublica; total: number; filas: FilaJornadaPublica[];
   /** Jornada en juego: cifras del último cierre (`hasta`), no las oficiales. */
   provisional?: boolean; hasta?: string | null;
+  actualizado?: string | null; en_vivo?: boolean; precios_pendientes?: number;
 };
 
 export type Portada = {

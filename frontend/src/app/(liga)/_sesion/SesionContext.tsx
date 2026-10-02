@@ -12,7 +12,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useRouter } from "next/navigation";
 import { getYo, type Yo } from "@/lib/liga/api";
 import { supabase, useSupabase } from "@/lib/liga/supabase";
-import { invalidar, useCache } from "@/lib/liga/cache";
+import { limpiarPrivado, useCache } from "@/lib/liga/cache";
 
 export type EstadoSesion = "cargando" | "fuera" | "dentro";
 
@@ -33,6 +33,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
   const sb = useSupabase();
   const [estado, setEstado] = useState<EstadoSesion>("cargando");
   const [email, setEmail] = useState<string | null>(null);
+  const [uid, setUid] = useState<string | null>(null);
 
   useEffect(() => {
     if (sb === undefined) return;
@@ -47,16 +48,18 @@ export function SesionProvider({ children }: { children: ReactNode }) {
     sb.auth.getSession().then(({ data }) => {
       if (!vivo) return;
       setEmail(data.session?.user.email ?? null);
+      setUid(data.session?.user.id ?? null);
       setEstado(data.session ? "dentro" : "fuera");
     });
     let uidAnterior: string | null | undefined;
     const { data: sub } = sb.auth.onAuthStateChange((_evento, sesion) => {
       setEmail(sesion?.user.email ?? null);
+      setUid(sesion?.user.id ?? null);
       setEstado(sesion ? "dentro" : "fuera");
       // Otra pestaña cerró o cambió de cuenta: lo cacheado era de la anterior.
       const uid = sesion?.user.id ?? null;
       if (uidAnterior !== undefined && uid !== uidAnterior) {
-        invalidar("yo", "creditos", "mis-estrategias", "mis-ligas");
+        limpiarPrivado();
       }
       uidAnterior = uid;
     });
@@ -72,7 +75,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
 
   const cerrarSesion = async () => {
     await supabase()?.auth.signOut();
-    invalidar("yo", "creditos", "mis-estrategias", "mis-ligas");
+    limpiarPrivado();
     setEstado("fuera");
   };
 
@@ -82,7 +85,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
     [estado, yo, yoFalla, email, refrescar],
   );
 
-  return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
+  return <Contexto.Provider value={valor}><div key={uid ?? "visitante"} className="sesion-contenido">{children}</div></Contexto.Provider>;
 }
 
 export function useSesion(): ContextoSesion {
@@ -95,9 +98,10 @@ export function useSesion(): ContextoSesion {
  *  (mismo destino de siempre) sin tener que repetir el `getSession` en cada `page.tsx`. */
 export function useSesionRequerida(next: string): ContextoSesion {
   const ctx = useSesion();
+  const router = useRouter();
   useEffect(() => {
-    if (ctx.estado === "fuera") window.location.replace(`/entrar?next=${encodeURIComponent(next)}`);
-  }, [ctx.estado, next]);
+    if (ctx.estado === "fuera") router.replace(`/entrar?next=${encodeURIComponent(next)}`);
+  }, [ctx.estado, next, router]);
   return ctx;
 }
 

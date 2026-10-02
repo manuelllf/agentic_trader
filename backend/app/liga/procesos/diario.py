@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select, text
@@ -52,7 +52,8 @@ def ultimo_dia(db: Session, j: Jornada, hasta: date | None = None) -> date | Non
         {"t": SPY, "a": j.dia_base, "b": tope}).scalar()
 
 
-def calcular(db: Session, j: Jornada, dia: date) -> dict:
+def calcular(db: Session, j: Jornada, dia: date,
+             cotizaciones: dict[str, list[precios.Cierre]] | None = None) -> dict:
     """Rentabilidad de cada inscripción y del S&P desde el cierre del día base hasta `dia`, con
     el motor (`rentabilidad`) y su resultado contra el S&P (`puntos`)."""
     filas = db.execute(text("""
@@ -63,6 +64,8 @@ def calcular(db: Session, j: Jornada, dia: date) -> dict:
     pos = datos.posiciones(db, [f.id for f in filas])
     tickers = {t for ps in pos.values() for t, _ in ps} | {SPY}
     cierres = precios.series(db, sorted(tickers), j.dia_base, dia)
+    if cotizaciones:
+        cierres = superponer(cierres, cotizaciones, j.dia_base, dia)
     try:
         sp = rentabilidad_sp(cierres.get(SPY, []), j.dia_base, dia)
     except ValueError as e:
@@ -73,7 +76,8 @@ def calcular(db: Session, j: Jornada, dia: date) -> dict:
                 "tipo": f.tipo, "casa_clave": f.casa_clave, "estado": f.estado}
         try:
             if f.casa_clave == "omega":
-                r, sin_cierre = omega.rentabilidad(db, j, dia)
+                r, sin_cierre = (omega.rentabilidad(db, j, dia, cotizaciones=cotizaciones)
+                                 if cotizaciones else omega.rentabilidad(db, j, dia))
             else:
                 r = rentabilidad_cartera(pos[f.id], cierres, j.dia_base, dia) if pos[f.id] \
                     else Decimal("0.0000")
@@ -107,6 +111,73 @@ def tabla_provisional(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
 _VIVO_TTL = 120.0   # segundos: la tabla pública no recalcula en cada visita
 _vivo_cache: dict[int, tuple[float, dict | None]] = {}
 _vivo_candado = threading.Lock()
+_vivo_en_vuelo: set[int] = set()
+_vivo_generacion = 0
+
+
+def superponer(cierres: dict[str, list[precios.Cierre]],
+               cotizaciones: dict[str, list[precios.Cierre]], desde: date,
+               hasta: date) -> dict[str, list[precios.Cierre]]:
+    """Solo en memoria: precios brutos, dividendos y splits sin modificar cierres oficiales."""
+    resultado = {}
+    for ticker in cierres.keys() | cotizaciones.keys():
+        dias = {c.dia: c for c in cierres.get(ticker, []) if desde <= c.dia <= hasta}
+        for c in cotizaciones.get(ticker, []):
+            if desde <= c.dia <= hasta:
+                anterior = dias.get(c.dia)
+                dias[c.dia] = precios.Cierre(c.dia, c.cierre,
+                    c.dividendo or (anterior.dividendo if anterior else 0),
+                    anterior.split if anterior and c.split == 1 else c.split)
+        resultado[ticker] = sorted(dias.values(), key=lambda c: c.dia)
+    return resultado
+
+
+def _lanzar_cotizaciones(jornada_id: int, fabrica: Fabrica) -> None:
+    if jornada_id in _vivo_en_vuelo:
+        return
+    _vivo_en_vuelo.add(jornada_id)
+    threading.Thread(target=_actualizar_cotizaciones, args=(jornada_id, fabrica, _vivo_generacion),
+                     name=f"liga-cotizaciones-{jornada_id}", daemon=True).start()
+
+
+def _actualizar_cotizaciones(jornada_id: int, fabrica: Fabrica, generacion: int) -> None:
+    try:
+        ahora = datetime.now(UTC)
+        hoy = ahora.astimezone(calendario.TZ_NUEVA_YORK).date()
+        with sesion(fabrica) as db:
+            j = jornada(db, jornada_id)
+            if j.estado != "formada":
+                return
+            tickers = set(db.execute(text("""
+                select p.ticker from liga.posiciones p
+                join liga.inscripciones i on i.id = p.inscripcion_id where i.jornada_id = :j
+            """), {"j": jornada_id}).scalars()) | {SPY}
+            tickers.update(o.ticker for o in omega.operaciones(db, j)
+                           if o.entrada_dia <= hoy and (o.salida_dia is None or o.salida_dia > hoy))
+            dia_fin = j.dia_fin
+        # Yahoo entrega la barra diaria en curso; descargar conserva dividendos y splits.
+        cotizaciones = precios.descargar(sorted(tickers), hoy - timedelta(days=7))
+        dias_sp = [c.dia for c in cotizaciones.get(SPY, []) if c.dia <= min(hoy, dia_fin)]
+        if not dias_sp:
+            return
+        dia = max(dias_sp)
+        with sesion(fabrica) as db:
+            j = jornada(db, jornada_id)
+            if j.estado != "formada" or dia < j.dia_base:
+                return
+            r = calcular(db, j, dia, cotizaciones=cotizaciones)
+        pendientes = sum(not any(c.dia == dia for c in cotizaciones.get(t, [])) for t in tickers)
+        valor = {"dia": dia, "sp": r["sp_rentabilidad"], "actualizado": datetime.now(UTC),
+                 "en_vivo": dia == hoy, "precios_pendientes": pendientes,
+                 "por_inscripcion": {f["inscripcion_id"]: f for f in r["filas"]}}
+        with _vivo_candado:
+            if jornada_id in _vivo_cache and generacion == _vivo_generacion:
+                _vivo_cache[jornada_id] = (_vivo_cache[jornada_id][0], valor)
+    except Exception:
+        logger.exception("No se pudieron actualizar las cotizaciones de la jornada %s", jornada_id)
+    finally:
+        with _vivo_candado:
+            _vivo_en_vuelo.discard(jornada_id)
 
 
 def vivo(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
@@ -118,6 +189,12 @@ def vivo(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
     with _vivo_candado:
         hit = _vivo_cache.get(jornada_id)
         if hit is not None and reloj() - hit[0] < _VIVO_TTL:
+            return hit[1]
+        if hit is not None and jornada_id in _vivo_en_vuelo:
+            return hit[1]
+        if hit is not None and hit[1] is not None:
+            _vivo_cache[jornada_id] = (reloj(), hit[1])
+            _lanzar_cotizaciones(jornada_id, fabrica)
             return hit[1]
         try:
             with sesion(fabrica) as db:
@@ -132,12 +209,16 @@ def vivo(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
             logger.exception("No se pudo calcular la tabla viva de la jornada %s", jornada_id)
             valor = None
         _vivo_cache[jornada_id] = (reloj(), valor)
+        if valor is not None:
+            _lanzar_cotizaciones(jornada_id, fabrica)
         return valor
 
 
 def olvidar_vivo() -> None:
     """Vacía la caché (al cerrar la jornada o en pruebas)."""
+    global _vivo_generacion
     with _vivo_candado:
+        _vivo_generacion += 1
         _vivo_cache.clear()
 
 
@@ -240,7 +321,7 @@ def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None) -> di
             from app import push
 
             with sesion(fabrica) as db:
-                push.send_to_all(db, title="Liguilla: fallaron los cierres diarios",
+                push.send_to_all(db, title="índicem: fallaron los cierres diarios",
                                  body=str(e)[:140], url="/admin", tag="agentic-liga")
         except Exception:
             logger.exception("Tampoco se pudo avisar por push")

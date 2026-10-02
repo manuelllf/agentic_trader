@@ -68,12 +68,15 @@ export default function FichaPage() {
   return (
     <main className="scroll">
       <CabeceraApp />
-      <Link href="/liga" className="back" style={{ marginTop: 4 }}>
+      <Link href="/liga" className="back" style={{ marginTop: 4 }} onClick={(evento) => {
+        if (evento.ctrlKey || evento.metaKey || evento.shiftKey || evento.altKey) return;
+        if (window.history.length > 1) { evento.preventDefault(); router.back(); }
+      }}>
         <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor"
              strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M15 6l-6 6 6 6" />
         </svg>
-        Volver a la liga
+        Volver
       </Link>
 
       {cargandoFicha ? (

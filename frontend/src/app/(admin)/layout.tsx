@@ -7,10 +7,10 @@ import "./admin.css";
 const geistSans = Geist({ subsets: ["latin"], weight: "variable", variable: "--font-geist-sans" });
 
 export const metadata: Metadata = {
-  title: "Agentic Trader",
-  description: "Las salas de Agentic Trader: Alpha, Beta y Omega",
+  title: "Salas · índicem",
+  description: "Las salas de índicem: Alpha, Beta y Omega",
   manifest: "/admin/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Agentic" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "índicem · salas" },
   robots: { index: false, follow: false },
 };
 

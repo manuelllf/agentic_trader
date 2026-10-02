@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export const metadata = { title: "Cómo funciona — liguilla" };
+export const metadata = { title: "Cómo funciona — índicem" };
 
 // Página pública de método: cómo entra cada empresa en una estrategia y qué pone la IA. Los números
 // del ejemplo son inventados y se rotulan como tal; el resto describe lo que hace el código
@@ -46,7 +46,7 @@ export default function ComoFunciona() {
   return (
     <main className="sencilla cf">
       <header className="sencilla-top">
-        <Link href="/" className="wordmark">liguilla</Link>
+        <Link href="/" className="wordmark">índicem</Link>
         <Link href="/liga" className="cf-cerrar">Ir a la liga</Link>
       </header>
 
@@ -138,7 +138,7 @@ export default function ComoFunciona() {
           <Link href="/liga" className="btn">Ver la clasificación</Link>
         </div>
         <p className="cf-pie">
-          La liguilla es un juego en papel: no hay dinero real ni es asesoramiento financiero.{" "}
+          índicem es un juego en papel: no hay dinero real ni es asesoramiento financiero.{" "}
           <Link href="/legal/terminos">Términos</Link>
         </p>
       </div>

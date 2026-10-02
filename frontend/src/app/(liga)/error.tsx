@@ -29,7 +29,7 @@ export default function ErrorDePantalla({ error, reset }: {
   return (
     <main className="sencilla">
       <header className="sencilla-top">
-        <Link href="/" className="wordmark">liguilla</Link>
+        <Link href="/" className="wordmark">índicem</Link>
       </header>
       <section className="sencilla-cuerpo" aria-labelledby="titular">
         <h1 id="titular">Algo ha fallado</h1>

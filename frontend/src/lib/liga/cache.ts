@@ -15,6 +15,8 @@ type Entrada<T> = { datos: T };
 
 const cache = new Map<string, Entrada<unknown>>();
 const enVuelo = new Map<string, Promise<unknown>>();
+const versiones = new Map<string, number>();
+const revalidadores = new Map<string, Set<() => void>>();
 const suscriptores = new Map<string, Set<() => void>>();
 // Claves cuya última petición falló y no tienen dato: es un fallo, no un dato, así que no se
 // guarda como si lo fuera; la siguiente lectura o «reintentar» vuelve a pedir.
@@ -45,8 +47,10 @@ function suscribir(clave: string, fn: () => void): () => void {
 function pedir<T>(clave: string, fetcher: () => Promise<T>): Promise<T> {
   const existente = enVuelo.get(clave) as Promise<T> | undefined;
   if (existente) return existente;
-  const p = fetcher()
+  const version = versiones.get(clave) ?? 0;
+  const p = Promise.resolve().then(fetcher)
     .then((datos) => {
+      if ((versiones.get(clave) ?? 0) !== version) return datos;
       cache.set(clave, { datos });
       fallidas.delete(clave);
       enVuelo.delete(clave);
@@ -54,6 +58,7 @@ function pedir<T>(clave: string, fetcher: () => Promise<T>): Promise<T> {
       return datos;
     })
     .catch((err) => {
+      if ((versiones.get(clave) ?? 0) !== version) throw err;
       enVuelo.delete(clave);
       fallidas.add(clave);
       notificar(clave);
@@ -66,7 +71,10 @@ function pedir<T>(clave: string, fetcher: () => Promise<T>): Promise<T> {
 /** Deja el dato de `clave` puesto a mano (p. ej. tras una acción, con lo que ya devolvió la API),
  *  sin ir a la red. Avisa a quien esté leyendo esa clave ahora mismo. */
 export function fijar<T>(clave: string, datos: T): void {
+  versiones.set(clave, (versiones.get(clave) ?? 0) + 1);
+  enVuelo.delete(clave);
   cache.set(clave, { datos });
+  fallidas.delete(clave);
   notificar(clave);
 }
 
@@ -74,8 +82,7 @@ export function fijar<T>(clave: string, datos: T): void {
  *  Devuelve el valor anterior, para poder deshacer el cambio si la llamada real falla. */
 export function mutar<T>(clave: string, actualizador: (anterior: T | undefined) => T): T | undefined {
   const anterior = (cache.get(clave) as Entrada<T> | undefined)?.datos;
-  cache.set(clave, { datos: actualizador(anterior) });
-  notificar(clave);
+  fijar(clave, actualizador(anterior));
   return anterior;
 }
 
@@ -84,9 +91,27 @@ export function mutar<T>(clave: string, actualizador: (anterior: T | undefined) 
  *  gastar alguno, o `yo` tras cambiar de alias). */
 export function invalidar(...claves: string[]): void {
   for (const c of claves) {
+    versiones.set(c, (versiones.get(c) ?? 0) + 1);
+    enVuelo.delete(c);
     cache.delete(c);
     fallidas.delete(c);
     notificar(c);
+    revalidadores.get(c)?.forEach((fn) => fn());
+  }
+}
+
+export function limpiarPrivado(): void {
+  const claves = new Set([...cache.keys(), ...enVuelo.keys(), ...suscriptores.keys()]);
+  for (const clave of claves) {
+    if (["yo", "creditos", "mis-estrategias", "mis-ligas"].includes(clave)
+      || /^(ficha:|liga:|lecturas:)/.test(clave)) {
+      versiones.set(clave, (versiones.get(clave) ?? 0) + 1);
+      enVuelo.delete(clave);
+      cache.delete(clave);
+      fallidas.delete(clave);
+      notificar(clave);
+      setTimeout(() => revalidadores.get(clave)?.forEach((fn) => fn()), 0);
+    }
   }
 }
 
@@ -113,6 +138,7 @@ export async function obtener<T>(clave: string, fetcher: () => Promise<T>): Prom
 export function useCache<T>(
   clave: string | null,
   fetcher: () => Promise<T>,
+  intervalo = 0,
 ): { datos: T | undefined; cargando: boolean; fallo: boolean; refrescar: () => void } {
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
@@ -130,9 +156,30 @@ export function useCache<T>(
   const fallo = useSyncExternalStore(suscribirClave, leerFallo, leerFallo) && datos === undefined;
 
   useEffect(() => {
-    // Revalida siempre que cambie la clave (incluye la primera vez): stale-while-revalidate.
-    if (clave) pedir(clave, fetcherRef.current).catch(() => {});
-  }, [clave]);
+    if (!clave) return;
+    const revalidar = () => pedir(clave, fetcherRef.current).catch(() => {});
+    const visible = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) void revalidar();
+    };
+    let lista = revalidadores.get(clave);
+    if (!lista) { lista = new Set(); revalidadores.set(clave, lista); }
+    lista.add(revalidar);
+    void revalidar();
+    window.addEventListener("focus", visible);
+    window.addEventListener("online", visible);
+    window.addEventListener("pageshow", visible);
+    document.addEventListener("visibilitychange", visible);
+    const timer = intervalo > 0 ? window.setInterval(visible, intervalo) : null;
+    return () => {
+      lista!.delete(revalidar);
+      if (!lista!.size) revalidadores.delete(clave);
+      window.removeEventListener("focus", visible);
+      window.removeEventListener("online", visible);
+      window.removeEventListener("pageshow", visible);
+      document.removeEventListener("visibilitychange", visible);
+      if (timer !== null) window.clearInterval(timer);
+    };
+  }, [clave, intervalo]);
 
   const refrescar = useCallback(() => {
     if (clave) pedir(clave, fetcherRef.current).catch(() => {});

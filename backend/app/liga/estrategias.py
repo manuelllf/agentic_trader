@@ -362,17 +362,17 @@ def buscar_universo(q: str, limite: int = 20) -> list[dict]:
 
 
 def crear_prueba_sistema(usuario_id: str, receta_id: int, foto_id: int,
-                         n_evaluadas: int) -> uuid.UUID:
+                         n_evaluadas: int, scan_run_id: int | None = None) -> uuid.UUID:
     """`liga.pruebas` no tiene INSERT para `authenticated`: lo escribe el backend como sistema."""
     db = fabrica_sistema()
     try:
         fila = db.execute(text("""
-            insert into liga.pruebas (usuario_id, receta_id, foto_id, estado, n_evaluadas,
-                                      idempotencia)
-            values (:u, :r, :f, 'hecha', :n, :idem)
+            insert into liga.pruebas (usuario_id, receta_id, foto_id, scan_run_id, estado,
+                                      n_evaluadas, idempotencia)
+            values (:u, :r, :f, :s, 'hecha', :n, :idem)
             returning id
         """), {"u": usuario_id, "r": receta_id, "f": foto_id, "n": n_evaluadas,
-               "idem": uuid.uuid4().hex}).one()
+               "s": scan_run_id, "idem": uuid.uuid4().hex}).one()
         db.commit()
         return fila.id
     finally:
@@ -437,26 +437,49 @@ def contexto_lectura(usuario_id: str, ticker: str) -> tuple[int, int] | None:
     return None
 
 
-def cartera_estrategia(estrategia_id: uuid.UUID) -> tuple[int, int, list[str]] | None:
-    """(foto_id, scan_run_id, tickers) de la última prueba de ESTA estrategia (para «Leer mi
-    cartera», que es del dueño de una receta concreta). `None` sin receta o sin prueba todavía."""
+def cartera_prueba(usuario_id: str, estrategia_id: uuid.UUID,
+                   prueba_id: uuid.UUID | None = None) -> tuple[int, int, list[str]] | None:
+    """Receta y foto inmutables de una prueba propia, sin recalcular la receta vigente."""
     db = fabrica_sistema()
     try:
-        fila = db.execute(text(
-            "select receta_id from liga.estrategias where id = :e"), {"e": estrategia_id}
-        ).one_or_none()
-        if fila is None or fila.receta_id is None:
+        fila = db.execute(text("""
+            select p.receta_id, p.foto_id, p.scan_run_id from liga.pruebas p
+            join liga.recetas r on r.id = p.receta_id
+            join liga.estrategias e on e.id = r.estrategia_id
+            where e.id = :e and e.dueno_id = cast(:u as uuid)
+              and p.usuario_id = cast(:u as uuid)
+              and (cast(:p as uuid) is null or p.id = cast(:p as uuid))
+            order by p.creada desc limit 1
+        """), {"e": estrategia_id, "u": usuario_id, "p": prueba_id}).one_or_none()
+        if fila is None:
             return None
+        if fila.scan_run_id is None:
+            raise HTTPException(409, "Repite la prueba para vincular los informes a esta cartera.")
         receta = db.get(RecetaModelo, fila.receta_id)
-        if receta is None:
-            return None
-        ctx = _contexto_desde(db, None)
+        empresas, notas = _empresas_y_notas(db, fila.foto_id, fila.scan_run_id)
+        ctx = Contexto(fila.foto_id, fila.scan_run_id, False, empresas, notas)
         respuestas = procesos_datos.cargar_respuestas(db, receta.pregunta, ctx.foto_id)
     finally:
         db.close()
     seleccion = seleccionar(list(ctx.empresas), procesos_datos.receta_motor(receta), ctx.notas,
                             respuestas)
     return ctx.foto_id, ctx.scan_run_id, [el.ticker for el in seleccion.elegidas]
+
+
+def cartera_estrategia(estrategia_id: uuid.UUID) -> tuple[int, int, list[str]] | None:
+    """(foto_id, scan_run_id, tickers) de la última prueba de ESTA estrategia (para «Leer mi
+    cartera», que es del dueño de una receta concreta). `None` sin receta o sin prueba todavía."""
+    db = fabrica_sistema()
+    try:
+        fila = db.execute(text(
+            "select dueno_id::text as dueno_id from liga.estrategias where id = :e"),
+            {"e": estrategia_id}
+        ).one_or_none()
+        if fila is None:
+            return None
+    finally:
+        db.close()
+    return cartera_prueba(fila.dueno_id, estrategia_id)
 
 
 # --- Copiar una estrategia (Pro; plan §11 y §2.1: «copiar» es de Pro) -----------------------------

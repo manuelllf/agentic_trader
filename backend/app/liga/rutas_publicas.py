@@ -97,6 +97,9 @@ class JornadaDetalle(BaseModel):
     # Jornada en juego: las cifras son las del último cierre guardado (`hasta`), no las oficiales.
     provisional: bool = False
     hasta: date | None = None
+    actualizado: datetime | None = None
+    en_vivo: bool = False
+    precios_pendientes: int = 0
 
 
 # La portada y la jornada se piden sin sesión y en cada visita: acotadas para que crecer la liga
@@ -205,7 +208,10 @@ def _detalle(db: Session, j: JornadaOut) -> JornadaDetalle:
         salida = _filas_vivas(salida, vivo, [f.iid for f in filas])[:_TOPE_FILAS_JORNADA]
         j = j.model_copy(update={"sp_rentabilidad": vivo["sp"]})
     return JornadaDetalle(jornada=j, total=total, filas=salida, provisional=bool(vivo),
-                          hasta=vivo["dia"] if vivo else None)
+                          hasta=vivo["dia"] if vivo else None,
+                          actualizado=vivo.get("actualizado") if vivo else None,
+                          en_vivo=vivo.get("en_vivo", False) if vivo else False,
+                          precios_pendientes=vivo.get("precios_pendientes", 0) if vivo else 0)
 
 
 @router.get("/clasificacion", response_model=Clasificacion)

@@ -84,6 +84,6 @@ export const config = {
   matcher: [
     // Todo salvo los estáticos de Next y los ficheros servidos tal cual (iconos, manifest, el
     // service worker): ahí no hay HTML que lea un nonce, así que generarlo es coste sin uso.
-    "/((?!_next/static|_next/image|favicon\\.ico|icon-|apple-touch-icon|sw\\.js|manifest\\.json).*)",
+    "/((?!_next/static|_next/image|favicon\\.(?:ico|svg)|marca\\.svg|icon-|apple-touch-icon|sw\\.js|manifest\\.(?:json|webmanifest)).*)",
   ],
 };

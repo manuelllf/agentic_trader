@@ -272,6 +272,7 @@ class Prueba(LigaBase):
     usuario_id: Mapped[uuid.UUID] = mapped_column(UUID)
     receta_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("liga.recetas.id"))
     foto_id: Mapped[int] = mapped_column(BigInteger)
+    scan_run_id: Mapped[int | None] = mapped_column(BigInteger)
     estado: Mapped[str] = mapped_column(Text, server_default=DB)
     n_evaluadas: Mapped[int] = mapped_column(Integer, server_default=DB)
     idempotencia: Mapped[str] = mapped_column(Text)

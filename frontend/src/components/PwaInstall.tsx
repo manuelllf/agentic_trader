@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -45,18 +46,18 @@ export default function PwaInstall() {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-md items-center gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
-      <div className="text-lg">📈</div>
-      <div className="flex-1 text-sm">
-        <p className="font-semibold text-slate-900">Instala Agentic Trader</p>
-        <p className="text-slate-500">Acceso directo en tu móvil</p>
+    <aside className="pwa-install" aria-label="Instalar índicem">
+      <Image src="/favicon.svg" alt="" width={32} height={32} />
+      <div>
+        <p><strong>índicem, a mano.</strong></p>
+        <p>Acceso directo en tu móvil.</p>
       </div>
       <button
         onClick={install}
-        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white"
+        className="pwa-install-action"
       >
         Instalar
       </button>
-    </div>
+    </aside>
   );
 }

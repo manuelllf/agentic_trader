@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
 import { Contacto, TITULAR } from "../datos";
 
-export const metadata = { title: "Privacidad — liguilla" };
+export const metadata = { title: "Privacidad — índicem" };
 
 // Solo lista los servicios que reciben datos de personas usuarias (no las fuentes de mercado).
 // Si se añade un proveedor, un dato o una analítica, actualizar esta página y la de cookies.
@@ -115,7 +115,7 @@ export default function Privacidad() {
       <h2>Seguridad y menores</h2>
       <p>
         Las conexiones van cifradas y la base de datos solo deja a cada persona leer sus propios
-        datos. liguilla es para mayores de 14 años (art. 7 de la Ley Orgánica 3/2018).
+        datos. índicem es para mayores de 14 años (art. 7 de la Ley Orgánica 3/2018).
       </p>
 
       <h2>Cambios</h2>

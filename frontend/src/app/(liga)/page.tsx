@@ -16,7 +16,7 @@ export default function Portada() {
   return (
     <main className="lnd">
       <header className="lnd-top">
-        <span className="wordmark">liguilla</span>
+        <span className="wordmark">índicem</span>
         <nav className="lnd-nav">
           <Link href="/liga" className="btn discreto small">Ver la liga</Link>
           <Link href="/entrar" className="btn discreto small">Entrar</Link>

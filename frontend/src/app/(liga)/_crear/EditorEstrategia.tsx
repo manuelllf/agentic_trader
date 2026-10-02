@@ -16,7 +16,7 @@ import {
 import {
   actualizarEstrategia, apuntar, buscarUniverso, convertirFrase, costeProbarConPregunta,
   crearEstrategia, crearReceta, excluirEmpresa, getCatalogo, getFicha,
-  leerAFondo, leerMiCartera, porQueNoSale, probarEstrategia, quitarExclusion, verEstrategia,
+  leerAFondo, lecturasCompradas, porQueNoSale, probarEstrategia, quitarExclusion, verEstrategia,
   type Catalogo, type CostePregunta, type EmpresaBusqueda, type Estrategia, type EstrategiaPatch,
   type Lectura, type Prueba, type ReglaElegida,
 } from "@/lib/liga/api";
@@ -24,9 +24,8 @@ import { invalidar, obtener } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { miles } from "@/lib/liga/format";
 import { pesosCoherentes } from "@/lib/liga/receta";
+import { LecturasModal } from "./LecturasModal";
 const RUTA_ACTUAL = (id?: string) => (id ? `/crear/${id}` : "/crear");
-const AVISO_LECTURA =
-  "Análisis automático hecho con IA sobre datos públicos. Puede contener errores y no es una recomendación de inversión.";
 
 type Borrador = {
   reglas: ReglaElegida[];
@@ -91,7 +90,13 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   const [cambio, setCambio] = useState<{ entra: string; sale: string } | null>(null);
   const [costePregunta, setCostePregunta] = useState<CostePregunta | null>(null);
   const [leyendo, setLeyendo] = useState<string | null>(null);      // ticker en curso, o "cartera"
-  const [lectura, setLectura] = useState<Lectura | Lectura[] | string | null>(null);
+  const [lecturas, setLecturas] = useState<Lectura[]>([]);
+  const [modalLecturas, setModalLecturas] = useState(false);
+  const [tickersLecturas, setTickersLecturas] = useState<string[]>([]);
+  const [tickerLectura, setTickerLectura] = useState<string | null>(null);
+  const [errorLectura, setErrorLectura] = useState<string | null>(null);
+  const contextoLecturas = useRef<string | null>(null);
+  const lecturaEnCurso = useRef(false);
   const [buscaQ, setBuscaQ] = useState("");
   const [sugerencias, setSugerencias] = useState<EmpresaBusqueda[]>([]);
   const [porque, setPorque] = useState<{ ticker: string; nombre: string; texto: string } | null>(null);
@@ -189,8 +194,11 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
   function actualizarB(cambios: Partial<Borrador>) {
     setB((prev) => (prev ? { ...prev, ...cambios } : prev));
-    setPrueba(null);
+    actualizarPrueba(null);
     setCambio(null);
+    contextoLecturas.current = null;
+    setLecturas([]);
+    setModalLecturas(false);
   }
 
   function anadirRegla(clave: string) {
@@ -261,13 +269,13 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
   async function verQueEntrarian() {
     setOcupado(true);
-    setPrueba(null);
+    actualizarPrueba(null);
     setCambio(null);
     setCostePregunta(null);
     const idActual = await guardar();
     if (idActual) {
       const p = await probarEstrategia(idActual);
-      setPrueba(p);
+      actualizarPrueba(p);
       if (b?.pregunta && pro) {
         const c = await costeProbarConPregunta(idActual);
         if (typeof c !== "string") setCostePregunta(c);
@@ -280,7 +288,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     if (!id) return;
     setOcupado(true);
     const p = await probarEstrategia(id, { idempotencia: crypto.randomUUID() });
-    setPrueba(p);
+    actualizarPrueba(p);
     if (typeof p !== "string") {
       setCostePregunta(null);   // ya está cobrada y en caché
       invalidar("creditos");    // gasta créditos: el chip de la cabecera tiene que refrescarse
@@ -289,22 +297,62 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   }
 
   async function leerFicha(ticker: string) {
-    setLeyendo(ticker);
-    setLectura(null);
-    const r = await leerAFondo(ticker, crypto.randomUUID());
-    setLectura(r);
-    if (typeof r !== "string") invalidar("creditos");
-    setLeyendo(null);
+    await abrirLecturas([ticker]);
+  }
+
+  function actualizarPrueba(p: Prueba | string | null) {
+    contextoLecturas.current = null;
+    setLecturas([]);
+    setModalLecturas(false);
+    setPrueba(p);
   }
 
   async function leerCarteraCompleta() {
-    if (!id) return;
-    setLeyendo("cartera");
-    setLectura(null);
-    const r = await leerMiCartera(id, crypto.randomUUID());
-    if (typeof r !== "string") invalidar("creditos");
-    setLectura(typeof r === "string" ? r : r.lecturas);
-    setLeyendo(null);
+    if (prueba && typeof prueba !== "string") await abrirLecturas(prueba.elegidas.map((e) => e.ticker));
+  }
+
+  async function abrirLecturas(tickers: string[]) {
+    if (!id || !prueba || typeof prueba === "string" || !tickers.length) return;
+    setModalLecturas(true);
+    setTickersLecturas(tickers);
+    setTickerLectura(tickers[0]);
+    if (lecturaEnCurso.current) return;
+    const pruebaId = prueba.id;
+    const contexto = { estrategia_id: id, prueba_id: pruebaId };
+    if (contextoLecturas.current !== pruebaId) setLecturas([]);
+    contextoLecturas.current = pruebaId;
+    lecturaEnCurso.current = true;
+    setErrorLectura(null);
+    setLeyendo(tickers[0]);
+    try {
+      const compradas = await lecturasCompradas(id, pruebaId);
+      if (contextoLecturas.current !== pruebaId) return;
+      if (typeof compradas === "string") { setErrorLectura(compradas); return; }
+      const disponibles = [...compradas];
+      setLecturas(disponibles);
+      for (const ticker of tickers) {
+        if (disponibles.some((l) => l.ticker === ticker)) continue;
+        if (contextoLecturas.current !== pruebaId) break;
+        setLeyendo(ticker);
+        const r = await leerAFondo(ticker, crypto.randomUUID(), contexto);
+        invalidar("creditos");
+        if (contextoLecturas.current !== pruebaId) break;
+        if (typeof r === "string") {
+          const recuperadas = await lecturasCompradas(id, pruebaId);
+          if (contextoLecturas.current !== pruebaId) break;
+          if (typeof recuperadas !== "string") setLecturas(recuperadas);
+          setErrorLectura(r);
+          break;
+        }
+        disponibles.push(r);
+        setLecturas([...disponibles]);
+      }
+    } catch {
+      if (contextoLecturas.current === pruebaId) setErrorLectura("No se pudo completar la lectura. Los informes comprados siguen guardados.");
+    } finally {
+      lecturaEnCurso.current = false;
+      setLeyendo(null);
+    }
   }
 
   async function cambiarEmpresa(ticker: string) {
@@ -320,7 +368,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     if (typeof p === "string") { setError(p); setOcupado(false); return; }
     const entrante = p.elegidas.map((e) => e.ticker).find((t) => !antes.includes(t));
     setCambio(entrante ? { entra: entrante, sale: ticker } : null);
-    setPrueba(p);
+    actualizarPrueba(p);
     setOcupado(false);
   }
 
@@ -332,7 +380,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     actualizarB({ excluidas: r.excluidas });
     const p = await probarEstrategia(id);
     setCambio(null);
-    setPrueba(p);
+    actualizarPrueba(p);
     setOcupado(false);
   }
 
@@ -643,9 +691,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                           Deshacer
                         </button>
                       )}
-                      <button type="button" className="link" disabled={leyendo === e.ticker}
+                      <button type="button" className="link"
                               onClick={() => leerFicha(e.ticker)}>
-                        {leyendo === e.ticker ? "Leyendo…" : "Leer a fondo · 5 créditos"}
+                        {lecturas.some((l) => l.ticker === e.ticker) ? "Ver informe" : "Leer a fondo · 5 créditos"}
                       </button>
                     </div>
                   </div>
@@ -666,35 +714,10 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
             )}
             {prueba.elegidas.length > 0 && (
               <Boton variante="secundario" ancho="completo" style={{ marginTop: 8 }}
-                     disabled={leyendo === "cartera"} onClick={leerCarteraCompleta}>
-                {leyendo === "cartera" ? "Leyendo…"
+                     onClick={leerCarteraCompleta}>
+                {prueba.elegidas.every((e) => lecturas.some((l) => l.ticker === e.ticker)) ? "Ver informes de mi cartera"
                   : `Leer mi cartera · hasta ${prueba.elegidas.length * 5} créditos`}
               </Boton>
-            )}
-            {leyendo === null && lectura !== null && (
-              <div className="field" style={{ marginTop: 10 }}>
-                {typeof lectura === "string" && <p className="fine" role="status">{lectura}</p>}
-                {!Array.isArray(lectura) && lectura && typeof lectura !== "string" && (
-                  <div className="pick" style={{ display: "block" }}>
-                    <b>{lectura.ticker}</b>
-                    <p className="meta" style={{ whiteSpace: "pre-wrap" }}>{lectura.texto}</p>
-                    <p className="fine">{AVISO_LECTURA}</p>
-                    <button type="button" className="link" onClick={() => setLectura(null)}>Cerrar</button>
-                  </div>
-                )}
-                {Array.isArray(lectura) && lectura.map((l) => (
-                  <div className="pick" style={{ display: "block" }} key={l.id}>
-                    <b>{l.ticker}</b>
-                    <p className="meta" style={{ whiteSpace: "pre-wrap" }}>{l.texto}</p>
-                  </div>
-                ))}
-                {Array.isArray(lectura) && lectura.length > 0 && (
-                  <p className="fine">{AVISO_LECTURA}</p>
-                )}
-                {Array.isArray(lectura) && (
-                  <button type="button" className="link" onClick={() => setLectura(null)}>Cerrar</button>
-                )}
-              </div>
             )}
           </div>
         )}
@@ -795,6 +818,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       </div>
 
       <BarraPestanas />
+      <LecturasModal abierto={modalLecturas} tickers={tickersLecturas} activo={tickerLectura}
+        lecturas={lecturas} leyendo={leyendo} error={errorLectura}
+        onSeleccionar={setTickerLectura} onCerrar={() => setModalLecturas(false)} />
     </main>
   );
 }

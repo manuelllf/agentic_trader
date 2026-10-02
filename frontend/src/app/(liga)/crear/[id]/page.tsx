@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { EditorEstrategia } from "../../_crear/EditorEstrategia";
 
-export const metadata: Metadata = { title: "Editar estrategia · liguilla" };
+export const metadata: Metadata = { title: "Editar estrategia · índicem" };
 
 export default async function EditarEstrategia({
   params,

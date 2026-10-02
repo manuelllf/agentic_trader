@@ -72,7 +72,8 @@ def _scraper_session() -> tuple[yahoo_scraper.creq.Session, str] | None:
     return _SCRAPER_CACHE.get("ok")  # type: ignore[return-value]
 
 
-def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | None:  # noqa: ANN001
+def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H,
+                  foto_id: int | None = None) -> NameData | None:  # noqa: ANN001
     """Última foto de este ticker si cae dentro de la ventana. Sustituye la lectura del cache."""
     from app.models import FundamentalsSnapshot
 
@@ -82,17 +83,17 @@ def foto_reciente(db, ticker: str, ttl_h: float = _FOTO_TTL_H) -> NameData | Non
     # LEER — sin el lock, "This session is provisioning a new connection; concurrent operations
     # are not permitted" (visto en producción, 23-ago).
     with _FOTO_LOCK:
-        row = (db.query(FundamentalsSnapshot)
-               .filter(FundamentalsSnapshot.ticker == ticker)
-               .order_by(FundamentalsSnapshot.captured_at.desc())
-               .first())
+        consulta = db.query(FundamentalsSnapshot).filter(FundamentalsSnapshot.ticker == ticker)
+        if foto_id is not None:
+            consulta = consulta.filter(FundamentalsSnapshot.foto_id == foto_id)
+        row = consulta.order_by(FundamentalsSnapshot.captured_at.desc()).first()
         if not row:
             return None
         # SQLite devuelve el datetime naive pese a DateTime(timezone=True) — mismo patrón que
         # watchlist.py::_aware().
         at = row.captured_at
         at = at if at.tzinfo is not None else at.replace(tzinfo=UTC)
-        if (datetime.now(UTC) - at).total_seconds() / 3600 >= ttl_h:
+        if foto_id is None and (datetime.now(UTC) - at).total_seconds() / 3600 >= ttl_h:
             return None
         noticias = list(row.titulares or [])
         # jsonb devuelve int para los enteros exactos: se vuelve a float para que el texto

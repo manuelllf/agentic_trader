@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
 import { Contacto, TITULAR } from "../datos";
 
-export const metadata = { title: "Términos de uso — liguilla" };
+export const metadata = { title: "Términos de uso — índicem" };
 
 // Al cobrar algo real hay que revisar créditos y plan Pro (precio, desistimiento, factura) y
 // completar el aviso legal con NIF y domicilio.
@@ -11,12 +11,12 @@ export default function Terminos() {
     <PlantillaLegal
       titulo="Términos de uso"
       resumen={[
-        "liguilla es un juego en papel: no se invierte dinero real ni se recomienda comprar o vender nada.",
+        "índicem es un juego en papel: no se invierte dinero real ni se recomienda comprar o vender nada.",
         "Los créditos no valen dinero. Hoy no se paga por nada.",
         "Puedes borrar tu cuenta cuando quieras.",
       ]}
     >
-      <h2>Qué es liguilla</h2>
+      <h2>Qué es índicem</h2>
       <p>
         Un <b>juego de simulación</b>: eliges reglas de un catálogo y, cada mes, tu estrategia juega
         una jornada contra el S&amp;P 500 y contra las de otras personas, con puntos como en una
@@ -25,7 +25,7 @@ export default function Terminos() {
       <p>
         <b>No es asesoramiento financiero ni gestiona dinero real.</b> Ninguna estrategia, sea de
         una persona o de la casa (Alpha, Omega, Lambda), es una recomendación de inversión. «S&amp;P
-        500» se usa solo para nombrar el índice; liguilla no tiene relación con S&amp;P Dow Jones
+        500» se usa solo para nombrar el índice; índicem no tiene relación con S&amp;P Dow Jones
         Indices.
       </p>
 
@@ -50,7 +50,7 @@ export default function Terminos() {
           moderan. Podemos ocultar lo que incumpla estos términos o suspender la cuenta, y te
           avisaremos cuando sea posible.</li>
         <li>Nos permites mostrar ese contenido y los resultados de tus estrategias dentro de
-          liguilla, y en la clasificación histórica sin tu nombre si te das de baja.</li>
+          índicem, y en la clasificación histórica sin tu nombre si te das de baja.</li>
         <li>No escribas datos personales en frases, nombres o preguntas.</li>
       </ul>
 
@@ -79,7 +79,7 @@ export default function Terminos() {
 
       <h2>Disponibilidad, datos y responsabilidad</h2>
       <p>
-        liguilla está en construcción: podemos cambiar reglas, puntuación o créditos e interrumpir el
+        índicem está en construcción: podemos cambiar reglas, puntuación o créditos e interrumpir el
         servicio. Los datos de mercado vienen de terceros y pueden tener errores o retraso. El
         servicio se ofrece «tal cual» y las simulaciones no equivalen a una inversión real (no
         incluyen comisiones ni impuestos). Esto no limita tus derechos como consumidor.

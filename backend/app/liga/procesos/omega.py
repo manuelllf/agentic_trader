@@ -110,7 +110,9 @@ def operaciones(db: Session, j: Jornada) -> list[Operacion]:
     return [_operacion(f) for f in _arrastre(db, j) + _propias(db, j.id)]
 
 
-def rentabilidad(db: Session, j: Jornada, dia: date) -> tuple[Decimal, list[str]]:
+def rentabilidad(db: Session, j: Jornada, dia: date,
+                 cotizaciones: dict[str, list[precios.Cierre]] | None = None,
+                 ) -> tuple[Decimal, list[str]]:
     """Rentabilidad del mes de Omega hasta `dia` y qué abiertas no tienen cierre ese día."""
     ops = operaciones(db, j)
     if not ops:
@@ -118,6 +120,10 @@ def rentabilidad(db: Session, j: Jornada, dia: date) -> tuple[Decimal, list[str]
     tickers = sorted({o.ticker for o in ops})
     desde = min(min(o.entrada_dia for o in ops), j.dia_base)
     cierres = precios.series(db, tickers, desde, dia)
+    if cotizaciones:
+        from app.liga.procesos.diario import superponer
+
+        cierres = superponer(cierres, cotizaciones, desde, dia)
     r = motor.rentabilidad_mes(ops, cierres, j.dia_base, dia)
     sin = sorted({o.ticker for o in ops if o.entrada_dia <= dia
                   and (o.salida_dia is None or o.salida_dia > dia)

@@ -7,9 +7,9 @@ export function PlantillaLegal({
   titulo, resumen, children,
 }: { titulo: string; resumen?: ReactNode[]; children: ReactNode }) {
   return (
-    <main className="sencilla">
+    <main className="sencilla legal-page">
       <header className="sencilla-top">
-        <Link href="/" className="wordmark">liguilla</Link>
+        <Link href="/" className="wordmark">índicem</Link>
       </header>
 
       <div className="legal-cuerpo">

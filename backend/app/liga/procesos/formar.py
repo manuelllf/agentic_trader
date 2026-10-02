@@ -470,7 +470,7 @@ def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None,
             for j in vivas:
                 if j not in listas and j.id not in _abandonadas_avisadas:
                     _abandonadas_avisadas.add(j.id)
-                    _avisar(db, "Liguilla: la jornada no se formó sola",
+                    _avisar(db, "índicem: la jornada no se formó sola",
                             f"La jornada {j.numero} sigue sin formar media hora después del corte: "
                             "fórmala desde Admin.")
             if not listas:
@@ -487,5 +487,5 @@ def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None,
             return None
         _ultimo_aviso[clave] = ahora_s
         with sesion(fabrica) as db:
-            _avisar(db, "Liguilla: no se pudo formar la jornada", str(e)[:140])
+            _avisar(db, "índicem: no se pudo formar la jornada", str(e)[:140])
         return None

@@ -41,6 +41,26 @@ export function richText(text: string): ReactNode {
 
   while (i < lineas.length) {
     const linea = lineas[i];
+    const titulo = linea.match(/^#{1,6}\s+(.+)$/);
+    if (titulo) {
+      cierraParrafo();
+      bloques.push(<h3 key={clave++}>{renderInline(titulo[1])}</h3>);
+      i += 1;
+      continue;
+    }
+    if (!linea.trim()) { cierraParrafo(); i += 1; continue; }
+    if (/^\s*(?:[-*]|\d+[.)])\s+/.test(linea)) {
+      cierraParrafo();
+      const ordenada = /^\s*\d+[.)]\s+/.test(linea);
+      const patron = ordenada ? /^\s*\d+[.)]\s+/ : /^\s*[-*]\s+/;
+      const items: ReactNode[] = [];
+      while (i < lineas.length && patron.test(lineas[i])) {
+        items.push(<li key={i}>{renderInline(lineas[i].replace(patron, ""))}</li>);
+        i += 1;
+      }
+      bloques.push(ordenada ? <ol key={clave++}>{items}</ol> : <ul key={clave++}>{items}</ul>);
+      continue;
+    }
     // La fila separadora (|---|---|) es opcional: el modelo no siempre la escribe pese a pedirle
     // una tabla, y exigirla dejaba la tabla entera como texto plano. Basta con 2+ filas seguidas.
     if (FILA.test(linea) && i + 1 < lineas.length && FILA.test(lineas[i + 1])) {

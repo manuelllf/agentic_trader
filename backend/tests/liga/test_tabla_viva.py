@@ -8,6 +8,7 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+from app import precios
 from app.liga import rutas_publicas as rp
 from app.liga.procesos import diario
 
@@ -48,6 +49,7 @@ def _preparar(monkeypatch, llamadas: list) -> None:
                            "dif": Decimal("0.5"), "puntos": 1}]}
 
     diario.olvidar_vivo()
+    monkeypatch.setattr(diario, "_lanzar_cotizaciones", lambda *_a: None)
     monkeypatch.setattr(diario, "sesion", sesion)
     monkeypatch.setattr(diario, "jornada", lambda _db, _id: SimpleNamespace(estado="formada"))
     monkeypatch.setattr(diario, "ultimo_dia", lambda _db, _j: date(2026, 10, 9))
@@ -63,8 +65,10 @@ def test_la_tabla_viva_se_calcula_una_vez_por_ventana_de_tiempo(monkeypatch) -> 
     assert a is b and len(llamadas) == 1
     assert a["dia"] == date(2026, 10, 9) and a["sp"] == Decimal("1.5")
     assert a["por_inscripcion"][7]["puntos"] == 1
-    diario.vivo(1, reloj=lambda: ahora[0] + diario._VIVO_TTL + 1)
-    assert len(llamadas) == 2
+    lanzamientos = []
+    monkeypatch.setattr(diario, "_lanzar_cotizaciones", lambda *a: lanzamientos.append(a))
+    assert diario.vivo(1, reloj=lambda: ahora[0] + diario._VIVO_TTL + 1) is a
+    assert len(llamadas) == 1 and len(lanzamientos) == 1
     diario.olvidar_vivo()
 
 
@@ -79,4 +83,42 @@ def test_una_jornada_que_no_esta_en_juego_no_tiene_tabla_viva(monkeypatch) -> No
     _preparar(monkeypatch, [])
     monkeypatch.setattr(diario, "jornada", lambda _db, _id: SimpleNamespace(estado="cerrada"))
     assert diario.vivo(3) is None
+    diario.olvidar_vivo()
+
+
+def test_cotizaciones_conservan_dividendos_splits_y_no_mutan_los_cierres() -> None:
+    base, hoy = date(2026, 10, 1), date(2026, 10, 2)
+    oficiales = {"SPY": [precios.Cierre(base, 100), precios.Cierre(hoy, 50, 1, 2)]}
+    cotizaciones = {"SPY": [precios.Cierre(hoy, 55)]}
+    resultado = diario.superponer(oficiales, cotizaciones, base, hoy)
+    assert resultado["SPY"][-1] == precios.Cierre(hoy, 55, 1, 2)
+    assert oficiales["SPY"][-1] == precios.Cierre(hoy, 50, 1, 2)
+    assert diario.rentabilidad_sp(resultado["SPY"], base, hoy) == Decimal("12.0000")
+
+
+def test_una_actualizacion_olvidada_no_reaparece_en_la_cache(monkeypatch) -> None:
+    hoy = date(2026, 10, 2)
+    j = SimpleNamespace(estado="formada", dia_base=date(2026, 9, 30), dia_fin=hoy)
+
+    class Db:
+        def execute(self, *_args, **_kwargs):
+            return SimpleNamespace(scalars=lambda: [])
+
+    @contextmanager
+    def sesion(_fabrica):
+        yield Db()
+
+    monkeypatch.setattr(diario, "sesion", sesion)
+    monkeypatch.setattr(diario, "jornada", lambda *_a: j)
+    monkeypatch.setattr(diario.omega, "operaciones", lambda *_a: [])
+    monkeypatch.setattr(precios, "descargar", lambda *_a: {"SPY": [precios.Cierre(hoy, 100)]})
+    monkeypatch.setattr(diario, "calcular", lambda *_a, **_kw: {
+        "sp_rentabilidad": Decimal("0"), "filas": []})
+    diario.olvidar_vivo()
+    generacion = diario._vivo_generacion
+    diario.olvidar_vivo()
+    nuevo = {"sp": Decimal("1")}
+    diario._vivo_cache[1] = (0, nuevo)
+    diario._actualizar_cotizaciones(1, None, generacion)
+    assert diario._vivo_cache[1][1] is nuevo
     diario.olvidar_vivo()
