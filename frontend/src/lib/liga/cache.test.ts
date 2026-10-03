@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { fijar, haFallado, invalidar, obtener } from "./cache";
+import { fijar, haFallado, invalidar, limpiarPrivado, obtener } from "./cache";
 
 describe("caché de la liga", () => {
   beforeEach(() => invalidar("k"));
+
+  it("cambiar de cuenta olvida el seguimiento de todas las fichas", async () => {
+    fijar("seguimiento:estrategia", { usuario: "anterior" });
+    limpiarPrivado();
+    expect(await obtener("seguimiento:estrategia", async () => ({ usuario: "actual" })))
+      .toEqual({ usuario: "actual" });
+  });
 
   it("un fallo no se guarda como dato y se puede reintentar", async () => {
     await expect(obtener("k", () => Promise.reject(new Error("red")))).rejects.toThrow("red");

@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSesion } from "../_sesion/SesionContext";
-import { getCreditos, getPortada, misEstrategias, misLigas } from "@/lib/liga/api";
+import { getCatalogo, getCreditos, getPortada, misEstrategias, misLigas } from "@/lib/liga/api";
 import { precargar } from "@/lib/liga/cache";
+import { EstadoEnlace } from "./EstadoEnlace";
 
 // `.tabbar` de la maqueta (DESIGN.md §5 y §6): Liga, Privadas, Crear y Mías, iconos de trazo
 // en línea (nada de librería de iconos).
@@ -50,6 +51,7 @@ export function BarraPestanas() {
   useEffect(() => {
     for (const p of PESTANAS) router.prefetch(p.href);
     const calentar = () => {
+      precargar("catalogo", getCatalogo);
       if (estado === "dentro") {
         precargar("mis-estrategias", misEstrategias);
         precargar("mis-ligas", misLigas);
@@ -76,12 +78,14 @@ export function BarraPestanas() {
           : p.clave === "liga" ? (ruta === "/liga" || ruta?.startsWith("/ficha"))
           : false;
         return (
-          <Link key={p.clave} href={p.href} prefetch aria-current={activa ? "page" : undefined}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}
-                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              {p.icono}
-            </svg>
-            <span>{p.texto}</span>
+          <Link key={p.clave} href={p.href} prefetch aria-current={activa ? "page" : undefined}
+            onClick={(event) => {
+              if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey
+                && !event.altKey && event.currentTarget.querySelector('[aria-busy="true"]')) {
+                event.preventDefault();
+              }
+            }}>
+            <EstadoEnlace texto={p.texto} icono={p.icono} />
           </Link>
         );
       })}

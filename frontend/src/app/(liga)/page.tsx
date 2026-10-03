@@ -16,7 +16,7 @@ export default function Portada() {
   return (
     <main className="lnd">
       <header className="lnd-top">
-        <span className="wordmark">índicem</span>
+        <span className="wordmark">Vennett</span>
         <nav className="lnd-nav">
           <Link href="/liga" className="btn discreto small">Ver la liga</Link>
           <Link href="/entrar" className="btn discreto small">Entrar</Link>
@@ -40,7 +40,7 @@ export default function Portada() {
       </div>
 
       <p className="lnd-legal">
-        <span>Juego en papel, sin dinero real. La escena es un ejemplo con cifras inventadas; las empresas son solo ilustración, no una recomendación.</span>
+        <span>Estrategias en papel, sin dinero real. La escena es un ejemplo con cifras inventadas; las empresas son solo ilustración, no una recomendación.</span>
         <Link href="/como-funciona">Cómo funciona</Link>
         <Link href="/legal/aviso">Aviso legal</Link>
         <Link href="/legal/privacidad">Privacidad</Link>

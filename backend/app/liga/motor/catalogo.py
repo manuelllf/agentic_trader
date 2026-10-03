@@ -39,10 +39,6 @@ _MILLON = Decimal(1_000_000)
 _GRANDE = Decimal(10_000)
 _MEDIANA = Decimal(2_000)
 _PEQUENA = Decimal(300)
-_DIVIDENDO = Decimal("2.5")
-_CRECIMIENTO = Decimal(5)
-_MARGEN = Decimal(15)
-_ROE = Decimal(15)
 _CAIDA = Decimal(30)
 
 
@@ -92,6 +88,7 @@ class Parametro:
     paso: Decimal | None = None
     defecto: int | float | None = None
     tipo: str = "numero"
+    opcional: bool = False
 
 
 @dataclass(frozen=True)
@@ -179,9 +176,9 @@ def _pequenas(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
             f"{cifra(_PEQUENA, 0)} y {millones_usd(_MEDIANA)}")
 
 
-def _anios(valor: Decimal, frente_a: tuple[Decimal, ...] = ()) -> str:
+def _veces(valor: Decimal, frente_a: tuple[Decimal, ...] = ()) -> str:
     t = cifra(valor, 1, frente_a)
-    return f"{t} {'año' if t == '1' else 'años'}"
+    return f"{t} {'vez' if t == '1' else 'veces'}"
 
 
 def _deuda_y_caja(e: EmpresaFoto) -> tuple[Decimal, Decimal] | str:
@@ -203,14 +200,15 @@ def _deuda(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
         return None
     ebitda = a_decimal(e.ebitda)
     if ebitda is None:
-        return "no hay dato de beneficio operativo"
+        return "no hay dato de EBITDA"
     if ebitda <= 0:
-        return "no gana con qué pagar su deuda"
+        return "no tiene EBITDA positivo con el que comparar su deuda neta"
     maximo = a_decimal(p["anios"])
-    anios = neta / ebitda
-    if anios < maximo:
+    ratio = neta / ebitda
+    if ratio < maximo:
         return None
-    return f"debe {_anios(anios, (maximo,))} de beneficio y pides menos de {cifra(maximo)}"
+    return (f"su deuda neta equivale a {_veces(ratio, (maximo,))} su EBITDA "
+            f"y pides menos de {_veces(maximo)}")
 
 
 def _caja_neta(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
@@ -239,47 +237,53 @@ def _dividendo(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
     rentabilidad = a_decimal(e.dividend_yield_pct)
     if rentabilidad is None:
         return "no consta que reparta dividendo"
-    if rentabilidad > _DIVIDENDO:
+    minimo = a_decimal(p["dividendo_pct"])
+    if rentabilidad > minimo:
         return None
-    return (f"su dividendo es del {porcentaje(rentabilidad, 1, (_DIVIDENDO,))} "
-            f"y pides más del {porcentaje(_DIVIDENDO)}")
+    return (f"su dividendo es del {porcentaje(rentabilidad, 1, (minimo,))} "
+            f"y pides más del {porcentaje(minimo)}")
 
 
 def _crecen(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
     ratio = a_decimal(e.crecimiento_ventas)
     if ratio is None:
-        return "no hay dato de cómo crecen sus ventas"
+        return "no hay dato de la última variación interanual de ventas"
+    minimo = a_decimal(p["crecimiento_pct"])
     pct = ratio * 100
-    if pct > _CRECIMIENTO:
+    if pct > minimo:
         return None
-    pides = f"más de un {porcentaje(_CRECIMIENTO)}"
+    pides = f"más de un {porcentaje(minimo)}"
     if pct < 0 and cifra(-pct) != "0":
-        return f"sus ventas caen un {porcentaje(-pct)} al año y pides que crezcan {pides}"
-    return f"sus ventas crecen un {porcentaje(pct, 1, (_CRECIMIENTO,))} al año y pides {pides}"
+        return (f"la última variación interanual de ventas es una caída del {porcentaje(-pct)} "
+                f"y pides que crezcan {pides}")
+    return (f"la última variación interanual de ventas es del {porcentaje(pct, 1, (minimo,))} "
+            f"y pides {pides}")
 
 
 def _margen(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
     ratio = a_decimal(e.margen_operativo)
     if ratio is None:
         return "no hay dato de margen operativo"
+    minimo = a_decimal(p["margen_pct"])
     pct = ratio * 100
-    if pct > _MARGEN:
+    if pct > minimo:
         return None
-    return (f"su margen es del {porcentaje(pct, 1, (_MARGEN,))} "
-            f"y pides más del {porcentaje(_MARGEN)}")
+    return (f"su margen es del {porcentaje(pct, 1, (minimo,))} "
+            f"y pides más del {porcentaje(minimo)}")
 
 
 def _rentables(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
     ratio = a_decimal(e.roe)
     if ratio is None:
         return "no hay dato de rentabilidad sobre su capital"
+    minimo = a_decimal(p["roe_pct"])
     pct = ratio * 100
-    if pct > _ROE:
+    if pct > minimo:
         return None
-    pides = f"más del {porcentaje(_ROE)}"
+    pides = f"más del {porcentaje(minimo)}"
     if pct < 0 and cifra(-pct) != "0":
         return f"pierde un {porcentaje(-pct)} sobre su capital y pides que gane {pides}"
-    return f"gana un {porcentaje(pct, 1, (_ROE,))} sobre su capital y pides {pides}"
+    return f"gana un {porcentaje(pct, 1, (minimo,))} sobre su capital y pides {pides}"
 
 
 def _castigadas(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
@@ -352,8 +356,18 @@ def _lista_sectores(sectores: Any) -> str:
     return f"{', '.join(nombres[:-1])} {y} {nombres[-1]}"
 
 
-_ANIOS = Parametro("anios", "la deuda máxima", Decimal("0.5"), Decimal(5), Decimal("0.5"), 2)
+_ANIOS = Parametro("anios", "el ratio deuda neta/EBITDA máximo (veces)",
+                   Decimal("0.5"), Decimal(5), Decimal("0.5"), 2)
 _PER = Parametro("per", "el PER máximo", Decimal(8), Decimal(40), Decimal(1), 18)
+_CRECIMIENTO_PCT = Parametro("crecimiento_pct", "el crecimiento interanual mínimo (%)",
+                             Decimal(0), Decimal(100), Decimal(1), 5, opcional=True)
+_MARGEN_PCT = Parametro("margen_pct", "el margen operativo mínimo (%)",
+                        Decimal(0), Decimal(100), Decimal(1), 15, opcional=True)
+_ROE_PCT = Parametro("roe_pct", "el ROE mínimo (%)", Decimal(0), Decimal(100), Decimal(1), 15,
+                     opcional=True)
+_DIVIDENDO_PCT = Parametro("dividendo_pct", "la rentabilidad por dividendo mínima (%)",
+                           Decimal(0), Decimal(30), Decimal("0.5"), Decimal("2.5"),
+                           opcional=True)
 _SECTORES = Parametro("sectores", "los sectores", tipo="sectores")
 
 CATALOGO: dict[str, ReglaCatalogo] = {r.clave: r for r in (
@@ -365,23 +379,27 @@ CATALOGO: dict[str, ReglaCatalogo] = {r.clave: r for r in (
                   lambda p: f"capitalización entre {cifra(_PEQUENA)} y {millones_usd(_MEDIANA)}",
                   _pequenas),
     ReglaCatalogo("deuda", "Poca deuda",
-                  lambda p: (f"deuda neta de menos de {_anios(a_decimal(p['anios']))} "
-                             "de beneficio operativo"),
+                  lambda p: (f"deuda neta inferior a {_veces(a_decimal(p['anios']))} "
+                             "el EBITDA"),
                   _deuda, (_ANIOS,)),
     ReglaCatalogo("caja_neta", "Más caja que deuda", lambda p: "caja neta positiva", _caja_neta),
     ReglaCatalogo("barata", "Que no esté cara",
                   lambda p: f"PER por debajo de {cifra(a_decimal(p['per']))}", _barata, (_PER,)),
     ReglaCatalogo("dividendo", "Reparte dividendo",
-                  lambda p: f"rentabilidad por dividendo de más del {porcentaje(_DIVIDENDO)}",
-                  _dividendo),
-    ReglaCatalogo("crecen", "Venden cada año más",
-                  lambda p: f"ventas creciendo más de un {porcentaje(_CRECIMIENTO)} al año",
-                  _crecen),
+                  lambda p: f"rentabilidad por dividendo de más del "
+                            f"{porcentaje(a_decimal(p['dividendo_pct']))}",
+                  _dividendo, (_DIVIDENDO_PCT,)),
+    ReglaCatalogo("crecen", "Crecimiento interanual de ventas",
+                  lambda p: f"última variación interanual de ventas superior al "
+                            f"{porcentaje(a_decimal(p['crecimiento_pct']))}",
+                  _crecen, (_CRECIMIENTO_PCT,)),
     ReglaCatalogo("margen", "Buen margen",
-                  lambda p: f"margen operativo por encima del {porcentaje(_MARGEN)}", _margen),
+                  lambda p: f"margen operativo por encima del "
+                            f"{porcentaje(a_decimal(p['margen_pct']))}",
+                  _margen, (_MARGEN_PCT,)),
     ReglaCatalogo("rentables", "Muy rentables",
-                  lambda p: f"ganan más de un {porcentaje(_ROE)} sobre su capital (ROE)",
-                  _rentables),
+                  lambda p: f"ROE superior al {porcentaje(a_decimal(p['roe_pct']))}",
+                  _rentables, (_ROE_PCT,)),
     ReglaCatalogo("castigadas", "Castigadas",
                   lambda p: f"a un {porcentaje(_CAIDA)} o más de su máximo del último año",
                   _castigadas),
@@ -443,7 +461,8 @@ def _validar_params(entrada: ReglaCatalogo, params: Mapping[str, Any]) -> list[s
     errores = [f"«{entrada.titulo}» no lleva el ajuste «{extra}»." for extra in sobran]
     for p in entrada.parametros:
         if p.nombre not in params:
-            errores.append(f"A «{entrada.titulo}» le falta el ajuste «{p.nombre}».")
+            if not p.opcional:
+                errores.append(f"A «{entrada.titulo}» le falta el ajuste «{p.nombre}».")
         elif p.tipo == "sectores":
             errores += _validar_sectores(entrada, params[p.nombre])
         else:
@@ -511,7 +530,8 @@ def preparar(reglas: list[dict[str, Any]]) -> tuple[ReglaPreparada, ...]:
     preparadas = []
     for regla in reglas:
         params = {k: tuple(v) if isinstance(v, list) else v
-                  for k, v in (regla.get("params") or {}).items()}
+                  for k, v in CATALOGO[regla["clave"]]._con_defectos(
+                      regla.get("params") or {}).items()}
         preparadas.append(ReglaPreparada(CATALOGO[regla["clave"]], params))
     return tuple(preparadas)
 

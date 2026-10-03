@@ -1,4 +1,4 @@
--- migraciones-liga: 017
+-- migraciones-liga: 018
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -9973,6 +9973,196 @@ CREATE EVENT TRIGGER ensure_rls ON ddl_command_end
 
 
 --
+-- Borradores de trabajo y visitas autenticadas.
+CREATE TABLE liga.borradores (
+    usuario_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    clave text NOT NULL,
+    contenido jsonb NOT NULL,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    creado timestamptz NOT NULL DEFAULT now(),
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado timestamptz NOT NULL DEFAULT now(),
+    actualizado_por uuid DEFAULT auth.uid(),
+    PRIMARY KEY (usuario_id, clave),
+    CHECK (octet_length(contenido::text) <= 40000)
+);
+ALTER TABLE liga.borradores ENABLE ROW LEVEL SECURITY;
+CREATE POLICY propia ON liga.borradores TO authenticated
+    USING (usuario_id = (SELECT auth.uid())) WITH CHECK (usuario_id = (SELECT auth.uid()));
+GRANT SELECT, INSERT, UPDATE, DELETE ON liga.borradores TO authenticated;
+
+
+-- Local review SQL only. The tracked Supabase migration and CI schema are maintained separately.
+
+create table liga.visitas (
+  id bigint generated always as identity primary key,
+  usuario_id uuid not null references auth.users(id) on delete cascade,
+  session_id uuid not null,
+  inicio timestamptz not null default clock_timestamp(),
+  ultima_actividad timestamptz not null default clock_timestamp()
+);
+
+comment on table liga.visitas is
+  'Visit history, one row per authenticated visit; usuario_id is the actor.';
+comment on column liga.visitas.session_id is
+  'Signed Supabase auth session UUID; retained as a grouping key, not an IP or fingerprint.';
+comment on column liga.visitas.ultima_actividad is
+  'Server timestamp of the most recent qualifying interaction; updates are throttled.';
+
+create index ix_visitas_usuario_inicio on liga.visitas (usuario_id, inicio desc);
+create index ix_visitas_sesion_inicio on liga.visitas (usuario_id, session_id, inicio desc);
+
+alter table liga.visitas enable row level security;
+create policy admin_lee on liga.visitas for select to authenticated
+  using ((select liga.es_admin()));
+
+revoke all on table liga.visitas from public, anon, authenticated;
+grant select on table liga.visitas to authenticated;
+
+create function liga.registrar_visita() returns void
+  language plpgsql
+  security definer
+  set search_path to ''
+as $$
+declare
+  v_usuario uuid := auth.uid();
+  v_session uuid;
+  v_id bigint;
+  v_ultima timestamptz;
+begin
+  if v_usuario is null then
+    raise exception 'authenticated identity required' using errcode = '28000';
+  end if;
+
+  v_session := nullif(auth.jwt() ->> 'session_id', '')::uuid;
+  if v_session is null then
+    raise exception 'authenticated session required' using errcode = '28000';
+  end if;
+
+  -- Also serializes the first event, where a row lock alone cannot prevent duplicates.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(v_session::text, 0)
+  );
+
+  select v.id, v.ultima_actividad into v_id, v_ultima
+  from liga.visitas as v
+  where v.usuario_id = v_usuario and v.session_id = v_session
+  order by v.inicio desc, v.id desc
+  limit 1
+  for update;
+
+  if found and v_ultima > pg_catalog.clock_timestamp() - interval '30 minutes' then
+    -- Bound storage writes even if an authenticated client calls this directly in a tight loop.
+    update liga.visitas as v
+    set ultima_actividad = pg_catalog.clock_timestamp()
+    where v.id = v_id
+      and v.ultima_actividad <= pg_catalog.clock_timestamp() - interval '30 seconds';
+  else
+    insert into liga.visitas (usuario_id, session_id, inicio, ultima_actividad)
+    values (v_usuario, v_session, pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp());
+  end if;
+end;
+$$;
+
+revoke all on function liga.registrar_visita() from public, anon;
+grant execute on function liga.registrar_visita() to authenticated;
+
+create function liga.exportar_visitas()
+returns table (inicio timestamptz, ultima_actividad timestamptz)
+language plpgsql
+security definer
+set search_path to ''
+as $$
+declare
+  v_usuario uuid := auth.uid();
+begin
+  if v_usuario is null then
+    raise exception 'authenticated identity required' using errcode = '28000';
+  end if;
+
+  return query
+  select v.inicio, v.ultima_actividad
+  from liga.visitas as v
+  where v.usuario_id = v_usuario
+  order by v.inicio, v.id;
+end;
+$$;
+
+revoke all on function liga.exportar_visitas() from public, anon;
+grant execute on function liga.exportar_visitas() to authenticated;
+
+-- Vennett strategy review markers. User-scoped and writable only for the owner's strategies.
+create table liga.estrategias_revisadas (
+  usuario_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  estrategia_id uuid not null references liga.estrategias(id) on delete cascade,
+  inscripcion_id bigint references liga.inscripciones(id) on delete set null,
+  resultado_inscripcion_id bigint references liga.resultados(inscripcion_id) on delete set null,
+  revisada_en timestamptz not null default now(),
+  creada timestamptz not null default now(),
+  creada_por uuid default auth.uid() references auth.users(id) on delete set null,
+  actualizado_en timestamptz,
+  actualizado_por uuid references auth.users(id) on delete set null,
+  primary key (usuario_id, estrategia_id)
+);
+
+create function liga.estrategias_revisadas_guarda() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if new.usuario_id is distinct from (select auth.uid()) then
+    raise exception 'Solo puedes actualizar tus propias revisiones' using errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from liga.estrategias e
+    where e.id = new.estrategia_id and e.dueno_id = new.usuario_id and e.tipo = 'usuario'
+  ) then
+    raise exception 'La estrategia no pertenece a tu cuenta' using errcode = '42501';
+  end if;
+  if new.inscripcion_id is not null and not exists (
+    select 1 from liga.inscripciones i
+    where i.id = new.inscripcion_id and i.estrategia_id = new.estrategia_id
+  ) then
+    raise exception 'La inscripción no pertenece a tu estrategia' using errcode = '42501';
+  end if;
+  if new.resultado_inscripcion_id is not null and not exists (
+    select 1 from liga.resultados r join liga.inscripciones i on i.id = r.inscripcion_id
+    where r.inscripcion_id = new.resultado_inscripcion_id
+      and i.estrategia_id = new.estrategia_id
+  ) then
+    raise exception 'El resultado no pertenece a tu estrategia' using errcode = '42501';
+  end if;
+  new.revisada_en := now();
+  return new;
+end $$;
+
+create trigger guarda_estrategia_revisada before insert or update
+  on liga.estrategias_revisadas for each row execute function liga.estrategias_revisadas_guarda();
+create trigger traza before update on liga.estrategias_revisadas
+  for each row execute function liga.tocar_auditoria();
+
+alter table liga.estrategias_revisadas enable row level security;
+grant select, insert, update (inscripcion_id, resultado_inscripcion_id)
+  on liga.estrategias_revisadas to authenticated;
+
+create policy propia_lee on liga.estrategias_revisadas for select to authenticated
+  using (usuario_id = (select auth.uid()) and exists (
+    select 1 from liga.estrategias e
+    where e.id = estrategia_id and e.dueno_id = (select auth.uid()) and e.tipo = 'usuario'
+  ));
+create policy propia_crea on liga.estrategias_revisadas for insert to authenticated
+  with check (usuario_id = (select auth.uid()) and exists (
+    select 1 from liga.estrategias e
+    where e.id = estrategia_id and e.dueno_id = (select auth.uid()) and e.tipo = 'usuario'
+  ));
+create policy propia_edita on liga.estrategias_revisadas for update to authenticated
+  using (usuario_id = (select auth.uid()) and exists (
+    select 1 from liga.estrategias e
+    where e.id = estrategia_id and e.dueno_id = (select auth.uid()) and e.tipo = 'usuario'
+  ))
+  with check (usuario_id = (select auth.uid()) and exists (
+    select 1 from liga.estrategias e
+    where e.id = estrategia_id and e.dueno_id = (select auth.uid()) and e.tipo = 'usuario'
+  ));
+
 -- PostgreSQL database dump complete
 --
 

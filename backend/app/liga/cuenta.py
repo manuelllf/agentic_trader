@@ -32,8 +32,8 @@ def _filas(filas: Sequence[Row]) -> list[dict]:
 def exportar(db: Session) -> dict:
     """Todo lo que es suyo: perfil, datos privados, roles, planes, consentimientos, sus
     estrategias con sus recetas (todas las versiones), inscripciones y resultados, posiciones,
-    pruebas, créditos, reportes y ligas privadas (propias o de las que es miembro). Nada de la
-    casa, nada de otro usuario."""
+    pruebas, créditos, reportes, ligas privadas, borradores, revisiones y fechas de sus visitas.
+    Nada de la casa, nada de otro usuario ni identificadores de sesión."""
     perfil = db.execute(text(
         "select alias, oculto, creado from liga.perfiles where id = (select auth.uid())"
     )).one_or_none()
@@ -104,6 +104,20 @@ def exportar(db: Session) -> dict:
         select liga_id::text as liga_id, unido from liga.miembros_liga
         where usuario_id = (select auth.uid()) order by unido
     """)).all()
+    borradores = db.execute(text("""
+        select clave, contenido, revision, creado, actualizado
+        from liga.borradores where usuario_id = (select auth.uid()) order by clave
+    """)).all()
+    revisiones_estrategia = db.execute(text("""
+        select estrategia_id::text as estrategia_id, inscripcion_id,
+               resultado_inscripcion_id, revisada_en
+        from liga.estrategias_revisadas
+        where usuario_id = (select auth.uid()) order by estrategia_id
+    """)).all()
+    visitas = db.execute(text("""
+        select inicio, ultima_actividad from liga.exportar_visitas()
+        order by inicio, ultima_actividad
+    """)).all()
 
     return {
         "perfil": dict(perfil._mapping) if perfil else None,
@@ -120,6 +134,9 @@ def exportar(db: Session) -> dict:
         "reportes": _filas(reportes),
         "ligas_privadas_propias": _filas(ligas_propias),
         "ligas_privadas_miembro": _filas(ligas_miembro),
+        "borradores": _filas(borradores),
+        "revisiones_estrategia": _filas(revisiones_estrategia),
+        "visitas": _filas(visitas),
     }
 
 

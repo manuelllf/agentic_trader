@@ -14,6 +14,7 @@ from app.liga.motor.catalogo import (
     validar_reglas,
 )
 from app.liga.motor.formato import NBSP
+from app.liga.procesos.datos import _metricas_catalogo
 
 M = 1_000_000
 
@@ -51,22 +52,25 @@ def test_pequenas_incluye_los_extremos():
         f"vale 2.500{NBSP}M$ y pides entre 300 y 2.000{NBSP}M$")
 
 
-def test_deuda_en_anios_de_beneficio_operativo():
+def test_deuda_como_multiplo_de_ebitda():
     assert ev("deuda", deuda_total=100.0, caja_total=200.0) is None       # caja neta
     assert CATALOGO["deuda"].evaluar(
         EmpresaFoto("X", deuda_total=250.0, caja_total=0.0, ebitda=100.0), {"anios": 2}) == (
-        "debe 2,5 años de beneficio y pides menos de 2")
+        "su deuda neta equivale a 2,5 veces su EBITDA y pides menos de 2 veces")
     assert CATALOGO["deuda"].evaluar(
         EmpresaFoto("X", deuda_total=150.0, caja_total=0.0, ebitda=100.0), {"anios": 2}) is None
     assert ev("deuda", deuda_total=150.0, caja_total=0.0, ebitda=-1.0) == (
-        "no gana con qué pagar su deuda")
-    assert ev("deuda", deuda_total=150.0, caja_total=0.0) == "no hay dato de beneficio operativo"
+        "no tiene EBITDA positivo con el que comparar su deuda neta")
+    assert ev("deuda", deuda_total=150.0, caja_total=0.0) == "no hay dato de EBITDA"
 
 
 def test_deuda_en_el_umbral_no_pasa():
     assert CATALOGO["deuda"].evaluar(
         EmpresaFoto("X", deuda_total=200.0, caja_total=0.0, ebitda=100.0), {"anios": 2}) == (
-        "debe 2 años de beneficio y pides menos de 2")
+        "su deuda neta equivale a 2 veces su EBITDA y pides menos de 2 veces")
+    casi = CATALOGO["deuda"].evaluar(
+        EmpresaFoto("X", deuda_total=204.0, caja_total=0.0, ebitda=100.0), {"anios": 2})
+    assert "equivale a 2,04 veces" in casi
 
 
 def test_caja_neta():
@@ -89,14 +93,58 @@ def test_dividendo_crecimiento_margen_y_rentabilidad():
         f"su dividendo es del 1,2{NBSP}% y pides más del 2,5{NBSP}%")
     assert ev("crecen", crecimiento_ventas=0.08) is None
     assert ev("crecen", crecimiento_ventas=-0.03) == (
-        f"sus ventas caen un 3{NBSP}% al año y pides que crezcan más de un 5{NBSP}%")
+        f"la última variación interanual de ventas es una caída del 3{NBSP}% y pides que crezcan "
+        f"más de un 5{NBSP}%")
     assert ev("crecen", crecimiento_ventas=0.02) == (
-        f"sus ventas crecen un 2{NBSP}% al año y pides más de un 5{NBSP}%")
+        f"la última variación interanual de ventas es del 2{NBSP}% y pides más de un 5{NBSP}%")
     assert ev("margen", margen_operativo=0.10) == (
         f"su margen es del 10{NBSP}% y pides más del 15{NBSP}%")
     assert ev("rentables", roe=-0.2) == (
         f"pierde un 20{NBSP}% sobre su capital y pides que gane más del 15{NBSP}%")
     assert ev("rentables", roe=0.2) is None
+
+
+def test_yahoo_stored_metrics_map_without_dropping_zero_or_negative_values():
+    assert _metricas_catalogo({
+        "revenueGrowth": -0.1,
+        "operatingMargins": 0.0,
+        "returnOnEquity": -0.2,
+        "dividendYield": 0.0,
+    }) == {
+        "crecimiento_ventas": -0.1,
+        "margen_operativo": 0.0,
+        "roe": -0.2,
+        "dividend_yield_pct": 0.0,
+    }
+
+
+def test_thresholds_are_configurable_and_strict():
+    assert ev("crecen", crecimiento_ventas=0.10) is None
+    assert CATALOGO["crecen"].evaluar(
+        EmpresaFoto("X", crecimiento_ventas=0.10), {"crecimiento_pct": 10}) is not None
+    assert CATALOGO["crecen"].evaluar(
+        EmpresaFoto("X", crecimiento_ventas=0.101), {"crecimiento_pct": 10}) is None
+
+    assert CATALOGO["margen"].evaluar(
+        EmpresaFoto("X", margen_operativo=0.20), {"margen_pct": 20}) is not None
+    assert CATALOGO["margen"].evaluar(
+        EmpresaFoto("X", margen_operativo=0.201), {"margen_pct": 20}) is None
+    assert CATALOGO["rentables"].evaluar(
+        EmpresaFoto("X", roe=0.20), {"roe_pct": 20}) is not None
+    assert CATALOGO["rentables"].evaluar(
+        EmpresaFoto("X", roe=0.201), {"roe_pct": 20}) is None
+    assert CATALOGO["dividendo"].evaluar(
+        EmpresaFoto("X", dividend_yield_pct=5), {"dividendo_pct": 5}) is not None
+    assert CATALOGO["dividendo"].evaluar(
+        EmpresaFoto("X", dividend_yield_pct=5.1), {"dividendo_pct": 5}) is None
+
+
+def test_zero_values_are_present_data_not_missing():
+    assert ev("crecen", crecimiento_ventas=0.0).startswith(
+        f"la última variación interanual de ventas es del 0{NBSP}%")
+    assert ev("margen", margen_operativo=0.0).startswith("su margen es del")
+    assert ev("rentables", roe=0.0).startswith("gana un")
+    assert ev("dividendo", dividend_yield_pct=0.0).startswith("su dividendo es del")
 
 
 def test_castigadas():
@@ -123,8 +171,10 @@ def test_reglas_de_sector_e_industria():
 
 def test_detalles():
     assert CATALOGO["deuda"].detalle({"anios": 1}) == (
-        "deuda neta de menos de 1 año de beneficio operativo")
-    assert CATALOGO["deuda"].detalle() == "deuda neta de menos de 2 años de beneficio operativo"
+        "deuda neta inferior a 1 vez el EBITDA")
+    assert CATALOGO["deuda"].detalle() == "deuda neta inferior a 2 veces el EBITDA"
+    assert CATALOGO["crecen"].detalle({"crecimiento_pct": 10}) == (
+        f"última variación interanual de ventas superior al 10{NBSP}%")
     assert CATALOGO["solo_sectores"].detalle({"sectores": ["Industrials", "Technology"]}) == (
         "industria y tecnología")
     assert CATALOGO["solo_sectores"].detalle({"sectores": ["Technology", "Industrials"]}) == (
@@ -133,6 +183,22 @@ def test_detalles():
         "energía e industria")
     with pytest.raises(ValueError):
         CATALOGO["solo_sectores"].detalle()
+
+
+def test_parametros_opcionales_conservan_valores_por_defecto_legacy():
+    empresa = EmpresaFoto("X", crecimiento_ventas=0.08, margen_operativo=0.18, roe=0.18,
+                          dividend_yield_pct=3.0)
+    assert CATALOGO["crecen"].evaluar(empresa, {}) is None
+    assert CATALOGO["margen"].evaluar(empresa, {}) is None
+    assert CATALOGO["rentables"].evaluar(empresa, {}) is None
+    assert CATALOGO["dividendo"].evaluar(empresa, {}) is None
+    assert validar_reglas([{"clave": "crecen", "params": {}}]) == []
+    assert fallo(EmpresaFoto("Y", crecimiento_ventas=0.08), [
+        {"clave": "crecen", "params": {"crecimiento_pct": 10}},
+    ]) is not None
+    assert fallo(EmpresaFoto("Y", crecimiento_ventas=0.08), [
+        {"clave": "crecen", "params": {}},
+    ]) is None
 
 
 def test_fallo_devuelve_la_primera_regla_en_el_orden_de_la_receta():

@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from app.liga import copia, rutas_gestion
+from app.liga import copia, rutas_gestion, visitas
 from app.liga.auth import Identidad, require_admin
 from app.liga.procesos import cerrar, diario, estado, formar, foto, temporadas
 from app.liga.procesos.comun import ErrorProceso
@@ -165,3 +165,4 @@ def descargar_copia(ident: Identidad = Depends(require_admin)) -> Response:
 
 router.include_router(_procesos)
 router.include_router(rutas_gestion.router_admin, dependencies=ADMIN)
+router.include_router(visitas.router_admin, dependencies=ADMIN)

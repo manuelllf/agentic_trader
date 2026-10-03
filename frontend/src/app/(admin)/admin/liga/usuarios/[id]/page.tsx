@@ -13,6 +13,12 @@ type UsuarioDetalle = {
   id: string; alias: string; roles: string[]; plan: "gratis" | "pro"; plan_hasta: string | null;
   suspendido: boolean; creado: string; oculto: boolean; saldo: string;
 };
+type ResumenVisitas = {
+  visitas: number; ultima_visita: string | null; ultima_actividad: string | null;
+};
+type HistorialVisitas = {
+  total: number; filas: { inicio: string; ultima_actividad: string }[];
+};
 type Movimiento = { id: number; usuario_id: string; importe: string; motivo: string; creado: string;
                     creado_por: string | null };
 type ListaMovimientos = { total: number; filas: Movimiento[] };
@@ -20,11 +26,16 @@ type ListaMovimientos = { total: number; filas: Movimiento[] };
 const ROLES = ["usuario", "moderador", "admin"] as const;
 const error = (e: unknown) => (e instanceof ApiError ? e.message : "Algo falló. Reintenta.");
 const FECHA = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", year: "numeric" });
+const FECHA_HORA = new Intl.DateTimeFormat("es-ES", { dateStyle: "medium", timeStyle: "short" });
 
 function Detalle() {
   const { id } = useParams<{ id: string }>();
   const [u, setU] = useState<UsuarioDetalle | null>(null);
   const [movs, setMovs] = useState<ListaMovimientos | null>(null);
+  const [visitas, setVisitas] = useState<ResumenVisitas | null>(null);
+  const [historial, setHistorial] = useState<HistorialVisitas | null>(null);
+  const [visitasDesde, setVisitasDesde] = useState(0);
+  const [visitasFallo, setVisitasFallo] = useState(false);
   const [fallo, setFallo] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [hasta, setHasta] = useState("");
@@ -33,10 +44,16 @@ function Detalle() {
 
   const cargar = useCallback(() => {
     setFallo("");
+    setVisitas(null); setVisitasFallo(false);
+    setHistorial(null);
     get<UsuarioDetalle>(`/liga/admin/usuarios/${id}`).then(setU).catch((e) => setFallo(error(e)));
     get<ListaMovimientos>(`/liga/admin/creditos?usuario_id=${id}&cuantos=20`)
       .then(setMovs).catch((e) => setFallo(error(e)));
-  }, [id]);
+    get<ResumenVisitas>(`/liga/admin/usuarios/${id}/visitas`)
+      .then(setVisitas).catch(() => setVisitasFallo(true));
+    get<HistorialVisitas>(`/liga/admin/usuarios/${id}/visitas/historial?desde=${visitasDesde}&cuantos=10`)
+      .then(setHistorial).catch(() => setVisitasFallo(true));
+  }, [id, visitasDesde]);
   useEffect(cargar, [cargar]);
 
   const conFallo = async (accion: () => Promise<unknown>) => {
@@ -96,6 +113,54 @@ function Detalle() {
             Desde {FECHA.format(new Date(u.creado))} · saldo {u.saldo} créditos
             {u.oculto ? " · oculto" : ""}
           </p>
+
+          <section className="mt-4 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
+            <h2 className="font-bold text-white">Actividad</h2>
+            {visitas ? (
+              <div className="mt-2 space-y-1" style={{ color: "#898781" }}>
+                <p><span className="text-white">{visitas.visitas}</span> visitas</p>
+                <p>Última visita: {visitas.ultima_visita
+                  ? FECHA.format(new Date(visitas.ultima_visita)) : "Sin visitas"}</p>
+                <p>Última actividad: {visitas.ultima_actividad
+                  ? FECHA_HORA.format(new Date(visitas.ultima_actividad))
+                  : "Sin actividad"}</p>
+                {historial && (
+                  <>
+                    <ul className="mt-3 border-t" style={{ borderColor: "#303030" }}>
+                      {historial.filas.map((v) => (
+                        <li key={v.inicio} className="border-b py-2" style={{ borderColor: "#303030" }}>
+                          <p className="text-white">Entrada: {FECHA_HORA.format(new Date(v.inicio))}</p>
+                          <p>Última actividad: {FECHA_HORA.format(new Date(v.ultima_actividad))}</p>
+                        </li>
+                      ))}
+                      {historial.filas.length === 0 && <li className="py-2">Sin historial.</li>}
+                    </ul>
+                    {historial.total > 10 && (
+                      <div className="mt-2 flex justify-between">
+                        <button type="button" disabled={visitasDesde === 0}
+                                onClick={() => setVisitasDesde(Math.max(0, visitasDesde - 10))}
+                                className="min-h-[36px] rounded px-2 disabled:opacity-40"
+                                style={{ background: "#2c2c2a", color: "#c3c2b7" }}>
+                          Anterior
+                        </button>
+                        <span>{visitasDesde + 1}–{Math.min(visitasDesde + 10, historial.total)} / {historial.total}</span>
+                        <button type="button" disabled={visitasDesde + 10 >= historial.total}
+                                onClick={() => setVisitasDesde(visitasDesde + 10)}
+                                className="min-h-[36px] rounded px-2 disabled:opacity-40"
+                                style={{ background: "#2c2c2a", color: "#c3c2b7" }}>
+                          Siguiente
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <p className="mt-2" style={{ color: "#898781" }}>
+                {visitasFallo ? "No se pudo cargar la actividad." : "Cargando actividad…"}
+              </p>
+            )}
+          </section>
 
           <section className="mt-5 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
             <h2 className="font-bold text-white">Roles</h2>

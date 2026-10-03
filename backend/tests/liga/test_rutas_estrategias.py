@@ -179,6 +179,12 @@ def test_catalogo_es_publico(api) -> None:  # noqa: ANN001
     assert cuerpo["version"] >= 1
     assert any(x["clave"] == "deuda" for x in cuerpo["reglas"])
     assert set(cuerpo["pesos"]["claves"]) == {"negocio", "precio", "deuda", "pronto", "pregunta"}
+    reglas = {x["clave"]: x for x in cuerpo["reglas"]}
+    crecimiento = next(p for p in reglas["crecen"]["parametros"]
+                       if p["nombre"] == "crecimiento_pct")
+    assert crecimiento["opcional"] is True and crecimiento["defecto"] == 5
+    deuda = next(p for p in reglas["deuda"]["parametros"] if p["nombre"] == "anios")
+    assert deuda["opcional"] is False
 
 
 # ---- crear → receta → apuntar --------------------------------------------------------------------
@@ -261,6 +267,40 @@ def test_pregunta_propia_y_publicar_son_de_pro(api) -> None:  # noqa: ANN001
                                                             "declara_posiciones": "no"},
                       headers=cab(pro))
     assert r.status_code == 200, r.text
+
+
+def test_preview_exige_cuenta_activa_y_pro_para_pregunta(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, foto_con_escaneo, _jornada, cx = api
+    foto_con_escaneo(_EMPRESAS)
+    cuerpo = {
+        **RECETA_BASICA,
+        "pregunta": "¿Tiene ventaja competitiva?",
+        "pesos": {"negocio": 30, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 30},
+    }
+
+    assert cliente.post("/liga/seleccion/preview", json=RECETA_BASICA).status_code == 401
+
+    # A cryptographically valid JWT for a deleted/non-created account is not a player identity.
+    sin_perfil = str(uuid.uuid4())
+    assert cliente.post("/liga/seleccion/preview", json=RECETA_BASICA,
+                        headers=cab(sin_perfil)).status_code == 403
+
+    suspendido = usuario()
+    cx.execute("delete from liga.roles_usuario where usuario_id = %s and rol = 'usuario'",
+               (suspendido,))
+    assert cliente.post("/liga/seleccion/preview", json=RECETA_BASICA,
+                        headers=cab(suspendido)).status_code == 403
+
+    gratis = usuario()
+    r = cliente.post("/liga/seleccion/preview", json=cuerpo, headers=cab(gratis))
+    assert r.status_code == 403 and "Pro" in r.json()["detail"]
+
+    pro = usuario(pro=True)
+    r = cliente.post("/liga/seleccion/preview", json=cuerpo, headers=cab(pro))
+    assert r.status_code == 200, r.text
+    vista = r.json()
+    assert vista["estado"] == "incompleto" and vista["sin_respuesta"] == len(_EMPRESAS)
+    assert vista["seleccionadas"] == 0
 
 
 # ---- otro no puede leer ni tocar lo que no es suyo (IDOR) ----------------------------------------
@@ -355,7 +395,7 @@ def test_prueba_por_que_y_buscador(api) -> None:  # noqa: ANN001
 
 
 def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
-    cliente, cab, usuario, foto_con_escaneo, jornada_con_posicion, _cx = api
+    cliente, cab, usuario, foto_con_escaneo, jornada_con_posicion, cx = api
     foto_con_escaneo(_EMPRESAS)
     duena = usuario(pro=True)  # publicar es de Pro (plan §2.1)
     eid = _crear(cliente, cab, duena, "Publicada")
@@ -363,6 +403,21 @@ def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     jornada_con_posicion(eid, receta["id"], "ZPA", "50.0000")
     # Un borrador no lo ve nadie más que su dueña (plan §7.3): que juegue para que sea visible.
     assert cliente.post(f"/liga/estrategias/{eid}/apuntar", headers=cab(duena)).status_code == 200
+    temporada, dia_base = cx.execute("""
+        select j.temporada_id, j.dia_fin
+        from liga.jornadas j join liga.inscripciones i on i.jornada_id = j.id
+        where i.estrategia_id = %s order by j.id desc limit 1
+    """, (eid,)).fetchone()
+    jornada_pendiente = cx.execute("""
+        insert into liga.jornadas (temporada_id, numero, dia_base, dia_inicio, dia_fin,
+                                   cierre_inscripcion, estado)
+        values (%s, 2, %s, %s, %s, %s, 'programada') returning id
+    """, (temporada, dia_base, dia_base + timedelta(days=1), dia_base + timedelta(days=28),
+          datetime.now(UTC) + timedelta(days=28))).fetchone()[0]
+    cx.execute("""
+        insert into liga.inscripciones (jornada_id, estrategia_id, receta_id, estado)
+        values (%s, %s, %s, 'inscrita')
+    """, (jornada_pendiente, eid, receta["id"]))
 
     propia = cliente.get(f"/liga/fichas/{eid}", headers=cab(duena)).json()
     assert propia["es_dueno"] is True
@@ -373,6 +428,8 @@ def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     ajena = cliente.get(f"/liga/fichas/{eid}", headers=cab(libre)).json()
     assert ajena["nombre"] == "Publicada" and ajena["es_dueno"] is False
     assert ajena["receta"] is None and ajena["posiciones"] == []
+    assert ajena["rendimiento"]["estado"] == "privado"
+    assert ajena["rendimiento"]["serie"] == []
 
     # Publicada, la ve un Pro; un Gratis sigue sin verla.
     r = cliente.patch(f"/liga/estrategias/{eid}", json={"visibilidad": "publicada",
@@ -383,6 +440,7 @@ def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     con_pro = cliente.get(f"/liga/fichas/{eid}", headers=cab(pro)).json()
     assert con_pro["receta"]["id"] == receta["id"]
     assert con_pro["posiciones"] == [{"ticker": "ZPA", "peso": "50.0000"}]
+    assert con_pro["rendimiento"]["estado"] == "sin_datos"
 
     sin_pro = cliente.get(f"/liga/fichas/{eid}", headers=cab(libre)).json()
     assert sin_pro["receta"] is None

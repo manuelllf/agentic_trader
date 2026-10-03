@@ -94,7 +94,11 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
         cx.execute("insert into auth.users (id, email) values (%s, %s)",
                   (uid, f"{uid.hex[:12]}@prueba.local"))
         creado["usuarios"].append(uid)
-        cx.execute("update liga.perfiles set alias = %s where id = %s", (alias, uid))
+        # This fixture's system connection uses a non-superuser local role. Run the alias change
+        # with the same verified owner claim as the real account endpoint, as the trigger requires.
+        with cx.transaction():
+            cx.execute("select set_config('request.jwt.claim.sub', %s, true)", (str(uid),))
+            cx.execute("update liga.perfiles set alias = %s where id = %s", (alias, uid))
         if rol:
             cx.execute("insert into liga.roles_usuario (usuario_id, rol) values (%s, %s)",
                       (uid, rol))
@@ -110,7 +114,9 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
 
     def borrar_de_verdad(uid: str) -> None:
         """Lo que haría Supabase tras el HTTP simulado: el `DELETE` real, con su cascada."""
-        cx.execute("delete from auth.users where id = %s", (uid,))
+        with cx.transaction():
+            cx.execute("set local role postgres")
+            cx.execute("delete from auth.users where id = %s", (uid,))
 
     try:
         yield cliente, cab, usuario, existe, borrar_de_verdad, llamadas_supabase, cx, creado
@@ -150,12 +156,33 @@ RECETA_BASICA = {
 
 
 def test_exportar_solo_trae_lo_propio(api) -> None:  # noqa: ANN001
-    cliente, cab, usuario, *_rest, creado = api
+    cliente, cab, usuario, *_rest = api
+    cx, creado = _rest[-2:]
     a = usuario("exporta_a")
     b = usuario("exporta_b")
     eid_a = _crear_estrategia(cliente, cab, a, "De A", creado)
     cliente.post(f"/liga/estrategias/{eid_a}/receta", json=RECETA_BASICA, headers=cab(a))
-    _crear_estrategia(cliente, cab, b, "De B", creado)
+    eid_b = _crear_estrategia(cliente, cab, b, "De B", creado)
+    from psycopg.types.json import Jsonb
+
+    cx.execute("insert into liga.borradores (usuario_id, clave, contenido, revision) "
+               "values (%s, 'nueva', %s, 3)", (a, Jsonb({"nombre": "En progreso"})))
+    cx.execute("insert into liga.borradores (usuario_id, clave, contenido, revision) "
+               "values (%s, 'nueva', %s, 2)", (b, Jsonb({"nombre": "Privado"})))
+    revision = cliente.post("/liga/seguimiento/revisado", headers=cab(a), json={
+        "items": [{"estrategia_id": eid_a, "inscripcion_id": None,
+                   "resultado_inscripcion_id": None}],
+    })
+    assert revision.status_code == 200, revision.text
+    revision_b = cliente.post("/liga/seguimiento/revisado", headers=cab(b), json={
+        "items": [{"estrategia_id": eid_b, "inscripcion_id": None,
+                   "resultado_inscripcion_id": None}],
+    })
+    assert revision_b.status_code == 200, revision_b.text
+
+    visita_a, visita_b = uuid.uuid4(), uuid.uuid4()
+    cx.execute("insert into liga.visitas (usuario_id, session_id) values (%s, %s), (%s, %s)",
+               (a, visita_a, b, visita_b))
 
     r = cliente.get("/liga/yo/exportar", headers=cab(a))
     assert r.status_code == 200, r.text
@@ -165,6 +192,11 @@ def test_exportar_solo_trae_lo_propio(api) -> None:  # noqa: ANN001
     assert [e["id"] for e in cuerpo["estrategias"]] == [eid_a]
     assert len(cuerpo["recetas"]) == 1
     assert len(cuerpo["consentimientos"]) == 1
+    assert [d["clave"] for d in cuerpo["borradores"]] == ["nueva"]
+    assert cuerpo["borradores"][0]["revision"] == 3
+    assert [v["estrategia_id"] for v in cuerpo["revisiones_estrategia"]] == [eid_a]
+    assert len(cuerpo["visitas"]) == 1
+    assert set(cuerpo["visitas"][0]) == {"inicio", "ultima_actividad"}
 
     r_b = cliente.get("/liga/yo/exportar", headers=cab(b))
     ids_b = [e["id"] for e in r_b.json()["estrategias"]]
@@ -236,9 +268,11 @@ def test_borrar_la_cuenta_retira_y_oculta_sus_estrategias_que_jugaban(api) -> No
     r = cliente.post(f"/liga/estrategias/{eid}/receta", json=RECETA_BASICA, headers=cab(uid))
     assert r.status_code == 201, r.text
     borrador = _crear_estrategia(cliente, cab, uid, "Sin apuntar", creado)
-    cx.execute("update liga.estrategias set estado = 'apuntada', visibilidad = 'publicada', "
-               "declara_posiciones = 'no', receta_id = (select max(id) from liga.recetas "
-               "where estrategia_id = %s) where id = %s", (eid, eid))
+    with cx.transaction():
+        cx.execute("select set_config('request.jwt.claim.sub', %s, true)", (uid,))
+        cx.execute("update liga.estrategias set estado = 'apuntada', visibilidad = 'publicada', "
+                   "declara_posiciones = 'no', receta_id = (select max(id) from liga.recetas "
+                   "where estrategia_id = %s) where id = %s", (eid, eid))
 
     borrar_de_verdad(uid)
     assert not existe(uid)

@@ -10,6 +10,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 from fastapi import HTTPException
 
@@ -35,26 +36,38 @@ _MODELO = "deepseek-flash"
 
 
 @dataclass(frozen=True)
+class Interpretacion:
+    intencion: str
+    tipo: Literal["exacta", "aproximada", "no_disponible"]
+    regla: str | None
+    motivo: str
+
+
+@dataclass(frozen=True)
 class Sugerencia:
     reglas: list[dict]
     pesos: dict[str, int] | None
     pregunta: str | None
     nombre: str | None
+    interpretacion: list[Interpretacion]
 
 
 def _catalogo_para_prompt() -> str:
     lineas = []
     for r in CATALOGO.values():
-        if not r.parametros:
-            lineas.append(f"- {r.clave}: {r.titulo} (sin ajustes, params debe ir vacío {{}})")
-            continue
         partes = []
         for p in r.parametros:
             if p.tipo == "sectores":
                 partes.append(f'{p.nombre}: list of sector keys from {sorted(SECTORES_ES)}')
             else:
-                partes.append(f"{p.nombre}: number {p.minimo}-{p.maximo} step {p.paso}")
-        lineas.append(f"- {r.clave}: {r.titulo} [{'; '.join(partes)}]")
+                partes.append(f"{p.nombre}: {p.etiqueta}, number {p.minimo}-{p.maximo} "
+                              f"step {p.paso}, default {p.defecto}")
+        detalle = ""
+        if all(p.defecto is not None for p in r.parametros):
+            detalle = f"; exact condition: {r.detalle(r.params_por_defecto())}"
+        ajustes = (f"; params: {'; '.join(partes)}" if partes
+                   else "; no adjustments, params must be {}")
+        lineas.append(f"- {r.clave}: {r.titulo}{detalle}{ajustes}")
     return "\n".join(lineas)
 
 
@@ -69,8 +82,15 @@ _SYSTEM_TMPL = (
     '"pesos": {{"negocio": <0-100>, "precio": <0-100>, "deuda": <0-100>, "pronto": <0-100>}} or '
     'null, "pregunta": "<one yes/no question IN SPANISH, max 160 chars, about a numeric or '
     'factual attribute — never about a specific company>" or null, "nombre": "<short SPANISH '
-    'strategy name, max 28 chars, never a company name>" or null}}. Omit rules you are not '
-    "confident about; an empty list is fine."
+    'strategy name, max 28 chars, never a company name>" or null, "interpretacion": '
+    '[{{"intencion": "<one user intent in Spanish, max 160 chars>", "tipo": '
+    '"exacta" | "aproximada" | "no_disponible", "regla": "<catalogue key>" or null, '
+    '"motivo": "<brief reason in Spanish>"}}]}}. Return one entry per distinct intent (up to 12), '
+    'including unsupported intents. Use exacta only when a catalogue rule directly expresses the '
+    'intent, aproximada when a rule covers only part of it, and no_disponible when no rule does. '
+    'For exacta or aproximada, regla must be one of the rules you returned. Do not invent '
+    'capabilities or describe a condition that differs from the selected rule. Omit rules you are '
+    "not confident about; an empty list is fine."
 )
 
 
@@ -115,6 +135,68 @@ def _pesos_validos(crudo: object) -> dict[str, int] | None:
         n = max(0, min(PESO_MAXIMO, round(float(v) / PASO_PESO) * PASO_PESO))
         salida[k] = int(n)
     return salida or None
+
+
+_TIPOS_INTERPRETACION = {"exacta", "aproximada", "no_disponible"}
+_INTENCION_MAX = 160
+_MOTIVO_MAX = 180
+_MOTIVO_NO_DISPONIBLE = "No hay una regla del catálogo que represente esta intención."
+
+
+def _interpretaciones_validas(crudo: object, reglas: list[dict],
+                              empresas: tuple[EmpresaFoto, ...]) -> list[Interpretacion]:
+    """Ata cada explicación a una regla ejecutable ya validada.
+
+    No crea una interpretación desde la presencia de una regla: solo transforma las entradas que
+    devolvió el proveedor. Si la regla no sobrevivió la validación de parámetros o el proveedor
+    afirma una coincidencia sin devolverla, la intención queda como no disponible.
+    """
+    if not isinstance(crudo, list):
+        return []
+    reglas_por_clave = {r["clave"]: r for r in reglas}
+    salida: list[Interpretacion] = []
+    intenciones_vistas: set[str] = set()
+    for item in crudo[:12]:
+        if not isinstance(item, dict):
+            continue
+        intencion = item.get("intencion")
+        if not isinstance(intencion, str):
+            continue
+        intencion = intencion.strip()[:_INTENCION_MAX]
+        if not intencion or _menciona_empresa(intencion, empresas):
+            continue
+        clave_intencion = intencion.casefold()
+        if clave_intencion in intenciones_vistas:
+            continue
+        intenciones_vistas.add(clave_intencion)
+
+        tipo_crudo = item.get("tipo")
+        tipo = (tipo_crudo if isinstance(tipo_crudo, str)
+                and tipo_crudo in _TIPOS_INTERPRETACION else "no_disponible")
+        clave = item.get("regla")
+        regla = reglas_por_clave.get(clave) if isinstance(clave, str) else None
+        motivo_crudo = item.get("motivo")
+        motivo = motivo_crudo.strip()[:_MOTIVO_MAX] if isinstance(motivo_crudo, str) else ""
+        if _menciona_empresa(motivo, empresas):
+            motivo = ""
+
+        if tipo in {"exacta", "aproximada"}:
+            if regla is None:
+                tipo, clave, motivo = "no_disponible", None, _MOTIVO_NO_DISPONIBLE
+            else:
+                entrada = CATALOGO[regla["clave"]]
+                try:
+                    motivo = entrada.detalle(regla["params"])[:_MOTIVO_MAX]
+                except (KeyError, TypeError, ValueError):
+                    # A stored response from an older provider may have incomplete params.
+                    tipo, clave, motivo = "no_disponible", None, _MOTIVO_NO_DISPONIBLE
+        else:
+            tipo, clave = "no_disponible", None
+            motivo = motivo or _MOTIVO_NO_DISPONIBLE
+
+        salida.append(Interpretacion(intencion=intencion, tipo=tipo, regla=clave,
+                                     motivo=motivo[:_MOTIVO_MAX]))
+    return salida
 
 
 def _empresas_actuales() -> tuple[EmpresaFoto, ...]:
@@ -176,4 +258,6 @@ def convertir(usuario_id: str, frase: str) -> tuple[Sugerencia, int]:
     pregunta = (pregunta.strip()[:_LARGO_PREGUNTA] or None) if pregunta else None
     nombre = (nombre.strip()[:_LARGO_NOMBRE] or None) if nombre else None
 
-    return Sugerencia(reglas=reglas, pesos=pesos, pregunta=pregunta, nombre=nombre), usos + 1
+    interpretacion = _interpretaciones_validas(bruto.get("interpretacion"), reglas, empresas)
+    return Sugerencia(reglas=reglas, pesos=pesos, pregunta=pregunta, nombre=nombre,
+                      interpretacion=interpretacion), usos + 1

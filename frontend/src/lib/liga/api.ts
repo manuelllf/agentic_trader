@@ -1,5 +1,6 @@
 // Cliente de la API de la liga (`/liga/*`). Manda el token de Supabase; las salas usan lib/api.ts.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { EvidenciaFormacion } from "./evidencia";
 import { avisarError } from "./errores";
 import { sesionCaducada, tokenSesion } from "./supabase";
 
@@ -106,6 +107,7 @@ export type ParametroRegla = {
   maximo: number | null;
   paso: number | null;
   defecto: number | string | null;
+  opcional?: boolean;
 };
 
 export type ReglaCatalogo = { clave: string; titulo: string; parametros: ParametroRegla[] };
@@ -177,6 +179,27 @@ export type Prueba = {
   creditos_cobrados?: number | null;
 };
 
+/** Counts and portfolio previewed from the latest saved market photo; this never creates a test. */
+export type PreviewSeleccion = {
+  catalogo_version: number;
+  sin_peso: number | null;
+  explicacion: string | null;
+  estado: "disponible" | "incompleto" | "sin_datos";
+  mensaje: string;
+  plan_b: boolean | null;
+  foto_id: number | null;
+  scan_run_id: number | null;
+  evaluadas: number | null;
+  cumplen_reglas: number | null;
+  candidatas_ordenadas: number | null;
+  seleccionadas: number | null;
+  sin_notas: number | null;
+  sin_respuesta: number | null;
+  saltadas_por_sector: number | null;
+  caja_pct: number | null;
+  elegidas: EmpresaElegida[];
+};
+
 export type PorQue = { ticker: string; motivo: string };
 export type EmpresaBusqueda = { ticker: string; nombre: string | null; sector: string | null };
 
@@ -195,13 +218,44 @@ export type Ficha = {
   jornadas: JornadaFicha[];
   receta: Receta | null;
   posiciones: Posicion[];
+  rendimiento?: RendimientoFicha | null;
 };
 
-async function llamar<T>(
+export type RendimientoFicha = {
+  estado: "disponible" | "sin_datos" | "privado";
+  metodologia: string;
+  oficial_hasta: string | null;
+  provisional_hasta: string | null;
+  incompleta?: boolean;
+  evidencia?: EvidenciaFormacion | null;
+  serie: { dia: string; estrategia: number; sp500: number; provisional: boolean; salto?: boolean }[];
+  metricas: { sharpe: number | null; sortino: number | null; volatilidad: number | null;
+    max_drawdown: number | null; observaciones: number } | null;
+};
+
+export type ContenidoBorrador = {
+  nombre: string; idea: string; etapa: number; escudo: Escudo; receta: RecetaEntrada;
+  interpretacion?: InterpretacionIdea[];
+  visibilidad: "privada" | "publicada"; declara_posiciones: "si" | "no" | null;
+  cada_dia_1: "revisar" | "mantener";
+};
+export type BorradorGuardado = { revision: number; contenido: ContenidoBorrador; actualizado: string };
+export const leerBorrador = (clave: string) => llamar<BorradorGuardado | null>(`/liga/borradores/${clave}`);
+export const guardarBorrador = (clave: string, revision: number, contenido: ContenidoBorrador, usuario?: string) =>
+  llamar<BorradorGuardado>(`/liga/borradores/${clave}`, {
+    method: "PUT", body: JSON.stringify({ revision, contenido }),
+  }, true, 15_000, usuario);
+export const borrarBorrador = (clave: string, revision: number) =>
+  llamar<void>(`/liga/borradores/${clave}?revision=${revision}`, { method: "DELETE" });
+export const vincularBorrador = (id: string, revision: number) =>
+  llamar<void>(`/liga/borradores/nueva/vincular/${id}?revision=${revision}`, { method: "POST" });
+
+export async function llamar<T>(
   ruta: string,
   opciones: RequestInit = {},
   conSesion = true,
   timeout = opciones.method && opciones.method !== "GET" ? 60000 : 15000,
+  usuarioEsperado?: string,
 ): Promise<T | string> {
   const ctrl = new AbortController();
   const abortar = () => ctrl.abort();
@@ -214,6 +268,7 @@ async function llamar<T>(
   if (conSesion) {
     const sesion = await tokenSesion(ctrl.signal);
     if (!sesion) return SIN_SESION;
+    if (usuarioEsperado && sesion.uid !== usuarioEsperado) return "La sesión ha cambiado. Vuelve a abrir el borrador con tu cuenta.";
     cabeceras.Authorization = `Bearer ${sesion.token}`;
   }
   if (opciones.body) cabeceras["Content-Type"] = "application/json";
@@ -341,6 +396,15 @@ export async function probarEstrategia(
   }, true, 210000);
 }
 
+/** Read-only preview of a draft recipe against saved data; the abort signal drops stale edits. */
+export async function previsualizarSeleccion(
+  receta: RecetaEntrada & { ticker?: string }, signal?: AbortSignal,
+): Promise<PreviewSeleccion | string> {
+  return llamar<PreviewSeleccion>("/liga/seleccion/preview", {
+    method: "POST", body: JSON.stringify(receta), signal,
+  }, true, 15000);
+}
+
 export type CostePregunta = {
   evaluadas: number;
   en_cache: number;
@@ -414,8 +478,16 @@ export async function leerMiCartera(
 
 // ---- Conversor: frase libre → reglas sugeridas (plan §10, F6-A) --------------------------------
 
+export type InterpretacionIdea = {
+  intencion: string;
+  tipo: "exacta" | "aproximada" | "no_disponible";
+  regla: string | null;
+  motivo: string;
+};
+
 export type ConvertirResultado = {
   reglas: ReglaElegida[];
+  interpretacion: InterpretacionIdea[];
   pesos: Record<string, number> | null;
   pregunta: string | null;
   nombre: string | null;
@@ -460,6 +532,16 @@ export type JornadaPublica = {
   sp_rentabilidad: number | null;
 };
 
+export type RentabilidadAcumulada = {
+  rentabilidad: number;
+  sp500: number;
+  diferencia_pp: number;
+  desde: string;
+  hasta: string;
+  periodos: number;
+  incompleta: boolean;
+};
+
 export type FilaJornadaPublica = {
   equipo: EquipoPublico;
   rentabilidad: number | null;
@@ -493,6 +575,9 @@ export type FilaClasificacion = {
   empatadas: number;
   perdidas: number;
   dif_sp: number;
+  acumulado: RentabilidadAcumulada | null;
+  /** Places moved up since the immediately preceding completed period. */
+  movimiento: number | null;
 };
 
 /** `mias`: las del alias pedido que quedan fuera de la página, con su posición real. */
@@ -539,6 +624,8 @@ export type MiembroLiga = {
   puntos: number | null;
   jornadas: number | null;
   dif_sp: number | null;
+  acumulado: RentabilidadAcumulada | null;
+  movimiento: number | null;
 };
 
 export type LigaDetalle = LigaResumen & { miembros: MiembroLiga[] };

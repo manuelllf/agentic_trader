@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -31,11 +32,19 @@ class ReglaSugeridaOut(BaseModel):
     params: dict = Field(default_factory=dict)
 
 
+class InterpretacionOut(BaseModel):
+    intencion: str = Field(max_length=160)
+    tipo: Literal["exacta", "aproximada", "no_disponible"]
+    regla: str | None = None
+    motivo: str = Field(max_length=180)
+
+
 class ConvertirOut(BaseModel):
     reglas: list[ReglaSugeridaOut]
     pesos: dict[str, int] | None
     pregunta: str | None
     nombre: str | None
+    interpretacion: list[InterpretacionOut] = Field(default_factory=list, max_length=12)
     usos_hoy: int
     usos_tope: int
 
@@ -46,7 +55,10 @@ def convertir(body: ConvertirIn, ident: Identidad = Depends(require_usuario)) ->
     return ConvertirOut(
         reglas=[ReglaSugeridaOut(**r) for r in sugerencia.reglas], pesos=sugerencia.pesos,
         pregunta=sugerencia.pregunta, nombre=sugerencia.nombre, usos_hoy=usos,
-        usos_tope=TOPE_DIARIO)
+        usos_tope=TOPE_DIARIO,
+        interpretacion=[InterpretacionOut(
+            intencion=i.intencion, tipo=i.tipo, regla=i.regla, motivo=i.motivo,
+        ) for i in sugerencia.interpretacion])
 
 
 # ---- «Leer a fondo» / «Leer mi cartera» (F6-B) --------------------------------------------------

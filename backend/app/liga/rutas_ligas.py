@@ -17,6 +17,11 @@ from sqlalchemy.orm import Session
 
 from app.liga import acceso, estrategias, ligas
 from app.liga.auth import Identidad, require_usuario
+from app.liga.comparativa import (
+    RentabilidadAcumulada,
+    movimientos_grupo,
+    retornos_acumulados,
+)
 from app.liga.db import db_usuario
 from app.liga.ia import moderacion
 
@@ -58,6 +63,8 @@ class MiembroLigaOut(BaseModel):
     puntos: int | None
     jornadas: int | None
     dif_sp: Decimal | None
+    acumulado: RentabilidadAcumulada | None = None
+    movimiento: int | None = None
 
 
 class LigaDetalleOut(LigaResumenOut):
@@ -140,12 +147,12 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         raise HTTPException(404, "No existe esa liga (o no estás en ella).")
     temporada = _temporada_actual(db)
     miembros = db.execute(text("""
-        select p.alias, m.usuario_id::text as usuario_id, m.unido,
+        select p.alias, m.usuario_id::text as usuario_id, m.unido, s.estrategia_id,
                s.puntos, s.jornadas, s.dif_sp
         from liga.miembros_liga m
         join liga.perfiles p on p.id = m.usuario_id
         left join lateral (
-            select c.puntos, c.jornadas, c.dif_sp
+            select e.id::text as estrategia_id, c.puntos, c.jornadas, c.dif_sp
             from liga.estrategias e
             join liga.v_clasificacion c on c.estrategia_id = e.id
             where e.dueno_id = m.usuario_id and e.tipo = 'usuario' and c.temporada_id = :t
@@ -156,11 +163,21 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         order by coalesce(s.puntos, -1) desc, coalesce(s.dif_sp, -999) desc, p.alias
     """), {"i": id, "t": temporada}).all()
     n_miembros = len(miembros)
+    estrategia_por_miembro = {
+        m.alias: m.estrategia_id for m in miembros if m.estrategia_id is not None
+    }
+    ids_estrategias = list(estrategia_por_miembro.values())
+    acumulados = retornos_acumulados(db, ids_estrategias)
+    movimientos = (movimientos_grupo(db, temporada, estrategia_por_miembro)
+                   if temporada is not None else {})
     return LigaDetalleOut(
         **_resumen(fila, ident.uid, n_miembros).model_dump(),
         miembros=[
             MiembroLigaOut(alias=m.alias, es_yo=(m.usuario_id == ident.uid), unido=m.unido,
-                          puntos=m.puntos, jornadas=m.jornadas, dif_sp=m.dif_sp)
+                          puntos=m.puntos, jornadas=m.jornadas, dif_sp=m.dif_sp,
+                          acumulado=(RentabilidadAcumulada.model_validate(acumulados[m.estrategia_id])
+                                     if m.estrategia_id in acumulados else None),
+                          movimiento=movimientos.get(m.alias))
             for m in miembros
         ])
 

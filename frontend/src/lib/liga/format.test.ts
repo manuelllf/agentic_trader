@@ -11,6 +11,11 @@ import {
 } from "./format";
 
 describe("signo", () => {
+  it("normaliza los Decimal serializados por la API antes de leer el signo", () => {
+    expect(signo("-0.002" as unknown as number)).toBe("0,0");
+    expect(claseSigno("-0.002" as unknown as number)).toBe("fl");
+    expect(porcentaje("1.25" as unknown as number)).toBe("+1,3 %");
+  });
   it("redondea al alza en magnitud (ROUND_HALF_UP), no al par más cercano", () => {
     expect(signo(0.55)).toBe("+0,6");
     expect(signo(-0.05)).toBe("−0,1");

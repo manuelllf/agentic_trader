@@ -105,7 +105,8 @@ def catalogo_payload() -> dict:
             "titulo": r.titulo,
             "parametros": [
                 {"nombre": p.nombre, "etiqueta": p.etiqueta, "tipo": p.tipo,
-                 "minimo": p.minimo, "maximo": p.maximo, "paso": p.paso, "defecto": p.defecto}
+                 "minimo": p.minimo, "maximo": p.maximo, "paso": p.paso, "defecto": p.defecto,
+                 "opcional": p.opcional}
                 for p in r.parametros
             ],
         }
@@ -278,6 +279,67 @@ def foto_y_notas_de(foto_id: int) -> Contexto:
     db = fabrica_sistema()
     try:
         return _contexto_desde(db, foto_id)
+    finally:
+        db.close()
+
+
+def evidencia_formacion_ficha(usuario_id: str, estrategia_id: str) -> dict | None:
+    """Exact latest formation evidence for an owner or active Pro viewing a published strategy.
+
+    This is the narrow service-read boundary for the admin-only fundamentals snapshot table:
+    callers cannot choose a photo or ticker, and the only loaded companies are those held by
+    this strategy in its latest or preceding formed inscription. Missing archived rows stay
+    missing; this never falls back to the latest photo.
+    """
+    db = fabrica_sistema()
+    try:
+        forms = db.execute(text("""
+            select i.id as inscripcion_id, i.jornada_id, i.receta_id, i.n_pasan, i.estado,
+                   j.numero, j.dia_base, j.dia_fin, j.estado as estado_jornada,
+                   j.foto_id, j.scan_run_id, e.receta_id as receta_vigente_id
+            from liga.inscripciones i
+            join liga.jornadas j on j.id = i.jornada_id
+            join liga.estrategias e on e.id = i.estrategia_id
+            where e.id = cast(:e as uuid) and e.tipo = 'usuario'
+              and i.estado in ('formada', 'cerrada')
+              and j.estado in ('formada', 'cerrada')
+              and (e.dueno_id = cast(:u as uuid) or (
+                e.visibilidad = 'publicada' and not e.oculta and exists (
+                  select 1 from liga.planes_usuario p
+                  where p.usuario_id = cast(:u as uuid) and p.plan = 'pro'
+                    and p.desde <= now() and (p.hasta is null or p.hasta > now())
+                )
+              ))
+            order by j.dia_base desc, j.id desc, i.id desc
+            limit 2
+        """), {"e": estrategia_id, "u": usuario_id}).mappings().all()
+        if not forms:
+            return None
+        actual = forms[0]
+        anterior = forms[1] if len(forms) > 1 else None
+        posiciones_actuales = [dict(r) for r in db.execute(text(
+            "select ticker, peso from liga.posiciones where inscripcion_id = :i order by ticker"),
+            {"i": actual["inscripcion_id"]}).mappings().all()]
+        anteriores_tickers = (list(db.execute(text(
+            "select ticker from liga.posiciones where inscripcion_id = :i order by ticker"),
+            {"i": anterior["inscripcion_id"]}).scalars()) if anterior is not None else [])
+        actual_tickers = [p["ticker"] for p in posiciones_actuales]
+        tickers_foto = sorted(set(actual_tickers) | set(anteriores_tickers))
+        foto_disponible = bool(actual["foto_id"] is not None and db.execute(text(
+            "select exists (select 1 from public.foto where id = :f and estado = 'completa')"),
+            {"f": actual["foto_id"]}).scalar())
+        empresas = ({e.ticker: e for e in procesos_datos.cargar_empresas(
+            db, actual["foto_id"], tickers_foto)} if foto_disponible else {})
+        receta = db.get(RecetaModelo, actual["receta_id"])
+        receta_anterior = (db.get(RecetaModelo, anterior["receta_id"])
+                           if anterior is not None else None)
+        return {
+            "actual": dict(actual), "anterior": dict(anterior) if anterior is not None else None,
+            "tickers_actuales": actual_tickers, "tickers_anteriores": anteriores_tickers,
+            "posiciones_actuales": posiciones_actuales,
+            "foto_disponible": foto_disponible, "empresas": empresas,
+            "receta": receta, "receta_anterior": receta_anterior,
+        }
     finally:
         db.close()
 

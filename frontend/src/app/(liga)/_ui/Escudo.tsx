@@ -65,6 +65,8 @@ export function escudoCasa(clave: ClaveCasa): EscudoValor {
 
 export interface EscudoProps {
   valor: EscudoValor;
+  /** Las salas tienen una identidad fija, independiente del escudo guardado en la API. */
+  casa?: ClaveCasa | null;
   /** Nombre accesible completo, p. ej. «Escudo de Foso ancho» o «Escudo de la casa: Alpha». */
   etiqueta: string;
   /** Lado en px (DESIGN.md §6: 24 tabla, 34 filas, 52 ficha, 72 Crear...). */
@@ -78,20 +80,22 @@ const AJUSTE_GLIFO: Record<string, { escala: number; dy: number }> = {
   α: { escala: 1.22, dy: 0.6 },
 };
 
-export function Escudo({ valor, etiqueta, tamano = 34 }: EscudoProps) {
+export function Escudo({ valor: valorGuardado, casa, etiqueta, tamano = 34 }: EscudoProps) {
   const id = useId();
+  const valor = casa ? escudoCasa(casa) : valorGuardado;
   const d = FORMAS[valor.forma] ?? FORMAS.circulo;
   const c1 = valor.color1;
   const c2 = valor.color2 || valor.color1;
   const claro = luminancia(c1) > 0.4;
-  const tintaIniciales = claro ? "#111315" : "#FFFFFF";
+  const tintaIniciales = casa || claro ? "#111315" : "#FFFFFF";
   const haloIniciales = claro ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.4)";
   const ini = (valor.iniciales || "").slice(0, 2);
   const ajuste = AJUSTE_GLIFO[ini];
 
   return (
     <svg
-      className="crest"
+      className={`crest${casa ? " crest-casa" : ""}`}
+      data-casa={casa || undefined}
       width={tamano}
       height={tamano}
       viewBox="0 0 40 40"
@@ -103,7 +107,13 @@ export function Escudo({ valor, etiqueta, tamano = 34 }: EscudoProps) {
           <path d={d} />
         </clipPath>
       </defs>
-      <g clipPath={`url(#${id})`}>
+      {casa ? (
+        <>
+          <rect x={1.5} y={1.5} width={37} height={37} rx={9} fill={c1} />
+          <rect x={4} y={4} width={32} height={32} rx={6.5}
+            fill="none" stroke="#111315" strokeOpacity={0.18} strokeWidth={0.8} />
+        </>
+      ) : <g clipPath={`url(#${id})`}>
         {valor.dibujo === "mitades" && (
           <>
             <rect width={40} height={40} fill={c1} />
@@ -123,8 +133,8 @@ export function Escudo({ valor, etiqueta, tamano = 34 }: EscudoProps) {
           </>
         )}
         {valor.dibujo === "liso" && <rect width={40} height={40} fill={c1} />}
-      </g>
-      <path d={d} fill="none" stroke="var(--crest-ring)" strokeWidth={1.5} />
+      </g>}
+      {!casa && <path d={d} fill="none" stroke="var(--crest-ring)" strokeWidth={1.5} />}
       {ini && (
         <text
           x={20}
@@ -133,7 +143,7 @@ export function Escudo({ valor, etiqueta, tamano = 34 }: EscudoProps) {
           dominantBaseline="middle"
           fontFamily="var(--font-lg)"
           fontWeight={800}
-          fontSize={(ini.length > 1 ? 14 : 19) * (ajuste?.escala ?? 1)}
+          fontSize={(ini.length > 1 ? 14 : casa ? 21 : 19) * (ajuste?.escala ?? 1)}
           fill={tintaIniciales}
           stroke={valor.dibujo === "liso" ? "none" : haloIniciales}
           strokeWidth={valor.dibujo === "liso" ? 0 : 3}

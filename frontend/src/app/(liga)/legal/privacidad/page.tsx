@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
 import { Contacto, TITULAR } from "../datos";
 
-export const metadata = { title: "Privacidad — índicem" };
+export const metadata = { title: "Privacidad — Vennett" };
 
 // Solo lista los servicios que reciben datos de personas usuarias (no las fuentes de mercado).
 // Si se añade un proveedor, un dato o una analítica, actualizar esta página y la de cookies.
@@ -12,7 +12,7 @@ export default function Privacidad() {
       titulo="Política de privacidad"
       resumen={[
         "Guardamos lo necesario para jugar: correo, nombre de jugador, estrategias y créditos.",
-        "Sin publicidad ni analítica. No vendemos ni cedemos tus datos.",
+        "Sin publicidad ni seguimiento de terceros. Registramos tus visitas a la cuenta. No vendemos ni cedemos tus datos.",
         "La IA es opcional. Si la usas, el texto que escribes se envía a un proveedor (DeepSeek, en China; Jev, en EE. UU.), nunca tu correo.",
         "Descarga tus datos o borra tu cuenta al momento desde Tu cuenta.",
       ]}
@@ -30,7 +30,11 @@ export default function Privacidad() {
         <li><b>Perfil</b>: un nombre de jugador (alias) distinto de tu nombre real, que es lo único
           que ven los demás, y tu tema claro u oscuro. Tu correo no se enseña a nadie.</li>
         <li><b>Lo que creas</b>: nombre y escudo de tus estrategias, sus reglas, la frase con que las
-          describes, tu pregunta de sí o no, sus resultados y el nombre de tus ligas privadas.</li>
+          describes, tus borradores, tu pregunta de sí o no, sus resultados y el nombre de tus ligas privadas.</li>
+        <li><b>Visitas a la cuenta</b>: inicio y última actividad de cada visita, incluso cuando
+          recuperas una sesión abierta. Tras 30 minutos sin actividad contamos una nueva visita.
+          También guardamos qué resultados y carteras has revisado. Este registro interno no añade
+          cookies de seguimiento ni recoge IP o dispositivo adicionales.</li>
         <li><b>Créditos y plan</b>: saldo, movimientos y si tienes el plan Pro.</li>
         <li><b>Uso de la IA</b>: para qué fue, modelo, tokens, coste y si falló; sin el contenido
           de tu frase ni de la respuesta.</li>
@@ -47,9 +51,10 @@ export default function Privacidad() {
       <h2>Para qué y con qué base legal</h2>
       <ul>
         <li><b>Darte el servicio</b> (art. 6.1.b RGPD): cuenta, estrategias, clasificación y
-          créditos.</li>
+          créditos, recuperación de borradores y seguimiento de resultados.</li>
         <li><b>Seguridad y buen uso</b> (art. 6.1.f): límites de uso, prevención de abusos y
-          moderación de nombres y textos públicos. Puedes oponerte (ver «Tus derechos»).</li>
+          moderación de nombres y textos públicos y auditoría interna de accesos a la cuenta.
+          Puedes oponerte (ver «Tus derechos»).</li>
         <li><b>Funciones de IA</b> (art. 6.1.a): al pulsar el botón consientes que ese texto se
           envíe al proveedor indicado abajo.</li>
         <li><b>Obligación legal</b> (art. 6.1.c): si una autoridad competente lo exige.</li>
@@ -115,7 +120,7 @@ export default function Privacidad() {
       <h2>Seguridad y menores</h2>
       <p>
         Las conexiones van cifradas y la base de datos solo deja a cada persona leer sus propios
-        datos. índicem es para mayores de 14 años (art. 7 de la Ley Orgánica 3/2018).
+        datos. Vennett es para mayores de 14 años (art. 7 de la Ley Orgánica 3/2018).
       </p>
 
       <h2>Cambios</h2>

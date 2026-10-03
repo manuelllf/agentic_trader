@@ -14,6 +14,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.liga import estrategias, gestion
+from app.liga.comparativa import (
+    RentabilidadAcumulada,
+    movimientos_clasificacion,
+    retornos_acumulados,
+)
 from app.liga.db import db_anon
 from app.liga.procesos import diario
 
@@ -72,6 +77,8 @@ class FilaClasificacion(BaseModel):
     empatadas: int
     perdidas: int
     dif_sp: Decimal
+    acumulado: RentabilidadAcumulada | None = None
+    movimiento: int | None = None
 
 
 class Clasificacion(BaseModel):
@@ -135,10 +142,13 @@ def _equipo(f) -> EquipoOut:  # noqa: ANN001
                          iniciales=f.iniciales))
 
 
-def _fila(posicion: int, f) -> FilaClasificacion:  # noqa: ANN001
+def _fila(posicion: int, f, acumulado: dict | None = None,
+          movimiento: int | None = None) -> FilaClasificacion:  # noqa: ANN001
     return FilaClasificacion(
         posicion=posicion, equipo=_equipo(f), puntos=f.puntos, jornadas=f.jornadas,
-        ganadas=f.ganadas, empatadas=f.empatadas, perdidas=f.perdidas, dif_sp=f.dif_sp)
+        ganadas=f.ganadas, empatadas=f.empatadas, perdidas=f.perdidas, dif_sp=f.dif_sp,
+        acumulado=RentabilidadAcumulada.model_validate(acumulado) if acumulado else None,
+        movimiento=movimiento)
 
 
 def _temporada(db: Session, temporada_id: int | None) -> TemporadaOut | None:
@@ -247,9 +257,14 @@ def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
             where r.alias = :alias and r.pos > :ultima
             order by r.pos limit 10
         """), {"t": t.id, "alias": alias.strip().lower(), "ultima": desde + cuantos}).all()
+    visibles = [f.eid for f in filas] + [f.eid for f in fuera]
+    acumulados = retornos_acumulados(db, visibles)
+    movimientos = movimientos_clasificacion(db, t.id)
     return Clasificacion(
-        temporada=t, total=total, filas=[_fila(desde + i + 1, f) for i, f in enumerate(filas)],
-        mias=[_fila(f.pos, f) for f in fuera])
+        temporada=t, total=total,
+        filas=[_fila(desde + i + 1, f, acumulados.get(f.eid), movimientos.get(f.eid))
+               for i, f in enumerate(filas)],
+        mias=[_fila(f.pos, f, acumulados.get(f.eid), movimientos.get(f.eid)) for f in fuera])
 
 
 @router.get("/jornada/{jornada_id}", response_model=JornadaDetalle)

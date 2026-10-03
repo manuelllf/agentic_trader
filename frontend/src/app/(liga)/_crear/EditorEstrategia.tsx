@@ -1,34 +1,45 @@
 "use client";
 
-// Pantalla «Crear» (nueva estrategia o `/crear/[id]` para editar un borrador). Sigue el orden de
-// bloques de docs/liguilla/DESIGN.md §7 «Crear», salvo el conversor de IA («¿Qué empresas te
-// gustan?» → «Convertir en reglas»): esa fase es F6 y todavía no existe, así que no se pinta.
-// «Ver qué entrarían hoy» y el editor de escudo van aquí mismo, en línea, en vez de como hojas a
-// pantalla completa con URL propia (DESIGN.md §5): simplificación de F7 para no montar el sistema
-// de hojas entero solo para estas dos pantallas (se nota en el informe).
+// La selección puede probarse sin crear estrategia; guardar o inscribir requiere identidad.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { InfoTip } from "@/components/InfoTip";
 import {
-  BarraPestanas, Boton, CabeceraApp, Cargando, Escudo, ErrorLiga, OpcionRadio, Segmentado,
+  BarraPestanas, Boton, Cargando, Escudo, ErrorLiga, OpcionRadio, Segmentado,
   escudoAleatorio, luminancia, PALETA, type EscudoValor,
 } from "../_ui";
 import {
   actualizarEstrategia, apuntar, buscarUniverso, convertirFrase, costeProbarConPregunta,
   crearEstrategia, crearReceta, excluirEmpresa, getCatalogo, getFicha,
   leerAFondo, lecturasCompradas, porQueNoSale, probarEstrategia, quitarExclusion, verEstrategia,
+  leerBorrador, vincularBorrador, type ContenidoBorrador,
   type Catalogo, type CostePregunta, type EmpresaBusqueda, type Estrategia, type EstrategiaPatch,
-  type Lectura, type Prueba, type ReglaElegida,
+  previsualizarSeleccion, type InterpretacionIdea, type Lectura, type Prueba, type PreviewSeleccion,
+  type RecetaEntrada, type ReglaElegida,
 } from "@/lib/liga/api";
 import { invalidar, obtener } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { miles } from "@/lib/liga/format";
 import { pesosCoherentes } from "@/lib/liga/receta";
 import { LecturasModal } from "./LecturasModal";
+import { useAutoguardado } from "./useAutoguardado";
+import "./constructor.css";
 const RUTA_ACTUAL = (id?: string) => (id ? `/crear/${id}` : "/crear");
+const ETAPAS = ["Idea", "Reglas", "Selección", "Cartera", "Revisar"];
+const PREGUNTAS = ["¿Qué tipo de empresas buscas?", "¿Qué condiciones deben cumplir?",
+  "Entre las que cumplen, ¿cuáles prefieres?", "¿Cómo quieres repartir tu cartera?", "Esto es lo que se ejecutará"];
+type PruebaVista = Omit<Prueba, "id" | "foto_id" | "scan_run_id"> & { id: string | null; foto_id: number | null; scan_run_id: number | null };
+const VALORACIONES: Record<string, { titulo: string; ayuda: string }> = {
+  negocio: { titulo: "Fundamentales", ayuda: "Calidad del negocio: crecimiento, márgenes y evolución del balance. No valora el precio de la acción." },
+  precio: { titulo: "Valoración", ayuda: "Precio frente a beneficios y crecimiento, con PEG, PER futuro y caja. Una caída de precio no significa que esté barata." },
+  deuda: { titulo: "Solidez financiera", ayuda: "Menor riesgo de necesitar financiación desfavorable o no cumplir obligaciones. Tener deuda o consumir caja no implica por sí solo una mala nota." },
+  pronto: { titulo: "Catalizador próximo", ayuda: "Un evento concreto del negocio en el próximo mes: resultados, lanzamiento, contrato o decisión regulatoria. Subir en bolsa no es un catalizador." },
+};
 
 type Borrador = {
   reglas: ReglaElegida[];
+  interpretacion: InterpretacionIdea[];
   excluidas: string[];
   pregunta: string;
   pesos: Record<string, number>;
@@ -40,6 +51,7 @@ type Borrador = {
 function borradorInicial(cat: Catalogo): Borrador {
   return {
     reglas: [],
+    interpretacion: [],
     excluidas: [],
     pregunta: "",
     pesos: Object.fromEntries(cat.pesos.claves.map((k) => [k, k === "pregunta" ? 0 : 20])),
@@ -66,6 +78,7 @@ const ETIQUETA_SECTOR_LIMITE = (n: number) =>
 
 export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?: string }) {
   const router = useRouter();
+  const etapaUrl = useSearchParams().get("etapa");
   const { estado, yo } = useSesionRequerida(RUTA_ACTUAL(estrategiaIdInicial));
   const sesionLista = estado !== "cargando";
 
@@ -81,12 +94,24 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   const [visibilidad, setVisibilidad] = useState<"privada" | "publicada">("privada");
   const [declaraPosiciones, setDeclaraPosiciones] = useState<"si" | "no" | null>(null);
   const [cadaDia1Opcion, setCadaDia1Opcion] = useState<"revisar" | "mantener">("revisar");
+  const [etapa, setEtapa] = useState(0);
+  const [revisionInicial, setRevisionInicial] = useState<number | null>(null);
+  const etapaRef = useRef<HTMLHeadingElement>(null);
+  const pasosRef = useRef<HTMLElement>(null);
 
   const [editorEscudoAbierto, setEditorEscudoAbierto] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [prueba, setPrueba] = useState<Prueba | string | null>(null);
+  const [prueba, setPrueba] = useState<PruebaVista | string | null>(null);
+  const [previewDato, setPreviewDato] = useState<{ clave: string; valor: PreviewSeleccion } | null>(null);
+  const [previewSeleccionError, setPreviewSeleccionError] = useState<string | null>(null);
+  const [previewSeleccionCargando, setPreviewSeleccionCargando] = useState(false);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewAbort = useRef<AbortController | null>(null);
+  const previewSeq = useRef(0);
+  const previewUltimaPeticion = useRef(0);
+  const previews = useRef(new Map<string, { fecha: number; valor: PreviewSeleccion }>());
   const [cambio, setCambio] = useState<{ entra: string; sale: string } | null>(null);
   const [costePregunta, setCostePregunta] = useState<CostePregunta | null>(null);
   const [leyendo, setLeyendo] = useState<string | null>(null);      // ticker en curso, o "cartera"
@@ -105,6 +130,34 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   const [convOcupado, setConvOcupado] = useState(false);
   const [convError, setConvError] = useState<string | null>(null);
   const [convUsos, setConvUsos] = useState<{ hoy: number; tope: number } | null>(null);
+  const [convAviso, setConvAviso] = useState<string | null>(null);
+  const [filtroFrase, setFiltroFrase] = useState("");
+  const [filtroSugerido, setFiltroSugerido] = useState<{ reglas: ReglaElegida[]; interpretacion: InterpretacionIdea[] } | null>(null);
+  const [filtroError, setFiltroError] = useState<string | null>(null);
+  const recetaPreview = useMemo((): RecetaEntrada | null => {
+    if (!b) return null;
+    const { pregunta, pesos } = pesosCoherentes(yo?.plan === "pro" ? b.pregunta : "", b.pesos);
+    return { idea: convFrase || null, reglas: b.reglas, excluidas: b.excluidas, pregunta, pesos,
+      n_empresas: b.n_empresas, reparto: b.reparto, max_por_sector: b.max_por_sector };
+  }, [b, convFrase, yo?.plan]);
+  const clavePreview = JSON.stringify(recetaPreview);
+  const previewSeleccion = previewDato?.clave === clavePreview ? previewDato.valor : null;
+
+  const contenido: ContenidoBorrador | null = b ? {
+    nombre, idea: convFrase, etapa, escudo: escudoParaApi(cr),
+    receta: {
+      reglas: b.reglas, excluidas: b.excluidas, pregunta: b.pregunta, pesos: b.pesos,
+      n_empresas: b.n_empresas, reparto: b.reparto, max_por_sector: b.max_por_sector,
+    },
+    interpretacion: b.interpretacion,
+    visibilidad, declara_posiciones: declaraPosiciones, cada_dia_1: cadaDia1Opcion,
+  } : null;
+  const autoguardado = useAutoguardado(id ?? "nueva", revisionInicial, contenido);
+
+  useEffect(() => {
+    // También se ejecuta al pulsar Crear desde la barra, sin desmontar el editor.
+    setEtapa(etapaUrl !== null && /^[0-4]$/.test(etapaUrl) ? Number(etapaUrl) : 0);
+  }, [etapaUrl]);
 
   const nombreRef = useRef<HTMLInputElement>(null);
   const buscaId = useRef(0);
@@ -116,6 +169,53 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     if (buscaTimer.current) clearTimeout(buscaTimer.current);
     buscaAbort.current?.abort();
   }, []);
+
+  // Vista determinista en vivo: usa solo la última foto y sus puntuaciones guardadas. El borrador
+  // no se guarda ni se convierte en una estrategia para pedir esta información.
+  useEffect(() => {
+    if (clavePreview === "null" || estado !== "dentro") {
+      setPreviewDato(null);
+      setPreviewSeleccionError(null);
+      setPreviewSeleccionCargando(false);
+      return;
+    }
+    const receta: RecetaEntrada = JSON.parse(clavePreview);
+    const seq = ++previewSeq.current;
+    setPreviewSeleccionError(null);
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    previewAbort.current?.abort();
+    const guardada = previews.current.get(clavePreview);
+    if (guardada && Date.now() - guardada.fecha < 120_000) {
+      setPreviewDato({ clave: clavePreview, valor: guardada.valor });
+      setPreviewSeleccionCargando(false);
+      return;
+    }
+    setPreviewSeleccionCargando(true);
+    const intervalo = Math.max(200, 2_500 - (Date.now() - previewUltimaPeticion.current));
+    previewTimer.current = setTimeout(() => {
+      const controller = new AbortController();
+      previewAbort.current = controller;
+      previewUltimaPeticion.current = Date.now();
+      void previsualizarSeleccion(receta, controller.signal).then((r) => {
+        if (seq !== previewSeq.current || controller.signal.aborted) return;
+        if (typeof r === "string") setPreviewSeleccionError(r);
+        else {
+          if (previews.current.size >= 8) previews.current.delete(previews.current.keys().next().value!);
+          previews.current.set(clavePreview, { fecha: Date.now(), valor: r });
+          setPreviewDato({ clave: clavePreview, valor: r });
+        }
+      }).catch((err: unknown) => {
+        if (seq !== previewSeq.current || controller.signal.aborted) return;
+        setPreviewSeleccionError(err instanceof Error ? err.message : "No se pudo actualizar la vista.");
+      }).finally(() => {
+        if (seq === previewSeq.current && !controller.signal.aborted) setPreviewSeleccionCargando(false);
+      });
+    }, intervalo);
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+      previewAbort.current?.abort();
+    };
+  }, [clavePreview, estado]);
 
   // Catálogo (caché compartida con la portada y `crear/[id]`, ver H3 del informe de fluidez) +
   // (si se edita) la estrategia y su receta vigente.
@@ -142,18 +242,46 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         setDeclaraPosiciones(est.declara_posiciones);
         setCadaDia1Opcion(est.cada_dia_1 === "mantener" ? "mantener" : "revisar");
         const receta = typeof ficha === "string" ? null : ficha.receta;
+        setConvFrase(receta?.idea ?? "");
         setB(receta ? {
-          reglas: receta.reglas, excluidas: receta.excluidas, pregunta: receta.pregunta ?? "",
+          reglas: receta.reglas, interpretacion: [], excluidas: receta.excluidas,
+          pregunta: receta.pregunta ?? "",
           pesos: { ...borradorInicial(cat).pesos, ...receta.pesos }, n_empresas: receta.n_empresas,
           reparto: receta.reparto, max_por_sector: receta.max_por_sector,
         } : borradorInicial(cat));
       } else {
         setB(borradorInicial(cat));
       }
+      const borrador = await leerBorrador(estrategiaIdInicial ?? "nueva");
+      if (!vivo) return;
+      if (typeof borrador === "string") {
+        setErrorCarga(borrador); setCargandoInicial(false); return;
+      }
+      if (borrador) {
+        const d = borrador.contenido;
+        setNombre(d.nombre); setCr(d.escudo); setConvFrase(d.idea);
+        setB({ ...d.receta, interpretacion: d.interpretacion ?? [],
+          pregunta: d.receta.pregunta ?? "" });
+        setVisibilidad(d.visibilidad); setDeclaraPosiciones(d.declara_posiciones);
+        setCadaDia1Opcion(d.cada_dia_1);
+      }
+      const pasoUrl = new URLSearchParams(window.location.search).get("etapa");
+      // Entrar desde Crear o Editar empieza en Idea; los campos del borrador sí se recuperan.
+      setEtapa(pasoUrl !== null && /^[0-4]$/.test(pasoUrl) ? Number(pasoUrl) : 0);
+      setRevisionInicial(borrador?.revision ?? 0);
       setCargandoInicial(false);
     })();
     return () => { vivo = false; };
   }, [sesionLista, estado, estrategiaIdInicial]);
+
+  useEffect(() => {
+    if (cargandoInicial || !etapaRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      etapaRef.current?.focus({ preventScroll: true });
+      pasosRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [etapa, cargandoInicial]);
 
   const pro = yo?.plan === "pro";
   // Los porcentajes son la parte de cada peso sobre los que se ven: sin pregunta, no cuenta.
@@ -165,9 +293,13 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
   if (!sesionLista || cargandoInicial) {
     return (
-      <main className="scroll">
-        <h1 className="h1">{estrategiaIdInicial ? "Editar estrategia" : "Nueva estrategia"}</h1>
-        <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
+      <main className="scroll constructor" aria-busy="true">
+        <h1 className="sr-only">{estrategiaIdInicial ? "Editar estrategia" : "Nueva estrategia"}</h1>
+        <nav className="constructor-etapas" aria-label="Etapas de tu estrategia">
+          {ETAPAS.map((titulo, i) => <button key={titulo} type="button" disabled aria-current={etapa === i ? "step" : undefined}>{titulo}</button>)}
+        </nav>
+        <div style={{ marginTop: 12 }}><Cargando filas={3} /></div>
+        <BarraPestanas />
       </main>
     );
   }
@@ -191,6 +323,14 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
   const reglasDisponibles = catalogo.reglas.filter((r) => !b.reglas.some((x) => x.clave === r.clave));
   const puedeApuntarse = !(visibilidad === "publicada" && !declaraPosiciones);
+
+  function irEtapa(siguiente: number) {
+    setEtapa(siguiente);
+    const url = new URL(window.location.href);
+    url.searchParams.set("etapa", String(siguiente));
+    window.history.pushState(null, "", url);
+    void autoguardado.guardar();
+  }
 
   function actualizarB(cambios: Partial<Borrador>) {
     setB((prev) => (prev ? { ...prev, ...cambios } : prev));
@@ -233,10 +373,14 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
   /** Crea la estrategia si hace falta, guarda una versión de la receta y devuelve su id. */
   async function guardar(): Promise<string | null> {
+    if (!(await autoguardado.guardar())) { setError("No se pudo guardar el borrador. Reintenta antes de continuar."); return null; }
     if (!nombre.trim()) {
       setError("Ponle nombre a tu estrategia antes de guardar.");
-      nombreRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      nombreRef.current?.focus();
+      irEtapa(4);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        nombreRef.current?.scrollIntoView({ block: "center" });
+        nombreRef.current?.focus({ preventScroll: true });
+      }));
       return null;
     }
     setError(null);
@@ -246,10 +390,12 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       const creada = await crearEstrategia(nombre.trim(), escudo);
       if (typeof creada === "string") { setError(creada); return null; }
       idActual = creada.id;
+      const vinculada = await vincularBorrador(idActual, autoguardado.revision.current);
+      if (typeof vinculada === "string") { setError(vinculada); return null; }
       setId(idActual);
       setEstrategia(creada);
       // Solo cambia la URL: `router.replace` monta la otra página y el editor pierde lo que hay.
-      window.history.replaceState(null, "", `/crear/${idActual}`);
+      window.history.replaceState(null, "", `/crear/${idActual}?etapa=${etapa}`);
     } else if (estrategia && (estrategia.nombre !== nombre.trim()
       || estrategia.escudo.forma !== escudo.forma || estrategia.escudo.dibujo !== escudo.dibujo
       || estrategia.escudo.color1 !== escudo.color1 || estrategia.escudo.color2 !== escudo.color2
@@ -260,6 +406,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     }
     const { pregunta, pesos } = pesosCoherentes(pro ? b!.pregunta : "", b!.pesos);
     const receta = await crearReceta(idActual, {
+      idea: convFrase || null,
       reglas: b!.reglas, excluidas: b!.excluidas, pregunta, pesos, n_empresas: b!.n_empresas,
       reparto: b!.reparto, max_por_sector: b!.max_por_sector,
     });
@@ -267,27 +414,48 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     return idActual;
   }
 
-  async function verQueEntrarian() {
+  async function verQueEntrarian(receta = recetaPreview) {
     setOcupado(true);
     actualizarPrueba(null);
     setCambio(null);
     setCostePregunta(null);
-    const idActual = await guardar();
-    if (idActual) {
-      const p = await probarEstrategia(idActual);
-      actualizarPrueba(p);
-      if (b?.pregunta && pro) {
-        const c = await costeProbarConPregunta(idActual);
-        if (typeof c !== "string") setCostePregunta(c);
+    if (receta) {
+      const r = await previsualizarSeleccion(receta);
+      if (typeof r === "string") actualizarPrueba(r);
+      else {
+        const clave = JSON.stringify(receta);
+        previews.current.set(clave, { fecha: Date.now(), valor: r });
+        if (previews.current.size > 8) previews.current.delete(previews.current.keys().next().value!);
+        setPreviewDato({ clave, valor: r });
+        actualizarPrueba(r.estado === "sin_datos" ? r.mensaje : {
+          id: null, foto_id: r.foto_id, scan_run_id: r.scan_run_id, plan_b: r.plan_b ?? false,
+          catalogo_version: r.catalogo_version, evaluadas: r.evaluadas!, pasan: r.cumplen_reglas!,
+          elegidas: r.elegidas, saltadas_por_sector: r.saltadas_por_sector!, sin_peso: r.sin_peso!,
+          sin_notas: r.sin_notas!, sin_respuesta: r.sin_respuesta!, caja_pct: r.caja_pct!,
+        });
       }
     }
     setOcupado(false);
   }
 
+  async function guardarPrueba(): Promise<{ id: string; prueba: Prueba } | null> {
+    const idActual = await guardar();
+    if (!idActual) return null;
+    const p = await probarEstrategia(idActual);
+    actualizarPrueba(p);
+    if (typeof p === "string") return null;
+    if (b?.pregunta && pro) {
+      const c = await costeProbarConPregunta(idActual);
+      if (typeof c !== "string") setCostePregunta(c);
+    }
+    return { id: idActual, prueba: p };
+  }
+
   async function probarConPregunta() {
-    if (!id) return;
     setOcupado(true);
-    const p = await probarEstrategia(id, { idempotencia: crypto.randomUUID() });
+    const guardada = await guardarPrueba();
+    if (!guardada) { setOcupado(false); return; }
+    const p = await probarEstrategia(guardada.id, { idempotencia: crypto.randomUUID() });
     actualizarPrueba(p);
     if (typeof p !== "string") {
       setCostePregunta(null);   // ya está cobrada y en caché
@@ -300,7 +468,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     await abrirLecturas([ticker]);
   }
 
-  function actualizarPrueba(p: Prueba | string | null) {
+  function actualizarPrueba(p: PruebaVista | string | null) {
     contextoLecturas.current = null;
     setLecturas([]);
     setModalLecturas(false);
@@ -312,20 +480,31 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   }
 
   async function abrirLecturas(tickers: string[]) {
-    if (!id || !prueba || typeof prueba === "string" || !tickers.length) return;
+    if (!prueba || typeof prueba === "string" || !tickers.length) return;
+    let idLectura = id;
+    let pruebaId = prueba.id;
+    if (!idLectura || !pruebaId) {
+      setOcupado(true);
+      const guardada = await guardarPrueba();
+      setOcupado(false);
+      if (!guardada) return;
+      idLectura = guardada.id;
+      pruebaId = guardada.prueba.id;
+      tickers = tickers.filter(t => guardada.prueba.elegidas.some(e => e.ticker === t));
+      if (!tickers.length) { setError("La selección ha cambiado. Revisa las empresas antes de pedir el informe."); return; }
+    }
     setModalLecturas(true);
     setTickersLecturas(tickers);
     setTickerLectura(tickers[0]);
     if (lecturaEnCurso.current) return;
-    const pruebaId = prueba.id;
-    const contexto = { estrategia_id: id, prueba_id: pruebaId };
+    const contexto = { estrategia_id: idLectura, prueba_id: pruebaId };
     if (contextoLecturas.current !== pruebaId) setLecturas([]);
     contextoLecturas.current = pruebaId;
     lecturaEnCurso.current = true;
     setErrorLectura(null);
     setLeyendo(tickers[0]);
     try {
-      const compradas = await lecturasCompradas(id, pruebaId);
+      const compradas = await lecturasCompradas(idLectura, pruebaId);
       if (contextoLecturas.current !== pruebaId) return;
       if (typeof compradas === "string") { setErrorLectura(compradas); return; }
       const disponibles = [...compradas];
@@ -338,7 +517,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         invalidar("creditos");
         if (contextoLecturas.current !== pruebaId) break;
         if (typeof r === "string") {
-          const recuperadas = await lecturasCompradas(id, pruebaId);
+          const recuperadas = await lecturasCompradas(idLectura, pruebaId);
           if (contextoLecturas.current !== pruebaId) break;
           if (typeof recuperadas !== "string") setLecturas(recuperadas);
           setErrorLectura(r);
@@ -356,7 +535,14 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   }
 
   async function cambiarEmpresa(ticker: string) {
-    if (!id || typeof prueba !== "object" || !prueba) return;
+    if (typeof prueba !== "object" || !prueba) return;
+    if (!prueba.id) {
+      const excluidas = [...new Set([...b!.excluidas, ticker])];
+      actualizarB({ excluidas });
+      if (recetaPreview) await verQueEntrarian({ ...recetaPreview, excluidas });
+      return;
+    }
+    if (!id) return;
     setOcupado(true);
     const antes = prueba.elegidas.map((e) => e.ticker);
     const r = await excluirEmpresa(id, ticker);
@@ -373,6 +559,12 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   }
 
   async function deshacerCambio(ticker: string) {
+    if (!prueba || typeof prueba !== "object" || !prueba.id) {
+      const excluidas = b!.excluidas.filter(t => t !== ticker);
+      actualizarB({ excluidas });
+      if (recetaPreview) await verQueEntrarian({ ...recetaPreview, excluidas });
+      return;
+    }
     if (!id) return;
     setOcupado(true);
     const r = await quitarExclusion(id, ticker);
@@ -415,11 +607,27 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     buscaAbort.current?.abort();
     setSugerencias([]);
     setBuscaQ(emp.nombre ?? emp.ticker);
-    if (!id) { setPorque({ ticker: emp.ticker, nombre: emp.nombre ?? emp.ticker,
-      texto: "Guarda tu estrategia (con «Ver qué entrarían hoy») para poder preguntar." }); return; }
+    if ((!id || !prueba || typeof prueba !== "object" || !prueba.id) && recetaPreview) {
+      const r = await previsualizarSeleccion({ ...recetaPreview, ticker: emp.ticker });
+      setPorque({ ticker: emp.ticker, nombre: emp.nombre ?? emp.ticker,
+        texto: typeof r === "string" ? r : r.explicacion ?? r.mensaje });
+      return;
+    }
+    if (!id) return;
     const r = await porQueNoSale(id, emp.ticker);
     setPorque({ ticker: emp.ticker, nombre: emp.nombre ?? emp.ticker,
       texto: typeof r === "string" ? r : r.motivo });
+  }
+
+  async function sugerirFiltro() {
+    if (!filtroFrase.trim()) return;
+    setConvOcupado(true); setFiltroError(null); setFiltroSugerido(null);
+    try {
+      const r = await convertirFrase(filtroFrase.trim());
+      if (typeof r === "string") { setFiltroError(r); return; }
+      setConvUsos({ hoy: r.usos_hoy, tope: r.usos_tope });
+      setFiltroSugerido({ reglas: r.reglas, interpretacion: r.interpretacion ?? [] });
+    } finally { setConvOcupado(false); }
   }
 
   async function usarConversor() {
@@ -430,8 +638,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     setConvOcupado(false);
     if (typeof r === "string") { setConvError(r); return; }
     setConvUsos({ hoy: r.usos_hoy, tope: r.usos_tope });
-    // Solo rellena el borrador: nada se guarda hasta que el usuario pulse «Ver qué entrarían hoy»
-    // o «Apuntarme», igual que si lo hubiera construido a mano.
+    // La sugerencia se guarda como borrador; el usuario revisa las reglas antes de ejecutarlas.
     const clavesConocidas = new Set((catalogo as Catalogo).reglas.map((c) => c.clave));
     const reglasNuevas = r.reglas.filter(
       (nueva) => clavesConocidas.has(nueva.clave) && !b!.reglas.some((x) => x.clave === nueva.clave),
@@ -439,11 +646,13 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     const pregunta = pro && r.pregunta ? r.pregunta : b!.pregunta;
     actualizarB({
       reglas: [...b!.reglas, ...reglasNuevas],
+      interpretacion: r.interpretacion ?? [],
       pesos: pesosCoherentes(pregunta, r.pesos ? { ...b!.pesos, ...r.pesos } : b!.pesos).pesos,
       pregunta,
     });
     if (r.nombre && !nombre.trim()) setNombre(r.nombre);
-    setConvFrase("");
+    setConvAviso("Revisa qué partes quedaron exactas, aproximadas o sin regla. Solo se ejecutan las reglas que aparecen en la lista y que conserves.");
+    setEtapa(1);
   }
 
   async function apuntarse() {
@@ -476,16 +685,78 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
   // «Tu pregunta» solo pesa si hay pregunta escrita.
   const wkeys = catalogo.pesos.claves.filter((k) => k !== "pregunta" || (pro && b.pregunta.trim()));
+  const cifraPreview = (valor: number | null | undefined) =>
+    valor == null ? "—" : miles(valor);
+  const feedbackPreview = (
+    <details className="preview-resumen">
+      <summary>{previewSeleccionCargando ? "Selección con datos guardados · actualizando"
+        : previewSeleccion ? `${cifraPreview(previewSeleccion.cumplen_reglas)} pasan · ${cifraPreview(previewSeleccion.seleccionadas)} entrarían${previewSeleccion.estado === "incompleto" ? " · faltan puntuaciones" : ""}`
+          : previewSeleccionError ? "Selección no disponible · ver motivo" : "Selección con datos guardados"}</summary>
+      {!previewSeleccionCargando && previewSeleccionError &&
+        <p>{previewSeleccionError} La vista no cambia ni guarda tu estrategia.</p>}
+      {!previewSeleccionCargando && !previewSeleccionError && previewSeleccion?.estado === "sin_datos" &&
+        <p>{previewSeleccion.mensaje} Todavía no se pueden contar candidatas.</p>}
+      {!previewSeleccionCargando && !previewSeleccionError && previewSeleccion && previewSeleccion.estado !== "sin_datos" && (
+        <>
+          <p>
+            {previewSeleccion.mensaje} {cifraPreview(previewSeleccion.evaluadas)} empresas evaluadas ·{" "}
+            {cifraPreview(previewSeleccion.cumplen_reglas)} pasan reglas ·{" "}
+            {cifraPreview(previewSeleccion.candidatas_ordenadas)} pueden ordenarse ·{" "}
+            {cifraPreview(previewSeleccion.seleccionadas)} seleccionadas.
+            {previewSeleccion.caja_pct != null && previewSeleccion.caja_pct > 0.01
+              ? ` ${Math.round(previewSeleccion.caja_pct)} % quedaría en caja.` : ""}
+          </p>
+          {previewSeleccion.elegidas.length > 0 && (
+            <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+              {previewSeleccion.elegidas.map((e) => (
+                <li key={e.ticker}>{e.nombre ?? e.ticker} ({e.ticker}) · {Math.round(e.peso)} %</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      {!previewSeleccionCargando && !previewSeleccionError && !previewSeleccion &&
+        <p>Los conteos usan la última foto guardada. No se solicitan nuevas puntuaciones.</p>}
+    </details>
+  );
 
   return (
-    <main className="scroll">
-      <CabeceraApp conCreditos />
-      <h1 className="h1">{estrategiaIdInicial ? "Editar estrategia" : "Nueva estrategia"}</h1>
-      <p className="meta">
-        Se aplica a unas 3.000 empresas de EE. UU., con los datos del día 1 de cada mes.
+    <main className="scroll constructor">
+      <h1 className="sr-only">{estrategiaIdInicial ? "Editar estrategia" : "Nueva estrategia"}</h1>
+      <nav ref={pasosRef} className="constructor-etapas" aria-label="Etapas de tu estrategia">
+        {ETAPAS.map((titulo, i) => <button key={titulo} type="button" aria-current={etapa === i ? "step" : undefined}
+          disabled={ocupado || convOcupado} onClick={() => void irEtapa(i)}>{titulo}</button>)}
+      </nav>
+      <p className="constructor-guardado" role="status">{autoguardado.estado}
+        {!["Guardado", "Guardando…", "Cambios pendientes"].includes(autoguardado.estado)
+          && <button type="button" className="link" onClick={autoguardado.reintentar}>Reintentar</button>}
       </p>
-
-      <div className="field">
+      <div className="constructor-distribucion">
+      <fieldset className="constructor-tarea" disabled={ocupado || convOcupado}>
+      <h2 ref={etapaRef} tabIndex={-1} className="constructor-pregunta">{PREGUNTAS[etapa]}</h2>
+      <div className="field constructor-reglas" hidden={etapa !== 1}>
+        {b.interpretacion.length > 0 && (
+          <section aria-label="Interpretación de tu idea" className="review" style={{ marginBottom: 16 }}>
+            <b>Interpretación de tu idea</b>
+            <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
+              {b.interpretacion.map((item, i) => {
+                const regla = item.regla
+                  ? catalogo.reglas.find((r) => r.clave === item.regla)?.titulo ?? item.regla
+                  : null;
+                const incluida = item.regla && b.reglas.some((r) => r.clave === item.regla);
+                const estado = item.tipo === "exacta" ? "Exacta"
+                  : item.tipo === "aproximada" ? "Aproximada" : "Sin regla disponible";
+                return (
+                  <li key={`${item.intencion}-${i}`} style={{ marginTop: 8 }}>
+                    <b>{estado}:</b> {item.intencion}
+                    {regla && <span> · {regla}{!incluida && " (retirada de la lista)"}</span>}
+                    <p className="fine" style={{ margin: "2px 0 0" }}>{item.motivo}</p>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
         <span className="lbl">
           Tus reglas
           <small>Filtros exactos: una empresa que no cumple una regla no entra.</small>
@@ -546,11 +817,31 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         {b.reglas.length === 0 && (
           <p className="fine" style={{ marginTop: 0 }}>Sin reglas, pasan todas las empresas.</p>
         )}
+        <details className="more filtro-asistente">
+          <summary>¿No encuentras un filtro? Descríbelo</summary>
+          <label className="lbl" htmlFor="filtroFrase">Qué condición buscas</label>
+          <textarea id="filtroFrase" className="inp" rows={2} maxLength={300} value={filtroFrase}
+            placeholder="Por ejemplo: empresas con margen operativo de al menos un 15 %"
+            onChange={e => { setFiltroFrase(e.target.value); setFiltroSugerido(null); }} />
+          <Boton variante="secundario" disabled={convOcupado || !filtroFrase.trim()} onClick={sugerirFiltro}>
+            {convOcupado ? "Buscando reglas…" : "Proponer reglas"}
+          </Boton>
+          <p className="fine">Se envía a DeepSeek. Solo se proponen filtros del catálogo; revisa antes de añadirlos. No escribas datos personales.</p>
+          {filtroError && <p className="fine" role="alert">{filtroError}</p>}
+          {filtroSugerido && <div className="review">
+            {filtroSugerido.interpretacion.map((i, n) => <p className="fine" key={n}><b>{i.tipo === "exacta" ? "Exacta" : i.tipo === "aproximada" ? "Aproximada" : "No disponible"}:</b> {i.intencion}. {i.motivo}</p>)}
+            {filtroSugerido.reglas.filter(r => !b.reglas.some(e => e.clave === r.clave) && catalogo.reglas.some(c => c.clave === r.clave)).map(r =>
+              <Boton key={r.clave} variante="secundario" onClick={() => actualizarB({ reglas: [...b.reglas, r], interpretacion: [...b.interpretacion, ...filtroSugerido.interpretacion.filter(i => i.regla === r.clave)] })}>
+                Añadir {catalogo.reglas.find(c => c.clave === r.clave)?.titulo}
+              </Boton>)}
+          </div>}
+        </details>
+        {feedbackPreview}
       </div>
 
-      <div className="field">
+      <div className="field" hidden={etapa !== 0}>
         <label className="lbl" htmlFor="convFrase">
-          ¿No encuentras el filtro? Descríbelo
+          Describe tu estrategia
           <small>
             La IA sugiere reglas del catálogo a partir de tu frase; tú decides si te las quedas.
             {convUsos && ` Te quedan ${Math.max(0, convUsos.tope - convUsos.hoy)} usos hoy.`}
@@ -558,18 +849,27 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         </label>
         <textarea id="convFrase" className="inp" maxLength={300} rows={2}
                   placeholder="p. ej. empresas grandes, con poca deuda, que no estén caras"
-                  value={convFrase} onChange={(e) => setConvFrase(e.target.value)} />
+                  value={convFrase} onChange={(e) => {
+                    const idea = e.target.value;
+                    setConvFrase(idea);
+                    setConvAviso(null);
+                    setB((prev) => prev && prev.interpretacion.length > 0
+                      ? { ...prev, interpretacion: [] } : prev);
+                  }} />
         <div style={{ marginTop: 8 }}>
           <Boton variante="secundario" disabled={convOcupado || !convFrase.trim()}
                  onClick={usarConversor}>
-            {convOcupado ? "Pensando…" : "Convertir en reglas"}
+            {convOcupado ? "Interpretando…" : "Interpretar estrategia"}
           </Boton>
         </div>
         <p className="fine">Al pulsar, tu frase se envía a DeepSeek. No escribas datos personales.</p>
         {convError && <p className="fine" style={{ color: "var(--danger, #e66767)" }}>{convError}</p>}
+        <p className="fine">También puedes continuar y elegir las reglas a mano.</p>
       </div>
 
-      <div className="field">
+      {convAviso && etapa === 1 && <p className="aviso" role="status">{convAviso}</p>}
+      <details className="field pregunta-propia" hidden={etapa !== 2}>
+        <summary>Tu pregunta propia{b.pregunta ? " · configurada" : " (Pro)"}</summary>
         <label className="lbl" htmlFor="cQ">
           Tu pregunta a la IA
           <small>
@@ -598,23 +898,24 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
             <a href="/como-funciona" target="_blank" rel="noopener noreferrer">Cómo se usa tu pregunta</a>
           </p>
         )}
-      </div>
+      </details>
 
-      <div className="field">
-        <span className="lbl">Qué pesa más<small>Al ordenar las empresas que pasan tus reglas.</small></span>
+      <div className="field" hidden={etapa !== 2}>
+        <span className="lbl">Cómo ordenar las candidatas<small>Notas guardadas de Jev, aplicadas después de tus filtros. Tú eliges cuánto pesa cada una.</small></span>
+        <p className="fine">Peso 0: no influye. Al menos uno debe pesar.</p>
         {wkeys.map((k) => (
           <div className="wrow" key={k}>
-            <label htmlFor={`w-${k}`}>{catalogo!.pesos.etiquetas[k]}</label>
+            <label htmlFor={`w-${k}`}>{VALORACIONES[k]?.titulo ?? catalogo!.pesos.etiquetas[k]}{VALORACIONES[k] && <InfoTip text={VALORACIONES[k].ayuda} />}</label>
             <span className="num">{Math.round((b.pesos[k] * 100) / totalPesos)}&nbsp;%</span>
-            <div className="wbar"><i style={{ width: `${Math.round((b.pesos[k] * 100) / totalPesos)}%` }} /></div>
             <input id={`w-${k}`} type="range" min={0} max={catalogo!.pesos.maximo} step={catalogo!.pesos.paso}
                    value={b.pesos[k]} style={{ gridColumn: "1 / -1" }}
                    onChange={(e) => actualizarB({ pesos: { ...b.pesos, [k]: Number(e.target.value) } })} />
           </div>
         ))}
+        {feedbackPreview}
       </div>
 
-      <div className="field">
+      <div className="field" hidden={etapa !== 3}>
         <span className="lbl">¿Cuántas empresas?</span>
         <Segmentado etiquetaGrupo="Número de empresas"
                     opciones={catalogo.n_empresas.map((n) => ({ valor: n, etiqueta: String(n) }))}
@@ -638,27 +939,55 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                        ayuda="Se queda con las que tiene hasta que tú pidas cambiarla, siempre un día 1."
                        onClick={() => setCadaDia1Opcion("mantener")} />
         </div>
+        {feedbackPreview}
       </div>
 
-      <div className="field">
+      <div className="field" hidden={etapa !== 4}>
+        <span className="lbl">Tu metodología antes de confirmarla</span>
+        {convFrase && <p className="fine">{convFrase}</p>}
+        <p className="fine">{b.reglas.length} reglas · {wkeys.filter(k => b.pesos[k] > 0).map(k =>
+          `${VALORACIONES[k]?.titulo ?? catalogo.pesos.etiquetas[k]} ${Math.round(b.pesos[k] * 100 / totalPesos)} %`).join(" · ")}.</p>
+        <details className="more">
+          <summary>Ver las condiciones elegidas</summary>
+          {b.reglas.length ? b.reglas.map(r => {
+            const regla = catalogo.reglas.find(c => c.clave === r.clave);
+            return <p className="fine" key={r.clave}><b>{regla?.titulo ?? r.clave}</b>{regla?.parametros.map(p => {
+              const valor = r.params[p.nombre] ?? p.defecto;
+              const texto = Array.isArray(valor) ? valor.map(v => catalogo.sectores[String(v)] ?? String(v)).join(", ") : String(valor ?? "sin valor");
+              return ` · ${p.etiqueta}: ${texto}`;
+            }).join("")}</p>;
+          }) : <p className="fine">Sin filtros adicionales sobre el universo disponible.</p>}
+        </details>
+      </div>
+      <div className="field" hidden={etapa !== 4}>
         <span className="lbl">Cómo se forma tu cartera</span>
         <div className="recipe">
-          <b>~3.000</b><span>empresas de EE. UU., con los datos del día 1</span>
-          <b>{typeof prueba === "object" && prueba ? miles(prueba.pasan) : "?"}</b>
+          <b>{previewSeleccion ? cifraPreview(previewSeleccion.evaluadas)
+            : prueba && typeof prueba !== "string" ? miles(prueba.evaluadas) : "Pendiente"}</b><span>empresas de la foto disponible</span>
+          <b>{previewSeleccion ? cifraPreview(previewSeleccion.cumplen_reglas)
+            : typeof prueba === "object" && prueba ? miles(prueba.pasan) : "Pendiente"}</b>
           <span>pasan tus reglas</span>
-          <b>{b.n_empresas}</b>
-          <span>entran: las de mejor nota{b.max_por_sector === 0 ? "" : `, como mucho ${b.max_por_sector} por sector`}</span>
+          <b>{previewSeleccion?.seleccionadas != null ? cifraPreview(previewSeleccion.seleccionadas) : `Hasta ${b.n_empresas}`}</b>
+          <span>{previewSeleccion?.seleccionadas != null ? "formarían la cartera" : "empresas como máximo"}: las de mejor nota{b.max_por_sector === 0 ? "" : `, como mucho ${b.max_por_sector} por sector`}</span>
           <b>{b.reparto === "igual" ? `${Math.round(100 / b.n_empresas)} %` : "+"}</b>
           <span>{b.reparto === "igual" ? "para cada una" : "peso para las de mejor nota"}</span>
         </div>
+        {feedbackPreview}
         <p className="recipe-note">
-          {cadaDia1Opcion === "revisar" ? "Cada día 1 se repite con los datos nuevos."
-            : "Después se queda así hasta que tú pidas cambiarla."} Probar no cambia nada.
+          {cadaDia1Opcion === "revisar" ? "Se revisa al inicio de cada jornada mensual."
+            : "Se mantiene hasta que pidas cambiarla para otra jornada."} La prueba no cambia la cartera en juego.
         </p>
         <Boton variante="secundario" ancho="completo" style={{ marginTop: 14 }}
-               disabled={ocupado} onClick={verQueEntrarian}>
+               disabled={ocupado} onClick={() => void verQueEntrarian()}>
           {ocupado ? "Probando…" : "Ver qué empresas entrarían hoy"}
         </Boton>
+        {b.excluidas.length > 0 && <details className="more"><summary>Exclusiones manuales · {b.excluidas.length}</summary>
+          {b.excluidas.map(t => <Boton key={t} tamano="pequeno" disabled={ocupado} onClick={() => void deshacerCambio(t)}>Restaurar {t}</Boton>)}
+        </details>}
+        {typeof prueba === "object" && prueba && b.pregunta && pro && !costePregunta && <Boton variante="secundario" disabled={ocupado}
+          onClick={async () => { setOcupado(true); try { await guardarPrueba(); } finally { setOcupado(false); } }}>
+          Guardar y consultar coste de mi pregunta
+        </Boton>}
         {typeof prueba === "string" && (
           <p className="fine" style={{ textAlign: "center" }} role="status">{prueba}</p>
         )}
@@ -671,8 +1000,11 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         )}
         {typeof prueba === "object" && prueba && (
           <div style={{ marginTop: 14 }}>
+            {(prueba.sin_notas > 0 || prueba.sin_respuesta > 0) && <p className="fine">
+              Selección parcial: {prueba.sin_notas} candidatas sin notas guardadas{prueba.sin_respuesta > 0 ? ` y ${prueba.sin_respuesta} sin respuesta a tu pregunta` : ""}. No se ha consultado a la IA.
+            </p>}
             <p className="meta">
-              De unas 3.000 empresas pasan tus reglas {miles(prueba.pasan)}. Entran {prueba.elegidas.length}:
+              De {miles(prueba.evaluadas)} empresas pasan tus reglas {miles(prueba.pasan)}. Entran {prueba.elegidas.length}:
             </p>
             {prueba.elegidas.map((e) => {
               const esCambio = cambio?.entra === e.ticker ? cambio : null;
@@ -693,7 +1025,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                       )}
                       <button type="button" className="link"
                               onClick={() => leerFicha(e.ticker)}>
-                        {lecturas.some((l) => l.ticker === e.ticker) ? "Ver informe" : "Leer a fondo · 5 créditos"}
+                        {lecturas.some((l) => l.ticker === e.ticker) ? "Ver informe" : `${prueba.id ? "Leer a fondo" : "Guardar y leer a fondo"} · 5 créditos`}
                       </button>
                     </div>
                   </div>
@@ -716,7 +1048,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
               <Boton variante="secundario" ancho="completo" style={{ marginTop: 8 }}
                      onClick={leerCarteraCompleta}>
                 {prueba.elegidas.every((e) => lecturas.some((l) => l.ticker === e.ticker)) ? "Ver informes de mi cartera"
-                  : `Leer mi cartera · hasta ${prueba.elegidas.length * 5} créditos`}
+                  : `${prueba.id ? "Leer mi cartera" : "Guardar y leer mi cartera"} · hasta ${prueba.elegidas.length * 5} créditos`}
               </Boton>
             )}
           </div>
@@ -742,9 +1074,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         </div>
       </div>
 
-      <div className="field">
+      <div className="field" hidden={etapa !== 4}>
         <label className="lbl" htmlFor="cName">
-          Nombre y escudo<small>Es lo único que se ve de ti en la liga.</small>
+          Nombre e identidad<small>El nombre identifica tu metodología en la Liga.</small>
         </label>
         <input ref={nombreRef} id="cName" className="inp" value={nombre} maxLength={28}
                autoComplete="off" placeholder="Ponle nombre" onChange={(e) => setNombre(e.target.value)} />
@@ -765,19 +1097,20 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         )}
       </div>
 
-      <div className="review">
+      <details className="review" hidden={etapa !== 4}>
+        <summary>Resumen y próxima revisión</summary>
         <h3>Antes de apuntarla</h3>
         <p>
           {b.reglas.length === 0
-            ? "Sin reglas, entran las 5 empresas mejor puntuadas de todo el mercado."
+            ? `Sin reglas, se eligen hasta ${b.n_empresas} empresas entre las mejor puntuadas del universo.`
             : `${b.reglas.length} ${b.reglas.length === 1 ? "regla" : "reglas"} en marcha.`}
           {" "}Cartera de {b.n_empresas}, {ETIQUETA_REPARTO[b.reparto]?.toLowerCase() ?? b.reparto},
           {" "}{ETIQUETA_SECTOR_LIMITE(b.max_por_sector).toLowerCase()}.
           {" "}{cadaDia1Opcion === "revisar" ? "Se revisa" : "Se mantiene"} cada día 1.
         </p>
-      </div>
+      </details>
 
-      <div className="field">
+      <div className="field" hidden={etapa !== 4}>
         <span className="lbl">¿Quién la ve?</span>
         <div role="radiogroup" aria-label="Quién la ve">
           <OpcionRadio marcada={visibilidad === "privada"}
@@ -808,15 +1141,21 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
       {error && <p className="aviso" role="alert" style={{ marginTop: 16 }}>{error}</p>}
 
-      <div className="cta">
-        <Boton variante="principal" ancho="completo" disabled={ocupado || !puedeApuntarse} onClick={apuntarse}>
-          {ocupado ? "Guardando…" : "Apuntarla"}
-        </Boton>
+      <div className="cta" hidden={etapa !== 4}>
         <p className="fine" style={{ textAlign: "center", marginTop: 2 }}>
           Sin pruebas hacia atrás: todo cuenta desde el próximo día 1.
         </p>
       </div>
-
+      </fieldset>
+      </div>
+      <div className="constructor-avanzar">
+        {etapa > 0 && <Boton disabled={ocupado || convOcupado} onClick={() => void irEtapa(etapa - 1)}>Anterior</Boton>}
+        {etapa < 4 && <Boton variante="principal" disabled={ocupado || convOcupado}
+          onClick={() => void irEtapa(etapa + 1)}>Continuar a {ETAPAS[etapa + 1].toLowerCase()}</Boton>}
+        {etapa === 4 && <Boton variante="principal" disabled={ocupado || convOcupado || !puedeApuntarse} onClick={apuntarse}>
+          {ocupado ? "Guardando…" : "Guardar e inscribir"}
+        </Boton>}
+      </div>
       <BarraPestanas />
       <LecturasModal abierto={modalLecturas} tickers={tickersLecturas} activo={tickerLectura}
         lecturas={lecturas} leyendo={leyendo} error={errorLectura}

@@ -1,0 +1,56 @@
+.card {
+  margin-top: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  color: var(--ink, #111315);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.heading {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.note,
+.portfolio p {
+  margin: 5px 0 0;
+  color: var(--muted, #73736e);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 14px;
+  margin-top: 12px;
+}
+
+.metrics div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.metrics span {
+  color: var(--muted, #73736e);
+  font-size: 11px;
+}
+
+.metrics b {
+  font-variant-numeric: tabular-nums;
+}
+
+.portfolio {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+@media (min-width: 760px) {
+  .metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

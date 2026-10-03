@@ -20,6 +20,15 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Genera un servidor autocontenido para una imagen Docker mínima.
   output: "standalone",
+  // En la revisión local, el móvil usa el mismo origen y la API queda en loopback.
+  async rewrites() {
+    const api = process.env.LOCAL_REVIEW_API;
+    const auth = process.env.LOCAL_REVIEW_AUTH;
+    return [
+      ...(api ? [{ source: "/api/review/:path*", destination: `${api}/:path*` }] : []),
+      ...(auth ? [{ source: "/auth/v1/:path*", destination: `${auth}/auth/v1/:path*` }] : []),
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -47,7 +47,7 @@ export default function Muestrario() {
       <Seccion titulo="Cuenta">
         <p className="fine">Cabecera con sesión y el menú abierto (el de verdad se abre al tocar).</p>
         <div className="sencilla-top" style={{ marginTop: 12, paddingBottom: 150 }}>
-          <span className="wordmark">índicem</span>
+          <span className="wordmark">Vennett</span>
           <div className="cuenta">
             <button type="button" className="cuenta-boton" aria-expanded="true">
               <span>admin</span>
@@ -137,6 +137,8 @@ export default function Muestrario() {
             etiqueta="publicada"
             vsIndice={4.8}
             puntos={7}
+            acumulado={{rentabilidad: 9.8, sp500: 5, diferencia_pp: 4.8, desde: "2026-04-01", hasta: "2026-06-30", periodos: 3, incompleta: false}}
+            movimiento={0}
           />
           <FilaEquipo
             puesto={2}
@@ -147,6 +149,8 @@ export default function Muestrario() {
             vsIndice={3.1}
             puntos={7}
             tipo="casa"
+            acumulado={{rentabilidad: 8.1, sp500: 5, diferencia_pp: 3.1, desde: "2026-04-01", hasta: "2026-06-30", periodos: 3, incompleta: false}}
+            movimiento={2}
             colorCasa={escudoCasa("alpha").color1}
           />
           <FilaEquipo
@@ -157,6 +161,8 @@ export default function Muestrario() {
             etiqueta="privada"
             vsIndice={-0.6}
             puntos={4}
+            acumulado={{rentabilidad: -1.6, sp500: -1, diferencia_pp: -.6, desde: "2026-04-01", hasta: "2026-06-30", periodos: 3, incompleta: false}}
+            movimiento={-1}
           />
           <HuecoClasificacion>y 8 más hasta la tuya</HuecoClasificacion>
           <FilaEquipo
@@ -168,6 +174,8 @@ export default function Muestrario() {
             vsIndice={1.1}
             puntos={5}
             tipo="mia"
+            acumulado={null}
+            movimiento={null}
             abrible={false}
           />
           <HuecoClasificacion>y 130 más</HuecoClasificacion>

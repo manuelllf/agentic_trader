@@ -1,4 +1,4 @@
-# índicem
+# Vennett
 
 Asistente personal de inversión sistemática. Un ranker fundamental basado en LLM puntúa
 acciones de EE. UU. a partir de sus fundamentales, valoración, noticias y contexto macro, y
@@ -7,7 +7,7 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 > Proyecto personal. No es asesoramiento financiero. Por defecto funciona en simulación
 > (`DRY_RUN`): no envía órdenes al bróker.
 
-**En producción:** <https://agentic-trader-manuelllf.vercel.app>. **índicem** (ver abajo) está en
+**En producción:** <https://agentic-trader-manuelllf.vercel.app>. **Vennett** (ver abajo) está en
 beta cerrada, por invitación; las salas de administración viven bajo `/admin`, solo con una cuenta
 de administrador y verificación en dos pasos.
 
@@ -40,13 +40,55 @@ con como mucho dos por industria y a partes iguales, sin análisis profundo ni c
 mueve capital, ni siquiera simulado; solo se mide su rentabilidad bruta frente a la cartera del
 método y al S&P 500, para saber cuánto aporta el paso caro.
 
-## La liga de índicem
+## La liga de Vennett
 
 Un producto encima del mismo motor: una **liga de estrategias en papel contra el S&P 500**. Cada
 persona escribe una idea en una frase, un modelo la convierte en reglas explícitas (sector,
 tamaño, valoración, pesos de las cuatro notas del cribado y, si quiere, una pregunta propia sobre
-las empresas) y cada mes esa estrategia juega una jornada.
+las empresas) y cada mes esa estrategia juega una jornada. El conversor muestra cada intención
+como exacta, aproximada o sin regla disponible; esa interpretación se conserva en el borrador.
+Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrategia.
 
+- **Constructor por etapas.** Idea, Reglas, Selección, Cartera y Revisar. Los borradores se
+  guardan en la base y se recuperan al volver; las revisiones evitan sobrescribir otra pestaña.
+  Entrar en Crear abre Idea; avanzar o volver deja el menú de pasos visible, sin cabecera
+  introductoria ni resumen repetido. Los controles se distribuyen según el ancho. Crecimiento
+  interanual de ventas, margen operativo, ROE y dividendo tienen umbrales ajustables sobre
+  los datos guardados de Yahoo. Las recetas anteriores conservan sus valores por defecto;
+  una empresa sin el dato necesario no pasa la regla.
+  Una vista previa autenticada cuenta candidatas y muestra la cartera que producirían los
+  datos guardados, sin pedir nuevas puntuaciones ni crear una prueba.
+  No requiere nombre: este se valida al guardar o inscribir. Cambiar de etapa es inmediato,
+  con el guardado del borrador en segundo plano; la vista parcial reutiliza el resultado de
+  la misma receta y permanece plegada hasta abrirla. Anterior y Continuar quedan accesibles
+  sobre la navegación inferior. En Reglas también se puede describir un filtro: sus propuestas
+  requieren confirmación antes de incorporarse.
+  Las cuatro notas guardadas de Jev ordenan las empresas después de aplicar los filtros:
+  fundamentales, valoración, solidez financiera y catalizador próximo. Cada una tiene una
+  explicación breve y un peso editable; con peso cero no interviene en la selección.
+  Los informes de pago sobre una prueba sin guardar indican que primero guardarán su contexto.
+- **Navegación y clasificación.** Los enlaces muestran cuándo están abriendo su destino y
+  evitan pulsaciones repetidas mientras navegan. Las estrategias de casa se distinguen con
+  los colores de sus salas y los símbolos α, Ω y λ; las estrategias personales conservan
+  sus escudos. La jornada actual aparece antes que la clasificación cerrada.
+- **Rendimiento y riesgo.** La ficha deriva una curva frente al S&P 500 de los cierres y
+  carteras guardados, con dividendos y splits. Señala huecos y periodos provisionales. Incluye
+  caída máxima, concentración y, desde 60 retornos diarios válidos, volatilidad, Sharpe y Sortino.
+- **Evidencia de cartera.** La ficha usa la receta y la foto fijadas en cada formación para
+  comprobar reglas y explicar cambios. Compara el retorno total de las posiciones con el
+  S&P del mismo intervalo. Si falta la foto histórica o un cierre exacto, lo señala.
+- **Comparación financiera.** Liga y Privadas muestran retorno acumulado de un tramo contiguo
+  y su benchmark comparable, con fechas explícitas. Posición, puntos y movimiento entre los
+  dos últimos cierres oficiales quedan como contexto; no se suman porcentajes mensuales.
+  Liga abre en «Este mes» y permite consultar la clasificación después. Las pantallas interiores
+  prescinden de la cabecera de marca; cuenta y sesión siguen accesibles desde Mías.
+- **Seguimiento en Mías.** Resultado provisional de la jornada, último resultado cerrado y
+  composición frente a la última revisión y entre las dos últimas carteras formadas.
+  Copiar una estrategia publicada requiere
+  Pro y crea una metodología independiente, editable por su nueva persona propietaria.
+- **Visitas a la cuenta.** Registra inicio y última actividad también con sesiones recuperadas,
+  agrupando actividad con menos de 30 minutos de separación. El administrador puede consultar
+  totales e historial; la exportación personal incluye borradores, visitas y revisiones.
 - **La IA puntúa; la selección es aritmética.** Un LLM (Jev) pone cuatro notas cerradas a cada
   empresa del universo y, si la estrategia lo pide, contesta su pregunta propia; otro modelo
   traduce la frase a reglas y explica los resultados. A partir de esas notas, el orden, los
@@ -148,7 +190,7 @@ sin tocar código.
 agentic_trading/
 ├── backend/     # FastAPI: escaneo, scoring, libros de capital, bróker, aprobaciones,
 │                #   momentum (2ª estrategia, independiente) y la liga (app/liga)
-└── frontend/    # Next.js: índicem (pública, móvil primero) y, bajo /admin,
+└── frontend/    # Next.js: Vennett (pública, móvil primero) y, bajo /admin,
                  #   las salas Beta, Alpha y Omega (momentum)
 ```
 

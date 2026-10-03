@@ -1,0 +1,136 @@
+"""Vista previa efímera de selección para el constructor; nunca crea estrategia ni prueba.
+
+Usa la última foto/escaneo y respuestas guardadas. No pide puntuaciones a Jev ni modifica datos.
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.liga import acceso, estrategias
+from app.liga.auth import Identidad, require_jugador
+from app.liga.db import db_usuario
+from app.liga.motor.catalogo import CATALOGO_VERSION
+from app.liga.motor.seleccion import SIN_NOTAS, SIN_RESPUESTA, explicar, seleccionar
+
+router = APIRouter(tags=["liga-seleccion"])
+_LIMITE_PREVIEW = acceso.LimiteFrecuencia(tope=30, ventana_s=60)
+
+
+class ReglaPreviewIn(BaseModel):
+    clave: str = Field(max_length=40)
+    params: dict = Field(default_factory=dict)
+
+
+class PreviewSeleccionIn(BaseModel):
+    idea: str | None = Field(default=None, max_length=400)
+    reglas: list[ReglaPreviewIn] = Field(default_factory=list, max_length=30)
+    excluidas: list[str] = Field(default_factory=list, max_length=100)
+    pregunta: str | None = Field(default=None, max_length=160)
+    pesos: dict[str, int] = Field(max_length=10)
+    n_empresas: int = Field(ge=1, le=100)
+    reparto: str = Field(max_length=20)
+    max_por_sector: int = Field(ge=0, le=10)
+    ticker: str | None = Field(default=None, min_length=1, max_length=24)
+
+
+class EmpresaPreviewOut(BaseModel):
+    ticker: str
+    nombre: str | None
+    sector: str | None
+    peso: float
+    porque: str
+
+
+class PreviewSeleccionOut(BaseModel):
+    estado: Literal["disponible", "incompleto", "sin_datos"]
+    mensaje: str
+    plan_b: bool | None
+    foto_id: int | None
+    scan_run_id: int | None
+    catalogo_version: int
+    evaluadas: int | None
+    cumplen_reglas: int | None
+    candidatas_ordenadas: int | None
+    seleccionadas: int | None
+    sin_notas: int | None
+    sin_respuesta: int | None
+    sin_peso: int | None
+    saltadas_por_sector: int | None
+    caja_pct: float | None
+    elegidas: list[EmpresaPreviewOut]
+    explicacion: str | None = None
+
+
+def _sin_datos(mensaje: str) -> PreviewSeleccionOut:
+    return PreviewSeleccionOut(
+        estado="sin_datos", mensaje=mensaje, plan_b=None, foto_id=None, scan_run_id=None,
+        catalogo_version=CATALOGO_VERSION,
+        evaluadas=None, cumplen_reglas=None, candidatas_ordenadas=None, seleccionadas=None,
+        sin_notas=None, sin_respuesta=None, sin_peso=None,
+        saltadas_por_sector=None, caja_pct=None, elegidas=[],
+    )
+
+
+@router.post("/seleccion/preview", response_model=PreviewSeleccionOut)
+def previsualizar(body: PreviewSeleccionIn,
+                  ident: Identidad = Depends(require_jugador),
+                  db: Session = Depends(db_usuario)) -> PreviewSeleccionOut:
+    """Evalúa lo escrito contra la última foto guardada; lectura acotada por usuario."""
+    if not _LIMITE_PREVIEW.permitido(ident.uid):
+        raise HTTPException(429, "Has cambiado la selección muchas veces. Espera un momento.")
+    pregunta = (body.pregunta or "").strip() or None
+    if pregunta and not db.execute(text("select liga.es_pro()")).scalar():
+        raise HTTPException(403, "La pregunta propia es de Pro.")
+    receta = estrategias.validar_entrada(
+        body.idea, [r.model_dump() for r in body.reglas], body.excluidas, pregunta,
+        body.pesos, body.n_empresas, body.reparto, body.max_por_sector,
+    )
+    try:
+        contexto = estrategias.foto_y_notas_actuales()
+    except HTTPException as exc:
+        if exc.status_code in (404, 409):
+            return _sin_datos(exc.detail)
+        raise
+
+    respuestas = estrategias.respuestas_sistema(pregunta, contexto.foto_id)
+    resultado = seleccionar(list(contexto.empresas), receta, contexto.notas, respuestas)
+    sin_notas = sum(f.fallo == SIN_NOTAS for f in resultado.filas)
+    sin_respuesta = sum(f.fallo == SIN_RESPUESTA for f in resultado.filas)
+    reglas_ok = sum(
+        not f.excluida and f.fallo in (None, SIN_NOTAS, SIN_RESPUESTA)
+        for f in resultado.filas
+    )
+    estado = "incompleto" if sin_notas or sin_respuesta else "disponible"
+    if estado == "incompleto":
+        mensaje = (f"Vista parcial: {sin_notas} candidatas aún no tienen puntuación guardada. "
+                   "No se han solicitado puntuaciones nuevas.")
+        if sin_respuesta:
+            mensaje += f" {sin_respuesta} no tienen respuesta guardada a tu pregunta."
+    elif contexto.plan_b:
+        mensaje = ("Vista con los últimos datos guardados; este mes aún no tiene escaneo "
+                   "completo.")
+    else:
+        mensaje = "Vista basada en la última foto y las puntuaciones ya guardadas."
+    return PreviewSeleccionOut(
+        estado=estado, mensaje=mensaje, plan_b=contexto.plan_b,
+        foto_id=contexto.foto_id, scan_run_id=contexto.scan_run_id,
+        catalogo_version=receta.catalogo_version,
+        evaluadas=len(resultado.filas), cumplen_reglas=reglas_ok,
+        candidatas_ordenadas=len(resultado.pasan), seleccionadas=len(resultado.elegidas),
+        sin_notas=sin_notas, sin_respuesta=sin_respuesta,
+        sin_peso=len(resultado.sin_peso),
+        saltadas_por_sector=len(resultado.saltadas_por_sector),
+        caja_pct=float(resultado.caja_pct),
+        elegidas=[EmpresaPreviewOut(
+            ticker=e.ticker, nombre=e.fila.empresa.nombre, sector=e.fila.empresa.sector,
+            peso=float(e.peso), porque=e.porque,
+        ) for e in resultado.elegidas],
+        explicacion=explicar(body.ticker.strip().upper(), resultado, receta)
+        if body.ticker and body.ticker.strip() else None,
+    )

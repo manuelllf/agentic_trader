@@ -9,7 +9,7 @@ export function PlantillaLegal({
   return (
     <main className="sencilla legal-page">
       <header className="sencilla-top">
-        <Link href="/" className="wordmark">índicem</Link>
+        <Link href="/" className="wordmark">Vennett</Link>
       </header>
 
       <div className="legal-cuerpo">

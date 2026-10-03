@@ -12,6 +12,7 @@ export function Escena({ idea }: { idea: Idea }) {
   const total = puntosTotales(idea);
   const tabla = tablaDe(idea);
   const puesto = tabla.findIndex((f) => f.mia) + 1;
+  const acumulado = (retornos: number[]) => (retornos.reduce((capital, r) => capital * (1 + r / 100), 1) - 1) * 100;
 
   return (
     <div className="lnd-esc">
@@ -62,8 +63,12 @@ export function Escena({ idea }: { idea: Idea }) {
             );
           })}
         </ol>
-        <p className="lnd-nota lnd-tarde-1">Diferencia con el S&amp;P cada mes y puntos que suma</p>
+        <p className="lnd-nota lnd-tarde-1">Diferencia en puntos porcentuales frente al S&amp;P cada mes</p>
         <p className="lnd-conclusion lnd-tarde-1">{idea.conclusion}</p>
+
+        <p className="lnd-nota lnd-tarde-1">
+          Acumulado del ejemplo: <b>{signo(acumulado(idea.tu))} %</b> · S&amp;P 500 {signo(acumulado(SP))} %
+        </p>
 
         <p className="lnd-puesto lnd-tarde-2">
           <b>{total} puntos</b> · puesto {puesto} en la tabla de ejemplo

@@ -12,18 +12,25 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { BarraPestanas, Boton, CabeceraApp, Cargando, Escudo, ErrorLiga, Segmentado, Vacio }
+import { Sesion } from "../_sesion/Sesion";
+import { BarraPestanas, Boton, Cargando, Escudo, ErrorLiga, Segmentado, Vacio }
   from "../_ui";
+import { CambiosEstrategia } from "../_ui/CambiosEstrategia";
 import {
-  borrarEstrategia, cadaDia1, desapuntar, apuntar as apuntarApi, misEstrategias,
-  type Estrategia,
+  borrarEstrategia, cadaDia1, desapuntar, apuntar as apuntarApi, getJornadaPublica,
+  getClasificacion, getPortada, misEstrategias, type Clasificacion, type Estrategia,
+  type JornadaDetalle, type Portada,
 } from "@/lib/liga/api";
 import { mutar, useCache } from "@/lib/liga/cache";
+import { fecha, porcentaje } from "@/lib/liga/format";
+import { getSeguimiento, type SeguimientoEstrategia }
+  from "@/lib/liga/seguimiento";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 
 const ETIQUETA_ESTADO: Record<string, string> = {
   borrador: "Borrador", apuntada: "Apuntada, en espera", jugando: "Jugando", retirada: "Retirada",
 };
+const puntosPorcentuales = (valor: number) => porcentaje(valor).replace(" %", " pp");
 
 type ListaEstrategias = Estrategia[] | string;
 
@@ -43,8 +50,32 @@ export default function Mias() {
   const { datos: estrategias, cargando, refrescar: cargar } = useCache<ListaEstrategias>(
     sesionLista && estado === "dentro" ? "mis-estrategias" : null, misEstrategias,
   );
+  const { datos: portada } = useCache<Portada | string>("portada", getPortada, 120000);
+  const puedeVerClasificacion = estado === "dentro" && !!yo && Array.isArray(estrategias)
+    && estrategias.length > 0 && typeof portada === "object" && !!portada && !!portada.temporada;
+  const { datos: clasificacion } = useCache<Clasificacion | string>(
+    puedeVerClasificacion ? `clasificacion:${yo?.alias ?? ""}` : null,
+    () => getClasificacion({ alias: yo?.alias }), 120000,
+  );
+  const jornadaId = typeof portada === "object" && portada ? portada.en_juego?.id ?? null : null;
+  const { datos: detalleJornada, fallo: falloJornada } = useCache<JornadaDetalle | string>(
+    jornadaId === null ? null : `jornada:${jornadaId}`,
+    () => getJornadaPublica(jornadaId as number), 120000,
+  );
   const [ocupada, setOcupada] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  // Leer no marca una revisión; la caché privada se invalida al cambiar de cuenta.
+  const { datos: seguimiento } = useCache<SeguimientoEstrategia[] | string>(
+    estado === "dentro" ? "seguimiento" : null, getSeguimiento,
+  );
+
+  const porEstrategia = Array.isArray(seguimiento)
+    ? new Map(seguimiento.map((r) => [r.estrategia_id, r])) : null;
+  const rankingPorEstrategia = typeof clasificacion === "object" && clasificacion
+    ? new Map([...clasificacion.filas, ...clasificacion.mias].map((f) => [f.equipo.id, f]))
+    : null;
+  const filasJornada = typeof detalleJornada === "object" && detalleJornada
+    ? new Map(detalleJornada.filas.map((f) => [f.equipo.id, f])) : null;
 
   async function alApuntar(id: string) {
     setOcupada(id);
@@ -97,15 +128,14 @@ export default function Mias() {
 
   return (
     <main className="scroll">
-      <CabeceraApp conCreditos />
-      <h1 className="h1">Mis estrategias</h1>
+      <div className="titulo-cuenta"><h1 className="h1">Mis estrategias</h1><Sesion /></div>
       <p className="meta">
-        {yo?.plan === "pro"
+        {!yo ? "" : yo.plan === "pro"
           ? "Con Pro puedes tener varias jugando a la vez."
           : "Gratis: una estrategia, solo con reglas."}
       </p>
 
-      {cargando ? (
+      {estado === "cargando" || cargando ? (
         <div style={{ marginTop: 20 }}><Cargando filas={3} /></div>
       ) : typeof estrategias === "string" ? (
         <ErrorLiga titulo="No se pudieron cargar tus estrategias" mensaje={estrategias}
@@ -117,17 +147,18 @@ export default function Mias() {
           accion={{ texto: "Crear la primera", onClick: () => { window.location.href = "/crear"; } }}
         />
       ) : (
-        <div className="sec" style={{ marginTop: 14 }}>
+        <div className="sec estrategias-lista" style={{ marginTop: 14 }}>
           <div style={{ borderTop: "1px solid var(--line)" }}>
             {estrategias.map((e) => (
-              <div key={e.id} className="li-bloque">
+              <div key={e.id} className="li-bloque" style={{ minWidth: 0 }}>
               <div className="li" style={{ cursor: "default" }}>
                 <Escudo valor={e.escudo} etiqueta={`Escudo de ${e.nombre}`} tamano={34} />
-                <span className="t">
+                <Link href={`/ficha/${e.id}`} className="t" style={{ textDecoration: "none" }}>
                   <b>{e.nombre}</b>
                   <small>{ETIQUETA_ESTADO[e.estado] ?? e.estado}</small>
-                </span>
+                </Link>
                 <div className="li-acts">
+                  <Link href={`/ficha/${e.id}`} className="btn small">Ver estrategia</Link>
                   <Link href={`/crear/${e.id}`} className="btn small">Editar</Link>
                   {e.estado === "borrador" && (
                     <>
@@ -148,6 +179,74 @@ export default function Mias() {
                   )}
                 </div>
               </div>
+              {e.estado === "jugando" && (
+                <div className="li-dia1" role="status" aria-label={`Resultado de la jornada actual de ${e.nombre}`}
+                     style={{ flexWrap: "wrap", alignItems: "flex-start" }}>
+                  <span>
+                    {typeof detalleJornada === "object" && detalleJornada
+                      ? `Jornada ${detalleJornada.jornada.numero} · ${detalleJornada.provisional
+                        ? `${detalleJornada.en_vivo ? "Cotizaciones provisionales" : "Último cierre disponible"} · datos hasta ${detalleJornada.hasta ? fecha(detalleJornada.hasta) : "fecha no disponible"}`
+                        : "en curso"}`
+                      : "Jornada en curso"}
+                  </span>
+                  {filasJornada?.get(e.id)?.rentabilidad != null ? (
+                    <b>
+                      {porcentaje(filasJornada.get(e.id)!.rentabilidad!)} este mes
+                      {filasJornada.get(e.id)!.dif_sp != null
+                        ? ` · ${puntosPorcentuales(filasJornada.get(e.id)!.dif_sp!)} vs S&P`
+                        : " · diferencia con S&P no disponible"}
+                    </b>
+                  ) : (
+                    <small>
+                      {detalleJornada === undefined ? falloJornada ? "No se pudo cargar el resultado actual."
+                        : "Cargando el resultado de la jornada…"
+                        : typeof detalleJornada === "string" ? "No se pudo cargar el resultado actual."
+                        : filasJornada?.has(e.id) ? "Aún no hay un cálculo provisional para esta estrategia."
+                        : "No hay una cifra disponible para esta estrategia en la jornada actual."}
+                    </small>
+                  )}
+                </div>
+              )}
+              {e.estado !== "borrador" && porEstrategia?.get(e.id) && (
+                <div className="li-finanzas" aria-label={`Rendimiento acumulado de ${e.nombre}`}>
+                  {porEstrategia.get(e.id)!.acumulado ? (
+                    <>
+                      <div className="li-finanzas-cifra li-finanzas-principal">
+                        <small>{porEstrategia.get(e.id)!.acumulado!.incompleta
+                          ? `Últimos ${porEstrategia.get(e.id)!.acumulado!.periodos} periodos seguidos`
+                          : "Acumulado"}</small>
+                        <b>{porcentaje(porEstrategia.get(e.id)!.acumulado!.rentabilidad)}</b>
+                      </div>
+                      <div className="li-finanzas-cifra">
+                        <small>S&amp;P 500 · mismo periodo</small>
+                        <b>{porcentaje(porEstrategia.get(e.id)!.acumulado!.sp500)}</b>
+                      </div>
+                      <span className={`li-finanzas-diferencia ${porEstrategia.get(e.id)!.acumulado!.diferencia_pp > 0.00005
+                        ? "up" : porEstrategia.get(e.id)!.acumulado!.diferencia_pp < -0.00005 ? "dn" : "fl"}`}>
+                        {puntosPorcentuales(porEstrategia.get(e.id)!.acumulado!.diferencia_pp)} vs S&amp;P
+                      </span>
+                      <small className="li-finanzas-periodo">
+                        {porEstrategia.get(e.id)!.acumulado!.desde === porEstrategia.get(e.id)!.acumulado!.hasta
+                          ? fecha(porEstrategia.get(e.id)!.acumulado!.desde)
+                          : `${fecha(porEstrategia.get(e.id)!.acumulado!.desde)} – ${fecha(porEstrategia.get(e.id)!.acumulado!.hasta)}`}
+                      </small>
+                    </>
+                  ) : (
+                    <small className="li-finanzas-periodo">Sin jornadas cerradas comparables.</small>
+                  )}
+                  {rankingPorEstrategia?.get(e.id) && (
+                    <span className="li-finanzas-puesto">
+                      Liga #{rankingPorEstrategia.get(e.id)!.posicion}
+                      {rankingPorEstrategia.get(e.id)!.movimiento == null ? " · sin periodo anterior comparable"
+                        : rankingPorEstrategia.get(e.id)!.movimiento! > 0
+                          ? ` · ↑${rankingPorEstrategia.get(e.id)!.movimiento} posiciones`
+                          : rankingPorEstrategia.get(e.id)!.movimiento! < 0
+                            ? ` · ↓${Math.abs(rankingPorEstrategia.get(e.id)!.movimiento!)} posiciones`
+                            : " · sin cambio de posición"}
+                    </span>
+                  )}
+                </div>
+              )}
               {(e.estado === "apuntada" || e.estado === "jugando") && (
                 <div className="li-dia1">
                   <span>Cada día 1</span>
@@ -158,10 +257,19 @@ export default function Mias() {
                               onChange={(v) => alCambiarCadaDia1(e.id, v)} />
                 </div>
               )}
+              {porEstrategia?.get(e.id) && (
+                <CambiosEstrategia resumen={porEstrategia.get(e.id)!} />
+              )}
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {typeof seguimiento === "string" && (
+        <p className="meta" role="status" style={{ marginTop: 12 }}>
+          No se pudo cargar el seguimiento: {seguimiento}
+        </p>
       )}
 
       {aviso && <p className="aviso" role="alert" style={{ marginTop: 16 }}>{aviso}</p>}

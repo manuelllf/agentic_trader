@@ -11,8 +11,31 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { getYo, type Yo } from "@/lib/liga/api";
-import { supabase, useSupabase } from "@/lib/liga/supabase";
+import { supabase, tokenSesion, useSupabase } from "@/lib/liga/supabase";
 import { limpiarPrivado, useCache } from "@/lib/liga/cache";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const INTERVALO_ACTIVIDAD_MS = 60_000;
+
+async function registrarVisita(): Promise<void> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10_000);
+  try {
+    const sesion = await tokenSesion(ctrl.signal);
+    if (!sesion) return;
+    await fetch(`${API_URL}/liga/visitas/actividad`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sesion.token}` },
+      cache: "no-store",
+      keepalive: true,
+      signal: ctrl.signal,
+    });
+  } catch {
+    // La auditoría no debe impedir el uso de la cuenta ni cambiar su estado de sesión.
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export type EstadoSesion = "cargando" | "fuera" | "dentro";
 
@@ -69,6 +92,47 @@ export function SesionProvider({ children }: { children: ReactNode }) {
       sub.subscription.unsubscribe();
     };
   }, [sb]);
+
+  // La sesión restaurada cuenta igual que una recién iniciada. Los siguientes avisos salen de
+  // interacción humana o de volver a una pestaña visible; no hay sondeo en segundo plano.
+  useEffect(() => {
+    if (estado !== "dentro" || !uid) return;
+    let ultimoEnvio = 0;
+    let temporizador: ReturnType<typeof setTimeout> | undefined;
+    let vivo = true;
+    const enviar = () => {
+      if (!vivo || document.visibilityState !== "visible") return;
+      ultimoEnvio = Date.now();
+      void registrarVisita();
+    };
+    const actividadHumana = () => {
+      if (document.visibilityState !== "visible" || temporizador) return;
+      const espera = Math.max(0, INTERVALO_ACTIVIDAD_MS - (Date.now() - ultimoEnvio));
+      temporizador = setTimeout(() => {
+        temporizador = undefined;
+        enviar();
+      }, espera);
+    };
+    const cambioVisibilidad = () => {
+      if (document.visibilityState !== "visible") {
+        if (temporizador) clearTimeout(temporizador);
+        temporizador = undefined;
+      } else if (Date.now() - ultimoEnvio >= INTERVALO_ACTIVIDAD_MS) {
+        enviar();
+      }
+    };
+
+    enviar();
+    const eventos: (keyof WindowEventMap)[] = ["pointerdown", "keydown", "touchstart", "scroll"];
+    eventos.forEach((evento) => window.addEventListener(evento, actividadHumana, { passive: true }));
+    document.addEventListener("visibilitychange", cambioVisibilidad);
+    return () => {
+      vivo = false;
+      if (temporizador) clearTimeout(temporizador);
+      eventos.forEach((evento) => window.removeEventListener(evento, actividadHumana));
+      document.removeEventListener("visibilitychange", cambioVisibilidad);
+    };
+  }, [estado, uid]);
 
   const { datos: yo, fallo: yoFalla, refrescar } =
     useCache<Yo | null>(estado === "dentro" ? "yo" : null, getYo);

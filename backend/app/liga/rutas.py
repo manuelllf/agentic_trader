@@ -13,13 +13,17 @@ from sqlalchemy.orm import Session
 
 from app.liga import (
     acceso,
+    borradores,
     cuenta,
     gestion,
     limites,
+    preview_seleccion,
     rutas_estrategias,
     rutas_ia,
     rutas_ligas,
     rutas_publicas,
+    seguimiento,
+    visitas,
 )
 from app.liga.auth import Identidad, identidad_opcional, require_usuario
 from app.liga.db import db_usuario
@@ -28,8 +32,12 @@ from app.liga.ia import moderacion
 router = APIRouter(prefix="/liga", tags=["liga"])
 router.include_router(rutas_publicas.router)
 router.include_router(rutas_estrategias.router)
+router.include_router(preview_seleccion.router)
 router.include_router(rutas_ligas.router)
 router.include_router(rutas_ia.router)
+router.include_router(borradores.router)
+router.include_router(visitas.router)
+router.include_router(seguimiento.router)
 
 # Exporta recorre toda su cuenta: como las pruebas de estrategias.py, cara de abusar sin freno.
 _LIMITE_EXPORTAR = acceso.LimiteFrecuencia(tope=3, ventana_s=60 * 60)

@@ -350,6 +350,43 @@ class Auditoria(LigaBase):
     creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
 
 
+class Borrador(LigaBase):
+    __tablename__ = "borradores"
+
+    usuario_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
+    clave: Mapped[str] = mapped_column(Text, primary_key=True)
+    contenido: Mapped[dict] = mapped_column(JSONB)
+    revision: Mapped[int] = mapped_column(BigInteger, server_default=DB)
+    creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+
+
+class Visita(LigaBase):
+    __tablename__ = "visitas"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    usuario_id: Mapped[uuid.UUID] = mapped_column(UUID)
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID)
+    inicio: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    ultima_actividad: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+
+
+class EstrategiaRevisada(LigaBase):
+    __tablename__ = "estrategias_revisadas"
+
+    usuario_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, server_default=DB)
+    estrategia_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
+    inscripcion_id: Mapped[int | None] = mapped_column(BigInteger)
+    resultado_inscripcion_id: Mapped[int | None] = mapped_column(BigInteger)
+    revisada_en: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creada_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
+
+
 class OmegaOperacion(LigaBase):
     """Una operación (compra→venta) de un hueco virtual de Omega en la liga. `salida_dia` nulo =
     sigue abierta (se actualiza la misma fila el día que cierra, no nace una nueva)."""

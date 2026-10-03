@@ -125,6 +125,51 @@ def test_pesos_fuera_de_catalogo_se_descartan(entorno, monkeypatch) -> None:  # 
     assert sugerencia.pesos == {"negocio": 35}  # redondeado al paso de 5
 
 
+def test_interpretacion_se_vincula_a_reglas_validadas_y_detalla_condicion(
+    entorno, monkeypatch,  # noqa: ANN001
+) -> None:
+    _cx, uid = entorno
+    bruto = json.dumps({
+        "reglas": [
+            {"clave": "grandes", "params": {}},
+            {"clave": "deuda", "params": {"anios": 2}},
+        ],
+        "pesos": None, "pregunta": None, "nombre": None,
+        "interpretacion": [
+            {"intencion": "empresas muy grandes", "tipo": "exacta", "regla": "grandes",
+             "motivo": "La intención coincide"},
+            {"intencion": "poca deuda", "tipo": "aproximada", "regla": "deuda",
+             "motivo": "No se usa el texto libre"},
+            {"intencion": "sin energía", "tipo": "exacta", "regla": "sin_energia",
+             "motivo": "La clave no está en reglas"},
+            {"intencion": "precios exactos futuros", "tipo": "no_disponible", "regla": None,
+             "motivo": "No hay regla para predecir precios"},
+        ],
+    })
+    monkeypatch.setattr(app_llm, "get_llm", _get_llm_de(bruto))
+    sugerencia, _ = conversor.convertir(uid, "empresas muy grandes y poca deuda, sin energía")
+
+    assert [(i.intencion, i.tipo, i.regla) for i in sugerencia.interpretacion] == [
+        ("empresas muy grandes", "exacta", "grandes"),
+        ("poca deuda", "aproximada", "deuda"),
+        ("sin energía", "no_disponible", None),
+        ("precios exactos futuros", "no_disponible", None),
+    ]
+    assert sugerencia.interpretacion[0].motivo == conversor.CATALOGO["grandes"].detalle({})
+    assert sugerencia.interpretacion[1].motivo == conversor.CATALOGO["deuda"].detalle({"anios": 2})
+    assert sugerencia.interpretacion[2].motivo == conversor._MOTIVO_NO_DISPONIBLE
+
+
+def test_legacy_sin_interpretacion_no_inventa_exactitud(entorno, monkeypatch) -> None:  # noqa: ANN001
+    _cx, uid = entorno
+    bruto = json.dumps({"reglas": [{"clave": "grandes", "params": {}}], "pesos": None,
+                        "pregunta": None, "nombre": None})
+    monkeypatch.setattr(app_llm, "get_llm", _get_llm_de(bruto))
+    sugerencia, _ = conversor.convertir(uid, "empresas grandes")
+    assert sugerencia.reglas == [{"clave": "grandes", "params": {}}]
+    assert sugerencia.interpretacion == []
+
+
 def test_sexta_llamada_del_dia_da_429(entorno, monkeypatch) -> None:  # noqa: ANN001
     cx, uid = entorno
     bruto = json.dumps({"reglas": [], "pesos": None, "pregunta": None, "nombre": None})
@@ -144,3 +189,12 @@ def test_interruptor_apagado_da_503(entorno, monkeypatch) -> None:  # noqa: ANN0
     with pytest.raises(HTTPException) as exc:
         conversor.convertir(uid, "algo")
     assert exc.value.status_code == 503
+
+
+def test_prompt_expone_condiciones_y_campos_reales_del_catalogo() -> None:
+    prompt = conversor._catalogo_para_prompt()
+    assert "deuda neta inferior a 2 veces el EBITDA" in prompt
+    assert "última variación interanual de ventas superior al 5" in prompt
+    assert "crecimiento_pct: el crecimiento interanual mínimo (%)" in prompt
+    assert "default 5" in prompt
+    assert "list of sector keys" in prompt

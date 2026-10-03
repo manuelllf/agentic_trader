@@ -324,6 +324,17 @@ def test_copiar_es_de_pro_y_no_copia_lo_de_otro_sin_publicar(api) -> None:  # no
     receta_copia = cliente.get(f"/liga/estrategias/{copia['id']}",
                                headers=cab(otro_pro)).json()
     assert receta_copia["receta_id"] is not None
+    ficha_copia = cliente.get(f"/liga/fichas/{copia['id']}", headers=cab(otro_pro)).json()
+    id_receta_copia = ficha_copia["receta"]["id"]
+    assert ficha_copia["receta"]["n_empresas"] == 7
+
+    # Cambiar la receta original crea una versión nueva y deja intacta la copia del Pro.
+    receta_original_nueva = _receta(cliente, cab, autora, eid, n_empresas=10)
+    assert receta_original_nueva["id"] != id_receta_copia
+    ficha_copia_despues = cliente.get(f"/liga/fichas/{copia['id']}",
+                                      headers=cab(otro_pro)).json()
+    assert ficha_copia_despues["receta"]["id"] == id_receta_copia
+    assert ficha_copia_despues["receta"]["n_empresas"] == 7
 
     # La copia es del que copia, no de la autora: la autora no la ve entre las suyas.
     ids_autora = {e["id"] for e in cliente.get("/liga/estrategias", headers=cab(autora)).json()}

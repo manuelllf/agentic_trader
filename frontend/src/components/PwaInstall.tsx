@@ -46,10 +46,10 @@ export default function PwaInstall() {
   if (!visible) return null;
 
   return (
-    <aside className="pwa-install" aria-label="Instalar índicem">
+    <aside className="pwa-install" aria-label="Instalar Vennett">
       <Image src="/favicon.svg" alt="" width={32} height={32} />
       <div>
-        <p><strong>índicem, a mano.</strong></p>
+        <p><strong>Vennett, a mano.</strong></p>
         <p>Acceso directo en tu móvil.</p>
       </div>
       <button

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { EditorEstrategia } from "../../_crear/EditorEstrategia";
 
-export const metadata: Metadata = { title: "Editar estrategia · índicem" };
+export const metadata: Metadata = { title: "Editar estrategia · Vennett" };
 
 export default async function EditarEstrategia({
   params,
@@ -9,5 +10,5 @@ export default async function EditarEstrategia({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <EditorEstrategia estrategiaIdInicial={id} />;
+  return <Suspense><EditorEstrategia estrategiaIdInicial={id} /></Suspense>;
 }

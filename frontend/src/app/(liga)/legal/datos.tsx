@@ -8,8 +8,8 @@ export const TITULAR = {
   correo: null as string | null,
 };
 
-export const VERSION_LEGAL = "2026-09-29";
-export const FECHA_LEGAL = "29 de septiembre de 2026";
+export const VERSION_LEGAL = "2026-10-03";
+export const FECHA_LEGAL = "3 de octubre de 2026";
 
 /** Cómo contactar con el titular: el correo si existe; si no, la propia aplicación. */
 export function Contacto() {

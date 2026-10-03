@@ -9,13 +9,7 @@ export interface ClasificacionProps {
 
 export function Clasificacion({ children }: ClasificacionProps) {
   return (
-    <div>
-      <div className="tbl-h" aria-hidden="true">
-        <span />
-        <span>Estrategia</span>
-        <span>vs S&amp;P</span>
-        <span>Pts</span>
-      </div>
+    <div className="ranking-lista">
       {children}
     </div>
   );

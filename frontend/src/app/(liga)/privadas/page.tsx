@@ -6,7 +6,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { BarraPestanas, Boton, CabeceraApp, Cargando, ErrorLiga, Vacio } from "../_ui";
+import { BarraPestanas, Boton, Cargando, ErrorLiga, Vacio } from "../_ui";
 import { crearLiga, misLigas, unirseLiga, type LigaResumen } from "@/lib/liga/api";
 import { useCache } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
@@ -50,7 +50,6 @@ export default function Privadas() {
 
   return (
     <main className="scroll">
-      <CabeceraApp />
       <h1 className="h1">Ligas privadas</h1>
       <p className="meta">Las mismas jornadas, solo con quien tú invites.</p>
 
@@ -60,7 +59,7 @@ export default function Privadas() {
         <div className="empty">
           <h2>Tu liga, con los tuyos</h2>
           <p>
-            Crea una liga, pasa el código a quien quieras y jugad las mismas jornadas entre
+            Crea una liga, pasa el código a quien quieras y comparad las mismas jornadas entre
             vosotros. También puedes unirte a la de otra persona. Las ligas privadas son de Pro.
           </p>
         </div>
@@ -88,6 +87,7 @@ export default function Privadas() {
             </div>
           )}
 
+          <div className="privadas-distribucion">
           <div className="sec">
             <div className="sec-t">Unirte con un código</div>
             <form className="form" style={{ marginTop: 0, gap: 12 }} onSubmit={alUnirse}>
@@ -111,6 +111,7 @@ export default function Privadas() {
             </form>
           </div>
 
+          </div>
           {aviso && <p className="aviso" role="alert" style={{ marginTop: 16 }}>{aviso}</p>}
         </>
       )}

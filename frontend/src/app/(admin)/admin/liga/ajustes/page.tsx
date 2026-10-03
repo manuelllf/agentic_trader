@@ -131,7 +131,7 @@ function Ajustes() {
 
   return (
     <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
-      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>← índicem</Link>
+      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>← Vennett</Link>
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>Ajustes</h1>
 

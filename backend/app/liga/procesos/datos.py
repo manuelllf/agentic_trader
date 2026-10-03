@@ -38,15 +38,24 @@ def _texto(valor: str | None) -> str | None:
     return valor.strip()
 
 
-def cargar_empresas(db: Session, foto_id: int) -> list[EmpresaFoto]:
+def cargar_empresas(db: Session, foto_id: int,
+                    tickers: Iterable[str] | None = None) -> list[EmpresaFoto]:
     """Las empresas de una foto, una por ticker (si se capturó dos veces, la última)."""
-    filas = db.execute(text("""
+    filtro_tickers = "and s.ticker = any(:tickers)" if tickers is not None else ""
+    params: dict[str, object] = {"f": foto_id}
+    if tickers is not None:
+        tickers = sorted(set(tickers))
+        if not tickers:
+            return []
+        params["tickers"] = tickers
+    filas = db.execute(text(f"""
         select distinct on (s.ticker) s.id, s.ticker, s.name, s.sector, s.industry,
                s.market_cap_usd, s.price, s.high_52w, s.pe_trailing, s.metricas
         from fundamentals_snapshot s
         where s.foto_id = :f
+          {filtro_tickers}
         order by s.ticker, s.id desc
-    """), {"f": foto_id}).all()
+    """), params).all()
     return [EmpresaFoto(ticker=f.ticker, nombre=_texto(f.name), sector=_texto(f.sector),
                         industria=_texto(f.industry), market_cap_usd=f.market_cap_usd,
                         precio=f.price, max_52s=f.high_52w, per=f.pe_trailing,

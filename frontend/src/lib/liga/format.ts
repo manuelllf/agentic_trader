@@ -10,6 +10,8 @@ const ESPACIO_DURO = " ";
  * flotante (0.55 se guarda como 0.550000000000000044...) para que los empates no bajen.
  */
 function redondeoMedioArriba(valor: number, decimales: number): number {
+  // FastAPI serializa Decimal como texto; normaliza antes de decidir signo y cero.
+  valor = Number(valor);
   if (!Number.isFinite(valor)) return valor;
   const factor = 10 ** decimales;
   const escalado = Number((Math.abs(valor) * factor).toPrecision(12));

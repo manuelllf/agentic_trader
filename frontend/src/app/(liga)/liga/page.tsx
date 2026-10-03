@@ -10,10 +10,10 @@
 // etiqueta neutra («de la comunidad») para las que no son de la casa ni la propia.
 
 import type { CSSProperties } from "react";
-import { Suspense } from "react";
+import { Suspense, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  BarraPestanas, CabeceraApp, Cargando, Clasificacion as TablaClasificacion, Escudo, ErrorLiga,
+  BarraPestanas, Cargando, CASA, Clasificacion as TablaClasificacion, Escudo, escudoCasa, ErrorLiga,
   FilaEquipo, HuecoClasificacion, Segmentado, Vacio,
 } from "../_ui";
 import {
@@ -98,10 +98,10 @@ function LigaContenido() {
   const router = useRouter();
   const parametros = useSearchParams();
   const { yo } = useSesion();
-  const vista: Vista = parametros.get("vista") === "jornada" ? "jornada" : "tabla";
+  const vista: Vista = parametros.get("vista") === "tabla" ? "tabla" : "jornada";
   const setVista = (valor: Vista) => {
     const query = new URLSearchParams(parametros.toString());
-    if (valor === "jornada") query.set("vista", valor); else query.delete("vista");
+    if (valor === "tabla") query.set("vista", valor); else query.delete("vista");
     router.replace(`/liga${query.size ? `?${query}` : ""}`, { scroll: false });
   };
 
@@ -129,12 +129,14 @@ function LigaContenido() {
       key={f.equipo.id}
       puesto={f.posicion}
       nombre={f.equipo.nombre}
-      escudo={f.equipo.escudo}
+      escudo={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo}
+      casa={f.equipo.casa}
       etiqueta={etiquetaEquipo(f.equipo, yo?.alias ?? null)}
       vsIndice={f.dif_sp}
       puntos={f.puntos}
+      acumulado={f.acumulado}
+      movimiento={f.movimiento}
       tipo={f.equipo.casa ? "casa" : (yo && f.equipo.autor === yo.alias) ? "mia" : "normal"}
-      colorCasa={f.equipo.casa ? { alpha: "#1DE27A", omega: "#FF6B1A", lambda: "#8F8A80" }[f.equipo.casa] : undefined}
       onClick={() => abrir(f.equipo.id)}
     />
   );
@@ -142,7 +144,6 @@ function LigaContenido() {
   if (cargandoPortada) {
     return (
       <main className="scroll">
-        <CabeceraApp />
         <h1 className="h1">Liga</h1>
         <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
         <BarraPestanas />
@@ -153,7 +154,6 @@ function LigaContenido() {
   if (typeof portada === "string") {
     return (
       <main className="scroll">
-        <CabeceraApp />
         <h1 className="h1">Liga</h1>
         <ErrorLiga titulo="No se pudo cargar la liga" mensaje={portada}
                    accion={{ texto: "Reintentar", onClick: refrescarPortada }} />
@@ -167,7 +167,6 @@ function LigaContenido() {
 
   return (
     <main className="scroll">
-      <CabeceraApp />
       <h1 className="h1">Liga</h1>
 
       {temporada === null ? (
@@ -204,8 +203,8 @@ function LigaContenido() {
 
           <div style={{ marginTop: 16 }}>
             <Segmentado etiquetaGrupo="Vista de la liga" valor={vista} onChange={setVista}
-                        opciones={[{ valor: "tabla", etiqueta: "Clasificación" },
-                                   { valor: "jornada", etiqueta: "Este mes" }]} />
+                        opciones={[{ valor: "jornada", etiqueta: "Este mes" },
+                                   { valor: "tabla", etiqueta: "Clasificación" }]} />
           </div>
 
           {vista === "tabla" ? (
@@ -259,6 +258,8 @@ function LigaContenido() {
 function VistaJornada({
   detalle, miAlias, onAbrir,
 }: { detalle: JornadaDetalle; miAlias: string | null; onAbrir: (id: string) => void }) {
+  const [navegando, iniciarNavegacion] = useTransition();
+  const [destino, setDestino] = useState<string | null>(null);
   const conDatos = detalle.filas.filter((f) => f.rentabilidad !== null);
   if (conDatos.length === 0) {
     return (
@@ -276,18 +277,20 @@ function VistaJornada({
   const sp = detalle.jornada.sp_rentabilidad;
   const fila = (f: (typeof conDatos)[number]) => (
     <button type="button" key={f.equipo.id}
-            className={`jr${f.equipo.casa ? " casa" : ""}`}
-            style={f.equipo.casa ? ({ "--hc": { alpha: "#1DE27A", omega: "#FF6B1A", lambda: "#8F8A80" }[f.equipo.casa] } as CSSProperties) : undefined}
-            onClick={() => onAbrir(f.equipo.id)}>
+            className={`jr${f.equipo.casa ? " casa" : ""}${navegando && destino === f.equipo.id ? " navegando" : ""}`}
+            aria-busy={navegando && destino === f.equipo.id || undefined}
+            style={f.equipo.casa ? ({ "--hc": f.equipo.casa === "lambda" ? "#8F8A80" : CASA[f.equipo.casa].color } as CSSProperties) : undefined}
+            onClick={() => { if (navegando && destino === f.equipo.id) return; setDestino(f.equipo.id); iniciarNavegacion(() => onAbrir(f.equipo.id)); }}>
       <span className="name">
-        <Escudo valor={f.equipo.escudo} etiqueta={`Escudo de ${f.equipo.nombre}`} />
+        <Escudo valor={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo}
+          casa={f.equipo.casa} etiqueta={`Escudo de ${f.equipo.nombre}`} />
         <span className="nm">
           <b>{f.equipo.nombre}</b>
           <span className="sub">{etiquetaEquipo(f.equipo, miAlias)}</span>
         </span>
       </span>
       <span className={`ret num ${claseSigno(f.rentabilidad ?? 0)}`}>{porcentaje(f.rentabilidad ?? 0)}</span>
-      <Chevron />
+      {navegando && destino === f.equipo.id ? <span className="chev" aria-label={`Abriendo ${f.equipo.nombre}`}>···</span> : <Chevron />}
     </button>
   );
   return (

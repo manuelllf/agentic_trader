@@ -7,10 +7,10 @@ import "./admin.css";
 const geistSans = Geist({ subsets: ["latin"], weight: "variable", variable: "--font-geist-sans" });
 
 export const metadata: Metadata = {
-  title: "Salas · índicem",
-  description: "Las salas de índicem: Alpha, Beta y Omega",
+  title: "Salas · Vennett",
+  description: "Las salas de Vennett: Alpha, Beta y Omega",
   manifest: "/admin/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "índicem · salas" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Vennett · salas" },
   robots: { index: false, follow: false },
 };
 

@@ -39,7 +39,7 @@ function aalDe(token: string): string {
 
 /** Token de la sesión (ya refrescado si hacía falta) y su nivel. Solo para elegir qué mandar:
  *  quien decide es el backend. */
-export async function tokenSesion(signal?: AbortSignal): Promise<{ token: string; aal: string } | null> {
+export async function tokenSesion(signal?: AbortSignal): Promise<{ token: string; aal: string; uid: string } | null> {
   const sb = supabase();
   if (!sb) return null;
   const { data } = await new Promise<Awaited<ReturnType<typeof sb.auth.getSession>>>((resolve, reject) => {
@@ -49,7 +49,7 @@ export async function tokenSesion(signal?: AbortSignal): Promise<{ token: string
     sb.auth.getSession().then(resolve, reject).finally(() => signal?.removeEventListener("abort", abortar));
   });
   const token = data.session?.access_token;
-  return token ? { token, aal: aalDe(token) } : null;
+  return token ? { token, aal: aalDe(token), uid: data.session!.user.id } : null;
 }
 
 /** El servidor rechazó el token (caducado o revocado): se cierra la sesión local y se lleva a

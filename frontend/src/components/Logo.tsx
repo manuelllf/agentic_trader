@@ -4,7 +4,7 @@ export default function Logo({ size = 40, className = "" }: { size?: number; cla
   return (
     <Image
       src="/favicon.svg"
-      alt="índicem"
+      alt="Vennett"
       width={size}
       height={size}
       className={className}

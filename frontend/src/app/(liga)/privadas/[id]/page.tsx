@@ -8,13 +8,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { BarraPestanas, Boton, CabeceraApp, Cargando, ErrorLiga } from "../../_ui";
+import { BarraPestanas, Boton, Cargando, ErrorLiga } from "../../_ui";
 import {
   expulsarDeLiga, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle,
 } from "@/lib/liga/api";
 import { useCache } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../../_sesion/SesionContext";
-import { claseSigno, porcentaje } from "@/lib/liga/format";
+import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
+
+const puntosPorcentuales = (valor: number) => porcentaje(valor).replace(" %", " pp");
 
 export default function PrivadaDetalle() {
   const { id } = useParams<{ id: string }>();
@@ -74,7 +76,6 @@ export default function PrivadaDetalle() {
 
   return (
     <main className="scroll">
-      <CabeceraApp />
       <Link href="/privadas" className="back">
         <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor"
              strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -94,15 +95,15 @@ export default function PrivadaDetalle() {
           <p className="meta">{liga.n_miembros} de {liga.cupo} estrategias.</p>
 
           <div className="sec">
-            <div className="tbl-h" aria-hidden="true">
-              <span />
-              <span>Alias</span>
-              <span>vs S&amp;P</span>
-              <span>Pts</span>
+            <div className="tbl-h financiero" aria-hidden="true">
+              <span>Posición</span>
+              <span>Participante</span>
+              <span>Acumulado · S&amp;P 500</span>
+              <span>Puntos Liga</span>
             </div>
-            {liga.miembros.map((m) => (
-              <div key={m.alias} className={`tr${m.es_yo ? " me" : ""}`}>
-                <span className="pos" />
+            {liga.miembros.map((m, index) => (
+              <div key={m.alias} className={`tr financiero${m.es_yo ? " me" : ""}`}>
+                <span className="pos num">{index + 1}</span>
                 <span className="name">
                   <span className="nm">
                     <b>{m.alias}</b>
@@ -117,10 +118,34 @@ export default function PrivadaDetalle() {
                     )}
                   </span>
                 </span>
-                <span className={`vs num ${m.dif_sp != null ? claseSigno(m.dif_sp) : "fl"}`}>
-                  {m.dif_sp != null ? porcentaje(m.dif_sp) : "—"}
+                <span className="finance" aria-label={`Rendimiento acumulado de ${m.alias}`}>
+                  {m.acumulado ? (
+                    <>
+                      <span className={`primary num ${claseSigno(m.acumulado.rentabilidad)}`}>
+                        {porcentaje(m.acumulado.rentabilidad)}
+                      </span>
+                      <span className={`bench num ${claseSigno(m.acumulado.sp500)}`}>
+                        S&amp;P 500 {porcentaje(m.acumulado.sp500)}
+                      </span>
+                      <span className={`pp num ${claseSigno(m.acumulado.diferencia_pp)}`}>
+                        {puntosPorcentuales(m.acumulado.diferencia_pp)} vs S&amp;P
+                      </span>
+                      <span className="period">
+                        {m.acumulado.incompleta ? `Últimos ${m.acumulado.periodos} periodos seguidos` : "Acumulado"}
+                        {" · "}{fecha(m.acumulado.desde)} – {fecha(m.acumulado.hasta)}
+                      </span>
+                    </>
+                  ) : <span className="period">Sin jornadas cerradas comparables</span>}
                 </span>
-                <span className="pts num">{m.puntos ?? "—"}</span>
+                <span className="rankmeta">
+                  <span className={`move ${m.movimiento == null ? "fl" : m.movimiento > 0 ? "up" : m.movimiento < 0 ? "dn" : "fl"}`}>
+                    {m.movimiento == null ? "Sin periodo anterior comparable"
+                      : m.movimiento > 0 ? `↑${m.movimiento} posiciones`
+                      : m.movimiento < 0 ? `↓${Math.abs(m.movimiento)} posiciones`
+                      : "Sin cambio de posición"}
+                  </span>
+                  <span className="pts num">{m.puntos ?? "—"} pts</span>
+                </span>
               </div>
             ))}
           </div>

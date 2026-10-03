@@ -321,7 +321,7 @@ def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None) -> di
             from app import push
 
             with sesion(fabrica) as db:
-                push.send_to_all(db, title="índicem: fallaron los cierres diarios",
+                push.send_to_all(db, title="Vennett: fallaron los cierres diarios",
                                  body=str(e)[:140], url="/admin", tag="agentic-liga")
         except Exception:
             logger.exception("Tampoco se pudo avisar por push")
