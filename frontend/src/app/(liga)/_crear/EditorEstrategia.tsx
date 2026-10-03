@@ -817,13 +817,12 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         {b.reglas.length === 0 && (
           <p className="fine" style={{ marginTop: 0 }}>Sin reglas, pasan todas las empresas.</p>
         )}
-        <details className="more filtro-asistente">
-          <summary>¿No encuentras un filtro? Descríbelo</summary>
-          <label className="lbl" htmlFor="filtroFrase">Qué condición buscas</label>
+        <div className="more filtro-asistente lenguaje-natural">
+          <label className="lbl" htmlFor="filtroFrase">Añade un filtro con tus palabras<small>Describe la condición. La IA busca cómo expresarla con las reglas disponibles.</small></label>
           <textarea id="filtroFrase" className="inp" rows={2} maxLength={300} value={filtroFrase}
             placeholder="Por ejemplo: empresas con margen operativo de al menos un 15 %"
             onChange={e => { setFiltroFrase(e.target.value); setFiltroSugerido(null); }} />
-          <Boton variante="secundario" disabled={convOcupado || !filtroFrase.trim()} onClick={sugerirFiltro}>
+          <Boton variante="principal" disabled={convOcupado || !filtroFrase.trim()} onClick={sugerirFiltro}>
             {convOcupado ? "Buscando reglas…" : "Proponer reglas"}
           </Boton>
           <p className="fine">Se envía a DeepSeek. Solo se proponen filtros del catálogo; revisa antes de añadirlos. No escribas datos personales.</p>
@@ -835,15 +834,15 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                 Añadir {catalogo.reglas.find(c => c.clave === r.clave)?.titulo}
               </Boton>)}
           </div>}
-        </details>
+        </div>
         {feedbackPreview}
       </div>
 
-      <div className="field" hidden={etapa !== 0}>
+      <div className="field lenguaje-natural" hidden={etapa !== 0}>
         <label className="lbl" htmlFor="convFrase">
           Describe tu estrategia
           <small>
-            La IA sugiere reglas del catálogo a partir de tu frase; tú decides si te las quedas.
+            Cuéntalo con tus palabras. La IA lo convierte en reglas que puedes revisar y ajustar.
             {convUsos && ` Te quedan ${Math.max(0, convUsos.tope - convUsos.hoy)} usos hoy.`}
           </small>
         </label>
@@ -857,7 +856,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                       ? { ...prev, interpretacion: [] } : prev);
                   }} />
         <div style={{ marginTop: 8 }}>
-          <Boton variante="secundario" disabled={convOcupado || !convFrase.trim()}
+          <Boton variante="principal" disabled={convOcupado || !convFrase.trim()}
                  onClick={usarConversor}>
             {convOcupado ? "Interpretando…" : "Interpretar estrategia"}
           </Boton>
@@ -868,13 +867,12 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       </div>
 
       {convAviso && etapa === 1 && <p className="aviso" role="status">{convAviso}</p>}
-      <details className="field pregunta-propia" hidden={etapa !== 2}>
-        <summary>Tu pregunta propia{b.pregunta ? " · configurada" : " (Pro)"}</summary>
+      <div className="field pregunta-propia lenguaje-natural" hidden={etapa !== 2}>
         <label className="lbl" htmlFor="cQ">
-          Tu pregunta a la IA
+          Tu pregunta a Jev · Pro
           <small>
             {pro
-              ? "La contesta empresa a empresa, solo en las que pasan tus reglas."
+              ? "Añade lo que importa en tu estrategia. Jev responde empresa a empresa, después de tus filtros; tú decides cuánto pesa la respuesta."
               : "Con Pro, la IA contesta tu propia pregunta empresa a empresa."}
           </small>
         </label>
@@ -898,7 +896,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
             <a href="/como-funciona" target="_blank" rel="noopener noreferrer">Cómo se usa tu pregunta</a>
           </p>
         )}
-      </details>
+      </div>
 
       <div className="field" hidden={etapa !== 2}>
         <span className="lbl">Cómo ordenar las candidatas<small>Notas guardadas de Jev, aplicadas después de tus filtros. Tú eliges cuánto pesa cada una.</small></span>

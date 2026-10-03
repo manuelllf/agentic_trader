@@ -277,6 +277,7 @@ function VistaJornada({
   const sp = detalle.jornada.sp_rentabilidad;
   const fila = (f: (typeof conDatos)[number]) => (
     <button type="button" key={f.equipo.id}
+            data-symbol={f.equipo.casa ? { alpha: "α", omega: "Ω", lambda: "λ" }[f.equipo.casa] : undefined}
             className={`jr${f.equipo.casa ? " casa" : ""}${navegando && destino === f.equipo.id ? " navegando" : ""}`}
             aria-busy={navegando && destino === f.equipo.id || undefined}
             style={f.equipo.casa ? ({ "--hc": f.equipo.casa === "lambda" ? "#8F8A80" : CASA[f.equipo.casa].color } as CSSProperties) : undefined}

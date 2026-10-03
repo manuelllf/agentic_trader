@@ -93,6 +93,7 @@ export function FilaEquipo({
 
   return (
     <button type="button" className={claseFila} style={estilo} aria-busy={pendiente || undefined}
+      data-symbol={casa ? { alpha: "α", omega: "Ω", lambda: "λ" }[casa] : undefined}
       aria-disabled={pendiente || undefined}
       onClick={() => {
         if (onClick && !pendiente) navegar(onClick);

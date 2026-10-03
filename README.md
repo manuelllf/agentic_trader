@@ -61,14 +61,19 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
   No requiere nombre: este se valida al guardar o inscribir. Cambiar de etapa es inmediato,
   con el guardado del borrador en segundo plano; la vista parcial reutiliza el resultado de
   la misma receta y permanece plegada hasta abrirla. Anterior y Continuar quedan accesibles
-  sobre la navegación inferior. En Reglas también se puede describir un filtro: sus propuestas
+  sobre la navegación inferior. La entrada en lenguaje natural tiene una acción principal
+  destacada. Idea, descripción de filtros y pregunta propia a Jev tienen un bloque visible.
+  En Reglas, las propuestas
   requieren confirmación antes de incorporarse.
   Las cuatro notas guardadas de Jev ordenan las empresas después de aplicar los filtros:
   fundamentales, valoración, solidez financiera y catalizador próximo. Cada una tiene una
   explicación breve y un peso editable; con peso cero no interviene en la selección.
   Los informes de pago sobre una prueba sin guardar indican que primero guardarán su contexto.
 - **Navegación y clasificación.** Los enlaces muestran cuándo están abriendo su destino y
-  evitan pulsaciones repetidas mientras navegan. Las estrategias de casa se distinguen con
+  evitan pulsaciones repetidas mientras navegan. Las ayudas adoptan el tema de cada pantalla
+  sin depender de los estilos de administración. Las cards del ranking conservan los bordes
+  redondeados de la app, con respuesta al pulsar y movimiento que respeta las preferencias
+  de accesibilidad. Las estrategias de casa se distinguen con
   los colores de sus salas y los símbolos α, Ω y λ; las estrategias personales conservan
   sus escudos. La jornada actual aparece antes que la clasificación cerrada.
 - **Rendimiento y riesgo.** La ficha deriva una curva frente al S&P 500 de los cierres y
