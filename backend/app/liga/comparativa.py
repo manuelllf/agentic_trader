@@ -48,12 +48,7 @@ def _diferencia_clasificacion(factor: Decimal, factor_sp: Decimal) -> Decimal:
 
 
 def retornos_acumulados(db: Session, estrategia_ids: list[str]) -> dict[str, dict]:
-    """Compound the latest contiguous window of each strategy's closed, paired returns.
-
-    Every portfolio return is paired with the S&P return from exactly the same official period.
-    A missing or non-adjacent period starts a new window; the result never silently compounds
-    across an unobserved gap.
-    """
+    """Compone retornos emparejados con el S&P del último tramo contiguo; los huecos reinician el tramo."""
     ids = list(dict.fromkeys(estrategia_ids))
     if not ids:
         return {}
@@ -131,12 +126,7 @@ def acumular_periodos(periodos: list[dict]) -> dict | None:
 
 
 def movimientos_clasificacion(db: Session, temporada_id: int) -> dict[str, int]:
-    """Return movement in the points table between the latest two closed periods.
-
-    Both positions are recomputed from official results available at each cutoff using the same
-    points, compounded-difference, creation-date, and ID tie-breakers as `v_clasificacion`.
-    A strategy first appearing in the latest period has no prior position and is omitted.
-    """
+    """Compara los dos últimos cortes oficiales con los mismos desempates que la clasificación."""
     rows = db.execute(text("""
         select e.id::text as estrategia_id, e.creada, j.id as jornada_id, j.dia_fin,
                r.puntos, r.rentabilidad, j.sp_rentabilidad
@@ -183,11 +173,7 @@ def movimientos_clasificacion(db: Session, temporada_id: int) -> dict[str, int]:
 
 def movimientos_grupo(db: Session, temporada_id: int,
                       estrategia_por_miembro: dict[str, str]) -> dict[str, int]:
-    """Move each private-group member's current representative strategy across two closed rounds.
-
-    The chosen strategy ID is held constant across both cutoffs so a change in the member's
-    representative selection cannot masquerade as a rank movement.
-    """
+    """Mantiene la misma estrategia representativa en ambos cortes para comparar posiciones del grupo."""
     if len(estrategia_por_miembro) < 2:
         return {}
     period_end_dates = db.execute(text("""

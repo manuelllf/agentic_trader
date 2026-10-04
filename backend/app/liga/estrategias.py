@@ -284,13 +284,7 @@ def foto_y_notas_de(foto_id: int) -> Contexto:
 
 
 def evidencia_formacion_ficha(usuario_id: str, estrategia_id: str) -> dict | None:
-    """Exact latest formation evidence for an owner or active Pro viewing a published strategy.
-
-    This is the narrow service-read boundary for the admin-only fundamentals snapshot table:
-    callers cannot choose a photo or ticker, and the only loaded companies are those held by
-    this strategy in its latest or preceding formed inscription. Missing archived rows stay
-    missing; this never falls back to the latest photo.
-    """
+    """Autoriza la lectura de la foto exacta de formación; no sustituye evidencias ausentes por datos actuales."""
     db = fabrica_sistema()
     try:
         forms = db.execute(text("""

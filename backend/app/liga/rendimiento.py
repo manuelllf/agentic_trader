@@ -1,8 +1,4 @@
-"""Curva diaria y métricas de riesgo de una estrategia de la liga.
-
-Todo se deriva de posiciones de jornadas y cierres ya guardados. Esta lectura nunca descarga
-precios ni llama a modelos. Los cálculos puros están separados para probar su metodología.
-"""
+"""Curva y riesgo derivados de posiciones y cierres guardados, sin descargar precios ni llamar modelos."""
 
 from __future__ import annotations
 
@@ -23,12 +19,7 @@ SESIONES_ANUALES = 252
 
 def metricas_diarias(retornos: Sequence[float], niveles: Sequence[float],
                      minimo: int = MIN_OBSERVACIONES) -> dict:
-    """Sharpe/Sortino/volatilidad anualizados y máximo drawdown.
-
-    La muestra son retornos de sesiones US consecutivas con cierres disponibles para toda la
-    cartera y SPY. rf y MAR son 0%; desviación estándar muestral; Sortino usa downside RMS.
-    No se anualiza una muestra menor de `minimo` retornos.
-    """
+    """Anualiza con rf y MAR cero, desviación muestral y downside RMS; respeta el mínimo de retornos recibido."""
     n = len(retornos)
     if any(not math.isfinite(r) for r in retornos) or any(
         not math.isfinite(nivel) for nivel in niveles

@@ -1,9 +1,4 @@
-"""Registro de visitas autenticadas por sesión de Supabase.
-
-Una visita continúa mientras la sesión tenga actividad dentro de los últimos 30 minutos. El
-identificador de sesión solo se toma del JWT ya verificado; el navegador no puede escoger otro
-usuario ni atribuir actividad a otro dispositivo.
-"""
+"""Agrupa actividad por sesión verificada con 30 minutos de inactividad, sin aceptar identidades del cliente."""
 
 from __future__ import annotations
 

@@ -1,5 +1,8 @@
 # Vennett
 
+La guía local `docs/indice.md` organiza especificaciones, planes y evidencias.
+La documentación privada permanece fuera del repositorio.
+
 Asistente personal de inversión sistemática. Un ranker fundamental basado en LLM puntúa
 acciones de EE. UU. a partir de sus fundamentales, valoración, noticias y contexto macro, y
 propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación explícita.

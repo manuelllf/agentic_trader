@@ -145,12 +145,7 @@ _MOTIVO_NO_DISPONIBLE = "No hay una regla del catálogo que represente esta inte
 
 def _interpretaciones_validas(crudo: object, reglas: list[dict],
                               empresas: tuple[EmpresaFoto, ...]) -> list[Interpretacion]:
-    """Ata cada explicación a una regla ejecutable ya validada.
-
-    No crea una interpretación desde la presencia de una regla: solo transforma las entradas que
-    devolvió el proveedor. Si la regla no sobrevivió la validación de parámetros o el proveedor
-    afirma una coincidencia sin devolverla, la intención queda como no disponible.
-    """
+    """Vincula explicaciones del proveedor a reglas validadas; descarta asociaciones incompletas o inválidas."""
     if not isinstance(crudo, list):
         return []
     reglas_por_clave = {r["clave"]: r for r in reglas}

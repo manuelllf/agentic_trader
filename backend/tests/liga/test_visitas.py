@@ -1,7 +1,4 @@
-"""Auditoría de visitas autenticadas contra el Postgres local de pruebas.
-
-La suite usa solo `LIGA_TEST_DATABASE_URL`; nunca se conecta al proyecto Supabase real.
-"""
+"""Prueba visitas en LIGA_TEST_DATABASE_URL, sin acceder a Supabase de producción."""
 
 from __future__ import annotations
 

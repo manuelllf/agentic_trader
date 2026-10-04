@@ -30,10 +30,7 @@ def _filas(filas: Sequence[Row]) -> list[dict]:
 
 
 def exportar(db: Session) -> dict:
-    """Todo lo que es suyo: perfil, datos privados, roles, planes, consentimientos, sus
-    estrategias con sus recetas (todas las versiones), inscripciones y resultados, posiciones,
-    pruebas, créditos, reportes, ligas privadas, borradores, revisiones y fechas de sus visitas.
-    Nada de la casa, nada de otro usuario ni identificadores de sesión."""
+    """Exporta los datos propios, incluidos borradores, visitas y revisiones, sin identificadores de sesión."""
     perfil = db.execute(text(
         "select alias, oculto, creado from liga.perfiles where id = (select auth.uid())"
     )).one_or_none()

@@ -63,9 +63,7 @@ export function FichaContenido({ id }: { id: string }) {
   const sesionLista = estado !== "cargando";
   const { datos: catalogo } = useCache<Catalogo | string>("catalogo", getCatalogo);
 
-  // Clave por `id`: al navegar entre fichas (back/forward, o de una a otra) cada una tiene su
-  // propia entrada en la caché, así que una respuesta lenta de la ficha anterior nunca puede
-  // pisar la de la que se está mirando ahora (M5 del informe de fluidez).
+  // La caché por estrategia impide que una respuesta anterior sustituya la ficha actual.
   const { datos: ficha, cargando: cargandoFicha, refrescar: refrescarFicha } = useCache<Ficha | string>(
     sesionLista && estado === "dentro" ? `ficha:${id}` : null, () => getFicha(id), 120000,
   );

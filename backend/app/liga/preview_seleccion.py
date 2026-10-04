@@ -1,7 +1,4 @@
-"""Vista previa efímera de selección para el constructor; nunca crea estrategia ni prueba.
-
-Usa la última foto/escaneo y respuestas guardadas. No pide puntuaciones a Jev ni modifica datos.
-"""
+"""Vista previa sin persistencia ni llamadas LLM, sobre la última foto y las notas guardadas."""
 
 from __future__ import annotations
 
