@@ -156,7 +156,7 @@ export function FichaContenido({ id }: { id: string }) {
           {vista === "metodo" && ficha.receta && (
             <section className="ficha-metodologia">
               <Segmentado etiquetaGrupo="Pasos de la metodología" valor={metodo} onChange={setMetodo}
-                opciones={[{ valor: "idea", etiqueta: "Idea" }, { valor: "reglas", etiqueta: "Reglas" }, { valor: "jev", etiqueta: "Jev" }, { valor: "reparto", etiqueta: "Reparto" }]} />
+                opciones={[{ valor: "idea", etiqueta: "Idea" }, { valor: "reglas", etiqueta: "Reglas" }, { valor: "criterios", etiqueta: "Criterios" }, { valor: "reparto", etiqueta: "Reparto" }]} />
               {metodo === "idea" && <div className="sec"><h3 className="sec-t">La idea</h3><p className="meta">{ficha.receta.idea || "No hay una idea escrita para esta estrategia."}</p></div>}
               {metodo === "reglas" && <div className="sec">
                 <div className="sec-t">Sus reglas</div>
@@ -185,8 +185,8 @@ export function FichaContenido({ id }: { id: string }) {
                 <p className="fine">Revisión mensual, el primer día de mercado de cada mes.</p>
                 {ficha.receta.excluidas.length > 0 && <p className="fine">Excluidas: {ficha.receta.excluidas.join(", ")}.</p>}
               </div>}
-              {metodo === "jev" && <div className="sec">
-                <div className="sec-t">Qué pesa más</div>
+              {metodo === "criterios" && <div className="sec">
+                <div className="sec-t">Criterios</div>
                 {Object.entries(ficha.receta.pesos).filter(([, v]) => v > 0).map(([k, v]) => {
                   const total = Object.values(ficha.receta!.pesos).reduce((a, b) => a + b, 0) || 1;
                   const pct = Math.round((v * 100) / total);
@@ -199,7 +199,7 @@ export function FichaContenido({ id }: { id: string }) {
                   );
                 })}
               </div>}
-              {metodo === "jev" && ficha.receta.pregunta && (
+              {metodo === "criterios" && ficha.receta.pregunta && (
                 <div className="sec">
                   <div className="sec-t">Su pregunta a la IA</div>
                   <p className="q">«{ficha.receta.pregunta}»</p>

@@ -49,7 +49,7 @@ las empresas) y cada mes esa estrategia juega una jornada. El conversor muestra 
 como exacta, aproximada o sin regla disponible; esa interpretación se conserva en el borrador.
 Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrategia.
 
-- **Constructor por etapas.** Idea, Reglas, Selección, Cartera y Revisar. Los borradores se
+- **Constructor por etapas.** Idea, Reglas, Criterios, Cartera y Revisar. Los borradores se
   guardan en la base y se recuperan al volver; las revisiones evitan sobrescribir otra pestaña.
   Entrar en Crear abre Idea; avanzar o volver deja el menú de pasos visible, sin cabecera
   introductoria ni resumen repetido. Los controles se distribuyen según el ancho. Crecimiento
@@ -94,7 +94,7 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
   Las tarjetas privadas son filas compactas y abren la misma ficha de detalle que el ranking
   público. La ficha empieza por
   la cartera: cada empresa abre su evidencia en una modal. Metodología sigue los pasos del
-  editor (Idea, Reglas, Jev y Reparto); Resultados reúne rendimiento e historial por separado.
+  editor (Idea, Reglas, Criterios y Reparto); Resultados reúne rendimiento e historial por separado.
   La jornada abierta comparte una consulta de mercado en segundo plano por ventana de dos
   minutos. La ficha muestra retorno provisional de cartera y, según permisos, precio bruto
   y retorno total de cada empresa. Señala la consulta, fecha de mercado y datos pendientes;

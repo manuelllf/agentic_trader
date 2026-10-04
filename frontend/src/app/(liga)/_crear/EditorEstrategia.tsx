@@ -26,7 +26,7 @@ import { LecturasModal } from "./LecturasModal";
 import { useAutoguardado } from "./useAutoguardado";
 import "./constructor.css";
 const RUTA_ACTUAL = (id?: string) => (id ? `/crear/${id}` : "/crear");
-const ETAPAS = ["Idea", "Reglas", "Selección", "Cartera", "Revisar"];
+const ETAPAS = ["Idea", "Reglas", "Criterios", "Cartera", "Revisar"];
 const PREGUNTAS = ["¿Qué tipo de empresas buscas?", "¿Qué condiciones deben cumplir?",
   "Entre las que cumplen, ¿cuáles prefieres?", "¿Cómo quieres repartir tu cartera?", "Esto es lo que se ejecutará"];
 type PruebaVista = Omit<Prueba, "id" | "foto_id" | "scan_run_id"> & { id: string | null; foto_id: number | null; scan_run_id: number | null };
@@ -869,7 +869,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       {convAviso && etapa === 1 && <p className="aviso" role="status">{convAviso}</p>}
       <div className="field pregunta-propia lenguaje-natural" hidden={etapa !== 2}>
         <label className="lbl" htmlFor="cQ">
-          Tu pregunta a Jev · Pro
+          Tu pregunta · Pro
           <small>
             {pro
               ? "Añade lo que importa en tu estrategia. Jev responde empresa a empresa, después de tus filtros; tú decides cuánto pesa la respuesta."
@@ -899,7 +899,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       </div>
 
       <div className="field" hidden={etapa !== 2}>
-        <span className="lbl">Cómo ordenar las candidatas<small>Notas guardadas de Jev, aplicadas después de tus filtros. Tú eliges cuánto pesa cada una.</small></span>
+        <span className="lbl">Criterios<small>Ordenan las candidatas después de tus filtros. Tú eliges cuánto pesa cada nota.</small></span>
         <p className="fine">Peso 0: no influye. Al menos uno debe pesar.</p>
         {wkeys.map((k) => (
           <div className="wrow" key={k}>
