@@ -90,7 +90,25 @@ def calcular(db: Session, j: Jornada, dia: date,
         salida.append({**fila, "rentabilidad": r, "dif": res.dif, "letra": res.letra,
                        "puntos": res.puntos, "sin_cierre": sin_cierre})
     salida.sort(key=lambda x: (x["rentabilidad"] is None, -(x["rentabilidad"] or 0)))
-    return {"dia": dia, "sp_rentabilidad": sp, "filas": salida}
+    return {"dia": dia, "sp_rentabilidad": sp, "filas": salida,
+            "por_ticker": cotizaciones_posiciones(cierres, j.dia_base, dia)}
+
+
+def cotizaciones_posiciones(cierres: dict[str, list[precios.Cierre]],
+                            desde: date, hasta: date) -> dict:
+    """Precio bruto y retorno total; no presenta un precio anterior como cotización actual."""
+    salida = {}
+    for ticker, serie in cierres.items():
+        cierre = next((c for c in serie if c.dia == hasta), None)
+        retorno = None
+        if cierre:
+            try:
+                retorno = rentabilidad_sp(serie, desde, hasta)
+            except ValueError:
+                pass
+        salida[ticker] = {"precio": cierre.cierre if cierre else None,
+                          "rentabilidad": retorno, "dia": hasta if cierre else None}
+    return salida
 
 
 def tabla_provisional(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
@@ -169,7 +187,8 @@ def _actualizar_cotizaciones(jornada_id: int, fabrica: Fabrica, generacion: int)
         pendientes = sum(not any(c.dia == dia for c in cotizaciones.get(t, [])) for t in tickers)
         valor = {"dia": dia, "sp": r["sp_rentabilidad"], "actualizado": datetime.now(UTC),
                  "en_vivo": dia == hoy, "precios_pendientes": pendientes,
-                 "por_inscripcion": {f["inscripcion_id"]: f for f in r["filas"]}}
+                 "por_inscripcion": {f["inscripcion_id"]: f for f in r["filas"]},
+                 "por_ticker": r["por_ticker"]}
         with _vivo_candado:
             if jornada_id in _vivo_cache and generacion == _vivo_generacion:
                 _vivo_cache[jornada_id] = (_vivo_cache[jornada_id][0], valor)
@@ -204,7 +223,8 @@ def vivo(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
                 if dia is not None:
                     r = calcular(db, j, dia)
                     valor = {"dia": dia, "sp": r["sp_rentabilidad"],
-                             "por_inscripcion": {f["inscripcion_id"]: f for f in r["filas"]}}
+                             "por_inscripcion": {f["inscripcion_id"]: f for f in r["filas"]},
+                             "por_ticker": r["por_ticker"]}
         except Exception:
             logger.exception("No se pudo calcular la tabla viva de la jornada %s", jornada_id)
             valor = None

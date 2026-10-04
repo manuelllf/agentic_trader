@@ -5,22 +5,13 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { InfoTip } from "@/components/InfoTip";
 import { BarraPestanas, Boton, Cargando, Escudo, ErrorLiga, Segmentado } from "../../_ui";
-import { expulsarDeLiga, rotarCodigoLiga, salirLiga, verLiga, getFicha, type Ficha, type LigaDetalle } from "@/lib/liga/api";
+import { expulsarDeLiga, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle } from "@/lib/liga/api";
 import { invalidar, useCache } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../../_sesion/SesionContext";
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
-import { RendimientoFicha } from "../../ficha/[id]/RendimientoFicha";
 import "../privadas.css";
 
 const pp = (valor: number) => porcentaje(valor).replace(" %", " pp");
-
-function DetalleEquipo({ id }: { id: string }) {
-  const { datos, cargando, fallo, refrescar } = useCache<Ficha | string>(`ficha:${id}`, () => getFicha(id));
-  if (cargando) return <Cargando filas={2} />;
-  if (fallo || typeof datos === "string") return <ErrorLiga titulo="No se pudieron cargar las métricas" mensaje={typeof datos === "string" ? datos : "Reintenta en un momento."} accion={{ texto: "Reintentar", onClick: refrescar }} />;
-  return <div className="priv-equipo-detalle"><RendimientoFicha datos={datos?.rendimiento} posiciones={datos?.posiciones} />
-    <Link className="btn" href={`/ficha/${id}`}>Ver cartera y metodología →</Link></div>;
-}
 
 export default function PrivadaDetalle() {
   const { id } = useParams<{ id: string }>();
@@ -29,7 +20,6 @@ export default function PrivadaDetalle() {
   const { datos: liga, cargando, fallo, refrescar: cargar } = useCache<LigaDetalle | string>(
     estado === "dentro" ? `liga:${id}` : null, () => verLiga(id), 120000);
   const [vista, setVista] = useState("mes");
-  const [abierto, setAbierto] = useState<string | null>(null);
   const [ocupada, setOcupada] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
@@ -77,6 +67,7 @@ export default function PrivadaDetalle() {
               <p>La mejor clasificada de la temporada. Si aún no tiene puntos, se usa la más antigua de sus estrategias con cartera formada en la temporada. No hace falta inscribirla otra vez en esta liga.</p>
               <p>El acumulado muestra el periodo de cada estrategia, que puede ser distinto. Compartir liga no da acceso a metodologías privadas.</p>
             </details>
+            {vista === "mes" && liga.consultado && <p className="fine">Mercado consultado a las {new Date(liga.consultado).toLocaleTimeString("es-ES", {hour:"2-digit",minute:"2-digit"})}. Las cotizaciones de Yahoo pueden tener retraso.</p>}
             <div className="priv-equipos">
               {lista.map((m, i) => {
                 const e = m.estrategia;
@@ -97,10 +88,9 @@ export default function PrivadaDetalle() {
                     </dl>
                     <p className="fine">{m.acumulado ? `${fecha(m.acumulado.desde)} – ${fecha(m.acumulado.hasta)} · ${m.acumulado.periodos} jornadas${m.acumulado.incompleta ? " consecutivas disponibles" : ""} · ${pp(m.acumulado.diferencia_pp)} frente al índice` : "El acumulado aparecerá al cerrar la primera jornada."}</p>
                     <div className="priv-equipo-pie">
-                      <button className="link" aria-expanded={abierto === e.id} aria-controls={`metricas-${e.id}`} onClick={() => setAbierto(abierto === e.id ? null : e.id)}>{abierto === e.id ? "Cerrar detalle ↑" : "Rentabilidad y riesgo ↓"}</button>
+                      <Link className="link" href={`/ficha/${e.id}`}>Ver equipo →</Link>
                       {m.movimiento != null && <span className="fine">{m.movimiento === 0 ? "Sin cambio de puesto" : `${m.movimiento > 0 ? "↑" : "↓"} ${Math.abs(m.movimiento)} puestos oficiales`}</span>}
                     </div>
-                    {abierto === e.id && <div id={`metricas-${e.id}`}><DetalleEquipo id={e.id} /></div>}
                   </> : <p className="fine">{m.es_yo ? "Crea una estrategia y apúntala a la próxima jornada para empezar a comparar." : "Cuando se forme su primera cartera, aparecerán aquí sus resultados."}{m.es_yo && <Link className="link" href="/crear"> Crear estrategia →</Link>}</p>}
                 </article>;
               })}

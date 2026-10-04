@@ -45,6 +45,7 @@ def _preparar(monkeypatch, llamadas: list) -> None:
     def calcular(_db, _j, dia):
         llamadas.append(dia)
         return {"dia": dia, "sp_rentabilidad": Decimal("1.5"),
+                "por_ticker": {},
                 "filas": [{"inscripcion_id": 7, "rentabilidad": Decimal("2.0"),
                            "dif": Decimal("0.5"), "puntos": 1}]}
 
@@ -113,7 +114,7 @@ def test_una_actualizacion_olvidada_no_reaparece_en_la_cache(monkeypatch) -> Non
     monkeypatch.setattr(diario.omega, "operaciones", lambda *_a: [])
     monkeypatch.setattr(precios, "descargar", lambda *_a: {"SPY": [precios.Cierre(hoy, 100)]})
     monkeypatch.setattr(diario, "calcular", lambda *_a, **_kw: {
-        "sp_rentabilidad": Decimal("0"), "filas": []})
+        "sp_rentabilidad": Decimal("0"), "filas": [], "por_ticker": {}})
     diario.olvidar_vivo()
     generacion = diario._vivo_generacion
     diario.olvidar_vivo()
@@ -122,3 +123,18 @@ def test_una_actualizacion_olvidada_no_reaparece_en_la_cache(monkeypatch) -> Non
     diario._actualizar_cotizaciones(1, None, generacion)
     assert diario._vivo_cache[1][1] is nuevo
     diario.olvidar_vivo()
+
+
+def test_precio_bruto_y_retorno_total_sin_inventar_cotizaciones() -> None:
+    base, hoy = date(2026, 10, 1), date(2026, 10, 2)
+    valores = diario.cotizaciones_posiciones({
+        "AAA": [precios.Cierre(base, 100), precios.Cierre(hoy, 55, 1, 2)],
+        "ATRASADA": [precios.Cierre(base, 100)],
+        "SIN_BASE": [precios.Cierre(hoy, 20)],
+    }, base, hoy)
+    assert valores["AAA"]["precio"] == 55
+    assert valores["AAA"]["rentabilidad"] == Decimal("12.0000")
+    assert valores["ATRASADA"]["precio"] is None
+    assert valores["ATRASADA"]["rentabilidad"] is None
+    assert valores["SIN_BASE"]["precio"] == 20
+    assert valores["SIN_BASE"]["rentabilidad"] is None

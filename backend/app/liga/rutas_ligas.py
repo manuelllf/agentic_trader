@@ -77,6 +77,7 @@ class LigaDetalleOut(LigaResumenOut):
     datos_hasta: date | None = None
     sp500_mes: Decimal | None = None
     en_vivo: bool = False
+    consultado: datetime | None = None
 
 
 # ---- Ayudas ------------------------------------------------------------------------------------
@@ -200,6 +201,7 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         datos_hasta=vivo["dia"] if vivo else None,
         sp500_mes=vivo["sp"] if vivo else None,
         en_vivo=vivo.get("en_vivo", False) if vivo else False,
+        consultado=vivo.get("actualizado") if vivo else None,
         miembros=[
             MiembroLigaOut(alias=m.alias, es_yo=(m.usuario_id == ident.uid), unido=m.unido,
                           puntos=m.puntos, jornadas=m.jornadas, dif_sp=m.dif_sp,
@@ -212,7 +214,8 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
                                                  "color1": m.color1, "color2": m.color2,
                                                  "iniciales": m.iniciales}}
                           if m.estrategia_id else None,
-                          rentabilidad_mes=por_inscripcion.get(m.inscripcion_id, {}).get("rentabilidad"),
+                          rentabilidad_mes=por_inscripcion.get(m.inscripcion_id, {}).get(
+                              "rentabilidad"),
                           diferencia_mes=por_inscripcion.get(m.inscripcion_id, {}).get("dif"))
             for m in miembros
         ])

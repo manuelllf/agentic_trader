@@ -196,8 +196,9 @@ def test_detalle_muestra_equipo_formado_y_mes_sin_abrir_datos_privados(api, monk
     eid = _crear_estrategia(cliente, cab, duena)
     receta = _receta(cliente, cab, duena, eid)
     _crear_estrategia(cliente, cab, miembro, "Todavía sin cartera")
+    apuntada = cliente.post(f"/liga/estrategias/{eid}/apuntar", headers=cab(duena))
+    assert apuntada.status_code == 200, apuntada.text
     with psycopg.connect(URL, autocommit=True) as cx:
-        cx.execute("update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))
         temporada = cx.execute(
             "insert into liga.temporadas (nombre, n_jornadas, cuenta, estado) "
             "values ('Privadas test', 12, false, 'cerrada') returning id"

@@ -3,6 +3,8 @@
 import type { EvidenciaFormacion } from "@/lib/liga/evidencia";
 import { porcentaje } from "@/lib/liga/format";
 import { InfoTip } from "@/components/InfoTip";
+import { useEffect, useId, useRef, useState } from "react";
+import type { MercadoFicha } from "@/lib/liga/api";
 
 const MOTIVOS = {
   excluida_manual: "La receta de esta formación excluye esta empresa expresamente.",
@@ -12,26 +14,50 @@ const MOTIVOS = {
   no_disponible: "Sin evidencia guardada suficiente para explicar su salida.",
 };
 
-export function EvidenciaCartera({ datos }: { datos: EvidenciaFormacion }) {
+export function EvidenciaCartera({ datos, mercado }: { datos: EvidenciaFormacion; mercado?: MercadoFicha | null }) {
   const { formacion: f, posiciones, cambios } = datos;
+  const [ticker, setTicker] = useState<string | null>(null);
+  const dialogo = useRef<HTMLDialogElement>(null);
+  const titulo = useId();
+  useEffect(() => {
+    const d = dialogo.current;
+    if (!ticker || !d) return;
+    d.showModal();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { d.close(); document.body.style.overflow = overflow; };
+  }, [ticker]);
   const comparables = posiciones.filter((p) => p.rendimiento.estado === "disponible"
     && p.rendimiento.diferencia_pp !== null);
   const superiores = comparables.filter((p) => p.rendimiento.diferencia_pp! > 0);
   const inferiores = comparables.filter((p) => p.rendimiento.diferencia_pp! < 0);
   return (
     <section className="ficha-analisis" aria-label="Evidencia de la cartera">
-      <h3 className="sec-t">Cartera y evidencia</h3>
+      <h3 className="sec-t">Cartera · {posiciones.length} empresas</h3>
+      <p className="fine">Selecciona una empresa para ver su resultado y las reglas que cumple.</p>
       <p className="fine">Jornada {f.jornada_numero} · base {f.desde} · {f.metodo === "mantenida"
         ? "posiciones mantenidas desde la cartera anterior" : "selección con la foto fijada para esta jornada"}.</p>
       {!f.receta_vigente && <p className="fine">La metodología guardada cambió después. Esta cartera conserva la receta con la que se formó.</p>}
       {f.estado_foto === "sin_datos" && <p className="fine">La foto de formación no está disponible para verificar las reglas. No se sustituye por datos actuales.</p>}
       {f.estado_reglas === "version_no_soportada" && <p className="fine">La versión histórica de estas reglas no puede reproducirse con el catálogo actual.</p>}
 
-      {posiciones.map((p) => {
+      <div className="cartera-plantilla">
+        {posiciones.map(p => <button type="button" className={`cartera-empresa${mercado ? " con-precio" : ""}`} key={p.ticker} onClick={() => setTicker(p.ticker)}>
+          <b>{p.ticker}</b><span>{Number(p.peso).toFixed(1).replace(".", ",")} %<small>Peso</small></span>
+          {mercado && <span>{mercado.empresas[p.ticker]?.precio == null ? "—" : Number(mercado.empresas[p.ticker]!.precio).toLocaleString("es-ES", {maximumFractionDigits: 2})}<small>Precio</small></span>}
+          <span>{mercado ? mercado.empresas[p.ticker]?.rentabilidad == null ? "—" : porcentaje(mercado.empresas[p.ticker]!.rentabilidad!) : p.rendimiento.rentabilidad_pct == null ? "—" : porcentaje(p.rendimiento.rentabilidad_pct)}<small>{mercado ? "Este mes · provisional" : "Retorno del periodo"}</small></span><span aria-hidden="true">→</span>
+        </button>)}
+      </div>
+      <dialog ref={dialogo} className="lecturas-modal empresa-modal" aria-labelledby={titulo} onCancel={() => setTicker(null)}>
+        <header className="lecturas-cab"><div><p className="lecturas-kicker">Empresa de la cartera · jornada {f.jornada_numero}</p><h2 id={titulo}>{ticker}</h2></div>
+          <button type="button" className="lecturas-cerrar" aria-label="Cerrar empresa" autoFocus onClick={() => setTicker(null)}>×</button></header>
+        <div className="lecturas-cuerpo">
+      {posiciones.filter(p => p.ticker === ticker).map((p) => {
         const verificadas = p.reglas.filter((r) => r.cumple === true).length;
         const desconocidas = p.reglas.filter((r) => r.cumple === null).length;
-        return <details key={p.ticker}>
-          <summary>{p.ticker} · {Number(p.peso).toFixed(1).replace(".", ",")} %</summary>
+        return <article key={p.ticker}>
+          <h3 className="sec-t">Peso en cartera · {Number(p.peso).toFixed(1).replace(".", ",")} %</h3>
+          {mercado && <section className="sec"><h3 className="sec-t">Cotización de mercado</h3><p className="meta">Precio: {mercado.empresas[p.ticker]?.precio == null ? "pendiente de cotización" : Number(mercado.empresas[p.ticker]!.precio).toLocaleString("es-ES", {maximumFractionDigits: 4})}</p><p className="fine">Datos del {mercado.empresas[p.ticker]?.dia ?? "—"}. Retorno provisional desde {mercado.desde}: {mercado.empresas[p.ticker]?.rentabilidad == null ? "—" : porcentaje(mercado.empresas[p.ticker]!.rentabilidad!)}. Incluye dividendos y splits.</p></section>}
           <p className="fine">{p.origen === "mantenida" ? "Posición mantenida." : "Posición seleccionada."}{" "}
             {p.reglas.length ? `${verificadas} de ${p.reglas.length} reglas verificadas${desconocidas ? `; ${desconocidas} sin evidencia suficiente` : ""}.`
               : f.estado_reglas === "disponible" ? "La receta no aplica filtros adicionales." : "Sin condiciones históricas verificables."}</p>
@@ -45,8 +71,10 @@ export function EvidenciaCartera({ datos }: { datos: EvidenciaFormacion }) {
               {" · "}{porcentaje(p.rendimiento.diferencia_pp!).replace(/%$/, "pp")}.</p>
             {p.rendimiento.incompleta && <p className="fine">Hay cierres intermedios ausentes; se comparan los extremos disponibles del periodo.</p>}
           </> : <p className="fine">Faltan cierres exactos comunes para comparar esta posición con el S&amp;P 500.</p>}
-        </details>;
+        </article>;
       })}
+        </div>
+      </dialog>
 
       {comparables.length > 0 && <div className="sec">
         <h3 className="sec-t">Comportamiento de las posiciones <InfoTip text="Retorno total de cada acción, con dividendos y splits. No es su contribución al resultado ni explica causalidad." /></h3>
@@ -66,8 +94,8 @@ export function EvidenciaCartera({ datos }: { datos: EvidenciaFormacion }) {
         </details>) : <p className="fine">Sin salidas entre estas dos carteras formadas.</p>}
       </div>}
 
-      <details>
-        <summary>Metodología fijada para esta cartera</summary>
+      {!f.receta_vigente && <details>
+        <summary>Metodología histórica de esta cartera</summary>
         {f.idea && <p className="fine">{f.idea}</p>}
         {f.reglas.map((r) => <p className="fine" key={r.clave}><b>{r.titulo}:</b> {r.detalle}.</p>)}
         {f.pesos && <p className="fine">Prioridades: {Object.entries(f.pesos).filter(([, v]) => v > 0).map(([k, v]) => {
@@ -79,7 +107,7 @@ export function EvidenciaCartera({ datos }: { datos: EvidenciaFormacion }) {
         {f.n_empresas !== null ? <p className="fine">Hasta {f.n_empresas} empresas · {f.reparto === "igual" ? "pesos iguales" : "pesos según puntuación"}
           {" · "}{f.max_por_sector ? `máximo ${f.max_por_sector} por sector` : "sin límite por sector"}.</p>
           : <p className="fine">La receta fijada para esta cartera no está disponible.</p>}
-      </details>
+      </details>}
     </section>
   );
 }

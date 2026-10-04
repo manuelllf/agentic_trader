@@ -205,6 +205,11 @@ export type EmpresaBusqueda = { ticker: string; nombre: string | null; sector: s
 
 export type JornadaFicha = { numero: number; rentabilidad: number | null; puntos: number | null };
 export type Posicion = { ticker: string; peso: number };
+export type MercadoFicha = {
+  desde: string; dia: string; consultado: string | null; en_vivo: boolean;
+  rentabilidad: number | null; sp500: number | null; diferencia: number | null;
+  empresas: Record<string, { precio: number | null; rentabilidad: number | null; dia: string | null } | null>;
+};
 
 export type Ficha = {
   id: string;
@@ -219,6 +224,7 @@ export type Ficha = {
   receta: Receta | null;
   posiciones: Posicion[];
   rendimiento?: RendimientoFicha | null;
+  mercado?: MercadoFicha | null;
 };
 
 export type RendimientoFicha = {
@@ -632,7 +638,7 @@ export type MiembroLiga = {
 };
 
 export type LigaDetalle = LigaResumen & { miembros: MiembroLiga[]; jornada_numero: number | null;
-  datos_hasta: string | null; sp500_mes: number | null; en_vivo: boolean };
+  datos_hasta: string | null; sp500_mes: number | null; en_vivo: boolean; consultado: string | null };
 
 export async function misLigas(): Promise<LigaResumen[] | string> {
   return llamar<LigaResumen[]>("/liga/ligas");

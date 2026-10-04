@@ -224,8 +224,8 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .gap { padding: 12px 0; border-bottom: 1px solid var(--line); text-align: center; font-size: 14px; color: var(--muted); }
 
 .lg .tr.financiero {
-  grid-template-columns: 34px minmax(0, 1fr); gap: 12px 14px; width: 100%; margin: 0;
-  padding: 16px; color: var(--ink2); font: inherit; background: var(--surface);
+  grid-template-columns: 34px minmax(0, 1fr); gap: 8px 12px; width: 100%; margin: 0;
+  padding: 12px 14px; color: var(--ink2); font: inherit; background: var(--surface);
   border: 1px solid var(--line); border-radius: 16px; cursor: pointer; margin: 8px 0;
 }
 .lg .ranking-lista { padding-top: 2px; }
@@ -235,7 +235,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .tr.financiero .crest { width: 32px; height: 38px; }
 .lg .tr.financiero .nm b { white-space: normal; overflow-wrap: anywhere; }
 .lg .tr.financiero .finance { display: grid; gap: 5px; min-width: 0; grid-column: 2; grid-row: 2; }
-.lg .tr.financiero .finance .primary { font-size: 26px; font-weight: 700; letter-spacing: -.04em; }
+.lg .tr.financiero .finance .primary { font-size: 23px; font-weight: 700; letter-spacing: -.04em; }
 .lg .finance-label { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; letter-spacing: normal; color: var(--muted); }
 .lg .tr.financiero .finance .bench, .lg .tr.financiero .finance .pp { font-size: 13px; }
 .lg .tr.financiero .pos { grid-column: 1; grid-row: 1; align-self: start; text-align: left; font-size: 22px; letter-spacing: -.04em; }
@@ -641,9 +641,9 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   transition: transform 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
   animation: ranking-entrada 240ms ease-out both;
 }
-.lg .jr:not(.spx) { min-height: 96px; padding: 18px; }
+.lg .jr:not(.spx) { min-height: 72px; padding: 12px 14px; }
 .lg .jr:not(.spx) .nm b { font-size: 19px; letter-spacing: -.025em; }
-.lg .jr:not(.spx) .ret { font-size: clamp(24px, 3vw, 32px); }
+.lg .jr:not(.spx) .ret { font-size: clamp(22px, 3vw, 28px); }
 .lg .jr.casa::after, .lg .tr.financiero.casa::after {
   content: attr(data-symbol); position: absolute; z-index: -1; pointer-events: none;
   right: 30px; bottom: -34px; font-size: 140px; line-height: 1; font-weight: 800;
@@ -765,6 +765,26 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg details.more summary::-webkit-details-marker { display: none; }
 .lg details.more summary::after { content: "+"; font-size: 24px; font-weight: 400; color: var(--muted); }
 .lg details.more[open] summary::after { content: "−"; }
+.lg details.ficha-bloque { margin-top: 12px; }
+.lg details.ficha-bloque > summary { min-height: 44px; overflow-wrap: anywhere; gap: 12px; }
+.lg details.ficha-bloque .ficha-metodo { margin-top: 12px; }
+.lg .ficha-metodologia { margin-top: 16px; }
+.lg .ficha-metodologia .seg { flex-wrap: wrap; }
+.lg .ficha-metodologia .seg button { min-height: 44px; min-width: 0; padding-inline: 8px; }
+.lg .ficha-nav button { min-width: 0; min-height: 44px; padding: 6px; white-space: normal; overflow-wrap: anywhere; }
+.lg .cartera-plantilla { display: grid; gap: 4px; margin-top: 16px; }
+.lg .cartera-empresa { display: grid; grid-template-columns: minmax(0,1fr) minmax(54px,.5fr) minmax(90px,.7fr) 16px; gap: 8px; align-items: center; width: 100%; padding: 12px; border: 0; border-radius: 12px; background: var(--surface); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.lg .cartera-empresa b { overflow-wrap: anywhere; }
+.lg .cartera-empresa span { min-width: 0; overflow-wrap: anywhere; text-align: right; font-variant-numeric: tabular-nums; }
+.lg .cartera-empresa small { display: block; color: var(--muted); font-size: 11px; }
+.lg .cartera-empresa:hover { background: var(--surface2); }
+.lg .cartera-empresa.con-precio { grid-template-columns: minmax(0,1fr) minmax(44px,.45fr) minmax(55px,.6fr) minmax(80px,.75fr); gap: 6px; }
+.lg .cartera-empresa.con-precio > span:last-child { display: none; }
+.lg .empresa-modal { width: min(620px,calc(100vw - 24px)); }
+.lg .ficha-marcador { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 16px 0; }
+.lg .ficha-marcador small { display: block; color: var(--muted); font-size: 12px; }
+.lg .ficha-marcador b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+.lg .ficha-marcador p { grid-column: 1 / -1; }
 .lg .kvl div {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px;
   border-bottom: 1px solid var(--line); font-size: 15.5px;

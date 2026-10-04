@@ -2,7 +2,7 @@
 .lg .privadas h1, .lg .privadas h2, .lg .privadas h3 { overflow-wrap: anywhere; }
 .lg .priv-eyebrow { font-size: 12px; color: var(--muted); letter-spacing: .035em; }
 .lg .priv-lista { display: grid; gap: 12px; margin-top: 12px; }
-.lg .priv-liga { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 20px; background: var(--surface); color: var(--ink); text-decoration: none; min-width: 0; transition: background 160ms ease, transform 160ms ease; }
+.lg .priv-liga { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 20px; background: var(--surface); color: var(--ink); text-decoration: none; min-width: 0; transition: background 160ms ease, transform 160ms ease; }
 .lg .priv-liga h3 { font-size: 24px; line-height: 1.15; letter-spacing: -.035em; }
 .lg .priv-liga-miembros { font-size: 14px; }
 .lg .priv-liga-miembros b { font-size: 24px; font-variant-numeric: tabular-nums; }
@@ -27,8 +27,8 @@
 .lg .priv-metodo { margin: 12px 0; font-size: 13px; color: var(--muted); }
 .lg .priv-metodo summary, .lg details.priv-panel > summary { cursor: pointer; min-height: 44px; padding-block: 10px; }
 .lg .priv-metodo p { margin: 8px 0; }
-.lg .priv-equipos { display: grid; gap: 14px; }
-.lg .priv-equipo { padding: 16px; border: 1px solid var(--line); border-radius: 20px; min-width: 0; }
+.lg .priv-equipos { display: grid; gap: 10px; }
+.lg .priv-equipo { padding: 12px 14px; border: 1px solid var(--line); border-radius: 20px; min-width: 0; }
 .lg .priv-equipo.propia { background: color-mix(in srgb,var(--accent-bg) 35%,var(--bg)); }
 .lg .priv-equipo-cab { display: flex; align-items: center; gap: 10px; }
 .lg .priv-puesto { color: var(--muted); font-size: 16px; font-variant-numeric: tabular-nums; }
@@ -37,9 +37,9 @@
 .lg .priv-identidad p { margin: 4px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .lg .priv-puntos { text-align: right; font-size: 24px; }
 .lg .priv-puntos small { display: block; color: var(--muted); font-size: 11px; font-weight: 400; }
-.lg .priv-cifras { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 12px; margin: 18px 0 12px; }
+.lg .priv-cifras { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 12px; margin: 12px 0 8px; }
 .lg .priv-cifras dd { margin: 4px 0 0; font-size: clamp(20px,3vw,26px); letter-spacing: -.025em; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.lg .priv-equipo-pie { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+.lg .priv-equipo-pie { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 2px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
 .lg .priv-equipo-pie .link { min-height: 44px; text-align: left; }
 .lg .priv-equipo-detalle { padding-top: 8px; min-width: 0; }
 .lg .priv-equipo-detalle .sec { margin-top: 12px; }

@@ -28,7 +28,7 @@ from app.liga.ia import pregunta as ia_pregunta
 from app.liga.models import Receta as RecetaModelo
 from app.liga.motor.catalogo import RecetaNoValida
 from app.liga.motor.seleccion import explicar, seleccionar
-from app.liga.procesos import datos
+from app.liga.procesos import datos, diario
 from app.liga.rutas_publicas import EscudoOut
 
 router = APIRouter(tags=["liga-estrategias"])
@@ -205,6 +205,7 @@ class FichaOut(BaseModel):
     receta: RecetaOut | None
     posiciones: list[PosicionOut]
     rendimiento: dict | None = None
+    mercado: dict | None = None
 
 
 # ---- Ayudas de conversión ------------------------------------------------------------------------
@@ -601,7 +602,7 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         """), {"r": f.receta_id}).one_or_none()
         receta_out = _receta_out(rf) if rf is not None else None
     ins = db.execute(text("""
-        select i.id
+        select i.id, j.id as jornada_id, j.estado as jornada_estado, j.dia_base
         from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
         where i.estrategia_id = :i and i.estado in ('formada', 'cerrada')
           and j.estado in ('formada', 'cerrada')
@@ -624,6 +625,18 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         "oficial_hasta": None, "provisional_hasta": None, "incompleta": False,
         "serie": [], "metricas": None, "evidencia": None,
     })
+    mercado = None
+    if ins is not None and ins.jornada_estado == "formada":
+        vivo = diario.vivo(ins.jornada_id)
+        if vivo:
+            fila_viva = vivo["por_inscripcion"].get(ins.id, {})
+            mercado = {"desde": ins.dia_base, "dia": vivo["dia"],
+                       "consultado": vivo.get("actualizado"),
+                       "en_vivo": vivo.get("en_vivo", False),
+                       "rentabilidad": fila_viva.get("rentabilidad"), "sp500": vivo["sp"],
+                       "diferencia": fila_viva.get("dif"),
+                       "empresas": {p.ticker: vivo.get("por_ticker", {}).get(p.ticker)
+                                    for p in posiciones}}
     return FichaOut(
         id=f.eid, nombre=f.nombre,
         escudo=EscudoOut(forma=f.forma, dibujo=f.dibujo, color1=f.color1, color2=f.color2,
@@ -634,7 +647,7 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
                  for j in jornadas],
         receta=receta_out,
         posiciones=[PosicionOut(ticker=p.ticker, peso=p.peso) for p in posiciones],
-        rendimiento=retorno)
+        rendimiento=retorno, mercado=mercado)
 
 
 # ---- Copiar (Pro) ---------------------------------------------------------------------------
