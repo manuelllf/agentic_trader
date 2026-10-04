@@ -87,6 +87,10 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
   dos últimos cierres oficiales quedan como contexto; no se suman porcentajes mensuales.
   Liga abre en «Este mes» y permite consultar la clasificación después. Las pantallas interiores
   prescinden de la cabecera de marca; cuenta y sesión siguen accesibles desde Mías.
+- **Ligas privadas.** Cada participante muestra su estrategia representante, escudo, retorno
+  mensual y acumulado frente al S&P. El mes provisional se refresca cada dos minutos y se
+  separa de los puntos oficiales. El detalle abre las métricas existentes de la ficha,
+  respetando su privacidad; invitaciones y gestión quedan en un panel independiente.
 - **Seguimiento en Mías.** Resultado provisional de la jornada, último resultado cerrado y
   composición frente a la última revisión y entre las dos últimas carteras formadas.
   Copiar una estrategia publicada requiere

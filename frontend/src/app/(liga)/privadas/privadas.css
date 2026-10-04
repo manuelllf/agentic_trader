@@ -1,0 +1,54 @@
+.lg .privadas { min-width: 0; }
+.lg .privadas h1, .lg .privadas h2, .lg .privadas h3 { overflow-wrap: anywhere; }
+.lg .priv-eyebrow { font-size: 12px; color: var(--muted); letter-spacing: .035em; }
+.lg .priv-lista { display: grid; gap: 12px; margin-top: 12px; }
+.lg .priv-liga { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 20px; background: var(--surface); color: var(--ink); text-decoration: none; min-width: 0; transition: background 160ms ease, transform 160ms ease; }
+.lg .priv-liga h3 { font-size: 24px; line-height: 1.15; letter-spacing: -.035em; }
+.lg .priv-liga-miembros { font-size: 14px; }
+.lg .priv-liga-miembros b { font-size: 24px; font-variant-numeric: tabular-nums; }
+.lg .priv-liga-miembros small { color: var(--muted); }
+.lg .priv-liga-pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line2); padding-top: 12px; font-size: 13px; }
+.lg .priv-liga-pie small { color: var(--muted); }
+.lg .priv-accesos { display: grid; gap: 16px; margin-top: 24px; }
+.lg .priv-panel { min-width: 0; padding: 20px; border-radius: 18px; background: var(--surface); }
+.lg .priv-panel h2, .lg .priv-panel > summary { color: var(--ink); font-size: 18px; font-weight: 700; }
+.lg .priv-panel p { color: var(--ink2); font-size: 14px; line-height: 1.5; margin: 10px 0 16px; }
+.lg .priv-panel label { font-size: 13px; color: var(--ink2); }
+.lg .priv-panel .btn { white-space: normal; }
+.lg .priv-cabecera .h1 { margin-top: 6px; }
+.lg .priv-resumen { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; padding: 20px 0; margin: 16px 0; border-block: 1px solid var(--line); }
+.lg .priv-resumen div, .lg .priv-cifras div { min-width: 0; }
+.lg .priv-resumen dt, .lg .priv-cifras dt { font-size: 12px; color: var(--muted); }
+.lg .priv-resumen dd { margin: 4px 0 0; font-size: 28px; font-weight: 700; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.lg .priv-resumen dd small { font-size: 16px; font-weight: 400; color: var(--muted); }
+.lg .priv-contenido { display: grid; gap: 24px; align-items: start; }
+.lg .priv-clasificacion { min-width: 0; }
+.lg .priv-contexto { margin: 12px 0; }
+.lg .priv-metodo { margin: 12px 0; font-size: 13px; color: var(--muted); }
+.lg .priv-metodo summary, .lg details.priv-panel > summary { cursor: pointer; min-height: 44px; padding-block: 10px; }
+.lg .priv-metodo p { margin: 8px 0; }
+.lg .priv-equipos { display: grid; gap: 14px; }
+.lg .priv-equipo { padding: 16px; border: 1px solid var(--line); border-radius: 20px; min-width: 0; }
+.lg .priv-equipo.propia { background: color-mix(in srgb,var(--accent-bg) 35%,var(--bg)); }
+.lg .priv-equipo-cab { display: flex; align-items: center; gap: 10px; }
+.lg .priv-puesto { color: var(--muted); font-size: 16px; font-variant-numeric: tabular-nums; }
+.lg .priv-identidad { min-width: 0; flex: 1; }
+.lg .priv-identidad h2 { margin: 0; font-size: 18px; line-height: 1.2; letter-spacing: -.025em; color: var(--ink); }
+.lg .priv-identidad p { margin: 4px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.lg .priv-puntos { text-align: right; font-size: 24px; }
+.lg .priv-puntos small { display: block; color: var(--muted); font-size: 11px; font-weight: 400; }
+.lg .priv-cifras { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 12px; margin: 18px 0 12px; }
+.lg .priv-cifras dd { margin: 4px 0 0; font-size: clamp(20px,3vw,26px); letter-spacing: -.025em; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.lg .priv-equipo-pie { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+.lg .priv-equipo-pie .link { min-height: 44px; text-align: left; }
+.lg .priv-equipo-detalle { padding-top: 8px; min-width: 0; }
+.lg .priv-equipo-detalle .sec { margin-top: 12px; }
+.lg .priv-gestion { display: grid; gap: 14px; min-width: 0; }
+.lg .priv-codigo { display: block; margin: 16px 0; color: var(--ink); font-size: 28px; letter-spacing: .12em; overflow-wrap: anywhere; user-select: all; }
+.lg .priv-miembro { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.lg .priv-miembro > span { min-width: 0; overflow-wrap: anywhere; }
+.lg .priv-miembro small { display: block; color: var(--muted); font-size: 12px; }
+@media (min-width: 40rem) { .lg .priv-lista, .lg .priv-accesos { grid-template-columns: repeat(2,minmax(0,1fr)); } .lg .priv-resumen { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media (min-width: 64rem) { .lg .priv-contenido { grid-template-columns: minmax(0,1fr) minmax(260px,.42fr); gap: 28px; } .lg .priv-cifras { grid-template-columns: repeat(4,minmax(0,1fr)); } }
+@media (hover:hover) and (pointer:fine) { .lg .priv-liga:hover { background: var(--surface2); transform: translateY(-2px); } }
+@media (prefers-reduced-motion:reduce) { .lg .priv-liga { transition: none; } .lg .priv-liga:hover { transform: none; } }

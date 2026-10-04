@@ -180,6 +180,77 @@ def test_gratis_no_se_une_a_una_liga_privada(api) -> None:  # noqa: ANN001
     assert r.status_code == 403, r.text
 
 
+def test_detalle_muestra_equipo_formado_y_mes_sin_abrir_datos_privados(api, monkeypatch) -> None:  # noqa: ANN001
+    from datetime import UTC, date, datetime, timedelta
+    from decimal import Decimal
+
+    import psycopg
+
+    from app.liga import rutas_ligas
+
+    cliente, cab, usuario = api
+    duena, miembro, ajeno = usuario(pro=True), usuario(pro=True), usuario()
+    liga = cliente.post("/liga/ligas", json={"nombre": "Resultados"},
+                        headers=cab(duena)).json()
+    cliente.post("/liga/ligas/unirse", json={"codigo": liga["codigo"]}, headers=cab(miembro))
+    eid = _crear_estrategia(cliente, cab, duena)
+    receta = _receta(cliente, cab, duena, eid)
+    _crear_estrategia(cliente, cab, miembro, "Todavía sin cartera")
+    with psycopg.connect(URL, autocommit=True) as cx:
+        cx.execute("update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))
+        temporada = cx.execute(
+            "insert into liga.temporadas (nombre, n_jornadas, cuenta, estado) "
+            "values ('Privadas test', 12, false, 'cerrada') returning id"
+        ).fetchone()[0]
+        try:
+            hoy = date.today()
+            jornada = cx.execute(
+                "insert into liga.jornadas (temporada_id, numero, dia_base, dia_inicio, "
+                "dia_fin, cierre_inscripcion, estado) "
+                "values (%s, 1, %s, %s, %s, %s, 'formada') returning id",
+                (temporada, hoy - timedelta(days=2), hoy - timedelta(days=1),
+                 hoy + timedelta(days=28), datetime.now(UTC) - timedelta(days=2)),
+            ).fetchone()[0]
+            inscripcion = cx.execute(
+                "insert into liga.inscripciones (jornada_id, estrategia_id, receta_id, estado) "
+                "values (%s, %s, %s, 'formada') returning id",
+                (jornada, eid, receta["id"]),
+            ).fetchone()[0]
+            monkeypatch.setattr(rutas_ligas, "_temporada_actual", lambda db: temporada)
+            llamadas = []
+
+            def vivo(jid):  # noqa: ANN001, ANN202
+                llamadas.append(jid)
+                return {"dia": hoy, "sp": Decimal("1.2"), "en_vivo": True,
+                        "por_inscripcion": {inscripcion: {
+                            "rentabilidad": Decimal("2.5"), "dif": Decimal("1.3")}}}
+
+            monkeypatch.setattr(rutas_ligas.diario, "vivo", vivo)
+            response = cliente.get(f"/liga/ligas/{liga['id']}", headers=cab(miembro))
+            assert response.status_code == 200, response.text
+            detalle = response.json()
+            assert detalle["codigo"] is None
+            assert detalle["jornada_numero"] == 1 and detalle["en_vivo"] is True
+            assert detalle["datos_hasta"] == hoy.isoformat()
+            equipo = next(m for m in detalle["miembros"] if not m["es_yo"])
+            assert equipo["estrategia"]["id"] == eid
+            assert equipo["estrategia"]["nombre"] == "Foso ancho"
+            assert "receta" not in equipo["estrategia"]
+            assert equipo["puntos"] is None
+            assert Decimal(equipo["rentabilidad_mes"]) == Decimal("2.5")
+            assert Decimal(equipo["diferencia_mes"]) == Decimal("1.3")
+            sin_cartera = next(m for m in detalle["miembros"] if m["es_yo"])
+            assert sin_cartera["estrategia"] is None
+            assert sin_cartera["rentabilidad_mes"] is None
+            assert cliente.get(f"/liga/ligas/{liga['id']}", headers=cab(ajeno)).status_code == 404
+            assert llamadas == [jornada]
+        finally:
+            cx.execute("delete from liga.inscripciones where jornada_id in "
+                       "(select id from liga.jornadas where temporada_id = %s)", (temporada,))
+            cx.execute("delete from liga.jornadas where temporada_id = %s", (temporada,))
+            cx.execute("delete from liga.temporadas where id = %s", (temporada,))
+
+
 def test_codigo_equivocado_frena_por_fuerza_bruta(api) -> None:  # noqa: ANN001
     # Solo Pro llega a probar el código (antes se comprueba el plan): con Pro para aislar el
     # límite de intentos del error de plan, que ya cubre `test_gratis_no_se_une_a_una_liga_privada`.

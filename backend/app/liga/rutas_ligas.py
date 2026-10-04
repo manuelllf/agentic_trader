@@ -5,7 +5,7 @@ qué liga, qué movimiento y qué reporte se ve, así que un ajeno nunca ve lo q
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -24,6 +24,7 @@ from app.liga.comparativa import (
 )
 from app.liga.db import db_usuario
 from app.liga.ia import moderacion
+from app.liga.procesos import diario
 
 router = APIRouter(tags=["liga-ligas"])
 
@@ -65,10 +66,17 @@ class MiembroLigaOut(BaseModel):
     dif_sp: Decimal | None
     acumulado: RentabilidadAcumulada | None = None
     movimiento: int | None = None
+    estrategia: dict | None = None
+    rentabilidad_mes: Decimal | None = None
+    diferencia_mes: Decimal | None = None
 
 
 class LigaDetalleOut(LigaResumenOut):
     miembros: list[MiembroLigaOut]
+    jornada_numero: int | None = None
+    datos_hasta: date | None = None
+    sp500_mes: Decimal | None = None
+    en_vivo: bool = False
 
 
 # ---- Ayudas ------------------------------------------------------------------------------------
@@ -146,22 +154,36 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
     if fila is None:
         raise HTTPException(404, "No existe esa liga (o no estás en ella).")
     temporada = _temporada_actual(db)
+    jornada = db.execute(text("""
+        select id, numero from liga.jornadas
+        where temporada_id = :t and estado = 'formada' order by dia_base desc limit 1
+    """), {"t": temporada}).one_or_none()
     miembros = db.execute(text("""
         select p.alias, m.usuario_id::text as usuario_id, m.unido, s.estrategia_id,
-               s.puntos, s.jornadas, s.dif_sp
+               s.puntos, s.jornadas, s.dif_sp, s.nombre, s.forma, s.dibujo,
+               s.color1, s.color2, s.iniciales, s.visibilidad, s.inscripcion_id
         from liga.miembros_liga m
         join liga.perfiles p on p.id = m.usuario_id
         left join lateral (
-            select e.id::text as estrategia_id, c.puntos, c.jornadas, c.dif_sp
+            select e.id::text as estrategia_id, c.puntos, c.jornadas, c.dif_sp,
+                   e.nombre, e.forma, e.dibujo, e.color1, e.color2, e.iniciales, e.visibilidad,
+                   (select i.id from liga.inscripciones i
+                    where i.estrategia_id = e.id and i.jornada_id = :j
+                      and i.estado = 'formada' limit 1) as inscripcion_id
             from liga.estrategias e
-            join liga.v_clasificacion c on c.estrategia_id = e.id
-            where e.dueno_id = m.usuario_id and e.tipo = 'usuario' and c.temporada_id = :t
-            order by c.puntos desc, c.dif_sp desc
+            left join liga.v_clasificacion c on c.estrategia_id = e.id and c.temporada_id = :t
+            where e.dueno_id = m.usuario_id and e.tipo = 'usuario' and not e.oculta
+              and (c.estrategia_id is not null or exists (
+                select 1 from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
+                where i.estrategia_id = e.id and j.temporada_id = :t
+                  and i.estado in ('formada', 'cerrada')
+              ))
+            order by c.puntos desc nulls last, c.dif_sp desc nulls last, e.creada, e.id
             limit 1
         ) s on true
         where m.liga_id = :i
         order by coalesce(s.puntos, -1) desc, coalesce(s.dif_sp, -999) desc, p.alias
-    """), {"i": id, "t": temporada}).all()
+    """), {"i": id, "t": temporada, "j": jornada.id if jornada else None}).all()
     n_miembros = len(miembros)
     estrategia_por_miembro = {
         m.alias: m.estrategia_id for m in miembros if m.estrategia_id is not None
@@ -170,14 +192,28 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
     acumulados = retornos_acumulados(db, ids_estrategias)
     movimientos = (movimientos_grupo(db, temporada, estrategia_por_miembro)
                    if temporada is not None else {})
+    vivo = diario.vivo(jornada.id) if jornada else None
+    por_inscripcion = vivo["por_inscripcion"] if vivo else {}
     return LigaDetalleOut(
         **_resumen(fila, ident.uid, n_miembros).model_dump(),
+        jornada_numero=jornada.numero if jornada else None,
+        datos_hasta=vivo["dia"] if vivo else None,
+        sp500_mes=vivo["sp"] if vivo else None,
+        en_vivo=vivo.get("en_vivo", False) if vivo else False,
         miembros=[
             MiembroLigaOut(alias=m.alias, es_yo=(m.usuario_id == ident.uid), unido=m.unido,
                           puntos=m.puntos, jornadas=m.jornadas, dif_sp=m.dif_sp,
                           acumulado=(RentabilidadAcumulada.model_validate(acumulados[m.estrategia_id])
                                      if m.estrategia_id in acumulados else None),
-                          movimiento=movimientos.get(m.alias))
+                          movimiento=movimientos.get(m.alias),
+                          estrategia={"id": m.estrategia_id, "nombre": m.nombre,
+                                      "visibilidad": m.visibilidad,
+                                      "escudo": {"forma": m.forma, "dibujo": m.dibujo,
+                                                 "color1": m.color1, "color2": m.color2,
+                                                 "iniciales": m.iniciales}}
+                          if m.estrategia_id else None,
+                          rentabilidad_mes=por_inscripcion.get(m.inscripcion_id, {}).get("rentabilidad"),
+                          diferencia_mes=por_inscripcion.get(m.inscripcion_id, {}).get("dif"))
             for m in miembros
         ])
 

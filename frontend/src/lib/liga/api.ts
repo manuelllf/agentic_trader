@@ -626,9 +626,13 @@ export type MiembroLiga = {
   dif_sp: number | null;
   acumulado: RentabilidadAcumulada | null;
   movimiento: number | null;
+  estrategia: { id: string; nombre: string; visibilidad: string; escudo: Escudo } | null;
+  rentabilidad_mes: number | null;
+  diferencia_mes: number | null;
 };
 
-export type LigaDetalle = LigaResumen & { miembros: MiembroLiga[] };
+export type LigaDetalle = LigaResumen & { miembros: MiembroLiga[]; jornada_numero: number | null;
+  datos_hasta: string | null; sp500_mes: number | null; en_vivo: boolean };
 
 export async function misLigas(): Promise<LigaResumen[] | string> {
   return llamar<LigaResumen[]>("/liga/ligas");
