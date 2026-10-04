@@ -3,12 +3,15 @@
 // Portada sin sesión: una pantalla que se juega sola, con un único ejemplo rotulado como tal.
 // Con sesión no enseña nada y redirige a /liga, sin parpadeo.
 
+import { useTranslations } from "next-intl";
+import { LanguageSelector } from "@/i18n/LanguageSelector";
 import Link from "next/link";
 import { Escena } from "./_portada/Escena";
-import { EJEMPLO } from "./_portada/ideas";
+import { ejemploLocalizado } from "./_portada/ideas";
 import { useRedirigirSiHaySesion } from "./_sesion/SesionContext";
 
 export default function Portada() {
+  const t = useTranslations();
   const sesion = useRedirigirSiHaySesion();
 
   if (sesion !== "fuera") return null;
@@ -17,35 +20,34 @@ export default function Portada() {
     <main className="lnd">
       <header className="lnd-top">
         <span className="wordmark">Vennett</span>
-        <nav className="lnd-nav">
-          <Link href="/liga" className="btn discreto small">Ver la liga</Link>
-          <Link href="/entrar" className="btn discreto small">Entrar</Link>
+        <nav className="lnd-nav"><LanguageSelector />
+          <Link href="/liga" className="btn discreto small">{t("landing_ver_liga")}</Link>
+          <Link href="/entrar" className="btn discreto small">{t("landing_entrar")}</Link>
         </nav>
       </header>
 
       <div className="lnd-cab">
-        <h1>Qué estrategias funcionan, y cuándo.</h1>
+        <h1>{t("landing_titular")}</h1>
         <p className="lnd-sub">
-          Escribe la idea que quieras, mira qué empresas elige el motor y compara cómo aguanta mes a
-          mes frente al S&amp;P 500.
+          {t("landing_descripcion")}
         </p>
       </div>
 
       <div className="lnd-centro">
-        <Escena idea={EJEMPLO} />
+        <Escena idea={ejemploLocalizado(t)} />
       </div>
 
       <div className="lnd-cta">
-        <Link href="/entrar?next=/crear" className="btn pri">Crea la tuya</Link>
+        <Link href="/entrar?next=/crear" className="btn pri">{t("landing_crea_tuya")}</Link>
       </div>
 
       <p className="lnd-legal">
-        <span>Estrategias en papel, sin dinero real. La escena es un ejemplo con cifras inventadas; las empresas son solo ilustración, no una recomendación.</span>
-        <Link href="/como-funciona">Cómo funciona</Link>
-        <Link href="/legal/aviso">Aviso legal</Link>
-        <Link href="/legal/privacidad">Privacidad</Link>
-        <Link href="/legal/terminos">Términos</Link>
-        <Link href="/legal/cookies">Cookies</Link>
+        <span>{t("landing_aviso_ejemplo")}</span>
+        <Link href="/como-funciona">{t("landing_como_funciona")}</Link>
+        <Link href="/legal/aviso">{t("landing_aviso_legal")}</Link>
+        <Link href="/legal/privacidad">{t("landing_privacidad")}</Link>
+        <Link href="/legal/terminos">{t("landing_terminos")}</Link>
+        <Link href="/legal/cookies">{t("landing_cookies")}</Link>
       </p>
     </main>
   );

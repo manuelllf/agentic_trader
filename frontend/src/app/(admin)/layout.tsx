@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
 import { Geist } from "next/font/google";
 import PwaInstall from "@/components/PwaInstall";
 import "./admin.css";
@@ -6,13 +7,16 @@ import "./admin.css";
 // Las salas conservan su aspecto oscuro de siempre y su propia app instalable (/admin).
 const geistSans = Geist({ subsets: ["latin"], weight: "variable", variable: "--font-geist-sans" });
 
-export const metadata: Metadata = {
-  title: "Salas · Vennett",
-  description: "Las salas de Vennett: Alpha, Beta y Omega",
-  manifest: "/admin/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Vennett · salas" },
+export async function generateMetadata(): Promise<Metadata> {
+  const [t, locale] = await Promise.all([getTranslations(), getLocale()]);
+  return {
+  title: t("admin_layout_title"),
+  description: t("admin_layout_description"),
+  manifest: `/api/i18n/manifest?scope=admin&locale=${locale}`,
+  appleWebApp: { capable: true, statusBarStyle: "default", title: t("admin_layout_manifest_title") },
   robots: { index: false, follow: false },
-};
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#0A0A0A",

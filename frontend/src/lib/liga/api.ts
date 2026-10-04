@@ -1,8 +1,10 @@
+import { browserText } from "../../i18n/browser";
 // Cliente de la API de la liga (`/liga/*`). Manda el token de Supabase; las salas usan lib/api.ts.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EvidenciaFormacion } from "./evidencia";
 import { avisarError } from "./errores";
 import { sesionCaducada, tokenSesion } from "./supabase";
+import { browserLocale, type Locale } from "../../i18n/locale";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -12,7 +14,26 @@ export type Yo = {
   roles: string[];
   admin: boolean;
   aal2: boolean;
+  idioma?: Locale | null;
 };
+
+export async function guardarIdioma(idioma: Locale, owner: string): Promise<{ idioma: Locale } | string> {
+  const sesion = await tokenSesion();
+  if (!sesion || sesion.uid !== owner) return SIN_SESION();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(`${API_URL}/liga/yo/idioma`, {
+      method: "PUT", cache: "no-store", signal: controller.signal,
+      headers: { Authorization: `Bearer ${sesion.token}`, "Content-Type": "application/json",
+        "Accept-Language": browserLocale() },
+      body: JSON.stringify({ idioma }),
+    });
+    if (response.ok) return await response.json() as { idioma: Locale };
+    return SIN_RED();
+  } catch { return SIN_RED(); }
+  finally { clearTimeout(timeout); }
+}
 
 /** Entrar con el nombre de usuario: el backend busca el correo (nunca llega aquí) y devuelve la
  *  sesión, que se instala en el cliente de Supabase. null si ha ido bien; si no, el motivo. */
@@ -23,26 +44,26 @@ export async function entrarConAlias(
   try {
     res = await fetch(`${API_URL}/liga/entrar`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Accept-Language": browserLocale() },
       body: JSON.stringify({ usuario: usuario.trim(), clave }),
       cache: "no-store",
     });
   } catch {
-    return "No se pudo entrar ahora. Prueba en un momento.";
+    return browserText("system_signin_failed");
   }
   if (!res.ok) {
     const cuerpo = (await res.json().catch(() => ({}))) as { detail?: string };
-    return cuerpo.detail ?? "No se pudo entrar ahora. Prueba en un momento.";
+    return cuerpo.detail ?? browserText("system_signin_failed");
   }
   const sesion = (await res.json()) as { access_token: string; refresh_token: string };
   const { error } = await sb.auth.setSession(sesion);
-  return error ? "No se pudo entrar ahora. Prueba en un momento." : null;
+  return error ? browserText("system_signin_failed") : null;
 }
 
 /** Cambia el alias. Devuelve el perfil nuevo o el motivo por el que no se pudo. */
 export async function cambiarAlias(alias: string): Promise<Yo | string> {
   const sesion = await tokenSesion();
-  if (!sesion) return "Tu sesión ha caducado. Vuelve a entrar.";
+  if (!sesion) return browserText("system_session_expired");
   try {
     const res = await fetch(`${API_URL}/liga/yo`, {
       method: "PATCH",
@@ -52,16 +73,16 @@ export async function cambiarAlias(alias: string): Promise<Yo | string> {
     });
     if (res.ok) return (await res.json()) as Yo;
     const cuerpo = (await res.json().catch(() => ({}))) as { detail?: unknown };
-    return typeof cuerpo.detail === "string" ? cuerpo.detail : "No se pudo guardar. Prueba otra vez.";
+    return typeof cuerpo.detail === "string" ? cuerpo.detail : browserText("system_save_failed");
   } catch {
-    return "No se pudo guardar. Prueba otra vez.";
+    return browserText("system_save_failed");
   }
 }
 
 /** Quién eres según el backend; null sin sesión o sin perfil, y lanza si no responde. */
 export async function getYo(): Promise<Yo | null> {
-  const resultado = await llamar<Yo>("/liga/yo");
-  if (resultado === SIN_SESION || resultado === "No encontramos tu perfil.") return null;
+  const resultado = await llamar<Yo | null>("/liga/yo");
+  if (resultado === SIN_SESION() || resultado === null) return null;
   if (typeof resultado === "string") throw new Error(resultado);
   return resultado;
 }
@@ -69,10 +90,10 @@ export async function getYo(): Promise<Yo | null> {
 // ---- Estrategias (crear/editar, receta, pruebas, ficha...) -------------------------------------
 //
 // Mensajes de error: el `detail` que manda la API ya está en castellano y se enseña tal cual
-// (DESIGN.md §10); `SIN_SESION`/`SIN_RED` son los únicos que inventamos aquí.
+// (DESIGN.md §10); `SIN_SESION()`/`SIN_RED()` son los únicos que inventamos aquí.
 
-const SIN_SESION = "Tu sesión ha caducado. Vuelve a entrar.";
-const SIN_RED = "No se pudo hablar con el servidor. Prueba otra vez en un momento.";
+const SIN_SESION = () => browserText("system_session_expired");
+const SIN_RED = () => browserText("system_connection_failed");
 
 export type Escudo = {
   forma: "circulo" | "escudo" | "hexagono";
@@ -270,11 +291,12 @@ export async function llamar<T>(
   let agotado = false;
   const timer = setTimeout(() => { agotado = true; ctrl.abort(); }, timeout);
   try {
-  const cabeceras: Record<string, string> = { ...(opciones.headers as Record<string, string> ?? {}) };
+  const cabeceras: Record<string, string> = { "Accept-Language": browserLocale(),
+    ...(opciones.headers as Record<string, string> ?? {}) };
   if (conSesion) {
     const sesion = await tokenSesion(ctrl.signal);
-    if (!sesion) return SIN_SESION;
-    if (usuarioEsperado && sesion.uid !== usuarioEsperado) return "La sesión ha cambiado. Vuelve a abrir el borrador con tu cuenta.";
+    if (!sesion) return SIN_SESION();
+    if (usuarioEsperado && sesion.uid !== usuarioEsperado) return browserText("system_account_changed");
     cabeceras.Authorization = `Bearer ${sesion.token}`;
   }
   if (opciones.body) cabeceras["Content-Type"] = "application/json";
@@ -282,29 +304,30 @@ export async function llamar<T>(
   try {
     res = await fetch(`${API_URL}${ruta}`, { ...opciones, signal: ctrl.signal, headers: cabeceras, cache: "no-store" });
   } catch (err) {
-    if (agotado) return "La petición está tardando demasiado. Puedes volver a intentarlo.";
+    if (agotado) return browserText("system_request_timeout");
     // Una petición cancelada a propósito (AbortController, p. ej. el buscador) no es un error de
     // red: se deja subir para que quien la canceló la distinga de una respuesta real.
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     // Sin internet no hay nada que reportar: el aviso es para cuando el fallo es nuestro.
-    if (typeof navigator === "undefined" || navigator.onLine) avisarError(SIN_RED);
-    return SIN_RED;
+    if (typeof navigator === "undefined" || navigator.onLine) avisarError(SIN_RED());
+    return SIN_RED();
   }
   if (res.status === 401 && conSesion) {
     void sesionCaducada();
-    return SIN_SESION;
+    return SIN_SESION();
   }
   if (res.status === 204) return undefined as T;
+  if (ruta === "/liga/yo" && res.status === 404) return null as T;
   const cuerpo = await res.json();
   if (res.ok) return cuerpo as T;
   const detalle = (cuerpo as { detail?: unknown } | null)?.detail;
-  const mensaje = typeof detalle === "string" ? detalle : SIN_RED;
+  const mensaje = typeof detalle === "string" ? detalle : SIN_RED();
   // Un 5xx es un fallo nuestro: además del mensaje en su pantalla, sale el aviso para reportarlo.
   if (res.status >= 500) avisarError(mensaje);
   return mensaje;
   } catch (err) {
     if (opciones.signal?.aborted) throw err;
-    return agotado ? "La petición está tardando demasiado. Puedes volver a intentarlo." : SIN_RED;
+    return agotado ? browserText("system_request_timeout") : SIN_RED();
   } finally {
     clearTimeout(timer);
     opciones.signal?.removeEventListener("abort", abortar);

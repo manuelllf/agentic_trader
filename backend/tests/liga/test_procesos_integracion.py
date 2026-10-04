@@ -134,7 +134,8 @@ def mercado(monkeypatch) -> Mercado:  # noqa: ANN001
 
 def _usuario(db: Session) -> uuid.UUID:
     uid = uuid.uuid4()
-    db.execute(text("insert into auth.users (id, email) values (:i, :e)"),
+    db.execute(text("insert into auth.users (id, email, email_confirmed_at) "
+                    "values (:i, :e, now())"),
                {"i": uid, "e": f"{uid.hex[:12]}@prueba.local"})
     return uid
 

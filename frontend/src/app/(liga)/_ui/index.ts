@@ -5,6 +5,7 @@ export * from "./CabeceraApp";
 export * from "./Cargando";
 export * from "./Chip";
 export * from "./Cifra";
+export * from "./CampoClave";
 export * from "./Clasificacion";
 export * from "./ErrorLiga";
 export * from "./Escudo";

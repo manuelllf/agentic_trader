@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, get, post } from "@/lib/api";
 import { tokenSesion } from "@/lib/liga/supabase";
@@ -24,16 +25,7 @@ type Estado = {
 };
 type Accion = { proceso: string; titulo: string; cuerpo: Record<string, unknown> };
 
-const PASO: Record<string, string> = {
-  foto: "Designar la foto", formar: "Formar la jornada", cerrar: "Cerrar la jornada",
-};
-const MES = new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric", timeZone: "UTC" });
-const DIA = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", timeZone: "UTC" });
-const CUANDO = new Intl.DateTimeFormat("es-ES", {
-  day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Madrid",
-});
-
-const error = (e: unknown) => (e instanceof ApiError ? e.message : "Algo falló. Reintenta.");
+const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 function Resultado({ datos }: { datos: unknown }) {
   return (
@@ -45,6 +37,15 @@ function Resultado({ datos }: { datos: unknown }) {
 }
 
 function Liga() {
+  const t = useTranslations();
+  const locale = useLocale();
+  const MES = new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" });
+  const DIA = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" });
+  const CUANDO = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Madrid" });
+  const paso = (id: string) => t(id === "foto" ? "admin_liga_step_photo" : id === "formar" ? "admin_liga_step_form" : "admin_liga_step_close");
+  const estadoTemporada = (id: string) => ({ programada: t("admin_liga_season_status_programmed"), en_juego: t("admin_liga_season_status_in_game"), cerrada: t("admin_liga_season_status_closed") }[id] ?? id);
+  const nombreProceso = (id: string) => ({ temporadas: t("admin_liga_process_seasons"), foto: t("admin_liga_process_photo"), formar: t("admin_liga_process_form"), diario: t("admin_liga_process_daily"), cerrar: t("admin_liga_process_close") }[id] ?? id);
+  const errorText = useCallback((e: unknown) => error(e, t("admin_generic_error")), [t]);
   const [estado, setEstado] = useState<Estado | null>(null);
   const [fallo, setFallo] = useState("");
   const [accion, setAccion] = useState<Accion | null>(null);
@@ -58,8 +59,8 @@ function Liga() {
     ? ((previa as { faltan_cierres?: string[] } | null)?.faltan_cierres ?? []) : [];
 
   const cargar = useCallback(() => {
-    get<Estado>("/liga/admin/procesos/estado").then(setEstado).catch((e) => setFallo(error(e)));
-  }, []);
+    get<Estado>("/liga/admin/procesos/estado").then(setEstado).catch((e) => setFallo(errorText(e)));
+  }, [errorText]);
   useEffect(cargar, [cargar]);
 
   const abrir = async (a: Accion) => {
@@ -67,7 +68,7 @@ function Liga() {
     setAceptarSinCierre(false);
     try {
       setPrevia(await post(`/liga/admin/procesos/${a.proceso}/vista-previa`, a.cuerpo, 90_000));
-    } catch (e) { setFallo(error(e)); } finally { setOcupado(false); }
+    } catch (e) { setFallo(errorText(e)); } finally { setOcupado(false); }
   };
 
   const ejecutar = async () => {
@@ -78,7 +79,7 @@ function Liga() {
         ? { ...accion.cuerpo, aceptar_sin_cierre: true } : accion.cuerpo;
       setHecho(await post(`/liga/admin/procesos/${accion.proceso}/ejecutar`, cuerpo, 90_000));
       cargar();
-    } catch (e) { setFallo(error(e)); } finally { setOcupado(false); }
+    } catch (e) { setFallo(errorText(e)); } finally { setOcupado(false); }
   };
 
   const descargarCopia = async () => {
@@ -90,7 +91,7 @@ function Liga() {
         cache: "no-store",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
-      if (!r.ok) throw new ApiError(`No se pudo generar la copia (${r.status}).`, "http", r.status);
+      if (!r.ok) throw new ApiError(t("admin_liga_copy_error", { status: r.status }), "http", r.status);
       const nombre = /filename="([^"]+)"/.exec(r.headers.get("content-disposition") ?? "")?.[1]
         ?? "liga_copia.tar.gz";
       const blob = await r.blob();
@@ -99,7 +100,7 @@ function Liga() {
       a.href = url; a.download = nombre;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
-    } catch (e) { setFallo(error(e)); } finally { setCopiaOcupado(false); }
+    } catch (e) { setFallo(errorText(e)); } finally { setCopiaOcupado(false); }
   };
 
   const interruptor = async () => {
@@ -108,23 +109,23 @@ function Liga() {
     try {
       await post("/liga/admin/procesos/diario/interruptor", { activo: !estado.diario_activo });
       cargar();
-    } catch (e) { setFallo(error(e)); } finally { setOcupado(false); }
+    } catch (e) { setFallo(errorText(e)); } finally { setOcupado(false); }
   };
 
   return (
     <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
-      <Link href="/admin" className="text-[12.5px]" style={{ color: "#898781" }}>← Salas</Link>
+      <Link href="/admin" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_rooms")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>Vennett</h1>
 
       <section className="mt-4 flex flex-wrap gap-2">
         {[
-          { href: "/admin/liga/usuarios", texto: "Usuarios" },
-          { href: "/admin/liga/moderacion", texto: "Moderación" },
-          { href: "/admin/liga/errores", texto: "Errores" },
-          { href: "/admin/liga/ajustes", texto: "Ajustes" },
-          { href: "/admin/liga/auditoria", texto: "Auditoría" },
-          { href: "/admin/liga/coste-ia", texto: "Coste de IA" },
+          { href: "/admin/liga/usuarios", texto: t("admin_liga_users") },
+          { href: "/admin/liga/moderacion", texto: t("admin_liga_moderation") },
+          { href: "/admin/liga/errores", texto: t("admin_liga_errors") },
+          { href: "/admin/liga/ajustes", texto: t("admin_liga_settings") },
+          { href: "/admin/liga/auditoria", texto: t("admin_liga_audit") },
+          { href: "/admin/liga/coste-ia", texto: t("admin_liga_ai_cost") },
         ].map((l) => (
           <Link key={l.href} href={l.href}
                 className="min-h-[40px] rounded-lg px-3 py-2 font-bold text-white"
@@ -135,83 +136,81 @@ function Liga() {
         <button type="button" onClick={descargarCopia} disabled={copiaOcupado}
                 className="min-h-[40px] rounded-lg px-3 py-2 font-bold text-white disabled:opacity-40"
                 style={{ background: "#2c2c2a" }}>
-          {copiaOcupado ? "Generando copia…" : "Descargar copia de la liga"}
+          {copiaOcupado ? t("admin_liga_copy_loading") : t("admin_liga_copy_download")}
         </button>
       </section>
 
       {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
       {!estado ? (
-        !fallo && <p className="mt-6" style={{ color: "#898781" }}>Cargando…</p>
+        !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
       ) : (
         <>
           <section className="mt-5 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
-            <h2 className="font-bold text-white">Cierres diarios</h2>
+            <h2 className="font-bold text-white">{t("admin_liga_daily_close")}</h2>
             <p className="mt-1" style={{ color: "#898781" }}>
-              17:15 de Nueva York en días de bolsa: precios de lo que está en cartera y del SPY.
+              {t("admin_liga_daily_note")}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" onClick={interruptor} disabled={ocupado}
                       className="min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
                       style={{ background: estado.diario_activo ? "#1f5f3a" : "#2c2c2a" }}>
-                {estado.diario_activo ? "Automático: encendido" : "Automático: apagado"}
+                {estado.diario_activo ? t("admin_liga_auto_on") : t("admin_liga_auto_off")}
               </button>
               <button type="button" disabled={ocupado}
-                      onClick={() => abrir({ proceso: "diario", titulo: "Cierres de hoy", cuerpo: {} })}
+                      onClick={() => abrir({ proceso: "diario", titulo: t("admin_liga_process_title_daily"), cuerpo: {} })}
                       className="min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
                       style={{ background: "#2c2c2a" }}>
-                Ejecutar ahora
+                {t("admin_liga_run_now")}
               </button>
             </div>
           </section>
 
           {estado.temporadas.length === 0 ? (
             <section className="mt-4 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
-              <h2 className="font-bold text-white">Aún no hay temporadas</h2>
+              <h2 className="font-bold text-white">{t("admin_liga_no_seasons")}</h2>
               <p className="mt-1" style={{ color: "#898781" }}>
-                Crea la pretemporada (hasta diciembre, no cuenta) y la temporada 1 (enero–diciembre
-                de 2027) con sus jornadas.
+                {t("admin_liga_create_seasons_note")}
               </p>
               <button type="button" disabled={ocupado}
-                      onClick={() => abrir({ proceso: "temporadas", titulo: "Crear temporadas", cuerpo: {} })}
+                      onClick={() => abrir({ proceso: "temporadas", titulo: t("admin_liga_process_title_seasons"), cuerpo: {} })}
                       className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
                       style={{ background: "#3987e5" }}>
-                Ver qué se crearía
+                {t("admin_liga_preview_create")}
               </button>
             </section>
-          ) : estado.temporadas.map((t) => (
-            <section key={t.id} className="mt-4">
+          ) : estado.temporadas.map((season) => (
+            <section key={season.id} className="mt-4">
               <h2 className="font-bold text-white">
-                {t.nombre} <span className="font-normal" style={{ color: "#898781" }}>
-                  · {t.cuenta ? "cuenta" : "no cuenta"} · {t.estado}</span>
+                {season.nombre} <span className="font-normal" style={{ color: "#898781" }}>
+                  · {season.cuenta ? t("admin_liga_counts") : t("admin_liga_does_not_count")} · {estadoTemporada(season.estado)}</span>
               </h2>
               <ul className="mt-2 border-t" style={{ borderColor: "#303030" }}>
-                {t.jornadas.map((j) => (
+                {season.jornadas.map((j) => (
                   <li key={j.id} className="border-b py-3" style={{ borderColor: "#303030" }}>
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-white">
                         {j.numero}. {MES.format(new Date(j.dia_inicio))}
                       </span>
                       <span style={{ color: j.estado === "cerrada" ? "#898781" : j.estado === "formada" ? "#5fb87a" : "#c3c2b7" }}>
-                        {j.estado}
+                        {j.estado === "programada" ? t("admin_liga_season_status_programmed") : j.estado === "formada" ? t("admin_liga_season_status_formed") : t("admin_liga_season_status_closed")}
                       </span>
                     </div>
                     <p className="mt-0.5 text-[12px]" style={{ color: "#898781" }}>
                       {DIA.format(new Date(j.dia_inicio))}–{DIA.format(new Date(j.dia_fin))}
-                      {j.foto_id ? ` · foto ${j.foto_id}${j.foto_auto === true ? " (automática)"
-                          : j.foto_auto === false ? " (manual)" : ""}` : ""}
-                      {j.scan_run_id ? ` · escaneo ${j.scan_run_id}${j.plan_b ? " (plan B)" : ""}` : ""}
-                      {j.inscripciones ? ` · ${j.inscripciones} en juego` : ""}
-                      {j.sp_rentabilidad != null ? ` · S&P ${j.sp_rentabilidad} %` : ""}
+                      {j.foto_id ? t("admin_liga_photo", { id: j.foto_id, mode: j.foto_auto === true ? t("admin_liga_photo_auto") : j.foto_auto === false ? t("admin_liga_photo_manual") : "" }) : ""}
+                      {j.scan_run_id ? t("admin_liga_scan", { id: j.scan_run_id, planB: j.plan_b ? t("admin_liga_plan_b") : "" }) : ""}
+                      {j.inscripciones ? t("admin_liga_playing", { count: new Intl.NumberFormat(locale).format(j.inscripciones) }) : ""}
+                      {j.sp_rentabilidad != null ? t("admin_liga_sp", { value: j.sp_rentabilidad }) : ""}
                     </p>
                     {j.siguiente && (
                       <button type="button" disabled={ocupado}
                               onClick={() => abrir({
-                                proceso: j.siguiente!, titulo: `${PASO[j.siguiente!]} ${j.numero}`,
+                                proceso: j.siguiente!, titulo: `${paso(j.siguiente!)} ${j.numero}`,
                                 cuerpo: { jornada_id: j.id },
                               })}
                               className="mt-2 min-h-[40px] rounded-lg px-3 font-bold text-white disabled:opacity-40"
                               style={{ background: "#2c2c2a" }}>
-                        {PASO[j.siguiente]}…
+                        {paso(j.siguiente)}…
                       </button>
                     )}
                   </li>
@@ -223,10 +222,10 @@ function Liga() {
           {accion && (
             <section className="mt-5 rounded-xl border p-4" style={{ borderColor: "#3987e5" }}>
               <h2 className="font-bold text-white">{accion.titulo}</h2>
-              {ocupado && !previa && <p className="mt-2" style={{ color: "#898781" }}>Preparando la vista previa…</p>}
+              {ocupado && !previa && <p className="mt-2" style={{ color: "#898781" }}>{t("admin_liga_prepare_preview")}</p>}
               {previa != null && hecho == null && (
                 <>
-                  <p className="mt-2" style={{ color: "#898781" }}>Vista previa: todavía no se ha escrito nada.</p>
+                  <p className="mt-2" style={{ color: "#898781" }}>{t("admin_liga_preview_unwritten")}</p>
                   <Resultado datos={previa} />
                   {faltanCierres.length > 0 && (
                     <label className="mt-3 flex min-h-[44px] items-start gap-3 rounded-lg p-3"
@@ -235,9 +234,7 @@ function Liga() {
                              onChange={(e) => setAceptarSinCierre(e.target.checked)}
                              className="mt-0.5 h-5 w-5 shrink-0" />
                       <span>
-                        Falta el cierre del último día de {faltanCierres.join(", ")}. Suele ser un
-                        fallo puntual de la fuente: reintenta antes. Si no cotizan (suspendidos o
-                        retirados), marca esto para cerrar con su último cierre conocido.
+                        {t("admin_liga_missing_close", { tickers: faltanCierres.join(", ") })}
                       </span>
                     </label>
                   )}
@@ -246,24 +243,24 @@ function Liga() {
                             disabled={ocupado || (faltanCierres.length > 0 && !aceptarSinCierre)}
                             className="min-h-[44px] flex-1 rounded-lg px-4 font-bold text-white disabled:opacity-40"
                             style={{ background: "#3987e5" }}>
-                      {ocupado ? "Ejecutando…" : "Ejecutar"}
+                      {ocupado ? t("admin_liga_running") : t("admin_liga_execute")}
                     </button>
                     <button type="button" onClick={() => setAccion(null)} disabled={ocupado}
                             className="min-h-[44px] rounded-lg px-4 disabled:opacity-40"
                             style={{ background: "#2c2c2a", color: "#c3c2b7" }}>
-                      Cancelar
+                      {t("admin_liga_cancel")}
                     </button>
                   </div>
                 </>
               )}
               {hecho != null && (
                 <>
-                  <p className="mt-2 text-white">Hecho.</p>
+                  <p className="mt-2 text-white">{t("admin_liga_done")}</p>
                   <Resultado datos={hecho} />
                   <button type="button" onClick={() => setAccion(null)}
                           className="mt-3 min-h-[44px] rounded-lg px-4"
                           style={{ background: "#2c2c2a", color: "#c3c2b7" }}>
-                    Cerrar
+                    {t("admin_liga_close")}
                   </button>
                 </>
               )}
@@ -271,13 +268,13 @@ function Liga() {
           )}
 
           <section className="mt-6">
-            <h2 className="font-bold text-white">Último intento de cada proceso</h2>
+            <h2 className="font-bold text-white">{t("admin_liga_last_attempts")}</h2>
             <ul className="mt-2">
               {Object.entries(estado.ultimo_intento).map(([p, i]) => (
                 <li key={p} className="flex justify-between gap-2 py-1">
-                  <span>{p}</span>
+                  <span>{nombreProceso(p)}</span>
                   <span style={{ color: !i ? "#898781" : i.ok ? "#5fb87a" : "#e66767" }}>
-                    {!i ? "nunca" : `${i.ok ? "bien" : "falló"} · ${CUANDO.format(new Date(i.cuando))}`}
+                    {!i ? t("admin_liga_never") : t("admin_liga_last_attempt_result", { result: i.ok ? t("admin_liga_ok") : t("admin_liga_failed"), date: CUANDO.format(new Date(i.cuando)) })}
                   </span>
                 </li>
               ))}

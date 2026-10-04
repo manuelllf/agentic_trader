@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
+import { LanguageSelector } from "@/i18n/LanguageSelector";
 import { Chip } from "./Chip";
 import { Sesion } from "../_sesion/Sesion";
 import { useSesion } from "../_sesion/SesionContext";
@@ -16,6 +18,8 @@ import { creditos as textoCreditos } from "@/lib/liga/format";
 // de fluidez); `conCreditos` solo pide/enseña el saldo en las pantallas que lo necesitan (Mías,
 // Crear), y lo hace con la caché compartida (`creditos`), así no se desincroniza entre pantallas.
 export function CabeceraApp({ conCreditos = false }: { conCreditos?: boolean } = {}) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const { estado, yo } = useSesion();
   const { datos: creditos } = useCache(conCreditos && estado === "dentro" ? "creditos" : null, getCreditos);
   const saldo = creditos && typeof creditos === "object" ? creditos.saldo : undefined;
@@ -23,11 +27,11 @@ export function CabeceraApp({ conCreditos = false }: { conCreditos?: boolean } =
     <header className="cab">
       <Link href="/" className="wordmark">Vennett</Link>
       <div className="cab-r">
-        {yo && <Chip>{yo.plan === "pro" ? "Pro" : "Gratis"}</Chip>}
+        {yo && <Chip>{yo.plan === "pro" ? "Pro" : t("common_gratis")}</Chip>}
         {conCreditos && saldo != null && (
-          <Chip className="num">{textoCreditos(saldo)}</Chip>
+          <Chip className="num">{textoCreditos(saldo, locale)}</Chip>
         )}
-        <Sesion />
+        <LanguageSelector /><Sesion />
       </div>
     </header>
   );

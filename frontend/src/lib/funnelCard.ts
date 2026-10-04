@@ -1,31 +1,12 @@
-// El embudo dibujado en SVG, SOLO para exportar (en pantalla el panel es HTML y así se queda).
-//
-// Por qué no reutilizar el panel: la tarjeta sale a 16:9 o 1,91:1 y el panel vive en una columna
-// estrecha. Rasterizar el HTML del panel daría una imagen apaisada con todo apelotonado a la
-// izquierda; aquí el mismo dato se reparte a lo ancho, que es lo que pide una imagen de post.
-//
-// Lo que se pinta son AGREGADOS por etapa y sector: cuántos nombres sobreviven a cada corte.
-// Ningún ticker aparece, ni debe — cómo se comporta el embudo es público, qué elige no.
-//
-// Dos decisiones que vienen de mirar la tarjeta y no entenderla:
-//  · UN solo acento. Antes cada peldaño tenía su color en una rampa gris→verde que no
-//    significaba nada; ahora el verde marca solo lo que acabó en el libro y el resto es neutro.
-//  · SIN "% del anterior". Un 11% suelto no dice si eso es mucho o poco; la barra ya cuenta la
-//    proporción, y el pie la traduce a lenguaje humano ("1 de cada 85").
-//
-// El color ya no vive aquí: X pinta en dark y LinkedIn en claro, y esta función no sabe (ni le
-// importa) para cuál de las dos se está dibujando — recibe la paleta ya resuelta (`CardPalette`,
-// ver `exportCard.ts`) y solo decide QUÉ campo de esa paleta usa cada trazo.
-
-import { fmtNum, type Step } from "./scan";
+import { fmtNum, type ScanText, type Step } from "./scan";
 import { wrapLines, type CardPalette } from "./exportCard";
 import type { ProposalItem, TradeAction } from "./types";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** La cascada del embudo. `pie` es la lectura en una frase (ratio final, sectores más mirados). */
-export function funnelCascadeSvg(pasos: Step[], palette: CardPalette, pie = ""): string {
+// La cascada del embudo. `pie` es la lectura en una frase (ratio final, sectores más mirados).
+export function funnelCascadeSvg(pasos: Step[], palette: CardPalette, pie = "", locale: "es" | "en" = "es"): string {
   if (!pasos.length) return "";
   const W = 440;
   const H = 400;
@@ -43,10 +24,10 @@ export function funnelCascadeSvg(pasos: Step[], palette: CardPalette, pie = ""):
       const y = top + i * rowH;
       const w = Math.max(9, Math.round((p.value / max) * W));
       // El acento es del libro: solo el último peldaño de una decisión se lo lleva.
-      const fill = p.label === "en cartera" ? palette.accent : palette.neutral;
+      const fill = p.id === "en_cartera" ? palette.accent : palette.neutral;
       return `<g>
     <text x="0" y="${y + 24}" font-size="18" fill="${palette.ink2}">${esc(p.label)}</text>
-    <text x="${W}" y="${y + 28}" text-anchor="end" font-size="36" font-weight="700" fill="${palette.ink}">${fmtNum(p.value)}</text>
+    <text x="${W}" y="${y + 28}" text-anchor="end" font-size="36" font-weight="700" fill="${palette.ink}">${fmtNum(p.value, locale)}</text>
     <rect x="0" y="${y + 42}" width="${W}" height="11" rx="5.5" fill="${palette.carril}"/>
     <rect x="0" y="${y + 42}" width="${w}" height="11" rx="5.5" fill="${fill}"/>
   </g>`;
@@ -60,71 +41,58 @@ export function funnelCascadeSvg(pasos: Step[], palette: CardPalette, pie = ""):
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${filas}${pieSvg}</svg>`;
 }
 
-/** La frase que traduce el embudo: cuánto se estrecha, qué se cayó por fallo de datos y qué
- *  sectores se miraron más.
- *
- *  Las bajas por datos van aquí a propósito: "¿cuánto se pierde por fallos de datos?" es una de
- *  las preguntas del backlog, el dato ya se guarda, y publicar el embudo sin ellas contaría un
- *  filtro más limpio de lo que fue. */
+// La frase que traduce el embudo: cuánto se estrecha, qué se cayó por fallo de datos y qué
 export function funnelPie(pasos: Step[],
                           sectores: { sector: string; deep: number }[],
-                          caidas = 0): string {
+                          caidas: number, text: ScanText): string {
   const partes: string[] = [];
   const primero = pasos[0]?.value ?? 0;
   const ultimo = pasos[pasos.length - 1]?.value ?? 0;
   if (primero && ultimo && pasos.length > 1) {
-    partes.push(`sobrevive 1 de cada ${Math.round(primero / ultimo)}`);
+    partes.push(text.t("beta_export_survival", { count: Math.round(primero / ultimo) }));
   }
   partes.push(caidas > 0
-    ? `${fmtNum(caidas)} cayeron antes de puntuar (sin datos o informe ilegible)`
-    : "ninguno se cayó por falta de datos");
+    ? text.t("beta_export_data_losses", { count: caidas })
+    : text.t("beta_export_no_data_losses"));
   const top = sectores.filter((s) => s.deep > 0).slice(0, 3);
   if (top.length) {
-    partes.push("más mirados: " + top.map((s) => `${s.sector} ${s.deep}`).join(" · "));
+    partes.push(text.t("beta_export_top_sectors", { sectors: top.map((s) => `${s.sector} ${fmtNum(s.deep, text.locale)}`).join(" · ") }));
   }
   return partes.join(" · ");
 }
 
 const ROTATION_LABEL: Record<TradeAction, string> = {
-  comprar: "nueva", ampliar: "amplía", mantener: "se mantiene",
-  recortar: "recorta", vender: "sale",
+  comprar: "beta_export_new", ampliar: "beta_export_increase", mantener: "beta_export_hold",
+  recortar: "beta_export_reduce", vender: "beta_export_exit",
 };
 
-/** El embudo es una constante estructural (el mismo hoy que en enero); lo que cambia mes a mes
- *  es ESTO. Se traduce a "X mirados · Y a fondo · Z al constructor" y se omite "en cartera": ese
- *  dato ya son las filas de arriba, repetirlo en el pie sería la misma cifra dos veces. */
-function miniFunnelLine(pasos: Step[]): string {
+// El embudo es una constante estructural (el mismo hoy que en enero); lo que cambia mes a mes
+function miniFunnelLine(pasos: Step[], text: ScanText): string {
   const etiqueta: Record<string, string> = {
-    estudiados: "mirados", "a fondo": "a fondo", finalistas: "al constructor",
+    estudiados: "beta_export_reviewed", a_fondo: "beta_export_deep", finalistas: "beta_export_builder",
   };
   return pasos
-    .filter((p) => p.label !== "en cartera")
-    .map((p) => `${fmtNum(p.value)} ${etiqueta[p.label] ?? p.label}`)
+    .filter((p) => p.id !== "en_cartera")
+    .map((p) => `${fmtNum(p.value, text.locale)} ${etiqueta[p.id] ? text.t(etiqueta[p.id]) : p.label}`)
     .join(" · ");
 }
 
-/** El panel de una DECISIÓN mensual: no el embudo (constante mes a mes) sino la rotación —
- *  qué entra, qué sale, qué se amplía, qué se mantiene. Con nombres a propósito: esta tarjeta
- *  se publica para explicar la decisión, no para enseñar el método (eso ya lo hace la del
- *  martes). El embudo no desaparece, baja a una línea de contexto al pie.
- *
- *  `items` es la propuesta completa (incluye los "vender", que son las salidas); `pasos` es la
- *  misma cascada que dibuja `funnelCascadeSvg`, reutilizada tal cual para el pie. */
-export function rotationSvg(items: ProposalItem[], pasos: Step[], palette: CardPalette): string {
+// El panel de una DECISIÓN mensual: no el embudo (constante mes a mes) sino la rotación —
+export function rotationSvg(items: ProposalItem[], pasos: Step[], palette: CardPalette, text: ScanText): string {
   const cartera = items.filter((i) => i.action !== "vender");
   const salidas = items.filter((i) => i.action === "vender");
   if (!cartera.length && !salidas.length) return "";
 
   const W = 440;
   const H = 400;
-  const contexto = pasos.length ? miniFunnelLine(pasos) : "";
+  const contexto = pasos.length ? miniFunnelLine(pasos, text) : "";
   const lineas = contexto ? wrapLines(contexto, W, 13) : [];
   const pieH = lineas.length ? lineas.length * 17 + 12 : 0;
 
   // La línea de salidas ENVUELVE: con cuatro ventas cabe, pero un mes de seis con símbolos
   // largos se salía del panel (el resto del texto de la tarjeta ya pasaba por `wrapLines`).
   const salidasLineas = salidas.length
-    ? wrapLines(`salen: ${salidas.map((s) => s.ticker).join(" · ")}`, W, 13)
+    ? wrapLines(text.t("beta_export_exits", { tickers: salidas.map((s) => s.ticker).join(" · ") }), W, 13)
     : [];
   const HEAD_H = 60;
   const SAL_H = salidasLineas.length ? salidasLineas.length * 17 + 13 : 0;
@@ -138,9 +106,9 @@ export function rotationSvg(items: ProposalItem[], pasos: Step[], palette: CardP
   // pasado nada, cuando sostener la cartera entera es justamente lo que se decidió.
   const nuevas = cartera.filter((i) => i.action === "comprar").length;
   const titular = nuevas
-    ? `${nuevas} nueva${nuevas === 1 ? "" : "s"} de ${cartera.length}`
-    : `las ${cartera.length} se mantienen`;
-  const cabecera = `<text x="0" y="18" font-size="13" font-weight="700" letter-spacing="1.1" fill="${palette.ink2}">ROTACIÓN DE LA CARTERA</text>
+    ? text.t("beta_export_new_count", { count: nuevas, total: cartera.length })
+    : text.t("beta_export_hold_count", { count: cartera.length });
+  const cabecera = `<text x="0" y="18" font-size="13" font-weight="700" letter-spacing="1.1" fill="${palette.ink2}">${esc(text.t("beta_export_rotation"))}</text>
     <text x="0" y="50" font-size="30" font-weight="700" fill="${palette.accent}">${esc(titular)}</text>`;
 
   const colorAccion = (a: TradeAction) =>
@@ -156,7 +124,7 @@ export function rotationSvg(items: ProposalItem[], pasos: Step[], palette: CardP
         : "";
       return `<g>
     <text x="0" y="${y + 24}" font-size="19" font-weight="700" fill="${palette.ink}">${esc(it.ticker)}</text>
-    <text x="0" y="${y + 41}" font-size="12.5" fill="${colorAccion(it.action)}">${esc(ROTATION_LABEL[it.action])}</text>
+    <text x="0" y="${y + 41}" font-size="12.5" fill="${colorAccion(it.action)}">${esc(text.t(ROTATION_LABEL[it.action]))}</text>
     <text x="${W}" y="${y + 31}" text-anchor="end" font-size="23" font-weight="700" fill="${palette.ink}">${it.target_weight_pct}%</text>
     ${linea}
   </g>`;

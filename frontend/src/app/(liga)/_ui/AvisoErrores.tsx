@@ -1,4 +1,5 @@
 "use client";
+import { useTranslations } from "next-intl";
 
 import { useEffect, useState } from "react";
 import { escucharErrores, reportarError, type AvisoError } from "@/lib/liga/errores";
@@ -10,6 +11,7 @@ import { Boton } from "./Boton";
 type Fase = "visto" | "enviando" | "enviado" | "fallo";
 
 export function AvisoErrores() {
+  const t = useTranslations();
   const [aviso, setAviso] = useState<AvisoError | null>(null);
   const [fase, setFase] = useState<Fase>("visto");
 
@@ -32,16 +34,16 @@ export function AvisoErrores() {
   return (
     <div className="aviso-error" role="alert">
       <p>
-        {fase === "enviado" ? "Gracias, ya lo tenemos."
-          : fase === "fallo" ? "No hemos podido enviarlo ahora. Inténtalo otra vez."
+        {fase === "enviado" ? t("system_error_gracias")
+          : fase === "fallo" ? t("system_error_envio_fallo")
           : aviso.mensaje}
       </p>
       {fase !== "enviado" && (
         <div className="aviso-error-botones">
           <Boton tamano="pequeno" disabled={fase === "enviando"} onClick={reportar}>
-            {fase === "enviando" ? "Enviando…" : "Reportar este error"}
+            {fase === "enviando" ? t("system_error_enviando") : t("system_error_reportar")}
           </Boton>
-          <Boton tamano="pequeno" variante="discreto" onClick={cerrar}>Cerrar</Boton>
+          <Boton tamano="pequeno" variante="discreto" onClick={cerrar}>{t("system_error_cerrar")}</Boton>
         </div>
       )}
     </div>

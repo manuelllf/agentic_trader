@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { acceptLanguage, LOCALE_COOKIE, normalizeLocale } from "./i18n/locale";
 
 // CSP con nonce (plan §14/§15, tarea 8.1). Por ahora en modo "solo informe": el navegador no
 // bloquea nada, solo lo reportaría si hubiera un `report-uri`/`report-to` (no hay todavía, así que
@@ -70,6 +71,10 @@ export function middleware(request: NextRequest) {
   requestHeaders.set("Content-Security-Policy-Report-Only", csp);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
+  const locale = normalizeLocale(request.cookies.get(LOCALE_COOKIE)?.value)
+    ?? acceptLanguage(request.headers.get("accept-language"));
+  response.headers.set("Content-Language", locale);
+  response.headers.append("Vary", "Accept-Language, Cookie");
   // En respuesta: de aquí lo lee el navegador.
   response.headers.set("Content-Security-Policy-Report-Only", csp);
   response.headers.set(

@@ -1,41 +1,29 @@
 "use client";
 
-// Pantalla «Mías» (DESIGN.md §7 «Mías»): lista de mis estrategias con su estado, apuntar/
-// desapuntar, «Cada día 1» y el borrado de un borrador. El saldo de créditos (F7) sale en el chip
-// de la cabecera (`GET /liga/creditos`); la maqueta también pone un botón «Recargar», pero no hay
-// pasarela de pago todavía, así que aquí solo se enseña el saldo (gap, ver el informe de F7).
-//
-// Sesión y perfil vienen de `SesionContext` (una sola vez por app, no por pantalla); la lista de
-// estrategias usa la caché compartida (`lib/liga/cache.ts`): al volver a «Mías» se ve lo último
-// bueno al instante mientras se revalida, y cada acción (apuntar/desapuntar/cada-día-1/borrar)
-// actualiza solo su fila con el objeto que ya devuelve la API en vez de repetir la lista entera.
-
 import Link from "next/link";
 import { useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { normalizeLocale } from "@/i18n/locale";
 import { Sesion } from "../_sesion/Sesion";
 import { BarraPestanas, Boton, Cargando, Escudo, ErrorLiga, Segmentado, Vacio }
   from "../_ui";
-import { CambiosEstrategia } from "../_ui/CambiosEstrategia";
 import {
   borrarEstrategia, cadaDia1, desapuntar, apuntar as apuntarApi, getJornadaPublica,
   getClasificacion, getPortada, misEstrategias, type Clasificacion, type Estrategia,
   type JornadaDetalle, type Portada,
 } from "@/lib/liga/api";
 import { mutar, useCache } from "@/lib/liga/cache";
-import { fecha, porcentaje } from "@/lib/liga/format";
+import { claseSigno, fecha, porcentaje, signo } from "@/lib/liga/format";
 import { getSeguimiento, type SeguimientoEstrategia }
   from "@/lib/liga/seguimiento";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 
 const ETIQUETA_ESTADO: Record<string, string> = {
-  borrador: "Borrador", apuntada: "Apuntada, en espera", jugando: "Jugando", retirada: "Retirada",
+  borrador: "strategies_state_draft", apuntada: "strategies_state_signed_up", jugando: "strategies_state_playing", retirada: "strategies_state_retired",
 };
-const puntosPorcentuales = (valor: number) => porcentaje(valor).replace(" %", " pp");
-
 type ListaEstrategias = Estrategia[] | string;
 
-/** Cambia solo la fila `id` de la lista cacheada; si `cambios` es un objeto ya lo sustituye
- *  entero (lo que devuelve la API tras la acción), evitando volver a pedir toda la lista. */
+// Conserva la lista cacheada y actualiza solo la estrategia afectada.
 function parchearFila(id: string, cambios: Partial<Estrategia> | Estrategia) {
   mutar<ListaEstrategias>("mis-estrategias", (prev) => {
     if (!Array.isArray(prev)) return prev ?? [];
@@ -44,6 +32,11 @@ function parchearFila(id: string, cambios: Partial<Estrategia> | Estrategia) {
 }
 
 export default function Mias() {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
+  const date = (value: string) => fecha(value, new Date(), locale);
+  const percent = (value: number) => porcentaje(value, 1, locale);
+  const points = (value: number) => signo(value, 1, locale);
   const { estado, yo } = useSesionRequerida("/mias");
   const sesionLista = estado !== "cargando";
 
@@ -112,7 +105,7 @@ export default function Mias() {
   }
 
   async function alBorrar(id: string, nombre: string) {
-    if (!window.confirm(`¿Borrar el borrador «${nombre}»? No se puede deshacer.`)) return;
+    if (!window.confirm(t("strategies_delete_draft_confirm", { name: nombre }))) return;
     setOcupada(id);
     setAviso(null);
     const r = await borrarEstrategia(id);
@@ -128,155 +121,94 @@ export default function Mias() {
 
   return (
     <main className="scroll">
-      <div className="titulo-cuenta"><h1 className="h1">Mis estrategias</h1><Sesion /></div>
-      <p className="meta">
-        {!yo ? "" : yo.plan === "pro"
-          ? "Con Pro puedes tener varias jugando a la vez."
-          : "Gratis: una estrategia, solo con reglas."}
-      </p>
+      <div className="titulo-cuenta"><h1 className="h1">{t("strategies_mine_title")}</h1><Sesion /></div>
+      <div className="mias-cabecera">
+        <span className="meta">{Array.isArray(estrategias) ? t("strategies_count", { count: estrategias.length }) : ""}</span>
+          <Link href="/crear" className="btn pri small">{t("strategies_create")}</Link>
+      </div>
 
       {estado === "cargando" || cargando ? (
         <div style={{ marginTop: 20 }}><Cargando filas={3} /></div>
       ) : typeof estrategias === "string" ? (
-        <ErrorLiga titulo="No se pudieron cargar tus estrategias" mensaje={estrategias}
-                   accion={{ texto: "Reintentar", onClick: cargar }} />
+        <ErrorLiga titulo={t("strategies_mine_error")} mensaje={estrategias}
+                   accion={{ texto: t("strategies_retry"), onClick: cargar }} />
       ) : !estrategias || estrategias.length === 0 ? (
         <Vacio
-          titulo="Todavía no tienes ninguna"
-          texto="Crea tu estrategia: elige las reglas, ajusta los pesos y apúntala a la próxima jornada."
-          accion={{ texto: "Crear la primera", onClick: () => { window.location.href = "/crear"; } }}
+          titulo={t("strategies_empty_title")}
+          texto={t("strategies_empty_text")}
+          accion={{ texto: t("strategies_create_first"), onClick: () => { window.location.href = "/crear"; } }}
         />
       ) : (
-        <div className="sec estrategias-lista" style={{ marginTop: 14 }}>
-          <div style={{ borderTop: "1px solid var(--line)" }}>
-            {estrategias.map((e) => (
-              <div key={e.id} className="li-bloque" style={{ minWidth: 0 }}>
-              <div className="li" style={{ cursor: "default" }}>
-                <Escudo valor={e.escudo} etiqueta={`Escudo de ${e.nombre}`} tamano={34} />
-                <Link href={`/ficha/${e.id}`} className="t" style={{ textDecoration: "none" }}>
-                  <b>{e.nombre}</b>
-                  <small>{ETIQUETA_ESTADO[e.estado] ?? e.estado}</small>
+        <div className="mias-lista">
+          {estrategias.map((e) => {
+            const actual = filasJornada?.get(e.id);
+            const resumen = porEstrategia?.get(e.id);
+            const acumulado = resumen?.acumulado;
+            const puesto = rankingPorEstrategia?.get(e.id)?.posicion;
+            const pendiente = ocupada === e.id;
+            return (
+              <article key={e.id} className="mias-estrategia" aria-busy={pendiente || undefined}>
+                <Link href={`/ficha/${e.id}`} className="mias-identidad">
+                  <Escudo valor={e.escudo} etiqueta={t("strategies_crest", { name: e.nombre })} tamano={40} />
+                  <span><h2>{e.nombre}</h2><small>{ETIQUETA_ESTADO[e.estado] ? t(ETIQUETA_ESTADO[e.estado]) : e.estado}</small></span>
+                  <span className="mias-abrir" aria-hidden="true">↗</span>
                 </Link>
-                <div className="li-acts">
-                  <Link href={`/ficha/${e.id}`} className="btn small">Ver estrategia</Link>
-                  <Link href={`/crear/${e.id}`} className="btn small">Editar</Link>
-                  {e.estado === "borrador" && (
-                    <>
-                      <Boton tamano="pequeno" variante="principal" disabled={ocupada === e.id}
-                             onClick={() => alApuntar(e.id)}>
-                        Apuntarla
-                      </Boton>
-                      <Boton tamano="pequeno" variante="discreto" disabled={ocupada === e.id}
-                             onClick={() => alBorrar(e.id, e.nombre)}>
-                        Borrar
-                      </Boton>
-                    </>
-                  )}
-                  {e.estado === "apuntada" && (
-                    <Boton tamano="pequeno" disabled={ocupada === e.id} onClick={() => alDesapuntar(e.id)}>
-                      Quitar de la jornada
-                    </Boton>
-                  )}
+                {e.estado !== "borrador" && (
+                  <dl className="mias-cifras">
+                    <div><dt>{t("strategies_this_month")}</dt><dd className={actual?.rentabilidad != null ? claseSigno(actual.rentabilidad) : ""}>
+                      {actual?.rentabilidad != null ? percent(actual.rentabilidad) : t("strategies_no_data")}
+                    </dd></div>
+                    <div><dt>{acumulado?.incompleta ? t("strategies_period_count", { count: acumulado.periodos }) : t("strategies_cumulative")}</dt>
+                      <dd className={acumulado ? claseSigno(acumulado.rentabilidad) : ""}>
+                        {acumulado ? percent(acumulado.rentabilidad) : t("strategies_no_closes")}
+                      </dd></div>
+                    <div><dt>{t("strategies_league")}</dt><dd>{puesto != null ? `#${puesto}` : t("strategies_no_rank")}</dd></div>
+                  </dl>
+                )}
+                {e.estado === "jugando" && (
+                  <p className="mias-contexto" role="status">
+                    {actual?.rentabilidad != null ? <>
+                      {actual.dif_sp != null && <span className={claseSigno(actual.dif_sp)}>{points(actual.dif_sp)} vs S&amp;P 500 · </span>}
+                      {typeof detalleJornada === "object" && detalleJornada && <>
+                        {detalleJornada.en_vivo ? t("strategies_provisional") : t("strategies_last_close")}
+                        {detalleJornada.hasta ? ` · ${date(detalleJornada.hasta)}` : ""}
+                      </>}
+                    </> : detalleJornada === undefined && !falloJornada ? t("strategies_loading_result") : t("strategies_result_unavailable")}
+                  </p>
+                )}
+                {resumen?.resultado_nuevo && <Link className="mias-novedad" href={`/ficha/${e.id}`}>{t("strategies_new_result")} ↗</Link>}
+                <div className="mias-acciones">
+                  <Link href={`/crear/${e.id}`} className="btn small">{t("strategies_edit")}</Link>
+                  {e.estado === "borrador" && <>
+                    <Boton tamano="pequeno" variante="principal" disabled={pendiente} onClick={() => alApuntar(e.id)}>{t("strategies_sign_up")}</Boton>
+                    <Boton tamano="pequeno" variante="discreto" disabled={pendiente} onClick={() => alBorrar(e.id, e.nombre)}>{t("strategies_delete")}</Boton>
+                  </>}
+                  {e.estado === "apuntada" && <Boton tamano="pequeno" disabled={pendiente} onClick={() => alDesapuntar(e.id)}>{t("strategies_remove_from_round")}</Boton>}
                 </div>
-              </div>
-              {e.estado === "jugando" && (
-                <div className="li-dia1" role="status" aria-label={`Resultado de la jornada actual de ${e.nombre}`}
-                     style={{ flexWrap: "wrap", alignItems: "flex-start" }}>
-                  <span>
-                    {typeof detalleJornada === "object" && detalleJornada
-                      ? `Jornada ${detalleJornada.jornada.numero} · ${detalleJornada.provisional
-                        ? `${detalleJornada.en_vivo ? "Cotizaciones provisionales" : "Último cierre disponible"} · datos hasta ${detalleJornada.hasta ? fecha(detalleJornada.hasta) : "fecha no disponible"}`
-                        : "en curso"}`
-                      : "Jornada en curso"}
-                  </span>
-                  {filasJornada?.get(e.id)?.rentabilidad != null ? (
-                    <b>
-                      {porcentaje(filasJornada.get(e.id)!.rentabilidad!)} este mes
-                      {filasJornada.get(e.id)!.dif_sp != null
-                        ? ` · ${puntosPorcentuales(filasJornada.get(e.id)!.dif_sp!)} vs S&P`
-                        : " · diferencia con S&P no disponible"}
-                    </b>
-                  ) : (
-                    <small>
-                      {detalleJornada === undefined ? falloJornada ? "No se pudo cargar el resultado actual."
-                        : "Cargando el resultado de la jornada…"
-                        : typeof detalleJornada === "string" ? "No se pudo cargar el resultado actual."
-                        : filasJornada?.has(e.id) ? "Aún no hay un cálculo provisional para esta estrategia."
-                        : "No hay una cifra disponible para esta estrategia en la jornada actual."}
-                    </small>
-                  )}
-                </div>
-              )}
-              {e.estado !== "borrador" && porEstrategia?.get(e.id) && (
-                <div className="li-finanzas" aria-label={`Rendimiento acumulado de ${e.nombre}`}>
-                  {porEstrategia.get(e.id)!.acumulado ? (
-                    <>
-                      <div className="li-finanzas-cifra li-finanzas-principal">
-                        <small>{porEstrategia.get(e.id)!.acumulado!.incompleta
-                          ? `Últimos ${porEstrategia.get(e.id)!.acumulado!.periodos} periodos seguidos`
-                          : "Acumulado"}</small>
-                        <b>{porcentaje(porEstrategia.get(e.id)!.acumulado!.rentabilidad)}</b>
-                      </div>
-                      <div className="li-finanzas-cifra">
-                        <small>S&amp;P 500 · mismo periodo</small>
-                        <b>{porcentaje(porEstrategia.get(e.id)!.acumulado!.sp500)}</b>
-                      </div>
-                      <span className={`li-finanzas-diferencia ${porEstrategia.get(e.id)!.acumulado!.diferencia_pp > 0.00005
-                        ? "up" : porEstrategia.get(e.id)!.acumulado!.diferencia_pp < -0.00005 ? "dn" : "fl"}`}>
-                        {puntosPorcentuales(porEstrategia.get(e.id)!.acumulado!.diferencia_pp)} vs S&amp;P
-                      </span>
-                      <small className="li-finanzas-periodo">
-                        {porEstrategia.get(e.id)!.acumulado!.desde === porEstrategia.get(e.id)!.acumulado!.hasta
-                          ? fecha(porEstrategia.get(e.id)!.acumulado!.desde)
-                          : `${fecha(porEstrategia.get(e.id)!.acumulado!.desde)} – ${fecha(porEstrategia.get(e.id)!.acumulado!.hasta)}`}
-                      </small>
-                    </>
-                  ) : (
-                    <small className="li-finanzas-periodo">Sin jornadas cerradas comparables.</small>
-                  )}
-                  {rankingPorEstrategia?.get(e.id) && (
-                    <span className="li-finanzas-puesto">
-                      Liga #{rankingPorEstrategia.get(e.id)!.posicion}
-                      {rankingPorEstrategia.get(e.id)!.movimiento == null ? " · sin periodo anterior comparable"
-                        : rankingPorEstrategia.get(e.id)!.movimiento! > 0
-                          ? ` · ↑${rankingPorEstrategia.get(e.id)!.movimiento} posiciones`
-                          : rankingPorEstrategia.get(e.id)!.movimiento! < 0
-                            ? ` · ↓${Math.abs(rankingPorEstrategia.get(e.id)!.movimiento!)} posiciones`
-                            : " · sin cambio de posición"}
-                    </span>
-                  )}
-                </div>
-              )}
-              {(e.estado === "apuntada" || e.estado === "jugando") && (
-                <div className="li-dia1">
-                  <span>Cada día 1</span>
-                  <Segmentado<"revisar" | "mantener"> pequeno etiquetaGrupo={`Cada día 1 de ${e.nombre}`}
-                              opciones={[{ valor: "revisar", etiqueta: "Revisar" },
-                                         { valor: "mantener", etiqueta: "Mantener" }]}
-                              valor={e.cada_dia_1 === "mantener" ? "mantener" : "revisar"}
-                              onChange={(v) => alCambiarCadaDia1(e.id, v)} />
-                </div>
-              )}
-              {porEstrategia?.get(e.id) && (
-                <CambiosEstrategia resumen={porEstrategia.get(e.id)!} />
-              )}
-              </div>
-            ))}
-          </div>
+                {(e.estado === "apuntada" || e.estado === "jugando") && (
+                  <div className="mias-renovacion">
+                    <span>{t("strategies_next_month")}</span>
+                    <div inert={pendiente || undefined}>
+                      <Segmentado<"revisar" | "mantener"> pequeno etiquetaGrupo={t("strategies_next_month_for", { name: e.nombre })}
+                        opciones={[{ valor: "revisar", etiqueta: t("strategies_review") }, { valor: "mantener", etiqueta: t("strategies_keep") }]}
+                        valor={e.cada_dia_1 === "mantener" ? "mantener" : "revisar"}
+                        onChange={(v) => alCambiarCadaDia1(e.id, v)} />
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })}
         </div>
       )}
 
       {typeof seguimiento === "string" && (
         <p className="meta" role="status" style={{ marginTop: 12 }}>
-          No se pudo cargar el seguimiento: {seguimiento}
+          {t("strategies_tracking_error", { message: seguimiento })}
         </p>
       )}
 
       {aviso && <p className="aviso" role="alert" style={{ marginTop: 16 }}>{aviso}</p>}
-
-      <div className="cta">
-        <Link href="/crear" className="btn wide">Crear otra estrategia</Link>
-      </div>
 
       <BarraPestanas />
     </main>

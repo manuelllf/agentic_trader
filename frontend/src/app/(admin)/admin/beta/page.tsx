@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import {
   getDemoStatus,
   getHistory,
@@ -36,6 +37,7 @@ import type {
   WatchItem,
 } from "@/lib/types";
 import SalaDoor from "@/components/SalaDoor";
+import { LanguageSelector } from "@/i18n/LanguageSelector";
 import { fmtScore, fmtTime, money } from "@/lib/format";
 import { richText } from "@/lib/richText";
 import { useOrden } from "@/lib/useOrden";
@@ -50,9 +52,13 @@ import { ScoreRowItem } from "./ScoreRowItem";
 import { CardHead, Details, Empty, Kpi, SectorChip } from "./ui";
 
 /* ---------- helpers ---------- */
-const ACTION_LABEL: Record<TradeAction, string> = {
-  comprar: "Comprar", ampliar: "Ampliar", mantener: "Mantener",
-  recortar: "Recortar", vender: "Vender",
+const ACTION_KEY: Record<TradeAction, "beta_action_buy" | "beta_action_add" | "beta_action_hold" | "beta_action_trim" | "beta_action_sell"> = {
+  comprar: "beta_action_buy", ampliar: "beta_action_add", mantener: "beta_action_hold",
+  recortar: "beta_action_trim", vender: "beta_action_sell",
+};
+const MACRO_KEY: Record<string, "beta_macro_risk_on" | "beta_macro_neutral" | "beta_macro_risk_off" | "beta_macro_unknown"> = {
+  "risk-on": "beta_macro_risk_on", neutral: "beta_macro_neutral",
+  "risk-off": "beta_macro_risk_off", desconocido: "beta_macro_unknown",
 };
 const MACRO_STYLE: Record<string, string> = {
   "risk-on": "bg-[#6BBE8A]/10 text-[#6BBE8A] ring-[#6BBE8A]/30",
@@ -82,7 +88,7 @@ const SOMBRA_MONO = "var(--font-sombra-mono), ui-monospace, 'SFMono-Regular', mo
 /** Próximo último día de bolsa del mes (la fecha de la próxima DECISIÓN de cartera). Aproximado:
  *  último día laborable del mes (sin festivos); la fecha exacta la marca el calendario NYSE del
  *  scheduler. */
-function nextDecisionLabel(): string {
+function nextDecisionLabel(locale: "es" | "en"): string {
   const lastSession = (y: number, m: number) => {
     const d = new Date(y, m + 1, 0, 23, 59);
     while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
@@ -91,7 +97,7 @@ function nextDecisionLabel(): string {
   const now = new Date();
   let d = lastSession(now.getFullYear(), now.getMonth());
   if (d.getTime() <= now.getTime()) d = lastSession(now.getFullYear(), now.getMonth() + 1);
-  return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
+  return d.toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { weekday: "short", day: "numeric", month: "short" });
 }
 
 type PosSortKey = "label" | "weightPct" | "avg_cost" | "price" | "value" | "pct";
@@ -107,6 +113,9 @@ export default function SombraDashboard() {
 }
 
 function SombraRoom() {
+  const t = useTranslations();
+  const locale = useLocale() as "es" | "en";
+  const scanText = { t, prefix: "beta" as const, locale };
   const [ledger, setLedger] = useState<LedgerSnapshot | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [scores, setScores] = useState<ScoreRow[]>([]);
@@ -164,12 +173,12 @@ function SombraRoom() {
       setLedger(l);
       setError(null);
     } catch (e) {
-      if (alive.current) setError(e instanceof Error ? e.message : "No se pudo contactar con el backend.");
+      if (alive.current) setError(e instanceof Error ? e.message : t("beta_backend_contact_error"));
     } finally {
       hasLoadedOnce.current = true;
       if (alive.current) setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     alive.current = true;
@@ -212,51 +221,51 @@ function SombraRoom() {
     const box = preset === "x" ? darkChartBox.current : chartBox.current;
     const svg = box?.querySelector("svg");
     if (!svg) return;
-    setExportMsg("Componiendo…");
+    setExportMsg(t("beta_composing"));
     try {
       const { downloadChartCard, CARD_THEMES, themeForPreset } = await import("@/lib/exportCard");
       const theme = CARD_THEMES[themeForPreset(preset)];
       const hoy = new Date();
       await downloadChartCard({
         preset,
-        title: "¿Bate al mercado?",
-        subtitle: "Vennett · ranker fundamental sistemático",
+        title: t("beta_market_question"),
+        subtitle: t("beta_brand_subtitle"),
         badges: [
-          ...(perf?.since ? [{ text: `desde el ${fmtDay(perf.since)}` }] : []),
-          { text: `datos a ${fmtDay(hoy.toISOString().slice(0, 10))}` },
+          ...(perf?.since ? [{ text: t("beta_since", { date: fmtDay(perf.since, locale) }) }] : []),
+          { text: t("beta_data_as_of", { date: fmtDay(hoy.toISOString().slice(0, 10), locale) }) },
         ],
         panels: [{
-          label: "CARTERA SOMBRA VS S&P 500",
-          note: "índice base 100 · las aportaciones no cuentan como rentabilidad",
+          label: t("beta_shadow_vs_index"),
+          note: t("beta_indexed_contributions_note"),
           stats: [
             // El titular del PNG es la cartera; índice y alpha, secundarios (mismo criterio
             // que en la web: la comparación acompaña, no compite).
-            { label: "CARTERA", value: `${sign(perf?.portfolio_return_pct ?? 0)}${perf?.portfolio_return_pct ?? 0}%`,
+            { label: t("beta_portfolio"), value: `${sign(perf?.portfolio_return_pct ?? 0)}${perf?.portfolio_return_pct ?? 0}%`,
               color: (perf?.portfolio_return_pct ?? 0) >= 0 ? theme.accent : theme.bad },
             { label: "S&P 500", value: `${sign(perf?.spy_return_pct ?? 0)}${perf?.spy_return_pct ?? 0}%`,
               color: theme.ink2, secondary: true },
             ...(perf?.alpha_pct != null
-              ? [{ label: "ALPHA", value: `${sign(perf.alpha_pct)}${perf.alpha_pct}%`,
+              ? [{ label: t("beta_alpha"), value: `${sign(perf.alpha_pct)}${perf.alpha_pct}%`,
                    color: perf.alpha_pct >= 0 ? theme.accent : theme.bad, secondary: true }]
               : []),
           ],
           body: svg as SVGSVGElement,
         }],
-        footer: "No constituye recomendación de inversión · operaciones simuladas, sin dinero real · rentabilidad neta de comisiones simuladas",
+        footer: t("beta_export_disclaimer"),
         filename: `vennett-${hoy.toISOString().slice(0, 10)}`,
       });
       setExportMsg("");
     } catch (e) {
-      setExportMsg(e instanceof Error ? e.message : "No se pudo exportar.");
+      setExportMsg(e instanceof Error ? e.message : t("beta_export_error"));
     }
-  }, [perf]);
+  }, [perf, locale, t]);
 
   /** La tarjeta del escaneo. El embudo es el método y es SIEMPRE el mismo (el martes de enero
    *  y el de agosto sacan números parecidos): eso se explica una vez, en el observatorio. En
    *  una DECISIÓN mensual lo que hay que contar es otra cosa — qué cambió en la cartera —, así
    *  que ahí el panel principal pasa a ser la rotación y el embudo baja a una línea al pie. */
   const exportarEmbudo = useCallback(async (preset: "x" | "linkedin") => {
-    setExportEmbudoMsg("Componiendo…");
+    setExportEmbudoMsg(t("beta_composing"));
     try {
       const [{ downloadChartCard, quoteSvg, CARD_THEMES, themeForPreset },
              { funnelCascadeSvg, funnelPie, rotationSvg }] = await Promise.all([
@@ -265,65 +274,63 @@ function SombraRoom() {
       ]);
       const theme = CARD_THEMES[themeForPreset(preset)];
       const esDecision = report?.mode === "decisión";
-      const u = universoLinea(report);
-      const coste = fmtScanCost(report?.cost ?? null);
-      const dia = fmtDay(report?.at ?? new Date().toISOString());
-      const pasos = cascada(report, funnel);
+      const u = universoLinea(report, scanText);
+      const coste = fmtScanCost(report?.cost ?? null, scanText);
+      const dia = fmtDay(report?.at ?? new Date().toISOString(), locale);
+      const pasos = cascada(report, funnel, scanText);
       // El macro DE ESTE escaneo manda (datos de mercado; en escaneos viejos, la previsión del
       // LLM); el resumen de la última decisión es el respaldo para informes sin él.
       const tesis = report?.outlook?.trim() || proposal?.macro_summary?.trim();
       const tesisPropia = !!report?.outlook?.trim();
       const panelPrincipal = esDecision
         ? {
-            label: "LA ROTACIÓN",
+            label: t("beta_rotation"),
             note: u ? `${u.texto} · ${u.detalle.split(" · ")[0]}` : undefined,
             weight: tesis ? 1.15 : 1,
-            body: rotationSvg(proposal?.items ?? [], pasos, theme),
+            body: rotationSvg(proposal?.items ?? [], pasos, theme, scanText),
           }
         : {
             // Rótulo corto a propósito: la apostilla de al lado se recorta al ancho del panel,
             // y el universo (lo que de verdad da la escala) importa más que un rótulo bonito.
-            label: "EL EMBUDO",
+            label: t("beta_funnel"),
             // Solo el primer tramo del detalle: la apostilla es contexto, no la línea entera.
             note: u ? `${u.texto} · ${u.detalle.split(" · ")[0]}` : undefined,
             weight: tesis ? 0.85 : 1,
             body: funnelCascadeSvg(pasos, theme, funnelPie(pasos, sectoresTop(funnel, 3),
-              (funnel?.sin_datos ?? 0) + (funnel?.prescore_error ?? 0))),
+              (funnel?.sin_datos ?? 0) + (funnel?.prescore_error ?? 0), scanText), locale),
           };
       await downloadChartCard({
         preset,
-        title: esDecision ? "La rotación de la cartera" : "El embudo del escaneo",
-        subtitle: "Vennett · ranker fundamental sistemático",
+        title: esDecision ? t("beta_rotation_title") : t("beta_funnel_title"),
+        subtitle: t("beta_brand_subtitle"),
         badges: [
-          { text: `${esDecision ? "decisión mensual" : "observatorio semanal"} · ${dia}` },
-          ...(macro ? [{ text: `${macro.regime}${macro.vix != null ? ` · VIX ${macro.vix}` : ""}`,
+          { text: `${t(esDecision ? "beta_monthly_decision" : "beta_weekly_observatory")} · ${dia}` },
+          ...(macro ? [{ text: `${t(MACRO_KEY[macro.regime] ?? "beta_macro_unknown")}${macro.vix != null ? ` · VIX ${macro.vix}` : ""}`,
                          tone: macro.regime === "risk-off" ? ("amber" as const) : ("green" as const) }] : []),
-          ...(coste ? [{ text: coste.split(" · ")[0] + " de coste" }] : []),
+          ...(coste ? [{ text: t("beta_cost_label", { cost: coste.split(" · ")[0] }) }] : []),
         ],
         panels: [
           panelPrincipal,
           // Los números solos no concluyen nada: la tesis es el marco que los interpreta, y va
           // ÍNTEGRA y con su autoría — es del sistema, no mía.
           ...(tesis
-            ? [{ label: tesisPropia ? "EL MACRO QUE VIO" : "SU TESIS",
+            ? [{ label: tesisPropia ? t("beta_macro_seen") : t("beta_its_thesis"),
                  // Si no es de este escaneo, la tarjeta lo dice: emparejar la decisión con un
                  // contexto de hace semanas sin avisar sería mentir.
                  note: tesisPropia
-                   ? "íntegro, tal como entró en este escaneo"
-                   : `íntegra, de la decisión del ${fmtDay(proposal?.created_at ?? null)}`,
+                   ? t("beta_intact_as_scanned")
+                   : t("beta_intact_from_decision", { date: fmtDay(proposal?.created_at ?? null, locale) }),
                  weight: esDecision ? 0.85 : 1.15, body: quoteSvg(tesis, theme) }]
             : []),
         ],
-        footer: esDecision
-          ? "No constituye recomendación de inversión · pesos objetivo, no ejecutados · operaciones simuladas, sin dinero real"
-          : "No constituye recomendación de inversión · agregados por etapa y sector, sin nombres · operaciones simuladas, sin dinero real",
+        footer: esDecision ? t("beta_rotation_disclaimer") : t("beta_funnel_disclaimer"),
         filename: `vennett-${esDecision ? "rotacion" : "embudo"}-${(report?.at ?? new Date().toISOString()).slice(0, 10)}`,
       });
       setExportEmbudoMsg("");
     } catch (e) {
-      setExportEmbudoMsg(e instanceof Error ? e.message : "No se pudo exportar.");
+      setExportEmbudoMsg(e instanceof Error ? e.message : t("beta_export_error"));
     }
-  }, [report, funnel, proposal, macro]);
+  }, [report, funnel, proposal, macro, locale, t, scanText]);
 
   /** "¿Eligió bien?": retorno medio por grupo (cartera · elegidos sin fondear · descartados ·
    *  S&P) y la frontera del corte en el pie. Requiere una cohorte con cartera fondeada y con
@@ -334,8 +341,8 @@ function SombraRoom() {
     // Solo DECISIONES reales: la cartera de un observatorio es la construcción hipotética de
     // ese martes, y venderla como "¿eligió bien?" en la tarjeta insignia sería mentir.
     const c = outcomes.find((s) => s.mode === "decisión" && s.groups.cartera.n > 0 && s.days >= 5);
-    if (!c) { setExportGruposMsg("No disponible aún: sin decisiones con historial suficiente"); return; }
-    setExportGruposMsg("Componiendo…");
+    if (!c) { setExportGruposMsg(t("beta_no_decisions_history")); return; }
+    setExportGruposMsg(t("beta_composing"));
     try {
       const [{ downloadChartCard, CARD_THEMES, themeForPreset }, { groupBarsSvg }] = await Promise.all([
         import("@/lib/exportCard"),
@@ -345,45 +352,45 @@ function SombraRoom() {
       const pct = (v: number | null) => (v == null ? "—" : `${sign(v)}${v.toFixed(1)}%`);
       const g = c.groups;
       const barras = [
-        ...(g.cartera.n ? [{ label: "en cartera", value: g.cartera.avg ?? 0,
+        ...(g.cartera.n ? [{ label: t("beta_held"), value: g.cartera.avg ?? 0,
                              n: g.cartera.n, kind: "acento" as const }] : []),
-        ...(g.seleccionados.n ? [{ label: "elegidos sin fondear", value: g.seleccionados.avg ?? 0,
+        ...(g.seleccionados.n ? [{ label: t("beta_selected_unfunded"), value: g.seleccionados.avg ?? 0,
                                    n: g.seleccionados.n }] : []),
-        ...(g.descartados.n ? [{ label: "descartados", value: g.descartados.avg ?? 0,
+        ...(g.descartados.n ? [{ label: t("beta_discarded"), value: g.descartados.avg ?? 0,
                                  n: g.descartados.n }] : []),
         ...(g.spy != null ? [{ label: "S&P 500", value: g.spy, kind: "indice" as const }] : []),
       ];
       const frontera = c.corte.fuera.n && c.corte.dentro.n
-        ? `la frontera del corte: los ${c.corte.fuera.n} mejores que quedaron fuera ${pct(c.corte.fuera.avg)} · los ${c.corte.dentro.n} peores que entraron ${pct(c.corte.dentro.avg)}`
+        ? t("beta_cut_frontier", { outside: c.corte.fuera.n, outsideReturn: pct(c.corte.fuera.avg), inside: c.corte.dentro.n, insideReturn: pct(c.corte.dentro.avg) })
         : "";
       await downloadChartCard({
         preset,
-        title: "¿Eligió bien?",
-        subtitle: "Vennett · ranker fundamental sistemático",
+        title: t("beta_pick_question"),
+        subtitle: t("beta_brand_subtitle"),
         badges: [
-          { text: `${c.mode} del ${fmtDay(c.at)}` },
-          { text: `${c.days} día${c.days === 1 ? "" : "s"} de mercado después` },
+          { text: `${t(c.mode === "decisión" ? "beta_decision" : "beta_observation")} · ${fmtDay(c.at, locale)}` },
+          { text: t("beta_market_days_after", { count: c.days }) },
         ],
         panels: [{
-          label: "RETORNO MEDIO POR GRUPO",
-          note: "a igual peso dentro de cada grupo · desde el precio del día del escaneo",
+          label: t("beta_avg_return_by_group"),
+          note: t("beta_same_weight_scan_price"),
           body: groupBarsSvg(barras, theme, frontera),
         }],
-        footer: "No constituye recomendación de inversión · agregados de la traza de auditoría, sin nombres · operaciones simuladas, sin dinero real",
+        footer: t("beta_audit_export_disclaimer"),
         filename: `vennett-eligio-bien-${c.at.slice(0, 10)}`,
       });
       setExportGruposMsg("");
     } catch (e) {
-      setExportGruposMsg(e instanceof Error ? e.message : "No se pudo exportar.");
+      setExportGruposMsg(e instanceof Error ? e.message : t("beta_export_error"));
     }
-  }, [outcomes]);
+  }, [outcomes, locale, t]);
 
   /** "¿El score predice?": la nube score↔retorno, un punto por análisis a fondo. Requiere
    *  alguna cohorte con 5+ días de mercado Y pares que dibujar; sin eso, guard igual que arriba. */
   const exportarOutcomesScore = useCallback(async (preset: "x" | "linkedin") => {
     const c = outcomes.find((s) => s.days >= 5 && s.pairs.length > 0);
-    if (!c) { setExportScoreMsg("No disponible aún: sin cohortes con historial suficiente"); return; }
-    setExportScoreMsg("Componiendo…");
+    if (!c) { setExportScoreMsg(t("beta_no_cohorts_history")); return; }
+    setExportScoreMsg(t("beta_composing"));
     try {
       const [{ downloadChartCard, CARD_THEMES, themeForPreset }, { scatterSvg }] = await Promise.all([
         import("@/lib/exportCard"),
@@ -392,26 +399,26 @@ function SombraRoom() {
       const theme = CARD_THEMES[themeForPreset(preset)];
       await downloadChartCard({
         preset,
-        title: "¿El score predice?",
-        subtitle: "Vennett · ranker fundamental sistemático",
+        title: t("beta_score_question"),
+        subtitle: t("beta_brand_subtitle"),
         badges: [
-          { text: `${c.mode} del ${fmtDay(c.at)}` },
-          { text: `${c.days} día${c.days === 1 ? "" : "s"} de mercado después` },
-          { text: `${c.pairs.length} análisis a fondo`, tone: "green" as const },
+          { text: `${t(c.mode === "decisión" ? "beta_decision" : "beta_observation")} · ${fmtDay(c.at, locale)}` },
+          { text: t("beta_market_days_after", { count: c.days }) },
+          { text: t("beta_deep_analyses_count", { count: c.pairs.length }), tone: "green" as const },
         ],
         panels: [{
-          label: "SCORE VS RETORNO",
-          note: "cada punto, un análisis a fondo, sin identificar · en verde, los del libro",
+          label: t("beta_score_vs_return"),
+          note: t("beta_score_chart_note"),
           body: scatterSvg(c.pairs.map((p) => ({ score: p.score, ret: p.ret, funded: p.funded })), theme),
         }],
-        footer: "No constituye recomendación de inversión · agregados de la traza de auditoría, sin nombres · operaciones simuladas, sin dinero real",
+        footer: t("beta_audit_export_disclaimer"),
         filename: `vennett-score-predice-${c.at.slice(0, 10)}`,
       });
       setExportScoreMsg("");
     } catch (e) {
-      setExportScoreMsg(e instanceof Error ? e.message : "No se pudo exportar.");
+      setExportScoreMsg(e instanceof Error ? e.message : t("beta_export_error"));
     }
-  }, [outcomes]);
+  }, [outcomes, locale, t]);
 
   const equity = ledger ? Number(ledger.equity) : 0;
   const heldSet = new Set((ledger?.positions ?? []).map((p) => p.ticker));
@@ -453,7 +460,7 @@ function SombraRoom() {
       <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-[#0A0A0A] text-sm text-[#6E6E6B]"
            style={{ fontFamily: SOMBRA_SANS }}>
         <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#383838] border-t-[#4FA39D]" />
-        <p>Cargando Beta…</p>
+        <p>{t("beta_loading")}</p>
       </div>
     );
   }
@@ -468,7 +475,7 @@ function SombraRoom() {
       {loading && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-[#0A0A0A]/95 text-sm text-[#6E6E6B]">
           <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#383838] border-t-[#4FA39D]" />
-          <p>Actualizando…</p>
+          <p>{t("beta_refreshing")}</p>
         </div>
       )}
       <div className="mx-auto max-w-[1500px] px-4 py-6 lg:px-6">
@@ -477,9 +484,10 @@ function SombraRoom() {
             normal, no clavada arriba (feedback 12-sep-2026, "el header AI slop fuera"). */}
         <div className="mb-4 flex items-center justify-between">
           <Link href="/admin" className="text-[12px] font-semibold text-[#6E6E6B] transition-colors hover:underline">
-            ← Salas
+            ← {t("beta_rooms")}
           </Link>
           <div className="flex items-center gap-2">
+            <LanguageSelector />
             <SalaDoor to="alpha" />
             <SalaDoor to="omega" />
           </div>
@@ -499,13 +507,13 @@ function SombraRoom() {
             </p>
             {macro && (
               <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${MACRO_STYLE[macro.regime] ?? MACRO_STYLE.desconocido}`}>
-                {macro.regime}{macro.vix != null && ` · VIX ${macro.vix}`}
+                {t(MACRO_KEY[macro.regime] ?? "beta_macro_unknown")}{macro.vix != null && ` · VIX ${macro.vix}`}
               </span>
             )}
           </div>
-          <h1 className="mt-1 text-[26px] font-bold text-white">Ranker fundamental sistemático</h1>
+          <h1 className="mt-1 text-[26px] font-bold text-white">{t("beta_ranker_title")}</h1>
           <p className="mt-2 max-w-[46ch] text-[14px] text-[#A3A3A0]">
-            Réplica pública de Alpha, en papel: mismo motor, sin dinero real.
+            {t("beta_ranker_intro")}
           </p>
         </header>
 
@@ -516,8 +524,8 @@ function SombraRoom() {
               {error}
             </span>
             <div className="flex items-center gap-2">
-              <button onClick={() => { setLoading(true); refresh(); }} className="rounded-lg bg-[#E0776C] px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-[#c05f55]">Reintentar</button>
-              <button onClick={() => setError(null)} className="text-[#E0776C] hover:text-[#e89890]" aria-label="Cerrar">✕</button>
+              <button onClick={() => { setLoading(true); refresh(); }} className="rounded-lg bg-[#E0776C] px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-[#c05f55]">{t("beta_retry")}</button>
+              <button onClick={() => setError(null)} className="text-[#E0776C] hover:text-[#e89890]" aria-label={t("beta_close")}>✕</button>
             </div>
           </div>
         )}
@@ -526,20 +534,20 @@ function SombraRoom() {
             cabecera (macro.regime + VIX) -- repetirlo aquí abajo, dos veces en pantalla, era la
             "cabecera de risa" del feedback 9-sep-2026. */}
         <section className={`mb-6 grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-3 lg:grid-cols-5 ${SECTION}`}>
-          <Kpi label="Patrimonio" value={`$${money(equity)}`} accent />
-          <Kpi label="Caja" value={`$${money(ledger?.cash ?? 0)}`} />
-          <Kpi label="Invertido" value={`$${money(ledger?.positions_value ?? 0)}`} />
-          <Kpi label="P&L abierto" value={`$${money(ledger?.unrealized_pnl ?? 0)}`}
+          <Kpi label={t("beta_total_assets")} value={`$${money(equity)}`} accent />
+          <Kpi label={t("beta_cash")} value={`$${money(ledger?.cash ?? 0)}`} />
+          <Kpi label={t("beta_invested")} value={`$${money(ledger?.positions_value ?? 0)}`} />
+          <Kpi label={t("beta_open_pnl")} value={`$${money(ledger?.unrealized_pnl ?? 0)}`}
                tone={Number(ledger?.unrealized_pnl ?? 0) >= 0 ? "pos" : "neg"}
-               sub={`realizado $${money(ledger?.realized_pnl ?? 0)}`} />
+               sub={t("beta_realized_amount", { amount: money(ledger?.realized_pnl ?? 0) })} />
           {/* El titular es LO QUE LLEVA LA CARTERA; el índice y el alpha son el contexto y
               van en la línea pequeña — la comparación nunca por delante del resultado. */}
-          <Kpi label="Rentabilidad"
+          <Kpi label={t("beta_return")}
                value={perf ? `${sign(perf.portfolio_return_pct)}${perf.portfolio_return_pct}%` : "—"}
                sub={perf?.spy_return_pct != null
                  ? `S&P ${sign(perf.spy_return_pct)}${perf.spy_return_pct}%${perf.alpha_pct != null
-                     ? ` · alpha ${sign(perf.alpha_pct)}${perf.alpha_pct}%` : ""}`
-                 : "sin cartera"}
+                     ? ` · ${t("beta_alpha")} ${sign(perf.alpha_pct)}${perf.alpha_pct}%` : ""}`
+                 : t("beta_no_portfolio")}
                tone={perf ? (perf.portfolio_return_pct >= 0 ? "pos" : "neg") : undefined} />
         </section>
 
@@ -548,8 +556,8 @@ function SombraRoom() {
           <section className={`mb-6 ${SECTION}`}>
             <div>
               <p className="text-[16px] font-bold text-white">
-                ¿Bate al mercado?{" "}
-                {perf?.since && <span className="text-[13px] font-normal text-[#6E6E6B]">desde el {fmtDay(perf.since)}</span>}
+                {t("beta_market_question")}{" "}
+                {perf?.since && <span className="text-[13px] font-normal text-[#6E6E6B]">{t("beta_since", { date: fmtDay(perf.since, locale) })}</span>}
               </p>
               {perf?.spy_return_pct != null && (
                 <div className="mt-1.5 flex flex-wrap items-baseline gap-x-7 gap-y-1 tabular-nums">
@@ -557,7 +565,7 @@ function SombraRoom() {
                     <span className={`text-3xl font-bold tracking-tight ${perf.portfolio_return_pct >= 0 ? "text-[#6BBE8A]" : "text-[#E0776C]"}`}>
                       {sign(perf.portfolio_return_pct)}{perf.portfolio_return_pct}%
                     </span>
-                    <span className="ml-1.5 text-xs text-[#6E6E6B]">cartera</span>
+                    <span className="ml-1.5 text-xs text-[#6E6E6B]">{t("beta_portfolio")}</span>
                   </span>
                   {/* Un escalón claro por debajo de la cartera: la referencia acompaña, no
                       compite — mismo criterio que en la landing y en los KPI. */}
@@ -570,14 +578,14 @@ function SombraRoom() {
                       <span className={`text-sm font-semibold ${perf.alpha_pct >= 0 ? "text-[#6BBE8A]" : "text-[#E0776C]"}`}>
                         {sign(perf.alpha_pct)}{perf.alpha_pct}%
                       </span>
-                      <span className="ml-1.5 text-xs text-[#6E6E6B]">alpha</span>
+                    <span className="ml-1.5 text-xs text-[#6E6E6B]">{t("beta_alpha")}</span>
                     </span>
                   )}
                   {/* Secundario: solo lo que queda abierto tras la última rotación. */}
                   {perf.open_return_pct != null && perf.open_return_pct !== perf.portfolio_return_pct && (
                     <span>
                       <span className="text-sm font-semibold text-[#6E6E6B]">{sign(perf.open_return_pct)}{perf.open_return_pct}%</span>
-                      <span className="ml-1.5 text-xs text-[#6E6E6B]">posiciones abiertas</span>
+                      <span className="ml-1.5 text-xs text-[#6E6E6B]">{t("beta_open_positions")}</span>
                     </span>
                   )}
                 </div>
@@ -603,10 +611,10 @@ function SombraRoom() {
         {/* 2 · La cartera — tabla densa; la tesis expande por fila (con sesión) */}
         <section className={`mb-6 ${SECTION}`}>
           <CardHead>
-            La cartera{perf && perf.positions.length > 0 ? ` · ${perf.positions.length} posiciones` : ""}
+            {t("beta_portfolio")}{perf && perf.positions.length > 0 ? ` · ${t("beta_positions_count", { count: perf.positions.length })}` : ""}
             {investedPct > 0 && (
               <span className="ml-2 font-normal normal-case tracking-normal text-[#6E6E6B]">
-                {investedPct.toFixed(0)}% invertido
+                {t("beta_percent_invested", { pct: investedPct.toFixed(0) })}
               </span>
             )}
           </CardHead>
@@ -619,50 +627,50 @@ function SombraRoom() {
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-wider text-[#6E6E6B]">
                       <th className="py-2 pr-3 font-semibold" aria-sort={posAriaSort("label")}>
-                        <button onClick={() => togglePosSort("label")} aria-label="Ordenar por posición"
+                        <button onClick={() => togglePosSort("label")} aria-label={t("beta_sort_position")}
                                 className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
-                          Posición
+                          {t("beta_position")}
                           {posSortKey === "label" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
                         </button>
                       </th>
                       {!anon && (
                         <th className="px-3 py-2 text-right font-semibold" aria-sort={posAriaSort("weightPct")}>
-                          <button onClick={() => togglePosSort("weightPct")} aria-label="Ordenar por peso"
+                          <button onClick={() => togglePosSort("weightPct")} aria-label={t("beta_sort_weight")}
                                   className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
-                            Peso
+                            {t("beta_weight")}
                             {posSortKey === "weightPct" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
                           </button>
                         </th>
                       )}
                       {!anon && (
                         <th className="px-3 py-2 text-right font-semibold" aria-sort={posAriaSort("avg_cost")}>
-                          <button onClick={() => togglePosSort("avg_cost")} aria-label="Ordenar por coste medio"
+                          <button onClick={() => togglePosSort("avg_cost")} aria-label={t("beta_sort_cost")}
                                   className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
-                            Coste medio
+                            {t("beta_avg_cost")}
                             {posSortKey === "avg_cost" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
                           </button>
                         </th>
                       )}
                       {!anon && (
                         <th className="px-3 py-2 text-right font-semibold" aria-sort={posAriaSort("price")}>
-                          <button onClick={() => togglePosSort("price")} aria-label="Ordenar por último precio"
+                          <button onClick={() => togglePosSort("price")} aria-label={t("beta_sort_price")}
                                   className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
-                            Último
+                            {t("beta_latest")}
                             {posSortKey === "price" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
                           </button>
                         </th>
                       )}
                       {!anon && (
                         <th className="px-3 py-2 text-right font-semibold" aria-sort={posAriaSort("value")}>
-                          <button onClick={() => togglePosSort("value")} aria-label="Ordenar por valor"
+                          <button onClick={() => togglePosSort("value")} aria-label={t("beta_sort_value")}
                                   className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
-                            Valor
+                            {t("beta_value")}
                             {posSortKey === "value" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
                           </button>
                         </th>
                       )}
                       <th className="px-3 py-2 text-right font-semibold" aria-sort={posAriaSort("pct")}>
-                        <button onClick={() => togglePosSort("pct")} aria-label="Ordenar por P&L"
+                        <button onClick={() => togglePosSort("pct")} aria-label={t("beta_sort_pnl")}
                                 className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
                           P&L
                           {posSortKey === "pct" && <span className="text-[8px]">{posSortDir === "desc" ? "↓" : "↑"}</span>}
@@ -680,7 +688,7 @@ function SombraRoom() {
                       return (
                         <PositionRows
                           key={label ?? i} anon={anon} color={POS_COLOR[i % POS_COLOR.length]}
-                          label={label ?? `Posición ${i + 1}`} sector={srow?.sector} pos={p}
+                          label={label ?? t("beta_position_number", { count: i + 1 })} sector={srow?.sector} pos={p}
                           weightPct={weightPct} up={up} pct={pct} open={open} srow={srow}
                           onToggle={() => p.ticker && setOpenPos(open ? null : p.ticker)}
                         />
@@ -690,9 +698,9 @@ function SombraRoom() {
                 </table>
               </div>
               <p className="border-t border-[#303030] px-4 py-2 text-[11px] tabular-nums text-[#6E6E6B]">
-                caja ${money(ledger?.cash ?? 0)}{equity > 0 ? ` (${(100 - investedPct).toFixed(0)}%)` : ""} ·
-                patrimonio ${money(equity)} · P&L realizado ${money(ledger?.realized_pnl ?? 0)}
-                {anon ? " · detalle por posición: acceso privado" : " · pincha una fila para su tesis"}
+                {t("beta_cash_amount", { amount: money(ledger?.cash ?? 0) })}{equity > 0 ? ` (${(100 - investedPct).toFixed(0)}%)` : ""} ·
+                {t("beta_assets_amount", { amount: money(equity) })} · {t("beta_realized_pnl_amount", { amount: money(ledger?.realized_pnl ?? 0) })}
+                {anon ? ` · ${t("beta_private_position_detail")}` : ` · ${t("beta_row_thesis_hint")}`}
               </p>
             </>
           )}
@@ -704,7 +712,7 @@ function SombraRoom() {
           <>
           <div className="mb-6 grid gap-6 md:grid-cols-2">
             <Details defaultOpen head={<>
-                El embudo del último escaneo
+                {t("beta_latest_scan_funnel")}
                 {report?.at && (
                   <span className="ml-2 font-normal normal-case tracking-normal text-[#6E6E6B]">
                     {fmtTime(report.at)}
@@ -714,7 +722,7 @@ function SombraRoom() {
               <div className="p-4 text-xs leading-relaxed text-[#A3A3A0]">
                 <FunnelCascade report={report} scan={funnel} />
                 <p className="mt-2 border-t border-[#303030] pt-2 text-[11px] text-[#6E6E6B]">
-                  cada martes se estudia el mercado entero; la cartera solo se decide una vez al mes
+                  {t("beta_public_funnel_schedule")}
                 </p>
                 <ExportButtons onExport={exportarEmbudo} msg={exportEmbudoMsg} />
               </div>
@@ -724,7 +732,7 @@ function SombraRoom() {
                 <path d="M7 11V7a5 5 0 0 1 10 0v4M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <p className="max-w-xs text-sm text-[#6E6E6B]">
-                Qué nombres elige — decisión mensual y ranking — es acceso privado
+                {t("beta_private_names")}
               </p>
             </section>
           </div>
@@ -737,17 +745,17 @@ function SombraRoom() {
             {/* 3 · Decisión mensual + 4 · Observatorio semanal */}
             <div className="mb-6 grid gap-6 md:grid-cols-2">
               <Details defaultOpen head={<>
-                  Decisión{proposal?.created_at ? ` del ${fmtDay(proposal.created_at)}` : ""}
+                  {t("beta_decision")}{proposal?.created_at ? ` · ${fmtDay(proposal.created_at, locale)}` : ""}
                   <span className="ml-2 font-normal normal-case tracking-normal text-[#6E6E6B]">
-                    próxima: {nextDecisionLabel()}
+                    {t("beta_next_decision", { date: nextDecisionLabel(locale) })}
                   </span>
                 </>}>
                 <div className="p-4 text-xs leading-relaxed text-[#A3A3A0]">
                   {trades.length === 0 ? (
                     <p className="text-[#6E6E6B]">
                       {items.length > 0
-                        ? "La última decisión mantuvo la cartera tal cual — cero operaciones."
-                        : "Aún no hay ninguna decisión de cartera."}
+                        ? t("beta_no_trades_last_decision")
+                        : t("beta_no_decision")}
                     </p>
                   ) : (
                     <div className="space-y-1">
@@ -757,7 +765,7 @@ function SombraRoom() {
                         return (
                           <p key={it.ticker} className="tabular-nums">
                             <span className={done ? "text-[#6BBE8A]" : "text-[#565654]"}>{done ? "✓" : "○"}</span>{" "}
-                            {ACTION_LABEL[it.action]} <b className="font-semibold text-white">{it.ticker}</b>
+                            {t(ACTION_KEY[it.action])} <b className="font-semibold text-white">{it.ticker}</b>
                             {it.target_weight_pct ? ` · ${it.target_weight_pct}%` : ""}
                             {it.score != null && <span className="text-[#6E6E6B]"> · score {fmtScore(it.score)}</span>}
                           </p>
@@ -766,14 +774,14 @@ function SombraRoom() {
                     </div>
                   )}
                   {proposal != null && (
-                    <p className="mt-2 tabular-nums text-[#6E6E6B]">objetivo en caja {proposal.cash_target_pct}%</p>
+                    <p className="mt-2 tabular-nums text-[#6E6E6B]">{t("beta_cash_target", { pct: proposal.cash_target_pct })}</p>
                   )}
                   {(proposal?.omitted ?? []).length > 0 && (
                     // Los que se quedaron fuera del top-10. Fondear 5 de 10 obliga a descartar
                     // 5, así que el interés no es el "no" sino el motivo escrito.
                     <details className="mt-2 border-t border-[#303030] pt-2">
                       <summary className="cursor-pointer list-none text-[11px] text-[#6E6E6B] hover:text-[#A3A3A0]">
-                        se quedaron fuera {proposal?.omitted?.length} de los seleccionados ▾
+                        {t("beta_omitted_summary", { omitted: proposal?.omitted?.length ?? 0 })} ▾
                       </summary>
                       <div className="mt-1.5 space-y-1">
                         {(proposal?.omitted ?? []).map((o) => (
@@ -794,7 +802,7 @@ function SombraRoom() {
               </Details>
 
               <Details defaultOpen head={<>
-                  Observatorio semanal
+                  {t("beta_weekly_observatory")}
                   {report?.at && (
                     <span className="ml-2 font-normal normal-case tracking-normal text-[#6E6E6B]">
                       {fmtTime(report.at)}
@@ -805,7 +813,7 @@ function SombraRoom() {
                   <FunnelCascade report={report} scan={funnel} />
                   {scores.length > 0 && (
                     <p className="mt-2.5">
-                      top del ranking:{" "}
+                      {t("beta_ranking_top")}:{" "}
                       {scores.slice(0, 3).map((s, i) => (
                         <span key={s.ticker}>
                           {i > 0 && " · "}
@@ -821,7 +829,7 @@ function SombraRoom() {
                       onClick={() => setRankingOpen(true)}
                       className="mt-1.5 text-[11px] font-medium text-[#6E6E6B] underline decoration-[#303030] underline-offset-2 transition hover:text-[#A3A3A0]"
                     >
-                      ver el ranking de este observatorio
+                      {t("beta_view_observatory_ranking")}
                     </button>
                   )}
                   {watchTop.length > 0 && (
@@ -836,7 +844,7 @@ function SombraRoom() {
                         </span>
                       ))}
                       {watchTop.length > 10 && (
-                        <span className="text-[11px] text-[#6E6E6B]">+{watchTop.length - 10} en seguimiento</span>
+                        <span className="text-[11px] text-[#6E6E6B]">{t("beta_more_followed", { count: watchTop.length - 10 })}</span>
                       )}
                     </div>
                   )}
@@ -845,7 +853,7 @@ function SombraRoom() {
                     // tarjeta de la decisión, y confundirlos sería mezclar dos fechas distintas.
                     <details className="mt-2 border-t border-[#303030] pt-2">
                       <summary className="cursor-pointer list-none text-[11px] text-[#6E6E6B] hover:text-[#A3A3A0]">
-                        el macro de este escaneo ▾
+                        {t("beta_scan_macro")} ▾
                       </summary>
                       <div className="mt-1.5 text-[11.5px] italic leading-relaxed text-[#6E6E6B]">
                         “{richText(report.outlook)}”
@@ -853,7 +861,7 @@ function SombraRoom() {
                     </details>
                   )}
                   <p className="mt-2 border-t border-[#303030] pt-2 text-[11px] text-[#6E6E6B]">
-                    la cartera no se toca hasta la decisión mensual (o un análisis manual)
+                    {t("beta_portfolio_decision_schedule")}
                   </p>
                   <ExportButtons onExport={exportarEmbudo} msg={exportEmbudoMsg} />
                 </div>
@@ -868,19 +876,19 @@ function SombraRoom() {
             {/* 5 · Ranking a fondo — sección propia, con buscador y filtro por sector */}
             <div className="mb-6">
             <Details head={<>
-                  Ranking a fondo
+                  {t("beta_deep_ranking")}
                   {/* El ranking visible es el de la DECISIÓN (el semanal ya no lo pisa, solo
                       refresca coincidencias): sin esta etiqueta parecería la foto del último
                       escaneo, que es justo lo que dejó de ser. */}
                   <span className="ml-2 text-[13px] font-normal tracking-normal text-[#6E6E6B]">
-                    {proposal?.created_at ? `decisión del ${fmtDay(proposal.created_at)}` : ""}
+                    {proposal?.created_at ? t("beta_decision_on", { date: fmtDay(proposal.created_at, locale) }) : ""}
                     {report?.mode === "observatorio" && (report?.refreshed ?? 0) > 0
-                      ? ` · ${report?.refreshed} refrescados el ${fmtDay(report?.at ?? null)}`
+                      ? ` · ${t("beta_refreshed_on", { count: report?.refreshed ?? 0, date: fmtDay(report?.at ?? null, locale) })}`
                       : ""}
                     {" · "}
-                    {funnel?.deep ?? report?.deep ?? scores.length} analizados a fondo
+                    {t("beta_deep_analyzed_count", { count: funnel?.deep ?? report?.deep ?? scores.length })}
                     {(funnel?.pre ?? report?.prescored)
-                      ? ` · ${fmtNum(funnel?.pre ?? report?.prescored ?? 0)} pre-cribados`
+                      ? ` · ${t("beta_prescreened_count", { count: fmtNum(funnel?.pre ?? report?.prescored ?? 0) })}`
                       : ""}
                   </span>
                 </>}>
@@ -891,12 +899,12 @@ function SombraRoom() {
                 <>
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <input
-                      value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ticker o tesis…"
-                      aria-label="Buscar ticker o tesis"
+                      value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("beta_search_placeholder")}
+                      aria-label={t("beta_search_aria")}
                       className="h-8 w-44 rounded-lg border border-[#303030] bg-[#1C1C1C] px-2.5 text-xs text-[#A3A3A0] outline-none placeholder:text-[#565654] focus:ring-2 focus:ring-[#6BBE8A]/30"
                     />
                     <div className="flex flex-wrap gap-1">
-                      <SectorChip active={!sectorF} onClick={() => setSectorF(null)}>Todos</SectorChip>
+                      <SectorChip active={!sectorF} onClick={() => setSectorF(null)}>{t("beta_all")}</SectorChip>
                       {sectors.map((sec) => (
                         <SectorChip key={sec} active={sectorF === sec}
                                     onClick={() => setSectorF(sectorF === sec ? null : sec)}>
@@ -907,7 +915,7 @@ function SombraRoom() {
                   </div>
                   {scoresView.length === 0 ? (
                     <p className="border-t border-[#303030] py-8 text-center text-sm text-[#6E6E6B]">
-                      Nada coincide con ese filtro.
+                      {t("beta_no_filter_matches")}
                     </p>
                   ) : (
                     <div className="divide-y divide-[#303030]">
@@ -923,7 +931,7 @@ function SombraRoom() {
         )}
 
         <footer className="mt-10 border-t border-[#303030] pt-4 text-center text-[11px] text-[#6E6E6B]">
-          No constituye recomendación de inversión · Beta · operaciones simuladas, sin dinero real · metodología tipo whitepaper DeepSeek
+          {t("beta_footer_disclaimer")}
         </footer>
 
         {/* Overlay del ranking semanal: vista PRIVADA, sin export — un ranking con tickers
@@ -939,11 +947,11 @@ function SombraRoom() {
             >
               <div className="sticky top-0 flex items-center justify-between border-b border-[#303030] bg-[#1C1C1C]/95 px-4 py-2.5 backdrop-blur">
                 <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6B]">
-                  Ranking de este observatorio
+                  {t("beta_observatory_ranking")}
                 </h2>
                 <button
                   onClick={() => setRankingOpen(false)}
-                  aria-label="Cerrar"
+                  aria-label={t("beta_close")}
                   className="text-[#6E6E6B] hover:text-[#A3A3A0]"
                 >
                   ✕

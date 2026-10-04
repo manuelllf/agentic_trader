@@ -74,7 +74,7 @@ def bd_origen(monkeypatch):  # noqa: ANN001, ANN201
 
     cx = psycopg.connect(URL, autocommit=True)
     uid = uuid.uuid4()
-    cx.execute("insert into auth.users (id, email) values (%s, %s)",
+    cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
               (uid, f"{uid.hex[:12]}@prueba.local"))
     # El disparador `liga_alta_usuario` ya crea el perfil (y el rol) al insertar en `auth.users`.
     try:

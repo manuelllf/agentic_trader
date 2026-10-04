@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { notFound } from "next/navigation";
 import { Boton } from "../_ui/Boton";
 import { Cargando } from "../_ui/Cargando";
@@ -28,6 +29,7 @@ function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) 
 }
 
 export default function Muestrario() {
+  const t = useTranslations();
   const [cargandoDemo, setCargandoDemo] = useState(false);
 
   // Solo existe fuera de producción: aquí, y solo aquí, los datos son inventados a propósito
@@ -38,14 +40,13 @@ export default function Muestrario() {
 
   return (
     <main className="scroll">
-      <h1 className="h1">Muestrario</h1>
+      <h1 className="h1">{t("strategies_showcase_title")}</h1>
       <p className="meta">
-        Piezas de <code>_ui</code> con valores de ejemplo (inventados, solo para esta pantalla).
-        No existe en producción.
+        {t("strategies_showcase_intro")}
       </p>
 
-      <Seccion titulo="Cuenta">
-        <p className="fine">Cabecera con sesión y el menú abierto (el de verdad se abre al tocar).</p>
+      <Seccion titulo={t("strategies_showcase_account")}>
+        <p className="fine">{t("strategies_showcase_account_note")}</p>
         <div className="sencilla-top" style={{ marginTop: 12, paddingBottom: 150 }}>
           <span className="wordmark">Vennett</span>
           <div className="cuenta">
@@ -57,54 +58,54 @@ export default function Muestrario() {
               </svg>
             </button>
             <div className="cuenta-menu" role="menu">
-              <a className="cuenta-item" role="menuitem" href="#">Tu cuenta</a>
-              <a className="cuenta-item" role="menuitem" href="#">Panel de control</a>
-              <button type="button" className="cuenta-item salir" role="menuitem">Salir</button>
+              <a className="cuenta-item" role="menuitem" href="#">{t("strategies_showcase_your_account")}</a>
+              <a className="cuenta-item" role="menuitem" href="#">{t("strategies_showcase_admin")}</a>
+              <button type="button" className="cuenta-item salir" role="menuitem">{t("strategies_showcase_sign_out")}</button>
             </div>
           </div>
         </div>
       </Seccion>
 
-      <Seccion titulo="Escudo">
-        <p className="fine">Formas × dibujos, y los tres de la casa con su glifo.</p>
+      <Seccion titulo={t("strategies_showcase_crest")}>
+        <p className="fine">{t("strategies_showcase_crest_note")}</p>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>
-          <Escudo valor={ESCUDO_A} etiqueta="Escudo de Foso ancho" tamano={34} />
-          <Escudo valor={ESCUDO_B} etiqueta="Escudo de Solo lo que entiendo" tamano={34} />
-          <Escudo valor={ESCUDO_C} etiqueta="Escudo de Tortuga golosa" tamano={34} />
-          <Escudo valor={ESCUDO_D} etiqueta="Escudo de Marca que aguanta" tamano={34} />
-          <Escudo valor={escudoCasa("alpha")} etiqueta="Escudo de la casa: Alpha" tamano={34} />
-          <Escudo valor={escudoCasa("omega")} etiqueta="Escudo de la casa: Omega" tamano={34} />
-          <Escudo valor={escudoCasa("lambda")} etiqueta="Escudo de la casa: Lambda" tamano={34} />
+          <Escudo valor={ESCUDO_A} etiqueta={t("strategies_showcase_crest_name", { name: t("strategies_showcase_wide_moat") })} tamano={34} />
+          <Escudo valor={ESCUDO_B} etiqueta={t("strategies_showcase_crest_name", { name: t("strategies_showcase_understand") })} tamano={34} />
+          <Escudo valor={ESCUDO_C} etiqueta={t("strategies_showcase_crest_name", { name: t("strategies_showcase_turtle") })} tamano={34} />
+          <Escudo valor={ESCUDO_D} etiqueta={t("strategies_showcase_crest_name", { name: t("strategies_showcase_durable_brand") })} tamano={34} />
+          <Escudo valor={escudoCasa("alpha")} etiqueta={t("strategies_showcase_house_crest", { name: "Alpha" })} tamano={34} />
+          <Escudo valor={escudoCasa("omega")} etiqueta={t("strategies_showcase_house_crest", { name: "Omega" })} tamano={34} />
+          <Escudo valor={escudoCasa("lambda")} etiqueta={t("strategies_showcase_house_crest", { name: "Lambda" })} tamano={34} />
         </div>
-        <p className="fine">A 52 px (tamaño de ficha):</p>
+        <p className="fine">{t("strategies_showcase_detail_size")}</p>
         <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
-          <Escudo valor={ESCUDO_A} etiqueta="Escudo de Foso ancho" tamano={52} />
-          <Escudo valor={escudoCasa("omega")} etiqueta="Escudo de la casa: Omega" tamano={52} />
+          <Escudo valor={ESCUDO_A} etiqueta={t("strategies_showcase_crest_name", { name: t("strategies_showcase_wide_moat") })} tamano={52} />
+          <Escudo valor={escudoCasa("omega")} etiqueta={t("strategies_showcase_house_crest", { name: "Omega" })} tamano={52} />
         </div>
       </Seccion>
 
-      <Seccion titulo="Boton">
+      <Seccion titulo={t("strategies_showcase_button")}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-          <Boton variante="principal">Crear la mía</Boton>
-          <Boton variante="secundario">Copiar código</Boton>
-          <Boton variante="discreto">Deshacer</Boton>
+          <Boton variante="principal">{t("strategies_showcase_create_mine")}</Boton>
+          <Boton variante="secundario">{t("strategies_showcase_copy_code")}</Boton>
+          <Boton variante="discreto">{t("strategies_showcase_undo")}</Boton>
           <div style={{ display: "flex", gap: 10 }}>
-            <Boton variante="secundario" ancho="flex">Volver</Boton>
-            <Boton variante="principal" ancho="flex">Apuntarla</Boton>
+            <Boton variante="secundario" ancho="flex">{t("strategies_showcase_back")}</Boton>
+            <Boton variante="principal" ancho="flex">{t("strategies_showcase_sign_it_up")}</Boton>
           </div>
-          <Boton variante="secundario" tamano="pequeno">Cambiar</Boton>
-          <Boton variante="principal" disabled>Sin crédito suficiente</Boton>
+          <Boton variante="secundario" tamano="pequeno">{t("strategies_showcase_change")}</Boton>
+          <Boton variante="principal" disabled>{t("strategies_showcase_insufficient_credit")}</Boton>
         </div>
       </Seccion>
 
-      <Seccion titulo="Chip">
+      <Seccion titulo={t("strategies_showcase_chip")}>
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <Chip>Pro</Chip>
           <Chip onClick={() => setCargandoDemo((v) => !v)}>3,10 €</Chip>
         </div>
       </Seccion>
 
-      <Seccion titulo="Cifra">
+      <Seccion titulo={t("strategies_showcase_number")}>
         <div style={{ display: "flex", gap: 20, marginTop: 12, fontSize: 19, fontWeight: 800 }}>
           <Cifra valor={2.3} />
           <Cifra valor={-1.6} />
@@ -112,29 +113,29 @@ export default function Muestrario() {
         </div>
       </Seccion>
 
-      <Seccion titulo="Tarjeta">
+      <Seccion titulo={t("strategies_showcase_card")}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
           <Tarjeta>
-            <b style={{ display: "block", fontSize: 16, color: "var(--ink)" }}>Poca deuda</b>
+            <b style={{ display: "block", fontSize: 16, color: "var(--ink)" }}>{t("strategies_showcase_low_debt")}</b>
             <span style={{ fontSize: 13.5, color: "var(--muted)" }}>
-              deuda neta de menos de 2 años de beneficio operativo
+              {t("strategies_showcase_low_debt_note")}
             </span>
           </Tarjeta>
           <Tarjeta elevada>
-            <b style={{ display: "block", fontSize: 16, color: "var(--ink)" }}>Tarjeta elevada</b>
-            <span style={{ fontSize: 13.5, color: "var(--muted)" }}>flota sobre el fondo, con sombra</span>
+            <b style={{ display: "block", fontSize: 16, color: "var(--ink)" }}>{t("strategies_showcase_raised_card")}</b>
+            <span style={{ fontSize: 13.5, color: "var(--muted)" }}>{t("strategies_showcase_raised_card_note")}</span>
           </Tarjeta>
         </div>
       </Seccion>
 
-      <Seccion titulo="Clasificacion (con FilaEquipo)">
+      <Seccion titulo={t("strategies_showcase_standings_row")}>
         <Clasificacion>
           <FilaEquipo
             puesto={1}
-            nombre="Foso ancho"
+            nombre={t("strategies_showcase_wide_moat")}
             escudo={ESCUDO_A}
             resultados={["G", "G", "E"]}
-            etiqueta="publicada"
+            etiqueta={t("strategies_showcase_published")}
             vsIndice={4.8}
             puntos={7}
             acumulado={{rentabilidad: 9.8, sp500: 5, diferencia_pp: 4.8, desde: "2026-04-01", hasta: "2026-06-30", periodos: 3, incompleta: false}}
@@ -145,7 +146,7 @@ export default function Muestrario() {
             nombre="Alpha"
             escudo={escudoCasa("alpha")}
             resultados={["G", "E", "G"]}
-            etiqueta="de la casa"
+            etiqueta={t("strategies_showcase_home_team_label")}
             vsIndice={3.1}
             puntos={7}
             tipo="casa"
@@ -155,22 +156,22 @@ export default function Muestrario() {
           />
           <FilaEquipo
             puesto={3}
-            nombre="Tortuga golosa"
+            nombre={t("strategies_showcase_turtle")}
             escudo={ESCUDO_C}
             resultados={["P", "E", "G"]}
-            etiqueta="privada"
+            etiqueta={t("strategies_showcase_private")}
             vsIndice={-0.6}
             puntos={4}
             acumulado={{rentabilidad: -1.6, sp500: -1, diferencia_pp: -.6, desde: "2026-04-01", hasta: "2026-06-30", periodos: 3, incompleta: false}}
             movimiento={-1}
           />
-          <HuecoClasificacion>y 8 más hasta la tuya</HuecoClasificacion>
+          <HuecoClasificacion>{t("strategies_showcase_more_to_yours", { count: 8 })}</HuecoClasificacion>
           <FilaEquipo
             puesto={12}
-            nombre="Tu estrategia"
+            nombre={t("strategies_showcase_your_strategy")}
             escudo={ESCUDO_D}
             resultados={["E", "P", "G"]}
-            etiqueta="la tuya"
+            etiqueta={t("strategies_showcase_your_team_label")}
             vsIndice={1.1}
             puntos={5}
             tipo="mia"
@@ -178,21 +179,21 @@ export default function Muestrario() {
             movimiento={null}
             abrible={false}
           />
-          <HuecoClasificacion>y 130 más</HuecoClasificacion>
+          <HuecoClasificacion>{t("strategies_showcase_more", { count: 130 })}</HuecoClasificacion>
         </Clasificacion>
       </Seccion>
 
-      <Seccion titulo="Vacio">
+      <Seccion titulo={t("strategies_showcase_empty")}>
         <Vacio
-          titulo="Aún no juegas"
-          texto="Si creas tu estrategia hoy, entra en la próxima jornada y empieza de cero como todas."
-          accion={{ texto: "Crear la mía", onClick: () => {} }}
+          titulo={t("strategies_showcase_not_playing")}
+          texto={t("strategies_showcase_not_playing_note")}
+          accion={{ texto: t("strategies_showcase_create_mine"), onClick: () => {} }}
         />
       </Seccion>
 
-      <Seccion titulo="Cargando">
+      <Seccion titulo={t("strategies_showcase_loading")}>
         <Boton variante="secundario" onClick={() => setCargandoDemo((v) => !v)}>
-          {cargandoDemo ? "Ver datos" : "Ver esqueleto"}
+          {cargandoDemo ? t("strategies_showcase_show_data") : t("strategies_showcase_show_skeleton")}
         </Boton>
         <div style={{ marginTop: 12 }}>
           {cargandoDemo ? (
@@ -201,10 +202,10 @@ export default function Muestrario() {
             <Clasificacion>
               <FilaEquipo
                 puesto={1}
-                nombre="Foso ancho"
+                nombre={t("strategies_showcase_wide_moat")}
                 escudo={ESCUDO_A}
                 resultados={["G", "G", "E"]}
-                etiqueta="publicada"
+                etiqueta={t("strategies_showcase_published")}
                 vsIndice={4.8}
                 puntos={7}
               />
@@ -213,11 +214,11 @@ export default function Muestrario() {
         </div>
       </Seccion>
 
-      <Seccion titulo="ErrorLiga">
+      <Seccion titulo={t("strategies_showcase_error")}>
         <ErrorLiga
-          titulo="No se pudo cargar la clasificación"
-          mensaje="El servidor no ha respondido. Vuelve a intentarlo en un momento."
-          accion={{ texto: "Reintentar", onClick: () => {} }}
+          titulo={t("strategies_showcase_standings_error")}
+          mensaje={t("strategies_showcase_server_error")}
+          accion={{ texto: t("strategies_showcase_retry"), onClick: () => {} }}
         />
       </Seccion>
     </main>

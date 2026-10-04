@@ -1,3 +1,6 @@
+"use client";
+
+import { useLocale, useTranslations } from "next-intl";
 import type { ScanReport } from '@/lib/api';
 import { InfoTip } from '@/components/InfoTip';
 import { cascada, fmtNum, fmtScanCost, sectoresTop, universoLinea, type FunnelScan } from '@/lib/scan';
@@ -6,16 +9,18 @@ import { cascada, fmtNum, fmtScanCost, sectoresTop, universoLinea, type FunnelSc
  *  Es PÚBLICO a propósito — cuenta cómo se comporta el sistema sin nombrar a nadie, que es
  *  justo la línea que separa "así funciona" de un feed de señales. */
 export function FunnelCascade({ report, scan }: { report: ScanReport | null; scan: FunnelScan | null }) {
-  const pasos = cascada(report, scan);
-  const universo = universoLinea(report);
+  const t = useTranslations();
+  const locale: "es" | "en" = useLocale() === "en" ? "en" : "es";
+  const text = { t, prefix: "beta" as const, locale };
+  const pasos = cascada(report, scan, text);
+  const universo = universoLinea(report, text);
   const sectores = sectoresTop(scan, 4);
-  const coste = fmtScanCost(report?.cost ?? null);
+  const coste = fmtScanCost(report?.cost ?? null, text);
 
   if (!pasos.length) {
     return (
       <p className="text-[#6E6E6B]">
-        Cada martes el agente estudia el mercado entero para aprender. Aún no hay traza del
-        último escaneo.
+        {t("beta_no_scan_trace")}
       </p>
     );
   }
@@ -23,7 +28,7 @@ export function FunnelCascade({ report, scan }: { report: ScanReport | null; sca
     <>
       {universo && (
         <p className={universo.tone === "ok" ? "text-[#6E6E6B]" : "font-medium text-[#fab219]"}>
-          universo <b className="tabular-nums font-semibold text-white">{universo.texto}</b>
+          {t("beta_universe")} <b className="tabular-nums font-semibold text-white">{universo.texto}</b>
           <span className="text-[#6E6E6B]"> · {universo.detalle}</span>
         </p>
       )}
@@ -33,7 +38,7 @@ export function FunnelCascade({ report, scan }: { report: ScanReport | null; sca
             {i > 0 && <span className="text-[#565654]" aria-hidden>→</span>}
             <div className="rounded-lg bg-[#232323] px-2.5 py-1.5 ring-1 ring-inset ring-white/10">
               <p className="text-[15px] font-semibold leading-none tabular-nums text-white">
-                {fmtNum(p.value)}
+                {fmtNum(p.value, locale)}
               </p>
               <p className="mt-0.5 flex items-center gap-1 text-[10.5px] leading-none text-[#6E6E6B]">
                 {p.label}
@@ -50,16 +55,16 @@ export function FunnelCascade({ report, scan }: { report: ScanReport | null; sca
       </div>
       {sectores.length > 0 && (
         <p className="mt-2 text-[11px] text-[#6E6E6B]">
-          a fondo por sector:{" "}
+          {t("beta_deep_by_sector")}{" "}
           {sectores.map((s, i) => (
             <span key={s.sector} className="tabular-nums">
               {i > 0 && " · "}{s.sector} <b className="font-semibold text-[#A3A3A0]">{s.deep}</b>
-              <span className="text-[#6E6E6B]">/{fmtNum(s.pre)}</span>
+              <span className="text-[#6E6E6B]">/{fmtNum(s.pre, locale)}</span>
             </span>
           ))}
         </p>
       )}
-      {coste && <p className="mt-1 text-[11px] tabular-nums text-[#6E6E6B]">coste del escaneo {coste}</p>}
+      {coste && <p className="mt-1 text-[11px] tabular-nums text-[#6E6E6B]">{t("beta_scan_cost", { cost: coste })}</p>}
       {(report?.issues ?? []).length > 0 && (
         <ul className="mt-2 space-y-0.5 text-[11px] text-[#fab219]">
           {(report?.issues ?? []).map((it) => (

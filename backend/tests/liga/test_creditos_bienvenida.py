@@ -35,7 +35,7 @@ def cx():
 
 def _nueva_cuenta(cx) -> uuid.UUID:  # noqa: ANN001
     uid = uuid.uuid4()
-    cx.execute("insert into auth.users (id, email) values (%s, %s)",
+    cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
                (uid, f"{uid.hex[:12]}@prueba.local"))
     cx.creados.append(uid)
     return uid
@@ -66,3 +66,46 @@ def test_el_importe_se_cambia_desde_ajustes_y_cero_lo_apaga(cx) -> None:  # noqa
 def test_un_valor_que_no_es_numero_no_rompe_el_alta_y_usa_el_defecto(cx) -> None:  # noqa: ANN001
     cx.execute("insert into liga.ajustes (clave, valor) values ('creditos.bienvenida', 'true')")
     assert [float(i) for i, _m, _k in _movimientos(cx, _nueva_cuenta(cx))] == [15.0]
+
+
+def test_registro_reserva_alias_y_regala_solo_al_confirmar(cx) -> None:  # noqa: ANN001
+    uid = uuid.uuid4()
+    nombre = "u_" + uid.hex[:12]
+    cx.execute("insert into liga.ajustes (clave, valor) values ('liga.registro.abierto', 'true') "
+               "on conflict (clave) do update set valor = 'true'")
+    try:
+        cx.execute("insert into auth.users (id, email, raw_user_meta_data) values (%s, %s, %s)",
+                   (uid, f"{uid.hex}@prueba.local",
+                    '{"alias": "' + nombre + '", "terminos_version": "1"}'))
+        cx.creados.append(uid)
+        perfil = cx.execute("select alias from liga.perfiles where id = %s", (uid,)).fetchone()
+        assert perfil[0] == nombre
+        assert _movimientos(cx, uid) == []
+        import psycopg
+
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            cx.execute("insert into auth.users (id, email, raw_user_meta_data) values (%s, %s, %s)",
+                       (uuid.uuid4(), f"duplicado_{uid.hex}@prueba.local",
+                        '{"alias": "' + nombre + '", "terminos_version": "1"}'))
+        assert cx.execute("select count(*) from liga.consentimientos where usuario_id = %s",
+                          (uid,)).fetchone()[0] == 2
+        cx.execute("update auth.users set email_confirmed_at = now() where id = %s", (uid,))
+        cx.execute("update auth.users set email_confirmed_at = now() where id = %s", (uid,))
+        assert len(_movimientos(cx, uid)) == 1
+        assert float(_movimientos(cx, uid)[0][0]) == 15
+    finally:
+        cx.execute("delete from liga.ajustes where clave = 'liga.registro.abierto'")
+
+
+def test_registro_cerrado_rechaza_alta_directa_en_auth(cx) -> None:  # noqa: ANN001
+    import psycopg
+
+    cx.execute("insert into liga.ajustes (clave, valor) values ('liga.registro.abierto', 'false') "
+               "on conflict (clave) do update set valor = 'false'")
+    try:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            cx.execute("insert into auth.users (id, email, raw_user_meta_data) values (%s, %s, %s)",
+                       (uuid.uuid4(), "cerrado@prueba.local",
+                        '{"alias": "cerrado", "terminos_version": "1"}'))
+    finally:
+        cx.execute("delete from liga.ajustes where clave = 'liga.registro.abierto'")

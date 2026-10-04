@@ -74,7 +74,7 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
 
     def usuario(pro: bool = False) -> str:
         uid = uuid.uuid4()
-        cx.execute("insert into auth.users (id, email) values (%s, %s)",
+        cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
                   (uid, f"{uid.hex[:12]}@prueba.local"))
         creado["usuarios"].append(uid)  # ya se limpia aunque falle lo de abajo
         if pro:

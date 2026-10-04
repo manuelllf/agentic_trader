@@ -1,6 +1,8 @@
 // Piezas de presentacion pura reutilizadas por varias tarjetas/modales de Omega: nada de
 // estado de negocio ni llamadas a la API aqui, solo layout.
+"use client";
 import { useEffect, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { NUMS, T } from '../tokens';
 import type { Regimen } from '../types';
 
@@ -41,10 +43,12 @@ export function Section({ title, count, children }: { title: string; count?: num
 /** Sección colapsada por defecto (Validación histórica / Candidatos / Universo en el mockup
  *  usan `<details>` sin `open`) — aquí con un botón para poder controlar el chevron a mano. */
 export function Collapsible({ title, count, children }: { title: string; count?: number | string; children: React.ReactNode }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [open, setOpen] = useState(false);
   return (
     <div className="mb-6 border" style={{ borderColor: T.grid }}>
-      <button onClick={() => setOpen((o) => !o)}
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={t(open ? "omega_collapse" : "omega_expand")}
               className="flex w-full items-center justify-between px-4 py-3.5 text-left">
         <span className="text-[16px] font-bold" style={{ color: T.ink }}>
           {title}{" "}
@@ -61,6 +65,8 @@ export function Collapsible({ title, count, children }: { title: string; count?:
  *  informativo -- nunca bloquea entradas, ver docs/momentum-sim/RESULTADOS.md para el porqué
  *  (un único episodio histórico real, sin base para automatizarlo todavía). */
 export function RegimenChip({ regimen }: { regimen: Regimen }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   if (regimen.cesta_60d == null) return null;
   const feo = regimen.activo;
   return (
@@ -69,17 +75,17 @@ export function RegimenChip({ regimen }: { regimen: Regimen }) {
       <div className="flex items-center gap-2">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: feo ? T.bad : T.muted }} />
         <span style={{ color: T.ink2 }}>
-          Salud del universo (60d):{" "}
+          {t("omega_universe_health")} (60d):{" "}
           <b className={NUMS} style={{ color: feo ? T.bad : T.ink }}>{regimen.cesta_60d.toFixed(1)}%</b>
         </span>
       </div>
       {/* Leyenda SIEMPRE visible, no solo al pasar el ratón -- en móvil el title del tooltip
           nunca se ve. */}
       <p className="mt-1 pl-3.5 text-[9.5px] leading-snug" style={{ color: T.muted }}>
-        Cómo le ha ido, de media, al conjunto de tickers del universo en los últimos 3 meses.{" "}
+        {t("omega_universe_health_help")}{" "}
         {feo
-          ? "Por debajo de este nivel el sector lleva tiempo cayendo por su cuenta aunque el mercado esté bien -- informativo, no bloquea nada."
-          : "Solo referencia, no bloquea ninguna entrada."}
+          ? t("omega_regime_below_help")
+          : t("omega_regime_reference_help")}
       </p>
     </div>
   );
@@ -95,12 +101,14 @@ export function Empty({ children }: { children: React.ReactNode }) {
 }
 
 export function CargarMasBtn({ onClick, restantes }: { onClick: () => void; restantes: number }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   return (
     <div className="mt-2 text-center">
       <button onClick={onClick}
               className="rounded-full border px-4 py-1.5 text-[11.5px] font-semibold transition-colors hover:bg-white/5"
               style={{ borderColor: T.ring, color: T.ink2 }}>
-        Cargar 5 más ({restantes} ocultas)
+        {t("omega_load_more", { count: restantes })}
       </button>
     </div>
   );
@@ -134,6 +142,8 @@ export function Toggle({ checked, onChange, disabled }: { checked: boolean; onCh
 /** Mensaje de resultado bajo la cabecera (escaneo/detección manual): se borra solo a los 6s,
  *  o al momento con la X -- antes se quedaba pegado hasta el siguiente clic en ese botón. */
 export function AvisoTemporal({ texto, onCerrar }: { texto: string; onCerrar: () => void }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   useEffect(() => {
     const t = setTimeout(onCerrar, 6000);
     return () => clearTimeout(t);
@@ -143,7 +153,7 @@ export function AvisoTemporal({ texto, onCerrar }: { texto: string; onCerrar: ()
     <div className="mb-3 flex items-center justify-between gap-2 text-[11px]"
          style={{ color: T.muted }}>
       <span>{texto}</span>
-      <button onClick={onCerrar} aria-label="Cerrar aviso" className="shrink-0 hover:opacity-70">✕</button>
+      <button onClick={onCerrar} aria-label={t("omega_close_notice")} className="shrink-0 hover:opacity-70">✕</button>
     </div>
   );
 }

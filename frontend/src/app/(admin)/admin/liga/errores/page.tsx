@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, get, post } from "@/lib/api";
 
@@ -16,12 +17,13 @@ type Aviso = {
 type Lista = { total: number; filas: Aviso[] };
 
 const CUANTOS = 50;
-const error = (e: unknown) => (e instanceof ApiError ? e.message : "Algo falló. Reintenta.");
-const CUANDO = new Intl.DateTimeFormat("es-ES", {
-  day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-});
+const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 function Errores() {
+  const t = useTranslations();
+  const locale = useLocale();
+  const CUANDO = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const errorText = useCallback((e: unknown) => error(e, t("admin_generic_error")), [t]);
   const [estado, setEstado] = useState<"abierto" | "resuelto">("abierto");
   const [lista, setLista] = useState<Lista | null>(null);
   const [fallo, setFallo] = useState("");
@@ -33,8 +35,8 @@ function Errores() {
     const n = ++ultima.current;
     get<Lista>(`/liga/admin/errores?estado=${e}&cuantos=${CUANTOS}`)
       .then((r) => { if (n === ultima.current) setLista(r); })
-      .catch((err) => { if (n === ultima.current) setFallo(error(err)); });
-  }, []);
+      .catch((err) => { if (n === ultima.current) setFallo(errorText(err)); });
+  }, [errorText]);
   useEffect(() => { setLista(null); cargar(estado); }, [cargar, estado]);
 
   const resolver = async (a: Aviso) => {
@@ -42,14 +44,14 @@ function Errores() {
     try {
       await post(`/liga/admin/errores/${a.id}/resolver`);
       cargar(estado);
-    } catch (e) { setFallo(error(e)); } finally { setOcupado(null); }
+    } catch (e) { setFallo(errorText(e)); } finally { setOcupado(null); }
   };
 
   return (
     <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
-      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>← Vennett</Link>
+      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_vennett")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
-          style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>Errores</h1>
+          style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_errors_title")}</h1>
 
       <div className="mt-3 flex gap-2">
         {(["abierto", "resuelto"] as const).map((e) => (
@@ -57,23 +59,23 @@ function Errores() {
                   className="min-h-[44px] rounded-lg px-4 font-bold"
                   style={{ background: estado === e ? "#3987e5" : "#2c2c2a",
                            color: estado === e ? "#fff" : "#c3c2b7" }}>
-            {e === "abierto" ? "Abiertos" : "Resueltos"}
+            {e === "abierto" ? t("admin_errors_opened") : t("admin_errors_resolved")}
           </button>
         ))}
       </div>
 
       {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
       {!lista ? (
-        !fallo && <p className="mt-6" style={{ color: "#898781" }}>Cargando…</p>
+        !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
       ) : lista.filas.length === 0 ? (
         <p className="mt-6" style={{ color: "#898781" }}>
-          {estado === "abierto" ? "Sin errores pendientes." : "Aún no hay errores resueltos."}
+          {estado === "abierto" ? t("admin_errors_no_open") : t("admin_errors_no_resolved")}
         </p>
       ) : (
         <>
           {lista.total > lista.filas.length && (
             <p className="mt-4" style={{ color: "#e6a667" }}>
-              Hay {lista.total}; aquí salen los {lista.filas.length} más recientes.
+              {t("admin_errors_count", { total: new Intl.NumberFormat(locale).format(lista.total), shown: new Intl.NumberFormat(locale).format(lista.filas.length) })}
             </p>
           )}
           <ul className="mt-4 border-t" style={{ borderColor: "#303030" }}>
@@ -83,7 +85,7 @@ function Errores() {
                   {a.mensaje}
                 </p>
                 <p className="mt-1 break-all" style={{ color: "#898781" }}>
-                  {a.codigo ? `código ${a.codigo} · ` : ""}{a.pantalla} · {a.alias ?? "sin sesión"}
+                  {a.codigo ? t("admin_errors_code", { code: a.codigo }) : ""}{a.pantalla} · {a.alias ?? t("admin_errors_no_session")}
                 </p>
                 {a.nota && <p className="mt-1 break-words">«{a.nota}»</p>}
                 {Object.keys(a.contexto).length > 0 && (
@@ -98,7 +100,7 @@ function Errores() {
                   <button type="button" disabled={ocupado === a.id} onClick={() => resolver(a)}
                           className="mt-2 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
                           style={{ background: "#1f5f3a" }}>
-                    Marcar como resuelto
+                    {t("admin_errors_resolve")}
                   </button>
                 )}
               </li>

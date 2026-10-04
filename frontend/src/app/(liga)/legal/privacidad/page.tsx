@@ -1,132 +1,89 @@
 import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
 import { Contacto, TITULAR } from "../datos";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Privacidad — Vennett" };
+export async function generateMetadata() { const t = await getTranslations(); return { title: `${t("legal_privacy_title")} — Vennett` }; }
 
 // Solo lista los servicios que reciben datos de personas usuarias (no las fuentes de mercado).
 // Si se añade un proveedor, un dato o una analítica, actualizar esta página y la de cookies.
-export default function Privacidad() {
+export default async function Privacidad() {
+  const t = await getTranslations();
   return (
     <PlantillaLegal
-      titulo="Política de privacidad"
+      titulo={t("legal_privacy_policy")}
       resumen={[
-        "Guardamos lo necesario para jugar: correo, nombre de jugador, estrategias y créditos.",
-        "Sin publicidad ni seguimiento de terceros. Registramos tus visitas a la cuenta. No vendemos ni cedemos tus datos.",
-        "La IA es opcional. Si la usas, el texto que escribes se envía a un proveedor (DeepSeek, en China; Jev, en EE. UU.), nunca tu correo.",
-        "Descarga tus datos o borra tu cuenta al momento desde Tu cuenta.",
+        t("legal_privacy_summary_1"), t("legal_privacy_summary_2"), t("legal_privacy_summary_3"), t("legal_privacy_summary_4"),
       ]}
     >
-      <h2>Responsable</h2>
+      <h2>{t("legal_privacy_controller")}</h2>
       <p>
-        {TITULAR.nombre} ({TITULAR.ubicacion}). Contacto: <Contacto />. Más datos en el{" "}
-        <Link href="/legal/aviso">aviso legal</Link>.
+        {TITULAR.nombre} ({t("legal_holder_location")}). {t("legal_contact_label")}: <Contacto />. {t("legal_privacy_more_details")} {" "}
+        <Link href="/legal/aviso">{t("legal_notice_title")}</Link>.
       </p>
 
-      <h2>Qué datos tratamos</h2>
+      <h2>{t("legal_privacy_data_title")}</h2>
       <ul>
-        <li><b>Cuenta</b>: correo, contraseña (cifrada por Supabase; no la vemos), fechas de alta y
-          de acceso, y la IP y el dispositivo de tus sesiones, que Supabase registra por seguridad.</li>
-        <li><b>Perfil</b>: un nombre de jugador (alias) distinto de tu nombre real, que es lo único
-          que ven los demás, y tu tema claro u oscuro. Tu correo no se enseña a nadie.</li>
-        <li><b>Lo que creas</b>: nombre y escudo de tus estrategias, sus reglas, la frase con que las
-          describes, tus borradores, tu pregunta de sí o no, sus resultados y el nombre de tus ligas privadas.</li>
-        <li><b>Visitas a la cuenta</b>: inicio y última actividad de cada visita, incluso cuando
-          recuperas una sesión abierta. Tras 30 minutos sin actividad contamos una nueva visita.
-          También guardamos qué resultados y carteras has revisado. Este registro interno no añade
-          cookies de seguimiento ni recoge IP o dispositivo adicionales.</li>
-        <li><b>Créditos y plan</b>: saldo, movimientos y si tienes el plan Pro.</li>
-        <li><b>Uso de la IA</b>: para qué fue, modelo, tokens, coste y si falló; sin el contenido
-          de tu frase ni de la respuesta.</li>
-        <li><b>Reportes y errores</b>: el motivo de un reporte; en un aviso de error, la pantalla, un
-          código, tu nota opcional y datos técnicos mínimos.</li>
-        <li><b>Constancias</b>: qué documentos legales aceptaste y cuándo, y un registro interno de
-          acciones importantes sobre tu cuenta.</li>
+        <li><b>{t("legal_privacy_account")}</b>: {t("legal_privacy_account_data")}</li>
+        <li><b>{t("legal_privacy_profile")}</b>: {t("legal_privacy_profile_data")}</li>
+        <li><b>{t("legal_privacy_created_content")}</b>: {t("legal_privacy_created_content_data")}</li>
+        <li><b>{t("legal_privacy_account_visits")}</b>: {t("legal_privacy_account_visits_data")}</li>
+        <li><b>{t("legal_privacy_credits_plan")}</b>: {t("legal_privacy_credits_plan_data")}</li>
+        <li><b>{t("legal_privacy_ai_usage")}</b>: {t("legal_privacy_ai_usage_data")}</li>
+        <li><b>{t("legal_privacy_reports_errors")}</b>: {t("legal_privacy_reports_errors_data")}</li>
+        <li><b>{t("legal_privacy_records")}</b>: {t("legal_privacy_records_data")}</li>
       </ul>
       <p>
-        No recogemos tu nombre real, teléfono, dirección, fecha de nacimiento, ubicación ni datos
-        bancarios.
+        {t("legal_privacy_not_collected")}
       </p>
 
-      <h2>Para qué y con qué base legal</h2>
+      <h2>{t("legal_privacy_purpose_basis")}</h2>
       <ul>
-        <li><b>Darte el servicio</b> (art. 6.1.b RGPD): cuenta, estrategias, clasificación y
-          créditos, recuperación de borradores y seguimiento de resultados.</li>
-        <li><b>Seguridad y buen uso</b> (art. 6.1.f): límites de uso, prevención de abusos y
-          moderación de nombres y textos públicos y auditoría interna de accesos a la cuenta.
-          Puedes oponerte (ver «Tus derechos»).</li>
-        <li><b>Funciones de IA</b> (art. 6.1.a): al pulsar el botón consientes que ese texto se
-          envíe al proveedor indicado abajo.</li>
-        <li><b>Obligación legal</b> (art. 6.1.c): si una autoridad competente lo exige.</li>
+        <li><b>{t("legal_privacy_service")}</b> ({t("legal_gdpr_art_6_1_b")}): {t("legal_privacy_service_basis")}</li>
+        <li><b>{t("legal_privacy_security")}</b> ({t("legal_gdpr_art_6_1_f")}): {t("legal_privacy_security_basis")} <Link href="#derechos">{t("legal_privacy_rights_ref")}</Link>.</li>
+        <li><b>{t("legal_privacy_ai_features")}</b> ({t("legal_gdpr_art_6_1_a")}): {t("legal_privacy_ai_basis")}</li>
+        <li><b>{t("legal_privacy_legal_obligation")}</b> ({t("legal_gdpr_art_6_1_c")}): {t("legal_privacy_legal_basis")}</li>
       </ul>
 
-      <h2>Inteligencia artificial y transferencias</h2>
-      <p>Es opcional; puedes jugar solo con las reglas del catálogo. Lo que se envía:</p>
+      <h2>{t("legal_privacy_ai_transfers")}</h2>
+      <p>{t("legal_privacy_ai_optional")}</p>
       <ul>
-        <li><b>Tu frase</b> («Descríbelo con tus palabras») → <b>DeepSeek</b> (China).</li>
-        <li><b>Tu pregunta de sí o no</b> → <b>Jev, de TypeSafe AI</b> (Estados Unidos), junto con
-          datos públicos de cada empresa. Es encargado del tratamiento, con las cláusulas
-          contractuales tipo de la UE, y no entrena sus modelos con lo que recibe.</li>
-        <li>Las lecturas a fondo usan solo datos públicos de empresas. La moderación de nombres es
-          por lista de palabras y revisión humana.</li>
+        <li>{t("legal_privacy_ai_deepseek")}</li><li>{t("legal_privacy_ai_jev")}</li><li>{t("legal_privacy_ai_readings_moderation")}</li>
       </ul>
       <p>
-        DeepSeek trata los datos en China, fuera de la protección del RGPD, y no ofrece cláusulas
-        contractuales tipo; según su política, puede usarlos para mejorar sus servicios. Por eso
-        solo se usa con tu consentimiento expreso (art. 49.1.a RGPD), que das al pulsar el botón.
-        No escribas datos personales en la frase ni en la pregunta.
+        {t("legal_privacy_deepseek_transfer")}
       </p>
       <p>
-        No tomamos decisiones sobre ti basadas solo en un tratamiento automatizado. La IA sugiere y
-        tú decides; sus resultados van marcados como generados por IA.
+        {t("legal_privacy_automated_decisions")}
       </p>
 
-      <h2>Quién más ve tus datos</h2>
-      <p>No vendemos ni cedemos tus datos. Los tratan por nuestra cuenta, como encargados (art. 28 RGPD):</p>
+      <h2>{t("legal_privacy_processors")}</h2>
+      <p>{t("legal_privacy_processors_intro")}</p>
       <ul>
-        <li><b>Supabase</b>: cuentas y base de datos, en la UE (Irlanda).</li>
-        <li><b>Railway</b>: servidor de la aplicación, en Ámsterdam (UE).</li>
-        <li><b>Vercel</b>: sirve esta web; ve tu IP al entrar, como cualquier servidor web.</li>
+        <li>{t("legal_privacy_supabase")}</li><li>{t("legal_privacy_railway")}</li><li>{t("legal_privacy_vercel")}</li>
       </ul>
       <p>
-        Las tres tienen matriz en Estados Unidos. Si un dato sale de la UE, lo hace con las
-        cláusulas contractuales tipo de la Comisión Europea (Supabase, Railway) o con el Marco de
-        Privacidad de Datos UE-EE. UU. (Vercel).
+        {t("legal_privacy_transfers_outside_eu")}
       </p>
 
-      <h2>Cuánto tiempo los guardamos</h2>
+      <h2>{t("legal_privacy_retention")}</h2>
       <ul>
-        <li>Tus datos de cuenta, mientras la tengas. Al borrarla desaparecen tu correo, perfil,
-          créditos, pruebas y consentimientos.</li>
-        <li>Las estrategias que jugaron se quedan en la clasificación histórica como «Estrategia
-          retirada», sin tu alias, sin mostrar sus reglas y sin volver a jugar.</li>
-        <li>Los reportes y avisos de error se conservan sin tu identificador; el registro interno
-          conserva un número interno sin nombre ni correo.</li>
-        <li>Los registros técnicos de los servidores, el tiempo que fija cada proveedor.</li>
-        <li>Las copias de seguridad pueden conservar tus datos un tiempo tras la baja; si se
-          restaurara una, no se recuperan cuentas ya borradas.</li>
+        <li>{t("legal_privacy_retention_account")}</li><li>{t("legal_privacy_retention_strategies")}</li><li>{t("legal_privacy_retention_reports")}</li><li>{t("legal_privacy_retention_logs")}</li><li>{t("legal_privacy_retention_backups")}</li>
       </ul>
 
-      <h2>Tus derechos</h2>
+      <h2 id="derechos">{t("legal_privacy_rights")}</h2>
       <p>
-        Acceso, rectificación, supresión, limitación, oposición, portabilidad y retirada del
-        consentimiento. Desde <Link href="/cuenta">Tu cuenta</Link>, al momento: descargar tus
-        datos (JSON), cambiar tu nombre y tu contraseña, y borrar la cuenta (te pide tu nombre de
-        jugador y tu contraseña; no se puede deshacer). Para lo demás, contacta a través de{" "}
-        <Contacto />. También puedes reclamar ante la Agencia Española de Protección de Datos
-        (aepd.es).
+        {t("legal_privacy_rights_intro")} <Link href="/cuenta">{t("legal_account_link")}</Link>{t("legal_privacy_rights_account_actions")} <Contacto />. {t("legal_privacy_rights_authority")}
       </p>
 
-      <h2>Seguridad y menores</h2>
+      <h2>{t("legal_privacy_security_minors")}</h2>
       <p>
-        Las conexiones van cifradas y la base de datos solo deja a cada persona leer sus propios
-        datos. Vennett es para mayores de 14 años (art. 7 de la Ley Orgánica 3/2018).
+        {t("legal_privacy_security_minors_text")}
       </p>
 
-      <h2>Cambios</h2>
+      <h2>{t("legal_privacy_changes")}</h2>
       <p>
-        Si cambia algo importante, te lo diremos en la app antes de que aplique. La fecha y la
-        versión de arriba indican la vigente.
+        {t("legal_privacy_changes_text")}
       </p>
     </PlantillaLegal>
   );

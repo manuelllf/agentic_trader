@@ -6,6 +6,7 @@ porqués»). Cada lectura o escritura de sistema abre su propia sesión y la cie
 """
 
 from __future__ import annotations
+from app.i18n import translate
 
 import logging
 import threading
@@ -180,7 +181,7 @@ def nueva_version_excluidas(db: Session, estrategia_id: uuid.UUID, ticker: str,
     if quitar == (not si_esta):
         return r
     if not quitar and len(excluidas) >= MAX_EXCLUIDAS:
-        raise HTTPException(422, f"Puedes quitar a mano hasta {MAX_EXCLUIDAS} empresas.")
+        raise HTTPException(422, translate('liga_excluded_limit', count=MAX_EXCLUIDAS))
     excluidas.discard(ticker) if quitar else excluidas.add(ticker)
     nueva = RecetaModelo(
         estrategia_id=estrategia_id, idea=r.idea, reglas=r.reglas, excluidas=sorted(excluidas),

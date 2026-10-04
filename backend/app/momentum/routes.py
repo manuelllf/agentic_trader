@@ -7,6 +7,7 @@ Sin ORM para las tablas momentum_* a propósito (SQL manda, ver [[supabase-db-fi
 son 3 tablas nuevas y sencillas, y esta sala no comparte modelos con el ranker.
 """
 from __future__ import annotations
+from app.i18n import translate
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -382,7 +383,7 @@ def ejecutar(senal_id: int, body: EjecucionIn, db: Session = Depends(get_db)) ->
 
     if body.accion == "venta" and Decimal(str(body.acciones)) > neto_previo:
         raise HTTPException(
-            400, f"Solo hay {neto_previo} acciones abiertas -- no puedes vender {body.acciones}.")
+            400, translate('omega_sell_available', available=neto_previo, requested=body.acciones))
 
     # Dinero a NUMERIC exacto: Decimal desde el texto, nunca el float tal cual.
     db.add(MomentumEjecucion(

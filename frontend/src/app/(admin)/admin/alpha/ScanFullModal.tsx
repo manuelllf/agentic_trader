@@ -6,6 +6,7 @@
 // Mismo patrón de emergente que MemorySearch.tsx (velo + tarjeta + cerrar por X/Escape/click fuera).
 
 import { useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { getScanFull, type ScanFull } from "@/lib/api";
 import { InfoTip } from "@/components/InfoTip";
 import { fmtScore, fmtTime, money } from "@/lib/format";
@@ -15,14 +16,14 @@ import { NUMS, T } from "./tokens";
 
 // Columnas del grid de finalistas, ordenable por cualquiera (click en la cabecera).
 type FinalistSortKey = "ticker" | "sector" | "prescore" | "mid_score" | "deep_score" | "price" | "ath";
-const FINALIST_COLS: { key: FinalistSortKey; label: string; align: "left" | "right" }[] = [
-  { key: "ticker", label: "ticker", align: "left" },
-  { key: "sector", label: "sector", align: "left" },
-  { key: "prescore", label: "pre", align: "right" },
-  { key: "mid_score", label: "mid", align: "right" },
-  { key: "deep_score", label: "deep", align: "right" },
-  { key: "price", label: "$", align: "right" },
-  { key: "ath", label: "ATH", align: "right" },
+const FINALIST_COLS: { key: FinalistSortKey; labelKey: string; align: "left" | "right" }[] = [
+  { key: "ticker", labelKey: "alpha_ticker", align: "left" },
+  { key: "sector", labelKey: "alpha_sector", align: "left" },
+  { key: "prescore", labelKey: "alpha_pre", align: "right" },
+  { key: "mid_score", labelKey: "alpha_mid", align: "right" },
+  { key: "deep_score", labelKey: "alpha_deep", align: "right" },
+  { key: "price", labelKey: "alpha_price", align: "right" },
+  { key: "ath", labelKey: "alpha_ath", align: "right" },
 ];
 // Estado como color de punto, no texto -- ya no hace falta la columna "seleccionado"/"en cartera".
 type Estado = "cartera" | "seleccionado" | "finalista" | "error";
@@ -30,18 +31,19 @@ const ESTADO_DOT: Record<Estado, string> = {
   cartera: T.good, seleccionado: T.buy, finalista: T.muted, error: T.bad,
 };
 const ESTADO_LABEL: Record<Estado, string> = {
-  cartera: "en cartera", seleccionado: "seleccionado", finalista: "solo finalista",
-  error: "informe ilegible",
+  cartera: "alpha_status_portfolio", seleccionado: "alpha_status_selected", finalista: "alpha_status_finalist",
+  error: "alpha_status_unreadable",
 };
 
 export function ScanFullButton() {
+  const t = useTranslations();
   const [open, setOpen] = useState(false);
   return (
     <>
       <button onClick={() => setOpen(true)}
               className="text-[11px] font-semibold underline decoration-dotted underline-offset-2 hover:opacity-80"
               style={{ color: T.buy }}>
-        Ver detalle completo
+        {t("alpha_full_scan_detail_button")}
       </button>
       {open && <ScanFullModal onClose={() => setOpen(false)} />}
     </>
@@ -49,6 +51,8 @@ export function ScanFullButton() {
 }
 
 function ScanFullModal({ onClose }: { onClose: () => void }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [scan, setScan] = useState<ScanFull | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(true);
@@ -64,7 +68,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     getScanFull()
       .then((r) => setScan(r.scan))
-      .catch((e) => setErr(e instanceof Error ? e.message : "No se pudo recuperar el escaneo."))
+      .catch((e) => setErr(e instanceof Error ? e.message : t("alpha_ops_recover_scan_error")))
       .finally(() => setBusy(false));
   }, []);
 
@@ -106,53 +110,53 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
          onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label="Detalle completo del escaneo"
+      <div role="dialog" aria-modal="true" aria-label={t("alpha_full_scan_detail")}
            className="w-full max-w-2xl rounded-lg border shadow-xl"
            style={{ borderColor: T.ring, background: T.panel }}
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: T.grid }}>
           <div className="flex items-center gap-2">
-            <b style={{ color: T.ink }}>Escaneo completo</b>
-            {scan && <span className="text-[11px]" style={{ color: T.muted }}>{fmtTime(scan.at)} · {scan.cadence}</span>}
+            <b style={{ color: T.ink }}>{t("alpha_full_scan")}</b>
+            {scan && <span className="text-[11px]" style={{ color: T.muted }}>{fmtTime(scan.at, locale)} · {scan.cadence}</span>}
           </div>
-          <button ref={closeRef} onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
+          <button ref={closeRef} onClick={onClose} aria-label={t("alpha_close")} className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
         </div>
 
         <div className="max-h-[75vh] overflow-y-auto px-4 py-3 text-[12px]">
-          {busy && <p style={{ color: T.muted }}>Cargando…</p>}
+          {busy && <p style={{ color: T.muted }}>{t("alpha_loading")}</p>}
           {err && <p style={{ color: T.warn }}>{err}</p>}
           {!busy && !err && !scan && (
-            <p style={{ color: T.muted }}>No hay ningún escaneo guardado todavía.</p>
+            <p style={{ color: T.muted }}>{t("alpha_no_saved_scan")}</p>
           )}
           {scan && (
             <>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1" style={{ color: T.ink2 }}>
-                <span>régimen <b style={{ color: T.ink }}>{scan.regime || "—"}</b></span>
+                <span>{t("alpha_regime_label")} <b style={{ color: T.ink }}>{scan.regime || "—"}</b></span>
                 {scan.vix != null && <span className={NUMS}>VIX <b style={{ color: T.ink }}>{scan.vix}</b></span>}
                 {scan.cost && (
                   <span className={NUMS} style={{ color: T.muted }}>
-                    {scan.cost.calls} llamadas ·{" "}
+                    {t("alpha_calls_count", { count: scan.cost.calls })} ·{" "}
                     {/* Solo el estimado por tokens: medido contra el saldo ya liquidado, acierta
                         al 3%. El saldo leído al terminar el escaneo no, DeepSeek liquida tarde. */}
-                    ${money(scan.cost.cost_usd)} <span className="inline-flex items-center gap-0.5">est. <InfoTip text="Estimado por tokens de cada respuesta." /></span>
+                    ${money(scan.cost.cost_usd, 2, locale)} <span className="inline-flex items-center gap-0.5">{t("alpha_estimated_short")} <InfoTip text={t("alpha_cost_estimated_tooltip")} /></span>
                   </span>
                 )}
               </div>
 
               {scan.outlook && (
                 <div className="mt-3">
-                  <SectionTitle>Macro</SectionTitle>
+                  <SectionTitle>{t("alpha_macro")}</SectionTitle>
                   <div className="mt-1 leading-relaxed" style={{ color: T.ink2 }}>{richText(scan.outlook)}</div>
                   {scan.macro_calendario && (
-                    <Plegable titulo="Calendario" cuenta="Wikipedia">{scan.macro_calendario}</Plegable>
+                    <Plegable titulo={t("alpha_calendar")} cuenta="Wikipedia">{scan.macro_calendario}</Plegable>
                   )}
                   {scan.macro_eventos && (
-                    <Plegable titulo="Eventos de los últimos 7 días" cuenta="Wikipedia">
+                    <Plegable titulo={t("alpha_recent_events")} cuenta="Wikipedia">
                       {scan.macro_eventos}
                     </Plegable>
                   )}
                   {(scan.macro_titulares ?? []).length > 0 && (
-                    <Plegable titulo="Titulares" cuenta={String(scan.macro_titulares!.length)}>
+                    <Plegable titulo={t("alpha_headlines")} cuenta={String(scan.macro_titulares!.length)}>
                       <ul className="space-y-1 whitespace-normal">
                         {scan.macro_titulares!.map((t, i) => (
                           <li key={i}>
@@ -167,28 +171,28 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
 
               {scan.construction.summary && (
                 <div className="mt-3">
-                  <SectionTitle>Tesis del constructor</SectionTitle>
+                  <SectionTitle>{t("alpha_builder_thesis")}</SectionTitle>
                   <div className="mt-1 leading-relaxed" style={{ color: T.ink2 }}>{richText(scan.construction.summary)}</div>
                 </div>
               )}
 
               <div className="mt-3">
                 <SectionTitle>
-                  Cartera formada
+                  {t("alpha_formed_portfolio")}
                   {athMedia != null && (
                     <span className="ml-2 font-normal normal-case" style={{ color: T.muted }}>
-                      · dist. a máximo <b className={NUMS} style={{ color: T.ink }}>{athMedia.toFixed(1)}%</b>
-                      {" "}(mediana <b className={NUMS} style={{ color: T.ink }}>{athMediana?.toFixed(1)}%</b>)
+                      · {t("alpha_distance_to_high")} <b className={NUMS} style={{ color: T.ink }}>{athMedia.toFixed(1)}%</b>
+                      {" "}({t("alpha_median")} <b className={NUMS} style={{ color: T.ink }}>{athMediana?.toFixed(1)}%</b>)
                     </span>
                   )}
                 </SectionTitle>
                 <table className={`mt-1.5 w-full text-[11px] ${NUMS}`}>
                   <thead>
                     <tr style={{ color: T.muted }}>
-                      <th className="pb-1 text-left font-semibold">ticker</th>
-                      <th className="pb-1 text-left font-semibold">acción</th>
-                      <th className="pb-1 text-right font-semibold">peso</th>
-                      <th className="pb-1 text-right font-semibold">dist. ATH</th>
+                      <th className="pb-1 text-left font-semibold">{t("alpha_ticker")}</th>
+                      <th className="pb-1 text-left font-semibold">{t("alpha_action")}</th>
+                      <th className="pb-1 text-right font-semibold">{t("alpha_weight")}</th>
+                      <th className="pb-1 text-right font-semibold">{t("alpha_ath_distance")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -214,18 +218,18 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                   <div key={`${p.ticker}-tesis`} className="mt-1.5 rounded border px-2.5 py-1.5" style={{ borderColor: T.grid }}>
                     <b style={{ color: T.ink }}>{p.ticker}</b>
                     {p.thesis && <p className="mt-0.5" style={{ color: T.ink2 }}>{richText(p.thesis)}</p>}
-                    {p.edge && <p className="mt-0.5" style={{ color: T.muted }}><i>edge:</i> {richText(p.edge)}</p>}
-                    {p.risk && <p className="mt-0.5" style={{ color: T.muted }}><i>riesgo:</i> {richText(p.risk)}</p>}
+                    {p.edge && <p className="mt-0.5" style={{ color: T.muted }}><i>{t("alpha_edge")}:</i> {richText(p.edge)}</p>}
+                    {p.risk && <p className="mt-0.5" style={{ color: T.muted }}><i>{t("alpha_risk")}:</i> {richText(p.risk)}</p>}
                   </div>
                 ))}
                 <p className="mt-1 text-[10.5px]" style={{ color: T.muted }}>
-                  Caja objetivo: {scan.construction.cash_pct}%
+                  {t("alpha_target_cash")}: {scan.construction.cash_pct}%
                 </p>
               </div>
 
               {scan.construction.omitted.length > 0 && (
                 <div className="mt-3">
-                  <SectionTitle>Descartados por el constructor</SectionTitle>
+                  <SectionTitle>{t("alpha_rejected_by_builder")}</SectionTitle>
                   <ul className="mt-1 space-y-0.5">
                     {scan.construction.omitted.map((o) => (
                       <li key={o.ticker} style={{ color: T.ink2 }}>
@@ -237,12 +241,12 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
               )}
 
               <div className="mt-3">
-                <SectionTitle>Finalistas ({scan.finalists.length})</SectionTitle>
+                <SectionTitle>{t("alpha_finalists_count", { count: scan.finalists.length })}</SectionTitle>
                 <div className="mb-1.5 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]" style={{ color: T.ink2 }}>
                   {(["finalista", "seleccionado", "cartera", "error"] as Estado[]).map((e) => (
                     <span key={e} className="inline-flex items-center gap-1.5">
                       <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: ESTADO_DOT[e] }} />
-                      {ESTADO_LABEL[e]}
+                      {t(ESTADO_LABEL[e])}
                     </span>
                   ))}
                 </div>
@@ -261,10 +265,10 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                       {FINALIST_COLS.map((c) => (
                         <th key={c.key} className={`pb-1 font-semibold ${c.align === "right" ? "text-right" : "text-left"}`}
                             aria-sort={ariaSort(c.key)}>
-                          <button onClick={() => sortBy(c.key)} aria-label={`Ordenar por ${c.label}`}
+                          <button onClick={() => sortBy(c.key)} aria-label={t("alpha_sort_by", { label: t(c.labelKey) })}
                                   className="inline-flex items-center gap-0.5 hover:opacity-80"
                                   style={{ color: sortCol === c.key ? T.ink : T.muted }}>
-                            {c.label}
+                            {t(c.labelKey)}
                             {sortCol === c.key && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
                           </button>
                         </th>
@@ -285,7 +289,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                         <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.prescore)}</td>
                         <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.mid_score)}</td>
                         <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(f.deep_score)}</td>
-                        <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.price != null ? `$${money(f.price)}` : "—"}</td>
+                        <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.price != null ? `$${money(f.price, 2, locale)}` : "—"}</td>
                         <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.ath != null ? `${f.ath.toFixed(1)}%` : "—"}</td>
                       </tr>
                     ))}
@@ -295,7 +299,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
 
               {scan.issues.length > 0 && (
                 <div className="mt-3">
-                  <SectionTitle>Incidencias</SectionTitle>
+                  <SectionTitle>{t("alpha_issues")}</SectionTitle>
                   <ul className="mt-1 space-y-0.5">
                     {scan.issues.map((it) => (
                       <li key={it} style={{ color: T.ink2 }}>
@@ -317,6 +321,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
 function Plegable({ titulo, cuenta, children }: {
   titulo: string; cuenta: string; children: React.ReactNode;
 }) {
+  const t = useTranslations();
   const [abierto, setAbierto] = useState(false);
   return (
     <div className="mt-1.5">

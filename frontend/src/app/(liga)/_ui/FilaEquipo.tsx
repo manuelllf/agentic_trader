@@ -1,5 +1,6 @@
 "use client";
 
+import { useLocale, useTranslations } from "next-intl";
 import { useTransition, type CSSProperties } from "react";
 import { claseSigno, porcentaje } from "@/lib/liga/format";
 import { CASA, Escudo, type ClaveCasa, type EscudoValor } from "./Escudo";
@@ -19,9 +20,9 @@ export type RentabilidadAcumulada = {
 };
 
 const TEXTO_RESULTADO: Record<ResultadoJornada, string> = {
-  G: "Ganada",
-  E: "Empate",
-  P: "Perdida",
+  G: "ganada",
+  E: "empate",
+  P: "perdida",
 };
 
 const Chevron = ({ pendiente = false }: { pendiente?: boolean }) => (
@@ -79,6 +80,8 @@ export function FilaEquipo({
   abrible = true,
   onClick,
 }: FilaEquipoProps) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [pendiente, navegar] = useTransition();
   const clases = ["tr", tipo === "mia" ? "me" : tipo === "casa" ? "casa" : ""]
     .filter(Boolean)
@@ -87,7 +90,7 @@ export function FilaEquipo({
   const estilo =
     tipo === "casa" && acento ? ({ "--hc": acento } as CSSProperties) : undefined;
   const formatoIntervalo = (valor: string) => new Date(`${valor}T12:00:00`).toLocaleDateString(
-    "es-ES", { day: "numeric", month: "short", year: "numeric" },
+    locale === "en" ? "en-US" : "es-ES", { day: "numeric", month: "short", year: "numeric" },
   );
   const claseFila = `${clases}${acumulado !== undefined ? " financiero" : ""}${pendiente ? " navegando" : ""}`;
 
@@ -98,15 +101,15 @@ export function FilaEquipo({
       onClick={() => {
         if (onClick && !pendiente) navegar(onClick);
       }}>
-      <span className="pos num" aria-label={`Posición ${puesto}`}>{puesto}<span className="pos-label">posición</span></span>
+      <span className="pos num" aria-label={t("common_ranking_posicion_aria", { count: puesto })}>{puesto}<span className="pos-label">{t("common_ranking_posicion")}</span></span>
       <span className="name">
-        <Escudo valor={escudo} casa={casa} etiqueta={`Escudo de ${nombre}`} />
+        <Escudo valor={escudo} casa={casa} etiqueta={t("common_ranking_escudo", { name: nombre })} />
         <span className="nm">
           <b>{nombre}</b>
           <span className="sub">
             {acumulado === undefined && resultados.map((r, i) => (
-              <span key={i} className={`rs ${r}`} aria-label={TEXTO_RESULTADO[r]}>
-                {r}
+              <span key={i} className={`rs ${r}`} aria-label={t(`common_ranking_${TEXTO_RESULTADO[r]}`)}>
+                {t(`common_ranking_letra_${TEXTO_RESULTADO[r]}`)}
               </span>
             ))}
             <span>{etiqueta}</span>
@@ -114,39 +117,39 @@ export function FilaEquipo({
         </span>
         {abrible && <Chevron pendiente={pendiente} />}
         <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-          {pendiente ? `Abriendo ${nombre}` : ""}
+          {pendiente ? t("common_abriendo", { texto: nombre }) : ""}
         </span>
       </span>
       {acumulado !== undefined ? (
-        <span className="finance" aria-label="Rentabilidad acumulada y benchmark">
+        <span className="finance" aria-label={t("common_ranking_rentabilidad_benchmark")}>
           {acumulado ? (
             <>
               <span className={`primary num ${claseSigno(acumulado.rentabilidad)}`}>
-                {porcentaje(acumulado.rentabilidad)}<span className="finance-label">retorno acumulado</span>
+                {porcentaje(acumulado.rentabilidad, 1, locale)}<span className="finance-label">{t("common_ranking_retorno_acumulado")}</span>
               </span>
               <span className={`bench num ${claseSigno(acumulado.sp500)}`}>
                 S&amp;P 500 {porcentaje(acumulado.sp500)}
               </span>
               <span className={`pp num ${claseSigno(acumulado.diferencia_pp)}`}>
-                {porcentaje(acumulado.diferencia_pp).replace(" %", " pp")} vs S&amp;P
+                {porcentaje(acumulado.diferencia_pp, 1, locale).replace(" %", " pp")} vs S&amp;P
               </span>
               <span className="period">
-                {acumulado.incompleta ? `Últimos ${acumulado.periodos} periodos seguidos` : "Acumulado"}
+                {acumulado.incompleta ? t("common_ranking_periodos_seguidos", { count: acumulado.periodos }) : t("common_ranking_acumulado")}
                 {" · "}{formatoIntervalo(acumulado.desde)} – {formatoIntervalo(acumulado.hasta)}
               </span>
             </>
           ) : (
-            <span className="period">Sin jornadas cerradas comparables</span>
+            <span className="period">{t("common_ranking_sin_jornadas")}</span>
           )}
         </span>
       ) : (
-        <span className={`vs num ${claseSigno(vsIndice)}`}>{porcentaje(vsIndice).replace(/%$/, "pp")}</span>
+        <span className={`vs num ${claseSigno(vsIndice)}`}>{porcentaje(vsIndice, 1, locale).replace(/%$/, "pp")}</span>
       )}
       <span className="rankmeta">
         {acumulado !== undefined && (
           movimiento != null && <span className={`move ${movimiento > 0 ? "up" : movimiento < 0 ? "dn" : "fl"}`}>
-            {movimiento > 0 ? `↑${movimiento} posiciones`
-              : movimiento < 0 ? `↓${Math.abs(movimiento)} posiciones` : "Sin cambio de posición"}
+            {movimiento > 0 ? t("common_ranking_sube_posiciones", { count: movimiento })
+              : movimiento < 0 ? t("common_ranking_baja_posiciones", { count: Math.abs(movimiento) }) : t("common_ranking_sin_cambio")}
           </span>
         )}
         <span className="pts num">{puntos} pts</span>

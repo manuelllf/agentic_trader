@@ -67,7 +67,7 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
 
     def usuario(rol: str | None = "usuario", pro: bool = False) -> str:
         uid = uuid.uuid4()
-        cx.execute("insert into auth.users (id, email) values (%s, %s)",
+        cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
                   (uid, f"{uid.hex[:12]}@prueba.local"))
         creados.append(uid)
         if rol is not None and rol != "usuario":
@@ -189,7 +189,8 @@ def test_alta_de_usuario_desde_admin(api, monkeypatch) -> None:  # noqa: ANN001
         if json["email"] == "repetido@prueba.local":
             return SimpleNamespace(status_code=422, text='{"error_code":"email_exists"}')
         uid = str(uuid.uuid4())
-        cx.execute("insert into auth.users (id, email) values (%s, %s)", (uid, json["email"]))
+        cx.execute("insert into auth.users (id, email, email_confirmed_at) "
+                   "values (%s, %s, now())", (uid, json["email"]))
         nuevos.append(uid)
         return SimpleNamespace(status_code=200, text="", json=lambda: {"id": uid})
 
@@ -293,7 +294,7 @@ def test_ajustes_trae_metadato_y_efectivo_por_defecto(api) -> None:  # noqa: ANN
         "creditos.bienvenida", "procesos.foto.auto", "procesos.formar.auto",
     }
     registro = filas["liga.registro.abierto"]
-    assert registro["valor"] is None and registro["efectivo"] is True
+    assert registro["valor"] is None and registro["efectivo"] is False
     assert registro["grupo"] == "Emergencia" and registro["tipo"] == "interruptor"
     assert registro["titulo"] and registro["ayuda"]
 

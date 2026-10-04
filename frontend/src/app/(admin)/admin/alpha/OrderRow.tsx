@@ -5,6 +5,7 @@
 // ratón o teclado. El agente jamás ejecuta solo: este componente ES el contrato.
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { fmtScore, fmtTime, money } from "@/lib/format";
 import { richText } from "@/lib/richText";
 import type { Approval } from "@/lib/types";
@@ -15,6 +16,7 @@ export function OrderRow({ a, dry, onDecide, expiryDays }: {
   a: Approval; dry: boolean; onDecide: (id: number, yes: boolean) => Promise<void>;
   expiryDays: number;
 }) {
+  const t = useTranslations();
   const [open, setOpen] = useState(false);
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -53,7 +55,7 @@ export function OrderRow({ a, dry, onDecide, expiryDays }: {
         <Td>
           <b className="text-[14px]" style={{ color: T.ink }}>{a.ticker}</b>
           <span className="ml-2 text-[11px]" style={{ color: T.muted }}>
-            {a.action}{a.sector ? ` · ${a.sector}` : ""}
+            {t(`alpha_action_${a.action}`)}{a.sector ? ` · ${a.sector}` : ""}
           </span>
         </Td>
         <Td right><span className={NUMS}>{a.target_weight_pct}%</span></Td>
@@ -69,12 +71,12 @@ export function OrderRow({ a, dry, onDecide, expiryDays }: {
             <button onClick={no} disabled={busy}
                     className="rounded border px-3 py-1.5 text-[11.5px] font-bold transition-colors hover:bg-white/5 disabled:opacity-40"
                     style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
-              No
+              {t("alpha_reject")}
             </button>
             <button onClick={yes} disabled={busy}
                     className="rounded px-3 py-1.5 text-[11.5px] font-bold text-white transition-opacity disabled:opacity-40"
                     style={{ background: armed ? "#66a5f2" : T.buy, minWidth: armed ? undefined : 38 }}>
-              {busy ? "…" : armed ? `Confirmar${dry ? " (sim)" : ""}` : "Sí"}
+              {busy ? "…" : armed ? t(dry ? "alpha_confirm_dry" : "alpha_confirm") : t("alpha_approve")}
             </button>
           </span>
         </Td>
@@ -83,15 +85,15 @@ export function OrderRow({ a, dry, onDecide, expiryDays }: {
         <tr style={{ background: "rgba(255,255,255,0.02)" }}>
           <Td colSpan={6}>
             <div className="max-w-[900px] space-y-1.5 whitespace-normal py-1 text-[12.5px] leading-relaxed">
-              {a.thesis && <DetailLine k="Tesis" v={richText(a.thesis)} />}
-              {a.edge && <DetailLine k="Ventaja" v={richText(a.edge)} />}
-              {a.risk && <DetailLine k="Riesgo" v={richText(a.risk)} color={T.warn} />}
-              {a.macro_summary && <DetailLine k="Macro" v={richText(a.macro_summary)} dim />}
+              {a.thesis && <DetailLine k={t("alpha_thesis")} v={richText(a.thesis)} />}
+              {a.edge && <DetailLine k={t("alpha_edge")} v={richText(a.edge)} />}
+              {a.risk && <DetailLine k={t("alpha_risk")} v={richText(a.risk)} color={T.warn} />}
+              {a.macro_summary && <DetailLine k={t("alpha_macro")} v={richText(a.macro_summary)} dim />}
               <p className="text-[11px]" style={{ color: T.muted }}>
-                Propuesta {fmtTime(a.created_at)} · caduca{" "}
+                {t("alpha_proposal_expiry", { date: fmtTime(a.created_at) })}{" "}
                 {a.created_at
                   ? fmtTime(new Date(new Date(a.created_at).getTime() + expiryDays * 86_400_000).toISOString())
-                  : `a los ${expiryDays} días`}
+                  : t("alpha_in_days", { count: expiryDays })}
               </p>
             </div>
           </Td>

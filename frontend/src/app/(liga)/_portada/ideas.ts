@@ -70,3 +70,14 @@ export function tablaDe(idea: Idea): FilaTabla[] {
   const mia: FilaTabla = { nombre: "Tu estrategia", sub: "tú", escudo: idea.escudo, puntos: puntosTotales(idea), mia: true };
   return [...OTROS, mia].sort((a, b) => b.puntos - a.puntos || (a.mia ? 1 : -1));
 }
+
+export function ejemploLocalizado(t: (key: string) => string): Idea {
+  return { ...EJEMPLO,
+    frases: [t("landing_idea_grandes"), t("landing_idea_caja"), t("landing_idea_margenes")],
+    nombre: t("landing_idea_nombre"), conclusion: t("landing_conclusion"),
+    empresas: EJEMPLO.empresas.map((empresa, index) => ({ ...empresa,
+      porque: t(["landing_empresa_msft", "landing_empresa_aapl", "landing_empresa_nvda",
+        "landing_empresa_googl", "landing_empresa_iwda"][index]),
+    })),
+  };
+}

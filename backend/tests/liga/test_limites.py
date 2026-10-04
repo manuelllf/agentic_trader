@@ -31,7 +31,7 @@ def entorno(monkeypatch):  # noqa: ANN001, ANN201
 
     cx = psycopg.connect(URL, autocommit=True)
     uid = uuid.uuid4()
-    cx.execute("insert into auth.users (id, email) values (%s, %s)",
+    cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
               (uid, f"{uid.hex[:12]}@prueba.local"))
     try:
         yield cx, uid
@@ -54,7 +54,7 @@ def entorno(monkeypatch):  # noqa: ANN001, ANN201
 def test_cambios_alias_cuenta_solo_los_del_usuario_en_30_dias(entorno) -> None:  # noqa: ANN001
     cx, uid = entorno
     otro = uuid.uuid4()
-    cx.execute("insert into auth.users (id, email) values (%s, %s)",
+    cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
               (otro, f"{otro.hex[:12]}@prueba.local"))
     try:
         for i in range(2):

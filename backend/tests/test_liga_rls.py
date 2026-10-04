@@ -38,6 +38,37 @@ def _sistema(cx) -> None:
     cx.execute("select set_config('request.jwt.claims', '', true)")
 
 
+def test_registro_mvp_confirmado_conserva_alias_consentimientos_y_bienvenida(cx):
+    _sistema(cx)
+    cx.execute("insert into liga.ajustes (clave, valor) values ('liga.registro.abierto', 'true') "
+               "on conflict (clave) do update set valor = excluded.valor")
+    cx.execute("insert into liga.ajustes (clave, valor) values ('creditos.bienvenida', '15') "
+               "on conflict (clave) do update set valor = excluded.valor")
+    uid = uuid.uuid4()
+    alias = "mvp_" + uid.hex[:10]
+    cx.execute("insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data) "
+               "values (%s, %s, now(), %s)",
+               (uid, f"{uid.hex}@prueba.local", json.dumps({"alias": alias, "terminos_version": "1"})))
+    assert _filas(cx, "select alias from liga.perfiles where id = %s", (uid,)) == [(alias,)]
+    assert _filas(cx, "select count(*) from liga.consentimientos where usuario_id = %s", (uid,)) == [(2,)]
+    assert _filas(cx, "select rol::text from liga.roles_usuario where usuario_id = %s", (uid,)) == [("usuario",)]
+    assert _filas(cx, "select count(*) from liga.creditos_movimientos where usuario_id = %s "
+                 "and idempotencia = 'bienvenida'", (uid,)) == [(1,)]
+    cx.execute("update auth.users set email_confirmed_at = now() where id = %s", (uid,))
+    assert _filas(cx, "select count(*) from liga.creditos_movimientos where usuario_id = %s "
+                 "and idempotencia = 'bienvenida'", (uid,)) == [(1,)]
+
+
+def test_idioma_privado_solo_admite_es_en_y_no_modifica_otras_cuentas(cx):
+    owner, other = _usuario(cx), _usuario(cx)
+    _como(cx, owner)
+    assert _filas(cx, "update liga.perfiles_privados set idioma = 'en' where id = %s returning idioma", (owner,)) == [("en",)]
+    assert _filas(cx, "update liga.perfiles_privados set idioma = 'es' where id = %s returning id", (other,)) == []
+    _falla(cx, "update liga.perfiles_privados set idioma = 'fr' where id = %s", (owner,))
+    _sistema(cx)
+    assert _filas(cx, "select idioma from liga.perfiles_privados where id = %s", (other,)) == [(None,)]
+
+
 def _como(cx, uid: uuid.UUID | None, aal: str = "aal1") -> None:
     _sistema(cx)
     if uid is None:
@@ -52,7 +83,7 @@ def _usuario(cx, rol: str | None = "usuario", pro: bool = False) -> uuid.UUID:
     """Alta como la haría Supabase Auth: el disparador crea perfil y rol `usuario`."""
     _sistema(cx)
     uid = uuid.uuid4()
-    cx.execute("insert into auth.users (id, email) values (%s, %s)",
+    cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
                (uid, f"{uid.hex[:12]}@prueba.local"))
     if rol is None:
         cx.execute("delete from liga.roles_usuario where usuario_id = %s", (uid,))

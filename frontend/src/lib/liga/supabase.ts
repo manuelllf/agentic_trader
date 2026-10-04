@@ -14,7 +14,8 @@ export function supabase(): SupabaseClient | null {
   if (cliente === undefined) {
     cliente = URL && CLAVE
       ? createClient(URL, CLAVE, {
-          auth: { persistSession: true, autoRefreshToken: true, storageKey: "liguilla-sesion" },
+          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false,
+            storageKey: "liguilla-sesion" },
         })
       : null;
   }

@@ -91,7 +91,7 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
 
     def usuario(alias: str, rol: str | None = None, pro: bool = False) -> str:
         uid = uuid.uuid4()
-        cx.execute("insert into auth.users (id, email) values (%s, %s)",
+        cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
                   (uid, f"{uid.hex[:12]}@prueba.local"))
         creado["usuarios"].append(uid)
         # This fixture's system connection uses a non-superuser local role. Run the alias change

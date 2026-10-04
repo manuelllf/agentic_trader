@@ -1,4 +1,5 @@
 "use client";
+import { useTranslations } from "next-intl";
 
 // Red de seguridad de la liga: si una pantalla falla al pintarse, nunca se queda en blanco. Tres
 // salidas: reintentar, ir a la liga y avisar al admin.
@@ -13,6 +14,7 @@ type Fase = "pendiente" | "enviando" | "enviado" | "fallo";
 export default function ErrorDePantalla({ error, reset }: {
   error: Error & { digest?: string }; reset: () => void;
 }) {
+  const t = useTranslations();
   const [fase, setFase] = useState<Fase>("pendiente");
   useEffect(() => { console.error(error); }, [error]);
 
@@ -32,23 +34,22 @@ export default function ErrorDePantalla({ error, reset }: {
         <Link href="/" className="wordmark">Vennett</Link>
       </header>
       <section className="sencilla-cuerpo" aria-labelledby="titular">
-        <h1 id="titular">Algo ha fallado</h1>
+        <h1 id="titular">{t("system_error_titulo")}</h1>
         <p>
-          Esta pantalla no se ha podido mostrar. Tus datos están a salvo: puedes reintentarlo,
-          volver a la liga o avisarnos.
+          {t("system_error_pantalla")}
         </p>
-        <Boton variante="principal" ancho="completo" onClick={reset}>Reintentar</Boton>
-        <Link href="/liga" className="btn wide">Ir a la liga</Link>
+        <Boton variante="principal" ancho="completo" onClick={reset}>{t("system_error_reintentar")}</Boton>
+        <Link href="/liga" className="btn wide">{t("system_error_ir_liga")}</Link>
         {fase === "enviado" ? (
-          <p className="fine" role="status">Gracias, ya lo tenemos.</p>
+          <p className="fine" role="status">{t("system_error_gracias")}</p>
         ) : (
           <>
             <Boton variante="discreto" ancho="completo" disabled={fase === "enviando"}
                    onClick={reportar}>
-              {fase === "enviando" ? "Enviando…" : "Reportar este error"}
+              {fase === "enviando" ? t("system_error_enviando") : t("system_error_reportar")}
             </Boton>
             {fase === "fallo" && (
-              <p className="fine" role="status">No hemos podido enviarlo ahora. Inténtalo otra vez.</p>
+              <p className="fine" role="status">{t("system_error_envio_fallo")}</p>
             )}
           </>
         )}

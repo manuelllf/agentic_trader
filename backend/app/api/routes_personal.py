@@ -1,6 +1,7 @@
 """Cartera personal de Manuel en IBKR: intocable para el agente, mini-tracker
 de solo lectura (snapshot + precios vivos)."""
 from __future__ import annotations
+from app.i18n import translate
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -26,5 +27,5 @@ def personal_sync(db: Session = Depends(get_db)) -> dict:
     try:
         n = personal.sync_from_ibkr(db)
     except Exception as exc:  # noqa: BLE001 — motivo legible en el panel
-        raise HTTPException(502, f"No se pudo sincronizar con IBKR: {exc}") from exc
+        raise HTTPException(502, translate('api_broker_sync_failed', error=str(exc))) from exc
     return {"synced": n, **personal.summary(db)}

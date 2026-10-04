@@ -6,22 +6,25 @@
 // Mismo patrón de emergente que ScanFullModal.tsx (velo + tarjeta + cerrar por X/Escape/click fuera).
 
 import { useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { fetchScanAudit, getScanOutcomes, type ScanAuditEntry } from "@/lib/api";
 import { fmtScore, fmtTime, money } from "@/lib/format";
 import { useOrden } from "@/lib/useOrden";
 import { NUMS, T } from "./tokens";
 
 type AuditSortKey = "at" | "stage" | "prescore" | "deep_score" | "price" | "weight_pct";
-const AUDIT_COLS: { key: AuditSortKey; label: string; align: "left" | "right" }[] = [
-  { key: "at", label: "fecha", align: "left" },
-  { key: "stage", label: "etapa", align: "left" },
-  { key: "prescore", label: "prescore", align: "right" },
-  { key: "deep_score", label: "deep", align: "right" },
-  { key: "price", label: "precio", align: "right" },
-  { key: "weight_pct", label: "peso", align: "right" },
+const AUDIT_COLS: { key: AuditSortKey; labelKey: "alpha_audit_date" | "alpha_audit_stage" | "alpha_audit_prescore" | "alpha_audit_deep" | "alpha_audit_price" | "alpha_audit_weight"; align: "left" | "right" }[] = [
+  { key: "at", labelKey: "alpha_audit_date", align: "left" },
+  { key: "stage", labelKey: "alpha_audit_stage", align: "left" },
+  { key: "prescore", labelKey: "alpha_audit_prescore", align: "right" },
+  { key: "deep_score", labelKey: "alpha_audit_deep", align: "right" },
+  { key: "price", labelKey: "alpha_audit_price", align: "right" },
+  { key: "weight_pct", labelKey: "alpha_audit_weight", align: "right" },
 ];
 
 export function TickerAudit({ ticker, onClose }: { ticker: string; onClose: () => void }) {
+  const t = useTranslations();
+  const locale: "es" | "en" = useLocale() === "en" ? "en" : "es";
   const [scans, setScans] = useState<ScanAuditEntry[] | null>(null);
   const [outcome, setOutcome] = useState<{ score: number; ret: number; funded: boolean } | null>(null);
   const [err, setErr] = useState("");
@@ -41,7 +44,7 @@ export function TickerAudit({ ticker, onClose }: { ticker: string; onClose: () =
     setErr("");
     fetchScanAudit(ticker)
       .then((r) => { if (!cancelled) setScans(r.scans); })
-      .catch((e) => { if (!cancelled) setErr(e instanceof Error ? e.message : "No se pudo recuperar el historial."); })
+      .catch((e) => { if (!cancelled) setErr(e instanceof Error ? e.message : "__alpha_audit_error"); })
       .finally(() => { if (!cancelled) setBusy(false); });
 
     // Best-effort: si el ticker aparece entre los `pairs` de los escaneos recientes de
@@ -66,53 +69,53 @@ export function TickerAudit({ ticker, onClose }: { ticker: string; onClose: () =
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
          onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={`Historial de ${ticker}`}
+      <div role="dialog" aria-modal="true" aria-label={t("alpha_audit_for_ticker", { ticker })}
            className="w-full max-w-xl rounded-lg border shadow-xl"
            style={{ borderColor: T.ring, background: T.panel }}
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: T.grid }}>
           <div className="flex items-center gap-2">
             <b style={{ color: T.ink }}>{ticker.toUpperCase()}</b>
-            <span className="text-[11px]" style={{ color: T.muted }}>a través de los escaneos</span>
+            <span className="text-[11px]" style={{ color: T.muted }}>{t("alpha_audit_across_scans")}</span>
           </div>
-          <button ref={closeRef} onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
+          <button ref={closeRef} onClick={onClose} aria-label={t("alpha_close")} className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
         </div>
 
         <div className="max-h-[75vh] overflow-y-auto px-4 py-3 text-[12px]">
-          {busy && <p style={{ color: T.muted }}>Cargando…</p>}
-          {err && <p style={{ color: T.warn }}>{err}</p>}
+          {busy && <p style={{ color: T.muted }}>{t("alpha_loading")}</p>}
+          {err && <p style={{ color: T.warn }}>{err === "__alpha_audit_error" ? t("alpha_audit_error") : err}</p>}
 
           {!busy && !err && scans && scans.length === 0 && (
-            <p style={{ color: T.muted }}>Sin historial: {ticker.toUpperCase()} no aparece en ningún escaneo guardado.</p>
+            <p style={{ color: T.muted }}>{t("alpha_audit_no_history", { ticker: ticker.toUpperCase() })}</p>
           )}
 
           {!busy && !err && scans && scans.length > 0 && (
             <>
               {outcome && (
                 <div className="mb-3 rounded border px-2.5 py-1.5" style={{ borderColor: T.grid }}>
-                  <SectionTitle>Si se hubiera comprado</SectionTitle>
+                  <SectionTitle>{t("alpha_audit_if_bought")}</SectionTitle>
                   <p className={`mt-1 ${NUMS}`} style={{ color: T.ink2 }}>
-                    score <b style={{ color: T.ink }}>{fmtScore(outcome.score)}</b>
-                    {" · "}retorno{" "}
+                    {t("alpha_score")} <b style={{ color: T.ink }}>{fmtScore(outcome.score)}</b>
+                    {" · "}{t("alpha_return")}{" "}
                     <b style={{ color: outcome.ret >= 0 ? T.good : T.bad }}>
                       {outcome.ret >= 0 ? "+" : ""}{outcome.ret.toFixed(1)}%
                     </b>
-                    {outcome.funded && <span className="ml-1.5" style={{ color: T.buy }}>(en cartera)</span>}
+                    {outcome.funded && <span className="ml-1.5" style={{ color: T.buy }}>({t("alpha_held")})</span>}
                   </p>
                 </div>
               )}
 
-              <SectionTitle>Notas por escaneo ({scans.length})</SectionTitle>
+              <SectionTitle>{t("alpha_audit_scan_notes", { count: scans.length })}</SectionTitle>
               <table className={`mt-1.5 w-full text-[11px] ${NUMS}`}>
                 <thead>
                   <tr style={{ color: T.muted }}>
                     {AUDIT_COLS.map((c) => (
                       <th key={c.key} className={`pb-1 font-semibold ${c.align === "right" ? "text-right" : "text-left"}`}
                           aria-sort={ariaSort(c.key)}>
-                        <button onClick={() => sortBy(c.key)} aria-label={`Ordenar por ${c.label}`}
+                        <button onClick={() => sortBy(c.key)} aria-label={t("alpha_sort_by", { label: t(c.labelKey) })}
                                 className="inline-flex items-center gap-0.5 hover:opacity-80"
                                 style={{ color: sortKey === c.key ? T.ink : T.muted }}>
-                          {c.label}
+                          {t(c.labelKey)}
                           {sortKey === c.key && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
                         </button>
                       </th>
@@ -122,11 +125,11 @@ export function TickerAudit({ ticker, onClose }: { ticker: string; onClose: () =
                 <tbody>
                   {sortedScans.map((s, i) => (
                     <tr key={`${s.at}-${i}`} className="border-t align-top" style={{ borderColor: T.grid }}>
-                      <td className="py-1" style={{ color: T.ink2 }}>{fmtTime(s.at)}</td>
+                      <td className="py-1" style={{ color: T.ink2 }}>{fmtTime(s.at, locale)}</td>
                       <td className="py-1" style={{ color: T.ink2 }}>{s.stage}</td>
                       <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(s.prescore)}</td>
                       <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(s.deep_score)}</td>
-                      <td className="py-1 text-right" style={{ color: T.ink2 }}>{s.price != null ? `$${money(s.price)}` : "—"}</td>
+                      <td className="py-1 text-right" style={{ color: T.ink2 }}>{s.price != null ? `$${money(s.price, 2, locale)}` : "—"}</td>
                       <td className="py-1 text-right" style={{ color: T.ink2 }}>{s.weight_pct != null ? `${s.weight_pct}%` : "—"}</td>
                     </tr>
                   ))}

@@ -10,6 +10,7 @@
  *  una captura. */
 
 import { useEffect, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import {
   fetchExplorerContar, fetchExplorerOpciones, fetchExplorerTickers,
 } from "@/lib/api";
@@ -41,6 +42,7 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 function ChipGroup({ title, options, selected, onToggle, max = 24 }: {
   title: string; options: string[]; selected: string[]; onToggle: (v: string) => void; max?: number;
 }) {
+  const t = useTranslations();
   const [expandido, setExpandido] = useState(false);
   if (options.length === 0) return null;
   const visibles = expandido ? options : options.slice(0, max);
@@ -56,7 +58,7 @@ function ChipGroup({ title, options, selected, onToggle, max = 24 }: {
         {!expandido && options.length > max && (
           <button onClick={() => setExpandido(true)}
                   className="text-[11px] underline" style={{ color: T.muted }}>
-            +{options.length - max} más
+            {t("alpha_more_options", { count: options.length - max })}
           </button>
         )}
       </div>
@@ -70,6 +72,7 @@ function RangoNumerico({ label, min, max, onMin, onMax, prefijo = "" }: {
   label: string; min: string; max: string; onMin: (v: string) => void; onMax: (v: string) => void;
   prefijo?: string;
 }) {
+  const t = useTranslations();
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
@@ -77,12 +80,12 @@ function RangoNumerico({ label, min, max, onMin, onMax, prefijo = "" }: {
       </span>
       <span className="flex items-center gap-1.5">
         {prefijo && <span className="text-[11px]" style={{ color: T.muted }}>{prefijo}</span>}
-        <input type="number" inputMode="decimal" placeholder="mín" value={min}
+        <input type="number" inputMode="decimal" placeholder={t("alpha_minimum_short")} value={min}
                onChange={(e) => onMin(e.target.value)}
                className={`w-full min-w-0 rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS} ${NUM_INPUT}`}
                style={{ borderColor: T.ring, color: T.ink }} />
         <span style={{ color: T.muted }}>–</span>
-        <input type="number" inputMode="decimal" placeholder="máx" value={max}
+        <input type="number" inputMode="decimal" placeholder={t("alpha_maximum_short")} value={max}
                onChange={(e) => onMax(e.target.value)}
                className={`w-full min-w-0 rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS} ${NUM_INPUT}`}
                style={{ borderColor: T.ring, color: T.ink }} />
@@ -107,11 +110,13 @@ function DistCard({ label, dist, fmt }: {
   );
 }
 
-const fmtCapB = (n: number) => `$${(n / 1e9).toFixed(1)}B`;
-const fmtMoney = (n: number) => `$${n.toFixed(2)}`;
-const fmtRatio = (n: number) => n.toFixed(1);
-
 export function Explorador() {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
+  const fmtNumLocal = (n: number) => fmtNum(n, locale);
+  const fmtCapB = (n: number) => `$${(n / 1e9).toLocaleString(locale === "en" ? "en-US" : "es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}B`;
+  const fmtMoney = (n: number) => `$${n.toLocaleString(locale === "en" ? "en-US" : "es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtRatio = (n: number) => n.toLocaleString(locale === "en" ? "en-US" : "es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const [opciones, setOpciones] = useState<ExplorerOpciones | null>(null);
   const [errorOpciones, setErrorOpciones] = useState("");
 
@@ -143,7 +148,7 @@ export function Explorador() {
       .then(setOpciones)
       .catch((e) => {
         setOpciones(null);
-        setErrorOpciones(e instanceof Error ? e.message : "No se pudieron cargar los filtros.");
+        setErrorOpciones(e instanceof Error ? e.message : "alpha_filter_load_failed");
       });
   }, []);
 
@@ -170,7 +175,7 @@ export function Explorador() {
       setErrorContar("");
       fetchExplorerContar(filtros)
         .then((r) => { if (vivo) setResultado(r); })
-        .catch((e) => { if (vivo) setErrorContar(e instanceof Error ? e.message : "No se pudo contar."); })
+        .catch((e) => { if (vivo) setErrorContar(e instanceof Error ? e.message : "alpha_count_failed"); })
         .finally(() => { if (vivo) setContando(false); });
     }, DEBOUNCE_MS);
     return () => { vivo = false; clearTimeout(t); };
@@ -214,39 +219,38 @@ export function Explorador() {
   // Orden solo sobre la página cargada -- la paginación sigue siendo del servidor.
   const { sorted: sortedItems, sortKey, sortDir, toggle: sortBy, ariaSort } =
     useOrden<ExplorerTickerRow, TickerSortKey>(items, (row, key) => row[key]);
-  const cols: { key: TickerSortKey; label: string }[] = [
-    { key: "ticker", label: "Ticker" }, { key: "name", label: "Nombre" },
-    { key: "sector", label: "Sector" }, { key: "country", label: "País" },
-    { key: "market_cap_usd", label: "Cap" }, { key: "price", label: "Precio" },
-    { key: "pe_trailing", label: "PER" },
-    ...(mostrarFecha ? [{ key: "captured_at" as TickerSortKey, label: "Foto" }] : []),
+  const cols: { key: TickerSortKey; labelKey: string }[] = [
+    { key: "ticker", labelKey: "alpha_ticker" }, { key: "name", labelKey: "alpha_name" },
+    { key: "sector", labelKey: "alpha_sector" }, { key: "country", labelKey: "alpha_country" },
+    { key: "market_cap_usd", labelKey: "alpha_market_cap_short" }, { key: "price", labelKey: "alpha_price" },
+    { key: "pe_trailing", labelKey: "alpha_pe" },
+    ...(mostrarFecha ? [{ key: "captured_at" as TickerSortKey, labelKey: "alpha_snapshot" }] : []),
   ];
 
   return (
     <div className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between gap-2">
         <p className="text-[11.5px]" style={{ color: T.muted }}>
-          Filtra las fotos de fundamentales ya capturadas — sin objetivo de escaneo, solo para
-          mirar el mercado. Nada se guarda.
+          {t("alpha_explorer_help")}
         </p>
         {!!hayFiltros && (
           <button onClick={limpiar} className="shrink-0 text-[11px] underline" style={{ color: T.muted }}>
-            limpiar
+            {t("alpha_clear")}
           </button>
         )}
       </div>
 
       {/* búsqueda + alcance: lo primero que se toca, arriba y compacto */}
       <div className="flex flex-wrap gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ticker o nombre…"
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("alpha_ticker_or_name")}
                className="min-w-0 flex-1 rounded border bg-transparent px-2.5 py-1.5 text-[12px]"
                style={{ borderColor: T.ring, color: T.ink }} />
         <div className="flex shrink-0 overflow-hidden rounded border" style={{ borderColor: T.ring }}>
-          {([["", "Todos"], ["escaneo", "Escaneo"], ["global", "Global"]] as const).map(([v, label]) => (
+          {([["", "alpha_all"], ["escaneo", "alpha_scan"], ["global", "alpha_global"]] as const).map(([v, labelKey]) => (
             <button key={v} onClick={() => setAlcance(v)}
                     className="px-2.5 py-1.5 text-[11px] font-semibold transition-colors"
                     style={alcance === v ? { background: T.base, color: T.ink } : { color: T.muted }}>
-              {label}
+              {t(labelKey)}
             </button>
           ))}
         </div>
@@ -254,33 +258,33 @@ export function Explorador() {
 
       {opciones && (
         <>
-          <ChipGroup title="Sector" options={opciones.sectores} selected={sector}
+          <ChipGroup title={t("alpha_sector")} options={opciones.sectores} selected={sector}
                     onToggle={(v) => toggle(sector, setSector, v)} />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <ChipGroup title="País" options={opciones.paises} selected={pais}
+            <ChipGroup title={t("alpha_country")} options={opciones.paises} selected={pais}
                       onToggle={(v) => toggle(pais, setPais, v)} />
-            <ChipGroup title="Mercado" options={opciones.mercados} selected={mercado}
+            <ChipGroup title={t("alpha_market")} options={opciones.mercados} selected={mercado}
                       onToggle={(v) => toggle(mercado, setMercado, v)} />
           </div>
-          <ChipGroup title="Industria" options={opciones.industrias} selected={industria}
+          <ChipGroup title={t("alpha_industry")} options={opciones.industrias} selected={industria}
                     onToggle={(v) => toggle(industria, setIndustria, v)} max={12} />
         </>
       )}
       {!opciones && errorOpciones && (
         <p className="text-[11px]" style={{ color: T.warn }}>
-          {errorOpciones} (sector/país/mercado no disponibles — el resto del filtro sigue funcionando).
+          {errorOpciones.startsWith("alpha_") ? t("alpha_filter_load_failed") : errorOpciones} {t("alpha_filter_options_unavailable")}
         </p>
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <RangoNumerico label="Market cap (B$)" min={capMin} max={capMax} onMin={setCapMin} onMax={setCapMax} />
-        <RangoNumerico label="PER trailing" min={peMin} max={peMax} onMin={setPeMin} onMax={setPeMax} />
+        <RangoNumerico label={t("alpha_market_cap_billions")} min={capMin} max={capMax} onMin={setCapMin} onMax={setCapMax} />
+        <RangoNumerico label={t("alpha_pe_trailing")} min={peMin} max={peMax} onMin={setPeMin} onMax={setPeMax} />
         <label className="flex flex-col gap-1">
           <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-            Cerca del máximo (%)
-            <InfoTip text="Deja fuera lo que esté más de este % por debajo de su máximo de 52 semanas. Ej: 10 = dentro del 10% del máximo." />
+            {t("alpha_near_high_pct")}
+            <InfoTip text={t("alpha_near_high_help")} />
           </span>
-          <input type="number" inputMode="decimal" min={0} max={100} placeholder="ej. 10"
+          <input type="number" inputMode="decimal" min={0} max={100} placeholder={t("alpha_example_10")}
                  value={cercaMax} onChange={(e) => setCercaMax(e.target.value)}
                  className={`rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS} ${NUM_INPUT}`}
                  style={{ borderColor: T.ring, color: T.ink }} />
@@ -290,7 +294,7 @@ export function Explorador() {
       <div className="flex flex-wrap items-end gap-3 border-t pt-2.5" style={{ borderColor: T.grid }}>
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-            Foto entre
+            {t("alpha_snapshot_between")}
           </span>
           <span className="flex items-center gap-1.5">
             <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)}
@@ -303,8 +307,8 @@ export function Explorador() {
           </span>
         </label>
         <span className="flex items-center gap-1 text-[10.5px]" style={{ color: T.muted }}>
-          <InfoTip text="Vacío = la última foto de cada ticker, sin importar cuándo. Con fechas: la última foto de cada ticker DENTRO de ese rango — así se puede mirar cómo estaba el mercado en un momento pasado." />
-          sin fechas = última foto de cada ticker
+          <InfoTip text={t("alpha_snapshot_range_help")} />
+          {t("alpha_snapshot_latest_hint")}
         </span>
       </div>
 
@@ -315,14 +319,14 @@ export function Explorador() {
         ) : (
           <div className="flex flex-col gap-2">
             <p className={`text-[13px] font-bold ${NUMS}`} style={{ color: T.ink }}>
-              {contando ? "contando…" : resultado ? `${fmtNum(resultado.total)} nombres` : "—"}
+              {contando ? t("alpha_counting") : resultado ? t("alpha_name_count", { count: fmtNumLocal(resultado.total) }) : "—"}
             </p>
             {resultado && resultado.total > 0 && (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <DistCard label="Market cap" dist={resultado.distribuciones.market_cap_usd} fmt={fmtCapB} />
-                <DistCard label="Precio" dist={resultado.distribuciones.price} fmt={fmtMoney} />
-                <DistCard label="PER trailing" dist={resultado.distribuciones.pe_trailing} fmt={fmtRatio} />
-                <DistCard label="PER forward" dist={resultado.distribuciones.pe_forward} fmt={fmtRatio} />
+                <DistCard label={t("alpha_market_cap")} dist={resultado.distribuciones.market_cap_usd} fmt={fmtCapB} />
+                <DistCard label={t("alpha_price")} dist={resultado.distribuciones.price} fmt={fmtMoney} />
+                <DistCard label={t("alpha_pe_trailing")} dist={resultado.distribuciones.pe_trailing} fmt={fmtRatio} />
+                <DistCard label={t("alpha_pe_forward")} dist={resultado.distribuciones.pe_forward} fmt={fmtRatio} />
               </div>
             )}
           </div>
@@ -338,10 +342,10 @@ export function Explorador() {
                 <tr style={{ color: T.muted, background: T.panel2 }}>
                   {cols.map((c) => (
                     <th key={c.key} className="px-2 py-1 text-left font-semibold" aria-sort={ariaSort(c.key)}>
-                      <button onClick={() => sortBy(c.key)} aria-label={`Ordenar por ${c.label}`}
+                      <button onClick={() => sortBy(c.key)} aria-label={t("alpha_sort_by", { label: t(c.labelKey) })}
                               className="inline-flex items-center gap-0.5 hover:opacity-80"
                               style={{ color: sortKey === c.key ? T.ink : T.muted }}>
-                        {c.label}
+                        {t(c.labelKey)}
                         {sortKey === c.key && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
                       </button>
                     </th>
@@ -350,9 +354,9 @@ export function Explorador() {
               </thead>
               <tbody>
                 {cargandoTabla ? (
-                  <tr><td colSpan={numCols} className="px-2 py-3 text-center" style={{ color: T.muted }}>Cargando…</td></tr>
+                  <tr><td colSpan={numCols} className="px-2 py-3 text-center" style={{ color: T.muted }}>{t("alpha_loading")}</td></tr>
                 ) : items.length === 0 ? (
-                  <tr><td colSpan={numCols} className="px-2 py-3 text-center" style={{ color: T.muted }}>Sin resultados.</td></tr>
+                  <tr><td colSpan={numCols} className="px-2 py-3 text-center" style={{ color: T.muted }}>{t("alpha_no_results")}</td></tr>
                 ) : sortedItems.map((r) => (
                   <tr key={r.ticker} className="border-t" style={{ borderColor: T.grid }}>
                     <td className="px-2 py-1 font-semibold" style={{ color: T.ink }}>{r.ticker}</td>
@@ -370,7 +374,7 @@ export function Explorador() {
                     </td>
                     {mostrarFecha && (
                       <td className="px-2 py-1" style={{ color: T.muted }}>
-                        {new Date(r.captured_at).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+                        {new Date(r.captured_at).toLocaleDateString(locale === "en" ? "en-US" : "es-ES", { day: "2-digit", month: "short", timeZone: "UTC" })}
                       </td>
                     )}
                   </tr>

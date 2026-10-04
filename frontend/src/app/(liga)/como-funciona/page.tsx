@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Cómo funciona — Vennett" };
+export async function generateMetadata() { const t = await getTranslations(); return { title: `${t("help_title")} — Vennett` }; }
 
 // Página pública de método: cómo entra cada empresa en una estrategia y qué pone la IA. Los números
 // del ejemplo son inventados y se rotulan como tal; el resto describe lo que hace el código
@@ -10,52 +11,45 @@ type Paso = { titulo: string; texto: string; cifra?: string; quien?: Quien; extr
 
 const PASOS: Paso[] = [
   {
-    titulo: "Una foto igual para todos",
-    texto: "El último día de bolsa del mes fotografiamos unas 3.000 empresas de EE. UU. con sus datos. Todas las estrategias parten de esa misma foto.",
-    cifra: "≈ 3.000 empresas",
+    titulo: "help_step_1_title", texto: "help_step_1_text", cifra: "help_step_1_stat",
   },
   {
-    titulo: "Tus reglas apartan empresas",
-    texto: "Sector, tamaño, valoración, lo que pidas. Las que no cumplen alguna regla se quedan fuera, y sabemos decirte cuál: «vale 1.900 M$ y pides más de 2.000 M$».",
-    cifra: "pasan unas 400 (ejemplo)",
+    titulo: "help_step_2_title", texto: "help_step_2_text", cifra: "help_step_2_stat",
   },
   {
-    titulo: "Cada empresa tiene cuatro notas",
-    texto: "Una IA (Jev) puntúa a todas, una vez al mes, en cuatro cosas: fundamentales, valoración, riesgo de financiación y catalizador. La nota es la misma para todo el mundo; tú decides cuánto pesa cada una.",
+    titulo: "help_step_3_title", texto: "help_step_3_text",
     quien: "ia",
-    extra: "Si añades una pregunta propia, la IA la contesta solo para las empresas que pasan tus reglas: sí o no, y con qué seguridad.",
+    extra: "help_step_3_extra",
   },
   {
-    titulo: "Se ordenan y se reparte",
-    texto: "Con tus pesos sale una nota de 0 a 100 por empresa. Se ordenan y, si empatan, gana la de más capitalización. Entran las primeras N respetando tu tope por sector. Lo que no llega a N se queda en caja.",
+    titulo: "help_step_4_title", texto: "help_step_4_text",
     quien: "codigo",
   },
   {
-    titulo: "Se fija y se compara con el S&P 500",
-    texto: "La cartera se fija el primer día de bolsa del mes y no cambia. Se compara con el S&P 500 en la misma ventana: más de 0,2 puntos por encima, 3 puntos; a 0,2 o menos de distancia, 1; por debajo, 0.",
+    titulo: "help_step_5_title", texto: "help_step_5_text",
     quien: "codigo",
   },
 ];
 
 const QUIEN: Record<Quien, string> = {
-  ia: "La pone una IA · la misma para todos",
-  codigo: "Lo hace el código · se repite igual",
+  ia: "help_by_ai",
+  codigo: "help_by_code",
 };
 
-export default function ComoFunciona() {
+export default async function ComoFunciona() {
+  const t = await getTranslations();
   return (
     <main className="sencilla cf">
       <header className="sencilla-top">
         <Link href="/" className="wordmark">Vennett</Link>
-        <Link href="/liga" className="cf-cerrar">Ir a la liga</Link>
+        <Link href="/liga" className="cf-cerrar">{t("help_go_to_league")}</Link>
       </header>
 
       <div className="cf-cuerpo">
-        <p className="cf-eyebrow">Cómo funciona</p>
-        <h1>Cómo entran las empresas en tu estrategia</h1>
+        <p className="cf-eyebrow">{t("help_title")}</p>
+        <h1>{t("help_heading")}</h1>
         <p className="cf-lead">
-          Tú pones las reglas. Cada mes las aplicamos a las mismas empresas y con las mismas notas
-          para todo el mundo. Aquí va cada paso, con lo que hace una IA y lo que hace el código.
+          {t("help_intro")}
         </p>
 
         <ol className="cf-pasos">
@@ -63,83 +57,72 @@ export default function ComoFunciona() {
             <li className="cf-paso" key={p.titulo}>
               <span className="cf-n" aria-hidden="true">{i + 1}</span>
               <div>
-                <h2>{p.titulo}</h2>
-                <p>{p.texto}</p>
+                <h2>{t(p.titulo)}</h2>
+                <p>{t(p.texto)}</p>
                 <div className="cf-etiquetas">
-                  {p.quien && <span className={`cf-quien ${p.quien}`}>{QUIEN[p.quien]}</span>}
-                  {p.cifra && <span className="cf-cifra">{p.cifra}</span>}
+                  {p.quien && <span className={`cf-quien ${p.quien}`}>{t(QUIEN[p.quien])}</span>}
+                  {p.cifra && <span className="cf-cifra">{t(p.cifra)}</span>}
                 </div>
-                {p.extra && <p className="cf-extra">{p.extra}</p>}
+                {p.extra && <p className="cf-extra">{t(p.extra)}</p>}
               </div>
             </li>
           ))}
         </ol>
 
         <section className="cf-sec" aria-labelledby="cf-quien-pone">
-          <h2 id="cf-quien-pone">Qué pone la IA y qué hace el código</h2>
+          <h2 id="cf-quien-pone">{t("help_ai_or_code_heading")}</h2>
           <div className="cf-dos">
             <div className="cf-caja">
-              <h3><span className="cf-punto ia" aria-hidden="true" />Lo pone un modelo</h3>
+              <h3><span className="cf-punto ia" aria-hidden="true" />{t("help_model_title")}</h3>
               <ul>
-                <li>Convertir tu frase en reglas</li>
-                <li>Las cuatro notas de cada empresa</li>
-                <li>La respuesta a tu pregunta propia</li>
-                <li>El texto que explica tus resultados</li>
+                <li>{t("help_model_item_1")}</li><li>{t("help_model_item_2")}</li><li>{t("help_model_item_3")}</li><li>{t("help_model_item_4")}</li>
               </ul>
-              <p>Siempre va marcado como IA, y las notas son las mismas para todas las estrategias.</p>
+              <p>{t("help_model_note")}</p>
             </div>
             <div className="cf-caja">
-              <h3><span className="cf-punto codigo" aria-hidden="true" />Lo hace el código</h3>
+              <h3><span className="cf-punto codigo" aria-hidden="true" />{t("help_code_title")}</h3>
               <ul>
-                <li>Aplicar tus reglas y tus exclusiones</li>
-                <li>Ordenar, desempatar y el tope por sector</li>
-                <li>Los pesos de cada empresa</li>
-                <li>La rentabilidad y los puntos</li>
+                <li>{t("help_code_item_1")}</li><li>{t("help_code_item_2")}</li><li>{t("help_code_item_3")}</li><li>{t("help_code_item_4")}</li>
               </ul>
-              <p>Con las mismas notas, sale siempre lo mismo.</p>
+              <p>{t("help_code_note")}</p>
             </div>
           </div>
         </section>
 
         <section className="cf-sec" aria-labelledby="cf-ejemplo">
-          <h2 id="cf-ejemplo">Un ejemplo</h2>
-          <p className="cf-sub">Con una empresa inventada, para ver la cuenta.</p>
+          <h2 id="cf-ejemplo">{t("help_example_title")}</h2>
+          <p className="cf-sub">{t("help_example_intro")}</p>
           <div className="cf-ejemplo">
-            <p className="cf-rotulo">Ejemplo inventado · no es una empresa real</p>
-            <div className="cf-emp"><b>Empresa Ejemplo</b><span>EJEM · Tecnología</span></div>
+            <p className="cf-rotulo">{t("help_example_disclaimer")}</p>
+            <div className="cf-emp"><b>{t("help_example_company")}</b><span>EJEM · {t("help_example_sector")}</span></div>
             <div className="cf-notas">
-              <div><b>7</b><small>Fundamentales · peso 30 %</small></div>
-              <div><b>5</b><small>Valoración · peso 30 %</small></div>
-              <div><b>8</b><small>Financiación · peso 20 %</small></div>
-              <div><b>6</b><small>Catalizador · peso 20 %</small></div>
+              <div><b>7</b><small>{t("help_score_fundamentals")}</small></div><div><b>5</b><small>{t("help_score_valuation")}</small></div><div><b>8</b><small>{t("help_score_financing")}</small></div><div><b>6</b><small>{t("help_score_catalyst")}</small></div>
             </div>
-            <p className="cf-total">Nota con tus pesos: <b>64</b> de 100</p>
-            <p className="cf-porque">Entra: la cuarta entre las que pasan tus reglas, sin pasarse del tope de 2 empresas por sector.</p>
+            <p className="cf-total">{t("help_example_total")} <b>64</b> {t("help_out_of_100")}</p>
+            <p className="cf-porque">{t("help_example_reason")}</p>
           </div>
         </section>
 
         <section className="cf-sec" aria-labelledby="cf-justo">
-          <h2 id="cf-justo">Qué lo mantiene justo</h2>
+          <h2 id="cf-justo">{t("help_fairness_title")}</h2>
           <ul className="cf-lista">
-            <li><b>Las reglas están versionadas.</b> Cada estrategia guarda con qué versión del catálogo jugó.</li>
-            <li><b>Los resultados oficiales no se reescriben.</b> Se fijan al cerrar la jornada y se quedan así.</li>
-            <li><b>Todos fijan con las mismas notas.</b> Las notas oficiales se generan la tarde del último día de bolsa y el corte es antes de que abra el mercado del día 1, así que puedes ver tu estrategia con ellas y nadie conoce el movimiento del día cuando la fija.</li>
-            <li><b>La casa puntúa como tú.</b> Alpha, Omega y Lambda juegan la misma jornada, contra el mismo S&amp;P y con los mismos puntos; sus carteras vienen de los métodos del sistema y no se publican.</li>
-            <li><b>Todo lo que hace la administración deja registro.</b></li>
+            <li>{t.rich("help_fairness_rules", { b: (chunks) => <b>{chunks}</b> })}</li>
+            <li>{t.rich("help_fairness_results", { b: (chunks) => <b>{chunks}</b> })}</li>
+            <li>{t.rich("help_fairness_scores", { b: (chunks) => <b>{chunks}</b> })}</li>
+            <li>{t.rich("help_fairness_house", { b: (chunks) => <b>{chunks}</b> })}</li>
+            <li>{t.rich("help_fairness_admin", { b: (chunks) => <b>{chunks}</b> })}</li>
           </ul>
           <p className="cf-callout">
-            <b>¿Algo no te cuadra?</b> En tu estrategia, «¿Por qué no sale X?» te dice si la empresa
-            entraría y por qué. Y si sigue sin cuadrarte, escríbenos.
+            <b>{t("help_question_heading")}</b> {t("help_question_text")}
           </p>
         </section>
 
         <div className="cf-cta">
-          <Link href="/entrar?next=/crear" className="btn pri">Crear mi estrategia</Link>
-          <Link href="/liga" className="btn">Ver la clasificación</Link>
+          <Link href="/entrar?next=/crear" className="btn pri">{t("help_create_strategy")}</Link>
+          <Link href="/liga" className="btn">{t("help_view_standings")}</Link>
         </div>
         <p className="cf-pie">
-          Vennett compara estrategias en papel: no hay dinero real ni es asesoramiento financiero.{" "}
-          <Link href="/legal/terminos">Términos</Link>
+          {t("help_disclaimer")} {" "}<Link href="/legal/terminos">{t("legal_terms_short")}</Link>
         </p>
       </div>
     </main>

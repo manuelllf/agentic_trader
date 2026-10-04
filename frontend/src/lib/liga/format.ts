@@ -1,3 +1,4 @@
+import { localeTag, type Locale } from "../../i18n/locale";
 // Formato de números y fechas de la liguilla, en español (DESIGN.md §10). Puerto de las
 // funciones `sign`/`pct`/`eur`/`num`/`dec` de docs/maqueta-liguilla-b.html a TypeScript tipado.
 
@@ -27,16 +28,16 @@ export function claseSigno(valor: number, decimales = 1): "up" | "dn" | "fl" {
 }
 
 /** Número con signo explícito, coma decimal y el menos tipográfico. El cero no lleva signo. */
-export function signo(valor: number, decimales = 1): string {
+export function signo(valor: number, decimales = 1, locale: Locale = "es"): string {
   const r = redondeoMedioArriba(valor, decimales);
-  const texto = Math.abs(r).toFixed(decimales).replace(".", ",");
+  const texto = Math.abs(r).toFixed(decimales).replace(".", locale === "en" ? "." : ",");
   if (r === 0) return texto;
   return (r > 0 ? "+" : MENOS) + texto;
 }
 
 /** Porcentaje con signo, 1 decimal por defecto y espacio duro antes de «%» (DESIGN.md §10). */
-export function porcentaje(valor: number, decimales = 1): string {
-  return signo(valor, decimales) + ESPACIO_DURO + "%";
+export function porcentaje(valor: number, decimales = 1, locale: Locale = "es"): string {
+  return signo(valor, decimales, locale) + ESPACIO_DURO + "%";
 }
 
 /**
@@ -47,34 +48,32 @@ export const diferenciaPuntos = porcentaje;
 
 /** Euros con 2 decimales, coma decimal y espacio duro antes de «€». Sin signo «+»: los
  * créditos son siempre un saldo, no una variación (a diferencia de los porcentajes). */
-export function euros(valor: number, decimales = 2): string {
+export function euros(valor: number, decimales = 2, locale: Locale = "es"): string {
   const r = redondeoMedioArriba(valor, decimales);
-  const texto = Math.abs(r).toFixed(decimales).replace(".", ",");
+  const texto = Math.abs(r).toFixed(decimales).replace(".", locale === "en" ? "." : ",");
   return (r < 0 ? MENOS : "") + texto + ESPACIO_DURO + "€";
 }
 
 /** El libro (`liga.creditos_movimientos`) ya cuenta en créditos (1 crédito = 0,01 $): sin conversión. */
-export function creditos(saldo: number): string {
-  return `${miles(Math.round(saldo))} créditos`;
+export function creditos(saldo: number, locale: Locale = "es"): string {
+  return `${miles(Math.round(saldo), locale)} ${locale === "en" ? (Math.round(saldo) === 1 ? "credit" : "credits") : (Math.round(saldo) === 1 ? "crédito" : "créditos")}`;
 }
 
 /** Miles con punto separador, sin decimales (recuento de empresas, posiciones en la tabla...). */
-export function miles(valor: number): string {
+export function miles(valor: number, locale: Locale = "es"): string {
   const negativo = valor < 0;
   const texto = Math.trunc(Math.abs(valor))
     .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    .replace(/\B(?=(\d{3})+(?!\d))/g, locale === "en" ? "," : ".");
   return negativo ? MENOS + texto : texto;
 }
 
-const MESES = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-] as const;
+
 
 /** Nombre de mes en español a partir de un índice 0-11 (admite fuera de rango, como los meses). */
-export function nombreMes(indice: number): string {
-  return MESES[((indice % 12) + 12) % 12];
+export function nombreMes(indice: number, locale: Locale = "es"): string {
+  return new Intl.DateTimeFormat(localeTag(locale), { month: "long", timeZone: "UTC" })
+    .format(new Date(Date.UTC(2020, ((indice % 12) + 12) % 12, 1)));
 }
 
 function partesMadrid(valor: Date): { dia: number; mes: number; anio: number } {
@@ -95,10 +94,13 @@ function partesMadrid(valor: Date): { dia: number; mes: number; anio: number } {
  * Fecha en español, hora de Madrid: «1 de febrero» y solo con año si no es el actual
  * (DESIGN.md §10). `ahora` es inyectable para pruebas deterministas.
  */
-export function fecha(valor: Date | string, ahora: Date = new Date()): string {
+export function fecha(valor: Date | string, ahora: Date = new Date(), locale: Locale = "es"): string {
   const d = typeof valor === "string" ? new Date(valor) : valor;
   const { dia, mes, anio } = partesMadrid(d);
   const anioActual = partesMadrid(ahora).anio;
-  const base = `${dia} de ${nombreMes(mes)}`;
+  if (locale === "en") return new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Madrid", day: "numeric", month: "long", ...(anio !== anioActual ? { year: "numeric" } as const : {}),
+  }).format(d);
+  const base = `${dia} de ${nombreMes(mes, locale)}`;
   return anio === anioActual ? base : `${base} de ${anio}`;
 }

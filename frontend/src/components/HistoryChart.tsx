@@ -1,16 +1,17 @@
 "use client";
-
+import { useLocale, useTranslations } from "next-intl";
 /** Historical equity curve: portfolio vs S&P 500 on base-100 index (flows excluded).
  *  Single axis with two ranges selected (1W/1M/All). S&P dashed as reference, not peer series. */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { localeTag, normalizeLocale } from "@/i18n/locale";
 import { money } from "@/lib/format";
 import type { HistoryPoint } from "@/lib/types";
 
 const RANGES = [
-  { key: "1S", days: 7 },
-  { key: "1M", days: 31 },
-  { key: "Todo", days: Infinity },
+  { key: "1S", label: "system_chart_week", days: 7 },
+  { key: "1M", label: "system_chart_month", days: 31 },
+  { key: "Todo", label: "system_chart_all", days: Infinity },
 ] as const;
 
 /* Paleta validada (CVD ΔE≥27 y contraste ≥3:1 sobre blanco y sobre #0d0d0d/#1a1a19). */
@@ -25,18 +26,22 @@ const THEME = {
   },
 };
 
-const fmtDay = (iso: string, withYear = false) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString("es-ES", {
+const fmtDay = (iso: string, locale: string, withYear = false) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString(locale, {
     day: "numeric", month: "short", ...(withYear ? { year: "2-digit" } : {}),
   });
 // fmtPct PROPIO del chart (no el compartido): deltas del índice base 100, siempre a 1 decimal.
-const fmtPct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+
 
 export default function HistoryChart({ points, dark = false, mini = false }: {
   points: HistoryPoint[];
   dark?: boolean;
   mini?: boolean;
 }) {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
+  const tag = localeTag(locale);
+  const fmtPct = (v: number) => `${v > 0 ? "+" : ""}${v.toLocaleString(tag, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
   const C = THEME[dark ? "dark" : "light"];
   const [range, setRange] = useState<(typeof RANGES)[number]["key"]>("Todo");
   const [hover, setHover] = useState<number | null>(null);
@@ -86,7 +91,7 @@ export default function HistoryChart({ points, dark = false, mini = false }: {
     if (mini) return null;
     return (
       <p className="py-6 text-center text-[12px]" style={{ color: C.axis }}>
-        La curva se dibuja con los cierres diarios — aparece con el segundo cierre.
+        {t("system_chart_waiting")}
       </p>
     );
   }
@@ -139,7 +144,7 @@ export default function HistoryChart({ points, dark = false, mini = false }: {
   if (mini) {
     return (
       <svg viewBox={`0 0 ${W} ${H}`} className="h-10 w-full" role="img"
-           aria-label={`Cartera ${fmtPct(last.v - 100)} vs S&P 500 ${fmtPct(last.s - 100)} desde ${points[0].date}`}>
+           aria-label={t("system_chart_summary", { portfolio: fmtPct(last.v - 100), benchmark: fmtPct(last.s - 100), date: fmtDay(points[0].date, tag) })}>
         <path d={path((p) => p.s)} fill="none" stroke={C.base} strokeWidth="1.5" strokeDasharray="3 3" />
         <path d={path((p) => p.v)} fill="none" stroke={C.line} strokeWidth="2"
               strokeLinejoin="round" strokeLinecap="round" />
@@ -156,7 +161,7 @@ export default function HistoryChart({ points, dark = false, mini = false }: {
         <div className="flex items-baseline gap-4" style={{ color: C.ink }}>
           <span className="inline-flex items-center gap-1.5 text-[13px]">
             <span className="h-2 w-2 rounded-full" style={{ background: C.line }} />
-            Cartera <b className="tabular-nums font-bold">{fmtPct(last.v - 100)}</b>
+            {t("system_chart_portfolio")} <b className="tabular-nums font-bold">{fmtPct(last.v - 100)}</b>
           </span>
           <span className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: C.axis }}>
             <span className="inline-block h-0 w-3 border-t-2 border-dashed" style={{ borderColor: C.spy }} />
@@ -171,7 +176,7 @@ export default function HistoryChart({ points, dark = false, mini = false }: {
                       style={range === r.key
                         ? { background: dark ? "#383835" : "#0f172a", color: dark ? "#ffffff" : "#ffffff" }
                         : { color: C.axis }}>
-                {r.key}
+                {t(r.label)}
               </button>
             ))}
           </div>
@@ -180,7 +185,7 @@ export default function HistoryChart({ points, dark = false, mini = false }: {
 
       <div ref={wrapRef} className="relative mt-2">
         <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} height={H} className="block w-full touch-none"
-             role="img" aria-label="Curva histórica de la cartera frente al S&P 500, base 100"
+             role="img" aria-label={t("system_attr_curva_historica_de_la_cartera_frente_al_s_p_500_base_100")}
              onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
           {gridVals.map((g) => (
             <g key={g}>
@@ -188,14 +193,14 @@ export default function HistoryChart({ points, dark = false, mini = false }: {
                     strokeWidth="1" strokeDasharray={Math.abs(g - 100) < 1e-9 ? "4 3" : undefined} />
               <text x={PAD.l - 7} y={y(g) + 3.5} textAnchor="end" fontSize="10.5" fill={C.axis}
                     className="tabular-nums">
-                {Math.abs(g - 100) < 1e-9 ? "0%" : `${g > 100 ? "+" : "−"}${Math.abs(g - 100) % 1 ? Math.abs(g - 100).toFixed(1) : Math.abs(g - 100)}%`}
+                {Math.abs(g - 100) < 1e-9 ? "0%" : `${g > 100 ? "+" : "−"}${Math.abs(g - 100) % 1 ? Math.abs(g - 100).toLocaleString(tag, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : Math.abs(g - 100)}%`}
               </text>
             </g>
           ))}
           {xTicks.map((i) => (
             <text key={i} x={x(i)} y={H - 6} fontSize="10.5" fill={C.axis}
                   textAnchor={i === 0 ? "start" : i === view.length - 1 ? "end" : "middle"}>
-              {fmtDay(view[i].date, crossYear)}
+              {fmtDay(view[i].date, tag, crossYear)}
             </text>
           ))}
 
@@ -207,7 +212,7 @@ export default function HistoryChart({ points, dark = false, mini = false }: {
                 strokeLinejoin="round" strokeLinecap="round" />
 
           <text x={W - PAD.r + 7} y={y(last.v) + 3.5} fontSize="10.5" fill={C.ink} fontWeight="600">
-            Cartera
+            {t("system_chart_portfolio")}
           </text>
           <text x={W - PAD.r + 7} y={y(last.s) + (Math.abs(y(last.s) - y(last.v)) < 12 ? (y(last.s) >= y(last.v) ? 13 : -6) : 3.5)}
                 fontSize="10.5" fill={C.axis}>
@@ -231,10 +236,10 @@ export default function HistoryChart({ points, dark = false, mini = false }: {
                  left: `${(x(hover) / W) * 100}%`,
                  transform: hover > view.length / 2 ? "translateX(calc(-100% - 10px))" : "translateX(10px)",
                }}>
-            <div style={{ color: C.axis }}>{fmtDay(h.date, true)}</div>
+            <div style={{ color: C.axis }}>{fmtDay(h.date, tag, true)}</div>
             <div className="tabular-nums">
-              <span className="font-semibold" style={{ color: C.line }}>Cartera {fmtPct(h.v - 100)}</span>
-              {h.equity && <span style={{ color: C.axis }}> · ${money(h.equity)}</span>}
+              <span className="font-semibold" style={{ color: C.line }}>{t("system_chart_portfolio")} {fmtPct(h.v - 100)}</span>
+              {h.equity && <span style={{ color: C.axis }}> · ${money(h.equity, 2, locale)}</span>}
             </div>
             <div className="tabular-nums" style={{ color: C.spy }}>S&amp;P 500 {fmtPct(h.s - 100)}</div>
           </div>

@@ -1,4 +1,7 @@
+"use client";
+
 import { useState } from 'react';
+import { useLocale, useTranslations } from "next-intl";
 import type { OutcomeBook, OutcomeScan, OutcomeStats } from '@/lib/api';
 import { InfoTip } from '@/components/InfoTip';
 import { sortRows, useOrden } from '@/lib/useOrden';
@@ -27,14 +30,16 @@ export function OutPct({ s }: { s: OutcomeStats }) {
 /** Una cohorte de la traza como fila de la tabla. En los observatorios, "en cartera" es la
  *  construcción HIPOTÉTICA de ese martes (nada se compró); el pie de la tabla lo aclara. */
 export function OutRow({ s, pct }: { s: OutcomeScan; pct: (v: number | null) => string }) {
+  const t = useTranslations();
+  const locale = useLocale() as "es" | "en";
   const [abierta, setAbierta] = useState(false);
   const tieneJev = !!s.jev?.length;
   return (
     <>
     <tr className="border-t border-[#303030]">
       <td className="py-1.5 pr-3">
-        del {fmtDay(s.at)} a hoy
-        <span className="text-[#6E6E6B]"> · {s.days} d · {s.mode}</span>
+        {t("beta_from_day", { date: fmtDay(s.at, locale) })} {t("beta_today")}
+        <span className="text-[#6E6E6B]"> · {s.days} d · {t(s.mode === "decisión" ? "beta_decision" : "beta_observation")}</span>
       </td>
       <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.cartera} /></td>
       <td className="px-3 py-1.5 text-right"><OutPct s={s.groups.seleccionados} /></td>
@@ -84,6 +89,8 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
   onExportGrupos: (p: "x" | "linkedin") => void; msgGrupos: string;
   onExportScore: (p: "x" | "linkedin") => void; msgScore: string;
 }) {
+  const t = useTranslations();
+  const locale = useLocale() as "es" | "en";
   // Por defecto solo DECISIONES (mezclar filas semanales y mensuales invita a compararlas
   // entre sí, y el semanal analiza otra franja); los observatorios quedan tras un toggle —
   // siguen alimentando "¿el score predice?", tirarlos del todo sería desperdiciar señal.
@@ -104,11 +111,11 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
   return (
     <div className="mb-6">
     <Details head={<>
-        La auditoría, leída
+        {t("beta_audit_read")}
         {/* La referencia de cada % tiene que estar EN la cabecera, no en la letra pequeña:
             sin "de su escaneo a hoy" la tabla eran números sin origen ni ventana. */}
         <span className="ml-2 text-[13px] font-normal normal-case tracking-normal text-[#6E6E6B]">
-          cuánto ha subido o bajado cada grupo de nombres desde su escaneo hasta hoy
+          {t("beta_audit_subtitle")}
         </span>
       </>}>
       <div className="p-4 text-xs leading-relaxed text-[#A3A3A0]">
@@ -117,60 +124,60 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
             <thead>
               <tr className="text-left text-[10px] uppercase tracking-wider text-[#6E6E6B]">
                 <th className="py-1.5 pr-3 font-semibold" aria-sort={ariaSort("at")}>
-                  <button onClick={() => toggle("at")} aria-label="Ordenar por fecha del escaneo"
+                  <button onClick={() => toggle("at")} aria-label={t("beta_sort_date")}
                           className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
-                    Escaneo → hoy
+                    {t("beta_scan_to_today")}
                     {sortKey === "at" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
                   </button>
                 </th>
                 <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold" aria-sort={ariaSort("cartera")}>
                   <span className="inline-flex items-center gap-1">
-                    <button onClick={() => toggle("cartera")} aria-label="Ordenar por en cartera"
+                    <button onClick={() => toggle("cartera")} aria-label={t("beta_attr_ordenar_por_en_cartera")}
                             className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
-                      En cartera
+                      {t("beta_held")}
                       {sortKey === "cartera" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
                     </button>
-                    <InfoTip text="Media del grupo desde el precio del día del escaneo; entre paréntesis, cuántos nombres." /></span>
+                    <InfoTip text={t("beta_scan_avg_tip")} /></span>
                 </th>
                 <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold" aria-sort={ariaSort("seleccionados")}>
                   <span className="inline-flex items-center gap-1">
-                    <button onClick={() => toggle("seleccionados")} aria-label="Ordenar por elegidos sin fondear"
+                    <button onClick={() => toggle("seleccionados")} aria-label={t("beta_sort_selected")}
                             className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
-                      Elegidos s/fondear
+                      {t("beta_selected_unfunded")}
                       {sortKey === "seleccionados" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
                     </button>
-                    <InfoTip text="Los del top-10 que el constructor dejó sin peso." /></span>
+                    <InfoTip text={t("beta_selected_tip")} /></span>
                 </th>
                 <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold" aria-sort={ariaSort("descartados")}>
                   <span className="inline-flex items-center gap-1">
-                    <button onClick={() => toggle("descartados")} aria-label="Ordenar por descartados"
+                    <button onClick={() => toggle("descartados")} aria-label={t("beta_sort_discarded")}
                             className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
-                      Descartados
+                      {t("beta_discarded")}
                       {sortKey === "descartados" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
                     </button>
-                    <InfoTip text="Analizados a fondo y no seleccionados." /></span>
+                    <InfoTip text={t("beta_discarded_tip")} /></span>
                 </th>
                 <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold" aria-sort={ariaSort("jev")}>
                   <span className="inline-flex items-center gap-1">
-                    <button onClick={() => toggle("jev")} aria-label="Ordenar por Jev sombra"
+                    <button onClick={() => toggle("jev")} aria-label={t("beta_sort_jev_shadow")}
                             className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
-                      Jev (sombra)
+                      {t("beta_jev_shadow")}
                       {sortKey === "jev" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
                     </button>
-                    <InfoTip text="Cartera mecánica de Jev: top 5 del prescore, máx. 2 por industria, 20% cada una · sombra sin dinero, rentabilidad bruta." /></span>
+                    <InfoTip text={t("beta_jev_tip")} /></span>
                 </th>
                 <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold" aria-sort={ariaSort("spy")}>
                   <span className="inline-flex items-center gap-1">
-                    <button onClick={() => toggle("spy")} aria-label="Ordenar por S&P 500"
+                    <button onClick={() => toggle("spy")} aria-label={t("beta_sort_sp500")}
                             className="inline-flex items-center gap-0.5 hover:text-[#A3A3A0]">
                       S&P 500
                       {sortKey === "spy" && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
                     </button>
-                    <InfoTip text="El índice en la misma ventana: la vara de medir." /></span>
+                    <InfoTip text={t("beta_index_tip")} /></span>
                 </th>
                 <th className="whitespace-nowrap px-3 py-1.5 text-right font-semibold">
-                  <span className="inline-flex items-center gap-1">Corte: fuera / dentro
-                    <InfoTip text="Los 10 mejores pre-scores que no llegaron al profundo vs los 10 peores que sí entraron." /></span>
+                  <span className="inline-flex items-center gap-1">{t("beta_cut_out_in")}
+                    <InfoTip text={t("beta_cut_tip")} /></span>
                 </th>
               </tr>
             </thead>
@@ -182,8 +189,8 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
                 <tr className="border-t border-[#303030]">
                   <td className="py-1.5 pr-3">
                     <span className="inline-flex items-center gap-1">
-                      cartera vigente{book.since ? ` · desde el ${fmtDay(book.since)}` : ""}
-                      <InfoTip text="Libro real a valor de mercado — anterior al inicio de la traza; el resto de columnas no puede reconstruirse." />
+                      {t("beta_current_portfolio")}{book.since ? ` · ${t("beta_since", { date: fmtDay(book.since, locale) })}` : ""}
+                      <InfoTip text={t("beta_real_ledger_tip")} />
                     </span>
                     {diasLibro != null && <span className="text-[#6E6E6B]"> · {diasLibro} d</span>}
                   </td>
@@ -212,8 +219,8 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
                   <td colSpan={7} className="py-1.5">
                     <button onClick={() => setVerObs(!verObs)}
                             className="text-[11px] text-[#6E6E6B] hover:text-[#A3A3A0]">
-                      {mostrarObs ? "▴ ocultar" : "▾ ver"} observatorios ({observatorios.length})
-                      {mostrarObs ? "" : " — su «en cartera» es hipotético"}
+                      {mostrarObs ? t("beta_hide") : t("beta_show")} {t("beta_observatories")} ({observatorios.length})
+                      {mostrarObs ? "" : ` — ${t("beta_observatory_hypothetical")}`}
                     </button>
                   </td>
                 </tr>
@@ -223,16 +230,14 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
           </table>
         </div>
         <p className="mt-2 border-t border-[#303030] pt-2 text-[11px] text-[#6E6E6B]">
-          retorno simple desde el precio del día del escaneo, a igual peso dentro de cada grupo ·
-          un profundo ilegible no cuenta como descarte · Jev (sombra) no mueve dinero: solo mide
-          su cartera mecánica
+          {t("beta_audit_footnote")}
           {observatorios.length > 0 &&
-            " · en los observatorios, «en cartera» es la construcción hipotética de ese martes, no el libro"}
+            ` · ${t("beta_observatory_footnote")}`}
           {masVieja > 0 && masVieja < 14 &&
-            ` · la cohorte más vieja tiene ${masVieja} día${masVieja === 1 ? "" : "s"}: aún es ruido, la lectura seria llega con semanas`}
+            ` · ${t("beta_oldest_cohort", { count: masVieja })}`}
         </p>
-        <ExportButtons onExport={onExportGrupos} msg={msgGrupos} label="¿Eligió bien?" />
-        <ExportButtons onExport={onExportScore} msg={msgScore} label="¿El score predice?" />
+        <ExportButtons onExport={onExportGrupos} msg={msgGrupos} label={t("beta_pick_question")} />
+        <ExportButtons onExport={onExportScore} msg={msgScore} label={t("beta_score_question")} />
       </div>
     </Details>
     </div>
@@ -246,10 +251,11 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
 export function ExportButtons({ onExport, msg, label }: {
   onExport: (preset: "x" | "linkedin") => void; msg: string; label?: string;
 }) {
+  const t = useTranslations();
   return (
     <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
       {msg && <span className="mr-auto text-[11px] text-[#6E6E6B]">{msg}</span>}
-      <span className="text-[11px] text-[#6E6E6B]">{label ? `${label} · exportar tarjeta` : "Exportar tarjeta"}</span>
+      <span className="text-[11px] text-[#6E6E6B]">{label ? t("beta_export_card_labeled", { label }) : t("beta_export_card")}</span>
       {([["x", "X"], ["linkedin", "LinkedIn"]] as const)
         .map(([key, netLabel]) => (
           <button

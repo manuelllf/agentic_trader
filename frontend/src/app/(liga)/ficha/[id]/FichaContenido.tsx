@@ -5,6 +5,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
+import { normalizeLocale } from "@/i18n/locale";
 import {
   BarraPestanas, Boton, Cargando, CASA, Cifra, Escudo, escudoCasa, ErrorLiga, Segmentado,
 } from "../../_ui";
@@ -18,18 +20,20 @@ import { getSeguimiento, marcarSeguimientos, type SeguimientoEstrategia } from "
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
 
 const ETIQUETA_PESO: Record<string, string> = {
-  negocio: "El negocio", precio: "El precio", deuda: "La deuda", pronto: "Algo a favor pronto",
-  pregunta: "Tu pregunta",
+  negocio: "strategies_weight_business", precio: "strategies_weight_price", deuda: "strategies_weight_debt", pronto: "strategies_weight_catalyst",
+  pregunta: "strategies_weight_question",
 };
 
-function subtitulo(f: Ficha, esMia: boolean): string {
-  if (f.casa) return `De la casa: ${CASA[f.casa].nombre}`;
-  if (esMia) return "La tuya";
-  if (f.autor) return `De ${f.autor}`;
-  return "Estrategia retirada";
+function subtitulo(f: Ficha, esMia: boolean, t: (key: string, values?: Record<string, string>) => string): string {
+  if (f.casa) return t("strategies_house_by", { name: CASA[f.casa].nombre });
+  if (esMia) return t("strategies_yours");
+  if (f.autor) return t("strategies_by_author", { author: f.autor });
+  return t("strategies_retired");
 }
 
 function CarteraSinEvidencia({ posiciones, mercado }: { posiciones: Ficha["posiciones"]; mercado?: MercadoFicha | null }) {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
   const [ticker, setTicker] = useState<string | null>(null);
   const dialogo = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -41,23 +45,27 @@ function CarteraSinEvidencia({ posiciones, mercado }: { posiciones: Ficha["posic
     return () => { d.close(); document.body.style.overflow = overflow; };
   }, [ticker]);
   const cotizacion = ticker ? mercado?.empresas[ticker] : null;
-  return <section className="sec"><h3 className="sec-t">Cartera · {posiciones.length} empresas</h3>
+  return <section className="sec"><h3 className="sec-t">{t("strategies_portfolio_count", { count: posiciones.length })}</h3>
     <div className="cartera-plantilla">{posiciones.map(p => <button type="button" className="cartera-empresa con-precio" key={p.ticker} onClick={() => setTicker(p.ticker)}>
-      <b>{p.ticker}</b><span>{Number(p.peso).toFixed(1).replace(".", ",")} %<small>Peso</small></span>
-      <span>{mercado?.empresas[p.ticker]?.precio == null ? "—" : Number(mercado.empresas[p.ticker]!.precio).toLocaleString("es-ES")}<small>Precio</small></span>
-      <span><b className={`cartera-retorno ${mercado?.empresas[p.ticker]?.rentabilidad == null ? "fl" : claseSigno(mercado.empresas[p.ticker]!.rentabilidad!)}`}>{mercado?.empresas[p.ticker]?.rentabilidad == null ? "—" : porcentaje(mercado.empresas[p.ticker]!.rentabilidad!)}</b><small>Este mes · provisional</small></span><span aria-hidden="true">→</span>
+      <b>{p.ticker}</b><span>{new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(p.peso))} %<small>{t("strategies_weight")}</small></span>
+      <span>{mercado?.empresas[p.ticker]?.precio == null ? "—" : Number(mercado.empresas[p.ticker]!.precio).toLocaleString(locale)}<small>{t("strategies_price")}</small></span>
+      <span><b className={`cartera-retorno ${mercado?.empresas[p.ticker]?.rentabilidad == null ? "fl" : claseSigno(mercado.empresas[p.ticker]!.rentabilidad!)}`}>{mercado?.empresas[p.ticker]?.rentabilidad == null ? "—" : porcentaje(mercado.empresas[p.ticker]!.rentabilidad!, 1, locale)}</b><small>{t("strategies_month_provisional")}</small></span><span aria-hidden="true">→</span>
     </button>)}</div>
-    <dialog ref={dialogo} className="lecturas-modal empresa-modal" aria-label={`Empresa ${ticker ?? ""}`} onCancel={() => setTicker(null)}>
-      <header className="lecturas-cab"><h2>{ticker}</h2><button type="button" className="lecturas-cerrar" autoFocus aria-label="Cerrar empresa" onClick={() => setTicker(null)}>×</button></header>
-      <div className="lecturas-cuerpo"><p>Precio: {cotizacion?.precio == null ? "—" : Number(cotizacion.precio).toLocaleString("es-ES")}</p>
-        <p>Retorno del mes: {cotizacion?.rentabilidad == null ? "—" : porcentaje(cotizacion.rentabilidad)}</p>
-        <p className="fine">{cotizacion?.dia ? `Datos del ${fecha(cotizacion.dia)}. Provisional.` : "Sin cotización actual disponible."}</p>
-        <p className="fine">No hay evidencia histórica disponible para verificar las reglas de esta empresa.</p></div>
+    <dialog ref={dialogo} className="lecturas-modal empresa-modal" aria-label={t("strategies_company_dialog", { ticker: ticker ?? "" })} onCancel={() => setTicker(null)}>
+      <header className="lecturas-cab"><h2>{ticker}</h2><button type="button" className="lecturas-cerrar" autoFocus aria-label={t("strategies_close_company")} onClick={() => setTicker(null)}>×</button></header>
+      <div className="lecturas-cuerpo"><p>{t("strategies_price_label")}: {cotizacion?.precio == null ? "—" : Number(cotizacion.precio).toLocaleString(locale)}</p>
+        <p>{t("strategies_month_return")}: {cotizacion?.rentabilidad == null ? "—" : porcentaje(cotizacion.rentabilidad, 1, locale)}</p>
+        <p className="fine">{cotizacion?.dia ? t("strategies_data_provisional", { date: fecha(cotizacion.dia, new Date(), locale) }) : t("strategies_no_current_quote")}</p>
+        <p className="fine">{t("strategies_no_historical_evidence")}</p></div>
     </dialog>
   </section>;
 }
 
 export function FichaContenido({ id }: { id: string }) {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
+  const date = (value: string) => fecha(value, new Date(), locale);
+  const percent = (value: number) => porcentaje(value, 1, locale);
   const router = useRouter();
   const { estado, yo } = useSesionRequerida(`/ficha/${id}`);
   const sesionLista = estado !== "cargando";
@@ -99,12 +107,12 @@ export function FichaContenido({ id }: { id: string }) {
   }
 
   async function alReportar() {
-    const motivo = window.prompt("¿Por qué reportas esta estrategia? Cuéntanos qué pasa.");
+    const motivo = window.prompt(t("strategies_report_prompt"));
     if (!motivo || !motivo.trim()) return;
     setOcupado(true);
     const r = await reportar("estrategia", id, motivo.trim());
     setOcupado(false);
-    setAviso(typeof r === "string" ? r : "Gracias, lo revisamos.");
+    setAviso(typeof r === "string" ? r : t("strategies_report_thanks"));
   }
 
   return (
@@ -117,32 +125,32 @@ export function FichaContenido({ id }: { id: string }) {
              strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M15 6l-6 6 6 6" />
         </svg>
-        Volver
+        {t("strategies_back")}
       </Link>
 
       {cargandoFicha ? (
         <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
       ) : typeof ficha === "string" ? (
-        <ErrorLiga titulo="No se pudo cargar la ficha" mensaje={ficha}
-                   accion={{ texto: "Reintentar", onClick: refrescarFicha }} />
+        <ErrorLiga titulo={t("strategies_detail_load_error")} mensaje={ficha}
+                   accion={{ texto: t("strategies_retry"), onClick: refrescarFicha }} />
       ) : !ficha ? null : (
         <>
           <div className="fh" style={{ marginTop: 16 }}>
             <Escudo valor={ficha.casa ? escudoCasa(ficha.casa) : ficha.escudo}
-              casa={ficha.casa} etiqueta={`Escudo de ${ficha.nombre}`} tamano={52} />
+              casa={ficha.casa} etiqueta={t("strategies_crest", { name: ficha.nombre })} tamano={52} />
             <div>
               <h2>{ficha.nombre}</h2>
-              <p>{subtitulo(ficha, ficha.es_dueno)}</p>
+              <p>{subtitulo(ficha, ficha.es_dueno, (key, values) => t(key, values))}</p>
             </div>
           </div>
 
-          {ficha.mercado && <section className="ficha-marcador" aria-label="Resultado provisional de la cartera">
-            <div><small>Cartera · este mes</small><b className={ficha.mercado.rentabilidad == null ? "" : claseSigno(ficha.mercado.rentabilidad)}>{ficha.mercado.rentabilidad == null ? "—" : porcentaje(ficha.mercado.rentabilidad)}</b></div>
-            <div><small>S&amp;P 500 · mismo periodo</small><b>{ficha.mercado.sp500 == null ? "—" : porcentaje(ficha.mercado.sp500)}</b></div>
-            <p className="fine">Provisional desde {fecha(ficha.mercado.desde)} · {ficha.mercado.consultado ? `consultado a las ${new Date(ficha.mercado.consultado).toLocaleTimeString("es-ES", {hour:"2-digit",minute:"2-digit"})}` : "esperando actualización de mercado"} · datos del {fecha(ficha.mercado.dia)}. Refresco cada 2 min. Yahoo puede entregar cotizaciones con retraso.</p>
+          {ficha.mercado && <section className="ficha-marcador" aria-label={t("strategies_portfolio_provisional_result")}>
+            <div><small>{t("strategies_portfolio_month")}</small><b className={ficha.mercado.rentabilidad == null ? "" : claseSigno(ficha.mercado.rentabilidad)}>{ficha.mercado.rentabilidad == null ? "—" : percent(ficha.mercado.rentabilidad)}</b></div>
+            <div><small>{t("strategies_sp_same_period")}</small><b>{ficha.mercado.sp500 == null ? "—" : percent(ficha.mercado.sp500)}</b></div>
+            <p className="fine">{t("strategies_market_freshness", { date: date(ficha.mercado.desde), checked: ficha.mercado.consultado ? t("strategies_checked_at", { time: new Date(ficha.mercado.consultado).toLocaleTimeString(locale, {hour:"2-digit",minute:"2-digit"}) }) : t("strategies_waiting_market"), dataDate: date(ficha.mercado.dia) })}</p>
           </section>}
-          <Segmentado className="ficha-nav" etiquetaGrupo="Ficha de la estrategia" valor={vista} onChange={setVista}
-            opciones={[{ valor: "cartera", etiqueta: "Cartera" }, { valor: "metodo", etiqueta: "Metodología" }, { valor: "resultados", etiqueta: "Resultados" }]} />
+          <Segmentado className="ficha-nav" etiquetaGrupo={t("strategies_detail_tabs")} valor={vista} onChange={setVista}
+            opciones={[{ valor: "cartera", etiqueta: t("strategies_portfolio") }, { valor: "metodo", etiqueta: t("strategies_methodology") }, { valor: "resultados", etiqueta: t("strategies_results") }]} />
           {vista === "resultados" && <div className={ficha.es_dueno && seguimiento ? "ficha-distribucion" : undefined}>
             <RendimientoFicha datos={ficha.rendimiento} posiciones={ficha.posiciones} />
             {ficha.es_dueno && seguimiento && (
@@ -150,17 +158,17 @@ export function FichaContenido({ id }: { id: string }) {
             )}
           </div>}
 
-          {vista === "metodo" && !ficha.receta && <p className="meta">Esta metodología no está disponible para tu cuenta.</p>}
+          {vista === "metodo" && !ficha.receta && <p className="meta">{t("strategies_method_private")}</p>}
           {vista === "metodo" && ficha.receta && (
             <section className="ficha-metodologia">
-              <Segmentado etiquetaGrupo="Pasos de la metodología" valor={metodo} onChange={setMetodo}
-                opciones={[{ valor: "idea", etiqueta: "Idea" }, { valor: "reglas", etiqueta: "Reglas" }, { valor: "criterios", etiqueta: "Criterios" }, { valor: "reparto", etiqueta: "Reparto" }]} />
-              {metodo === "idea" && <div className="sec"><h3 className="sec-t">La idea</h3><p className="meta">{ficha.receta.idea || "No hay una idea escrita para esta estrategia."}</p></div>}
+              <Segmentado etiquetaGrupo={t("strategies_method_steps")} valor={metodo} onChange={setMetodo}
+                opciones={[{ valor: "idea", etiqueta: t("strategies_idea") }, { valor: "reglas", etiqueta: t("strategies_rules") }, { valor: "criterios", etiqueta: t("strategies_criteria") }, { valor: "reparto", etiqueta: t("strategies_allocation") }]} />
+              {metodo === "idea" && <div className="sec"><h3 className="sec-t">{t("strategies_the_idea")}</h3><p className="meta">{ficha.receta.idea || t("strategies_no_idea")}</p></div>}
               {metodo === "reglas" && <div className="sec">
-                <div className="sec-t">Sus reglas</div>
-                <p className="fine">Método guardado. La cartera en juego mantiene sus posiciones hasta la próxima revisión.</p>
+                <div className="sec-t">{t("strategies_its_rules")}</div>
+                <p className="fine">{t("strategies_saved_method_note")}</p>
                 <div className="rules">
-                  {ficha.receta.reglas.length === 0 && <p className="meta">Sin filtros adicionales.</p>}
+                  {ficha.receta.reglas.length === 0 && <p className="meta">{t("strategies_no_extra_filters")}</p>}
                   {ficha.receta.reglas.map((r, i) => (
                     <div className="rulec" key={i}>
                       <div>
@@ -178,19 +186,19 @@ export function FichaContenido({ id }: { id: string }) {
                 </div>
               </div>}
               {metodo === "reparto" && <div className="sec">
-                <div className="sec-t">Construcción y revisión</div>
-                <p className="fine">Hasta {ficha.receta.n_empresas} empresas · {ficha.receta.reparto === "igual" ? "Pesos iguales" : "Pesos según puntuación"} · {Number(ficha.receta.max_por_sector) === 0 ? "sin límite por sector" : `máximo ${ficha.receta.max_por_sector} por sector`}.</p>
-                <p className="fine">Revisión mensual, el primer día de mercado de cada mes.</p>
-                {ficha.receta.excluidas.length > 0 && <p className="fine">Excluidas: {ficha.receta.excluidas.join(", ")}.</p>}
+                <div className="sec-t">{t("strategies_build_and_review")}</div>
+                <p className="fine">{t("strategies_allocation_summary", { count: ficha.receta.n_empresas, allocation: ficha.receta.reparto === "igual" ? t("strategies_equal_weights") : t("strategies_score_weights"), sectorLimit: Number(ficha.receta.max_por_sector) === 0 ? t("strategies_no_sector_limit") : t("strategies_sector_limit", { count: ficha.receta.max_por_sector }) })}</p>
+                <p className="fine">{t("strategies_monthly_review")}</p>
+                {ficha.receta.excluidas.length > 0 && <p className="fine">{t("strategies_excluded")}: {ficha.receta.excluidas.join(", ")}.</p>}
               </div>}
               {metodo === "criterios" && <div className="sec">
-                <div className="sec-t">Criterios</div>
+                <div className="sec-t">{t("strategies_criteria")}</div>
                 {Object.entries(ficha.receta.pesos).filter(([, v]) => v > 0).map(([k, v]) => {
                   const total = Object.values(ficha.receta!.pesos).reduce((a, b) => a + b, 0) || 1;
                   const pct = Math.round((v * 100) / total);
                   return (
                     <div className={`wrow${k === "pregunta" ? " own" : ""}`} key={k}>
-                      <span>{ETIQUETA_PESO[k] ?? k}</span>
+                      <span>{ETIQUETA_PESO[k] ? t(ETIQUETA_PESO[k]) : k}</span>
                       <span className="num">{pct}&nbsp;%</span>
                       <div className="wbar"><i style={{ width: `${pct}%` }} /></div>
                     </div>
@@ -199,7 +207,7 @@ export function FichaContenido({ id }: { id: string }) {
               </div>}
               {metodo === "criterios" && ficha.receta.pregunta && (
                 <div className="sec">
-                  <div className="sec-t">Su pregunta a la IA</div>
+                  <div className="sec-t">{t("strategies_ai_question")}</div>
                   <p className="q">«{ficha.receta.pregunta}»</p>
                 </div>
               )}
@@ -210,34 +218,33 @@ export function FichaContenido({ id }: { id: string }) {
           {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.posiciones.length > 0 && (
             <CarteraSinEvidencia posiciones={ficha.posiciones} mercado={ficha.mercado} />
           )}
-          {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.posiciones.length === 0 && <p className="meta">{ficha.rendimiento?.estado === "privado" ? "Esta cartera es privada. Sus resultados oficiales siguen disponibles en Resultados." : "Todavía no hay una cartera visible para esta estrategia."}</p>}
+          {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.posiciones.length === 0 && <p className="meta">{ficha.rendimiento?.estado === "privado" ? t("strategies_private_portfolio_note") : t("strategies_no_visible_portfolio")}</p>}
 
           {vista === "cartera" && ficha.casa === "omega" && (
             <div className="sec">
-              <div className="sec-t">Su cartera</div>
-              <p className="fine">Cambia durante el mes.</p>
+              <div className="sec-t">{t("strategies_its_portfolio")}</div>
+              <p className="fine">{t("strategies_changes_during_month")}</p>
             </div>
           )}
 
           {vista === "resultados" && <section className="sec">
-            <h3 className="sec-t">Historial · {ficha.jornadas.length} jornadas</h3>
-            <p className="fine">Resultados oficiales de cada jornada. Los puntos resumen la comparación con el S&amp;P 500 al cierre.</p>
+            <h3 className="sec-t">{t("strategies_round_history", { count: ficha.jornadas.length })}</h3>
+            <p className="fine">{t("strategies_official_results_note")}</p>
             {ficha.jornadas.length === 0 ? (
-              <p className="meta">Todavía no tiene resultados de jornadas.</p>
+              <p className="meta">{t("strategies_no_round_results")}</p>
             ) : ficha.jornadas.map((j) => (
               <div className="month" key={j.numero}>
-                <span>Jornada {j.numero}</span>
+                <span>{t("strategies_round", { round: j.numero })}</span>
                 {j.rentabilidad !== null ? <Cifra valor={j.rentabilidad} /> : <span className="fl">—</span>}
-                <span className="num">{j.puntos !== null ? `${j.puntos} pts` : "—"}</span>
+                <span className="num">{j.puntos !== null ? t("strategies_points", { count: j.puntos }) : "—"}</span>
               </div>
             ))}
-            <p className="fine"><Link href="/liga">Comparar con las demás estrategias →</Link></p>
+            <p className="fine"><Link href="/liga">{t("strategies_compare_others")} →</Link></p>
           </section>}
 
           {!ficha.casa && (
             <p className="fine">
-              Estrategia de un usuario, no una recomendación de la plataforma. Todo es en papel:
-              aquí no se compra ni se vende nada.
+              {t("strategies_user_strategy_disclaimer")}
             </p>
           )}
 
@@ -245,22 +252,22 @@ export function FichaContenido({ id }: { id: string }) {
 
           <div className="cta">
             {ficha.es_dueno ? (
-              <Link href={`/crear/${ficha.id}`} className="btn pri wide">Editar</Link>
+              <Link href={`/crear/${ficha.id}`} className="btn pri wide">{t("strategies_edit")}</Link>
             ) : (
               <>
                 {!ficha.casa && ficha.receta && (
                   yo?.plan === "pro" ? (
                     <Boton variante="principal" ancho="completo" disabled={ocupado} onClick={alCopiar}>
-                      Copiar y ajustar
+                      {t("strategies_copy_adjust")}
                     </Boton>
                   ) : (
                     <div className="lock">
-                      Con Pro puedes copiar esta estrategia y ajustarla a tu gusto.
+                      {t("strategies_pro_copy_note")}
                     </div>
                   )
                 )}
-                {!ficha.casa && !ficha.receta && <p className="fine">La metodología solo puede copiarse con Pro cuando su autor la publica.</p>}
-                <Boton variante="discreto" onClick={alReportar} disabled={ocupado}>Reportar</Boton>
+                {!ficha.casa && !ficha.receta && <p className="fine">{t("strategies_copy_requires_published_pro")}</p>}
+                <Boton variante="discreto" onClick={alReportar} disabled={ocupado}>{t("strategies_report")}</Boton>
               </>
             )}
           </div>

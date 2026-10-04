@@ -1,6 +1,7 @@
 """Mantenimiento: estado de frescura de datos, sync de FX/analitica, volcado de BD,
 fotos de fundamentales y universo global (HuggingFace). Todo detras de require_auth."""
 from __future__ import annotations
+from app.i18n import translate
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
@@ -83,7 +84,7 @@ def admin_sync_analytics() -> dict:
         if exc.tipo == "RuntimeError":
             raise HTTPException(503, str(exc)) from exc
         # Postgres caído o ATTACH roto: mensaje legible, no 500.
-        raise HTTPException(503, f"No se pudo sincronizar: {exc}") from exc
+        raise HTTPException(503, translate('api_sync_failed', error=str(exc))) from exc
     return {"ok": True, "counts": counts}
 
 

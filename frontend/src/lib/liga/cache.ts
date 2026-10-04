@@ -100,6 +100,12 @@ export function invalidar(...claves: string[]): void {
   }
 }
 
+export function refrescarPresentacion(): void {
+  versiones.set("catalogo", (versiones.get("catalogo") ?? 0) + 1);
+  enVuelo.delete("catalogo");
+  revalidadores.get("catalogo")?.forEach((fetch) => fetch());
+}
+
 export function limpiarPrivado(): void {
   const claves = new Set([...cache.keys(), ...enVuelo.keys(), ...suscriptores.keys()]);
   for (const clave of claves) {

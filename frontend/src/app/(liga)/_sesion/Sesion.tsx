@@ -8,10 +8,12 @@
 // "cargando" solo se ve una vez, en la primera carga de la app entera.
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import { useSesion } from "./SesionContext";
 
 export function Sesion() {
+  const t = useTranslations();
   const { estado, yo, cerrarSesion } = useSesion();
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
@@ -37,14 +39,14 @@ export function Sesion() {
 
   if (estado === "cargando") return <span className="cuenta-hueco" aria-hidden="true" />;
   if (estado === "fuera") {
-    return <Link href="/entrar" className="btn small discreto">Entrar</Link>;
+    return <Link href="/entrar" className="btn small discreto">{t("account_entrar")}</Link>;
   }
   const panel = yo?.aal2 ? "/admin" : "/cuenta/verificacion?next=/admin";
   return (
     <div className="cuenta" ref={caja}>
       <button type="button" className="cuenta-boton" aria-haspopup="menu"
               aria-expanded={abierto} onClick={() => setAbierto((a) => !a)}>
-        <span>{yo?.alias ?? "Tu cuenta"}</span>
+        <span>{yo?.alias ?? t("account_tu_cuenta")}</span>
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
           <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8"
                 strokeLinecap="round" strokeLinejoin="round" />
@@ -52,12 +54,12 @@ export function Sesion() {
       </button>
       {abierto && (
         <div className="cuenta-menu" role="menu">
-          <Link href="/cuenta" role="menuitem" className="cuenta-item">Tu cuenta</Link>
+          <Link href="/cuenta" role="menuitem" className="cuenta-item">{t("account_tu_cuenta")}</Link>
           {yo?.admin && (
-            <Link href={panel} role="menuitem" className="cuenta-item">Panel de control</Link>
+            <Link href={panel} role="menuitem" className="cuenta-item">{t("account_panel_control")}</Link>
           )}
           <button type="button" role="menuitem" className="cuenta-item salir" onClick={salir}>
-            Salir
+            {t("account_salir")}
           </button>
         </div>
       )}

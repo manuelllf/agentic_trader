@@ -3,9 +3,12 @@
 // Tu cuenta: el nombre con el que sales en la liga (el correo nunca se enseña a nadie), tu correo
 // y la verificación en dos pasos.
 
+import { useTranslations } from "next-intl";
+import { LanguageSelector } from "@/i18n/LanguageSelector";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Boton, Cargando, ErrorLiga } from "../_ui";
+import { Boton, CampoClave, Cargando, ErrorLiga } from "../_ui";
+import { claveValida } from "@/lib/liga/registro";
 import { cambiarAlias } from "@/lib/liga/api";
 import { borrarMiCuenta, exportarMisDatos } from "@/lib/liga/cuenta";
 import { useSupabase } from "@/lib/liga/supabase";
@@ -22,6 +25,7 @@ function descargar(nombre: string, texto: string): void {
 }
 
 export default function Cuenta() {
+  const t = useTranslations();
   const sb = useSupabase();
   const { yo, yoFallo, refrescarYo, email } = useSesionRequerida("/cuenta");
   const [alias, setAlias] = useState("");
@@ -34,6 +38,7 @@ export default function Cuenta() {
   const [errorBaja, setErrorBaja] = useState("");
   const [dandoBaja, setDandoBaja] = useState(false);
   const [claveNueva, setClaveNueva] = useState("");
+  const [confirmarClave, setConfirmarClave] = useState("");
   const [cambiando, setCambiando] = useState(false);
   const [avisoClave, setAvisoClave] = useState<{ tipo: "bien" | "mal"; texto: string } | null>(null);
 
@@ -58,7 +63,7 @@ export default function Cuenta() {
     } else {
       fijar("yo", fuera);
       setAlias(fuera.alias);
-      setAviso({ tipo: "bien", texto: "Guardado. Ya sales con este nombre." });
+      setAviso({ tipo: "bien", texto: t("account_guardado") });
     }
     setOcupado(false);
   };
@@ -66,6 +71,14 @@ export default function Cuenta() {
   const cambiarClave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cambiando || !sb) return;
+    if (!claveValida(claveNueva)) {
+      setAvisoClave({ tipo: "mal", texto: t("account_clave_requisitos") });
+      return;
+    }
+    if (claveNueva !== confirmarClave) {
+      setAvisoClave({ tipo: "mal", texto: t("account_contrasenas_distintas") });
+      return;
+    }
     setCambiando(true);
     setAvisoClave(null);
     const { error } = await sb.auth.updateUser({ password: claveNueva });
@@ -73,12 +86,13 @@ export default function Cuenta() {
       setAvisoClave({
         tipo: "mal",
         texto: error.status === 422
-          ? "Esa contraseña no vale (o es igual a la actual). Prueba con otra más larga."
-          : "No se pudo cambiar ahora. Prueba otra vez.",
+          ? t("account_clave_invalida")
+          : t("account_cambio_fallo"),
       });
     } else {
       setClaveNueva("");
-      setAvisoClave({ tipo: "bien", texto: "Contraseña cambiada." });
+      setConfirmarClave("");
+      setAvisoClave({ tipo: "bien", texto: t("account_clave_cambiada") });
     }
     setCambiando(false);
   };
@@ -114,17 +128,17 @@ export default function Cuenta() {
     <main className="sencilla">
       <header className="sencilla-top">
         <Link href="/" className="wordmark">Vennett</Link>
-      </header>
+      <LanguageSelector /></header>
 
       <section className="sencilla-cuerpo arriba" aria-labelledby="titular">
-        <h1 id="titular">Tu cuenta</h1>
+        <h1 id="titular">{t("account_tu_cuenta")}</h1>
         {sb === null ? (
-          <p className="nota">Las cuentas todavía no están abiertas.</p>
+          <p className="nota">{t("account_cuentas_cerradas")}</p>
         ) : !yo ? (
           yoFallo ? (
-            <ErrorLiga titulo="No hemos podido cargar tu cuenta"
-                       mensaje="Puede ser un fallo puntual. Reinténtalo en unos segundos."
-                       accion={{ texto: "Reintentar", onClick: refrescarYo }} />
+            <ErrorLiga titulo={t("account_error_cargar")}
+                       mensaje={t("account_error_reintentar")}
+                       accion={{ texto: t("account_reintentar"), onClick: refrescarYo }} />
           ) : (
             <Cargando filas={2} />
           )
@@ -132,13 +146,12 @@ export default function Cuenta() {
           <>
             <form className="form" onSubmit={guardar}>
               <label className="campo">
-                <span className="lbl">Tu nombre en la liga</span>
+                <span className="lbl">{t("account_nombre_liga")}</span>
                 <input className="inp" value={alias} maxLength={20} required
                        autoCapitalize="none" autoCorrect="off" spellCheck={false}
                        onChange={(e) => setAlias(e.target.value)} />
                 <span className="nota">
-                  Es lo único que ven los demás. De 3 a 20 caracteres: minúsculas, números, _ o
-                  punto. También te sirve para entrar.
+                  {t("account_ayuda_nombre")}
                 </span>
               </label>
               {aviso && (
@@ -146,79 +159,79 @@ export default function Cuenta() {
               )}
               <Boton type="submit" variante="principal" ancho="completo"
                      disabled={ocupado || alias.trim().toLowerCase() === yo.alias}>
-                {ocupado ? "Guardando…" : "Guardar nombre"}
+                {ocupado ? t("account_guardando") : t("account_guardar_nombre")}
               </Boton>
             </form>
 
             <div className="form">
-              <div className="campo">
-                <span className="lbl">Correo</span>
-                <span className="nota">{email} · Solo lo ves tú.</span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="lbl">{t("account_idioma")}</span>
+                <LanguageSelector />
               </div>
               <div className="campo">
-                <span className="lbl">Verificación en dos pasos</span>
+                <span className="lbl">{t("account_correo")}</span>
+                <span className="nota">{t("account_correo_privado", { email: email ?? "" })}</span>
+              </div>
+              <div className="campo">
+                <span className="lbl">{t("account_verificacion")}</span>
                 <span className="nota">
                   {yo.aal2
-                    ? "Activada y superada en esta sesión."
+                    ? t("account_verificacion_superada")
                     : yo.admin
-                      ? "Obligatoria para el Panel de control: pide un código de tu app al entrar."
-                      : "Opcional. Si la activas, al entrar te pedimos un código de tu app de verificación."}
+                      ? t("account_verificacion_admin")
+                      : t("account_verificacion_opcional")}
                 </span>
                 {!yo.aal2 && (
                   <Link href="/cuenta/verificacion?next=/cuenta" className="btn small">
-                    {yo.admin ? "Activarla o pasar el código" : "Activarla (opcional)"}
+                    {yo.admin ? t("account_activar_codigo") : t("account_activar_opcional")}
                   </Link>
                 )}
               </div>
             </div>
 
             <form className="form" onSubmit={cambiarClave}>
-              <label className="campo">
-                <span className="lbl">Cambiar contraseña</span>
-                <input className="inp" type="password" autoComplete="new-password" minLength={8}
-                       required value={claveNueva} onChange={(e) => setClaveNueva(e.target.value)} />
-                <span className="nota">Mínimo 8 caracteres.</span>
-              </label>
+              <CampoClave titulo={t("account_cambiar_clave")} autoComplete="new-password" minLength={8}
+                maxLength={200} required value={claveNueva} onChange={e => setClaveNueva(e.target.value)} />
+              <p className="nota">{t("account_clave_requisitos")}</p>
+              <CampoClave titulo={t("account_confirmar_clave")} autoComplete="new-password" maxLength={200}
+                required value={confirmarClave} onChange={e => setConfirmarClave(e.target.value)} />
               {avisoClave && (
                 <p className={avisoClave.tipo === "mal" ? "aviso" : "nota"} role="status">
                   {avisoClave.texto}
                 </p>
               )}
               <Boton type="submit" ancho="completo" disabled={cambiando || claveNueva.length < 8}>
-                {cambiando ? "Cambiando…" : "Cambiar contraseña"}
+                {cambiando ? t("account_cambiando") : t("account_cambiar_clave")}
               </Boton>
             </form>
 
             <div className="form">
               <div className="campo">
-                <span className="lbl">Tus datos</span>
+                <span className="lbl">{t("account_tus_datos")}</span>
                 <span className="nota">
-                  Descarga todo lo que guardamos de tu cuenta: perfil, estrategias y recetas,
-                  jornadas jugadas, créditos y reportes. Formato JSON.
+                  {t("account_ayuda_descarga")}
                 </span>
               </div>
               <Boton type="button" ancho="completo" disabled={descargando} onClick={descargarDatos}>
-                {descargando ? "Preparando…" : "Descargar mis datos"}
+                {descargando ? t("account_preparando") : t("account_descargar_datos")}
               </Boton>
             </div>
 
             <form className="form" onSubmit={darDeBaja}>
               <div className="campo">
-                <span className="lbl">Borrar mi cuenta</span>
+                <span className="lbl">{t("account_borrar_cuenta")}</span>
                 <span className="nota">
-                  Se borra ya: tu perfil, tus créditos y tus datos personales desaparecen. Tus
-                  estrategias se quedan en la clasificación, pero sin autor («Estrategia
-                  retirada»). No se puede deshacer.
+                  {t("account_ayuda_baja")}
                 </span>
               </div>
               <label className="campo">
-                <span className="lbl">Escribe «{yo.alias}» para confirmar</span>
+                <span className="lbl">{t("account_confirmar_baja", { alias: yo.alias })}</span>
                 <input className="inp" value={confirmacion} autoCapitalize="none"
                        autoCorrect="off" spellCheck={false}
                        onChange={(e) => setConfirmacion(e.target.value)} />
               </label>
               <label className="campo">
-                <span className="lbl">Tu contraseña</span>
+                <span className="lbl">{t("account_tu_contrasena")}</span>
                 <input className="inp" type="password" autoComplete="current-password"
                        value={claveBaja} onChange={(e) => setClaveBaja(e.target.value)} />
               </label>
@@ -226,15 +239,15 @@ export default function Cuenta() {
               <Boton type="submit" ancho="completo"
                      disabled={dandoBaja || !claveBaja
                        || confirmacion.trim().toLowerCase() !== yo.alias}>
-                {dandoBaja ? "Borrando…" : "Borrar mi cuenta"}
+                {dandoBaja ? t("account_borrando") : t("account_borrar_cuenta")}
               </Boton>
             </form>
 
             <p className="legal-nav">
-              <Link href="/legal/aviso">Aviso legal</Link>
-              <Link href="/legal/privacidad">Privacidad</Link>
-              <Link href="/legal/terminos">Términos</Link>
-              <Link href="/legal/cookies">Cookies</Link>
+              <Link href="/legal/aviso">{t("account_aviso_legal")}</Link>
+              <Link href="/legal/privacidad">{t("account_privacidad")}</Link>
+              <Link href="/legal/terminos">{t("account_terminos")}</Link>
+              <Link href="/legal/cookies">{t("account_cookies")}</Link>
             </p>
           </>
         )}

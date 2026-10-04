@@ -7,6 +7,7 @@
  *  único eje de agrupación es ese: cuesta o no cuesta. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import {
   ApiError, cancelDecision, cancelObservatorio, getConfig, getEstadoDatos, getPodaEstado,
   getPodaPrevia, getScanDecideConfig, getScanJevMacro, getScanMidLayer, putScanJevMacro,
@@ -26,10 +27,10 @@ import { Checkbox, Toggle } from "./ui";
 // mandar", nunca para decidir nada (el override real vive en `overrides`, el default en `/config`).
 // Nombre distinto de `ETAPAS` (más abajo, las del progreso en vivo): representan cosas distintas.
 const ETAPAS_LLM: { key: keyof NonNullable<AppConfig["llm_defaults"]>; label: string }[] = [
-  { key: "prescore", label: "Prescore" },
-  { key: "mid", label: "Capa media" },
-  { key: "deep", label: "Profundo" },
-  { key: "constructor", label: "Constructor" },
+  { key: "prescore", label: "alpha_stage_prescore" },
+  { key: "mid", label: "alpha_stage_mid" },
+  { key: "deep", label: "alpha_stage_deep" },
+  { key: "constructor", label: "alpha_stage_constructor" },
 ];
 
 type Key = "obs" | "redeep" | "recomp" | "real" | "foto" | "fundam" | "fx" | "anal" | "poda";
@@ -58,91 +59,81 @@ const GRATIS: Key[] = ["foto", "fundam", "fx", "anal", "poda"];
 // (descripción, botón, badge) sale de aquí en vez de `ACCIONES`, que es estático.
 const FOTO_INFO: Record<Fuente, { d: string; cta: string; badges: [string, Tono][] }> = {
   nasdaq: {
-    d: "Rehace el screener del cierre de NASDAQ (precio y volumen) que define qué nombres son "
-      + "elegibles para el próximo escaneo.",
-    cta: "Rehacer foto", badges: [["~10 s", "neutro"]],
+    d: "alpha_ops_nasdaq_snapshot_help",
+    cta: "alpha_ops_rebuild_snapshot", badges: [["~10 s", "neutro"]],
   },
   global: {
-    d: "Trae tickers, símbolo Yahoo, país y mercado desde HuggingFace (~63.000 filas). Define "
-      + "qué nombres existen para el resto de acciones globales, no captura fundamentales.",
-    cta: "Sincronizar", badges: [["~minutos", "neutro"]],
+    d: "alpha_ops_global_sync_help",
+    cta: "alpha_sync", badges: [["alpha_ops_minutes_estimate", "neutro"]],
   },
 };
 const FUND_INFO: Record<Fuente, { d: string; cta: string; badges: [string, Tono][] }> = {
   nasdaq: {
-    d: "Captura fundamentales de TODO lo elegible (precio, cap, tipo de instrumento) -- de más, "
-      + "no de lo que se vaya a escanear, así tocar el suelo de liquidez no obliga a recapturar.",
-    cta: "Capturar", badges: [["~40 min", "neutro"]],
+    d: "alpha_ops_nasdaq_fundamentals_help",
+    cta: "alpha_capture", badges: [["~40 min", "neutro"]],
   },
   global: {
-    d: "Captura el universo global ya sincronizado. Filtrable por país y mercado antes de gastar "
-      + "peticiones reales — son horas, no minutos.",
-    cta: "Capturar", badges: [["~4 h", "neutro"]],
+    d: "alpha_ops_global_fundamentals_help",
+    cta: "alpha_capture", badges: [["~4 h", "neutro"]],
   },
 };
 
 const ACCIONES: Record<Key, Accion> = {
   obs: {
-    t: "Escaneo observatorio",
-    d: "El circuito exacto del mensual con modelo y coste reales, sin proponer ni tocar ninguna "
-      + "cartera. Refresca ranking, watchlist, memoria y traza.",
-    cta: "Lanzar observatorio", badges: [["≈ $0,60", "coste"], ["no toca cartera", "neutro"]],
+    t: "alpha_ops_observatory_title",
+    d: "alpha_ops_observatory_help",
+    cta: "alpha_ops_launch_observatory", badges: [["≈ $0.60", "coste"], ["alpha_ops_no_portfolio_change", "neutro"]],
     uni: true, foto: true, cfg: true,
   },
   redeep: {
-    t: "Reanalizar con macro de hoy",
-    d: "Vuelve a juzgar a fondo solo los nombres ya analizados, con el macro de hoy. No "
-      + "re-escanea el universo.",
-    cta: "Reanalizar", badges: [["≈ $0,04", "coste"]], peligro: true,
+    t: "alpha_ops_reanalyze_title",
+    d: "alpha_ops_reanalyze_help",
+    cta: "alpha_ops_reanalyze", badges: [["≈ $0.04", "coste"]], peligro: true,
   },
   recomp: {
-    t: "Recomponer cartera",
-    d: "Reconstruye la cartera sobre los informes ya analizados aplicando el suelo de score y los "
-      + "límites de posición ACTUALES. No re-puntúa nada: solo reasigna pesos.",
-    cta: "Recomponer", badges: [["1 llamada al constructor", "coste"]], peligro: true,
-    aviso: "Escribe una propuesta nueva que pisa la vigente.",
+    t: "alpha_ops_rebuild_portfolio_title",
+    d: "alpha_ops_rebuild_portfolio_help",
+    cta: "alpha_ops_rebuild_portfolio", badges: [["alpha_ops_one_builder_call", "coste"]], peligro: true,
+    aviso: "alpha_ops_rebuild_warning",
   },
   real: {
-    t: "Escaneo con decisión",
-    d: "Puntúa el universo, forma la cartera del mes y te la propone para tu sí o no.",
-    cta: "Lanzar con decisión", badges: [["≈ $0,60", "coste"], ["escribe cartera", "malo"]],
+    t: "alpha_ops_decision_scan_title",
+    d: "alpha_ops_decision_scan_help",
+    cta: "alpha_ops_launch_decision", badges: [["≈ $0.60", "coste"], ["alpha_ops_writes_portfolio", "malo"]],
     peligro: true, uni: true, foto: true, cfg: true,
-    aviso: "El único de la lista que escribe propuesta y ejecuta el libro sombra.",
+    aviso: "alpha_ops_decision_warning",
   },
   foto: {
-    t: "Foto del universo", d: FOTO_INFO.nasdaq.d, cta: FOTO_INFO.nasdaq.cta,
+    t: "alpha_ops_snapshot_title", d: FOTO_INFO.nasdaq.d, cta: FOTO_INFO.nasdaq.cta,
     badges: FOTO_INFO.nasdaq.badges, fuente: true,
   },
   fundam: {
-    t: "Fundamentales universo", d: FUND_INFO.nasdaq.d, cta: FUND_INFO.nasdaq.cta,
+    t: "alpha_ops_fundamentals_title", d: FUND_INFO.nasdaq.d, cta: FUND_INFO.nasdaq.cta,
     badges: FUND_INFO.nasdaq.badges, fuente: true,
   },
   fx: {
-    t: "Tasas de cambio",
-    d: "Pide el cambio a USD de las divisas del universo y recalcula el market cap en dólares de "
-      + "las fotos recientes. Corre sola a las 5:00.",
-    cta: "Sincronizar tasas", badges: [["~2 s", "neutro"]],
+    t: "alpha_ops_fx_title",
+    d: "alpha_ops_fx_help",
+    cta: "alpha_ops_sync_fx", badges: [["~2 s", "neutro"]],
   },
   anal: {
-    t: "Analítica del método",
-    d: "Reconstruye el fichero DuckDB que alimenta las tablas de coste por etapa, confianza del "
-      + "prescore y el explorador de universo. Corre sola a diario.",
-    cta: "Sincronizar", badges: [["~5 s", "neutro"]],
+    t: "alpha_ops_analytics_title",
+    d: "alpha_ops_analytics_help",
+    cta: "alpha_sync", badges: [["~5 s", "neutro"]],
   },
   poda: {
-    t: "Poda de lo archivado",
-    d: "Vacía de Postgres el texto de las llamadas a la IA de más de 3 meses. Solo lo que ya "
-      + "está en el archivo DuckDB; tokens, coste y latencia se quedan.",
-    cta: "Podar", badges: [["libera espacio", "neutro"]], poda: true,
-    aviso: "Vacía texto en Postgres. Lo vaciado sigue en el archivo DuckDB.",
+    t: "alpha_ops_prune_title",
+    d: "alpha_ops_prune_help",
+    cta: "alpha_ops_prune", badges: [["alpha_ops_frees_space", "neutro"]], poda: true,
+    aviso: "alpha_ops_prune_warning",
   },
 };
 
 // Etapas REALES de `scan_progress.set_stage()` en el backend. `gather_retry` se pinta como parte
 // de gather (es su reintento, no una fase aparte) y `mid` solo se ilumina si la capa media corre.
 const ETAPAS: { k: string; t: string }[] = [
-  { k: "gather", t: "datos" }, { k: "macro", t: "macro" }, { k: "prescore", t: "prescore" },
-  { k: "mid", t: "capa media" }, { k: "deep", t: "profundo" }, { k: "constructor", t: "cartera" },
+  { k: "gather", t: "alpha_stage_data" }, { k: "macro", t: "alpha_macro" }, { k: "prescore", t: "alpha_stage_prescore" },
+  { k: "mid", t: "alpha_stage_mid" }, { k: "deep", t: "alpha_stage_deep" }, { k: "constructor", t: "alpha_portfolio" },
 ];
 
 const TONOS: Record<Tono, { bg: string; fg: string }> = {
@@ -156,13 +147,14 @@ const TONOS: Record<Tono, { bg: string; fg: string }> = {
  *  aún sin leer. Lo pintado sale siempre de la respuesta del servidor, nunca de un cambio optimista. */
 function useInterruptor(leer: () => Promise<{ enabled: boolean }>,
                         guardar: (v: boolean) => Promise<{ enabled: boolean }>) {
+  const t = useTranslations();
   const [valor, setValor] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const refrescar = useCallback(() => {
     leer().then((r) => setValor(r.enabled))
-      .catch(() => setErr("No se pudo leer el estado."));
-  }, [leer]);
+      .catch(() => setErr(t("alpha_ops_read_state_error")));
+  }, [leer, t]);
   useEffect(() => { refrescar(); }, [refrescar]);
   async function cambiar() {
     if (valor === null) return;
@@ -171,7 +163,7 @@ function useInterruptor(leer: () => Promise<{ enabled: boolean }>,
     try {
       setValor((await guardar(!valor)).enabled);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "No se pudo guardar.");
+      setErr(e instanceof Error ? e.message : t("alpha_ops_save_error"));
       refrescar();
     } finally {
       setBusy(false);
@@ -181,13 +173,15 @@ function useInterruptor(leer: () => Promise<{ enabled: boolean }>,
 }
 
 /** "hace 6 h" / "nunca" — la antigüedad importa más que la hora exacta para decidir si relanzar. */
-function hace(at: string | null): string {
-  if (!at) return "nunca";
+type Text = (key: string, values?: Record<string, string | number>) => string;
+function hace(at: string | null, t: Text, locale: "es" | "en"): string {
+  if (!at) return t("alpha_ops_never");
   const min = Math.round((Date.now() - new Date(at).getTime()) / 60000);
-  if (min < 1) return "ahora";
-  if (min < 60) return `hace ${min} min`;
-  const h = Math.round(min / 60);
-  return h < 48 ? `hace ${h} h` : `hace ${Math.round(h / 24)} d`;
+  if (min < 1) return t("alpha_ops_now");
+  const relative = new Intl.RelativeTimeFormat(locale, { style: "short" });
+  if (min < 60) return relative.format(-min, "minute");
+  const hours = Math.round(min / 60);
+  return hours < 48 ? relative.format(-hours, "hour") : relative.format(-Math.round(hours / 24), "day");
 }
 
 export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScanStarted, onReload,
@@ -201,6 +195,8 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
   onReload: () => void;
   onLoadAnalytics: () => void;
 }) {
+  const t = useTranslations();
+  const locale: "es" | "en" = useLocale() === "en" ? "en" : "es";
   const [sel, setSel] = useState<Key>("obs");
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -243,7 +239,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
       })
       .catch((e) => {
         setPodaPrevia(false);
-        setPodaMotivo(e instanceof Error ? e.message : "No se pudo leer la vista previa.");
+        setPodaMotivo(e instanceof Error ? e.message : t("alpha_ops_preview_error"));
       });
   }, []);
   useEffect(() => { if (sel === "poda") leerPoda(); }, [sel, leerPoda]);
@@ -256,23 +252,23 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
   // Avance de la poda en marcha (corre en el backend; la vista solo lo sigue).
   useEffect(() => {
     if (!podaEnMarcha) return;
-    const t = setInterval(async () => {
+    const timer = setInterval(async () => {
       try {
         const e = await getPodaEstado();
         if (e.status === "running") {
-          setMsg({ text: textoAvancePoda(e) });
+          setMsg({ text: textoAvancePoda(e, t) });
           return;
         }
         setPodaEnMarcha(false);
         setMsg(e.status === "done"
-          ? { text: textoResultadoPoda(e) }
-          : { text: e.error ?? "La poda falló.", bad: true });
+          ? { text: textoResultadoPoda(e, t) }
+          : { text: e.error ?? t("alpha_ops_prune_error"), bad: true });
         refrescarEstado();
         leerPoda();
       } catch { /* un fallo puntual de red no corta el seguimiento */ }
     }, 2000);
-    return () => clearInterval(t);
-  }, [podaEnMarcha, leerPoda, refrescarEstado]);
+    return () => clearInterval(timer);
+  }, [podaEnMarcha, leerPoda, refrescarEstado, t]);
   useEffect(() => {
     getConfig().then((c) => c.llm_defaults && setLlmDefaults(c.llm_defaults)).catch(() => {});
   }, []);
@@ -309,7 +305,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
     : sel === "fundam" ? FUND_INFO[fundFuente] : a;
   const mostrarPickerGlobal = (sel === "foto" && fotoFuente === "global")
     || (sel === "fundam" && fundFuente === "global");
-  const cargando = estado === false ? "sin leer" : "…";
+  const cargando = estado === false ? t("alpha_ops_unread") : "…";
   const elegir = (k: Key) => { setSel(k); setArmed(false); setMsg(null); };
   // Sin vista previa, o sin nada que podar, no se lanza a ciegas.
   const podaBloqueada = sel === "poda" && (podaEnMarcha || !podaPrevia
@@ -332,12 +328,12 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
           break;
         case "redeep":
           await redeep();
-          setMsg({ text: "Reanálisis a fondo completado con el macro de hoy." });
+          setMsg({ text: t("alpha_ops_reanalyze_done") });
           onReload();
           break;
         case "recomp":
           await recheck();
-          setMsg({ text: "Cartera recompuesta y propuesta nueva escrita." });
+          setMsg({ text: t("alpha_ops_rebuild_done") });
           onReload();
           break;
         case "foto": {
@@ -346,8 +342,8 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
           // de red, así que el motivo se lee del cuerpo y no del catch.
           const r = await snapshotUniverse();
           setMsg(r.ok
-            ? { text: `Foto rehecha: ${r.size != null ? fmtNum(r.size) : "—"} nombres a escanear.` }
-            : { text: r.error ?? "No se pudo rehacer la foto del universo.", bad: true });
+            ? { text: t("alpha_ops_snapshot_done", { count: r.size != null ? fmtNum(r.size, locale) : "—" }) }
+            : { text: r.error ?? t("alpha_ops_snapshot_error"), bad: true });
           break;
         }
         case "fundam":
@@ -360,22 +356,22 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
           // "0 de 0" sin explicación se lee como un fallo silencioso -- si el backend da
           // motivo (nada que convertir todavía), se muestra ese en vez del recuento vacío.
           setMsg(!r.ok
-            ? { text: r.error ?? "No se pudieron sincronizar las tasas.", bad: true }
+            ? { text: r.error ?? t("alpha_ops_fx_error"), bad: true }
             : r.motivo
               ? { text: r.motivo }
-              : { text: `${r.divisas ?? 0} divisas sincronizadas · ${fmtNum(r.recalculadas ?? 0)} fotos recalculadas a USD.` });
+              : { text: t("alpha_ops_fx_done", { currencies: r.divisas ?? 0, count: fmtNum(r.recalculadas ?? 0, locale) }) });
           break;
         }
         case "anal": {
           const r = await syncAnalytics();
-          setMsg({ text: `Sincronizado (${Object.entries(r.counts).map(([t, n]) => `${t}: ${n}`).join(", ")}).` });
+          setMsg({ text: t("alpha_ops_analytics_done", { counts: Object.entries(r.counts).map(([name, n]) => `${name}: ${n}`).join(", ") }) });
           onLoadAnalytics();
           break;
         }
         case "poda":
           await startPoda();
           setPodaEnMarcha(true);
-          setMsg({ text: "Poda en marcha…" });
+          setMsg({ text: t("alpha_ops_prune_running") });
           break;
       }
     } catch (e) {
@@ -386,9 +382,8 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
       const esTimeout = e instanceof ApiError && e.kind === "network" && /timeout/i.test(e.message);
       setMsg({
         text: esLargo && esTimeout
-          ? "El navegador dejó de esperar, pero el backend puede seguir trabajando — revisa la "
-           + "tira de estado en un momento antes de repetirlo."
-          : e instanceof Error ? e.message : "No se pudo lanzar.",
+          ? t("alpha_ops_background_timeout")
+          : e instanceof Error ? e.message : t("alpha_ops_launch_error"),
         bad: true,
       });
     } finally {
@@ -403,11 +398,10 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
     try {
       const r = escaneandoDecide ? await cancelDecision() : await cancelObservatorio();
       setMsg(r.cancelled
-        ? { text: "Cancelación pedida — para en el próximo punto de control (entre etapas); "
-             + "lo que ya estaba en vuelo termina solo." }
-        : { text: "No había nada de ese tipo corriendo ya.", bad: true });
+        ? { text: t("alpha_ops_cancel_requested") }
+        : { text: t("alpha_ops_nothing_running"), bad: true });
     } catch (e) {
-      setMsg({ text: e instanceof Error ? e.message : "No se pudo cancelar.", bad: true });
+      setMsg({ text: e instanceof Error ? e.message : t("alpha_ops_cancel_error"), bad: true });
     } finally {
       setCancelando(false);
     }
@@ -428,10 +422,8 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
 
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b px-4 py-3.5"
            style={{ borderColor: T.grid }}>
-        <span className="text-[16px] font-bold" style={{ color: T.ink }}>
-          Centro de operaciones
-        </span>
-        <InfoTip text="Todo lo que se puede lanzar desde la sala, agrupado por si cuesta dinero o no. Los escaneos y las capturas no pueden correr a la vez: el backend los excluye." />
+        <span className="text-[16px] font-bold" style={{ color: T.ink }}>{t("alpha_ui_centro_de_operaciones")}</span>
+        <InfoTip text={t("alpha_attr_todo_lo_que_se_puede_lanzar_desde_la_sala_agrupado_por_si_cuesta_dinero_o_no_los_escaneos_y_las_capt")} />
       </div>
 
       {/* Visible SIEMPRE que corre un escaneo, sea cual sea la pestaña abierta -- cortar rápido
@@ -439,13 +431,12 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
       {escaneando && escaneandoDecide !== null && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2"
              style={{ borderColor: T.grid, background: "rgba(233,163,44,0.08)" }}>
-          <span className="text-[11px]" style={{ color: T.warn }}>
-            Corriendo: {escaneandoDecide ? "escaneo con decisión" : "escaneo observatorio"}
+          <span className="text-[11px]" style={{ color: T.warn }}>{t("alpha_ui_corriendo")}{escaneandoDecide ? t("alpha_ops_decision_running") : t("alpha_ops_observatory_running")}
           </span>
           <button onClick={detener} disabled={cancelando}
                   className="rounded-full border px-3 py-1 text-[10.5px] font-semibold transition-colors hover:bg-white/5 disabled:opacity-50"
                   style={{ borderColor: T.bad, color: T.bad }}>
-            {cancelando ? "Cancelando…" : "Detener escaneo"}
+            {cancelando ? t("alpha_ops_cancelling") : t("alpha_ops_stop_scan")}
           </button>
         </div>
       )}
@@ -454,19 +445,19 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
           apilado, sin caja por debajo -- como el resto de info-grids del mockup. */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b px-4 py-4 sm:grid-cols-4"
            style={{ borderColor: T.grid }}>
-        <Chip label="Último escaneo"
+        <Chip label={t("alpha_attr_ultimo_escaneo")}
               valor={report
-                ? `${hace(report.at)}${report.cost ? ` · $${report.cost.cost_usd.toFixed(2)}` : ""}`
+                ? `${hace(report.at, t, locale)}${report.cost ? ` · $${report.cost.cost_usd.toFixed(2)}` : ""}`
                 : "nunca"}
               malo={!report} />
-        <Chip label="Foto NASDAQ"
-              valor={estado ? `${hace(estado.foto_nasdaq.at)} · ${fmtNum(estado.foto_nasdaq.n)}` : cargando}
+        <Chip label={t("alpha_attr_foto_nasdaq")}
+              valor={estado ? `${hace(estado.foto_nasdaq.at, t, locale)} · ${fmtNum(estado.foto_nasdaq.n)}` : cargando}
               malo={!!estado && !estado.foto_nasdaq.at} />
-        <Chip label="Foto global"
-              valor={estado ? `${hace(estado.foto_global.at)} · ${fmtNum(estado.foto_global.n)}` : cargando}
+        <Chip label={t("alpha_attr_foto_global")}
+              valor={estado ? `${hace(estado.foto_global.at, t, locale)} · ${fmtNum(estado.foto_global.n)}` : cargando}
               malo={!!estado && !estado.foto_global.at} />
-        <Chip label="Tasas USD"
-              valor={estado ? `${hace(estado.fx.at)}${estado.fx.at ? ` · ${estado.fx.n} divisas` : ""}` : cargando}
+        <Chip label={t("alpha_attr_tasas_usd")}
+              valor={estado ? `${hace(estado.fx.at, t, locale)}${estado.fx.at ? ` · ${estado.fx.n} divisas` : ""}` : cargando}
               malo={!!estado && !estado.fx.at} />
       </div>
 
@@ -474,11 +465,11 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
           el mockup) y el detalle de la acción elegida se abre debajo, a todo lo ancho. Mismo
           estado, mismos handlers -- solo cambia el envoltorio visual. */}
       <div className="px-4 py-4">
-        <Grupo titulo="Escanear · cuesta dinero" />
+        <Grupo titulo={t("alpha_attr_escanear_cuesta_dinero")} />
         <div className="mb-4 flex flex-wrap gap-2">
           {PAGO.map((k) => <Item key={k} k={k} sel={sel} activo={activo} onSel={elegir} />)}
         </div>
-        <Grupo titulo="Datos · gratis" />
+        <Grupo titulo={t("alpha_attr_datos_gratis")} />
         <div className="mb-1 flex flex-wrap gap-2">
           {GRATIS.map((k) => <Item key={k} k={k} sel={sel} activo={activo} onSel={elegir} />)}
         </div>
@@ -489,20 +480,20 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
           ) : (
             <>
               <div className="mb-1.5 flex flex-wrap items-start gap-2">
-                <span className="text-[13.5px] font-bold" style={{ color: T.ink }}>{a.t}</span>
+                <span className="text-[13.5px] font-bold" style={{ color: T.ink }}>{t(a.t)}</span>
                 {info.badges.map(([texto, tono]) => (
                   <span key={texto} className="rounded-full px-2 py-0.5 text-[10px]"
                         style={{ background: TONOS[tono].bg, color: TONOS[tono].fg }}>
-                    {texto}
+                    {texto.startsWith("alpha_") ? t(texto) : texto}
                   </span>
                 ))}
               </div>
-              <p className="mb-2.5 text-[11.5px] leading-relaxed" style={{ color: T.muted }}>{info.d}</p>
+              <p className="mb-2.5 text-[11.5px] leading-relaxed" style={{ color: T.muted }}>{t(info.d)}</p>
 
               {a.aviso && (
                 <p className="mb-2.5 border-l-2 pl-2.5 text-[10.5px]"
                    style={{ borderColor: T.bad, color: T.bad }}>
-                  {a.aviso}
+                  {t(a.aviso)}
                 </p>
               )}
 
@@ -514,22 +505,14 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                   <div onClick={() => setReFoto((v) => !v)}
                        className="flex cursor-pointer items-start gap-2 py-1.5 text-[11px]" style={{ color: T.ink2 }}>
                     <Checkbox checked={reFoto} onChange={setReFoto} className="mt-0.5" />
-                    <span>
-                      Reutilizar última foto de fundamentales
-                      <span className="block text-[9.5px]" style={{ color: T.muted }}>
-                        Salta el gather (~20-40 min) y usa la última foto de cada ticker, sea de cuando sea.
-                      </span>
+                    <span>{t("alpha_ui_reutilizar_ultima_foto_de_fundamentales")}<span className="block text-[9.5px]" style={{ color: T.muted }}>{t("alpha_ui_salta_el_gather_20_40_min_y_usa_la_ultima_foto_de_cada_ticker_sea_de_cuando_sea")}</span>
                     </span>
                   </div>
                 )}
                 {a.cfg && (
                   <div className="flex flex-wrap items-start justify-between gap-2 py-1.5">
-                    <span className="text-[11px]" style={{ color: T.ink2 }}>
-                      Modelo por etapa
-                      {sel === "real" && (
-                        <span className="ml-1 text-[9.5px]" style={{ color: T.muted }}>
-                          (guardado · también lo usa el cron)
-                        </span>
+                    <span className="text-[11px]" style={{ color: T.ink2 }}>{t("alpha_ui_modelo_por_etapa")}{sel === "real" && (
+                        <span className="ml-1 text-[9.5px]" style={{ color: T.muted }}>{t("alpha_ui_guardado_tambien_lo_usa_el_cron")}</span>
                       )}
                       {/* Lo que se va a mandar de verdad: override aplicado (del observatorio, o
                           la config guardada del escaneo con decisión), si no el default real de
@@ -544,7 +527,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                           const reasoning = apagada ? "" : o?.reasoning_effort ?? d?.reasoning_effort ?? "…";
                           return (
                             <span key={key} className="contents">
-                              <span>{label}:</span>
+                              <span>{t(label)}:</span>
                               <span className={NUMS} style={{ color: T.ink2 }}>{modelo}</span>
                               <span>{reasoning}</span>
                             </span>
@@ -554,19 +537,17 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                     </span>
                     <button onClick={() => setCfgOpen(true)}
                             className="rounded-full border px-2.5 py-1 text-[10.5px] transition-colors hover:bg-white/5"
-                            style={{ borderColor: T.ring, color: T.ink2 }}>
-                      Configurar
-                    </button>
+                            style={{ borderColor: T.ring, color: T.ink2 }}>{t("alpha_ui_configurar")}</button>
                   </div>
                 )}
                 {a.cfg && (
-                  <FilaInterruptor titulo="Capa media" s={capaMedia} label="Usar capa media"
+                  <FilaInterruptor titulo={t("alpha_attr_capa_media")} s={capaMedia} label={t("alpha_attr_usar_capa_media")}
                                    on="(activa · vale para todos los escaneos)"
                                    off="(apagada · el profundo sale directo del prescore)" />
                 )}
                 {a.cfg && (
-                  <FilaInterruptor titulo="Macro en Jev" s={jevMacro}
-                                   label="Pasar eventos y titulares al prescore de Jev"
+                  <FilaInterruptor titulo={t("alpha_attr_macro_en_jev")} s={jevMacro}
+                                   label={t("alpha_attr_pasar_eventos_y_titulares_al_prescore_de_jev")}
                                    on="(datos + eventos + titulares · ≈ +$0,50 por escaneo)"
                                    off="(solo datos de mercado · DeepSeek ve siempre el macro completo)" />
                 )}
@@ -580,7 +561,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                 {sel === "fundam" && fundFuente === "global" && <div className="py-1"><FotoGlobalPicker /></div>}
                 {a.poda && <PodaResumen previa={podaPrevia} motivo={podaMotivo} />}
                 {!a.uni && !a.foto && !a.cfg && !a.fuente && !a.poda && (
-                  <p className="py-1 text-[10.5px]" style={{ color: T.muted }}>Sin opciones — se lanza tal cual.</p>
+                  <p className="py-1 text-[10.5px]" style={{ color: T.muted }}>{t("alpha_ui_sin_opciones_se_lanza_tal_cual")}</p>
                 )}
               </div>
 
@@ -590,20 +571,17 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                   {armed ? (
                     <>
                       <span className="flex-1 text-[10.5px]" style={{ color: T.warn }}>
-                        {PAGO.includes(sel) ? "Cuesta dinero real. " : ""}¿Confirmas?
-                      </span>
+                        {PAGO.includes(sel) ? t("alpha_ops_real_cost") : ""}{t("alpha_ui_confirmas")}</span>
                       <button onClick={lanzar} disabled={busy || podaBloqueada}
                               className="rounded-full px-3.5 py-1.5 text-[11.5px] font-bold transition-opacity hover:opacity-90 disabled:opacity-50"
                               style={a.peligro ? { background: T.bad, color: "#fff" }
                                 : PAGO.includes(sel) ? { background: T.warn, color: "#0d0d0d" }
                                 : { background: T.buy, color: "#fff" }}>
-                        {busy ? "Lanzando…" : "Confirmar"}
+                        {busy ? t("alpha_ops_launching") : t("alpha_ops_confirm")}
                       </button>
                       <button onClick={() => setArmed(false)} disabled={busy}
                               className="rounded-full border px-3 py-1.5 text-[11.5px] transition-colors hover:bg-white/5"
-                              style={{ borderColor: T.ring, color: T.ink2 }}>
-                        Cancelar
-                      </button>
+                              style={{ borderColor: T.ring, color: T.ink2 }}>{t("alpha_ui_cancelar")}</button>
                     </>
                   ) : (
                     <button onClick={() => setArmed(true)} disabled={busy || podaBloqueada}
@@ -611,7 +589,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
                             style={a.peligro ? { background: T.bad, color: "#fff" }
                               : PAGO.includes(sel) ? { background: T.warn, color: "#0d0d0d" }
                               : { background: T.buy, color: "#fff" }}>
-                      {busy ? "Lanzando…" : info.cta}
+                      {busy ? t("alpha_ops_launching") : t(info.cta)}
                     </button>
                   )}
                 </div>
@@ -629,30 +607,31 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
 }
 
 const FASES_PODA: Record<string, string> = {
-  preparando: "Preparando",
-  llm_call: "Vaciando el texto de las llamadas",
-  vacuum: "Dejando el hueco listo para reutilizar",
+  preparando: "alpha_ops_prune_preparing",
+  llm_call: "alpha_ops_prune_emptying",
+  vacuum: "alpha_ops_prune_reclaiming",
 };
 
-function textoAvancePoda(e: PodaEstado): string {
-  const fase = FASES_PODA[e.fase ?? ""] ?? "Podando";
-  return e.total ? `${fase}: ${fmtNum(e.hechas)} de ${fmtNum(e.total)}.` : `${fase}…`;
+function textoAvancePoda(e: PodaEstado, t: Text): string {
+  const fase = t(FASES_PODA[e.fase ?? ""] ?? "alpha_ops_pruning");
+  return e.total ? t("alpha_ops_prune_progress", { phase: fase, done: e.hechas, total: e.total }) : `${fase}…`;
 }
 
 type ResultadoTabla = { vaciadas?: number; sin_archivar?: number };
 
-function textoResultadoPoda(e: PodaEstado): string {
+function textoResultadoPoda(e: PodaEstado, t: Text): string {
   const r = (e.result ?? {}) as Record<string, ResultadoTabla>;
   const l = r.llm_call ?? {};
   const sin = l.sin_archivar ?? 0;
-  return `Poda hecha: texto de ${fmtNum(l.vaciadas ?? 0)} llamadas vaciado.`
-    + (sin ? ` ${fmtNum(sin)} filas no estaban en el archivo y se quedan.` : "");
+  return t("alpha_ops_prune_result", { count: l.vaciadas ?? 0 })
+    + (sin ? " " + t("alpha_ops_prune_retained", { count: sin }) : "");
 }
 
 /** Lo que borraría la poda ahora: sale de `GET /admin/poda`, recalculado al elegirla. */
 function PodaResumen({ previa, motivo }: { previa: PodaPrevia | null | false; motivo: string | null }) {
+  const t = useTranslations();
   if (previa === null) {
-    return <p className="py-1 text-[10.5px]" style={{ color: T.muted }}>Calculando qué se puede podar…</p>;
+    return <p className="py-1 text-[10.5px]" style={{ color: T.muted }}>{t("alpha_ui_calculando_que_se_puede_podar")}</p>;
   }
   if (previa === false) {
     return <p className="py-1 text-[10.5px]" style={{ color: T.warn }}>{motivo}</p>;
@@ -662,27 +641,20 @@ function PodaResumen({ previa, motivo }: { previa: PodaPrevia | null | false; mo
   return (
     <div className="py-1.5 text-[11px] leading-relaxed" style={{ color: T.ink2 }}>
       {nada ? (
-        <p style={{ color: T.muted }}>Nada que podar ahora: todo lo que hay se queda por las reglas.</p>
+        <p style={{ color: T.muted }}>{t("alpha_ui_nada_que_podar_ahora_todo_lo_que_hay_se_queda_por_las_reglas")}</p>
       ) : (
         <>
-          <p>
-            Deja libres unos <span className={NUMS} style={{ color: T.ink }}>
+          <p>{t("alpha_ui_deja_libres_unos")}<span className={NUMS} style={{ color: T.ink }}>
               {previa.mb_total.toLocaleString("es-ES", { maximumFractionDigits: 1 })} MB
-            </span> para lo que entre después.
-          </p>
-          <p className={`mt-1 ${NUMS}`}>
-            Se vacía el texto de {fmtNum(previa.texto_llm.llamadas)} llamadas
-          </p>
+            </span>{t("alpha_ui_para_lo_que_entre_despues")}</p>
+          <p className={`mt-1 ${NUMS}`}>{t("alpha_ui_se_vacia_el_texto_de")}{fmtNum(previa.texto_llm.llamadas)}{t("alpha_ui_llamadas")}</p>
         </>
       )}
       {sinArchivar > 0 && (
         <p className="mt-1" style={{ color: T.warn }}>
-          {fmtNum(sinArchivar)} filas no están en el archivo y no se tocan.
-        </p>
+          {fmtNum(sinArchivar)}{t("alpha_ui_filas_no_estan_en_el_archivo_y_no_se_tocan")}</p>
       )}
-      <p className="mt-1 text-[9.5px]" style={{ color: T.muted }}>
-        Solo se vacía el texto de las llamadas de más de {previa.reglas.dias_texto_llm} días.
-      </p>
+      <p className="mt-1 text-[9.5px]" style={{ color: T.muted }}>{t("alpha_ui_solo_se_vacia_el_texto_de_las_llamadas_de_mas_de")}{previa.reglas.dias_texto_llm}{t("alpha_ui_dias")}</p>
     </div>
   );
 }
@@ -690,12 +662,13 @@ function PodaResumen({ previa, motivo }: { previa: PodaPrevia | null | false; mo
 function FilaInterruptor({ titulo, s, label, on, off }: {
   titulo: string; s: ReturnType<typeof useInterruptor>; label: string; on: string; off: string;
 }) {
+  const t = useTranslations();
   return (
     <div className="flex items-center justify-between gap-2 py-1.5">
       <span className="text-[11px]" style={{ color: T.ink2 }}>
         {titulo}
         <span className="ml-1 text-[9.5px]" style={{ color: T.muted }}>
-          {s.valor === null ? (s.err ? "" : "(leyendo…)") : s.valor ? on : off}
+          {s.valor === null ? (s.err ? "" : t("alpha_ops_reading")) : s.valor ? on : off}
         </span>
         {s.err && <span className="block text-[9.5px]" style={{ color: T.bad }}>{s.err}</span>}
       </span>
@@ -728,6 +701,7 @@ function Grupo({ titulo }: { titulo: string }) {
 function Item({ k, sel, activo, onSel }: {
   k: Key; sel: Key; activo: boolean; onSel: (k: Key) => void;
 }) {
+  const t = useTranslations();
   const a = ACCIONES[k];
   const on = k === sel && !activo;
   return (
@@ -736,7 +710,7 @@ function Item({ k, sel, activo, onSel }: {
             style={on
               ? { background: T.buy, color: "#fff" }
               : { background: T.panel2, color: T.ink2, border: `1px solid ${T.ring}` }}>
-      {a.t}
+      {t(a.t)}
     </button>
   );
 }
@@ -744,26 +718,25 @@ function Item({ k, sel, activo, onSel }: {
 function SelectorUniverso({ uni, onUni, estado }: {
   uni: ModoUniverso; onUni: (u: ModoUniverso) => void; estado: EstadoDatos | null;
 }) {
+  const t = useTranslations();
   // "elegibles" = pasa precio/cap/tipo de instrumento; "a escanear" = tras liquidez y tope.
   const opciones: { v: ModoUniverso; t: string; sub: string }[] = [
     { v: "nasdaq", t: "NASDAQ",
       sub: estado?.universo.at
         ? `${fmtNum(estado.universo.elegibles)} disponibles · ${fmtNum(estado.universo.a_escanear)} a escanear`
-        : "el de siempre" },
-    { v: "global_topcap", t: "Top 3.000 market cap",
-      sub: "global en USD · solo IBKR" },
+        : t("alpha_ops_usual_universe") },
+    { v: "global_topcap", t: t("alpha_ops_global_marketcap"),
+      sub: t("alpha_ops_global_usd") },
   ];
   // El top global se ordena por `market_cap_usd`, que solo existe si las tasas ya corrieron:
   // sin ellas el escaneo abortaría con "sin candidatos", mejor avisarlo antes de gastar. Avisa
-  // salvo que el estado HAYA confirmado que sí hay tasas -- si el chip no cargó ("sin leer"),
+  // salvo que el estado HAYA confirmado que sí hay tasas -- si el chip no cargó (t("alpha_ops_unread")),
   // más vale un aviso de más que dejar pasar un escaneo que va a abortar seguro.
   const tasasConfirmadas = estado && estado.fx.at;
   const sinTasas = uni === "global_topcap" && !tasasConfirmadas;
   return (
     <div className="py-1.5">
-      <div className="mb-1.5 text-[9.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-        Universo
-      </div>
+      <div className="mb-1.5 text-[9.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>{t("alpha_ui_universo")}</div>
       <div className="flex flex-wrap gap-1.5">
         {opciones.map((o) => (
           <button key={o.v} onClick={() => onUni(o.v)}
@@ -779,10 +752,7 @@ function SelectorUniverso({ uni, onUni, estado }: {
         ))}
       </div>
       {sinTasas && (
-        <p className="mt-1.5 text-[10px]" style={{ color: T.warn }}>
-          Las tasas de cambio no se han sincronizado nunca — sin ellas este universo sale vacío.
-          Lánzalas primero desde «Tasas de cambio».
-        </p>
+        <p className="mt-1.5 text-[10px]" style={{ color: T.warn }}>{t("alpha_ui_las_tasas_de_cambio_no_se_han_sincronizado_nunca_sin_ellas_este_universo_sale_vacio_lanzalas_primero_desde_tas")}</p>
       )}
     </div>
   );
@@ -812,6 +782,7 @@ function FuenteToggle({ fuente, onFuente }: { fuente: Fuente; onFuente: (f: Fuen
 /** Estado en marcha: etapa, barra y contadores del trabajo vivo. Todo sale de `/scan/progress`,
  *  incluida la unidad — en `deep` cuenta finalistas, no tickers, y decirlo mal confunde. */
 function EnMarcha({ p }: { p: ScanProgress | null }) {
+  const t = useTranslations();
   const esFoto = p?.stage === "foto";
   const etapaActual = p?.stage === "gather_retry" ? "gather" : p?.stage;
   const idx = ETAPAS.findIndex((e) => e.k === etapaActual);
@@ -820,11 +791,11 @@ function EnMarcha({ p }: { p: ScanProgress | null }) {
     <>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-[13.5px] font-bold" style={{ color: T.ink }}>
-          {esFoto ? "Capturando fundamentales" : "Escaneo en marcha"}
+          {esFoto ? t("alpha_ops_gathering") : t("alpha_ops_scan_running")}
         </span>
         <span className="rounded px-1.5 py-0.5 text-[10px]"
               style={{ background: TONOS.info.bg, color: TONOS.info.fg }}>
-          {p?.stage === "gather_retry" ? "reintentando datos" : ETAPAS[idx]?.t ?? p?.stage ?? "arrancando"}
+          {p?.stage === "gather_retry" ? t("alpha_ops_retrying_data") : (ETAPAS[idx] ? t(ETAPAS[idx].t) : p?.stage) ?? t("alpha_ops_starting")}
         </span>
       </div>
 
@@ -836,8 +807,8 @@ function EnMarcha({ p }: { p: ScanProgress | null }) {
       <div className={`mb-3 text-[11px] ${NUMS}`} style={{ color: T.ink2 }}>
         {p?.total
           ? <>{fmtNum(p.done)} / {fmtNum(p.total)} {p.unit ?? ""} · <span style={{ color: T.good }}>{fmtNum(p.ok)} ok</span>
-              {p.fail ? <> · <span style={{ color: T.bad }}>{fmtNum(p.fail)} sin datos</span></> : null}</>
-          : <span style={{ color: T.muted }}>sin contador en esta etapa</span>}
+              {p.fail ? <> · <span style={{ color: T.bad }}>{fmtNum(p.fail)}{t("alpha_ui_sin_datos")}</span></> : null}</>
+          : <span style={{ color: T.muted }}>{t("alpha_ui_sin_contador_en_esta_etapa")}</span>}
       </div>
 
       {!esFoto && (
@@ -846,7 +817,7 @@ function EnMarcha({ p }: { p: ScanProgress | null }) {
             <span key={e.k} className="rounded px-1.5 py-0.5 text-[10px]"
                   style={{ background: "rgba(255,255,255,0.05)",
                            color: i < idx ? T.good : i === idx ? T.buy : T.muted }}>
-              {e.t}
+              {t(e.t)}
             </span>
           ))}
         </div>
@@ -855,8 +826,8 @@ function EnMarcha({ p }: { p: ScanProgress | null }) {
       <p className="border-t pt-2 text-[10.5px] leading-relaxed"
          style={{ borderColor: T.grid, color: T.muted }}>
         {esFoto
-          ? "La captura no bloquea nada: puedes cerrar la sala y seguirá corriendo."
-          : "Al terminar, el resultado aparece justo debajo en «Último escaneo»."}
+          ? t("alpha_ops_capture_background")
+          : t("alpha_ops_scan_result_location")}
       </p>
     </>
   );

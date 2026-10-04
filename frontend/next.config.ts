@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 
 // Cabeceras de seguridad para TODAS las rutas (aplican igual en Vercel).
 // Sin CSP completa a propósito: Next usa inline scripts y una CSP estricta exigiría
@@ -34,4 +35,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default createNextIntlPlugin()(nextConfig);

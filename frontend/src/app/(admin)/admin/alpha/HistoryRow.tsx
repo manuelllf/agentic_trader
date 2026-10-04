@@ -1,18 +1,22 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { fmtTime, money, qty4 } from '@/lib/format';
 import type { Approval } from '@/lib/types';
 import { T } from './tokens';
 import { SideTag, Td } from './ui';
 
-const HIST_STATUS: Record<string, { label: string; color: string }> = {
-  executed: { label: "Ejecutada", color: T.good },
-  working: { label: "Trabajando", color: T.warn },
-  rejected: { label: "Descartada", color: T.muted },
-  failed: { label: "Fallida", color: T.bad },
-  expired: { label: "Caducada", color: T.muted },
+const HIST_STATUS: Record<string, { key: "alpha_status_executed" | "alpha_status_working" | "alpha_status_rejected" | "alpha_status_failed" | "alpha_status_expired"; color: string }> = {
+  executed: { key: "alpha_status_executed", color: T.good },
+  working: { key: "alpha_status_working", color: T.warn },
+  rejected: { key: "alpha_status_rejected", color: T.muted },
+  failed: { key: "alpha_status_failed", color: T.bad },
+  expired: { key: "alpha_status_expired", color: T.muted },
 };
 
 export function HistoryRow({ h }: { h: Approval }) {
-  const st = HIST_STATUS[h.status] ?? { label: h.status, color: T.muted };
+  const t = useTranslations();
+  const st = HIST_STATUS[h.status];
   return (
     <tr className="border-t" style={{ borderColor: T.grid }}>
       <Td><SideTag action={h.action} /></Td>
@@ -20,7 +24,7 @@ export function HistoryRow({ h }: { h: Approval }) {
       <Td>
         <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: st.color }}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: st.color }} />
-          {st.label}
+          {st ? t(st.key) : h.status}
         </span>
       </Td>
       <Td>

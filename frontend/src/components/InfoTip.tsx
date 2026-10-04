@@ -1,8 +1,7 @@
 "use client";
+import { useTranslations } from "next-intl";
 
-/** Icono "ⓘ" que al tocar abre un tooltip propio (no el `title` nativo del navegador) con la
- *  explicación larga — sustituye el texto permanente que antes vivía al lado de cada botón, para
- *  que la UI por defecto quede limpia y el porqué siga a un toque de distancia. */
+/** Explicación accesible junto al control, sin ocupar espacio permanente. */
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { T } from "@/app/(admin)/admin/alpha/tokens";
@@ -11,6 +10,7 @@ const MARGEN_PX = 8;   // separación mínima al borde de la pantalla
 const ANCHO_PX = 224;
 
 export function InfoTip({ text }: { text: string }) {
+  const t = useTranslations();
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLSpanElement | null>(null);
   const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -65,7 +65,7 @@ export function InfoTip({ text }: { text: string }) {
     <span ref={ref} className="info-tip" style={{ display: "inline-flex", width: 14, height: 14, flexShrink: 0, verticalAlign: "middle" }}>
       {/* El `before` agranda la zona táctil (~34 px) sin cambiar el dibujo de 14 px. */}
       <button ref={btnRef} type="button" onClick={alternar}
-              aria-label="Más información" aria-expanded={open}
+              aria-label={t("common_mas_informacion")} aria-expanded={open}
               aria-describedby={open ? tipId : undefined}
               className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[9.5px] font-bold leading-none transition-colors before:absolute before:-inset-2.5 before:content-[''] hover:opacity-80"
               style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34,

@@ -259,3 +259,9 @@ npm run dev
 
 Código propietario, todos los derechos reservados (ver [LICENSE](LICENSE)). Ver el repositorio
 no otorga ningún permiso de uso, copia o distribución.
+
+## Idiomas y registro MVP
+
+La interfaz incluye español e inglés, detección del idioma del navegador y selección con banderas. La preferencia de cuenta se guarda en `liga.perfiles_privados.idioma`; preparar esta columna y sus permisos antes de desplegar. Los catálogos se comprueban con `npm run check:i18n` desde frontend.
+
+El registro MVP usa correo, usuario y contraseña, sin correos de confirmación, recuperación ni Google. Supabase Auth debe tener Email/password activo y Confirm email desactivado. El trigger de alta debe reservar el alias y registrar consentimientos también para usuarios que llegan confirmados; el registro se abre con el ajuste existente `liga.registro.abierto`. El segundo factor de cuentas existentes se conserva. La preparación y validación de producción se hacen por separado, preservando datos; el esquema CI no se aplica a producción.

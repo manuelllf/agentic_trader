@@ -1,4 +1,5 @@
 "use client";
+import { useTranslations } from "next-intl";
 
 import { useState } from "react";
 import { codigoDe, reportarError } from "@/lib/liga/errores";
@@ -19,6 +20,7 @@ export interface ErrorLigaProps {
 type Fase = "pendiente" | "enviando" | "enviado" | "fallo";
 
 export function ErrorLiga({ titulo, mensaje, accion, reportar = true }: ErrorLigaProps) {
+  const t = useTranslations();
   const [fase, setFase] = useState<Fase>("pendiente");
 
   const enviar = async () => {
@@ -38,14 +40,14 @@ export function ErrorLiga({ titulo, mensaje, accion, reportar = true }: ErrorLig
         </Boton>
       )}
       {reportar && (fase === "enviado" ? (
-        <p className="fine" role="status">Gracias, ya lo tenemos.</p>
+        <p className="fine" role="status">{t("system_error_gracias")}</p>
       ) : (
         <>
           <Boton variante="discreto" ancho="completo" disabled={fase === "enviando"} onClick={enviar}>
-            {fase === "enviando" ? "Enviando…" : "Reportar este error"}
+            {fase === "enviando" ? t("system_error_enviando") : t("system_error_reportar")}
           </Boton>
           {fase === "fallo" && (
-            <p className="fine" role="status">No hemos podido enviarlo ahora. Inténtalo otra vez.</p>
+            <p className="fine" role="status">{t("system_error_envio_fallo")}</p>
           )}
         </>
       ))}

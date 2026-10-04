@@ -5,16 +5,17 @@
 // escaneos pasados. Un ticker exacto trae su historia; texto libre trae tesis parecidas.
 
 import { useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { searchMemory, type MemoryItem } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import { InfoTip } from "@/components/InfoTip";
 import { NUMS, T } from "./tokens";
 
-const TITLES: Record<string, string> = {
-  ticker: "Historia guardada de",
-  semantic: "Tesis parecidas a",
-  vacio: "",
-};
+const TITLE_KEYS = {
+  ticker: "alpha_memory_ticker_title",
+  semantic: "alpha_memory_semantic_title",
+  vacio: "alpha_memory_empty_title",
+} as const;
 
 // Cada búsqueda semántica calcula un embedding en la CPU del servidor: una por pulsación de
 // tecla sería absurdo. Se espera este silencio desde la última tecla y un mínimo de caracteres
@@ -23,6 +24,8 @@ const DEBOUNCE_MS = 400;
 const MIN_CHARS = 3;
 
 export function MemorySearch() {
+  const t = useTranslations();
+  const locale: "es" | "en" = useLocale() === "en" ? "en" : "es";
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"ticker" | "semantic" | "vacio" | null>(null);
@@ -47,7 +50,7 @@ export function MemorySearch() {
       if (reqId.current !== myId) return;
       setMode(null);
       setItems([]);
-      setErr(e instanceof Error ? e.message : "No se pudo buscar en la memoria.");
+      setErr(e instanceof Error ? e.message : t("alpha_memory_search_error"));
     } finally {
       if (reqId.current === myId) setBusy(false);
     }
@@ -79,15 +82,15 @@ export function MemorySearch() {
     <div className="mt-3 border-t pt-3" style={{ borderColor: T.grid }}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-          Memoria
+          {t("alpha_memory")}
         </span>
-        <InfoTip text="Busca un ticker (su historia) o describe algo con texto libre (tesis parecidas)." />
+        <InfoTip text={t("alpha_memory_help")} />
       </div>
       <div className="mt-2 flex gap-2">
         <input value={q}
                onChange={(e) => setQ(e.target.value)}
                onKeyDown={(e) => e.key === "Enter" && submit()}
-               placeholder="p. ej. NVDA o «empresas con una opa en curso»"
+               placeholder={t("alpha_memory_placeholder")}
                className="w-full max-w-[420px] rounded border bg-transparent px-3 py-1.5 text-[12px] outline-none"
                style={{ borderColor: T.grid, color: T.ink }}
                onFocus={(e) => (e.currentTarget.style.borderColor = T.buy)}
@@ -95,7 +98,7 @@ export function MemorySearch() {
         <button onClick={submit} disabled={busy || !q.trim()}
                 className="shrink-0 rounded border px-3 py-1.5 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-40"
                 style={{ borderColor: T.ring, color: T.ink2 }}>
-          {busy ? "Buscando…" : "Buscar"}
+          {busy ? t("alpha_searching") : t("alpha_search")}
         </button>
       </div>
       {err && <p className="mt-2 text-[10.5px]" style={{ color: T.warn }}>{err}</p>}
@@ -103,12 +106,12 @@ export function MemorySearch() {
         <div className="mt-2">
           {items.length === 0 ? (
             <p className="text-[10.5px]" style={{ color: T.muted }}>
-              Sin resultados en la memoria.
+              {t("alpha_memory_no_results")}
             </p>
           ) : (
             <>
               <p className="text-[10.5px]" style={{ color: T.muted }}>
-                {TITLES[mode]} {mode === "ticker" ? <b style={{ color: T.ink2 }}>{q.trim().toUpperCase()}</b> : "lo escrito"}
+                {t(TITLE_KEYS[mode])} {mode === "ticker" ? <b style={{ color: T.ink2 }}>{q.trim().toUpperCase()}</b> : t("alpha_memory_query_text")}
               </p>
               <ul className="mt-1.5 max-h-[220px] space-y-1.5 overflow-y-auto">
                 {items.map((m, i) => (
@@ -122,10 +125,10 @@ export function MemorySearch() {
                         <button onClick={(e) => { e.stopPropagation(); openHistory(m.ticker); }}
                                 className="text-[10px] font-semibold underline decoration-dotted underline-offset-2"
                                 style={{ color: T.buy }}>
-                          {m.n_tesis} tesis · ver historia
+                          {t("alpha_memory_theses_history", { count: m.n_tesis })}
                         </button>
                       )}
-                      <span className="text-[10px]" style={{ color: T.muted }}>{fmtTime(m.created_at)}</span>
+                      <span className="text-[10px]" style={{ color: T.muted }}>{fmtTime(m.created_at, locale)}</span>
                     </div>
                     <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug" style={{ color: T.ink2 }}>
                       {m.text}
@@ -146,6 +149,8 @@ export function MemorySearch() {
  *  esto es lo único que muestra el texto entero. Mismo patrón que el overlay de ranking de
  *  sombra/page.tsx (velo + tarjeta + cerrar por X/Escape/click fuera), en el lenguaje dark T. */
 function MemoryModal({ item, onClose }: { item: MemoryItem; onClose: () => void }) {
+  const t = useTranslations();
+  const locale: "es" | "en" = useLocale() === "en" ? "en" : "es";
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -158,16 +163,16 @@ function MemoryModal({ item, onClose }: { item: MemoryItem; onClose: () => void 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
          onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={`Recuerdo de ${item.ticker}`}
+      <div role="dialog" aria-modal="true" aria-label={t("alpha_memory_for_ticker", { ticker: item.ticker })}
            className="w-full max-w-lg rounded-lg border shadow-xl"
            style={{ borderColor: T.ring, background: T.panel }}
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: T.grid }}>
           <div className="flex items-center gap-2">
             <b className={NUMS} style={{ color: T.ink }}>{item.ticker}</b>
-            <span className="text-[11px]" style={{ color: T.muted }}>{fmtTime(item.created_at)}</span>
+            <span className="text-[11px]" style={{ color: T.muted }}>{fmtTime(item.created_at, locale)}</span>
           </div>
-          <button ref={closeRef} onClick={onClose} aria-label="Cerrar"
+          <button ref={closeRef} onClick={onClose} aria-label={t("alpha_close")}
                   className="hover:opacity-70" style={{ color: T.muted }}>
             ✕
           </button>
@@ -177,7 +182,7 @@ function MemoryModal({ item, onClose }: { item: MemoryItem; onClose: () => void 
             {item.text}
           </p>
           <p className="mt-3 border-t pt-2 text-[10px]" style={{ borderColor: T.grid, color: T.muted }}>
-            Fragmento guardado (~550 caracteres: titular + principio del informe) — no el informe entero.
+            {t("alpha_memory_excerpt_note")}
           </p>
         </div>
       </div>

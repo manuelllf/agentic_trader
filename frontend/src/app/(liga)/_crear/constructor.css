@@ -1,6 +1,6 @@
 .lg [hidden] { display: none !important; }
-.lg .constructor-etapas { position: sticky; top: 0; z-index: 8; display: flex; flex-wrap: wrap; gap: 0; margin-top: 0; border-bottom: 1px solid var(--line); background: var(--bg); scroll-margin-top: 0; }
-.lg .constructor-etapas button { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 8px 10px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font: inherit; font-size: 14px; line-height: 1.25; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
+.lg .constructor-etapas { position: fixed; top: 0; left: 50%; transform: translateX(-50%); width: calc(100% - 2 * var(--page-gutter)); max-width: calc(var(--app-width) - 2 * var(--page-gutter)); z-index: 12; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); height: calc(3.5rem + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); flex-shrink: 0; gap: 0; margin-top: 0; border-bottom: 1px solid var(--line); background: var(--bg); scroll-margin-top: 0; }
+.lg .constructor-etapas button { min-width: 0; height: 100%; padding: 8px 10px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font: inherit; font-size: 14px; line-height: 1.25; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
 .lg .constructor-etapas button:disabled { cursor: wait; opacity: .6; }
 .lg .constructor-etapas [aria-current="step"] { color: var(--ink); border-color: var(--accent); font-weight: 700; }
 .lg .constructor-guardado { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; min-width: 0; min-height: 22px; margin: 4px 0 8px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
@@ -8,21 +8,21 @@
 .lg .constructor-tarea { border: 0; padding: 0; margin: 0; min-width: 0; }
 .lg .constructor-tarea input[type="range"] { min-width: 0; width: 100%; height: 44px; margin: 0; accent-color: var(--accent); }
 .lg .constructor-distribucion, .lg .constructor-distribucion > *, .lg .constructor-tarea > * { min-width: 0; }
-.lg .constructor-pregunta { font-size: clamp(1.35rem, 2.5vw, 1.8rem); line-height: 1.2; letter-spacing: -.025em; scroll-margin-top: 16px; }
+.lg .constructor-pregunta { font-size: clamp(1.2rem, 2vw, 1.5rem); line-height: 1.2; letter-spacing: -.025em; scroll-margin-top: 16px; }
 .lg .constructor-pregunta:focus { outline: none; }
-.lg .constructor-avanzar { position: fixed; bottom: calc(60px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 11; width: calc(100% - 2 * var(--page-gutter)); max-width: calc(var(--app-width) - 2 * var(--page-gutter)); box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--line); background: var(--bg); }
+.lg .constructor-avanzar { position: fixed; bottom: calc(var(--nav-height) + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 11; width: calc(100% - 2 * var(--page-gutter)); max-width: calc(var(--app-width) - 2 * var(--page-gutter)); box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--line); background: var(--bg); }
 .lg .constructor-avanzar > * { min-width: 0; max-width: 100%; }
 .lg .constructor-avanzar .btn { flex: 1 1 0; padding: 8px 10px; font-size: 14px; line-height: 1.25; }
-.lg .constructor { padding-bottom: calc(160px + env(safe-area-inset-bottom)); }
-.lg .constructor .field { margin-top: 16px; }
+.lg .constructor { padding-top: calc(3.5rem + env(safe-area-inset-top) + 8px); padding-bottom: calc(160px + env(safe-area-inset-bottom)); }
+.lg .constructor .field { margin-top: 12px; }
 .lg .constructor textarea.inp { min-height: 80px; }
 .lg .constructor .wrow { gap: 2px 10px; margin-top: 6px; }
 .lg .constructor .more { margin-top: 12px; }
 .lg .preview-resumen { min-height: 44px; margin-top: 8px; font-size: 13px; line-height: 1.4; color: var(--muted); }
 .lg .preview-resumen > summary { min-height: 44px; display: list-item; padding: 10px 0; cursor: pointer; }
 .lg .filtro-asistente .btn { margin-top: 8px; }
-.lg .constructor .lenguaje-natural { padding: 16px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 16px; background: var(--accent-bg); }
-.lg .constructor .lenguaje-natural .lbl { display: block; font-size: 17px; }
+.lg .constructor .lenguaje-natural { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.lg .constructor .lenguaje-natural .lbl { display: block; font-size: 15px; }
 .lg .constructor .lenguaje-natural .inp { margin-top: 8px; }
 .lg .constructor .wrow label { display: flex; align-items: center; gap: 4px; }
 @media (max-width: 30rem) { .lg .constructor-etapas button { padding: 8px 4px; font-size: 12px; } }
@@ -32,3 +32,23 @@
   .lg .constructor-reglas { grid-column: 1 / -1; }
   .lg .constructor-reglas .rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
 }
+
+.lg .constructor .lenguaje-natural .lbl small { margin-top: 6px; font-weight: 400; line-height: 1.5; }
+.lg .constructor .lenguaje-natural .fine { margin-top: 10px; line-height: 1.5; }
+.lg .constructor .filtro-asistente { margin: 0 0 24px; }
+.lg .constructor .filtro-asistente textarea.inp { min-height: 64px; }
+.lg .constructor .filtro-asistente .btn { margin-top: 10px; }
+.lg .constructor .reglas-titulo { display: block; margin-bottom: 12px; }
+.lg .constructor .filtros-catalogo { margin-top: 20px; }
+.lg .constructor .filtros-catalogo h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.lg .constructor .starters { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 0; }
+.lg .constructor .starter { display: flex; align-items: center; gap: 10px; min-height: 44px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); text-align: left; white-space: normal; overflow-wrap: anywhere; font-weight: 500; }
+.lg .constructor .starter > span { color: var(--accent); font-size: 18px; }
+.lg .constructor .rulec { padding: 14px; border-radius: 12px; background: var(--surface); }
+.lg .constructor .rulec + .rulec { margin-top: 12px; }
+@media (min-width: 480px) { .lg .constructor .starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 992px) { .lg .constructor .starters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.lg .constructor .filtros-catalogo .inp { margin: 10px 0 12px; }
+
+.lg .constructor-titulo { margin: 0 0 12px; }

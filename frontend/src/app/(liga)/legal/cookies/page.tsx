@@ -1,43 +1,42 @@
 import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Cookies — Vennett" };
+export async function generateMetadata() { const t = await getTranslations(); return { title: `${t("legal_cookies_title")} — Vennett` }; }
 
 // La sesión en `localStorage` (`lib/liga/supabase.ts`) es lo único que guarda la web pública.
 // Si se añade algo (captcha, analítica), actualizar esta página antes de desplegarlo.
-export default function Cookies() {
+export default async function Cookies() {
+  const t = await getTranslations();
   return (
     <PlantillaLegal
-      titulo="Política de cookies"
+      titulo={t("legal_cookies_policy")}
       resumen={[
-        "No usamos cookies, ni propias ni de terceros. Sin analítica ni publicidad.",
-        "Solo guardamos tu sesión en el navegador, para que no tengas que entrar cada vez.",
-        "Por eso no hay banner: no hay nada que aceptar.",
+        t("legal_cookies_summary_1"), t("legal_cookies_summary_2"), t("legal_cookies_summary_3"),
       ]}
     >
-      <h2>Qué guardamos en tu navegador</h2>
+      <h2>{t("legal_cookies_browser_storage")}</h2>
       <table className="legal-tabla">
         <thead>
-          <tr><th>Nombre</th><th>Para qué</th><th>Cuánto dura</th></tr>
+          <tr><th>{t("legal_cookies_table_name")}</th><th>{t("legal_cookies_table_purpose")}</th><th>{t("legal_cookies_table_duration")}</th></tr>
         </thead>
         <tbody>
           <tr>
-            <td>liguilla-sesion (almacenamiento local)</td>
-            <td>Mantener tu sesión iniciada. Es necesario para el servicio que pides, por eso no
-              requiere tu consentimiento.</td>
-            <td>Hasta que cierres sesión o borres los datos del sitio.</td>
+            <td><code>liguilla-sesion</code> ({t("legal_cookies_local_storage")})</td>
+            <td>{t("legal_cookies_session_purpose")}</td>
+            <td>{t("legal_cookies_session_duration")}</td>
           </tr>
+          <tr><td><code>vennett_locale</code></td><td>{t("legal_cookies_locale_purpose")}</td><td>{t("legal_cookies_locale_duration")}</td></tr>
+          <tr><td><code>vennett_visitor_locale</code></td><td>{t("legal_cookies_visitor_purpose")}</td><td>{t("legal_cookies_locale_duration")}</td></tr>
         </tbody>
       </table>
 
-      <h2>Si esto cambia</h2>
+      <h2>{t("legal_cookies_if_changes")}</h2>
       <p>
-        Si añadimos algo (un captcha en el alta, por ejemplo), esta página se actualizará antes. No
-        añadiremos analítica ni publicidad sin pedir antes tu consentimiento, con aceptar y
-        rechazar al mismo nivel.
+        {t("legal_cookies_changes_text")}
       </p>
       <p>
-        Más sobre tus datos en la <Link href="/legal/privacidad">política de privacidad</Link>.
+        {t("legal_cookies_privacy_more")} <Link href="/legal/privacidad">{t("legal_privacy_policy")}</Link>.
       </p>
     </PlantillaLegal>
   );

@@ -39,7 +39,7 @@ def entorno(monkeypatch):  # noqa: ANN001, ANN201
 
     def usuario() -> str:
         uid = uuid.uuid4()
-        cx.execute("insert into auth.users (id, email) values (%s, %s)",
+        cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
                   (uid, f"{uid.hex[:12]}@prueba.local"))
         creado["usuarios"].append(uid)
         return str(uid)

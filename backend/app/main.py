@@ -19,6 +19,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import JSONResponse
 
 from app import recursos
@@ -166,6 +167,30 @@ app = FastAPI(
 )
 
 _LENTA_S = 1.0
+
+
+
+@app.exception_handler(StarletteHTTPException)
+async def translated_http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    from app.i18n import present_error_detail, resolve_locale
+    detail = present_error_detail(exc.detail, resolve_locale(request.headers.get("accept-language"))) \
+        if isinstance(exc.detail, str) else exc.detail
+    return JSONResponse({"detail": detail}, status_code=exc.status_code, headers=exc.headers)
+
+
+@app.middleware("http")
+async def presentation_language(request: Request, call_next):
+    from app.i18n import current_locale, resolve_locale
+    locale = resolve_locale(request.headers.get("accept-language"))
+    token = current_locale.set(locale)
+    try:
+        response = await call_next(request)
+        response.headers["Content-Language"] = locale
+        vary = response.headers.get("Vary", "")
+        response.headers["Vary"] = ", ".join(dict.fromkeys([v.strip() for v in vary.split(",") if v.strip()] + ["Accept-Language"]))
+        return response
+    finally:
+        current_locale.reset(token)
 
 
 @app.middleware("http")

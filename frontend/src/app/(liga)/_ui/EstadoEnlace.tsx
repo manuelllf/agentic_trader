@@ -1,9 +1,11 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useLinkStatus } from "next/link";
 
 /** Next controla el estado real del enlace: no hay temporizadores ni espera artificial. */
 export function EstadoEnlace({ texto, icono }: { texto: string; icono: React.ReactNode }) {
+  const t = useTranslations();
   const { pending } = useLinkStatus();
 
   return (
@@ -17,7 +19,7 @@ export function EstadoEnlace({ texto, icono }: { texto: string; icono: React.Rea
         {pending && <span className="tab-pendiente" aria-hidden="true" />}
       </span>
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        {pending ? `Abriendo ${texto}` : ""}
+        {pending ? t("common_abriendo", { texto }) : ""}
       </span>
     </span>
   );

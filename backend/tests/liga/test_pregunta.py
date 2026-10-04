@@ -111,7 +111,7 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
 
     def usuario(creditos: int = 0) -> str:
         uid = uuid.uuid4()
-        cx.execute("insert into auth.users (id, email) values (%s, %s)",
+        cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
                   (uid, f"{uid.hex[:12]}@prueba.local"))
         cx.execute("insert into liga.planes_usuario (usuario_id, plan, origen) "
                   "values (%s, 'pro', 'demo')", (uid,))

@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Atkinson_Hyperlegible_Next } from "next/font/google";
+import { getLocale, getMessages, getTranslations } from "next-intl/server";
+import { LanguageProvider } from "@/i18n/Provider";
+import { normalizeLocale } from "@/i18n/locale";
 // Aquí y no en (liga)/layout: la 404 cuelga de este layout y, si no, sale sin estilos. Todo va
 // bajo .lg, así que las salas no se enteran.
 import "./(liga)/liga.css";
@@ -12,10 +15,9 @@ const atkinson = Atkinson_Hyperlegible_Next({
   adjustFontFallback: false,
 });
 
-export const metadata: Metadata = {
+const baseMetadata: Metadata = {
   title: "Vennett",
   applicationName: "Vennett",
-  description: "Pon a prueba tu estrategia y compárala con el S&P 500, jornada a jornada.",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "Vennett" },
   icons: {
@@ -28,6 +30,12 @@ export const metadata: Metadata = {
   },
 };
 
+export async function generateMetadata(): Promise<Metadata> {
+  const [t, locale] = await Promise.all([getTranslations(), getLocale()]);
+  return { ...baseMetadata, description: t("system_descripcion_app"),
+    manifest: `/api/i18n/manifest?locale=${locale}` };
+}
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -37,10 +45,12 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const [language, messages] = await Promise.all([getLocale(), getMessages()]);
+  const locale = normalizeLocale(language) ?? "es";
   return (
-    <html lang="es" className={atkinson.variable}>
-      <body>{children}</body>
+    <html lang={locale} className={atkinson.variable}>
+      <body><LanguageProvider locale={locale} messages={messages}>{children}</LanguageProvider></body>
     </html>
   );
 }

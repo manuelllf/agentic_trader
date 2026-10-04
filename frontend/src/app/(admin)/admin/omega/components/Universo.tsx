@@ -1,3 +1,5 @@
+"use client";
+import { useLocale, useTranslations } from "next-intl";
 // Tabla del Universo + el modal de historico completo por ticker (agregados, señales, el
 // toggle de apagar el ticker).
 import { useEffect, useMemo, useState } from 'react';
@@ -55,6 +57,8 @@ export function UniversoTabla({ validacion, onAbrir }: {
 export function UniversoRow({ v, first, onAbrir }: {
   v: Validacion; first: boolean; onAbrir: (v: Validacion) => void;
 }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const apagado = v.mantener === false;
   const celda = "px-2.5 py-2";
   const borde = !first ? { borderTop: `1px solid ${T.grid}` } : undefined;
@@ -63,12 +67,12 @@ export function UniversoRow({ v, first, onAbrir }: {
     <>
       <tr onClick={() => onAbrir(v)} className="cursor-pointer" style={{ ...borde, opacity: apagado ? 0.5 : 1 }}>
         <td className={`${celda} ${MONO} font-semibold`} style={{ color: apagado ? T.warn : T.ink }}>
-          {v.ticker}{apagado && <span className="ml-1.5 text-[9px] font-normal">apagado</span>}
+          {v.ticker}{apagado && <span className="ml-1.5 text-[9px] font-normal">{t("omega_ui_apagado")}</span>}
         </td>
         <td className={celda} style={{ color: T.muted }}>{v.sector}</td>
         <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{v.n}</td>
         <td className={`${celda} ${NUMS} text-right`} style={{ color: v.media == null ? T.muted : v.media >= 0 ? T.good : T.bad }}>
-          {v.media != null ? fmtRet(v.media) : "-"}
+          {v.media != null ? fmtRet(v.media, locale) : "-"}
         </td>
         <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{v.pct_positivas ?? "-"}{v.pct_positivas != null && "%"}</td>
         <td className={`${celda} text-right`} style={{ color: T.muted }}>›</td>
@@ -85,6 +89,8 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
   v: Validacion; alertas: Senal[]; historial: Senal[]; preciosVivos: Record<string, number | null>;
   onCambio: (ticker: string, patch: Partial<Validacion>) => void; onClose: () => void;
 }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [busy, setBusy] = useState(false);
   const [errToggle, setErrToggle] = useState("");
   const apagado = v.mantener === false;
@@ -103,7 +109,7 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
       await setMantenerUniverso(v.ticker, nuevo);
       onCambio(v.ticker, { mantener: nuevo });
     } catch (e) {
-      setErrToggle(e instanceof Error ? e.message : "No se pudo cambiar.");
+      setErrToggle(e instanceof Error ? e.message : t("omega_change_failed"));
     } finally {
       setBusy(false);
     }
@@ -140,10 +146,10 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
 
   const cols: { key: SenalSortKey; label: string }[] = [
     { key: "entry_date", label: "Entrada" }, { key: "tipo", label: "Tipo" },
-    { key: "entry_price", label: "Precio" }, { key: "caida_pct", label: "Caída ref." },
-    { key: "caidaAth", label: "Caída ATH" }, { key: "ret", label: "Resultado" },
-    { key: "dias", label: "Días trade" }, { key: "caida_max_pct", label: "Caída máx." },
-    { key: "dias_hasta_min", label: "Días a fondo" },
+    { key: "entry_price", label: "Precio" }, { key: "caida_pct", label: t("omega_reference_drop") },
+    { key: "caidaAth", label: t("omega_ath_drop") }, { key: "ret", label: t("omega_result") },
+    { key: "dias", label: t("omega_trade_days") }, { key: "caida_max_pct", label: t("omega_max_drop") },
+    { key: "dias_hasta_min", label: t("omega_days_to_bottom") },
   ];
 
   return (
@@ -157,13 +163,13 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
             <span className={`text-[16px] font-bold ${MONO}`} style={{ color: T.ink }}>{v.ticker}</span>
             <span className="text-[10.5px]" style={{ color: T.muted }}>{v.sector}</span>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
+          <button onClick={onClose} aria-label={t("omega_attr_cerrar")} className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
         </div>
 
         {/* Cuerpo con scroll interno propio -- el modal nunca crece ni encoge con el contenido. */}
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto px-4 py-3">
           {señales.length === 0 ? (
-            <p className="py-6 text-center text-[12px]" style={{ color: T.muted }}>Sin señales todavía.</p>
+            <p className="py-6 text-center text-[12px]" style={{ color: T.muted }}>{t("omega_ui_sin_senales_todavia")}</p>
           ) : (
             <table className="w-full text-[10.5px]" style={{ minWidth: 720 }}>
               <thead>
@@ -198,26 +204,24 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
               <b className={`${NUMS} text-[15px]`} style={{ color: T.ink }}>{v.n}</b>
             </div>
             <div>
-              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Media</div>
+              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_media")}</div>
               <b className={`${NUMS} text-[15px]`} style={{ color: v.media == null ? T.muted : v.media >= 0 ? T.good : T.bad }}>
-                {v.media != null ? fmtRet(v.media) : "-"}
+                {v.media != null ? fmtRet(v.media, locale) : "-"}
               </b>
             </div>
             <div>
-              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Mediana</div>
+              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_mediana")}</div>
               <b className={`${NUMS} text-[15px]`} style={{ color: v.mediana == null ? T.muted : v.mediana >= 0 ? T.good : T.bad }}>
-                {v.mediana != null ? fmtRet(v.mediana) : "-"}
+                {v.mediana != null ? fmtRet(v.mediana, locale) : "-"}
               </b>
             </div>
             <div>
-              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Días medios</div>
+              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_dias_medios")}</div>
               <b className={`${NUMS} text-[15px]`} style={{ color: T.ink }}>{diasMedios != null ? diasMedios.toFixed(0) : "-"}</b>
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: T.base }}>
-            <span className="text-[12px] font-semibold" style={{ color: T.ink2 }}>
-              Mantener en universo
-              {apagado && <span className="ml-1.5 font-normal" style={{ color: T.warn }}>· apagado, sigue en seguimiento</span>}
+            <span className="text-[12px] font-semibold" style={{ color: T.ink2 }}>{t("omega_ui_mantener_en_universo")}{apagado && <span className="ml-1.5 font-normal" style={{ color: T.warn }}>{t("omega_ui_apagado_sigue_en_seguimiento")}</span>}
             </span>
             <Toggle checked={!apagado} onChange={toggleMantener} disabled={busy} />
           </div>
@@ -229,6 +233,8 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
 }
 
 export function UniversoSenalRow({ s, first, precioVivo }: { s: Senal; first: boolean; precioVivo: number | null }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const celda = "px-1.5 py-1.5";
   const borde = !first ? { borderTop: `1px solid ${T.grid}` } : undefined;
 
@@ -239,26 +245,26 @@ export function UniversoSenalRow({ s, first, precioVivo }: { s: Senal; first: bo
     : Number(s.ret);
   const solo = cerradaAMano && s.cierre_manual!.ret_sistema != null
     ? Number(s.cierre_manual!.ret_sistema) : null;
-  const motivoTxt = cerradaAMano ? (solo != null ? `a mano · solo ${fmtRet(solo)}` : "cerrada a mano")
-    : enCurso ? (s.estado === "descartada" ? "descartada, en curso" : "en curso")
-    : s.motivo === "objetivo" ? "objetivo" : s.motivo === "tiempo" ? "90 días" : "-";
+  const motivoTxt = cerradaAMano ? (solo != null ? t("omega_manual_return", { value: fmtRet(solo, locale) }) : t("omega_manually_closed"))
+    : enCurso ? (s.estado === "descartada" ? t("omega_discarded_live") : t("omega_in_progress"))
+    : s.motivo === "objetivo" ? t("omega_target") : s.motivo === "tiempo" ? t("omega_days_90") : "-";
 
   return (
     <tr style={borde}>
-      <td className={`${celda} ${NUMS}`} style={{ color: T.ink2 }}>{fmtFecha(s.entry_date)}</td>
-      <td className={celda} style={{ color: T.muted }}>{TIPO_LABEL[s.tipo]}</td>
-      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink }}>${money(s.entry_price)}</td>
+      <td className={`${celda} ${NUMS}`} style={{ color: T.ink2 }}>{fmtFecha(s.entry_date, locale)}</td>
+      <td className={celda} style={{ color: T.muted }}>{t(TIPO_LABEL[s.tipo] ?? "omega_pattern_zigzag")}</td>
+      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink }}>${money(s.entry_price, 2, locale)}</td>
       <td className={`${celda} ${NUMS} text-right`} style={{ color: T.bad }}>-{Number(s.caida_pct).toFixed(1)}%</td>
       <td className={`${celda} ${NUMS} text-right`} style={{ color: T.bad }}>
         {caidaVsAth(s) != null ? `-${caidaVsAth(s)!.toFixed(1)}%` : "-"}
       </td>
       <td className={`${celda} ${NUMS} text-right`} style={{ color: enCurso ? T.warn : ret >= 0 ? T.good : T.bad }}>
-        {ret != null && !Number.isNaN(ret) ? fmtRet(ret) : "-"}
+        {ret != null && !Number.isNaN(ret) ? fmtRet(ret, locale) : "-"}
         <div className="text-[8.5px] font-normal" style={{ color: T.muted }}>{motivoTxt}</div>
       </td>
       <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{s.dias ?? "-"}</td>
       <td className={`${celda} ${NUMS} text-right`} style={{ color: T.bad }}>
-        {s.caida_max_pct != null ? fmtRet(Number(s.caida_max_pct)) : "-"}
+        {s.caida_max_pct != null ? fmtRet(Number(s.caida_max_pct), locale) : "-"}
       </td>
       <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{s.dias_hasta_min ?? "-"}</td>
     </tr>

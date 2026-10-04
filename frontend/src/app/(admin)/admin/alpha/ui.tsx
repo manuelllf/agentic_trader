@@ -4,8 +4,14 @@
 // página y sus componentes extraídos. Nada de lógica de negocio aquí.
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { NUMS, T, isBuy } from "./tokens";
 import type { TradeAction } from "@/lib/types";
+
+const ACTION_KEYS: Record<TradeAction, "alpha_action_comprar" | "alpha_action_ampliar" | "alpha_action_mantener" | "alpha_action_recortar" | "alpha_action_vender"> = {
+  comprar: "alpha_action_comprar", ampliar: "alpha_action_ampliar", mantener: "alpha_action_mantener",
+  recortar: "alpha_action_recortar", vender: "alpha_action_vender",
+};
 
 export function Panel({ title, right, accent, children }: {
   title: string; right?: React.ReactNode; accent?: string; children: React.ReactNode;
@@ -30,6 +36,7 @@ export function Details({ title, meta, right, accent, defaultOpen, children }: {
   title: string; meta?: string; right?: React.ReactNode; accent?: string; defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
+  const t = useTranslations();
   const [open, setOpen] = useState(!!defaultOpen);
   const toggle = () => setOpen((o) => !o);
   // `right` a veces trae sus propios botones (p. ej. ScanFullButton) — un <button> dentro de
@@ -45,7 +52,7 @@ export function Details({ title, meta, right, accent, defaultOpen, children }: {
           {meta && <span className="text-[13px] font-normal" style={{ color: T.muted }}>{meta}</span>}
         </button>
         {right}
-        <button onClick={toggle} aria-expanded={open} aria-label={open ? "Colapsar" : "Desplegar"}
+        <button onClick={toggle} aria-expanded={open} aria-label={open ? t("alpha_collapse") : t("alpha_expand")}
                 className="flex shrink-0 items-center rounded p-1.5 transition-colors hover:bg-white/5">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="2"
                className="shrink-0 transition-transform" style={{ transform: open ? "rotate(90deg)" : undefined }}>
@@ -130,12 +137,13 @@ export function Th({ children, right, sort }: {
   children: React.ReactNode; right?: boolean;
   sort?: { active: boolean; dir: "asc" | "desc"; onClick: () => void; ariaSort: "ascending" | "descending" | "none"; label: string };
 }) {
+  const t = useTranslations();
   if (!sort) {
     return <th className={`px-3 py-1.5 font-semibold ${right ? "text-right" : "text-left"}`}>{children}</th>;
   }
   return (
     <th className={`px-3 py-1.5 font-semibold ${right ? "text-right" : "text-left"}`} aria-sort={sort.ariaSort}>
-      <button onClick={sort.onClick} aria-label={`Ordenar por ${sort.label}`}
+      <button onClick={sort.onClick} aria-label={t("alpha_sort_by", { label: sort.label })}
               className="inline-flex items-center gap-0.5 hover:opacity-80"
               style={{ color: sort.active ? T.ink : T.muted }}>
         {children}
@@ -150,11 +158,13 @@ export function Td({ children, right, colSpan }: { children: React.ReactNode; ri
 }
 
 export function SideTag({ action }: { action: TradeAction }) {
+  const t = useTranslations();
   const buy = isBuy(action);
+  const actionLabel = t(ACTION_KEYS[action]);
   return (
     <span className="inline-flex h-[20px] min-w-[20px] items-center justify-center rounded px-1 text-[10.5px] font-bold text-white"
           style={{ background: buy ? T.buy : T.bad }}
-          aria-label={buy ? `compra (${action})` : `venta (${action})`}>
+          aria-label={buy ? t("alpha_buy_action", { action: actionLabel }) : t("alpha_sell_action", { action: actionLabel })}>
       {buy ? "C" : "V"}
     </span>
   );

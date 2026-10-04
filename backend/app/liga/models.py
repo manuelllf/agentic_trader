@@ -63,6 +63,7 @@ class PerfilPrivado(LigaBase):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
     tema: Mapped[str] = mapped_column(Text, server_default=DB)
+    idioma: Mapped[str | None] = mapped_column(Text)
     baja_solicitada: Mapped[datetime | None] = mapped_column(TSTZ)
     creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)

@@ -1,3 +1,5 @@
+"use client";
+import { useTranslations } from "next-intl";
 // Esqueleto sobrio, sin destello (pedido explícito: nada de shimmer). No está en la maqueta,
 // que solo enseña datos ya cargados. Bloques `surface2` estáticos del alto de una fila real
 // (66 px, la de clasificación) para que la pantalla no salte al llegar los datos.
@@ -7,10 +9,11 @@ export interface CargandoProps {
   etiqueta?: string;
 }
 
-export function Cargando({ filas = 3, alto = 66, etiqueta = "Cargando" }: CargandoProps) {
+export function Cargando({ filas = 3, alto = 66, etiqueta }: CargandoProps) {
+  const t = useTranslations();
   return (
     <div className="esqueleto" role="status" aria-live="polite">
-      <span className="sr-only">{etiqueta}</span>
+      <span className="sr-only">{etiqueta ?? t("common_cargando")}</span>
       {Array.from({ length: filas }, (_, i) => (
         <div key={i} className="esqueleto-fila" style={{ minHeight: alto }} aria-hidden="true">
           <div className="esqueleto-bloque" style={{ width: 34, height: 34, borderRadius: 999 }} />

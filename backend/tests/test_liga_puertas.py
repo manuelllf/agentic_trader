@@ -16,6 +16,9 @@ PUERTAS = {db.db_anon, db.db_usuario, auth.require_usuario, auth.require_admin,
 PROHIBIDAS = {db.db_sistema, get_db}
 # Públicas sin sesión de BD, cada una con su motivo. Nada entra aquí por comodidad.
 SIN_PUERTA = {
+    "/liga/registro",  # alta limitada, sin sesión ni acceso directo a datos de usuario
+    "/liga/registro/recuperar",  # envío limitado sin revelar si existe una cuenta
+    "/liga/registro/reenviar",  # confirmación limitada y sujeta al cierre del registro
     "/liga/entrar",  # aún no hay usuario: resuelve el alias en un servicio acotado y con límite
     # Avisar de un error tiene que poder hacerse también sin sesión (un fallo al entrar): solo
     # deja una nota pequeña y con límite por persona o IP; con sesión apunta quién avisó.

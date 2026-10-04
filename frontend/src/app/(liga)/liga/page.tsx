@@ -12,6 +12,9 @@
 import type { CSSProperties } from "react";
 import { Suspense, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
+import { normalizeLocale } from "@/i18n/locale";
+import type { Locale } from "@/i18n/locale";
 import {
   BarraPestanas, Cargando, CASA, Clasificacion as TablaClasificacion, Escudo, escudoCasa, ErrorLiga,
   FilaEquipo, HuecoClasificacion, Segmentado, Vacio,
@@ -27,10 +30,10 @@ import { useCache } from "@/lib/liga/cache";
 
 type Vista = "tabla" | "jornada";
 
-function etiquetaEquipo(e: EquipoPublico, miAlias: string | null): string {
-  if (e.casa) return "de la casa";
-  if (miAlias && e.autor === miAlias) return "la tuya";
-  return "de la comunidad";
+function etiquetaEquipo(e: EquipoPublico, miAlias: string | null, t: (key: string) => string): string {
+  if (e.casa) return t("league_equipo_casa");
+  if (miAlias && e.autor === miAlias) return t("league_equipo_tuya");
+  return t("league_equipo_comunidad");
 }
 
 const Chevron = () => (
@@ -40,54 +43,58 @@ const Chevron = () => (
   </svg>
 );
 
-const horaLocal = (iso: string) =>
-  new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+const horaLocal = (iso: string, locale: Locale) =>
+  new Date(iso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 
-const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
 /** Quién juega ahora o está apuntado: la clasificación de la temporada solo suma jornadas
  *  cerradas, así que no sirve para contar a los que están jugando este mes. */
-function resumenJuego(p: Portada): string {
+function resumenJuego(p: Portada, t: (key: string, values?: Record<string, number | string>) => string): string {
   const jugando = p.inscritas_en_juego ?? 0, apuntadas = p.apuntadas ?? 0;
-  if (p.en_juego) return `${plural(jugando, "estrategia juega", "estrategias juegan")} este mes.`;
+  if (p.en_juego) return t("league_resumen_jugando", { count: jugando });
   if (apuntadas > 0) {
-    const fechaInicio = p.proxima ? ` para la jornada ${p.proxima.numero}` : "";
-    return `${plural(apuntadas, "estrategia apuntada", "estrategias apuntadas")}${fechaInicio}.`;
+    return p.proxima
+      ? t("league_resumen_apuntadas_con_jornada", { count: apuntadas, round: p.proxima.numero })
+      : t("league_resumen_apuntadas", { count: apuntadas });
   }
-  return "Todavía no hay estrategias apuntadas.";
+  return t("league_resumen_sin_apuntadas");
 }
 
 /** Lo que se enseña en «Este mes» mientras no hay jornada formada: que ya viene, o que ya cerró la
  *  inscripción y solo falta formarla (se forma sola el primer día de bolsa, tras el corte y antes de abrir el mercado). */
 function SinJornada({ portada }: { portada: Portada }) {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
+  const date = (value: string) => fecha(value, new Date(), locale);
   const p = portada.proxima;
   if (!p) {
     return (
-      <Vacio titulo="Todavía no hay jornada en juego"
-             texto="Cuando empiece la jornada de este mes verás aquí cómo va cada estrategia." />
+      <Vacio titulo={t("league_sin_jornada_titulo")}
+             texto={t("league_sin_jornada_texto")} />
     );
   }
   const apuntadas = portada.apuntadas ?? 0;
   const cerrada = new Date(p.cierre_inscripcion).getTime() < Date.now();
-  const cuantas = apuntadas > 0 ? `${plural(apuntadas, "estrategia apuntada", "estrategias apuntadas")}. ` : "";
+  const cuantas = apuntadas > 0 ? `${t("league_resumen_apuntadas_corta", { count: apuntadas })}. ` : "";
   return cerrada ? (
-    <Vacio titulo={`Jornada ${p.numero}: estrategias fijadas`}
-           texto={`${cuantas}Ya no se pueden cambiar para esta jornada. Se forma sola el primer día de bolsa, justo antes de que abra el mercado, con las notas oficiales de la tarde anterior. En cuanto esté formada verás aquí la clasificación en directo.`} />
+    <Vacio titulo={t("league_jornada_fijada_titulo", { round: p.numero })}
+           texto={`${cuantas}${t("league_jornada_fijada_texto")}`} />
   ) : (
-    <Vacio titulo={`La jornada ${p.numero} empieza el ${fecha(p.dia_inicio)}`}
-           texto={`${cuantas}Puedes apuntar y cambiar tu estrategia hasta el ${fecha(p.cierre_inscripcion)} a las ${horaLocal(p.cierre_inscripcion)}.`} />
+    <Vacio titulo={t("league_jornada_proxima_titulo", { round: p.numero, date: date(p.dia_inicio) })}
+           texto={`${cuantas}${t("league_jornada_proxima_texto", { date: date(p.cierre_inscripcion), time: horaLocal(p.cierre_inscripcion, locale) })}`} />
   );
 }
 
-function textoSinClasificacion(p: Portada): string {
+function textoSinClasificacion(p: Portada, t: (key: string, values?: Record<string, number | string>) => string, locale: Locale): string {
   if (p.en_juego) {
-    return "Los puntos se suman cuando se cierra cada jornada. Mira «Este mes» para ver cómo va la que está en juego.";
+    return t("league_clasificacion_vacia_jugando");
   }
   const apuntadas = p.apuntadas ?? 0;
   if (apuntadas > 0) {
-    return `${plural(apuntadas, "estrategia espera", "estrategias esperan")} a que empiece la jornada${p.proxima ? ` el ${fecha(p.proxima.dia_inicio)}` : ""}.`;
+    const date = p.proxima ? ` ${fecha(p.proxima.dia_inicio, new Date(), locale)}` : "";
+    return t("league_clasificacion_vacia_apuntadas", { count: apuntadas, date });
   }
-  return "Nadie se ha apuntado todavía a esta temporada.";
+  return t("league_clasificacion_vacia_sin_apuntadas");
 }
 
 export default function Liga() {
@@ -95,6 +102,8 @@ export default function Liga() {
 }
 
 function LigaContenido() {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
   const router = useRouter();
   const parametros = useSearchParams();
   const { yo } = useSesion();
@@ -131,7 +140,7 @@ function LigaContenido() {
       nombre={f.equipo.nombre}
       escudo={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo}
       casa={f.equipo.casa}
-      etiqueta={etiquetaEquipo(f.equipo, yo?.alias ?? null)}
+      etiqueta={etiquetaEquipo(f.equipo, yo?.alias ?? null, (key) => t(key))}
       vsIndice={f.dif_sp}
       puntos={f.puntos}
       acumulado={f.acumulado}
@@ -144,7 +153,7 @@ function LigaContenido() {
   if (cargandoPortada) {
     return (
       <main className="scroll">
-        <h1 className="h1">Liga</h1>
+        <h1 className="h1">{t("league_titulo")}</h1>
         <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
         <BarraPestanas />
       </main>
@@ -154,9 +163,9 @@ function LigaContenido() {
   if (typeof portada === "string") {
     return (
       <main className="scroll">
-        <h1 className="h1">Liga</h1>
-        <ErrorLiga titulo="No se pudo cargar la liga" mensaje={portada}
-                   accion={{ texto: "Reintentar", onClick: refrescarPortada }} />
+        <h1 className="h1">{t("league_titulo")}</h1>
+        <ErrorLiga titulo={t("league_error_portada")} mensaje={portada}
+                   accion={{ texto: t("league_reintentar"), onClick: refrescarPortada }} />
         <BarraPestanas />
       </main>
     );
@@ -167,72 +176,72 @@ function LigaContenido() {
 
   return (
     <main className="scroll">
-      <h1 className="h1">Liga</h1>
+        <h1 className="h1">{t("league_titulo")}</h1>
 
       {temporada === null ? (
         <Vacio
           titulo={portada.proxima
-            ? `La primera jornada empieza el ${fecha(portada.proxima.dia_inicio)}`
-            : "La liga todavía no ha empezado"}
-          texto="En cuanto arranque la primera jornada verás aquí la clasificación de todas las estrategias contra el S&P 500."
+            ? t("league_primera_jornada", { date: fecha(portada.proxima.dia_inicio, new Date(), locale) })
+            : t("league_sin_inicio")}
+          texto={t("league_sin_inicio_texto")}
           accion={yo
-            ? { texto: "Crear mi estrategia", onClick: () => { window.location.href = "/crear"; } }
-            : { texto: "Entrar", onClick: () => { window.location.href = "/entrar?next=/crear"; } }}
+            ? { texto: t("league_crear_estrategia"), onClick: () => { window.location.href = "/crear"; } }
+            : { texto: t("league_entrar"), onClick: () => { window.location.href = "/entrar?next=/crear"; } }}
         />
       ) : (
         <>
           {portada.en_juego && (
             <div className="board">
               <div>
-                <b>Jornada {portada.en_juego.numero} de {temporada.n_jornadas}</b>
-                <span>Temporada {temporada.nombre}</span>
+                <b>{t("league_jornada_de", { round: portada.en_juego.numero, total: temporada.n_jornadas })}</b>
+                <span>{t("league_temporada", { season: temporada.nombre })}</span>
               </div>
               {portada.en_juego.sp_rentabilidad != null && (
                 <div className="r">
-                  <span>S&amp;P este mes</span>
+                  <span>{t("league_sp_mes")}</span>
                   <b className={`num ${claseSigno(portada.en_juego.sp_rentabilidad)}`}>
-                    {porcentaje(portada.en_juego.sp_rentabilidad)}
+                    {porcentaje(portada.en_juego.sp_rentabilidad, 1, locale)}
                   </b>
                 </div>
               )}
             </div>
           )}
           <p className="meta" style={{ marginTop: 10 }}>
-            Temporada {temporada.nombre}. {resumenJuego(portada)}
+            {t("league_temporada_resumen", { season: temporada.nombre, summary: resumenJuego(portada, (key, values) => t(key, values)) })}
           </p>
 
           <div style={{ marginTop: 16 }}>
-            <Segmentado etiquetaGrupo="Vista de la liga" valor={vista} onChange={setVista}
-                        opciones={[{ valor: "jornada", etiqueta: "Este mes" },
-                                   { valor: "tabla", etiqueta: "Clasificación" }]} />
+            <Segmentado etiquetaGrupo={t("league_vista_aria")} valor={vista} onChange={setVista}
+                        opciones={[{ valor: "jornada", etiqueta: t("league_este_mes") },
+                                   { valor: "tabla", etiqueta: t("league_clasificacion") }]} />
           </div>
 
           {vista === "tabla" ? (
             clasificacion === undefined ? (
               <div style={{ marginTop: 20 }}><Cargando filas={5} /></div>
             ) : typeof clasificacion === "string" ? (
-              <ErrorLiga titulo="No se pudo cargar la clasificación" mensaje={clasificacion}
-                         accion={{ texto: "Reintentar", onClick: refrescarClasificacion }} />
+              <ErrorLiga titulo={t("league_error_clasificacion")} mensaje={clasificacion}
+                         accion={{ texto: t("league_reintentar"), onClick: refrescarClasificacion }} />
             ) : clasificacion.filas.length === 0 ? (
-              <Vacio titulo="Todavía no hay clasificación"
-                     texto={textoSinClasificacion(portada)}
+              <Vacio titulo={t("league_sin_clasificacion")}
+                     texto={textoSinClasificacion(portada, (key, values) => t(key, values), locale)}
                      accion={yo
-                       ? { texto: "Crear la mía", onClick: () => { window.location.href = "/crear"; } }
-                       : { texto: "Entrar", onClick: () => { window.location.href = "/entrar"; } }} />
+                       ? { texto: t("league_crear_mia"), onClick: () => { window.location.href = "/crear"; } }
+                       : { texto: t("league_entrar"), onClick: () => { window.location.href = "/entrar"; } }} />
             ) : (
               <div className="sec" style={{ marginTop: 20 }}>
                 <TablaClasificacion>
                   {clasificacion.filas.map(filaDe)}
                   {clasificacion.total > clasificacion.filas.length && (
                     <HuecoClasificacion>
-                      y {clasificacion.total - clasificacion.filas.length - clasificacion.mias.length} más
+                      {t("league_mas_filas", { count: clasificacion.total - clasificacion.filas.length - clasificacion.mias.length })}
                     </HuecoClasificacion>
                   )}
                   {clasificacion.mias.map(filaDe)}
                 </TablaClasificacion>
                 <div className="legend">
-                  <p>α Alpha, Ω Omega y λ Lambda son de la casa y juegan con las mismas reglas.</p>
-                  <p>«vs S&amp;P» es lo que cada una lleva de más o de menos que el índice en la temporada.</p>
+                  <p>{t("league_leyenda_casa")}</p>
+                  <p>{t("league_leyenda_vs_sp")}</p>
                 </div>
               </div>
             )
@@ -242,8 +251,8 @@ function LigaContenido() {
                 <SinJornada portada={portada} />
               )
           ) : typeof jornada === "string" ? (
-            <ErrorLiga titulo="No se pudo cargar este mes" mensaje={jornada}
-                       accion={{ texto: "Reintentar", onClick: refrescarJornada }} />
+            <ErrorLiga titulo={t("league_error_mes")} mensaje={jornada}
+                       accion={{ texto: t("league_reintentar"), onClick: refrescarJornada }} />
           ) : (
             <VistaJornada detalle={jornada} miAlias={yo?.alias ?? null} onAbrir={abrir} />
           )}
@@ -258,14 +267,17 @@ function LigaContenido() {
 function VistaJornada({
   detalle, miAlias, onAbrir,
 }: { detalle: JornadaDetalle; miAlias: string | null; onAbrir: (id: string) => void }) {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
+  const formatDate = (value: string) => fecha(value, new Date(), locale);
+  const formatTime = (value: string) => new Date(value).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
   const [navegando, iniciarNavegacion] = useTransition();
   const [destino, setDestino] = useState<string | null>(null);
   const conDatos = detalle.filas.filter((f) => f.rentabilidad !== null);
   if (conDatos.length === 0) {
     return (
       <p className="callout" style={{ marginTop: 20 }}>
-        Esta jornada todavía no tiene cierres: la tabla se rellena sola con el primer cierre de
-        bolsa después de empezar.
+        {t("league_jornada_sin_cierres")}
       </p>
     );
   }
@@ -284,38 +296,38 @@ function VistaJornada({
             onClick={() => { if (navegando && destino === f.equipo.id) return; setDestino(f.equipo.id); iniciarNavegacion(() => onAbrir(f.equipo.id)); }}>
       <span className="name">
         <Escudo valor={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo}
-          casa={f.equipo.casa} etiqueta={`Escudo de ${f.equipo.nombre}`} />
-        <span className="nm">
+          casa={f.equipo.casa} etiqueta={t("league_escudo_de", { name: f.equipo.nombre })} />
+      <span className="nm">
           <b>{f.equipo.nombre}</b>
-          <span className="sub">{etiquetaEquipo(f.equipo, miAlias)}</span>
+          <span className="sub">{etiquetaEquipo(f.equipo, miAlias, (key) => t(key))}</span>
         </span>
       </span>
-      <span className={`ret num ${claseSigno(f.rentabilidad ?? 0)}`}>{porcentaje(f.rentabilidad ?? 0)}</span>
-      {navegando && destino === f.equipo.id ? <span className="chev" aria-label={`Abriendo ${f.equipo.nombre}`}>···</span> : <Chevron />}
+      <span className={`ret num ${claseSigno(f.rentabilidad ?? 0)}`}>{porcentaje(f.rentabilidad ?? 0, 1, locale)}</span>
+      {navegando && destino === f.equipo.id ? <span className="chev" aria-label={t("league_abriendo", { name: f.equipo.nombre })}>···</span> : <Chevron />}
     </button>
   );
   return (
     <div className="sec" style={{ marginTop: 20 }}>
       {detalle.provisional && detalle.hasta && (
         <p className="meta">
-          {detalle.en_vivo ? "Cotizaciones provisionales" : `Último cierre disponible · ${fecha(detalle.hasta)}`}
-          {detalle.actualizado && ` · consultadas a las ${new Date(detalle.actualizado).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}`}
-          . Se actualiza cada dos minutos. Los puntos se fijan al cerrar la jornada.
-          {!!detalle.precios_pendientes && ` ${detalle.precios_pendientes} cotizaciones pendientes de actualizar.`}
+          {detalle.en_vivo ? t("league_cotizaciones_provisionales") : t("league_ultimo_cierre", { date: formatDate(detalle.hasta) })}
+          {detalle.actualizado && t("league_consultado_a", { time: formatTime(detalle.actualizado) })}
+          {t("league_actualiza_y_cierre")}
+          {!!detalle.precios_pendientes && t("league_precios_pendientes", { count: detalle.precios_pendientes })}
         </p>
       )}
       {sp != null && (
         <div className="jr spx">
           <span className="nm"><b>S&amp;P 500</b></span>
-          <span className={`ret num ${claseSigno(sp)}`}>{porcentaje(sp)}</span>
+          <span className={`ret num ${claseSigno(sp)}`}>{porcentaje(sp, 1, locale)}</span>
           <span />
         </div>
       )}
-      <p className="grp">Ganando el mes <small>{grupos.G.length}</small></p>
+      <p className="grp">{t("league_ganando_mes")} <small>{grupos.G.length}</small></p>
       {grupos.G.map(fila)}
-      <p className="grp">Empatando <small>a 0,2 puntos o menos del S&amp;P</small></p>
+      <p className="grp">{t("league_empatando")} <small>{t("league_empate_ayuda")}</small></p>
       {grupos.E.map(fila)}
-      <p className="grp">Perdiendo <small>{grupos.P.length}</small></p>
+      <p className="grp">{t("league_perdiendo")} <small>{grupos.P.length}</small></p>
       {grupos.P.map(fila)}
     </div>
   );

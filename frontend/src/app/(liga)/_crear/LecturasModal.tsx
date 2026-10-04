@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useId, useRef } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import type { Lectura } from "@/lib/liga/api";
 import { richText } from "@/lib/richText";
 
-export function textoInforme(texto: string): string {
+export function textoInforme(texto: string, locale: string): string {
   const normalizado = texto.replace(/\\r\\n|\\n/g, "\n").replace(/\r\n/g, "\n")
-    .replace(/(?:^|\n|(?<=\.)\s+)(Noticias recientes|Finanzas|Valoración|Valuación|Riesgos|Conclusión|Catalizadores):\s*/gi,
+    .replace(locale === "en" ? /(?:^|\n|(?<=\.)\s+)(Recent news|Financials|Valuation|Risks|Conclusion|Catalysts):\s*/gi
+      : /(?:^|\n|(?<=\.)\s+)(Noticias recientes|Finanzas|Valoración|Valuación|Riesgos|Conclusión|Catalizadores):\s*/gi,
       "\n\n### $1\n\n");
-  const frases = new Intl.Segmenter("es", { granularity: "sentence" });
+  const frases = new Intl.Segmenter(locale, { granularity: "sentence" });
   return normalizado.split("\n").map((linea) => {
     if (linea.length < 650 || /^(?:#|\||\s*[-*]\s)/.test(linea)) return linea;
     const parrafos: string[] = [];
@@ -27,6 +29,8 @@ export function LecturasModal({ abierto, tickers, activo, lecturas, leyendo, err
   leyendo: string | null; error: string | null;
   onSeleccionar: (ticker: string) => void; onCerrar: () => void;
 }) {
+  const t = useTranslations();
+  const locale = useLocale();
   const dialogo = useRef<HTMLDialogElement>(null);
   const titulo = useId();
   const informe = lecturas.find((l) => l.ticker === activo);
@@ -44,27 +48,27 @@ export function LecturasModal({ abierto, tickers, activo, lecturas, leyendo, err
       onCancel={onCerrar}>
       <header className="lecturas-cab">
         <div>
-          <p className="lecturas-kicker">Cuaderno de análisis</p>
-          <h2 id={titulo}>{tickers.length > 1 ? "Tu cartera, a fondo" : activo}</h2>
+          <p className="lecturas-kicker">{t("builder_reading_notebook")}</p>
+          <h2 id={titulo}>{tickers.length > 1 ? t("builder_portfolio_in_depth") : activo}</h2>
         </div>
-        <button type="button" className="lecturas-cerrar" onClick={onCerrar} autoFocus aria-label="Cerrar informe">×</button>
+        <button type="button" className="lecturas-cerrar" onClick={onCerrar} autoFocus aria-label={t("builder_close_report")}>×</button>
       </header>
       {tickers.length > 1 && (
-        <nav className="lecturas-selector" aria-label="Informes de la cartera">
-          {tickers.map((t) => <button type="button" key={t} aria-pressed={activo === t}
-            onClick={() => onSeleccionar(t)}>{t}{lecturas.some((l) => l.ticker === t) && <span aria-label="disponible"> ·</span>}</button>)}
+        <nav className="lecturas-selector" aria-label={t("builder_portfolio_reports")}>
+          {tickers.map((ticker) => <button type="button" key={ticker} aria-pressed={activo === ticker}
+            onClick={() => onSeleccionar(ticker)}>{ticker}{lecturas.some((l) => l.ticker === ticker) && <span aria-label={t("builder_report_available")}> ·</span>}</button>)}
         </nav>
       )}
       <div className="lecturas-cuerpo" key={activo}>
-        {leyendo && <p className="lecturas-estado" role="status">Preparando {leyendo} · {lecturas.length} de {tickers.length} disponibles</p>}
+        {leyendo && <p className="lecturas-estado" role="status">{t("builder_preparing_reports", { ticker: leyendo, ready: lecturas.length, total: tickers.length })}</p>}
         {error && <p className="lecturas-error" role="alert">{error}</p>}
         {informe ? (
           <article>
-            <p className="lecturas-kicker">{informe.ticker} / Informe</p>
-            <div className="lecturas-texto">{richText(textoInforme(informe.texto))}</div>
-            <footer className="lecturas-nota">Análisis automático sobre datos públicos. Puede contener errores y no es una recomendación de inversión.</footer>
+            <p className="lecturas-kicker">{informe.ticker} / {t("builder_report")}</p>
+            <div className="lecturas-texto">{richText(textoInforme(informe.texto, locale))}</div>
+            <footer className="lecturas-nota">{t("builder_report_disclaimer")}</footer>
           </article>
-        ) : <p className="lecturas-vacio">{leyendo ? "El informe aparecerá aquí en cuanto esté disponible." : "Este informe todavía no está disponible."}</p>}
+        ) : <p className="lecturas-vacio">{leyendo ? t("builder_report_will_appear") : t("builder_report_not_available")}</p>}
       </div>
     </dialog>
   );

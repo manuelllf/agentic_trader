@@ -1,5 +1,7 @@
+import { browserText } from "../i18n/browser";
 // Cliente HTTP hacia el backend FastAPI.
 import { supabase, tokenSesion } from "./liga/supabase";
+import { browserLocale } from "../i18n/locale";
 import type { FunnelScan } from "./scan";
 import type {
   AppConfig, Approval, ApprovalsResponse, DemoRunOverrides, DemoStatus, EquityHistory,
@@ -27,7 +29,7 @@ export class ApiError extends Error {
   }
 }
 
-const OFFLINE = "No hay conexión con el servidor. Reintenta en unos segundos.";
+const OFFLINE = () => browserText("system_offline");
 
 /* ---- sesión: la cuenta de admin con 2FA ---- */
 // Caché en memoria de `checkAuth()`: entrar en varias salas seguidas (Alpha, Omega) no debe
@@ -54,6 +56,7 @@ async function request(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS)
   const sesion = await tokenSesion();
   const token = sesion?.aal === "aal2" ? sesion.token : null;
   const headers = {
+    "Accept-Language": browserLocale(),
     ...(init?.headers as Record<string, string> | undefined),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
@@ -62,8 +65,8 @@ async function request(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS)
   } catch (e) {
     // fetch rechaza con TypeError (backend caído/CORS) o AbortError (timeout).
     const msg = e instanceof DOMException && e.name === "AbortError"
-      ? "El backend tardó demasiado en responder (timeout)."
-      : OFFLINE;
+      ? browserText("system_backend_timeout")
+      : OFFLINE();
     throw new ApiError(msg, "network");
   } finally {
     clearTimeout(timer);
@@ -74,8 +77,8 @@ async function request(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS)
 // para no duplicar timeout/auth/401-handling en un cliente HTTP propio.
 export async function get<T>(path: string): Promise<T> {
   const res = await request(path);
-  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
-  if (!res.ok) throw new ApiError(`No se pudo leer ${path} (${res.status}).`, "http", res.status);
+  if (res.status === 401) { onUnauthorized(); throw new ApiError(browserText("system_session_expired"), "http", 401); }
+  if (!res.ok) throw new ApiError(browserText("system_resource_failed", { path, status: res.status }), "http", res.status);
   return res.json() as Promise<T>;
 }
 
@@ -85,11 +88,11 @@ export async function post<T>(path: string, body?: unknown, timeoutMs?: number):
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   }, timeoutMs);
-  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
+  if (res.status === 401) { onUnauthorized(); throw new ApiError(browserText("system_session_expired"), "http", 401); }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new ApiError(
-      (detail as { detail?: string }).detail ?? `La operación falló (${res.status}).`,
+      (detail as { detail?: string }).detail ?? browserText("system_operation_failed", { status: res.status }),
       "http", res.status,
     );
   }
@@ -103,11 +106,11 @@ export async function put<T>(path: string, body?: unknown, timeoutMs?: number): 
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   }, timeoutMs);
-  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
+  if (res.status === 401) { onUnauthorized(); throw new ApiError(browserText("system_session_expired"), "http", 401); }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new ApiError(
-      (detail as { detail?: string }).detail ?? `La operación falló (${res.status}).`,
+      (detail as { detail?: string }).detail ?? browserText("system_operation_failed", { status: res.status }),
       "http", res.status,
     );
   }
@@ -117,11 +120,11 @@ export async function put<T>(path: string, body?: unknown, timeoutMs?: number): 
 /** Como `post()` pero DELETE — mismo manejo de 401 y de `detail` de error. */
 export async function del<T>(path: string): Promise<T> {
   const res = await request(path, { method: "DELETE" });
-  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
+  if (res.status === 401) { onUnauthorized(); throw new ApiError(browserText("system_session_expired"), "http", 401); }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new ApiError(
-      (detail as { detail?: string }).detail ?? `La operación falló (${res.status}).`,
+      (detail as { detail?: string }).detail ?? browserText("system_operation_failed", { status: res.status }),
       "http", res.status,
     );
   }
@@ -134,11 +137,11 @@ async function postFile<T>(path: string, field: string, file: File): Promise<T> 
   const form = new FormData();
   form.append(field, file);
   const res = await request(path, { method: "POST", body: form });
-  if (res.status === 401) { onUnauthorized(); throw new ApiError("Sesión caducada.", "http", 401); }
+  if (res.status === 401) { onUnauthorized(); throw new ApiError(browserText("system_session_expired"), "http", 401); }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new ApiError(
-      (detail as { detail?: string }).detail ?? `La operación falló (${res.status}).`,
+      (detail as { detail?: string }).detail ?? browserText("system_operation_failed", { status: res.status }),
       "http", res.status,
     );
   }

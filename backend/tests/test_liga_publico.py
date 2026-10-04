@@ -39,7 +39,7 @@ def liga(monkeypatch):  # noqa: ANN001, ANN201
 
     def usuario(alias: str, oculto: bool = False) -> uuid.UUID:
         uid = uuid.uuid4()
-        cx.execute("insert into auth.users (id, email) values (%s, %s)",
+        cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
                    (uid, f"{uid.hex[:12]}@prueba.local"))
         cx.execute("update liga.perfiles set alias = %s, oculto = %s where id = %s",
                    (alias, oculto, uid))

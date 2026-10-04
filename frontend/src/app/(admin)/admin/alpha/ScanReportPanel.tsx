@@ -1,3 +1,5 @@
+"use client";
+import { useLocale, useTranslations } from 'next-intl';
 import type { ScanReport } from '@/lib/api';
 import { InfoTip } from '@/components/InfoTip';
 import { fmtTime } from '@/lib/format';
@@ -10,29 +12,33 @@ import { NUMS, T } from './tokens';
 import { Details } from './ui';
 
 type SectorSortKey = "sector" | "pre" | "deep" | "peso";
-const SECTOR_COLS: { key: SectorSortKey; label: string; align: "left" | "right" }[] = [
-  { key: "sector", label: "sector", align: "left" },
-  { key: "pre", label: "vistos", align: "right" },
-  { key: "deep", label: "a fondo", align: "right" },
-  { key: "peso", label: "peso", align: "left" },
+const SECTOR_COLS: { key: SectorSortKey; labelKey: string; align: "left" | "right" }[] = [
+  { key: "sector", labelKey: "alpha_sector", align: "left" },
+  { key: "pre", labelKey: "alpha_seen", align: "right" },
+  { key: "deep", labelKey: "alpha_deep_analysis", align: "right" },
+  { key: "peso", labelKey: "alpha_weight", align: "left" },
 ];
 
 type JevSortKey = "ticker" | "score" | "confidence" | "weight_pct";
-const JEV_COLS: { key: JevSortKey; label: string }[] = [
-  { key: "ticker", label: "ticker · industria" },
-  { key: "score", label: "nota" },
-  { key: "confidence", label: "confianza" },
-  { key: "weight_pct", label: "peso" },
+const JEV_COLS: { key: JevSortKey; labelKey: string }[] = [
+  { key: "ticker", labelKey: "alpha_ticker_industry" },
+  { key: "score", labelKey: "alpha_score" },
+  { key: "confidence", labelKey: "alpha_confidence" },
+  { key: "weight_pct", labelKey: "alpha_weight" },
 ];
 
 /* Informe del último escaneo: una línea si fue sano; lista ámbar de incidencias; rojo si
    reventó entero. Fuente: /scan/report (persistido), no el estado en memoria del runner. */
 export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan | null }) {
+  const t = useTranslations();
+  const locale: "es" | "en" = useLocale() === "en" ? "en" : "es";
+  const text = { t, prefix: "alpha" as const, locale };
   const failed = !!r.error;
   const issues = r.issues ?? [];
   const clean = !failed && issues.length === 0;
-  const pasos = cascada(r, scan);
-  const universo = universoLinea(r);
+  const pasos = cascada(r, scan, text);
+  const universo = universoLinea(r, text);
+  const cost = fmtScanCost(r.cost, text);
   const sectores = sectoresTop(scan, 6);
   // Peso real: cuota de CADA sector sobre el total de "a fondo" del escaneo entero, no solo los
   // 6 de la tabla -- antes la barra usaba "vistos" (tamaño del universo), que no dice nada de
@@ -52,24 +58,24 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
   } = useOrden<typeof jevRows[number], JevSortKey>(jevRows, (row, key) => row[key]);
 
   return (
-    <Details title="Último escaneo"
-           meta={fmtTime(r.at)}
+    <Details title={t("alpha_latest_scan")}
+           meta={fmtTime(r.at, locale)}
            defaultOpen
            accent={failed ? T.bad : issues.length ? T.warn : undefined}
            right={<ScanFullButton />}>
       <div className="px-4 py-3 text-[12px]">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span style={{ color: T.ink2 }}>modo <b style={{ color: T.ink }}>{r.mode ?? "—"}</b></span>
+          <span style={{ color: T.ink2 }}>{t("alpha_mode_label")} <b style={{ color: T.ink }}>{r.mode ?? "—"}</b></span>
           {universo && (
             <span className={NUMS} style={{ color: universo.tone === "ok" ? T.ink2 : T.warn }}>
-              universo <b>{universo.texto}</b>
+              {t("alpha_universe_label")} <b>{universo.texto}</b>
               <span style={{ color: T.muted }}> · {universo.detalle}</span>
             </span>
           )}
-          {fmtScanCost(r.cost) && (
-            <span className={NUMS} style={{ color: T.muted }}>{fmtScanCost(r.cost)}</span>
+          {cost && (
+            <span className={NUMS} style={{ color: T.muted }}>{cost}</span>
           )}
-          {clean && <span className="font-bold" style={{ color: T.good }}>✓ sin incidencias</span>}
+          {clean && <span className="font-bold" style={{ color: T.good }}>✓ {t("alpha_no_issues")}</span>}
         </div>
 
         {/* El embudo como cascada: es LA cifra que cuenta qué hace el sistema. */}
@@ -80,7 +86,7 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
                 {i > 0 && <span style={{ color: T.muted }} aria-hidden>→</span>}
                 <div className="rounded-md px-2.5 py-1.5" style={{ background: T.panel2 }}>
                   <p className={`text-[15px] font-bold leading-none ${NUMS}`} style={{ color: T.ink }}>
-                    {fmtNum(p.value)}
+                    {fmtNum(p.value, locale)}
                   </p>
                   <p className="mt-0.5 flex items-center gap-1 text-[10.5px] leading-none" style={{ color: T.muted }}>
                     {p.label}
@@ -94,7 +100,7 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
             ))}
             {(scan?.sin_datos || scan?.prescore_error || scan?.deep_error) ? (
               <span className={`self-center text-[10.5px] ${NUMS}`} style={{ color: T.muted }}>
-                ({scan.sin_datos} sin datos{scan.prescore_error ? ` · ${scan.prescore_error} fallos de pre-score` : ""}{scan.deep_error ? ` · ${scan.deep_error} profundos ilegibles` : ""})
+                ({scan.sin_datos}{t("alpha_ui_sin_datos")}{scan.prescore_error ? ` · ${scan.prescore_error} fallos de pre-score` : ""}{scan.deep_error ? ` · ${scan.deep_error} profundos ilegibles` : ""})
               </span>
             ) : null}
           </div>
@@ -118,10 +124,10 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
                   <th key={c.key}
                       className={`pb-1 font-semibold ${c.align === "right" ? "text-right" : c.key === "peso" ? "pl-3 text-left" : "text-left"}`}
                       aria-sort={sectorAriaSort(c.key)}>
-                    <button onClick={() => toggleSector(c.key)} aria-label={`Ordenar por ${c.label}`}
+                    <button onClick={() => toggleSector(c.key)} aria-label={t("alpha_sort_by", { label: t(c.labelKey) })}
                             className="inline-flex items-center gap-0.5 hover:opacity-80"
                             style={{ color: sectorSortKey === c.key ? T.ink : T.muted }}>
-                      {c.label}
+                      {t(c.labelKey)}
                       {sectorSortKey === c.key && <span className="text-[8px]">{sectorSortDir === "desc" ? "↓" : "↑"}</span>}
                     </button>
                   </th>
@@ -132,7 +138,7 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
               {sortedSectores.map((s) => (
                 <tr key={s.sector} style={{ color: T.ink2 }}>
                   <td className="max-w-0 truncate py-0.5 pr-2">{s.sector}</td>
-                  <td className="py-0.5 text-right">{fmtNum(s.pre)}</td>
+                  <td className="py-0.5 text-right">{fmtNum(s.pre, locale)}</td>
                   <td className="py-0.5 text-right" style={{ color: s.deep ? T.ink : T.muted }}>{s.deep}</td>
                   <td className="overflow-hidden py-0.5 pl-3">
                     <span className="block h-[6px] rounded-sm"
@@ -147,10 +153,10 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
         {(r.jev_cartera ?? []).length > 0 && (
           <div className="mt-3">
             <p className="mb-1 text-[11px] font-semibold" style={{ color: T.ink2 }}>
-              Cartera Jev
+              {t("alpha_jev_portfolio")}
               <span className="ml-1 font-normal" style={{ color: T.muted }}>
-                (sombra, sin dinero · top 5 del prescore, máx. 2 por industria
-                {r.jev_macro ? " · vio eventos y titulares" : " · solo datos de mercado"})
+                ({t("alpha_shadow_no_money")} · {t("alpha_top_prescore", { count: 5 })}, {t("alpha_max_industry", { count: 2 })}
+                {r.jev_macro ? ` · ${t("alpha_saw_macro_news")}` : ` · ${t("alpha_market_data_only")}`})
               </span>
             </p>
             {/* Industria bajo el ticker y con salto de línea: en columna propia se quedaba en
@@ -168,10 +174,10 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
                     <th key={c.key}
                         className={`pb-1 font-semibold ${c.key === "ticker" ? "text-left" : "text-right"}`}
                         aria-sort={jevAriaSort(c.key)}>
-                      <button onClick={() => toggleJev(c.key)} aria-label={`Ordenar por ${c.label}`}
+                      <button onClick={() => toggleJev(c.key)} aria-label={t("alpha_sort_by", { label: t(c.labelKey) })}
                               className="inline-flex items-center gap-0.5 hover:opacity-80"
                               style={{ color: jevSortKey === c.key ? T.ink : T.muted }}>
-                        {c.label}
+                        {t(c.labelKey)}
                         {jevSortKey === c.key && <span className="text-[8px]">{jevSortDir === "desc" ? "↓" : "↑"}</span>}
                       </button>
                     </th>
@@ -209,7 +215,7 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
         )}
         {failed && (
           <p className="mt-2 font-semibold" style={{ color: "#e66767" }}>
-            El escaneo FALLÓ: {r.error}
+            {t("alpha_scan_failed")}: {r.error}
           </p>
         )}
         {issues.length > 0 && (

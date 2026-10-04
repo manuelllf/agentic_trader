@@ -45,7 +45,7 @@ def cx(monkeypatch):  # noqa: ANN001, ANN201
 
 def _cuenta_con_saldo(cx, saldo: int) -> uuid.UUID:  # noqa: ANN001
     uid = uuid.uuid4()
-    cx.execute("insert into auth.users (id, email) values (%s, %s)",
+    cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
                (uid, f"{uid.hex[:12]}@prueba.local"))
     cx.creados.append(uid)
     cx.execute("select liga.cargar_creditos(%s, %s, 'regalo', 'saldo-inicial')", (uid, saldo))

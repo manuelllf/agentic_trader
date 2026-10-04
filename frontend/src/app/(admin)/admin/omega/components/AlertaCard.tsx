@@ -1,3 +1,5 @@
+"use client";
+import { useLocale, useTranslations } from "next-intl";
 // Alertas activas: el carrusel, el banner del gate pendiente y la tarjeta de cada senal
 // (compra inicial, cerrar/aumentar una posicion ya ejecutada, gate individual).
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -56,6 +58,8 @@ export function AlertasCarrusel({ alertas, empates, preciosVivos, regimen, onCam
  *  totalmente invisible si no hay nada pendiente, y el botón es el único gatillo (ver doc §3,
  *  decidido 7-sep-2026 -- el gate lo controla Manuel, no un cron). */
 export function GatePendienteBanner({ señales, onEvaluado }: { señales: Senal[]; onEvaluado: () => void }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [progreso, setProgreso] = useState<GateProgreso | null>(null);
   const [seleccionadas, setSeleccionadas] = useState<Set<number>>(() => new Set(señales.map((s) => s.id)));
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -117,14 +121,11 @@ export function GatePendienteBanner({ señales, onEvaluado }: { señales: Senal[
     <div className="mb-6 border-l-2 py-1 pl-4" style={{ borderColor: T.warn }}>
       <div className="flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: T.warn }} />
-        <span className="text-[15px] font-bold tracking-tight" style={{ color: T.warn }}>Gate pendiente: señales del universo</span>
+        <span className="text-[15px] font-bold tracking-tight" style={{ color: T.warn }}>{t("omega_ui_gate_pendiente_senales_del_universo")}</span>
       </div>
       <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: T.ink2 }}>
-        <b style={{ color: T.ink }}>{señales.length} señal{señales.length === 1 ? "" : "es"}</b> del
-        universo fijo, detectada{señales.length === 1 ? "" : "s"} por el escaneo diario, sin evaluar.
-        Cada evaluación es una llamada real a DeepSeek (~$0,001-0,003); toca una para quitarla,
-        decides tú cuáles entran.
-      </p>
+        {t.rich("omega_pending_signal_summary", { count: señales.length,
+          strong: chunks => <b style={{ color: T.ink }}>{chunks}</b> })}</p>
       <div className="mt-2.5 flex flex-wrap gap-1.5">
         {señales.map((s) => {
           const on = seleccionadas.has(s.id);
@@ -140,15 +141,13 @@ export function GatePendienteBanner({ señales, onEvaluado }: { señales: Senal[
         })}
       </div>
       {corriendo && progreso ? (
-        <div className="mt-3 rounded-full py-2 text-center text-[12.5px] font-bold" style={{ background: T.entry, color: "#fff" }}>
-          Evaluando {progreso.hecho}/{progreso.total}
+        <div className="mt-3 rounded-full py-2 text-center text-[12.5px] font-bold" style={{ background: T.entry, color: "#fff" }}>{t("omega_gate_progress", { done: progreso.hecho, total: progreso.total })}
           {progreso.ticker_actual ? ` · ${progreso.ticker_actual}` : ""}…
         </div>
       ) : (
         <button onClick={evaluar} disabled={seleccionadas.size === 0}
                 className="mt-3 w-full rounded-full py-2 text-[12.5px] font-bold disabled:opacity-40"
-                style={{ background: T.entry, color: "#fff" }}>
-          Evaluar seleccionadas ({seleccionadas.size})
+                style={{ background: T.entry, color: "#fff" }}>{t("omega_evaluate_selected", { count: seleccionadas.size })}
         </button>
       )}
     </div>
@@ -159,6 +158,8 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
   s: Senal; grupo: Senal[]; precioVivo: number | null; regimen: Regimen | null;
   onCambio: (id: number, patch: Partial<Senal>) => void;
 }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   const [acciones, setAcciones] = useState("");
@@ -203,7 +204,7 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
       setCerrado(true);
       setTimeout(() => onCambio(s.id, { estado: r.estado as Senal["estado"] }), 900);
     } catch (e) {
-      setErrForm(e instanceof ApiError ? e.message : "No se pudo registrar la operación.");
+      setErrForm(e instanceof ApiError ? e.message : t("omega_operation_failed"));
       setBusyForm(false);
     }
   };
@@ -236,14 +237,14 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
       const r = await lanzarGate([s.id]);
       if (!r.lanzado) {
         setGateErr(r.motivo === "ya en curso"
-          ? "Ya hay una evaluación en curso (de otra señal) -- espera a que termine."
-          : "No se pudo lanzar el gate.");
+          ? t("omega_gate_busy")
+          : t("omega_gate_failed"));
         return;
       }
       setGateProgreso({ status: "running", total: 1, hecho: 0, ok: 0, fail: 0, ticker_actual: s.ticker, error: null });
       gatePollRef.current = setInterval(sondearGate, 3000);
     } catch {
-      setGateErr("No se pudo lanzar el gate.");
+      setGateErr(t("omega_gate_failed"));
     }
   };
 
@@ -261,7 +262,7 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
       // deja ver el check antes de que la card salga de Alertas activas.
       setTimeout(() => onCambio(s.id, { estado: r.estado as Senal["estado"] }), 900);
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "No se pudo registrar la posición.");
+      setErr(e instanceof ApiError ? e.message : t("omega_position_failed"));
       setBusy(null);
     }
   };
@@ -273,7 +274,7 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
       const r = await descartarSenal(s.id);
       onCambio(s.id, { estado: r.estado as Senal["estado"] });
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "No se pudo descartar.");
+      setErr(e instanceof ApiError ? e.message : t("omega_dismiss_failed"));
       setBusy(null);
     }
   };
@@ -301,15 +302,15 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
         <div className="shrink-0 text-right">
           <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-wide"
                 style={{ background: "rgba(255,255,255,0.06)", color: T.ink2 }}>
-            {TIPO_LABEL[s.tipo]}
+            {t(TIPO_LABEL[s.tipo] ?? "omega_pattern_zigzag")}
           </span>
           <div className="mt-1 whitespace-nowrap text-[9.5px] leading-tight" style={{ color: T.muted }}>
             {esGateRegimen(s) && (
               <b className="inline-flex items-center gap-0.5" style={{ color: T.bad }}>
-                ⛔ régimen <InfoTip text={tituloRegimen(s, regimen)} /> ·{" "}
+                ⛔ {t("omega_regime")} <InfoTip text={tituloRegimen(s, regimen, t)} /> ·{" "}
               </b>
             )}
-            {s.cuidado && <b style={{ color: T.warn }}>CUIDADO · </b>}{fmtFecha(s.entry_date)} · {s.dias}d
+            {s.cuidado && <b style={{ color: T.warn }}>{t("omega_ui_cuidado")}</b>}{fmtFecha(s.entry_date, locale)} · {s.dias}d
           </div>
         </div>
       </div>
@@ -317,65 +318,59 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
       {grupo.length >= 2 && (
         <div className="my-2 flex gap-1.5 border-y py-1.5 text-[10px] leading-snug" style={{ borderColor: T.grid, color: T.ink2 }}>
           <span className={`shrink-0 font-bold ${MONO}`} style={{ color: T.warn }}>i</span>
-          <span>
-            Empate del día: {grupo.length} señales entraron hoy.{" "}
+          <span>{t("omega_ui_empate_del_dia")}{grupo.length}{t("omega_ui_senales_entraron_hoy")}{" "}
             {esAmbos && s.tipo === "ambos"
-              ? "Esta es zigzag+suelo a la vez: la más fuerte del grupo."
-              : esAmbos ? "Otra del grupo es zigzag+suelo, mira esa primero." : "Ninguna es zigzag+suelo, decides tú."}
+              ? t("omega_strongest_pattern")
+              : esAmbos ? t("omega_other_strongest") : t("omega_choose_pattern")}
           </span>
         </div>
       )}
 
       <div className="mt-2 text-[12px]" style={{ color: T.ink2 }}>
-        <b className={NUMS} style={{ color: T.bad }}>-{Number(s.caida_pct).toFixed(1)}%</b> bajo el{" "}
-        {s.ref_label === "ATH_referencia" ? "ATH" : "último pico"} (${money(s.ref_price)})
+        <b className={NUMS} style={{ color: T.bad }}>-{Number(s.caida_pct).toFixed(1)}%</b>{t("omega_ui_bajo_el")}{" "}
+        {s.ref_label === "ATH_referencia" ? "ATH" : t("omega_last_peak")} (${money(s.ref_price, 2, locale)})
         {distAth(s) != null && (
           <>
-            {" "}· <b className={NUMS} style={{ color: T.bad }}>-{distAth(s)!.toFixed(1)}%</b> bajo el ATH (${money(s.ath!)})
+            {" "}· <b className={NUMS} style={{ color: T.bad }}>-{distAth(s)!.toFixed(1)}%</b>{t("omega_ui_bajo_el_ath")}{money(s.ath!, 2, locale)})
           </>
         )}
         {distPicoLocal(s) != null && (
           <>
-            {" "}· <b className={NUMS} style={{ color: T.bad }}>-{distPicoLocal(s)!.toFixed(1)}%</b> bajo el último pico (${money(s.ref_price_pico!)})
+            {" "}· <b className={NUMS} style={{ color: T.bad }}>-{distPicoLocal(s)!.toFixed(1)}%</b>{t("omega_ui_bajo_el_ultimo_pico")}{money(s.ref_price_pico!, 2, locale)})
           </>
         )}
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
         <div className="min-w-0">
-          <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Señal</div>
-          <b className={`${NUMS} text-[14px]`} style={{ color: T.ink }}>${money(s.entry_price)}</b>
+          <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_senal_titulo")}</div>
+          <b className={`${NUMS} text-[14px]`} style={{ color: T.ink }}>${money(s.entry_price, 2, locale)}</b>
         </div>
         <div className="min-w-0">
-          <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Hoy</div>
-          <b className={`${NUMS} text-[14px]`} style={{ color: T.ink }}>${money(precioMostrado)}</b>
+          <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_hoy")}</div>
+          <b className={`${NUMS} text-[14px]`} style={{ color: T.ink }}>${money(precioMostrado, 2, locale)}</b>
         </div>
         <div className="min-w-0">
-          <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>Retorno</div>
-          <b className={`${NUMS} text-[14px]`} style={{ color: retornoMostrado >= 0 ? T.good : T.bad }}>{fmtRet(retornoMostrado)}</b>
+          <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_retorno")}</div>
+          <b className={`${NUMS} text-[14px]`} style={{ color: retornoMostrado >= 0 ? T.good : T.bad }}>{fmtRet(retornoMostrado, locale)}</b>
         </div>
       </div>
 
-      <div className="mt-2 text-[11px]" style={{ color: T.muted }}>
-        Gate:{" "}
-        {s.gate_resultado == null ? <b style={{ color: T.warn }}>pendiente</b>
-          : s.gate_resultado === "pasa" ? <b style={{ color: T.good }}>pasa</b>
-          : <b style={{ color: T.bad }}>falla</b>}
+      <div className="mt-2 text-[11px]" style={{ color: T.muted }}>{t("omega_ui_gate")}{" "}
+        {s.gate_resultado == null ? <b style={{ color: T.warn }}>{t("omega_ui_pendiente")}</b>
+          : s.gate_resultado === "pasa" ? <b style={{ color: T.good }}>{t("omega_ui_pasa")}</b>
+          : <b style={{ color: T.bad }}>{t("omega_ui_falla")}</b>}
         {s.gate_detalle && <span>. {s.gate_detalle}</span>}
       </div>
 
       {s.gate_resultado == null && (
         gateProgreso?.status === "running" ? (
-          <div className="mt-2 rounded-full py-2 text-center text-[11.5px] font-bold" style={{ background: T.entry, color: "#fff" }}>
-            Evaluando…
-          </div>
+          <div className="mt-2 rounded-full py-2 text-center text-[11.5px] font-bold" style={{ background: T.entry, color: "#fff" }}>{t("omega_ui_evaluando_titulo")}</div>
         ) : (
           <>
             <button onClick={lanzarGateIndividual}
                     className="mt-2 w-full rounded-full py-2 text-[11.5px] font-bold"
-                    style={{ background: T.entry, color: "#fff" }}>
-              Lanzar gate (1 llamada real)
-            </button>
+                    style={{ background: T.entry, color: "#fff" }}>{t("omega_ui_lanzar_gate_1_llamada_real")}</button>
             {gateErr && <p className="mt-1 text-[10.5px]" style={{ color: T.bad }}>{gateErr}</p>}
           </>
         )
@@ -386,9 +381,7 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
              style={{ background: "rgba(51,193,90,0.14)", color: T.good }}>
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" stroke={T.good} fill="none" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3.5 8.5l3 3 6-7" />
-          </svg>
-          Posición registrada
-        </div>
+          </svg>{t("omega_ui_posicion_registrada")}</div>
       ) : s.estado === "ejecutada" ? (
         cerrado ? (
           <div className="mt-2.5 flex items-center justify-center gap-1.5 rounded-full py-2 text-[12.5px] font-bold"
@@ -396,45 +389,35 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
             <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" stroke={T.good} fill="none" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3.5 8.5l3 3 6-7" />
             </svg>
-            {modo === "cerrar" ? "Cierre registrado" : "Posición aumentada"}
+            {modo === "cerrar" ? t("omega_close_recorded") : t("omega_position_increased")}
           </div>
         ) : modo == null ? (
           <div className="mt-2.5 border-t pt-2.5" style={{ borderColor: T.grid }}>
             {s.posicion_abierta && (
-              <div className="text-[11px]" style={{ color: T.ink2 }}>
-                Abierto: <b className={NUMS} style={{ color: T.ink }}>{Number(s.posicion_abierta.acciones)}</b> acc.
-                @ <b className={NUMS} style={{ color: T.ink }}>${money(s.posicion_abierta.coste_medio)}</b>
+              <div className="text-[11px]" style={{ color: T.ink2 }}>{t("omega_ui_abierto")}<b className={NUMS} style={{ color: T.ink }}>{Number(s.posicion_abierta.acciones)}</b>{t("omega_ui_acc")}<b className={NUMS} style={{ color: T.ink }}>${money(s.posicion_abierta.coste_medio, 2, locale)}</b>
               </div>
             )}
             {s.dias != null && s.dias >= 80 && (
-              <div className="mt-1 text-[10.5px] font-semibold" style={{ color: T.warn }}>
-                cerca del tope de 90 días
-              </div>
+              <div className="mt-1 text-[10.5px] font-semibold" style={{ color: T.warn }}>{t("omega_ui_cerca_del_tope_de_90_dias")}</div>
             )}
             <div className="mt-2 flex gap-2">
               <button onClick={() => abrirModo("cerrar")} className="flex-1 rounded-full border py-1.5 text-[12px] font-bold"
-                      style={{ background: T.panel2, borderColor: T.grid, color: T.ink }}>
-                Cerrar posición
-              </button>
+                      style={{ background: T.panel2, borderColor: T.grid, color: T.ink }}>{t("omega_ui_cerrar_posicion")}</button>
               <button onClick={() => abrirModo("aumentar")} className="flex-1 rounded-full border py-1.5 text-[12px] font-bold"
-                      style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>
-                Aumentar
-              </button>
+                      style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>{t("omega_ui_aumentar")}</button>
             </div>
           </div>
         ) : (
           <div className="mt-2.5 border-t pt-2.5" style={{ borderColor: T.grid }}>
             <div className="grid grid-cols-3 gap-1.5">
-              <FormField label={modo === "cerrar" ? "Acciones a vender" : "Acciones"} value={accionesForm} onChange={setAccionesForm} placeholder="0" />
-              <FormField label="Precio ($)" value={precioForm} onChange={setPrecioForm} />
-              <FormField label="Comisión" value={comisionForm} onChange={setComisionForm} />
+              <FormField label={modo === "cerrar" ? t("omega_shares_to_sell") : t("omega_shares")} value={accionesForm} onChange={setAccionesForm} placeholder="0" />
+              <FormField label={t("omega_attr_precio")} value={precioForm} onChange={setPrecioForm} />
+              <FormField label={t("omega_attr_comision")} value={comisionForm} onChange={setComisionForm} />
             </div>
             <div className="mt-1.5">
-              <label className="mb-1 block text-[9px] uppercase tracking-wide" style={{ color: T.muted }}>
-                Notas (opcional)
-              </label>
+              <label className="mb-1 block text-[9px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_notas_opcional")}</label>
               <textarea value={notasForm} onChange={(e) => setNotasForm(e.target.value)} rows={2}
-                        placeholder="Por qué, qué vigilar…"
+                        placeholder={t("omega_attr_por_que_que_vigilar")}
                         className="w-full resize-none rounded-lg px-2 py-1.5 text-[12px] outline-none"
                         style={{ background: T.base, border: `1px solid ${T.ring}`, color: T.ink }} />
             </div>
@@ -442,13 +425,11 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
             <div className="mt-2 flex gap-1.5">
               <button onClick={() => { setModo(null); setErrForm(""); }} disabled={busyForm}
                       className="rounded-full border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
-                      style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>
-                Volver
-              </button>
+                      style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>{t("omega_ui_volver")}</button>
               <button onClick={submitForm} disabled={busyForm || !accionesForm || Number(accionesForm) <= 0}
                       className="flex-1 rounded-full py-1.5 text-[12px] font-bold disabled:opacity-40"
                       style={{ background: T.ink, color: T.page }}>
-                {busyForm ? "Guardando…" : modo === "cerrar" ? "Confirmar venta" : "Guardar aumento"}
+                {busyForm ? t("omega_saving") : modo === "cerrar" ? t("omega_confirm_sell") : t("omega_save_increase")}
               </button>
             </div>
           </div>
@@ -458,27 +439,23 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
           <button onClick={descartar} disabled={busy != null}
                   className="rounded-full border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
                   style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>
-            {busy === "descartar" ? "…" : "Descartar"}
+            {busy === "descartar" ? "…" : t("omega_dismiss")}
           </button>
           <button onClick={() => setOpen(true)}
                   className="flex-1 rounded-full border py-1.5 text-[12px] font-bold"
-                  style={{ background: T.panel2, borderColor: T.grid, color: T.ink }}>
-            Marcar ejecutada
-          </button>
+                  style={{ background: T.panel2, borderColor: T.grid, color: T.ink }}>{t("omega_ui_marcar_ejecutada")}</button>
         </div>
       ) : (
         <div className="mt-2.5 border-t pt-2.5" style={{ borderColor: T.grid }}>
           <div className="grid grid-cols-3 gap-1.5">
-            <FormField label="Acciones" value={acciones} onChange={setAcciones} placeholder="0" />
-            <FormField label="Precio ($)" value={precio} onChange={setPrecio} />
-            <FormField label="Comisión" value={comision} onChange={setComision} />
+            <FormField label={t("omega_attr_acciones")} value={acciones} onChange={setAcciones} placeholder="0" />
+            <FormField label={t("omega_attr_precio")} value={precio} onChange={setPrecio} />
+            <FormField label={t("omega_attr_comision")} value={comision} onChange={setComision} />
           </div>
           <div className="mt-1.5">
-            <label className="mb-1 block text-[9px] uppercase tracking-wide" style={{ color: T.muted }}>
-              Notas (opcional)
-            </label>
+            <label className="mb-1 block text-[9px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_notas_opcional")}</label>
             <textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={2}
-                      placeholder="Por qué entras, qué vigilar…"
+                      placeholder={t("omega_attr_por_que_entras_que_vigilar")}
                       className="w-full resize-none rounded-lg px-2 py-1.5 text-[12px] outline-none"
                       style={{ background: T.base, border: `1px solid ${T.ring}`, color: T.ink }} />
           </div>
@@ -486,13 +463,11 @@ export function AlertaCard({ s, grupo, precioVivo, regimen, onCambio }: {
           <div className="mt-2 flex gap-1.5">
             <button onClick={() => { setOpen(false); setErr(""); }} disabled={busy != null}
                     className="rounded-full border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
-                    style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>
-              Volver
-            </button>
+                    style={{ background: "transparent", borderColor: T.grid, color: T.ink2 }}>{t("omega_ui_volver")}</button>
             <button onClick={submit} disabled={busy != null || !acciones}
                     className="flex-1 rounded-full py-1.5 text-[12px] font-bold disabled:opacity-40"
                     style={{ background: T.ink, color: T.page }}>
-              {busy === "guardar" ? "Guardando…" : "Guardar posición"}
+              {busy === "guardar" ? t("omega_saving") : t("omega_save_position")}
             </button>
           </div>
         </div>

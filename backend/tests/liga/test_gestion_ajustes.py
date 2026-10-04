@@ -19,7 +19,7 @@ def test_catalogo_cubre_las_mismas_claves_que_antes() -> None:
 
 
 def test_valor_efectivo_usa_el_defecto_solo_si_no_hay_valor() -> None:
-    assert gestion.valor_efectivo("liga.registro.abierto", None) is True
+    assert gestion.valor_efectivo("liga.registro.abierto", None) is False
     assert gestion.valor_efectivo("liga.registro.abierto", False) is False
     assert gestion.valor_efectivo("ia.conversor.activo", None) is False
     assert gestion.valor_efectivo("ia.tope_mensual_usd", None) is None

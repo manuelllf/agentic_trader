@@ -4,15 +4,16 @@
 // sola solo al comprar, si la caja $ no alcanza. Retiradas: solo en $.
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { allocateReal } from "@/lib/api";
-import { money } from "@/lib/format";
 import type { RealSummary } from "@/lib/types";
 import { NUMS, T } from "./tokens";
 
 export function CapitalForm({ onDone, onError }: {
-  onDone: (s: RealSummary, msg: string) => void;
+  onDone: (s: RealSummary, currency: "EUR" | "USD", amount: number) => void;
   onError: (msg: string) => void;
 }) {
+  const t = useTranslations();
   const [amount, setAmount] = useState("");
   const [cur, setCur] = useState<"EUR" | "USD">("EUR");
   const [busy, setBusy] = useState(false);
@@ -21,15 +22,14 @@ export function CapitalForm({ onDone, onError }: {
 
   const submit = async () => {
     if (!valid || busy) return;
-    if (cur === "EUR" && v < 0) return onError("En € solo aportaciones — para retirar usa $.");
+    if (cur === "EUR" && v < 0) return onError(t("alpha_eur_deposit_only"));
     setBusy(true);
     try {
       const res = await allocateReal(v, cur === "USD" ? "aportación Alpha" : "", cur);
-      const symbol = cur === "EUR" ? "€" : "$";
-      onDone(res, `Caja ${cur} actualizada: ${v > 0 ? "+" : ""}${symbol}${money(v)}.`);
+      onDone(res, cur, v);
       setAmount("");
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Error asignando capital.");
+      onError(e instanceof Error ? e.message : t("alpha_allocate_error"));
     } finally {
       setBusy(false);
     }
@@ -41,7 +41,7 @@ export function CapitalForm({ onDone, onError }: {
         <input value={amount}
                onChange={(e) => setAmount(e.target.value)}
                onKeyDown={(e) => e.key === "Enter" && submit()}
-               placeholder="0.00" inputMode="decimal" aria-label="Importe"
+               placeholder="0.00" inputMode="decimal" aria-label={t("alpha_amount")}
                className={`w-full rounded border bg-transparent px-3 py-1.5 text-[13px] outline-none ${NUMS}`}
                style={{ borderColor: T.grid, color: T.ink }}
                onFocus={(e) => (e.currentTarget.style.borderColor = T.buy)}
@@ -58,13 +58,13 @@ export function CapitalForm({ onDone, onError }: {
         <button onClick={submit} disabled={busy || !valid}
                 className="shrink-0 rounded px-4 py-1.5 text-[12px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                 style={{ background: T.buy }}>
-          {busy ? "…" : "Aportar"}
+          {busy ? "…" : t("alpha_deposit")}
         </button>
       </div>
       <p className={`mt-1.5 text-[10.5px] leading-snug ${NUMS}`} style={{ color: T.muted }}>
         {cur === "EUR"
-          ? "se queda en € — IBKR convierte solo en el momento de comprar, si la caja $ no llega"
-          : "negativo = retirar · ninguna orden puede gastar más de lo asignado"}
+          ? t("alpha_eur_cash_help")
+          : t("alpha_usd_cash_help")}
       </p>
     </div>
   );

@@ -1,3 +1,6 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { fmtTime } from '@/lib/format';
 import { useOrden } from '@/lib/useOrden';
 import { NUMS, T } from './tokens';
@@ -8,28 +11,29 @@ import { NUMS, T } from './tokens';
 /** Navegador compacto ‹ Total › compartido por coste-etapa/confianza-prescore: `pos` -1 = Total
  *  (agregado histórico, sin scan_run_id), 0 = escaneo más reciente, 1 = el siguiente más
  *  antiguo, etc., recorriendo `scans` (orden de `/analytics/scans`, ya descendente por fecha). */
-export function ScanNav({ scans, pos, onMove, totalLabel = "Total", formatLabel }: {
+export function ScanNav({ scans, pos, onMove, totalLabel, formatLabel }: {
   scans: { id: number | string; at: string; cadence: string }[];
   pos: number;
   onMove: (pos: number) => void;
   totalLabel?: string;
   formatLabel?: (at: string) => string;
 }) {
+  const t = useTranslations();
   const atTotal = pos <= -1;
   const atOldest = scans.length === 0 || pos >= scans.length - 1;
-  const label = atTotal ? totalLabel
+  const label = atTotal ? (totalLabel ?? t("alpha_total_label"))
     : (formatLabel ?? fmtTime)(scans[pos]?.at ?? "");
   return (
     <div className="flex shrink-0 items-center gap-1 text-[10.5px]" style={{ color: T.muted }}>
       <button onClick={() => onMove(pos - 1)} disabled={atTotal}
               className="rounded px-1.5 leading-5 disabled:opacity-30"
-              style={{ background: T.panel2 }} aria-label="Escaneo más reciente / total">
+              style={{ background: T.panel2 }} aria-label={t("alpha_scan_newest_total")}>
         ‹
       </button>
       <span className="min-w-[64px] text-center font-semibold" style={{ color: T.ink2 }}>{label}</span>
       <button onClick={() => onMove(pos + 1)} disabled={atOldest}
               className="rounded px-1.5 leading-5 disabled:opacity-30"
-              style={{ background: T.panel2 }} aria-label="Escaneo anterior">
+              style={{ background: T.panel2 }} aria-label={t("alpha_scan_older")}>
         ›
       </button>
     </div>
@@ -41,6 +45,7 @@ export function AnalyticsTable({ title, state, nav }: {
   state: { data: Record<string, unknown>[] | null; loading: boolean; error: string };
   nav?: React.ReactNode;
 }) {
+  const t = useTranslations();
   const cols = state.data && state.data.length > 0 ? Object.keys(state.data[0]) : [];
   const rows = state.data ?? [];
   const { sorted, sortKey, sortDir, toggle, ariaSort } = useOrden<Record<string, unknown>, string>(
@@ -59,11 +64,11 @@ export function AnalyticsTable({ title, state, nav }: {
         {nav}
       </div>
       {state.loading ? (
-        <p className="text-[11.5px]" style={{ color: T.muted }}>Cargando…</p>
+        <p className="text-[11.5px]" style={{ color: T.muted }}>{t("alpha_loading")}</p>
       ) : state.error ? (
         <p className="text-[11.5px]" style={{ color: T.bad }}>{state.error}</p>
       ) : !state.data || state.data.length === 0 ? (
-        <p className="text-[11.5px]" style={{ color: T.muted }}>Sin datos.</p>
+        <p className="text-[11.5px]" style={{ color: T.muted }}>{t("alpha_no_data")}</p>
       ) : (
         <div className="overflow-x-auto rounded border" style={{ borderColor: T.grid }}>
           <table className={`w-full border-collapse whitespace-nowrap text-[11px] ${NUMS}`}>
@@ -71,7 +76,7 @@ export function AnalyticsTable({ title, state, nav }: {
               <tr style={{ color: T.muted, background: T.panel2 }}>
                 {cols.map((c) => (
                   <th key={c} className="px-2 py-1 text-left font-semibold" aria-sort={ariaSort(c)}>
-                    <button onClick={() => toggle(c)} aria-label={`Ordenar por ${c}`}
+                    <button onClick={() => toggle(c)} aria-label={t("alpha_sort_by", { label: c })}
                             className="inline-flex items-center gap-0.5 hover:opacity-80"
                             style={{ color: sortKey === c ? T.ink : T.muted }}>
                       {c}

@@ -121,7 +121,8 @@ def test_el_alias_se_resuelve_a_su_correo(monkeypatch) -> None:  # noqa: ANN001
     email = f"{uid.hex[:12]}@prueba.local"
     alias = f"prueba_{uid.hex[:8]}"
     with psycopg.connect(URL, autocommit=True) as cx:
-        cx.execute("insert into auth.users (id, email) values (%s, %s)", (uid, email))
+        cx.execute("insert into auth.users (id, email, email_confirmed_at) "
+                   "values (%s, %s, now())", (uid, email))
         try:
             cx.execute("update liga.perfiles set alias = %s where id = %s", (alias, uid))
             assert acceso._email_de(alias) == email

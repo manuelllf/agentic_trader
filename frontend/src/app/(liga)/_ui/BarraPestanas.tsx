@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -41,6 +42,7 @@ const PESTANAS = [
 ] as const;
 
 export function BarraPestanas() {
+  const t = useTranslations();
   const ruta = usePathname();
   const router = useRouter();
   const { estado } = useSesion();
@@ -70,7 +72,7 @@ export function BarraPestanas() {
   }, [estado, router]);
 
   return (
-    <nav className="tabbar" aria-label="Secciones">
+    <nav className="tabbar" aria-label={t("common_secciones")}>
       {PESTANAS.map((p) => {
         const activa = p.clave === "crear" ? ruta?.startsWith("/crear")
           : p.clave === "mias" ? ruta?.startsWith("/mias")
@@ -85,7 +87,7 @@ export function BarraPestanas() {
                 event.preventDefault();
               }
             }}>
-            <EstadoEnlace texto={p.texto} icono={p.icono} />
+            <EstadoEnlace texto={t(`common_${p.clave}`)} icono={p.icono} />
           </Link>
         );
       })}

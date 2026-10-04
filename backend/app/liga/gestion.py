@@ -55,13 +55,12 @@ class AjusteMeta:
 # Únicas claves de `liga.ajustes` que la ruta genérica de admin deja tocar; el interruptor del
 # diario ya tiene su propia ruta (`/liga/admin/procesos/diario/interruptor`) y se queda ahí.
 CATALOGO: dict[str, AjusteMeta] = {
-    # Interruptores de emergencia (plan §14): ausente = comportamiento de hoy (registro abierto,
-    # liga visible). El del diario ya tiene su propia ruta y se queda fuera de esta lista.
+    # Sin configuración explícita se conserva la liga visible y el registro cerrado.
     "liga.registro.abierto": AjusteMeta(
         grupo="Emergencia", titulo="Registro de nuevos usuarios",
         ayuda="Deja que se registre gente nueva en la liga. Apagado: nadie nuevo puede "
               "registrarse (los que ya están, siguen jugando).",
-        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True),
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=False),
     "liga.visible": AjusteMeta(
         grupo="Emergencia", titulo="Liga visible sin iniciar sesión",
         ayuda="Enseña la liga a quien no ha iniciado sesión. Apagado: solo se ve iniciando "
@@ -221,7 +220,7 @@ def _ajuste_booleano(clave: str, por_defecto: bool) -> bool:
 
 
 def registro_abierto() -> bool:
-    return _ajuste_booleano(CLAVE_REGISTRO_ABIERTO, por_defecto=True)
+    return _ajuste_booleano(CLAVE_REGISTRO_ABIERTO, por_defecto=False)
 
 
 def liga_visible() -> bool:

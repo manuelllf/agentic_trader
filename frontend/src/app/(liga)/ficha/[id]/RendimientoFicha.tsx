@@ -2,22 +2,25 @@
 
 import { InfoTip } from "@/components/InfoTip";
 import { useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { normalizeLocale } from "@/i18n/locale";
+import type { Locale } from "@/i18n/locale";
 import type { RendimientoFicha as DatosRendimiento } from "@/lib/liga/api";
-import { porcentaje } from "@/lib/liga/format";
+import { porcentaje, signo } from "@/lib/liga/format";
 
 const AYUDAS: Record<string, string> = {
-  sharpe: "Relaciona rentabilidad y variación de la cartera. Un valor mayor indica más retorno por unidad de riesgo; referencia sin riesgo: 0 %.",
-  sortino: "Relaciona rentabilidad con las caídas, en lugar de toda la variación. Objetivo mínimo: 0 %.",
-  volatilidad: "Cuánto fluctúan sus retornos. Más alta implica cambios más bruscos; cifra anualizada.",
-  drawdown: "La mayor caída desde un máximo previo de la curva, en el periodo mostrado.",
+  sharpe: "strategies_sharpe_help", sortino: "strategies_sortino_help",
+  volatilidad: "strategies_volatility_help", drawdown: "strategies_drawdown_help",
 };
 
-function fmt(valor: number | null, tipo: string): string {
+function fmt(valor: number | null, tipo: string, locale: Locale): string {
   if (valor === null || !Number.isFinite(valor)) return "—";
-  return tipo === "pct" ? `${(valor * 100).toFixed(1).replace(".", ",")} %` : valor.toFixed(2).replace(".", ",");
+  return tipo === "pct"
+    ? porcentaje(valor * 100, 1, locale)
+    : new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(valor);
 }
 
-function Gráfico({ puntos }: { puntos: DatosRendimiento["serie"] }) {
+function Gráfico({ puntos, locale, t }: { puntos: DatosRendimiento["serie"]; locale: Locale; t: (key: string) => string }) {
   const contenedor = useRef<HTMLDivElement>(null);
   const [ancho, setAncho] = useState(720);
   useEffect(() => {
@@ -29,7 +32,7 @@ function Gráfico({ puntos }: { puntos: DatosRendimiento["serie"] }) {
     observador.observe(elemento);
     return () => observador.disconnect();
   }, [puntos.length]);
-  if (puntos.length < 2) return <p className="meta">Aún no hay sesiones suficientes para dibujar la curva.</p>;
+  if (puntos.length < 2) return <p className="meta">{t("strategies_chart_insufficient_data")}</p>;
   const W = ancho, H = 240, L = 42, R = 12, T = 12, B = 28;
   const vals = puntos.flatMap((p) => [p.estrategia, p.sp500]);
   const min = Math.min(0, ...vals), max = Math.max(0, ...vals);
@@ -47,11 +50,11 @@ function Gráfico({ puntos }: { puntos: DatosRendimiento["serie"] }) {
     }).filter(Boolean).join(" ");
   };
   return (
-    <div ref={contenedor} className="chart" role="img" aria-label="Curva de rentabilidad total de la estrategia comparada con el S&P 500">
+    <div ref={contenedor} className="chart" role="img" aria-label={t("strategies_chart_aria")}>
       <svg viewBox={`0 0 ${W} ${H}`}>
         {[lo, (lo + hi) / 2, hi].map((v) => <g key={v}>
           <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className={v === 0 ? "zero" : "grid"} />
-          <text x={L - 6} y={y(v) + 4} textAnchor="end">{v.toFixed(0)}%</text>
+          <text x={L - 6} y={y(v) + 4} textAnchor="end">{new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(v)}%</text>
         </g>)}
         <path d={path("sp500", false)} className="sp" />
         <path d={path("sp500", true)} className="sp" />
@@ -60,7 +63,7 @@ function Gráfico({ puntos }: { puntos: DatosRendimiento["serie"] }) {
         <text x={L} y={H - 5}>{puntos[0].dia}</text>
         <text x={W - R} y={H - 5} textAnchor="end">{puntos[puntos.length - 1].dia}</text>
       </svg>
-      <div className="legend2"><span><i />Estrategia</span><span><i className="d" />S&amp;P 500</span></div>
+      <div className="legend2"><span><i />{t("strategies_strategy")}</span><span><i className="d" />S&amp;P 500</span></div>
     </div>
   );
 }
@@ -69,84 +72,87 @@ export function RendimientoFicha({ datos, posiciones = [] }: {
   datos: DatosRendimiento | null | undefined;
   posiciones?: { ticker: string; peso: number }[];
 }) {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
+  const pct = (value: number) => porcentaje(value, 1, locale);
   const posicionMaxima = posiciones.reduce((max, p) => Math.max(max, Number(p.peso)), 0);
   const pesoInvertido = posiciones.reduce((total, p) => total + Number(p.peso), 0);
   if (!datos) return null;
   if (datos.estado === "privado") return (
     <section className="sec">
-      <div className="sec-t">Rendimiento diario</div>
-      <p className="meta">La serie diaria está disponible para la persona propietaria y para cuentas Pro en estrategias publicadas.</p>
+      <div className="sec-t">{t("strategies_daily_performance")}</div>
+      <p className="meta">{t("strategies_daily_performance_private")}</p>
     </section>
   );
   if (datos.estado === "sin_datos" || !datos.serie.length) return (
     <section className="sec">
-      <div className="sec-t">Rendimiento diario</div>
-      <p className="meta">Aún no hay una base de cierres completa para calcular la curva y sus métricas.</p>
+      <div className="sec-t">{t("strategies_daily_performance")}</div>
+      <p className="meta">{t("strategies_daily_performance_empty")}</p>
       {posiciones.length > 0 && <p className="fine">
-        {posiciones.length} posiciones · mayor peso {posicionMaxima.toFixed(1).replace(".", ",")} % · efectivo {Math.max(0, 100 - pesoInvertido).toFixed(1).replace(".", ",")} %
-        <InfoTip text="El peso de la mayor posición indica cuánto depende la cartera de una sola empresa. El efectivo es la parte sin invertir." />
+        {t("strategies_position_summary", { count: posiciones.length, top: new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(posicionMaxima), cash: new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(Math.max(0, 100 - pesoInvertido)) })}
+        <InfoTip text={t("strategies_position_summary_help")} />
       </p>}
     </section>
   );
   const m = datos.metricas;
   const ultimo = datos.serie[datos.serie.length - 1];
   const retorno = [
-    ["Estrategia", ultimo.estrategia, "%"],
+    [t("strategies_strategy"), ultimo.estrategia, "%"],
     ["S&P 500", ultimo.sp500, "%"],
-    ["Diferencia", ultimo.estrategia - ultimo.sp500, " pp"],
+    [t("strategies_difference"), ultimo.estrategia - ultimo.sp500, " pp"],
   ] as const;
   return (
     <section className="sec">
-      <div className="sec-t">Rendimiento total <InfoTip text="Curva recalculada con los cierres guardados, dividendos y splits; puede diferir del resultado oficial de una jornada. El mes abierto es provisional." /></div>
+      <div className="sec-t">{t("strategies_total_performance")} <InfoTip text={t("strategies_total_performance_help")} /></div>
       <div className="mb-4 grid grid-cols-1 gap-2 min-[380px]:grid-cols-3">
-        {retorno.map(([label, value, unit]) => <div key={label} className="rounded-xl border px-3 py-2" style={{ borderColor: "var(--line)" }}>
-          <div className="text-xs" style={{ color: "var(--muted)" }}>{label}{ultimo.provisional && label === "Estrategia" ? " · provisional" : ""}</div>
-          <b className="num text-base">{unit === "%" ? porcentaje(value) : porcentaje(value).replace(/%$/, "pp")}</b>
+        {retorno.map(([label, value, unit], index) => <div key={label} className="rounded-xl border px-3 py-2" style={{ borderColor: "var(--line)" }}>
+          <div className="text-xs" style={{ color: "var(--muted)" }}>{label}{ultimo.provisional && index === 0 ? t("strategies_provisional_suffix") : ""}</div>
+          <b className="num text-base">{unit === "%" ? pct(value) : `${signo(value, 1, locale)}${t("strategies_pp_suffix")}`}</b>
         </div>)}
       </div>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
-        <Gráfico puntos={datos.serie} />
+        <Gráfico puntos={datos.serie} locale={locale} t={(key) => t(key)} />
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
           {([
-            ["Caída máxima", m?.max_drawdown ?? null, "pct", AYUDAS.drawdown],
-            ["Volatilidad anual", m?.volatilidad ?? null, "pct", AYUDAS.volatilidad],
+            [t("strategies_max_drawdown"), m?.max_drawdown ?? null, "pct", t(AYUDAS.drawdown)],
+            [t("strategies_annual_volatility"), m?.volatilidad ?? null, "pct", t(AYUDAS.volatilidad)],
           ] as const).map(([label, value, kind, help]) => (
             <div key={label} className="rounded-xl border px-3 py-2" style={{ borderColor: "var(--line)" }}>
               <div className="flex items-center gap-1 text-xs" style={{ color: "var(--muted)" }}>{label}<InfoTip text={help} /></div>
-              <b className="num text-base">{fmt(value, kind)}</b>
+              <b className="num text-base">{fmt(value, kind, locale)}</b>
             </div>
           ))}
           {posiciones.length > 0 && <div className="col-span-2 grid grid-cols-3 gap-2 rounded-xl border px-3 py-2 lg:col-span-1 lg:grid-cols-1" style={{ borderColor: "var(--line)" }}>
             <div className="col-span-3 flex items-center gap-1 text-xs lg:col-span-1" style={{ color: "var(--muted)" }}>
-              Distribución <InfoTip text="Cuántas posiciones tienes, el peso de la mayor y la parte sin invertir. Un peso alto en pocas empresas concentra el riesgo." />
+              {t("strategies_distribution")} <InfoTip text={t("strategies_distribution_help")} />
             </div>
-            <div><small className="block text-xs" style={{ color: "var(--muted)" }}>Posiciones</small><b className="num">{posiciones.length}</b></div>
-            <div><small className="block text-xs" style={{ color: "var(--muted)" }}>Mayor peso</small><b className="num">{posicionMaxima.toFixed(1).replace(".", ",")} %</b></div>
-            <div><small className="block text-xs" style={{ color: "var(--muted)" }}>Efectivo</small><b className="num">{Math.max(0, 100 - pesoInvertido).toFixed(1).replace(".", ",")} %</b></div>
+            <div><small className="block text-xs" style={{ color: "var(--muted)" }}>{t("strategies_positions")}</small><b className="num">{posiciones.length}</b></div>
+            <div><small className="block text-xs" style={{ color: "var(--muted)" }}>{t("strategies_top_weight")}</small><b className="num">{new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(posicionMaxima)} %</b></div>
+            <div><small className="block text-xs" style={{ color: "var(--muted)" }}>{t("strategies_cash")}</small><b className="num">{new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(Math.max(0, 100 - pesoInvertido))} %</b></div>
           </div>}
           <p className="col-span-2 text-xs leading-relaxed lg:col-span-1" style={{ color: "var(--muted)" }}>
             {m && m.observaciones < 60
-              ? `Faltan observaciones: ${m.observaciones} de 60 necesarias para Sharpe, Sortino y volatilidad.`
-              : `${m?.observaciones ?? 0} retornos diarios observados.`}
+              ? t("strategies_observations_missing", { count: m.observaciones, total: 60 })
+              : t("strategies_observations_count", { count: m?.observaciones ?? 0 })}
           </p>
         </div>
       </div>
       <details className="more">
-        <summary>Más métricas</summary>
+        <summary>{t("strategies_more_metrics")}</summary>
         <div className="grid grid-cols-2 gap-2">
           {([
-            ["Sharpe", m?.sharpe ?? null, AYUDAS.sharpe],
-            ["Sortino", m?.sortino ?? null, AYUDAS.sortino],
+            ["Sharpe", m?.sharpe ?? null, t(AYUDAS.sharpe)],
+            ["Sortino", m?.sortino ?? null, t(AYUDAS.sortino)],
           ] as const).map(([label, value, help]) => (
             <div key={label} className="rounded-xl border px-3 py-2" style={{ borderColor: "var(--line)" }}>
               <div className="flex items-center gap-1 text-xs" style={{ color: "var(--muted)" }}>{label}<InfoTip text={help} /></div>
-              <b className="num text-base">{fmt(value, "ratio")}</b>
+              <b className="num text-base">{fmt(value, "ratio", locale)}</b>
             </div>
           ))}
         </div>
       </details>
-      <p className="fine">{datos.metodologia} {datos.provisional_hasta && `Provisional hasta ${datos.provisional_hasta}.`}</p>
-      {datos.incompleta && <p className="fine">Hay sesiones sin cierre guardado o una jornada sin base/final completo. La curva señala los saltos y las métricas diarias excluyen esos intervalos.</p>}
+      <p className="fine">{datos.metodologia} {datos.provisional_hasta && t("strategies_provisional_until", { date: datos.provisional_hasta })}</p>
+      {datos.incompleta && <p className="fine">{t("strategies_incomplete_series_note")}</p>}
     </section>
   );
 }

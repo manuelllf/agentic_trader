@@ -3,18 +3,18 @@
 import type { Regimen, Senal } from './types';
 
 export const TIPO_LABEL: Record<string, string> = {
-  zigzag: "zigzag", suelo: "doble suelo", ambos: "zigzag + doble suelo",
+  zigzag: "omega_pattern_zigzag", suelo: "omega_pattern_floor", ambos: "omega_pattern_both",
 };
 
-export function fmtFecha(iso: string): string {
+export function fmtFecha(iso: string, locale: "es" | "en" = "es"): string {
   const d = new Date(`${iso}T12:00:00`);
-  return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  return d.toLocaleDateString(locale === "en" ? "en-US" : "es-ES", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
-export function fmtRet(v: number | string | null): string {
+export function fmtRet(v: number | string | null, locale: "es" | "en" = "es"): string {
   if (v == null) return "-";
   const n = Number(v);
-  return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+  return `${n >= 0 ? "+" : ""}${n.toLocaleString(locale === "en" ? "en-US" : "es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
 // `gate_regimen` viaja como boolean o 0/1 según el driver de BD -- normaliza a un booleano real.
@@ -26,10 +26,11 @@ export function esGateRegimen(s: Senal): boolean {
 // La etiqueta es una foto del día que nació la señal, no un aviso en vivo -- el título compara
 // esa foto con la cesta de HOY (si ya cargó) para que no se lea como "cuidado, esto va mal
 // ahora mismo" cuando el régimen pudo sanearse desde entonces.
-export function tituloRegimen(s: Senal, regimen: Regimen | null): string {
-  const nacio = `Nació con la cesta del universo a ${Number(s.cesta_60d).toFixed(1)}% (60 sesiones) -- el gate de régimen la habría bloqueado.`;
-  const hoy = regimen?.cesta_60d != null ? ` Hoy la cesta está en ${regimen.cesta_60d.toFixed(1)}%.` : "";
-  return `${nacio}${hoy} Foto de su día de entrada, no una alarma en vivo.`;
+export function tituloRegimen(s: Senal, regimen: Regimen | null,
+  t: (key: string, values?: Record<string, string | number>) => string): string {
+  const born = t("omega_regime_origin", { value: Number(s.cesta_60d).toFixed(1) });
+  const today = regimen?.cesta_60d != null ? t("omega_regime_today", { value: regimen.cesta_60d.toFixed(1) }) : "";
+  return [born, today, t("omega_regime_snapshot")].filter(Boolean).join(" ");
 }
 
 /** Precio de hoy = precio de entrada × (1 + retorno actual). El backend no lo manda aparte

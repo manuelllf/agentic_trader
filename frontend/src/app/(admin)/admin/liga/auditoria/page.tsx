@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, get } from "@/lib/api";
 
@@ -14,10 +15,13 @@ type Entrada = {
 type ListaAuditoria = { total: number; filas: Entrada[] };
 
 const CUANTOS = 50;
-const error = (e: unknown) => (e instanceof ApiError ? e.message : "Algo falló. Reintenta.");
-const CUANDO = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 function Auditoria() {
+  const t = useTranslations();
+  const locale = useLocale();
+  const CUANDO = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const errorText = useCallback((e: unknown) => error(e, t("admin_generic_error")), [t]);
   const [prefijo, setPrefijo] = useState("");
   const [buscando, setBuscando] = useState("");
   const [desde, setDesde] = useState(0);
@@ -32,8 +36,8 @@ function Auditoria() {
     const q = new URLSearchParams({ accion_prefix: p, desde: String(d), cuantos: String(CUANTOS) });
     get<ListaAuditoria>(`/liga/admin/auditoria?${q.toString()}`)
       .then((r) => { if (n === ultima.current) setLista(r); })
-      .catch((e) => { if (n === ultima.current) setFallo(error(e)); });
-  }, []);
+      .catch((e) => { if (n === ultima.current) setFallo(errorText(e)); });
+  }, [errorText]);
   useEffect(() => { cargar(buscando, desde); }, [cargar, buscando, desde]);
 
   const buscar = (e: React.FormEvent) => {
@@ -43,28 +47,28 @@ function Auditoria() {
 
   return (
     <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
-      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>← Vennett</Link>
+      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_vennett")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
-          style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>Auditoría</h1>
+          style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_audit_title")}</h1>
 
       <form onSubmit={buscar} className="mt-4 flex gap-2">
         <input value={prefijo} onChange={(e) => setPrefijo(e.target.value)}
-               placeholder="Prefijo, p. ej. admin."
+               placeholder={t("admin_audit_prefix_placeholder")}
                className="min-h-[44px] flex-1 rounded-lg border px-3 text-white"
                style={{ background: "#141413", borderColor: "#303030" }} />
         <button type="submit"
                 className="min-h-[44px] rounded-lg px-4 font-bold text-white"
                 style={{ background: "#3987e5" }}>
-          Filtrar
+          {t("admin_audit_filter")}
         </button>
       </form>
 
       {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
       {!lista ? (
-        !fallo && <p className="mt-6" style={{ color: "#898781" }}>Cargando…</p>
+        !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
       ) : (
         <>
-          <p className="mt-4" style={{ color: "#898781" }}>{lista.total} entradas.</p>
+          <p className="mt-4" style={{ color: "#898781" }}>{t("admin_audit_entries", { count: new Intl.NumberFormat(locale).format(lista.total) })}</p>
           <ul className="mt-2 border-t" style={{ borderColor: "#303030" }}>
             {lista.filas.map((e) => (
               <li key={e.id} className="border-b py-2" style={{ borderColor: "#303030" }}>
@@ -81,20 +85,20 @@ function Auditoria() {
                 )}
               </li>
             ))}
-            {lista.filas.length === 0 && <li className="py-4" style={{ color: "#898781" }}>Sin entradas.</li>}
+            {lista.filas.length === 0 && <li className="py-4" style={{ color: "#898781" }}>{t("admin_audit_empty")}</li>}
           </ul>
           <div className="mt-4 flex justify-between gap-2">
             <button type="button" disabled={desde === 0}
                     onClick={() => setDesde(Math.max(0, desde - CUANTOS))}
                     className="min-h-[44px] rounded-lg px-4 disabled:opacity-40"
                     style={{ background: "#2c2c2a", color: "#c3c2b7" }}>
-              Anterior
+              {t("admin_previous")}
             </button>
             <button type="button" disabled={desde + CUANTOS >= lista.total}
                     onClick={() => setDesde(desde + CUANTOS)}
                     className="min-h-[44px] rounded-lg px-4 disabled:opacity-40"
                     style={{ background: "#2c2c2a", color: "#c3c2b7" }}>
-              Siguiente
+              {t("admin_next")}
             </button>
           </div>
         </>

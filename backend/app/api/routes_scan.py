@@ -1,6 +1,7 @@
 """Escaneo: lanzar/cancelar, progreso en vivo, informe persistido, embudo, outcomes, y las
 dos re-pasadas baratas (recheck/redeep) que no vuelven a escanear el universo."""
 from __future__ import annotations
+from app.i18n import translate
 
 import re
 from typing import Literal
@@ -56,8 +57,7 @@ def demo_run(sample_size: int | None = None, decide: bool = True,
     # `modo_universo`: NASDAQ de siempre o top market cap USD del universo global (ver
     # `scan_service.run_scan_and_store`) — elección nueva del modal, solo aquí (nunca el cron).
     if not settings.enable_llm or not settings.llm_api_key_present:
-        raise HTTPException(503, "Configura ENABLE_LLM=true y la key del proveedor "
-                                 f"({settings.llm_provider.upper()}_API_KEY).")
+        raise HTTPException(503, translate('api_provider_not_configured', provider=settings.llm_provider.upper()))
     llm_overrides = (overrides.model_dump(exclude_none=True) if overrides else None) or None
     if decide and llm_overrides is None:
         llm_overrides = scan_config.get_decide_overrides(db)
@@ -299,8 +299,7 @@ def recheck(db: Session = Depends(get_db)) -> dict:
     """Re-comprobación del top: re-construye la cartera sobre los ya analizados a fondo,
     con el suelo actual, SIN re-escanear el universo (instantáneo)."""
     if not settings.enable_llm or not settings.llm_api_key_present:
-        raise HTTPException(503, "Configura ENABLE_LLM=true y la key del proveedor "
-                                 f"({settings.llm_provider.upper()}_API_KEY).")
+        raise HTTPException(503, translate('api_provider_not_configured', provider=settings.llm_provider.upper()))
     from app.scan_service import recheck as _recheck
     try:
         return _recheck(db)
@@ -313,8 +312,7 @@ def redeep(db: Session = Depends(get_db)) -> dict:
     """Re-analiza a fondo (V4-Pro) los nombres ya profundizados con el macro ACTUAL, sin
     re-escanear el universo. Para refrescar tras corregir un dato macro. Barato (~$0.03-0.05)."""
     if not settings.enable_llm or not settings.llm_api_key_present:
-        raise HTTPException(503, "Configura ENABLE_LLM=true y la key del proveedor "
-                                 f"({settings.llm_provider.upper()}_API_KEY).")
+        raise HTTPException(503, translate('api_provider_not_configured', provider=settings.llm_provider.upper()))
     from app.scan_service import redeep as _redeep
     try:
         return _redeep(db)

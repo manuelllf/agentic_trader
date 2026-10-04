@@ -1,20 +1,25 @@
 "use client";
 
 import type { EvidenciaFormacion } from "@/lib/liga/evidencia";
-import { claseSigno, porcentaje } from "@/lib/liga/format";
+import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
 import { InfoTip } from "@/components/InfoTip";
 import { useEffect, useId, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { normalizeLocale } from "@/i18n/locale";
 import type { MercadoFicha } from "@/lib/liga/api";
 
 const MOTIVOS = {
-  excluida_manual: "La receta de esta formación excluye esta empresa expresamente.",
-  metodologia_cambiada: "La metodología de esta formación cambió; no se atribuye la salida a una regla concreta.",
-  regla_no_cumplida: "No supera todas las reglas en la foto de la nueva formación.",
-  sigue_elegible_sin_entrar: "Sigue siendo elegible, pero no aparece en la nueva cartera. Esto no demuestra el motivo de su salida.",
-  no_disponible: "Sin evidencia guardada suficiente para explicar su salida.",
+  excluida_manual: "strategies_evidence_manual_exclusion",
+  metodologia_cambiada: "strategies_evidence_method_changed",
+  regla_no_cumplida: "strategies_evidence_rule_failed",
+  sigue_elegible_sin_entrar: "strategies_evidence_still_eligible",
+  no_disponible: "strategies_evidence_unavailable",
 };
 
 export function EvidenciaCartera({ datos, mercado }: { datos: EvidenciaFormacion; mercado?: MercadoFicha | null }) {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
+  const percent = (value: number) => porcentaje(value, 1, locale);
   const { formacion: f, posiciones, cambios } = datos;
   const [ticker, setTicker] = useState<string | null>(null);
   const dialogo = useRef<HTMLDialogElement>(null);
@@ -32,83 +37,79 @@ export function EvidenciaCartera({ datos, mercado }: { datos: EvidenciaFormacion
   const superiores = comparables.filter((p) => p.rendimiento.diferencia_pp! > 0);
   const inferiores = comparables.filter((p) => p.rendimiento.diferencia_pp! < 0);
   return (
-    <section className="ficha-analisis" aria-label="Evidencia de la cartera">
-      <h3 className="sec-t">Cartera · {posiciones.length} empresas</h3>
-      <p className="fine">Selecciona una empresa para ver su resultado y las reglas que cumple.</p>
-      <p className="fine">Jornada {f.jornada_numero} · base {f.desde} · {f.metodo === "mantenida"
-        ? "posiciones mantenidas desde la cartera anterior" : "selección con la foto fijada para esta jornada"}.</p>
-      {!f.receta_vigente && <p className="fine">La metodología guardada cambió después. Esta cartera conserva la receta con la que se formó.</p>}
-      {f.estado_foto === "sin_datos" && <p className="fine">La foto de formación no está disponible para verificar las reglas. No se sustituye por datos actuales.</p>}
-      {f.estado_reglas === "version_no_soportada" && <p className="fine">La versión histórica de estas reglas no puede reproducirse con el catálogo actual.</p>}
+    <section className="ficha-analisis" aria-label={t("strategies_evidence_portfolio")}>
+      <h3 className="sec-t">{t("strategies_portfolio_count", { count: posiciones.length })}</h3>
+      <p className="fine">{t("strategies_evidence_select_company")}</p>
+      <p className="fine">{t("strategies_evidence_round_context", { round: f.jornada_numero, date: f.desde, method: f.metodo === "mantenida" ? t("strategies_evidence_kept_positions") : t("strategies_evidence_fixed_photo") })}</p>
+      {!f.receta_vigente && <p className="fine">{t("strategies_evidence_method_changed_note")}</p>}
+      {f.estado_foto === "sin_datos" && <p className="fine">{t("strategies_evidence_photo_missing")}</p>}
+      {f.estado_reglas === "version_no_soportada" && <p className="fine">{t("strategies_evidence_rule_version_unsupported")}</p>}
 
       <div className="cartera-plantilla">
         {posiciones.map(p => {
           const retorno = mercado ? mercado.empresas[p.ticker]?.rentabilidad : p.rendimiento.rentabilidad_pct;
           return <button type="button" className={`cartera-empresa${mercado ? " con-precio" : ""}`} key={p.ticker} onClick={() => setTicker(p.ticker)}>
-          <b>{p.ticker}</b><span>{Number(p.peso).toFixed(1).replace(".", ",")} %<small>Peso</small></span>
-          {mercado && <span>{mercado.empresas[p.ticker]?.precio == null ? "—" : Number(mercado.empresas[p.ticker]!.precio).toLocaleString("es-ES", {maximumFractionDigits: 2})}<small>Precio</small></span>}
-          <span><b className={`cartera-retorno ${retorno == null ? "fl" : claseSigno(retorno)}`}>{retorno == null ? "—" : porcentaje(retorno)}</b><small>{mercado ? "Este mes · provisional" : "Retorno del periodo"}</small></span><span aria-hidden="true">→</span>
+          <b>{p.ticker}</b><span>{new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(p.peso))} %<small>{t("strategies_weight")}</small></span>
+          {mercado && <span>{mercado.empresas[p.ticker]?.precio == null ? "—" : Number(mercado.empresas[p.ticker]!.precio).toLocaleString(locale, {maximumFractionDigits: 2})}<small>{t("strategies_price")}</small></span>}
+          <span><b className={`cartera-retorno ${retorno == null ? "fl" : claseSigno(retorno)}`}>{retorno == null ? "—" : percent(retorno)}</b><small>{mercado ? t("strategies_month_provisional") : t("strategies_period_return")}</small></span><span aria-hidden="true">→</span>
         </button>; })}
       </div>
       <dialog ref={dialogo} className="lecturas-modal empresa-modal" aria-labelledby={titulo} onCancel={() => setTicker(null)}>
-        <header className="lecturas-cab"><div><p className="lecturas-kicker">Empresa de la cartera · jornada {f.jornada_numero}</p><h2 id={titulo}>{ticker}</h2></div>
-          <button type="button" className="lecturas-cerrar" aria-label="Cerrar empresa" autoFocus onClick={() => setTicker(null)}>×</button></header>
+        <header className="lecturas-cab"><div><p className="lecturas-kicker">{t("strategies_evidence_company_round", { round: f.jornada_numero })}</p><h2 id={titulo}>{ticker}</h2></div>
+          <button type="button" className="lecturas-cerrar" aria-label={t("strategies_close_company")} autoFocus onClick={() => setTicker(null)}>×</button></header>
         <div className="lecturas-cuerpo">
       {posiciones.filter(p => p.ticker === ticker).map((p) => {
         const verificadas = p.reglas.filter((r) => r.cumple === true).length;
         const desconocidas = p.reglas.filter((r) => r.cumple === null).length;
         return <article key={p.ticker}>
-          <h3 className="sec-t">Peso en cartera · {Number(p.peso).toFixed(1).replace(".", ",")} %</h3>
-          {mercado && <section className="sec"><h3 className="sec-t">Cotización de mercado</h3><p className="meta">Precio: {mercado.empresas[p.ticker]?.precio == null ? "pendiente de cotización" : Number(mercado.empresas[p.ticker]!.precio).toLocaleString("es-ES", {maximumFractionDigits: 4})}</p><p className="fine">Datos del {mercado.empresas[p.ticker]?.dia ?? "—"}. Retorno provisional desde {mercado.desde}: {mercado.empresas[p.ticker]?.rentabilidad == null ? "—" : porcentaje(mercado.empresas[p.ticker]!.rentabilidad!)}. Incluye dividendos y splits.</p></section>}
-          <p className="fine">{p.origen === "mantenida" ? "Posición mantenida." : "Posición seleccionada."}{" "}
-            {p.reglas.length ? `${verificadas} de ${p.reglas.length} reglas verificadas${desconocidas ? `; ${desconocidas} sin evidencia suficiente` : ""}.`
-              : f.estado_reglas === "disponible" ? "La receta no aplica filtros adicionales." : "Sin condiciones históricas verificables."}</p>
+          <h3 className="sec-t">{t("strategies_evidence_weight", { weight: new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(p.peso)) })}</h3>
+          {mercado && <section className="sec"><h3 className="sec-t">{t("strategies_market_quote")}</h3><p className="meta">{t("strategies_price_label")}: {mercado.empresas[p.ticker]?.precio == null ? t("strategies_quote_pending") : Number(mercado.empresas[p.ticker]!.precio).toLocaleString(locale, {maximumFractionDigits: 4})}</p><p className="fine">{t("strategies_evidence_market_data", { date: mercado.empresas[p.ticker]?.dia ? fecha(mercado.empresas[p.ticker]!.dia!, new Date(), locale) : "—", since: mercado.desde ? fecha(mercado.desde, new Date(), locale) : "—", return: mercado.empresas[p.ticker]?.rentabilidad == null ? "—" : percent(mercado.empresas[p.ticker]!.rentabilidad!) })}</p></section>}
+          <p className="fine">{t(p.origen === "mantenida" ? "strategies_evidence_position_kept" : "strategies_evidence_position_selected")}{" "}
+            {p.reglas.length ? t("strategies_evidence_rules_verified", { verified: verificadas, total: p.reglas.length, unknown: desconocidas })
+              : f.estado_reglas === "disponible" ? t("strategies_no_extra_filters") : t("strategies_evidence_no_verifiable_conditions")}</p>
           {p.reglas.map((r) => <p className="fine" key={r.clave}>
-            <b>{r.titulo}:</b> {r.cumple === true ? "cumple" : r.cumple === false ? "no cumple" : "sin dato verificable"}
+            <b>{r.titulo}:</b> {t(r.cumple === true ? "strategies_rule_passes" : r.cumple === false ? "strategies_rule_fails" : "strategies_rule_unverifiable")}
             {r.motivo ? ` · ${r.motivo}` : ""}.
           </p>)}
           {p.rendimiento.estado === "disponible" && p.rendimiento.rentabilidad_pct !== null ? <>
-            <p className="fine">Del {p.rendimiento.desde} al {p.rendimiento.hasta}: <b className={claseSigno(p.rendimiento.rentabilidad_pct)}>{porcentaje(p.rendimiento.rentabilidad_pct)}</b>
-              {" · "}S&amp;P 500 {porcentaje(p.rendimiento.sp500_pct!)}
-              {" · "}{porcentaje(p.rendimiento.diferencia_pp!).replace(/%$/, "pp")}.</p>
-            {p.rendimiento.incompleta && <p className="fine">Hay cierres intermedios ausentes; se comparan los extremos disponibles del periodo.</p>}
-          </> : <p className="fine">Faltan cierres exactos comunes para comparar esta posición con el S&amp;P 500.</p>}
+            <p className="fine">{t("strategies_evidence_return_period", { from: p.rendimiento.desde ?? "—", to: p.rendimiento.hasta ?? "—", strategy: percent(p.rendimiento.rentabilidad_pct), sp: percent(p.rendimiento.sp500_pct!), difference: new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(p.rendimiento.diferencia_pp!) })}</p>
+            {p.rendimiento.incompleta && <p className="fine">{t("strategies_evidence_missing_closes")}</p>}
+          </> : <p className="fine">{t("strategies_evidence_no_common_closes")}</p>}
         </article>;
       })}
         </div>
       </dialog>
 
       {comparables.length > 0 && <div className="sec">
-        <h3 className="sec-t">Comportamiento de las posiciones <InfoTip text="Retorno total de cada acción, con dividendos y splits. No es su contribución al resultado ni explica causalidad." /></h3>
-        <p className="fine">{comparables.length} de {posiciones.length} posiciones comparables en el mismo periodo guardado.</p>
-        <p className="fine">Por encima del S&amp;P 500: {superiores.length ? superiores.map((p) => p.ticker).join(", ") : "ninguna"}.</p>
-        <p className="fine">Por debajo del S&amp;P 500: {inferiores.length ? inferiores.map((p) => p.ticker).join(", ") : "ninguna"}.</p>
+        <h3 className="sec-t">{t("strategies_position_performance")} <InfoTip text={t("strategies_position_performance_help")} /></h3>
+        <p className="fine">{t("strategies_comparable_positions", { comparable: comparables.length, total: posiciones.length })}</p>
+        <p className="fine">{t("strategies_above_sp")} {superiores.length ? superiores.map((p) => p.ticker).join(", ") : t("strategies_none")}.</p>
+        <p className="fine">{t("strategies_below_sp")} {inferiores.length ? inferiores.map((p) => p.ticker).join(", ") : t("strategies_none")}.</p>
       </div>}
 
       {cambios && <div className="sec">
-        <h3 className="sec-t">Qué cambió en la última formación</h3>
-        <p className="fine">Entradas: {cambios.entradas.length ? cambios.entradas.join(", ") : "ninguna"}.</p>
+        <h3 className="sec-t">{t("strategies_formation_changes")}</h3>
+        <p className="fine">{t("strategies_entries")}: {cambios.entradas.length ? cambios.entradas.join(", ") : t("strategies_none")}.</p>
         {cambios.salidas.length ? cambios.salidas.map((s) => <details key={s.ticker}>
-          <summary>Sale {s.ticker}</summary>
-          <p className="fine">{MOTIVOS[s.causa]}</p>
+          <summary>{t("strategies_exits_ticker", { ticker: s.ticker })}</summary>
+          <p className="fine">{t(MOTIVOS[s.causa])}</p>
           {s.causa === "regla_no_cumplida" && s.reglas.filter((r) => r.cumple === false).map((r) =>
-            <p className="fine" key={r.clave}>{r.titulo}: {r.motivo ?? "no cumple la condición"}.</p>)}
-        </details>) : <p className="fine">Sin salidas entre estas dos carteras formadas.</p>}
+            <p className="fine" key={r.clave}>{r.titulo}: {r.motivo ?? t("strategies_rule_condition_not_met")}.</p>)}
+        </details>) : <p className="fine">{t("strategies_no_exits")}</p>}
       </div>}
 
       {!f.receta_vigente && <details>
-        <summary>Metodología histórica de esta cartera</summary>
+        <summary>{t("strategies_historical_methodology")}</summary>
         {f.idea && <p className="fine">{f.idea}</p>}
         {f.reglas.map((r) => <p className="fine" key={r.clave}><b>{r.titulo}:</b> {r.detalle}.</p>)}
-        {f.pesos && <p className="fine">Prioridades: {Object.entries(f.pesos).filter(([, v]) => v > 0).map(([k, v]) => {
-          const nombres: Record<string, string> = { negocio: "negocio", precio: "valoración", deuda: "financiación", pronto: "catalizador", pregunta: "pregunta propia" };
+        {f.pesos && <p className="fine">{t("strategies_priorities")}: {Object.entries(f.pesos).filter(([, v]) => v > 0).map(([k, v]) => {
+          const nombres: Record<string, string> = { negocio: "strategies_weight_business", precio: "strategies_weight_price", deuda: "strategies_weight_debt", pronto: "strategies_weight_catalyst", pregunta: "strategies_weight_question" };
           const total = Object.values(f.pesos!).reduce((s, peso) => s + peso, 0) || 1;
-          return `${nombres[k] ?? k} ${Math.round(v * 100 / total)} %`;
+          return `${nombres[k] ? t(nombres[k]) : k} ${Math.round(v * 100 / total)} %`;
         }).join(" · ")}.</p>}
-        {f.pregunta && <p className="fine">Pregunta propia: {f.pregunta}</p>}
-        {f.n_empresas !== null ? <p className="fine">Hasta {f.n_empresas} empresas · {f.reparto === "igual" ? "pesos iguales" : "pesos según puntuación"}
-          {" · "}{f.max_por_sector ? `máximo ${f.max_por_sector} por sector` : "sin límite por sector"}.</p>
-          : <p className="fine">La receta fijada para esta cartera no está disponible.</p>}
+        {f.pregunta && <p className="fine">{t("strategies_question_label")}: {f.pregunta}</p>}
+        {f.n_empresas !== null ? <p className="fine">{t("strategies_allocation_summary", { count: f.n_empresas, allocation: f.reparto === "igual" ? t("strategies_equal_weights") : t("strategies_score_weights"), sectorLimit: f.max_por_sector ? t("strategies_sector_limit", { count: f.max_por_sector }) : t("strategies_no_sector_limit") })}</p>
+          : <p className="fine">{t("strategies_evidence_recipe_unavailable")}</p>}
       </details>}
     </section>
   );

@@ -10,6 +10,7 @@
 //     botón "Analizar y decidir". "Aplicar" guarda en el backend.
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { getConfig, putScanDecideConfig } from "@/lib/api";
 import type { DemoRunOverrides, ReasoningEffort, StageLLMOverride } from "@/lib/types";
 import { T } from "./tokens";
@@ -35,7 +36,7 @@ const isJev = (model: string) => model === JEV_MODEL;
 // dos valores del tipo compartido para no tocar el contrato del backend (ver StageLLMOverride).
 const DEEPSEEK_REASONINGS: ReasoningEffort[] = ["none", "low", "high", "max"];
 const QWEN_REASONINGS: ReasoningEffort[] = ["none", "high"];
-const QWEN_REASONING_LABEL: Record<string, string> = { none: "sin razonamiento", high: "con razonamiento (~33x coste)" };
+const QWEN_REASONING_KEY: Record<string, string> = { none: "alpha_no_reasoning", high: "alpha_with_reasoning_cost" };
 
 // Sin etapa "macro": el bloque macro se arma en código, no lo escribe ningún modelo.
 type Stage = "prescore" | "mid" | "deep" | "constructor";
@@ -44,11 +45,11 @@ const MODELS_BY_STAGE: Record<Stage, readonly string[]> = {
   prescore: PRESCORE_MODELS, mid: ALL_MODELS, deep: ALL_MODELS, constructor: ALL_MODELS,
 };
 
-const STAGE_LABEL: Record<Stage, string> = {
-  prescore: "Prescorer",
-  mid: "Capa media",
-  deep: "Scorer (profundo)",
-  constructor: "Constructor",
+const STAGE_LABEL_KEY: Record<Stage, string> = {
+  prescore: "alpha_stage_prescore",
+  mid: "alpha_stage_mid",
+  deep: "alpha_stage_deep",
+  constructor: "alpha_stage_constructor",
 };
 
 // Defaults de arranque (mientras carga /config o si falla): reflejan la producción actual
@@ -75,6 +76,7 @@ export function ScanConfigModal({ onClose, onApply, applied, target = "observato
   applied?: DemoRunOverrides | null;
   target?: "observatorio" | "decide";
 }) {
+  const t = useTranslations();
   const esDecide = target === "decide";
   const [cfg, setCfg] = useState<Record<Stage, Required<StageLLMOverride>>>(FALLBACK);
   // Until /config resolves, controls are disabled to prevent race: user changes get overwritten by defaults.
@@ -123,7 +125,7 @@ export function ScanConfigModal({ onClose, onApply, applied, target = "observato
         next.reasoning_effort = "none";
       }
       // Jev no tiene reasoning en absoluto (el select queda deshabilitado con una sola opción,
-      // "no aplica") -- fijar "none" siempre al cambiar a Jev evita un value sin <option> real.
+      // t("alpha_ops_not_applicable")) -- fijar "none" siempre al cambiar a Jev evita un value sin <option> real.
       if (p.model && isJev(p.model)) {
         next.reasoning_effort = "none";
       }
@@ -148,7 +150,7 @@ export function ScanConfigModal({ onClose, onApply, applied, target = "observato
       const r = await putScanDecideConfig(o);
       onApply(r.overrides);
     } catch (e) {
-      setErrGuardar(e instanceof Error ? e.message : "No se pudo guardar la configuración.");
+      setErrGuardar(e instanceof Error ? e.message : t("alpha_ops_config_error"));
     } finally {
       setGuardando(false);
     }
@@ -161,7 +163,7 @@ export function ScanConfigModal({ onClose, onApply, applied, target = "observato
       const r = await putScanDecideConfig({});   // borra la clave -> vuelve a los defaults de settings
       onApply(r.overrides);
     } catch (e) {
-      setErrGuardar(e instanceof Error ? e.message : "No se pudo restablecer.");
+      setErrGuardar(e instanceof Error ? e.message : t("alpha_ops_restore_error"));
       setGuardando(false);
     }
   };
@@ -183,27 +185,27 @@ export function ScanConfigModal({ onClose, onApply, applied, target = "observato
         .cfg-num::-webkit-inner-spin-button, .cfg-num::-webkit-outer-spin-button {
           appearance: none; margin: 0; }
       `}</style>
-      <div role="dialog" aria-modal="true" aria-label="Configuración de modelo por etapa del escaneo"
+      <div role="dialog" aria-modal="true" aria-label={t("alpha_scan_config_aria")}
            className="w-full max-w-2xl rounded-lg border shadow-xl"
            style={{ borderColor: T.ring, background: T.panel }}
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: T.grid }}>
           <div className="flex items-center gap-2">
             <b style={{ color: T.ink }}>
-              Modelo por etapa · {esDecide ? "escaneo con decisión" : "observatorio"}
+              {t("alpha_scan_model_stage")} · {esDecide ? t("alpha_scan_decision") : t("alpha_observatory")}
             </b>
             <span className="text-[11px]" style={{ color: T.muted }}>
               {esDecide
-                ? "se guarda y lo usan el cron mensual y el botón «Analizar y decidir»"
-                : "se aplica al próximo observatorio que lances desde la card"}
+                ? t("alpha_scan_config_saved_help")
+                : t("alpha_scan_config_observatory_help")}
             </span>
           </div>
-          <button ref={closeRef} onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
+          <button ref={closeRef} onClick={onClose} aria-label={t("alpha_close")} className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
         </div>
 
         <div className="px-4 py-3 text-[12px]" aria-busy={!loaded}>
           {!loaded && (
-            <p className="mb-2 text-[11px]" style={{ color: T.muted }}>Cargando configuración real…</p>
+            <p className="mb-2 text-[11px]" style={{ color: T.muted }}>{t("alpha_loading_config")}</p>
           )}
           <div className={`space-y-2.5 ${loaded ? "" : "pointer-events-none opacity-50"}`}>
             {STAGES.map((s) => (
@@ -222,19 +224,19 @@ export function ScanConfigModal({ onClose, onApply, applied, target = "observato
             <button onClick={restablecer} disabled={!loaded || guardando}
                     className="rounded px-2.5 py-1.5 text-[11px] hover:opacity-80 disabled:opacity-50"
                     style={{ color: T.muted }}>
-              Restablecer a producción
+              {t("alpha_reset_production")}
             </button>
           )}
           <div className="ml-auto flex items-center gap-3">
             <button onClick={onClose}
                     className="rounded px-3 py-1.5 text-[11.5px] font-semibold hover:opacity-80"
                     style={{ color: T.muted }}>
-              Cancelar
+              {t("alpha_cancel")}
             </button>
             <button onClick={apply} disabled={!loaded || guardando}
                     className="rounded-full px-4 py-1.5 text-[11.5px] font-bold hover:opacity-90 disabled:opacity-50"
                     style={{ background: T.warn, color: "#0d0d0d" }}>
-              {esDecide ? (guardando ? "Guardando…" : "Guardar") : "Aplicar"}
+              {esDecide ? (guardando ? t("alpha_saving") : t("alpha_save")) : t("alpha_apply")}
             </button>
           </div>
         </div>
@@ -247,16 +249,17 @@ function StageRow({ stage, v, models, onChange }: {
   stage: Stage; v: Required<StageLLMOverride>; models: readonly string[];
   onChange: (p: Partial<StageLLMOverride>) => void;
 }) {
+  const t = useTranslations();
   const qwen = isQwen(v.model);
   const jev = isJev(v.model);
   const reasonings = qwen ? QWEN_REASONINGS : DEEPSEEK_REASONINGS;
   return (
     <div className="rounded border px-2.5 py-2" style={{ borderColor: T.grid }}>
       <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-        {STAGE_LABEL[stage]}
+        {t(STAGE_LABEL_KEY[stage])}
       </p>
       <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Field label="modelo">
+        <Field label={t("alpha_model")}>
           <select value={v.model} onChange={(e) => onChange({ model: e.target.value })}
                   className="cfg-select w-full rounded border px-1.5 py-1 text-[11px]"
                   style={{ borderColor: T.ring, color: T.ink, background: T.panel2 }}>
@@ -265,20 +268,20 @@ function StageRow({ stage, v, models, onChange }: {
         </Field>
         {/* Jev no razona en texto ni muestrea -- decisión tipada de una sola pasada, sin
             reasoning/temperature/top_p que configurar (el backend los ignora). Deshabilitados
-            en vez de ocultos, para que quede claro que "no aplica" y no que faltan por rellenar. */}
-        <Field label={jev ? "reasoning" : qwen ? "razonamiento" : "reasoning"} dim={jev}>
+            en vez de ocultos, para que quede claro que t("alpha_ops_not_applicable") y no que faltan por rellenar. */}
+        <Field label={t("alpha_reasoning")} dim={jev}>
           <select value={v.reasoning_effort} disabled={jev}
                   onChange={(e) => onChange({ reasoning_effort: e.target.value as ReasoningEffort })}
                   className="cfg-select w-full rounded border px-1.5 py-1 text-[11px] disabled:opacity-40"
                   style={{ borderColor: T.ring, color: T.ink, background: T.panel2 }}>
             {jev
-              ? <option value="none">no aplica</option>
+              ? <option value="none">{t("alpha_not_applicable")}</option>
               : reasonings.map((r) => (
-                  <option key={r} value={r}>{qwen ? QWEN_REASONING_LABEL[r] : r}</option>
+                  <option key={r} value={r}>{qwen ? t(QWEN_REASONING_KEY[r]) : t(`alpha_reasoning_${r}`)}</option>
                 ))}
           </select>
         </Field>
-        <Field label="temperatura" dim={jev}>
+        <Field label={t("alpha_temperature")} dim={jev}>
           <NumberStepper value={v.temperature} min={0} max={2} step={0.05} disabled={jev}
                          onChange={(temperature) => onChange({ temperature })} />
         </Field>
@@ -297,6 +300,7 @@ function NumberStepper({ value, min, max, step, disabled, onChange }: {
   value: number; min: number; max: number; step: number; disabled?: boolean;
   onChange: (v: number) => void;
 }) {
+  const t = useTranslations();
   const decimals = (step.toString().split(".")[1] || "").length;
   const clamp = (n: number) => Math.min(max, Math.max(min, Number(n.toFixed(decimals))));
   const bump = (dir: 1 | -1) => onChange(clamp(value + dir * step));
@@ -308,10 +312,10 @@ function NumberStepper({ value, min, max, step, disabled, onChange }: {
              className={`cfg-num w-full bg-transparent px-1.5 py-1 text-[11px] ${NUMS_CLASS}`}
              style={{ color: T.ink }} />
       <div className="flex flex-col border-l" style={{ borderColor: T.ring }}>
-        <button type="button" tabIndex={-1} aria-label="Subir" disabled={disabled} onClick={() => bump(1)}
+        <button type="button" tabIndex={-1} aria-label={t("alpha_increase")} disabled={disabled} onClick={() => bump(1)}
                 className="flex h-[13px] w-5 items-center justify-center text-[8px] leading-none hover:opacity-70"
                 style={{ color: T.muted, background: T.panel2 }}>▲</button>
-        <button type="button" tabIndex={-1} aria-label="Bajar" disabled={disabled} onClick={() => bump(-1)}
+        <button type="button" tabIndex={-1} aria-label={t("alpha_decrease")} disabled={disabled} onClick={() => bump(-1)}
                 className="flex h-[13px] w-5 items-center justify-center border-t text-[8px] leading-none hover:opacity-70"
                 style={{ color: T.muted, background: T.panel2, borderColor: T.ring }}>▼</button>
       </div>

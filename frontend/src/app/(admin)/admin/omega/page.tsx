@@ -1,5 +1,5 @@
 "use client";
-
+import { useLocale, useTranslations } from "next-intl";
 /** Omega: descubrimiento de momentum, independiente del ranker fundamental (Alpha).
  *  Nunca ejecuta en IBKR — solo alerta y sugiere, Manuel ejecuta a mano y lo reporta aquí.
  *  Ver docs/momentum-sala-real-x.md para el diseño completo. */
@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "@/components/AuthGate";
 import { InfoTip } from "@/components/InfoTip";
 import SalaDoor from "@/components/SalaDoor";
+import { LanguageSelector } from "@/i18n/LanguageSelector";
 import { ApiError, getFx } from "@/lib/api";
 import { money, signMoney } from "@/lib/format";
 import {
@@ -34,6 +35,8 @@ export default function SalaMomentum() {
 }
 
 function SalaMomentumRoom() {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [cuenta, setCuenta] = useState<Cuenta | null>(null);
   const [alertas, setAlertas] = useState<Senal[] | null>(null);
   const [historial, setHistorial] = useState<Senal[] | null>(null);
@@ -126,7 +129,7 @@ function SalaMomentumRoom() {
         }
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Sin conexión con el backend.");
+      setError(e instanceof ApiError ? e.message : t("omega_connection_failed"));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -213,7 +216,7 @@ function SalaMomentumRoom() {
     try {
       const r = await adminScan();
       if (!r.lanzado) {
-        setScanMsg(r.motivo === "ya en curso" ? "Ya había un escaneo en curso, sigo el suyo." : "");
+        setScanMsg(r.motivo === "ya en curso" ? t("omega_existing_scan") : "");
         setScanning(true);
         scanPollRef.current = setInterval(sondearScan, 2000);
         return;
@@ -221,7 +224,7 @@ function SalaMomentumRoom() {
       setScanning(true);
       scanPollRef.current = setInterval(sondearScan, 2000);
     } catch (e) {
-      setScanMsg(e instanceof ApiError ? e.message : "No se pudo lanzar el escaneo.");
+      setScanMsg(e instanceof ApiError ? e.message : t("omega_scan_failed"));
     }
   };
 
@@ -234,7 +237,7 @@ function SalaMomentumRoom() {
       setDetectMsg(r.ok ? `${r.nuevos} candidato(s) nuevo(s) detectado(s).` : `Error: ${r.error}`);
       if (r.ok) await load();
     } catch (e) {
-      setDetectMsg(e instanceof ApiError ? e.message : "No se pudo lanzar la detección.");
+      setDetectMsg(e instanceof ApiError ? e.message : t("omega_detection_failed"));
     } finally {
       setDetectando(false);
     }
@@ -292,7 +295,7 @@ function SalaMomentumRoom() {
            style={{ background: T.page, color: T.muted }}>
         <span className="h-6 w-6 animate-spin rounded-full border-2"
               style={{ borderColor: T.grid, borderTopColor: T.entry }} />
-        <p>Cargando Omega…</p>
+        <p>{t("omega_ui_cargando_omega")}</p>
       </div>
     );
   }
@@ -306,17 +309,16 @@ function SalaMomentumRoom() {
              style={{ background: `${T.page}f2` }}>
           <span className="h-6 w-6 animate-spin rounded-full border-2"
                 style={{ borderColor: T.grid, borderTopColor: T.entry }} />
-          <p style={{ color: T.muted }}>Actualizando…</p>
+          <p style={{ color: T.muted }}>{t("omega_ui_actualizando")}</p>
         </div>
       )}
       <div className="mx-auto max-w-[1500px] px-4 pt-6 lg:px-6">
         {/* Sin barra fija -- como la land, la navegación que hace falta vive en el flujo
             normal, no clavada arriba (feedback 12-sep-2026, "el header AI slop fuera"). */}
         <div className="mb-4 flex items-center justify-between">
-          <Link href="/admin" className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>
-            ← Salas
-          </Link>
+          <Link href="/admin" className="text-[12px] transition-colors hover:underline" style={{ color: T.muted }}>{t("omega_ui_salas")}</Link>
           <div className="flex items-center gap-2">
+            <LanguageSelector />
             <SalaDoor to="alpha" />
             <SalaDoor to="beta" />
           </div>
@@ -340,13 +342,11 @@ function SalaMomentumRoom() {
                   style={{ background: conectado ? "rgba(107,190,138,0.14)" : "rgba(250,178,25,0.14)",
                            color: conectado ? T.good : T.warn }}>
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: conectado ? T.good : T.warn }} />
-              {conectado ? "IBKR conectado" : "IBKR sin conexión"}
+              {conectado ? t("omega_broker_connected") : t("omega_broker_disconnected")}
             </span>
           </div>
-          <h1 className="mt-1 text-[26px] font-bold" style={{ color: T.ink }}>Descubrimiento de momentum</h1>
-          <p className="mt-2 max-w-[46ch] text-[14px]" style={{ color: T.ink2 }}>
-            El agente detecta rupturas y sugiere; tú ejecutas a mano y lo reportas aquí.
-          </p>
+          <h1 className="mt-1 text-[26px] font-bold" style={{ color: T.ink }}>{t("omega_ui_descubrimiento_de_momentum")}</h1>
+          <p className="mt-2 max-w-[46ch] text-[14px]" style={{ color: T.ink2 }}>{t("omega_ui_el_agente_detecta_rupturas_y_sugiere_tu_ejecutas_a_mano_y_lo_reportas_aqui")}</p>
         </header>
 
         {/* Una fila centrada de 4 celdas iguales, también en el móvil. Cada acción se distingue
@@ -357,14 +357,14 @@ function SalaMomentumRoom() {
                         ? `${scanProgreso.hecho}/${scanProgreso.total}` : "Señales"}>
             <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
           </ActionChip>
-          <ActionChip onClick={detectarCandidatos} busy={detectando} label="Rupturas" stroke>
+          <ActionChip onClick={detectarCandidatos} busy={detectando} label={t("omega_attr_rupturas")} stroke>
             <path d="M2 13h3l2-7 3 15 3-11 2 3h5" />
           </ActionChip>
-          <ActionChip onClick={() => setBuscadorAbierto(true)} label="Tickers" stroke>
+          <ActionChip onClick={() => setBuscadorAbierto(true)} label={t("omega_attr_tickers")} stroke>
             <circle cx="10" cy="10" r="6.5" />
             <path d="M20 20l-4.3-4.3M10 7v6M7 10h6" />
           </ActionChip>
-          <ActionChip onClick={refrescar} busy={refreshing} label="Actualizar" stroke>
+          <ActionChip onClick={refrescar} busy={refreshing} label={t("omega_attr_actualizar")} stroke>
             <path d="M3 12a9 9 0 0 1 15.3-6.3L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.3 6.3L3 16M3 21v-5h5" />
           </ActionChip>
         </div>
@@ -382,9 +382,7 @@ function SalaMomentumRoom() {
         {candidatosListos.length > 0 && (
           <p className="mb-6 flex items-center gap-2 text-[11.5px]" style={{ color: T.muted }}>
             <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: T.good }} />
-            {candidatosListos.length} candidato{candidatosListos.length === 1 ? "" : "s"} de ApeWisdom ya{" "}
-            {candidatosListos.length === 1 ? "pasó" : "pasaron"} sus filtros y{" "}
-            {candidatosListos.length === 1 ? "espera" : "esperan"} tu gate:{" "}
+            {t("omega_candidates_ready", { count: candidatosListos.length })}{" "}
             <a href="#candidatos" className="font-semibold" style={{ color: T.good }}>
               {candidatosListos.map((c) => c.ticker).join(", ")} ↓
             </a>
@@ -396,7 +394,7 @@ function SalaMomentumRoom() {
             "eso es justo el AI slop"). La caja de verdad se reserva para lo que sí es una
             unidad discreta que se toca (alertas, historial). ---------- */}
         <div className="mb-6">
-          <p className="mb-3 text-[16px] font-bold tracking-tight" style={{ color: T.ink }}>Cuenta</p>
+          <p className="mb-3 text-[16px] font-bold tracking-tight" style={{ color: T.ink }}>{t("omega_ui_cuenta")}</p>
           {(() => {
             const pnlAbUsd = Number(cuenta?.pnl_abierto_usd ?? 0);
             const pnlReUsd = Number(cuenta?.pnl_realizado_usd ?? 0);
@@ -405,34 +403,32 @@ function SalaMomentumRoom() {
               <div className="border-t pt-4" style={{ borderColor: T.grid }}>
                 <div className="grid grid-cols-2 gap-x-5 gap-y-5">
                   <div>
-                    <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>
-                      Capital desplegado
-                      <InfoTip text="Coste de compra de lo que sigue abierto ahora mismo -- no es la caja ni el valor a precio de hoy." />
+                    <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_capital_desplegado")}<InfoTip text={t("omega_attr_coste_de_compra_de_lo_que_sigue_abierto_ahora_mismo_no_es_la_caja_ni_el_valor_a_precio_de_hoy")} />
                     </div>
-                    <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: T.ink }}>${money(cuenta?.desplegado_usd ?? 0)}</div>
+                    <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: T.ink }}>${money(cuenta?.desplegado_usd ?? 0, 2, locale)}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>PnL abierto</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_pnl_abierto")}</div>
                     <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: pnlAbUsd >= 0 ? T.good : T.bad }}>
                       {signMoney(pnlAbUsd)}
                     </div>
                     <div className={`mt-0.5 text-[10.5px] ${NUMS}`} style={{ color: pnlAbUsd >= 0 ? T.good : T.bad }}>
-                      {fmtRet(cuenta?.pnl_abierto_pct ?? null)}
+                      {fmtRet(cuenta?.pnl_abierto_pct ?? null, locale)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>PnL realizado</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_pnl_realizado")}</div>
                     <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: pnlReUsd >= 0 ? T.good : T.bad }}>
                       {signMoney(pnlReUsd)}
                     </div>
                     <div className={`mt-0.5 text-[10.5px] ${NUMS}`} style={{ color: pnlReUsd >= 0 ? T.good : T.bad }}>
-                      {fmtRet(cuenta?.pnl_realizado_pct ?? null)}
+                      {fmtRet(cuenta?.pnl_realizado_pct ?? null, locale)}
                     </div>
                   </div>
                   <div>
                     {/* Antes había un tile "Cash" aparte -- era el mismo dinero que este, solo
                         que sin convertir y sin el USD sumado: redundante, se quita. */}
-                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Poder compra</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_poder_compra")}</div>
                     <div className={`mt-1.5 text-[22px] font-bold tracking-tight ${NUMS}`} style={{ color: T.ink }}>
                       {eur != null ? `€${money(eur, 0)}` : "-"}
                     </div>
@@ -443,16 +439,14 @@ function SalaMomentumRoom() {
                 </div>
                 <div className="mt-4 flex items-baseline justify-between border-t pt-3.5"
                      style={{ borderColor: T.grid }}>
-                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>Gate gasto</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_gate_gasto")}</span>
                   <span className={`text-[13px] font-bold ${NUMS}`} style={{ color: T.warn }}>
                     ${money(cuenta?.gate_gastado_usd ?? 0, 2)}
-                    <span className="ml-1.5 font-normal" style={{ color: T.muted }}>· {cuenta?.gate_llamadas ?? 0} llam.</span>
+                    <span className="ml-1.5 font-normal" style={{ color: T.muted }}>· {cuenta?.gate_llamadas ?? 0}{t("omega_ui_llam")}</span>
                   </span>
                 </div>
                 <div className="mt-2.5 flex items-center justify-between">
-                  <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>
-                    Gate modelo
-                    <InfoTip text="Proveedor del gate (candidatos + señales) -- se queda así hasta que lo cambies, sin salto automático si uno falla." />
+                  <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_gate_modelo")}<InfoTip text={t("omega_attr_proveedor_del_gate_candidatos_senales_se_queda_asi_hasta_que_lo_cambies_sin_salto_automatico_si_uno")} />
                   </span>
                   <select value={gateProvider ?? ""} disabled={gateProvider == null || gateProviderBusy}
                           onChange={(e) => cambiarGateProvider(e.target.value as GateProvider)}
@@ -468,33 +462,28 @@ function SalaMomentumRoom() {
         </div>
 
         {/* ---------- Alertas activas: decisión pendiente (nueva/cuidado) ---------- */}
-        <Section title="Alertas activas" count={alertasPendientes.length}>
+        <Section title={t("omega_attr_alertas_activas")} count={alertasPendientes.length}>
           {regimen && <RegimenChip regimen={regimen} />}
-          <p className="mb-2 text-[10.5px]" style={{ color: T.muted }}>
-            Sin caducidad: pasados 21 días se marcan &quot;cuidado&quot; (p75 de días-a-objetivo entre las ganadoras históricas).
-          </p>
+          <p className="mb-2 text-[10.5px]" style={{ color: T.muted }}>{t("omega_ui_sin_caducidad_pasados_21_dias_se_marcan_quot_cuidado_quot_p75_de_dias_a_objetivo_entre_las_ganadoras_historica")}</p>
           {alertasPendientes.length === 0 ? (
-            <Empty>Ninguna señal sin resolver ahora mismo.</Empty>
+            <Empty>{t("omega_ui_ninguna_senal_sin_resolver_ahora_mismo")}</Empty>
           ) : (
             <AlertasCarrusel alertas={alertasPendientes} empates={empatesPorFecha} preciosVivos={preciosVivos} regimen={regimen} onCambio={actualizarAlerta} />
           )}
         </Section>
 
         {/* ---------- Posiciones activas: ya ejecutadas, solo cerrar/aumentar ---------- */}
-        <Section title="Posiciones activas" count={posicionesActivas.length}>
+        <Section title={t("omega_attr_posiciones_activas")} count={posicionesActivas.length}>
           {posicionesActivas.length === 0 ? (
-            <Empty>Ninguna posición abierta ahora mismo.</Empty>
+            <Empty>{t("omega_ui_ninguna_posicion_abierta_ahora_mismo")}</Empty>
           ) : (
             <AlertasCarrusel alertas={posicionesActivas} empates={empatesPorFecha} preciosVivos={preciosVivos} regimen={regimen} onCambio={actualizarAlerta} />
           )}
         </Section>
 
         {/* ---------- Historial de señales ---------- */}
-        <Section title="Historial de señales" count={historial?.length ?? 0}>
-          <p className="mb-2 text-[10.5px]" style={{ color: T.muted }}>
-            Señales ya resueltas más las que descartaste y siguen en curso (para ver &quot;la
-            dejé pasar y habría hecho X%&quot;). El check marca si la ejecutaste de verdad.
-          </p>
+        <Section title={t("omega_attr_historial_de_senales")} count={historial?.length ?? 0}>
+          <p className="mb-2 text-[10.5px]" style={{ color: T.muted }}>{t("omega_ui_senales_ya_resueltas_mas_las_que_descartaste_y_siguen_en_curso_para_ver_quot_la_deje_pasar_y_habria_hecho_x_qu")}</p>
           <div className="border-t" style={{ borderColor: T.grid }}>
             {(historial ?? []).slice(0, histVisibles).map((s, i) => {
               const ejecutada = s.estado === "ejecutada" || s.estado === "vendida";
@@ -521,7 +510,7 @@ function SalaMomentumRoom() {
                         style={ejecutada
                           ? { background: T.entry, borderColor: T.entry }
                           : { borderColor: T.ring }}
-                        aria-label={ejecutada ? "La ejecutaste" : enCurso ? "Descartada, sigue en seguimiento" : "No se ejecutó"}>
+                        aria-label={ejecutada ? t("omega_executed") : enCurso ? t("omega_discarded_tracking") : t("omega_not_executed")}>
                     {ejecutada && (
                       <svg viewBox="0 0 16 16" className="h-3 w-3" stroke="#fff" fill="none" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M3.5 8.5l3 3 6-7" />
@@ -530,26 +519,26 @@ function SalaMomentumRoom() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <b style={{ color: T.ink }}>{s.ticker}</b>
-                    {s.mantener === false && <span className="ml-1.5 text-[9px]" style={{ color: T.warn }}>apagado</span>}
+                    {s.mantener === false && <span className="ml-1.5 text-[9px]" style={{ color: T.warn }}>{t("omega_ui_apagado")}</span>}
                     {esGateRegimen(s) && (
                       <span className="ml-1.5 inline-flex items-center gap-0.5 text-[9px]" style={{ color: T.bad }}
                             onClick={(e) => e.stopPropagation()}>
-                        ⛔ régimen
-                        <InfoTip text={tituloRegimen(s, regimen)} />
+                        ⛔ {t("omega_regime")}
+                        <InfoTip text={tituloRegimen(s, regimen, t)} />
                       </span>
                     )}
                     <span className="ml-2 text-[11px]" style={{ color: T.muted }}>
-                      {TIPO_LABEL[s.tipo]} · {fmtFecha(s.entry_date)}
+                      {t(TIPO_LABEL[s.tipo] ?? "omega_pattern_zigzag")} · {fmtFecha(s.entry_date, locale)}
                     </span>
                   </div>
                   <div className="text-right">
                     <div className={`font-bold ${NUMS}`} style={{ color: ret >= 0 ? T.good : T.bad }}>
-                      {fmtRet(ret)}
+                      {fmtRet(ret, locale)}
                     </div>
                     <div className="text-[9.5px]" style={{ color: enCurso ? T.warn : T.muted }}>
-                      {enCurso ? `en curso · ${s.dias}d`
+                      {enCurso ? t("omega_live_days", { days: s.dias ?? "—" })
                         : cerradaAMano
-                          ? soloSistema != null ? `a mano · solo ${fmtRet(soloSistema)}` : "cerrada a mano"
+                          ? soloSistema != null ? t("omega_manual_return", { value: fmtRet(soloSistema, locale) }) : t("omega_manually_closed")
                           : s.motivo}
                     </div>
                   </div>
@@ -567,24 +556,16 @@ function SalaMomentumRoom() {
             (antes eran dos acordeones separados) -- justo antes de Universo, que es a donde
             van a parar si se incorporan. */}
         <div id="candidatos">
-          <Collapsible title="Candidatos" count={`${candidatosPorRevisar.length} por revisar · ${candidatosEvaluados.length} evaluados`}>
-            <p className="px-3.5 pb-2 pt-3 text-[11px] leading-relaxed" style={{ color: T.muted }}>
-              Tickers fuera del universo fijo, con dos entradas posibles: ApeWisdom los trae solo
-              (&quot;Detectar rupturas&quot;, menciones sociales) o los metes tú a mano
-              (&quot;Añadir ticker&quot;). Sector y estadística son automáticos; el gate es la
-              única llamada real, siempre candidato a candidato.
-            </p>
+          <Collapsible title={t("omega_attr_candidatos")} count={t("omega_candidate_counts", { pending: candidatosPorRevisar.length, evaluated: candidatosEvaluados.length })}>
+            <p className="px-3.5 pb-2 pt-3 text-[11px] leading-relaxed" style={{ color: T.muted }}>{t("omega_ui_tickers_fuera_del_universo_fijo_con_dos_entradas_posibles_apewisdom_los_trae_solo_quot_detectar_rupturas_quot")}</p>
             <CandidatosTabs porRevisar={candidatosPorRevisar} evaluados={candidatosEvaluados} onCambio={actualizarCandidato} />
           </Collapsible>
         </div>
 
         {/* ---------- Universo: fusiona "Validación histórica" + "Universo vigilado" en una
             sola tabla (antes los mismos 34 tickers se repetían en dos acordeones) ---------- */}
-        <Collapsible title="Universo" count={universoCount}>
-          <p className="px-3.5 pb-2 pt-3 text-[11px] leading-relaxed" style={{ color: T.muted }}>
-            Cada ticker con su resultado real acumulado. Apagar uno lo saca de alertas y recuentos
-            pero se sigue escaneando, para ver si mejora y quieres reactivarlo.
-          </p>
+        <Collapsible title={t("omega_attr_universo")} count={universoCount}>
+          <p className="px-3.5 pb-2 pt-3 text-[11px] leading-relaxed" style={{ color: T.muted }}>{t("omega_ui_cada_ticker_con_su_resultado_real_acumulado_apagar_uno_lo_saca_de_alertas_y_recuentos_pero_se_sigue_escaneando")}</p>
           <UniversoTabla validacion={validacion ?? []} onAbrir={setUniversoAbierto} />
         </Collapsible>
       </div>

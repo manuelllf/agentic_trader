@@ -1,4 +1,7 @@
+"use client";
+
 import { useState } from 'react';
+import { useTranslations } from "next-intl";
 
 export function CardHead({ children }: { children: React.ReactNode }) {
   return (
@@ -14,6 +17,7 @@ export function CardHead({ children }: { children: React.ReactNode }) {
 export function Details({ head, defaultOpen, children }: {
   head: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode;
 }) {
+  const t = useTranslations();
   const [open, setOpen] = useState(!!defaultOpen);
   const toggle = () => setOpen((o) => !o);
   return (
@@ -22,7 +26,7 @@ export function Details({ head, defaultOpen, children }: {
         <button onClick={toggle} aria-expanded={open} className="flex-1 text-left text-[16px] font-bold text-white">
           {head}
         </button>
-        <button onClick={toggle} aria-expanded={open} aria-label={open ? "Colapsar" : "Desplegar"}
+        <button onClick={toggle} aria-expanded={open} aria-label={open ? t("beta_collapse_accessible") : t("beta_expand_accessible")}
                 className="flex shrink-0 items-center rounded p-1.5 text-[#6E6E6B] transition-colors hover:bg-white/5">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                className="shrink-0 transition-transform" style={{ transform: open ? "rotate(90deg)" : undefined }}>
@@ -49,13 +53,14 @@ export function SectorChip({ active, onClick, children }: { active: boolean; onC
 }
 
 export function Empty({ running }: { running: boolean }) {
+  const t = useTranslations();
   return (
     <div className="flex min-h-[22vh] flex-col items-center justify-center border-t border-[#303030] text-center">
       <p className="text-3xl">{running ? "🛰️" : "📡"}</p>
       <p className="mt-3 max-w-sm text-sm text-[#6E6E6B]">
         {running
-          ? "El agente puntúa el universo y construye la cartera…"
-          : "El agente escanea y decide la cartera el último día de bolsa del mes, tras el cierre (o al lanzarlo desde Alpha). Cuando decida, aquí aparece la cartera, ya ejecutada en el libro sombra."}
+          ? t("beta_waiting")
+          : t("beta_schedule")}
       </p>
     </div>
   );

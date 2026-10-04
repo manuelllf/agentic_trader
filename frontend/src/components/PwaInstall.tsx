@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -12,6 +13,7 @@ interface BeforeInstallPromptEvent extends Event {
 const SEEN_KEY = "pwa_install_seen";
 
 export default function PwaInstall() {
+  const t = useTranslations();
   const [prompt, setPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [visible, setVisible] = useState(false);
 
@@ -46,17 +48,17 @@ export default function PwaInstall() {
   if (!visible) return null;
 
   return (
-    <aside className="pwa-install" aria-label="Instalar Vennett">
+    <aside className="pwa-install" aria-label={t("system_instalar_vennett")}>
       <Image src="/favicon.svg" alt="" width={32} height={32} />
       <div>
-        <p><strong>Vennett, a mano.</strong></p>
-        <p>Acceso directo en tu móvil.</p>
+        <p><strong>{t("system_vennett_a_mano")}</strong></p>
+        <p>{t("system_acceso_movil")}</p>
       </div>
       <button
         onClick={install}
         className="pwa-install-action"
       >
-        Instalar
+        {t("system_instalar")}
       </button>
     </aside>
   );

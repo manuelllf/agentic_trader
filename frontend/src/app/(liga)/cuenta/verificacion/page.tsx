@@ -3,6 +3,8 @@
 // Verificación en dos pasos con una app (Google Authenticator, 1Password…). Sin ella activa y
 // superada en esta sesión, el Panel de control no abre.
 
+import { useTranslations } from "next-intl";
+import { LanguageSelector } from "@/i18n/LanguageSelector";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Boton, Cargando } from "../../_ui";
@@ -15,6 +17,7 @@ type Estado =
   | { paso: "hecho" };
 
 export default function Verificacion() {
+  const t = useTranslations();
   const sb = useSupabase();
   const [estado, setEstado] = useState<Estado>({ paso: "cargando" });
   const [codigo, setCodigo] = useState("");
@@ -48,10 +51,10 @@ export default function Verificacion() {
         if (f.status === "unverified") await sb.auth.mfa.unenroll({ factorId: f.id });
       }
       const { data, error: fallo } = await sb.auth.mfa.enroll({
-        factorType: "totp", friendlyName: "App de verificación",
+        factorType: "totp", friendlyName: "Vennett",
       });
       if (fallo || !data) {
-        setError("No se pudo preparar la verificación. Recarga la página para intentarlo otra vez.");
+        setError("account_verificacion_preparar_fallo");
         return;
       }
       setEstado({ paso: "alta", factorId: data.id, qr: data.totp.qr_code, secreto: data.totp.secret });
@@ -68,7 +71,7 @@ export default function Verificacion() {
         factorId: estado.factorId, code: codigo.trim(),
       });
       if (fallo) {
-        setError("Ese código no vale. Mira el que marca ahora tu app y escríbelo otra vez.");
+        setError("account_codigo_invalido");
         return;
       }
       await sb.auth.refreshSession();
@@ -81,15 +84,15 @@ export default function Verificacion() {
   const formCodigo = (
     <form className="form" onSubmit={verificar}>
       <label className="campo">
-        <span className="lbl">Código</span>
+        <span className="lbl">{t("account_codigo")}</span>
         <input className="inp codigo" inputMode="numeric" autoComplete="one-time-code"
                pattern="[0-9]{6}" maxLength={6} required value={codigo}
                onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))} />
       </label>
-      {error && <p className="aviso" role="alert">{error}</p>}
+      {error && <p className="aviso" role="alert">{t(error)}</p>}
       <Boton type="submit" variante="principal" ancho="completo"
              disabled={ocupado || codigo.length !== 6}>
-        {ocupado ? "Comprobando…" : "Verificar"}
+        {ocupado ? t("account_comprobando") : t("account_verificar")}
       </Boton>
     </form>
   );
@@ -98,35 +101,35 @@ export default function Verificacion() {
     <main className="sencilla">
       <header className="sencilla-top">
         <Link href="/" className="wordmark">Vennett</Link>
-      </header>
+      <LanguageSelector /></header>
 
       <section className="sencilla-cuerpo arriba" aria-labelledby="titular">
-        <h1 id="titular">Verificación en dos pasos</h1>
+        <h1 id="titular">{t("account_verificacion")}</h1>
         {sb === null ? (
-          <p className="nota">Las cuentas todavía no están abiertas.</p>
+          <p className="nota">{t("account_cuentas_cerradas")}</p>
         ) : estado.paso === "cargando" ? (
-          error ? <p className="aviso" role="alert">{error}</p> : <Cargando filas={2} />
+          error ? <p className="aviso" role="alert">{t(error)}</p> : <Cargando filas={2} />
         ) : estado.paso === "alta" ? (
           <>
             <p className="nota">
-              Escanea el código con tu app de verificación y escribe las 6 cifras que te dé.
+              {t("account_escanear_qr")}
             </p>
             {/* eslint-disable-next-line @next/next/no-img-element -- QR en data URI de Supabase */}
-            <img className="qr" src={estado.qr} alt="Código QR para añadir la cuenta a tu app" />
+            <img className="qr" src={estado.qr} alt={t("account_qr_alt")} />
             <p className="secreto">
-              Si no puedes escanearlo, añade esta clave a mano: <b className="num">{estado.secreto}</b>
+              {t("account_clave_manual")} <b className="num">{estado.secreto}</b>
             </p>
             {formCodigo}
           </>
         ) : estado.paso === "codigo" ? (
           <>
-            <p className="nota">Escribe el código que marca ahora tu app de verificación.</p>
+            <p className="nota">{t("account_codigo_actual")}</p>
             {formCodigo}
           </>
         ) : (
           <>
-            <p className="nota">Listo: esta sesión ya está verificada.</p>
-            <Link href={destino} className="btn pri wide">Seguir</Link>
+            <p className="nota">{t("account_sesion_verificada")}</p>
+            <Link href={destino} className="btn pri wide">{t("account_seguir")}</Link>
           </>
         )}
       </section>

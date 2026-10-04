@@ -7,6 +7,7 @@ está vetada a `authenticated` por RLS (plan §7.3), y contar desde aquí no dep
 tenga la tabla del dominio."""
 
 from __future__ import annotations
+from app.i18n import translate
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -46,8 +47,7 @@ def cambios_alias_recientes(usuario_id: str) -> int:
 def exigir_cambio_alias_disponible(usuario_id: str) -> None:
     if cambios_alias_recientes(usuario_id) >= TOPE_ALIAS_30_DIAS:
         raise HTTPException(
-            429, f"Ya has cambiado de alias {TOPE_ALIAS_30_DIAS} veces en los últimos 30 días. "
-            "Prueba más adelante.")
+            429, translate('liga_alias_daily_limit', count=TOPE_ALIAS_30_DIAS))
 
 
 def auditar_cambio_alias(usuario_id: str, alias: str) -> None:
@@ -78,7 +78,7 @@ def pruebas_hoy(usuario_id: str) -> int:
 
 def exigir_prueba_disponible(usuario_id: str) -> None:
     if pruebas_hoy(usuario_id) >= TOPE_PRUEBAS_DIA:
-        raise HTTPException(429, f"Ya has hecho {TOPE_PRUEBAS_DIA} pruebas hoy. Prueba mañana.")
+        raise HTTPException(429, translate('liga_preview_daily_limit', count=TOPE_PRUEBAS_DIA))
 
 
 # ---- Lecturas: 50 al día (día de Madrid), contadas por lo que de verdad se ha comprado -----------
@@ -98,4 +98,4 @@ def lecturas_hoy(usuario_id: str) -> int:
 def exigir_lectura_disponible(usuario_id: str) -> None:
     if lecturas_hoy(usuario_id) >= TOPE_LECTURAS_DIA:
         raise HTTPException(
-            429, f"Ya has leído a fondo {TOPE_LECTURAS_DIA} empresas hoy. Prueba mañana.")
+            429, translate('liga_reading_daily_limit', count=TOPE_LECTURAS_DIA))

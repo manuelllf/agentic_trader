@@ -1,3 +1,5 @@
+"use client";
+import { useLocale, useTranslations } from "next-intl";
 // Candidatos: el buscador manual de un ticker, la pestaña por-revisar/todos y la fila de
 // cada candidato (comprobar filtros, lanzar gate, incorporar/descartar).
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -12,10 +14,12 @@ import type { Candidato } from '../types';
 
 /** Buscador de un candidato por ticker -- para cuando Manuel detecta algo por su cuenta (o
  *  quiere revisar uno ya visto) sin bucear en las listas. Une alta manual + comprobar filtros +
- *  gate + decisión en un solo sitio; "Incorporar"/"Mantener fuera" cierran la emergente solos.
+ *  gate + decisión en un solo sitio; t("omega_include")/t("omega_keep_out") cierran la emergente solos.
  *  Mismo patrón de emergente que `real/ScanFullModal.tsx` (velo + tarjeta + cerrar por X/Escape/
  *  click fuera), con los tokens propios de esta sala. */
 export function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => void; onCambio: (c: Candidato) => void }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [ticker, setTicker] = useState("");
   const [candidato, setCandidato] = useState<Candidato | null>(null);
   const [busy, setBusy] = useState(false);
@@ -30,15 +34,15 @@ export function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => v
   }, [onClose]);
 
   const buscar = async () => {
-    const t = ticker.trim().toUpperCase();
-    if (!t) return;
+    const symbol = ticker.trim().toUpperCase();
+    if (!symbol) return;
     setBusy(true);
     setErr("");
     try {
-      const existente = await buscarCandidato(t);
-      setCandidato(existente ?? await crearCandidatoManual(t));
+      const existente = await buscarCandidato(symbol);
+      setCandidato(existente ?? await crearCandidatoManual(symbol));
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "No se pudo buscar el candidato.");
+      setErr(e instanceof ApiError ? e.message : t("omega_candidate_search_failed"));
     } finally {
       setBusy(false);
     }
@@ -52,7 +56,7 @@ export function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => v
       setCandidato(actualizado);
       onCambio(actualizado);
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "No se pudo completar la acción.");
+      setErr(e instanceof ApiError ? e.message : t("omega_action_failed"));
     } finally {
       setBusy(false);
     }
@@ -70,7 +74,7 @@ export function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => v
       if (p.status !== "running") {
         if (gatePollRef.current) { clearInterval(gatePollRef.current); gatePollRef.current = null; }
         setBusy(false);
-        if (p.status === "error") setErr(p.error ?? "No se pudo completar el gate.");
+        if (p.status === "error") setErr(p.error ?? t("omega_gate_completion_failed"));
         if (p.candidato) { setCandidato(p.candidato); onCambio(p.candidato); }
       }
     } catch { /* fallo puntual de red no corta el sondeo */ }
@@ -84,7 +88,7 @@ export function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => v
       await lanzarGateCandidato(candidato.id);
       gatePollRef.current = setInterval(sondearGate, 3000);
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "No se pudo lanzar el gate.");
+      setErr(e instanceof ApiError ? e.message : t("omega_gate_failed"));
       setBusy(false);
     }
   };
@@ -124,20 +128,20 @@ export function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => v
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6"
          onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label="Añadir ticker"
+      <div role="dialog" aria-modal="true" aria-label={t("omega_attr_anadir_ticker")}
            className="w-full max-w-md rounded-xl border shadow-xl"
            style={{ borderColor: T.ring, background: T.panel }}
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: T.grid }}>
-          <b style={{ color: T.ink }}>Añadir ticker</b>
-          <button onClick={onClose} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
+          <b style={{ color: T.ink }}>{t("omega_ui_anadir_ticker")}</b>
+          <button onClick={onClose} aria-label={t("omega_attr_cerrar")} className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
         </div>
 
         <div className="px-4 py-3.5 text-[12.5px]">
           <div className="flex gap-2">
             <input ref={inputRef} value={ticker} onChange={(e) => setTicker(e.target.value)}
                    onKeyDown={(e) => e.key === "Enter" && buscar()}
-                   placeholder="Ticker (ej. HUMA)" disabled={busy}
+                   placeholder={t("omega_attr_ticker_ej_huma")} disabled={busy}
                    className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[12px] uppercase"
                    style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.grid}` }} />
             <button onClick={buscar} disabled={busy || !ticker.trim()}
@@ -156,9 +160,7 @@ export function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => v
                   {candidato.nombre && <span className="ml-2 text-[11px]" style={{ color: T.muted }}>{candidato.nombre}</span>}
                 </div>
                 <button onClick={() => { setCandidato(null); setTicker(""); }}
-                        className="shrink-0 text-[10.5px] underline" style={{ color: T.muted }}>
-                  nueva búsqueda
-                </button>
+                        className="shrink-0 text-[10.5px] underline" style={{ color: T.muted }}>{t("omega_ui_nueva_busqueda")}</button>
               </div>
 
               {!sinComprobar && (
@@ -167,18 +169,18 @@ export function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => v
                     <span style={{ color: candidato.filtro_sector_pass ? T.good : T.bad }}>
                       {candidato.filtro_sector_pass ? "✓" : "✗"}
                     </span>
-                    <span style={{ color: T.ink2 }}>Sector <span style={{ color: T.muted }}>{candidato.filtro_sector_detalle}</span></span>
+                    <span style={{ color: T.ink2 }}>{t("omega_ui_sector")}<span style={{ color: T.muted }}>{candidato.filtro_sector_detalle}</span></span>
                   </div>
                   <div className="flex gap-2">
                     <span style={{ color: candidato.estadistica_pass ? T.good : T.bad }}>
                       {candidato.estadistica_pass ? "✓" : "✗"}
                     </span>
-                    <span style={{ color: T.ink2 }}>Estadística <span style={{ color: T.muted }}>{candidato.estadistica_detalle}</span></span>
+                    <span style={{ color: T.ink2 }}>{t("omega_ui_estadistica")}<span style={{ color: T.muted }}>{candidato.estadistica_detalle}</span></span>
                   </div>
                   {candidato.gate_pass != null && (
                     <div className="flex gap-2">
                       <span style={{ color: candidato.gate_pass ? T.good : T.bad }}>{candidato.gate_pass ? "✓" : "✗"}</span>
-                      <span style={{ color: T.ink2 }}>Gate fundamental <span style={{ color: T.muted }}>{candidato.gate_detalle}</span></span>
+                      <span style={{ color: T.ink2 }}>{t("omega_ui_gate_fundamental")}<span style={{ color: T.muted }}>{candidato.gate_detalle}</span></span>
                     </div>
                   )}
                 </div>
@@ -188,26 +190,22 @@ export function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => v
                 <button onClick={() => recargar(() => comprobarFiltrosCandidato(candidato.id))} disabled={busy}
                         className="mt-3 w-full rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                         style={{ background: T.base, color: T.ink2 }}>
-                  {busy ? "Comprobando…" : "Comprobar filtros (gratis)"}
+                  {busy ? t("omega_checking") : t("omega_check_free")}
                 </button>
               ) : listoParaGate ? (
                 <button onClick={lanzarGate} disabled={busy}
                         className="mt-3 w-full rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                         style={{ background: T.entry, color: "#fff" }}>
-                  {busy ? "Evaluando…" : "Lanzar gate (1 llamada real)"}
+                  {busy ? t("omega_evaluating") : t("omega_launch_paid_gate")}
                 </button>
               ) : (
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => decidir("incorporado")} disabled={busy || candidato.decision === "incorporado"}
                           className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
-                          style={{ background: "rgba(12,163,12,0.14)", color: T.good, border: "1px solid rgba(12,163,12,0.35)" }}>
-                    Incorporar
-                  </button>
+                          style={{ background: "rgba(12,163,12,0.14)", color: T.good, border: "1px solid rgba(12,163,12,0.35)" }}>{t("omega_ui_incorporar")}</button>
                   <button onClick={() => decidir("descartado")} disabled={busy || candidato.decision === "descartado"}
                           className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
-                          style={{ background: "transparent", color: T.bad, border: "1px solid rgba(208,59,59,0.5)" }}>
-                    Mantener fuera
-                  </button>
+                          style={{ background: "transparent", color: T.bad, border: "1px solid rgba(208,59,59,0.5)" }}>{t("omega_ui_mantener_fuera")}</button>
                 </div>
               )}
             </div>
@@ -223,6 +221,8 @@ export function CandidatoBuscadorModal({ onClose, onCambio }: { onClose: () => v
 export function CandidatosTabs({ porRevisar, evaluados, onCambio }: {
   porRevisar: Candidato[]; evaluados: Candidato[]; onCambio: (c: Candidato) => void;
 }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [tab, setTab] = useState<"revisar" | "evaluados">("revisar");
   const tabBtn = (activo: boolean) => ({
     background: activo ? T.panel : "transparent",
@@ -234,24 +234,22 @@ export function CandidatosTabs({ porRevisar, evaluados, onCambio }: {
     <div>
       <div className="mx-3.5 mt-1 flex gap-1 rounded-lg p-1" style={{ background: T.panel2 }}>
         <button onClick={() => setTab("revisar")}
-                className="flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold" style={tabBtn(tab === "revisar")}>
-          Por revisar · {porRevisar.length}
+                className="flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold" style={tabBtn(tab === "revisar")}>{t("omega_review_tab", { count: porRevisar.length })}
         </button>
         <button onClick={() => setTab("evaluados")}
-                className="flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold" style={tabBtn(tab === "evaluados")}>
-          Evaluados · {evaluados.length}
+                className="flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold" style={tabBtn(tab === "evaluados")}>{t("omega_evaluated_tab", { count: evaluados.length })}
         </button>
       </div>
       <div className="mt-1">
         {tab === "revisar" ? (
           porRevisar.length === 0 ? (
-            <div className="px-3.5 pb-3.5 pt-2.5 text-[12px]" style={{ color: T.muted }}>Nada nuevo detectado.</div>
+            <div className="px-3.5 pb-3.5 pt-2.5 text-[12px]" style={{ color: T.muted }}>{t("omega_ui_nada_nuevo_detectado")}</div>
           ) : (
             porRevisar.map((c, i) => <CandidatoPorRevisarRow key={c.id} c={c} first={i === 0} onCambio={onCambio} />)
           )
         ) : (
           evaluados.length === 0 ? (
-            <div className="px-3.5 pb-3.5 pt-2.5 text-[12px]" style={{ color: T.muted }}>Ningún candidato evaluado todavía.</div>
+            <div className="px-3.5 pb-3.5 pt-2.5 text-[12px]" style={{ color: T.muted }}>{t("omega_ui_ningun_candidato_evaluado_todavia")}</div>
           ) : (
             evaluados.map((c, i) => <CandidatoRow key={c.id} c={c} first={i === 0} onCambio={onCambio} />)
           )
@@ -265,6 +263,8 @@ export function CandidatosTabs({ porRevisar, evaluados, onCambio }: {
  *  Sector + estadística son automáticos a un clic; el gate LLM es la única llamada que gasta
  *  dinero, y siempre candidato a candidato -- nunca un "evaluar todos" (8-sep-2026). */
 export function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; first: boolean; onCambio: (c: Candidato) => void }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -277,7 +277,7 @@ export function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; f
     try {
       onCambio(await fn());
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "No se pudo completar la acción.");
+      setErr(e instanceof ApiError ? e.message : t("omega_action_failed"));
     } finally {
       setBusy(false);
     }
@@ -294,7 +294,7 @@ export function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; f
       if (p.status !== "running") {
         if (gatePollRef.current) { clearInterval(gatePollRef.current); gatePollRef.current = null; }
         setBusy(false);
-        if (p.status === "error") setErr(p.error ?? "No se pudo completar el gate.");
+        if (p.status === "error") setErr(p.error ?? t("omega_gate_completion_failed"));
         if (p.candidato) onCambio(p.candidato);
       }
     } catch { /* fallo puntual de red no corta el sondeo */ }
@@ -322,7 +322,7 @@ export function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; f
       await lanzarGateCandidato(c.id);
       gatePollRef.current = setInterval(sondearGate, 3000);
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "No se pudo lanzar el gate.");
+      setErr(e instanceof ApiError ? e.message : t("omega_gate_failed"));
       setBusy(false);
     }
   };
@@ -334,7 +334,7 @@ export function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; f
       await decidirCandidato(c.id, "descartado");
       onCambio({ ...c, decision: "descartado", decidido_por: "manual" });
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "No se pudo completar la acción.");
+      setErr(e instanceof ApiError ? e.message : t("omega_action_failed"));
     } finally {
       setBusy(false);
     }
@@ -347,18 +347,18 @@ export function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; f
           <b style={{ color: T.ink }}>{c.ticker}</b>
           {c.nombre && <span className="ml-2 text-[11px]" style={{ color: T.muted }}>{c.nombre}</span>}
         </div>
-        <span className="shrink-0 text-[10px]" style={{ color: T.muted }}>{fmtFecha(c.fecha_evaluacion)}</span>
+        <span className="shrink-0 text-[10px]" style={{ color: T.muted }}>{fmtFecha(c.fecha_evaluacion, locale)}</span>
       </div>
 
       {!sinComprobar && (
         <div className="mt-2 space-y-1 text-[11.5px] leading-relaxed">
           <div className="flex gap-2">
             <span style={{ color: c.filtro_sector_pass ? T.good : T.bad }}>{c.filtro_sector_pass ? "✓" : "✗"}</span>
-            <span style={{ color: T.ink2 }}>Sector <span style={{ color: T.muted }}>{c.filtro_sector_detalle}</span></span>
+            <span style={{ color: T.ink2 }}>{t("omega_ui_sector")}<span style={{ color: T.muted }}>{c.filtro_sector_detalle}</span></span>
           </div>
           <div className="flex gap-2">
             <span style={{ color: c.estadistica_pass ? T.good : T.bad }}>{c.estadistica_pass ? "✓" : "✗"}</span>
-            <span style={{ color: T.ink2 }}>Estadística <span style={{ color: T.muted }}>{c.estadistica_detalle}</span></span>
+            <span style={{ color: T.ink2 }}>{t("omega_ui_estadistica")}<span style={{ color: T.muted }}>{c.estadistica_detalle}</span></span>
           </div>
         </div>
       )}
@@ -369,28 +369,28 @@ export function CandidatoPorRevisarRow({ c, first, onCambio }: { c: Candidato; f
           <button onClick={() => accionar(() => comprobarFiltrosCandidato(c.id))} disabled={busy}
                   className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                   style={{ background: T.base, color: T.ink2 }}>
-            {busy ? "Comprobando…" : "Comprobar filtros (gratis)"}
+            {busy ? t("omega_checking") : t("omega_check_free")}
           </button>
         ) : listoParaGate ? (
           <button onClick={lanzarGate} disabled={busy}
                   className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                   style={{ background: T.entry, color: "#fff" }}>
-            {busy ? "Evaluando…" : "Lanzar gate (1 llamada real)"}
+            {busy ? t("omega_evaluating") : t("omega_launch_paid_gate")}
           </button>
         ) : null}
         {/* Descartar sin necesidad de comprobar nada antes -- cada ticker es una decisión
             independiente, nunca hace falta procesar uno para poder quitarlo de la lista. */}
         <button onClick={descartar} disabled={busy}
                 className="rounded-full px-3 py-2 text-[11.5px] font-bold disabled:opacity-40"
-                style={{ background: "transparent", color: T.bad, border: "1px solid rgba(208,59,59,0.5)" }}>
-          Descartar
-        </button>
+                style={{ background: "transparent", color: T.bad, border: "1px solid rgba(208,59,59,0.5)" }}>{t("omega_ui_descartar")}</button>
       </div>
     </div>
   );
 }
 
 export function CandidatoRow({ c, first, onCambio }: { c: Candidato; first: boolean; onCambio: (c: Candidato) => void }) {
+  const t = useTranslations();
+  const locale = useLocale() === "en" ? "en" : "es";
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<"incorporado" | "descartado" | "reintentar" | null>(null);
 
@@ -425,7 +425,7 @@ export function CandidatoRow({ c, first, onCambio }: { c: Candidato; first: bool
         <span className="shrink-0" style={{ color }}>{marca}</span>
         <div className="min-w-0">
           <span className="font-semibold" style={{ color: T.ink2 }}>{label}</span>
-          <span className="ml-1" style={{ color: T.muted }}>{detalle || "Sin comprobar todavía."}</span>
+          <span className="ml-1" style={{ color: T.muted }}>{detalle || t("omega_unchecked")}</span>
         </div>
       </div>
     );
@@ -442,39 +442,35 @@ export function CandidatoRow({ c, first, onCambio }: { c: Candidato; first: bool
         {/* Esta lista solo contiene candidatos sin decidir todavía (los decididos salen de
             aquí en cuanto Incorporas o Mantienes fuera) -- el badge es siempre neutro. */}
         <span className="shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase"
-              style={{ background: T.base, color: T.ink2 }}>
-          sin decidir
-        </span>
+              style={{ background: T.base, color: T.ink2 }}>{t("omega_ui_sin_decidir")}</span>
       </button>
       {open && (
         <div className="px-3.5 pb-3.5">
           <div className="space-y-2 text-[11.5px] leading-relaxed">
             {check(c.filtro_sector_pass, "Sector", c.filtro_sector_detalle)}
-            {check(c.estadistica_pass, "Estadística", c.estadistica_detalle)}
-            {check(c.gate_pass, "Gate fundamental", c.gate_detalle)}
+            {check(c.estadistica_pass, t("omega_statistics"), c.estadistica_detalle)}
+            {check(c.gate_pass, t("omega_fundamental_gate"), c.gate_detalle)}
           </div>
           {puedeReintentar && (
             <button onClick={reintentar} disabled={busy != null}
                     className="mt-2.5 w-full rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                     style={{ background: T.base, color: T.ink2 }}>
-              {busy === "reintentar" ? "Reintentando…" : "Reintentar filtros (gratis)"}
+              {busy === "reintentar" ? t("omega_retrying") : t("omega_retry_free")}
             </button>
           )}
           <div className="mt-3 flex gap-2">
             <button onClick={() => decidir("incorporado")} disabled={busy != null}
                     className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                     style={{ background: "rgba(12,163,12,0.14)", color: T.good, border: "1px solid rgba(12,163,12,0.35)" }}>
-              {busy === "incorporado" ? "…" : "Incorporar"}
+              {busy === "incorporado" ? "…" : t("omega_include")}
             </button>
             <button onClick={() => decidir("descartado")} disabled={busy != null}
                     className="flex-1 rounded-full py-2 text-[11.5px] font-bold disabled:opacity-40"
                     style={{ background: "transparent", color: T.bad, border: "1px solid rgba(208,59,59,0.5)" }}>
-              {busy === "descartado" ? "…" : "Mantener fuera"}
+              {busy === "descartado" ? "…" : t("omega_keep_out")}
             </button>
           </div>
-          <p className="mt-2 text-[10px]" style={{ color: T.muted }}>
-            Sin decidir todavía: incorporar o mantener fuera es cosa tuya.
-          </p>
+          <p className="mt-2 text-[10px]" style={{ color: T.muted }}>{t("omega_ui_sin_decidir_todavia_incorporar_o_mantener_fuera_es_cosa_tuya")}</p>
         </div>
       )}
     </div>

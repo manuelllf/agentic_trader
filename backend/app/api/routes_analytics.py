@@ -1,6 +1,7 @@
 """Analitica columnar (DuckDB leyendo Postgres sincronizado, solo lectura): coste/latencia
 por etapa, confianza del prescore, y el explorador de universo."""
 from __future__ import annotations
+from app.i18n import translate
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -86,7 +87,7 @@ def analytics_coste_etapa(scan_run_id: int | None = Query(None)) -> dict:
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+        raise HTTPException(503, translate('api_analytics_failed', error=str(exc))) from exc
 
 
 @router.get("/analytics/confianza-prescore")
@@ -102,7 +103,7 @@ def analytics_confianza_prescore(scan_run_id: int | None = Query(None)) -> dict:
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+        raise HTTPException(503, translate('api_analytics_failed', error=str(exc))) from exc
 
 
 @router.get("/analytics/scans")
@@ -166,7 +167,7 @@ def analytics_explorar_opciones() -> dict:
     except FileNotFoundError as exc:
         raise HTTPException(503, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+        raise HTTPException(503, translate('api_analytics_failed', error=str(exc))) from exc
 
 
 @router.get("/analytics/explorar/contar")
@@ -199,7 +200,7 @@ def analytics_explorar_contar(
     except FileNotFoundError as exc:
         raise HTTPException(503, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+        raise HTTPException(503, translate('api_analytics_failed', error=str(exc))) from exc
 
 
 @router.get("/analytics/explorar/tickers")
@@ -232,5 +233,5 @@ def analytics_explorar_tickers(
     except FileNotFoundError as exc:
         raise HTTPException(503, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(503, f"No se pudo consultar la analítica: {exc}") from exc
+        raise HTTPException(503, translate('api_analytics_failed', error=str(exc))) from exc
 

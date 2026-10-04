@@ -5,6 +5,9 @@
 // seguridad real está en el backend (require_auth); esto es la capa de UX.
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { useLanguage } from "@/i18n/Provider";
+import { getYo } from "@/lib/liga/api";
 import { useEffect, useState } from "react";
 import { checkAuth, sesionRechazada } from "@/lib/api";
 import { sesionCaducada, tokenSesion } from "@/lib/liga/supabase";
@@ -20,13 +23,21 @@ async function desvio(): Promise<string | null> {
 }
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
+  const t = useTranslations();
+  const { setAccount } = useLanguage();
   const [state, setState] = useState<State>("checking");
 
   useEffect(() => {
     let alive = true;
     const decidir = async (ok: boolean) => {
       if (!alive) return;
-      if (ok) { setState("in"); return; }
+      if (ok) {
+        setState("in");
+        const session = await tokenSesion();
+        const profile = session ? await getYo().catch(() => null) : null;
+        if (alive && session && profile) setAccount({ id: session.uid, locale: profile.idioma ?? null });
+        return;
+      }
       const a = await desvio();
       if (a) window.location.replace(a);
       else if (sesionRechazada()) await sesionCaducada();  // token caducado: a entrar de nuevo
@@ -37,7 +48,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     const onUnauth = () => { void decidir(false); };
     window.addEventListener("agentic-unauthorized", onUnauth);
     return () => { alive = false; window.removeEventListener("agentic-unauthorized", onUnauth); };
-  }, []);
+  }, [setAccount]);
 
   if (state === "in") return <>{children}</>;
 
@@ -48,13 +59,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="flex items-center justify-center gap-2 py-4 text-[12px]" style={{ color: "#898781" }}>
           <span className="h-3.5 w-3.5 animate-spin rounded-full border-2"
                 style={{ borderColor: "#2c2c2a", borderTopColor: "#898781" }} />
-          Comprobando sesión…
+          {t("system_comprobando_sesion")}
         </div>
       ) : (
         <div className="max-w-xs text-center">
-          <p className="text-[15px] font-bold" style={{ color: "#fff" }}>Esta página no existe.</p>
+          <p className="text-[15px] font-bold" style={{ color: "#fff" }}>{t("system_pagina_no_existe")}</p>
           <Link href="/" className="mt-3 inline-block py-3 text-[12.5px]" style={{ color: "#898781" }}>
-            Volver a la portada
+            {t("system_volver_portada")}
           </Link>
         </div>
       )}

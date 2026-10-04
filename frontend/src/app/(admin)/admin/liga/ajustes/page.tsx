@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, del, get, put } from "@/lib/api";
 
@@ -32,18 +33,30 @@ const FINALIDAD_POR_CLAVE: Record<string, Finalidad> = {
 };
 const ORDEN_GRUPOS: Grupo[] = ["Emergencia", "IA", "Créditos"];
 
-const error = (e: unknown) => (e instanceof ApiError ? e.message : "Algo falló. Reintenta.");
-const FECHA = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-const dolares = (v: string | number) => `${Number(v).toFixed(2).replace(".", ",")} $`;
-const minusculaInicial = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-
-function textoValor(a: Ajuste, v: Valor): string {
-  if (v == null) return "sin fijar";
-  if (a.tipo === "interruptor") return v ? "Encendido" : "Apagado";
-  return `${Number(v).toLocaleString("es-ES")}${a.unidad ? ` ${a.unidad}` : ""}`;
-}
+const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 function Ajustes() {
+  const t = useTranslations();
+  const locale = useLocale();
+  const fecha = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const dollars = (v: string | number) => new Intl.NumberFormat(locale, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v));
+  const grupoLabel = (g: Grupo) => t(g === "Emergencia" ? "admin_settings_group_emergency" : g === "IA" ? "admin_settings_group_ai" : "admin_settings_group_credits");
+  const ajustesLabel = (a: Ajuste) => {
+    const slug: Record<string, string> = { "liga.registro.abierto": "registration", "liga.visible": "league_public", "ia.conversor.activo": "ai_converter", "ia.pregunta.activo": "ai_question", "ia.lectura.activo": "ai_reading", "ia.tope_mensual_usd": "ai_cap", "ia.margen_objetivo": "ai_margin", "creditos.bienvenida": "welcome_credits", "procesos.foto.auto": "auto_photo", "procesos.formar.auto": "auto_form" };
+    const suffix = slug[a.clave];
+    return suffix ? { title: t(`admin_setting_${suffix}_title`), help: t(`admin_setting_${suffix}_help`) } : { title: a.titulo, help: a.ayuda };
+  };
+  const valor = (a: Ajuste, v: Valor) => {
+    if (v == null) return t("admin_settings_unspecified");
+    if (a.tipo === "interruptor") return v ? t("admin_settings_on") : t("admin_settings_off");
+    const unit = a.unidad === "créditos" ? ` ${t("admin_settings_credits_unit")}` : a.unidad ? ` ${a.unidad}` : "";
+    return `${new Intl.NumberFormat(locale).format(Number(v))}${unit}`;
+  };
+  const reasonLabel = (reason: string) => {
+    const keys: Record<string, string> = { "Falta ENABLE_LLM en Railway": "admin_settings_reason_llm_disabled", "Sin clave de Jev": "admin_settings_reason_no_jev_key", "Sin clave de DeepSeek": "admin_settings_reason_no_deepseek_key", "Apagado aquí": "admin_settings_reason_disabled_here", "Tope mensual mal configurado": "admin_settings_reason_bad_cap", "Tope del mes alcanzado": "admin_settings_reason_cap_reached" };
+    return keys[reason] ? t(keys[reason]) : reason;
+  };
+  const errorText = useCallback((e: unknown) => error(e, t("admin_generic_error")), [t]);
   const [ajustes, setAjustes] = useState<Ajuste[] | null>(null);
   const [estadoIA, setEstadoIA] = useState<EstadoIA | null>(null);
   const [fallo, setFallo] = useState("");
@@ -63,8 +76,8 @@ function Ajustes() {
                .map((a) => [a.clave, a.valor == null ? "" : String(a.valor)]),
         ));
       })
-      .catch((e) => setFallo(error(e)));
-  }, []);
+      .catch((e) => setFallo(errorText(e)));
+  }, [errorText]);
   useEffect(cargar, [cargar]);
 
   const marcarGuardado = (clave: string) => {
@@ -74,7 +87,7 @@ function Ajustes() {
 
   const guardarInterruptor = async (a: Ajuste, nuevo: boolean) => {
     if (a.grupo === "IA" && nuevo
-        && !window.confirm("Esto empieza a gastar dinero real en llamadas de IA. ¿Encender?")) {
+        && !window.confirm(t("admin_settings_confirm_ai"))) {
       return;
     }
     setOcupada(a.clave); setErroresFila((e) => ({ ...e, [a.clave]: "" }));
@@ -86,7 +99,7 @@ function Ajustes() {
       // El interruptor pudo mover si una finalidad de IA funciona ahora; refresca su estado.
       get<EstadoIA>("/liga/admin/ia/estado").then(setEstadoIA).catch(() => {});
     } catch (e) {
-      setErroresFila((er) => ({ ...er, [a.clave]: error(e) }));
+      setErroresFila((er) => ({ ...er, [a.clave]: errorText(e) }));
     } finally {
       setOcupada(null);
     }
@@ -96,7 +109,7 @@ function Ajustes() {
     const texto = borradores[a.clave] ?? "";
     const numero = Number(texto.replace(",", "."));
     if (texto.trim() === "" || Number.isNaN(numero)) {
-      setErroresFila((e) => ({ ...e, [a.clave]: "Escribe un número." }));
+      setErroresFila((e) => ({ ...e, [a.clave]: t("admin_settings_number_error") }));
       return;
     }
     setOcupada(a.clave); setErroresFila((e) => ({ ...e, [a.clave]: "" }));
@@ -107,14 +120,14 @@ function Ajustes() {
       setBorradores((b) => ({ ...b, [a.clave]: fila.valor == null ? "" : String(fila.valor) }));
       marcarGuardado(a.clave);
     } catch (e) {
-      setErroresFila((er) => ({ ...er, [a.clave]: error(e) }));
+      setErroresFila((er) => ({ ...er, [a.clave]: errorText(e) }));
     } finally {
       setOcupada(null);
     }
   };
 
   const restablecer = async (a: Ajuste) => {
-    if (!window.confirm(`¿Volver «${a.titulo}» a su valor por defecto (${textoValor(a, a.defecto)})?`)) return;
+    if (!window.confirm(t("admin_settings_reset_confirm", { title: ajustesLabel(a).title, value: valor(a, a.defecto) }))) return;
     setOcupada(a.clave); setErroresFila((e) => ({ ...e, [a.clave]: "" }));
     try {
       const fila = await del<Ajuste>(`/liga/admin/ajustes/${encodeURIComponent(a.clave)}`);
@@ -123,7 +136,7 @@ function Ajustes() {
       marcarGuardado(a.clave);
       if (a.grupo === "IA") get<EstadoIA>("/liga/admin/ia/estado").then(setEstadoIA).catch(() => {});
     } catch (e) {
-      setErroresFila((er) => ({ ...er, [a.clave]: error(e) }));
+      setErroresFila((er) => ({ ...er, [a.clave]: errorText(e) }));
     } finally {
       setOcupada(null);
     }
@@ -131,25 +144,25 @@ function Ajustes() {
 
   return (
     <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
-      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>← Vennett</Link>
+      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_settings_back")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
-          style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>Ajustes</h1>
+          style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_settings_title")}</h1>
 
       {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
       {!ajustes || !estadoIA ? (
-        !fallo && <p className="mt-6" style={{ color: "#898781" }}>Cargando…</p>
+        !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
       ) : (
         ORDEN_GRUPOS.map((grupo) => {
           const filas = ajustes.filter((a) => a.grupo === grupo);
           if (filas.length === 0) return null;
           return (
             <section key={grupo} className="mt-6">
-              <h2 className="text-[15px] font-bold text-white">{grupo}</h2>
+              <h2 className="text-[15px] font-bold text-white">{grupoLabel(grupo)}</h2>
               {grupo === "IA" && (
                 <p className="mt-1" style={{ color: "#898781" }}>
-                  Llevas {dolares(estadoIA.gasto_mes_usd)}
-                  {estadoIA.tope_mensual_usd != null ? ` de ${dolares(estadoIA.tope_mensual_usd)}` : " (sin tope fijado)"}
-                  {" "}este mes.
+                  {t("admin_settings_spending_lead")} {dollars(estadoIA.gasto_mes_usd)}
+                  {estadoIA.tope_mensual_usd != null ? ` de ${dollars(estadoIA.tope_mensual_usd)}` : t("admin_settings_spending_no_cap")}
+                  {" "}{t("admin_settings_spending_tail")}
                 </p>
               )}
               <ul className="mt-2 border-t" style={{ borderColor: "#303030" }}>
@@ -162,13 +175,13 @@ function Ajustes() {
                   const encendido = a.efectivo === true;
                   return (
                     <li key={a.clave} className="border-b py-3" style={{ borderColor: "#303030" }}>
-                      <p className="text-white">{a.titulo}</p>
-                      <p className="mt-0.5 text-[11.5px]" style={{ color: "#898781" }}>{a.ayuda}</p>
+                      <p className="text-white">{ajustesLabel(a).title}</p>
+                      <p className="mt-0.5 text-[11.5px]" style={{ color: "#898781" }}>{ajustesLabel(a).help}</p>
 
                       {a.tipo === "interruptor" ? (
                         <div className="mt-2 flex items-center gap-3">
                           <button type="button" role="switch" aria-checked={encendido}
-                                  aria-label={a.titulo} disabled={ocupada === a.clave}
+                                  aria-label={ajustesLabel(a).title} disabled={ocupada === a.clave}
                                   onClick={() => guardarInterruptor(a, !encendido)}
                                   className="relative h-[26px] w-[46px] shrink-0 rounded-full transition-colors disabled:opacity-50"
                                   style={{ background: encendido ? "#2f9e5b" : "#3a3a38" }}>
@@ -176,16 +189,16 @@ function Ajustes() {
                                   style={{ transform: encendido ? "translateX(20px)" : "translateX(0)" }} />
                           </button>
                           <span className="font-bold" style={{ color: encendido ? "#6fd396" : "#898781" }}>
-                            {encendido ? "Encendido" : "Apagado"}
+                            {encendido ? t("admin_settings_on") : t("admin_settings_off")}
                           </span>
-                          {guardadoOk === a.clave && <span style={{ color: "#6fd396" }}>Guardado ✓</span>}
+                          {guardadoOk === a.clave && <span style={{ color: "#6fd396" }}>{t("admin_settings_saved")}</span>}
                         </div>
                       ) : (
                         <div className="mt-2 flex items-center gap-2">
                           <input type="number" step="0.01"
                                  min={a.minimo ?? undefined} max={a.maximo ?? undefined}
                                  value={borradores[a.clave] ?? ""}
-                                 placeholder={a.defecto != null ? String(a.defecto) : "sin fijar"}
+                                 placeholder={a.defecto != null ? String(a.defecto) : t("admin_settings_unspecified")}
                                  onChange={(e) => setBorradores({ ...borradores, [a.clave]: e.target.value })}
                                  className="min-h-[44px] w-28 rounded-lg border px-3 text-white"
                                  style={{ background: "#141413", borderColor: "#303030" }} />
@@ -195,9 +208,9 @@ function Ajustes() {
                                   onClick={() => guardarNumero(a)}
                                   className="min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
                                   style={{ background: "#3987e5" }}>
-                            Guardar
+                            {t("admin_settings_save")}
                           </button>
-                          {guardadoOk === a.clave && <span style={{ color: "#6fd396" }}>Guardado ✓</span>}
+                          {guardadoOk === a.clave && <span style={{ color: "#6fd396" }}>{t("admin_settings_saved")}</span>}
                         </div>
                       )}
 
@@ -206,7 +219,7 @@ function Ajustes() {
                            style={estado.funciona
                              ? { background: "#1f5f3a", color: "#9be0b3" }
                              : { background: "#2a1616", color: "#e6a667" }}>
-                          {estado.funciona ? "Funciona" : `No funciona: ${minusculaInicial(estado.razon ?? "")}`}
+                          {estado.funciona ? t("admin_settings_works") : t("admin_settings_not_working", { reason: reasonLabel(estado.razon ?? "") })}
                         </p>
                       )}
 
@@ -214,12 +227,12 @@ function Ajustes() {
 
                       <p className="mt-1.5 text-[11.5px]" style={{ color: "#67665f" }}>
                         {a.valor == null
-                          ? `Por defecto (${textoValor(a, a.defecto)}).`
-                          : `Actualizado ${a.actualizado ? FECHA.format(new Date(a.actualizado)) : ""}.`}
+                          ? t("admin_settings_default", { value: valor(a, a.defecto) })
+                          : t("admin_settings_updated", { date: a.actualizado ? fecha.format(new Date(a.actualizado)) : "" })}
                         {a.valor != null && (
                           <button type="button" onClick={() => restablecer(a)} disabled={ocupada === a.clave}
                                   className="ml-2 underline disabled:opacity-40" style={{ color: "#67665f" }}>
-                            Volver al valor por defecto
+                            {t("admin_settings_reset")}
                           </button>
                         )}
                       </p>

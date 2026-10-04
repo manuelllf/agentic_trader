@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import {
   approveTrade, fetchAnalyticsConfianzaPrescore, fetchAnalyticsCosteEtapa,
   fetchAnalyticsScans,
@@ -20,6 +21,7 @@ import AuthGate from "@/components/AuthGate";
 import HistoryChart from "@/components/HistoryChart";
 import { InfoTip } from "@/components/InfoTip";
 import SalaDoor from "@/components/SalaDoor";
+import { LanguageSelector } from "@/i18n/LanguageSelector";
 import { fmtPct, fmtTime, money, qty4, signMoney } from "@/lib/format";
 import type { FunnelScan } from "@/lib/scan";
 import type {
@@ -44,6 +46,7 @@ import { Details, Empty, Field, Kpi, Panel, SideTag, Td, Th } from "./ui";
 type PendingSortKey = "ticker" | "target_weight_pct" | "est_price" | "score";
 type PositionSortKey = "ticker" | "quantity" | "avg_cost" | "price" | "value" | "w" | "pnl";
 type PersonalSortKey = "ticker" | "quantity" | "price" | "value" | "pnl";
+type UiMessage = { key: string; values?: Record<string, string | number> } | { text: string };
 
 /* ============================== página ============================== */
 
@@ -59,6 +62,8 @@ export default function SalaReal() {
 }
 
 function SalaRealRoom() {
+  const t = useTranslations();
+  const locale: "es" | "en" = useLocale() === "en" ? "en" : "es";
   const router = useRouter();
   const [summary, setSummary] = useState<RealSummary | null>(null);
   const [approvals, setApprovals] = useState<ApprovalsResponse | null>(null);
@@ -68,7 +73,7 @@ function SalaRealRoom() {
   const [fx, setFx] = useState<number | null>(null);      // EURUSD indicativo (frontera €/$)
   const [capOpen, setCapOpen] = useState(false);          // formulario aportar/retirar (libro andando)
   const [error, setError] = useState("");
-  const [flash, setFlash] = useState("");
+  const [flash, setFlash] = useState<UiMessage | null>(null);
   const [loading, setLoading] = useState(true);
   const [leaving, setLeaving] = useState(false);
   const [pushOn, setPushOn] = useState<boolean | null>(null);
@@ -82,7 +87,7 @@ function SalaRealRoom() {
   const [resetting, setResetting] = useState(false);
   // Actividad (histórico de decisiones): colapsada por defecto, penúltima — uso ocasional.
   const [actividadOpen, setActividadOpen] = useState(false);
-  // Historia de un ticker a través de los escaneos: se abre desde "Posiciones del agente".
+  // Historia de un ticker a través de los escaneos: se abre desde t("alpha_ops_positions_title").
   const [auditTicker, setAuditTicker] = useState<string | null>(null);
   // Analítica del método (DuckDB sobre Postgres): bajo demanda, cada tabla con su propio
   // estado — un 503 (DuckDB no instalado) en una no debe tragarse las otras dos.
@@ -132,7 +137,7 @@ function SalaRealRoom() {
       setError("");
     } catch (e) {
       if (alive.current && miSeq === loadSeqRef.current) {
-        setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
+        setError(e instanceof Error ? e.message : t("alpha_ops_connection_error"));
       }
     } finally {
       hasLoadedOnce.current = true;
@@ -155,7 +160,7 @@ function SalaRealRoom() {
       setError("");
     } catch (e) {
       if (alive.current && miSeq === loadSeqRef.current) {
-        setError(e instanceof Error ? e.message : "Sin conexión con el backend.");
+        setError(e instanceof Error ? e.message : t("alpha_ops_connection_error"));
       }
     } finally {
       if (alive.current) setLoading(false);
@@ -167,11 +172,10 @@ function SalaRealRoom() {
     try {
       const r = await resetShadow();
       setResetArmed(false);
-      setFlash(`Libro sombra reiniciado (${r.deleted.positions} posiciones, ${r.deleted.trades} `
-        + `operaciones). Caja: $${r.cash_after}. Lanza un escaneo para redesplegarla.`);
+      setFlash({ key: "alpha_shadow_reset_done", values: { positions: r.deleted.positions, trades: r.deleted.trades, cash: r.cash_after } });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo reiniciar el libro sombra.");
+      setError(e instanceof Error ? e.message : t("alpha_ops_reset_error"));
     } finally {
       setResetting(false);
     }
@@ -191,10 +195,10 @@ function SalaRealRoom() {
       .catch(() => setAnalyticsScans([]));
     fetchAnalyticsCosteEtapa()
       .then((r) => setCosteEtapa({ data: r.items, loading: false, error: "" }))
-      .catch((e) => setCosteEtapa({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+      .catch((e) => setCosteEtapa({ data: null, loading: false, error: e instanceof Error ? e.message : t("alpha_ops_load_error") }));
     fetchAnalyticsConfianzaPrescore()
       .then((r) => setConfianzaPrescore({ data: r.items, loading: false, error: "" }))
-      .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+      .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : t("alpha_ops_load_error") }));
   }
 
   /** Recarga solo coste-etapa para el escaneo en `pos` (-1 = Total, agregado histórico).
@@ -206,7 +210,7 @@ function SalaRealRoom() {
     setCosteEtapa((s) => ({ ...s, loading: true, error: "" }));
     fetchAnalyticsCosteEtapa(scanId)
       .then((r) => setCosteEtapa({ data: r.items, loading: false, error: "" }))
-      .catch((e) => setCosteEtapa({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+      .catch((e) => setCosteEtapa({ data: null, loading: false, error: e instanceof Error ? e.message : t("alpha_ops_load_error") }));
   }
 
   /** Igual que `loadCosteForScan` pero para confianza-prescore, con su propia posición. */
@@ -216,7 +220,7 @@ function SalaRealRoom() {
     setConfianzaPrescore((s) => ({ ...s, loading: true, error: "" }));
     fetchAnalyticsConfianzaPrescore(scanId)
       .then((r) => setConfianzaPrescore({ data: r.items, loading: false, error: "" }))
-      .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : "No se pudo cargar." }));
+      .catch((e) => setConfianzaPrescore({ data: null, loading: false, error: e instanceof Error ? e.message : t("alpha_ops_load_error") }));
   }
 
   useEffect(() => {
@@ -261,8 +265,8 @@ function SalaRealRoom() {
       setScanStatus(s);
       if (s.status === "running") { scanTimer.current = setTimeout(pollScan, 4000); return; }
       setRunning(false);
-      if (s.status === "error") setError(s.error ?? "Fallo en el análisis.");
-      else if (s.status === "done") setFlash("Análisis completado.");
+      if (s.status === "error") setError(s.error ?? t("alpha_ops_analysis_error"));
+      else if (s.status === "done") setFlash({ key: "alpha_analysis_complete" });
       await load();
     } catch {
       scanTimer.current = setTimeout(pollScan, 6000);
@@ -274,13 +278,13 @@ function SalaRealRoom() {
   const onScanStarted = useCallback(() => {
     setError("");
     setRunning(true);
-    setFlash("Escaneo en marcha…");
+    setFlash({ key: "alpha_scan_running" });
     pollScan();
   }, [pollScan]);
 
   useEffect(() => {
     if (!flash) return;
-    const t = setTimeout(() => setFlash(""), 5000);
+    const t = setTimeout(() => setFlash(null), 5000);
     return () => clearTimeout(t);
   }, [flash]);
 
@@ -297,7 +301,7 @@ function SalaRealRoom() {
   const enablePush = async () => {
     try {
       const perm = await Notification.requestPermission();
-      if (perm !== "granted") return setFlash("Permiso de notificaciones denegado.");
+      if (perm !== "granted") return setFlash({ key: "alpha_push_permission_denied" });
       const reg = await navigator.serviceWorker.ready;
       const { key } = await getPushKey();
       const pad = "=".repeat((4 - (key.length % 4)) % 4);
@@ -308,9 +312,9 @@ function SalaRealRoom() {
       });
       await subscribePush(sub.toJSON());
       setPushOn(true);
-      setFlash("Alertas activadas en este dispositivo.");
+      setFlash({ key: "alpha_push_enabled" });
     } catch (e) {
-      setFlash(e instanceof Error ? e.message : "No se pudo activar el push.");
+      setFlash({ text: e instanceof Error ? e.message : t("alpha_push_enable_error") });
     }
   };
 
@@ -319,14 +323,14 @@ function SalaRealRoom() {
       const out = yes ? await approveTrade(id) : await rejectTrade(id);
       setFlash(yes
         ? out.status === "executed"
-          ? `${out.ticker} — ${out.result_msg}`
+          ? { key: "alpha_trade_executed_flash", values: { ticker: out.ticker, detail: out.result_msg ?? "" } }
           : out.status === "working"
-            ? `${out.ticker} — orden límite enviada, esperando ejecución.`
-            : `${out.ticker} — FALLÓ: ${out.result_msg}`
-        : `${out.ticker} — propuesta descartada.`);
+            ? { key: "alpha_trade_working_flash", values: { ticker: out.ticker } }
+            : { key: "alpha_trade_failed_flash", values: { ticker: out.ticker, detail: out.result_msg ?? "" } }
+        : { key: "alpha_proposal_rejected_flash", values: { ticker: out.ticker } });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error decidiendo la propuesta.");
+      setError(e instanceof Error ? e.message : t("alpha_ops_decision_error"));
     }
   };
 
@@ -334,11 +338,11 @@ function SalaRealRoom() {
     try {
       const { reconciled } = await reconcileApprovals();
       setFlash(reconciled
-        ? `${reconciled} orden(es) actualizada(s) con su fill real.`
-        : "Sin cambios: la(s) orden(es) siguen sin ejecutar en IBKR.");
+        ? { key: "alpha_orders_reconciled", values: { count: reconciled } }
+        : { key: "alpha_no_order_changes" });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error sincronizando órdenes con IBKR.");
+      setError(e instanceof Error ? e.message : t("alpha_ops_orders_error"));
     }
   };
 
@@ -347,9 +351,9 @@ function SalaRealRoom() {
     try {
       const res = await syncPersonal();
       setPersonal(res);
-      setFlash(`Cartera personal sincronizada: ${res.synced} posición(es) desde IBKR.`);
+      setFlash({ key: "alpha_personal_sync_done", values: { count: res.synced } });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo sincronizar la cartera personal.");
+      setError(e instanceof Error ? e.message : t("alpha_ops_personal_sync_error"));
     } finally {
       setSyncing(false);
     }
@@ -429,7 +433,7 @@ function SalaRealRoom() {
            style={{ background: T.page, color: T.muted, fontFamily: SANS }}>
         <span className="h-6 w-6 animate-spin rounded-full border-2"
               style={{ borderColor: T.grid, borderTopColor: T.buy }} />
-        <p>Cargando Alpha…</p>
+        <p>{t("alpha_loading_room")}</p>
       </div>
     );
   }
@@ -447,7 +451,7 @@ function SalaRealRoom() {
              style={{ background: `${T.page}f2` }}>
           <span className="h-6 w-6 animate-spin rounded-full border-2"
                 style={{ borderColor: T.grid, borderTopColor: T.buy }} />
-          <p style={{ color: T.muted }}>Actualizando…</p>
+          <p style={{ color: T.muted }}>{t("alpha_updating")}</p>
         </div>
       )}
 
@@ -475,9 +479,10 @@ function SalaRealRoom() {
             escaneo ya tiene su propio botón en Centro de operaciones más abajo. */}
         <div className="mb-4 flex items-center justify-between">
           <button onClick={exit} className="text-[12px] font-semibold transition-colors hover:underline" style={{ color: T.muted }}>
-            ← Salas
+            ← {t("alpha_rooms")}
           </button>
           <div className="flex items-center gap-2">
+            <LanguageSelector />
             <SalaDoor to="beta" />
             <SalaDoor to="omega" />
           </div>
@@ -493,7 +498,7 @@ function SalaRealRoom() {
                style={{ color: T.buy, fontFamily: "var(--font-land-serif)", fontStyle: "italic",
                         fontOpticalSizing: "none", fontVariationSettings: '"opsz" 9' }}>
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: error ? T.bad : T.good }}
-                    role="status" aria-label={error ? "sin conexión" : "conectado"} />
+                    role="status" aria-label={error ? t("alpha_disconnected") : t("alpha_connected")} />
               α
             </p>
             {summary && (
@@ -509,9 +514,9 @@ function SalaRealRoom() {
               </span>
             )}
           </div>
-          <h1 className="mt-1 text-[26px] font-bold" style={{ color: T.ink }}>Cartera real</h1>
+          <h1 className="mt-1 text-[26px] font-bold" style={{ color: T.ink }}>{t("alpha_real_portfolio")}</h1>
           <p className="mt-2 max-w-[46ch] text-[14px]" style={{ color: T.ink2 }}>
-            El agente propone; cada orden espera tu Sí o tu No.
+            {t("alpha_header_description")}
           </p>
         </header>
 
@@ -524,14 +529,14 @@ function SalaRealRoom() {
             <button onClick={() => { setLoading(true); load(); }}
                     className="rounded border px-3 py-1 text-[11.5px] font-bold transition-opacity hover:opacity-80"
                     style={{ borderColor: T.bad, color: T.bad }}>
-              Reintentar
+              {t("alpha_retry")}
             </button>
           </div>
         )}
         {flash && (
           <div className="mb-3 flex items-center justify-between text-[12.5px]" style={{ color: T.ink2 }}>
-            <span>{flash}</span>
-            <button onClick={() => setFlash("")} aria-label="Cerrar" className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
+            <span>{"text" in flash ? flash.text : t(flash.key, flash.values)}</span>
+            <button onClick={() => setFlash(null)} aria-label={t("alpha_close")} className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
           </div>
         )}
         {/* ---------- 1 · requiere decisión: cuando existe, SIEMPRE lo más alto ---------- */}
@@ -540,16 +545,16 @@ function SalaRealRoom() {
             <div className="flex items-center gap-2 px-0.5">
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: T.warn }} />
               <h2 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: T.warn }}>
-                Requiere decisión
+                {t("alpha_requires_decision")}
               </h2>
             </div>
             {working.length > 0 && (
               <Panel accent={T.warn}
-                     title={`Órdenes en curso · ${working.length}`}
+                     title={t("alpha_orders_in_progress", { count: working.length })}
                      right={<button onClick={reconcile}
                                     className="rounded border px-3 py-1 text-[11.5px] font-bold transition-opacity hover:opacity-80"
                                     style={{ borderColor: "rgba(250,178,25,0.5)", color: T.warn }}>
-                              Sincronizar ahora
+                              {t("alpha_sync_now")}
                             </button>}>
                 <div className="divide-y" style={{ borderColor: T.grid }}>
                   {working.map((w) => (
@@ -557,14 +562,14 @@ function SalaRealRoom() {
                       <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
                         <SideTag action={w.action} />
                         <span className="w-14 text-[14px] font-bold" style={{ color: T.ink }}>{w.ticker}</span>
-                        <Field k="Pedidas" v={w.requested_quantity ? qty4(w.requested_quantity) : "—"} />
-                        <Field k="Ejecutadas" v={w.quantity ? qty4(w.quantity) : "0"} />
-                        <Field k="Precio est." v={w.est_price ? `$${money(w.est_price)}` : "—"} />
-                        <Field k="Orden IBKR" v={w.broker_order_id ?? "—"} />
-                        <Field k="Enviada" v={fmtTime(w.decided_at)} />
+                        <Field k={t("alpha_requested")} v={w.requested_quantity ? qty4(w.requested_quantity, locale) : "—"} />
+                        <Field k={t("alpha_executed")} v={w.quantity ? qty4(w.quantity, locale) : "0"} />
+                        <Field k={t("alpha_est_price")} v={w.est_price ? `$${money(w.est_price, 2, locale)}` : "—"} />
+                        <Field k={t("alpha_ibkr_order")} v={w.broker_order_id ?? "—"} />
+                        <Field k={t("alpha_sent")} v={fmtTime(w.decided_at, locale)} />
                         <span className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: T.warn }}>
                           <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: T.warn }} />
-                          TRABAJANDO
+                          {t("alpha_working")}
                         </span>
                       </div>
                       {/* Si el último sondeo tropezó (p. ej. la conversión EUR→USD que IBKR
@@ -581,26 +586,25 @@ function SalaRealRoom() {
                   ))}
                 </div>
                 <p className="border-t px-4 py-1.5 text-[11px]" style={{ borderColor: T.grid, color: T.muted }}>
-                  Orden límite viva en IBKR (validez: sesión). El libro se cuadra solo al ejecutarse; su
-                  caja/acciones quedan reservadas — no hay doble gasto.
+                  {t("alpha_working_order_help")}
                 </p>
               </Panel>
             )}
             {pending.length > 0 && (
-              <Panel title={`Propuestas del agente · ${pending.length} esperando tu decisión`}
+              <Panel title={t("alpha_agent_proposals_waiting", { count: pending.length })}
                      right={<span className="text-[11px]" style={{ color: T.muted }}>
-                              caducan a los {cfg?.approval_expiry_days ?? 3} días sin decidir
+                              {t("alpha_expire_days", { count: cfg?.approval_expiry_days ?? 3 })}
                             </span>}>
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse whitespace-nowrap text-[13px]">
                     <thead>
                       <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: T.muted }}>
                         <Th> </Th>
-                        <Th sort={{ active: pendingSortKey === "ticker", dir: pendingSortDir, onClick: () => togglePending("ticker"), ariaSort: pendingAriaSort("ticker"), label: "instrumento" }}>Instrumento</Th>
-                        <Th right sort={{ active: pendingSortKey === "target_weight_pct", dir: pendingSortDir, onClick: () => togglePending("target_weight_pct"), ariaSort: pendingAriaSort("target_weight_pct"), label: "peso objetivo" }}>Peso obj.</Th>
-                        <Th right sort={{ active: pendingSortKey === "est_price", dir: pendingSortDir, onClick: () => togglePending("est_price"), ariaSort: pendingAriaSort("est_price"), label: "precio" }}>Precio</Th>
-                        <Th right sort={{ active: pendingSortKey === "score", dir: pendingSortDir, onClick: () => togglePending("score"), ariaSort: pendingAriaSort("score"), label: "score" }}>Score</Th>
-                        <Th right>Decisión</Th>
+                        <Th sort={{ active: pendingSortKey === "ticker", dir: pendingSortDir, onClick: () => togglePending("ticker"), ariaSort: pendingAriaSort("ticker"), label: t("alpha_instrument") }}>{t("alpha_instrument")}</Th>
+                        <Th right sort={{ active: pendingSortKey === "target_weight_pct", dir: pendingSortDir, onClick: () => togglePending("target_weight_pct"), ariaSort: pendingAriaSort("target_weight_pct"), label: t("alpha_target_weight") }}>{t("alpha_target_weight_short")}</Th>
+                        <Th right sort={{ active: pendingSortKey === "est_price", dir: pendingSortDir, onClick: () => togglePending("est_price"), ariaSort: pendingAriaSort("est_price"), label: t("alpha_price") }}>{t("alpha_price")}</Th>
+                        <Th right sort={{ active: pendingSortKey === "score", dir: pendingSortDir, onClick: () => togglePending("score"), ariaSort: pendingAriaSort("score"), label: t("alpha_score") }}>{t("alpha_score")}</Th>
+                        <Th right>{t("alpha_decision")}</Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -619,29 +623,26 @@ function SalaRealRoom() {
         {/* ---------- 2a · libro vacío → puesta en marcha (la primera aportación vive aquí) ---------- */}
         {summary && !hasCapital && (
           <div className="mb-4">
-            <Panel title="Ponlo en marcha">
+            <Panel title={t("alpha_get_started")}>
               <p className="px-4 pt-3 text-[12px] leading-relaxed" style={{ color: T.muted }}>
-                Dos pasos. El agente propone; cada orden esperará tu Sí o tu No
-                {dry ? " — y ahora mismo en simulación: nada llega a IBKR." : "."}
+                {t("alpha_get_started_help", { dryRun: dry ? "dry" : "live" })}
               </p>
               <div className="grid gap-3 p-4 md:grid-cols-2">
                 <div className="border p-3.5" style={{ borderColor: T.grid }}>
                   <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-                    <b style={{ color: T.ink2 }}>1</b> · capital del agente
+                    <b style={{ color: T.ink2 }}>1</b> · {t("alpha_agent_capital")}
                   </p>
-                  <CapitalForm onDone={(s, msg) => { setSummary(s); setFlash(msg); }} onError={setError} />
+                  <CapitalForm onDone={(s, cur, amount) => { setSummary(s); setFlash({ key: cur === "EUR" ? "alpha_cash_updated_eur" : "alpha_cash_updated_usd", values: { sign: amount > 0 ? "+" : "", amount: Math.abs(amount) } }); }} onError={setError} />
                 </div>
                 <div className="border p-3.5" style={{ borderColor: T.grid }}>
                   <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-                    <b style={{ color: T.ink2 }}>2</b> · análisis
+                    <b style={{ color: T.ink2 }}>2</b> · {t("alpha_analysis")}
                   </p>
                   <p className="text-[12.5px] leading-relaxed" style={{ color: T.ink2 }}>
-                    El agente escanea el último día de bolsa del mes, tras el cierre, a las 16:45 (hora
-                    del mercado US) y decide la cartera (sombra y propuestas aquí) — o al
-                    momento con «Analizar mercado» arriba.
+                    {t("alpha_monthly_scan_explainer")}
                   </p>
                   <p className="mt-1.5 text-[11px]" style={{ color: T.muted }}>
-                    {report ? `Último análisis: ${fmtTime(report.at)}.` : "Aún sin análisis."}
+                    {report ? t("alpha_last_analysis_at", { date: fmtTime(report.at, locale) }) : t("alpha_no_analysis_yet")}
                   </p>
                 </div>
               </div>
@@ -654,44 +655,44 @@ function SalaRealRoom() {
           <>
             <section className="grid grid-cols-2 gap-x-6 gap-y-6 border-t pb-1 pt-4 md:grid-cols-3 xl:grid-cols-6"
                      style={{ borderColor: T.grid }}>
-              <Kpi big label="Patrimonio"
-                   value={summary && fx && equity > 0 ? `€${money(equity / fx, 0)}` : "—"}
-                   sub={summary ? `≈ $${money(equity)}` : undefined} />
-              <Kpi label="Caja €" value={summary ? `€${money(summary.cash.eur)}` : "—"} />
-              <Kpi label="Caja $" value={summary ? `$${money(summary.cash.usd)}` : "—"} />
-              <Kpi label="Invertido" value={summary ? `$${money(summary.positions_value)}` : "—"}
-                   sub={summary ? `${summary.positions.length}/${cfg?.max_positions ?? 5} posiciones` : undefined} />
+              <Kpi big label={t("alpha_net_worth")}
+                   value={summary && fx && equity > 0 ? `€${money(equity / fx, 0, locale)}` : "—"}
+                   sub={summary ? `≈ $${money(equity, 2, locale)}` : undefined} />
+              <Kpi label={t("alpha_cash_eur")} value={summary ? `€${money(summary.cash.eur, 2, locale)}` : "—"} />
+              <Kpi label={t("alpha_cash_usd")} value={summary ? `$${money(summary.cash.usd, 2, locale)}` : "—"} />
+              <Kpi label={t("alpha_invested")} value={summary ? `$${money(summary.positions_value, 2, locale)}` : "—"}
+                   sub={summary ? t("alpha_positions_count", { current: summary.positions.length, max: cfg?.max_positions ?? 5 }) : undefined} />
               {/* Realizado va de subtexto aquí (no su propio tile): con 7 KPIs la cuadrícula
                   quedaba descuadrada en móvil (2 columnas, última fila con uno solo). */}
-              <Kpi label="P&L abierto" value={summary ? signMoney(uPnl) : "—"}
+              <Kpi label={t("alpha_open_pnl")} value={summary ? signMoney(uPnl, locale) : "—"}
                    tone={uPnl > 0 ? "good" : uPnl < 0 ? "bad" : undefined}
                    sub={summary
-                     ? `${equity > 0 ? `${((uPnl / equity) * 100).toFixed(2)}% del patrimonio · ` : ""}realizado ${signMoney(rPnl)}`
+                     ? `${equity > 0 ? `${((uPnl / equity) * 100).toFixed(2)}% ${t("alpha_of_net_worth")} · ` : ""}${t("alpha_realized")} ${signMoney(rPnl, locale)}`
                      : undefined} />
               {/* Primero lo que hace TU libro; el índice y el alpha, de contexto en la línea
                   pequeña — la comparación nunca por delante del resultado. */}
-              <Kpi label="Rentabilidad"
+              <Kpi label={t("alpha_performance")}
                    value={perf ? `${perf.portfolio_return_pct > 0 ? "+" : ""}${perf.portfolio_return_pct}%` : "—"}
                    tone={perf ? (perf.portfolio_return_pct >= 0 ? "good" : "bad") : undefined}
                    sub={perf?.spy_return_pct != null
                      ? `S&P ${perf.spy_return_pct > 0 ? "+" : ""}${perf.spy_return_pct}%${perf.alpha_pct != null
-                         ? ` · alpha ${perf.alpha_pct > 0 ? "+" : ""}${perf.alpha_pct}%` : ""}`
-                     : perf?.since ? `desde ${perf.since}` : "sin posiciones aún"} />
+                         ? ` · ${t("alpha_alpha_label")} ${perf.alpha_pct > 0 ? "+" : ""}${perf.alpha_pct}%` : ""}`
+                     : perf?.since ? t("alpha_since_date", { date: perf.since }) : t("alpha_no_positions_yet")} />
             </section>
             <div className="mb-3 mt-1.5 flex justify-end px-0.5">
               <button onClick={() => setCapOpen(!capOpen)}
                       className="text-[11px] font-semibold transition-colors hover:underline"
                       style={{ color: capOpen ? T.muted : T.buy }}>
-                {capOpen ? "✕ cerrar" : "± aportar / retirar capital"}
+                {capOpen ? `✕ ${t("alpha_close")}` : `± ${t("alpha_add_withdraw_capital")}`}
               </button>
             </div>
             {capOpen && (
               <div className="mb-4 max-w-[520px] border-t px-0.5 pt-3"
                    style={{ borderColor: T.grid }}>
                 <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-                  Aportar o retirar capital del agente
+                  {t("alpha_add_or_withdraw_agent_capital")}
                 </p>
-                <CapitalForm onDone={(s, msg) => { setSummary(s); setFlash(msg); setCapOpen(false); }}
+                <CapitalForm onDone={(s, cur, amount) => { setSummary(s); setFlash({ key: cur === "EUR" ? "alpha_cash_updated_eur" : "alpha_cash_updated_usd", values: { sign: amount > 0 ? "+" : "", amount: Math.abs(amount) } }); setCapOpen(false); }}
                              onError={setError} />
               </div>
             )}
@@ -717,7 +718,7 @@ function SalaRealRoom() {
             objetivo de escaneo — situaciones de mercado, no preparación de cartera. Vive junto
             a "cómo piensa" porque comparte fuente (DuckDB) pero es su propia cosa. ---------- */}
         <div className="mt-4">
-          <Details title="Explorador de universo">
+          <Details title={t("alpha_universe_explorer")}>
             <Explorador />
           </Details>
         </div>
@@ -726,12 +727,12 @@ function SalaRealRoom() {
             Ambas son introspección; el buscador va arriba porque se usa escribiendo, no
             ojeando, y entre tres tablas se perdía. El botón de sincronizar vive en la card. ---------- */}
         <div className="mt-4">
-          <Details title="Cómo piensa el agente"
+          <Details title={t("alpha_agent_reasoning")}
                  right={analyticsLoaded
                    ? <button onClick={loadAnalytics}
                              className="text-[11px] font-semibold transition-colors hover:underline"
                              style={{ color: T.buy }}>
-                       ↻ recargar
+                       ↻ {t("alpha_reload")}
                      </button>
                    : undefined}>
             {/* Sin encabezado propio: `MemorySearch` ya trae el suyo y salían dos "MEMORIA" seguidos. */}
@@ -741,21 +742,20 @@ function SalaRealRoom() {
             {!analyticsLoaded ? (
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className="text-[12px]" style={{ color: T.muted }}>
-                  Coste por etapa del embudo y confianza del prescore — consultas sobre un
-                  fichero DuckDB local, sincronizado desde Postgres a diario.
+                  {t("alpha_analytics_help")}
                 </p>
                 <button onClick={loadAnalytics}
                         className="shrink-0 rounded px-3 py-1.5 text-[11.5px] font-bold text-white transition-opacity hover:opacity-90"
                         style={{ background: T.buy }}>
-                  Cargar analítica
+                  {t("alpha_load_analytics")}
                 </button>
               </div>
             ) : (
               <>
                 <div className="grid gap-4 p-4 lg:grid-cols-2">
-                  <AnalyticsTable title="Coste por etapa" state={costeEtapa}
+                  <AnalyticsTable title={t("alpha_cost_by_stage")} state={costeEtapa}
                     nav={<ScanNav scans={analyticsScans} pos={costeScanPos} onMove={loadCosteForScan} />} />
-                  <AnalyticsTable title="Confianza del prescore" state={confianzaPrescore}
+                  <AnalyticsTable title={t("alpha_prescore_confidence")} state={confianzaPrescore}
                     nav={<ScanNav scans={analyticsScans} pos={confianzaScanPos} onMove={loadConfianzaForScan} />} />
                 </div>
               </>
@@ -766,16 +766,15 @@ function SalaRealRoom() {
         {/* ---------- 5 · libro del agente: composición y trayectoria juntas ---------- */}
         {(!summary || hasCapital) && (
         <div className="mt-4">
-        <Details title="Posiciones del agente"
+        <Details title={t("alpha_agent_positions")}
                meta={`${summary?.positions.length ?? 0}/${cfg?.max_positions ?? 5}`}
                defaultOpen
                right={summary && Number(summary.positions_value) > 0
                  ? <span className={`text-[12px] font-bold ${NUMS}`} style={{ color: T.ink }}>
-                     ${money(summary.positions_value)}
+                     ${money(summary.positions_value, 2, locale)}
                    </span> : undefined}>
           {!summary || summary.positions.length === 0 ? (
-            <Empty>Caja lista{summary ? ` ($${money(summary.cash.usd)} + €${money(summary.cash.eur)})` : ""}. Cuando el agente proponga y
-              apruebes una compra, la posición aparecerá aquí con su distribución, coste y P&L en vivo.</Empty>
+            <Empty>{t("alpha_ready_cash_help", { cashUsd: summary ? money(summary.cash.usd, 2, locale) : "—", cashEur: summary ? money(summary.cash.eur, 2, locale) : "—" })}</Empty>
           ) : (
             <>
               <Distribution summary={summary} equity={equity} fx={fx} />
@@ -783,13 +782,13 @@ function SalaRealRoom() {
                 <table className="w-full border-collapse whitespace-nowrap text-[13px]">
                   <thead>
                     <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: T.muted }}>
-                      <Th sort={{ active: posSortKey === "ticker", dir: posSortDir, onClick: () => togglePos("ticker"), ariaSort: posAriaSort("ticker"), label: "instrumento" }}>Instrumento</Th>
-                      <Th right sort={{ active: posSortKey === "quantity", dir: posSortDir, onClick: () => togglePos("quantity"), ariaSort: posAriaSort("quantity"), label: "cantidad" }}>Cantidad</Th>
-                      <Th right sort={{ active: posSortKey === "avg_cost", dir: posSortDir, onClick: () => togglePos("avg_cost"), ariaSort: posAriaSort("avg_cost"), label: "coste medio" }}>Coste medio</Th>
-                      <Th right sort={{ active: posSortKey === "price", dir: posSortDir, onClick: () => togglePos("price"), ariaSort: posAriaSort("price"), label: "último" }}>Último</Th>
-                      <Th right sort={{ active: posSortKey === "value", dir: posSortDir, onClick: () => togglePos("value"), ariaSort: posAriaSort("value"), label: "valor" }}>Valor</Th>
-                      <Th right sort={{ active: posSortKey === "w", dir: posSortDir, onClick: () => togglePos("w"), ariaSort: posAriaSort("w"), label: "peso" }}>Peso</Th>
-                      <Th sort={{ active: posSortKey === "pnl", dir: posSortDir, onClick: () => togglePos("pnl"), ariaSort: posAriaSort("pnl"), label: "P&L abierto" }}>P&L abierto</Th>
+                      <Th sort={{ active: posSortKey === "ticker", dir: posSortDir, onClick: () => togglePos("ticker"), ariaSort: posAriaSort("ticker"), label: t("alpha_instrument") }}>{t("alpha_instrument")}</Th>
+                      <Th right sort={{ active: posSortKey === "quantity", dir: posSortDir, onClick: () => togglePos("quantity"), ariaSort: posAriaSort("quantity"), label: t("alpha_quantity") }}>{t("alpha_quantity")}</Th>
+                      <Th right sort={{ active: posSortKey === "avg_cost", dir: posSortDir, onClick: () => togglePos("avg_cost"), ariaSort: posAriaSort("avg_cost"), label: t("alpha_average_cost") }}>{t("alpha_average_cost")}</Th>
+                      <Th right sort={{ active: posSortKey === "price", dir: posSortDir, onClick: () => togglePos("price"), ariaSort: posAriaSort("price"), label: t("alpha_last_price") }}>{t("alpha_last_price")}</Th>
+                      <Th right sort={{ active: posSortKey === "value", dir: posSortDir, onClick: () => togglePos("value"), ariaSort: posAriaSort("value"), label: t("alpha_value") }}>{t("alpha_value")}</Th>
+                      <Th right sort={{ active: posSortKey === "w", dir: posSortDir, onClick: () => togglePos("w"), ariaSort: posAriaSort("w"), label: t("alpha_weight") }}>{t("alpha_weight")}</Th>
+                      <Th sort={{ active: posSortKey === "pnl", dir: posSortDir, onClick: () => togglePos("pnl"), ariaSort: posAriaSort("pnl"), label: t("alpha_open_pnl") }}>{t("alpha_open_pnl")}</Th>
                     </tr>
                   </thead>
                   <tbody>
@@ -801,14 +800,14 @@ function SalaRealRoom() {
                             <button onClick={() => setAuditTicker(p.ticker)}
                                     className="font-bold underline-offset-2 hover:underline"
                                     style={{ color: T.ink }}
-                                    aria-label={`Ver la historia de ${p.ticker} a través de los escaneos`}>
+                                    aria-label={t("alpha_ticker_history_aria", { ticker: p.ticker })}>
                               {p.ticker}
                             </button>
                           </Td>
-                          <Td right><span className={NUMS}>{qty4(p.quantity)}</span></Td>
-                          <Td right><span className={NUMS}>${money(p.avg_cost)}</span></Td>
-                          <Td right><span className={NUMS}>${money(p.price)}</span></Td>
-                          <Td right><span className={NUMS} style={{ color: T.ink }}>${money(p.value)}</span></Td>
+                          <Td right><span className={NUMS}>{qty4(p.quantity, locale)}</span></Td>
+                          <Td right><span className={NUMS}>${money(p.avg_cost, 2, locale)}</span></Td>
+                          <Td right><span className={NUMS}>${money(p.price, 2, locale)}</span></Td>
+                          <Td right><span className={NUMS} style={{ color: T.ink }}>${money(p.value, 2, locale)}</span></Td>
                           <Td right><span className={NUMS}>{p.w.toFixed(1)}%</span></Td>
                           <Td><PnlBar value={p.pnl} maxAbs={maxAbs} pct={p.pnlPct} /></Td>
                         </tr>
@@ -820,9 +819,8 @@ function SalaRealRoom() {
               {perf && perf.positions.length > 0 && (
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2 text-[11px]"
                      style={{ borderColor: T.grid, color: T.muted }}>
-                  <span>Rendimiento desde {perf.since ?? "—"}</span>
-                  <span className={NUMS}>
-                    coste ${money(perf.cost_basis)} → valor ${money(perf.market_value)}
+                  <span>{t("alpha_performance_since", { date: perf.since ?? "—" })}</span>
+                  <span className={NUMS}>{t("alpha_ui_coste")}{money(perf.cost_basis, 2, locale)}{t("alpha_ui_valor")}{money(perf.market_value, 2, locale)}
                   </span>
                 </div>
               )}
@@ -834,11 +832,11 @@ function SalaRealRoom() {
           {hist.length >= 2 && (
             <div className="border-t px-4 py-3" style={{ borderColor: T.grid }}>
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-                  Tu curva vs S&amp;P 500
+              <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
+                  {t("alpha_curve_vs_sp500")}
                 </span>
                 <span className="text-[11px]" style={{ color: T.muted }}>
-                  las aportaciones no cuentan como rentabilidad
+                  {t("alpha_contributions_not_return")}
                 </span>
               </div>
               <HistoryChart points={hist} dark />
@@ -847,13 +845,13 @@ function SalaRealRoom() {
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t px-4 py-2.5 text-[12px]"
                style={{ borderColor: T.grid }}>
             <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>
-              Sombra en paralelo
+              {t("alpha_shadow_in_parallel")}
             </span>
-            <span style={{ color: T.ink2 }}>Sombra <b className={NUMS} style={{ color: (shadowPerf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(shadowPerf?.portfolio_return_pct)}</b></span>
-            <span style={{ color: T.ink2 }}>Real <b className={NUMS} style={{ color: (perf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(perf?.portfolio_return_pct)}</b></span>
+            <span style={{ color: T.ink2 }}>{t("alpha_shadow")} <b className={NUMS} style={{ color: (shadowPerf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(shadowPerf?.portfolio_return_pct)}</b></span>
+            <span style={{ color: T.ink2 }}>{t("alpha_real")} <b className={NUMS} style={{ color: (perf?.portfolio_return_pct ?? 0) >= 0 ? T.good : T.bad }}>{fmtPct(perf?.portfolio_return_pct)}</b></span>
             <span style={{ color: T.ink2 }}>S&amp;P <b className={NUMS} style={{ color: T.ink }}>{fmtPct(shadowPerf?.spy_return_pct ?? perf?.spy_return_pct)}</b></span>
             <Link href="/admin/beta" className="ml-auto text-[11.5px] font-semibold hover:underline" style={{ color: T.buy }}>
-              Ver sombra →
+              {t("alpha_view_shadow")} →
             </Link>
           </div>
         </Details>
@@ -862,30 +860,30 @@ function SalaRealRoom() {
 
         {/* ---------- 6 · tu dinero real, siempre a la vista (el agente no lo toca) ---------- */}
         <div className="mt-4 space-y-4">
-          <Details title="Cartera personal IBKR"
-                 meta={personal?.synced_at ? `sync ${fmtTime(personal.synced_at)}` : undefined}>
+          <Details title={t("alpha_personal_ibkr_portfolio")}
+                 meta={personal?.synced_at ? `sync ${fmtTime(personal.synced_at, locale)}` : undefined}>
             {!personal || personal.positions.length === 0 ? (
-              <Empty>Tus posiciones propias de IBKR, separadas del agente. Sincroniza para guardar el snapshot.</Empty>
+              <Empty>{t("alpha_personal_portfolio_empty")}</Empty>
             ) : (
               <>
                 <div className="flex items-baseline justify-between px-4 pt-2.5">
                   <div>
-                    <div className="text-[10.5px] uppercase tracking-wider" style={{ color: T.muted }}>Valor total</div>
+                    <div className="text-[10.5px] uppercase tracking-wider" style={{ color: T.muted }}>{t("alpha_total_value")}</div>
                     <div className={`text-[20px] font-bold leading-tight ${NUMS}`} style={{ color: T.ink }}>
-                      ${money(personal.total_value)}
+                      ${money(personal.total_value, 2, locale)}
                     </div>
                     {fx && (
                       <div className={`inline-flex items-center gap-1 text-[10.5px] ${NUMS}`} style={{ color: T.muted }}>
-                        ≈ €{money(Number(personal.total_value) / fx, 0)}
-                        <InfoTip text="Al cambio EURUSD indicativo — como te lo consolida IBKR." />
+                        ≈ €{money(Number(personal.total_value) / fx, 0, locale)}
+                        <InfoTip text={t("alpha_ibkr_eurusd_tooltip")} />
                       </div>
                     )}
                   </div>
                   <div className="text-right">
-                    <div className="text-[10.5px] uppercase tracking-wider" style={{ color: T.muted }}>P&L abierto</div>
+                    <div className="text-[10.5px] uppercase tracking-wider" style={{ color: T.muted }}>{t("alpha_open_pnl")}</div>
                     <div className={`text-[14px] font-bold ${NUMS}`}
                          style={{ color: Number(personal.total_unrealized_pnl) >= 0 ? T.good : T.bad }}>
-                      {signMoney(personal.total_unrealized_pnl)}
+                      {signMoney(personal.total_unrealized_pnl, locale)}
                     </div>
                   </div>
                 </div>
@@ -893,11 +891,11 @@ function SalaRealRoom() {
                   <table className="w-full border-collapse text-[12.5px]">
                     <thead>
                       <tr className="text-left text-[10px] uppercase tracking-wider" style={{ color: T.muted }}>
-                        <Th sort={{ active: persSortKey === "ticker", dir: persSortDir, onClick: () => togglePers("ticker"), ariaSort: persAriaSort("ticker"), label: "instrumento" }}>Instr.</Th>
-                        <Th right sort={{ active: persSortKey === "quantity", dir: persSortDir, onClick: () => togglePers("quantity"), ariaSort: persAriaSort("quantity"), label: "cantidad" }}>Cant.</Th>
-                        <Th right sort={{ active: persSortKey === "price", dir: persSortDir, onClick: () => togglePers("price"), ariaSort: persAriaSort("price"), label: "último" }}>Último</Th>
-                        <Th right sort={{ active: persSortKey === "value", dir: persSortDir, onClick: () => togglePers("value"), ariaSort: persAriaSort("value"), label: "valor" }}>Valor</Th>
-                        <Th right sort={{ active: persSortKey === "pnl", dir: persSortDir, onClick: () => togglePers("pnl"), ariaSort: persAriaSort("pnl"), label: "P&L" }}>P&L</Th>
+                        <Th sort={{ active: persSortKey === "ticker", dir: persSortDir, onClick: () => togglePers("ticker"), ariaSort: persAriaSort("ticker"), label: t("alpha_instrument") }}>{t("alpha_instrument_short")}</Th>
+                        <Th right sort={{ active: persSortKey === "quantity", dir: persSortDir, onClick: () => togglePers("quantity"), ariaSort: persAriaSort("quantity"), label: t("alpha_quantity") }}>{t("alpha_quantity_short")}</Th>
+                        <Th right sort={{ active: persSortKey === "price", dir: persSortDir, onClick: () => togglePers("price"), ariaSort: persAriaSort("price"), label: t("alpha_last_price") }}>{t("alpha_last_price")}</Th>
+                        <Th right sort={{ active: persSortKey === "value", dir: persSortDir, onClick: () => togglePers("value"), ariaSort: persAriaSort("value"), label: t("alpha_value") }}>{t("alpha_value")}</Th>
+                        <Th right sort={{ active: persSortKey === "pnl", dir: persSortDir, onClick: () => togglePers("pnl"), ariaSort: persAriaSort("pnl"), label: t("alpha_pnl") }}>{t("alpha_pnl")}</Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -913,27 +911,27 @@ function SalaRealRoom() {
                                 </span>
                               )}
                             </Td>
-                            <Td right><span className={NUMS}>{qty4(p.quantity)}</span></Td>
+                            <Td right><span className={NUMS}>{qty4(p.quantity, locale)}</span></Td>
                             <Td right>
                               {/* PRECIO ACTUAL visible (lo que se mira); el coste medio, como sub-línea. */}
                               <div className={NUMS} style={{ color: T.ink }}>
-                                {p.price ? `$${money(p.price)}` : "—"}
+                                {p.price ? `$${money(p.price, 2, locale)}` : "—"}
                                 {!p.live && p.price && (
                                   <span className="ml-1 inline-flex items-center gap-0.5 text-[9px]" style={{ color: T.muted }}>
-                                    sync
-                                    <InfoTip text="Precio del último sync (no cotiza en vivo)." />
+                                    {t("alpha_sync_label")}
+                                    <InfoTip text={t("alpha_last_sync_price_tooltip")} />
                                   </span>
                                 )}
                               </div>
                               <div className={`text-[10px] ${NUMS}`} style={{ color: T.muted }}>
-                                coste {p.avg_cost ? `$${money(p.avg_cost)}` : "—"}
+                                {t("alpha_cost_label")} {p.avg_cost ? `$${money(p.avg_cost, 2, locale)}` : "—"}
                               </div>
                             </Td>
-                            <Td right><span className={NUMS} style={{ color: T.ink }}>{p.value ? `$${money(p.value)}` : "—"}</span></Td>
+                            <Td right><span className={NUMS} style={{ color: T.ink }}>{p.value ? `$${money(p.value, 2, locale)}` : "—"}</span></Td>
                             <Td right>
                               <span className={`${NUMS} font-semibold`}
                                     style={{ color: p.pnl == null ? T.muted : p.pnl >= 0 ? T.good : T.bad }}>
-                                {p.pnl != null ? signMoney(p.pnl) : "—"}
+                                {p.pnl != null ? signMoney(p.pnl, locale) : "—"}
                               </span>
                             </Td>
                           </tr>
@@ -947,11 +945,10 @@ function SalaRealRoom() {
               <button onClick={doSyncPersonal} disabled={syncing}
                       className="shrink-0 rounded border px-3 py-1.5 text-[11.5px] font-semibold transition-colors hover:bg-white/5 disabled:opacity-40"
                       style={{ borderColor: T.ring, color: T.ink2 }}>
-                {syncing ? "Sincronizando…" : "Sincronizar desde IBKR"}
+                {syncing ? t("alpha_syncing") : t("alpha_sync_from_ibkr")}
               </button>
               <p className="text-[10.5px] leading-snug" style={{ color: T.muted }}>
-                El agente NUNCA opera estas posiciones: solo vende lo que él compró. Si compra un ticker
-                tuyo, en IBKR se suman pero aquí siguen separados.
+                {t("alpha_personal_portfolio_help")}
               </p>
             </div>
           </Details>
@@ -965,7 +962,7 @@ function SalaRealRoom() {
             <button onClick={() => setActividadOpen(!actividadOpen)} aria-expanded={actividadOpen}
                     className="flex w-full items-center justify-between px-4 py-3.5 text-left transition-colors hover:opacity-80">
               <span className="text-[16px] font-bold" style={{ color: T.ink }}>
-                Actividad <span className="text-[13px] font-normal" style={{ color: T.muted }}>· {history.length} decisión(es)</span>
+                {t("alpha_activity")} <span className="text-[13px] font-normal" style={{ color: T.muted }}>· {t("alpha_decision_count", { count: history.length })}</span>
               </span>
               <span style={{ color: T.muted }}>{actividadOpen ? "▴" : "▾"}</span>
             </button>
@@ -984,64 +981,62 @@ function SalaRealRoom() {
         {/* ---------- 8 · ajustes: push, sesión y el reinicio del sombra — consulta ocasional,
             plegado por defecto como en el mockup (antes ocupaba una barra siempre a la vista). ---------- */}
         <div className="mt-4">
-          <Details title="Ajustes">
+          <Details title={t("alpha_settings")}>
             <div className="space-y-3 px-4 pb-4 pt-3.5 text-[12.5px]" style={{ color: T.ink2 }}>
               <p>
-                Alertas push{" "}
+                {t("alpha_push_alerts")} {" "}
                 <b style={{ color: pushOn ? T.good : T.muted }}>
-                  {pushOn == null ? "…" : pushOn ? "activas" : "inactivas"}
+                  {pushOn == null ? "…" : pushOn ? t("alpha_active") : t("alpha_inactive")}
                 </b>
                 {" — "}
                 {!pushOn ? (
                   <button onClick={enablePush}
                           className="underline decoration-dotted underline-offset-4"
                           style={{ color: T.buy }}>
-                    Activar
+                    {t("alpha_enable")}
                   </button>
                 ) : (
-                  <button onClick={async () => setFlash(`Prueba enviada a ${(await testPush()).sent} dispositivo(s).`)}
+                  <button onClick={async () => setFlash({ key: "alpha_push_test_sent", values: { count: (await testPush()).sent } })}
                           className="underline decoration-dotted underline-offset-4" style={{ color: T.buy }}>
-                    Enviar prueba
+                    {t("alpha_send_test")}
                   </button>
                 )}
               </p>
               {!pushOn && (
                 <p className="text-[11px]" style={{ color: T.muted }}>
-                  Suena cuando el agente propone. En iPhone: instala la app en pantalla de inicio.
+                  {t("alpha_push_help")}
                 </p>
               )}
               <p style={{ color: T.muted }}>
-                {dry ? "Bróker en dry-run" : "IBKR en vivo"} · el agente nunca ejecuta solo · órdenes a
-                límite (ref ± {cfg?.limit_buffer_pct ?? 0.2}%), nunca a mercado.
+                {dry ? t("alpha_broker_dry_run") : t("alpha_ibkr_live")} · {t("alpha_never_auto_executes")} · {t("alpha_limit_orders", { pct: cfg?.limit_buffer_pct ?? 0.2 })}
                 {summary?.broker.detail ? ` · ${summary.broker.detail}` : ""}
               </p>
               <p style={{ color: T.muted }}>
-                Reiniciar el libro <b>sombra</b> borra posiciones, operaciones y curva —
-                {" "}<b>conserva tu capital</b>. No toca el libro real ni tu cartera personal.
+                {t("alpha_shadow_reset_help")}
               </p>
               {!resetArmed ? (
                 <button onClick={() => setResetArmed(true)}
                         className="rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors hover:bg-white/5"
                         style={{ borderColor: "rgba(208,59,59,0.5)", color: T.bad }}>
-                  Reiniciar sombra
+                  {t("alpha_reset_shadow")}
                 </button>
               ) : (
                 <span className="flex flex-wrap items-center gap-2">
                   <button onClick={doResetShadow} disabled={resetting}
                           className="rounded-full px-4 py-2 text-[13px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                           style={{ background: T.bad }}>
-                    {resetting ? "Reiniciando…" : "Confirmar borrado"}
+                    {resetting ? t("alpha_resetting") : t("alpha_confirm_delete")}
                   </button>
                   <button onClick={() => setResetArmed(false)} disabled={resetting}
                           className="rounded-full border px-4 py-2 text-[13px] transition-colors hover:bg-white/5"
                           style={{ borderColor: T.ring, color: T.ink2 }}>
-                    Cancelar
+                    {t("alpha_cancel")}
                   </button>
                 </span>
               )}
               <p>
                 <button onClick={logout} className="text-[12.5px]" style={{ color: T.ink2 }}>
-                  Cerrar sesión
+                  {t("alpha_sign_out")}
                 </button>
               </p>
             </div>

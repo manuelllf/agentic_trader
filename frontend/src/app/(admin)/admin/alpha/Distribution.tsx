@@ -1,15 +1,19 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { money } from '@/lib/format';
 import type { RealSummary } from '@/lib/types';
 import { NUMS, SERIES, T } from './tokens';
 
 /* Distribución de la cartera: barra apilada (huecos de 2px) + leyenda con etiquetas directas. */
 export function Distribution({ summary, equity, fx }: { summary: RealSummary; equity: number; fx: number | null }) {
+  const t = useTranslations();
   // Mismo consolidado que "Patrimonio": $ + € al cambio indicativo, para que la barra cuadre.
   const cash = Number(summary.cash.usd) + Number(summary.cash.eur) * (fx ?? 0);
   const rows = summary.positions.map((p, i) => ({
     label: p.ticker, value: Number(p.value), color: SERIES[i % SERIES.length],
   }));
-  if (cash > 0.005) rows.push({ label: "Caja", value: cash, color: T.base });
+  if (cash > 0.005) rows.push({ label: t("alpha_cash"), value: cash, color: T.base });
   const total = equity > 0 ? equity : rows.reduce((s, r) => s + r.value, 0) || 1;
   return (
     <div className="px-4 pb-1 pt-2.5">

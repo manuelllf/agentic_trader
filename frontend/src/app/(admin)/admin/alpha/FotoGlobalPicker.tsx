@@ -10,6 +10,7 @@
  *  final se recalcula en el backend antes de poder confirmar. */
 
 import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import {
   contarUniversoGlobal, getFotoStatus, getUniversoGlobal, getUniversoGlobalSyncEstado, startFoto,
   subirUniversoGlobalCsv, syncUniversoGlobal, type UniversoGlobalOpciones,
@@ -30,6 +31,7 @@ const LIMITE_DEFECTO = 200;
 function Chip({ label, count, active, onClick }: {
   label: string; count: number; active: boolean; onClick: () => void;
 }) {
+  const locale: "es" | "en" = useLocale() === "en" ? "en" : "es";
   return (
     <button onClick={onClick}
             className="rounded-full border px-2.5 py-1 text-[11px] transition-colors"
@@ -38,7 +40,7 @@ function Chip({ label, count, active, onClick }: {
               background: active ? "rgba(57,135,229,0.15)" : "transparent",
               color: active ? T.buy : T.ink2,
             }}>
-      {label} <span style={{ color: T.muted }}>· {fmtNum(count)}</span>
+      {label} <span style={{ color: T.muted }}>· {fmtNum(count, locale)}</span>
     </button>
   );
 }
@@ -46,6 +48,8 @@ function Chip({ label, count, active, onClick }: {
 /** Resincroniza tickers/yahoo_symbol/país/mercado desde el CSV de HuggingFace — el "rehacer
  *  foto" del universo global. No toca fundamentales, solo la lista de nombres disponibles. */
 export function UniversoGlobalSync() {
+  const t = useTranslations();
+  const locale: "es" | "en" = useLocale() === "en" ? "en" : "es";
   const [opciones, setOpciones] = useState<UniversoGlobalOpciones | null>(null);
   const [loadingOpciones, setLoadingOpciones] = useState(true);
   const [armed, setArmed] = useState(false);
@@ -81,11 +85,11 @@ export function UniversoGlobalSync() {
         setSyncing(false);
         if (st.status === "done" && st.result) {
           setMsg({ text: st.result.sin_cambios
-            ? `Sin cambios desde la última sincronización (${fmtNum(st.result.tickers)} tickers): no se guarda otra copia.`
-            : `Universo global sincronizado: ${fmtNum(st.result.tickers)} tickers.` });
+            ? t("alpha_global_sync_unchanged", { count: fmtNum(st.result.tickers, locale) })
+            : t("alpha_global_sync_done", { count: fmtNum(st.result.tickers, locale) }) });
           await cargarOpciones();
         } else {
-          setMsg({ text: st.error ?? "No se pudo sincronizar.", bad: true });
+          setMsg({ text: st.error ?? t("alpha_global_sync_error"), bad: true });
         }
       } catch {
         // sondeo silencioso: un fallo puntual de red no debe tapar el mensaje de lanzamiento
@@ -96,11 +100,11 @@ export function UniversoGlobalSync() {
   async function doSync() {
     setArmed(false);
     setSyncing(true);
-    setMsg({ text: "Sincronizando en segundo plano (~63.000 filas, unos minutos)…" });
+    setMsg({ text: t("alpha_global_sync_running") });
     try {
       await syncUniversoGlobal();
     } catch (e) {
-      setMsg({ text: e instanceof Error ? e.message : "No se pudo lanzar la sincronización.", bad: true });
+      setMsg({ text: e instanceof Error ? e.message : t("alpha_global_sync_launch_error"), bad: true });
       setSyncing(false);
       return;
     }
@@ -134,11 +138,11 @@ export function UniversoGlobalSync() {
     if (!archivo) return;
     setArmed(false);
     setSyncing(true);
-    setMsg({ text: `Subiendo ${archivo.name} y sincronizando en segundo plano…` });
+    setMsg({ text: t("alpha_global_csv_uploading", { filename: archivo.name }) });
     try {
       await subirUniversoGlobalCsv(archivo);
     } catch (e2) {
-      setMsg({ text: e2 instanceof Error ? e2.message : "No se pudo subir el CSV.", bad: true });
+      setMsg({ text: e2 instanceof Error ? e2.message : t("alpha_global_csv_upload_error"), bad: true });
       setSyncing(false);
       return;
     }
@@ -146,7 +150,7 @@ export function UniversoGlobalSync() {
   }
 
   if (loadingOpciones) {
-    return <p className="text-[11px]" style={{ color: T.muted }}>Cargando universo global…</p>;
+    return <p className="text-[11px]" style={{ color: T.muted }}>{t("alpha_global_loading")}</p>;
   }
 
   const csvUploadInput = (
@@ -155,14 +159,14 @@ export function UniversoGlobalSync() {
 
   const csvUploadLink = (
     <span className="text-[10.5px]" style={{ color: T.muted }}>
-      o{" "}
+      {t("alpha_or")}{" "}
       <a href={URL_CSV_HUGGINGFACE} target="_blank" rel="noreferrer" className="underline"
-         onClick={descargarCsv}>descarga el CSV</a>
-      {" "}y{" "}
+         onClick={descargarCsv}>{t("alpha_download_csv")}</a>
+      {" "}{t("alpha_and")}{" "}
       <button type="button" onClick={abrirSelectorArchivo} disabled={syncing} className="underline disabled:opacity-50">
-        súbelo a mano
+        {t("alpha_upload_manually")}
       </button>
-      {" "}si la red falla a mitad.
+      {" "}{t("alpha_if_network_fails")}
     </span>
   );
 
@@ -173,29 +177,29 @@ export function UniversoGlobalSync() {
       {csvUploadInput}
       <span className="text-[10.5px]" style={{ color: sinSincronizar ? T.warn : T.muted }}>
         {sinSincronizar
-          ? "El universo global (HuggingFace) no está sincronizado todavía — sin esto, «global» no tiene de dónde elegir."
-          : `${fmtNum(opciones.total)} tickers sincronizados (${opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString("es-ES") : "—"}).`}
+          ? t("alpha_global_not_synced")
+          : t("alpha_global_synced_count", { count: fmtNum(opciones.total, locale), date: opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { timeZone: "UTC" }) : "—" })}
       </span>
       {!armed ? (
         <button onClick={() => setArmed(true)} disabled={syncing}
                 className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
                 style={{ borderColor: T.ring, color: T.ink2 }}>
-          {syncing ? "Sincronizando…" : sinSincronizar ? "Sincronizar universo global" : "↻ Resincronizar"}
+          {syncing ? t("alpha_syncing") : sinSincronizar ? t("alpha_sync_global") : `↻ ${t("alpha_resync")}`}
         </button>
       ) : (
         <span className="flex flex-wrap items-center gap-2">
           {sinSincronizar && (
-            <span className="text-[10.5px]" style={{ color: T.warn }}>~63.000 tickers, descarga de HuggingFace.</span>
+            <span className="text-[10.5px]" style={{ color: T.warn }}>{t("alpha_global_download_warning")}</span>
           )}
           <button onClick={doSync} disabled={syncing}
                   className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                   style={{ background: T.bad }}>
-            {syncing ? "Sincronizando…" : "Confirmar"}
+            {syncing ? t("alpha_syncing") : t("alpha_confirm")}
           </button>
           <button onClick={() => setArmed(false)} disabled={syncing}
                   className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
                   style={{ borderColor: T.ring, color: T.ink2 }}>
-            Cancelar
+            {t("alpha_cancel")}
           </button>
         </span>
       )}
@@ -210,6 +214,8 @@ export function UniversoGlobalSync() {
 /** Selector país/mercado + captura de fundamentales sobre el universo global YA sincronizado —
  *  no resincroniza nada, eso vive en `UniversoGlobalSync`. */
 export function FotoGlobalPicker() {
+  const t = useTranslations();
+  const locale: "es" | "en" = useLocale() === "en" ? "en" : "es";
   const [opciones, setOpciones] = useState<UniversoGlobalOpciones | null>(null);
   const [loadingOpciones, setLoadingOpciones] = useState(true);
   const [countries, setCountries] = useState<string[]>([]);
@@ -260,14 +266,12 @@ export function FotoGlobalPicker() {
         if (st.status === "done" && st.result) {
           const r = st.result;
           if (r.cortado) {
-            setMsg({ text: `Captura global cortada: ${r.motivo_corte ?? "bloqueo del proveedor"} `
-              + `(${fmtNum(r.capturados)}/${fmtNum(r.pedidos)} capturados igualmente).`, bad: true });
+            setMsg({ text: t("alpha_global_capture_cut", { reason: r.motivo_corte ?? t("alpha_provider_block"), captured: fmtNum(r.capturados, locale), requested: fmtNum(r.pedidos, locale) }), bad: true });
           } else {
-            setMsg({ text: `Captura global terminada: ${fmtNum(r.capturados)}/${fmtNum(r.pedidos)} `
-              + `capturados (${fmtNum(r.sin_datos)} sin datos).` });
+            setMsg({ text: t("alpha_global_capture_done", { captured: fmtNum(r.capturados, locale), requested: fmtNum(r.pedidos, locale), missing: fmtNum(r.sin_datos, locale) }) });
           }
         } else {
-          setMsg({ text: st.error ?? "La captura global falló.", bad: true });
+          setMsg({ text: st.error ?? t("alpha_global_capture_error"), bad: true });
         }
       } catch {
         // sondeo silencioso: un fallo puntual de red no debe tapar el mensaje de lanzamiento
@@ -280,23 +284,23 @@ export function FotoGlobalPicker() {
     setLaunching(true);
     try {
       await startFoto("global", limite, countries, exchanges);
-      setMsg({ text: `Captura global lanzada (${fmtNum(efectivo ?? limite)} nombres, ~${minutosEstimados} min en segundo plano).` });
+      setMsg({ text: t("alpha_global_capture_started", { count: fmtNum(efectivo ?? limite, locale), minutes: minutosEstimados ?? 0 }) });
       pollFoto();
     } catch (e) {
-      setMsg({ text: e instanceof Error ? e.message : "No se pudo lanzar la captura.", bad: true });
+      setMsg({ text: e instanceof Error ? e.message : t("alpha_global_capture_launch_error"), bad: true });
     } finally {
       setLaunching(false);
     }
   }
 
   if (loadingOpciones) {
-    return <p className="text-[11px]" style={{ color: T.muted }}>Cargando universo global…</p>;
+    return <p className="text-[11px]" style={{ color: T.muted }}>{t("alpha_global_loading")}</p>;
   }
 
   if (!opciones || opciones.total === 0) {
     return (
       <p className="text-[11px]" style={{ color: T.warn }}>
-        El universo global (HuggingFace) no está sincronizado todavía — resincronízalo desde «Universo global» primero.
+        {t("alpha_global_resync_first")}
       </p>
     );
   }
@@ -304,12 +308,12 @@ export function FotoGlobalPicker() {
   return (
     <div className="flex w-full flex-col gap-2.5">
       <span className="flex items-center gap-1 text-[10.5px]" style={{ color: T.muted }}>
-        {fmtNum(opciones.total)} tickers sincronizados ({opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString("es-ES") : "—"}).
-        <InfoTip text="Sin filtro de país/mercado no baja el precio, el cap ni el volumen (el dataset global no los trae) — límite siempre obligatorio." />
+        {t("alpha_global_synced_count", { count: fmtNum(opciones.total, locale), date: opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { timeZone: "UTC" }) : "—" })}
+        <InfoTip text={t("alpha_global_filter_help")} />
       </span>
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>País</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>{t("alpha_country")}</span>
         <div className="flex flex-wrap gap-1.5">
           {opciones.countries.slice(0, 20).map((c) => (
             <Chip key={c.country} label={c.country} count={c.count}
@@ -320,7 +324,7 @@ export function FotoGlobalPicker() {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>Mercado</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>{t("alpha_market")}</span>
         <div className="flex flex-wrap gap-1.5">
           {opciones.exchanges.slice(0, 20).map((e) => (
             <Chip key={e.exchange} label={e.exchange} count={e.count}
@@ -332,17 +336,16 @@ export function FotoGlobalPicker() {
 
       <div className="flex flex-wrap items-center gap-3 border-t pt-2.5" style={{ borderColor: T.grid }}>
         <label className="flex items-center gap-1.5 text-[11px]" style={{ color: T.ink2 }}>
-          Límite (obligatorio)
+          {t("alpha_required_limit")}
           <input type="number" inputMode="numeric" min={1} max={opciones.total} value={limite}
                  onChange={(e) => setLimite(Math.max(1, Number(e.target.value) || 1))}
                  className={`w-20 rounded border bg-transparent px-1.5 py-0.5 text-[11px] ${NUM_INPUT}`}
                  style={{ borderColor: T.ring, color: T.ink }} />
         </label>
         <span className="text-[11px]" style={{ color: T.ink2 }}>
-          {counting ? "contando…" : count != null ? (
+          {counting ? t("alpha_counting") : count != null ? (
             <>
-              coincidencias: <b>{fmtNum(count)}</b> · va a capturar <b>{fmtNum(efectivo ?? 0)}</b> ·
-              ~<b>{minutosEstimados}</b> min
+              {t("alpha_global_count_summary", { matches: fmtNum(count, locale), selected: fmtNum(efectivo ?? 0, locale), minutes: minutosEstimados ?? 0 })}
             </>
           ) : "—"}
         </span>
@@ -353,23 +356,23 @@ export function FotoGlobalPicker() {
           <button onClick={() => setArmed(true)} disabled={launching || !count}
                   className="rounded border px-2.5 py-1 text-[11px] font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
                   style={{ borderColor: T.ring, color: T.ink2 }}>
-            {launching ? "Lanzando…" : "Capturar fundamentales (global)"}
+            {launching ? t("alpha_launching") : t("alpha_capture_fundamentals_global")}
           </button>
         ) : (
           <span className="flex flex-wrap items-center gap-2">
             <span className="flex items-center gap-1 text-[10.5px]" style={{ color: T.warn }}>
-              ~{minutosEstimados} min en segundo plano
-              <InfoTip text="No filtra por precio/cap/volumen, solo por país/mercado." />
+              {t("alpha_global_minutes_background", { minutes: minutosEstimados ?? 0 })}
+              <InfoTip text={t("alpha_global_capture_help")} />
             </span>
             <button onClick={doLaunch} disabled={launching}
                     className="rounded px-2.5 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                     style={{ background: T.bad }}>
-              {launching ? "Lanzando…" : "Confirmar captura"}
+              {launching ? t("alpha_launching") : t("alpha_confirm_capture")}
             </button>
             <button onClick={() => setArmed(false)} disabled={launching}
                     className="rounded border px-2.5 py-1 text-[11px] transition-colors hover:bg-white/5"
                     style={{ borderColor: T.ring, color: T.ink2 }}>
-              Cancelar
+              {t("alpha_cancel")}
             </button>
           </span>
         )}

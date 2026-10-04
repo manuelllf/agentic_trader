@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { getYo, type Yo } from "@/lib/liga/api";
 import { supabase, tokenSesion, useSupabase } from "@/lib/liga/supabase";
 import { limpiarPrivado, useCache } from "@/lib/liga/cache";
+import { useLanguage } from "@/i18n/Provider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const INTERVALO_ACTIVIDAD_MS = 60_000;
@@ -53,6 +54,7 @@ type ContextoSesion = {
 const Contexto = createContext<ContextoSesion | null>(null);
 
 export function SesionProvider({ children }: { children: ReactNode }) {
+  const { setAccount } = useLanguage();
   const sb = useSupabase();
   const [estado, setEstado] = useState<EstadoSesion>("cargando");
   const [email, setEmail] = useState<string | null>(null);
@@ -136,6 +138,11 @@ export function SesionProvider({ children }: { children: ReactNode }) {
 
   const { datos: yo, fallo: yoFalla, refrescar } =
     useCache<Yo | null>(estado === "dentro" ? "yo" : null, getYo);
+
+  useEffect(() => {
+    if (estado === "fuera") setAccount(null);
+    else if (uid && yo) setAccount({ id: uid, locale: yo.idioma ?? null });
+  }, [estado, uid, yo, setAccount]);
 
   const cerrarSesion = async () => {
     await supabase()?.auth.signOut();

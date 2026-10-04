@@ -230,7 +230,8 @@ def _receta_out(r) -> RecetaOut:  # noqa: ANN001
 
 @router.get("/catalogo", dependencies=[Depends(db_anon)])
 def catalogo() -> dict:
-    return estrategias.catalogo_payload()
+    from app.i18n import current_locale, present_catalog
+    return present_catalog(estrategias.catalogo_payload(), current_locale.get())
 
 
 # ---- Estrategias ------------------------------------------------------------------------------

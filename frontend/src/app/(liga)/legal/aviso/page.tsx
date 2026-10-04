@@ -1,37 +1,36 @@
 import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
 import { Contacto, TITULAR } from "../datos";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Aviso legal — Vennett" };
+export async function generateMetadata() { const t = await getTranslations(); return { title: `${t("legal_notice_title")} — Vennett` }; }
 
 // Solo nombre, lugar y contacto mientras no haya actividad económica; al cobrar hay que añadir
 // NIF y domicilio.
-export default function Aviso() {
+export default async function Aviso() {
+  const t = await getTranslations();
   return (
-    <PlantillaLegal titulo="Aviso legal">
-      <h2>Titular</h2>
+    <PlantillaLegal titulo={t("legal_notice_title")}>
+      <h2>{t("legal_notice_owner")}</h2>
       <ul>
-        <li><b>Nombre</b>: {TITULAR.nombre}</li>
-        <li><b>Lugar</b>: {TITULAR.ubicacion}</li>
-        <li><b>Contacto</b>: <Contacto /></li>
+        <li><b>{t("legal_notice_name")}</b>: {TITULAR.nombre}</li>
+        <li><b>{t("legal_notice_location")}</b>: {t("legal_holder_location")}</li>
+        <li><b>{t("legal_contact_label")}</b>: <Contacto /></li>
       </ul>
       <p>
-        Vennett es una plataforma gratuita de estrategias en papel, sin publicidad ni cobros. Si eso cambia, este
-        aviso se completará con el NIF y el domicilio del titular antes de cobrar nada.
+        {t("legal_notice_service_description")}
       </p>
 
-      <h2>Propiedad intelectual</h2>
+      <h2>{t("legal_notice_intellectual_property")}</h2>
       <p>
-        El diseño, el código y los textos son de su titular. Los nombres de empresas e índices (como
-        «S&amp;P 500») pertenecen a sus propietarios y se usan solo para identificarlos. Cada
-        persona conserva sus contenidos; ver los <Link href="/legal/terminos">términos</Link>.
+        {t("legal_notice_ip_text")} <Link href="/legal/terminos">{t("legal_terms_short")}</Link>.
       </p>
 
-      <h2>Más información</h2>
+      <h2>{t("legal_notice_more_info")}</h2>
       <p>
-        <Link href="/legal/terminos">Términos de uso</Link>,{" "}
-        <Link href="/legal/privacidad">política de privacidad</Link> y{" "}
-        <Link href="/legal/cookies">política de cookies</Link>. Ley aplicable: española.
+        <Link href="/legal/terminos">{t("legal_terms_title")}</Link>,{" "}
+        <Link href="/legal/privacidad">{t("legal_privacy_policy")}</Link> y{" "}
+        <Link href="/legal/cookies">{t("legal_cookies_policy")}</Link>. {t("legal_applicable_law")}: {t("legal_spain_feminine")}.
       </p>
     </PlantillaLegal>
   );

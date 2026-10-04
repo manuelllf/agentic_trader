@@ -5,6 +5,7 @@ filtra contra la última foto). Es una ayuda: el constructor a mano sigue siendo
 solo rellena un borrador que el usuario revisa antes de guardar nada. Gratis; tope 5/día."""
 
 from __future__ import annotations
+from app.i18n import translate
 
 import json
 import logging
@@ -225,8 +226,7 @@ def convertir(usuario_id: str, frase: str) -> tuple[Sugerencia, int]:
     usos = comun.veces_hoy("conversor", usuario_id)
     if usos >= TOPE_DIARIO:
         raise HTTPException(
-            429, f"Ya has usado el conversor {TOPE_DIARIO} veces hoy. Prueba mañana, o "
-            "construye tu filtro a mano.")
+            429, translate('liga_converter_daily_limit', count=TOPE_DIARIO))
     contenido, llamada = comun.llamar_ia(
         finalidad="conversor", usuario_id=usuario_id, modelo=_MODELO,
         system=_system_prompt(), user=_user_prompt(frase))

@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ from app.liga import (
     gestion,
     limites,
     preview_seleccion,
+    registro,
     rutas_estrategias,
     rutas_ia,
     rutas_ligas,
@@ -38,6 +39,7 @@ router.include_router(rutas_ia.router)
 router.include_router(borradores.router)
 router.include_router(visitas.router)
 router.include_router(seguimiento.router)
+router.include_router(registro.router)
 
 # Exporta recorre toda su cuenta: como las pruebas de estrategias.py, cara de abusar sin freno.
 _LIMITE_EXPORTAR = acceso.LimiteFrecuencia(tope=3, ventana_s=60 * 60)
@@ -50,6 +52,7 @@ class Yo(BaseModel):
     roles: list[str]
     admin: bool   # enseña el «Panel de control»; entrar en las salas pide además el 2FA
     aal2: bool
+    idioma: Literal["es", "en"] | None = None
 
 
 class EntrarIn(BaseModel):
@@ -125,15 +128,33 @@ def cambiar_yo(body: CambioYo, ident: Identidad = Depends(require_usuario),
 def yo(db: Session = Depends(db_usuario)) -> Yo:
     fila = db.execute(text("""
         select p.alias, liga.es_pro() as pro, liga.authorize('admin.salas') as admin,
-               liga.aal2() as aal2,
+               liga.aal2() as aal2, privado.idioma,
                array(select r.rol::text from liga.roles_usuario r
                      where r.usuario_id = p.id order by r.rol) as roles
-        from liga.perfiles p where p.id = (select auth.uid())
+        from liga.perfiles p
+        left join liga.perfiles_privados privado on privado.id = p.id
+        where p.id = (select auth.uid())
     """)).one_or_none()
     if fila is None:
         raise HTTPException(404, "No encontramos tu perfil.")
     return Yo(alias=fila.alias, plan="pro" if fila.pro else "gratis", roles=list(fila.roles),
-              admin=fila.admin, aal2=fila.aal2)
+              admin=fila.admin, aal2=fila.aal2, idioma=fila.idioma)
+
+
+class CambioIdioma(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    idioma: Literal["es", "en"]
+
+
+@router.put("/yo/idioma", response_model=CambioIdioma)
+def cambiar_idioma(body: CambioIdioma, db: Session = Depends(db_usuario)) -> CambioIdioma:
+    resultado = db.execute(text("""
+        update liga.perfiles_privados set idioma = :idioma
+        where id = (select auth.uid()) returning id
+    """), {"idioma": body.idioma}).one_or_none()
+    if resultado is None:
+        raise HTTPException(404, "No encontramos tu perfil.")
+    return body
 
 
 # ---- Exportar y baja (plan §15, D17) --------------------------------------------------------
