@@ -48,12 +48,15 @@ export default function Entrar() {
         setError(fallo);
         return;
       }
-      const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+      const { data, error: falloNivel } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (falloNivel) { setError(t("system_signin_failed")); return; }
       if (data?.nextLevel === "aal2" && data.currentLevel !== "aal2") {
         setPaso("codigo");
         return;
       }
       seguir();
+    } catch {
+      setError(t("system_signin_failed"));
     } finally {
       setOcupado(false);
     }
@@ -79,6 +82,8 @@ export default function Entrar() {
         return;
       }
       seguir();
+    } catch {
+      setError(t("system_signin_failed"));
     } finally {
       setOcupado(false);
     }
@@ -111,7 +116,7 @@ export default function Entrar() {
                 value={clave} onChange={(e) => setClave(e.target.value)} />
               {error && <p className="aviso" role="alert">{error}</p>}
               <Boton type="submit" variante="principal" ancho="completo"
-                     disabled={ocupado || !email || !clave}>
+                     disabled={ocupado || !sb || !email || !clave}>
                 {ocupado ? t("auth_entrando") : t("auth_entrar")}
               </Boton>
             </form>

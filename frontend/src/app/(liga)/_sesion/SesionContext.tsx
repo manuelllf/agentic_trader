@@ -9,7 +9,8 @@
 // pantalla pierde por un instante lo último que sabía de la sesión.
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { sessionViewKey } from "@/lib/liga/sessionView";
 import { getYo, type Yo } from "@/lib/liga/api";
 import { supabase, tokenSesion, useSupabase } from "@/lib/liga/supabase";
 import { limpiarPrivado, useCache } from "@/lib/liga/cache";
@@ -56,6 +57,7 @@ const Contexto = createContext<ContextoSesion | null>(null);
 export function SesionProvider({ children }: { children: ReactNode }) {
   const { setAccount } = useLanguage();
   const sb = useSupabase();
+  const pathname = usePathname();
   const [estado, setEstado] = useState<EstadoSesion>("cargando");
   const [email, setEmail] = useState<string | null>(null);
   const [uid, setUid] = useState<string | null>(null);
@@ -156,7 +158,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
     [estado, yo, yoFalla, email, refrescar],
   );
 
-  return <Contexto.Provider value={valor}><div key={uid ?? "visitante"} className="sesion-contenido">{children}</div></Contexto.Provider>;
+  return <Contexto.Provider value={valor}><div key={sessionViewKey(pathname, uid)} className="sesion-contenido">{children}</div></Contexto.Provider>;
 }
 
 export function useSesion(): ContextoSesion {
