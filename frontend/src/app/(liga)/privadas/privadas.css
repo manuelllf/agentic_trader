@@ -28,9 +28,20 @@
 .lg .priv-metodo summary, .lg details.priv-panel > summary { cursor: pointer; min-height: 44px; padding-block: 10px; }
 .lg .priv-metodo p { margin: 8px 0; }
 .lg .priv-equipos { display: grid; gap: 10px; }
-.lg .priv-equipo { padding: 12px 14px; border: 1px solid var(--line); border-radius: 20px; min-width: 0; }
+.lg .priv-equipo { padding: 0; border: 1px solid var(--line); border-radius: 16px; min-width: 0; }
 .lg .priv-equipo.propia { background: color-mix(in srgb,var(--accent-bg) 35%,var(--bg)); }
 .lg .priv-equipo-cab { display: flex; align-items: center; gap: 10px; }
+.lg .priv-equipo-abrir { width: 100%; min-height: 64px; padding: 10px 12px; border: 0; border-radius: inherit; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.lg .priv-equipo-abrir:disabled { cursor: default; opacity: 1; }
+.lg .priv-equipo-abrir:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lg .priv-identidad > b { display: block; font-size: 16px; line-height: 1.2; overflow-wrap: anywhere; }
+.lg .priv-identidad > small { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
+.lg .priv-resultado { text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.lg .priv-resultado > b { font-size: 18px; }
+.lg .priv-resultado > small { display: block; color: var(--muted); font-size: 11px; }
+.lg .priv-equipo-interior { border-top: 1px solid var(--line); padding: 12px; min-width: 0; }
+.lg .priv-equipo > .fine { padding: 0 12px 12px; }
+.lg .ficha-incrustada { min-width: 0; }
 .lg .priv-puesto { color: var(--muted); font-size: 16px; font-variant-numeric: tabular-nums; }
 .lg .priv-identidad { min-width: 0; flex: 1; }
 .lg .priv-identidad h2 { margin: 0; font-size: 18px; line-height: 1.2; letter-spacing: -.025em; color: var(--ink); }

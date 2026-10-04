@@ -780,6 +780,14 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .cartera-empresa:hover { background: var(--surface2); }
 .lg .cartera-empresa.con-precio { grid-template-columns: minmax(0,1fr) minmax(44px,.45fr) minmax(55px,.6fr) minmax(80px,.75fr); gap: 6px; }
 .lg .cartera-empresa.con-precio > span:last-child { display: none; }
+.lg .cartera-empresa, .lg .cartera-empresa b, .lg .cartera-empresa small { font-family: var(--font-lg), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+.lg .cartera-empresa { font-size: 14px; line-height: 1.35; border: 1px solid var(--line); }
+.lg .cartera-empresa > b { font-size: 15px; letter-spacing: -.02em; }
+.lg .cartera-retorno { display: inline-block; padding: 4px 6px; border-radius: 7px; font-size: 14px; font-weight: 700; }
+.lg .cartera-retorno.up { color: var(--good); background: var(--good-bg); }
+.lg .cartera-retorno.dn { color: var(--bad); background: var(--bad-bg); }
+.lg .cartera-retorno.fl { color: var(--muted); background: var(--flat-bg); }
+.lg .cartera-empresa small { margin-top: 3px; }
 .lg .empresa-modal { width: min(620px,calc(100vw - 24px)); }
 .lg .ficha-marcador { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 16px 0; }
 .lg .ficha-marcador small { display: block; color: var(--muted); font-size: 12px; }

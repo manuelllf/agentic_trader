@@ -91,13 +91,16 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
   mensual y acumulado frente al S&P. El mes provisional se refresca cada dos minutos y se
   separa de los puntos oficiales. El detalle abre la cartera y metodología de la ficha,
   respetando su privacidad; invitaciones y gestión quedan en un panel independiente.
-  Las tarjetas reducen el espacio vertical y abren la ficha del equipo. La ficha empieza por
+  Las tarjetas privadas son filas compactas y abren la ficha del equipo dentro de la propia
+  tarjeta, sin abandonar la liga. La ficha empieza por
   la cartera: cada empresa abre su evidencia en una modal. Metodología sigue los pasos del
   editor (Idea, Reglas, Jev y Reparto); Resultados reúne rendimiento e historial por separado.
   La jornada abierta comparte una consulta de mercado en segundo plano por ventana de dos
   minutos. La ficha muestra retorno provisional de cartera y, según permisos, precio bruto
   y retorno total de cada empresa. Señala la consulta, fecha de mercado y datos pendientes;
   Yahoo puede tener retraso. Estas cotizaciones no sobrescriben cierres ni puntos oficiales.
+  Las filas de empresas comparten la tipografía de la app y distinguen retornos positivos,
+  negativos y neutros con los colores del tema, manteniendo siempre el signo y la cifra.
 - **Seguimiento en Mías.** Resultado provisional de la jornada, último resultado cerrado y
   composición frente a la última revisión y entre las dos últimas carteras formadas.
   Copiar una estrategia publicada requiere

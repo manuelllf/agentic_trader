@@ -1,7 +1,7 @@
 "use client";
 
 import type { EvidenciaFormacion } from "@/lib/liga/evidencia";
-import { porcentaje } from "@/lib/liga/format";
+import { claseSigno, porcentaje } from "@/lib/liga/format";
 import { InfoTip } from "@/components/InfoTip";
 import { useEffect, useId, useRef, useState } from "react";
 import type { MercadoFicha } from "@/lib/liga/api";
@@ -42,11 +42,13 @@ export function EvidenciaCartera({ datos, mercado }: { datos: EvidenciaFormacion
       {f.estado_reglas === "version_no_soportada" && <p className="fine">La versión histórica de estas reglas no puede reproducirse con el catálogo actual.</p>}
 
       <div className="cartera-plantilla">
-        {posiciones.map(p => <button type="button" className={`cartera-empresa${mercado ? " con-precio" : ""}`} key={p.ticker} onClick={() => setTicker(p.ticker)}>
+        {posiciones.map(p => {
+          const retorno = mercado ? mercado.empresas[p.ticker]?.rentabilidad : p.rendimiento.rentabilidad_pct;
+          return <button type="button" className={`cartera-empresa${mercado ? " con-precio" : ""}`} key={p.ticker} onClick={() => setTicker(p.ticker)}>
           <b>{p.ticker}</b><span>{Number(p.peso).toFixed(1).replace(".", ",")} %<small>Peso</small></span>
           {mercado && <span>{mercado.empresas[p.ticker]?.precio == null ? "—" : Number(mercado.empresas[p.ticker]!.precio).toLocaleString("es-ES", {maximumFractionDigits: 2})}<small>Precio</small></span>}
-          <span>{mercado ? mercado.empresas[p.ticker]?.rentabilidad == null ? "—" : porcentaje(mercado.empresas[p.ticker]!.rentabilidad!) : p.rendimiento.rentabilidad_pct == null ? "—" : porcentaje(p.rendimiento.rentabilidad_pct)}<small>{mercado ? "Este mes · provisional" : "Retorno del periodo"}</small></span><span aria-hidden="true">→</span>
-        </button>)}
+          <span><b className={`cartera-retorno ${retorno == null ? "fl" : claseSigno(retorno)}`}>{retorno == null ? "—" : porcentaje(retorno)}</b><small>{mercado ? "Este mes · provisional" : "Retorno del periodo"}</small></span><span aria-hidden="true">→</span>
+        </button>; })}
       </div>
       <dialog ref={dialogo} className="lecturas-modal empresa-modal" aria-labelledby={titulo} onCancel={() => setTicker(null)}>
         <header className="lecturas-cab"><div><p className="lecturas-kicker">Empresa de la cartera · jornada {f.jornada_numero}</p><h2 id={titulo}>{ticker}</h2></div>
@@ -66,7 +68,7 @@ export function EvidenciaCartera({ datos, mercado }: { datos: EvidenciaFormacion
             {r.motivo ? ` · ${r.motivo}` : ""}.
           </p>)}
           {p.rendimiento.estado === "disponible" && p.rendimiento.rentabilidad_pct !== null ? <>
-            <p className="fine">Del {p.rendimiento.desde} al {p.rendimiento.hasta}: <b>{porcentaje(p.rendimiento.rentabilidad_pct)}</b>
+            <p className="fine">Del {p.rendimiento.desde} al {p.rendimiento.hasta}: <b className={claseSigno(p.rendimiento.rentabilidad_pct)}>{porcentaje(p.rendimiento.rentabilidad_pct)}</b>
               {" · "}S&amp;P 500 {porcentaje(p.rendimiento.sp500_pct!)}
               {" · "}{porcentaje(p.rendimiento.diferencia_pp!).replace(/%$/, "pp")}.</p>
             {p.rendimiento.incompleta && <p className="fine">Hay cierres intermedios ausentes; se comparan los extremos disponibles del periodo.</p>}

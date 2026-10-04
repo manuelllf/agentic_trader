@@ -10,6 +10,7 @@ import { invalidar, useCache } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../../_sesion/SesionContext";
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
 import "../privadas.css";
+import { FichaContenido } from "../../ficha/[id]/FichaContenido";
 
 const pp = (valor: number) => porcentaje(valor).replace(" %", " pp");
 
@@ -20,6 +21,7 @@ export default function PrivadaDetalle() {
   const { datos: liga, cargando, fallo, refrescar: cargar } = useCache<LigaDetalle | string>(
     estado === "dentro" ? `liga:${id}` : null, () => verLiga(id), 120000);
   const [vista, setVista] = useState("mes");
+  const [abierto, setAbierto] = useState<string | null>(null);
   const [ocupada, setOcupada] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
@@ -73,13 +75,16 @@ export default function PrivadaDetalle() {
                 const e = m.estrategia;
                 const conResultado = vista === "mes" ? m.rentabilidad_mes != null : m.puntos != null;
                 return <article className={`priv-equipo${m.es_yo ? " propia" : ""}`} key={m.alias}>
-                  <div className="priv-equipo-cab">
+                  <button type="button" className="priv-equipo-cab priv-equipo-abrir" disabled={!e}
+                    aria-expanded={abierto === e?.id} aria-controls={e ? `equipo-${e.id}` : undefined}
+                    onClick={() => e && setAbierto(abierto === e.id ? null : e.id)}>
                     <span className="priv-puesto" aria-label={conResultado ? `Posición ${i + 1}` : "Sin clasificar"}>{conResultado ? String(i + 1).padStart(2, "0") : "—"}</span>
                     {e && <Escudo valor={e.escudo} etiqueta={`Escudo de ${e.nombre}`} tamano={38} />}
-                    <div className="priv-identidad"><h2>{e?.nombre ?? m.alias}</h2><p>{e ? m.alias : "Sin estrategia formada"}{m.es_yo ? " · tú" : ""}{e?.visibilidad === "privada" ? " · método privado" : ""}</p></div>
-                    {vista === "oficial" && m.puntos != null && <b className="priv-puntos">{m.puntos}<small>puntos</small></b>}
-                  </div>
-                  {e ? <>
+                    <span className="priv-identidad"><b>{e?.nombre ?? m.alias}</b><small>{e ? m.alias : "Sin estrategia formada"}{m.es_yo ? " · tú" : ""}</small></span>
+                    <span className="priv-resultado">{vista === "mes" ? <b className={m.rentabilidad_mes == null ? "" : claseSigno(m.rentabilidad_mes)}>{m.rentabilidad_mes == null ? "—" : porcentaje(m.rentabilidad_mes)}</b> : <b>{m.puntos ?? "—"}</b>}<small>{vista === "mes" ? "Este mes" : "Puntos"}</small></span>
+                    {e && <span aria-hidden="true">{abierto === e.id ? "−" : "+"}</span>}
+                  </button>
+                  {e && abierto === e.id ? <div className="priv-equipo-interior" id={`equipo-${e.id}`}>
                     <dl className="priv-cifras">
                       <div><dt>Este mes</dt><dd className={m.rentabilidad_mes == null ? "" : claseSigno(m.rentabilidad_mes)}>{m.rentabilidad_mes == null ? "—" : porcentaje(m.rentabilidad_mes)}</dd></div>
                       <div><dt>vs S&amp;P este mes</dt><dd>{m.diferencia_mes == null ? "—" : pp(m.diferencia_mes)}</dd></div>
@@ -88,10 +93,10 @@ export default function PrivadaDetalle() {
                     </dl>
                     <p className="fine">{m.acumulado ? `${fecha(m.acumulado.desde)} – ${fecha(m.acumulado.hasta)} · ${m.acumulado.periodos} jornadas${m.acumulado.incompleta ? " consecutivas disponibles" : ""} · ${pp(m.acumulado.diferencia_pp)} frente al índice` : "El acumulado aparecerá al cerrar la primera jornada."}</p>
                     <div className="priv-equipo-pie">
-                      <Link className="link" href={`/ficha/${e.id}`}>Ver equipo →</Link>
                       {m.movimiento != null && <span className="fine">{m.movimiento === 0 ? "Sin cambio de puesto" : `${m.movimiento > 0 ? "↑" : "↓"} ${Math.abs(m.movimiento)} puestos oficiales`}</span>}
                     </div>
-                  </> : <p className="fine">{m.es_yo ? "Crea una estrategia y apúntala a la próxima jornada para empezar a comparar." : "Cuando se forme su primera cartera, aparecerán aquí sus resultados."}{m.es_yo && <Link className="link" href="/crear"> Crear estrategia →</Link>}</p>}
+                    <FichaContenido key={e.id} id={e.id} incrustada />
+                  </div> : !e && <p className="fine">{m.es_yo ? "Crea una estrategia y apúntala a la próxima jornada para empezar a comparar." : "Cuando se forme su primera cartera, aparecerán aquí sus resultados."}{m.es_yo && <Link className="link" href="/crear"> Crear estrategia →</Link>}</p>}
                 </article>;
               })}
             </div>
