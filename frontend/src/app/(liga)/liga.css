@@ -85,7 +85,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 }
 .lg .wordmark::before {
   content: ""; width: 32px; height: 32px;
-  background: url("/favicon.svg?v=vennett-1") center / contain no-repeat;
+  background: url("/favicon.svg?v=vennett-6") center / contain no-repeat;
 }
 .lg .wordmark::after {
   content: ""; width: 90px; height: 25px; background: currentColor;

@@ -22,11 +22,11 @@ const baseMetadata: Metadata = {
   appleWebApp: { capable: true, statusBarStyle: "default", title: "Vennett" },
   icons: {
     icon: [
-      { url: "/favicon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico", sizes: "32x32", type: "image/x-icon" },
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/favicon.svg?v=vennett-6", type: "image/svg+xml" },
+      { url: "/favicon.ico?v=vennett-6", sizes: "32x32", type: "image/x-icon" },
+      { url: "/icon-192.png?v=vennett-6", sizes: "192x192", type: "image/png" },
     ],
-    apple: "/apple-touch-icon.png",
+    apple: "/apple-touch-icon.png?v=vennett-6",
   },
 };
 

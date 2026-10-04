@@ -1,3 +1,4 @@
+import { VENNETT_ICON } from "./brandIcon";
 // Exporta una vista como TARJETA lista para publicar (PNG), no como captura.
 //
 // Por qué tarjeta y no captura: cada imagen que sale de aquí acaba en X o LinkedIn, y el
@@ -199,17 +200,9 @@ export function quoteSvg(text: string, palette: CardPalette, W = 560, H = 400): 
   </svg>`;
 }
 
-/** El logo de la app, tal cual está en `components/Logo.tsx` (misma marca que la web). La marca
- *  no cambia con el tema: es el mismo círculo verde en dark y en claro, como en el resto de la web. */
+// La tarjeta exportada utiliza la misma marca que los iconos de la app.
 function logoSvg(x: number, y: number, size: number): string {
-  const k = size / 96;
-  return `<g transform="translate(${x},${y}) scale(${k.toFixed(4)})">
-    <circle cx="48" cy="48" r="46" fill="#059669"/>
-    <g fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" transform="translate(48,48)">
-      <path d="M-28 16 L-9 -3 L3 9 L25 -13"/>
-      <path d="M15 -13 L28 -13 L28 0"/>
-    </g>
-  </g>`;
+  return VENNETT_ICON.replace("<svg ", `<svg x="${x}" y="${y}" width="${size}" height="${size}" `);
 }
 
 /** Píldoras de contexto, alineadas a la derecha y en el orden dado. */

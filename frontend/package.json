@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
+    "icons": "node scripts/generar-iconos.mjs",
     "check:i18n": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
