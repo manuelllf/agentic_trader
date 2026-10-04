@@ -57,7 +57,7 @@ function CarteraSinEvidencia({ posiciones, mercado }: { posiciones: Ficha["posic
   </section>;
 }
 
-export function FichaContenido({ id, incrustada = false }: { id: string; incrustada?: boolean }) {
+export function FichaContenido({ id }: { id: string }) {
   const router = useRouter();
   const { estado, yo } = useSesionRequerida(`/ficha/${id}`);
   const sesionLista = estado !== "cargando";
@@ -109,10 +109,9 @@ export function FichaContenido({ id, incrustada = false }: { id: string; incrust
     setAviso(typeof r === "string" ? r : "Gracias, lo revisamos.");
   }
 
-  const Contenedor = incrustada ? "div" : "main";
   return (
-    <Contenedor className={incrustada ? "ficha-incrustada" : "scroll"}>
-      {!incrustada && <Link href="/liga" className="back" style={{ marginTop: 4 }} onClick={(evento) => {
+    <main className="scroll">
+      <Link href="/liga" className="back" style={{ marginTop: 4 }} onClick={(evento) => {
         if (evento.ctrlKey || evento.metaKey || evento.shiftKey || evento.altKey) return;
         if (window.history.length > 1) { evento.preventDefault(); router.back(); }
       }}>
@@ -121,7 +120,7 @@ export function FichaContenido({ id, incrustada = false }: { id: string; incrust
           <path d="M15 6l-6 6 6 6" />
         </svg>
         Volver
-      </Link>}
+      </Link>
 
       {cargandoFicha ? (
         <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
@@ -130,14 +129,14 @@ export function FichaContenido({ id, incrustada = false }: { id: string; incrust
                    accion={{ texto: "Reintentar", onClick: refrescarFicha }} />
       ) : !ficha ? null : (
         <>
-          {!incrustada && <div className="fh" style={{ marginTop: 16 }}>
+          <div className="fh" style={{ marginTop: 16 }}>
             <Escudo valor={ficha.casa ? escudoCasa(ficha.casa) : ficha.escudo}
               casa={ficha.casa} etiqueta={`Escudo de ${ficha.nombre}`} tamano={52} />
             <div>
               <h2>{ficha.nombre}</h2>
               <p>{subtitulo(ficha, ficha.es_dueno)}</p>
             </div>
-          </div>}
+          </div>
 
           {ficha.mercado && <section className="ficha-marcador" aria-label="Resultado provisional de la cartera">
             <div><small>Cartera · este mes</small><b className={ficha.mercado.rentabilidad == null ? "" : claseSigno(ficha.mercado.rentabilidad)}>{ficha.mercado.rentabilidad == null ? "—" : porcentaje(ficha.mercado.rentabilidad)}</b></div>
@@ -270,7 +269,7 @@ export function FichaContenido({ id, incrustada = false }: { id: string; incrust
         </>
       )}
 
-      {!incrustada && <BarraPestanas />}
-    </Contenedor>
+      <BarraPestanas />
+    </main>
   );
 }

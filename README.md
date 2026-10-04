@@ -91,8 +91,8 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
   mensual y acumulado frente al S&P. El mes provisional se refresca cada dos minutos y se
   separa de los puntos oficiales. El detalle abre la cartera y metodología de la ficha,
   respetando su privacidad; invitaciones y gestión quedan en un panel independiente.
-  Las tarjetas privadas son filas compactas y abren la ficha del equipo dentro de la propia
-  tarjeta, sin abandonar la liga. La ficha empieza por
+  Las tarjetas privadas son filas compactas y abren la misma ficha de detalle que el ranking
+  público. La ficha empieza por
   la cartera: cada empresa abre su evidencia en una modal. Metodología sigue los pasos del
   editor (Idea, Reglas, Jev y Reparto); Resultados reúne rendimiento e historial por separado.
   La jornada abierta comparte una consulta de mercado en segundo plano por ventana de dos

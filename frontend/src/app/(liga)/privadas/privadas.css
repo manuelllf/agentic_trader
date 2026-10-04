@@ -39,9 +39,7 @@
 .lg .priv-resultado { text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .lg .priv-resultado > b { font-size: 18px; }
 .lg .priv-resultado > small { display: block; color: var(--muted); font-size: 11px; }
-.lg .priv-equipo-interior { border-top: 1px solid var(--line); padding: 12px; min-width: 0; }
 .lg .priv-equipo > .fine { padding: 0 12px 12px; }
-.lg .ficha-incrustada { min-width: 0; }
 .lg .priv-puesto { color: var(--muted); font-size: 16px; font-variant-numeric: tabular-nums; }
 .lg .priv-identidad { min-width: 0; flex: 1; }
 .lg .priv-identidad h2 { margin: 0; font-size: 18px; line-height: 1.2; letter-spacing: -.025em; color: var(--ink); }
