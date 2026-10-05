@@ -13,7 +13,7 @@ import {
   type JornadaDetalle, type Portada,
 } from "@/lib/liga/api";
 import { mutar, useCache } from "@/lib/liga/cache";
-import { claseSigno, fecha, porcentaje, signo } from "@/lib/liga/format";
+import { claseSigno, porcentaje, signo } from "@/lib/liga/format";
 import { getSeguimiento, type SeguimientoEstrategia }
   from "@/lib/liga/seguimiento";
 import { useSesionRequerida } from "../_sesion/SesionContext";
@@ -34,7 +34,6 @@ function parchearFila(id: string, cambios: Partial<Estrategia> | Estrategia) {
 export default function Mias() {
   const t = useTranslations();
   const locale = normalizeLocale(useLocale()) ?? "es";
-  const date = (value: string) => fecha(value, new Date(), locale);
   const percent = (value: number) => porcentaje(value, 1, locale);
   const points = (value: number) => signo(value, 1, locale);
   const { estado, yo } = useSesionRequerida("/mias");
@@ -57,6 +56,7 @@ export default function Mias() {
   );
   const [ocupada, setOcupada] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [ajustes, setAjustes] = useState<string | null>(null);
   // Leer no marca una revisión; la caché privada se invalida al cambiar de cuenta.
   const { datos: seguimiento } = useCache<SeguimientoEstrategia[] | string>(
     estado === "dentro" ? "seguimiento" : null, getSeguimiento,
@@ -119,11 +119,32 @@ export default function Mias() {
     setOcupada(null);
   }
 
+  // Primero lo que cambió desde tu última revisión, luego lo que juega, lo apuntado y los borradores.
+  const novedadDe = (r: SeguimientoEstrategia | undefined) => {
+    const ninguna: string[] = [];
+    if (!r) return null;
+    if (r.primera_revision) return { tipo: "primera" as const, entradas: ninguna, salidas: ninguna };
+    const c = r.cambio_desde_revision;
+    if (c && (c.entradas.length || c.salidas.length)) return { tipo: "cambio" as const, entradas: c.entradas, salidas: c.salidas };
+    if (r.resultado_nuevo) return { tipo: "resultado" as const, entradas: ninguna, salidas: ninguna };
+    return { tipo: "sin" as const, entradas: ninguna, salidas: ninguna };
+  };
+  const conNovedad = (e: Estrategia) => {
+    const tipo = novedadDe(porEstrategia?.get(e.id))?.tipo;
+    return tipo === "cambio" || tipo === "resultado";
+  };
+  const ORDEN_ESTADO: Record<string, number> = { jugando: 0, apuntada: 1, borrador: 2 };
+  const ordenadas = Array.isArray(estrategias)
+    ? [...estrategias].sort((a, b) => (conNovedad(b) ? 1 : 0) - (conNovedad(a) ? 1 : 0)
+      || (ORDEN_ESTADO[a.estado] ?? 3) - (ORDEN_ESTADO[b.estado] ?? 3))
+    : [];
+  const conNovedades = ordenadas.filter(conNovedad).length;
+
   return (
     <main className="scroll">
       <div className="titulo-cuenta"><h1 className="h1">{t("strategies_mine_title")}</h1><Sesion /></div>
       <div className="mias-cabecera">
-        <span className="meta">{Array.isArray(estrategias) ? t("strategies_count", { count: estrategias.length }) : ""}</span>
+        <span className="meta">{Array.isArray(estrategias) ? t("strategies_count", { count: estrategias.length }) : ""}{conNovedades > 0 && ` · ${t("strategies_with_news", { count: conNovedades })}`}</span>
           <Link href="/crear" className="btn pri small">{t("strategies_create")}</Link>
       </div>
 
@@ -140,64 +161,88 @@ export default function Mias() {
         />
       ) : (
         <div className="mias-lista">
-          {estrategias.map((e) => {
+          {ordenadas.map((e) => {
             const actual = filasJornada?.get(e.id);
             const resumen = porEstrategia?.get(e.id);
-            const acumulado = resumen?.acumulado;
-            const puesto = rankingPorEstrategia?.get(e.id)?.posicion;
+            const fila = rankingPorEstrategia?.get(e.id);
+            const acumulado = resumen?.acumulado ?? fila?.acumulado;
+            const puesto = fila?.posicion;
+            const movimiento = fila?.movimiento ?? 0;
+            const novedad = novedadDe(resumen);
             const pendiente = ocupada === e.id;
+            const enVivo = typeof detalleJornada === "object" && !!detalleJornada && detalleJornada.en_vivo;
+            const cargandoMes = detalleJornada === undefined && !falloJornada;
             return (
               <article key={e.id} className="mias-estrategia" aria-busy={pendiente || undefined}>
-                <Link href={`/ficha/${e.id}`} className="mias-identidad">
-                  <Escudo valor={e.escudo} etiqueta={t("strategies_crest", { name: e.nombre })} tamano={34} />
-                  <span><h2>{e.nombre}</h2><small>{ETIQUETA_ESTADO[e.estado] ? t(ETIQUETA_ESTADO[e.estado]) : e.estado}</small></span>
-                  <span className="mias-abrir" aria-hidden="true">↗</span>
-                </Link>
-                {e.estado !== "borrador" && (
+                <div className="mias-cab">
+                  <Link href={`/ficha/${e.id}`} className="mias-identidad">
+                    <Escudo valor={e.escudo} etiqueta={t("strategies_crest", { name: e.nombre })} tamano={34} />
+                    <span><h2>{e.nombre}</h2><small>{ETIQUETA_ESTADO[e.estado] ? t(ETIQUETA_ESTADO[e.estado]) : e.estado}</small></span>
+                    {puesto != null && (
+                      <span className="mias-puesto num" aria-label={t("common_ranking_posicion_aria", { count: puesto })}>
+                        #{puesto}
+                        {movimiento !== 0 && <small className={movimiento > 0 ? "up" : "dn"}>{movimiento > 0 ? "↑" : "↓"}{Math.abs(movimiento)}</small>}
+                      </span>
+                    )}
+                  </Link>
+                  <button type="button" className="mias-mas" aria-expanded={ajustes === e.id}
+                    aria-label={t("strategies_settings")} onClick={() => setAjustes(ajustes === e.id ? null : e.id)}>⋯</button>
+                </div>
+                {(e.estado === "jugando" || acumulado) && (
                   <dl className="mias-cifras">
-                    <div><dt>{t("strategies_this_month")}</dt><dd className={actual?.rentabilidad != null ? claseSigno(actual.rentabilidad) : ""}>
-                      {actual?.rentabilidad != null ? percent(actual.rentabilidad) : t("strategies_no_data")}
-                    </dd></div>
-                    <div><dt>{acumulado?.incompleta ? t("strategies_period_count", { count: acumulado.periodos }) : t("strategies_cumulative")}</dt>
+                    <div>
+                      <dt>{t("strategies_this_month")}{enVivo && ` · ${t("strategies_provisional").toLowerCase()}`}</dt>
+                      <dd className={actual?.rentabilidad != null ? claseSigno(actual.rentabilidad) : ""}>
+                        {actual?.rentabilidad != null ? percent(actual.rentabilidad)
+                          : e.estado === "jugando" && cargandoMes ? "…" : t("strategies_no_data")}
+                      </dd>
+                      {actual?.dif_sp != null && <small className={claseSigno(actual.dif_sp)}>{points(actual.dif_sp)} pp {t("common_ranking_vs_sp")}</small>}
+                    </div>
+                    <div>
+                      <dt>{acumulado?.incompleta ? t("strategies_period_count", { count: acumulado.periodos }) : t("strategies_cumulative")}</dt>
                       <dd className={acumulado ? claseSigno(acumulado.rentabilidad) : ""}>
                         {acumulado ? percent(acumulado.rentabilidad) : t("strategies_no_closes")}
-                      </dd></div>
-                    <div><dt>{t("strategies_league")}</dt><dd>{puesto != null ? `#${puesto}` : t("strategies_no_rank")}</dd></div>
+                      </dd>
+                      {acumulado && <small>{t("strategies_benchmark", { value: percent(acumulado.sp500) })}</small>}
+                    </div>
                   </dl>
                 )}
-                {e.estado === "jugando" && (
-                  <p className="mias-contexto" role="status">
-                    {actual?.rentabilidad != null ? <>
-                      {actual.dif_sp != null && <span className={claseSigno(actual.dif_sp)}>{points(actual.dif_sp)} vs S&amp;P 500 · </span>}
-                      {typeof detalleJornada === "object" && detalleJornada && <>
-                        {detalleJornada.en_vivo ? t("strategies_provisional") : t("strategies_last_close")}
-                        {detalleJornada.hasta ? ` · ${date(detalleJornada.hasta)}` : ""}
-                      </>}
-                    </> : detalleJornada === undefined && !falloJornada ? t("strategies_loading_result") : t("strategies_result_unavailable")}
-                  </p>
+                {novedad && (e.estado === "jugando" || acumulado) && (
+                  <Link href={`/ficha/${e.id}`} className={`mias-linea${novedad.tipo === "cambio" || novedad.tipo === "resultado" ? " viva" : ""}`}>
+                    {novedad.tipo === "cambio" && <>
+                      <b>{t("strategies_change_count", { count: novedad.entradas.length + novedad.salidas.length })}</b>
+                      <span>{t("common_seguimiento_cambios", { entradas: novedad.entradas.join(", ") || t("common_seguimiento_ninguna"), salidas: novedad.salidas.join(", ") || t("common_seguimiento_ninguna") })}</span>
+                    </>}
+                    {novedad.tipo === "resultado" && <b>{t("strategies_new_result")}</b>}
+                    {novedad.tipo === "sin" && <span>{t("strategies_no_changes")}</span>}
+                    {novedad.tipo === "primera" && <span>{t("strategies_first_look")}</span>}
+                  </Link>
                 )}
-                {resumen?.resultado_nuevo && <Link className="mias-novedad" href={`/ficha/${e.id}`}>{t("strategies_new_result")} ↗</Link>}
-                <div className="mias-pie">
-                <div className="mias-acciones">
-                  <Link href={`/crear/${e.id}`} className="btn small">{t("strategies_edit")}</Link>
-                  {e.estado === "borrador" && <>
+                {e.estado === "borrador" && (
+                  <div className="mias-pie">
                     <Boton tamano="pequeno" variante="principal" disabled={pendiente} onClick={() => alApuntar(e.id)}>{t("strategies_sign_up")}</Boton>
-                    <Boton tamano="pequeno" variante="discreto" disabled={pendiente} onClick={() => alBorrar(e.id, e.nombre)}>{t("strategies_delete")}</Boton>
-                  </>}
-                  {e.estado === "apuntada" && <Boton tamano="pequeno" disabled={pendiente} onClick={() => alDesapuntar(e.id)}>{t("strategies_remove_from_round")}</Boton>}
-                </div>
-                {(e.estado === "apuntada" || e.estado === "jugando") && (
-                  <div className="mias-renovacion">
-                    <span>{t("strategies_next_month")}</span>
-                    <div inert={pendiente || undefined}>
-                      <Segmentado<"revisar" | "mantener"> pequeno etiquetaGrupo={t("strategies_next_month_for", { name: e.nombre })}
-                        opciones={[{ valor: "revisar", etiqueta: t("strategies_review") }, { valor: "mantener", etiqueta: t("strategies_keep") }]}
-                        valor={e.cada_dia_1 === "mantener" ? "mantener" : "revisar"}
-                        onChange={(v) => alCambiarCadaDia1(e.id, v)} />
-                    </div>
                   </div>
                 )}
-                </div>
+                {ajustes === e.id && (
+                  <div className="mias-ajustes">
+                    <div className="mias-acciones">
+                      <Link href={`/crear/${e.id}`} className="btn small">{t("strategies_edit")}</Link>
+                      {e.estado === "borrador" && <Boton tamano="pequeno" variante="discreto" disabled={pendiente} onClick={() => alBorrar(e.id, e.nombre)}>{t("strategies_delete")}</Boton>}
+                      {e.estado === "apuntada" && <Boton tamano="pequeno" disabled={pendiente} onClick={() => alDesapuntar(e.id)}>{t("strategies_remove_from_round")}</Boton>}
+                    </div>
+                    {(e.estado === "apuntada" || e.estado === "jugando") && (
+                      <div className="mias-renovacion">
+                        <span>{t("strategies_next_month")}</span>
+                        <div inert={pendiente || undefined}>
+                          <Segmentado<"revisar" | "mantener"> pequeno etiquetaGrupo={t("strategies_next_month_for", { name: e.nombre })}
+                            opciones={[{ valor: "revisar", etiqueta: t("strategies_review") }, { valor: "mantener", etiqueta: t("strategies_keep") }]}
+                            valor={e.cada_dia_1 === "mantener" ? "mantener" : "revisar"}
+                            onChange={(v) => alCambiarCadaDia1(e.id, v)} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </article>
             );
           })}
