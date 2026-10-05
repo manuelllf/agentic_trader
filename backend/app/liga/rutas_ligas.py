@@ -57,6 +57,13 @@ class LigaResumenOut(BaseModel):
     n_miembros: int
 
 
+class LigaListaOut(LigaResumenOut):
+    """Resumen para la lista: resultado del mes de la estrategia que va primera."""
+    mes: Decimal | None = None
+    sp500_mes: Decimal | None = None
+    lider: str | None = None
+
+
 class MiembroLigaOut(BaseModel):
     alias: str
     es_yo: bool
@@ -94,15 +101,21 @@ def _resumen(fila, uid: str, n_miembros: int) -> LigaResumenOut:  # noqa: ANN001
 # ---- Mis ligas y crear ---------------------------------------------------------------------------
 
 
-@router.get("/ligas", response_model=list[LigaResumenOut])
+@router.get("/ligas", response_model=list[LigaListaOut])
 def mis_ligas(ident: Identidad = Depends(require_usuario),
-             db: Session = Depends(db_usuario)) -> list[LigaResumenOut]:
+             db: Session = Depends(db_usuario)) -> list[LigaListaOut]:
     filas = db.execute(text("""
         select l.id, l.dueno_id, l.nombre, l.codigo, l.cupo, l.oculta, l.creada,
                (select count(*) from liga.miembros_liga m where m.liga_id = l.id) as n_miembros
         from liga.ligas_privadas l order by l.creada desc
     """)).all()
-    return [_resumen(f, ident.uid, f.n_miembros) for f in filas]
+    lideres, sp = _lideres_del_mes(db, [f.id for f in filas])
+    return [
+        LigaListaOut(**_resumen(f, ident.uid, f.n_miembros).model_dump(),
+                     mes=lideres.get(str(f.id), {}).get("mes"), sp500_mes=sp,
+                     lider=lideres.get(str(f.id), {}).get("lider"))
+        for f in filas
+    ]
 
 
 @router.post("/ligas", response_model=LigaResumenOut, status_code=201)
@@ -145,23 +158,18 @@ def _temporada_actual(db: Session) -> int | None:
     """)).scalar()
 
 
-@router.get("/ligas/{id}", response_model=LigaDetalleOut)
-def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
-            db: Session = Depends(db_usuario)) -> LigaDetalleOut:
-    fila = db.execute(text("""
-        select id, dueno_id, nombre, codigo, cupo, oculta, creada
-        from liga.ligas_privadas where id = :i
-    """), {"i": id}).one_or_none()
-    if fila is None:
-        raise HTTPException(404, "No existe esa liga (o no estás en ella).")
-    temporada = _temporada_actual(db)
-    jornada = db.execute(text("""
+def _jornada_formada(db: Session, temporada: int | None):  # noqa: ANN202
+    return db.execute(text("""
         select id, numero from liga.jornadas
         where temporada_id = :t and estado = 'formada' order by dia_base desc limit 1
     """), {"t": temporada}).one_or_none()
-    miembros = db.execute(text("""
-        select p.alias, m.usuario_id::text as usuario_id, m.unido, s.estrategia_id,
-               s.puntos, s.jornadas, s.dif_sp, s.nombre, s.forma, s.dibujo,
+
+
+def _miembros(db: Session, liga_ids: list, temporada: int | None, jornada_id: int | None):  # noqa: ANN202
+    """Miembros de las ligas dadas con la estrategia que los representa y su inscripción del mes."""
+    return db.execute(text("""
+        select m.liga_id::text as liga_id, p.alias, m.usuario_id::text as usuario_id, m.unido,
+               s.estrategia_id, s.puntos, s.jornadas, s.dif_sp, s.nombre, s.forma, s.dibujo,
                s.color1, s.color2, s.iniciales, s.visibilidad, s.inscripcion_id
         from liga.miembros_liga m
         join liga.perfiles p on p.id = m.usuario_id
@@ -182,9 +190,44 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
             order by c.puntos desc nulls last, c.dif_sp desc nulls last, e.creada, e.id
             limit 1
         ) s on true
-        where m.liga_id = :i
-        order by coalesce(s.puntos, -1) desc, coalesce(s.dif_sp, -999) desc, p.alias
-    """), {"i": id, "t": temporada, "j": jornada.id if jornada else None}).all()
+        where m.liga_id = any(:ids)
+        order by m.liga_id, coalesce(s.puntos, -1) desc, coalesce(s.dif_sp, -999) desc, p.alias
+    """), {"ids": liga_ids, "t": temporada, "j": jornada_id}).all()
+
+
+def _lideres_del_mes(db: Session, liga_ids: list) -> tuple[dict[str, dict], Decimal | None]:
+    """Por liga, la estrategia con mejor resultado del mes y el S&P 500 de esa jornada."""
+    if not liga_ids:
+        return {}, None
+    temporada = _temporada_actual(db)
+    jornada = _jornada_formada(db, temporada)
+    vivo = diario.vivo(jornada.id) if jornada else None
+    if not vivo:
+        return {}, None
+    por_inscripcion = vivo["por_inscripcion"]
+    mejores: dict[str, dict] = {}
+    for m in _miembros(db, liga_ids, temporada, jornada.id):
+        rentabilidad = por_inscripcion.get(m.inscripcion_id, {}).get("rentabilidad")
+        if rentabilidad is None:
+            continue
+        actual = mejores.get(m.liga_id)
+        if actual is None or rentabilidad > actual["mes"]:
+            mejores[m.liga_id] = {"mes": rentabilidad, "lider": m.nombre}
+    return mejores, vivo["sp"]
+
+
+@router.get("/ligas/{id}", response_model=LigaDetalleOut)
+def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
+            db: Session = Depends(db_usuario)) -> LigaDetalleOut:
+    fila = db.execute(text("""
+        select id, dueno_id, nombre, codigo, cupo, oculta, creada
+        from liga.ligas_privadas where id = :i
+    """), {"i": id}).one_or_none()
+    if fila is None:
+        raise HTTPException(404, "No existe esa liga (o no estás en ella).")
+    temporada = _temporada_actual(db)
+    jornada = _jornada_formada(db, temporada)
+    miembros = _miembros(db, [id], temporada, jornada.id if jornada else None)
     n_miembros = len(miembros)
     estrategia_por_miembro = {
         m.alias: m.estrategia_id for m in miembros if m.estrategia_id is not None

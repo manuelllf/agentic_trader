@@ -243,8 +243,13 @@ def test_detalle_muestra_equipo_formado_y_mes_sin_abrir_datos_privados(api, monk
             sin_cartera = next(m for m in detalle["miembros"] if m["es_yo"])
             assert sin_cartera["estrategia"] is None
             assert sin_cartera["rentabilidad_mes"] is None
+            lista = next(x for x in cliente.get("/liga/ligas", headers=cab(miembro)).json()
+                         if x["id"] == liga["id"])
+            assert lista["lider"] == "Foso ancho"
+            assert Decimal(lista["mes"]) == Decimal("2.5")
+            assert Decimal(lista["sp500_mes"]) == Decimal("1.2")
             assert cliente.get(f"/liga/ligas/{liga['id']}", headers=cab(ajeno)).status_code == 404
-            assert llamadas == [jornada]
+            assert set(llamadas) == {jornada}
         finally:
             cx.execute("delete from liga.inscripciones where jornada_id in "
                        "(select id from liga.jornadas where temporada_id = %s)", (temporada,))
