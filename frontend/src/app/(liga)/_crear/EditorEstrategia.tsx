@@ -24,6 +24,7 @@ import { invalidar, obtener } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { miles } from "@/lib/liga/format";
 import { pesosCoherentes } from "@/lib/liga/receta";
+import { EmbudoCartera } from "./EmbudoCartera";
 import { LecturasModal } from "./LecturasModal";
 import { useAutoguardado } from "./useAutoguardado";
 import "./constructor.css";
@@ -965,17 +966,13 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       </div>
       <div className="field" hidden={etapa !== 4}>
         <span className="lbl">{t("builder_how_portfolio_formed")}</span>
-        <div className="recipe">
-          <b>{previewSeleccion ? cifraPreview(previewSeleccion.evaluadas)
-            : prueba && typeof prueba !== "string" ? miles(prueba.evaluadas, locale) : t("builder_pending")}</b><span>{t("builder_companies_in_snapshot")}</span>
-          <b>{previewSeleccion ? cifraPreview(previewSeleccion.cumplen_reglas)
-            : typeof prueba === "object" && prueba ? miles(prueba.pasan, locale) : t("builder_pending")}</b>
-          <span>{t("builder_pass_rules")}</span>
-          <b>{previewSeleccion?.seleccionadas != null ? cifraPreview(previewSeleccion.seleccionadas) : t("builder_up_to", { count: b.n_empresas })}</b>
-          <span>{t(previewSeleccion?.seleccionadas != null ? "builder_form_portfolio" : "builder_companies_max")}: {t("builder_best_scores")}{b.max_por_sector === 0 ? "" : `, ${t("builder_sector_max", { count: b.max_por_sector })}`}</span>
-          <b>{b.reparto === "igual" ? `${Math.round(100 / b.n_empresas)} %` : "+"}</b>
-          <span>{t(b.reparto === "igual" ? "builder_for_each" : "builder_weight_best_scores")}</span>
-        </div>
+        <EmbudoCartera
+          evaluadas={previewSeleccion ? previewSeleccion.evaluadas
+            : typeof prueba === "object" && prueba ? prueba.evaluadas : null}
+          cumplen={previewSeleccion ? previewSeleccion.cumplen_reglas
+            : typeof prueba === "object" && prueba ? prueba.pasan : null}
+          seleccionadas={previewSeleccion?.seleccionadas ?? null}
+          maximo={b.n_empresas} reparto={b.reparto} porSector={b.max_por_sector} />
         {feedbackPreview}
         <p className="recipe-note">
           {t(cadaDia1Opcion === "revisar" ? "builder_review_at_round_start" : "builder_keep_until_change")} {t("builder_preview_no_change")}

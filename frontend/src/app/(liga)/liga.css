@@ -481,9 +481,16 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .constructor-tarea .seg { flex-wrap: wrap; }
 .lg .constructor-tarea .seg button { min-width: 0; min-height: 44px; padding: 4px 6px; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
 
-.lg .recipe { display: grid; grid-template-columns: minmax(0, 4.75rem) minmax(0, 1fr); align-items: baseline; gap: 10px 14px; min-width: 0; }
-.lg .recipe b { min-width: 0; font-size: 22px; font-weight: 700; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.lg .recipe span { min-width: 0; font-size: 15.5px; line-height: 1.45; color: var(--ink2); overflow-wrap: anywhere; }
+.lg .embudo { list-style: none; margin: 0; padding: 0; display: grid; }
+.lg .embudo-paso { display: grid; grid-template-columns: minmax(0, 5.5rem) minmax(0, 1fr); align-items: baseline; gap: 2px 14px; min-width: 0; padding: 10px 0 12px; }
+.lg .embudo-paso b { min-width: 0; font-size: 24px; font-weight: 700; line-height: 1.1; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.lg .embudo-paso span { min-width: 0; font-size: 15px; line-height: 1.4; color: var(--ink2); overflow-wrap: anywhere; }
+.lg .embudo-paso i { grid-column: 1 / -1; display: block; height: 4px; margin-top: 8px; border-radius: 2px; background: var(--line2); }
+.lg .embudo-paso.cierre { margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--line); }
+.lg .embudo-paso.final b { color: var(--accent); }
+.lg .embudo-paso.final i { background: var(--accent); }
+.lg .embudo-union { display: flex; align-items: center; gap: 8px; min-height: 22px; padding-left: calc(5.5rem + 14px); font-size: 13px; color: var(--muted); }
+.lg .embudo-union:not(:empty)::before { content: "↓"; font-size: 15px; color: var(--muted); }
 .lg .recipe-note { margin-top: 14px; font-size: 15.5px; line-height: 1.5; color: var(--ink2); }
 
 .lg .lock { margin-top: 12px; padding: 18px 16px; border-radius: 16px; background: var(--surface); font-size: 15.5px; line-height: 1.5; color: var(--ink2); }

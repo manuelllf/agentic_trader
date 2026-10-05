@@ -194,5 +194,7 @@
   "builder_report_not_available": "This report isn't available yet.",
   "builder_metadata_create": "Create strategy",
   "builder_metadata_edit": "Edit strategy",
-  "builder_report_in_spanish": "This report was written in Spanish."
+  "builder_report_in_spanish": "This report was written in Spanish.",
+  "builder_funnel_out": "{count} are left out by your rules",
+  "builder_funnel_ranked": "ranked by your priorities"
 }

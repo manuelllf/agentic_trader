@@ -194,5 +194,7 @@
   "builder_report_not_available": "Este informe todavía no está disponible.",
   "builder_metadata_create": "Crear estrategia",
   "builder_metadata_edit": "Editar estrategia",
-  "builder_report_in_spanish": "El informe se generó en español."
+  "builder_report_in_spanish": "El informe se generó en español.",
+  "builder_funnel_out": "{count} quedan fuera por tus reglas",
+  "builder_funnel_ranked": "se ordenan según tus prioridades"
 }
