@@ -1,4 +1,4 @@
--- migraciones-liga: 022
+-- migraciones-liga: 023
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -10257,10 +10257,12 @@ FOR EACH ROW EXECUTE FUNCTION liga.confirmar_bienvenida();
 
 -- liga_020: estrategias que jugaron una jornada sin su pregunta propia.
 create table liga.formaciones_degradadas (
-  inscripcion_id bigint primary key references liga.inscripciones (id) on delete cascade,
-  motivo text not null check (motivo in ('sin_ia', 'tope', 'incompleta', 'tiempo')),
+  inscripcion_id bigint not null references liga.inscripciones (id) on delete cascade,
+  motivo text not null
+    check (motivo in ('sin_ia', 'tope', 'incompleta', 'tiempo', 'quitadas_vaciadas')),
   creada timestamptz not null default now(),
-  creado_por uuid default auth.uid() references auth.users (id) on delete set null
+  creado_por uuid default auth.uid() references auth.users (id) on delete set null,
+  primary key (inscripcion_id, motivo)
 );
 alter table liga.formaciones_degradadas enable row level security;
 revoke all on table liga.formaciones_degradadas from public, anon, authenticated;

@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -35,7 +35,13 @@ from app.liga.ia import pregunta as ia_pregunta
 from app.liga.models import FormacionDegradada, Inscripcion, Jornada, Posicion, Receta
 from app.liga.motor.catalogo import EmpresaFoto, RecetaNoValida
 from app.liga.motor.rentabilidad import pesos_mantenidos
-from app.liga.motor.seleccion import NotasJev, candidatas_pregunta, seleccionar_o_sin_pregunta
+from app.liga.motor.seleccion import (
+    NotasJev,
+    candidatas_pregunta,
+    seleccionar,
+    seleccionar_o_sin_pregunta,
+    sin_pregunta,
+)
 from app.liga.procesos import casa, datos
 from app.liga.procesos.comun import (
     ErrorProceso,
@@ -74,6 +80,7 @@ class Entrada:
     n_pasan: int | None
     origen: str
     sin_pregunta: str | None = None   # por qué jugó sin su pregunta: sin_ia, tope o incompleta
+    quitadas_vaciadas: bool = False   # la configuración cambió: no se aplican sus quitadas
 
     @property
     def estado(self) -> str:
@@ -266,6 +273,91 @@ def _mantenidas(db: Session, estrategia_id: uuid.UUID,
     return pesos_mantenidos(pos, cierres, prev.dia_base, prev.dia_fin)
 
 
+_CONFIGURACION = ("reglas", "peso_negocio", "peso_precio", "peso_deuda", "peso_pronto",
+                  "peso_pregunta", "pregunta", "n_empresas", "reparto", "max_por_sector")
+
+
+def _configuracion(receta: Receta) -> tuple:
+    """Lo que define cómo se elige la cartera, sin las quitadas ni la idea (que solo propone)."""
+    return tuple(getattr(receta, c) for c in _CONFIGURACION)
+
+
+def _receta_anterior(db: Session, estrategia_id: uuid.UUID, ctx: Contexto) -> Receta | None:
+    """La receta con la que jugó la jornada anterior (la que acabó el día base), si jugó."""
+    receta_id = db.execute(text("""
+        select i.receta_id from liga.inscripciones i
+        join liga.jornadas j on j.id = i.jornada_id
+        where i.estrategia_id = :e and j.dia_fin = :d and i.receta_id is not null
+    """), {"e": estrategia_id, "d": ctx.dia_base}).scalar()
+    return db.get(Receta, receta_id) if receta_id is not None else None
+
+
+def _con_cambios(base: list[tuple[str, Decimal]], empresas: list[EmpresaFoto], receta,  # noqa: ANN001
+                 notas: dict[str, NotasJev], respuestas: dict) -> list[tuple[str, Decimal]]:
+    """La cartera que se mantiene con las quitadas sustituidas: cada una cede su peso a la
+    siguiente de la selección que no esté ya en cartera; si no quedan alternativas, va a caja."""
+    quitadas = set(receta.excluidas)
+    if not any(t in quitadas for t, _ in base):
+        return base
+    try:
+        sel, _ = seleccionar_o_sin_pregunta(empresas, receta, notas, respuestas)
+        alternativas = [f.ticker for f in sel.pasan]
+    except RecetaNoValida:
+        alternativas = []
+    tenidas = {t for t, _ in base}
+    libres = iter(t for t in alternativas if t not in tenidas)
+    cartera: list[tuple[str, Decimal]] = []
+    for t, p in base:
+        if t not in quitadas:
+            cartera.append((t, p))
+        elif (nuevo := next(libres, None)) is not None:
+            cartera.append((nuevo, p))
+    return cartera
+
+
+def entrada_de(db: Session, ctx: Contexto, empresas: list[EmpresaFoto], excluir: set[str],
+               fila, motivo_ia: str | None = None,  # noqa: ANN001 — fila de SQL: id, nombre, ...
+               forzar_sin_pregunta: str | None = None,
+               vaciar_si_cambio: bool = True) -> tuple[Entrada | None, dict | None, str | None]:
+    """La cartera de una estrategia: (entrada, omitida, aviso). `fila`: id, nombre, cada_dia_1 y
+    receta_id. `forzar_sin_pregunta`: el motivo con el que ya jugó sin su pregunta, para
+    recalcularla igual. `vaciar_si_cambio`: si la configuración cambió desde la jornada anterior,
+    las quitadas no se aplican."""
+    receta = db.get(Receta, fila.receta_id)
+    motor = datos.receta_motor(receta)
+    vaciar = False
+    if vaciar_si_cambio and motor.excluidas:
+        anterior = _receta_anterior(db, fila.id, ctx)
+        if anterior is not None and _configuracion(anterior) != _configuracion(receta):
+            motor, vaciar = replace(motor, excluidas=()), True
+    respuestas = datos.cargar_respuestas(db, receta.pregunta, ctx.foto_id)
+    aviso = None
+    if fila.cada_dia_1 == "mantener":
+        try:
+            mantenidas = _mantenidas(db, fila.id, ctx)
+        except ValueError as e:
+            mantenidas = None
+            aviso = (f"{fila.nombre}: no se pudieron mantener sus valores ({e}); "
+                     "se selecciona de nuevo.")
+        if mantenidas is not None:
+            base = [(t, p) for t, p in mantenidas if t not in excluir]
+            cartera = _con_cambios(base, empresas, motor, ctx.notas, respuestas)
+            return Entrada(fila.id, fila.nombre, fila.receta_id, cartera, None, "mantener",
+                           None, vaciar), None, aviso
+    try:
+        if forzar_sin_pregunta:
+            sel, motivo = seleccionar(empresas, sin_pregunta(motor), ctx.notas), forzar_sin_pregunta
+        else:
+            sel, motivo = seleccionar_o_sin_pregunta(empresas, motor, ctx.notas, respuestas,
+                                                     motivo_ia or "incompleta")
+    except RecetaNoValida as e:
+        return None, {"estrategia_id": fila.id, "nombre": fila.nombre,
+                      "motivo": f"Receta no válida: {e}"}, aviso
+    return Entrada(fila.id, fila.nombre, fila.receta_id,
+                   [(el.ticker, el.peso) for el in sel.elegidas], len(sel.pasan), "seleccion",
+                   motivo, vaciar), None, aviso
+
+
 def planificar(db: Session, ctx: Contexto, excluir: set[str],
                motivo_ia: str | None = None) -> Plan:
     """Todas las carteras, sin escribir nada. `excluir`: tickers sin precio de compra.
@@ -278,31 +370,13 @@ def planificar(db: Session, ctx: Contexto, excluir: set[str],
             plan.omitidas.append({"estrategia_id": fila.id, "nombre": fila.nombre,
                                   "motivo": "No tenía receta antes del corte."})
             continue
-        if fila.cada_dia_1 == "mantener":
-            try:
-                mantenidas = _mantenidas(db, fila.id, ctx)
-            except ValueError as e:
-                mantenidas = None
-                plan.avisos.append(f"{fila.nombre}: no se pudieron mantener sus valores ({e}); "
-                                   "se selecciona de nuevo.")
-            if mantenidas is not None:
-                quedan = [(t, p) for t, p in mantenidas if t not in excluir]
-                plan.entradas.append(Entrada(fila.id, fila.nombre, fila.receta_id, quedan, None,
-                                             "mantener"))
-                continue
-        receta = db.get(Receta, fila.receta_id)
-        try:
-            sel, sin_pregunta = seleccionar_o_sin_pregunta(
-                empresas, datos.receta_motor(receta), ctx.notas,
-                datos.cargar_respuestas(db, receta.pregunta, ctx.foto_id),
-                motivo_ia or "incompleta")
-        except RecetaNoValida as e:
-            plan.omitidas.append({"estrategia_id": fila.id, "nombre": fila.nombre,
-                                  "motivo": f"Receta no válida: {e}"})
-            continue
-        plan.entradas.append(Entrada(fila.id, fila.nombre, fila.receta_id,
-                                     [(el.ticker, el.peso) for el in sel.elegidas],
-                                     len(sel.pasan), "seleccion", sin_pregunta))
+        entrada, omitida, aviso = entrada_de(db, ctx, empresas, excluir, fila, motivo_ia)
+        if aviso:
+            plan.avisos.append(aviso)
+        if omitida:
+            plan.omitidas.append(omitida)
+        if entrada:
+            plan.entradas.append(entrada)
 
     plan.casa["lambda"] = casa.cartera_lambda(db, ctx.scan_run_id, ctx.plan_b)
     plan.casa["alpha"] = casa.cartera_alpha(db, ctx.scan_run_id, ctx.plan_b)
@@ -378,6 +452,7 @@ def _resumen(plan: Plan) -> dict:
         "estrategias": [{"estrategia_id": e.estrategia_id, "nombre": e.nombre,
                          "origen": e.origen, "estado": e.estado, "n_pasan": e.n_pasan,
                          "sin_pregunta": e.sin_pregunta,
+                         "quitadas_vaciadas": e.quitadas_vaciadas,
                          "posiciones": [{"ticker": t, "peso": p} for t, p in e.posiciones],
                          "caja": _caja(e.posiciones)}
                         for e in plan.entradas],
@@ -450,6 +525,29 @@ def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema, actor: str | N
         raise
 
 
+def copiar_con_quitadas(db: Session, receta: Receta, excluidas: list[str]) -> Receta:
+    """Una versión nueva de la receta, igual salvo por sus quitadas (las recetas no se editan)."""
+    nueva = Receta(
+        estrategia_id=receta.estrategia_id, idea=receta.idea, reglas=receta.reglas,
+        excluidas=sorted(excluidas), catalogo_version=receta.catalogo_version,
+        pregunta=receta.pregunta, peso_negocio=receta.peso_negocio, peso_precio=receta.peso_precio,
+        peso_deuda=receta.peso_deuda, peso_pronto=receta.peso_pronto,
+        peso_pregunta=receta.peso_pregunta, n_empresas=receta.n_empresas, reparto=receta.reparto,
+        max_por_sector=receta.max_por_sector)
+    db.add(nueva)
+    db.flush()
+    return nueva
+
+
+def _version_sin_quitadas(db: Session, estrategia_id: uuid.UUID, receta_id: int) -> int:
+    """La versión sin quitadas con la que juega la jornada. Si la estrategia sigue en la misma
+    versión, queda como la vigente; si ya tiene una posterior, esa se respeta."""
+    nueva = copiar_con_quitadas(db, db.get(Receta, receta_id), [])
+    db.execute(text("update liga.estrategias set receta_id = :n where id = :e and receta_id = :o"),
+               {"n": nueva.id, "e": estrategia_id, "o": receta_id})
+    return nueva.id
+
+
 def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_precio: set[str],
               ahora: datetime | None, actor: str | None) -> dict:
     j = jornada_bloqueada(db, jornada_id)
@@ -464,6 +562,8 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
             logger.info("Jornada %s: %s no juega. %s", j.id, c.clave, c.motivo)
     entradas = plan.entradas + entradas_casa(plan, ids)
     for e in entradas:
+        if e.quitadas_vaciadas:
+            e.receta_id = _version_sin_quitadas(db, e.estrategia_id, e.receta_id)
         ins = Inscripcion(jornada_id=j.id, estrategia_id=e.estrategia_id, receta_id=e.receta_id,
                           n_pasan=e.n_pasan, estado=e.estado)
         db.add(ins)
@@ -471,6 +571,8 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
         db.add_all(Posicion(inscripcion_id=ins.id, ticker=t, peso=p) for t, p in e.posiciones)
         if e.sin_pregunta:
             db.add(FormacionDegradada(inscripcion_id=ins.id, motivo=e.sin_pregunta))
+        if e.quitadas_vaciadas:
+            db.add(FormacionDegradada(inscripcion_id=ins.id, motivo="quitadas_vaciadas"))
     usuarios = [e.estrategia_id for e in plan.entradas]
     if usuarios:
         db.execute(text("update liga.estrategias set estado = 'jugando' "
@@ -484,6 +586,8 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
              "sin_precio": sorted(sin_precio),
              "sin_pregunta": {str(e.estrategia_id): e.sin_pregunta
                               for e in plan.entradas if e.sin_pregunta},
+             "quitadas_vaciadas": [str(e.estrategia_id) for e in plan.entradas
+                                   if e.quitadas_vaciadas],
              "casa": {c.clave: c.motivo for c in plan.casa.values()}}, actor)
     db.commit()
     return para_json({"jornada_id": j.id, "estado": j.estado, "inscripciones": len(entradas),

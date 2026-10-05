@@ -30,6 +30,13 @@ TZ_NUEVA_YORK = ZoneInfo("America/New_York")
 HORA_CIERRE_INSCRIPCION = time(18, 0)
 # Desde cuándo se cierra sola la jornada que acaba hoy: pasado el margen de la fuente de precios.
 HORA_CIERRE_JORNADA = time(17, 30)
+# Hasta cuándo se pueden cambiar empresas en una cartera ya formada: media hora antes de abrir.
+HORA_CIERRE_CAMBIOS = time(9, 0)
+
+
+def cierre_de_cambios(dia_inicio: date) -> datetime:
+    """El momento en que ya no se puede cambiar la cartera formada de la jornada que empieza."""
+    return datetime.combine(dia_inicio, HORA_CIERRE_CAMBIOS, tzinfo=TZ_NUEVA_YORK)
 
 
 @dataclass(frozen=True)

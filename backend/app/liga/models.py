@@ -283,13 +283,14 @@ class Prueba(LigaBase):
 
 
 class FormacionDegradada(LigaBase):
-    """Inscripción formada sin la pregunta propia (`motivo`: sin_ia, tope, incompleta o tiempo)."""
+    """Inscripción formada sin la pregunta propia (`motivo`: sin_ia, tope, incompleta o tiempo) o
+    sin las empresas que el dueño había quitado (`quitadas_vaciadas`)."""
 
     __tablename__ = "formaciones_degradadas"
 
     inscripcion_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("liga.inscripciones.id"), primary_key=True)
-    motivo: Mapped[str] = mapped_column(Text)
+    motivo: Mapped[str] = mapped_column(Text, primary_key=True)
     creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
 

@@ -22,6 +22,7 @@ from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app import precios  # noqa: E402
+from app.liga import cambios  # noqa: E402
 from app.liga.models import Jornada  # noqa: E402
 from app.liga.motor import calendario  # noqa: E402
 from app.liga.motor.puntos import resultado_jornada  # noqa: E402
@@ -1029,3 +1030,168 @@ def test_no_hay_reintentos_infinitos_pasada_media_hora_avisa_una_vez_y_deja_de_i
     assert avisos == ["Vennett: la jornada no se formó sola"]          # una sola vez
     assert _cuenta(fabrica, "select count(*) from liga.inscripciones") == 0   # y no la formó
     formar._abandonadas_avisadas.clear()
+
+
+# ---- la ventana de cambios: Cambiar y Recuperar hasta las 09:00 NY del día 1 -------------------
+
+VENTANA_ENERO = datetime(2027, 1, 3, 12, tzinfo=UTC)          # tras el corte, antes del día 4 09:00
+JORNADA_ABIERTA = datetime(2027, 1, 4, 14, 5, tzinfo=UTC)     # 09:05 NY del día 4
+VENTANA_FEBRERO = datetime(2027, 1, 31, 12, tzinfo=UTC)
+
+
+def _dueno(fabrica, estrategia_id) -> str:  # noqa: ANN001
+    with comun.sesion(fabrica) as db:
+        return db.execute(text("select dueno_id::text from liga.estrategias where id = :e"),
+                          {"e": estrategia_id}).scalar()
+
+
+def _cartera_de(fabrica, jornada_id: int, estrategia_id) -> dict:  # noqa: ANN001
+    return _inscripciones(fabrica, jornada_id)[estrategia_id]["pos"]
+
+
+def _receta_de_la_inscripcion(fabrica, jornada_id: int, estrategia_id) -> int:  # noqa: ANN001
+    return _inscripciones(fabrica, jornada_id)[estrategia_id]["fila"].receta_id
+
+
+def test_cambiar_en_la_ventana_sustituye_la_empresa_y_recuperar_la_devuelve(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene, eid = mundo["enero"], mundo["reglas"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    uid, formada = _dueno(fabrica, eid), _cartera_de(fabrica, ene, eid)
+    original = _receta_de_la_inscripcion(fabrica, ene, eid)
+    sale = sorted(formada)[0]
+
+    receta = cambios.aplicar(uid, eid, sale, True, fabrica=fabrica, ahora=VENTANA_ENERO)
+
+    cambiada = _cartera_de(fabrica, ene, eid)
+    assert sale in receta["excluidas"] and sale not in cambiada
+    assert len(cambiada) == len(formada) and set(formada) - {sale} <= set(cambiada)
+    assert _receta_de_la_inscripcion(fabrica, ene, eid) == receta["id"] != original
+    assert _cuenta(fabrica, "select count(*) from liga.estrategias "
+                            "where id = :e and receta_id = :r", e=eid, r=receta["id"]) == 1
+    cambios.aplicar(uid, eid, sale, False, fabrica=fabrica, ahora=VENTANA_ENERO)
+    assert _cartera_de(fabrica, ene, eid) == formada
+
+
+def test_volver_a_la_formacion_deshace_lo_cambiado_en_la_ventana(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene, eid = mundo["enero"], mundo["reglas"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    uid, formada = _dueno(fabrica, eid), _cartera_de(fabrica, ene, eid)
+    original = _receta_de_la_inscripcion(fabrica, ene, eid)
+    for ticker in sorted(formada)[:2]:
+        cambios.aplicar(uid, eid, ticker, True, fabrica=fabrica, ahora=VENTANA_ENERO)
+    assert _cartera_de(fabrica, ene, eid) != formada
+
+    receta = cambios.volver_a_la_formacion(uid, eid, fabrica=fabrica, ahora=VENTANA_ENERO)
+
+    assert receta["id"] == original and _receta_de_la_inscripcion(fabrica, ene, eid) == original
+    assert _cartera_de(fabrica, ene, eid) == formada
+    with comun.sesion(fabrica) as db:
+        v = cambios.ventana_de(db, eid, VENTANA_ENERO)
+    assert cambios.quitadas_de_la_formacion(v, fabrica) == []
+
+
+def test_la_ventana_solo_existe_entre_el_corte_y_la_apertura_y_solo_para_su_dueno(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    from fastapi import HTTPException
+
+    ene, eid = mundo["enero"], mundo["reglas"]
+    foto.ejecutar(ene, fabrica=fabrica)
+    uid = _dueno(fabrica, eid)
+    with comun.sesion(fabrica) as db:
+        assert cambios.ventana_de(db, eid, CORTE_ENERO - timedelta(hours=1)) is None
+        assert cambios.ventana_de(db, eid, CORTE_ENERO + timedelta(minutes=5)).fase == "formando"
+    with pytest.raises(HTTPException) as e:
+        cambios.aplicar(uid, eid, "ZQA", True, fabrica=fabrica,
+                        ahora=CORTE_ENERO + timedelta(minutes=5))
+    assert e.value.status_code == 409                      # aún se está formando
+
+    formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    with comun.sesion(fabrica) as db:
+        v = cambios.ventana_de(db, eid, VENTANA_ENERO)
+        assert v.fase == "cambios" and v.cierra == datetime(2027, 1, 4, 14, 0, tzinfo=UTC)
+        with pytest.raises(HTTPException) as bloqueo:
+            cambios.exigir_fuera_de_la_ventana(db, eid, VENTANA_ENERO)
+        assert bloqueo.value.status_code == 409
+    with comun.sesion(fabrica) as db:
+        assert cambios.ventana_de(db, eid, JORNADA_ABIERTA) is None
+    with pytest.raises(HTTPException) as e:
+        cambios.aplicar(uid, eid, "ZQA", True, fabrica=fabrica, ahora=JORNADA_ABIERTA)
+    assert e.value.status_code == 409                      # ya empezó
+    with pytest.raises(HTTPException) as e:
+        cambios.aplicar(str(uuid.uuid4()), eid, "ZQA", True, fabrica=fabrica, ahora=VENTANA_ENERO)
+    assert e.value.status_code == 404                      # no es suya
+
+
+def test_cambiar_en_una_que_se_mantiene_pone_la_siguiente_con_el_mismo_peso(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene, feb, eid = mundo["enero"], mundo["febrero"], mundo["mantener"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    _cerrar_mes(fabrica, mercado, ene)
+    _formar_mes(fabrica, mercado, feb, FEBRERO)
+    uid, formada = _dueno(fabrica, eid), _cartera_de(fabrica, feb, eid)
+    sale = sorted(formada)[0]
+
+    cambios.aplicar(uid, eid, sale, True, fabrica=fabrica, ahora=VENTANA_FEBRERO)
+
+    cambiada = _cartera_de(fabrica, feb, eid)
+    entra = set(cambiada) - set(formada)
+    assert sale not in cambiada and len(entra) == 1
+    assert cambiada[entra.pop()] == formada[sale]
+    cambios.aplicar(uid, eid, sale, False, fabrica=fabrica, ahora=VENTANA_FEBRERO)
+    assert _cartera_de(fabrica, feb, eid) == formada
+
+
+def _receta_con(fabrica, estrategia_id, *, quitadas: list[str], n_empresas: int) -> int:  # noqa: ANN001
+    """Una versión nueva de la receta vigente con otras quitadas y otro tamaño de cartera."""
+    with comun.sesion(fabrica) as db:
+        nueva = db.execute(text("""
+            insert into liga.recetas (estrategia_id, idea, reglas, excluidas, catalogo_version,
+              pregunta, peso_negocio, peso_precio, peso_deuda, peso_pronto, peso_pregunta,
+              n_empresas, reparto, max_por_sector)
+            select estrategia_id, idea, reglas, :q, catalogo_version, pregunta, peso_negocio,
+                   peso_precio, peso_deuda, peso_pronto, peso_pregunta, :n, reparto, max_por_sector
+            from liga.recetas where id = (select receta_id from liga.estrategias where id = :e)
+            returning id"""), {"q": quitadas, "n": n_empresas, "e": estrategia_id}).scalar()
+        db.execute(text("update liga.estrategias set receta_id = :r where id = :e"),
+                   {"r": nueva, "e": estrategia_id})
+        db.commit()
+    return nueva
+
+
+def test_si_cambia_la_configuracion_la_formacion_vacia_las_quitadas_y_lo_apunta(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene, feb, eid = mundo["enero"], mundo["febrero"], mundo["reglas"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    cambiada = _receta_con(fabrica, eid, quitadas=["ZQB"], n_empresas=3)   # antes eran 5
+    _cerrar_mes(fabrica, mercado, ene)
+    _formar_mes(fabrica, mercado, feb, FEBRERO)
+
+    usada = _receta_de_la_inscripcion(fabrica, feb, eid)
+    assert usada != cambiada
+    with comun.sesion(fabrica) as db:
+        fila = db.execute(text("select excluidas, n_empresas from liga.recetas where id = :r"),
+                          {"r": usada}).one()
+        vigente = db.execute(text("select receta_id from liga.estrategias where id = :e"),
+                             {"e": eid}).scalar()
+    assert list(fila.excluidas) == [] and fila.n_empresas == 3
+    assert vigente == usada
+    assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas d join "
+                            "liga.inscripciones i on i.id = d.inscripcion_id where "
+                            "i.jornada_id = :j and d.motivo = 'quitadas_vaciadas'", j=feb) == 1
+
+
+def test_si_la_configuracion_sigue_igual_las_quitadas_se_aplican(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene, feb, eid = mundo["enero"], mundo["febrero"], mundo["reglas"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    misma = _receta_con(fabrica, eid, quitadas=["ZQA"], n_empresas=5)       # como las 5 de antes
+    _cerrar_mes(fabrica, mercado, ene)
+    _formar_mes(fabrica, mercado, feb, FEBRERO)
+
+    assert _receta_de_la_inscripcion(fabrica, feb, eid) == misma
+    assert "ZQA" not in _cartera_de(fabrica, feb, eid)
+    assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas d join "
+                            "liga.inscripciones i on i.id = d.inscripcion_id where "
+                            "i.jornada_id = :j and d.motivo = 'quitadas_vaciadas'", j=feb) == 0

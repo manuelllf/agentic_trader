@@ -54,6 +54,8 @@ class SeguimientoOut(BaseModel):
     cambio_desde_revision: CambioCartera | None = None
     # Por qué la última cartera se formó sin la pregunta propia, si fue así.
     sin_pregunta: Literal["sin_ia", "tope", "incompleta", "tiempo"] | None = None
+    # La configuración cambió respecto al mes anterior y la formación vació sus empresas quitadas.
+    quitadas_vaciadas: bool = False
 
 
 class RevisionItem(BaseModel):
@@ -142,7 +144,11 @@ _RESUMENES = text("""
            (select array_agg(p.ticker order by p.ticker) from liga.posiciones p
             where p.inscripcion_id = revisada.id) as tickers_revisados,
            (select d.motivo from liga.formaciones_degradadas d
-            where d.inscripcion_id = c.ultima_inscripcion_id) as sin_pregunta
+            where d.inscripcion_id = c.ultima_inscripcion_id
+              and d.motivo <> 'quitadas_vaciadas') as sin_pregunta,
+           exists (select 1 from liga.formaciones_degradadas d
+                   where d.inscripcion_id = c.ultima_inscripcion_id
+                     and d.motivo = 'quitadas_vaciadas') as quitadas_vaciadas
     from propias e
     left join carteras c on c.estrategia_id = e.id
     left join resultados_ordenados r on r.estrategia_id = e.id and r.orden = 1
@@ -222,7 +228,7 @@ def mis_seguimientos(db: Session = Depends(db_usuario)) -> list[SeguimientoOut]:
                        if (resumen := acumular_periodos(row["historial_periodos"] or []))
                        else None),
             resultado=r, cambio_cartera=cambio, cambio_desde_revision=desde_revision,
-            sin_pregunta=row["sin_pregunta"],
+            sin_pregunta=row["sin_pregunta"], quitadas_vaciadas=bool(row["quitadas_vaciadas"]),
         ))
     return out
 

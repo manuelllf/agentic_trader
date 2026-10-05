@@ -289,8 +289,9 @@ def test_la_pregunta_se_hace_a_todas_las_que_pasan_las_reglas_sin_tope():
     pesos = {"negocio": 25, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 25}
     r = receta(pesos=pesos, reglas=[regla_por_defecto("medianas")], excluidas=("QUITADA",))
     candidatas = candidatas_pregunta(empresas, r, n)
-    assert len(candidatas) == 1_200
-    assert not {"CHICA", "QUITADA", "SINNOTA"} & set(candidatas)
+    # La quitada a mano también se pregunta: recuperarla en la ventana de cambios no usa IA.
+    assert len(candidatas) == 1_201 and "QUITADA" in candidatas
+    assert not {"CHICA", "SINNOTA"} & set(candidatas)
     # Las de nota 8,1 primero y, dentro de cada grupo, de más a menos capitalización.
     assert candidatas[0] == "T1199" and candidatas[1] == "T1189"
 

@@ -21,7 +21,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.i18n import current_locale, translate
-from app.liga import acceso, estrategias, limites, nombres, rendimiento
+from app.liga import acceso, cambios, estrategias, limites, nombres, rendimiento
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_anon, db_usuario
 from app.liga.ia import comun, moderacion, precios
@@ -42,6 +42,8 @@ Ticker = Annotated[str, Path(min_length=1, max_length=16)]
 _LIMITE_PRUEBAS = acceso.LimiteFrecuencia(tope=20, ventana_s=60)
 _LIMITE_BUSCAR = acceso.LimiteFrecuencia(tope=30, ventana_s=60)
 _LIMITE_CALCULOS = acceso.LimiteFrecuencia(tope=30, ventana_s=60)
+# Cada cambio de la ventana recalcula la cartera sobre la foto entera.
+_LIMITE_CAMBIOS = acceso.LimiteFrecuencia(tope=20, ventana_s=60)
 
 _CAMPOS_ESTRATEGIA = """
     id, nombre, forma, dibujo, color1, color2, iniciales, visibilidad, declara_posiciones,
@@ -129,6 +131,17 @@ class RecetaOut(BaseModel):
 
 class CadaDia1In(BaseModel):
     opcion: Literal["revisar", "mantener"]
+
+
+class VentanaOut(BaseModel):
+    """Una estrategia en la ventana de cambios: formándose o ya formada y cambiable hasta `cierra`.
+    `quitadas_formacion`: las quitadas con las que salió la cartera de la formación."""
+
+    estrategia_id: uuid.UUID
+    fase: Literal["formando", "cambios"]
+    jornada_id: int
+    cierra: datetime
+    quitadas_formacion: list[str] = Field(default_factory=list)
 
 
 class EmpresaElegidaOut(BaseModel):
@@ -249,6 +262,28 @@ def mis_estrategias(db: Session = Depends(db_usuario)) -> list[EstrategiaOut]:
     return [_a_salida(f) for f in filas]
 
 
+@router.get("/estrategias/ventana", response_model=list[VentanaOut])
+def mi_ventana(db: Session = Depends(db_usuario)) -> list[VentanaOut]:
+    """Qué estrategias mías están ahora en la ventana de cambios: pasó el corte y aún no abre la
+    jornada. Antes de esa ventana, o pasada, no devuelve ninguna."""
+    ids = db.execute(text("""
+        select id from liga.estrategias
+        where dueno_id = (select auth.uid()) and tipo = 'usuario'
+          and estado in ('apuntada', 'jugando')
+        order by creada
+    """)).scalars().all()
+    salida = []
+    for estrategia_id in ids:
+        v = cambios.ventana_de(db, estrategia_id)
+        if v is None:
+            continue
+        quitadas = (cambios.quitadas_de_la_formacion(v)
+                    if v.fase == cambios.FASE_CAMBIOS else [])
+        salida.append(VentanaOut(estrategia_id=estrategia_id, fase=v.fase, jornada_id=v.jornada_id,
+                                 cierra=v.cierra, quitadas_formacion=quitadas))
+    return salida
+
+
 @router.post("/estrategias", response_model=EstrategiaOut, status_code=201)
 def crear_estrategia(body: EstrategiaCrear,
                      db: Session = Depends(db_usuario)) -> EstrategiaOut:
@@ -323,6 +358,7 @@ def borrar_estrategia(id: uuid.UUID, db: Session = Depends(db_usuario)) -> Respo
 @router.post("/estrategias/{id}/receta", response_model=RecetaOut, status_code=201)
 def crear_receta(id: uuid.UUID, body: RecetaIn,
                  db: Session = Depends(db_usuario)) -> RecetaOut:
+    cambios.exigir_fuera_de_la_ventana(db, id)
     pregunta = (body.pregunta or "").strip() or None
     validada = estrategias.validar_entrada(
         body.idea, [r.model_dump() for r in body.reglas], body.excluidas, pregunta,
@@ -378,6 +414,7 @@ def desapuntar(id: uuid.UUID, db: Session = Depends(db_usuario)) -> EstrategiaOu
 
 @router.post("/estrategias/{id}/cada-dia-1", response_model=EstrategiaOut)
 def cada_dia_1(id: uuid.UUID, body: CadaDia1In, db: Session = Depends(db_usuario)) -> EstrategiaOut:
+    cambios.exigir_fuera_de_la_ventana(db, id)
     try:
         with db.begin_nested():
             fila = db.execute(text(f"""
@@ -401,9 +438,34 @@ def _ticker(t: str) -> str:
     return t
 
 
+def _cambio_en_ventana(db: Session, ident: Identidad, id: uuid.UUID, ticker: str,
+                       quitar: bool) -> RecetaOut | None:
+    """Si la estrategia está en la ventana de cambios, el cambio va a su cartera ya formada y
+    devuelve la receta nueva; si no, None y sigue como siempre (prepara la jornada siguiente)."""
+    v = cambios.ventana_de(db, id)
+    if v is None:
+        return None
+    if v.fase == cambios.FASE_FORMANDO:
+        raise HTTPException(409, translate("liga_changes_forming"))
+    if not _LIMITE_CAMBIOS.permitido(ident.uid):
+        raise HTTPException(429, translate("liga_changes_too_fast"))
+    return RecetaOut(**cambios.aplicar(ident.uid, id, ticker, quitar))
+
+
+@router.post("/estrategias/{id}/formacion/volver", response_model=RecetaOut)
+def volver_a_la_formacion(id: uuid.UUID, ident: Identidad = Depends(require_usuario)) -> RecetaOut:
+    """Deshace lo cambiado en la ventana: la cartera vuelve a como salió de la formación."""
+    if not _LIMITE_CAMBIOS.permitido(ident.uid):
+        raise HTTPException(429, translate("liga_changes_too_fast"))
+    return RecetaOut(**cambios.volver_a_la_formacion(ident.uid, id))
+
+
 @router.post("/estrategias/{id}/exclusiones/{ticker}", response_model=RecetaOut)
-def excluir(id: uuid.UUID, ticker: Ticker, db: Session = Depends(db_usuario)) -> RecetaOut:
+def excluir(id: uuid.UUID, ticker: Ticker, ident: Identidad = Depends(require_usuario),
+            db: Session = Depends(db_usuario)) -> RecetaOut:
     t = _ticker(ticker)
+    if (en_ventana := _cambio_en_ventana(db, ident, id, t, quitar=True)) is not None:
+        return en_ventana
     try:
         with db.begin_nested():
             r = estrategias.nueva_version_excluidas(db, id, t, quitar=False)
@@ -413,8 +475,11 @@ def excluir(id: uuid.UUID, ticker: Ticker, db: Session = Depends(db_usuario)) ->
 
 
 @router.delete("/estrategias/{id}/exclusiones/{ticker}", response_model=RecetaOut)
-def quitar_exclusion(id: uuid.UUID, ticker: Ticker, db: Session = Depends(db_usuario)) -> RecetaOut:
+def quitar_exclusion(id: uuid.UUID, ticker: Ticker, ident: Identidad = Depends(require_usuario),
+                     db: Session = Depends(db_usuario)) -> RecetaOut:
     t = _ticker(ticker)
+    if (en_ventana := _cambio_en_ventana(db, ident, id, t, quitar=False)) is not None:
+        return en_ventana
     try:
         with db.begin_nested():
             r = estrategias.nueva_version_excluidas(db, id, t, quitar=True)

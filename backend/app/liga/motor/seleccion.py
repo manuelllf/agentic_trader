@@ -282,8 +282,9 @@ def seleccionar(empresas: Sequence[EmpresaFoto], receta: Receta, notas: Mapping[
 
 def candidatas_pregunta(empresas: Sequence[EmpresaFoto], receta: Receta,
                         notas: Mapping[str, NotasJev]) -> list[str]:
-    """Los tickers a los que se hace la pregunta propia: todos los que pasan reglas y
-    exclusiones, ordenados por las 4 notas y, a igual nota, por capitalización.
+    """Los tickers a los que se hace la pregunta propia: todos los que pasan las reglas (también
+    las quitadas a mano, para que recuperarlas no necesite IA), ordenados por las 4 notas y, a
+    igual nota, por capitalización.
 
     Las 4 notas pesan como en la receta; si ninguna pesa (solo cuenta la pregunta), igual."""
     reglas = _preparar(receta)
@@ -292,9 +293,7 @@ def candidatas_pregunta(empresas: Sequence[EmpresaFoto], receta: Receta,
     if not any(pesos[k] for k in _NOTA_DE_PESO):
         pesos.update(dict.fromkeys(_NOTA_DE_PESO, 1))
     pesos["pregunta"] = 0
-    excluidas = set(receta.excluidas)
-    filas = (_fila(e, reglas, pesos, notas.get(e.ticker), None, e.ticker in excluidas)
-             for e in empresas)
+    filas = (_fila(e, reglas, pesos, notas.get(e.ticker), None, False) for e in empresas)
     return [f.ticker for f in sorted((f for f in filas if f.pasa), key=_orden)]
 
 

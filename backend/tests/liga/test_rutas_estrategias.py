@@ -396,6 +396,67 @@ def test_prueba_por_que_y_buscador(api) -> None:  # noqa: ANN001
 # ---- ficha: qué ve cada uno ----------------------------------------------------------------------
 
 
+def test_ventana_de_cambios_por_la_api(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, foto_con_escaneo, _jornada, cx = api
+    uid = usuario()
+    eid = _crear(cliente, cab, uid)
+    receta = _receta(cliente, cab, uid, eid).json()
+    assert cliente.post(f"/liga/estrategias/{eid}/apuntar", headers=cab(uid)).status_code == 200
+    assert cliente.get("/liga/estrategias/ventana", headers=cab(uid)).json() == []
+
+    # Una jornada ya formada cuyo corte pasó y que empieza mañana, con los cierres del día base.
+    foto_id, scan_id = foto_con_escaneo(_EMPRESAS)
+    hoy = datetime.now(UTC).date()
+    tid = cx.execute("insert into liga.temporadas (nombre, n_jornadas, cuenta, estado) values "
+                     "('T. de ventana', 12, true, 'en_juego') returning id").fetchone()[0]
+    jid = cx.execute(
+        "insert into liga.jornadas (temporada_id, numero, dia_base, dia_inicio, dia_fin, "
+        "cierre_inscripcion, estado, foto_id, scan_run_id) "
+        "values (%s, 1, %s, %s, %s, %s, 'formada', %s, %s) returning id",
+        (tid, hoy, hoy + timedelta(days=1), hoy + timedelta(days=28),
+         datetime.now(UTC) - timedelta(hours=1), foto_id, scan_id)).fetchone()[0]
+    iid = cx.execute("insert into liga.inscripciones (jornada_id, estrategia_id, receta_id, "
+                     "estado) values (%s, %s, %s, 'formada') returning id",
+                     (jid, eid, receta["id"])).fetchone()[0]
+    for t, *_ in _EMPRESAS:
+        cx.execute("insert into liga.posiciones (inscripcion_id, ticker, peso) values (%s, %s, 20)",
+                   (iid, t))
+        cx.execute("insert into precio_cierre (ticker, dia, cierre, fuente) "
+                   "values (%s, %s, 50, 'prueba')", (t, hoy))
+
+    def posiciones() -> set[str]:
+        return {f[0] for f in cx.execute(
+            "select ticker from liga.posiciones where inscripcion_id = %s", (iid,)).fetchall()}
+
+    try:
+        [v] = cliente.get("/liga/estrategias/ventana", headers=cab(uid)).json()
+        assert (v["estrategia_id"], v["fase"], v["quitadas_formacion"]) == (eid, "cambios", [])
+        # Hasta que abra la jornada solo Cambiar y Recuperar: lo demás se rechaza.
+        assert _receta(cliente, cab, uid, eid).status_code == 409
+        assert cliente.post(f"/liga/estrategias/{eid}/cada-dia-1", json={"opcion": "mantener"},
+                            headers=cab(uid)).status_code == 409
+
+        r = cliente.post(f"/liga/estrategias/{eid}/exclusiones/zpa", headers=cab(uid))
+        assert r.status_code == 200, r.text
+        assert r.json()["excluidas"] == ["ZPA"]
+        assert posiciones() == {"ZPB", "ZPC", "ZPD", "ZPE"}
+        [v] = cliente.get("/liga/estrategias/ventana", headers=cab(uid)).json()
+        assert v["quitadas_formacion"] == []
+
+        r = cliente.post(f"/liga/estrategias/{eid}/formacion/volver", headers=cab(uid))
+        assert r.status_code == 200 and r.json()["id"] == receta["id"]
+        assert posiciones() == {t for t, *_ in _EMPRESAS}
+        # Otro usuario no toca la estrategia ajena.
+        otro = usuario()
+        assert cliente.post(f"/liga/estrategias/{eid}/formacion/volver",
+                            headers=cab(otro)).status_code == 404
+    finally:
+        cx.execute("delete from precio_cierre where dia = %s and fuente = 'prueba'", (hoy,))
+        cx.execute("delete from liga.inscripciones where jornada_id = %s", (jid,))
+        cx.execute("delete from liga.jornadas where id = %s", (jid,))
+        cx.execute("delete from liga.temporadas where id = %s", (tid,))
+
+
 def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, foto_con_escaneo, jornada_con_posicion, cx = api
     foto_con_escaneo(_EMPRESAS)
