@@ -1,4 +1,4 @@
-"""Agrupa actividad por sesión verificada con 30 minutos de inactividad, sin aceptar identidades del cliente."""
+"""Agrupa la actividad por sesión verificada, con corte a los 30 minutos de inactividad."""
 
 from __future__ import annotations
 

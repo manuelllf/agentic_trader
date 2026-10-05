@@ -30,12 +30,13 @@ def _filas(filas: Sequence[Row]) -> list[dict]:
 
 
 def exportar(db: Session) -> dict:
-    """Exporta los datos propios, incluidos borradores, visitas y revisiones, sin identificadores de sesión."""
+    """Exporta los datos propios (borradores, visitas y revisiones incluidos), sin ids de sesión."""
     perfil = db.execute(text(
         "select alias, oculto, creado from liga.perfiles where id = (select auth.uid())"
     )).one_or_none()
     privado = db.execute(text(
-        "select tema, idioma, baja_solicitada from liga.perfiles_privados where id = (select auth.uid())"
+        "select tema, idioma, baja_solicitada from liga.perfiles_privados "
+        "where id = (select auth.uid())"
     )).one_or_none()
     roles = db.execute(text("""
         select rol::text as rol, concedido from liga.roles_usuario

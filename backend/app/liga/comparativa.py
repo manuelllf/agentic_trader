@@ -48,7 +48,7 @@ def _diferencia_clasificacion(factor: Decimal, factor_sp: Decimal) -> Decimal:
 
 
 def retornos_acumulados(db: Session, estrategia_ids: list[str]) -> dict[str, dict]:
-    """Compone retornos emparejados con el S&P del último tramo contiguo; los huecos reinician el tramo."""
+    """Compone retornos y S&P del último tramo contiguo; un hueco reinicia el tramo."""
     ids = list(dict.fromkeys(estrategia_ids))
     if not ids:
         return {}
@@ -173,7 +173,7 @@ def movimientos_clasificacion(db: Session, temporada_id: int) -> dict[str, int]:
 
 def movimientos_grupo(db: Session, temporada_id: int,
                       estrategia_por_miembro: dict[str, str]) -> dict[str, int]:
-    """Mantiene la misma estrategia representativa en ambos cortes para comparar posiciones del grupo."""
+    """Compara posiciones del grupo con la misma estrategia representativa en ambos cortes."""
     if len(estrategia_por_miembro) < 2:
         return {}
     period_end_dates = db.execute(text("""

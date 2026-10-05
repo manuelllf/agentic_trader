@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime
 from typing import Literal
@@ -57,7 +56,7 @@ def _clave(clave: str, db: Session) -> str:
     except ValueError as exc:
         raise HTTPException(404, "No existe ese borrador.") from exc
     propia = db.execute(text("select id from liga.estrategias "
-                             "where id = cast(:id as uuid) and dueno_id = auth.uid()"),
+                             "where id = cast(:id as uuid) and dueno_id = (select auth.uid())"),
                         {"id": clave}).scalar()
     if propia is None:
         raise HTTPException(404, "No existe esa estrategia tuya.")
@@ -67,7 +66,7 @@ def _clave(clave: str, db: Session) -> str:
 @router.get("/borradores/{clave}", response_model=BorradorOut | None)
 def leer(clave: str, db: Session = Depends(db_usuario)) -> dict | None:
     fila = db.execute(text("select revision, contenido, actualizado from liga.borradores "
-                           "where usuario_id = auth.uid() and clave = :c"),
+                           "where usuario_id = (select auth.uid()) and clave = :c"),
                       {"c": _clave(clave, db)}).mappings().one_or_none()
     return dict(fila) if fila else None
 
@@ -87,10 +86,10 @@ def guardar(clave: str, body: BorradorIn, ident: Identidad = Depends(require_usu
     if fila is None:
         fila = db.execute(text("""
             update liga.borradores set contenido = cast(:datos as jsonb), revision = revision + 1,
-                actualizado = now(), actualizado_por = auth.uid()
-            where usuario_id = auth.uid() and clave = :c and revision = :rev
+                actualizado = now(), actualizado_por = (select auth.uid())
+            where usuario_id = (select auth.uid()) and clave = :c and revision = :rev
             returning revision, contenido, actualizado
-        """), {"c": clave, "datos": json.dumps(body.contenido.model_dump()),
+        """), {"c": clave, "datos": body.contenido.model_dump_json(),
                "rev": body.revision}).mappings().one_or_none()
     if fila is None:
         raise HTTPException(409, "Este borrador cambió en otra pestaña. Recarga para recuperarlo.")
@@ -99,7 +98,7 @@ def guardar(clave: str, body: BorradorIn, ident: Identidad = Depends(require_usu
 
 @router.delete("/borradores/{clave}", status_code=204)
 def borrar(clave: str, revision: int, db: Session = Depends(db_usuario)) -> None:
-    db.execute(text("delete from liga.borradores where usuario_id = auth.uid() "
+    db.execute(text("delete from liga.borradores where usuario_id = (select auth.uid()) "
                     "and clave = :c and revision = :r"),
                {"c": _clave(clave, db), "r": revision})
 
@@ -109,7 +108,7 @@ def vincular(estrategia_id: uuid.UUID, revision: int,
              db: Session = Depends(db_usuario)) -> None:
     clave = _clave(str(estrategia_id), db)
     fila = db.execute(text("update liga.borradores set clave = :c where "
-                           "usuario_id = auth.uid() and clave = 'nueva' and revision = :r "
+                           "usuario_id = (select auth.uid()) and clave = 'nueva' and revision = :r "
                            "returning revision"), {"c": clave, "r": revision}).scalar()
     if fila is None and revision != 0:
         raise HTTPException(409, "El borrador cambió mientras se creaba la estrategia.")

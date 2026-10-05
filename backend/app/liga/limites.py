@@ -7,7 +7,6 @@ está vetada a `authenticated` por RLS (plan §7.3), y contar desde aquí no dep
 tenga la tabla del dominio."""
 
 from __future__ import annotations
-from app.i18n import translate
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -15,6 +14,7 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 from sqlalchemy import text
 
+from app.i18n import translate
 from app.liga.procesos.comun import auditar, fabrica_sistema
 
 TZ_MADRID = ZoneInfo("Europe/Madrid")

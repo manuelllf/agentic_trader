@@ -104,6 +104,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npx tsc --noEmit
+      - run: npm run check:i18n
+      - run: npm test
       # Vars públicas ficticias: CI no tiene backend ni Supabase reales, pero `next build` necesita
       # que existan para no fallar en el prerender de las páginas que las leen.
       - name: build
