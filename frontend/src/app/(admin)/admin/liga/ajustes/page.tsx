@@ -19,17 +19,18 @@ type Ajuste = {
   actualizado: string | null; actualizado_por: string | null;
 };
 
-type Finalidad = "conversor" | "pregunta" | "lectura";
+type Finalidad = "conversor" | "pregunta" | "lectura" | "formacion";
 type EstadoIA = {
   enable_llm: boolean; deepseek_key_presente: boolean; typesafe_key_presente: boolean;
   gasto_mes_usd: string; tope_mensual_usd: string | null;
+  gasto_formacion_usd: string; tope_formacion_usd: string | null;
   finalidades: { finalidad: Finalidad; funciona: boolean; razon: string | null }[];
 };
 
 // Solo los interruptores de IA llevan finalidad (para el chip «Funciona»/razón de /ia/estado).
 const FINALIDAD_POR_CLAVE: Record<string, Finalidad> = {
   "ia.conversor.activo": "conversor", "ia.pregunta.activo": "pregunta",
-  "ia.lectura.activo": "lectura",
+  "ia.lectura.activo": "lectura", "ia.formacion.activo": "formacion",
 };
 const ORDEN_GRUPOS: Grupo[] = ["Emergencia", "IA", "Créditos"];
 
@@ -42,7 +43,7 @@ function Ajustes() {
   const dollars = (v: string | number) => new Intl.NumberFormat(locale, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v));
   const grupoLabel = (g: Grupo) => t(g === "Emergencia" ? "admin_settings_group_emergency" : g === "IA" ? "admin_settings_group_ai" : "admin_settings_group_credits");
   const ajustesLabel = (a: Ajuste) => {
-    const slug: Record<string, string> = { "liga.registro.abierto": "registration", "liga.visible": "league_public", "ia.conversor.activo": "ai_converter", "ia.pregunta.activo": "ai_question", "ia.lectura.activo": "ai_reading", "ia.tope_mensual_usd": "ai_cap", "ia.margen_objetivo": "ai_margin", "creditos.bienvenida": "welcome_credits", "procesos.foto.auto": "auto_photo", "procesos.formar.auto": "auto_form" };
+    const slug: Record<string, string> = { "liga.registro.abierto": "registration", "liga.visible": "league_public", "ia.conversor.activo": "ai_converter", "ia.pregunta.activo": "ai_question", "ia.lectura.activo": "ai_reading", "ia.tope_mensual_usd": "ai_cap", "ia.formacion.activo": "ai_formation", "ia.tope_formacion_usd": "ai_formation_cap", "procesos.formar.limite_preguntas_s": "form_question_limit", "ia.margen_objetivo": "ai_margin", "creditos.bienvenida": "welcome_credits", "procesos.foto.auto": "auto_photo", "procesos.formar.auto": "auto_form" };
     const suffix = slug[a.clave];
     return suffix ? { title: t(`admin_setting_${suffix}_title`), help: t(`admin_setting_${suffix}_help`) } : { title: a.titulo, help: a.ayuda };
   };
@@ -162,6 +163,10 @@ function Ajustes() {
                 <p className="mt-1" style={{ color: "#898781" }}>
                   {t("admin_settings_spending_lead")} {dollars(estadoIA.gasto_mes_usd)}
                   {estadoIA.tope_mensual_usd != null ? ` de ${dollars(estadoIA.tope_mensual_usd)}` : t("admin_settings_spending_no_cap")}
+                  {" "}{t("admin_settings_spending_tail")}
+                  <br />
+                  {t("admin_settings_spending_formation_lead")} {dollars(estadoIA.gasto_formacion_usd)}
+                  {estadoIA.tope_formacion_usd != null ? ` de ${dollars(estadoIA.tope_formacion_usd)}` : t("admin_settings_spending_no_cap")}
                   {" "}{t("admin_settings_spending_tail")}
                 </p>
               )}

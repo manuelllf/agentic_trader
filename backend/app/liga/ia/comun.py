@@ -27,10 +27,15 @@ logger = logging.getLogger("app.liga.ia")
 TZ_MADRID = ZoneInfo("Europe/Madrid")
 
 # `stage` es lo que se guarda en `llm_call.stage` (`String(16)`) y en la acción de auditoría.
-FINALIDADES = ("conversor", "pregunta", "lectura")
-_STAGE = {"conversor": "liga_conversor", "pregunta": "liga_pregunta", "lectura": "liga_lectura"}
+FINALIDADES = ("conversor", "pregunta", "lectura", "formacion")
+_STAGE = {"conversor": "liga_conversor", "pregunta": "liga_pregunta", "lectura": "liga_lectura",
+          "formacion": "liga_formacion"}
 
+# La formación de la jornada (la pregunta propia contestada por el sistema) tiene interruptor y
+# tope propios: lo que gastan los usuarios en pruebas no la apaga, ni al revés.
 _CLAVE_TOPE = "ia.tope_mensual_usd"
+_CLAVE_TOPE_FORMACION = "ia.tope_formacion_usd"
+RAZON_TOPE = "Tope del mes alcanzado"
 
 
 def tope_mensual(valor: object) -> Decimal | None:
@@ -71,7 +76,7 @@ def _clave_interruptor(finalidad: str) -> str:
 def _clave_presente(finalidad: str) -> bool:
     from app.config import settings
 
-    if finalidad == "pregunta":
+    if finalidad in ("pregunta", "formacion"):
         return bool(settings.typesafe_api_key)
     return settings.llm_api_key_present
 
@@ -92,7 +97,11 @@ def razon_no_disponible(finalidad: str, fabrica: Fabrica | None = None,
     if not settings.enable_llm:
         return "Falta ENABLE_LLM en Railway"
     if not _clave_presente(finalidad):
-        return "Sin clave de Jev" if finalidad == "pregunta" else "Sin clave de DeepSeek"
+        return ("Sin clave de Jev" if finalidad in ("pregunta", "formacion")
+                else "Sin clave de DeepSeek")
+    clave_tope = _CLAVE_TOPE_FORMACION if finalidad == "formacion" else _CLAVE_TOPE
+    etapas = ([_STAGE["formacion"]] if finalidad == "formacion"
+              else [s for f, s in _STAGE.items() if f != "formacion"])
     propia = db is None
     if propia:
         db = (fabrica or fabrica_sistema)()
@@ -103,20 +112,20 @@ def razon_no_disponible(finalidad: str, fabrica: Fabrica | None = None,
             return "Apagado aquí"
         try:
             tope = tope_mensual(db.execute(text("select valor from liga.ajustes where clave = :c"),
-                                           {"c": _CLAVE_TOPE}).scalar())
+                                           {"c": clave_tope}).scalar())
         except ValueError:
             # Con el gasto en juego no se adivina: sin tope válido, la IA queda parada y el panel
             # de ajustes lo dice.
-            logger.error("El ajuste %s no es un importe: IA parada hasta corregirlo", _CLAVE_TOPE)
+            logger.error("El ajuste %s no es un importe: IA parada hasta corregirlo", clave_tope)
             return "Tope mensual mal configurado"
         if tope is None:
             return None
         gastado = db.execute(text("""
             select coalesce(sum(cost_usd), 0) from llm_call
             where stage = any(:etapas) and at >= date_trunc('month', now())
-        """), {"etapas": list(_STAGE.values())}).scalar_one()
+        """), {"etapas": etapas}).scalar_one()
         if Decimal(str(gastado)) >= tope:
-            return "Tope del mes alcanzado"
+            return RAZON_TOPE
         return None
     finally:
         if propia:

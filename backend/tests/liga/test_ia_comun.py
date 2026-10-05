@@ -62,6 +62,68 @@ def entorno(monkeypatch):  # noqa: ANN001, ANN201
         motor.dispose()
 
 
+@pytest.fixture
+def jev(monkeypatch):  # noqa: ANN001, ANN201
+    """IA de Jev encendida con clave de mentira: llega al interruptor y al tope."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "enable_llm", True)
+    monkeypatch.setattr(settings, "typesafe_api_key", "clave-de-prueba")
+
+
+def _gasto(cx, stage: str, coste: float) -> None:  # noqa: ANN001
+    cx.execute("""
+        insert into llm_call (at, stage, model, prompt_cache_hit_tokens,
+                              prompt_cache_miss_tokens, completion_tokens, cost_usd, ok)
+        values (now(), %s, 'jev-latest', 0, 100, 0, %s, true)
+    """, (stage, coste))
+
+
+def _ajuste(cx, clave: str, valor: str) -> None:  # noqa: ANN001
+    cx.execute("insert into liga.ajustes (clave, valor) values (%s, %s)", (clave, valor))
+
+
+def test_la_formacion_tiene_su_propio_interruptor(entorno, jev) -> None:  # noqa: ANN001
+    cx, _ = entorno
+    _ajuste(cx, "ia.pregunta.activo", "true")
+    assert comun.razon_no_disponible("pregunta") is None
+    assert comun.razon_no_disponible("formacion") == "Apagado aquí"
+    _ajuste(cx, "ia.formacion.activo", "true")
+    assert comun.razon_no_disponible("formacion") is None
+
+
+def test_el_gasto_de_la_formacion_no_apaga_a_los_usuarios(entorno, jev) -> None:  # noqa: ANN001
+    cx, _ = entorno
+    for clave in ("ia.pregunta.activo", "ia.formacion.activo"):
+        _ajuste(cx, clave, "true")
+    _ajuste(cx, "ia.tope_mensual_usd", "0.01")
+    _ajuste(cx, "ia.tope_formacion_usd", "0.01")
+    _gasto(cx, "liga_formacion", 1.0)
+    assert comun.razon_no_disponible("formacion") == comun.RAZON_TOPE
+    assert comun.razon_no_disponible("pregunta") is None
+
+
+def test_el_gasto_de_los_usuarios_no_apaga_la_formacion(entorno, jev) -> None:  # noqa: ANN001
+    cx, _ = entorno
+    for clave in ("ia.pregunta.activo", "ia.formacion.activo"):
+        _ajuste(cx, clave, "true")
+    _ajuste(cx, "ia.tope_mensual_usd", "0.01")
+    _ajuste(cx, "ia.tope_formacion_usd", "0.01")
+    _gasto(cx, "liga_pregunta", 1.0)
+    _gasto(cx, "liga_conversor", 1.0)
+    assert comun.razon_no_disponible("pregunta") == comun.RAZON_TOPE
+    assert comun.razon_no_disponible("formacion") is None
+
+
+def test_sin_tope_de_formacion_no_hay_tope_aunque_los_usuarios_tengan_el_suyo(  # noqa: ANN001
+        entorno, jev) -> None:
+    cx, _ = entorno
+    _ajuste(cx, "ia.formacion.activo", "true")
+    _ajuste(cx, "ia.tope_mensual_usd", "0.01")
+    _gasto(cx, "liga_formacion", 5.0)
+    assert comun.razon_no_disponible("formacion") is None
+
+
 def test_interruptor_apagado_da_503(entorno) -> None:  # noqa: ANN001
     from app.config import settings
 
@@ -276,6 +338,22 @@ def test_tope_mal_guardado_para_la_ia_y_lo_dice_sin_romper_el_panel(entorno) -> 
                     if f["finalidad"] == "conversor")["razon"] == "Tope mensual mal configurado"
     finally:
         settings.enable_llm, settings.deepseek_api_key = previo_llm, previa_key
+
+
+def test_el_estado_separa_el_gasto_y_el_tope_de_la_formacion(entorno, jev) -> None:  # noqa: ANN001
+    from app.liga import gestion
+
+    cx, _ = entorno
+    _ajuste(cx, "ia.tope_mensual_usd", "5")
+    _ajuste(cx, "ia.tope_formacion_usd", "2")
+    _gasto(cx, "liga_pregunta", 1.25)
+    _gasto(cx, "liga_formacion", 0.5)
+    estado = gestion.estado_ia()
+    assert (estado["gasto_mes_usd"], estado["tope_mensual_usd"]) == (Decimal("1.25"), Decimal(5))
+    assert (estado["gasto_formacion_usd"], estado["tope_formacion_usd"]) == \
+        (Decimal("0.5"), Decimal(2))
+    assert {f["finalidad"] for f in estado["finalidades"]} == \
+        {"conversor", "pregunta", "lectura", "formacion"}
 
 
 def test_razon_ninguna_cuando_funciona(entorno) -> None:  # noqa: ANN001

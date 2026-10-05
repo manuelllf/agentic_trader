@@ -400,7 +400,7 @@ def restablecer_ajuste(clave: str, ident: Identidad = Depends(require_admin)) ->
 
 
 class FinalidadEstadoOut(BaseModel):
-    finalidad: Literal["conversor", "pregunta", "lectura"]
+    finalidad: Literal["conversor", "pregunta", "lectura", "formacion"]
     funciona: bool
     razon: str | None
 
@@ -411,6 +411,8 @@ class EstadoIAOut(BaseModel):
     typesafe_key_presente: bool
     gasto_mes_usd: Decimal
     tope_mensual_usd: Decimal | None
+    gasto_formacion_usd: Decimal
+    tope_formacion_usd: Decimal | None
     finalidades: list[FinalidadEstadoOut]
 
 
@@ -433,9 +435,17 @@ class FilaCosteIA(BaseModel):
     bajo_objetivo: bool
 
 
+class ParteCosteIA(BaseModel):
+    parte: Literal["pregunta_pruebas", "pregunta_formacion", "escaneo"]
+    detalle: str | None
+    pagado_usd: Decimal
+    llamadas: int
+
+
 class CosteIAOut(BaseModel):
     mes: str
     filas: list[FilaCosteIA]
+    desglose: list[ParteCosteIA]
     total_pagado_usd: Decimal
     total_cobrado_usd: Decimal
     tope_mensual_usd: Decimal | None

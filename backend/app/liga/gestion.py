@@ -26,6 +26,7 @@ import httpx
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.liga.ia import comun as ia_comun
@@ -85,9 +86,26 @@ CATALOGO: dict[str, AjusteMeta] = {
         tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=False),
     "ia.tope_mensual_usd": AjusteMeta(
         grupo="IA", titulo="Tope de gasto mensual en IA",
-        ayuda="Si el gasto real del mes en IA llega a este importe, se apagan todas las "
-              "llamadas de IA hasta el mes siguiente. Sin valor: no hay tope.",
+        ayuda="Si el gasto real del mes en IA de los usuarios (conversor, pruebas y lecturas) "
+              "llega a este importe, se apagan esas llamadas hasta el mes siguiente. Sin valor: "
+              "no hay tope.",
         tipo="dolares", unidad="$/mes", minimo=Decimal(0), maximo=None, defecto=None),
+    "ia.formacion.activo": AjusteMeta(
+        grupo="IA", titulo="Pregunta propia al formar la jornada",
+        ayuda="Deja que el sistema conteste con IA (Jev) la pregunta propia de cada estrategia al "
+              "formar la jornada. Apagado: esas estrategias juegan sin su pregunta.",
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=False),
+    "ia.tope_formacion_usd": AjusteMeta(
+        grupo="IA", titulo="Tope de gasto mensual al formar la jornada",
+        ayuda="Si el gasto del mes en las preguntas de la formación llega a este importe, esas "
+              "estrategias juegan sin pregunta hasta el mes siguiente. Aparte del tope de los "
+              "usuarios. Sin valor: no hay tope.",
+        tipo="dolares", unidad="$/mes", minimo=Decimal(0), maximo=None, defecto=None),
+    "procesos.formar.limite_preguntas_s": AjusteMeta(
+        grupo="IA", titulo="Tiempo máximo para las preguntas al formar",
+        ayuda="Segundos que espera la formación a que la IA conteste las preguntas propias. Al "
+              "agotarse, las estrategias sin todas sus respuestas juegan sin pregunta.",
+        tipo="entero", unidad="s", minimo=Decimal(60), maximo=Decimal(1800), defecto=600),
     "ia.margen_objetivo": AjusteMeta(
         grupo="IA", titulo="Margen objetivo del panel de coste",
         ayuda="Cuántas veces por encima del coste real se marca una finalidad como rentable en "
@@ -373,7 +391,9 @@ _FINALIDADES_COSTE = {
     "pregunta": ("liga_pregunta", "prueba"),
     "lectura": ("liga_lectura", "lectura"),
 }
+_ETAPAS_ESCANEO = ("prescore", "mid", "deep", "constructor", "macro")
 CLAVE_TOPE_MENSUAL = "ia.tope_mensual_usd"
+CLAVE_TOPE_FORMACION = "ia.tope_formacion_usd"
 CLAVE_MARGEN_OBJETIVO = "ia.margen_objetivo"
 _MARGEN_OBJETIVO_DEFECTO = Decimal(3)
 _USD_POR_CREDITO = Decimal("0.01")
@@ -446,9 +466,34 @@ def coste_ia(mes: date) -> dict:
             "total_cobrado_usd": total_cobrado,
             "tope_mensual_usd": _tope_para_panel(tope_mensual),
             "margen_objetivo": margen_objetivo,
+            "desglose": _desglose_coste(db, mes, siguiente),
         }
     finally:
         db.close()
+
+
+def _desglose_coste(db: Session, desde: date, hasta: date) -> list[dict]:
+    """Dónde va el gasto del mes, solo informativo (no entra en totales ni margen): la pregunta
+    propia en pruebas de usuarios frente a la formación de la jornada (que tiene su propio tope)
+    y el escaneo mensual por etapa y modelo."""
+    filas = []
+    for parte, etapa in (("pregunta_pruebas", "liga_pregunta"),
+                         ("pregunta_formacion", "liga_formacion")):
+        pagado, llamadas = db.execute(text("""
+            select coalesce(sum(cost_usd), 0)::numeric, count(*) from llm_call
+            where stage = :etapa and at >= :desde and at < :hasta
+        """), {"etapa": etapa, "desde": desde, "hasta": hasta}).one()
+        filas.append({"parte": parte, "detalle": None, "pagado_usd": Decimal(str(pagado)),
+                      "llamadas": llamadas})
+    escaneo = db.execute(text("""
+        select stage || ' / ' || model, coalesce(sum(cost_usd), 0)::numeric, count(*)
+        from llm_call
+        where stage = any(:etapas) and at >= :desde and at < :hasta
+        group by stage, model order by 2 desc
+    """), {"etapas": list(_ETAPAS_ESCANEO), "desde": desde, "hasta": hasta}).all()
+    filas += [{"parte": "escaneo", "detalle": detalle, "pagado_usd": Decimal(str(pagado)),
+               "llamadas": llamadas} for detalle, pagado, llamadas in escaneo]
+    return filas
 
 
 # ---- Estado real de la IA (plan §10, F6): «si va o no va», visto desde /liga/admin/ajustes ---
@@ -469,10 +514,16 @@ def estado_ia() -> dict:
         """), {"etapas": [s for s, _ in _FINALIDADES_COSTE.values()]}).scalar_one()
         tope = db.execute(text("select valor from liga.ajustes where clave = :c"),
                           {"c": CLAVE_TOPE_MENSUAL}).scalar()
+        gastado_formacion = db.execute(text("""
+            select coalesce(sum(cost_usd), 0) from llm_call
+            where stage = 'liga_formacion' and at >= date_trunc('month', now())
+        """)).scalar_one()
+        tope_formacion = db.execute(text("select valor from liga.ajustes where clave = :c"),
+                                    {"c": CLAVE_TOPE_FORMACION}).scalar()
         finalidades = [
             {"finalidad": f, "funciona": (razon := ia_comun.razon_no_disponible(f, db=db)) is None,
              "razon": razon}
-            for f in _FINALIDADES_COSTE
+            for f in (*_FINALIDADES_COSTE, "formacion")
         ]
         return {
             "enable_llm": settings.enable_llm,
@@ -480,6 +531,8 @@ def estado_ia() -> dict:
             "typesafe_key_presente": bool(settings.typesafe_api_key),
             "gasto_mes_usd": Decimal(str(gastado)),
             "tope_mensual_usd": _tope_para_panel(tope),
+            "gasto_formacion_usd": Decimal(str(gastado_formacion)),
+            "tope_formacion_usd": _tope_para_panel(tope_formacion),
             "finalidades": finalidades,
         }
     finally:

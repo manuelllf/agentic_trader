@@ -9,6 +9,7 @@ ese conjunto: `motor.seleccion.candidatas_pregunta`) — nunca el universo enter
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 from sqlalchemy import text
@@ -70,6 +71,7 @@ class ResultadoPregunta:
     desde_cache: int
     nuevas: int
     coste_usd: float
+    cortada: bool = False   # se agotó la hora límite: quedan candidatas sin contestar
 
 
 def _cache(db: Session, pregunta_hash: str, foto_id: int,
@@ -85,14 +87,17 @@ def _cache(db: Session, pregunta_hash: str, foto_id: int,
 
 def responder_pendientes(*, pregunta: str, foto_id: int, empresas: dict[str, EmpresaFoto],
                          candidatas: list[str], usuario_id: str | None = None,
-                         fabrica: Fabrica | None = None) -> ResultadoPregunta:
+                         fabrica: Fabrica | None = None, finalidad: str = "pregunta",
+                         hasta: float | None = None, reloj=time.monotonic,  # noqa: ANN001
+                         ) -> ResultadoPregunta:
     """Rellena la caché para las `candidatas` que aún no tengan respuesta a esta pregunta y foto;
     el resto sale de caché. `usuario_id` va en la auditoría de cada llamada; `None` cuando lo
-    lanza la jornada (día 1, a coste del sistema, nunca a petición directa de un usuario).
+    lanza la jornada (a coste del sistema, nunca a petición directa de un usuario), que usa la
+    finalidad `formacion` con su interruptor y su tope. `hasta`: hora límite (`reloj`, por
+    defecto `time.monotonic`); al llegar, se deja de preguntar y lo ya contestado queda guardado.
     `fabrica`: por defecto la del sistema; un proceso con la suya propia la pasa (tests,
     savepoints) -- ver `procesos.formar.rellenar_preguntas`."""
     f = fabrica or fabrica_sistema
-    finalidad = "pregunta"
     pregunta_hash = procesos_datos.hash_pregunta(pregunta)
     db = f()
     try:
@@ -112,8 +117,12 @@ def responder_pendientes(*, pregunta: str, foto_id: int, empresas: dict[str, Emp
     # Una única sesión de sistema para los `INSERT` de `respuestas_ia` de todo el lote (antes: una
     # sesión nueva por candidata nueva, con su propio commit).
     db = f()
+    cortada = False
     try:
         for ticker in faltan:
+            if hasta is not None and reloj() >= hasta:
+                cortada = True
+                break
             empresa = empresas.get(ticker)
             if empresa is None:
                 continue
@@ -156,7 +165,7 @@ def responder_pendientes(*, pregunta: str, foto_id: int, empresas: dict[str, Emp
     finally:
         db.close()
     return ResultadoPregunta(respuestas=ya, evaluadas=len(candidatas), desde_cache=len(candidatas)
-                             - nuevas, nuevas=nuevas, coste_usd=coste_total)
+                             - nuevas, nuevas=nuevas, coste_usd=coste_total, cortada=cortada)
 
 
 def coste_pendiente(*, pregunta: str, foto_id: int, candidatas: list[str],

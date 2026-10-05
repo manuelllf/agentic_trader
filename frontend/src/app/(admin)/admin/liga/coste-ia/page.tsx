@@ -14,14 +14,17 @@ type FilaCoste = {
   pagado_usd: string; cobrado_usd: string; llamadas: number; cache_hits: number;
   ratio: string | null; bajo_objetivo: boolean;
 };
+type ParteCoste = {
+  parte: "pregunta_pruebas" | "pregunta_formacion" | "escaneo";
+  detalle: string | null; pagado_usd: string; llamadas: number;
+};
 type CosteIA = {
-  mes: string; filas: FilaCoste[]; total_pagado_usd: string; total_cobrado_usd: string;
-  tope_mensual_usd: string | null; margen_objetivo: string;
+  mes: string; filas: FilaCoste[]; desglose: ParteCoste[]; total_pagado_usd: string;
+  total_cobrado_usd: string; tope_mensual_usd: string | null; margen_objetivo: string;
 };
 
 const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 const mesActual = () => new Date().toISOString().slice(0, 7);
-const dolares = (v: string) => `$${Number(v).toFixed(4)}`;
 
 function CosteIAPanel() {
   const t = useTranslations();
@@ -29,6 +32,11 @@ function CosteIAPanel() {
   const currency = (v: string) => new Intl.NumberFormat(locale, { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(Number(v));
   const errorText = useCallback((e: unknown) => error(e, t("admin_generic_error")), [t]);
   const etiquetas: Record<string, string> = { conversor: t("admin_cost_converter"), pregunta: t("admin_cost_question"), lectura: t("admin_cost_reading") };
+  const partes: Record<ParteCoste["parte"], string> = {
+    pregunta_pruebas: t("admin_cost_part_question_tests"),
+    pregunta_formacion: t("admin_cost_part_question_formation"),
+    escaneo: t("admin_cost_part_scan"),
+  };
   const [mes, setMes] = useState(mesActual());
   const [datos, setDatos] = useState<CosteIA | null>(null);
   const [fallo, setFallo] = useState("");
@@ -89,6 +97,19 @@ function CosteIAPanel() {
                 <p className="mt-0.5 text-[11.5px]" style={{ color: "#67665f" }}>
                   {t("admin_cost_calls", { count: new Intl.NumberFormat(locale).format(f.llamadas), hits: new Intl.NumberFormat(locale).format(f.cache_hits) })}
                 </p>
+              </li>
+            ))}
+          </ul>
+
+          <h2 className="mt-6 font-bold text-white">{t("admin_cost_breakdown_title")}</h2>
+          <p className="mt-1 text-[11.5px]" style={{ color: "#67665f" }}>{t("admin_cost_breakdown_help")}</p>
+          <ul className="mt-2 border-t" style={{ borderColor: "#303030" }}>
+            {datos.desglose.map((p) => (
+              <li key={`${p.parte}-${p.detalle ?? ""}`} className="flex items-baseline justify-between gap-3 border-b py-2" style={{ borderColor: "#303030" }}>
+                <span className="min-w-0 text-white">{partes[p.parte]}{p.detalle ? ` · ${p.detalle}` : ""}</span>
+                <span className="shrink-0" style={{ color: "#898781" }}>
+                  {currency(p.pagado_usd)} · {t("admin_cost_calls_short", { count: new Intl.NumberFormat(locale).format(p.llamadas) })}
+                </span>
               </li>
             ))}
           </ul>

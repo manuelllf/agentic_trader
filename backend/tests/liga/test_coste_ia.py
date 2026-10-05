@@ -41,19 +41,20 @@ def entorno(monkeypatch):  # noqa: ANN001, ANN201
         cx.execute("set session_replication_role = replica")
         cx.execute("delete from liga.creditos_movimientos where usuario_id = %s", (uid,))
         cx.execute("set session_replication_role = origin")
-        cx.execute("delete from llm_call where stage like 'liga_%'")
+        cx.execute("delete from llm_call where stage like 'liga_%' or model = 'prueba-desglose'")
         cx.execute("delete from liga.ajustes where clave like 'ia.%'")
         cx.execute("delete from auth.users where id = %s", (uid,))
         cx.close()
         motor.dispose()
 
 
-def _llm_call(cx, stage: str, cuando: datetime, coste: float) -> None:  # noqa: ANN001
+def _llm_call(cx, stage: str, cuando: datetime, coste: float,  # noqa: ANN001
+              modelo: str = "deepseek-flash") -> None:
     cx.execute("""
         insert into llm_call (at, stage, model, prompt_cache_hit_tokens,
                               prompt_cache_miss_tokens, completion_tokens, cost_usd, ok)
-        values (%s, %s, 'deepseek-flash', 0, 10, 5, %s, true)
-    """, (cuando, stage, coste))
+        values (%s, %s, %s, 0, 10, 5, %s, true)
+    """, (cuando, stage, modelo, coste))
 
 
 def test_pagado_y_cobrado_por_finalidad_en_el_mes(entorno) -> None:  # noqa: ANN001
@@ -88,6 +89,37 @@ def test_pagado_y_cobrado_por_finalidad_en_el_mes(entorno) -> None:  # noqa: ANN
     assert conversor_fila["cobrado_usd"] == 0   # el conversor nunca cobra
 
     assert round(float(r["total_pagado_usd"]), 4) == round(0.03 + 0.001, 4)
+
+
+def test_desglose_separa_la_pregunta_de_pruebas_y_de_la_formacion_y_suma_el_escaneo(
+        entorno) -> None:  # noqa: ANN001
+    cx, uid = entorno
+    mes = cx.execute("select date_trunc('month', now())::date").fetchone()[0]
+    dentro = datetime.combine(mes, datetime.min.time()) + timedelta(days=1, hours=12)
+
+    _llm_call(cx, "liga_pregunta", dentro, 0.002)
+    _llm_call(cx, "liga_formacion", dentro, 0.01)
+    _llm_call(cx, "liga_formacion", dentro, 0.01)
+    _llm_call(cx, "prescore", dentro, 0.3, "prueba-desglose")
+    _llm_call(cx, "prescore", dentro, 0.3, "prueba-desglose")
+    _llm_call(cx, "deep", dentro, 1.5, "prueba-desglose")
+    _llm_call(cx, "prescore", dentro - timedelta(days=60), 99.0, "prueba-desglose")  # otro mes
+
+    r = gestion.coste_ia(mes)
+    desglose = {(d["parte"], d["detalle"]): d for d in r["desglose"]}
+
+    pruebas = desglose[("pregunta_pruebas", None)]
+    assert (round(float(pruebas["pagado_usd"]), 4), pruebas["llamadas"]) == (0.002, 1)
+    formacion = desglose[("pregunta_formacion", None)]
+    assert (round(float(formacion["pagado_usd"]), 4), formacion["llamadas"]) == (0.02, 2)
+    prescore = desglose[("escaneo", "prescore / prueba-desglose")]
+    assert (round(float(prescore["pagado_usd"]), 4), prescore["llamadas"]) == (0.6, 2)
+    deep = desglose[("escaneo", "deep / prueba-desglose")]
+    assert (round(float(deep["pagado_usd"]), 4), deep["llamadas"]) == (1.5, 1)
+
+    # El desglose es informativo: ni el escaneo ni la formación tocan los totales (que alimentan
+    # el margen); solo cuenta lo que pagan los usuarios.
+    assert round(float(r["total_pagado_usd"]), 4) == 0.002
 
 
 def test_bajo_objetivo_cuando_el_ratio_no_llega_al_margen(entorno) -> None:  # noqa: ANN001

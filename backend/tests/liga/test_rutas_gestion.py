@@ -292,6 +292,7 @@ def test_ajustes_trae_metadato_y_efectivo_por_defecto(api) -> None:  # noqa: ANN
         "liga.registro.abierto", "liga.visible", "ia.conversor.activo", "ia.pregunta.activo",
         "ia.lectura.activo", "ia.tope_mensual_usd", "ia.margen_objetivo",
         "creditos.bienvenida", "procesos.foto.auto", "procesos.formar.auto",
+        "ia.formacion.activo", "ia.tope_formacion_usd", "procesos.formar.limite_preguntas_s",
     }
     registro = filas["liga.registro.abierto"]
     assert registro["valor"] is None and registro["efectivo"] is False
@@ -385,6 +386,7 @@ def test_ia_estado_da_razones(api, monkeypatch) -> None:  # noqa: ANN001
     por_finalidad = {f["finalidad"]: f for f in cuerpo["finalidades"]}
     assert por_finalidad["conversor"]["razon"] == "Sin clave de DeepSeek"
     assert por_finalidad["pregunta"]["razon"] == "Sin clave de Jev"
+    assert por_finalidad["formacion"]["razon"] == "Sin clave de Jev"
 
     monkeypatch.setattr(settings, "deepseek_api_key", "sk-lo-que-sea")
     cx.execute("insert into liga.ajustes (clave, valor) values ('ia.conversor.activo', 'true')")
