@@ -149,7 +149,7 @@ export default function Mias() {
             return (
               <article key={e.id} className="mias-estrategia" aria-busy={pendiente || undefined}>
                 <Link href={`/ficha/${e.id}`} className="mias-identidad">
-                  <Escudo valor={e.escudo} etiqueta={t("strategies_crest", { name: e.nombre })} tamano={40} />
+                  <Escudo valor={e.escudo} etiqueta={t("strategies_crest", { name: e.nombre })} tamano={34} />
                   <span><h2>{e.nombre}</h2><small>{ETIQUETA_ESTADO[e.estado] ? t(ETIQUETA_ESTADO[e.estado]) : e.estado}</small></span>
                   <span className="mias-abrir" aria-hidden="true">↗</span>
                 </Link>
@@ -177,6 +177,7 @@ export default function Mias() {
                   </p>
                 )}
                 {resumen?.resultado_nuevo && <Link className="mias-novedad" href={`/ficha/${e.id}`}>{t("strategies_new_result")} ↗</Link>}
+                <div className="mias-pie">
                 <div className="mias-acciones">
                   <Link href={`/crear/${e.id}`} className="btn small">{t("strategies_edit")}</Link>
                   {e.estado === "borrador" && <>
@@ -196,6 +197,7 @@ export default function Mias() {
                     </div>
                   </div>
                 )}
+                </div>
               </article>
             );
           })}

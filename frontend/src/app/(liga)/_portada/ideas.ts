@@ -1,6 +1,7 @@
 // Datos de EJEMPLO de la portada: empresas conocidas solo como ilustración y seis meses inventados,
 // sin cifras inventadas por empresa. La pantalla lo dice; solo la regla de puntos es la real.
 
+import { CASA } from "../_ui/casa";
 import type { EscudoValor } from "../_ui";
 
 export interface Empresa { nombre: string; porque: string; peso: number }
@@ -55,10 +56,10 @@ const casa = (color: string, iniciales: string): EscudoValor =>
 
 const OTROS: FilaTabla[] = [
   { nombre: "Foso ancho", sub: "@lucia", escudo: rival("#0B6E68", "#F2C94C", "FA"), puntos: 15 },
-  { nombre: "Alpha", sub: "casa", escudo: casa("#1DE27A", "α"), puntos: 13 },
+  { nombre: "Alpha", sub: "casa", escudo: casa(CASA.alpha.color, "α"), puntos: 13 },
   { nombre: "Deuda cero", sub: "@dani", escudo: rival("#3D8BD9", "#FFFFFF", "DC"), puntos: 11 },
-  { nombre: "Omega", sub: "casa", escudo: casa("#FF6B1A", "Ω"), puntos: 9 },
-  { nombre: "Lambda", sub: "casa", escudo: casa("#D8D4CB", "λ"), puntos: 6 },
+  { nombre: "Omega", sub: "casa", escudo: casa(CASA.omega.color, "Ω"), puntos: 9 },
+  { nombre: "Lambda", sub: "casa", escudo: casa(CASA.lambda.color, "λ"), puntos: 6 },
 ];
 
 export function puntosTotales(idea: Idea): number {

@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { CASA, type ClaveCasa } from "./casa";
 
 // Puerto de crestSVG/lum/SHAPES/PALETTE de la maqueta (DESIGN.md §6 y §14).
 
@@ -48,14 +49,7 @@ export function escudoAleatorio(): EscudoValor {
   return { forma: pick(formas), dibujo: pick(dibujos), color1, color2, iniciales: "" };
 }
 
-/** Alpha/Omega/Lambda: color y glifo de casa (DESIGN.md §2, tabla «Colores de la casa»). */
-export const CASA = {
-  alpha: { color: "#1DE27A", glifo: "α", nombre: "Alpha" },
-  omega: { color: "#FF6B1A", glifo: "Ω", nombre: "Omega" },
-  lambda: { color: "#D8D4CB", glifo: "λ", nombre: "Lambda" },
-} as const;
-
-export type ClaveCasa = keyof typeof CASA;
+export { CASA, type ClaveCasa } from "./casa";
 
 /** Escudo de la casa: círculo liso del color de la casa con su glifo (DESIGN.md §6). */
 export function escudoCasa(clave: ClaveCasa): EscudoValor {
@@ -87,7 +81,7 @@ export function Escudo({ valor: valorGuardado, casa, etiqueta, tamano = 34 }: Es
   const c1 = valor.color1;
   const c2 = valor.color2 || valor.color1;
   const claro = luminancia(c1) > 0.4;
-  const tintaIniciales = casa || claro ? "#111315" : "#FFFFFF";
+  const tintaIniciales = casa ? CASA[casa].tinta : claro ? "#111315" : "#FFFFFF";
   const haloIniciales = claro ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.4)";
   const ini = (valor.iniciales || "").slice(0, 2);
   const ajuste = AJUSTE_GLIFO[ini];
@@ -111,7 +105,7 @@ export function Escudo({ valor: valorGuardado, casa, etiqueta, tamano = 34 }: Es
         <>
           <rect x={1.5} y={1.5} width={37} height={37} rx={9} fill={c1} />
           <rect x={4} y={4} width={32} height={32} rx={6.5}
-            fill="none" stroke="#111315" strokeOpacity={0.18} strokeWidth={0.8} />
+            fill="none" stroke="#FFFFFF" strokeOpacity={0.24} strokeWidth={0.8} />
         </>
       ) : <g clipPath={`url(#${id})`}>
         {valor.dibujo === "mitades" && (
