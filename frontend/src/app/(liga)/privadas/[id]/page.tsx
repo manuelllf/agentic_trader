@@ -75,15 +75,16 @@ export default function PrivadaDetalle() {
             <div className="priv-equipos">
               {lista.map((m, i) => {
                 const e = m.estrategia;
+                const abrir = !!e && (m.es_yo || e.visibilidad === "publicada");
                 const conResultado = vista === "mes" ? m.rentabilidad_mes != null : m.puntos != null;
                 return <article className={`priv-equipo${m.es_yo ? " propia" : ""}`} key={m.alias}>
-                  <button type="button" className="priv-equipo-cab priv-equipo-abrir" disabled={!e}
+                  <button type="button" className="priv-equipo-cab priv-equipo-abrir" disabled={!abrir}
                     onClick={() => e && router.push(`/ficha/${e.id}`)}>
                     <span className="priv-puesto" aria-label={conResultado ? t("private_leagues_position", { position: i + 1 }) : t("private_leagues_unranked")}>{conResultado ? String(i + 1).padStart(2, "0") : "—"}</span>
                     {e && <Escudo valor={e.escudo} etiqueta={t("private_leagues_strategy_crest", { name: e.nombre })} tamano={38} />}
-                    <span className="priv-identidad"><b>{e?.nombre ?? m.alias}</b><small>{e ? m.alias : t("private_leagues_no_formed_strategy")}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}</small></span>
+                    <span className="priv-identidad"><b>{e?.nombre ?? m.alias}</b><small>{e ? m.alias : t("private_leagues_no_formed_strategy")}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}{e && !abrir ? ` · ${t("private_leagues_private_strategy")}` : ""}</small></span>
                     <span className="priv-resultado">{vista === "mes" ? <b className={m.rentabilidad_mes == null ? "" : claseSigno(m.rentabilidad_mes)}>{m.rentabilidad_mes == null ? "—" : percent(m.rentabilidad_mes)}</b> : <b>{m.puntos ?? "—"}</b>}<small>{vista === "mes" ? t("private_leagues_this_month") : t("private_leagues_points")}</small></span>
-                    {e && <span aria-hidden="true">→</span>}
+                    {abrir && <span aria-hidden="true">→</span>}
                   </button>
                   {!e && <p className="fine">{m.es_yo ? t("private_leagues_join_create_note") : t("private_leagues_member_create_note")}{m.es_yo && <Link className="link" href="/crear"> {t("private_leagues_create_strategy")} →</Link>}</p>}
                 </article>;

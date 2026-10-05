@@ -97,6 +97,7 @@ export default function Privadas() {
           <section className="priv-panel">
             <h2>{t("private_leagues_invited_title")}</h2>
             <p>{t("private_leagues_invited_text")}</p>
+            <p className="fine">{t("private_leagues_members_see")}</p>
             <form className="form" style={{ marginTop: 0, gap: 12 }} onSubmit={alUnirse}>
               <label htmlFor="liga-codigo">{t("private_leagues_invite_code")}</label>
               <input id="liga-codigo" className="inp codigo" placeholder="ABC123" maxLength={16} value={codigo}
@@ -111,6 +112,7 @@ export default function Privadas() {
           <section className="priv-panel">
             <h2>{t("private_leagues_create_group_title")}</h2>
             <p>{t("private_leagues_create_group_text")}</p>
+            <p className="fine">{t("private_leagues_members_see")}</p>
             <form className="form" style={{ marginTop: 0, gap: 12 }} onSubmit={alCrear}>
               <label htmlFor="liga-nombre">{t("private_leagues_name")}</label>
               <input id="liga-nombre" className="inp" placeholder={t("private_leagues_name_placeholder")} maxLength={40} value={nombre}
