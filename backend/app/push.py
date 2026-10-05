@@ -71,6 +71,38 @@ def unsubscribe(db: Session, endpoint: str) -> None:
         db.commit()
 
 
+def enviar(endpoint: str, p256dh: str, auth: str, payload: str) -> str:
+    """Un push a un dispositivo. Devuelve «ok», «baja» (el navegador dio de baja la suscripción:
+    404 o 410) o «error» (sin claves, sin librería, destino no reconocido o fallo del envío)."""
+    if not settings.vapid_private_key:
+        logger.info("Push omitido: faltan claves VAPID.")
+        return "error"
+    try:
+        from pywebpush import WebPushException, webpush
+    except ImportError:
+        logger.warning("pywebpush no instalado — push omitido.")
+        return "error"
+    if not _valid_push_endpoint(endpoint):     # defensa extra: jamás POSTear fuera
+        logger.warning("Push omitido: endpoint no reconocido (%s).", endpoint)
+        return "error"
+    try:
+        webpush(
+            subscription_info={"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}},
+            data=payload,
+            vapid_private_key=settings.vapid_private_key,
+            vapid_claims={"sub": settings.vapid_subject},
+        )
+        return "ok"
+    except WebPushException as exc:
+        code = getattr(exc.response, "status_code", None)
+        if code in (404, 410):
+            return "baja"
+        logger.warning("Push fallido (%s): %s", code, exc)
+    except Exception:
+        logger.exception("Push fallido")
+    return "error"
+
+
 def send_to_all(
     db: Session, title: str, body: str, url: str = "/admin/alpha", tag: str = "agentic-alpha",
 ) -> int:
@@ -82,37 +114,13 @@ def send_to_all(
     if not settings.vapid_private_key:
         logger.info("Push omitido: faltan claves VAPID.")
         return 0
-    try:
-        from pywebpush import WebPushException, webpush
-    except ImportError:
-        logger.warning("pywebpush no instalado — push omitido.")
-        return 0
-
-    subs = db.scalars(select(PushSubscription)).all()
     payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
     sent = 0
-    for s in subs:
-        if not _valid_push_endpoint(s.endpoint):     # defensa extra: jamás POSTear fuera
-            logger.warning("Push omitido: endpoint no reconocido (%s).", s.endpoint)
-            continue
-        try:
-            webpush(
-                subscription_info={
-                    "endpoint": s.endpoint,
-                    "keys": {"p256dh": s.p256dh, "auth": s.auth},
-                },
-                data=payload,
-                vapid_private_key=settings.vapid_private_key,
-                vapid_claims={"sub": settings.vapid_subject},
-            )
+    for s in db.scalars(select(PushSubscription)).all():
+        resultado = enviar(s.endpoint, s.p256dh, s.auth, payload)
+        if resultado == "ok":
             sent += 1
-        except WebPushException as exc:
-            code = getattr(exc.response, "status_code", None)
-            if code in (404, 410):  # el navegador dio de baja la suscripción
-                db.delete(s)
-            else:
-                logger.warning("Push fallido (%s): %s", code, exc)
-        except Exception:
-            logger.exception("Push fallido")
+        elif resultado == "baja":
+            db.delete(s)
     db.commit()
     return sent

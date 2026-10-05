@@ -445,6 +445,24 @@ def test_los_resultados_son_publicos_y_no_se_tocan(cx):
                "values (%s, 9, 3)", (iid,))
 
 
+def test_las_suscripciones_de_aviso_son_de_su_cuenta_y_solo_se_crean_y_borran(cx):
+    a, b = _usuario(cx), _usuario(cx)
+    nueva = ("insert into liga.suscripciones_push (usuario_id, endpoint, p256dh, auth) "
+             "values (%s, %s, 'p', 'a')")
+    _como(cx, a)
+    cx.execute(nueva, (a, "https://fcm.googleapis.com/fcm/send/a"))
+    _falla(cx, nueva, (b, "https://fcm.googleapis.com/fcm/send/ajena"))      # no a nombre de otro
+    _falla(cx, "update liga.suscripciones_push set p256dh = 'x'")            # sin update
+    assert _filas(cx, "select count(*) from liga.suscripciones_push") == [(1,)]
+    _como(cx, b)
+    assert _filas(cx, "select count(*) from liga.suscripciones_push") == [(0,)]
+    assert cx.execute("delete from liga.suscripciones_push").rowcount == 0   # no borra las de a
+    _como(cx, None)
+    _falla(cx, "select 1 from liga.suscripciones_push")
+    _como(cx, a)
+    assert cx.execute("delete from liga.suscripciones_push").rowcount == 1
+
+
 def test_haber_jugado_sin_pregunta_lo_ve_su_dueno_y_el_admin_y_nadie_mas(cx):
     a, otro, adm = _usuario(cx), _usuario(cx), _usuario(cx, rol="admin")
     jid = _jornada(cx)

@@ -9,6 +9,7 @@ no salen a la red: `precios.descargar` se sustituye. Sin `LIGA_TEST_DATABASE_URL
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
@@ -1032,6 +1033,128 @@ def test_no_hay_reintentos_infinitos_pasada_media_hora_avisa_una_vez_y_deja_de_i
     formar._abandonadas_avisadas.clear()
 
 
+# ---- los avisos a las cuentas -----------------------------------------------------------------
+
+
+@pytest.fixture
+def empujes(monkeypatch) -> list:  # noqa: ANN001
+    """Los push que saldrían: (endpoint, contenido). Sin salir a ninguna red."""
+    from app import push
+
+    enviados: list = []
+
+    def falso(endpoint, p256dh, auth, payload):  # noqa: ANN001, ANN202
+        enviados.append((endpoint, json.loads(payload)))
+        return "ok"
+
+    monkeypatch.setattr(push, "enviar", falso)
+    return enviados
+
+
+def _suscribir(fabrica, uid: str) -> str:  # noqa: ANN001
+    from app.liga import avisos
+
+    endpoint = f"https://fcm.googleapis.com/fcm/send/{uuid.uuid4().hex}"
+    avisos.suscribir(uid, {"endpoint": endpoint, "keys": {"p256dh": "p", "auth": "a"}},
+                     fabrica=fabrica)
+    return endpoint
+
+
+def test_suscribir_valida_limita_y_pasa_el_dispositivo_a_quien_lo_activa(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    from app.liga import avisos
+
+    uid = _dueno(fabrica, mundo["reglas"])
+    with pytest.raises(ValueError):
+        avisos.suscribir(uid, {"endpoint": "https://169.254.169.254/x",
+                               "keys": {"p256dh": "p", "auth": "a"}}, fabrica=fabrica)
+    with pytest.raises(ValueError):
+        avisos.suscribir(uid, {"endpoint": "https://fcm.googleapis.com/fcm/send/z", "keys": {}},
+                         fabrica=fabrica)
+    puestos = [_suscribir(fabrica, uid) for _ in range(avisos.MAX_DISPOSITIVOS)]
+    assert avisos.dispositivos(uid, fabrica) == puestos
+    with pytest.raises(avisos.DemasiadosDispositivos):
+        _suscribir(fabrica, uid)
+
+    otro = str(uuid.uuid4())
+    with comun.sesion(fabrica) as db:
+        db.execute(text("insert into auth.users (id, email, email_confirmed_at) "
+                        "values (:i, :e, now())"), {"i": otro, "e": f"{otro[:12]}@prueba.local"})
+        db.commit()
+    avisos.suscribir(otro, {"endpoint": puestos[0], "keys": {"p256dh": "q", "auth": "b"}},
+                     fabrica=fabrica)
+    assert avisos.dispositivos(otro, fabrica) == [puestos[0]]
+    assert puestos[0] not in avisos.dispositivos(uid, fabrica)
+    avisos.dar_de_baja(otro, puestos[0], fabrica)
+    assert avisos.dispositivos(otro, fabrica) == []
+
+
+def test_el_aviso_sale_en_el_idioma_de_la_cuenta_y_poda_lo_que_el_navegador_dio_de_baja(
+        fabrica, mercado, mundo, monkeypatch, empujes) -> None:  # noqa: ANN001
+    from app import push
+    from app.liga import avisos
+
+    uid = _dueno(fabrica, mundo["reglas"])
+    viva, muerta = _suscribir(fabrica, uid), _suscribir(fabrica, uid)
+    cierra = datetime(2027, 1, 4, 14, 0, tzinfo=UTC)               # 15:00 en Madrid
+    with comun.sesion(fabrica) as db:
+        assert avisos.avisar(db, uid, "cartera_lista", cierra=cierra) == 2
+    assert {e for e, _ in empujes} == {viva, muerta}
+    c = empujes[0][1]
+    assert c["title"] == "Tu cartera está lista"
+    assert c["body"] == "Puedes cambiar empresas hasta el 4 de enero a las 15:00."
+    assert c["url"] == "/mias" and c["tag"] == "vennett-cartera_lista"
+
+    empujes.clear()
+    with comun.sesion(fabrica) as db:
+        db.execute(text("insert into liga.perfiles_privados (id, idioma) values (:u, 'en') "
+                        "on conflict (id) do update set idioma = 'en'"), {"u": uid})
+        db.commit()
+        avisos.avisar(db, uid, "cartera_lista", cierra=cierra)
+    assert empujes[0][1]["body"] == "You can swap companies until January 4 at 15:00."
+
+    monkeypatch.setattr(push, "enviar", lambda e, p, a, c: "baja" if e == muerta else "ok")
+    with comun.sesion(fabrica) as db:
+        assert avisos.avisar(db, uid, "empieza") == 1
+    assert avisos.dispositivos(uid, fabrica) == [viva]
+
+
+def test_al_formar_se_avisa_de_la_cartera_y_de_lo_que_jugo_sin_su_pregunta(
+        fabrica, mercado, mundo, empujes) -> None:  # noqa: ANN001
+    uid = _dueno(fabrica, mundo["reglas"])
+    suya = _suscribir(fabrica, uid)
+    _formar_mes(fabrica, mercado, mundo["enero"], ENERO)
+
+    titulos = [c["title"] for e, c in empujes if e == suya]
+    assert titulos.count("Tu cartera está lista") == 1         # una por cuenta, no por estrategia
+    assert "Jugó sin su pregunta" in titulos
+    sin = next(c for _, c in empujes if c["title"] == "Jugó sin su pregunta")
+    assert "Con pregunta" in sin["body"]
+
+
+def test_los_recordatorios_salen_una_vez_por_jornada_y_en_su_hora(
+        fabrica, mercado, mundo, empujes) -> None:  # noqa: ANN001
+    from app.liga import avisos
+
+    ene, uid = mundo["enero"], _dueno(fabrica, mundo["reglas"])
+    _suscribir(fabrica, uid)
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    empujes.clear()
+    cierra = datetime(2027, 1, 4, 14, 0, tzinfo=UTC)              # 09:00 NY del día 4
+    assert avisos.job(fabrica, ahora=cierra - timedelta(hours=2)) == {"cambios_cierran": 0,
+                                                                     "empieza": 0}
+    assert avisos.job(fabrica, ahora=cierra - timedelta(minutes=30))["cambios_cierran"] == 1
+    assert [c["title"] for _, c in empujes] == ["Los cambios se cierran en una hora"]
+    assert avisos.job(fabrica, ahora=cierra - timedelta(minutes=25))["cambios_cierran"] == 0
+
+    empujes.clear()
+    abre = datetime(2027, 1, 4, 14, 35, tzinfo=UTC)               # 09:35 NY
+    assert avisos.job(fabrica, ahora=abre)["empieza"] == 1
+    assert [c["title"] for _, c in empujes] == ["Empieza la jornada"]
+    assert avisos.job(fabrica, ahora=abre + timedelta(minutes=5))["empieza"] == 0
+    assert avisos.job(fabrica, ahora=abre + timedelta(hours=3))["empieza"] == 0
+
+
 # ---- la ventana de cambios: Cambiar y Recuperar hasta las 09:00 NY del día 1 -------------------
 
 VENTANA_ENERO = datetime(2027, 1, 3, 12, tzinfo=UTC)          # tras el corte, antes del día 4 09:00
@@ -1089,7 +1212,7 @@ def test_volver_a_la_formacion_deshace_lo_cambiado_en_la_ventana(
     assert _cartera_de(fabrica, ene, eid) == formada
     with comun.sesion(fabrica) as db:
         v = cambios.ventana_de(db, eid, VENTANA_ENERO)
-    assert cambios.quitadas_de_la_formacion(v, fabrica) == []
+    assert cambios.detalle(v, fabrica)["quitadas_formacion"] == []
 
 
 def test_la_ventana_solo_existe_entre_el_corte_y_la_apertura_y_solo_para_su_dueno(

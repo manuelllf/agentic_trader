@@ -462,6 +462,31 @@ def test_ventana_de_cambios_por_la_api(api) -> None:  # noqa: ANN001
         cx.execute("delete from liga.temporadas where id = %s", (tid,))
 
 
+def test_avisos_por_la_api_son_de_la_cuenta(api, monkeypatch) -> None:  # noqa: ANN001
+    cliente, cab, usuario, *_ = api
+    from app import push
+
+    monkeypatch.setattr(push.settings, "vapid_public_key", "clave-publica")
+    uid, otro = usuario(), usuario()
+    assert cliente.get("/liga/avisos").status_code == 401
+    assert cliente.get("/liga/avisos/clave", headers=cab(uid)).json() == {"key": "clave-publica"}
+    assert cliente.get("/liga/avisos", headers=cab(uid)).json() == {"dispositivos": [], "maximo": 5}
+
+    sub = {"endpoint": f"https://fcm.googleapis.com/fcm/send/{uuid.uuid4().hex}",
+           "keys": {"p256dh": "p", "auth": "a"}}
+    r = cliente.post("/liga/avisos/suscribir", json=sub, headers=cab(uid))
+    assert r.status_code == 200 and r.json()["dispositivos"] == [sub["endpoint"]]
+    malo = {"endpoint": "https://169.254.169.254/x", "keys": {"p256dh": "p", "auth": "a"}}
+    assert cliente.post("/liga/avisos/suscribir", json=malo, headers=cab(uid)).status_code == 422
+
+    # Otro navegador no puede dar de baja el dispositivo ajeno; el dueño sí.
+    r = cliente.post("/liga/avisos/baja", json={"endpoint": sub["endpoint"]}, headers=cab(otro))
+    assert r.json()["dispositivos"] == []
+    assert cliente.get("/liga/avisos", headers=cab(uid)).json()["dispositivos"] == [sub["endpoint"]]
+    r = cliente.post("/liga/avisos/baja", json={"endpoint": sub["endpoint"]}, headers=cab(uid))
+    assert r.json()["dispositivos"] == []
+
+
 def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, foto_con_escaneo, jornada_con_posicion, cx = api
     foto_con_escaneo(_EMPRESAS)

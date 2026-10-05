@@ -519,6 +519,9 @@ def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema, actor: str | N
             with sesion(fabrica) as db:
                 hecho = _escribir(db, jornada_id, ctx, plan, sin_precio, ahora, actor)
             _avisar_sin_pregunta(fabrica, plan)
+            from app.liga import avisos
+
+            avisos.avisar_formacion(jornada_id, fabrica)
             return hecho
     except Exception as e:
         auditar_fallo(fabrica, "formar", f"jornada:{jornada_id}", e, actor)

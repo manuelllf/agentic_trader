@@ -1,4 +1,4 @@
--- migraciones-liga: 023
+-- migraciones-liga: 024
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -10297,3 +10297,28 @@ end $$;
 revoke all on function liga.jornadas_foto_y_escaneo() from public;
 create trigger foto_y_escaneo before insert or update of foto_id, scan_run_id on liga.jornadas
 for each row execute function liga.jornadas_foto_y_escaneo();
+
+-- liga_024: suscripciones de aviso (Web Push) de las cuentas.
+create table liga.suscripciones_push (
+  id bigint generated always as identity primary key,
+  usuario_id uuid not null references auth.users (id) on delete cascade,
+  endpoint text not null unique check (length(endpoint) <= 1000),
+  p256dh text not null check (length(p256dh) <= 200),
+  auth text not null check (length(auth) <= 100),
+  creado timestamptz not null default now(),
+  creado_por uuid default auth.uid() references auth.users (id) on delete set null,
+  actualizado_en timestamptz,
+  actualizado_por uuid references auth.users (id) on delete set null
+);
+create index suscripciones_push_usuario on liga.suscripciones_push (usuario_id);
+create trigger traza before update on liga.suscripciones_push
+  for each row execute function liga.tocar_auditoria();
+alter table liga.suscripciones_push enable row level security;
+revoke all on table liga.suscripciones_push from public, anon, authenticated;
+grant select, insert, delete on table liga.suscripciones_push to authenticated;
+create policy propia_lee on liga.suscripciones_push for select to authenticated
+  using (usuario_id = (select auth.uid()));
+create policy propia_crea on liga.suscripciones_push for insert to authenticated
+  with check (usuario_id = (select auth.uid()));
+create policy propia_borra on liga.suscripciones_push for delete to authenticated
+  using (usuario_id = (select auth.uid()));

@@ -353,6 +353,13 @@ def _liga_cerrar_job() -> None:
     cerrar.job()
 
 
+@recursos.medido("avisos de la jornada")
+def _liga_avisos_job() -> None:
+    from app.liga import avisos
+
+    avisos.job()
+
+
 @recursos.medido("cierres de la liga")
 def _liga_diario_job() -> None:
     """Cierres diarios de la liga. El propio proceso comprueba que sea día de bolsa (calendario
@@ -473,6 +480,9 @@ def start_scheduler() -> None:
     )
     # Liga: cerrar sola la jornada que acaba hoy, desde las 17:30 ET (el propio proceso lo decide).
     scheduler.add_job(_liga_cerrar_job, "interval", minutes=5, id="liga_cerrar",
+                      replace_existing=True, coalesce=True)
+    # Liga: avisos a las cuentas una hora antes de cerrar los cambios y al empezar la jornada.
+    scheduler.add_job(_liga_avisos_job, "interval", minutes=5, id="liga_avisos",
                       replace_existing=True, coalesce=True)
     scheduler.add_job(_reservas_huerfanas_job, "interval", minutes=10,
                       id="reservas_huerfanas", replace_existing=True, coalesce=True)

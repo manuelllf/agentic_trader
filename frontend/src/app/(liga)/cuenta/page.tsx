@@ -14,6 +14,7 @@ import { borrarMiCuenta, exportarMisDatos } from "@/lib/liga/cuenta";
 import { useSupabase } from "@/lib/liga/supabase";
 import { fijar } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
+import { AvisosDispositivo } from "./AvisosDispositivo";
 
 /** Dispara la descarga de un fichero de texto sin subirlo a ningún sitio: todo en el navegador. */
 function descargar(nombre: string, texto: string): void {
@@ -188,6 +189,8 @@ export default function Cuenta() {
                 )}
               </div>
             </div>
+
+            <AvisosDispositivo />
 
             <form className="form" onSubmit={cambiarClave}>
               <CampoClave titulo={t("account_cambiar_clave")} autoComplete="new-password" minLength={8}

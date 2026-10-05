@@ -19,6 +19,7 @@ from app.liga import (
     limites,
     preview_seleccion,
     registro,
+    rutas_avisos,
     rutas_estrategias,
     rutas_ia,
     rutas_ligas,
@@ -33,6 +34,7 @@ from app.liga.ia import moderacion
 router = APIRouter(prefix="/liga", tags=["liga"])
 router.include_router(rutas_publicas.router)
 router.include_router(rutas_estrategias.router)
+router.include_router(rutas_avisos.router)
 router.include_router(preview_seleccion.router)
 router.include_router(rutas_ligas.router)
 router.include_router(rutas_ia.router)
