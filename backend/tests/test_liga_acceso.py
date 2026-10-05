@@ -130,3 +130,20 @@ def test_el_alias_se_resuelve_a_su_correo(monkeypatch) -> None:  # noqa: ANN001
         finally:
             cx.execute("delete from auth.users where id = %s", (uid,))
     motor.dispose()
+
+
+def _peticion(cabecera: str | None, directa: str = "10.0.0.1"):
+    from starlette.requests import Request
+
+    cabeceras = [(b"x-forwarded-for", cabecera.encode())] if cabecera is not None else []
+    return Request({"type": "http", "headers": cabeceras, "client": (directa, 1234)})
+
+
+def test_la_ip_la_pone_el_proxy_de_confianza_no_el_cliente(monkeypatch) -> None:
+    monkeypatch.setattr(acceso.settings, "proxies_confiables", 1)
+    assert acceso.ip_cliente(_peticion("1.1.1.1, 2.2.2.2, 9.9.9.9")) == "9.9.9.9"
+    assert acceso.ip_cliente(_peticion("9.9.9.9")) == "9.9.9.9"
+    assert acceso.ip_cliente(_peticion(None)) == "10.0.0.1"
+    monkeypatch.setattr(acceso.settings, "proxies_confiables", 2)
+    assert acceso.ip_cliente(_peticion("1.1.1.1, 8.8.8.8, 9.9.9.9")) == "8.8.8.8"
+    assert acceso.ip_cliente(_peticion("9.9.9.9")) == "9.9.9.9"

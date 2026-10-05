@@ -137,9 +137,11 @@ def ocupar_ia(ident: Identidad = Depends(require_jugador)) -> Iterator[None]:
 
 
 def ip_cliente(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for", "")
-    if fwd:
-        return fwd.split(",")[0].strip()
+    """IP que anotó el último proxy de confianza; el resto de la cabecera lo escribe el cliente."""
+    cabecera = request.headers.get("x-forwarded-for", "")
+    partes = [p.strip() for p in cabecera.split(",") if p.strip()]
+    if partes:
+        return partes[-min(max(settings.proxies_confiables, 1), len(partes))]
     return request.client.host if request.client else "?"
 
 

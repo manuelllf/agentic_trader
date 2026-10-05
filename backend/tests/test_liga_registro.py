@@ -15,7 +15,8 @@ def cliente(monkeypatch):
     monkeypatch.setattr(registro.settings, "cors_origins", "http://localhost:3000")
     monkeypatch.setattr(registro.gestion, "registro_abierto", lambda: True)
     monkeypatch.setattr(registro, "_limite", acceso.LimiteFrecuencia(5, 900))
-    monkeypatch.setattr(registro, "_global", acceso.LimiteFrecuencia(100, 900))
+    monkeypatch.setattr(registro, "_altas", acceso.LimiteFrecuencia(100, 900))
+    monkeypatch.setattr(registro, "_ultimo_aviso_pico", float("-inf"))
     pedidos = []
     def enviar(url, **kwargs):
         pedidos.append((url, kwargs))
@@ -72,6 +73,20 @@ def test_limite_frena_altas_repetidas(cliente):
         assert client.post("/registro", json=datos()).status_code == 200
     assert client.post("/registro", json=datos()).status_code == 429
     assert len(pedidos) == 5
+
+
+def test_un_pico_de_altas_avisa_una_vez_y_no_bloquea(cliente, monkeypatch):
+    client, pedidos = cliente
+    avisos = []
+    monkeypatch.setattr(registro, "_limite", acceso.LimiteFrecuencia(50, 900))
+    monkeypatch.setattr(registro, "_altas", acceso.LimiteFrecuencia(3, 900))
+    monkeypatch.setattr("app.push.send_to_all", lambda *a, **k: avisos.append(k["title"]))
+    monkeypatch.setattr("app.liga.procesos.comun.fabrica_sistema",
+                        lambda: type("Db", (), {"close": lambda self: None})())
+    for _ in range(8):
+        assert client.post("/registro", json=datos()).status_code == 200
+    assert len(pedidos) == 8
+    assert avisos == ["Vennett: pico de altas"]
 
 
 def test_fallo_del_proveedor_no_filtra_sus_datos(cliente, monkeypatch):

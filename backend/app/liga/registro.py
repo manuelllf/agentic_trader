@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 import unicodedata
 from urllib.parse import urlsplit
 
@@ -13,9 +15,14 @@ from pydantic import BaseModel, Field, SecretStr
 from app.config import settings
 from app.liga import acceso, gestion
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/registro")
-_limite = acceso.LimiteFrecuencia(tope=5, ventana_s=15 * 60)
-_global = acceso.LimiteFrecuencia(tope=100, ventana_s=15 * 60)
+_VENTANA_S = 15 * 60
+_limite = acceso.LimiteFrecuencia(tope=10, ventana_s=_VENTANA_S)
+# Un pico de altas avisa a administración; nunca rechaza a nadie.
+UMBRAL_PICO = 100
+_altas = acceso.LimiteFrecuencia(tope=UMBRAL_PICO, ventana_s=_VENTANA_S)
+_ultimo_aviso_pico = float("-inf")
 _alias = re.compile(r"^[a-z0-9_.]{3,20}$")
 RESERVADOS = {"admin", "administrador", "alpha", "beta", "omega", "lambda", "jev",
               "liguilla", "liga", "vennett", "soporte", "ayuda", "moderador",
@@ -47,7 +54,7 @@ def validar_clave(clave: str) -> bool:
 
 
 def _preparar(body: CorreoIn, request: Request) -> tuple[str, str]:
-    if not _limite.permitido(acceso.ip_cliente(request)) or not _global.permitido("correos"):
+    if not _limite.permitido(acceso.ip_cliente(request)):
         raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
     email = body.email.strip().lower()
     if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
@@ -90,6 +97,27 @@ def _enviar(ruta: str, datos: dict, destino: str) -> None:
                             "o inténtalo más tarde.")
 
 
+def _vigilar_pico() -> None:
+    """Cuenta la alta; si el ritmo pasa el umbral, avisa por push una vez por ventana."""
+    global _ultimo_aviso_pico
+    if _altas.permitido("altas") or time.monotonic() - _ultimo_aviso_pico < _VENTANA_S:
+        return
+    _ultimo_aviso_pico = time.monotonic()
+    try:
+        from app import push
+        from app.liga.procesos.comun import fabrica_sistema
+
+        db = fabrica_sistema()
+        try:
+            push.send_to_all(db, title="Vennett: pico de altas",
+                             body=f"Más de {UMBRAL_PICO} altas en 15 minutos.",
+                             url="/admin", tag="agentic-liga")
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("No se pudo avisar del pico de altas")
+
+
 @router.post("")
 def registrar(body: RegistroIn, request: Request) -> dict:
     if not gestion.registro_abierto():
@@ -106,6 +134,7 @@ def registrar(body: RegistroIn, request: Request) -> dict:
     _enviar("signup", {"email": email, "password": clave,
                       "data": {"alias": alias, "terminos_version": VERSION_TERMINOS}},
             "")
+    _vigilar_pico()
     return {"ok": True}
 
 

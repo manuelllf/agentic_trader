@@ -42,6 +42,8 @@ class Settings(BaseSettings):
 
     # CORS: orígenes permitidos del frontend, separados por coma.
     cors_origins: str = "http://localhost:3000"
+    # Proxies de confianza delante del backend; el cliente controla el resto de X-Forwarded-For.
+    proxies_confiables: int = 1
 
     # Supabase Auth (https://<proyecto>.supabase.co). Los JWT se verifican con su JWKS público:
     # no hace falta ningún secreto. Vacía = auth desactivada (dev local, sin candado); en Railway
