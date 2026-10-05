@@ -158,6 +158,7 @@
   "api_error_db_necesitas_una_cuenta_activa": "Necesitas una cuenta activa",
   "api_error_db_nombre_de_usuario_no_valido": "Nombre de usuario no válido",
   "api_error_db_para_apuntarla_hace_falta_su_receta": "Para apuntarla hace falta su receta",
+  "api_error_db_para_apuntarla_hace_falta_al_menos_una_regla": "Para apuntarla hace falta al menos una regla",
   "api_error_db_publicar_es_de_pro": "Publicar es de Pro",
   "api_error_db_solo_el_dueno_cambia_su_alias": "Solo el dueño cambia su alias",
   "api_error_db_solo_el_dueno_edita_su_estrategia": "Solo el dueño edita su estrategia",

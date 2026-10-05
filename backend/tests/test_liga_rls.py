@@ -112,13 +112,17 @@ def _estrategia(cx, uid: uuid.UUID, nombre: str = "Mi estrategia") -> uuid.UUID:
         "values (%s, 'escudo', 'liso', '#0B6E68', '#FFFFFF') returning id", (nombre,)).fetchone()[0]
 
 
-def _receta(cx, uid: uuid.UUID, eid: uuid.UUID, pregunta: str | None = None) -> int:
+UNA_REGLA = '[{"clave": "medianas", "params": {}}]'
+
+
+def _receta(cx, uid: uuid.UUID, eid: uuid.UUID, pregunta: str | None = None,
+            reglas: str = UNA_REGLA) -> int:
     _como(cx, uid)
     return cx.execute(
         "insert into liga.recetas (estrategia_id, reglas, catalogo_version, pregunta, "
         "peso_negocio, peso_precio, peso_deuda, peso_pronto, peso_pregunta, n_empresas, "
-        "reparto, max_por_sector) values (%s, '[]', 1, %s, 30, 20, 20, 0, %s, 5, 'igual', 2) "
-        "returning id", (eid, pregunta, 30 if pregunta else 0)).fetchone()[0]
+        "reparto, max_por_sector) values (%s, %s::jsonb, 1, %s, 30, 20, 20, 0, %s, 5, 'igual', 2) "
+        "returning id", (eid, reglas, pregunta, 30 if pregunta else 0)).fetchone()[0]
 
 
 def _lista(cx, uid: uuid.UUID, nombre: str = "Lista") -> tuple[uuid.UUID, int]:
@@ -276,6 +280,23 @@ def test_gratis_juega_una_y_pro_tres(cx):
     for eid in ids[:3]:
         cx.execute("update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))
     _falla(cx, "update liga.estrategias set estado = 'apuntada' where id = %s", (ids[3],))
+
+
+def test_apuntar_exige_al_menos_una_regla(cx):
+    a = _usuario(cx)
+    eid = _estrategia(cx, a)
+    sin_reglas = _receta(cx, a, eid, reglas="[]")
+    cx.execute("update liga.estrategias set receta_id = %s where id = %s", (sin_reglas, eid))
+    _falla(cx, "update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))
+    con_regla = _receta(cx, a, eid)
+    cx.execute("update liga.estrategias set receta_id = %s where id = %s", (con_regla, eid))
+    cx.execute("update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))
+    # Tampoco vale cambiar una apuntada a una versión sin reglas.
+    otra_sin = _receta(cx, a, eid, reglas="[]")
+    _falla(cx, "update liga.estrategias set receta_id = %s where id = %s", (otra_sin, eid))
+    # Y volver a borrador sí se puede, con la que sea.
+    cx.execute("update liga.estrategias set estado = 'borrador' where id = %s", (eid,))
+    cx.execute("update liga.estrategias set receta_id = %s where id = %s", (otra_sin, eid))
 
 
 def test_publicar_es_de_pro_y_exige_declarar(cx):

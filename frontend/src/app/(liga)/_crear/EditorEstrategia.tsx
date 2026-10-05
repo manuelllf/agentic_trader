@@ -327,7 +327,8 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   if (!catalogo || !b) return null;
 
   const reglasDisponibles = catalogo.reglas.filter((r) => !b.reglas.some((x) => x.clave === r.clave));
-  const puedeApuntarse = !(visibilidad === "publicada" && !declaraPosiciones);
+  const faltanReglas = b.reglas.length === 0;
+  const puedeApuntarse = !faltanReglas && !(visibilidad === "publicada" && !declaraPosiciones);
 
   function irEtapa(siguiente: number) {
     setEtapa(siguiente);
@@ -1138,6 +1139,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       {error && <p className="aviso" role="alert" style={{ marginTop: 16 }}>{error}</p>}
 
       <div className="cta" hidden={etapa !== 4}>
+        {faltanReglas && <p className="callout" role="status" style={{ textAlign: "center" }}>
+          {t("builder_rules_required")}
+        </p>}
         <p className="fine" style={{ textAlign: "center", marginTop: 2 }}>
           {t("builder_no_backtest")}
         </p>

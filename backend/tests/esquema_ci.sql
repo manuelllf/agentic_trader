@@ -1,4 +1,4 @@
--- migraciones-liga: 020
+-- migraciones-liga: 021
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -555,6 +555,11 @@ begin
   end if;
   if new.estado = 'apuntada' and new.receta_id is null then
     raise exception 'Para apuntarla hace falta su receta' using errcode = '23514';
+  end if;
+  if new.estado in ('apuntada', 'jugando') and new.receta_id is not null and not exists (
+       select 1 from liga.recetas r
+       where r.id = new.receta_id and jsonb_array_length(r.reglas) > 0) then
+    raise exception 'Para apuntarla hace falta al menos una regla' using errcode = '23514';
   end if;
 
   tope := case when pro then 3 else 1 end;

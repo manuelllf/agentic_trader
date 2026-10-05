@@ -158,6 +158,7 @@
   "api_error_db_necesitas_una_cuenta_activa": "You need an active account",
   "api_error_db_nombre_de_usuario_no_valido": "Invalid username",
   "api_error_db_para_apuntarla_hace_falta_su_receta": "The strategy needs a configuration before enrollment",
+  "api_error_db_para_apuntarla_hace_falta_al_menos_una_regla": "Add at least one rule before signing the strategy up",
   "api_error_db_publicar_es_de_pro": "Publishing requires Pro",
   "api_error_db_solo_el_dueno_cambia_su_alias": "Only the owner can change their username",
   "api_error_db_solo_el_dueno_edita_su_estrategia": "Only the owner can edit their strategy",

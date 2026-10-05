@@ -147,6 +147,7 @@
   "builder_declaration_required": "This is required to publish and is shown with your strategy.",
   "builder_choose_declaration": "Choose an answer before signing up.",
   "builder_no_backtest": "No backtests: results start counting on the next first of the month.",
+  "builder_rules_required": "Add at least one rule before signing up. Go back to Rules and add one, or describe it in the idea.",
   "builder_previous": "Previous",
   "builder_continue_to": "Continue to {step}",
   "builder_saving": "Saving…",
