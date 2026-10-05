@@ -108,6 +108,16 @@ def auditar(db: Session, accion: str, objeto: str | None, detalle: dict,
                      detalle=para_json(detalle)))
 
 
+def avisar_admin(db: Session, titulo: str, cuerpo: str) -> None:
+    """Aviso por push a los administradores; nunca deja que un fallo de aviso tire el proceso."""
+    try:
+        from app import push
+
+        push.send_to_all(db, title=titulo, body=cuerpo, url="/admin", tag="agentic-liga")
+    except Exception:
+        logger.exception("No se pudo avisar por push")
+
+
 def auditar_fallo(fabrica: Fabrica, proceso: str, objeto: str | None, error: Exception,
                   actor: str | None) -> None:
     """El fallo queda apuntado aunque su transacción se deshiciera; nunca tapa el error. Una

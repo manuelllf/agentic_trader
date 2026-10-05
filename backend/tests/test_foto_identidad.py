@@ -3,7 +3,7 @@ golpe, siempre captura fresco, y cada escaneo sabe de qué foto salieron sus dat
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -89,6 +89,43 @@ def test_foto_reciente_dice_de_que_foto_sale(db):
     fund_mod.foto_guardar(db, "AAA", datos, foto_id=foto.id)
     assert datos.foto_id == foto.id
     assert fund_mod.foto_reciente(db, "AAA").foto_id == foto.id
+
+
+def _foto_completa(db, horas_atras: float, tickers: list[str]) -> Foto:
+    foto = Foto(alcance="nasdaq", estado="completa", fin=datetime.now(UTC) - timedelta(
+        hours=horas_atras))
+    db.add(foto)
+    db.commit()
+    for t in tickers:
+        fund_mod.foto_guardar(db, t, NameData(ticker=t, sector="Technology", industry="Software",
+                                              price=9.0, fundamentals_text="", technical_text=""),
+                              foto_id=foto.id)
+    return foto
+
+
+def test_el_escaneo_reutiliza_una_foto_completa_reciente_que_cubre_sus_nombres(db):
+    foto = _foto_completa(db, 3, [f"T{i}" for i in range(10)])
+    assert foto_service.foto_del_escaneo(db, [f"T{i}" for i in range(10)], 12.0) == (foto.id, False)
+
+
+def test_el_escaneo_abre_foto_nueva_si_la_reciente_no_cubre_el_90_por_ciento(db):
+    _foto_completa(db, 3, [f"T{i}" for i in range(8)])
+    nueva, es_nueva = foto_service.foto_del_escaneo(db, [f"T{i}" for i in range(10)], 12.0)
+    assert es_nueva and db.get(Foto, nueva).estado == "capturando"
+
+
+def test_el_escaneo_abre_foto_nueva_si_la_completa_es_de_hace_mas_de_la_ventana(db):
+    _foto_completa(db, 13, ["AAA"])
+    assert foto_service.foto_del_escaneo(db, ["AAA"], 12.0)[1] is True
+
+
+def test_cerrar_la_foto_del_escaneo_la_deja_completa_o_fallida(db):
+    buena, _ = foto_service.foto_del_escaneo(db, ["AAA"], 12.0)
+    foto_service.cerrar_foto(db, buena, True, 1)
+    assert (db.get(Foto, buena).estado, db.get(Foto, buena).capturados) == ("completa", 1)
+    mala, _ = foto_service.foto_del_escaneo(db, ["AAA"], 0.0)
+    foto_service.cerrar_foto(db, mala, False, 0)
+    assert db.get(Foto, mala).estado == "fallida" and db.get(Foto, mala).fin is not None
 
 
 def _dato(foto_id: int | None) -> NameData:

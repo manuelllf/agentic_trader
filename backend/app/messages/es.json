@@ -150,6 +150,7 @@
   "api_error_db_ese_alias_esta_reservado": "Ese alias está reservado",
   "api_error_db_ese_codigo_no_es_de_ninguna_liga": "Ese código no es de ninguna liga",
   "api_error_db_la_estrategia_no_pertenece_a_tu_cuenta": "La estrategia no pertenece a tu cuenta",
+  "api_error_db_la_foto_y_el_escaneo_de_la_jornada_tienen_que_ser_los_mismos": "La foto y el escaneo de la jornada tienen que ser los mismos",
   "api_error_db_la_inscripcion_no_pertenece_a_tu_estrategia": "La inscripción no pertenece a tu estrategia",
   "api_error_db_la_pregunta_propia_es_de_pro": "La pregunta propia es de Pro",
   "api_error_db_la_receta_no_es_de_esta_estrategia": "La receta no es de esta estrategia",

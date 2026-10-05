@@ -43,7 +43,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app import execution_service, scan_audit, scan_config, scan_progress
+from app import execution_service, foto_service, scan_audit, scan_config, scan_progress
 from app import instruments as instruments_mod
 from app import portfolio_service as portfolio
 from app import watchlist as watchlist_mod
@@ -339,7 +339,21 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     fund_mod._GATHER_PACE_S = _GATHER_PACE_S
     ttl_h = float("inf") if reutilizar_ultima_foto else fund_mod._FOTO_TTL_H
 
+    # Un escaneo de decisión sobre el universo entero puntúa una sola foto, y la jornada lee esa.
+    foto_escaneo: tuple[int, bool] | None = None
+    if decide and modo_universo == "nasdaq" and n is None and not reutilizar_ultima_foto:
+        foto_escaneo = foto_service.foto_del_escaneo(db, sample, fund_mod._FOTO_TTL_H)
+
     def _gather(ticker: str):
+        if foto_escaneo is not None:
+            foto_id, nueva = foto_escaneo
+            if nueva:
+                data, err = fund_mod.gather(ticker, db=db, ttl_h=0, foto_id=foto_id)
+            else:
+                data, err = fund_mod.foto_reciente(db, ticker, foto_id=foto_id), None
+                if data is None:
+                    data, err = fund_mod.gather(ticker, db=db, ttl_h=ttl_h)
+            return ticker, data, err
         data, err = fund_mod.gather(ticker, db=db, ttl_h=ttl_h,
                                     yahoo_symbol=simbolos_global.get(ticker),
                                     es_dataset=modo_universo == "global_topcap")
@@ -378,40 +392,47 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             raise ScanCancelado("Escaneo cancelado por el usuario durante el gather.")
         return out
 
-    scan_progress.set_stage("gather", total=len(sample), unit="tickers")
-    logger.info("Escaneo: iniciando GATHER (%d nombres).", len(sample))
-    t0 = time.monotonic()
-    gathered = _run_gather(sample)
-    t_ultimo_gather = time.monotonic()          # fin del gather Y arranque del reloj del cooldown
-    timings["gather"] = round(t_ultimo_gather - t0, 1)
-    logger.info("Escaneo: GATHER completado en %.1fs.", timings["gather"])
-
-    fallidos = [t for t, d, _e in gathered if d is None]
-    if fallidos:
-        # Reintento en bloque (no por ticker): miles de reintentos alargaría escaneo sin límite.
-        espera = _GATHER_RETRY_COOLDOWN_S - (time.monotonic() - t_ultimo_gather)
-        if espera > 0:
-            _dormir_cancelable(espera, cancel_event)
-        scan_progress.set_stage("gather_retry", total=len(fallidos), unit="tickers")
-        logger.info("Escaneo: iniciando GATHER_RETRY (%d nombres).", len(fallidos))
+    try:
+        scan_progress.set_stage("gather", total=len(sample), unit="tickers")
+        logger.info("Escaneo: iniciando GATHER (%d nombres).", len(sample))
         t0 = time.monotonic()
-        reintentados = {t: (t, d, e) for t, d, e in _run_gather(fallidos)}
-        timings["gather_retry"] = round(time.monotonic() - t0, 1)
-        logger.info("Escaneo: GATHER_RETRY completado en %.1fs.", timings["gather_retry"])
-        gathered = [reintentados.get(t, (t, d, e)) for t, d, e in gathered]
+        gathered = _run_gather(sample)
+        t_ultimo_gather = time.monotonic()      # fin del gather Y arranque del reloj del cooldown
+        timings["gather"] = round(t_ultimo_gather - t0, 1)
+        logger.info("Escaneo: GATHER completado en %.1fs.", timings["gather"])
 
-    failed = [t for t, d, _e in gathered if d is None]      # gather sin datos, tras el reintento
-    if failed:
-        issues.append(f"{len(failed)} nombre(s) sin datos de mercado: " + ", ".join(failed))
-    # Motivo real por ticker (antes se tragaba entero) — va a `ScanRun.failures` con el resto.
-    gather_errors = [(t, e) for t, d, e in gathered if d is None and e]
-    datos_ok = [d for _t, d, _e in gathered if d is not None]
-    if not datos_ok:
-        # Cero nombres útiles tras gather + reintento: Yahoo caído o universo roto.
-        raise RuntimeError(
-            f"Gather sin ningún dato útil: los {len(sample)} nombres fallaron (Yahoo caído o "
-            "universo roto). El escaneo se aborta antes del macro."
-        )
+        fallidos = [t for t, d, _e in gathered if d is None]
+        if fallidos:
+            # Reintento en bloque (no por ticker): miles de reintentos alargaría escaneo sin límite.
+            espera = _GATHER_RETRY_COOLDOWN_S - (time.monotonic() - t_ultimo_gather)
+            if espera > 0:
+                _dormir_cancelable(espera, cancel_event)
+            scan_progress.set_stage("gather_retry", total=len(fallidos), unit="tickers")
+            logger.info("Escaneo: iniciando GATHER_RETRY (%d nombres).", len(fallidos))
+            t0 = time.monotonic()
+            reintentados = {t: (t, d, e) for t, d, e in _run_gather(fallidos)}
+            timings["gather_retry"] = round(time.monotonic() - t0, 1)
+            logger.info("Escaneo: GATHER_RETRY completado en %.1fs.", timings["gather_retry"])
+            gathered = [reintentados.get(t, (t, d, e)) for t, d, e in gathered]
+
+        failed = [t for t, d, _e in gathered if d is None]  # gather sin datos, tras el reintento
+        if failed:
+            issues.append(f"{len(failed)} nombre(s) sin datos de mercado: " + ", ".join(failed))
+        # Motivo real por ticker (antes se tragaba entero) — va a `ScanRun.failures` con el resto.
+        gather_errors = [(t, e) for t, d, e in gathered if d is None and e]
+        datos_ok = [d for _t, d, _e in gathered if d is not None]
+        if not datos_ok:
+            # Cero nombres útiles tras gather + reintento: Yahoo caído o universo roto.
+            raise RuntimeError(
+                f"Gather sin ningún dato útil: los {len(sample)} nombres fallaron (Yahoo caído o "
+                "universo roto). El escaneo se aborta antes del macro."
+            )
+    except BaseException:
+        if foto_escaneo is not None and foto_escaneo[1]:
+            foto_service.cerrar_foto(db, foto_escaneo[0], False, 0)
+        raise
+    if foto_escaneo is not None and foto_escaneo[1]:
+        foto_service.cerrar_foto(db, foto_escaneo[0], True, len(datos_ok))
 
     # 3) Macro sin LLM. DeepSeek ve siempre el bloque con contexto (E); Jev, según su interruptor.
     _revisar_cancelado(cancel_event)

@@ -43,6 +43,7 @@ from app.liga.procesos.comun import (
     ahora_utc,
     auditar,
     auditar_fallo,
+    avisar_admin,
     candado,
     fabrica_sistema,
     hoy_bolsa,
@@ -118,7 +119,15 @@ def motivos_no_lista(j: Jornada, ahora: datetime | None, db: Session | None = No
     if db is not None and _anterior_sin_cerrar(db, j):
         motivos.append("La jornada anterior aún no está cerrada: ciérrala antes, las «mantener» "
                        "parten de sus resultados.")
+    if db is not None and j.scan_run_id is not None and _foto_distinta_del_escaneo(db, j):
+        motivos.append("La foto de la jornada no es la que usó su escaneo: vuelve a designarlas.")
     return motivos
+
+
+def _foto_distinta_del_escaneo(db: Session, j: Jornada) -> bool:
+    foto_escaneo = db.execute(text("select foto_id from scan_runs where id = :s"),
+                              {"s": j.scan_run_id}).scalar()
+    return foto_escaneo != j.foto_id
 
 
 def _anterior_sin_cerrar(db: Session, j: Jornada) -> bool:
@@ -491,16 +500,6 @@ _ultimo_aviso: dict[int, float] = {}
 _abandonadas_avisadas: set[int] = set()
 
 
-def _avisar(db: Session, titulo: str, cuerpo: str) -> None:
-    """Aviso por push a los administradores; nunca deja que un fallo de aviso tire el proceso."""
-    try:
-        from app import push
-
-        push.send_to_all(db, title=titulo, body=cuerpo, url="/admin", tag="agentic-liga")
-    except Exception:
-        logger.exception("No se pudo avisar por push")
-
-
 def _avisar_sin_pregunta(fabrica: Fabrica, plan: Plan) -> None:
     """Un solo aviso al administrador con cuántas estrategias jugaron sin su pregunta."""
     sin = [e for e in plan.entradas if e.sin_pregunta]
@@ -508,8 +507,8 @@ def _avisar_sin_pregunta(fabrica: Fabrica, plan: Plan) -> None:
         return
     motivos = ", ".join(sorted({e.sin_pregunta for e in sin}))
     with sesion(fabrica) as db:
-        _avisar(db, "Vennett: jornada formada con estrategias sin su pregunta",
-                f"{len(sin)} de {len(plan.entradas)} jugaron sin su pregunta ({motivos}).")
+        avisar_admin(db, "Vennett: jornada formada con estrategias sin su pregunta",
+                     f"{len(sin)} de {len(plan.entradas)} jugaron sin su pregunta ({motivos}).")
 
 
 def _auto_activo(db: Session) -> bool:
@@ -544,9 +543,10 @@ def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None,
             for j in vivas:
                 if j not in listas and j.id not in _abandonadas_avisadas:
                     _abandonadas_avisadas.add(j.id)
-                    _avisar(db, "Vennett: la jornada no se formó sola",
-                            f"La jornada {j.numero} sigue sin formar media hora después del corte: "
-                            "fórmala desde Admin.")
+                    avisar_admin(
+                        db, "Vennett: la jornada no se formó sola",
+                        f"La jornada {j.numero} sigue sin formar media hora después del corte: "
+                        "fórmala desde Admin.")
             if not listas:
                 return None
             jornada_id = listas[0].id
@@ -561,5 +561,5 @@ def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None,
             return None
         _ultimo_aviso[clave] = ahora_s
         with sesion(fabrica) as db:
-            _avisar(db, "Vennett: no se pudo formar la jornada", str(e)[:140])
+            avisar_admin(db, "Vennett: no se pudo formar la jornada", str(e)[:140])
         return None

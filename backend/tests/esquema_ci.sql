@@ -1,4 +1,4 @@
--- migraciones-liga: 021
+-- migraciones-liga: 022
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -10272,3 +10272,26 @@ create policy dueno_lee on liga.formaciones_degradadas for select to authenticat
     where i.id = inscripcion_id and e.dueno_id = (select auth.uid())));
 create policy admin_lee on liga.formaciones_degradadas for select to authenticated
   using ((select liga.es_admin()));
+
+-- liga_022: la foto y el escaneo que se fijan en una jornada tienen que ser pareja.
+create or replace function liga.jornadas_foto_y_escaneo() returns trigger
+language plpgsql
+security definer
+set search_path to ''
+as $$
+declare
+  foto_del_escaneo bigint;
+begin
+  if new.scan_run_id is null and new.foto_id is null then
+    return new;
+  end if;
+  select s.foto_id into foto_del_escaneo from public.scan_runs s where s.id = new.scan_run_id;
+  if new.scan_run_id is null or new.foto_id is distinct from foto_del_escaneo then
+    raise exception 'La foto y el escaneo de la jornada tienen que ser los mismos'
+      using errcode = '23514';
+  end if;
+  return new;
+end $$;
+revoke all on function liga.jornadas_foto_y_escaneo() from public;
+create trigger foto_y_escaneo before insert or update of foto_id, scan_run_id on liga.jornadas
+for each row execute function liga.jornadas_foto_y_escaneo();

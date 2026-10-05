@@ -16,13 +16,16 @@ from sqlalchemy.orm import Session
 from app.liga.models import Jornada
 from app.liga.procesos import datos
 from app.liga.procesos.comun import (
+    TZ_BOLSA,
     ErrorProceso,
     Fabrica,
     NoEncontrado,
     auditar,
     auditar_fallo,
+    avisar_admin,
     candado,
     fabrica_sistema,
+    hoy_bolsa,
     jornada,
     jornada_bloqueada,
     para_json,
@@ -124,6 +127,15 @@ def _designar(db: Session, j: Jornada, foto_id: int | None,
     sid, avisos = _escaneo(db, foto, scan_run_id)
     foto_escaneo = db.execute(text("select foto_id from scan_runs where id = :s"),
                               {"s": sid}).scalar()
+    if foto_escaneo != foto.id:
+        raise ErrorProceso(
+            f"El escaneo {sid} no puntuó la foto {foto.id}: la jornada solo vale con la misma "
+            "foto que usó el escaneo.")
+    dia_foto = foto.fin.astimezone(TZ_BOLSA).date()
+    if dia_foto != j.dia_base:
+        raise ErrorProceso(
+            f"La foto {foto.id} no es del día base de la jornada ({j.dia_base}): se terminó el "
+            f"{dia_foto}.")
     if foto.fin > j.cierre_inscripcion:
         avisos.append("La foto se terminó después del corte: la cartera usará datos posteriores "
                       "al día base.")
@@ -132,8 +144,7 @@ def _designar(db: Session, j: Jornada, foto_id: int | None,
         {"f": foto.id}).scalar()
     if n_empresas == 0:
         raise ErrorProceso(f"La foto {foto.id} no tiene empresas.")
-    return Designacion(foto.id, sid, foto_escaneo != foto.id, n_empresas,
-                       datos.n_notas(db, sid), tuple(avisos))
+    return Designacion(foto.id, sid, False, n_empresas, datos.n_notas(db, sid), tuple(avisos))
 
 
 def _salida(j: Jornada, d: Designacion, **extra: object) -> dict:
@@ -176,9 +187,13 @@ def ejecutar(jornada_id: int, foto_id: int | None = None, scan_run_id: int | Non
         raise
 
 
-def _omitir_auto(db: Session, objeto: str | None, razon: str) -> None:
+def _omitir_auto(db: Session, objeto: str | None, razon: str, j: Jornada | None = None) -> None:
+    """Deja apuntado por qué no designó; solo avisa al admin si hoy es el día base de la jornada,
+    que es cuando de verdad hace falta: un escaneo suelto a mitad de mes no es una alarma."""
     auditar(db, "proceso.foto.auto.omitido", objeto, {"razon": razon}, None)
     db.commit()
+    if j is not None and hoy_bolsa() == j.dia_base:
+        avisar_admin(db, "Vennett: no se designó la foto de la jornada", razon[:140])
 
 
 def auto_desde_escaneo(scan_run_id: int, fabrica: Fabrica = fabrica_sistema) -> dict | None:
@@ -188,9 +203,10 @@ def auto_desde_escaneo(scan_run_id: int, fabrica: Fabrica = fabrica_sistema) -> 
 
     Reusa `_designar` -- las mismas reglas que valida `vista_previa` -- pasando el `foto_id`
     propio de ESTE escaneo (`scan_runs.foto_id`): así el resultado normal sale sin avisos (mismo
-    par foto/escaneo, sin plan B). Cualquier aviso (foto tardía sobre el corte, plan B por foto
-    sin notas propias) es motivo de NO designar sola: mejor que el admin lo mire a mano con el
-    botón manual. Nunca lanza -- un fallo queda solo en la auditoría, jamás rompe el escaneo."""
+    par foto/escaneo). Cualquier aviso (foto tardía sobre el corte) es motivo de NO designar
+    sola: mejor que el admin lo mire a mano con el botón manual. Si el escaneo no apunta a
+    ninguna foto no hay nada que designar. Nunca lanza -- un fallo queda en la auditoría,
+    jamás rompe el escaneo."""
     from app.liga import gestion
 
     try:
@@ -211,10 +227,10 @@ def auto_desde_escaneo(scan_run_id: int, fabrica: Fabrica = fabrica_sistema) -> 
             try:
                 d = _designar(db, j, foto_id_escaneo, scan_run_id)
             except ErrorProceso as e:
-                _omitir_auto(db, f"jornada:{j.id}", str(e))
+                _omitir_auto(db, f"jornada:{j.id}", str(e), j)
                 return None
             if d.avisos:
-                _omitir_auto(db, f"jornada:{j.id}", " · ".join(d.avisos))
+                _omitir_auto(db, f"jornada:{j.id}", " · ".join(d.avisos), j)
                 return None
             j.foto_id, j.scan_run_id = d.foto_id, d.scan_run_id
             auditar(db, "proceso.foto", f"jornada:{j.id}",

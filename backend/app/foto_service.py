@@ -2,7 +2,7 @@
 
 Existe para separar dos cosas que hasta ahora iban pegadas: RECOGER los datos y PUNTUARLOS. Con
 esto se puede fotografiar el mercado a las 10:00 y lanzar el scoring off-peak a las 13:00 (la
-mitad de tarifa), porque el escaneo reutiliza la foto de las últimas 24h en vez de volver a
+mitad de tarifa), porque el escaneo reutiliza la foto de las últimas 12h en vez de volver a
 pedirle todo a Yahoo (ver `fundamentals.foto_reciente`).
 
 Ritmo real: 4 hilos y 0,4s de pausa por petición (validado en vivo, ver `scan_service`) →
@@ -16,7 +16,7 @@ import logging
 import queue
 import threading
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app import proceso_hijo, scan_progress
 
@@ -90,6 +90,36 @@ def _cerrar_foto(db, foto_id: int, estado: str, capturados: int) -> None:  # noq
         {"estado": estado, "fin": datetime.now(UTC), "capturados": capturados},
         synchronize_session=False)
     db.commit()
+
+
+_COBERTURA_MINIMA = 0.9
+
+
+def foto_del_escaneo(db, tickers: list[str], ttl_h: float) -> tuple[int, bool]:  # noqa: ANN001
+    """La foto con la que puntúa un escaneo de decisión: una completa de menos de `ttl_h` horas
+    que ya tenga casi todos sus nombres, o una nueva que el propio escaneo va capturando.
+    Devuelve (id, nueva); si es nueva, el escaneo la cierra con `cerrar_foto`."""
+    from sqlalchemy import distinct, func
+
+    from app.models import Foto, FundamentalsSnapshot
+
+    desde = datetime.now(UTC) - timedelta(hours=ttl_h)
+    candidata = (db.query(Foto)
+                 .filter(Foto.alcance == "nasdaq", Foto.estado == "completa", Foto.fin >= desde)
+                 .order_by(Foto.fin.desc()).first())
+    if candidata is not None and tickers:
+        dentro = (db.query(func.count(distinct(FundamentalsSnapshot.ticker)))
+                  .filter(FundamentalsSnapshot.foto_id == candidata.id,
+                          FundamentalsSnapshot.ticker.in_(tickers)).scalar())
+        if dentro >= _COBERTURA_MINIMA * len(tickers):
+            return candidata.id, False
+    return _abrir_foto(db, "nasdaq", len(tickers)), True
+
+
+def cerrar_foto(db, foto_id: int, completa: bool, capturados: int) -> None:  # noqa: ANN001
+    """Cierra la foto que abrió `foto_del_escaneo`: completa si el escaneo recorrió todos los
+    nombres, fallida si se abortó antes."""
+    _cerrar_foto(db, foto_id, "completa" if completa else "fallida", capturados)
 
 
 def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: ANN001

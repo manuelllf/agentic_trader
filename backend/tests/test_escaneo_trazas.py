@@ -19,6 +19,7 @@ from app import (
 from app.db import Base
 from app.ledger import service as ledger
 from app.models import (
+    Foto,
     Proposal,
     ProposalItem,
     ScanAudit,
@@ -126,6 +127,70 @@ def _gather_stub(monkeypatch, sector: str = "Technology", news: list | None = No
         fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9,
         news=news if news is not None else [], high_52w=high_52w,
     ), None))
+
+
+# ---- la foto del escaneo de decisión -------------------------------------------
+
+def _gather_con_foto(monkeypatch, vistas: list) -> None:
+    """Un gather que apunta con qué ventana y foto se le pidió cada nombre."""
+    from app.screener import fundamentals as fund_mod
+    from app.screener.fundamentals import NameData
+
+    def gather(t, db=None, hist=None, ttl_h=None, foto_id=None, **kw):
+        vistas.append((t, ttl_h, foto_id))
+        return NameData(ticker=t, sector="Technology", industry="Software", price=100.0,
+                        fundamentals_text="- P/E: 20", technical_text="RSI 55", market_cap=5e9,
+                        news=[], foto_id=foto_id), None
+
+    monkeypatch.setattr(fund_mod, "gather", gather)
+
+
+def test_el_escaneo_de_decision_puntua_su_propia_foto_y_la_deja_apuntada(db, monkeypatch) -> None:
+    _stub_common(monkeypatch, FakeLLM(_FAKE_REPLY), ["AAA", "BBB"])
+    vistas: list = []
+    _gather_con_foto(monkeypatch, vistas)
+
+    scan_service.run_scan_and_store(db, decide=True)
+
+    foto = db.query(Foto).one()
+    assert (foto.estado, foto.pedidos, foto.capturados) == ("completa", 2, 2)
+    assert {(ttl, fid) for _t, ttl, fid in vistas} == {(0, foto.id)}      # fresco y con su foto
+    assert db.query(ScanRun).one().foto_id == foto.id
+
+
+def test_el_escaneo_reutiliza_una_foto_completa_reciente_sin_descargar(db, monkeypatch) -> None:
+    from datetime import UTC, datetime
+
+    from app.screener import fundamentals as fund_mod
+    from app.screener.fundamentals import NameData
+
+    _stub_common(monkeypatch, FakeLLM(_FAKE_REPLY), ["AAA", "BBB"])
+    foto = Foto(alcance="nasdaq", estado="completa", fin=datetime.now(UTC))
+    db.add(foto)
+    db.commit()
+    for t in ("AAA", "BBB"):
+        fund_mod.foto_guardar(db, t, NameData(ticker=t, sector="Technology", industry="Software",
+                                              price=9.0, fundamentals_text="", technical_text=""),
+                              foto_id=foto.id)
+    vistas: list = []
+    _gather_con_foto(monkeypatch, vistas)
+
+    scan_service.run_scan_and_store(db, decide=True)
+
+    assert vistas == []                                   # todo salió de la foto de antes
+    assert db.query(Foto).count() == 1
+    assert db.query(ScanRun).one().foto_id == foto.id
+
+
+def test_sin_decision_o_con_muestra_el_escaneo_no_abre_foto(db, monkeypatch) -> None:
+    _stub_common(monkeypatch, FakeLLM(_FAKE_REPLY), ["AAA", "BBB"])
+    _gather_con_foto(monkeypatch, [])
+
+    scan_service.run_scan_and_store(db, decide=False)
+    scan_service.run_scan_and_store(db, sample_size=5, decide=True)
+
+    assert db.query(Foto).count() == 0
+    assert {r.foto_id for r in db.query(ScanRun).all()} == {None}
 
 
 # ---- entry_lane en la traza ---------------------------------------------------

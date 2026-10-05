@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
@@ -159,19 +159,13 @@ def _estrategia(db: Session, uid: uuid.UUID, nombre: str, *, pregunta: str | Non
     return eid
 
 
-@pytest.fixture
-def mundo(fabrica, mercado) -> dict:  # noqa: ANN001
-    """Temporadas, una foto con su escaneo de decisión, la propuesta de Alpha, la cartera de Jev,
-    Omega con una posición y tres estrategias de usuario."""
-    temporadas.ejecutar(fabrica, ahora=HOY_ALTA)
-    db = fabrica()
-    ids: dict = {}
-    f = Foto(alcance="nasdaq", inicio=FOTO_FIN - timedelta(hours=1), fin=FOTO_FIN,
-             estado="completa")
+def _foto_y_escaneo(db: Session, fin: datetime) -> tuple[Foto, ScanRun]:
+    """Una foto completa terminada en `fin` y el escaneo de decisión que la puntuó."""
+    f = Foto(alcance="nasdaq", inicio=fin - timedelta(hours=1), fin=fin, estado="completa")
     db.add(f)
     db.flush()
     for i, (t, sector, industria, _) in enumerate(EMPRESAS):
-        s = FundamentalsSnapshot(ticker=t, captured_at=FOTO_FIN, sector=sector, industry=industria,
+        s = FundamentalsSnapshot(ticker=t, captured_at=fin, sector=sector, industry=industria,
                                  name=f"Empresa {t}", price=50.0, market_cap=1e9 * (20 - i),
                                  market_cap_usd=1e9 * (20 - i), pe_trailing=15.0,
                                  high_52w=60.0, foto_id=f.id,
@@ -179,7 +173,7 @@ def mundo(fabrica, mercado) -> dict:  # noqa: ANN001
                                            "dividendYield": 1.5})
         db.add(s)
         db.flush()
-    scan_at = FOTO_FIN + timedelta(minutes=15)
+    scan_at = fin + timedelta(minutes=15)
     run = ScanRun(scan_at=scan_at, cadence="decisión/full", decide=True, foto_id=f.id)
     db.add(run)
     db.flush()
@@ -194,6 +188,37 @@ def mundo(fabrica, mercado) -> dict:  # noqa: ANN001
         db.add(ScanRunConstructionItem(scan_run_id=run.id, posicion=i, ticker=t, action=accion,
                                        target_weight_pct=w, target_value="0", target_shares=0.0,
                                        delta_shares=0.0))
+    return f, run
+
+
+def _asegurar_foto_del_dia_base(fabrica, jornada_id: int) -> None:  # noqa: ANN001
+    """La foto y el escaneo del día base de la jornada, como los dejaría el escaneo de ese día:
+    una foto por mes, con las mismas respuestas de Jev a la pregunta que la del primero."""
+    with comun.sesion(fabrica) as db:
+        dia_base = db.execute(text("select dia_base from liga.jornadas where id = :j"),
+                              {"j": jornada_id}).scalar()
+        hay = db.execute(text(
+            "select count(*) from public.foto where estado = 'completa' and "
+            "(fin at time zone 'America/New_York')::date = :d"), {"d": dia_base}).scalar()
+        if hay:
+            return
+        primera = db.execute(text("select min(id) from public.foto")).scalar()
+        nueva, _ = _foto_y_escaneo(db, datetime.combine(dia_base, time(21, 30), tzinfo=UTC))
+        db.execute(text(
+            "insert into liga.respuestas_ia (pregunta_hash, ticker, foto_id, si, seguridad) "
+            "select pregunta_hash, ticker, :n, si, seguridad from liga.respuestas_ia "
+            "where foto_id = :v"), {"n": nueva.id, "v": primera})
+        db.commit()
+
+
+@pytest.fixture
+def mundo(fabrica, mercado) -> dict:  # noqa: ANN001
+    """Temporadas, una foto con su escaneo de decisión, la propuesta de Alpha, la cartera de Jev,
+    Omega con una posición y tres estrategias de usuario."""
+    temporadas.ejecutar(fabrica, ahora=HOY_ALTA)
+    db = fabrica()
+    ids: dict = {}
+    f, run = _foto_y_escaneo(db, FOTO_FIN)
     # Omega: solo alertas de esta prueba (se deshacen con la transacción).
     for t, momento, caida in ALERTAS:
         db.execute(text(
@@ -236,6 +261,7 @@ def _inscripciones(fabrica, jornada_id: int) -> dict:  # noqa: ANN001
 
 
 def _formar_mes(fabrica, mercado: Mercado, jornada_id: int, ahora: datetime) -> dict:  # noqa: ANN001
+    _asegurar_foto_del_dia_base(fabrica, jornada_id)
     foto.ejecutar(jornada_id, fabrica=fabrica)
     return formar.ejecutar(jornada_id, fabrica=fabrica, ahora=ahora)
 
@@ -432,7 +458,27 @@ def test_mantener_conserva_sus_valores_con_los_pesos_de_fin_de_mes(fabrica, merc
     assert febrero[mundo["mantener"]]["fila"].n_pasan is None
 
 
-def test_plan_b_sin_escaneo_propio(fabrica, mercado, mundo) -> None:  # noqa: ANN001
+def _foto_con_escaneo_propio(fabrica, fin: datetime) -> tuple[int, int]:  # noqa: ANN001
+    """Una foto completa terminada en `fin` y un escaneo de decisión con notas que la puntuó."""
+    with comun.sesion(fabrica) as db:
+        nueva = Foto(alcance="nasdaq", inicio=fin - timedelta(hours=1), fin=fin, estado="completa")
+        db.add(nueva)
+        db.flush()
+        db.add(FundamentalsSnapshot(ticker="ZQA", captured_at=fin, sector="Technology",
+                                    foto_id=nueva.id))
+        run = ScanRun(scan_at=fin + timedelta(minutes=15), cadence="decisión/full", decide=True,
+                      foto_id=nueva.id)
+        db.add(run)
+        db.flush()
+        db.add(ScanAudit(scan_at=run.scan_at, ticker="ZQA", scan_run_id=run.id, decide=True,
+                         jev_fundamentals=900, jev_valuation=880, jev_financing=860,
+                         jev_catalyst=840))
+        db.commit()
+        return nueva.id, run.id
+
+
+def test_la_jornada_no_vale_con_una_foto_que_el_escaneo_no_uso(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
     with comun.sesion(fabrica) as db:
         nueva = Foto(alcance="nasdaq", inicio=FOTO_FIN + timedelta(hours=2),
                      fin=FOTO_FIN + timedelta(hours=3), estado="completa")
@@ -442,15 +488,42 @@ def test_plan_b_sin_escaneo_propio(fabrica, mercado, mundo) -> None:  # noqa: AN
                                     foto_id=nueva.id))
         db.commit()
         nueva_id = nueva.id
-    d = foto.ejecutar(mundo["enero"], nueva_id, fabrica=fabrica)
-    assert (d["foto_id"], d["scan_run_id"], d["plan_b"]) == (nueva_id, mundo["scan"], True)
-    assert foto.estado(mundo["enero"], fabrica=fabrica)["plan_b"] is True
-    prev = formar.vista_previa(mundo["enero"], fabrica=fabrica, ahora=ENERO)
-    # La casa entra siempre: en plan B juega con la cartera de su último escaneo de decisión.
-    assert prev["casa"]["lambda"]["juega"] is True and prev["casa"]["alpha"]["juega"] is True
-    assert prev["casa"]["lambda"]["posiciones"] and prev["casa"]["alpha"]["posiciones"]
-    assert any("Plan B" in a for a in prev["casa"]["lambda"]["avisos"])
-    assert any("Plan B" in a for a in prev["casa"]["alpha"]["avisos"])
+    with pytest.raises(comun.ErrorProceso, match="la misma foto"):
+        foto.ejecutar(mundo["enero"], nueva_id, fabrica=fabrica)
+    with pytest.raises(comun.ErrorProceso, match="la misma foto"):
+        foto.ejecutar(mundo["enero"], nueva_id, mundo["scan"], fabrica=fabrica)
+    assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] is None
+
+
+def test_la_foto_tiene_que_ser_del_dia_base_de_la_jornada(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    foto_vieja, escaneo_viejo = _foto_con_escaneo_propio(fabrica, FOTO_FIN - timedelta(days=3))
+    with pytest.raises(comun.ErrorProceso, match="día base"):
+        foto.ejecutar(mundo["enero"], foto_vieja, escaneo_viejo, fabrica=fabrica)
+    assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] is None
+
+
+def test_no_se_forma_si_la_foto_dejo_de_ser_la_del_escaneo(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    foto.ejecutar(ene, fabrica=fabrica)
+    assert formar.vista_previa(ene, fabrica=fabrica, ahora=ENERO)["listo"] is True
+    with comun.sesion(fabrica) as db:
+        db.execute(text("update scan_runs set foto_id = null where id = :s"), {"s": mundo["scan"]})
+        db.commit()
+    prev = formar.vista_previa(ene, fabrica=fabrica, ahora=ENERO)
+    assert prev["listo"] is False and "escaneo" in prev["motivos"][0]
+    with pytest.raises(comun.ErrorProceso, match="escaneo"):
+        formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+
+
+def test_la_base_no_deja_fijar_una_foto_y_un_escaneo_que_no_son_pareja(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    otra_foto, _ = _foto_con_escaneo_propio(fabrica, FOTO_FIN - timedelta(days=3))
+    with pytest.raises(Exception, match="los mismos"), comun.sesion(fabrica) as db:
+        db.execute(text("update liga.jornadas set foto_id = :f, scan_run_id = :s where id = :j"),
+                   {"f": otra_foto, "s": mundo["scan"], "j": mundo["enero"]})
+        db.commit()
 
 
 def test_otra_instancia_con_el_candado_no_deja_formar(fabrica, mercado, mundo) -> None:  # noqa: ANN001
@@ -589,6 +662,23 @@ def test_foto_auto_designa_la_jornada_siguiente_sin_foto(fabrica, mundo) -> None
     assert fila.detalle["auto"] is True
 
 
+def test_si_no_puede_designar_el_dia_base_avisa_al_admin_y_otro_dia_no(
+        fabrica, mundo, monkeypatch) -> None:  # noqa: ANN001
+    from app import push
+
+    avisos: list[str] = []
+    monkeypatch.setattr(push, "send_to_all", lambda db, **kw: avisos.append(kw["title"]))
+    _saltar_pretemporada(fabrica, mundo)
+    vieja, escaneo_viejo = _foto_con_escaneo_propio(fabrica, FOTO_FIN - timedelta(days=3))
+    monkeypatch.setattr(foto, "hoy_bolsa", lambda: date(2026, 12, 15))
+    assert foto.auto_desde_escaneo(escaneo_viejo, fabrica=fabrica) is None
+    assert avisos == []                                    # un escaneo suelto a mitad de mes
+    monkeypatch.setattr(foto, "hoy_bolsa", lambda: date(2026, 12, 31))   # día base de enero
+    assert foto.auto_desde_escaneo(escaneo_viejo, fabrica=fabrica) is None
+    assert avisos == ["Vennett: no se designó la foto de la jornada"]
+    assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] is None
+
+
 def test_foto_auto_apagada_no_toca_nada(fabrica, mundo) -> None:  # noqa: ANN001
     with comun.sesion(fabrica) as db:
         db.execute(text(
@@ -603,7 +693,8 @@ def test_foto_auto_apagada_no_toca_nada(fabrica, mundo) -> None:  # noqa: ANN001
 def test_foto_auto_sin_jornada_programada_audita_omitido(fabrica, mundo) -> None:  # noqa: ANN001
     _saltar_pretemporada(fabrica, mundo)
     foto.ejecutar(mundo["enero"], fabrica=fabrica)
-    foto.ejecutar(mundo["febrero"], mundo["foto"], mundo["scan"], fabrica=fabrica)
+    _asegurar_foto_del_dia_base(fabrica, mundo["febrero"])
+    foto.ejecutar(mundo["febrero"], fabrica=fabrica)
     with comun.sesion(fabrica) as db:
         # El resto de Temporada 1 (marzo-diciembre) también nace `programada` sin foto -- se
         # marca resuelta igual que la pretemporada para dejar de verdad cero candidatos.

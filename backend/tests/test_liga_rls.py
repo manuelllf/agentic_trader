@@ -378,6 +378,24 @@ def _inscripcion(cx, jid: int, eid: uuid.UUID, rid: int, tickers: list[str]) -> 
     return iid
 
 
+def test_la_jornada_solo_fija_la_foto_que_uso_el_escaneo(cx):
+    jid = _jornada(cx)
+    f1, f2 = (cx.execute("insert into public.foto (alcance, estado, fin) "
+                         "values ('nasdaq', 'completa', now()) returning id").fetchone()[0]
+              for _ in range(2))
+    con_foto, sin_foto = (cx.execute(
+        "insert into public.scan_runs (scan_at, decide, foto_id) values (now(), true, %s) "
+        "returning id", (f,)).fetchone()[0] for f in (f1, None))
+    fijar = "update liga.jornadas set foto_id = %s, scan_run_id = %s where id = %s"
+    _falla(cx, fijar, (f2, con_foto, jid))        # el escaneo puntuó otra foto
+    _falla(cx, fijar, (f1, sin_foto, jid))        # el escaneo no apunta a ninguna foto
+    _falla(cx, fijar, (f1, None, jid))            # foto sin escaneo
+    assert cx.execute(fijar, (f1, con_foto, jid)).rowcount == 1
+    # Ya fijadas, cambiar otra cosa de la jornada no vuelve a comprobarlo.
+    assert cx.execute("update liga.jornadas set estado = 'formada' where id = %s",
+                      (jid,)).rowcount == 1
+
+
 def test_posiciones_propias_publicadas_con_pro_y_nunca_la_casa(cx):
     autor, pro, gratis = _usuario(cx, pro=True), _usuario(cx, pro=True), _usuario(cx)
     jid = _jornada(cx)
