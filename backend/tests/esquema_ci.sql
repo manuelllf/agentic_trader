@@ -1,4 +1,4 @@
--- migraciones-liga: 019
+-- migraciones-liga: 020
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -10249,3 +10249,21 @@ end $$;
 REVOKE ALL ON FUNCTION liga.confirmar_bienvenida() FROM PUBLIC;
 CREATE TRIGGER liga_confirmar_bienvenida AFTER UPDATE OF email_confirmed_at ON auth.users
 FOR EACH ROW EXECUTE FUNCTION liga.confirmar_bienvenida();
+
+-- liga_020: estrategias que jugaron una jornada sin su pregunta propia.
+create table liga.formaciones_degradadas (
+  inscripcion_id bigint primary key references liga.inscripciones (id) on delete cascade,
+  motivo text not null check (motivo in ('sin_ia', 'tope', 'incompleta', 'tiempo')),
+  creada timestamptz not null default now(),
+  creado_por uuid default auth.uid() references auth.users (id) on delete set null
+);
+alter table liga.formaciones_degradadas enable row level security;
+revoke all on table liga.formaciones_degradadas from public, anon, authenticated;
+grant select on table liga.formaciones_degradadas to authenticated;
+create policy dueno_lee on liga.formaciones_degradadas for select to authenticated
+  using (exists (
+    select 1 from liga.inscripciones i
+    join liga.estrategias e on e.id = i.estrategia_id
+    where i.id = inscripcion_id and e.dueno_id = (select auth.uid())));
+create policy admin_lee on liga.formaciones_degradadas for select to authenticated
+  using ((select liga.es_admin()));

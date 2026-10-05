@@ -33,7 +33,10 @@ export type SeguimientoEstrategia = {
   resultado: ResultadoReciente | null;
   cambio_cartera: CambioCartera | null;
   cambio_desde_revision?: CambioCartera | null;
+  sin_pregunta?: MotivoSinPregunta | null;
 };
+
+export type MotivoSinPregunta = "sin_ia" | "tope" | "incompleta" | "tiempo";
 
 export type CursorRevision = {
   estrategia_id: string;

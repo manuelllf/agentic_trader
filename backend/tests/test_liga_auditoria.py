@@ -26,6 +26,7 @@ RASTRO = {
     "creditos_movimientos": ("creado", "creado_por", None, None),  # solo_anadir
     "estrategias": ("creada", "creado_por", "actualizada", "actualizado_por"),
     "estrategias_revisadas": ("creada", "creada_por", "actualizado_en", "actualizado_por"),
+    "formaciones_degradadas": ("creada", "creado_por", None, None),  # de solo añadir, la escribe formar
     "inscripciones": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "jornadas": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "lecturas": ("creada", "creado_por", None, None),  # de solo añadir, caché de IA

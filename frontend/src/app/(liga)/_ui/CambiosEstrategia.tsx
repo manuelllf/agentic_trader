@@ -53,6 +53,12 @@ export function CambiosEstrategia({ resumen, alMostrar }: {
         </p>
       )}
 
+      {resumen.sin_pregunta && (
+        <p className={styles.note} role="status">
+          {t("common_seguimiento_sin_pregunta", { motivo: resumen.sin_pregunta })}
+        </p>
+      )}
+
       {resultado ? (
         <div className={styles.metrics}>
           <div><span>{t("common_seguimiento_ultima_jornada")}</span><b>{resultado.jornada_id} · {resultado.dia_fin}</b></div>

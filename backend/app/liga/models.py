@@ -282,6 +282,18 @@ class Prueba(LigaBase):
     actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
 
+class FormacionDegradada(LigaBase):
+    """Inscripción formada sin la pregunta propia (`motivo`: sin_ia, tope, incompleta o tiempo)."""
+
+    __tablename__ = "formaciones_degradadas"
+
+    inscripcion_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("liga.inscripciones.id"), primary_key=True)
+    motivo: Mapped[str] = mapped_column(Text)
+    creada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+
+
 class RespuestaIA(LigaBase):
     """Caché compartida de la pregunta propia por pregunta normalizada, empresa y foto."""
 

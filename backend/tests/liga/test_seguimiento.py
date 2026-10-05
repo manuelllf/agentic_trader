@@ -126,6 +126,9 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
         event.remove(engine, "before_cursor_execute", count_summary_queries)
         cx.execute("set session_replication_role = replica")
         for season_id in created_seasons:
+            cx.execute("delete from liga.formaciones_degradadas where inscripcion_id in "
+                       "(select i.id from liga.inscripciones i join liga.jornadas j "
+                       "on j.id = i.jornada_id where j.temporada_id = %s)", (season_id,))
             cx.execute("delete from liga.inscripciones where jornada_id in "
                        "(select id from liga.jornadas where temporada_id = %s)", (season_id,))
             cx.execute("delete from liga.jornadas where temporada_id = %s", (season_id,))
@@ -175,6 +178,24 @@ def test_summary_is_owned_batched_and_compares_latest_two_portfolios(api) -> Non
 
     other_rows = client.get("/liga/seguimiento", headers=headers(other)).json()
     assert [row["estrategia_id"] for row in other_rows] == [other_id]
+
+
+def test_summary_says_when_the_latest_round_was_played_without_the_question(api) -> None:  # noqa: ANN001
+    client, headers, user, strategy, rounds, cx, statements = api
+    owner, other = user(), user()
+    eid, recipe_id = strategy(owner, "Con pregunta")
+    ids = rounds(eid, recipe_id, ["AAA", "BBB"])
+    insertar = "insert into liga.formaciones_degradadas (inscripcion_id, motivo) values (%s, %s)"
+    cx.execute(insertar, (ids[0], "tope"))
+    sin_marca = client.get("/liga/seguimiento", headers=headers(owner)).json()[0]
+    assert sin_marca["sin_pregunta"] is None            # la degradada es de una jornada anterior
+    cx.execute(insertar, (ids[1], "sin_ia"))
+    statements.clear()
+    fila = client.get("/liga/seguimiento", headers=headers(owner)).json()[0]
+    assert fila["sin_pregunta"] == "sin_ia"
+    assert len(statements) == 1
+    # Una cuenta ajena no ve el motivo de otra estrategia: no la recibe ni vacía.
+    assert client.get("/liga/seguimiento", headers=headers(other)).json() == []
 
 
 def test_review_ack_is_owner_scoped_and_monotonic(api) -> None:  # noqa: ANN001

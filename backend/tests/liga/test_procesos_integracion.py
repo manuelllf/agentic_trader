@@ -299,9 +299,15 @@ def test_un_mes_entero_dos_veces_sin_duplicar(fabrica, mercado, mundo) -> None: 
     reglas = ins[mundo["reglas"]]
     assert list(reglas["pos"]) == ["ZQA", "ZQB", "ZQD", "ZQE", "ZQF"]   # 2 por sector como mucho
     assert reglas["fila"].n_pasan == len(EMPRESAS) - 1 and reglas["fila"].estado == "formada"
-    # Con pregunta, solo pasan las que tienen respuesta en la caché; ZQK contestó que no con
-    # seguridad alta y queda la cuarta de cuatro.
-    assert set(ins[mundo["pregunta"]]["pos"]) == {"ZQA", "ZQF", "ZQB"}
+    # Con pregunta pero con respuestas solo de 4 de las candidatas: todo o nada, así que juega sin
+    # ella (las tres mejores por las notas, sin tope por sector) y queda apuntado por qué.
+    assert set(ins[mundo["pregunta"]]["pos"]) == {"ZQA", "ZQB", "ZQC"}
+    with comun.sesion(fabrica) as db:
+        degradadas = dict(db.execute(text(
+            "select e.nombre, d.motivo from liga.formaciones_degradadas d "
+            "join liga.inscripciones i on i.id = d.inscripcion_id "
+            "join liga.estrategias e on e.id = i.estrategia_id")).all())
+    assert degradadas == {"Con pregunta": "sin_ia"}      # en pruebas la IA está apagada
     for i in ins.values():
         assert sum(i["pos"].values()) <= 100
     assert _cuenta(fabrica, "select count(*) from liga.estrategias where tipo = 'usuario' "
@@ -352,6 +358,26 @@ def test_un_mes_entero_dos_veces_sin_duplicar(fabrica, mercado, mundo) -> None: 
     general = estado.general(fabrica)
     ultimo = general["ultimo_intento"]
     assert ultimo["cerrar"]["ok"] and ultimo["formar"]["ok"]
+
+
+def test_con_todas_las_respuestas_la_pregunta_cuenta_y_nada_se_apunta(  # noqa: ANN001
+        fabrica, mercado, mundo) -> None:
+    ene = mundo["enero"]
+    h = datos.hash_pregunta("¿Tiene ventaja?")
+    with comun.sesion(fabrica) as db:
+        for t, _, _, _ in EMPRESAS:
+            if t in ("ZQA", "ZQF", "ZQB", "ZQK"):
+                continue                                     # ya contestadas por el fixture
+            db.execute(text("insert into liga.respuestas_ia (pregunta_hash, ticker, foto_id, si, "
+                            "seguridad) values (:h, :t, :f, false, 'alta')"),
+                       {"h": h, "t": t, "f": mundo["foto"]})
+        db.commit()
+    foto.ejecutar(ene, fabrica=fabrica)
+    formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    ins = _inscripciones(fabrica, ene)
+    # ZQA y ZQB contestaron que sí con seguridad alta, ZQF que sí con media: los que más suben.
+    assert set(ins[mundo["pregunta"]]["pos"]) == {"ZQA", "ZQF", "ZQB"}
+    assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas") == 0
 
 
 def test_no_se_cierra_con_un_cierre_que_falta_salvo_que_se_acepte(fabrica, mercado, mundo,  # noqa: ANN001

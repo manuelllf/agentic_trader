@@ -52,7 +52,8 @@ las empresas) y cada mes esa estrategia juega una jornada. El conversor muestra 
 como exacta, aproximada o sin regla disponible; esa interpretación se conserva en el borrador.
 Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrategia.
 
-- **Constructor por etapas.** Idea, Reglas, Criterios, Cartera y Revisar. Los borradores se
+- **Constructor por etapas.** Idea, Reglas, Criterios, Cartera y Revisar; esta última resume el
+  recorrido de universo a cartera en un embudo. Los borradores se
   guardan en la base y se recuperan al volver; las revisiones evitan sobrescribir otra pestaña.
   Entrar en Crear abre Idea; avanzar o volver deja el menú de pasos visible, sin cabecera
   introductoria ni resumen repetido. Los controles se distribuyen según el ancho. Crecimiento
@@ -74,10 +75,10 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
   Los informes de pago sobre una prueba sin guardar indican que primero guardarán su contexto.
 - **Navegación y clasificación.** Los enlaces muestran cuándo están abriendo su destino y
   evitan pulsaciones repetidas mientras navegan. Las ayudas adoptan el tema de cada pantalla
-  sin depender de los estilos de administración. Las cards del ranking conservan los bordes
-  redondeados de la app, con respuesta al pulsar y movimiento que respeta las preferencias
-  de accesibilidad. Las estrategias de casa se distinguen con
-  los colores de sus salas y los símbolos α, Ω y λ; las estrategias personales conservan
+  sin depender de los estilos de administración. El ranking es una lista de filas con línea
+  fina, con respuesta al pulsar y movimiento que respeta las preferencias de accesibilidad.
+  Las estrategias de casa se distinguen con
+  colores sobrios por método y los símbolos α, Ω y λ; las estrategias personales conservan
   sus escudos. La jornada actual aparece antes que la clasificación cerrada.
 - **Rendimiento y riesgo.** La ficha deriva una curva frente al S&P 500 de los cierres y
   carteras guardados, con dividendos y splits. Señala huecos y periodos provisionales. Incluye
@@ -90,7 +91,8 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
   dos últimos cierres oficiales quedan como contexto; no se suman porcentajes mensuales.
   Liga abre en «Este mes» y permite consultar la clasificación después. Las pantallas interiores
   prescinden de la cabecera de marca; cuenta y sesión siguen accesibles desde Mías.
-- **Ligas privadas.** Cada participante muestra su estrategia representante, escudo, retorno
+- **Ligas privadas.** La lista resume cada liga con su rentabilidad del mes frente al S&P y
+  quién lidera. Dentro, cada participante muestra su estrategia representante, escudo, retorno
   mensual y acumulado frente al S&P. El mes provisional se refresca cada dos minutos y se
   separa de los puntos oficiales. El detalle abre la cartera y metodología de la ficha,
   respetando su privacidad; invitaciones y gestión quedan en un panel independiente.
@@ -104,8 +106,9 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
   Yahoo puede tener retraso. Estas cotizaciones no sobrescriben cierres ni puntos oficiales.
   Las filas de empresas comparten la tipografía de la app y distinguen retornos positivos,
   negativos y neutros con los colores del tema, manteniendo siempre el signo y la cifra.
-- **Seguimiento en Mías.** Resultado provisional de la jornada, último resultado cerrado y
-  composición frente a la última revisión y entre las dos últimas carteras formadas.
+- **Seguimiento en Mías.** Panel de estrategias vivas: resultado provisional de la jornada,
+  puesto y su movimiento, último resultado cerrado y composición frente a la última revisión y
+  entre las dos últimas carteras formadas. Se ordena por novedades y los ajustes quedan plegados.
   Copiar una estrategia publicada requiere
   Pro y crea una metodología independiente, editable por su nueva persona propietaria.
 - **Visitas a la cuenta.** Registra inicio y última actividad también con sesiones recuperadas,

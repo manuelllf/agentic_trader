@@ -39,6 +39,7 @@
   "strategies_change_count": "{count, plural, one {# portfolio change} other {# portfolio changes}}",
   "strategies_no_changes": "No changes since your last review",
   "strategies_first_look": "First look: kept as a reference",
+  "strategies_without_question": "This month it played without your question",
   "strategies_tracking_error": "Couldn't load tracking: {message}",
   "strategies_weight_business": "The business",
   "strategies_weight_price": "The price",

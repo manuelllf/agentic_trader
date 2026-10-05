@@ -406,6 +406,33 @@ def test_los_resultados_son_publicos_y_no_se_tocan(cx):
                "values (%s, 9, 3)", (iid,))
 
 
+def test_haber_jugado_sin_pregunta_lo_ve_su_dueno_y_el_admin_y_nadie_mas(cx):
+    a, otro, adm = _usuario(cx), _usuario(cx), _usuario(cx, rol="admin")
+    jid = _jornada(cx)
+    eid, rid = _lista(cx, a)
+    iid = _inscripcion(cx, jid, eid, rid, ["AAA"])
+    _sistema(cx)
+    cx.execute("insert into liga.formaciones_degradadas (inscripcion_id, motivo) "
+               "values (%s, 'tope')", (iid,))
+    _como(cx, a)
+    assert _filas(cx, "select motivo from liga.formaciones_degradadas") == [("tope",)]
+    _como(cx, otro)
+    assert _filas(cx, "select 1 from liga.formaciones_degradadas") == []
+    _como(cx, adm, aal="aal2")
+    assert _filas(cx, "select motivo from liga.formaciones_degradadas") == [("tope",)]
+    _como(cx, None)
+    _falla(cx, "select 1 from liga.formaciones_degradadas")
+    _como(cx, a)
+    _falla(cx, "update liga.formaciones_degradadas set motivo = 'sin_ia'")
+    _falla(cx, "delete from liga.formaciones_degradadas")
+    _falla(cx, "insert into liga.formaciones_degradadas (inscripcion_id, motivo) "
+               "values (%s, 'tope')", (iid,))
+    _sistema(cx)
+    cx.execute("delete from liga.formaciones_degradadas where inscripcion_id = %s", (iid,))
+    _falla(cx, "insert into liga.formaciones_degradadas (inscripcion_id, motivo) "
+               "values (%s, 'cualquiera')", (iid,))
+
+
 # ---- ligas privadas
 # ----------------------------------------------------------------------------------
 

@@ -2,8 +2,9 @@
 
 - Cada estrategia de usuario apuntada o jugando entra con la versión de su receta vigente en el
   corte (lo editado después cuenta para la jornada siguiente) y `motor.seleccion` sobre la foto
-  de la jornada, con las notas de Jev de su escaneo. La pregunta propia sale solo de la caché
-  `liga.respuestas_ia`: aquí no se llama a ninguna IA.
+  de la jornada, con las notas de Jev de su escaneo. La pregunta propia sale de la caché
+  `liga.respuestas_ia`, que `rellenar_preguntas` completa antes; la estrategia a la que le falte
+  alguna respuesta juega sin la pregunta y queda apuntado (`liga.formaciones_degradadas`).
 - Las «mantener» conservan sus valores con los pesos a los que llegaron al cierre del mes
   anterior (`rentabilidad.pesos_mantenidos`); si no jugaron la jornada anterior, se seleccionan.
 - Los equipos de la casa, con `casa`.
@@ -31,10 +32,10 @@ from sqlalchemy.orm import Session
 from app import precios
 from app.liga.ia import comun as ia_comun
 from app.liga.ia import pregunta as ia_pregunta
-from app.liga.models import Inscripcion, Jornada, Posicion, Receta
+from app.liga.models import FormacionDegradada, Inscripcion, Jornada, Posicion, Receta
 from app.liga.motor.catalogo import EmpresaFoto, RecetaNoValida
 from app.liga.motor.rentabilidad import pesos_mantenidos
-from app.liga.motor.seleccion import NotasJev, candidatas_pregunta, seleccionar
+from app.liga.motor.seleccion import NotasJev, candidatas_pregunta, seleccionar_o_sin_pregunta
 from app.liga.procesos import casa, datos
 from app.liga.procesos.comun import (
     ErrorProceso,
@@ -55,6 +56,8 @@ from app.liga.procesos.foto import es_plan_b
 logger = logging.getLogger(__name__)
 
 SPY = precios.REFERENCIA
+LIMITE_PREGUNTAS_S = 600
+AJUSTE_LIMITE_PREGUNTAS = "procesos.formar.limite_preguntas_s"
 _VUELTAS_PRECIOS = 4
 _MIN_CAIDA_FUENTE = 5    # sin cierre para más de esto (y más de un 20 %): la fuente está caída
 
@@ -69,6 +72,7 @@ class Entrada:
     posiciones: list[tuple[str, Decimal]]
     n_pasan: int | None
     origen: str
+    sin_pregunta: str | None = None   # por qué jugó sin su pregunta: sin_ia, tope o incompleta
 
     @property
     def estado(self) -> str:
@@ -165,32 +169,66 @@ def preview_preguntas(db: Session, ctx: Contexto, fabrica: Fabrica | None = None
     return {"pregunta_pendientes": faltan, "pregunta_coste_estimado_usd": str(coste_usd)}
 
 
-def rellenar_preguntas(db: Session, ctx: Contexto, fabrica: Fabrica | None = None) -> None:
-    """Antes de formar, rellena lo que falte de la pregunta propia a coste del sistema (nunca se
-    cobra créditos en la jornada, plan §10). Si la IA está apagada o el tope mensual ya se gastó,
-    se sigue solo con lo que ya haya en caché -- el motor ya sabe tratar una empresa
-    `SIN_RESPUESTA`. `fabrica`: por defecto la del sistema, igual en producción a la que usa la
-    propia jornada; un proceso con la suya propia (tests, savepoints) la pasa para leer y
-    escribir en la misma conexión."""
-    preguntas = _preguntas_de_las_estrategias(db, ctx)
-    if not preguntas:
-        return
+def limite_preguntas_s(db: Session) -> int:
+    """Segundos que se espera, como mucho, a las respuestas de la pregunta propia al formar; lo
+    guardado en `liga.ajustes` solo vale si es un entero positivo."""
+    valor = db.execute(text("select valor from liga.ajustes where clave = :c"),
+                       {"c": AJUSTE_LIMITE_PREGUNTAS}).scalar()
+    if isinstance(valor, bool) or not isinstance(valor, int) or valor < 1:
+        return LIMITE_PREGUNTAS_S
+    return valor
+
+
+def _motivo_ia_no_disponible(fabrica: Fabrica | None) -> str | None:
+    """`sin_ia` (apagada, sin clave o sin poder comprobarlo), `tope` (gasto del mes) o `None`."""
     try:
-        ia_comun.verificar_disponible("pregunta", fabrica)
-    except Exception:  # noqa: BLE001 -- apagado, tope gastado o sistema de IA no alcanzable:
-        # se forma igual, solo con lo que ya haya en caché (nunca bloquea la jornada por esto).
-        return
+        razon = ia_comun.razon_no_disponible("formacion", fabrica)
+    except Exception:  # noqa: BLE001 -- sistema de IA no alcanzable: igual que apagada
+        return "sin_ia"
+    if razon is None:
+        return None
+    return "tope" if razon == ia_comun.RAZON_TOPE else "sin_ia"
+
+
+def rellenar_preguntas(db: Session, ctx: Contexto, fabrica: Fabrica | None = None,
+                       limite_s: int = LIMITE_PREGUNTAS_S) -> str | None:
+    """Antes de formar, rellena lo que falte de la pregunta propia a coste del sistema (nunca se
+    cobra créditos en la jornada, plan §10). Devuelve por qué no se pudo contestar todo (`sin_ia`,
+    `tope` o `tiempo`) o `None`; la jornada se forma igual y cada estrategia a la que le falte
+    alguna respuesta juega sin la pregunta (`planificar`). Necesita la sesión solo para leer qué
+    preguntar: las llamadas a Jev se hacen con `contestar_preguntas`, sin ella abierta."""
+    return contestar_preguntas(_preguntas_de_las_estrategias(db, ctx), ctx, fabrica, limite_s)
+
+
+def contestar_preguntas(preguntas: dict[str, set[str]], ctx: Contexto,
+                        fabrica: Fabrica | None = None,
+                        limite_s: int = LIMITE_PREGUNTAS_S) -> str | None:
+    """Las llamadas a Jev de `rellenar_preguntas`, con una hora límite común a todas. `fabrica`:
+    por defecto la del sistema, igual en producción a la que usa la propia jornada; un proceso con
+    la suya propia (tests, savepoints) la pasa para leer y escribir en la misma conexión."""
+    if not preguntas:
+        return None
+    motivo = _motivo_ia_no_disponible(fabrica)
+    if motivo is not None:
+        return motivo
     empresas = {e.ticker: e for e in ctx.empresas}
+    hasta = time.monotonic() + limite_s
     for texto, tickers in preguntas.items():
         try:
-            ia_pregunta.responder_pendientes(pregunta=texto, foto_id=ctx.foto_id,
-                                             empresas=empresas, candidatas=sorted(tickers),
-                                             usuario_id=None, fabrica=fabrica)
+            res = ia_pregunta.responder_pendientes(
+                pregunta=texto, foto_id=ctx.foto_id, empresas=empresas,
+                candidatas=sorted(tickers), usuario_id=None, fabrica=fabrica,
+                finalidad="formacion", hasta=hasta)
         except HTTPException:
             # El tope mensual se gastó (o se apagó la IA) a mitad: el resto sigue con la caché.
             logger.warning("Formar: la IA dejó de estar disponible; el resto de preguntas "
                            "sigue con lo que hay en caché")
-            return
+            return "tope"
+        if res.cortada:
+            logger.warning("Formar: se acabó el tiempo para contestar (%s s); se forma con lo "
+                           "que hay en caché", limite_s)
+            return "tiempo"
+    return None
 
 
 def _mantenidas(db: Session, estrategia_id: uuid.UUID,
@@ -210,8 +248,11 @@ def _mantenidas(db: Session, estrategia_id: uuid.UUID,
     return pesos_mantenidos(pos, cierres, prev.dia_base, prev.dia_fin)
 
 
-def planificar(db: Session, ctx: Contexto, excluir: set[str]) -> Plan:
-    """Todas las carteras, sin escribir nada. `excluir`: tickers sin precio de compra."""
+def planificar(db: Session, ctx: Contexto, excluir: set[str],
+               motivo_ia: str | None = None) -> Plan:
+    """Todas las carteras, sin escribir nada. `excluir`: tickers sin precio de compra.
+    `motivo_ia`: por qué no se pudo contestar todo (`rellenar_preguntas`); sin él, el motivo de
+    una pregunta sin todas sus respuestas es `incompleta`."""
     plan = Plan()
     empresas = [e for e in ctx.empresas if e.ticker not in excluir]
     for fila in db.execute(_ESTRATEGIAS, {"corte": ctx.corte}).all():
@@ -233,15 +274,17 @@ def planificar(db: Session, ctx: Contexto, excluir: set[str]) -> Plan:
                 continue
         receta = db.get(Receta, fila.receta_id)
         try:
-            sel = seleccionar(empresas, datos.receta_motor(receta), ctx.notas,
-                              datos.cargar_respuestas(db, receta.pregunta, ctx.foto_id))
+            sel, sin_pregunta = seleccionar_o_sin_pregunta(
+                empresas, datos.receta_motor(receta), ctx.notas,
+                datos.cargar_respuestas(db, receta.pregunta, ctx.foto_id),
+                motivo_ia or "incompleta")
         except RecetaNoValida as e:
             plan.omitidas.append({"estrategia_id": fila.id, "nombre": fila.nombre,
                                   "motivo": f"Receta no válida: {e}"})
             continue
         plan.entradas.append(Entrada(fila.id, fila.nombre, fila.receta_id,
                                      [(el.ticker, el.peso) for el in sel.elegidas],
-                                     len(sel.pasan), "seleccion"))
+                                     len(sel.pasan), "seleccion", sin_pregunta))
 
     plan.casa["lambda"] = casa.cartera_lambda(db, ctx.scan_run_id, ctx.plan_b)
     plan.casa["alpha"] = casa.cartera_alpha(db, ctx.scan_run_id, ctx.plan_b)
@@ -268,13 +311,14 @@ def entradas_casa(plan: Plan, ids: dict[str, uuid.UUID]) -> list[Entrada]:
             for clave, c in plan.casa.items() if c.posiciones is not None and clave in ids]
 
 
-def _precios_y_plan(fabrica: Fabrica, ctx: Contexto) -> tuple[Plan, set[str]]:
+def _precios_y_plan(fabrica: Fabrica, ctx: Contexto,
+                    motivo_ia: str | None = None) -> tuple[Plan, set[str]]:
     """Trae los cierres del día base de lo que entraría y vuelve a seleccionar sin lo que no
     tenga precio, hasta que no cambie nada."""
     sin_precio: set[str] = set()
     pedidos: set[str] = set()
     with sesion(fabrica) as db:
-        plan = planificar(db, ctx, sin_precio)
+        plan = planificar(db, ctx, sin_precio, motivo_ia)
     for _ in range(_VUELTAS_PRECIOS):
         tickers = plan.tickers | {SPY}
         faltan = tickers - pedidos
@@ -302,7 +346,7 @@ def _precios_y_plan(fabrica: Fabrica, ctx: Contexto) -> tuple[Plan, set[str]]:
             return plan, sin_precio
         sin_precio |= nuevos
         with sesion(fabrica) as db:
-            plan = planificar(db, ctx, sin_precio)
+            plan = planificar(db, ctx, sin_precio, motivo_ia)
     raise ErrorProceso("Los precios del día base no terminan de cuadrar: revisa la fuente de "
                        f"precios (sin cierre: {', '.join(sorted(sin_precio))}).")
 
@@ -315,6 +359,7 @@ def _resumen(plan: Plan) -> dict:
     return {
         "estrategias": [{"estrategia_id": e.estrategia_id, "nombre": e.nombre,
                          "origen": e.origen, "estado": e.estado, "n_pasan": e.n_pasan,
+                         "sin_pregunta": e.sin_pregunta,
                          "posiciones": [{"ticker": t, "peso": p} for t, p in e.posiciones],
                          "caja": _caja(e.posiciones)}
                         for e in plan.entradas],
@@ -373,10 +418,15 @@ def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema, actor: str | N
                 if motivos:
                     raise ErrorProceso(" ".join(motivos))
                 ctx = contexto(db, j)
-                rellenar_preguntas(db, ctx, fabrica)
-            plan, sin_precio = _precios_y_plan(fabrica, ctx)
+                preguntas = _preguntas_de_las_estrategias(db, ctx)
+                limite_s = limite_preguntas_s(db)
+            # Sin la conexión abierta: Jev tarda y la jornada no debe retener una de la base.
+            motivo_ia = contestar_preguntas(preguntas, ctx, fabrica, limite_s)
+            plan, sin_precio = _precios_y_plan(fabrica, ctx, motivo_ia)
             with sesion(fabrica) as db:
-                return _escribir(db, jornada_id, ctx, plan, sin_precio, ahora, actor)
+                hecho = _escribir(db, jornada_id, ctx, plan, sin_precio, ahora, actor)
+            _avisar_sin_pregunta(fabrica, plan)
+            return hecho
     except Exception as e:
         auditar_fallo(fabrica, "formar", f"jornada:{jornada_id}", e, actor)
         raise
@@ -401,6 +451,8 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
         db.add(ins)
         db.flush()
         db.add_all(Posicion(inscripcion_id=ins.id, ticker=t, peso=p) for t, p in e.posiciones)
+        if e.sin_pregunta:
+            db.add(FormacionDegradada(inscripcion_id=ins.id, motivo=e.sin_pregunta))
     usuarios = [e.estrategia_id for e in plan.entradas]
     if usuarios:
         db.execute(text("update liga.estrategias set estado = 'jugando' "
@@ -412,6 +464,8 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
     auditar(db, "proceso.formar", f"jornada:{j.id}",
             {"inscripciones": len(entradas), "omitidas": len(plan.omitidas),
              "sin_precio": sorted(sin_precio),
+             "sin_pregunta": {str(e.estrategia_id): e.sin_pregunta
+                              for e in plan.entradas if e.sin_pregunta},
              "casa": {c.clave: c.motivo for c in plan.casa.values()}}, actor)
     db.commit()
     return para_json({"jornada_id": j.id, "estado": j.estado, "inscripciones": len(entradas),
@@ -436,6 +490,17 @@ def _avisar(db: Session, titulo: str, cuerpo: str) -> None:
         push.send_to_all(db, title=titulo, body=cuerpo, url="/admin", tag="agentic-liga")
     except Exception:
         logger.exception("No se pudo avisar por push")
+
+
+def _avisar_sin_pregunta(fabrica: Fabrica, plan: Plan) -> None:
+    """Un solo aviso al administrador con cuántas estrategias jugaron sin su pregunta."""
+    sin = [e for e in plan.entradas if e.sin_pregunta]
+    if not sin:
+        return
+    motivos = ", ".join(sorted({e.sin_pregunta for e in sin}))
+    with sesion(fabrica) as db:
+        _avisar(db, "Vennett: jornada formada con estrategias sin su pregunta",
+                f"{len(sin)} de {len(plan.entradas)} jugaron sin su pregunta ({motivos}).")
 
 
 def _auto_activo(db: Session) -> bool:

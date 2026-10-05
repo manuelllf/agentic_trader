@@ -6,6 +6,7 @@ import json
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -51,6 +52,8 @@ class SeguimientoOut(BaseModel):
     resultado: ResultadoReciente | None
     cambio_cartera: CambioCartera | None
     cambio_desde_revision: CambioCartera | None = None
+    # Por qué la última cartera se formó sin la pregunta propia, si fue así.
+    sin_pregunta: Literal["sin_ia", "tope", "incompleta", "tiempo"] | None = None
 
 
 class RevisionItem(BaseModel):
@@ -137,7 +140,9 @@ _RESUMENES = text("""
            m.resultado_inscripcion_id as revisado_resultado_inscripcion_id,
            revisada.jornada_id as revisada_jornada_id,
            (select array_agg(p.ticker order by p.ticker) from liga.posiciones p
-            where p.inscripcion_id = revisada.id) as tickers_revisados
+            where p.inscripcion_id = revisada.id) as tickers_revisados,
+           (select d.motivo from liga.formaciones_degradadas d
+            where d.inscripcion_id = c.ultima_inscripcion_id) as sin_pregunta
     from propias e
     left join carteras c on c.estrategia_id = e.id
     left join resultados_ordenados r on r.estrategia_id = e.id and r.orden = 1
@@ -217,6 +222,7 @@ def mis_seguimientos(db: Session = Depends(db_usuario)) -> list[SeguimientoOut]:
                        if (resumen := acumular_periodos(row["historial_periodos"] or []))
                        else None),
             resultado=r, cambio_cartera=cambio, cambio_desde_revision=desde_revision,
+            sin_pregunta=row["sin_pregunta"],
         ))
     return out
 

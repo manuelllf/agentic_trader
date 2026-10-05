@@ -218,6 +218,11 @@ export default function Mias() {
                     {novedad.tipo === "primera" && <span>{t("strategies_first_look")}</span>}
                   </Link>
                 )}
+                {resumen?.sin_pregunta && (
+                  <Link href={`/ficha/${e.id}`} className="mias-linea">
+                    <span>{t("strategies_without_question")}</span>
+                  </Link>
+                )}
                 {e.estado === "borrador" && (
                   <div className="mias-pie">
                     <Boton tamano="pequeno" variante="principal" disabled={pendiente} onClick={() => alApuntar(e.id)}>{t("strategies_sign_up")}</Boton>

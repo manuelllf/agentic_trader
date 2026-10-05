@@ -19,6 +19,8 @@ from app.liga.motor.seleccion import (
     explicar,
     redondear_pesos,
     seleccionar,
+    seleccionar_o_sin_pregunta,
+    sin_pregunta,
     validar_receta,
 )
 
@@ -216,6 +218,68 @@ def test_si_solo_pesa_la_pregunta_la_nota_es_la_de_la_respuesta():
                     {"A": Respuesta(False, "baja")})
     assert s.fila("A").nota == Decimal("4.2000")
     assert s.fila("A").mejor_nota is None
+
+
+def test_sin_pregunta_quita_su_peso_y_deja_los_demas():
+    pesos = {"negocio": 50, "precio": 10, "deuda": 0, "pronto": 0, "pregunta": 30}
+    r = sin_pregunta(receta(pesos=pesos))
+    assert r.pesos == {"negocio": 50, "precio": 10, "deuda": 0, "pronto": 0, "pregunta": 0}
+    assert not validar_receta(r)
+
+
+def test_sin_pregunta_si_era_el_unico_peso_reparte_las_cuatro_notas_a_partes_iguales():
+    pesos = {"negocio": 0, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 25}
+    r = sin_pregunta(receta(pesos=pesos))
+    assert r.pesos == {"negocio": 5, "precio": 5, "deuda": 5, "pronto": 5, "pregunta": 0}
+    assert not validar_receta(r)
+    s = seleccionar([emp("A"), emp("B")], r, {"A": notas(9, 9, 9, 9), "B": notas(0, 0, 0, 0)})
+    assert [e.ticker for e in s.elegidas][0] == "A"
+
+
+def test_sin_pregunta_no_toca_una_receta_sin_pregunta_ni_la_original():
+    original = receta(pesos={"negocio": 50, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 0})
+    assert sin_pregunta(original) == original
+    con = receta(pesos={"negocio": 20, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 20})
+    sin_pregunta(con)
+    assert con.pesos["pregunta"] == 20
+
+
+_CON_PREGUNTA = {"negocio": 25, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 25}
+_EMPRESAS = [emp("A"), emp("B"), emp("C")]
+_NOTAS = {"A": notas(9), "B": notas(6), "C": notas(3)}
+
+
+def test_con_todas_las_respuestas_la_pregunta_cuenta_y_no_hay_motivo():
+    resp = {"A": Respuesta(False, "alta"), "B": Respuesta(True, "alta"),
+            "C": Respuesta(True, "alta")}
+    s, motivo = seleccionar_o_sin_pregunta(_EMPRESAS, receta(pesos=_CON_PREGUNTA, n_empresas=3),
+                                           _NOTAS, resp)
+    assert motivo is None
+    assert s.fila("A").nota_exacta == (10 + Fraction("1.2")) / 2
+
+
+def test_si_falta_una_respuesta_nadie_se_cae_y_se_forma_sin_la_pregunta():
+    resp = {"A": Respuesta(False, "alta"), "B": Respuesta(True, "alta")}     # falta C
+    r = receta(pesos=_CON_PREGUNTA, n_empresas=3)
+    s, motivo = seleccionar_o_sin_pregunta(_EMPRESAS, r, _NOTAS, resp, motivo="tope")
+    assert motivo == "tope"
+    assert s.fila("C").fallo is None
+    assert [e.ticker for e in s.elegidas] == ["A", "B", "C"]
+    assert s.fila("A").nota_exacta == 10          # solo cuentan las 4 notas: 9 sobre 9 = 10
+    assert s == seleccionar(_EMPRESAS, sin_pregunta(r), _NOTAS)
+
+
+def test_sin_ninguna_respuesta_y_la_pregunta_como_unico_peso_se_forma_con_las_cuatro_notas():
+    pesos = {"negocio": 0, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 25}
+    s, motivo = seleccionar_o_sin_pregunta(_EMPRESAS, receta(pesos=pesos), _NOTAS, {})
+    assert motivo == "incompleta"
+    assert [e.ticker for e in s.elegidas] == ["A", "B", "C"]
+
+
+def test_sin_pregunta_en_la_receta_no_hace_falta_ninguna_respuesta():
+    r = receta(pesos=dict(SOLO_NEGOCIO), n_empresas=3)
+    s, motivo = seleccionar_o_sin_pregunta(_EMPRESAS, r, _NOTAS, {})
+    assert motivo is None and len(s.elegidas) == 3
 
 
 def test_la_pregunta_se_hace_solo_a_las_300_mejores_que_pasan_las_reglas():

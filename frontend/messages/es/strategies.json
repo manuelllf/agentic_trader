@@ -39,6 +39,7 @@
   "strategies_change_count": "{count, plural, one {# cambio en cartera} other {# cambios en cartera}}",
   "strategies_no_changes": "Sin cambios desde tu última revisión",
   "strategies_first_look": "Primera vez: queda como referencia",
+  "strategies_without_question": "Este mes jugó sin tu pregunta",
   "strategies_tracking_error": "No se pudo cargar el seguimiento: {message}",
   "strategies_weight_business": "El negocio",
   "strategies_weight_price": "El precio",

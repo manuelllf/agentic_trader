@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from fractions import Fraction
 from functools import cached_property
@@ -297,6 +297,32 @@ def candidatas_pregunta(empresas: Sequence[EmpresaFoto], receta: Receta,
     filas = (_fila(e, reglas, pesos, notas.get(e.ticker), None, e.ticker in excluidas)
              for e in empresas)
     return [f.ticker for f in sorted((f for f in filas if f.pasa), key=_orden)[:tope]]
+
+
+def sin_pregunta(receta: Receta) -> Receta:
+    """La misma receta sin el peso de la pregunta propia, para formar cuando faltan respuestas.
+    Si era lo único que pesaba, las 4 notas se reparten a partes iguales (el peso mínimo válido)."""
+    if not receta.pesos["pregunta"]:
+        return receta
+    pesos = {**receta.pesos, "pregunta": 0}
+    if not any(pesos[k] for k in _NOTA_DE_PESO):
+        pesos.update(dict.fromkeys(_NOTA_DE_PESO, PASO_PESO))
+    return replace(receta, pesos=pesos)
+
+
+def seleccionar_o_sin_pregunta(
+        empresas: Sequence[EmpresaFoto], receta: Receta, notas: Mapping[str, NotasJev],
+        respuestas: Mapping[str, Respuesta] | None = None,
+        motivo: str = "incompleta") -> tuple[Seleccion, str | None]:
+    """Todo o nada con la pregunta propia: cuenta solo si todas las candidatas tienen respuesta.
+    Si falta alguna, la estrategia se forma sin ella y se devuelve el `motivo`; así ninguna
+    empresa se cae por una respuesta que no llegó ni se mezclan unas con respuesta y otras sin."""
+    respuestas = respuestas or {}
+    if receta.pesos["pregunta"]:
+        candidatas = candidatas_pregunta(empresas, receta, notas)
+        if any(t not in respuestas for t in candidatas):
+            return seleccionar(empresas, sin_pregunta(receta), notas), motivo
+    return seleccionar(empresas, receta, notas, respuestas), None
 
 
 def _preparar(receta: Receta) -> tuple[ReglaPreparada, ...]:
