@@ -127,7 +127,7 @@
   "admin_setting_auto_photo_title": "Choose the round photo automatically",
   "admin_setting_auto_photo_help": "After the monthly decision scan finishes, automatically choose the photo and scan for the next round that does not have a photo. When off, use the manual button.",
   "admin_setting_auto_form_title": "Form rounds automatically",
-  "admin_setting_auto_form_help": "Every 5 minutes, check whether a round can be formed (after its cutoff at 9:00 a.m. New York time on the first trading day, with its photo and scan selected), then form it. This is the normal flow. When off (emergency mode), only an admin can use the button.",
+  "admin_setting_auto_form_help": "Every 5 minutes, check whether a round can be formed (after its cutoff at 6:00 p.m. New York time on the last trading day before it, with its photo and scan selected), then form it. This is the normal flow. When off (emergency mode), only an admin can use the button.",
   "admin_audit_title": "Audit log",
   "admin_audit_prefix_placeholder": "Prefix, e.g. admin.",
   "admin_audit_filter": "Filter",

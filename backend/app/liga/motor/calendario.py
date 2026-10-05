@@ -3,11 +3,10 @@
 Una jornada es un mes de bolsa: la cartera se fija con el cierre de `dia_base` (último día de
 bolsa del mes anterior) y juega de `dia_inicio` a `dia_fin` (primer y último día de bolsa del
 mes). Los fines de semana y festivos se saltan solos con `exchange_calendars`. Todo va en fecha de
-bolsa. Lo único con hora es el cierre de inscripción (el corte): las 09:00 de Nueva York del
-`dia_inicio`, media hora antes de la apertura. Se ancla a la hora de Nueva York y no a la de Madrid
-porque las dos cambian de horario en fechas distintas y el corte tiene que caer siempre antes de la
-apertura. Así nadie fija su estrategia sabiendo cómo se mueve el mercado ese día, pero sí después
-del escaneo oficial, que corre la tarde del último día de bolsa.
+bolsa. Lo único con hora es el cierre de inscripción (el corte): las 18:00 de Nueva York del
+`dia_base`, con margen sobre el escaneo oficial, que arranca a las 16:45 de ese mismo día. Se ancla
+a la hora de Nueva York y no a la de Madrid porque las dos cambian de horario en fechas distintas y
+el corte tiene que caer siempre después del escaneo y antes de la apertura.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ CALENDARIO = "XNYS"
 DESDE = date(2000, 1, 1)
 HASTA = date(2045, 12, 31)
 TZ_NUEVA_YORK = ZoneInfo("America/New_York")
-HORA_CIERRE_INSCRIPCION = time(9, 0)
+HORA_CIERRE_INSCRIPCION = time(18, 0)
 
 
 @dataclass(frozen=True)
@@ -84,7 +83,8 @@ def jornada_del_mes(anio: int, mes: int) -> FechasJornada:
         dia_base=dia_base,
         dia_inicio=dias[0],
         dia_fin=dias[-1],
-        cierre_inscripcion=datetime.combine(dias[0], HORA_CIERRE_INSCRIPCION, tzinfo=TZ_NUEVA_YORK),
+        cierre_inscripcion=datetime.combine(
+            dia_base, HORA_CIERRE_INSCRIPCION, tzinfo=TZ_NUEVA_YORK),
     )
 
 

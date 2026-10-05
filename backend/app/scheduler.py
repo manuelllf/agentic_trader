@@ -370,7 +370,7 @@ def trigger_escaneo_mensual() -> CronTrigger:
     """Cada día laborable del final del mes, 16:45 de Nueva York. `_escaneo_mensual_job` deja pasar
     solo el último día de BOLSA (si el mes acaba en fin de semana o festivo, es el viernes o el
     jueves anterior): el escaneo corre tras el cierre y la jornada siguiente tiene notas oficiales
-    antes del corte de las 09:00 ET del día 1."""
+    antes de su corte, a las 18:00 ET de ese mismo día."""
     return CronTrigger(day="24-31", day_of_week="mon-fri", hour=settings.scan_cron_hour,
                        minute=settings.scan_cron_minute, timezone=settings.scan_timezone)
 
@@ -454,7 +454,7 @@ def start_scheduler() -> None:
         CronTrigger(day_of_week="mon-fri", hour=16, minute=10, timezone=settings.scan_timezone),
         id="apewisdom_capture", replace_existing=True, misfire_grace_time=3600, coalesce=True,
     )
-    # Liga: formar la jornada que ya puede formarse (pasado su corte de las 09:00 ET del día 1).
+    # Liga: formar la jornada que ya puede formarse (pasado su corte de las 18:00 ET del día base).
     # Cada 5 minutos: si falta algo o el proceso se reinicia, vuelve a intentarlo solo.
     scheduler.add_job(_liga_formar_job, "interval", minutes=5, id="liga_formar",
                       replace_existing=True, coalesce=True)

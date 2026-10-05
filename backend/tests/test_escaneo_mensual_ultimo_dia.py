@@ -1,5 +1,5 @@
 """El escaneo con decisión corre el último día de bolsa del mes, tras el cierre (16:45 de Nueva
-York), para que la jornada siguiente tenga notas oficiales antes del corte de las 09:00 ET."""
+York), para que la jornada siguiente tenga notas oficiales antes de su corte, a las 18:00 ET."""
 
 from __future__ import annotations
 

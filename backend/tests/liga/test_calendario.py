@@ -64,21 +64,21 @@ def test_dias_de_bolsa_incluye_los_extremos_y_salta_el_4_de_julio_observado():
     assert dias_de_bolsa(date(2026, 7, 4), date(2026, 7, 5)) == []
 
 
-def test_el_corte_es_las_0900_de_nueva_york_del_dia_de_inicio_en_invierno_y_en_verano():
+def test_el_corte_es_las_1800_de_nueva_york_del_dia_base_en_invierno_y_en_verano():
     invierno = jornada_del_mes(2027, 1).cierre_inscripcion
     assert invierno.tzinfo is not None
-    assert invierno.astimezone(UTC) == datetime(2027, 1, 4, 14, 0, tzinfo=UTC)
+    assert invierno.astimezone(UTC) == datetime(2026, 12, 31, 23, 0, tzinfo=UTC)
     verano = jornada_del_mes(2026, 7).cierre_inscripcion
-    assert verano == datetime(2026, 7, 1, 9, 0, tzinfo=TZ_NUEVA_YORK)
+    assert verano == datetime(2026, 6, 30, 18, 0, tzinfo=TZ_NUEVA_YORK)
     assert verano.utcoffset() == timedelta(hours=-4)
 
 
-def test_el_corte_cae_siempre_antes_de_la_apertura_y_despues_del_cierre_anterior():
+def test_el_corte_cae_siempre_despues_del_escaneo_y_antes_de_la_apertura():
     for mes in range(1, 13):
         j = jornada_del_mes(2027, mes)
         apertura = datetime.combine(j.dia_inicio, time(9, 30), tzinfo=TZ_NUEVA_YORK)
-        cierre_base = datetime.combine(j.dia_base, time(16, 0), tzinfo=TZ_NUEVA_YORK)
-        assert cierre_base < j.cierre_inscripcion < apertura
+        escaneo = datetime.combine(j.dia_base, time(16, 45), tzinfo=TZ_NUEVA_YORK)
+        assert escaneo < j.cierre_inscripcion < apertura
 
 
 @pytest.mark.parametrize(("dia", "esperado"), [

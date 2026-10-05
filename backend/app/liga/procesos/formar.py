@@ -107,7 +107,7 @@ class Plan:
         return t
 
 
-def motivos_no_lista(j: Jornada, ahora: datetime | None) -> list[str]:
+def motivos_no_lista(j: Jornada, ahora: datetime | None, db: Session | None = None) -> list[str]:
     motivos = []
     if j.estado != "programada":
         motivos.append(f"La jornada ya está {j.estado}.")
@@ -115,7 +115,16 @@ def motivos_no_lista(j: Jornada, ahora: datetime | None) -> list[str]:
         motivos.append("Falta designar la foto y el escaneo de la jornada.")
     if ahora_utc(ahora) < j.cierre_inscripcion:
         motivos.append("Aún no ha pasado el corte de inscripción.")
+    if db is not None and _anterior_sin_cerrar(db, j):
+        motivos.append("La jornada anterior aún no está cerrada: ciérrala antes, las «mantener» "
+                       "parten de sus resultados.")
     return motivos
+
+
+def _anterior_sin_cerrar(db: Session, j: Jornada) -> bool:
+    return db.execute(text(
+        "select 1 from liga.jornadas where dia_fin = :d and estado = 'formada' and id <> :j"),
+        {"d": j.dia_base, "j": j.id}).first() is not None
 
 
 def contexto(db: Session, j: Jornada) -> Contexto:
@@ -381,7 +390,7 @@ def estado(jornada_id: int, fabrica: Fabrica = fabrica_sistema) -> dict:
             "select estado, count(*) from liga.inscripciones where jornada_id = :j "
             "group by estado"), {"j": j.id}).all())
         return para_json({"jornada_id": j.id, "estado": j.estado, "inscripciones": cuenta,
-                          "motivos": motivos_no_lista(j, None)})
+                          "motivos": motivos_no_lista(j, None, db)})
 
 
 def vista_previa(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
@@ -389,7 +398,7 @@ def vista_previa(jornada_id: int, fabrica: Fabrica = fabrica_sistema,
     """Qué se formaría con lo guardado ahora mismo: sin escribir y sin pedir precios."""
     with sesion(fabrica) as db:
         j = jornada(db, jornada_id)
-        motivos = motivos_no_lista(j, ahora)
+        motivos = motivos_no_lista(j, ahora, db)
         if j.foto_id is None or j.scan_run_id is None or j.estado != "programada":
             return para_json({"jornada_id": j.id, "listo": False, "motivos": motivos})
         ctx = contexto(db, j)
@@ -414,7 +423,7 @@ def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema, actor: str | N
         with candado("formar", fabrica):
             with sesion(fabrica) as db:
                 j = jornada(db, jornada_id)
-                motivos = motivos_no_lista(j, ahora)
+                motivos = motivos_no_lista(j, ahora, db)
                 if motivos:
                     raise ErrorProceso(" ".join(motivos))
                 ctx = contexto(db, j)
@@ -435,7 +444,7 @@ def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema, actor: str | N
 def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_precio: set[str],
               ahora: datetime | None, actor: str | None) -> dict:
     j = jornada_bloqueada(db, jornada_id)
-    motivos = motivos_no_lista(j, ahora)
+    motivos = motivos_no_lista(j, ahora, db)
     if motivos:
         raise ErrorProceso(" ".join(motivos))
     if (j.foto_id, j.scan_run_id) != (ctx.foto_id, ctx.scan_run_id):
@@ -512,7 +521,7 @@ def _auto_activo(db: Session) -> bool:
 
 def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None,
         reloj=time.monotonic) -> dict | None:  # noqa: ANN001 — reloj inyectable en pruebas
-    """Forma sola la jornada que ya puede formarse: sigue programada, está dentro de sus fechas y ha
+    """Forma sola la jornada que ya puede formarse: sigue programada, ya llegó su día base y ha
     pasado su corte, hasta media hora después. Corre cada 5 minutos (unos 6 intentos), así que un
     reinicio o una fuente de precios caída se resuelven solos, pero no hay reintentos infinitos:
     pasada la media hora deja de intentarlo y avisa una sola vez: hay que formarla desde Admin.
@@ -529,7 +538,7 @@ def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None,
                 return None
             ahora_t = ahora_utc(ahora)
             vivas = db.scalars(select(Jornada).where(
-                Jornada.estado == "programada", Jornada.dia_inicio <= hoy, Jornada.dia_fin >= hoy,
+                Jornada.estado == "programada", Jornada.dia_base <= hoy, Jornada.dia_fin >= hoy,
                 Jornada.cierre_inscripcion <= ahora_t).order_by(Jornada.dia_inicio)).all()
             listas = [j for j in vivas if ahora_t - j.cierre_inscripcion <= VENTANA_AUTO]
             for j in vivas:

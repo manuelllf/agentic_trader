@@ -50,8 +50,9 @@ URL = os.environ.get("LIGA_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(
     not URL, reason="Sin BD de pruebas de la liga (LIGA_TEST_DATABASE_URL)")
 HOY_ALTA = datetime(2026, 9, 27, 12, tzinfo=UTC)
-ENERO = datetime(2027, 1, 4, 15, tzinfo=UTC)       # pasado el corte (09:00 ET) de la de enero
-FEBRERO = datetime(2027, 2, 1, 15, tzinfo=UTC)     # pasado el corte (09:00 ET) de la de febrero
+ENERO = datetime(2027, 1, 4, 15, tzinfo=UTC)       # pasado el corte de la de enero
+FEBRERO = datetime(2027, 2, 1, 15, tzinfo=UTC)     # pasado el corte de la de febrero
+CORTE_ENERO = datetime(2026, 12, 31, 23, 0, tzinfo=UTC)    # 18:00 ET del día base
 FOTO_FIN = datetime(2026, 12, 31, 21, 30, tzinfo=UTC)
 
 # Doce empresas de prueba: (ticker, sector, industria, notas de Jev ×100).
@@ -279,7 +280,7 @@ def test_un_mes_entero_dos_veces_sin_duplicar(fabrica, mercado, mundo) -> None: 
     assert prev["listo"] is True and prev["n_estrategias"] == 3
     assert "SPY" in prev["sin_precio"]                      # la vista previa no pide precios
     assert _cuenta(fabrica, "select count(*) from liga.inscripciones") == 0
-    antes = formar.vista_previa(ene, fabrica=fabrica, ahora=ENERO - timedelta(days=1))
+    antes = formar.vista_previa(ene, fabrica=fabrica, ahora=CORTE_ENERO - timedelta(minutes=5))
     assert antes["listo"] is False and "corte" in antes["motivos"][0]
 
     hecho = formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
@@ -766,11 +767,21 @@ def _interruptor_formar(fabrica, encendido: bool | None) -> None:  # noqa: ANN00
         db.commit()
 
 
+def _dar_por_jugadas_las_anteriores(fabrica, jornada_id: int) -> None:  # noqa: ANN001
+    """Como en producción: al tocar la siguiente, las previas ya se formaron y cerraron."""
+    with comun.sesion(fabrica) as db:
+        db.execute(text(
+            "update liga.jornadas set estado = 'cerrada', sp_rentabilidad = 0 where dia_fin <= "
+            "(select dia_base from liga.jornadas where id = :j) and estado <> 'cerrada'"),
+            {"j": jornada_id})
+        db.commit()
+
+
 def test_formar_solo_esta_encendido_por_defecto_y_se_apaga_a_proposito(
         fabrica, mercado, mundo) -> None:  # noqa: ANN001
     ene = mundo["enero"]
     foto.ejecutar(ene, fabrica=fabrica)
-    tras_el_corte = datetime(2027, 1, 4, 14, 5, tzinfo=UTC)      # 09:05 ET del primer día de bolsa
+    tras_el_corte = CORTE_ENERO + timedelta(minutes=5)
     _interruptor_formar(fabrica, False)
     assert formar.job(fabrica, ahora=tras_el_corte) is None       # apagado a propósito
     assert _cuenta(fabrica, "select count(*) from liga.inscripciones") == 0
@@ -779,16 +790,36 @@ def test_formar_solo_esta_encendido_por_defecto_y_se_apaga_a_proposito(
     assert hecho is not None and hecho["estado"] == "formada"
 
 
-def test_formar_solo_no_hace_nada_antes_del_corte_ni_fuera_de_las_fechas_de_la_jornada(
+def test_formar_solo_no_hace_nada_antes_del_corte_ni_pasada_la_jornada(
         fabrica, mercado, mundo) -> None:  # noqa: ANN001
     ene = mundo["enero"]
     foto.ejecutar(ene, fabrica=fabrica)
-    # Antes del corte (08:55 ET): no es un fallo, simplemente todavía no toca.
-    assert formar.job(fabrica, ahora=datetime(2027, 1, 4, 13, 55, tzinfo=UTC)) is None
-    # Fin de semana anterior al inicio de la jornada (la de enero empieza el lunes 4).
-    assert formar.job(fabrica, ahora=datetime(2027, 1, 2, 14, 5, tzinfo=UTC)) is None
+    # Antes del corte (17:55 ET): no es un fallo, simplemente todavía no toca.
+    assert formar.job(fabrica, ahora=CORTE_ENERO - timedelta(minutes=5)) is None
+    # Una jornada ya terminada no se forma sola aunque siga programada.
+    assert formar.job(fabrica, ahora=datetime(2027, 2, 1, 15, tzinfo=UTC)) is None
     assert _cuenta(fabrica, "select count(*) from liga.inscripciones") == 0
     assert _cuenta(fabrica, "select count(*) from liga.auditoria where accion like '%fallo%'") == 0
+
+
+def test_no_se_forma_con_la_jornada_anterior_sin_cerrar(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    foto.ejecutar(ene, fabrica=fabrica)
+    with comun.sesion(fabrica) as db:
+        db.execute(text(
+            "update liga.jornadas set estado = 'formada' where dia_fin = "
+            "(select dia_base from liga.jornadas where id = :j)"), {"j": ene})
+        db.commit()
+    prev = formar.vista_previa(ene, fabrica=fabrica, ahora=ENERO)
+    assert prev["listo"] is False and "anterior" in prev["motivos"][0]
+    with pytest.raises(comun.ErrorProceso, match="anterior"):
+        formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    with comun.sesion(fabrica) as db:
+        db.execute(text("update liga.jornadas set estado = 'cerrada', sp_rentabilidad = 0 "
+                        "where estado = 'formada'"))
+        db.commit()
+    assert formar.vista_previa(ene, fabrica=fabrica, ahora=ENERO)["listo"] is True
 
 
 def test_formar_solo_forma_cualquier_jornada_lista_aunque_pase_el_tiempo_y_no_duplica(
@@ -796,11 +827,11 @@ def test_formar_solo_forma_cualquier_jornada_lista_aunque_pase_el_tiempo_y_no_du
     ene = mundo["enero"]
     foto.ejecutar(ene, fabrica=fabrica)
     # Una comprobación 20 minutos después del corte (p. ej. tras un reinicio) la forma igual.
-    hecho = formar.job(fabrica, ahora=datetime(2027, 1, 4, 14, 20, tzinfo=UTC))
+    hecho = formar.job(fabrica, ahora=CORTE_ENERO + timedelta(minutes=20))
     assert hecho is not None and hecho["estado"] == "formada"
     assert _cuenta(fabrica, "select count(*) from liga.inscripciones") > 0
     # Repetirlo no duplica: la jornada ya no está programada.
-    assert formar.job(fabrica, ahora=datetime(2027, 1, 4, 14, 25, tzinfo=UTC)) is None
+    assert formar.job(fabrica, ahora=CORTE_ENERO + timedelta(minutes=25)) is None
 
 
 def test_si_falta_la_foto_avisa_una_vez_por_media_hora_y_no_cada_cinco_minutos(
@@ -810,7 +841,8 @@ def test_si_falta_la_foto_avisa_una_vez_por_media_hora_y_no_cada_cinco_minutos(
     avisos: list[str] = []
     monkeypatch.setattr(push, "send_to_all", lambda db, **kw: avisos.append(kw["title"]))
     formar._ultimo_aviso.clear()
-    despues = datetime(2027, 1, 4, 14, 5, tzinfo=UTC)            # corte pasado, pero sin foto
+    _dar_por_jugadas_las_anteriores(fabrica, mundo["enero"])
+    despues = CORTE_ENERO + timedelta(minutes=5)                 # corte pasado, pero sin foto
     reloj = [1000.0]
     assert formar.job(fabrica, ahora=despues, reloj=lambda: reloj[0]) is None
     reloj[0] += 300                                              # cinco minutos después
@@ -831,8 +863,8 @@ def test_no_hay_reintentos_infinitos_pasada_media_hora_avisa_una_vez_y_deja_de_i
     formar._ultimo_aviso.clear()
     formar._abandonadas_avisadas.clear()
     foto.ejecutar(mundo["enero"], fabrica=fabrica)
-    # El corte de enero es 14:00 UTC; a las 14:40 UTC ya ha pasado más de media hora.
-    tarde = datetime(2027, 1, 4, 14, 40, tzinfo=UTC)
+    _dar_por_jugadas_las_anteriores(fabrica, mundo["enero"])
+    tarde = CORTE_ENERO + timedelta(minutes=40)                  # más de media hora después
     assert formar.job(fabrica, ahora=tarde) is None
     assert formar.job(fabrica, ahora=tarde + timedelta(minutes=5)) is None
     assert avisos == ["Vennett: la jornada no se formó sola"]          # una sola vez
