@@ -11,13 +11,15 @@ import uuid
 
 import pytest
 
+from app.liga.motor.catalogo import regla_por_defecto
+
 URL = os.environ.get("LIGA_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DATABASE_URL)")
 
 EMISOR = "https://proyecto.supabase.co"
 
 RECETA_BASICA = {
-    "reglas": [], "excluidas": [], "pregunta": None,
+    "reglas": [regla_por_defecto("medianas")], "excluidas": [], "pregunta": None,
     "pesos": {"negocio": 50, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 0},
     "n_empresas": 5, "reparto": "igual", "max_por_sector": 0,
 }
