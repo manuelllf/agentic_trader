@@ -192,7 +192,7 @@ function SalaMomentumRoom() {
         pararScan();
         setScanning(false);
         if (p.status === "done") {
-          setScanMsg(`${p.nuevas} señal(es) nueva(s) de ${p.total} ticker(s) revisado(s).`);
+          setScanMsg(t("omega_scan_new_signals", { nuevas: p.nuevas, total: p.total }));
           load();
         } else if (p.status === "error") {
           setScanMsg(`Error: ${p.error}`);
@@ -271,7 +271,7 @@ function SalaMomentumRoom() {
   // Universo activo vs apagado (apagado = mantener false; sin fila = activo).
   const universoApagados = (validacion ?? []).filter((v) => v.mantener === false).length;
   const universoCount = universoApagados > 0
-    ? `${(validacion ?? []).length - universoApagados} activos · ${universoApagados} apagados`
+    ? t("omega_universe_active_off", { activos: (validacion ?? []).length - universoApagados, apagados: universoApagados })
     : (validacion ?? []).length;
 
   // Empate del día: 2+ señales NUEVAS con la misma fecha de entrada. Si alguna del grupo es

@@ -131,5 +131,6 @@
   "alpha_ops_prune_result": "Poda hecha: texto de {count} llamadas vaciado.",
   "alpha_ops_prune_retained": "{count} filas no estaban en el archivo y se quedan.",
   "alpha_ops_background_timeout": "El navegador dejó de esperar, pero el backend puede seguir trabajando. Revisa el estado antes de repetirlo.",
-  "alpha_ops_cancel_requested": "Cancelación pedida. Se detendrá en el próximo punto de control; lo que ya estaba en marcha termina solo."
+  "alpha_ops_cancel_requested": "Cancelación pedida. Se detendrá en el próximo punto de control; lo que ya estaba en marcha termina solo.",
+  "alpha_fx_currencies": " · {count, plural, one {# divisa} other {# divisas}}"
 }

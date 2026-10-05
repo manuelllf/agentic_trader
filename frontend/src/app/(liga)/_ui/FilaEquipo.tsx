@@ -1,6 +1,7 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
+import { localeTag } from "@/i18n/locale";
 import { useTransition, type CSSProperties } from "react";
 import { claseSigno, porcentaje } from "@/lib/liga/format";
 import { CASA, Escudo, type ClaveCasa, type EscudoValor } from "./Escudo";
@@ -90,7 +91,7 @@ export function FilaEquipo({
   const estilo =
     tipo === "casa" && acento ? ({ "--hc": acento } as CSSProperties) : undefined;
   const formatoIntervalo = (valor: string) => new Date(`${valor}T12:00:00`).toLocaleDateString(
-    locale === "en" ? "en-US" : "es-ES", { day: "numeric", month: "short", year: "numeric" },
+    localeTag(locale), { day: "numeric", month: "short", year: "numeric" },
   );
   const claseFila = `${clases}${acumulado !== undefined ? " financiero" : ""}${pendiente ? " navegando" : ""}`;
 

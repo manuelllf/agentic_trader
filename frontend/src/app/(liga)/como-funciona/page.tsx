@@ -94,7 +94,7 @@ export default async function ComoFunciona() {
           <p className="cf-sub">{t("help_example_intro")}</p>
           <div className="cf-ejemplo">
             <p className="cf-rotulo">{t("help_example_disclaimer")}</p>
-            <div className="cf-emp"><b>{t("help_example_company")}</b><span>EJEM · {t("help_example_sector")}</span></div>
+            <div className="cf-emp"><b>{t("help_example_company")}</b><span>{t("help_example_ticker")} · {t("help_example_sector")}</span></div>
             <div className="cf-notas">
               <div><b>7</b><small>{t("help_score_fundamentals")}</small></div><div><b>5</b><small>{t("help_score_valuation")}</small></div><div><b>8</b><small>{t("help_score_financing")}</small></div><div><b>6</b><small>{t("help_score_catalyst")}</small></div>
             </div>

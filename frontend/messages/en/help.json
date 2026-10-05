@@ -36,6 +36,7 @@
   "help_example_disclaimer": "Fictional example · not a real company",
   "help_example_company": "Example Company",
   "help_example_sector": "Technology",
+  "help_example_ticker": "EXMPL",
   "help_score_fundamentals": "Fundamentals · 30% weight",
   "help_score_valuation": "Valuation · 30% weight",
   "help_score_financing": "Financing · 20% weight",

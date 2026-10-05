@@ -109,7 +109,6 @@ type UsuarioFila = {
 type ListaUsuarios = { total: number; filas: UsuarioFila[] };
 
 const CUANTOS = 50;
-const error = (e: unknown) => (e instanceof ApiError ? e.message : "Algo falló. Reintenta.");
 
 function Usuarios() {
   const t = useTranslations();

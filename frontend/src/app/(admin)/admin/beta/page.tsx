@@ -4,6 +4,7 @@
  *  Public view shows results + KPIs + anonymous positions; logged-in view includes full details. */
 
 import Link from "next/link";
+import { localeTag } from "@/i18n/locale";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
@@ -97,7 +98,7 @@ function nextDecisionLabel(locale: "es" | "en"): string {
   const now = new Date();
   let d = lastSession(now.getFullYear(), now.getMonth());
   if (d.getTime() <= now.getTime()) d = lastSession(now.getFullYear(), now.getMonth() + 1);
-  return d.toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { weekday: "short", day: "numeric", month: "short" });
+  return d.toLocaleDateString(localeTag(locale), { weekday: "short", day: "numeric", month: "short" });
 }
 
 type PosSortKey = "label" | "weightPct" | "avg_cost" | "price" | "value" | "pct";

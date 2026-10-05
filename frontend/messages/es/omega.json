@@ -179,5 +179,12 @@
   "omega_review_tab": "Por revisar {count}",
   "omega_evaluated_tab": "Evaluados {count}",
   "omega_entry_date": "Entró {date}",
-  "omega_exit_date": "Salió {date} · {days}d"
+  "omega_exit_date": "Salió {date} · {days}d",
+  "omega_signal_detail_aria": "Detalle señal {ticker}",
+  "omega_sort_by": "Ordenar por {label}",
+  "omega_history_of": "Histórico de {ticker}",
+  "omega_sold_on": "Vendida {date}",
+  "omega_alone_would_have": " · sola habría hecho {value}",
+  "omega_scan_new_signals": "{nuevas, plural, one {# señal nueva} other {# señales nuevas}} de {total, plural, one {# ticker revisado} other {# tickers revisados}}.",
+  "omega_universe_active_off": "{activos, plural, one {# activo} other {# activos}} · {apagados, plural, one {# apagado} other {# apagados}}"
 }

@@ -7,6 +7,7 @@
  *  único eje de agrupación es ese: cuesta o no cuesta. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { localeTag } from "@/i18n/locale";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ApiError, cancelDecision, cancelObservatorio, getConfig, getEstadoDatos, getPodaEstado,
@@ -457,7 +458,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
               valor={estado ? `${hace(estado.foto_global.at, t, locale)} · ${fmtNum(estado.foto_global.n)}` : cargando}
               malo={!!estado && !estado.foto_global.at} />
         <Chip label={t("alpha_attr_tasas_usd")}
-              valor={estado ? `${hace(estado.fx.at, t, locale)}${estado.fx.at ? ` · ${estado.fx.n} divisas` : ""}` : cargando}
+              valor={estado ? `${hace(estado.fx.at, t, locale)}${estado.fx.at ? t("alpha_fx_currencies", { count: estado.fx.n }) : ""}` : cargando}
               malo={!!estado && !estado.fx.at} />
       </div>
 
@@ -629,6 +630,7 @@ function textoResultadoPoda(e: PodaEstado, t: Text): string {
 
 /** Lo que borraría la poda ahora: sale de `GET /admin/poda`, recalculado al elegirla. */
 function PodaResumen({ previa, motivo }: { previa: PodaPrevia | null | false; motivo: string | null }) {
+  const locale = useLocale();
   const t = useTranslations();
   if (previa === null) {
     return <p className="py-1 text-[10.5px]" style={{ color: T.muted }}>{t("alpha_ui_calculando_que_se_puede_podar")}</p>;
@@ -645,7 +647,7 @@ function PodaResumen({ previa, motivo }: { previa: PodaPrevia | null | false; mo
       ) : (
         <>
           <p>{t("alpha_ui_deja_libres_unos")}<span className={NUMS} style={{ color: T.ink }}>
-              {previa.mb_total.toLocaleString("es-ES", { maximumFractionDigits: 1 })} MB
+              {previa.mb_total.toLocaleString(localeTag(locale), { maximumFractionDigits: 1 })} MB
             </span>{t("alpha_ui_para_lo_que_entre_despues")}</p>
           <p className={`mt-1 ${NUMS}`}>{t("alpha_ui_se_vacia_el_texto_de")}{fmtNum(previa.texto_llm.llamadas)}{t("alpha_ui_llamadas")}</p>
         </>

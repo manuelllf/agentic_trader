@@ -43,5 +43,7 @@
   "system_delete_account_retry": "The account could not be deleted. Try again.",
   "system_backend_timeout": "The backend took too long to respond (timeout).",
   "system_resource_failed": "Unable to read {path} ({status}).",
-  "system_operation_failed": "The operation failed ({status})."
+  "system_operation_failed": "The operation failed ({status}).",
+  "system_export_compose_error": "The image could not be composed.",
+  "system_export_unsupported": "This browser does not allow exporting the image."
 }

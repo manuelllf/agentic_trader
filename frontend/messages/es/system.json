@@ -43,5 +43,7 @@
   "system_delete_account_retry": "No se pudo dar de baja la cuenta. Prueba otra vez.",
   "system_backend_timeout": "El backend tardó demasiado en responder (timeout).",
   "system_resource_failed": "No se pudo leer {path} ({status}).",
-  "system_operation_failed": "La operación falló ({status})."
+  "system_operation_failed": "La operación falló ({status}).",
+  "system_export_compose_error": "No se pudo componer la imagen.",
+  "system_export_unsupported": "El navegador no permite exportar la imagen."
 }

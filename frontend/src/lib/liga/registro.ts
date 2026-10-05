@@ -4,7 +4,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-export const REQUISITOS_CLAVE = "Al menos 8 caracteres, una mayúscula y un símbolo.";
 
 export function useAccesoCorreo() {
   const [estado, setEstado] = useState<{ correo_disponible: boolean; registro_abierto: boolean } | null>(null);

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { localeTag } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
 import { getTranslations } from "next-intl/server";
 
@@ -12,7 +13,7 @@ export const TITULAR = {
 
 export const VERSION_LEGAL = "2026-10-03";
 export function fechaLegal(locale: Locale): string {
-  return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "es-ES", { dateStyle: "long", timeZone: "UTC" })
+  return new Intl.DateTimeFormat(localeTag(locale), { dateStyle: "long", timeZone: "UTC" })
     .format(new Date(`${VERSION_LEGAL}T00:00:00Z`));
 }
 

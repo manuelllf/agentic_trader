@@ -25,6 +25,7 @@ const UNIVERSO_COLS: { key: UniversoSortKey; label: string }[] = [
 export function UniversoTabla({ validacion, onAbrir }: {
   validacion: Validacion[]; onAbrir: (v: Validacion) => void;
 }) {
+  const t = useTranslations();
   const { sorted, sortKey, sortDir, toggle, ariaSort } =
     useOrden<Validacion, UniversoSortKey>(validacion, (row, key) => row[key]);
   return (
@@ -35,7 +36,7 @@ export function UniversoTabla({ validacion, onAbrir }: {
             {UNIVERSO_COLS.map((c, i) => (
               <th key={c.key} className={`whitespace-nowrap px-2.5 pb-2 text-[9px] font-bold uppercase tracking-wide ${i >= 2 ? "text-right" : "text-left"}`}
                   aria-sort={ariaSort(c.key)}>
-                <button onClick={() => toggle(c.key)} aria-label={`Ordenar por ${c.label}`}
+                <button onClick={() => toggle(c.key)} aria-label={t("omega_sort_by", { label: c.label })}
                         className="inline-flex items-center gap-0.5 hover:opacity-80"
                         style={{ color: sortKey === c.key ? T.ink : T.muted }}>
                   {c.label}
@@ -154,7 +155,7 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={`Histórico de ${v.ticker}`}
+      <div role="dialog" aria-modal="true" aria-label={t("omega_history_of", { ticker: v.ticker })}
            className="flex w-full max-w-lg flex-col rounded-2xl border shadow-xl"
            style={{ borderColor: T.ring, background: T.panel, height: "min(620px, 90vh)" }}
            onClick={(e) => e.stopPropagation()}>
@@ -177,7 +178,7 @@ export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCam
                   {cols.map((c, i) => (
                     <th key={c.key} className={`sticky top-0 whitespace-nowrap px-1.5 pb-1.5 text-[8.5px] font-bold uppercase tracking-wide ${i >= 2 ? "text-right" : "text-left"}`}
                         style={{ background: T.panel }} aria-sort={senalAriaSort(c.key)}>
-                      <button onClick={() => toggleSenal(c.key)} aria-label={`Ordenar por ${c.label}`}
+                      <button onClick={() => toggleSenal(c.key)} aria-label={t("omega_sort_by", { label: c.label })}
                               className="inline-flex items-center gap-0.5 hover:opacity-80"
                               style={{ color: senalSortKey === c.key ? T.ink : T.muted }}>
                         {c.label}

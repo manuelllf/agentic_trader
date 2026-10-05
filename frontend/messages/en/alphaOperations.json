@@ -131,5 +131,6 @@
   "alpha_ops_prune_result": "Pruning complete: text cleared from {count} calls.",
   "alpha_ops_prune_retained": "{count} rows were not archived and have been retained.",
   "alpha_ops_background_timeout": "The browser stopped waiting, but the backend may still be working. Check its status before retrying.",
-  "alpha_ops_cancel_requested": "Cancellation requested. It will stop at the next checkpoint; work already in progress will finish."
+  "alpha_ops_cancel_requested": "Cancellation requested. It will stop at the next checkpoint; work already in progress will finish.",
+  "alpha_fx_currencies": " · {count, plural, one {# currency} other {# currencies}}"
 }

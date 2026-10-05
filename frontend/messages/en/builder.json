@@ -193,5 +193,6 @@
   "builder_report_will_appear": "The report will appear here when it's ready.",
   "builder_report_not_available": "This report isn't available yet.",
   "builder_metadata_create": "Create strategy",
-  "builder_metadata_edit": "Edit strategy"
+  "builder_metadata_edit": "Edit strategy",
+  "builder_report_in_spanish": "This report was written in Spanish."
 }

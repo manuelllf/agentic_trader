@@ -42,7 +42,7 @@ export function HistorialModal({ s, precioVivo, regimen, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-4 py-6"
          onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={`Detalle señal ${s.ticker}`}
+      <div role="dialog" aria-modal="true" aria-label={t("omega_signal_detail_aria", { ticker: s.ticker })}
            className="w-full max-w-md rounded-2xl border shadow-xl"
            style={{ borderColor: T.ring, background: T.panel }}
            onClick={(e) => e.stopPropagation()}>
@@ -158,8 +158,8 @@ export function HistorialModal({ s, precioVivo, regimen, onClose }: {
               ? <span style={{ color: T.warn }}>{s.dias}{t("omega_ui_d_en_seguimiento")}</span>
               : cerradaAMano
                 ? <span>
-                    {s.cierre_manual!.exit_date ? `Vendida ${fmtFecha(s.cierre_manual!.exit_date, locale)}` : t("omega_manual_sale")}
-                    {soloSistema != null && ` · sola habría hecho ${fmtRet(soloSistema, locale)}`}
+                    {s.cierre_manual!.exit_date ? t("omega_sold_on", { date: fmtFecha(s.cierre_manual!.exit_date, locale) }) : t("omega_manual_sale")}
+                    {soloSistema != null && t("omega_alone_would_have", { value: fmtRet(soloSistema, locale) })}
                   </span>
                 : s.exit_date && <span>{t("omega_exit_date", { date: fmtFecha(s.exit_date, locale), days: s.dias ?? "—" })}</span>}
           </div>

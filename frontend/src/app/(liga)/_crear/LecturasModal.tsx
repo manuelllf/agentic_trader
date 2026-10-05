@@ -4,25 +4,7 @@ import { useEffect, useId, useRef } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import type { Lectura } from "@/lib/liga/api";
 import { richText } from "@/lib/richText";
-
-export function textoInforme(texto: string, locale: string): string {
-  const normalizado = texto.replace(/\\r\\n|\\n/g, "\n").replace(/\r\n/g, "\n")
-    .replace(locale === "en" ? /(?:^|\n|(?<=\.)\s+)(Recent news|Financials|Valuation|Risks|Conclusion|Catalysts):\s*/gi
-      : /(?:^|\n|(?<=\.)\s+)(Noticias recientes|Finanzas|Valoración|Valuación|Riesgos|Conclusión|Catalizadores):\s*/gi,
-      "\n\n### $1\n\n");
-  const frases = new Intl.Segmenter(locale, { granularity: "sentence" });
-  return normalizado.split("\n").map((linea) => {
-    if (linea.length < 650 || /^(?:#|\||\s*[-*]\s)/.test(linea)) return linea;
-    const parrafos: string[] = [];
-    let actual = "";
-    for (const { segment } of frases.segment(linea)) {
-      if (actual.length >= 450) { parrafos.push(actual.trim()); actual = ""; }
-      actual += segment;
-    }
-    if (actual) parrafos.push(actual.trim());
-    return parrafos.join("\n\n");
-  }).join("\n");
-}
+import { esInformeEnEspanol, textoInforme } from "./informe";
 
 export function LecturasModal({ abierto, tickers, activo, lecturas, leyendo, error, onSeleccionar, onCerrar }: {
   abierto: boolean; tickers: string[]; activo: string | null; lecturas: Lectura[];
@@ -65,6 +47,7 @@ export function LecturasModal({ abierto, tickers, activo, lecturas, leyendo, err
         {informe ? (
           <article>
             <p className="lecturas-kicker">{informe.ticker} / {t("builder_report")}</p>
+            {locale === "en" && esInformeEnEspanol(informe.texto) && <p className="lecturas-nota">{t("builder_report_in_spanish")}</p>}
             <div className="lecturas-texto">{richText(textoInforme(informe.texto, locale))}</div>
             <footer className="lecturas-nota">{t("builder_report_disclaimer")}</footer>
           </article>

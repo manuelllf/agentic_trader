@@ -179,5 +179,12 @@
   "omega_review_tab": "To review {count}",
   "omega_evaluated_tab": "Evaluated {count}",
   "omega_entry_date": "Entered {date}",
-  "omega_exit_date": "Exited {date} · {days}d"
+  "omega_exit_date": "Exited {date} · {days}d",
+  "omega_signal_detail_aria": "Signal detail {ticker}",
+  "omega_sort_by": "Sort by {label}",
+  "omega_history_of": "History of {ticker}",
+  "omega_sold_on": "Sold {date}",
+  "omega_alone_would_have": " · on its own it would have made {value}",
+  "omega_scan_new_signals": "{nuevas, plural, one {# new signal} other {# new signals}} from {total, plural, one {# ticker checked} other {# tickers checked}}.",
+  "omega_universe_active_off": "{activos} active · {apagados} off"
 }

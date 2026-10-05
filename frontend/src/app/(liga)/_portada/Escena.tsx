@@ -1,5 +1,6 @@
 "use client";
 import { useLocale, useTranslations } from "next-intl";
+import { localeTag } from "@/i18n/locale";
 import type { CSSProperties } from "react";
 import { Escudo } from "../_ui";
 import { signo } from "@/lib/liga/format";
@@ -14,7 +15,7 @@ export function Escena({ idea }: { idea: Idea }) {
   const t = useTranslations();
   const locale = useLocale() === "en" ? "en" : "es";
   const month = (index: number, length: "short" | "long") => new Intl.DateTimeFormat(
-    locale === "en" ? "en-US" : "es-ES", { month: length, timeZone: "UTC" },
+    localeTag(locale), { month: length, timeZone: "UTC" },
   ).format(new Date(Date.UTC(2020, index + 3, 1)));
   const MESES = Array.from({ length: 6 }, (_, index) => month(index, "short"));
   const total = puntosTotales(idea);

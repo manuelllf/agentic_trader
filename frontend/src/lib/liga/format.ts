@@ -98,7 +98,7 @@ export function fecha(valor: Date | string, ahora: Date = new Date(), locale: Lo
   const d = typeof valor === "string" ? new Date(valor) : valor;
   const { dia, mes, anio } = partesMadrid(d);
   const anioActual = partesMadrid(ahora).anio;
-  if (locale === "en") return new Intl.DateTimeFormat("en-US", {
+  if (locale === "en") return new Intl.DateTimeFormat(localeTag(locale), {
     timeZone: "Europe/Madrid", day: "numeric", month: "long", ...(anio !== anioActual ? { year: "numeric" } as const : {}),
   }).format(d);
   const base = `${dia} de ${nombreMes(mes, locale)}`;

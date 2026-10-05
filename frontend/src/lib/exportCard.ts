@@ -1,3 +1,4 @@
+import { browserText } from "@/i18n/browser";
 import { VENNETT_ICON } from "./brandIcon";
 // Exporta una vista como TARJETA lista para publicar (PNG), no como captura.
 //
@@ -350,7 +351,7 @@ export async function downloadChartCard(o: CardOptions): Promise<void> {
   const img = new Image();
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve();
-    img.onerror = () => reject(new Error("No se pudo componer la imagen."));
+    img.onerror = () => reject(new Error(browserText("system_export_compose_error")));
     img.src = url;
   });
 
@@ -358,7 +359,7 @@ export async function downloadChartCard(o: CardOptions): Promise<void> {
   canvas.width = w;                       // ya es el tamaño nativo que pide la red
   canvas.height = h;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("El navegador no permite exportar la imagen.");
+  if (!ctx) throw new Error(browserText("system_export_unsupported"));
   // Relleno de respaldo del tema (no blanco fijo): si el rasterizado deja algún borde sin cubrir
   // por redondeo, que asome el fondo de SU tarjeta y no un destello claro en una tarjeta dark.
   ctx.fillStyle = palette.bgTo;
@@ -366,7 +367,7 @@ export async function downloadChartCard(o: CardOptions): Promise<void> {
   ctx.drawImage(img, 0, 0, w, h);
 
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
-  if (!blob) throw new Error("El navegador no permite exportar la imagen.");
+  if (!blob) throw new Error(browserText("system_export_unsupported"));
 
   const href = URL.createObjectURL(blob);
   const a = document.createElement("a");

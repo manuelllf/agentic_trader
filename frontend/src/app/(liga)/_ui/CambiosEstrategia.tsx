@@ -1,12 +1,13 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
+import { localeTag } from "@/i18n/locale";
 import { useEffect, useRef } from "react";
 import type { SeguimientoEstrategia } from "@/lib/liga/seguimiento";
 import styles from "./CambiosEstrategia.module.css";
 
 function pct(valor: number, locale: string): string {
-  const n = new Intl.NumberFormat(locale === "en" ? "en-US" : "es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+  const n = new Intl.NumberFormat(localeTag(locale), { minimumFractionDigits: 1, maximumFractionDigits: 2 })
     .format(Math.abs(valor));
   return `${valor > 0 ? "+" : valor < 0 ? "−" : ""}${n} %`;
 }

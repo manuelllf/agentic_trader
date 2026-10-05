@@ -10,6 +10,7 @@
  *  una captura. */
 
 import { useEffect, useState } from "react";
+import { localeTag } from "@/i18n/locale";
 import { useLocale, useTranslations } from "next-intl";
 import {
   fetchExplorerContar, fetchExplorerOpciones, fetchExplorerTickers,
@@ -114,9 +115,9 @@ export function Explorador() {
   const t = useTranslations();
   const locale = useLocale() === "en" ? "en" : "es";
   const fmtNumLocal = (n: number) => fmtNum(n, locale);
-  const fmtCapB = (n: number) => `$${(n / 1e9).toLocaleString(locale === "en" ? "en-US" : "es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}B`;
-  const fmtMoney = (n: number) => `$${n.toLocaleString(locale === "en" ? "en-US" : "es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const fmtRatio = (n: number) => n.toLocaleString(locale === "en" ? "en-US" : "es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const fmtCapB = (n: number) => `$${(n / 1e9).toLocaleString(localeTag(locale), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}B`;
+  const fmtMoney = (n: number) => `$${n.toLocaleString(localeTag(locale), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtRatio = (n: number) => n.toLocaleString(localeTag(locale), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const [opciones, setOpciones] = useState<ExplorerOpciones | null>(null);
   const [errorOpciones, setErrorOpciones] = useState("");
 
@@ -374,7 +375,7 @@ export function Explorador() {
                     </td>
                     {mostrarFecha && (
                       <td className="px-2 py-1" style={{ color: T.muted }}>
-                        {new Date(r.captured_at).toLocaleDateString(locale === "en" ? "en-US" : "es-ES", { day: "2-digit", month: "short", timeZone: "UTC" })}
+                        {new Date(r.captured_at).toLocaleDateString(localeTag(locale), { day: "2-digit", month: "short", timeZone: "UTC" })}
                       </td>
                     )}
                   </tr>
