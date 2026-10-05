@@ -20,6 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.i18n import current_locale, translate
 from app.liga import acceso, estrategias, limites, nombres, rendimiento
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_anon, db_usuario
@@ -27,6 +28,7 @@ from app.liga.ia import comun, moderacion, precios
 from app.liga.ia import pregunta as ia_pregunta
 from app.liga.models import Receta as RecetaModelo
 from app.liga.motor.catalogo import RecetaNoValida
+from app.liga.motor.mensajes import presentar, presentar_lista
 from app.liga.motor.seleccion import explicar, seleccionar
 from app.liga.procesos import datos, diario
 from app.liga.rutas_publicas import EscudoOut
@@ -449,7 +451,7 @@ def _seleccionar_con(ctx: estrategias.Contexto, receta: RecetaModelo):  # noqa: 
     try:
         return seleccionar(list(ctx.empresas), datos.receta_motor(receta), ctx.notas, respuestas)
     except RecetaNoValida as e:
-        raise HTTPException(422, " ".join(e.errores)) from e
+        raise HTTPException(422, presentar_lista(e.errores, current_locale.get())) from e
 
 
 @router.post("/estrategias/{id}/pruebas", response_model=PruebaOut,
@@ -558,7 +560,8 @@ def por_que(id: uuid.UUID, ticker: Ticker, ident: Identidad = Depends(require_us
     receta = _receta_de(db, id)
     ctx = estrategias.foto_y_notas_actuales()
     seleccion = _seleccionar_con(ctx, receta)
-    return PorQueOut(ticker=t, motivo=explicar(t, seleccion, datos.receta_motor(receta)))
+    motivo = explicar(t, seleccion, datos.receta_motor(receta))
+    return PorQueOut(ticker=t, motivo=presentar(motivo, current_locale.get()))
 
 
 # ---- Buscador del universo ----------------------------------------------------------------------
@@ -621,8 +624,7 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
     retorno = (rendimiento.datos_ficha(db, f.eid, usuario_id=ident.uid)
                if puede_ver_detalle else {
         "estado": "privado",
-        "metodologia": ("La serie diaria está disponible para la persona propietaria y para "
-                        "cuentas Pro en estrategias publicadas."),
+        "metodologia": translate("liga_rend_privado"),
         "oficial_hasta": None, "provisional_hasta": None, "incompleta": False,
         "serie": [], "metricas": None, "evidencia": None,
     })

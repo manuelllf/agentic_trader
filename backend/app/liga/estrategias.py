@@ -6,7 +6,6 @@ porqués»). Cada lectura o escritura de sistema abre su propia sesión y la cie
 """
 
 from __future__ import annotations
-from app.i18n import translate
 
 import logging
 import threading
@@ -21,9 +20,11 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.errores import codigo_error, mensaje_interno
+from app.i18n import current_locale, translate
 from app.liga import nombres
 from app.liga.models import Receta as RecetaModelo
 from app.liga.motor.catalogo import CATALOGO, CATALOGO_VERSION, SECTORES_ES, EmpresaFoto
+from app.liga.motor.mensajes import presentar, presentar_lista
 from app.liga.motor.seleccion import (
     ETIQUETAS_PESO,
     MAX_EXCLUIDAS,
@@ -144,7 +145,7 @@ def validar_entrada(idea: str | None, reglas: list[dict], excluidas: list[str],
                          catalogo_version=CATALOGO_VERSION)
     errores = _validar_receta_motor(receta)
     if errores:
-        raise HTTPException(422, " ".join(errores))
+        raise HTTPException(422, presentar_lista(errores, current_locale.get()))
     return receta
 
 
@@ -285,7 +286,7 @@ def foto_y_notas_de(foto_id: int) -> Contexto:
 
 
 def evidencia_formacion_ficha(usuario_id: str, estrategia_id: str) -> dict | None:
-    """Autoriza la lectura de la foto exacta de formación; no sustituye evidencias ausentes por datos actuales."""
+    """Autoriza leer la foto exacta de formación, sin suplir lo ausente con datos actuales."""
     db = fabrica_sistema()
     try:
         forms = db.execute(text("""
@@ -440,7 +441,7 @@ def resultado_prueba(prueba_id: uuid.UUID, ctx: Contexto, seleccion: Seleccion, 
     """La cartera que saldría hoy, con el porqué de cada elegida y los recuentos de la maqueta."""
     elegidas = [
         {"ticker": el.ticker, "nombre": el.fila.empresa.nombre, "sector": el.fila.empresa.sector,
-         "peso": el.peso, "porque": el.porque}
+         "peso": el.peso, "porque": presentar(el.porque, current_locale.get())}
         for el in seleccion.elegidas
     ]
     sin_notas = sum(1 for f in seleccion.filas if f.fallo == SIN_NOTAS)

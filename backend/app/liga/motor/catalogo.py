@@ -15,7 +15,20 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
-from app.liga.motor.formato import a_decimal, cifra, millones_usd, porcentaje
+from app.liga.motor.formato import a_decimal, cifra
+from app.liga.motor.mensajes import (
+    Ajuste,
+    Cifra,
+    Lista,
+    ListaSectores,
+    Pct,
+    Regla,
+    Sector,
+    Texto,
+    Usd,
+    UsdAbierto,
+    Veces,
+)
 
 CATALOGO_VERSION = 1
 
@@ -149,50 +162,45 @@ def _capitalizacion(e: EmpresaFoto) -> Decimal | None:
     return cap / _MILLON if cap is not None and cap > 0 else None
 
 
-def _mas_de(e: EmpresaFoto, umbral: Decimal) -> str | None:
+def _mas_de(e: EmpresaFoto, umbral: Decimal) -> Texto | None:
     cap = _capitalizacion(e)
     if cap is None:
-        return "no hay dato de capitalización"
+        return Texto("motor_sin_dato_capitalizacion")
     if cap > umbral:
         return None
-    return f"vale {millones_usd(cap, (umbral,))} y pides más de {millones_usd(umbral)}"
+    return Texto("motor_cap_mayor", cap=Usd(cap, (umbral,)), umbral=Usd(umbral))
 
 
-def _grandes(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _grandes(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     return _mas_de(e, _GRANDE)
 
 
-def _medianas(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _medianas(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     return _mas_de(e, _MEDIANA)
 
 
-def _pequenas(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _pequenas(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     cap = _capitalizacion(e)
     if cap is None:
-        return "no hay dato de capitalización"
+        return Texto("motor_sin_dato_capitalizacion")
     if _PEQUENA <= cap <= _MEDIANA:
         return None
-    return (f"vale {millones_usd(cap, (_PEQUENA, _MEDIANA))} y pides entre "
-            f"{cifra(_PEQUENA, 0)} y {millones_usd(_MEDIANA)}")
+    return Texto("motor_cap_entre", cap=Usd(cap, (_PEQUENA, _MEDIANA)), desde=UsdAbierto(_PEQUENA),
+                 hasta=Usd(_MEDIANA))
 
 
-def _veces(valor: Decimal, frente_a: tuple[Decimal, ...] = ()) -> str:
-    t = cifra(valor, 1, frente_a)
-    return f"{t} {'vez' if t == '1' else 'veces'}"
-
-
-def _deuda_y_caja(e: EmpresaFoto) -> tuple[Decimal, Decimal] | str:
+def _deuda_y_caja(e: EmpresaFoto) -> tuple[Decimal, Decimal] | Texto:
     deuda, caja = a_decimal(e.deuda_total), a_decimal(e.caja_total)
     if deuda is None:
-        return "no hay dato de deuda"
+        return Texto("motor_sin_dato_deuda")
     if caja is None:
-        return "no hay dato de caja"
+        return Texto("motor_sin_dato_caja")
     return deuda, caja
 
 
-def _deuda(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _deuda(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     datos = _deuda_y_caja(e)
-    if isinstance(datos, str):
+    if isinstance(datos, Texto):
         return datos
     deuda, caja = datos
     neta = deuda - caja
@@ -200,160 +208,144 @@ def _deuda(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
         return None
     ebitda = a_decimal(e.ebitda)
     if ebitda is None:
-        return "no hay dato de EBITDA"
+        return Texto("motor_sin_dato_ebitda")
     if ebitda <= 0:
-        return "no tiene EBITDA positivo con el que comparar su deuda neta"
+        return Texto("motor_ebitda_no_positivo")
     maximo = a_decimal(p["anios"])
     ratio = neta / ebitda
     if ratio < maximo:
         return None
-    return (f"su deuda neta equivale a {_veces(ratio, (maximo,))} su EBITDA "
-            f"y pides menos de {_veces(maximo)}")
+    return Texto("motor_deuda_ratio", ratio=Veces(ratio, (maximo,)), maximo=Veces(maximo))
 
 
-def _caja_neta(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _caja_neta(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     datos = _deuda_y_caja(e)
-    if isinstance(datos, str):
+    if isinstance(datos, Texto):
         return datos
     deuda, caja = datos
     if caja > deuda:
         return None
-    return "tiene tanta deuda como caja" if caja == deuda else "tiene más deuda que caja"
+    return Texto("motor_caja_igual" if caja == deuda else "motor_caja_menor")
 
 
-def _barata(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _barata(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     per = a_decimal(e.per)
     maximo = a_decimal(p["per"])
     if per is None or per == 0:
-        return "no hay dato de PER"
+        return Texto("motor_sin_dato_per")
     if per < 0:
-        return "tiene un PER negativo: pierde dinero"
+        return Texto("motor_per_negativo")
     if per < maximo:
         return None
-    return f"tiene un PER de {cifra(per, 1, (maximo,))} y pides menos de {cifra(maximo)}"
+    return Texto("motor_per_alto", per=Cifra(per, 1, (maximo,)), maximo=Cifra(maximo))
 
 
-def _dividendo(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _dividendo(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     rentabilidad = a_decimal(e.dividend_yield_pct)
     if rentabilidad is None:
-        return "no consta que reparta dividendo"
+        return Texto("motor_sin_dato_dividendo")
     minimo = a_decimal(p["dividendo_pct"])
     if rentabilidad > minimo:
         return None
-    return (f"su dividendo es del {porcentaje(rentabilidad, 1, (minimo,))} "
-            f"y pides más del {porcentaje(minimo)}")
+    return Texto("motor_dividendo_bajo", dividendo=Pct(rentabilidad, 1, (minimo,)),
+                 minimo=Pct(minimo))
 
 
-def _crecen(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _crecen(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     ratio = a_decimal(e.crecimiento_ventas)
     if ratio is None:
-        return "no hay dato de la última variación interanual de ventas"
+        return Texto("motor_sin_dato_crecimiento")
     minimo = a_decimal(p["crecimiento_pct"])
     pct = ratio * 100
     if pct > minimo:
         return None
-    pides = f"más de un {porcentaje(minimo)}"
     if pct < 0 and cifra(-pct) != "0":
-        return (f"la última variación interanual de ventas es una caída del {porcentaje(-pct)} "
-                f"y pides que crezcan {pides}")
-    return (f"la última variación interanual de ventas es del {porcentaje(pct, 1, (minimo,))} "
-            f"y pides {pides}")
+        return Texto("motor_crecimiento_caida", caida=Pct(-pct), minimo=Pct(minimo))
+    return Texto("motor_crecimiento_bajo", pct=Pct(pct, 1, (minimo,)), minimo=Pct(minimo))
 
 
-def _margen(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _margen(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     ratio = a_decimal(e.margen_operativo)
     if ratio is None:
-        return "no hay dato de margen operativo"
+        return Texto("motor_sin_dato_margen")
     minimo = a_decimal(p["margen_pct"])
     pct = ratio * 100
     if pct > minimo:
         return None
-    return (f"su margen es del {porcentaje(pct, 1, (minimo,))} "
-            f"y pides más del {porcentaje(minimo)}")
+    return Texto("motor_margen_bajo", pct=Pct(pct, 1, (minimo,)), minimo=Pct(minimo))
 
 
-def _rentables(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _rentables(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     ratio = a_decimal(e.roe)
     if ratio is None:
-        return "no hay dato de rentabilidad sobre su capital"
+        return Texto("motor_sin_dato_roe")
     minimo = a_decimal(p["roe_pct"])
     pct = ratio * 100
     if pct > minimo:
         return None
-    pides = f"más del {porcentaje(minimo)}"
     if pct < 0 and cifra(-pct) != "0":
-        return f"pierde un {porcentaje(-pct)} sobre su capital y pides que gane {pides}"
-    return f"gana un {porcentaje(pct, 1, (minimo,))} sobre su capital y pides {pides}"
+        return Texto("motor_roe_perdida", pct=Pct(-pct), minimo=Pct(minimo))
+    return Texto("motor_roe_bajo", pct=Pct(pct, 1, (minimo,)), minimo=Pct(minimo))
 
 
-def _castigadas(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _castigadas(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     precio, maximo = a_decimal(e.precio), a_decimal(e.max_52s)
     if precio is None or precio <= 0:
-        return "no hay dato de precio"
+        return Texto("motor_sin_dato_precio")
     if maximo is None or maximo <= 0:
-        return "no hay dato de su máximo del último año"
+        return Texto("motor_sin_dato_maximo")
     caida = (1 - precio / maximo) * 100
     if caida >= _CAIDA:
         return None
-    pides = f"un {porcentaje(_CAIDA)} o más"
     if caida <= 0 or cifra(caida) == "0":
-        return f"está en su máximo del último año y pides que haya caído {pides}"
-    return f"está a un {porcentaje(caida, 1, (_CAIDA,))} de su máximo y pides {pides}"
+        return Texto("motor_castigada_en_maximo", umbral=Pct(_CAIDA))
+    return Texto("motor_castigada_distancia", caida=Pct(caida, 1, (_CAIDA,)), umbral=Pct(_CAIDA))
 
 
-def _sin_energia(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _sin_energia(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     sector = _texto(e.sector)
     if sector is None:
-        return "no hay dato de sector"
-    return "es del sector energético, que dejaste fuera" if sector == "Energy" else None
+        return Texto("motor_sin_dato_sector")
+    return Texto("motor_energia") if sector == "Energy" else None
 
 
-def _sin_bancos(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _sin_bancos(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     industria = _texto(e.industria)
     if industria is None:
-        return "no hay dato de industria"
-    return "es un banco, y dejaste fuera la banca" if industria.startswith("Banks") else None
+        return Texto("motor_sin_dato_industria")
+    return Texto("motor_banco") if industria.startswith("Banks") else None
 
 
-def _sin_tabaco(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _sin_tabaco(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     industria = _texto(e.industria)
     if industria is None:
-        return "no hay dato de industria"
-    return "es tabaquera, y dejaste fuera el tabaco" if industria == "Tobacco" else None
+        return Texto("motor_sin_dato_industria")
+    return Texto("motor_tabaco") if industria == "Tobacco" else None
 
 
-def _solo_chips(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _solo_chips(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     industria = _texto(e.industria)
     if industria is None:
-        return "no hay dato de industria"
-    return None if industria in _CHIPS else "no es de chips"
+        return Texto("motor_sin_dato_industria")
+    return None if industria in _CHIPS else Texto("motor_no_chips")
 
 
-def _solo_sectores(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _solo_sectores(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     sector = _texto(e.sector)
     if sector is None:
-        return "no hay dato de sector"
+        return Texto("motor_sin_dato_sector")
     if sector in p["sectores"]:
         return None
-    return f"es de {sector_es(sector).lower()}, que no está entre tus sectores"
+    return Texto("motor_sector_fuera", sector=Sector(sector))
 
 
-def _sin_sectores(e: EmpresaFoto, p: Mapping[str, Any]) -> str | None:
+def _sin_sectores(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     sector = _texto(e.sector)
     if sector is None:
-        return "no hay dato de sector"
+        return Texto("motor_sin_dato_sector")
     if sector in p["sectores"]:
-        return f"es de {sector_es(sector).lower()}, que dejaste fuera"
+        return Texto("motor_sector_dejado", sector=Sector(sector))
     return None
-
-
-def _lista_sectores(sectores: Any) -> str:
-    nombres = [SECTORES_ES[s].lower() for s in SECTORES_ES if s in sectores]
-    if len(nombres) == 1:
-        return nombres[0]
-    # «tecnología e industria»: la «y» pasa a «e» ante el sonido «i».
-    y = "e" if nombres[-1].startswith("i") else "y"
-    return f"{', '.join(nombres[:-1])} {y} {nombres[-1]}"
 
 
 _ANIOS = Parametro("anios", "el ratio deuda neta/EBITDA máximo (veces)",
@@ -372,47 +364,50 @@ _SECTORES = Parametro("sectores", "los sectores", tipo="sectores")
 
 CATALOGO: dict[str, ReglaCatalogo] = {r.clave: r for r in (
     ReglaCatalogo("grandes", "Empresas grandes",
-                  lambda p: f"capitalización de más de {millones_usd(_GRANDE)}", _grandes),
+                  lambda p: Texto("motor_det_cap_mayor", umbral=Usd(_GRANDE)), _grandes),
     ReglaCatalogo("medianas", "Medianas o grandes",
-                  lambda p: f"capitalización de más de {millones_usd(_MEDIANA)}", _medianas),
+                  lambda p: Texto("motor_det_cap_mayor", umbral=Usd(_MEDIANA)), _medianas),
     ReglaCatalogo("pequenas", "Pequeñas",
-                  lambda p: f"capitalización entre {cifra(_PEQUENA)} y {millones_usd(_MEDIANA)}",
+                  lambda p: Texto("motor_det_cap_entre", desde=UsdAbierto(_PEQUENA),
+                                  hasta=Usd(_MEDIANA)),
                   _pequenas),
     ReglaCatalogo("deuda", "Poca deuda",
-                  lambda p: (f"deuda neta inferior a {_veces(a_decimal(p['anios']))} "
-                             "el EBITDA"),
+                  lambda p: Texto("motor_det_deuda", veces=Veces(a_decimal(p["anios"]))),
                   _deuda, (_ANIOS,)),
-    ReglaCatalogo("caja_neta", "Más caja que deuda", lambda p: "caja neta positiva", _caja_neta),
+    ReglaCatalogo("caja_neta", "Más caja que deuda", lambda p: Texto("motor_det_caja_neta"),
+                  _caja_neta),
     ReglaCatalogo("barata", "Que no esté cara",
-                  lambda p: f"PER por debajo de {cifra(a_decimal(p['per']))}", _barata, (_PER,)),
+                  lambda p: Texto("motor_det_per", per=Cifra(a_decimal(p["per"]))), _barata,
+                  (_PER,)),
     ReglaCatalogo("dividendo", "Reparte dividendo",
-                  lambda p: f"rentabilidad por dividendo de más del "
-                            f"{porcentaje(a_decimal(p['dividendo_pct']))}",
+                  lambda p: Texto("motor_det_dividendo",
+                                  pct=Pct(a_decimal(p["dividendo_pct"]))),
                   _dividendo, (_DIVIDENDO_PCT,)),
     ReglaCatalogo("crecen", "Crecimiento interanual de ventas",
-                  lambda p: f"última variación interanual de ventas superior al "
-                            f"{porcentaje(a_decimal(p['crecimiento_pct']))}",
+                  lambda p: Texto("motor_det_crecimiento",
+                                  pct=Pct(a_decimal(p["crecimiento_pct"]))),
                   _crecen, (_CRECIMIENTO_PCT,)),
     ReglaCatalogo("margen", "Buen margen",
-                  lambda p: f"margen operativo por encima del "
-                            f"{porcentaje(a_decimal(p['margen_pct']))}",
+                  lambda p: Texto("motor_det_margen", pct=Pct(a_decimal(p["margen_pct"]))),
                   _margen, (_MARGEN_PCT,)),
     ReglaCatalogo("rentables", "Muy rentables",
-                  lambda p: f"ROE superior al {porcentaje(a_decimal(p['roe_pct']))}",
+                  lambda p: Texto("motor_det_roe", pct=Pct(a_decimal(p["roe_pct"]))),
                   _rentables, (_ROE_PCT,)),
     ReglaCatalogo("castigadas", "Castigadas",
-                  lambda p: f"a un {porcentaje(_CAIDA)} o más de su máximo del último año",
-                  _castigadas),
-    ReglaCatalogo("sin_energia", "Sin energía", lambda p: "fuera el petróleo y el gas",
+                  lambda p: Texto("motor_det_castigadas", pct=Pct(_CAIDA)), _castigadas),
+    ReglaCatalogo("sin_energia", "Sin energía", lambda p: Texto("motor_det_sin_energia"),
                   _sin_energia),
-    ReglaCatalogo("sin_bancos", "Sin bancos", lambda p: "fuera la banca", _sin_bancos),
-    ReglaCatalogo("sin_tabaco", "Sin tabaco", lambda p: "fuera las tabaqueras", _sin_tabaco),
-    ReglaCatalogo("solo_chips", "Solo chips", lambda p: "empresas de semiconductores",
-                  _solo_chips),
+    ReglaCatalogo("sin_bancos", "Sin bancos", lambda p: Texto("motor_det_sin_bancos"),
+                  _sin_bancos),
+    ReglaCatalogo("sin_tabaco", "Sin tabaco", lambda p: Texto("motor_det_sin_tabaco"),
+                  _sin_tabaco),
+    ReglaCatalogo("solo_chips", "Solo chips", lambda p: Texto("motor_det_chips"), _solo_chips),
     ReglaCatalogo("solo_sectores", "Solo estos sectores",
-                  lambda p: _lista_sectores(p["sectores"]), _solo_sectores, (_SECTORES,)),
+                  lambda p: Texto("motor_det_sectores", lista=ListaSectores(tuple(p["sectores"]))),
+                  _solo_sectores, (_SECTORES,)),
     ReglaCatalogo("sin_sectores", "Sin estos sectores",
-                  lambda p: _lista_sectores(p["sectores"]), _sin_sectores, (_SECTORES,)),
+                  lambda p: Texto("motor_det_sectores", lista=ListaSectores(tuple(p["sectores"]))),
+                  _sin_sectores, (_SECTORES,)),
 )}
 
 # Rangos de tamaño que no se solapan: juntas no dejan pasar a nadie.
@@ -422,32 +417,32 @@ _INCOMPATIBLES = (("grandes", "pequenas"), ("medianas", "pequenas"))
 # --- Validación ----------------------------------------------------------------------------------
 
 
-def validar_reglas(reglas: object) -> list[str]:
-    """Errores en castellano de una lista de reglas; vacía si se puede aplicar tal cual."""
+def validar_reglas(reglas: object) -> list[Texto]:
+    """Errores de una lista de reglas, redactados en castellano; vacía si se puede aplicar."""
     if not isinstance(reglas, list):
-        return ["Las reglas tienen que ir en una lista."]
-    errores: list[str] = []
+        return [Texto("motor_val_lista")]
+    errores: list[Texto] = []
     validas: dict[str, Mapping[str, Any]] = {}
     vistas: set[str] = set()
     for i, regla in enumerate(reglas, 1):
         if not isinstance(regla, Mapping) or not isinstance(regla.get("clave"), str):
-            errores.append(f"La regla {i} tiene que llevar «clave» y, si hace falta, «params».")
+            errores.append(Texto("motor_val_regla_forma", i=i))
             continue
         sobran = sorted(str(k) for k in set(regla) - {"clave", "params"})
         if sobran:
-            errores.append(f"La regla {i} lleva campos que no existen: {', '.join(sobran)}.")
+            errores.append(Texto("motor_val_campos_sobran", i=i, campos=Lista(tuple(sobran))))
         clave = regla["clave"]
         entrada = CATALOGO.get(clave)
         if entrada is None:
-            errores.append(f"La regla «{clave}» no está en el catálogo.")
+            errores.append(Texto("motor_val_regla_desconocida", clave=clave))
             continue
         if clave in vistas:
-            errores.append(f"«{entrada.titulo}» está repetida.")
+            errores.append(Texto("motor_val_repetida", regla=Regla(clave)))
             continue
         vistas.add(clave)
         params = regla.get("params", {})
         if not isinstance(params, Mapping):
-            errores.append(f"Los ajustes de «{entrada.titulo}» tienen que ser un objeto.")
+            errores.append(Texto("motor_val_ajustes_objeto", regla=Regla(clave)))
             continue
         propios = _validar_params(entrada, params)
         errores += propios
@@ -456,13 +451,15 @@ def validar_reglas(reglas: object) -> list[str]:
     return errores + _contradicciones(validas)
 
 
-def _validar_params(entrada: ReglaCatalogo, params: Mapping[str, Any]) -> list[str]:
+def _validar_params(entrada: ReglaCatalogo, params: Mapping[str, Any]) -> list[Texto]:
     sobran = sorted(str(k) for k in set(params) - {p.nombre for p in entrada.parametros})
-    errores = [f"«{entrada.titulo}» no lleva el ajuste «{extra}»." for extra in sobran]
+    errores = [Texto("motor_val_ajuste_sobra", regla=Regla(entrada.clave), extra=extra)
+               for extra in sobran]
     for p in entrada.parametros:
         if p.nombre not in params:
             if not p.opcional:
-                errores.append(f"A «{entrada.titulo}» le falta el ajuste «{p.nombre}».")
+                errores.append(Texto("motor_val_ajuste_falta", regla=Regla(entrada.clave),
+                                     ajuste=p.nombre))
         elif p.tipo == "sectores":
             errores += _validar_sectores(entrada, params[p.nombre])
         else:
@@ -470,40 +467,40 @@ def _validar_params(entrada: ReglaCatalogo, params: Mapping[str, Any]) -> list[s
     return errores
 
 
-def _validar_numero(entrada: ReglaCatalogo, p: Parametro, valor: Any) -> list[str]:
-    donde = f"En «{entrada.titulo}», {p.etiqueta}"
+def _validar_numero(entrada: ReglaCatalogo, p: Parametro, valor: Any) -> list[Texto]:
+    donde = {"regla": Regla(entrada.clave), "etiqueta": Ajuste(p.nombre)}
     if isinstance(valor, bool) or not isinstance(valor, int | float | Decimal):
-        return [f"{donde} tiene que ser un número."]
+        return [Texto("motor_val_numero", **donde)]
     d = a_decimal(valor)
     if d is None:
-        return [f"{donde} tiene que ser un número."]
+        return [Texto("motor_val_numero", **donde)]
     if p.minimo is None or p.maximo is None or p.paso is None:
         raise TypeError(f"el ajuste numérico «{p.nombre}» no tiene rango")
     if not p.minimo <= d <= p.maximo:
-        return [f"{donde} va de {cifra(p.minimo)} a {cifra(p.maximo)}."]
+        return [Texto("motor_val_rango", **donde, desde=Cifra(p.minimo), hasta=Cifra(p.maximo))]
     if (d - p.minimo) % p.paso != 0:
-        return [f"{donde} va de {cifra(p.paso)} en {cifra(p.paso)}."]
+        return [Texto("motor_val_paso", **donde, paso=Cifra(p.paso))]
     return []
 
 
-def _validar_sectores(entrada: ReglaCatalogo, valor: Any) -> list[str]:
+def _validar_sectores(entrada: ReglaCatalogo, valor: Any) -> list[Texto]:
+    regla = Regla(entrada.clave)
     if not isinstance(valor, list | tuple) or not valor:
-        return [f"En «{entrada.titulo}», elige al menos un sector."]
-    errores: list[str] = []
+        return [Texto("motor_val_sector_minimo", regla=regla)]
+    errores: list[Texto] = []
     vistos: set[str] = set()
     for s in valor:
         if not isinstance(s, str) or s not in SECTORES_ES:
-            errores.append(f"En «{entrada.titulo}», «{s}» no es uno de los 11 sectores.")
+            errores.append(Texto("motor_val_sector_invalido", regla=regla, sector=s))
         elif s in vistos:
-            errores.append(f"En «{entrada.titulo}», {sector_es(s).lower()} está repetido.")
+            errores.append(Texto("motor_val_sector_repetido", regla=regla, sector=Sector(s)))
         else:
             vistos.add(s)
     return errores
 
 
-def _contradicciones(validas: Mapping[str, Mapping[str, Any]]) -> list[str]:
-    errores = [f"«{CATALOGO[a].titulo}» y «{CATALOGO[b].titulo}» no pueden ir juntas: ninguna "
-               "empresa cumple las dos."
+def _contradicciones(validas: Mapping[str, Mapping[str, Any]]) -> list[Texto]:
+    errores = [Texto("motor_val_incompatibles", a=Regla(a), b=Regla(b))
                for a, b in _INCOMPATIBLES if a in validas and b in validas]
     permitidos = set(SECTORES_ES)
     if "solo_sectores" in validas:
@@ -513,9 +510,10 @@ def _contradicciones(validas: Mapping[str, Mapping[str, Any]]) -> list[str]:
     if "sin_energia" in validas:
         permitidos.discard("Energy")
     if not permitidos:
-        errores.append("Con estas reglas no queda ningún sector: no pasaría ninguna empresa.")
+        errores.append(Texto("motor_val_sin_sectores"))
     elif "solo_chips" in validas and "Technology" not in permitidos:
-        errores.append("«Solo chips» necesita el sector tecnología, y tus reglas lo dejan fuera.")
+        errores.append(Texto("motor_val_chips", regla=Regla("solo_chips"),
+                             sector=Sector("Technology")))
     return errores
 
 

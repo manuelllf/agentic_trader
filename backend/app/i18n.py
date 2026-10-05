@@ -1,15 +1,16 @@
 """Idioma de presentación por petición, separado de datos y decisiones del motor."""
 
 import json
-from pathlib import Path
-
+import re
 from contextvars import ContextVar
 from copy import deepcopy
+from pathlib import Path
 from typing import Literal
 
 Locale = Literal["es", "en"]
 current_locale: ContextVar[Locale] = ContextVar("presentation_locale", default="es")
-MESSAGES = {locale: json.loads((Path(__file__).parent / "messages" / f"{locale}.json").read_text(encoding="utf-8"))
+_CARPETA = Path(__file__).parent / "messages"
+MESSAGES = {locale: json.loads((_CARPETA / f"{locale}.json").read_text(encoding="utf-8"))
             for locale in ("es", "en")}
 
 
@@ -40,14 +41,31 @@ def present_catalog(payload: dict, locale: Locale) -> dict:
     for rule in result["reglas"]:
         rule["titulo"] = translate(f"liga_catalogo_regla_{rule['clave']}", locale)
         for parameter in rule["parametros"]:
-            parameter["etiqueta"] = translate(f"liga_catalogo_parametro_{parameter['nombre']}", locale)
-    result["pesos"]["etiquetas"] = {key: translate(f"liga_catalogo_peso_{key}", locale) for key in result["pesos"]["etiquetas"]}
+            parameter["etiqueta"] = translate(
+                f"liga_catalogo_parametro_{parameter['nombre']}", locale)
+    result["pesos"]["etiquetas"] = {
+        key: translate(f"liga_catalogo_peso_{key}", locale) for key in result["pesos"]["etiquetas"]}
     return result
 
 
 ERROR_KEYS = {value: key for key, value in MESSAGES["es"].items() if key.startswith("api_error_")}
 
 
+# Mensajes de la base de datos: con huecos (`{a}`, `{b}`) o escritos en inglés por el proveedor.
+_PLANTILLAS_BD = tuple(
+    (re.compile(re.escape(texto).replace(r"\{a\}", "(?P<a>.+?)").replace(r"\{b\}", "(?P<b>.+?)")),
+     clave)
+    for clave, texto in MESSAGES["es"].items() if clave.startswith("dberr_tpl_"))
+_ORIGEN_INGLES = {"authenticated identity required": "dberr_login",
+                  "authenticated session required": "dberr_login"}
+
+
 def present_error_detail(detail: str, locale: Locale | None = None) -> str:
-    key = ERROR_KEYS.get(detail)
-    return translate(key, locale) if key else detail
+    key = ERROR_KEYS.get(detail) or _ORIGEN_INGLES.get(detail)
+    if key:
+        return translate(key, locale)
+    for patron, clave in _PLANTILLAS_BD:
+        encontrado = patron.fullmatch(detail)
+        if encontrado:
+            return translate(clave, locale, **encontrado.groupdict())
+    return detail

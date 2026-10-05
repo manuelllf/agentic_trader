@@ -1,4 +1,4 @@
-"""Curva y riesgo derivados de posiciones y cierres guardados, sin descargar precios ni llamar modelos."""
+"""Curva y riesgo a partir de posiciones y cierres guardados, sin precios nuevos ni modelos."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import precios
+from app.i18n import current_locale, translate
 from app.liga.motor.catalogo import CATALOGO, CATALOGO_VERSION, validar_reglas
+from app.liga.motor.mensajes import Regla, presentar
 
 MIN_OBSERVACIONES = 60
 SESIONES_ANUALES = 252
@@ -19,7 +21,7 @@ SESIONES_ANUALES = 252
 
 def metricas_diarias(retornos: Sequence[float], niveles: Sequence[float],
                      minimo: int = MIN_OBSERVACIONES) -> dict:
-    """Anualiza con rf y MAR cero, desviación muestral y downside RMS; respeta el mínimo de retornos recibido."""
+    """Anualiza con rf y MAR cero, desviación muestral y downside RMS; exige `minimo` retornos."""
     n = len(retornos)
     if any(not math.isfinite(r) for r in retornos) or any(
         not math.isfinite(nivel) for nivel in niveles
@@ -130,31 +132,36 @@ def _resultado_reglas(receta, empresa) -> tuple[list[dict], str]:  # noqa: ANN00
         clave = item["clave"]
         regla = CATALOGO[clave]
         params = item.get("params") or {}
-        detalle = regla.detalle(params)
+        idioma = current_locale.get()
+        detalle = presentar(regla.detalle(params), idioma)
+        titulo = Regla(clave).redactar(idioma)
         if empresa is None:
-            salida.append({"clave": clave, "titulo": regla.titulo, "detalle": detalle,
-                           "cumple": None, "motivo": "No figura en la foto de formación."})
+            salida.append({"clave": clave, "titulo": titulo, "detalle": detalle,
+                           "cumple": None, "motivo": translate("liga_rend_no_figura")})
             continue
         motivo = regla.evaluar(empresa, params)
         if motivo is None:
             cumple = True
-        elif motivo.startswith("no hay dato") or motivo.startswith("no consta "):
+        elif motivo.sin_dato:
             cumple = None
         else:
             cumple = False
-        salida.append({"clave": clave, "titulo": regla.titulo, "detalle": detalle,
-                       "cumple": cumple, "motivo": motivo})
+        salida.append({"clave": clave, "titulo": titulo, "detalle": detalle,
+                       "cumple": cumple, "motivo": presentar(motivo, idioma)})
     return salida, "disponible"
 
 
 def _reglas_no_disponibles(reglas: list) -> list[dict]:
-    return [{"clave": (item.get("clave") if isinstance(item, dict)
-                       and isinstance(item.get("clave"), str) else "desconocida"),
-             "titulo": (item.get("clave") if isinstance(item, dict)
-                        and isinstance(item.get("clave"), str) else "Regla histórica"),
-             "detalle": "No reproducible con el catálogo actual.", "cumple": None,
-             "motivo": "No se puede evaluar esta versión de la receta con el catálogo actual."}
-            for item in reglas]
+    salida = []
+    for item in reglas:
+        clave = item.get("clave") if isinstance(item, dict) else None
+        valida = isinstance(clave, str)
+        salida.append({
+            "clave": clave if valida else "desconocida",
+            "titulo": clave if valida else translate("liga_rend_regla_historica"),
+            "detalle": translate("liga_rend_no_reproducible"), "cumple": None,
+            "motivo": translate("liga_rend_version_no_evaluable")})
+    return salida
 
 
 def _rendimiento_por_posicion(tickers: Sequence[str], base: date, limite: date,
@@ -215,8 +222,11 @@ def _evidencia_formacion(contexto: dict, series: dict, as_of: date,
     if receta is not None and version_ok and not validar_reglas(receta.reglas or []):
         for item in receta.reglas or []:
             regla = CATALOGO[item["clave"]]
-            regla_meta.append({"clave": item["clave"], "titulo": regla.titulo,
-                               "detalle": regla.detalle(item.get("params") or {})})
+            regla_meta.append({
+                "clave": item["clave"], "titulo": Regla(item["clave"]).redactar(
+                    current_locale.get()),
+                "detalle": presentar(regla.detalle(item.get("params") or {}),
+                                     current_locale.get())})
 
     limite = actual["dia_fin"] if actual["estado_jornada"] == "cerrada" else min(
         actual["dia_fin"], as_of)
@@ -230,7 +240,7 @@ def _evidencia_formacion(contexto: dict, series: dict, as_of: date,
         pos["reglas"] = reglas if contexto["foto_disponible"] else _reglas_no_disponibles(
             receta.reglas or [] if receta is not None else [])
         if not contexto["foto_disponible"]:
-            pos["reglas"] = [dict(r, motivo="No se conserva la foto exacta de formación.")
+            pos["reglas"] = [dict(r, motivo=translate("liga_rend_sin_foto_exacta"))
                              for r in pos["reglas"]]
         pos["rendimiento"] = retornos[ticker]
 
@@ -428,10 +438,7 @@ def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, D
     metrics = metricas_diarias(retornos_validos, niveles_estrategia)
     return {
         "estado": "disponible",
-        "metodologia": ("Cierres guardados; dividendos reinvertidos y splits incluidos. "
-                        "Cada jornada mantiene sus pesos y la caja rinde 0 %. "
-                        "Métricas con sesiones US consecutivas y datos completos de cartera y SPY; "
-                        "rf/MAR 0 %, anualización 252 sesiones; mínimo 60 retornos diarios."),
+        "metodologia": translate("liga_rend_metodologia"),
         "oficial_hasta": official_until.isoformat() if official_until else None,
         "provisional_hasta": provisional_until.isoformat() if provisional_until else None,
         "incompleta": incomplete,
@@ -441,6 +448,6 @@ def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, D
 
 
 def _sin_datos() -> dict:
-    return {"estado": "sin_datos", "metodologia": "Aún no hay cierres guardados suficientes.",
+    return {"estado": "sin_datos", "metodologia": translate("liga_rend_sin_cierres"),
             "oficial_hasta": None, "provisional_hasta": None, "incompleta": False,
             "serie": [], "metricas": None, "evidencia": None}

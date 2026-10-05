@@ -1,7 +1,7 @@
-"""Cifras en castellano para los textos del motor (DESIGN.md §10).
+"""Cifras para los textos del motor (DESIGN.md §10), en castellano o en inglés de EE. UU.
 
-Coma decimal, punto de miles, menos tipográfico (U+2212) y espacio duro antes de % y M$. Sin
-ceros de sobra a la derecha, como la maqueta: «2,5», «3», «1.900».
+En castellano: coma decimal, punto de miles, menos tipográfico (U+2212) y espacio duro antes de
+% y M$. Sin ceros de sobra a la derecha, como la maqueta: «2,5», «3», «1.900».
 
 Una cifra que se compara con un umbral gana decimales si al redondear se confundiría con él:
 «vale 1.999,6 M$ y pides más de 2.000 M$», nunca «vale 2.000 M$ y pides más de 2.000 M$».
@@ -53,8 +53,10 @@ def redondear(valor: Numero, decimales: int = 1) -> Decimal:
     return d.quantize(Decimal(1).scaleb(-decimales), rounding=ROUND_HALF_UP)
 
 
-def cifra(valor: Numero, decimales: int = 1, frente_a: Iterable[Numero] = ()) -> str:
-    """«2.987», «2,5», «−0,3». `frente_a`: umbrales con los que no se debe confundir."""
+def cifra(valor: Numero, decimales: int = 1, frente_a: Iterable[Numero] = (),
+          locale: str = "es") -> str:
+    """«2.987», «2,5», «−0,3» (en inglés «2,987», «2.5»). `frente_a`: umbrales con los que no se
+    debe confundir."""
     d = a_decimal(valor)
     if d is None:
         raise ValueError("no hay cifra que escribir")
@@ -64,28 +66,36 @@ def cifra(valor: Numero, decimales: int = 1, frente_a: Iterable[Numero] = ()) ->
     while extra < _DECIMALES_EXTRA and q in umbrales and d not in umbrales:
         extra += 1
         q = redondear(d, decimales + extra)
-    return _escribir(q)
+    return _escribir(q, locale)
 
 
-def porcentaje(valor: Numero, decimales: int = 1, frente_a: Iterable[Numero] = ()) -> str:
-    """«2,5 %», con espacio duro."""
-    return f"{cifra(valor, decimales, frente_a)}{NBSP}%"
+def porcentaje(valor: Numero, decimales: int = 1, frente_a: Iterable[Numero] = (),
+               locale: str = "es") -> str:
+    """«2,5 %», con espacio duro (en inglés «2.5%»)."""
+    junto = "%" if locale == "en" else f"{NBSP}%"
+    return f"{cifra(valor, decimales, frente_a, locale)}{junto}"
 
 
-def millones_usd(millones: Numero, frente_a: Iterable[Numero] = ()) -> str:
-    """Capitalización en millones de dólares: «1.900 M$»; desde el billón, «3,4 billones de $»."""
+def millones_usd(millones: Numero, frente_a: Iterable[Numero] = (), locale: str = "es") -> str:
+    """Capitalización en millones de dólares: «1.900 M$»; desde el billón, «3,4 billones de $»
+    (en inglés «$1,900M» y «$3.4 trillion»: el billón español es el trillion de EE. UU.)."""
     m = a_decimal(millones)
     if m is None:
         raise ValueError("no hay capitalización que escribir")
+    if locale == "en":
+        if abs(m) >= 1_000_000:
+            return f"${cifra(m / 1_000_000, 1, (), locale)} trillion"
+        return f"${cifra(m, 0, frente_a, locale)}M"
     if abs(m) >= 1_000_000:
         b = cifra(m / 1_000_000, 1)
         return f"{b}{NBSP}{'billón' if b == '1' else 'billones'} de $"
     return f"{cifra(m, 0, frente_a)}{NBSP}M$"
 
 
-def _escribir(q: Decimal) -> str:
+def _escribir(q: Decimal, locale: str = "es") -> str:
     signo = MENOS if q < 0 else ""
     entero, _, fraccion = f"{abs(q):f}".partition(".")
     fraccion = fraccion.rstrip("0")
-    miles = f"{int(entero):,}".replace(",", ".")
-    return signo + miles + (f",{fraccion}" if fraccion else "")
+    en = locale == "en"
+    miles = f"{int(entero):,}" if en else f"{int(entero):,}".replace(",", ".")
+    return signo + miles + (f"{'.' if en else ','}{fraccion}" if fraccion else "")

@@ -9,10 +9,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.i18n import current_locale, present_error_detail, translate
 from app.liga import acceso, estrategias
 from app.liga.auth import Identidad, require_jugador
 from app.liga.db import db_usuario
 from app.liga.motor.catalogo import CATALOGO_VERSION
+from app.liga.motor.mensajes import presentar
 from app.liga.motor.seleccion import SIN_NOTAS, SIN_RESPUESTA, explicar, seleccionar
 
 router = APIRouter(tags=["liga-seleccion"])
@@ -92,7 +94,7 @@ def previsualizar(body: PreviewSeleccionIn,
         contexto = estrategias.foto_y_notas_actuales()
     except HTTPException as exc:
         if exc.status_code in (404, 409):
-            return _sin_datos(exc.detail)
+            return _sin_datos(present_error_detail(exc.detail, current_locale.get()))
         raise
 
     respuestas = estrategias.respuestas_sistema(pregunta, contexto.foto_id)
@@ -105,15 +107,13 @@ def previsualizar(body: PreviewSeleccionIn,
     )
     estado = "incompleto" if sin_notas or sin_respuesta else "disponible"
     if estado == "incompleto":
-        mensaje = (f"Vista parcial: {sin_notas} candidatas aún no tienen puntuación guardada. "
-                   "No se han solicitado puntuaciones nuevas.")
+        mensaje = translate("liga_preview_parcial", sin_notas=sin_notas)
         if sin_respuesta:
-            mensaje += f" {sin_respuesta} no tienen respuesta guardada a tu pregunta."
+            mensaje += " " + translate("liga_preview_sin_respuesta", sin_respuesta=sin_respuesta)
     elif contexto.plan_b:
-        mensaje = ("Vista con los últimos datos guardados; este mes aún no tiene escaneo "
-                   "completo.")
+        mensaje = translate("liga_preview_plan_b")
     else:
-        mensaje = "Vista basada en la última foto y las puntuaciones ya guardadas."
+        mensaje = translate("liga_preview_normal")
     return PreviewSeleccionOut(
         estado=estado, mensaje=mensaje, plan_b=contexto.plan_b,
         foto_id=contexto.foto_id, scan_run_id=contexto.scan_run_id,
@@ -126,8 +126,9 @@ def previsualizar(body: PreviewSeleccionIn,
         caja_pct=float(resultado.caja_pct),
         elegidas=[EmpresaPreviewOut(
             ticker=e.ticker, nombre=e.fila.empresa.nombre, sector=e.fila.empresa.sector,
-            peso=float(e.peso), porque=e.porque,
+            peso=float(e.peso), porque=presentar(e.porque, current_locale.get()),
         ) for e in resultado.elegidas],
-        explicacion=explicar(body.ticker.strip().upper(), resultado, receta)
+        explicacion=presentar(explicar(body.ticker.strip().upper(), resultado, receta),
+                              current_locale.get())
         if body.ticker and body.ticker.strip() else None,
     )

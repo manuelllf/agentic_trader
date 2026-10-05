@@ -37,10 +37,10 @@ from app.liga.motor.catalogo import (
     ReglaPreparada,
     preparar,
     primer_fallo,
-    sector_es,
     validar_reglas,
 )
-from app.liga.motor.formato import NBSP, a_decimal, cifra, redondear
+from app.liga.motor.formato import a_decimal, redondear
+from app.liga.motor.mensajes import Cifra, Lista, Pct, Peso, Sector, Texto
 
 PESOS = ("negocio", "precio", "deuda", "pronto", "pregunta")
 ETIQUETAS_PESO = {
@@ -58,9 +58,8 @@ PASO_PESO = 5
 MAX_POR_SECTOR = 10
 MAX_EXCLUIDAS = 50
 TOPE_PREGUNTA = 300
-SIN_NOTAS = "la IA no la puntuó este mes"
-SIN_RESPUESTA = (f"no tiene respuesta a tu pregunta (solo se hace a las {TOPE_PREGUNTA} "
-                 "mejores por las otras notas)")
+SIN_NOTAS = Texto("motor_sin_notas")
+SIN_RESPUESTA = Texto("motor_sin_respuesta", tope=TOPE_PREGUNTA)
 
 # Cada peso de la receta con su nota de Jev (`scan_audit.jev_*`).
 _NOTA_DE_PESO = {
@@ -206,48 +205,47 @@ class Seleccion:
 # --- Validación ----------------------------------------------------------------------------------
 
 
-def validar_receta(receta: Receta) -> list[str]:
+def validar_receta(receta: Receta) -> list[Texto]:
     """Errores en castellano; vacía si la receta se puede aplicar."""
     if receta.catalogo_version != CATALOGO_VERSION:
-        return [f"Las reglas son de la versión {receta.catalogo_version} del catálogo y el motor "
-                f"aplica la {CATALOGO_VERSION}."]
+        return [Texto("motor_val_version", version=receta.catalogo_version,
+                      actual=CATALOGO_VERSION)]
     errores = validar_reglas(receta.reglas)
     errores += _validar_excluidas(receta.excluidas)
     errores += _validar_pesos(receta.pesos)
     n = receta.n_empresas
     if isinstance(n, bool) or n not in N_EMPRESAS:
-        errores.append("La cartera puede tener 3, 5, 7 o 10 empresas.")
+        errores.append(Texto("motor_val_n_empresas"))
     if receta.reparto not in REPARTOS:
-        errores.append("El reparto es a partes iguales («igual») o según la nota («nota»).")
+        errores.append(Texto("motor_val_reparto"))
     # Mismo rango que la BD: un tope mayor que N es como no ponerlo.
     m = receta.max_por_sector
     if isinstance(m, bool) or not isinstance(m, int) or not 0 <= m <= MAX_POR_SECTOR:
-        errores.append(f"El máximo por sector va de 1 a {MAX_POR_SECTOR}, o 0 para no poner "
-                       "límite.")
+        errores.append(Texto("motor_val_max_sector", maximo=MAX_POR_SECTOR))
     return errores
 
 
-def _validar_excluidas(excluidas: object) -> list[str]:
+def _validar_excluidas(excluidas: object) -> list[Texto]:
     if not isinstance(excluidas, tuple | list):
-        return ["Las empresas quitadas a mano van en una lista de tickers."]
+        return [Texto("motor_val_excluidas_lista")]
     if len(excluidas) > MAX_EXCLUIDAS:
-        return [f"Puedes quitar a mano hasta {MAX_EXCLUIDAS} empresas."]
+        return [Texto("motor_val_excluidas_max", maximo=MAX_EXCLUIDAS)]
     errores = []
     if any(not isinstance(t, str) or not t.strip() for t in excluidas):
-        errores.append("Hay una empresa quitada a mano sin ticker.")
+        errores.append(Texto("motor_val_excluida_vacia"))
     repetidas = sorted({t for t in excluidas if isinstance(t, str) and excluidas.count(t) > 1})
     if repetidas:
-        errores.append(f"Empresas quitadas dos veces: {', '.join(repetidas)}.")
+        errores.append(Texto("motor_val_excluidas_repetidas", lista=Lista(tuple(repetidas))))
     return errores
 
 
-def _validar_pesos(pesos: object) -> list[str]:
+def _validar_pesos(pesos: object) -> list[Texto]:
     if not isinstance(pesos, Mapping) or set(pesos) != set(PESOS):
-        return ["Los pesos son cinco: negocio, precio, deuda, pronto y pregunta."]
-    errores = [f"«{ETIQUETAS_PESO[k]}» pesa de 0 a {PESO_MAXIMO}, de {PASO_PESO} en {PASO_PESO}."
+        return [Texto("motor_val_pesos_cinco")]
+    errores = [Texto("motor_val_peso", peso=Peso(k), maximo=PESO_MAXIMO, paso=PASO_PESO)
                for k in PESOS if not _peso_valido(pesos[k])]
     if not errores and sum(pesos.values()) == 0:
-        errores.append("Da peso al menos a una nota: si no, no hay con qué ordenar.")
+        errores.append(Texto("motor_val_peso_cero"))
     return errores
 
 
@@ -415,40 +413,40 @@ def _truncar(x: Fraction) -> Decimal:
     return Decimal(math.floor(x * 10_000)).scaleb(-4)
 
 
-def _porque(f: FilaSeleccion) -> str:
+def _porque(f: FilaSeleccion) -> Texto:
     """El porqué de cada elegida, como `reason()` de la maqueta."""
     # La cuenta interna va de 0 a 10; al usuario se le enseña sobre 100, como el resto de la marca.
-    nota = f"Nota {cifra((f.nota_exacta or 0) * 10, 0)}."
+    nota = Texto("motor_porque_nota", nota=Cifra((f.nota_exacta or 0) * 10, 0))
     if f.respuesta is not None:
-        si = "sí" if f.respuesta.si else "no"
-        return f"La IA contesta que {si}, con seguridad {f.respuesta.seguridad}. {nota}"
+        return Texto("motor_porque_ia", si=Texto("motor_si" if f.respuesta.si else "motor_no"),
+                     seguridad=Texto(f"motor_seguridad_{f.respuesta.seguridad}"), nota=nota)
     if f.mejor_nota is not None:
-        return f"Destaca en «{ETIQUETAS_PESO[f.mejor_nota].lower()}». {nota}"
+        return Texto("motor_porque_destaca", peso=Peso(f.mejor_nota, minusculas=True), nota=nota)
     return nota
 
 
-def explicar(ticker: str, seleccion: Seleccion, receta: Receta) -> str:
+def explicar(ticker: str, seleccion: Seleccion, receta: Receta) -> Texto:
     """«¿Por qué no sale X?»: los mensajes de `explain()` de la maqueta, con la misma receta que
     dio la selección."""
     fila = seleccion.fila(ticker)
     if fila is None:
-        return f"{ticker} no está entre las empresas de la foto de este mes."
+        return Texto("motor_exp_foto", ticker=ticker)
     nombre = fila.empresa.nombre or fila.ticker
     if fila.excluida:
-        return f"{nombre}: la quitaste tú. Si la quieres de vuelta, recupérala en tus reglas."
+        return Texto("motor_exp_quitada", nombre=nombre)
     if fila.fallo is not None:
-        return f"{nombre} no entra: {fila.fallo}."
+        return Texto("motor_exp_no_entra", nombre=nombre, motivo=fila.fallo)
     for i, elegida in enumerate(seleccion.elegidas, 1):
         if elegida.ticker == ticker:
-            return f"{nombre} entra: es la {i}.ª, con un {cifra(elegida.peso, 0)}{NBSP}%."
+            return Texto("motor_exp_entra", nombre=nombre, puesto=i, peso=Pct(elegida.peso, 0))
     if any(f.ticker == ticker for f in seleccion.saltadas_por_sector):
         sector = _sector(fila.empresa)
-        de_quien = f"de {sector_es(sector).lower()}" if sector else "sin sector conocido"
-        return (f"{nombre} pasa tus reglas, pero ya hay {receta.max_por_sector} {de_quien} "
-                "y no caben más.")
+        de_quien = (Texto("motor_de_sector", sector=Sector(sector)) if sector
+                    else Texto("motor_sin_sector"))
+        return Texto("motor_exp_sector", nombre=nombre, maximo=receta.max_por_sector,
+                     de_quien=de_quien)
     if any(f.ticker == ticker for f in seleccion.sin_peso):
-        return (f"{nombre} pasa tus reglas, pero su nota es 0 y, repartiendo por nota, no pesa "
-                "nada.")
+        return Texto("motor_exp_sin_peso", nombre=nombre)
     puesto = next(i for i, f in enumerate(seleccion.pasan, 1) if f.ticker == ticker)
-    return (f"{nombre} pasa tus reglas, pero queda la {puesto}.ª por nota "
-            f"({cifra(fila.nota_exacta or 0, 1)}) y entran las {receta.n_empresas} primeras.")
+    return Texto("motor_exp_puesto", nombre=nombre, puesto=puesto,
+                 nota=Cifra(fila.nota_exacta or 0, 1), n=receta.n_empresas)
