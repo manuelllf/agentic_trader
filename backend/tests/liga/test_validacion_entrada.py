@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.liga.auth import require_usuario
 from app.liga.db import db_usuario
 from app.liga.rutas_estrategias import RecetaIn, ReglaIn
 from app.liga.rutas_gestion import CreditoIn
@@ -51,5 +52,6 @@ def test_el_ticker_de_la_ruta_tiene_largo_maximo() -> None:
     app = FastAPI()
     app.include_router(router, prefix="/liga")
     app.dependency_overrides[db_usuario] = lambda: None   # la validación va antes que la BD
+    app.dependency_overrides[require_usuario] = lambda: None
     r = TestClient(app).post(f"/liga/estrategias/{uuid.uuid4()}/exclusiones/{'A' * 17}")
     assert r.status_code == 422
