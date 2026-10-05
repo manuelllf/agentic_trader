@@ -50,5 +50,6 @@
   "common_seguimiento_sin_dos_carteras": "Aún no hay dos carteras formadas con las que comparar.",
   "common_seguimiento_nota": "La comparación refleja posiciones guardadas; no confirma una reevaluación de reglas.",
   "common_seguimiento_sin_pregunta": "Este mes jugó sin tu pregunta: {motivo, select, sin_ia {la IA no estaba disponible} tope {se alcanzó el tope de gasto de IA} incompleta {no llegaron todas las respuestas} tiempo {se agotó el tiempo para contestar} other {faltaron respuestas}}. Se eligió con las cuatro notas.",
+  "common_seguimiento_quitadas_vaciadas": "Cambiaste la configuración respecto al mes anterior: sus empresas quitadas no se aplicaron.",
   "common_seguimiento_ninguna": "Ninguna"
 }

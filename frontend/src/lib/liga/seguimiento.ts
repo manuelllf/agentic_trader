@@ -34,6 +34,7 @@ export type SeguimientoEstrategia = {
   cambio_cartera: CambioCartera | null;
   cambio_desde_revision?: CambioCartera | null;
   sin_pregunta?: MotivoSinPregunta | null;
+  quitadas_vaciadas?: boolean;
 };
 
 export type MotivoSinPregunta = "sin_ia" | "tope" | "incompleta" | "tiempo";

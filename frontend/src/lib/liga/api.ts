@@ -415,6 +415,26 @@ export async function quitarExclusion(id: string, ticker: string): Promise<Recet
   });
 }
 
+/** Una estrategia en la ventana de cambios: desde el corte hasta que abre la jornada. */
+export interface EmpresaVentana { ticker: string; nombre: string | null; sector: string | null; peso: number | string }
+export interface Ventana {
+  estrategia_id: string;
+  fase: "formando" | "cambios";
+  jornada_id: number;
+  cierra: string;
+  cartera: EmpresaVentana[];
+  quitadas: { ticker: string; nombre: string | null }[];
+  quitadas_formacion: string[];
+}
+
+export async function miVentana(): Promise<Ventana[] | string> {
+  return llamar<Ventana[]>("/liga/estrategias/ventana");
+}
+
+export async function volverALaFormacion(id: string): Promise<Receta | string> {
+  return llamar<Receta>(`/liga/estrategias/${id}/formacion/volver`, { method: "POST" });
+}
+
 export async function probarEstrategia(
   id: string, conPregunta?: { idempotencia: string },
 ): Promise<Prueba | string> {

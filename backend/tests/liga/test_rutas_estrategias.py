@@ -431,6 +431,9 @@ def test_ventana_de_cambios_por_la_api(api) -> None:  # noqa: ANN001
     try:
         [v] = cliente.get("/liga/estrategias/ventana", headers=cab(uid)).json()
         assert (v["estrategia_id"], v["fase"], v["quitadas_formacion"]) == (eid, "cambios", [])
+        assert {e["ticker"] for e in v["cartera"]} == {t for t, *_ in _EMPRESAS}
+        assert {e["nombre"] for e in v["cartera"]} == {f"Empresa {t}" for t, *_ in _EMPRESAS}
+        assert v["quitadas"] == []
         # Hasta que abra la jornada solo Cambiar y Recuperar: lo demás se rechaza.
         assert _receta(cliente, cab, uid, eid).status_code == 409
         assert cliente.post(f"/liga/estrategias/{eid}/cada-dia-1", json={"opcion": "mantener"},
@@ -441,7 +444,9 @@ def test_ventana_de_cambios_por_la_api(api) -> None:  # noqa: ANN001
         assert r.json()["excluidas"] == ["ZPA"]
         assert posiciones() == {"ZPB", "ZPC", "ZPD", "ZPE"}
         [v] = cliente.get("/liga/estrategias/ventana", headers=cab(uid)).json()
-        assert v["quitadas_formacion"] == []
+        assert v["quitadas_formacion"] == []           # la de la formación sigue sin quitadas
+        assert v["quitadas"] == [{"ticker": "ZPA", "nombre": "Empresa ZPA"}]
+        assert {e["ticker"] for e in v["cartera"]} == {"ZPB", "ZPC", "ZPD", "ZPE"}
 
         r = cliente.post(f"/liga/estrategias/{eid}/formacion/volver", headers=cab(uid))
         assert r.status_code == 200 and r.json()["id"] == receta["id"]

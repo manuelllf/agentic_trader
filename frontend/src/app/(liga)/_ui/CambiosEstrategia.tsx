@@ -58,6 +58,9 @@ export function CambiosEstrategia({ resumen, alMostrar }: {
           {t("common_seguimiento_sin_pregunta", { motivo: resumen.sin_pregunta })}
         </p>
       )}
+      {resumen.quitadas_vaciadas && (
+        <p className={styles.note} role="status">{t("common_seguimiento_quitadas_vaciadas")}</p>
+      )}
 
       {resultado ? (
         <div className={styles.metrics}>

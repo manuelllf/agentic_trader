@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { getTranslations } from "next-intl/server";
-import { EditorEstrategia } from "../../_crear/EditorEstrategia";
+import { EditorOVentana } from "../../_crear/EditorOVentana";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations();
@@ -14,5 +14,5 @@ export default async function EditarEstrategia({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <Suspense><EditorEstrategia estrategiaIdInicial={id} /></Suspense>;
+  return <Suspense><EditorOVentana estrategiaId={id} /></Suspense>;
 }

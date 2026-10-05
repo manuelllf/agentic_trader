@@ -133,6 +133,18 @@ class CadaDia1In(BaseModel):
     opcion: Literal["revisar", "mantener"]
 
 
+class EmpresaVentanaOut(BaseModel):
+    ticker: str
+    nombre: str | None
+    sector: str | None
+    peso: Decimal
+
+
+class QuitadaOut(BaseModel):
+    ticker: str
+    nombre: str | None
+
+
 class VentanaOut(BaseModel):
     """Una estrategia en la ventana de cambios: formándose o ya formada y cambiable hasta `cierra`.
     `quitadas_formacion`: las quitadas con las que salió la cartera de la formación."""
@@ -141,6 +153,8 @@ class VentanaOut(BaseModel):
     fase: Literal["formando", "cambios"]
     jornada_id: int
     cierra: datetime
+    cartera: list[EmpresaVentanaOut] = Field(default_factory=list)
+    quitadas: list[QuitadaOut] = Field(default_factory=list)
     quitadas_formacion: list[str] = Field(default_factory=list)
 
 
@@ -277,10 +291,9 @@ def mi_ventana(db: Session = Depends(db_usuario)) -> list[VentanaOut]:
         v = cambios.ventana_de(db, estrategia_id)
         if v is None:
             continue
-        quitadas = (cambios.quitadas_de_la_formacion(v)
-                    if v.fase == cambios.FASE_CAMBIOS else [])
+        extra = cambios.detalle(v) if v.fase == cambios.FASE_CAMBIOS else {}
         salida.append(VentanaOut(estrategia_id=estrategia_id, fase=v.fase, jornada_id=v.jornada_id,
-                                 cierra=v.cierra, quitadas_formacion=quitadas))
+                                 cierra=v.cierra, **extra))
     return salida
 
 

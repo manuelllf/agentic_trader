@@ -15,3 +15,4 @@ export * from "./OpcionRadio";
 export * from "./Segmentado";
 export * from "./Tarjeta";
 export * from "./Vacio";
+export * from "./VentanaCambios";

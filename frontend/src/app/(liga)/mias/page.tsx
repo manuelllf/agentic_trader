@@ -5,12 +5,12 @@ import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import { Sesion } from "../_sesion/Sesion";
-import { BarraPestanas, Boton, Cargando, Escudo, ErrorLiga, Segmentado, Vacio }
+import { BarraPestanas, Boton, Cargando, Escudo, ErrorLiga, Segmentado, Vacio, cierreDeCambios }
   from "../_ui";
 import {
   borrarEstrategia, cadaDia1, desapuntar, apuntar as apuntarApi, getJornadaPublica,
-  getClasificacion, getPortada, misEstrategias, type Clasificacion, type Estrategia,
-  type JornadaDetalle, type Portada,
+  getClasificacion, getPortada, miVentana, misEstrategias, type Clasificacion, type Estrategia,
+  type JornadaDetalle, type Portada, type Ventana,
 } from "@/lib/liga/api";
 import { mutar, useCache } from "@/lib/liga/cache";
 import { claseSigno, porcentaje, signo } from "@/lib/liga/format";
@@ -61,6 +61,12 @@ export default function Mias() {
   const { datos: seguimiento } = useCache<SeguimientoEstrategia[] | string>(
     estado === "dentro" ? "seguimiento" : null, getSeguimiento,
   );
+
+  // Del corte hasta que abre la jornada: qué estrategias se están formando o admiten cambios.
+  const { datos: ventanas } = useCache<Ventana[] | string>(
+    estado === "dentro" ? "ventana" : null, miVentana,
+  );
+  const enVentana = Array.isArray(ventanas) ? new Map(ventanas.map((v) => [v.estrategia_id, v])) : null;
 
   const porEstrategia = Array.isArray(seguimiento)
     ? new Map(seguimiento.map((r) => [r.estrategia_id, r])) : null;
@@ -169,6 +175,8 @@ export default function Mias() {
             const puesto = fila?.posicion;
             const movimiento = fila?.movimiento ?? 0;
             const novedad = novedadDe(resumen);
+            const ventana = enVentana?.get(e.id);
+            const cierre = ventana ? cierreDeCambios(ventana.cierra, locale) : null;
             const pendiente = ocupada === e.id;
             const enVivo = typeof detalleJornada === "object" && !!detalleJornada && detalleJornada.en_vivo;
             const cargandoMes = detalleJornada === undefined && !falloJornada;
@@ -218,9 +226,22 @@ export default function Mias() {
                     {novedad.tipo === "primera" && <span>{t("strategies_first_look")}</span>}
                   </Link>
                 )}
+                {ventana && cierre && (
+                  <Link href={`/crear/${e.id}`} className="mias-linea viva">
+                    {ventana.fase === "cambios" ? <>
+                      <b>{t("window_mine_open")}</b>
+                      <span>{t("window_mine_until", { date: cierre.dia, time: cierre.hora })}</span>
+                    </> : <span>{t("window_mine_forming")}</span>}
+                  </Link>
+                )}
                 {resumen?.sin_pregunta && (
                   <Link href={`/ficha/${e.id}`} className="mias-linea">
                     <span>{t("strategies_without_question")}</span>
+                  </Link>
+                )}
+                {resumen?.quitadas_vaciadas && (
+                  <Link href={`/ficha/${e.id}`} className="mias-linea">
+                    <span>{t("strategies_removed_cleared")}</span>
                   </Link>
                 )}
                 {e.estado === "borrador" && (

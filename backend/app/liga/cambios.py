@@ -211,8 +211,26 @@ def receta_de_la_formacion(db: Session, v: Ventana) -> int:
     return primera if primera is not None else v.receta_inscripcion
 
 
-def quitadas_de_la_formacion(v: Ventana, fabrica: Fabrica = fabrica_sistema) -> list[str]:
-    """Las quitadas con las que salió la cartera de la formación (para saber cuáles son nuevas).
-    Sesión de sistema: `liga.auditoria` le está vetada a `authenticated`."""
+def detalle(v: Ventana, fabrica: Fabrica = fabrica_sistema) -> dict:
+    """Lo que enseña la pantalla de cambios: la cartera formada, las quitadas con su nombre y las
+    quitadas con las que salió de la formación. Sesión de sistema: `liga.auditoria` le está vetada
+    a `authenticated`."""
     with sesion(fabrica) as db:
-        return list(db.get(Receta, receta_de_la_formacion(db, v)).excluidas or [])
+        foto_id = db.get(Jornada, v.jornada_id).foto_id
+        cartera = [dict(f._mapping) for f in db.execute(text("""
+            select p.ticker, p.peso, s.name as nombre, s.sector
+            from liga.posiciones p
+            left join lateral (
+              select f.name, f.sector from fundamentals_snapshot f
+              where f.foto_id = :f and f.ticker = p.ticker order by f.id desc limit 1) s on true
+            where p.inscripcion_id = :i order by p.peso desc, p.ticker
+        """), {"f": foto_id, "i": v.inscripcion_id})]
+        quitadas = list(db.get(Receta, v.receta_inscripcion).excluidas or [])
+        nombres = dict(db.execute(text("""
+            select distinct on (ticker) ticker, name from fundamentals_snapshot
+            where foto_id = :f and ticker = any(:t) order by ticker, id desc
+        """), {"f": foto_id, "t": quitadas}).all()) if quitadas else {}
+        de_la_formacion = list(db.get(Receta, receta_de_la_formacion(db, v)).excluidas or [])
+    return {"cartera": cartera,
+            "quitadas": [{"ticker": t, "nombre": nombres.get(t)} for t in quitadas],
+            "quitadas_formacion": de_la_formacion}
