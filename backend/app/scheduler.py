@@ -346,6 +346,13 @@ def _apewisdom_job() -> None:
         db.close()
 
 
+@recursos.medido("cierre de la jornada")
+def _liga_cerrar_job() -> None:
+    from app.liga.procesos import cerrar
+
+    cerrar.job()
+
+
 @recursos.medido("cierres de la liga")
 def _liga_diario_job() -> None:
     """Cierres diarios de la liga. El propio proceso comprueba que sea día de bolsa (calendario
@@ -464,6 +471,9 @@ def start_scheduler() -> None:
         CronTrigger(day_of_week="mon-fri", hour=17, minute=15, timezone="America/New_York"),
         id="liga_diario", replace_existing=True, misfire_grace_time=3600, coalesce=True,
     )
+    # Liga: cerrar sola la jornada que acaba hoy, desde las 17:30 ET (el propio proceso lo decide).
+    scheduler.add_job(_liga_cerrar_job, "interval", minutes=5, id="liga_cerrar",
+                      replace_existing=True, coalesce=True)
     scheduler.add_job(_reservas_huerfanas_job, "interval", minutes=10,
                       id="reservas_huerfanas", replace_existing=True, coalesce=True)
     scheduler.add_job(recursos.registrar_estado, "interval", minutes=10,

@@ -126,6 +126,8 @@
   "admin_setting_welcome_credits_help": "Créditos que recibe una sola vez cada cuenta nueva al crearse. Solo afecta a las cuentas que se creen desde ahora; 0 lo apaga.",
   "admin_setting_auto_photo_title": "Foto automática de la jornada",
   "admin_setting_auto_photo_help": "Al terminar el escaneo mensual de decisión, designa sola la foto y el escaneo de la próxima jornada sin foto. Apagado: solo vale el botón manual.",
+  "admin_setting_auto_close_title": "Cerrar la jornada sola",
+  "admin_setting_auto_close_help": "Cada 5 minutos, desde las 17:30 de Nueva York del último día de bolsa, cierra la jornada que acaba si están los cierres del S&P y de todos sus valores. Si falta alguno no cierra y avisa. Apagado (emergencia): solo vale el botón de Admin.",
   "admin_setting_auto_form_title": "Formar la jornada sola",
   "admin_setting_auto_form_help": "Cada 5 minutos comprueba si hay una jornada que ya puede formarse (pasado su corte de las 18:00 de Nueva York del último día de bolsa anterior, con su foto y su escaneo designados) y la forma. Es el camino normal. Apagado (emergencia): solo vale el botón de Admin.",
   "admin_audit_title": "Auditoría",

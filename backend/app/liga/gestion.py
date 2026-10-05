@@ -132,6 +132,12 @@ CATALOGO["procesos.formar.auto"] = AjusteMeta(
           "designados) y la forma. Es el camino normal. Apagado (emergencia): solo vale el botón "
           "de Admin.",
     tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True)
+CATALOGO["procesos.cerrar.auto"] = AjusteMeta(
+    grupo="Procesos", titulo="Cerrar la jornada sola",
+    ayuda="Cada 5 minutos, desde las 17:30 de Nueva York del último día de bolsa, cierra la "
+          "jornada que acaba si están los cierres del S&P y de todos sus valores. Si falta alguno "
+          "no cierra y avisa. Apagado (emergencia): solo vale el botón de Admin.",
+    tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True)
 AJUSTES_CONOCIDOS = frozenset(CATALOGO)
 CLAVE_REGISTRO_ABIERTO = "liga.registro.abierto"
 CLAVE_LIGA_VISIBLE = "liga.visible"

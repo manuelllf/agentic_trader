@@ -43,7 +43,7 @@ function Ajustes() {
   const dollars = (v: string | number) => new Intl.NumberFormat(locale, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v));
   const grupoLabel = (g: Grupo) => t(g === "Emergencia" ? "admin_settings_group_emergency" : g === "IA" ? "admin_settings_group_ai" : "admin_settings_group_credits");
   const ajustesLabel = (a: Ajuste) => {
-    const slug: Record<string, string> = { "liga.registro.abierto": "registration", "liga.visible": "league_public", "ia.conversor.activo": "ai_converter", "ia.pregunta.activo": "ai_question", "ia.lectura.activo": "ai_reading", "ia.tope_mensual_usd": "ai_cap", "ia.formacion.activo": "ai_formation", "ia.tope_formacion_usd": "ai_formation_cap", "procesos.formar.limite_preguntas_s": "form_question_limit", "ia.margen_objetivo": "ai_margin", "creditos.bienvenida": "welcome_credits", "procesos.foto.auto": "auto_photo", "procesos.formar.auto": "auto_form" };
+    const slug: Record<string, string> = { "liga.registro.abierto": "registration", "liga.visible": "league_public", "ia.conversor.activo": "ai_converter", "ia.pregunta.activo": "ai_question", "ia.lectura.activo": "ai_reading", "ia.tope_mensual_usd": "ai_cap", "ia.formacion.activo": "ai_formation", "ia.tope_formacion_usd": "ai_formation_cap", "procesos.formar.limite_preguntas_s": "form_question_limit", "ia.margen_objetivo": "ai_margin", "creditos.bienvenida": "welcome_credits", "procesos.foto.auto": "auto_photo", "procesos.formar.auto": "auto_form", "procesos.cerrar.auto": "auto_close" };
     const suffix = slug[a.clave];
     return suffix ? { title: t(`admin_setting_${suffix}_title`), help: t(`admin_setting_${suffix}_help`) } : { title: a.titulo, help: a.ayuda };
   };

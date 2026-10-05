@@ -9,25 +9,36 @@ creada con su temporada) hasta que su dueño las retire.
 
 from __future__ import annotations
 
-from sqlalchemy import text
+import logging
+import time
+from datetime import datetime
+
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app import precios
 from app.liga.models import Jornada
+from app.liga.motor.calendario import HORA_CIERRE_INSCRIPCION, HORA_CIERRE_JORNADA
 from app.liga.procesos import datos, omega
 from app.liga.procesos.comun import (
+    TZ_BOLSA,
     ErrorProceso,
     Fabrica,
+    ahora_utc,
     auditar,
     auditar_fallo,
+    avisar_admin,
     candado,
     fabrica_sistema,
+    hoy_bolsa,
     jornada,
     jornada_bloqueada,
     para_json,
     sesion,
 )
 from app.liga.procesos.diario import SPY, calcular
+
+logger = logging.getLogger(__name__)
 
 
 def motivos_no_lista(db: Session, j: Jornada) -> list[str]:
@@ -134,3 +145,53 @@ def _escribir(db: Session, jornada_id: int, actor: str | None, aceptar_sin_cierr
             actor)
     db.commit()
     return para_json({"jornada_id": j.id, "estado": j.estado, **calculo})
+
+
+# --- El del scheduler ---------------------------------------------------------------------------
+
+AJUSTE_AUTO = "procesos.cerrar.auto"
+_AVISO_CADA_S = 1800.0     # si no se puede cerrar: un aviso cada media hora, no cada 5 min
+_ultimo_aviso: dict[int, float] = {}
+
+
+def _auto_activo(db: Session) -> bool:
+    """Encendido salvo que alguien lo apague a propósito (interruptor de emergencia)."""
+    valor = db.execute(text("select valor from liga.ajustes where clave = :c"),
+                       {"c": AJUSTE_AUTO}).scalar()
+    return valor is not False
+
+
+def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None,
+        reloj=time.monotonic) -> dict | None:  # noqa: ANN001 — reloj inyectable en pruebas
+    """Cierra sola la jornada que acaba hoy, desde las 17:30 de Nueva York. Corre cada 5 minutos y
+    solo cierra con todo limpio: sin el cierre del S&P o de algún valor no escribe nada, porque lo
+    cerrado ya no se corrige. Un fallo se registra y, pasada la hora del corte (cuando ya estorba
+    a la formación de la siguiente), avisa por push como mucho cada media hora."""
+    jornada_id = None
+    try:
+        ahora_t = ahora_utc(ahora)
+        if ahora_t.astimezone(TZ_BOLSA).time() < HORA_CIERRE_JORNADA:
+            return None
+        with sesion(fabrica) as db:
+            if not _auto_activo(db):
+                return None
+            j = db.scalars(select(Jornada).where(
+                Jornada.estado == "formada", Jornada.dia_fin == hoy_bolsa(ahora))).first()
+            if j is None:
+                return None
+            jornada_id = j.id
+        hecho = ejecutar(jornada_id, fabrica=fabrica)
+        _ultimo_aviso.pop(jornada_id, None)
+        return hecho
+    except Exception as e:
+        logger.exception("No se pudo cerrar la jornada %s", jornada_id)
+        if ahora_utc(ahora).astimezone(TZ_BOLSA).time() < HORA_CIERRE_INSCRIPCION:
+            return None
+        clave = jornada_id or 0
+        ahora_s = reloj()
+        if ahora_s - _ultimo_aviso.get(clave, -_AVISO_CADA_S) < _AVISO_CADA_S:
+            return None
+        _ultimo_aviso[clave] = ahora_s
+        with sesion(fabrica) as db:
+            avisar_admin(db, "Vennett: no se pudo cerrar la jornada", str(e)[:140])
+        return None

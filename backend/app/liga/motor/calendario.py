@@ -28,6 +28,8 @@ DESDE = date(2000, 1, 1)
 HASTA = date(2045, 12, 31)
 TZ_NUEVA_YORK = ZoneInfo("America/New_York")
 HORA_CIERRE_INSCRIPCION = time(18, 0)
+# Desde cuándo se cierra sola la jornada que acaba hoy: pasado el margen de la fuente de precios.
+HORA_CIERRE_JORNADA = time(17, 30)
 
 
 @dataclass(frozen=True)

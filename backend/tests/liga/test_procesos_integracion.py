@@ -407,6 +407,74 @@ def test_con_todas_las_respuestas_la_pregunta_cuenta_y_nada_se_apunta(  # noqa: 
     assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas") == 0
 
 
+FIN_ENERO = datetime(2027, 1, 29, 22, 35, tzinfo=UTC)       # 17:35 NY del último día de enero
+
+
+def _estado_jornada(fabrica, jornada_id: int) -> str:  # noqa: ANN001
+    with comun.sesion(fabrica) as db:
+        return db.execute(text("select estado from liga.jornadas where id = :j"),
+                          {"j": jornada_id}).scalar()
+
+
+def test_cerrar_solo_cierra_la_jornada_que_acaba_hoy_desde_las_1730(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    mercado.hasta = date(2027, 1, 29)
+    assert cerrar.job(fabrica, ahora=FIN_ENERO - timedelta(minutes=10)) is None    # 17:25
+    assert cerrar.job(fabrica, ahora=FIN_ENERO - timedelta(days=1)) is None        # otro día
+    assert _estado_jornada(fabrica, ene) == "formada"
+    hecho = cerrar.job(fabrica, ahora=FIN_ENERO)
+    assert hecho is not None and hecho["estado"] == "cerrada"
+    assert _estado_jornada(fabrica, ene) == "cerrada"
+    assert cerrar.job(fabrica, ahora=FIN_ENERO + timedelta(minutes=5)) is None
+
+
+def test_cerrar_solo_apagado_a_proposito_no_cierra(fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    mercado.hasta = date(2027, 1, 29)
+    with comun.sesion(fabrica) as db:
+        db.execute(text("insert into liga.ajustes (clave, valor) "
+                        "values ('procesos.cerrar.auto', 'false')"))
+        db.commit()
+    assert cerrar.job(fabrica, ahora=FIN_ENERO) is None
+    assert _estado_jornada(fabrica, ene) == "formada"
+
+
+def test_cerrar_solo_con_un_cierre_que_falta_no_escribe_y_avisa_pasado_el_corte(
+        fabrica, mercado, mundo, monkeypatch) -> None:  # noqa: ANN001
+    from app import push
+
+    avisos: list[str] = []
+    monkeypatch.setattr(push, "send_to_all", lambda db, **kw: avisos.append(kw["title"]))
+    cerrar._ultimo_aviso.clear()
+    ene = mundo["enero"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    avisos.clear()                                     # el de la formación no es de este test
+    mercado.hasta = date(2027, 1, 29)
+    entregar = mercado.descargar
+
+    def sin_el_ultimo_de_zqb(tickers, desde):  # noqa: ANN001, ANN202
+        salida = entregar(tickers, desde)
+        if "ZQB" in salida:
+            salida["ZQB"] = [c for c in salida["ZQB"] if c.dia < date(2027, 1, 29)]
+        return salida
+
+    monkeypatch.setattr(precios, "descargar", sin_el_ultimo_de_zqb)
+    reloj = [1000.0]
+    assert cerrar.job(fabrica, ahora=FIN_ENERO, reloj=lambda: reloj[0]) is None
+    assert avisos == []                       # 17:35: aún no estorba, solo queda en el registro
+    tarde = FIN_ENERO + timedelta(minutes=30)                                       # 18:05
+    assert cerrar.job(fabrica, ahora=tarde, reloj=lambda: reloj[0]) is None
+    assert avisos == ["Vennett: no se pudo cerrar la jornada"]
+    reloj[0] += 300                                                # cinco minutos después
+    assert cerrar.job(fabrica, ahora=tarde, reloj=lambda: reloj[0]) is None
+    assert len(avisos) == 1
+    assert _estado_jornada(fabrica, ene) == "formada"
+    cerrar._ultimo_aviso.clear()
+
+
 def test_no_se_cierra_con_un_cierre_que_falta_salvo_que_se_acepte(fabrica, mercado, mundo,  # noqa: ANN001
                                                                    monkeypatch) -> None:
     """Los resultados no se corrigen: si a un valor en cartera le falta el cierre del último día,

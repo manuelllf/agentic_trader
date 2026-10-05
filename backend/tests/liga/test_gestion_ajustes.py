@@ -15,7 +15,7 @@ def test_catalogo_cubre_las_mismas_claves_que_antes() -> None:
         "ia.tope_mensual_usd", "ia.margen_objetivo",
         "ia.formacion.activo", "ia.tope_formacion_usd", "procesos.formar.limite_preguntas_s",
         "liga.registro.abierto", "liga.visible",
-        "procesos.foto.auto", "procesos.formar.auto",
+        "procesos.foto.auto", "procesos.formar.auto", "procesos.cerrar.auto",
     })
 
 

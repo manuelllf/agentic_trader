@@ -126,6 +126,8 @@
   "admin_setting_welcome_credits_help": "One-time credits given to each new account when it is created. Applies only to future accounts; set to 0 to disable.",
   "admin_setting_auto_photo_title": "Choose the round photo automatically",
   "admin_setting_auto_photo_help": "After the monthly decision scan finishes, automatically choose the photo and scan for the next round that does not have a photo. When off, use the manual button.",
+  "admin_setting_auto_close_title": "Close rounds automatically",
+  "admin_setting_auto_close_help": "Every 5 minutes, from 5:30 p.m. New York time on the last trading day, close the round that ends that day if the S&P and every holding have their closing prices. If any is missing it does not close and sends an alert. When off (emergency mode), only the admin button works.",
   "admin_setting_auto_form_title": "Form rounds automatically",
   "admin_setting_auto_form_help": "Every 5 minutes, check whether a round can be formed (after its cutoff at 6:00 p.m. New York time on the last trading day before it, with its photo and scan selected), then form it. This is the normal flow. When off (emergency mode), only an admin can use the button.",
   "admin_audit_title": "Audit log",
