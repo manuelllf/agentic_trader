@@ -237,11 +237,16 @@ def test_ningun_prompt_promete_un_outlook_sectorial() -> None:
 def test_los_datos_macro_usan_subyacentes_sin_petroleo_ni_momentum() -> None:
     """Futuros, no ETFs proxy (errores de roll). Sin petróleo (ligado a un sector entero) ni
     MA200/distancia al máximo, que viajan en cada prompt y premian lo que ya subió."""
+    import ast
     import inspect
+    import textwrap
 
-    fuente = inspect.getsource(macro_mod._datos_mercado).replace(
-        macro_mod._datos_mercado.__doc__, "")
-    codigo = "\n".join(linea for linea in fuente.splitlines()
+    # Sin la docstring, por sus líneas en el árbol: `__doc__` ya no coincide con el texto fuente
+    # desde Python 3.13 (se recorta la sangría al compilar).
+    fuente = textwrap.dedent(inspect.getsource(macro_mod._datos_mercado))
+    doc = ast.parse(fuente).body[0].body[0]
+    lineas = fuente.splitlines()
+    codigo = "\n".join(linea for linea in lineas[:doc.lineno - 1] + lineas[doc.end_lineno:]
                        if not linea.strip().startswith("#"))
     for subyacente in ("GC=F", "DX-Y.NYB", "^TNX", "^IRX"):
         assert subyacente in codigo
