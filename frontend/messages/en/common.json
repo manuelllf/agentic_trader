@@ -36,6 +36,7 @@
   "common_ranking_sube_posiciones": "↑{count, plural, one {# position} other {# positions}}",
   "common_ranking_baja_posiciones": "↓{count, plural, one {# position} other {# positions}}",
   "common_ranking_sin_cambio": "Position unchanged",
+  "common_ranking_vs_sp": "vs S&P",
   "common_seguimiento_titulo": "Follow-up",
   "common_seguimiento_aria": "Follow-up for {nombre}",
   "common_seguimiento_primera_revision": "First review: this information is saved as a reference.",

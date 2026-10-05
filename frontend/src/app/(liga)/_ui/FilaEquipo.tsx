@@ -87,7 +87,7 @@ export function FilaEquipo({
   const clases = ["tr", tipo === "mia" ? "me" : tipo === "casa" ? "casa" : ""]
     .filter(Boolean)
     .join(" ");
-  const acento = casa ? (casa === "lambda" ? "#8F8A80" : CASA[casa].color) : colorCasa;
+  const acento = casa ? CASA[casa].color : colorCasa;
   const estilo =
     tipo === "casa" && acento ? ({ "--hc": acento } as CSSProperties) : undefined;
   const formatoIntervalo = (valor: string) => new Date(`${valor}T12:00:00`).toLocaleDateString(
@@ -96,7 +96,7 @@ export function FilaEquipo({
   const claseFila = `${clases}${acumulado !== undefined ? " financiero" : ""}${pendiente ? " navegando" : ""}`;
 
   return (
-    <button type="button" className={claseFila} style={estilo} aria-busy={pendiente || undefined}
+    <button type="button" disabled={!abrible} className={claseFila} style={estilo} aria-busy={pendiente || undefined}
       data-symbol={casa ? { alpha: "α", omega: "Ω", lambda: "λ" }[casa] : undefined}
       aria-disabled={pendiente || undefined}
       onClick={() => {

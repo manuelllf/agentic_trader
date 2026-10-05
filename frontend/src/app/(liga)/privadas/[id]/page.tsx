@@ -5,9 +5,13 @@ import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { InfoTip } from "@/components/InfoTip";
-import { BarraPestanas, Boton, Cargando, Escudo, ErrorLiga, Segmentado } from "../../_ui";
-import { expulsarDeLiga, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle } from "@/lib/liga/api";
+import {
+  BarraPestanas, Boton, Cargando, Clasificacion as TablaClasificacion, ErrorLiga, FilaEquipo,
+  FilaJornada, Segmentado,
+} from "../../_ui";
+import {
+  expulsarDeLiga, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle, type MiembroLiga,
+} from "@/lib/liga/api";
 import { invalidar, useCache } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../../_sesion/SesionContext";
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
@@ -39,10 +43,22 @@ export default function PrivadaDetalle() {
     } finally { setOcupada(false); }
   }
 
-  const lista = typeof liga === "object" && liga ? [...liga.miembros] : [];
-  if (vista === "mes") lista.sort((a, b) => (a.rentabilidad_mes == null ? 1 : 0) - (b.rentabilidad_mes == null ? 1 : 0)
-    || Number(b.rentabilidad_mes ?? 0) - Number(a.rentabilidad_mes ?? 0) || a.alias.localeCompare(b.alias));
-  const activos = lista.filter(m => m.rentabilidad_mes != null).length;
+  const miembros = typeof liga === "object" && liga ? liga.miembros : [];
+  const mes = (m: MiembroLiga) => (m.rentabilidad_mes == null ? null : Number(m.rentabilidad_mes));
+  const conResultado = [...miembros.filter((m) => mes(m) !== null)]
+    .sort((a, b) => (mes(b) ?? 0) - (mes(a) ?? 0) || a.alias.localeCompare(b.alias));
+  const clasificados = miembros.filter((m) => m.estrategia);
+  const pendientes = vista === "mes"
+    ? miembros.filter((m) => mes(m) === null) : miembros.filter((m) => !m.estrategia);
+  const mejor = conResultado[0] ? mes(conResultado[0]) : null;
+  const sp = liga && typeof liga === "object" && liga.sp500_mes != null ? Number(liga.sp500_mes) : null;
+
+  const etiqueta = (m: MiembroLiga, abrible: boolean) => [
+    m.alias + (m.es_yo ? ` · ${t("private_leagues_you")}` : ""),
+    m.estrategia && !abrible ? t("private_leagues_private_strategy") : null,
+  ].filter(Boolean).join(" · ");
+  const abrir = (m: MiembroLiga) => !!m.estrategia && (m.es_yo || m.estrategia.visibilidad === "publicada");
+  const ir = (m: MiembroLiga) => () => { if (m.estrategia) router.push(`/ficha/${m.estrategia.id}`); };
 
   return <main className="scroll privadas">
     <Link href="/privadas" className="back">← {t("private_leagues_back")}</Link>
@@ -52,11 +68,13 @@ export default function PrivadaDetalle() {
         <header className="priv-cabecera">
           <p className="priv-eyebrow">{t("private_leagues_detail_eyebrow", { role: liga.es_dueno ? t("private_leagues_owner") : t("private_leagues_your_group") })}</p>
           <h1 className="h1">{liga.nombre}</h1>
-          <p className="meta">{t("private_leagues_detail_intro")}</p>
+          <p className="meta">
+            {t("private_leagues_people", { count: liga.n_miembros })}
+            {liga.jornada_numero ? ` · ${t("private_leagues_round", { round: liga.jornada_numero })}` : ""}
+          </p>
           <dl className="priv-resumen">
-            <div><dt>{t("private_leagues_participants_label")}</dt><dd>{liga.n_miembros}<small> / {liga.cupo}</small></dd></div>
-            <div><dt>{t("private_leagues_with_result")}</dt><dd>{activos}</dd></div>
-            <div><dt>{t("private_leagues_sp_month")}</dt><dd className={liga.sp500_mes == null ? "" : claseSigno(liga.sp500_mes)}>{liga.sp500_mes == null ? "—" : percent(liga.sp500_mes)}</dd></div>
+            <div><dt>{t("private_leagues_sp_month")}</dt><dd className={sp == null ? "" : claseSigno(sp)}>{sp == null ? "—" : percent(sp)}</dd></div>
+            <div><dt>{t("private_leagues_best_group")}</dt><dd className={mejor == null ? "" : claseSigno(mejor)}>{mejor == null ? "—" : percent(mejor)}</dd></div>
           </dl>
         </header>
         <div className="priv-contenido">
@@ -67,45 +85,59 @@ export default function PrivadaDetalle() {
               ? liga.jornada_numero ? t("private_leagues_round_context", { round: liga.jornada_numero, quotes: liga.en_vivo ? t("private_leagues_provisional_quotes") : t("private_leagues_last_closes"), date: liga.datos_hasta ? ` · ${date(liga.datos_hasta)}` : ` · ${t("private_leagues_waiting_prices")}` })
                 : t("private_leagues_no_round_context")
               : t("private_leagues_standings_context")}</p>
+            {vista === "mes" ? (
+              <div className="priv-filas">
+                {conResultado.map((m, i) => m.estrategia && (
+                  <FilaJornada key={m.alias} puesto={i + 1} nombre={m.estrategia.nombre} escudo={m.estrategia.escudo}
+                    etiqueta={etiqueta(m, abrir(m))} rentabilidad={mes(m) ?? 0}
+                    diferencia={m.diferencia_mes == null ? null : Number(m.diferencia_mes)}
+                    propia={m.es_yo} onAbrir={abrir(m) ? ir(m) : undefined} />
+                ))}
+              </div>
+            ) : clasificados.length > 0 && (
+              <TablaClasificacion>
+                {clasificados.map((m, i) => m.estrategia && (
+                  <FilaEquipo key={m.alias} puesto={i + 1} nombre={m.estrategia.nombre} escudo={m.estrategia.escudo}
+                    etiqueta={etiqueta(m, abrir(m))} vsIndice={Number(m.dif_sp ?? 0)} puntos={m.puntos ?? 0}
+                    acumulado={m.acumulado} movimiento={m.movimiento} tipo={m.es_yo ? "mia" : "normal"}
+                    abrible={abrir(m)} onClick={ir(m)} />
+                ))}
+              </TablaClasificacion>
+            )}
+
+            {pendientes.length > 0 && (
+              <div className="priv-pendientes">
+                <p className="grp">{t("private_leagues_no_result_yet")} <small>{pendientes.length}</small></p>
+                {pendientes.map((m) => (
+                  <div className="priv-miembro" key={m.alias}>
+                    <span>{m.alias}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}
+                      <small>{m.estrategia ? t("private_leagues_waiting_close")
+                        : m.es_yo ? t("private_leagues_join_create_note") : t("private_leagues_member_create_note")}</small></span>
+                    {m.es_yo && !m.estrategia && <Link className="link" href="/crear">{t("private_leagues_create_strategy")} →</Link>}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <details className="priv-metodo"><summary>{t("private_leagues_rep_strategy_question")}</summary>
               <p>{t("private_leagues_rep_strategy_answer")}</p>
               <p>{t("private_leagues_cumulative_note")}</p>
+              {liga.consultado && <p>{t("private_leagues_market_checked", { time: new Date(liga.consultado).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) })}</p>}
+              <p>{t("private_leagues_compare_note")} <Link className="link" href="/como-funciona">{t("private_leagues_view_rules")} →</Link></p>
             </details>
-            {vista === "mes" && liga.consultado && <p className="fine">{t("private_leagues_market_checked", { time: new Date(liga.consultado).toLocaleTimeString(locale, {hour:"2-digit",minute:"2-digit"}) })}</p>}
-            <div className="priv-equipos">
-              {lista.map((m, i) => {
-                const e = m.estrategia;
-                const abrir = !!e && (m.es_yo || e.visibilidad === "publicada");
-                const conResultado = vista === "mes" ? m.rentabilidad_mes != null : m.puntos != null;
-                return <article className={`priv-equipo${m.es_yo ? " propia" : ""}`} key={m.alias}>
-                  <button type="button" className="priv-equipo-cab priv-equipo-abrir" disabled={!abrir}
-                    onClick={() => e && router.push(`/ficha/${e.id}`)}>
-                    <span className="priv-puesto" aria-label={conResultado ? t("private_leagues_position", { position: i + 1 }) : t("private_leagues_unranked")}>{conResultado ? String(i + 1).padStart(2, "0") : "—"}</span>
-                    {e && <Escudo valor={e.escudo} etiqueta={t("private_leagues_strategy_crest", { name: e.nombre })} tamano={38} />}
-                    <span className="priv-identidad"><b>{e?.nombre ?? m.alias}</b><small>{e ? m.alias : t("private_leagues_no_formed_strategy")}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}{e && !abrir ? ` · ${t("private_leagues_private_strategy")}` : ""}</small></span>
-                    <span className="priv-resultado">{vista === "mes" ? <b className={m.rentabilidad_mes == null ? "" : claseSigno(m.rentabilidad_mes)}>{m.rentabilidad_mes == null ? "—" : percent(m.rentabilidad_mes)}</b> : <b>{m.puntos ?? "—"}</b>}<small>{vista === "mes" ? t("private_leagues_this_month") : t("private_leagues_points")}</small></span>
-                    {abrir && <span aria-hidden="true">→</span>}
-                  </button>
-                  {!e && <p className="fine">{m.es_yo ? t("private_leagues_join_create_note") : t("private_leagues_member_create_note")}{m.es_yo && <Link className="link" href="/crear"> {t("private_leagues_create_strategy")} →</Link>}</p>}
-                </article>;
-              })}
-            </div>
           </section>
+
           <aside className="priv-gestion">
-            {liga.es_dueno && liga.codigo && <section className="priv-panel">
-              <h2>{t("private_leagues_invite_group")}</h2><p>{t("private_leagues_share_code_note")}</p>
-              <code className="priv-codigo">{liga.codigo}</code>
-              <Boton ancho="completo" onClick={async () => { try { await navigator.clipboard.writeText(liga.codigo!); setCopiado(true); } catch { setAviso(t("private_leagues_copy_manually")); } }}>{copiado ? t("private_leagues_code_copied") : t("private_leagues_copy_code")}</Boton>
-              <details className="priv-metodo"><summary>{t("private_leagues_change_code")}</summary><p>{t("private_leagues_change_code_note")}</p>
-                <Boton disabled={ocupada} onClick={() => { if (window.confirm(t("private_leagues_change_code_confirm"))) void gestionar(() => rotarCodigoLiga(id)); }}>{t("private_leagues_generate_code")}</Boton>
-              </details>
-            </section>}
-            <section className="priv-panel"><h2>{t("private_leagues_how_compare")} <InfoTip text={t("private_leagues_compare_tip")} /></h2>
-              <p>{t("private_leagues_compare_note")}</p>
-              <Link className="link" href="/como-funciona">{t("private_leagues_view_rules")} →</Link>
-            </section>
-            <details className="priv-panel"><summary>{t("private_leagues_manage_members")}</summary>
-              {liga.miembros.map(m => <div className="priv-miembro" key={m.alias}><span>{m.alias}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}<small>{t("private_leagues_member_since", { date: date(m.unido.slice(0, 10)) })}</small></span>
+            <details className="priv-panel"><summary>{t("private_leagues_invite_and_members")}</summary>
+              {liga.es_dueno && liga.codigo && <div className="priv-invitar">
+                <p>{t("private_leagues_share_code_note")}</p>
+                <code className="priv-codigo">{liga.codigo}</code>
+                <Boton ancho="completo" onClick={async () => { try { await navigator.clipboard.writeText(liga.codigo!); setCopiado(true); } catch { setAviso(t("private_leagues_copy_manually")); } }}>{copiado ? t("private_leagues_code_copied") : t("private_leagues_copy_code")}</Boton>
+                <details className="priv-metodo"><summary>{t("private_leagues_change_code")}</summary><p>{t("private_leagues_change_code_note")}</p>
+                  <Boton disabled={ocupada} onClick={() => { if (window.confirm(t("private_leagues_change_code_confirm"))) void gestionar(() => rotarCodigoLiga(id)); }}>{t("private_leagues_generate_code")}</Boton>
+                </details>
+              </div>}
+              {liga.miembros.map((m) => <div className="priv-miembro" key={m.alias}><span>{m.alias}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}<small>{t("private_leagues_member_since", { date: date(m.unido.slice(0, 10)) })}</small></span>
                 {liga.es_dueno && !m.es_yo && <Boton variante="discreto" disabled={ocupada} onClick={() => { if (window.confirm(t("private_leagues_remove_confirm", { alias: m.alias }))) void gestionar(() => expulsarDeLiga(id, m.alias)); }}>{t("private_leagues_remove")}</Boton>}</div>)}
               {!liga.es_dueno && <Boton disabled={ocupada} onClick={() => { if (window.confirm(t("private_leagues_leave_confirm"))) void gestionar(() => salirLiga(id), true); }}>{t("private_leagues_leave")}</Boton>}
             </details>

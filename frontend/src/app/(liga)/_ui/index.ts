@@ -10,6 +10,7 @@ export * from "./Clasificacion";
 export * from "./ErrorLiga";
 export * from "./Escudo";
 export * from "./FilaEquipo";
+export * from "./FilaJornada";
 export * from "./OpcionRadio";
 export * from "./Segmentado";
 export * from "./Tarjeta";

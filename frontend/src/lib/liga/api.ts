@@ -644,6 +644,10 @@ export type LigaResumen = {
   es_dueno: boolean;
   codigo: string | null;
   n_miembros: number;
+  /** Solo en la lista: mejor resultado del mes, S&P 500 de esa jornada y quién va primero. */
+  mes?: number | null;
+  sp500_mes?: number | null;
+  lider?: string | null;
 };
 
 export type MiembroLiga = {

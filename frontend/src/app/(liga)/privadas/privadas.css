@@ -1,63 +1,55 @@
 .lg .privadas { min-width: 0; }
 .lg .privadas h1, .lg .privadas h2, .lg .privadas h3 { overflow-wrap: anywhere; }
 .lg .priv-eyebrow { font-size: 12px; color: var(--muted); letter-spacing: .035em; }
-.lg .priv-lista { display: grid; gap: 12px; margin-top: 12px; }
-.lg .priv-liga { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 14px; background: var(--surface); color: var(--ink); text-decoration: none; min-width: 0; transition: background 160ms ease, transform 160ms ease; }
-.lg .priv-liga h3 { font-size: 20px; line-height: 1.15; letter-spacing: -.035em; }
-.lg .priv-liga-miembros { font-size: 14px; }
-.lg .priv-liga-miembros b { font-size: 20px; font-variant-numeric: tabular-nums; }
-.lg .priv-liga-miembros small { color: var(--muted); }
-.lg .priv-liga-pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line2); padding-top: 12px; font-size: 13px; }
-.lg .priv-liga-pie small { color: var(--muted); }
-.lg .priv-accesos { display: grid; gap: 16px; margin-top: 24px; }
-.lg .priv-panel { min-width: 0; padding: 16px; border-radius: 14px; background: var(--surface); }
-.lg .priv-panel h2, .lg .priv-panel > summary { color: var(--ink); font-size: 18px; font-weight: 700; }
-.lg .priv-panel p { color: var(--ink2); font-size: 14px; line-height: 1.5; margin: 10px 0 16px; }
-.lg .priv-panel label { font-size: 13px; color: var(--ink2); }
-.lg .priv-panel .btn { white-space: normal; }
+.lg .priv-barra { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.lg .priv-barra .btn { flex: 1 1 10rem; }
+.lg .priv-lista { display: grid; gap: 10px; margin-top: 14px; }
+.lg .priv-liga { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); text-decoration: none; min-width: 0; transition: background 160ms ease, transform 160ms ease; }
+.lg .priv-liga-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.lg .priv-liga h3 { font-size: 17px; line-height: 1.2; letter-spacing: -.02em; }
+.lg .priv-liga-cifra { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.lg .priv-liga-cifra b { font-size: 22px; font-weight: 700; letter-spacing: -.03em; }
+.lg .priv-liga-cifra span, .lg .priv-liga-lider { font-size: 13px; color: var(--muted); }
+.lg .priv-liga-lider b { color: var(--ink); font-weight: 600; }
+.lg .priv-liga-vacio { font-size: 13px; color: var(--muted); }
 .lg .priv-cabecera .h1 { margin-top: 6px; }
-.lg .priv-resumen { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; padding: 20px 0; margin: 16px 0; border-block: 1px solid var(--line); }
-.lg .priv-resumen div, .lg .priv-cifras div { min-width: 0; }
-.lg .priv-resumen dt, .lg .priv-cifras dt { font-size: 12px; color: var(--muted); }
-.lg .priv-resumen dd { margin: 4px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
-.lg .priv-resumen dd small { font-size: 16px; font-weight: 400; color: var(--muted); }
-.lg .priv-contenido { display: grid; gap: 24px; align-items: start; }
+.lg .priv-resumen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 12px 0; margin: 12px 0; border-block: 1px solid var(--line); }
+.lg .priv-resumen div { min-width: 0; }
+.lg .priv-resumen dt { font-size: 12px; color: var(--muted); }
+.lg .priv-resumen dd { margin: 2px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.lg .priv-contenido { display: grid; gap: 20px; align-items: start; }
 .lg .priv-clasificacion { min-width: 0; }
 .lg .priv-contexto { margin: 12px 0; }
 .lg .priv-metodo { margin: 12px 0; font-size: 13px; color: var(--muted); }
 .lg .priv-metodo summary, .lg details.priv-panel > summary { cursor: pointer; min-height: 44px; padding-block: 10px; }
 .lg .priv-metodo p { margin: 8px 0; }
-.lg .priv-equipos { display: grid; gap: 10px; }
-.lg .priv-equipo { padding: 0; border: 1px solid var(--line); border-radius: 16px; min-width: 0; }
-.lg .priv-equipo.propia { background: color-mix(in srgb,var(--accent-bg) 35%,var(--bg)); }
-.lg .priv-equipo-cab { display: flex; align-items: center; gap: 10px; }
-.lg .priv-equipo-abrir { width: 100%; min-height: 64px; padding: 10px 12px; border: 0; border-radius: inherit; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
-.lg .priv-equipo-abrir:disabled { cursor: default; opacity: 1; }
-.lg .priv-equipo-abrir:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.lg .priv-identidad > b { display: block; font-size: 16px; line-height: 1.2; overflow-wrap: anywhere; }
-.lg .priv-identidad > small { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
-.lg .priv-resultado { text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-.lg .priv-resultado > b { font-size: 18px; }
-.lg .priv-resultado > small { display: block; color: var(--muted); font-size: 11px; }
-.lg .priv-equipo > .fine { padding: 0 12px 12px; }
-.lg .priv-puesto { color: var(--muted); font-size: 16px; font-variant-numeric: tabular-nums; }
-.lg .priv-identidad { min-width: 0; flex: 1; }
-.lg .priv-identidad h2 { margin: 0; font-size: 18px; line-height: 1.2; letter-spacing: -.025em; color: var(--ink); }
-.lg .priv-identidad p { margin: 4px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.lg .priv-puntos { text-align: right; font-size: 20px; }
-.lg .priv-puntos small { display: block; color: var(--muted); font-size: 11px; font-weight: 400; }
-.lg .priv-cifras { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 12px; margin: 12px 0 8px; }
-.lg .priv-cifras dd { margin: 4px 0 0; font-size: clamp(18px,2vw,22px); letter-spacing: -.025em; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.lg .priv-equipo-pie { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 2px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
-.lg .priv-equipo-pie .link { min-height: 44px; text-align: left; }
-.lg .priv-equipo-detalle { padding-top: 8px; min-width: 0; }
-.lg .priv-equipo-detalle .sec { margin-top: 12px; }
+.lg .priv-filas { margin-top: 4px; }
+.lg .priv-pendientes { margin-top: 8px; }
 .lg .priv-gestion { display: grid; gap: 14px; min-width: 0; }
-.lg .priv-codigo { display: block; margin: 16px 0; color: var(--ink); font-size: 24px; letter-spacing: .12em; overflow-wrap: anywhere; user-select: all; }
-.lg .priv-miembro { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.lg .priv-panel { min-width: 0; padding: 4px 14px; border-radius: 14px; background: var(--surface); }
+.lg details.priv-panel > summary { color: var(--ink); font-size: 16px; font-weight: 700; }
+.lg .priv-panel p { color: var(--ink2); font-size: 14px; line-height: 1.5; margin: 8px 0 12px; }
+.lg .priv-panel .btn { white-space: normal; }
+.lg .priv-invitar { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.lg .priv-codigo { display: block; margin: 12px 0; color: var(--ink); font-size: 24px; letter-spacing: .12em; overflow-wrap: anywhere; user-select: all; }
+.lg .priv-miembro { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.lg .priv-miembro:last-child { border-bottom: 0; }
 .lg .priv-miembro > span { min-width: 0; overflow-wrap: anywhere; }
 .lg .priv-miembro small { display: block; color: var(--muted); font-size: 12px; }
-@media (min-width: 40rem) { .lg .priv-lista, .lg .priv-accesos { grid-template-columns: repeat(2,minmax(0,1fr)); } .lg .priv-resumen { grid-template-columns: repeat(3,minmax(0,1fr)); } }
-@media (min-width: 64rem) { .lg .priv-contenido { grid-template-columns: minmax(0,1fr) minmax(260px,.42fr); gap: 28px; } .lg .priv-cifras { grid-template-columns: repeat(4,minmax(0,1fr)); } }
-@media (hover:hover) and (pointer:fine) { .lg .priv-liga:hover { background: var(--surface2); transform: translateY(-2px); } }
-@media (prefers-reduced-motion:reduce) { .lg .priv-liga { transition: none; } .lg .priv-liga:hover { transform: none; } }
+
+.lg .priv-hoja { padding: 18px 16px 20px; width: min(100%, 30rem); max-width: 100%; margin: auto auto 0; border: 1px solid var(--line2); border-bottom: 0; border-radius: 18px 18px 0 0; background: var(--bg); color: var(--ink2); }
+.lg .priv-hoja::backdrop { background: rgba(0, 0, 0, .55); }
+.lg .priv-hoja-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lg .priv-hoja h2 { font-size: 18px; }
+.lg .priv-hoja .form { margin-top: 12px; gap: 12px; }
+.lg .priv-hoja .fine { margin-top: 12px; }
+.lg .priv-hoja-cerrar { min-width: 44px; min-height: 44px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 26px; cursor: pointer; }
+
+@media (min-width: 40rem) {
+  .lg .priv-lista { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lg .priv-hoja { margin: auto; border-bottom: 1px solid var(--line2); border-radius: 18px; }
+  .lg .priv-barra .btn { flex: 0 0 auto; min-width: 12rem; }
+}
+@media (min-width: 64rem) { .lg .priv-contenido { grid-template-columns: minmax(0, 1fr) minmax(260px, .42fr); gap: 28px; } }
+@media (hover: hover) and (pointer: fine) { .lg .priv-liga:hover { background: var(--surface2); transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .lg .priv-liga { transition: none; } .lg .priv-liga:hover { transform: none; } }

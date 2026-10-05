@@ -9,15 +9,14 @@
 // distinguir aquí «publicada» de «privada» como pide la leyenda de la maqueta; se usa una
 // etiqueta neutra («de la comunidad») para las que no son de la casa ni la propia.
 
-import type { CSSProperties } from "react";
-import { Suspense, useState, useTransition } from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
 import {
-  BarraPestanas, Cargando, CASA, Clasificacion as TablaClasificacion, Escudo, escudoCasa, ErrorLiga,
-  FilaEquipo, HuecoClasificacion, Segmentado, Vacio,
+  BarraPestanas, Cargando, Clasificacion as TablaClasificacion, escudoCasa, ErrorLiga,
+  FilaEquipo, FilaJornada, HuecoClasificacion, Segmentado, Vacio,
 } from "../_ui";
 import {
   getClasificacion, getJornadaPublica, getPortada,
@@ -35,13 +34,6 @@ function etiquetaEquipo(e: EquipoPublico, miAlias: string | null, t: (key: strin
   if (miAlias && e.autor === miAlias) return t("league_equipo_tuya");
   return t("league_equipo_comunidad");
 }
-
-const Chevron = () => (
-  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-       strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M9 6l6 6-6 6" />
-  </svg>
-);
 
 const horaLocal = (iso: string, locale: Locale) =>
   new Date(iso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
@@ -271,8 +263,6 @@ function VistaJornada({
   const locale = normalizeLocale(useLocale()) ?? "es";
   const formatDate = (value: string) => fecha(value, new Date(), locale);
   const formatTime = (value: string) => new Date(value).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
-  const [navegando, iniciarNavegacion] = useTransition();
-  const [destino, setDestino] = useState<string | null>(null);
   const conDatos = detalle.filas.filter((f) => f.rentabilidad !== null);
   if (conDatos.length === 0) {
     return (
@@ -288,23 +278,10 @@ function VistaJornada({
   }
   const sp = detalle.jornada.sp_rentabilidad;
   const fila = (f: (typeof conDatos)[number]) => (
-    <button type="button" key={f.equipo.id}
-            data-symbol={f.equipo.casa ? { alpha: "α", omega: "Ω", lambda: "λ" }[f.equipo.casa] : undefined}
-            className={`jr${f.equipo.casa ? " casa" : ""}${navegando && destino === f.equipo.id ? " navegando" : ""}`}
-            aria-busy={navegando && destino === f.equipo.id || undefined}
-            style={f.equipo.casa ? ({ "--hc": f.equipo.casa === "lambda" ? "#8F8A80" : CASA[f.equipo.casa].color } as CSSProperties) : undefined}
-            onClick={() => { if (navegando && destino === f.equipo.id) return; setDestino(f.equipo.id); iniciarNavegacion(() => onAbrir(f.equipo.id)); }}>
-      <span className="name">
-        <Escudo valor={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo}
-          casa={f.equipo.casa} etiqueta={t("league_escudo_de", { name: f.equipo.nombre })} />
-      <span className="nm">
-          <b>{f.equipo.nombre}</b>
-          <span className="sub">{etiquetaEquipo(f.equipo, miAlias, (key) => t(key))}</span>
-        </span>
-      </span>
-      <span className={`ret num ${claseSigno(f.rentabilidad ?? 0)}`}>{porcentaje(f.rentabilidad ?? 0, 1, locale)}</span>
-      {navegando && destino === f.equipo.id ? <span className="chev" aria-label={t("league_abriendo", { name: f.equipo.nombre })}>···</span> : <Chevron />}
-    </button>
+    <FilaJornada key={f.equipo.id} nombre={f.equipo.nombre}
+      escudo={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo} casa={f.equipo.casa}
+      etiqueta={etiquetaEquipo(f.equipo, miAlias, (key) => t(key))}
+      rentabilidad={f.rentabilidad ?? 0} onAbrir={() => onAbrir(f.equipo.id)} />
   );
   return (
     <div className="sec" style={{ marginTop: 20 }}>
