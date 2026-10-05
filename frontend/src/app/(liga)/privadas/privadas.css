@@ -4,7 +4,7 @@
 .lg .priv-barra { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .lg .priv-barra .btn { flex: 1 1 10rem; }
 .lg .priv-lista { display: grid; gap: 10px; margin-top: 14px; }
-.lg .priv-liga { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); text-decoration: none; min-width: 0; transition: background 160ms ease, transform 160ms ease; }
+.lg .priv-liga { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); color: var(--ink); text-decoration: none; min-width: 0; transition: background 160ms ease, transform 160ms ease; }
 .lg .priv-liga-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
 .lg .priv-liga h3 { font-size: 17px; line-height: 1.2; letter-spacing: -.02em; }
 .lg .priv-liga-cifra { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
@@ -26,7 +26,7 @@
 .lg .priv-filas { margin-top: 4px; }
 .lg .priv-pendientes { margin-top: 8px; }
 .lg .priv-gestion { display: grid; gap: 14px; min-width: 0; }
-.lg .priv-panel { min-width: 0; padding: 4px 14px; border-radius: 14px; background: var(--surface); }
+.lg .priv-panel { min-width: 0; padding: 4px 14px; border-radius: var(--radius-card); background: var(--surface); }
 .lg details.priv-panel > summary { color: var(--ink); font-size: 16px; font-weight: 700; }
 .lg .priv-panel p { color: var(--ink2); font-size: 14px; line-height: 1.5; margin: 8px 0 12px; }
 .lg .priv-panel .btn { white-space: normal; }
@@ -37,7 +37,7 @@
 .lg .priv-miembro > span { min-width: 0; overflow-wrap: anywhere; }
 .lg .priv-miembro small { display: block; color: var(--muted); font-size: 12px; }
 
-.lg .priv-hoja { padding: 18px 16px 20px; width: min(100%, 30rem); max-width: 100%; margin: auto auto 0; border: 1px solid var(--line2); border-bottom: 0; border-radius: 18px 18px 0 0; background: var(--bg); color: var(--ink2); }
+.lg .priv-hoja { padding: 18px 16px 20px; width: min(100%, 30rem); max-width: 100%; margin: auto auto 0; border: 1px solid var(--line2); border-bottom: 0; border-radius: var(--radius-card) var(--radius-card) 0 0; background: var(--bg); color: var(--ink2); }
 .lg .priv-hoja::backdrop { background: rgba(0, 0, 0, .55); }
 .lg .priv-hoja-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .lg .priv-hoja h2 { font-size: 18px; }
@@ -47,7 +47,7 @@
 
 @media (min-width: 40rem) {
   .lg .priv-lista { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lg .priv-hoja { margin: auto; border-bottom: 1px solid var(--line2); border-radius: 18px; }
+  .lg .priv-hoja { margin: auto; border-bottom: 1px solid var(--line2); border-radius: var(--radius-card); }
   .lg .priv-barra .btn { flex: 0 0 auto; min-width: 12rem; }
 }
 @media (min-width: 64rem) { .lg .priv-contenido { grid-template-columns: minmax(0, 1fr) minmax(260px, .42fr); gap: 28px; } }

@@ -21,7 +21,7 @@
 .lg .preview-resumen { min-height: 44px; margin-top: 8px; font-size: 13px; line-height: 1.4; color: var(--muted); }
 .lg .preview-resumen > summary { min-height: 44px; display: list-item; padding: 10px 0; cursor: pointer; }
 .lg .filtro-asistente .btn { margin-top: 8px; }
-.lg .constructor .lenguaje-natural { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.lg .constructor .lenguaje-natural { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); }
 .lg .constructor .lenguaje-natural .lbl { display: block; font-size: 15px; }
 .lg .constructor .lenguaje-natural .inp { margin-top: 8px; }
 .lg .constructor .wrow label { display: flex; align-items: center; gap: 4px; }
@@ -42,9 +42,9 @@
 .lg .constructor .filtros-catalogo { margin-top: 20px; }
 .lg .constructor .filtros-catalogo h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
 .lg .constructor .starters { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 0; }
-.lg .constructor .starter { display: flex; align-items: center; gap: 10px; min-height: 44px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); text-align: left; white-space: normal; overflow-wrap: anywhere; font-weight: 500; }
+.lg .constructor .starter { display: flex; align-items: center; gap: 10px; min-height: 44px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--bg); text-align: left; white-space: normal; overflow-wrap: anywhere; font-weight: 500; }
 .lg .constructor .starter > span { color: var(--accent); font-size: 18px; }
-.lg .constructor .rulec { padding: 14px; border-radius: 12px; background: var(--surface); }
+.lg .constructor .rulec { padding: 14px; border-radius: var(--radius-card); background: var(--surface); }
 .lg .constructor .rulec + .rulec { margin-top: 12px; }
 @media (min-width: 480px) { .lg .constructor .starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 992px) { .lg .constructor .starters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

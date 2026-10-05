@@ -30,7 +30,7 @@
   "private_leagues_group_results": "Group results",
   "private_leagues_this_month": "This month",
   "private_leagues_standings": "Standings",
-  "private_leagues_round_context": "Round {round} · {quotes}{date}. Updates every two minutes.",
+  "private_leagues_round_context": "Round {round} · {quotes}{date}.",
   "private_leagues_provisional_quotes": "Provisional quotes",
   "private_leagues_last_closes": "Latest available closes",
   "private_leagues_waiting_prices": "waiting for prices",

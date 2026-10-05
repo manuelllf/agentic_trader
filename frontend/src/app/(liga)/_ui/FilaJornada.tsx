@@ -1,9 +1,9 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { useTransition, type CSSProperties } from "react";
+import { useTransition } from "react";
 import { claseSigno, porcentaje, signo } from "@/lib/liga/format";
-import { CASA, Escudo, type ClaveCasa, type EscudoValor } from "./Escudo";
+import { Escudo, type ClaveCasa, type EscudoValor } from "./Escudo";
 
 const Chevron = ({ pendiente = false }: { pendiente?: boolean }) => (
   <svg className="chev" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -34,12 +34,10 @@ export function FilaJornada({
   const t = useTranslations();
   const locale = useLocale() === "en" ? "en" : "es";
   const [pendiente, navegar] = useTransition();
-  const estilo = casa ? ({ "--hc": CASA[casa].color } as CSSProperties) : undefined;
   return (
     <button type="button" disabled={!onAbrir}
-      data-symbol={casa ? CASA[casa].glifo : undefined}
       className={`jr${casa ? " casa" : ""}${propia ? " me" : ""}${pendiente ? " navegando" : ""}`}
-      aria-busy={pendiente || undefined} style={estilo}
+      aria-busy={pendiente || undefined}
       onClick={() => { if (onAbrir && !pendiente) navegar(onAbrir); }}>
       <span className="name">
         {puesto != null && <span className="pos num">{puesto}</span>}
@@ -49,7 +47,7 @@ export function FilaJornada({
           <span className="sub">{etiqueta}</span>
         </span>
       </span>
-      <span className="res">
+      <span className="fila-res">
         <span className={`ret num ${claseSigno(rentabilidad)}`}>{porcentaje(rentabilidad, 1, locale)}</span>
         {diferencia != null && (
           <span className={`vsp num ${claseSigno(diferencia)}`}>{signo(diferencia, 1, locale)} pp {t("common_ranking_vs_sp")}</span>

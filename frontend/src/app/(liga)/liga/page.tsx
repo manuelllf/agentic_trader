@@ -199,7 +199,7 @@ function LigaContenido() {
             </div>
           )}
           <p className="meta" style={{ marginTop: 10 }}>
-            {t("league_temporada_resumen", { season: temporada.nombre, summary: resumenJuego(portada, (key, values) => t(key, values)) })}
+            {resumenJuego(portada, (key, values) => t(key, values))}
           </p>
 
           <div style={{ marginTop: 16 }}>
@@ -276,12 +276,12 @@ function VistaJornada({
     const dif = f.dif_sp ?? 0;
     grupos[dif > 0.2 ? "G" : dif >= -0.2 ? "E" : "P"].push(f);
   }
-  const sp = detalle.jornada.sp_rentabilidad;
   const fila = (f: (typeof conDatos)[number]) => (
     <FilaJornada key={f.equipo.id} nombre={f.equipo.nombre}
       escudo={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo} casa={f.equipo.casa}
       etiqueta={etiquetaEquipo(f.equipo, miAlias, (key) => t(key))}
-      rentabilidad={f.rentabilidad ?? 0} onAbrir={() => onAbrir(f.equipo.id)} />
+      rentabilidad={f.rentabilidad ?? 0} propia={!!miAlias && f.equipo.autor === miAlias}
+      onAbrir={() => onAbrir(f.equipo.id)} />
   );
   return (
     <div className="sec" style={{ marginTop: 20 }}>
@@ -292,13 +292,6 @@ function VistaJornada({
           {t("league_actualiza_y_cierre")}
           {!!detalle.precios_pendientes && t("league_precios_pendientes", { count: detalle.precios_pendientes })}
         </p>
-      )}
-      {sp != null && (
-        <div className="jr spx">
-          <span className="nm"><b>S&amp;P 500</b></span>
-          <span className={`ret num ${claseSigno(sp)}`}>{porcentaje(sp, 1, locale)}</span>
-          <span />
-        </div>
       )}
       <p className="grp">{t("league_ganando_mes")} <small>{grupos.G.length}</small></p>
       {grupos.G.map(fila)}
