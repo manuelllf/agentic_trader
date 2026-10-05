@@ -809,6 +809,6 @@ def test_no_hay_reintentos_infinitos_pasada_media_hora_avisa_una_vez_y_deja_de_i
     tarde = datetime(2027, 1, 4, 14, 40, tzinfo=UTC)
     assert formar.job(fabrica, ahora=tarde) is None
     assert formar.job(fabrica, ahora=tarde + timedelta(minutes=5)) is None
-    assert avisos == ["Liguilla: la jornada no se formó sola"]          # una sola vez
+    assert avisos == ["Vennett: la jornada no se formó sola"]          # una sola vez
     assert _cuenta(fabrica, "select count(*) from liga.inscripciones") == 0   # y no la formó
     formar._abandonadas_avisadas.clear()

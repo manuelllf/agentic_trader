@@ -1,4 +1,4 @@
--- migraciones-liga: 018
+-- migraciones-liga: 019
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump

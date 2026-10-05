@@ -21,9 +21,11 @@ RASTRO = {
     "ajustes": ("creado", "creado_por", "actualizado", "actualizado_por"),
     "avisos_error": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "auditoria": ("creada", "actor_id", None, None),  # es su propia bitácora, solo_anadir
+    "borradores": ("creado", "creado_por", "actualizado", "actualizado_por"),
     "consentimientos": ("aceptado", "usuario_id", None, None),  # solo_anadir
     "creditos_movimientos": ("creado", "creado_por", None, None),  # solo_anadir
     "estrategias": ("creada", "creado_por", "actualizada", "actualizado_por"),
+    "estrategias_revisadas": ("creada", "creada_por", "actualizado_en", "actualizado_por"),
     "inscripciones": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "jornadas": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "lecturas": ("creada", "creado_por", None, None),  # de solo añadir, caché de IA
@@ -42,6 +44,7 @@ RASTRO = {
     "resultados": (None, None, None, None),  # hija de inscripciones (solo_anadir)
     "roles_usuario": ("concedido", "creado_por", None, None),  # solo insert/delete
     "temporadas": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
+    "visitas": ("inicio", "usuario_id", "ultima_actividad", None),  # la escribe registrar_visita
 }
 
 
