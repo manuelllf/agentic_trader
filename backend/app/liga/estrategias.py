@@ -36,7 +36,6 @@ from app.liga.motor.seleccion import (
     REPARTOS,
     SIN_NOTAS,
     SIN_RESPUESTA,
-    TOPE_PREGUNTA,
     NotasJev,
     Respuesta,
     Seleccion,
@@ -124,7 +123,6 @@ def catalogo_payload() -> dict:
         "repartos": list(REPARTOS),
         "max_por_sector": MAX_POR_SECTOR,
         "max_excluidas": MAX_EXCLUIDAS,
-        "tope_pregunta": TOPE_PREGUNTA,
     }
 
 
@@ -352,8 +350,8 @@ def respuestas_sistema(pregunta: str | None, foto_id: int) -> dict[str, Respuest
 
 
 def candidatas_pregunta_de(ctx: Contexto, receta: RecetaModelo) -> list[str]:
-    """Las hasta `TOPE_PREGUNTA` candidatas a las que se pregunta de verdad (F6-B): el motor ya
-    define ese conjunto, solo hace falta traducir la receta guardada a la del motor."""
+    """Las candidatas a las que se pregunta de verdad (todas las que pasan las reglas): el motor
+    ya define ese conjunto, solo hace falta traducir la receta guardada a la del motor."""
     return candidatas_pregunta(list(ctx.empresas), procesos_datos.receta_motor(receta), ctx.notas)
 
 

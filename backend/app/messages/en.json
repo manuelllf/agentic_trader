@@ -254,7 +254,7 @@
   "motor_val_peso": "\"{peso}\" weighs from 0 to {maximo}, in steps of {paso}.",
   "motor_val_peso_cero": "Give weight to at least one score: otherwise there is nothing to rank by.",
   "motor_sin_notas": "the AI did not score it this month",
-  "motor_sin_respuesta": "it has no answer to your question (it is only asked for the top {tope} by the other scores)",
+  "motor_sin_respuesta": "it has no answer to your question",
   "motor_si": "yes",
   "motor_no": "no",
   "motor_seguridad_alta": "high",

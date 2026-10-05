@@ -103,7 +103,7 @@
   "builder_restore_ticker": "Restaurar {ticker}",
   "builder_save_check_question_cost": "Guardar y consultar coste de mi pregunta",
   "builder_asking": "Preguntando…",
-  "builder_test_question_cost": "Probar con tu pregunta · {count, plural, one {# crédito} other {# créditos}}",
+  "builder_test_question_cost": "Probar con tu pregunta · {companies, plural, one {# empresa} other {# empresas}} · {count, plural, one {# crédito} other {# créditos}}",
   "builder_partial_selection": "Selección parcial: {withoutScores} candidatas sin notas guardadas y {withoutAnswer} sin respuesta a tu pregunta. No se ha consultado ningún modelo.",
   "builder_selection_counts": "De {evaluated} empresas pasan tus reglas {passed}. Entran {selected}:",
   "builder_no_sector": "sin sector",

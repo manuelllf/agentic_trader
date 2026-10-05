@@ -6,9 +6,9 @@ Reproduce `pick()`, `reason()` y `explain()` de la maqueta B sobre datos reales 
    puntuó este mes (sin las 4 notas de Jev no hay nota).
 2. Nota (de 0 a 10 por dentro, sobre 100 al enseñarla): media ponderada, con los pesos de la
    receta, de las 4 notas de Jev (su escala de 0 a 9 se pasa a 0-10) y de la respuesta a la
-   pregunta propia, si pesa. Si pesa y una empresa no tiene respuesta (la pregunta solo se hace
-   a `candidatas_pregunta`, tope D7), no pasa: entraría sin que se le preguntara, por delante de
-   las que contestaron que no.
+   pregunta propia, si pesa. Si pesa y una empresa no tiene respuesta (la pregunta se hace a
+   todas las de `candidatas_pregunta`), no pasa: entraría sin que se le preguntara, por delante
+   de las que contestaron que no.
 3. Orden por nota; a igual nota, la de más capitalización (y el ticker, para que sea determinista).
 4. Entran las N primeras, respetando el máximo por sector.
 5. Pesos a partes iguales (100/N) o proporcionales a la nota. Si solo pasan k < N, entre todas
@@ -57,9 +57,8 @@ PESO_MAXIMO = 50
 PASO_PESO = 5
 MAX_POR_SECTOR = 10
 MAX_EXCLUIDAS = 50
-TOPE_PREGUNTA = 300
 SIN_NOTAS = Texto("motor_sin_notas")
-SIN_RESPUESTA = Texto("motor_sin_respuesta", tope=TOPE_PREGUNTA)
+SIN_RESPUESTA = Texto("motor_sin_respuesta")
 
 # Cada peso de la receta con su nota de Jev (`scan_audit.jev_*`).
 _NOTA_DE_PESO = {
@@ -282,9 +281,9 @@ def seleccionar(empresas: Sequence[EmpresaFoto], receta: Receta, notas: Mapping[
 
 
 def candidatas_pregunta(empresas: Sequence[EmpresaFoto], receta: Receta,
-                        notas: Mapping[str, NotasJev], tope: int = TOPE_PREGUNTA) -> list[str]:
-    """Los tickers a los que se hace la pregunta propia (D7): los que pasan reglas y exclusiones,
-    las `tope` mejores por las 4 notas y, a igual nota, por capitalización.
+                        notas: Mapping[str, NotasJev]) -> list[str]:
+    """Los tickers a los que se hace la pregunta propia: todos los que pasan reglas y
+    exclusiones, ordenados por las 4 notas y, a igual nota, por capitalización.
 
     Las 4 notas pesan como en la receta; si ninguna pesa (solo cuenta la pregunta), igual."""
     reglas = _preparar(receta)
@@ -296,7 +295,7 @@ def candidatas_pregunta(empresas: Sequence[EmpresaFoto], receta: Receta,
     excluidas = set(receta.excluidas)
     filas = (_fila(e, reglas, pesos, notas.get(e.ticker), None, e.ticker in excluidas)
              for e in empresas)
-    return [f.ticker for f in sorted((f for f in filas if f.pasa), key=_orden)[:tope]]
+    return [f.ticker for f in sorted((f for f in filas if f.pasa), key=_orden)]
 
 
 def sin_pregunta(receta: Receta) -> Receta:

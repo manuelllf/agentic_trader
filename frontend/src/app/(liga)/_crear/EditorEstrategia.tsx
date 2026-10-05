@@ -994,7 +994,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         {typeof prueba === "object" && prueba && b?.pregunta && pro && costePregunta && costePregunta.faltan > 0 && (
           <Boton variante="secundario" ancho="completo" style={{ marginTop: 8 }}
                  disabled={ocupado} onClick={probarConPregunta}>
-            {ocupado ? t("builder_asking") : t("builder_test_question_cost", { count: costePregunta.creditos })}
+            {ocupado ? t("builder_asking") : t("builder_test_question_cost", { count: costePregunta.creditos, companies: costePregunta.evaluadas })}
           </Boton>
         )}
         {typeof prueba === "object" && prueba && (

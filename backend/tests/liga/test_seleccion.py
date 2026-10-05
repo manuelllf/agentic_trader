@@ -282,26 +282,38 @@ def test_sin_pregunta_en_la_receta_no_hace_falta_ninguna_respuesta():
     assert motivo is None and len(s.elegidas) == 3
 
 
-def test_la_pregunta_se_hace_solo_a_las_300_mejores_que_pasan_las_reglas():
-    empresas = [emp(f"T{i:03d}", cap=(3_000 + i) * M) for i in range(310)]
+def test_la_pregunta_se_hace_a_todas_las_que_pasan_las_reglas_sin_tope():
+    empresas = [emp(f"T{i:03d}", cap=(3_000 + i) * M) for i in range(1_200)]
     empresas += [emp("CHICA", cap=1 * M), emp("QUITADA"), emp("SINNOTA")]
     n = {e.ticker: notas(i % 10 * 0.9) for i, e in enumerate(empresas) if e.ticker != "SINNOTA"}
     pesos = {"negocio": 25, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 25}
     r = receta(pesos=pesos, reglas=[regla_por_defecto("medianas")], excluidas=("QUITADA",))
     candidatas = candidatas_pregunta(empresas, r, n)
-    assert len(candidatas) == 300
+    assert len(candidatas) == 1_200
     assert not {"CHICA", "QUITADA", "SINNOTA"} & set(candidatas)
-    # Las 31 de nota 8,1 y luego las de 7,2, cada grupo de más a menos capitalización.
-    assert candidatas[0] == "T309" and candidatas[30] == "T009"
-    assert candidatas[31] == "T308"
-    assert len(candidatas_pregunta(empresas, r, n, tope=5)) == 5
+    # Las de nota 8,1 primero y, dentro de cada grupo, de más a menos capitalización.
+    assert candidatas[0] == "T1199" and candidatas[1] == "T1189"
+
+
+def test_una_empresa_fuera_de_las_mejores_por_las_notas_puede_entrar_por_la_pregunta():
+    # Antes solo se preguntaba a las 300 mejores por las notas: «ULTIMA» nunca podía entrar.
+    empresas = [emp(f"T{i:03d}") for i in range(400)] + [emp("ULTIMA")]
+    n = {e.ticker: notas(9) for e in empresas}
+    n["ULTIMA"] = notas(1)
+    pesos = {"negocio": 25, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 50}
+    r = receta(pesos=pesos, n_empresas=3)
+    assert "ULTIMA" in candidatas_pregunta(empresas, r, n)
+    resp = {e.ticker: Respuesta(False, "alta") for e in empresas}
+    resp["ULTIMA"] = Respuesta(True, "alta")
+    s, motivo = seleccionar_o_sin_pregunta(empresas, r, n, resp)
+    assert motivo is None and "ULTIMA" in [e.ticker for e in s.elegidas]
 
 
 def test_candidatas_si_solo_pesa_la_pregunta_ordena_por_las_4_notas_a_partes_iguales():
     pesos = {"negocio": 0, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 25}
     empresas = [emp("A"), emp("B"), emp("C")]
     n = {"A": notas(9, 0, 0, 0), "B": notas(3, 3, 3, 3), "C": notas(0, 0, 0, 1)}
-    assert candidatas_pregunta(empresas, receta(pesos=pesos), n, tope=2) == ["B", "A"]
+    assert candidatas_pregunta(empresas, receta(pesos=pesos), n) == ["B", "A", "C"]
 
 
 def test_notas_de_jev_desde_la_bd_y_fuera_de_rango():

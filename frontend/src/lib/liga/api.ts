@@ -142,7 +142,6 @@ export type Catalogo = {
   repartos: string[];
   max_por_sector: number;
   max_excluidas: number;
-  tope_pregunta: number;
 };
 
 export type ReglaElegida = { clave: string; params: Record<string, unknown> };

@@ -254,7 +254,7 @@
   "motor_val_peso": "«{peso}» pesa de 0 a {maximo}, de {paso} en {paso}.",
   "motor_val_peso_cero": "Da peso al menos a una nota: si no, no hay con qué ordenar.",
   "motor_sin_notas": "la IA no la puntuó este mes",
-  "motor_sin_respuesta": "no tiene respuesta a tu pregunta (solo se hace a las {tope} mejores por las otras notas)",
+  "motor_sin_respuesta": "no tiene respuesta a tu pregunta",
   "motor_si": "sí",
   "motor_no": "no",
   "motor_seguridad_alta": "alta",

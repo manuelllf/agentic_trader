@@ -103,7 +103,7 @@
   "builder_restore_ticker": "Restore {ticker}",
   "builder_save_check_question_cost": "Save and check the cost of my question",
   "builder_asking": "Asking…",
-  "builder_test_question_cost": "Try your question · {count, plural, one {# credit} other {# credits}}",
+  "builder_test_question_cost": "Try your question · {companies, plural, one {# company} other {# companies}} · {count, plural, one {# credit} other {# credits}}",
   "builder_partial_selection": "Partial selection: {withoutScores} candidates have no saved scores and {withoutAnswer} have no answer to your question. No model was queried.",
   "builder_selection_counts": "Of {evaluated} companies, {passed} pass your rules. {selected} will be included:",
   "builder_no_sector": "no sector",
