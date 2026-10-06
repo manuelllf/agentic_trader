@@ -110,7 +110,8 @@ def datos_ficha(db: Session, estrategia_id: str, usuario_id: str | None = None,
     from app.liga.motor.calendario import dias_de_bolsa
 
     sessions = dias_de_bolsa(min(base for base, _, _, _ in by_round), market_end)
-    out = _serie_guardada(by_round, series, as_of, sessions)
+    out = _serie_guardada(by_round, series, as_of, sessions,
+                          numeros=[j["jornada_numero"] for j in jornadas])
     out["evidencia"] = None
     if usuario_id is not None:
         from app.liga import estrategias
@@ -312,8 +313,10 @@ def _pesos_receta(receta) -> dict | None:  # noqa: ANN001
 
 
 def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, Decimal]]]],
-                    series: dict, as_of: date, market_sessions: Sequence[date]) -> dict:
-    """Curva pura a partir de posiciones y cierres precargados; no accede a la BD."""
+                    series: dict, as_of: date, market_sessions: Sequence[date],
+                    numeros: Sequence[int] | None = None) -> dict:
+    """Curva pura a partir de posiciones y cierres precargados; no accede a la BD.
+    Con `numeros` (uno por jornada), cada punto lleva su jornada; el día base, la que abre."""
     def cierres_unicos(ticker: str) -> dict[date, object]:
         """Drop ambiguous duplicate dates rather than letting input order choose a close."""
         por_dia: dict[date, list] = {}
@@ -340,7 +343,8 @@ def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, D
     previous_round_end: date | None = None
     previous_round_complete = True
 
-    for base, fin, oficial, holdings in by_round:
+    for orden, (base, fin, oficial, holdings) in enumerate(by_round):
+        numero = numeros[orden] if numeros is not None else None
         # Only chain a round at the exact close where the preceding round ended. A missing base
         # or a skipped month has no defensible portfolio level to inherit.
         if puntos and (not previous_round_complete or previous_round_end != base):
@@ -373,12 +377,13 @@ def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, D
         first_round_point = len(puntos)
         if puntos:
             round_factor = puntos[-1]["_estrategia_nivel"]
+            puntos[-1]["_jornada"] = numero
         else:
             # La base de la primera jornada fija el 0 % de ambas curvas y permite medir el
             # retorno de la primera sesión como una observación diaria real.
             puntos.append({"_dia": base, "_estrategia_nivel": round_factor,
                            "_sp_nivel": 1.0, "provisional": not round_complete,
-                           "salto": False})
+                           "salto": False, "_jornada": numero})
             niveles_estrategia.append(round_factor)
             base_global = base
         assert base_global is not None
@@ -409,7 +414,7 @@ def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, D
             # gap visible in the chart and excluding the multi-session move from daily ratios.
             puntos.append({"_dia": d, "_estrategia_nivel": strategy_level,
                            "_sp_nivel": benchmark_level, "provisional": not round_complete,
-                           "salto": not contiguous})
+                           "salto": not contiguous, "_jornada": numero})
             if contiguous:
                 daily = strategy_level / puntos[-2]["_estrategia_nivel"] - 1
                 retornos_validos.append(daily)
@@ -436,7 +441,8 @@ def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, D
     chart = [{"dia": p["_dia"].isoformat(),
               "estrategia": (p["_estrategia_nivel"] / first_e - 1) * 100,
               "sp500": (p["_sp_nivel"] / first_sp - 1) * 100,
-              "provisional": p["provisional"], "salto": p["salto"]}
+              "provisional": p["provisional"], "salto": p["salto"],
+              **({"jornada": p["_jornada"]} if numeros is not None else {})}
              for p in puntos]
     metrics = metricas_diarias(retornos_validos, niveles_estrategia)
     return {

@@ -84,6 +84,24 @@ def test_curva_total_incluye_dividendo_split_y_cambio_de_pesos_por_jornada() -> 
     assert result["provisional_hasta"] == dias[4].isoformat()
 
 
+def test_cada_punto_dice_a_que_jornada_pertenece_y_el_dia_base_a_la_que_empieza() -> None:
+    base = date(2026, 1, 5)
+    dias = [base + timedelta(days=i) for i in range(5)]
+    cierres = {
+        "SPY": [Cierre(d, 100 + i) for i, d in enumerate(dias)],
+        "AAA": [Cierre(d, 100 + i) for i, d in enumerate(dias[:3])],
+        "BBB": [Cierre(d, 20 + i) for i, d in enumerate(dias[2:])],
+    }
+    rondas = [
+        (dias[0], dias[2], True, [("AAA", Decimal("100"))]),
+        (dias[2], dias[4], False, [("BBB", Decimal("100"))]),
+    ]
+    con_numeros = _serie_guardada(rondas, cierres, dias[4], dias, numeros=[3, 4])
+    assert [p["jornada"] for p in con_numeros["serie"]] == [3, 3, 4, 4, 4]
+    sin_numeros = _serie_guardada(rondas, cierres, dias[4], dias)
+    assert all("jornada" not in p for p in sin_numeros["serie"])
+
+
 def test_curva_omite_dias_incompletos_y_no_cuenta_salto_como_retorno_diario() -> None:
     base = date(2026, 2, 2)
     dias = [base + timedelta(days=i) for i in range(5)]
