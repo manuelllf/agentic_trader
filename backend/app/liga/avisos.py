@@ -1,6 +1,7 @@
 """Avisos a las cuentas por Web Push (opt-in, uno por dispositivo). Sin correo.
 
-Cinco avisos, todos best-effort: si el push falla, la liga sigue y todo está en la web.
+Seis avisos, todos best-effort: si el push falla, la liga sigue y todo está en la web.
+- Sin créditos para pagar tu pregunta: jugará sin ella (tres días antes del corte).
 - Tu cartera está formada (puedes cambiar empresas hasta tal hora).
 - Los cambios se cierran en una hora.
 - Empieza la jornada.
@@ -34,6 +35,7 @@ _MESES_ES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "ag
 _APERTURA = time(9, 30)                   # abre la bolsa de Nueva York
 _AVISO_APERTURA_HASTA = timedelta(hours=2)   # pasado esto, ya no se avisa de que empezó
 _ANTELACION_CIERRE = timedelta(hours=1)
+_ANTELACION_SIN_CREDITOS = timedelta(days=3)
 
 
 class DemasiadosDispositivos(ValueError):
@@ -193,13 +195,60 @@ def _enviar_una_vez(db: Session, accion: str, tipo: str, jornada_id: int, **extr
     return enviados
 
 
+def _sin_creditos(db: Session, fabrica: Fabrica) -> list[tuple[str, str]]:
+    """(cuenta, estrategia) de las cuentas sin Pro cuya pregunta propia no podrá pagarse al formar
+    la próxima jornada con los créditos que tienen."""
+    from app.liga import estrategias
+    from app.liga.ia import comun as ia_comun
+    from app.liga.ia import precios as ia_precios
+    from app.liga.models import Receta
+
+    filas = db.execute(text("""
+        select e.dueno_id::text as dueno, e.nombre, e.receta_id from liga.estrategias e
+        where e.tipo = 'usuario' and e.estado in ('apuntada', 'jugando')
+          and e.cada_dia_1 <> 'mantener' and not liga.tiene_pro(e.dueno_id)
+          and exists (select 1 from liga.recetas r
+                      where r.id = e.receta_id and r.pregunta is not null)
+        order by e.creada
+    """)).all()
+    if not filas:
+        return []
+    ctx = estrategias.foto_y_notas_actuales()
+    sin_saldo = []
+    for f in filas:
+        candidatas = estrategias.candidatas_pregunta_de(ctx, db.get(Receta, f.receta_id))
+        if ia_comun.saldo(f.dueno, fabrica) < ia_precios.precio_pregunta(len(candidatas)):
+            sin_saldo.append((f.dueno, f.nombre))
+    return sin_saldo
+
+
+def _avisar_sin_creditos(db: Session, fabrica: Fabrica, ahora: datetime) -> int:
+    """Tres días antes del corte: a quien no le alcanzan los créditos para pagar su pregunta, que
+    jugará sin ella. Una sola vez por jornada."""
+    j = db.execute(text("""
+        select id, cierre_inscripcion from liga.jornadas
+        where estado = 'programada' and cierre_inscripcion > :ahora
+          and cierre_inscripcion - make_interval(days => :d) <= :ahora
+        order by cierre_inscripcion limit 1
+    """), {"ahora": ahora, "d": _ANTELACION_SIN_CREDITOS.days}).one_or_none()
+    if j is None or _ya_avisado(db, "aviso.sin_creditos", j.id):
+        return 0
+    enviados = sum(avisar(db, dueno, "sin_creditos", cierra=j.cierre_inscripcion, name=nombre)
+                   for dueno, nombre in _sin_creditos(db, fabrica))
+    auditar(db, "aviso.sin_creditos", f"jornada:{j.id}", {"enviados": enviados}, None)
+    db.commit()
+    return enviados
+
+
 def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None) -> dict:
-    """El del scheduler (cada 5 minutos): una hora antes de que se cierren los cambios, y cuando
-    abre el mercado del primer día. Cada aviso sale una sola vez por jornada. Nunca lanza."""
-    hecho = {"cambios_cierran": 0, "empieza": 0}
+    """El del scheduler (cada 5 minutos): tres días antes del corte a quien no le alcanzan los
+    créditos de su pregunta, una hora antes de que se cierren los cambios, y cuando abre el
+    mercado del primer día. Cada aviso sale una sola vez por jornada. Nunca lanza."""
+    hecho = {"sin_creditos": 0, "cambios_cierran": 0, "empieza": 0}
     try:
         ahora = (ahora or datetime.now(UTC)).astimezone(UTC)
         with sesion(fabrica) as db:
+            hecho["sin_creditos"] = _avisar_sin_creditos(db, fabrica, ahora)
             jornadas = db.execute(text("""
                 select id, dia_inicio from liga.jornadas where estado = 'formada'
                   and dia_inicio >= :hoy order by dia_inicio limit 2

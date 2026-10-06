@@ -1,4 +1,4 @@
--- migraciones-liga: 028
+-- migraciones-liga: 029
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -759,9 +759,6 @@ begin
                  where e.id = new.estrategia_id and e.dueno_id = (select auth.uid())
                    and e.tipo = 'usuario') then
     raise exception 'La receta tiene que ser de una estrategia tuya' using errcode = '42501';
-  end if;
-  if new.pregunta is not null and not liga.es_pro() then
-    raise exception 'La pregunta propia es de Pro' using errcode = '42501';
   end if;
   return new;
 end $$;
@@ -1803,7 +1800,7 @@ CREATE TABLE liga.creditos_movimientos (
     creado_por uuid,
     CONSTRAINT creditos_movimientos_idempotencia_check CHECK (((length(idempotencia) >= 8) AND (length(idempotencia) <= 80))),
     CONSTRAINT creditos_movimientos_importe_check CHECK ((importe <> (0)::numeric)),
-    CONSTRAINT creditos_movimientos_motivo_check CHECK ((motivo = ANY (ARRAY['recarga'::text, 'regalo'::text, 'pro_mensual'::text, 'demo'::text, 'ajuste'::text, 'prueba'::text, 'lectura'::text, 'reserva'::text, 'devolucion'::text])))
+    CONSTRAINT creditos_movimientos_motivo_check CHECK ((motivo = ANY (ARRAY['recarga'::text, 'regalo'::text, 'pro_mensual'::text, 'demo'::text, 'ajuste'::text, 'prueba'::text, 'lectura'::text, 'formacion'::text, 'reserva'::text, 'devolucion'::text])))
 );
 
 
@@ -10505,7 +10502,7 @@ FOR EACH ROW EXECUTE FUNCTION liga.confirmar_bienvenida();
 create table liga.formaciones_degradadas (
   inscripcion_id bigint not null references liga.inscripciones (id) on delete cascade,
   motivo text not null
-    check (motivo in ('sin_ia', 'tope', 'incompleta', 'tiempo', 'quitadas_vaciadas')),
+    check (motivo in ('sin_ia', 'tope', 'incompleta', 'tiempo', 'quitadas_vaciadas', 'sin_saldo')),
   creada timestamptz not null default now(),
   creado_por uuid default auth.uid() references auth.users (id) on delete set null,
   primary key (inscripcion_id, motivo)

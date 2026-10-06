@@ -270,13 +270,13 @@ def test_la_estrategia_que_opta_al_premio_se_elige_por_la_api(api) -> None:  # n
     assert optan() == [segunda]
 
 
-def test_pregunta_propia_y_publicar_son_de_pro(api) -> None:  # noqa: ANN001
+def test_la_pregunta_propia_es_de_todos_y_publicar_es_de_pro(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, *_ = api
     gratis = usuario()
     eid = _crear(cliente, cab, gratis)
     r = _receta(cliente, cab, gratis, eid, pregunta="¿Tiene ventaja?",
                pesos={"negocio": 30, "precio": 0, "deuda": 0, "pronto": 0, "pregunta": 30})
-    assert r.status_code == 403, r.text
+    assert r.status_code == 201, r.text
 
     r = cliente.patch(f"/liga/estrategias/{eid}", json={"visibilidad": "publicada",
                                                         "declara_posiciones": "no"},
@@ -294,7 +294,7 @@ def test_pregunta_propia_y_publicar_son_de_pro(api) -> None:  # noqa: ANN001
     assert r.status_code == 200, r.text
 
 
-def test_preview_exige_cuenta_activa_y_pro_para_pregunta(api) -> None:  # noqa: ANN001
+def test_preview_exige_cuenta_activa_y_vale_para_la_pregunta_de_cualquiera(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, foto_con_escaneo, _jornada, cx = api
     foto_con_escaneo(_EMPRESAS)
     cuerpo = {
@@ -316,16 +316,12 @@ def test_preview_exige_cuenta_activa_y_pro_para_pregunta(api) -> None:  # noqa: 
     assert cliente.post("/liga/seleccion/preview", json=RECETA_BASICA,
                         headers=cab(suspendido)).status_code == 403
 
-    gratis = usuario()
-    r = cliente.post("/liga/seleccion/preview", json=cuerpo, headers=cab(gratis))
-    assert r.status_code == 403 and "Pro" in r.json()["detail"]
-
-    pro = usuario(pro=True)
-    r = cliente.post("/liga/seleccion/preview", json=cuerpo, headers=cab(pro))
-    assert r.status_code == 200, r.text
-    vista = r.json()
-    assert vista["estado"] == "incompleto" and vista["sin_respuesta"] == len(_EMPRESAS)
-    assert vista["seleccionadas"] == 0
+    for cuenta in (usuario(), usuario(pro=True)):
+        r = cliente.post("/liga/seleccion/preview", json=cuerpo, headers=cab(cuenta))
+        assert r.status_code == 200, r.text
+        vista = r.json()
+        assert vista["estado"] == "incompleto" and vista["sin_respuesta"] == len(_EMPRESAS)
+        assert vista["seleccionadas"] == 0
 
 
 # ---- otro no puede leer ni tocar lo que no es suyo (IDOR) ----------------------------------------

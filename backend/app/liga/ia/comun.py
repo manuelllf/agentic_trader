@@ -287,10 +287,11 @@ def clave_cobro(finalidad: str, clave_cliente: str, *piezas: object) -> str:
     return f"{finalidad}:{huella[:32]}"
 
 
-def reservar_creditos(usuario_id: str, importe: Decimal, idempotencia: str) -> None:
+def reservar_creditos(usuario_id: str, importe: Decimal, idempotencia: str,
+                      fabrica: Fabrica | None = None) -> None:
     """Reserva (movimiento negativo) el importe estimado antes de lanzar el gasto; 402 si no
     alcanza el saldo. Idempotente: repetir la misma clave no reserva dos veces."""
-    db = fabrica_sistema()
+    db = (fabrica or fabrica_sistema)()
     try:
         try:
             db.execute(text(
@@ -307,11 +308,12 @@ def reservar_creditos(usuario_id: str, importe: Decimal, idempotencia: str) -> N
 
 
 def liquidar_creditos(usuario_id: str, importe_reservado: Decimal, importe_real: Decimal,
-                      motivo_cobro: str, clave: str, prueba_id=None, lectura_id=None) -> None:  # noqa: ANN001
+                      motivo_cobro: str, clave: str, prueba_id=None, lectura_id=None,  # noqa: ANN001
+                      fabrica: Fabrica | None = None) -> None:
     """Cobra el precio real y devuelve entera la reserva, en la misma transacción: el neto es
     `-importe_real` exacto aunque el precio estimado y el real difieran. Repetir `clave` no cobra
     dos veces (cada movimiento lleva su propia idempotencia derivada de ella)."""
-    db = fabrica_sistema()
+    db = (fabrica or fabrica_sistema)()
     try:
         # Primero se devuelve la reserva y luego se cobra: con el saldo justo, cobrar antes
         # dejaría el saldo por debajo de cero (la reserva ya está restada) y fallaría.
@@ -330,10 +332,11 @@ def liquidar_creditos(usuario_id: str, importe_reservado: Decimal, importe_real:
         db.close()
 
 
-def devolver_reserva(usuario_id: str, importe_reservado: Decimal, clave: str) -> None:
+def devolver_reserva(usuario_id: str, importe_reservado: Decimal, clave: str,
+                     fabrica: Fabrica | None = None) -> None:
     """Falló el gasto tras reservar: se devuelve entera la reserva. Idempotente como todo lo
     demás — un reintento con la misma `clave` no duplica la devolución."""
-    db = fabrica_sistema()
+    db = (fabrica or fabrica_sistema)()
     try:
         db.execute(text(
             "select liga.cargar_creditos(cast(:u as uuid), cast(:i as numeric), "
@@ -370,9 +373,9 @@ def devolver_reservas_huerfanas(antiguedad_minutos: int = 30) -> int:
     return len(filas)
 
 
-def saldo(usuario_id: str) -> Decimal:
+def saldo(usuario_id: str, fabrica: Fabrica | None = None) -> Decimal:
     """Saldo en créditos (suma del libro), leído como sistema."""
-    db = fabrica_sistema()
+    db = (fabrica or fabrica_sistema)()
     try:
         valor = db.execute(text(
             "select saldo from liga.v_saldo where usuario_id = cast(:u as uuid)"),

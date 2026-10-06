@@ -6,13 +6,10 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import text
-from sqlalchemy.orm import Session
 
 from app.i18n import current_locale, present_error_detail, translate
 from app.liga import acceso, estrategias
 from app.liga.auth import Identidad, require_jugador
-from app.liga.db import db_usuario
 from app.liga.motor.catalogo import CATALOGO_VERSION
 from app.liga.motor.mensajes import presentar
 from app.liga.motor.seleccion import SIN_NOTAS, SIN_RESPUESTA, explicar, seleccionar
@@ -78,14 +75,11 @@ def _sin_datos(mensaje: str) -> PreviewSeleccionOut:
 
 @router.post("/seleccion/preview", response_model=PreviewSeleccionOut)
 def previsualizar(body: PreviewSeleccionIn,
-                  ident: Identidad = Depends(require_jugador),
-                  db: Session = Depends(db_usuario)) -> PreviewSeleccionOut:
+                  ident: Identidad = Depends(require_jugador)) -> PreviewSeleccionOut:
     """Evalúa lo escrito contra la última foto guardada; lectura acotada por usuario."""
     if not _LIMITE_PREVIEW.permitido(ident.uid):
         raise HTTPException(429, "Has cambiado la selección muchas veces. Espera un momento.")
     pregunta = (body.pregunta or "").strip() or None
-    if pregunta and not db.execute(text("select liga.es_pro()")).scalar():
-        raise HTTPException(403, "La pregunta propia es de Pro.")
     receta = estrategias.validar_entrada(
         body.idea, [r.model_dump() for r in body.reglas], body.excluidas, pregunta,
         body.pesos, body.n_empresas, body.reparto, body.max_por_sector,

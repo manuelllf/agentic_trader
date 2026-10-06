@@ -49,7 +49,7 @@
   "common_seguimiento_cartera_nueva": "The latest portfolio was formed after your last review.",
   "common_seguimiento_sin_dos_carteras": "There are not two formed portfolios to compare yet.",
   "common_seguimiento_nota": "The comparison reflects saved holdings; it does not confirm that the rules were reevaluated.",
-  "common_seguimiento_sin_pregunta": "This month it played without your question: {motivo, select, sin_ia {the AI was not available} tope {the AI spending limit was reached} incompleta {not all the answers arrived} tiempo {time ran out to answer} other {answers were missing}}. It was chosen with the four scores.",
+  "common_seguimiento_sin_pregunta": "This month it played without your question: {motivo, select, sin_ia {the AI was not available} tope {the AI spending limit was reached} incompleta {not all the answers arrived} tiempo {time ran out to answer} sin_saldo {you did not have enough credits} other {answers were missing}}. It was chosen with the four scores.",
   "common_seguimiento_quitadas_vaciadas": "You changed the setup since last month: its removed companies were not applied.",
   "common_seguimiento_ninguna": "None"
 }

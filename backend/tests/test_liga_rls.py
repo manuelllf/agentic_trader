@@ -240,14 +240,16 @@ def test_las_recetas_no_se_editan(cx):
     _falla(cx, "update liga.recetas set n_empresas = 3 where id = %s", (rid,))
 
 
-def test_la_pregunta_propia_es_de_pro(cx):
+def test_la_pregunta_propia_la_escribe_cualquier_cuenta_en_su_estrategia(cx):
     a, p = _usuario(cx), _usuario(cx, pro=True)
-    ea = _estrategia(cx, a)
-    _como(cx, a)
-    with pytest.raises(psycopg.Error), cx.transaction():
-        _receta(cx, a, ea, pregunta="¿Sus clientes siguen comprando?")
-    ep = _estrategia(cx, p)
+    ea, ep = _estrategia(cx, a), _estrategia(cx, p)
+    _receta(cx, a, ea, pregunta="¿Sus clientes siguen comprando?")
     _receta(cx, p, ep, pregunta="¿Sus clientes siguen comprando?")
+    _como(cx, a)
+    _falla(cx, "insert into liga.recetas (estrategia_id, reglas, catalogo_version, pregunta, "
+               "peso_negocio, peso_precio, peso_deuda, peso_pronto, peso_pregunta, n_empresas, "
+               "reparto, max_por_sector) values (%s, '[]'::jsonb, 1, 'Otra', 30, 20, 20, 0, 30, "
+               "5, 'igual', 2)", (ep,))
 
 
 def test_transiciones_de_estado_permitidas(cx):

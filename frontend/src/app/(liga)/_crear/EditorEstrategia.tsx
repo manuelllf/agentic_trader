@@ -141,10 +141,10 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   const [filtroError, setFiltroError] = useState<string | null>(null);
   const recetaPreview = useMemo((): RecetaEntrada | null => {
     if (!b) return null;
-    const { pregunta, pesos } = pesosCoherentes(yo?.plan === "pro" ? b.pregunta : "", b.pesos);
+    const { pregunta, pesos } = pesosCoherentes(b.pregunta, b.pesos);
     return { idea: convFrase || null, reglas: b.reglas, excluidas: b.excluidas, pregunta, pesos,
       n_empresas: b.n_empresas, reparto: b.reparto, max_por_sector: b.max_por_sector };
-  }, [b, convFrase, yo?.plan]);
+  }, [b, convFrase]);
   const clavePreview = JSON.stringify(recetaPreview);
   const previewSeleccion = previewDato?.clave === clavePreview ? previewDato.valor : null;
 
@@ -410,7 +410,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       if (typeof cambiada === "string") { setError(cambiada); return null; }
       setEstrategia(cambiada);
     }
-    const { pregunta, pesos } = pesosCoherentes(pro ? b!.pregunta : "", b!.pesos);
+    const { pregunta, pesos } = pesosCoherentes(b!.pregunta, b!.pesos);
     const receta = await crearReceta(idActual, {
       idea: convFrase || null,
       reglas: b!.reglas, excluidas: b!.excluidas, pregunta, pesos, n_empresas: b!.n_empresas,
@@ -450,7 +450,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     const p = await probarEstrategia(idActual);
     actualizarPrueba(p);
     if (typeof p === "string") return null;
-    if (b?.pregunta && pro) {
+    if (b?.pregunta) {
       const c = await costeProbarConPregunta(idActual);
       if (typeof c !== "string") setCostePregunta(c);
     }
@@ -690,7 +690,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   }
 
   // «Tu pregunta» solo pesa si hay pregunta escrita.
-  const wkeys = catalogo.pesos.claves.filter((k) => k !== "pregunta" || (pro && b.pregunta.trim()));
+  const wkeys = catalogo.pesos.claves.filter((k) => k !== "pregunta" || b.pregunta.trim());
   const cifraPreview = (valor: number | null | undefined) =>
     valor == null ? "—" : new Intl.NumberFormat(locale).format(valor);
   const feedbackPreview = (
@@ -877,33 +877,20 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       {convAviso && etapa === 1 && <p className="aviso" role="status">{convAviso}</p>}
       <div className="field pregunta-propia lenguaje-natural" hidden={etapa !== 2}>
         <label className="lbl" htmlFor="cQ">
-          {t("builder_question_pro")}
-          <small>
-            {pro
-              ? t("builder_question_help_pro")
-              : t("builder_question_help")}
-          </small>
+          {t("builder_question")}
+          <small>{t(pro ? "builder_question_help_pro" : "builder_question_help_credits")}</small>
         </label>
-        {pro ? (
-          <textarea id="cQ" className="inp" maxLength={160}
-                    placeholder={t("builder_question_placeholder")}
-                    value={b.pregunta}
-                    onChange={(e) => actualizarB({
-                      pregunta: e.target.value,
-                      pesos: pesosCoherentes(e.target.value, b.pesos).pesos,
-                    })} />
-        ) : (
-          <div className="lock">
-            {t("builder_question_requires_pro")}
-            <div><Boton variante="principal" disabled>{t("builder_upgrade_price")}</Boton></div>
-          </div>
-        )}
-        {pro && (
-          <p className="fine">
-            {t("builder_question_privacy_notice")}{" "}
-            <a href="/como-funciona" target="_blank" rel="noopener noreferrer">{t("builder_how_question_used")}</a>
-          </p>
-        )}
+        <textarea id="cQ" className="inp" maxLength={160}
+                  placeholder={t("builder_question_placeholder")}
+                  value={b.pregunta}
+                  onChange={(e) => actualizarB({
+                    pregunta: e.target.value,
+                    pesos: pesosCoherentes(e.target.value, b.pesos).pesos,
+                  })} />
+        <p className="fine">
+          {t("builder_question_privacy_notice")}{" "}
+          <a href="/como-funciona" target="_blank" rel="noopener noreferrer">{t("builder_how_question_used")}</a>
+        </p>
       </div>
 
       <div className="field" hidden={etapa !== 2}>
@@ -985,14 +972,14 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         {b.excluidas.length > 0 && <details className="more"><summary>{t("builder_manual_exclusions", { count: b.excluidas.length })}</summary>
           {b.excluidas.map((ticker) => <Boton key={ticker} tamano="pequeno" disabled={ocupado} onClick={() => void deshacerCambio(ticker)}>{t("builder_restore_ticker", { ticker })}</Boton>)}
         </details>}
-        {typeof prueba === "object" && prueba && b.pregunta && pro && !costePregunta && <Boton variante="secundario" disabled={ocupado}
+        {typeof prueba === "object" && prueba && b.pregunta && !costePregunta && <Boton variante="secundario" disabled={ocupado}
           onClick={async () => { setOcupado(true); try { await guardarPrueba(); } finally { setOcupado(false); } }}>
           {t("builder_save_check_question_cost")}
         </Boton>}
         {typeof prueba === "string" && (
           <p className="fine" style={{ textAlign: "center" }} role="status">{prueba}</p>
         )}
-        {typeof prueba === "object" && prueba && b?.pregunta && pro && costePregunta && costePregunta.faltan > 0 && (
+        {typeof prueba === "object" && prueba && b?.pregunta && costePregunta && costePregunta.faltan > 0 && (
           <Boton variante="secundario" ancho="completo" style={{ marginTop: 8 }}
                  disabled={ocupado} onClick={probarConPregunta}>
             {ocupado ? t("builder_asking") : t("builder_test_question_cost", { count: costePregunta.creditos, companies: costePregunta.evaluadas })}

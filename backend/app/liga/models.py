@@ -285,7 +285,8 @@ class Prueba(LigaBase):
 
 
 class FormacionDegradada(LigaBase):
-    """Inscripción formada sin la pregunta propia (`motivo`: sin_ia, tope, incompleta o tiempo) o
+    """Inscripción formada sin la pregunta propia (`motivo`: sin_ia, tope, incompleta, tiempo o
+    sin_saldo) o
     sin las empresas que el dueño había quitado (`quitadas_vaciadas`)."""
 
     __tablename__ = "formaciones_degradadas"

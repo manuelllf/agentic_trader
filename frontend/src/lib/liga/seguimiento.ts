@@ -37,7 +37,7 @@ export type SeguimientoEstrategia = {
   quitadas_vaciadas?: boolean;
 };
 
-export type MotivoSinPregunta = "sin_ia" | "tope" | "incompleta" | "tiempo";
+export type MotivoSinPregunta = "sin_ia" | "tope" | "incompleta" | "tiempo" | "sin_saldo";
 
 export type CursorRevision = {
   estrategia_id: string;

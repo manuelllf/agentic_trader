@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app import precios  # noqa: E402
 from app.liga import cambios  # noqa: E402
+from app.liga.ia import comun as ia_comun  # noqa: E402
 from app.liga.models import Jornada  # noqa: E402
 from app.liga.motor import calendario  # noqa: E402
 from app.liga.motor.puntos import resultado_jornada  # noqa: E402
@@ -229,6 +230,8 @@ def mundo(fabrica, mercado) -> dict:  # noqa: ANN001
             "'suelo', :d, 50, 'max', 70, :c, 'nueva', :m)"),
             {"t": t, "d": momento[:10], "c": caida, "m": momento})
     uid = _usuario(db)
+    db.execute(text("insert into liga.planes_usuario (usuario_id, plan, origen) "
+                    "values (:u, 'pro', 'admin')"), {"u": uid})
     ids["reglas"] = _estrategia(db, uid, "Solo notas")
     ids["pregunta"] = _estrategia(db, uid, "Con pregunta", pregunta="¿Tiene ventaja?", n=3,
                                   reparto="nota", max_sector=0)
@@ -408,6 +411,75 @@ def test_con_todas_las_respuestas_la_pregunta_cuenta_y_nada_se_apunta(  # noqa: 
     # ZQA y ZQB contestaron que sí con seguridad alta, ZQF que sí con media: los que más suben.
     assert set(ins[mundo["pregunta"]]["pos"]) == {"ZQA", "ZQF", "ZQB"}
     assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas") == 0
+
+
+def _contestar_todas(fabrica, mundo) -> None:  # noqa: ANN001
+    """Todas las respuestas de «¿Tiene ventaja?» ya en la caché de la foto."""
+    h = datos.hash_pregunta("¿Tiene ventaja?")
+    with comun.sesion(fabrica) as db:
+        for t, _, _, _ in EMPRESAS:
+            db.execute(text("insert into liga.respuestas_ia (pregunta_hash, ticker, foto_id, si, "
+                            "seguridad) values (:h, :t, :f, false, 'alta') "
+                            "on conflict do nothing"), {"h": h, "t": t, "f": mundo["foto"]})
+        db.commit()
+
+
+def _cuenta_con_pregunta(fabrica, creditos: int) -> uuid.UUID:  # noqa: ANN001
+    """Una cuenta sin Pro con una estrategia de pregunta propia y esos créditos de saldo."""
+    with comun.sesion(fabrica) as db:
+        uid = _usuario(db)
+        eid = _estrategia(db, uid, "De pago", pregunta="¿Tiene ventaja?", n=3, reparto="nota",
+                          max_sector=0)
+        if creditos:
+            db.execute(text("select liga.cargar_creditos(:u, :c, 'regalo', 'regalo-de-prueba')"),
+                       {"u": uid, "c": creditos})
+        db.commit()
+    return eid
+
+
+def _saldo_de(fabrica, estrategia_id) -> Decimal:  # noqa: ANN001
+    return ia_comun.saldo(_dueno(fabrica, estrategia_id), fabrica)
+
+
+def test_sin_pro_la_pregunta_se_paga_con_creditos_y_con_pro_va_incluida(  # noqa: ANN001
+        fabrica, mercado, mundo) -> None:
+    ene = mundo["enero"]
+    _contestar_todas(fabrica, mundo)
+    de_pago = _cuenta_con_pregunta(fabrica, 10)
+    foto.ejecutar(ene, fabrica=fabrica)
+    formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    ins = _inscripciones(fabrica, ene)
+    assert _saldo_de(fabrica, de_pago) == Decimal(9)               # un crédito por 1.000 empresas
+    assert _saldo_de(fabrica, mundo["pregunta"]) == Decimal(0)     # con Pro no paga nada
+    assert set(ins[de_pago]["pos"]) == set(ins[mundo["pregunta"]]["pos"]) == {"ZQA", "ZQF", "ZQB"}
+    assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas") == 0
+
+
+def test_sin_saldo_juega_sin_su_pregunta_aunque_otra_cuenta_la_tenga_en_cache(  # noqa: ANN001
+        fabrica, mercado, mundo) -> None:
+    ene = mundo["enero"]
+    _contestar_todas(fabrica, mundo)
+    sin_saldo = _cuenta_con_pregunta(fabrica, 0)
+    foto.ejecutar(ene, fabrica=fabrica)
+    formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    ins = _inscripciones(fabrica, ene)
+    assert set(ins[sin_saldo]["pos"]) != set(ins[mundo["pregunta"]]["pos"])
+    assert _saldo_de(fabrica, sin_saldo) == Decimal(0)
+    assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas d "
+                            "join liga.inscripciones i on i.id = d.inscripcion_id "
+                            "where i.estrategia_id = :e and d.motivo = 'sin_saldo'",
+                   e=sin_saldo) == 1
+
+
+def test_si_faltan_respuestas_no_se_cobra_la_pregunta(fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    de_pago = _cuenta_con_pregunta(fabrica, 10)       # la caché solo tiene cuatro respuestas
+    foto.ejecutar(ene, fabrica=fabrica)
+    formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    assert _saldo_de(fabrica, de_pago) == Decimal(10)
+    assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas d "
+                            "join liga.inscripciones i on i.id = d.inscripcion_id "
+                            "where i.estrategia_id = :e", e=de_pago) == 1
 
 
 FIN_ENERO = datetime(2027, 1, 29, 22, 35, tzinfo=UTC)       # 17:35 NY del último día de enero
@@ -1156,8 +1228,8 @@ def test_los_recordatorios_salen_una_vez_por_jornada_y_en_su_hora(
     _formar_mes(fabrica, mercado, ene, ENERO)
     empujes.clear()
     cierra = datetime(2027, 1, 4, 14, 0, tzinfo=UTC)              # 09:00 NY del día 4
-    assert avisos.job(fabrica, ahora=cierra - timedelta(hours=2)) == {"cambios_cierran": 0,
-                                                                     "empieza": 0}
+    assert avisos.job(fabrica, ahora=cierra - timedelta(hours=2)) == {
+        "sin_creditos": 0, "cambios_cierran": 0, "empieza": 0}
     assert avisos.job(fabrica, ahora=cierra - timedelta(minutes=30))["cambios_cierran"] == 1
     assert [c["title"] for _, c in empujes] == ["Los cambios se cierran en una hora"]
     assert avisos.job(fabrica, ahora=cierra - timedelta(minutes=25))["cambios_cierran"] == 0
@@ -1168,6 +1240,23 @@ def test_los_recordatorios_salen_una_vez_por_jornada_y_en_su_hora(
     assert [c["title"] for _, c in empujes] == ["Empieza la jornada"]
     assert avisos.job(fabrica, ahora=abre + timedelta(minutes=5))["empieza"] == 0
     assert avisos.job(fabrica, ahora=abre + timedelta(hours=3))["empieza"] == 0
+
+
+def test_tres_dias_antes_del_corte_se_avisa_a_quien_no_le_alcanzan_los_creditos(
+        fabrica, mercado, mundo, empujes, monkeypatch) -> None:  # noqa: ANN001
+    from app.liga import avisos, estrategias
+
+    monkeypatch.setattr(estrategias, "fabrica_sistema", fabrica)
+    sin_saldo, con_saldo = _cuenta_con_pregunta(fabrica, 0), _cuenta_con_pregunta(fabrica, 10)
+    for e in (sin_saldo, con_saldo, mundo["pregunta"]):
+        _suscribir(fabrica, _dueno(fabrica, e))
+    corte = _cuenta(fabrica, "select cierre_inscripcion from liga.jornadas where id = :j",
+                    j=mundo["enero"])
+    assert avisos.job(fabrica, ahora=corte - timedelta(days=4))["sin_creditos"] == 0
+    assert avisos.job(fabrica, ahora=corte - timedelta(days=2))["sin_creditos"] == 1
+    assert [c["title"] for _, c in empujes] == ["Tu pregunta no tiene créditos"]
+    assert avisos.job(fabrica, ahora=corte - timedelta(days=1))["sin_creditos"] == 0
+    assert avisos.job(fabrica, ahora=corte + timedelta(hours=1))["sin_creditos"] == 0
 
 
 # ---- la ventana de cambios: Cambiar y Recuperar hasta las 09:00 NY del día 1 -------------------

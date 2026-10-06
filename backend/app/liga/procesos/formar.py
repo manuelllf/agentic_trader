@@ -3,8 +3,9 @@
 - Cada estrategia de usuario apuntada o jugando entra con la versión de su receta vigente en el
   corte (lo editado después cuenta para la jornada siguiente) y `motor.seleccion` sobre la foto
   de la jornada, con las notas de Jev de su escaneo. La pregunta propia sale de la caché
-  `liga.respuestas_ia`, que `rellenar_preguntas` completa antes; la estrategia a la que le falte
-  alguna respuesta juega sin la pregunta y queda apuntado (`liga.formaciones_degradadas`).
+  `liga.respuestas_ia`, que se completa antes: con Pro va incluida y sin Pro se paga con créditos.
+  La estrategia a la que le falte alguna respuesta, o el saldo, juega sin la pregunta y queda
+  apuntado (`liga.formaciones_degradadas`).
 - Las «mantener» conservan sus valores con los pesos a los que llegaron al cierre del mes
   anterior (`rentabilidad.pesos_mantenidos`); si no jugaron la jornada anterior, se seleccionan.
 - Los equipos de la casa, con `casa`.
@@ -21,6 +22,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -31,6 +33,7 @@ from sqlalchemy.orm import Session
 
 from app import precios
 from app.liga.ia import comun as ia_comun
+from app.liga.ia import precios as ia_precios
 from app.liga.ia import pregunta as ia_pregunta
 from app.liga.models import FormacionDegradada, Inscripcion, Jornada, Posicion, Receta
 from app.liga.motor.catalogo import EmpresaFoto, RecetaNoValida
@@ -79,7 +82,7 @@ class Entrada:
     posiciones: list[tuple[str, Decimal]]
     n_pasan: int | None
     origen: str
-    sin_pregunta: str | None = None   # por qué jugó sin su pregunta: sin_ia, tope o incompleta
+    sin_pregunta: str | None = None   # por qué jugó sin su pregunta: sin_ia, tope, sin_saldo...
     quitadas_vaciadas: bool = False   # la configuración cambió: no se aplican sus quitadas
 
     @property
@@ -150,7 +153,8 @@ def contexto(db: Session, j: Jornada) -> Contexto:
 
 
 _ESTRATEGIAS = text("""
-    select e.id, e.nombre, e.cada_dia_1,
+    select e.id, e.nombre, e.cada_dia_1, e.dueno_id::text as dueno,
+           liga.tiene_pro(e.dueno_id) as incluida,
            coalesce(
              (select r.id from liga.recetas r where r.id = e.receta_id and r.creada <= :corte),
              (select r.id from liga.recetas r where r.estrategia_id = e.id and r.creada <= :corte
@@ -166,10 +170,25 @@ _ESTRATEGIAS = text("""
 _TOKENS_ESTIMADOS_PREGUNTA = 200  # bloque de estado + pregunta, medida de sobra (F6-B)
 
 
-def _preguntas_de_las_estrategias(db: Session, ctx: Contexto) -> dict[str, set[str]]:
-    """Pregunta propia -> candidatas (unión de todas las recetas vigentes que la comparten). Las
-    «mantener» no vuelven a preguntar: conservan lo del mes pasado, sin selección nueva."""
-    preguntas: dict[str, set[str]] = {}
+@dataclass(frozen=True)
+class PreguntaDeEstrategia:
+    """La pregunta propia de una estrategia en juego y las empresas por las que se pregunta."""
+
+    estrategia_id: uuid.UUID
+    dueno: str
+    receta_id: int
+    pregunta: str
+    candidatas: frozenset[str]
+    incluida: bool   # con Pro va en la jornada; sin Pro se paga con créditos
+
+    @property
+    def precio(self) -> Decimal:
+        return ia_precios.precio_pregunta(len(self.candidatas))
+
+
+def _preguntas_por_estrategia(db: Session, ctx: Contexto) -> list[PreguntaDeEstrategia]:
+    """Las «mantener» no vuelven a preguntar: conservan lo del mes pasado, sin selección nueva."""
+    preguntas = []
     for fila in db.execute(_ESTRATEGIAS, {"corte": ctx.corte}).all():
         if fila.receta_id is None or fila.cada_dia_1 == "mantener":
             continue
@@ -177,8 +196,61 @@ def _preguntas_de_las_estrategias(db: Session, ctx: Contexto) -> dict[str, set[s
         if receta is None or not receta.pregunta:
             continue
         candidatas = candidatas_pregunta(list(ctx.empresas), datos.receta_motor(receta), ctx.notas)
-        preguntas.setdefault(receta.pregunta, set()).update(candidatas)
+        preguntas.append(PreguntaDeEstrategia(fila.id, fila.dueno, receta.id, receta.pregunta,
+                                              frozenset(candidatas), fila.incluida))
     return preguntas
+
+
+def _agrupar(preguntas: Iterable[PreguntaDeEstrategia]) -> dict[str, set[str]]:
+    """Pregunta propia -> candidatas (unión de todas las recetas vigentes que la comparten)."""
+    agrupadas: dict[str, set[str]] = {}
+    for p in preguntas:
+        agrupadas.setdefault(p.pregunta, set()).update(p.candidatas)
+    return agrupadas
+
+
+def _preguntas_de_las_estrategias(db: Session, ctx: Contexto) -> dict[str, set[str]]:
+    """Las preguntas que van incluidas en la jornada (cuentas Pro)."""
+    return _agrupar(p for p in _preguntas_por_estrategia(db, ctx) if p.incluida)
+
+
+def _reservar_las_de_pago(preguntas: list[PreguntaDeEstrategia], ctx: Contexto,
+                          fabrica: Fabrica | None) -> tuple[set[uuid.UUID], list[tuple]]:
+    """Sin Pro la pregunta se paga con créditos: se reserva su precio antes de preguntar. Quien
+    no tiene saldo juega sin ella. Devuelve esas estrategias y las reservas hechas con su clave."""
+    sin_saldo: set[uuid.UUID] = set()
+    reservas: list[tuple[PreguntaDeEstrategia, str]] = []
+    for p in preguntas:
+        if p.incluida or not p.candidatas:
+            continue
+        clave = ia_comun.clave_cobro("formacion", f"jornada:{ctx.jornada_id}", p.receta_id,
+                                     ctx.foto_id)
+        try:
+            ia_comun.reservar_creditos(p.dueno, p.precio, f"reserva:{clave}", fabrica)
+        except HTTPException:
+            sin_saldo.add(p.estrategia_id)
+            continue
+        reservas.append((p, clave))
+    return sin_saldo, reservas
+
+
+def _liquidar_las_de_pago(reservas: list[tuple], ctx: Contexto, fabrica: Fabrica | None) -> None:
+    """Se cobra solo a quien de verdad juega con su pregunta, con todas sus respuestas; al resto
+    se le devuelve la reserva entera."""
+    for p, clave in reservas:
+        faltan = ia_pregunta.coste_pendiente(
+            pregunta=p.pregunta, foto_id=ctx.foto_id, candidatas=sorted(p.candidatas),
+            fabrica=fabrica)["faltan"]
+        if faltan:
+            ia_comun.devolver_reserva(p.dueno, p.precio, clave, fabrica)
+        else:
+            ia_comun.liquidar_creditos(p.dueno, p.precio, p.precio, "formacion", clave,
+                                       fabrica=fabrica)
+
+
+def _devolver_las_de_pago(reservas: list[tuple], fabrica: Fabrica | None) -> None:
+    for p, clave in reservas:
+        ia_comun.devolver_reserva(p.dueno, p.precio, clave, fabrica)
 
 
 def preview_preguntas(db: Session, ctx: Contexto, fabrica: Fabrica | None = None) -> dict:
@@ -217,8 +289,8 @@ def _motivo_ia_no_disponible(fabrica: Fabrica | None) -> str | None:
 
 def rellenar_preguntas(db: Session, ctx: Contexto, fabrica: Fabrica | None = None,
                        limite_s: int = LIMITE_PREGUNTAS_S) -> str | None:
-    """Antes de formar, rellena lo que falte de la pregunta propia a coste del sistema (nunca se
-    cobra créditos en la jornada, plan §10). Devuelve por qué no se pudo contestar todo (`sin_ia`,
+    """Rellena lo que falte de las preguntas que van incluidas en la jornada (cuentas Pro), a coste
+    del sistema. Devuelve por qué no se pudo contestar todo (`sin_ia`,
     `tope` o `tiempo`) o `None`; la jornada se forma igual y cada estrategia a la que le falte
     alguna respuesta juega sin la pregunta (`planificar`). Necesita la sesión solo para leer qué
     preguntar: las llamadas a Jev se hacen con `contestar_preguntas`, sin ella abierta."""
@@ -358,11 +430,12 @@ def entrada_de(db: Session, ctx: Contexto, empresas: list[EmpresaFoto], excluir:
                    motivo, vaciar), None, aviso
 
 
-def planificar(db: Session, ctx: Contexto, excluir: set[str],
-               motivo_ia: str | None = None) -> Plan:
+def planificar(db: Session, ctx: Contexto, excluir: set[str], motivo_ia: str | None = None,
+               sin_saldo: set[uuid.UUID] | frozenset = frozenset()) -> Plan:
     """Todas las carteras, sin escribir nada. `excluir`: tickers sin precio de compra.
     `motivo_ia`: por qué no se pudo contestar todo (`rellenar_preguntas`); sin él, el motivo de
-    una pregunta sin todas sus respuestas es `incompleta`."""
+    una pregunta sin todas sus respuestas es `incompleta`. `sin_saldo`: las estrategias que no
+    pudieron pagar su pregunta y juegan sin ella aunque otra cuenta ya la tenga en caché."""
     plan = Plan()
     empresas = [e for e in ctx.empresas if e.ticker not in excluir]
     for fila in db.execute(_ESTRATEGIAS, {"corte": ctx.corte}).all():
@@ -370,7 +443,9 @@ def planificar(db: Session, ctx: Contexto, excluir: set[str],
             plan.omitidas.append({"estrategia_id": fila.id, "nombre": fila.nombre,
                                   "motivo": "No tenía receta antes del corte."})
             continue
-        entrada, omitida, aviso = entrada_de(db, ctx, empresas, excluir, fila, motivo_ia)
+        entrada, omitida, aviso = entrada_de(
+            db, ctx, empresas, excluir, fila, motivo_ia,
+            "sin_saldo" if fila.id in sin_saldo else None)
         if aviso:
             plan.avisos.append(aviso)
         if omitida:
@@ -403,14 +478,14 @@ def entradas_casa(plan: Plan, ids: dict[str, uuid.UUID]) -> list[Entrada]:
             for clave, c in plan.casa.items() if c.posiciones is not None and clave in ids]
 
 
-def _precios_y_plan(fabrica: Fabrica, ctx: Contexto,
-                    motivo_ia: str | None = None) -> tuple[Plan, set[str]]:
+def _precios_y_plan(fabrica: Fabrica, ctx: Contexto, motivo_ia: str | None = None,
+                    sin_saldo: set[uuid.UUID] | frozenset = frozenset()) -> tuple[Plan, set[str]]:
     """Trae los cierres del día base de lo que entraría y vuelve a seleccionar sin lo que no
     tenga precio, hasta que no cambie nada."""
     sin_precio: set[str] = set()
     pedidos: set[str] = set()
     with sesion(fabrica) as db:
-        plan = planificar(db, ctx, sin_precio, motivo_ia)
+        plan = planificar(db, ctx, sin_precio, motivo_ia, sin_saldo)
     for _ in range(_VUELTAS_PRECIOS):
         tickers = plan.tickers | {SPY}
         faltan = tickers - pedidos
@@ -438,7 +513,7 @@ def _precios_y_plan(fabrica: Fabrica, ctx: Contexto,
             return plan, sin_precio
         sin_precio |= nuevos
         with sesion(fabrica) as db:
-            plan = planificar(db, ctx, sin_precio, motivo_ia)
+            plan = planificar(db, ctx, sin_precio, motivo_ia, sin_saldo)
     raise ErrorProceso("Los precios del día base no terminan de cuadrar: revisa la fuente de "
                        f"precios (sin cierre: {', '.join(sorted(sin_precio))}).")
 
@@ -511,11 +586,18 @@ def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema, actor: str | N
                 if motivos:
                     raise ErrorProceso(" ".join(motivos))
                 ctx = contexto(db, j)
-                preguntas = _preguntas_de_las_estrategias(db, ctx)
+                deseadas = _preguntas_por_estrategia(db, ctx)
                 limite_s = limite_preguntas_s(db)
+            sin_saldo, reservas = _reservar_las_de_pago(deseadas, ctx, fabrica)
+            preguntas = _agrupar(p for p in deseadas if p.estrategia_id not in sin_saldo)
             # Sin la conexión abierta: Jev tarda y la jornada no debe retener una de la base.
-            motivo_ia = contestar_preguntas(preguntas, ctx, fabrica, limite_s)
-            plan, sin_precio = _precios_y_plan(fabrica, ctx, motivo_ia)
+            try:
+                motivo_ia = contestar_preguntas(preguntas, ctx, fabrica, limite_s)
+                _liquidar_las_de_pago(reservas, ctx, fabrica)
+            except Exception:
+                _devolver_las_de_pago(reservas, fabrica)
+                raise
+            plan, sin_precio = _precios_y_plan(fabrica, ctx, motivo_ia, sin_saldo)
             with sesion(fabrica) as db:
                 hecho = _escribir(db, jornada_id, ctx, plan, sin_precio, ahora, actor)
             _avisar_sin_pregunta(fabrica, plan)
