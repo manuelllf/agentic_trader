@@ -48,7 +48,7 @@
   "help_fairness_rules": "<b>Rules are versioned.</b> Each strategy records which catalog version it played with.",
   "help_fairness_results": "<b>Official results are never rewritten.</b> They are fixed when the round closes and stay that way.",
   "help_fairness_scores": "<b>Everyone's portfolio is fixed using the same scores.</b> Official scores are generated on the afternoon of the last trading day and portfolios are formed that same night. Until half an hour before the market opens on day one you can only swap and restore companies, without AI, and no one knows that day's market move when the portfolio is fixed.",
-  "help_fairness_house": "<b>The house is scored just like you.</b> Alpha, Omega, and Lambda play in the same round, against the same S&P and with the same points; their portfolios come from system methods and are not published.",
+  "help_fairness_house": "<b>The house is scored just like you.</b> Alpha, Omega, and Lambda play in the same round, against the same S&P and with the same points; their portfolios come from system methods. With Pro you see them live; without Pro, when the round ends.",
   "help_fairness_admin": "<b>Every administrative action is logged.</b>",
   "help_question_heading": "Something look off?",
   "help_question_text": "In your strategy, “Why isn't X included?” tells you whether a company would be included and why. If it still does not add up, write to us.",

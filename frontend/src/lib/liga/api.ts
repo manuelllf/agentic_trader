@@ -245,6 +245,7 @@ export type Ficha = {
   posiciones: Posicion[];
   rendimiento?: RendimientoFicha | null;
   mercado?: MercadoFicha | null;
+  casa_metodologia?: { resumen: string; pasos: { titulo: string; texto: string }[] } | null;
 };
 
 export type RendimientoFicha = {

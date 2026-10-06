@@ -116,6 +116,8 @@
   "strategies_ai_question": "Its AI question",
   "strategies_private_portfolio_note": "This portfolio is private. Its official results are still available under Results.",
   "strategies_no_visible_portfolio": "No portfolio is visible for this strategy yet.",
+  "strategies_house_portfolio_delay_note": "The house portfolio is published when the round ends. With Pro you see it live.",
+  "strategies_house_method_pro_note": "The full steps of the house methodology are for Pro accounts.",
   "strategies_its_portfolio": "Its portfolio",
   "strategies_changes_during_month": "Changes during the month.",
   "strategies_round_history": "History · {count, plural, one {# round} other {# rounds}}",

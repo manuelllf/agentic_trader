@@ -720,6 +720,11 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .ficha-metodologia { margin-top: 16px; }
 .lg .ficha-metodologia .seg { flex-wrap: wrap; }
 .lg .ficha-metodologia .seg button { min-height: 44px; min-width: 0; padding-inline: 8px; }
+.lg .casa-pasos { margin: 12px 0 0; padding: 0; list-style: none; counter-reset: paso; }
+.lg .casa-pasos li { counter-increment: paso; padding: 12px 0; border-top: 1px solid var(--line); }
+.lg .casa-pasos b { display: block; font-size: 16px; color: var(--ink); }
+.lg .casa-pasos b::before { content: counter(paso) ". "; color: var(--muted); }
+.lg .casa-pasos p { margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--muted); }
 .lg .ficha-nav button { min-width: 0; min-height: 44px; padding: 6px; white-space: normal; overflow-wrap: anywhere; }
 .lg .cartera-plantilla { display: grid; gap: 4px; margin-top: 16px; }
 .lg .cartera-empresa { display: grid; grid-template-columns: minmax(0,1fr) minmax(54px,.5fr) minmax(90px,.7fr) 16px; gap: 8px; align-items: center; width: 100%; padding: 12px; border: 0; border-radius: var(--radius-card); background: var(--surface); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }

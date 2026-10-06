@@ -396,7 +396,7 @@ def test_la_jornada_solo_fija_la_foto_que_uso_el_escaneo(cx):
                       (jid,)).rowcount == 1
 
 
-def test_posiciones_propias_publicadas_y_las_de_la_casa_con_pro(cx):
+def test_posiciones_ajenas_con_pro_y_las_de_la_casa_sin_pro_al_cerrar_la_jornada(cx):
     autor, pro, gratis = _usuario(cx, pro=True), _usuario(cx, pro=True), _usuario(cx)
     admin = _usuario(cx, rol="admin")
     jid = _jornada(cx)
@@ -429,6 +429,11 @@ def test_posiciones_propias_publicadas_y_las_de_la_casa_con_pro(cx):
         [("CASA1",)]
     _como(cx, gratis)
     assert _filas(cx, "select 1 from liga.posiciones") == []
+    _sistema(cx)
+    cx.execute("update liga.jornadas set estado = 'cerrada', sp_rentabilidad = 1 where id = %s",
+               (jid,))
+    _como(cx, gratis)
+    assert _filas(cx, "select ticker from liga.posiciones") == [("CASA1",)]
     _como(cx, None)
     _falla(cx, "select 1 from liga.posiciones")
     assert _filas(cx, "select 1 from liga.inscripciones where id = %s", (ic,)) == [(1,)]

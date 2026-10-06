@@ -116,6 +116,8 @@
   "strategies_ai_question": "Su pregunta a la IA",
   "strategies_private_portfolio_note": "Esta cartera es privada. Sus resultados oficiales siguen disponibles en Resultados.",
   "strategies_no_visible_portfolio": "Todavía no hay una cartera visible para esta estrategia.",
+  "strategies_house_portfolio_delay_note": "La cartera de la casa se publica cuando acaba la jornada. Con Pro se ve en directo.",
+  "strategies_house_method_pro_note": "Los pasos completos de la metodología de la casa son para cuentas Pro.",
   "strategies_its_portfolio": "Su cartera",
   "strategies_changes_during_month": "Cambia durante el mes.",
   "strategies_round_history": "Historial · {count, plural, one {# jornada} other {# jornadas}}",

@@ -539,22 +539,36 @@ def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     assert sin_pro["receta"] is None
 
 
-def test_la_ficha_de_la_casa_la_ven_pro_y_admin_y_gratis_no(api) -> None:  # noqa: ANN001
+def test_la_casa_la_ve_pro_en_directo_y_gratis_al_cerrar_la_jornada(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, _, jornada_con_posicion, cx = api
     casa = cx.execute(
         "insert into liga.estrategias (tipo, casa_clave, nombre, forma, dibujo, color1, color2, "
         "estado) values ('casa', 'lambda', 'Lambda', 'circulo', 'liso', '#D8D4CB', '#D8D4CB', "
         "'jugando') returning id").fetchone()[0]
+    zpa = [{"ticker": "ZPA", "peso": "100.0000"}]
     try:
         jornada_con_posicion(str(casa), None, "ZPA", "100.0000")
-        admin = usuario()
+        admin, pro, gratis = usuario(), usuario(pro=True), usuario()
         cx.execute("insert into liga.roles_usuario (usuario_id, rol) values (%s, 'admin')",
                    (admin,))
-        for uid, ve in ((usuario(pro=True), True), (admin, True), (usuario(), False)):
-            ficha = cliente.get(f"/liga/fichas/{casa}", headers=cab(uid)).json()
-            assert ficha["casa"] == "lambda"
-            assert ficha["posiciones"] == ([{"ticker": "ZPA", "peso": "100.0000"}] if ve else [])
-            assert (ficha["rendimiento"]["estado"] != "privado") is ve
+
+        def ver(uid: str) -> dict:
+            return cliente.get(f"/liga/fichas/{casa}", headers=cab(uid)).json()
+
+        for uid in (pro, admin):
+            ficha = ver(uid)
+            assert ficha["casa"] == "lambda" and ficha["posiciones"] == zpa
+            assert len(ficha["casa_metodologia"]["pasos"]) == 3
+            assert ficha["rendimiento"]["estado"] != "privado"
+        abierta = ver(gratis)
+        assert abierta["posiciones"] == [] and abierta["mercado"] is None
+        assert abierta["casa_metodologia"]["resumen"] and abierta["casa_metodologia"]["pasos"] == []
+
+        cx.execute("update liga.jornadas set estado = 'cerrada', sp_rentabilidad = 1 where id in "
+                   "(select jornada_id from liga.inscripciones where estrategia_id = %s)", (casa,))
+        cerrada = ver(gratis)
+        assert cerrada["posiciones"] == zpa and cerrada["mercado"] is None
+        assert cerrada["casa_metodologia"]["pasos"] == []
     finally:
         cx.execute("delete from liga.inscripciones where estrategia_id = %s", (casa,))
         cx.execute("delete from liga.estrategias where id = %s", (casa,))

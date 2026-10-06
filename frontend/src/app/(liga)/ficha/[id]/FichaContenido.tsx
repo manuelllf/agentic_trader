@@ -158,7 +158,19 @@ export function FichaContenido({ id }: { id: string }) {
             )}
           </div>}
 
-          {vista === "metodo" && !ficha.receta && <p className="meta">{t("strategies_method_private")}</p>}
+          {vista === "metodo" && !ficha.casa && !ficha.receta && <p className="meta">{t("strategies_method_private")}</p>}
+          {vista === "metodo" && ficha.casa_metodologia && (
+            <section className="ficha-metodologia">
+              <p className="meta">{ficha.casa_metodologia.resumen}</p>
+              {ficha.casa_metodologia.pasos.length > 0 ? (
+                <ol className="casa-pasos" aria-label={t("strategies_method_steps")}>
+                  {ficha.casa_metodologia.pasos.map((p) => (
+                    <li key={p.titulo}><b>{p.titulo}</b><p>{p.texto}</p></li>
+                  ))}
+                </ol>
+              ) : <div className="lock">{t("strategies_house_method_pro_note")}</div>}
+            </section>
+          )}
           {vista === "metodo" && ficha.receta && (
             <section className="ficha-metodologia">
               <Segmentado etiquetaGrupo={t("strategies_method_steps")} valor={metodo} onChange={setMetodo}
@@ -218,7 +230,9 @@ export function FichaContenido({ id }: { id: string }) {
           {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.posiciones.length > 0 && (
             <CarteraSinEvidencia posiciones={ficha.posiciones} mercado={ficha.mercado} />
           )}
-          {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.posiciones.length === 0 && <p className="meta">{ficha.rendimiento?.estado === "privado" ? t("strategies_private_portfolio_note") : t("strategies_no_visible_portfolio")}</p>}
+          {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.posiciones.length === 0 && <p className="meta">{ficha.rendimiento?.estado === "privado" ? t("strategies_private_portfolio_note")
+            : ficha.casa && !ficha.casa_metodologia?.pasos.length ? t("strategies_house_portfolio_delay_note")
+            : t("strategies_no_visible_portfolio")}</p>}
 
           {vista === "cartera" && ficha.casa === "omega" && (
             <div className="sec">

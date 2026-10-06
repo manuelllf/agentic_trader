@@ -1,4 +1,4 @@
--- migraciones-liga: 025
+-- migraciones-liga: 026
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -657,12 +657,14 @@ CREATE FUNCTION liga.puede_ver_posiciones(p_inscripcion bigint) RETURNS boolean
     SET search_path TO ''
     AS $$
   select exists (
-    select 1 from liga.inscripciones i join liga.estrategias e on e.id = i.estrategia_id
+    select 1 from liga.inscripciones i
+    join liga.estrategias e on e.id = i.estrategia_id
+    join liga.jornadas j on j.id = i.jornada_id
     where i.id = p_inscripcion
       and (e.dueno_id = (select auth.uid())
-           or (liga.es_pro()
-               and (e.tipo = 'casa'
-                    or (e.tipo = 'usuario' and e.visibilidad = 'publicada' and not e.oculta)))));
+           or (e.tipo = 'casa' and (j.estado = 'cerrada' or liga.es_pro()))
+           or (e.tipo = 'usuario' and e.visibilidad = 'publicada' and not e.oculta
+               and liga.es_pro())));
 $$;
 
 

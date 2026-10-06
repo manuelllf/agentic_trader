@@ -78,16 +78,19 @@ def _drawdown(niveles: Sequence[float]) -> float | None:
     return peor
 
 
-def datos_ficha(db: Session, estrategia_id: str, usuario_id: str | None = None) -> dict:
-    """Serie pública según jornadas guardadas, con jornada abierta marcada como provisional."""
+def datos_ficha(db: Session, estrategia_id: str, usuario_id: str | None = None,
+                solo_cerradas: bool = False) -> dict:
+    """Serie pública según jornadas guardadas, con jornada abierta marcada como provisional.
+    `solo_cerradas`: lo que ve quien aún no puede seguir la cartera en directo."""
     jornadas = db.execute(text("""
         select j.id as jornada_id, j.numero as jornada_numero, j.dia_base, j.dia_fin,
                j.estado as estado_jornada, j.foto_id, j.scan_run_id,
                i.id as inscripcion_id, i.receta_id, i.n_pasan
         from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
-        where i.estrategia_id = :e and j.estado in ('formada', 'cerrada')
+        where i.estrategia_id = :e and j.estado = any(:estados)
         order by j.dia_base, j.id
-    """), {"e": estrategia_id}).mappings().all()
+    """), {"e": estrategia_id,
+           "estados": ["cerrada"] if solo_cerradas else ["formada", "cerrada"]}).mappings().all()
     if not jornadas:
         return _sin_datos()
 

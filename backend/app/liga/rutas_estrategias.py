@@ -21,7 +21,15 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.i18n import current_locale, translate
-from app.liga import acceso, cambios, estrategias, limites, nombres, rendimiento
+from app.liga import (
+    acceso,
+    cambios,
+    casas_metodologia,
+    estrategias,
+    limites,
+    nombres,
+    rendimiento,
+)
 from app.liga.auth import Identidad, require_usuario
 from app.liga.db import db_anon, db_usuario
 from app.liga.ia import comun, moderacion, precios
@@ -235,6 +243,7 @@ class FichaOut(BaseModel):
     posiciones: list[PosicionOut]
     rendimiento: dict | None = None
     mercado: dict | None = None
+    casa_metodologia: dict | None = None   # solo equipos de la casa; sin pasos si no es en directo
 
 
 # ---- Ayudas de conversión ------------------------------------------------------------------------
@@ -683,23 +692,25 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
             from liga.recetas where id = :r
         """), {"r": f.receta_id}).one_or_none()
         receta_out = _receta_out(rf) if rf is not None else None
+    pro = bool(db.execute(text("select liga.es_pro()")).scalar())
+    en_directo = f.dueno == ident.uid or (
+        pro and (f.tipo == "casa" or f.visibilidad == "publicada"))
+    con_retraso = f.tipo == "casa" and not en_directo   # sin Pro: al cerrar la jornada
     ins = db.execute(text("""
         select i.id, j.id as jornada_id, j.estado as jornada_estado, j.dia_base
         from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
         where i.estrategia_id = :i and i.estado in ('formada', 'cerrada')
-          and j.estado in ('formada', 'cerrada')
+          and j.estado = any(:estados)
         order by j.dia_base desc, j.id desc, i.id desc limit 1
-    """), {"i": id}).one_or_none()
+    """), {"i": id, "estados": ["cerrada"] if con_retraso else ["formada", "cerrada"]}
+    ).one_or_none()
     posiciones = []
     if ins is not None:
         posiciones = db.execute(text(
             "select ticker, peso from liga.posiciones where inscripcion_id = :i order by peso desc"
         ), {"i": ins.id}).all()
-    pro = bool(db.execute(text("select liga.es_pro()")).scalar())
-    puede_ver_detalle = (f.dueno == ident.uid or
-                         (pro and (f.tipo == "casa" or f.visibilidad == "publicada")))
-    retorno = (rendimiento.datos_ficha(db, f.eid, usuario_id=ident.uid)
-               if puede_ver_detalle else {
+    retorno = (rendimiento.datos_ficha(db, f.eid, usuario_id=ident.uid, solo_cerradas=con_retraso)
+               if en_directo or con_retraso else {
         "estado": "privado",
         "metodologia": translate("liga_rend_privado"),
         "oficial_hasta": None, "provisional_hasta": None, "incompleta": False,
@@ -727,7 +738,9 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
                  for j in jornadas],
         receta=receta_out,
         posiciones=[PosicionOut(ticker=p.ticker, peso=p.peso) for p in posiciones],
-        rendimiento=retorno, mercado=mercado)
+        rendimiento=retorno, mercado=mercado,
+        casa_metodologia=(casas_metodologia.metodologia(f.casa_clave, completa=en_directo)
+                          if f.tipo == "casa" else None))
 
 
 # ---- Copiar (Pro) ---------------------------------------------------------------------------
