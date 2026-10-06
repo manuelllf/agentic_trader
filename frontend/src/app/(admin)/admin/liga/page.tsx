@@ -124,6 +124,7 @@ function Liga() {
           { href: "/admin/liga/moderacion", texto: t("admin_liga_moderation") },
           { href: "/admin/liga/errores", texto: t("admin_liga_errors") },
           { href: "/admin/liga/ajustes", texto: t("admin_liga_settings") },
+          { href: "/admin/liga/premio", texto: t("admin_liga_prize") },
           { href: "/admin/liga/auditoria", texto: t("admin_liga_audit") },
           { href: "/admin/liga/coste-ia", texto: t("admin_liga_ai_cost") },
         ].map((l) => (

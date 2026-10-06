@@ -96,6 +96,46 @@ def estado_publico(fabrica: Fabrica = fabrica_sistema) -> dict:
         }
 
 
+_FILAS_ADMIN = text("""
+    select p.usuario_id::text as cuenta, pr.alias, p.jornadas_jugadas, p.rentabilidad, p.puesto,
+           p.importe, case when p.puesto is not null then u.email end as email
+    from liga.premios p
+    join liga.perfiles pr on pr.id = p.usuario_id
+    join auth.users u on u.id = p.usuario_id
+    where p.temporada_id = :t
+    order by p.rentabilidad desc, pr.alias
+    limit 200
+""")
+
+
+def estado_admin(temporada_id: int | None = None, fabrica: Fabrica = fabrica_sistema) -> dict:
+    """Para el admin: las temporadas que cuentan, el reparto de la elegida (por defecto, la última
+    ya calculada) y, solo de quien cobra, el correo con el que contactarla y verificar su
+    identidad."""
+    with sesion(fabrica) as db:
+        temporadas = db.execute(text("""
+            select t.id, t.nombre, t.estado, p.escalon,
+                   (select count(*) from liga.premios x where x.temporada_id = t.id) as elegibles
+            from liga.temporadas t left join liga.premios_temporada p on p.temporada_id = t.id
+            where t.cuenta order by t.id
+        """)).all()
+        elegida = temporada_id or next(
+            (t.id for t in reversed(temporadas) if t.escalon is not None), None)
+        filas = db.execute(_FILAS_ADMIN, {"t": elegida}).all() if elegida else []
+        basico, completo = umbrales(db)
+        return para_json({
+            "temporadas": [{"id": t.id, "nombre": t.nombre, "estado": t.estado,
+                            "calculado": t.escalon is not None, "escalon": t.escalon,
+                            "elegibles": t.elegibles} for t in temporadas],
+            "temporada_id": elegida, "umbral_basico": basico,
+            "umbral_completo": max(basico, completo), "visible": visible(db),
+            "filas": [{"cuenta": f.cuenta, "alias": f.alias,
+                       "jornadas_jugadas": f.jornadas_jugadas, "rentabilidad": f.rentabilidad,
+                       "puesto": f.puesto, "importe": f.importe, "email": f.email}
+                      for f in filas],
+        })
+
+
 def cuentas_elegibles(db: Session, temporada_id: int, n_jornadas: int) -> list[motor.Cuenta]:
     jugadas: dict[str, dict[int, Decimal]] = defaultdict(dict)
     for f in db.execute(_JUGADAS, {"t": temporada_id}).all():

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.liga import copia, rutas_gestion, visitas
 from app.liga.auth import Identidad, require_admin
-from app.liga.procesos import cerrar, diario, estado, formar, foto, temporadas
+from app.liga.procesos import cerrar, diario, estado, formar, foto, premio, temporadas
 from app.liga.procesos.comun import ErrorProceso
 
 router = APIRouter(prefix="/liga/admin", tags=["liga-admin"])
@@ -33,6 +33,10 @@ class FotoIn(JornadaIn):
 
 class CerrarIn(JornadaIn):
     aceptar_sin_cierre: bool = False
+
+
+class TemporadaIn(BaseModel):
+    temporada_id: int = Field(gt=0)
 
 
 class InterruptorIn(BaseModel):
@@ -146,6 +150,18 @@ def cerrar_vista_previa(body: JornadaIn) -> dict:
 def cerrar_ejecutar(body: CerrarIn, ident: Identidad = Depends(require_admin)) -> dict:
     return _llamar(cerrar.ejecutar, body.jornada_id, actor=ident.uid,
                    aceptar_sin_cierre=body.aceptar_sin_cierre)
+
+
+# ---- El premio anual ----------------------------------------------------------------------------
+
+@_procesos.get("/premio/estado", dependencies=ADMIN)
+def premio_estado(temporada_id: int | None = None) -> dict:
+    return _llamar(premio.estado_admin, temporada_id)
+
+
+@_procesos.post("/premio/ejecutar", dependencies=ADMIN)
+def premio_ejecutar(body: TemporadaIn, ident: Identidad = Depends(require_admin)) -> dict:
+    return _llamar(premio.calcular, body.temporada_id, actor=ident.uid)
 
 
 # ---- Copia de seguridad del esquema `liga` (plan §8.5 y §14) -------------------------------------

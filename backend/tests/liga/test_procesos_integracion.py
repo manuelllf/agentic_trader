@@ -1558,3 +1558,21 @@ def test_el_estado_publico_del_premio_va_oculto_y_luego_abierto_y_calculado(
     cerrado = premio.estado_publico(fabrica)
     assert (cerrado["calculado"], cerrado["cuentas"], cerrado["escalon"]) == (True, 2, 2)
     assert (cerrado["umbral_basico"], cerrado["umbral_completo"]) == (1, 2)
+
+
+def test_el_admin_ve_el_reparto_con_el_correo_solo_de_quien_cobra(fabrica, mundo) -> None:  # noqa: ANN001
+    from app.liga.procesos import premio
+
+    _ajustar_umbrales(fabrica, 1, 3)
+    tid = _cerrar_la_temporada_con(fabrica, {"A": ["6"] * 12, "B": ["3"] * 12, "C": ["1"] * 12,
+                                             "D": ["-2"] * 12})
+    antes = premio.estado_admin(fabrica=fabrica)
+    assert antes["temporada_id"] is None and antes["filas"] == []
+    premio.calcular(tid, fabrica)
+    estado = premio.estado_admin(fabrica=fabrica)
+    assert estado["temporada_id"] == tid
+    assert [t["calculado"] for t in estado["temporadas"] if t["id"] == tid] == [True]
+    assert [(f["puesto"], f["importe"] is not None, f["email"] is not None)
+            for f in estado["filas"]] == [(1, True, True), (2, True, True), (3, True, True),
+                                          (None, False, False)]
+    assert estado["filas"][0]["rentabilidad"] > estado["filas"][-1]["rentabilidad"]

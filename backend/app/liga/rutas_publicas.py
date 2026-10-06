@@ -298,7 +298,7 @@ def _en_juego(db: Session) -> JornadaOut | None:
     return _con_sp_vivo(j) if j else None
 
 
-@router.get("/premio", response_model=PremioOut)
+@router.get("/premio", response_model=PremioOut, dependencies=[Depends(db_anon)])
 def premio_anual() -> PremioOut:
     return PremioOut(**premio.estado_publico())
 
