@@ -1422,3 +1422,117 @@ def test_si_la_configuracion_sigue_igual_las_quitadas_se_aplican(
     assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas d join "
                             "liga.inscripciones i on i.id = d.inscripcion_id where "
                             "i.jornada_id = :j and d.motivo = 'quitadas_vaciadas'", j=feb) == 0
+
+
+# ---- el premio anual -----------------------------------------------------------------------------
+
+
+def _cerrar_la_temporada_con(fabrica, resultados: dict[str, list[str | None]]) -> int:  # noqa: ANN001
+    """Cierra a mano la temporada que cuenta: cada cuenta con la rentabilidad (en %) de sus 12
+    jornadas, `None` donde no jugó. Todas optan al premio con su única estrategia."""
+    with comun.sesion(fabrica) as db:
+        tid = db.execute(text("select id from liga.temporadas where cuenta order by id "
+                              "limit 1")).scalar()
+        jornadas = dict(db.execute(text("select numero, id from liga.jornadas "
+                                        "where temporada_id = :t"), {"t": tid}).all())
+        for nombre, mensuales in resultados.items():
+            eid = _estrategia(db, _usuario(db), nombre)
+            receta = db.execute(text("select receta_id from liga.estrategias where id = :e"),
+                                {"e": eid}).scalar()
+            for numero, rentabilidad in enumerate(mensuales, start=1):
+                if rentabilidad is None:
+                    continue
+                iid = db.execute(text(
+                    "insert into liga.inscripciones (jornada_id, estrategia_id, receta_id, "
+                    "estado, optaba_premio) values (:j, :e, :r, 'cerrada', true) returning id"),
+                    {"j": jornadas[numero], "e": eid, "r": receta}).scalar()
+                db.execute(text("insert into liga.resultados (inscripcion_id, rentabilidad, "
+                                "puntos) values (:i, :r, 1)"),
+                           {"i": iid, "r": Decimal(rentabilidad)})
+        db.execute(text("update liga.jornadas set estado = 'cerrada', sp_rentabilidad = 1 "
+                        "where temporada_id = :t"), {"t": tid})
+        db.execute(text("update liga.temporadas set estado = 'cerrada' where id = :t"), {"t": tid})
+        db.commit()
+    return tid
+
+
+def _ajustar_umbrales(fabrica, basico: int, completo: int) -> None:  # noqa: ANN001
+    with comun.sesion(fabrica) as db:
+        for clave, valor in (("premio.umbral_basico", basico),
+                             ("premio.umbral_completo", completo)):
+            db.execute(text("insert into liga.ajustes (clave, valor) "
+                            "values (:c, cast(:v as jsonb))"), {"c": clave, "v": str(valor)})
+        db.commit()
+
+
+def _filas_del_premio(fabrica, tid: int) -> dict:  # noqa: ANN001
+    with comun.sesion(fabrica) as db:
+        return {f.nombre: f for f in db.execute(text(
+            "select e.nombre, p.jornadas_jugadas, p.rentabilidad, p.puesto, p.importe "
+            "from liga.premios p join liga.estrategias e on e.dueno_id = p.usuario_id "
+            "where p.temporada_id = :t"), {"t": tid}).all()}
+
+
+def test_el_premio_se_calcula_al_cerrar_la_temporada_con_empates_y_sin_los_no_elegibles(
+        fabrica, mundo) -> None:  # noqa: ANN001
+    from app.liga.procesos import premio
+
+    _ajustar_umbrales(fabrica, 2, 4)
+    tid = _cerrar_la_temporada_con(fabrica, {
+        "A": ["5"] * 12, "B": ["5"] * 12,                 # empatadas en el 1.º
+        "C": ["3"] * 10 + [None, None],                   # diez jornadas: elegible
+        "D": ["50"] * 9 + [None] * 3,                     # nueve: no es elegible
+        "E": ["-1"] * 12})
+    hecho = premio.calcular(tid, fabrica)
+    assert (hecho["elegibles"], hecho["escalon"], hecho["con_premio"]) == (4, 2, 3)
+    filas = _filas_del_premio(fabrica, tid)
+    assert set(filas) == {"A", "B", "C", "E"}
+    assert [(filas[n].puesto, filas[n].importe) for n in ("A", "B")] == [(1, Decimal("225.00"))] * 2
+    assert (filas["C"].puesto, filas["C"].importe, filas["C"].jornadas_jugadas) == (
+        3, Decimal("50.00"), 10)
+    assert float(filas["C"].rentabilidad) == pytest.approx((1.03 ** 10 - 1) * 100, abs=1e-3)
+    assert (filas["E"].puesto, filas["E"].importe) == (None, None)
+    assert _cuenta(fabrica, "select escalon from liga.premios_temporada where temporada_id = :t",
+                   t=tid) == 2
+
+
+def test_sin_cuentas_suficientes_no_se_activa_pero_queda_el_resultado(
+        fabrica, mundo) -> None:  # noqa: ANN001
+    from app.liga.procesos import premio
+
+    tid = _cerrar_la_temporada_con(fabrica, {"A": ["5"] * 12, "B": ["2"] * 11 + [None]})
+    assert premio.calcular(tid, fabrica)["escalon"] == 0
+    filas = _filas_del_premio(fabrica, tid)
+    assert len(filas) == 2 and all(f.puesto is None for f in filas.values())
+
+
+def test_el_premio_no_se_calcula_con_la_temporada_abierta_y_repetirlo_no_cambia_nada(
+        fabrica, mundo) -> None:  # noqa: ANN001
+    from app.liga.procesos import premio
+
+    tid = _cerrar_la_temporada_con(fabrica, {"A": ["5"] * 12})
+    with comun.sesion(fabrica) as db:
+        db.execute(text("update liga.temporadas set estado = 'en_juego' where id = :t"),
+                   {"t": tid})
+        db.commit()
+    with pytest.raises(comun.ErrorProceso):
+        premio.calcular(tid, fabrica)
+    assert premio.job(fabrica) == []
+    with comun.sesion(fabrica) as db:
+        db.execute(text("update liga.temporadas set estado = 'cerrada' where id = :t"),
+                   {"t": tid})
+        db.commit()
+    assert premio.job(fabrica) == [tid]
+    assert premio.calcular(tid, fabrica) == {"temporada_id": tid, "ya_calculado": True}
+    assert premio.job(fabrica) == []
+    assert _cuenta(fabrica, "select count(*) from liga.premios where temporada_id = :t",
+                   t=tid) == 1
+
+
+def test_la_pretemporada_no_cuenta_para_el_premio(fabrica, mundo) -> None:  # noqa: ANN001
+    from app.liga.procesos import premio
+
+    with comun.sesion(fabrica) as db:
+        db.execute(text("update liga.temporadas set estado = 'cerrada' where not cuenta"))
+        db.commit()
+    assert premio.job(fabrica) == []

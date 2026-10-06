@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 Fabrica = Callable[[], Session]
 TZ_BOLSA = ZoneInfo("America/New_York")
-PROCESOS = ("temporadas", "foto", "formar", "diario", "cerrar")
+PROCESOS = ("temporadas", "foto", "formar", "diario", "cerrar", "premio")
 _HILOS = {p: threading.Lock() for p in PROCESOS}
 
 

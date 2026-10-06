@@ -610,6 +610,36 @@ def test_ligas_privadas_se_crean_con_pro_o_pase_y_se_entra_gratis_por_codigo(cx)
                       (lid, q)).rowcount == 1
 
 
+def test_el_premio_lo_ve_su_cuenta_y_el_admin_y_nadie_lo_cambia(cx):
+    a, b, admin = _usuario(cx), _usuario(cx), _usuario(cx, rol="admin")
+    _sistema(cx)
+    tid = cx.execute("insert into liga.temporadas (nombre, n_jornadas, cuenta) "
+                     "values ('Premio', 12, true) returning id").fetchone()[0]
+    cx.execute("insert into liga.premios_temporada (temporada_id, escalon) values (%s, 2)", (tid,))
+    for uid, puesto, importe in ((a, 1, 300), (b, None, None)):
+        cx.execute("insert into liga.premios (temporada_id, usuario_id, jornadas_jugadas, "
+                   "rentabilidad, puesto, importe) values (%s, %s, 12, 5, %s, %s)",
+                   (tid, uid, puesto, importe))
+    _como(cx, a)
+    assert _filas(cx, "select usuario_id, puesto from liga.premios") == [(a, 1)]
+    _como(cx, admin, aal="aal2")
+    assert len(_filas(cx, "select 1 from liga.premios")) == 2
+    _como(cx, admin)
+    assert _filas(cx, "select 1 from liga.premios") == []     # sin 2FA no es admin
+    _como(cx, None)
+    assert _filas(cx, "select escalon from liga.premios_temporada") == [(2,)]
+    _falla(cx, "select 1 from liga.premios")
+    _como(cx, a)
+    _falla(cx, "update liga.premios set importe = 999 where usuario_id = %s", (a,))
+    _falla(cx, "insert into liga.premios (temporada_id, usuario_id, jornadas_jugadas, "
+               "rentabilidad) values (%s, %s, 12, 1)", (tid, a))
+    _sistema(cx)
+    _falla(cx, "update liga.premios_temporada set escalon = 0 where temporada_id = %s", (tid,))
+    _falla(cx, "delete from liga.premios where usuario_id = %s", (a,))
+    _falla(cx, "insert into liga.premios (temporada_id, usuario_id, jornadas_jugadas, "
+               "rentabilidad, puesto) values (%s, %s, 12, 1, 2)", (tid, b))    # puesto sin importe
+
+
 def test_el_pase_de_liga_deja_crear_ligas_mientras_vale(cx):
     con_pase, caducado, sin_pase = _usuario(cx), _usuario(cx), _usuario(cx)
     ajeno = _usuario(cx)
@@ -764,7 +794,7 @@ def test_anon_solo_lee_lo_publico(cx):
           and has_table_privilege('anon', c.oid, p.privilege_type)""")}
     assert concedido == {f"{t}:SELECT" for t in (
         "perfiles", "temporadas", "jornadas", "estrategias", "inscripciones", "resultados",
-        "v_clasificacion")}
+        "premios_temporada", "v_clasificacion")}
     en_public = _filas(cx, """
         select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
         where n.nspname = 'public' and c.relkind = 'r'

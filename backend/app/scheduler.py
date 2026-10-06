@@ -353,6 +353,13 @@ def _liga_cerrar_job() -> None:
     cerrar.job()
 
 
+@recursos.medido("premio de la temporada")
+def _liga_premio_job() -> None:
+    from app.liga.procesos import premio
+
+    premio.job()
+
+
 @recursos.medido("avisos de la jornada")
 def _liga_avisos_job() -> None:
     from app.liga import avisos
@@ -480,6 +487,9 @@ def start_scheduler() -> None:
     )
     # Liga: cerrar sola la jornada que acaba hoy, desde las 17:30 ET (el propio proceso lo decide).
     scheduler.add_job(_liga_cerrar_job, "interval", minutes=5, id="liga_cerrar",
+                      replace_existing=True, coalesce=True)
+    # Liga: el premio anual, una sola vez, cuando se cierra la última jornada de la temporada.
+    scheduler.add_job(_liga_premio_job, "interval", minutes=30, id="liga_premio",
                       replace_existing=True, coalesce=True)
     # Liga: avisos a las cuentas una hora antes de cerrar los cambios y al empezar la jornada.
     scheduler.add_job(_liga_avisos_job, "interval", minutes=5, id="liga_avisos",

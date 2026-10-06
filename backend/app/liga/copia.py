@@ -25,12 +25,12 @@ TABLAS = (
     "posiciones", "resultados", "omega_operaciones", "ligas_privadas", "miembros_liga", "pruebas",
     "respuestas_ia", "lecturas", "creditos_movimientos", "ajustes", "auditoria", "reportes",
     "avisos_error", "borradores", "visitas", "estrategias_revisadas", "formaciones_degradadas",
-    "suscripciones_push",
+    "suscripciones_push", "premios_temporada", "premios",
 )
 
 # El número más alto de `sql/liga/NNN_*.sql` aplicado (plan §6.3): se guarda en el manifiesto
 # para saber, al restaurar, qué migraciones hacen falta antes de cargar los datos.
-VERSION_ESQUEMA = 30
+VERSION_ESQUEMA = 31
 
 
 def _copiar_tabla(cursor, tabla: str) -> bytes:  # noqa: ANN001 — cursor de psycopg (DBAPI)

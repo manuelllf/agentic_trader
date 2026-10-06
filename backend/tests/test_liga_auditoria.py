@@ -38,6 +38,8 @@ RASTRO = {
     "permisos_rol": (None, None, None, None),  # catálogo estático, solo lo toca una migración
     "pases_liga": ("desde", "concedido_por", None, None),  # append-only, como planes_usuario
     "planes_usuario": ("desde", "concedido_por", None, None),  # append-only
+    "premios": ("creado", "creado_por", None, None),  # de solo añadir, la escribe el sistema
+    "premios_temporada": ("calculado", "creado_por", None, None),  # idem
     "posiciones": (None, None, None, None),  # hija de inscripciones (FK inscripcion_id)
     "pruebas": ("creada", "usuario_id", "actualizado_en", "actualizado_por"),
     "recetas": ("creada", "creado_por", None, None),  # de solo añadir (nueva versión = nueva fila)

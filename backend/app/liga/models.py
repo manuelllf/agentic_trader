@@ -239,6 +239,34 @@ class Resultado(LigaBase):
     puntos: Mapped[int] = mapped_column(SmallInteger)
 
 
+class PremioTemporada(LigaBase):
+    """Si el premio de la temporada se activó y con qué escalón (0: no). De solo añadir."""
+
+    __tablename__ = "premios_temporada"
+
+    temporada_id: Mapped[int] = mapped_column(
+        SmallInteger, ForeignKey("liga.temporadas.id"), primary_key=True)
+    escalon: Mapped[int] = mapped_column(SmallInteger)
+    calculado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+
+
+class Premio(LigaBase):
+    """Una cuenta elegible al cierre de la temporada; `puesto` e `importe` solo si cobra."""
+
+    __tablename__ = "premios"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    temporada_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("liga.temporadas.id"))
+    usuario_id: Mapped[uuid.UUID] = mapped_column(UUID)
+    jornadas_jugadas: Mapped[int] = mapped_column(SmallInteger)
+    rentabilidad: Mapped[Decimal] = mapped_column(Numeric(12, 4))
+    puesto: Mapped[int | None] = mapped_column(SmallInteger)
+    importe: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+
+
 # ---- Ligas privadas ------------------------------------------------------------------------------
 
 class LigaPrivada(LigaBase):

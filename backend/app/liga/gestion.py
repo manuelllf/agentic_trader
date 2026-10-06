@@ -43,7 +43,7 @@ class AjusteMeta:
     la app cuando la clave no está en `liga.ajustes` -- tiene que coincidir con el código real
     (`gestion.py`/`ia/comun.py`), no es solo decorativo."""
 
-    grupo: Literal["Emergencia", "IA", "Créditos", "Procesos"]
+    grupo: Literal["Emergencia", "IA", "Créditos", "Procesos", "Premio"]
     titulo: str
     ayuda: str
     tipo: Literal["interruptor", "entero", "dolares", "multiplicador"]
@@ -106,6 +106,16 @@ CATALOGO: dict[str, AjusteMeta] = {
         ayuda="Segundos que espera la formación a que la IA conteste las preguntas propias. Al "
               "agotarse, las estrategias sin todas sus respuestas juegan sin pregunta.",
         tipo="entero", unidad="s", minimo=Decimal(60), maximo=Decimal(1800), defecto=600),
+    "premio.umbral_basico": AjusteMeta(
+        grupo="Premio", titulo="Cuentas para activar el premio",
+        ayuda="Cuentas elegibles (con 10 jornadas jugadas) que hacen falta al cerrar la temporada "
+              "para repartir el primer escalón del premio. Con menos, no se activa.",
+        tipo="entero", unidad="cuentas", minimo=Decimal(1), maximo=Decimal(100000), defecto=100),
+    "premio.umbral_completo": AjusteMeta(
+        grupo="Premio", titulo="Cuentas para el premio completo",
+        ayuda="Cuentas elegibles que hacen falta para repartir el premio completo, el segundo "
+              "escalón. Si se pone por debajo del anterior, vale el anterior.",
+        tipo="entero", unidad="cuentas", minimo=Decimal(1), maximo=Decimal(100000), defecto=250),
     "ia.margen_objetivo": AjusteMeta(
         grupo="IA", titulo="Margen objetivo del panel de coste",
         ayuda="Cuántas veces por encima del coste real se marca una finalidad como rentable en "

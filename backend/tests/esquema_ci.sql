@@ -1,4 +1,4 @@
--- migraciones-liga: 030
+-- migraciones-liga: 031
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -10585,3 +10585,39 @@ create policy propia_crea on liga.suscripciones_push for insert to authenticated
   with check (usuario_id = (select auth.uid()));
 create policy propia_borra on liga.suscripciones_push for delete to authenticated
   using (usuario_id = (select auth.uid()));
+
+-- liga_031: el premio anual, calculado una sola vez al cerrar la temporada.
+create table liga.premios_temporada (
+  temporada_id smallint primary key references liga.temporadas (id),
+  escalon smallint not null check (escalon in (0, 1, 2)),
+  calculado timestamptz not null default now(),
+  creado_por uuid default auth.uid()
+);
+create table liga.premios (
+  id bigint generated always as identity primary key,
+  temporada_id smallint not null references liga.temporadas (id),
+  usuario_id uuid not null references auth.users (id) on delete cascade,
+  jornadas_jugadas smallint not null check (jornadas_jugadas between 1 and 24),
+  rentabilidad numeric(12,4) not null,
+  puesto smallint check (puesto between 1 and 3),
+  importe numeric(10,2) check (importe > 0),
+  creado timestamptz not null default now(),
+  creado_por uuid default auth.uid(),
+  constraint premio_puesto_e_importe check ((puesto is null) = (importe is null)),
+  unique (temporada_id, usuario_id)
+);
+create index ix_premios_usuario on liga.premios (usuario_id);
+create trigger solo_anadir before update or delete on liga.premios_temporada
+  for each row execute function liga.solo_anadir();
+create trigger solo_anadir before update or delete on liga.premios
+  for each row execute function liga.solo_anadir('auth.users', 'usuario_id');
+alter table liga.premios_temporada enable row level security;
+alter table liga.premios enable row level security;
+revoke all on table liga.premios_temporada, liga.premios from public, anon, authenticated;
+grant select on liga.premios_temporada to anon, authenticated;
+grant select on liga.premios to authenticated;
+create policy leer on liga.premios_temporada for select to anon, authenticated using (true);
+create policy dueno_lee on liga.premios for select to authenticated
+  using (usuario_id = (select auth.uid()));
+create policy admin_lee on liga.premios for select to authenticated
+  using ((select liga.es_admin()));
