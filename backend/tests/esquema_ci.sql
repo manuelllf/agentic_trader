@@ -10425,6 +10425,7 @@ begin
   new.revisada_en := now();
   return new;
 end $$;
+revoke all on function liga.estrategias_revisadas_guarda() from public;
 
 create trigger guarda_estrategia_revisada before insert or update
   on liga.estrategias_revisadas for each row execute function liga.estrategias_revisadas_guarda();
@@ -10501,7 +10502,8 @@ INSERT INTO liga.permisos_rol VALUES ('admin', 'admin.salas');
 
 CREATE FUNCTION liga.confirmar_bienvenida() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $$
-declare regalo numeric;
+declare
+  regalo numeric;
 begin
   if old.email_confirmed_at is null and new.email_confirmed_at is not null then
     regalo := liga.creditos_de_bienvenida();
