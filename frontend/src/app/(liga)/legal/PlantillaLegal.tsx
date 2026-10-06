@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { VERSION_LEGAL } from "./datos";
 import { getLocale, getTranslations } from "next-intl/server";
 import { normalizeLocale, localeTag } from "@/i18n/locale";
+import { Marca } from "../_ui/Marca";
 
 // Envoltorio de las páginas legales. `resumen` es la primera capa: lo esencial en pocas líneas.
 export async function PlantillaLegal({
@@ -13,7 +14,7 @@ export async function PlantillaLegal({
   return (
     <main className="sencilla legal-page">
       <header className="sencilla-top">
-        <Link href="/" className="wordmark">Vennett</Link>
+        <Link href="/" className="wordmark"><Marca /></Link>
       </header>
 
       <div className="legal-cuerpo">

@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Boton, Cargando } from "../../_ui";
 import { destinoSeguro, useSupabase } from "@/lib/liga/supabase";
+import { Marca } from "../../_ui/Marca";
 
 type Estado =
   | { paso: "cargando" }
@@ -100,7 +101,7 @@ export default function Verificacion() {
   return (
     <main className="sencilla">
       <header className="sencilla-top">
-        <Link href="/" className="wordmark">Vennett</Link>
+        <Link href="/" className="wordmark"><Marca /></Link>
       <LanguageSelector /></header>
 
       <section className="sencilla-cuerpo arriba" aria-labelledby="titular">

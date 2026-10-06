@@ -9,6 +9,7 @@ import { useSesion } from "../_sesion/SesionContext";
 import { getCreditos } from "@/lib/liga/api";
 import { useCache } from "@/lib/liga/cache";
 import { creditos as textoCreditos } from "@/lib/liga/format";
+import { Marca } from "./Marca";
 
 // `.hdr` de la maqueta (DESIGN.md §5): «liguilla» a la izquierda; a la derecha, el chip del
 // plan, el chip de créditos (solo Mías/Crear, F7 tarea 4: sin botón de compra, no hay pasarela
@@ -25,7 +26,7 @@ export function CabeceraApp({ conCreditos = false }: { conCreditos?: boolean } =
   const saldo = creditos && typeof creditos === "object" ? creditos.saldo : undefined;
   return (
     <header className="cab">
-      <Link href="/" className="wordmark">Vennett</Link>
+      <Link href="/" className="wordmark"><Marca /></Link>
       <div className="cab-r">
         {yo && <Chip>{yo.plan === "pro" ? "Pro" : t("common_gratis")}</Chip>}
         {conCreditos && saldo != null && (

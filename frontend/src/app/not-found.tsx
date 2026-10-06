@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
+import { Marca } from "./(liga)/_ui/Marca";
 
 // 404 propia, para que nunca salga la de Vercel. Vale también para /admin/lo-que-sea.
 export default async function NoEncontrada() {
@@ -8,7 +9,7 @@ export default async function NoEncontrada() {
     <div className="lg">
       <main className="sencilla no-encontrada">
         <header className="sencilla-top">
-          <Link href="/" className="wordmark">Vennett</Link>
+          <Link href="/" className="wordmark"><Marca /></Link>
         </header>
 
         <span className="codigo404" aria-hidden="true">404</span>

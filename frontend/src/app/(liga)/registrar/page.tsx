@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Boton, CampoClave } from "../_ui";
 import { useSupabase } from "@/lib/liga/supabase";
 import { claveValida, solicitarCorreo, useAccesoCorreo } from "@/lib/liga/registro";
+import { Marca } from "../_ui/Marca";
 
 export default function Registrar() {
   const t = useTranslations();
@@ -43,7 +44,7 @@ export default function Registrar() {
     }
   }
   return <main className="sencilla">
-    <header className="sencilla-top"><Link href="/" className="wordmark">Vennett</Link><LanguageSelector /></header>
+    <header className="sencilla-top"><Link href="/" className="wordmark"><Marca /></Link><LanguageSelector /></header>
     <section className="sencilla-cuerpo arriba" aria-labelledby="titular">
       <h1 id="titular">{enviado ? t("auth_cuenta_creada") : t("auth_crear_cuenta")}</h1>
       {enviado ? <>

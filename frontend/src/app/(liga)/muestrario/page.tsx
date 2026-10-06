@@ -17,6 +17,7 @@ import { Escudo, escudoCasa, type EscudoValor } from "../_ui/Escudo";
 import { FilaEquipo } from "../_ui/FilaEquipo";
 import { Tarjeta } from "../_ui/Tarjeta";
 import { Vacio } from "../_ui/Vacio";
+import { Marca } from "../_ui/Marca";
 
 const ESCUDO_A: EscudoValor = { forma: "escudo", dibujo: "mitades", color1: "#1D3A6E", color2: "#FFFFFF", iniciales: "" };
 const ESCUDO_B: EscudoValor = { forma: "hexagono", dibujo: "diagonal", color1: "#8FBF3F", color2: "#141414", iniciales: "" };
@@ -84,7 +85,7 @@ export default function Muestrario() {
       <Seccion titulo={t("strategies_showcase_account")}>
         <p className="fine">{t("strategies_showcase_account_note")}</p>
         <div className="sencilla-top" style={{ marginTop: 12, paddingBottom: 150 }}>
-          <span className="wordmark">Vennett</span>
+          <span className="wordmark"><Marca /></span>
           <div className="cuenta">
             <button type="button" className="cuenta-boton" aria-expanded="true">
               <span>admin</span>

@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { reportarError } from "@/lib/liga/errores";
 import { Boton } from "./_ui";
+import { Marca } from "./_ui/Marca";
 
 type Fase = "pendiente" | "enviando" | "enviado" | "fallo";
 
@@ -31,7 +32,7 @@ export default function ErrorDePantalla({ error, reset }: {
   return (
     <main className="sencilla">
       <header className="sencilla-top">
-        <Link href="/" className="wordmark">Vennett</Link>
+        <Link href="/" className="wordmark"><Marca /></Link>
       </header>
       <section className="sencilla-cuerpo" aria-labelledby="titular">
         <h1 id="titular">{t("system_error_titulo")}</h1>

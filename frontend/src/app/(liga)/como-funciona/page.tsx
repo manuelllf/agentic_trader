@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { Marca } from "../_ui/Marca";
 
 export async function generateMetadata() { const t = await getTranslations(); return { title: `${t("help_title")} — Vennett` }; }
 
@@ -41,7 +42,7 @@ export default async function ComoFunciona() {
   return (
     <main className="sencilla cf">
       <header className="sencilla-top">
-        <Link href="/" className="wordmark">Vennett</Link>
+        <Link href="/" className="wordmark"><Marca /></Link>
         <Link href="/liga" className="cf-cerrar">{t("help_go_to_league")}</Link>
       </header>
 

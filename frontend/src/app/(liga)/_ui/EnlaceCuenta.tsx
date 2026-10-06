@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Boton, CampoClave } from ".";
 import { useSupabase } from "@/lib/liga/supabase";
 import { claveValida, completarEnlace } from "@/lib/liga/registro";
+import { Marca } from "./Marca";
 
 export function EnlaceCuenta({ recuperar = false }: { recuperar?: boolean }) {
   const t = useTranslations();
@@ -41,7 +42,7 @@ export function EnlaceCuenta({ recuperar = false }: { recuperar?: boolean }) {
     finally { setOcupado(false); }
   }
   return <main className="sencilla">
-    <header className="sencilla-top"><Link href="/" className="wordmark">Vennett</Link><LanguageSelector /></header>
+    <header className="sencilla-top"><Link href="/" className="wordmark"><Marca /></Link><LanguageSelector /></header>
     <section className="sencilla-cuerpo arriba" aria-labelledby="titular">
       <h1 id="titular">{recuperar ? t("auth_nueva_contrasena") : t("auth_confirmar_correo")}</h1>
       {estado === "cargando" && <p role="status">{t("auth_comprobando_enlace")}</p>}

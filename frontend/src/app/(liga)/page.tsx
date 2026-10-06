@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Escena } from "./_portada/Escena";
 import { ejemploLocalizado } from "./_portada/ideas";
 import { useRedirigirSiHaySesion } from "./_sesion/SesionContext";
+import { Marca } from "./_ui/Marca";
 
 export default function Portada() {
   const t = useTranslations();
@@ -19,7 +20,7 @@ export default function Portada() {
   return (
     <main className="lnd">
       <header className="lnd-top">
-        <span className="wordmark">Vennett</span>
+        <span className="wordmark"><Marca /></span>
         <nav className="lnd-nav"><LanguageSelector />
           <Link href="/liga" className="btn discreto small">{t("landing_ver_liga")}</Link>
           <Link href="/entrar" className="btn discreto small">{t("landing_entrar")}</Link>

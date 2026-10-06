@@ -15,6 +15,7 @@ import { useSupabase } from "@/lib/liga/supabase";
 import { fijar } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { AvisosDispositivo } from "./AvisosDispositivo";
+import { Marca } from "../_ui/Marca";
 
 /** Dispara la descarga de un fichero de texto sin subirlo a ningún sitio: todo en el navegador. */
 function descargar(nombre: string, texto: string): void {
@@ -128,7 +129,7 @@ export default function Cuenta() {
   return (
     <main className="sencilla">
       <header className="sencilla-top">
-        <Link href="/" className="wordmark">Vennett</Link>
+        <Link href="/" className="wordmark"><Marca /></Link>
       <LanguageSelector /></header>
 
       <section className="sencilla-cuerpo arriba" aria-labelledby="titular">
