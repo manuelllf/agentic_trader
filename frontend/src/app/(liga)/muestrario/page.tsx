@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { notFound } from "next/navigation";
+import { normalizeLocale } from "@/i18n/locale";
+import type { RendimientoFicha } from "@/lib/liga/api";
+import { GraficaRendimiento } from "../ficha/[id]/GraficaRendimiento";
+import { ListaEmpresas } from "../ficha/[id]/ListaEmpresas";
 import { Boton } from "../_ui/Boton";
 import { Cargando } from "../_ui/Cargando";
 import { Chip } from "../_ui/Chip";
@@ -19,6 +23,37 @@ const ESCUDO_B: EscudoValor = { forma: "hexagono", dibujo: "diagonal", color1: "
 const ESCUDO_C: EscudoValor = { forma: "circulo", dibujo: "franja", color1: "#C0392B", color2: "#F2C94C", iniciales: "TG" };
 const ESCUDO_D: EscudoValor = { forma: "escudo", dibujo: "liso", color1: "#5B6470", iniciales: "M" };
 
+type Serie = RendimientoFicha["serie"];
+
+// Primera semana: cuatro cierres de una sola jornada, todos provisionales.
+const SERIE_CORTA: Serie = [
+  ["2026-09-30", 0, 0], ["2026-10-01", 2.6, 0.2], ["2026-10-02", 0.9, 1.0], ["2026-10-05", -0.3, 1.6],
+].map(([dia, estrategia, sp500]) => ({
+  dia: dia as string, estrategia: estrategia as number, sp500: sp500 as number, provisional: true, salto: false, jornada: 1,
+}));
+
+// Cuatro jornadas con la última en curso; la curva sale de un generador fijo.
+function serieLarga(): Serie {
+  const bases = ["2026-06-30", "2026-07-31", "2026-08-31", "2026-09-30"];
+  const festivos = ["2026-07-03", "2026-09-07"];
+  let semilla = 20261006;
+  const azar = () => { semilla = (semilla * 1664525 + 1013904223) >>> 0; return semilla / 4294967296; };
+  const normal = () => Math.sqrt(-2 * Math.log(Math.max(azar(), 1e-9))) * Math.cos(2 * Math.PI * azar());
+  const salida: Serie = [];
+  let e = 1, s = 1, jornada = 0;
+  for (let t = Date.UTC(2026, 5, 30); t <= Date.UTC(2026, 9, 5); t += 864e5) {
+    const dia = new Date(t).toISOString().slice(0, 10);
+    const semana = new Date(t).getUTCDay();
+    if (semana === 0 || semana === 6 || festivos.includes(dia)) continue;
+    const a = normal(), b = normal();
+    if (salida.length) { e *= 1 + 0.0007 + 0.0105 * (0.55 * a + 0.83 * b); s *= 1 + 0.0005 + 0.0068 * a; }
+    if (bases.includes(dia)) jornada += 1;
+    salida.push({ dia, estrategia: (e - 1) * 100, sp500: (s - 1) * 100, provisional: jornada === 4 && dia !== bases[3], salto: false, jornada });
+  }
+  return salida;
+}
+const SERIE_LARGA = serieLarga();
+
 function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
     <section className="sec" aria-labelledby={`s-${titulo}`}>
@@ -30,6 +65,7 @@ function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) 
 
 export default function Muestrario() {
   const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
   const [cargandoDemo, setCargandoDemo] = useState(false);
 
   // Solo existe fuera de producción: aquí, y solo aquí, los datos son inventados a propósito
@@ -212,6 +248,21 @@ export default function Muestrario() {
             </Clasificacion>
           )}
         </div>
+      </Seccion>
+
+      <Seccion titulo={t("strategies_showcase_performance")}>
+        <p className="fine">{t("strategies_showcase_performance_note")}</p>
+        <GraficaRendimiento serie={SERIE_CORTA} metricas={{ sharpe: null, sortino: null, volatilidad: null, max_drawdown: -0.028, observaciones: 3 }} locale={locale} />
+        <div style={{ height: 28 }} />
+        <GraficaRendimiento serie={SERIE_LARGA} metricas={{ sharpe: null, sortino: null, volatilidad: 0.14, max_drawdown: -0.061, observaciones: SERIE_LARGA.length - 1 }} locale={locale} />
+      </Seccion>
+
+      <Seccion titulo={t("strategies_showcase_portfolio")}>
+        <ListaEmpresas conPrecio columnaRetorno={t("strategies_col_month")} alAbrir={() => {}} filas={[
+          { ticker: "ASM", peso: 10.6, precio: 5.625, retorno: 1.4 }, { ticker: "CRMD", peso: 10.1, precio: 7.27, retorno: -5.6 },
+          { ticker: "EVER", peso: 10.1, precio: 19.01, retorno: -5.2 }, { ticker: "MAMA", peso: 10.1, precio: 12.955, retorno: 0.5 },
+          { ticker: "QNST", peso: 9.9, precio: null, retorno: null },
+        ]} />
       </Seccion>
 
       <Seccion titulo={t("strategies_showcase_error")}>

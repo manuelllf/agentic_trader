@@ -190,6 +190,14 @@ export default function Cuenta() {
               </div>
             </div>
 
+            <div className="form">
+              <div className="campo">
+                <span className="lbl">{t("account_metodo")}</span>
+                <span className="nota">{t("account_metodo_ayuda")}</span>
+              </div>
+              <Link href="/como-funciona" className="btn small">{t("account_ver_metodo")}</Link>
+            </div>
+
             <AvisosDispositivo />
 
             <form className="form" onSubmit={cambiarClave}>

@@ -57,8 +57,13 @@ export function escudoCasa(clave: ClaveCasa): EscudoValor {
   return { forma: "circulo", dibujo: "liso", color1: color, color2: color, iniciales: glifo };
 }
 
+/** Baldosa de esquinas suaves: la forma de los escudos en las listas, para que todas las filas casen. */
+const BALDOSA = "M12 2.5h16a9.5 9.5 0 0 1 9.5 9.5v16a9.5 9.5 0 0 1-9.5 9.5H12A9.5 9.5 0 0 1 2.5 28V12A9.5 9.5 0 0 1 12 2.5Z";
+
 export interface EscudoProps {
   valor: EscudoValor;
+  /** Dibuja el escudo en baldosa en vez de en su forma propia. */
+  baldosa?: boolean;
   /** Las salas tienen una identidad fija, independiente del escudo guardado en la API. */
   casa?: ClaveCasa | null;
   /** Nombre accesible completo, p. ej. «Escudo de Foso ancho» o «Escudo de la casa: Alpha». */
@@ -74,10 +79,10 @@ const AJUSTE_GLIFO: Record<string, { escala: number; dy: number }> = {
   α: { escala: 1.22, dy: 0.6 },
 };
 
-export function Escudo({ valor: valorGuardado, casa, etiqueta, tamano = 34 }: EscudoProps) {
+export function Escudo({ valor: valorGuardado, casa, etiqueta, tamano = 34, baldosa = false }: EscudoProps) {
   const id = useId();
   const valor = casa ? escudoCasa(casa) : valorGuardado;
-  const d = FORMAS[valor.forma] ?? FORMAS.circulo;
+  const d = baldosa ? BALDOSA : FORMAS[valor.forma] ?? FORMAS.circulo;
   const c1 = valor.color1;
   const c2 = valor.color2 || valor.color1;
   const claro = luminancia(c1) > 0.4;

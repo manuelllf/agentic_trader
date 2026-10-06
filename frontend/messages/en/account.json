@@ -60,5 +60,8 @@
   "account_codigo_actual": "Enter the current code from your authenticator app.",
   "account_sesion_verificada": "Done. This session is now verified.",
   "account_seguir": "Continue",
-  "account_idioma": "Language"
+  "account_idioma": "Language",
+  "account_metodo": "How the league works",
+  "account_metodo_ayuda": "How portfolios are built, what the 0 to 9 scores mean and how performance is measured. It is public.",
+  "account_ver_metodo": "See the method"
 }

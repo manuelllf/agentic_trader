@@ -15,6 +15,8 @@ import { invalidar, useCache } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../../_sesion/SesionContext";
 import { RendimientoFicha } from "./RendimientoFicha";
 import { EvidenciaCartera } from "./EvidenciaCartera";
+import { ListaEmpresas } from "./ListaEmpresas";
+import { NotasEmpresa } from "./NotasEmpresa";
 import { CambiosEstrategia } from "../../_ui/CambiosEstrategia";
 import { getSeguimiento, marcarSeguimientos, type SeguimientoEstrategia } from "@/lib/liga/seguimiento";
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
@@ -31,7 +33,7 @@ function subtitulo(f: Ficha, esMia: boolean, t: (key: string, values?: Record<st
   return t("strategies_retired");
 }
 
-function CarteraSinEvidencia({ posiciones, mercado }: { posiciones: Ficha["posiciones"]; mercado?: MercadoFicha | null }) {
+function CarteraSinEvidencia({ fichaId, posiciones, mercado }: { fichaId: string; posiciones: Ficha["posiciones"]; mercado?: MercadoFicha | null }) {
   const t = useTranslations();
   const locale = normalizeLocale(useLocale()) ?? "es";
   const [ticker, setTicker] = useState<string | null>(null);
@@ -46,14 +48,16 @@ function CarteraSinEvidencia({ posiciones, mercado }: { posiciones: Ficha["posic
   }, [ticker]);
   const cotizacion = ticker ? mercado?.empresas[ticker] : null;
   return <section className="sec"><h3 className="sec-t">{t("strategies_portfolio_count", { count: posiciones.length })}</h3>
-    <div className="cartera-plantilla">{posiciones.map(p => <button type="button" className="cartera-empresa con-precio" key={p.ticker} onClick={() => setTicker(p.ticker)}>
-      <b>{p.ticker}</b><span>{new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(p.peso))} %<small>{t("strategies_weight")}</small></span>
-      <span>{mercado?.empresas[p.ticker]?.precio == null ? "—" : Number(mercado.empresas[p.ticker]!.precio).toLocaleString(locale)}<small>{t("strategies_price")}</small></span>
-      <span><b className={`cartera-retorno ${mercado?.empresas[p.ticker]?.rentabilidad == null ? "fl" : claseSigno(mercado.empresas[p.ticker]!.rentabilidad!)}`}>{mercado?.empresas[p.ticker]?.rentabilidad == null ? "—" : porcentaje(mercado.empresas[p.ticker]!.rentabilidad!, 1, locale)}</b><small>{t("strategies_month_provisional")}</small></span><span aria-hidden="true">→</span>
-    </button>)}</div>
+    <p className="fine">{t("strategies_month_provisional_hint")}</p>
+    <ListaEmpresas conPrecio columnaRetorno={t("strategies_col_month")} alAbrir={setTicker}
+      filas={posiciones.map(p => ({
+        ticker: p.ticker, peso: Number(p.peso),
+        precio: mercado?.empresas[p.ticker]?.precio == null ? null : Number(mercado.empresas[p.ticker]!.precio),
+        retorno: mercado?.empresas[p.ticker]?.rentabilidad ?? null,
+      }))} />
     <dialog ref={dialogo} className="lecturas-modal empresa-modal" aria-label={t("strategies_company_dialog", { ticker: ticker ?? "" })} onCancel={() => setTicker(null)}>
       <header className="lecturas-cab"><h2>{ticker}</h2><button type="button" className="lecturas-cerrar" autoFocus aria-label={t("strategies_close_company")} onClick={() => setTicker(null)}>×</button></header>
-      <div className="lecturas-cuerpo"><p>{t("strategies_price_label")}: {cotizacion?.precio == null ? "—" : Number(cotizacion.precio).toLocaleString(locale)}</p>
+      <div className="lecturas-cuerpo">{ticker && <NotasEmpresa fichaId={fichaId} ticker={ticker} />}<p>{t("strategies_price_label")}: {cotizacion?.precio == null ? "—" : Number(cotizacion.precio).toLocaleString(locale)}</p>
         <p>{t("strategies_month_return")}: {cotizacion?.rentabilidad == null ? "—" : porcentaje(cotizacion.rentabilidad, 1, locale)}</p>
         <p className="fine">{cotizacion?.dia ? t("strategies_data_provisional", { date: fecha(cotizacion.dia, new Date(), locale) }) : t("strategies_no_current_quote")}</p>
         <p className="fine">{t("strategies_no_historical_evidence")}</p></div>
@@ -226,9 +230,9 @@ export function FichaContenido({ id }: { id: string }) {
             </section>
           )}
 
-          {vista === "cartera" && ficha.rendimiento?.evidencia && <EvidenciaCartera datos={ficha.rendimiento.evidencia} mercado={ficha.mercado} />}
+          {vista === "cartera" && ficha.rendimiento?.evidencia && <EvidenciaCartera fichaId={id} datos={ficha.rendimiento.evidencia} mercado={ficha.mercado} />}
           {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.posiciones.length > 0 && (
-            <CarteraSinEvidencia posiciones={ficha.posiciones} mercado={ficha.mercado} />
+            <CarteraSinEvidencia fichaId={id} posiciones={ficha.posiciones} mercado={ficha.mercado} />
           )}
           {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.posiciones.length === 0 && <p className="meta">{ficha.rendimiento?.estado === "privado" ? t("strategies_private_portfolio_note")
             : ficha.casa && !ficha.casa_metodologia?.pasos.length ? t("strategies_house_portfolio_delay_note")

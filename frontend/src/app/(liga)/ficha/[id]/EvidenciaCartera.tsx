@@ -1,12 +1,14 @@
 "use client";
 
 import type { EvidenciaFormacion } from "@/lib/liga/evidencia";
-import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
+import { fecha, porcentaje } from "@/lib/liga/format";
 import { InfoTip } from "@/components/InfoTip";
 import { useEffect, useId, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import type { MercadoFicha } from "@/lib/liga/api";
+import { ListaEmpresas } from "./ListaEmpresas";
+import { NotasEmpresa } from "./NotasEmpresa";
 
 const MOTIVOS = {
   excluida_manual: "strategies_evidence_manual_exclusion",
@@ -16,7 +18,7 @@ const MOTIVOS = {
   no_disponible: "strategies_evidence_unavailable",
 };
 
-export function EvidenciaCartera({ datos, mercado }: { datos: EvidenciaFormacion; mercado?: MercadoFicha | null }) {
+export function EvidenciaCartera({ fichaId, datos, mercado }: { fichaId: string; datos: EvidenciaFormacion; mercado?: MercadoFicha | null }) {
   const t = useTranslations();
   const locale = normalizeLocale(useLocale()) ?? "es";
   const percent = (value: number) => porcentaje(value, 1, locale);
@@ -39,21 +41,20 @@ export function EvidenciaCartera({ datos, mercado }: { datos: EvidenciaFormacion
   return (
     <section className="ficha-analisis" aria-label={t("strategies_evidence_portfolio")}>
       <h3 className="sec-t">{t("strategies_portfolio_count", { count: posiciones.length })}</h3>
-      <p className="fine">{t("strategies_evidence_select_company")}</p>
+      <p className="fine">{t("strategies_evidence_select_company")}{mercado && ` ${t("strategies_month_provisional_hint")}`}</p>
       <p className="fine">{t("strategies_evidence_round_context", { round: f.jornada_numero, date: f.desde, method: f.metodo === "mantenida" ? t("strategies_evidence_kept_positions") : t("strategies_evidence_fixed_photo") })}</p>
       {!f.receta_vigente && <p className="fine">{t("strategies_evidence_method_changed_note")}</p>}
       {f.estado_foto === "sin_datos" && <p className="fine">{t("strategies_evidence_photo_missing")}</p>}
       {f.estado_reglas === "version_no_soportada" && <p className="fine">{t("strategies_evidence_rule_version_unsupported")}</p>}
 
-      <div className="cartera-plantilla">
-        {posiciones.map(p => {
-          const retorno = mercado ? mercado.empresas[p.ticker]?.rentabilidad : p.rendimiento.rentabilidad_pct;
-          return <button type="button" className={`cartera-empresa${mercado ? " con-precio" : ""}`} key={p.ticker} onClick={() => setTicker(p.ticker)}>
-          <b>{p.ticker}</b><span>{new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(p.peso))} %<small>{t("strategies_weight")}</small></span>
-          {mercado && <span>{mercado.empresas[p.ticker]?.precio == null ? "—" : Number(mercado.empresas[p.ticker]!.precio).toLocaleString(locale, {maximumFractionDigits: 2})}<small>{t("strategies_price")}</small></span>}
-          <span><b className={`cartera-retorno ${retorno == null ? "fl" : claseSigno(retorno)}`}>{retorno == null ? "—" : percent(retorno)}</b><small>{mercado ? t("strategies_month_provisional") : t("strategies_period_return")}</small></span><span aria-hidden="true">→</span>
-        </button>; })}
-      </div>
+      <ListaEmpresas conPrecio={!!mercado} columnaRetorno={t(mercado ? "strategies_col_month" : "strategies_col_period")}
+        alAbrir={setTicker}
+        filas={posiciones.map((p) => ({
+          ticker: p.ticker,
+          peso: Number(p.peso),
+          precio: mercado ? (mercado.empresas[p.ticker]?.precio == null ? null : Number(mercado.empresas[p.ticker]!.precio)) : undefined,
+          retorno: (mercado ? mercado.empresas[p.ticker]?.rentabilidad : p.rendimiento.rentabilidad_pct) ?? null,
+        }))} />
       <dialog ref={dialogo} className="lecturas-modal empresa-modal" aria-labelledby={titulo} onCancel={() => setTicker(null)}>
         <header className="lecturas-cab"><div><p className="lecturas-kicker">{t("strategies_evidence_company_round", { round: f.jornada_numero })}</p><h2 id={titulo}>{ticker}</h2></div>
           <button type="button" className="lecturas-cerrar" aria-label={t("strategies_close_company")} autoFocus onClick={() => setTicker(null)}>×</button></header>
@@ -63,6 +64,7 @@ export function EvidenciaCartera({ datos, mercado }: { datos: EvidenciaFormacion
         const desconocidas = p.reglas.filter((r) => r.cumple === null).length;
         return <article key={p.ticker}>
           <h3 className="sec-t">{t("strategies_evidence_weight", { weight: new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(p.peso)) })}</h3>
+          <NotasEmpresa fichaId={fichaId} ticker={p.ticker} />
           {mercado && <section className="sec"><h3 className="sec-t">{t("strategies_market_quote")}</h3><p className="meta">{t("strategies_price_label")}: {mercado.empresas[p.ticker]?.precio == null ? t("strategies_quote_pending") : Number(mercado.empresas[p.ticker]!.precio).toLocaleString(locale, {maximumFractionDigits: 4})}</p><p className="fine">{t("strategies_evidence_market_data", { date: mercado.empresas[p.ticker]?.dia ? fecha(mercado.empresas[p.ticker]!.dia!, new Date(), locale) : "—", since: mercado.desde ? fecha(mercado.desde, new Date(), locale) : "—", return: mercado.empresas[p.ticker]?.rentabilidad == null ? "—" : percent(mercado.empresas[p.ticker]!.rentabilidad!) })}</p></section>}
           <p className="fine">{t(p.origen === "mantenida" ? "strategies_evidence_position_kept" : "strategies_evidence_position_selected")}{" "}
             {p.reglas.length ? t("strategies_evidence_rules_verified", { verified: verificadas, total: p.reglas.length, unknown: desconocidas })

@@ -13,6 +13,7 @@ import {
   type JornadaDetalle, type Portada, type Ventana,
 } from "@/lib/liga/api";
 import { mutar, useCache } from "@/lib/liga/cache";
+import { precargarFicha } from "@/lib/liga/ficha";
 import { claseSigno, porcentaje, signo } from "@/lib/liga/format";
 import { getSeguimiento, type SeguimientoEstrategia }
   from "@/lib/liga/seguimiento";
@@ -191,7 +192,8 @@ export default function Mias() {
             return (
               <article key={e.id} className="mias-estrategia" aria-busy={pendiente || undefined}>
                 <div className="mias-cab">
-                  <Link href={`/ficha/${e.id}`} className="mias-identidad">
+                  <Link href={`/ficha/${e.id}`} className="mias-identidad"
+                    onPointerEnter={() => precargarFicha(e.id)} onPointerDown={() => precargarFicha(e.id)}>
                     <Escudo valor={e.escudo} etiqueta={t("strategies_crest", { name: e.nombre })} tamano={34} />
                     <span><h2>{e.nombre}</h2><small>{ETIQUETA_ESTADO[e.estado] ? t(ETIQUETA_ESTADO[e.estado]) : e.estado}{e.opta_premio && ` · ${t("strategies_prize_entered")}`}</small></span>
                     {puesto != null && (
@@ -224,7 +226,8 @@ export default function Mias() {
                   </dl>
                 )}
                 {novedad && (e.estado === "jugando" || acumulado) && (
-                  <Link href={`/ficha/${e.id}`} className={`mias-linea${novedad.tipo === "cambio" || novedad.tipo === "resultado" ? " viva" : ""}`}>
+                  <Link href={`/ficha/${e.id}`} className={`mias-linea${novedad.tipo === "cambio" || novedad.tipo === "resultado" ? " viva" : ""}`}
+                    onPointerEnter={() => precargarFicha(e.id)} onPointerDown={() => precargarFicha(e.id)}>
                     {novedad.tipo === "cambio" && <>
                       <b>{t("strategies_change_count", { count: novedad.entradas.length + novedad.salidas.length })}</b>
                       <span>{t("common_seguimiento_cambios", { entradas: novedad.entradas.join(", ") || t("common_seguimiento_ninguna"), salidas: novedad.salidas.join(", ") || t("common_seguimiento_ninguna") })}</span>

@@ -257,7 +257,8 @@ export type RendimientoFicha = {
   provisional_hasta: string | null;
   incompleta?: boolean;
   evidencia?: EvidenciaFormacion | null;
-  serie: { dia: string; estrategia: number; sp500: number; provisional: boolean; salto?: boolean }[];
+  serie: { dia: string; estrategia: number; sp500: number; provisional: boolean; salto?: boolean;
+    jornada?: number | null }[];
   metricas: { sharpe: number | null; sortino: number | null; volatilidad: number | null;
     max_drawdown: number | null; observaciones: number } | null;
 };
@@ -489,6 +490,18 @@ export async function buscarUniverso(
 
 export async function getFicha(id: string): Promise<Ficha | string> {
   return llamar<Ficha>(`/liga/fichas/${id}`);
+}
+
+export type NotasEmpresa = {
+  ticker: string;
+  jornada: number;
+  dia: string;
+  /** De 0 a 9; null si esa jornada no guardó el escaneo. Llegan como texto decimal. */
+  notas: Partial<Record<"negocio" | "precio" | "deuda" | "pronto", string>> | null;
+};
+
+export async function getNotasEmpresa(fichaId: string, ticker: string): Promise<NotasEmpresa | string> {
+  return llamar<NotasEmpresa>(`/liga/fichas/${fichaId}/empresas/${encodeURIComponent(ticker)}`);
 }
 
 export async function copiarEstrategia(id: string): Promise<Estrategia | string> {

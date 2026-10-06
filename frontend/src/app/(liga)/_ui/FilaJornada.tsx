@@ -41,7 +41,7 @@ export function FilaJornada({
       onClick={() => { if (onAbrir && !pendiente) navegar(onAbrir); }}>
       <span className="name">
         {puesto != null && <span className="pos num">{puesto}</span>}
-        <Escudo valor={escudo} casa={casa} etiqueta={t("league_escudo_de", { name: nombre })} />
+        <Escudo valor={escudo} casa={casa} baldosa tamano={28} etiqueta={t("league_escudo_de", { name: nombre })} />
         <span className="nm">
           <b>{nombre}</b>
           <span className="sub">{etiqueta}</span>

@@ -26,6 +26,7 @@ import {
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
 import { useSesion } from "../_sesion/SesionContext";
 import { useCache } from "@/lib/liga/cache";
+import { precargarFicha } from "@/lib/liga/ficha";
 import { PremioAnual } from "./PremioAnual";
 
 type Vista = "tabla" | "jornada";
@@ -140,6 +141,7 @@ function LigaContenido() {
       movimiento={f.movimiento}
       tipo={f.equipo.casa ? "casa" : (yo && f.equipo.autor === yo.alias) ? "mia" : "normal"}
       onClick={() => abrir(f.equipo.id)}
+      alAcercar={() => precargarFicha(f.equipo.id)}
     />
   );
 

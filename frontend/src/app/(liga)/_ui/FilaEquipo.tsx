@@ -63,6 +63,8 @@ export interface FilaEquipoProps {
   colorCasa?: string;
   abrible?: boolean;
   onClick?: () => void;
+  /** Se llama al tocar o pasar por encima, antes del clic: para ir cargando lo que se abrirá. */
+  alAcercar?: () => void;
 }
 
 export function FilaEquipo({
@@ -79,6 +81,7 @@ export function FilaEquipo({
   tipo = "normal",
   abrible = true,
   onClick,
+  alAcercar,
 }: FilaEquipoProps) {
   const t = useTranslations();
   const locale = useLocale() === "en" ? "en" : "es";
@@ -90,6 +93,9 @@ export function FilaEquipo({
   const abrir = () => {
     if (onClick && !pendiente) navegar(onClick);
   };
+  const acercar = abrible && alAcercar
+    ? { onPointerEnter: alAcercar, onPointerDown: alAcercar, onFocus: alAcercar }
+    : {};
   const sube = movimiento ?? 0;
   const posicion = (
     <span className="pos num">
@@ -111,10 +117,10 @@ export function FilaEquipo({
   if (acumulado !== undefined) {
     return (
       <button type="button" disabled={!abrible} className={claseFila} aria-busy={pendiente || undefined}
-        aria-disabled={pendiente || undefined} onClick={abrir}>
+        aria-disabled={pendiente || undefined} onClick={abrir} {...acercar}>
         <span className="name">
           {posicion}
-          <Escudo valor={escudo} casa={casa} etiqueta={t("common_ranking_escudo", { name: nombre })} />
+          <Escudo valor={escudo} casa={casa} baldosa tamano={28} etiqueta={t("common_ranking_escudo", { name: nombre })} />
           <span className="nm">
             <b>{nombre}</b>
             <span className="sub">
@@ -147,7 +153,7 @@ export function FilaEquipo({
 
   return (
     <button type="button" disabled={!abrible} className={claseFila} aria-busy={pendiente || undefined}
-      aria-disabled={pendiente || undefined} onClick={abrir}>
+      aria-disabled={pendiente || undefined} onClick={abrir} {...acercar}>
       {posicion}
       <span className="name">
         <Escudo valor={escudo} casa={casa} etiqueta={t("common_ranking_escudo", { name: nombre })} />

@@ -13,6 +13,7 @@ import {
   expulsarDeLiga, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle, type MiembroLiga,
 } from "@/lib/liga/api";
 import { invalidar, useCache } from "@/lib/liga/cache";
+import { precargarFicha } from "@/lib/liga/ficha";
 import { useSesionRequerida } from "../../_sesion/SesionContext";
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
 import "../privadas.css";
@@ -100,7 +101,8 @@ export default function PrivadaDetalle() {
                   <FilaEquipo key={m.alias} puesto={i + 1} nombre={m.estrategia.nombre} escudo={m.estrategia.escudo}
                     etiqueta={etiqueta(m, abrir(m))} vsIndice={Number(m.dif_sp ?? 0)} puntos={m.puntos ?? 0}
                     acumulado={m.acumulado} movimiento={m.movimiento} tipo={m.es_yo ? "mia" : "normal"}
-                    abrible={abrir(m)} onClick={ir(m)} />
+                    abrible={abrir(m)} onClick={ir(m)}
+                    alAcercar={() => { if (m.estrategia) precargarFicha(m.estrategia.id); }} />
                 ))}
               </TablaClasificacion>
             )}
