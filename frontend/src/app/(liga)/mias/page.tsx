@@ -190,7 +190,7 @@ export default function Mias() {
             const enVivo = typeof detalleJornada === "object" && !!detalleJornada && detalleJornada.en_vivo;
             const cargandoMes = detalleJornada === undefined && !falloJornada;
             return (
-              <article key={e.id} className="mias-estrategia" aria-busy={pendiente || undefined}>
+              <article key={e.id} className={`mias-estrategia${ajustes === e.id ? "" : " abrible"}`} aria-busy={pendiente || undefined}>
                 <div className="mias-cab">
                   <Link href={`/ficha/${e.id}`} className="mias-identidad"
                     onPointerEnter={() => precargarFicha(e.id)} onPointerDown={() => precargarFicha(e.id)}>

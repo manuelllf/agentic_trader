@@ -303,7 +303,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 
 .lg .scroll {
   flex: 1; width: 100%; max-width: var(--app-width); margin: 0 auto;
-  padding: var(--page-top) var(--page-gutter) 100px;
+  padding: var(--page-top) var(--page-gutter) calc(100px + env(safe-area-inset-bottom));
 }
 
 .lg .tabbar {
@@ -1070,6 +1070,13 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .mias-cabecera { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 8px 0 12px; }
 .lg .mias-lista { display: grid; gap: 10px; }
 .lg .mias-estrategia { min-width: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); }
+/* Toda la tarjeta abre la ficha: el enlace del nombre se extiende sobre ella y lo demás queda por encima. */
+.lg .mias-estrategia { position: relative; }
+.lg .mias-estrategia.abrible .mias-identidad::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-card); }
+.lg .mias-estrategia.abrible .mias-identidad:focus-visible { outline: none; }
+.lg .mias-estrategia.abrible .mias-identidad:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lg .mias-mas, .lg .mias-linea, .lg .mias-pie, .lg .mias-ajustes { position: relative; z-index: 1; }
+@media (hover: hover) and (pointer: fine) { .lg .mias-estrategia.abrible:hover { background: var(--surface2); } }
 .lg .mias-cab { display: flex; align-items: center; gap: 2px; }
 .lg .mias-identidad { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; }
 .lg .mias-mas { flex: 0 0 44px; height: 44px; margin-right: -10px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 22px; line-height: 1; cursor: pointer; }

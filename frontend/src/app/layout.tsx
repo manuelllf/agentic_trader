@@ -39,6 +39,8 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Sin esto el móvil no da el margen inferior del sistema y la barra de pestañas queda bajo los gestos.
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#FFFFFF" },
     { media: "(prefers-color-scheme: dark)", color: "#0E0F10" },
