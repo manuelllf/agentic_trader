@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { useTransition } from "react";
-import { claseSigno, porcentaje, signo } from "@/lib/liga/format";
+import { claseSigno, fraseVsIndice, porcentaje } from "@/lib/liga/format";
 import { Escudo, type ClaveCasa, type EscudoValor } from "./Escudo";
 
 const Chevron = ({ pendiente = false }: { pendiente?: boolean }) => (
@@ -50,7 +50,7 @@ export function FilaJornada({
       <span className="fila-res">
         <span className={`ret num ${claseSigno(rentabilidad)}`}>{porcentaje(rentabilidad, 1, locale)}</span>
         {diferencia != null && (
-          <span className={`vsp num ${claseSigno(diferencia)}`}>{signo(diferencia, 1, locale)} pp {t("common_ranking_vs_sp")}</span>
+          <span className="vsp num">{fraseVsIndice(t, diferencia, locale)}</span>
         )}
       </span>
       {onAbrir

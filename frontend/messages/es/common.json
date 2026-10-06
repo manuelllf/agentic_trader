@@ -51,5 +51,8 @@
   "common_seguimiento_nota": "La comparación refleja posiciones guardadas; no confirma una reevaluación de reglas.",
   "common_seguimiento_sin_pregunta": "Este mes jugó sin tu pregunta: {motivo, select, sin_ia {la IA no estaba disponible} tope {se alcanzó el tope de gasto de IA} incompleta {no llegaron todas las respuestas} tiempo {se agotó el tiempo para contestar} sin_saldo {no tenías créditos suficientes} other {faltaron respuestas}}. Se eligió con las cuatro notas.",
   "common_seguimiento_quitadas_vaciadas": "Cambiaste la configuración respecto al mes anterior: sus empresas quitadas no se aplicaron.",
-  "common_seguimiento_ninguna": "Ninguna"
+  "common_seguimiento_ninguna": "Ninguna",
+  "common_ranking_sobre_sp": "{value} pp sobre el S&P",
+  "common_ranking_bajo_sp": "{value} pp bajo el S&P",
+  "common_ranking_igual_sp": "Igual que el S&P"
 }

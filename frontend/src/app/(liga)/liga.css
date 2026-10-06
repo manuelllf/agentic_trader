@@ -597,7 +597,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 .lg .jr.me, .lg .tr.financiero.me { border-color: var(--accent); background: var(--accent-bg); }
-.lg .fila-res .ret { font-size: 16px; line-height: 1.2; font-weight: var(--w-num); letter-spacing: -.02em; color: var(--ink); }
+.lg .fila-res .ret { font-size: 16px; line-height: 1.2; font-weight: var(--w-num); letter-spacing: -.02em; }
 .lg .jr .crest, .lg .tr.financiero .crest { width: 28px; height: 28px; }
 .lg .jr .name, .lg .tr.financiero .name { gap: 10px; }
 .lg .jr .nm b, .lg .tr.financiero .nm b { font-size: 14.5px; line-height: 1.2; }
@@ -606,7 +606,6 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .tr.financiero .pos small { margin-top: 2px; font-size: 10px; font-weight: var(--w-strong); }
 .lg .fila-res { display: grid; justify-items: end; gap: 2px; white-space: nowrap; }
 .lg .fila-res .vsp { font-size: 11.5px; line-height: 1.2; color: var(--muted); }
-.lg .fila-res .vsp.up, .lg .fila-res .vsp.dn { font-weight: var(--w-strong); }
 .lg .tr.financiero .sub { flex-wrap: wrap; gap: 0 6px; }
 .lg .tr.financiero .sub > * + *::before { content: "·"; margin-right: 6px; color: var(--muted); }
 .lg .jr:disabled, .lg .tr:disabled { cursor: default; }

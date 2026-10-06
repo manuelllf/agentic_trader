@@ -46,6 +46,16 @@ export function porcentaje(valor: number, decimales = 1, locale: Locale = "es"):
  */
 export const diferenciaPuntos = porcentaje;
 
+/** «3,1 pp sobre el S&P»: la diferencia con el índice dicha con palabras, para que no haya que restar. */
+export function fraseVsIndice(
+  t: (clave: string, valores?: Record<string, string>) => string, diferencia: number, locale: Locale = "es",
+): string {
+  const clase = claseSigno(diferencia);
+  if (clase === "fl") return t("common_ranking_igual_sp");
+  const valor = signo(Math.abs(diferencia), 1, locale).replace(/^\+/, "");
+  return t(clase === "up" ? "common_ranking_sobre_sp" : "common_ranking_bajo_sp", { value: valor });
+}
+
 /** Euros con 2 decimales, coma decimal y espacio duro antes de «€». Sin signo «+»: los
  * créditos son siempre un saldo, no una variación (a diferencia de los porcentajes). */
 export function euros(valor: number, decimales = 2, locale: Locale = "es"): string {

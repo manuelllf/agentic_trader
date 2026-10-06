@@ -4,6 +4,7 @@ import {
   diferenciaPuntos,
   euros,
   fecha,
+  fraseVsIndice,
   miles,
   nombreMes,
   porcentaje,
@@ -110,5 +111,17 @@ describe("fecha", () => {
     // en UTC siga siendo el 31.
     const ahora = new Date("2026-01-01T00:00:00Z");
     expect(fecha("2025-12-31T23:30:00Z", ahora)).toBe("1 de enero");
+  });
+});
+
+describe("fraseVsIndice", () => {
+  const t = (clave: string, valores?: Record<string, string>) => `${clave}:${valores?.value ?? ""}`;
+  it("dice sobre, bajo o igual segun la diferencia redondeada", () => {
+    expect(fraseVsIndice(t, 3.14)).toBe("common_ranking_sobre_sp:3,1");
+    expect(fraseVsIndice(t, -0.86)).toBe("common_ranking_bajo_sp:0,9");
+    expect(fraseVsIndice(t, 0.04)).toBe("common_ranking_igual_sp:");
+  });
+  it("usa el punto decimal en ingles", () => {
+    expect(fraseVsIndice(t, -2, "en")).toBe("common_ranking_bajo_sp:2.0");
   });
 });

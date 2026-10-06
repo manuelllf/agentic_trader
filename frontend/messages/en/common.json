@@ -51,5 +51,8 @@
   "common_seguimiento_nota": "The comparison reflects saved holdings; it does not confirm that the rules were reevaluated.",
   "common_seguimiento_sin_pregunta": "This month it played without your question: {motivo, select, sin_ia {the AI was not available} tope {the AI spending limit was reached} incompleta {not all the answers arrived} tiempo {time ran out to answer} sin_saldo {you did not have enough credits} other {answers were missing}}. It was chosen with the four scores.",
   "common_seguimiento_quitadas_vaciadas": "You changed the setup since last month: its removed companies were not applied.",
-  "common_seguimiento_ninguna": "None"
+  "common_seguimiento_ninguna": "None",
+  "common_ranking_sobre_sp": "{value} pp above the S&P",
+  "common_ranking_bajo_sp": "{value} pp below the S&P",
+  "common_ranking_igual_sp": "Same as the S&P"
 }

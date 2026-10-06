@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { useTransition } from "react";
-import { claseSigno, porcentaje, signo } from "@/lib/liga/format";
+import { claseSigno, fraseVsIndice, porcentaje } from "@/lib/liga/format";
 import { Escudo, type ClaveCasa, type EscudoValor } from "./Escudo";
 
 // `.tr` de la maqueta: fila de la clasificación (DESIGN.md §6). Con `acumulado` es una fila de
@@ -134,9 +134,7 @@ export function FilaEquipo({
           {acumulado ? (
             <>
               <span className={`ret num ${claseSigno(acumulado.rentabilidad)}`}>{porcentaje(acumulado.rentabilidad, 1, locale)}</span>
-              <span className={`vsp num ${claseSigno(acumulado.diferencia_pp)}`}>
-                {signo(acumulado.diferencia_pp, 1, locale)} pp {t("common_ranking_vs_sp")}
-              </span>
+              <span className="vsp num">{fraseVsIndice(t, acumulado.diferencia_pp, locale)}</span>
             </>
           ) : (
             <>
