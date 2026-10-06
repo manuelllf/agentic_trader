@@ -11,6 +11,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 export type Yo = {
   alias: string;
   plan: "gratis" | "pro";
+  puede_crear_liga: boolean;
   roles: string[];
   admin: boolean;
   aal2: boolean;

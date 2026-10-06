@@ -12,6 +12,7 @@ import { ApiError, get, post } from "@/lib/api";
 
 type UsuarioDetalle = {
   id: string; alias: string; roles: string[]; plan: "gratis" | "pro"; plan_hasta: string | null;
+  pase_liga: boolean; pase_hasta: string | null;
   suspendido: boolean; creado: string; oculto: boolean; saldo: string;
 };
 type ResumenVisitas = {
@@ -44,6 +45,7 @@ function Detalle() {
   const [fallo, setFallo] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [hasta, setHasta] = useState("");
+  const [hastaPase, setHastaPase] = useState("");
   const [importe, setImporte] = useState("");
   const [motivo, setMotivo] = useState<"regalo" | "ajuste">("regalo");
 
@@ -80,6 +82,17 @@ function Detalle() {
   const quitarPro = () => {
     if (!window.confirm(t("admin_user_confirm_remove_pro"))) return;
     void conFallo(() => post(`/liga/admin/usuarios/${id}/plan/quitar`, {}));
+  };
+
+  const darPase = () => {
+    if (!window.confirm(hastaPase ? t("admin_user_confirm_pass_until", { date: hastaPase }) : t("admin_user_confirm_pass_no_end"))) return;
+    void conFallo(() =>
+      post(`/liga/admin/usuarios/${id}/pase`, { hasta: hastaPase ? new Date(hastaPase).toISOString() : null }));
+  };
+
+  const quitarPase = () => {
+    if (!window.confirm(t("admin_user_confirm_remove_pass"))) return;
+    void conFallo(() => post(`/liga/admin/usuarios/${id}/pase/quitar`, {}));
   };
 
   const suspender = () => {
@@ -202,6 +215,31 @@ function Detalle() {
                       className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
                       style={{ background: "#2c2c2a" }}>
                 {t("admin_user_back_to_free")}
+              </button>
+            )}
+          </section>
+
+          <section className="mt-4 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
+            <h2 className="font-bold text-white">{t("admin_user_pass")}</h2>
+            <p className="mt-1" style={{ color: "#898781" }}>
+              {u.pase_liga ? (u.pase_hasta ? t("admin_user_pass_until", { date: FECHA.format(new Date(u.pase_hasta)) }) : t("admin_user_pass_no_end")) : t("admin_user_pass_none")}
+            </p>
+            {!u.pase_liga ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input type="date" value={hastaPase} onChange={(e) => setHastaPase(e.target.value)}
+                       className="min-h-[44px] rounded-lg border px-3 text-white"
+                       style={{ background: "#141413", borderColor: "#303030" }} />
+                <button type="button" disabled={ocupado} onClick={darPase}
+                        className="min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
+                        style={{ background: "#3987e5" }}>
+                  {t("admin_user_grant_pass")}
+                </button>
+              </div>
+            ) : (
+              <button type="button" disabled={ocupado} onClick={quitarPase}
+                      className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
+                      style={{ background: "#2c2c2a" }}>
+                {t("admin_user_remove_pass")}
               </button>
             )}
           </section>

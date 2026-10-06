@@ -36,6 +36,8 @@ class UsuarioOut(BaseModel):
     roles: list[str]
     plan: Literal["gratis", "pro"]
     plan_hasta: datetime | None
+    pase_liga: bool
+    pase_hasta: datetime | None
     suspendido: bool
     creado: datetime
 
@@ -185,7 +187,13 @@ _USUARIO_CAMPOS = """
             and (pl.hasta is null or pl.hasta > clock_timestamp())) as pro,
     (select pl.hasta from liga.planes_usuario pl where pl.usuario_id = p.id and pl.plan = 'pro'
        and pl.desde <= clock_timestamp() and (pl.hasta is null or pl.hasta > clock_timestamp())
-       order by pl.desde desc limit 1) as plan_hasta
+       order by pl.desde desc limit 1) as plan_hasta,
+    exists (select 1 from liga.pases_liga pa where pa.usuario_id = p.id
+            and pa.desde <= clock_timestamp()
+            and (pa.hasta is null or pa.hasta > clock_timestamp())) as pase_liga,
+    (select pa.hasta from liga.pases_liga pa where pa.usuario_id = p.id
+       and pa.desde <= clock_timestamp() and (pa.hasta is null or pa.hasta > clock_timestamp())
+       order by pa.desde desc limit 1) as pase_hasta
 """
 # `clock_timestamp()`, no `now()`: esta consulta puede correr en la misma petición que acaba de
 # conceder el plan desde `gestion` (otra transacción); `now()` se queda fijo al empezar la nuestra
@@ -194,7 +202,8 @@ _USUARIO_CAMPOS = """
 
 def _usuario_out(f) -> UsuarioOut:  # noqa: ANN001
     return UsuarioOut(id=f.id, alias=f.alias, roles=list(f.roles), suspendido=f.suspendido,
-                      plan="pro" if f.pro else "gratis", plan_hasta=f.plan_hasta, creado=f.creado)
+                      plan="pro" if f.pro else "gratis", plan_hasta=f.plan_hasta,
+                      pase_liga=f.pase_liga, pase_hasta=f.pase_hasta, creado=f.creado)
 
 
 @router_admin.get("/usuarios", response_model=ListaUsuarios)
@@ -256,6 +265,23 @@ def dar_plan_pro(id: uuid.UUID, body: PlanIn, ident: Identidad = Depends(require
 def quitar_plan_pro(id: uuid.UUID, ident: Identidad = Depends(require_admin),
                     db: Session = Depends(db_usuario)) -> UsuarioDetalleOut:
     gestion.quitar_plan_pro(str(id), ident.uid)
+    return ver_usuario(id, db)
+
+
+@router_admin.post("/usuarios/{id}/pase", response_model=UsuarioDetalleOut)
+def dar_pase_liga(id: uuid.UUID, body: PlanIn, ident: Identidad = Depends(require_admin),
+                  db: Session = Depends(db_usuario)) -> UsuarioDetalleOut:
+    try:
+        gestion.fijar_pase_liga(str(id), body.hasta, ident.uid)
+    except DBAPIError as e:
+        raise estrategias.mapear_error(e) from e
+    return ver_usuario(id, db)
+
+
+@router_admin.post("/usuarios/{id}/pase/quitar", response_model=UsuarioDetalleOut)
+def quitar_pase_liga(id: uuid.UUID, ident: Identidad = Depends(require_admin),
+                     db: Session = Depends(db_usuario)) -> UsuarioDetalleOut:
+    gestion.quitar_pase_liga(str(id), ident.uid)
     return ver_usuario(id, db)
 
 

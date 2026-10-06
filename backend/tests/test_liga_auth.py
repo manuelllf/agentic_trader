@@ -187,10 +187,12 @@ def test_yo_dice_quien_eres_y_si_ves_el_panel(bd) -> None:  # noqa: ANN001
     r = cliente.get("/liga/yo", headers={"Authorization": f"Bearer {_token(sub=usuario)}"})
     assert r.status_code == 200
     assert r.json() == {"alias": f"jugador_{usuario.replace('-', '')[:12]}", "plan": "gratis",
-                        "roles": ["usuario"], "admin": False, "aal2": False, "idioma": None}
+                        "puede_crear_liga": False, "roles": ["usuario"], "admin": False,
+                        "aal2": False, "idioma": None}
     r = cliente.get("/liga/yo", headers={"Authorization": f"Bearer {_token(sub=admin)}"})
     assert (r.json()["admin"], r.json()["aal2"], r.json()["roles"]) == \
         (True, False, ["usuario", "admin"])
+    assert (r.json()["plan"], r.json()["puede_crear_liga"]) == ("pro", True)
     assert cliente.get("/liga/yo").status_code == 401
 
     # Cambiar el alias: la BD decide formato, reservados y unicidad.

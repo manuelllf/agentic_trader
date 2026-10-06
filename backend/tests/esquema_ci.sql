@@ -1,4 +1,4 @@
--- migraciones-liga: 027
+-- migraciones-liga: 028
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -665,8 +665,9 @@ begin
     return new;
   end if;
   if tg_op = 'INSERT' then
-    if not liga.es_pro() then
-      raise exception 'Crear ligas privadas es de Pro' using errcode = '42501';
+    if not liga.puede_crear_liga() then
+      raise exception 'Crear ligas privadas es de Pro o de quien tiene un pase de liga'
+        using errcode = '42501';
     end if;
     if new.oculta then
       raise exception 'Una liga nueva nace visible' using errcode = '42501';
@@ -707,6 +708,19 @@ begin
   end if;
   return new;
 end $$;
+
+
+--
+-- Name: puede_crear_liga(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.puede_crear_liga() RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select coalesce(
+    liga.tiene_pro((select auth.uid())) or liga.tiene_pase_liga((select auth.uid())), false);
+$$;
 
 
 --
@@ -777,6 +791,20 @@ end $_$;
 
 
 --
+-- Name: tiene_pase_liga(uuid); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.tiene_pase_liga(p_usuario uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select exists (
+    select 1 from liga.pases_liga
+    where usuario_id = p_usuario and desde <= now() and (hasta is null or hasta > now()));
+$$;
+
+
+--
 -- Name: tiene_pro(uuid); Type: FUNCTION; Schema: liga; Owner: -
 --
 
@@ -836,9 +864,6 @@ declare
 begin
   if uid is null or not liga.authorize('liga.jugar') then
     raise exception 'Necesitas una cuenta activa' using errcode = '42501';
-  end if;
-  if not liga.es_pro() then
-    raise exception 'Las ligas privadas son de Pro' using errcode = '42501';
   end if;
   select * into l from liga.ligas_privadas
     where codigo = upper(btrim(p_codigo)) and not oculta for update;
@@ -2022,6 +2047,36 @@ COMMENT ON TABLE liga.omega_operaciones IS 'Huecos virtuales de Omega en la liga
 
 ALTER TABLE liga.omega_operaciones ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME liga.omega_operaciones_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: pases_liga; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.pases_liga (
+    id bigint NOT NULL,
+    usuario_id uuid NOT NULL,
+    desde timestamp with time zone DEFAULT now() NOT NULL,
+    hasta timestamp with time zone,
+    origen text NOT NULL,
+    concedido_por uuid,
+    CONSTRAINT pase_rango CHECK (((hasta IS NULL) OR (hasta > desde))),
+    CONSTRAINT pases_liga_origen_check CHECK ((origen = ANY (ARRAY['admin'::text, 'demo'::text, 'pago'::text])))
+);
+
+
+--
+-- Name: pases_liga_id_seq; Type: SEQUENCE; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.pases_liga ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME liga.pases_liga_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -4440,6 +4495,14 @@ ALTER TABLE ONLY liga.permisos_rol
 
 
 --
+-- Name: pases_liga pases_liga_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.pases_liga
+    ADD CONSTRAINT pases_liga_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: planes_usuario planes_usuario_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -5558,6 +5621,20 @@ CREATE INDEX ix_ligas_privadas_dueno ON liga.ligas_privadas USING btree (dueno_i
 --
 
 CREATE INDEX ix_miembros_liga_usuario ON liga.miembros_liga USING btree (usuario_id);
+
+
+--
+-- Name: ix_pases_liga_concedido_por; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_pases_liga_concedido_por ON liga.pases_liga USING btree (concedido_por) WHERE (concedido_por IS NOT NULL);
+
+
+--
+-- Name: ix_pases_liga_usuario; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_pases_liga_usuario ON liga.pases_liga USING btree (usuario_id, desde);
 
 
 --
@@ -6751,6 +6828,22 @@ ALTER TABLE ONLY liga.perfiles_privados
 
 
 --
+-- Name: pases_liga pases_liga_concedido_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.pases_liga
+    ADD CONSTRAINT pases_liga_concedido_por_fkey FOREIGN KEY (concedido_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: pases_liga pases_liga_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.pases_liga
+    ADD CONSTRAINT pases_liga_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: planes_usuario planes_usuario_concedido_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -7237,6 +7330,20 @@ CREATE POLICY admin_lee ON liga.perfiles_privados FOR SELECT TO authenticated US
 
 
 --
+-- Name: pases_liga admin_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin_lee ON liga.pases_liga FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
+
+
+--
+-- Name: pases_liga dueno_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY dueno_lee ON liga.pases_liga FOR SELECT TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
+
+
+--
 -- Name: planes_usuario admin_lee; Type: POLICY; Schema: liga; Owner: -
 --
 
@@ -7641,6 +7748,13 @@ ALTER TABLE liga.perfiles_privados ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE liga.permisos_rol ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: pases_liga; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.pases_liga ENABLE ROW LEVEL SECURITY;
+
 
 --
 -- Name: planes_usuario; Type: ROW SECURITY; Schema: liga; Owner: -
@@ -8541,6 +8655,21 @@ REVOKE ALL ON FUNCTION liga.solo_anadir() FROM PUBLIC;
 
 
 --
+-- Name: FUNCTION puede_crear_liga(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.puede_crear_liga() FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.puede_crear_liga() TO authenticated;
+
+
+--
+-- Name: FUNCTION tiene_pase_liga(p_usuario uuid); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.tiene_pase_liga(p_usuario uuid) FROM PUBLIC;
+
+
+--
 -- Name: FUNCTION tiene_pro(p_usuario uuid); Type: ACL; Schema: liga; Owner: -
 --
 
@@ -9086,6 +9215,13 @@ GRANT UPDATE(idioma) ON TABLE liga.perfiles_privados TO authenticated;
 --
 
 GRANT SELECT ON TABLE liga.permisos_rol TO authenticated;
+
+
+--
+-- Name: TABLE pases_liga; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.pases_liga TO authenticated;
 
 
 --

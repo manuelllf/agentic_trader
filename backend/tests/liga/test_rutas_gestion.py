@@ -171,6 +171,26 @@ def test_rol_plan_y_suspender_tienen_efecto_inmediato(api) -> None:  # noqa: ANN
     assert r.json()["suspendido"] is False
 
 
+def test_el_pase_de_liga_deja_crear_ligas_y_quitarlo_lo_cierra(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, _cx = api
+    admin, jugador = usuario(rol="admin"), usuario()
+    a2, cuenta = cab(admin, aal="aal2"), cab(jugador)
+    assert cliente.get("/liga/yo", headers=cuenta).json()["puede_crear_liga"] is False
+    crear = {"nombre": "Con o sin pase"}
+    assert cliente.post("/liga/ligas", json=crear, headers=cuenta).status_code == 403
+
+    r = cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None}, headers=a2)
+    assert r.status_code == 200, r.text
+    assert r.json()["pase_liga"] is True and r.json()["plan"] == "gratis"
+    yo = cliente.get("/liga/yo", headers=cuenta).json()
+    assert yo["puede_crear_liga"] is True and yo["plan"] == "gratis"
+    assert cliente.post("/liga/ligas", json=crear, headers=cuenta).status_code == 201
+
+    r = cliente.post(f"/liga/admin/usuarios/{jugador}/pase/quitar", headers=a2)
+    assert r.status_code == 200 and r.json()["pase_liga"] is False
+    assert cliente.post("/liga/ligas", json=crear, headers=cuenta).status_code == 403
+
+
 def test_alta_de_usuario_desde_admin(api, monkeypatch) -> None:  # noqa: ANN001
     from types import SimpleNamespace
 

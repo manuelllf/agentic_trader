@@ -46,10 +46,10 @@ export default function Privadas() {
   const router = useRouter();
   const { estado, yo } = useSesionRequerida("/privadas");
   const sesionLista = estado !== "cargando";
-  const esPro = yo?.plan === "pro";
+  const puedeCrear = !!yo?.puede_crear_liga;
 
   const { datos: ligas, cargando, fallo, refrescar: cargar } = useCache<LigaResumen[] | string>(
-    sesionLista && estado === "dentro" && esPro ? "mis-ligas" : null, misLigas,
+    sesionLista && estado === "dentro" ? "mis-ligas" : null, misLigas,
   );
   const [hoja, setHoja] = useState<Hoja>(null);
   const [nombre, setNombre] = useState("");
@@ -88,24 +88,18 @@ export default function Privadas() {
       <h1 className="h1">{t("private_leagues_title")}</h1>
       <p className="meta">{t("private_leagues_intro")}</p>
 
-      {!sesionLista || (estado === "dentro" && !yo) || (esPro && cargando) ? (
+      {!sesionLista || (estado === "dentro" && !yo) || cargando ? (
         <div style={{ marginTop: 20 }}><Cargando filas={3} /></div>
-      ) : !esPro ? (
-        <div className="empty">
-          <h2>{t("private_leagues_pro_title")}</h2>
-          <p>
-            {t("private_leagues_pro_text")}
-          </p>
-        </div>
       ) : fallo || typeof ligas === "string" ? (
         <ErrorLiga titulo={t("private_leagues_load_error")} mensaje={typeof ligas === "string" ? ligas : t("private_leagues_retry_later")}
                    accion={{ texto: t("private_leagues_retry"), onClick: cargar }} />
       ) : (
         <>
           <div className="priv-barra">
-            <Boton variante="principal" onClick={() => abrirHoja("crear")}>{t("private_leagues_create_button")}</Boton>
-            <Boton onClick={() => abrirHoja("unirse")}>{t("private_leagues_join_button")}</Boton>
+            {puedeCrear && <Boton variante="principal" onClick={() => abrirHoja("crear")}>{t("private_leagues_create_button")}</Boton>}
+            <Boton variante={puedeCrear ? undefined : "principal"} onClick={() => abrirHoja("unirse")}>{t("private_leagues_join_button")}</Boton>
           </div>
+          {!puedeCrear && <p className="fine">{t("private_leagues_create_needs_pro")}</p>}
 
           {ligas && ligas.length === 0 ? (
             <Vacio titulo={t("private_leagues_empty_title")}
@@ -153,7 +147,7 @@ export default function Privadas() {
             {aviso && hoja === "unirse" && <p className="aviso" role="alert">{aviso}</p>}
           </HojaPrivadas>
 
-          <HojaPrivadas abierta={hoja === "crear"} titulo={t("private_leagues_create_group_title")} onCerrar={() => setHoja(null)}>
+          {puedeCrear && <HojaPrivadas abierta={hoja === "crear"} titulo={t("private_leagues_create_group_title")} onCerrar={() => setHoja(null)}>
             <p className="meta">{t("private_leagues_create_group_text")}</p>
             <form className="form" onSubmit={alCrear}>
               <label htmlFor="liga-nombre">{t("private_leagues_name")}</label>
@@ -165,7 +159,7 @@ export default function Privadas() {
             </form>
             <p className="fine">{t("private_leagues_members_see")}</p>
             {aviso && hoja === "crear" && <p className="aviso" role="alert">{aviso}</p>}
-          </HojaPrivadas>
+          </HojaPrivadas>}
         </>
       )}
 

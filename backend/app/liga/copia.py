@@ -20,7 +20,7 @@ from app.liga.procesos.comun import auditar, fabrica_sistema
 # Sin `permisos_rol`: es configuración sembrada por la propia migración (`liga_001`), no datos —
 # volcarla la duplicaría al restaurar sobre un esquema recién migrado (su PK ya estaría puesta).
 TABLAS = (
-    "perfiles", "perfiles_privados", "roles_usuario", "planes_usuario",
+    "perfiles", "perfiles_privados", "roles_usuario", "planes_usuario", "pases_liga",
     "consentimientos", "temporadas", "jornadas", "estrategias", "recetas", "inscripciones",
     "posiciones", "resultados", "omega_operaciones", "ligas_privadas", "miembros_liga", "pruebas",
     "respuestas_ia", "lecturas", "creditos_movimientos", "ajustes", "auditoria", "reportes",
@@ -30,7 +30,7 @@ TABLAS = (
 
 # El número más alto de `sql/liga/NNN_*.sql` aplicado (plan §6.3): se guarda en el manifiesto
 # para saber, al restaurar, qué migraciones hacen falta antes de cargar los datos.
-VERSION_ESQUEMA = 27
+VERSION_ESQUEMA = 28
 
 
 def _copiar_tabla(cursor, tabla: str) -> bytes:  # noqa: ANN001 — cursor de psycopg (DBAPI)

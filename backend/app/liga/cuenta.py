@@ -46,6 +46,10 @@ def exportar(db: Session) -> dict:
         select plan::text as plan, desde, hasta, origen from liga.planes_usuario
         where usuario_id = (select auth.uid()) order by desde
     """)).all()
+    pases = db.execute(text("""
+        select desde, hasta, origen from liga.pases_liga
+        where usuario_id = (select auth.uid()) order by desde
+    """)).all()
     consentimientos = db.execute(text("""
         select documento, version, aceptado from liga.consentimientos
         where usuario_id = (select auth.uid()) order by aceptado
@@ -123,6 +127,7 @@ def exportar(db: Session) -> dict:
         "perfil_privado": dict(privado._mapping) if privado else None,
         "roles": _filas(roles),
         "planes": _filas(planes),
+        "pases_liga": _filas(pases),
         "consentimientos": _filas(consentimientos),
         "estrategias": _filas(estrategias),
         "recetas": _filas(recetas),

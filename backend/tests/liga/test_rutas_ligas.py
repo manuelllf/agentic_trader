@@ -145,7 +145,6 @@ def test_flujo_unirse_ver_y_salir(api) -> None:  # noqa: ANN001
                      headers=cab(duena))
     liga = r.json()
 
-    # Unirse a una liga privada también es de Pro (plan §2.1), como crearla.
     amigo = usuario(pro=True)
     assert cliente.post("/liga/ligas/unirse", json={"codigo": "ZZZZZZZZ"},
                         headers=cab(amigo)).status_code == 422
@@ -172,14 +171,18 @@ def test_flujo_unirse_ver_y_salir(api) -> None:  # noqa: ANN001
     assert cliente.delete(f"/liga/ligas/{liga['id']}/yo", headers=cab(amigo)).status_code == 404
 
 
-def test_gratis_no_se_une_a_una_liga_privada(api) -> None:  # noqa: ANN001
+def test_una_cuenta_gratuita_se_une_con_el_codigo_pero_no_crea(api) -> None:  # noqa: ANN001
     cliente, cab, usuario = api
     duena = usuario(pro=True)
-    liga = cliente.post("/liga/ligas", json={"nombre": "Solo Pro"}, headers=cab(duena)).json()
+    liga = cliente.post("/liga/ligas", json={"nombre": "Con amigos"}, headers=cab(duena)).json()
 
     gratis = usuario()
     r = cliente.post("/liga/ligas/unirse", json={"codigo": liga["codigo"]}, headers=cab(gratis))
-    assert r.status_code == 403, r.text
+    assert r.status_code == 200 and r.json()["id"] == liga["id"], r.text
+    assert any(x["id"] == liga["id"] for x in cliente.get("/liga/ligas",
+                                                           headers=cab(gratis)).json())
+    r = cliente.post("/liga/ligas", json={"nombre": "Otra"}, headers=cab(gratis))
+    assert r.status_code == 403 and "pase de liga" in r.json()["detail"], r.text
 
 
 def test_detalle_muestra_equipo_formado_y_mes_sin_abrir_datos_privados(api, monkeypatch) -> None:  # noqa: ANN001
@@ -260,10 +263,8 @@ def test_detalle_muestra_equipo_formado_y_mes_sin_abrir_datos_privados(api, monk
 
 
 def test_codigo_equivocado_frena_por_fuerza_bruta(api) -> None:  # noqa: ANN001
-    # Solo Pro llega a probar el código (antes se comprueba el plan): con Pro para aislar el
-    # límite de intentos del error de plan, que ya cubre `test_gratis_no_se_une_a_una_liga_privada`.
     cliente, cab, usuario = api
-    uid = usuario(pro=True)
+    uid = usuario()
     for _ in range(10):
         r = cliente.post("/liga/ligas/unirse", json={"codigo": "ZZZZZZZZ"}, headers=cab(uid))
         assert r.status_code == 422, r.text

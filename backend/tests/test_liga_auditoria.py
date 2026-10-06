@@ -36,6 +36,7 @@ RASTRO = {
     "perfiles": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "perfiles_privados": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "permisos_rol": (None, None, None, None),  # catálogo estático, solo lo toca una migración
+    "pases_liga": ("desde", "concedido_por", None, None),  # append-only, como planes_usuario
     "planes_usuario": ("desde", "concedido_por", None, None),  # append-only
     "posiciones": (None, None, None, None),  # hija de inscripciones (FK inscripcion_id)
     "pruebas": ("creada", "usuario_id", "actualizado_en", "actualizado_por"),

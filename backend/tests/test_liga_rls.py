@@ -579,18 +579,21 @@ def test_haber_jugado_sin_pregunta_lo_ve_su_dueno_y_el_admin_y_nadie_mas(cx):
 # ---- ligas privadas
 # ----------------------------------------------------------------------------------
 
-def test_ligas_privadas_solo_con_pro_y_por_codigo(cx):
+def test_ligas_privadas_se_crean_con_pro_o_pase_y_se_entra_gratis_por_codigo(cx):
     p, q, g, fuera = (_usuario(cx, pro=True), _usuario(cx, pro=True), _usuario(cx),
                       _usuario(cx, pro=True))
     _como(cx, g)
-    _falla(cx, "insert into liga.ligas_privadas (nombre, codigo) values ('Amigos', 'ABCDEFGH')")
+    assert _mensaje(cx, "insert into liga.ligas_privadas (nombre, codigo) "
+                        "values ('Amigos', 'ABCDEFGH')") == (
+        "Crear ligas privadas es de Pro o de quien tiene un pase de liga")
     _como(cx, p)
     lid = cx.execute("insert into liga.ligas_privadas (nombre, codigo) values ('Amigos', "
                      "'ABCDEFGH') returning id").fetchone()[0]
     assert _filas(cx, "select usuario_id from liga.miembros_liga where liga_id = %s", (lid,)) == \
         [(p,)]
     _como(cx, g)
-    _falla(cx, "select liga.unirse_liga('ABCDEFGH')")
+    assert cx.execute("select liga.unirse_liga('ABCDEFGH')").fetchone()[0] == lid
+    cx.execute("delete from liga.miembros_liga where liga_id = %s and usuario_id = %s", (lid, g))
     _como(cx, q)
     _falla(cx, "select liga.unirse_liga('NOEXISTE')")
     assert cx.execute("select liga.unirse_liga('abcdefgh')").fetchone()[0] == lid
@@ -603,6 +606,29 @@ def test_ligas_privadas_solo_con_pro_y_por_codigo(cx):
                       (lid,)).rowcount == 0
     assert cx.execute("delete from liga.miembros_liga where liga_id = %s and usuario_id = %s",
                       (lid, q)).rowcount == 1
+
+
+def test_el_pase_de_liga_deja_crear_ligas_mientras_vale(cx):
+    con_pase, caducado, sin_pase = _usuario(cx), _usuario(cx), _usuario(cx)
+    ajeno = _usuario(cx)
+    _sistema(cx)
+    cx.execute("insert into liga.pases_liga (usuario_id, origen) values (%s, 'admin')", (con_pase,))
+    cx.execute("insert into liga.pases_liga (usuario_id, desde, hasta, origen) values "
+               "(%s, now() - interval '2 days', now() - interval '1 day', 'admin')", (caducado,))
+    crear = "insert into liga.ligas_privadas (nombre, codigo) values ('Mi liga', %s)"
+    _como(cx, con_pase)
+    assert _filas(cx, "select liga.puede_crear_liga()") == [(True,)]
+    cx.execute(crear, ("PASEABCD",))
+    for uid in (caducado, sin_pase):
+        _como(cx, uid)
+        assert _filas(cx, "select liga.puede_crear_liga()") == [(False,)]
+        _falla(cx, crear, ("PASEEFGH",))
+    _como(cx, con_pase)
+    assert _filas(cx, "select 1 from liga.pases_liga") == [(1,)]
+    _como(cx, ajeno)
+    assert _filas(cx, "select 1 from liga.pases_liga") == []
+    _falla(cx, "insert into liga.pases_liga (usuario_id, origen) values (%s, 'admin')", (ajeno,))
+    _falla(cx, "select liga.tiene_pase_liga(%s)", (con_pase,))
 
 
 def test_el_cupo_de_una_liga_se_respeta(cx):
@@ -753,7 +779,7 @@ def test_funciones_security_definer_solo_para_quien_toca(cx):
           and has_function_privilege(r.rolname, p.oid, 'EXECUTE')""")}
     assert ejecutables == {
         ("authorize", "authenticated"), ("es_pro", "authenticated"),
-        ("designar_premio", "authenticated"),
+        ("designar_premio", "authenticated"), ("puede_crear_liga", "authenticated"),
         ("puede_ver_posiciones", "authenticated"), ("es_miembro", "authenticated"),
         ("unirse_liga", "authenticated"), ("registrar_visita", "authenticated"),
         ("exportar_visitas", "authenticated"),

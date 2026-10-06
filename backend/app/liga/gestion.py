@@ -372,6 +372,34 @@ def quitar_plan_pro(usuario_id: str, actor: str) -> None:
         db.close()
 
 
+def fijar_pase_liga(usuario_id: str, hasta: datetime | None, actor: str) -> None:
+    db = fabrica_sistema()
+    try:
+        db.execute(text(
+            "insert into liga.pases_liga (usuario_id, hasta, origen, concedido_por) "
+            "values (cast(:u as uuid), :h, 'admin', cast(:a as uuid))"),
+            {"u": usuario_id, "h": hasta, "a": actor})
+        auditar(db, "admin.pase", f"usuario:{usuario_id}",
+                {"pase": "liga", "hasta": hasta.isoformat() if hasta else None}, actor)
+        db.commit()
+    finally:
+        db.close()
+
+
+def quitar_pase_liga(usuario_id: str, actor: str) -> None:
+    """Como el plan: no borra el historial, cierra ya los pases vigentes."""
+    db = fabrica_sistema()
+    try:
+        db.execute(text(
+            "update liga.pases_liga set hasta = now() "
+            "where usuario_id = cast(:u as uuid) "
+            "and desde <= now() and (hasta is null or hasta > now())"), {"u": usuario_id})
+        auditar(db, "admin.pase", f"usuario:{usuario_id}", {"pase": None}, actor)
+        db.commit()
+    finally:
+        db.close()
+
+
 def otorgar_creditos(usuario_id: str, importe: str, motivo: str, idempotencia: str,
                      actor: str) -> str:
     db = fabrica_sistema()

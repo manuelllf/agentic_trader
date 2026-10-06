@@ -51,6 +51,7 @@ _LIMITE_BAJA = acceso.LimiteFrecuencia(tope=5, ventana_s=15 * 60)
 class Yo(BaseModel):
     alias: str
     plan: Literal["gratis", "pro"]
+    puede_crear_liga: bool   # Pro o pase de liga; unirse a una liga no lo pide
     roles: list[str]
     admin: bool   # enseña el «Panel de control»; entrar en las salas pide además el 2FA
     aal2: bool
@@ -129,7 +130,8 @@ def cambiar_yo(body: CambioYo, ident: Identidad = Depends(require_usuario),
 @router.get("/yo", response_model=Yo)
 def yo(db: Session = Depends(db_usuario)) -> Yo:
     fila = db.execute(text("""
-        select p.alias, liga.es_pro() as pro, liga.authorize('admin.salas') as admin,
+        select p.alias, liga.es_pro() as pro, liga.puede_crear_liga() as puede_crear_liga,
+               liga.authorize('admin.salas') as admin,
                liga.aal2() as aal2, privado.idioma,
                array(select r.rol::text from liga.roles_usuario r
                      where r.usuario_id = p.id order by r.rol) as roles
@@ -139,7 +141,8 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
     """)).one_or_none()
     if fila is None:
         raise HTTPException(404, "No encontramos tu perfil.")
-    return Yo(alias=fila.alias, plan="pro" if fila.pro else "gratis", roles=list(fila.roles),
+    return Yo(alias=fila.alias, plan="pro" if fila.pro else "gratis",
+              puede_crear_liga=fila.puede_crear_liga, roles=list(fila.roles),
               admin=fila.admin, aal2=fila.aal2, idioma=fila.idioma)
 
 

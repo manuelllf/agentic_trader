@@ -180,6 +180,7 @@
   "api_error_db_para_apuntarla_hace_falta_su_receta": "Para apuntarla hace falta su receta",
   "api_error_db_para_apuntarla_hace_falta_al_menos_una_regla": "Para apuntarla hace falta al menos una regla",
   "api_error_db_publicar_es_de_pro": "Publicar es de Pro",
+  "api_error_db_crear_ligas_privadas_es_de_pro_o_pase": "Crear ligas privadas es de Pro o de quien tiene un pase de liga",
   "api_error_db_con_pro_puedes_tener_hasta_tres_en_juego": "Con Pro puedes tener hasta tres estrategias en juego a la vez",
   "api_error_db_con_el_plan_gratuito_solo_una_en_juego": "Con el plan gratuito solo puedes tener una estrategia en juego. Con Pro, hasta tres",
   "api_error_db_solo_opta_al_premio_una_tuya_en_juego": "Solo puede optar al premio una estrategia tuya que esté en juego",
