@@ -1536,3 +1536,25 @@ def test_la_pretemporada_no_cuenta_para_el_premio(fabrica, mundo) -> None:  # no
         db.execute(text("update liga.temporadas set estado = 'cerrada' where not cuenta"))
         db.commit()
     assert premio.job(fabrica) == []
+
+
+def test_el_estado_publico_del_premio_va_oculto_y_luego_abierto_y_calculado(
+        fabrica, mundo) -> None:  # noqa: ANN001
+    from app.liga.procesos import premio
+
+    assert premio.estado_publico(fabrica) == {"visible": False}
+    with comun.sesion(fabrica) as db:
+        db.execute(text("insert into liga.ajustes (clave, valor) "
+                        "values ('premio.visible', 'true')"))
+        db.execute(text("select liga.completar_premio()"))
+        db.commit()
+    abierto = premio.estado_publico(fabrica)
+    assert (abierto["visible"], abierto["calculado"], abierto["escalon"]) == (True, False, 0)
+    assert abierto["cuentas"] == 1                       # la cuenta de `mundo`, con su estrategia
+
+    _ajustar_umbrales(fabrica, 1, 2)
+    tid = _cerrar_la_temporada_con(fabrica, {"A": ["5"] * 12, "B": ["4"] * 11 + [None]})
+    premio.calcular(tid, fabrica)
+    cerrado = premio.estado_publico(fabrica)
+    assert (cerrado["calculado"], cerrado["cuentas"], cerrado["escalon"]) == (True, 2, 2)
+    assert (cerrado["umbral_basico"], cerrado["umbral_completo"]) == (1, 2)

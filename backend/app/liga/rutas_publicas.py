@@ -20,7 +20,7 @@ from app.liga.comparativa import (
     retornos_acumulados,
 )
 from app.liga.db import db_anon
-from app.liga.procesos import diario
+from app.liga.procesos import diario, premio
 
 
 def exigir_visible() -> None:
@@ -123,6 +123,24 @@ class Portada(BaseModel):
     registro_abierto: bool           # interruptor de emergencia (plan §14, `liga.registro.abierto`)
     apuntadas: int = 0               # estrategias de usuario apuntadas a la próxima jornada
     inscritas_en_juego: int = 0      # estrategias que juegan la jornada en curso, casa incluida
+
+
+class TemporadaPremioOut(BaseModel):
+    id: int
+    nombre: str
+
+
+class PremioOut(BaseModel):
+    """El premio anual a la vista de todos, sin nombres; `visible` falso: nada que enseñar."""
+
+    visible: bool
+    temporada: TemporadaPremioOut | None = None
+    calculado: bool = False          # la temporada ya cerró y el reparto está hecho
+    cuentas: int = 0                 # las que optan (con la temporada cerrada: las elegibles)
+    escalon: int = 0                 # 0: sin activar; 1: reducido; 2: completo
+    umbral_basico: int | None = None
+    umbral_completo: int | None = None
+    importes: dict[str, list[int]] = {}
 
 
 _EQUIPO = """
@@ -278,6 +296,11 @@ def jornada(jornada_id: int, db: Session = Depends(db_anon)) -> JornadaDetalle:
 def _en_juego(db: Session) -> JornadaOut | None:
     j = _jornada(db, "estado = 'formada'", {}, "dia_inicio desc")
     return _con_sp_vivo(j) if j else None
+
+
+@router.get("/premio", response_model=PremioOut)
+def premio_anual() -> PremioOut:
+    return PremioOut(**premio.estado_publico())
 
 
 @router.get("/portada", response_model=Portada)

@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 AJUSTE_UMBRAL_BASICO = "premio.umbral_basico"
 AJUSTE_UMBRAL_COMPLETO = "premio.umbral_completo"
+AJUSTE_VISIBLE = "premio.visible"
 
 _JUGADAS = text("""
     select e.dueno_id::text as cuenta, j.numero, r.rentabilidad
@@ -57,6 +58,42 @@ def _entero(db: Session, clave: str, defecto: int) -> int:
 def umbrales(db: Session) -> tuple[int, int]:
     return (_entero(db, AJUSTE_UMBRAL_BASICO, motor.UMBRAL_BASICO),
             _entero(db, AJUSTE_UMBRAL_COMPLETO, motor.UMBRAL_COMPLETO))
+
+
+def visible(db: Session) -> bool:
+    """El premio no se enseña hasta que alguien lo enciende a propósito (tras revisar las bases)."""
+    return db.execute(text("select valor from liga.ajustes where clave = :c"),
+                      {"c": AJUSTE_VISIBLE}).scalar() is True
+
+
+def estado_publico(fabrica: Fabrica = fabrica_sistema) -> dict:
+    """Lo que ve cualquiera, sin nombres: cuántas cuentas optan, los umbrales y los escalones.
+    Con la temporada cerrada, el escalón con el que se calculó y las cuentas elegibles."""
+    with sesion(fabrica) as db:
+        if not visible(db):
+            return {"visible": False}
+        temporadas = db.execute(text("select id, nombre, estado from liga.temporadas "
+                                     "where cuenta order by id")).all()
+        if not temporadas:
+            return {"visible": False}
+        t = next((t for t in temporadas if t.estado != "cerrada"), temporadas[-1])
+        basico, completo = umbrales(db)
+        cerrada = db.get(PremioTemporada, t.id)
+        if cerrada is not None:
+            cuentas = db.execute(text("select count(*) from liga.premios where temporada_id = :t"),
+                                 {"t": t.id}).scalar_one()
+            escalon = cerrada.escalon
+        else:
+            cuentas = db.execute(text("select count(distinct dueno_id) from liga.estrategias "
+                                      "where tipo = 'usuario' and opta_premio")).scalar_one()
+            escalon = motor.escalon(cuentas, basico, completo)
+        return {
+            "visible": True, "temporada": {"id": t.id, "nombre": t.nombre},
+            "calculado": cerrada is not None, "cuentas": cuentas, "escalon": escalon,
+            "umbral_basico": basico, "umbral_completo": max(basico, completo),
+            "importes": {str(e): [int(i) for i in premios]
+                         for e, premios in motor.IMPORTES.items()},
+        }
 
 
 def cuentas_elegibles(db: Session, temporada_id: int, n_jornadas: int) -> list[motor.Cuenta]:

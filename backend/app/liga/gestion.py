@@ -106,6 +106,11 @@ CATALOGO: dict[str, AjusteMeta] = {
         ayuda="Segundos que espera la formación a que la IA conteste las preguntas propias. Al "
               "agotarse, las estrategias sin todas sus respuestas juegan sin pregunta.",
         tipo="entero", unidad="s", minimo=Decimal(60), maximo=Decimal(1800), defecto=600),
+    "premio.visible": AjusteMeta(
+        grupo="Premio", titulo="Enseñar el premio",
+        ayuda="Muestra en la liga el premio anual, sus escalones y cuántas cuentas optan. "
+              "Apagado hasta que un abogado revise las bases legales.",
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=False),
     "premio.umbral_basico": AjusteMeta(
         grupo="Premio", titulo="Cuentas para activar el premio",
         ayuda="Cuentas elegibles (con 10 jornadas jugadas) que hacen falta al cerrar la temporada "

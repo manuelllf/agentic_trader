@@ -10,7 +10,7 @@ import AuthGate from "@/components/AuthGate";
 import { ApiError, del, get, put } from "@/lib/api";
 
 type Tipo = "interruptor" | "entero" | "dolares" | "multiplicador";
-type Grupo = "Emergencia" | "IA" | "Créditos";
+type Grupo = "Emergencia" | "IA" | "Créditos" | "Premio";
 type Valor = boolean | number | null;
 
 type Ajuste = {
@@ -32,7 +32,7 @@ const FINALIDAD_POR_CLAVE: Record<string, Finalidad> = {
   "ia.conversor.activo": "conversor", "ia.pregunta.activo": "pregunta",
   "ia.lectura.activo": "lectura", "ia.formacion.activo": "formacion",
 };
-const ORDEN_GRUPOS: Grupo[] = ["Emergencia", "IA", "Créditos"];
+const ORDEN_GRUPOS: Grupo[] = ["Emergencia", "IA", "Créditos", "Premio"];
 
 const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
@@ -41,9 +41,9 @@ function Ajustes() {
   const locale = useLocale();
   const fecha = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const dollars = (v: string | number) => new Intl.NumberFormat(locale, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v));
-  const grupoLabel = (g: Grupo) => t(g === "Emergencia" ? "admin_settings_group_emergency" : g === "IA" ? "admin_settings_group_ai" : "admin_settings_group_credits");
+  const grupoLabel = (g: Grupo) => t({ Emergencia: "admin_settings_group_emergency", IA: "admin_settings_group_ai", "Créditos": "admin_settings_group_credits", Premio: "admin_settings_group_prize" }[g]);
   const ajustesLabel = (a: Ajuste) => {
-    const slug: Record<string, string> = { "liga.registro.abierto": "registration", "liga.visible": "league_public", "ia.conversor.activo": "ai_converter", "ia.pregunta.activo": "ai_question", "ia.lectura.activo": "ai_reading", "ia.tope_mensual_usd": "ai_cap", "ia.formacion.activo": "ai_formation", "ia.tope_formacion_usd": "ai_formation_cap", "procesos.formar.limite_preguntas_s": "form_question_limit", "ia.margen_objetivo": "ai_margin", "creditos.bienvenida": "welcome_credits", "procesos.foto.auto": "auto_photo", "procesos.formar.auto": "auto_form", "procesos.cerrar.auto": "auto_close" };
+    const slug: Record<string, string> = { "liga.registro.abierto": "registration", "liga.visible": "league_public", "ia.conversor.activo": "ai_converter", "ia.pregunta.activo": "ai_question", "ia.lectura.activo": "ai_reading", "ia.tope_mensual_usd": "ai_cap", "ia.formacion.activo": "ai_formation", "ia.tope_formacion_usd": "ai_formation_cap", "procesos.formar.limite_preguntas_s": "form_question_limit", "ia.margen_objetivo": "ai_margin", "creditos.bienvenida": "welcome_credits", "procesos.foto.auto": "auto_photo", "procesos.formar.auto": "auto_form", "procesos.cerrar.auto": "auto_close", "premio.visible": "prize_visible", "premio.umbral_basico": "prize_threshold_basic", "premio.umbral_completo": "prize_threshold_full" };
     const suffix = slug[a.clave];
     return suffix ? { title: t(`admin_setting_${suffix}_title`), help: t(`admin_setting_${suffix}_help`) } : { title: a.titulo, help: a.ayuda };
   };
