@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Atkinson_Hyperlegible_Next } from "next/font/google";
+import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next, Plus_Jakarta_Sans } from "next/font/google";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import { LanguageProvider } from "@/i18n/Provider";
 import { normalizeLocale } from "@/i18n/locale";
@@ -13,6 +13,15 @@ import "./(liga)/liga.css";
 const atkinson = Atkinson_Hyperlegible_Next({
   subsets: ["latin", "latin-ext"], weight: "variable", display: "swap", variable: "--font-lg",
   adjustFontFallback: false,
+});
+// Las de la portada: titulares (la letra del logotipo) y cifras. Sin precarga, porque solo las usa
+// la portada; el navegador las pide cuando hacen falta.
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin", "latin-ext"], weight: ["700", "800"], display: "swap", variable: "--font-display", preload: false,
+});
+const mono = Atkinson_Hyperlegible_Mono({
+  subsets: ["latin", "latin-ext"], weight: ["400", "600", "700"], display: "swap", variable: "--font-data",
+  preload: false, adjustFontFallback: false,
 });
 
 const baseMetadata: Metadata = {
@@ -51,7 +60,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const [language, messages] = await Promise.all([getLocale(), getMessages()]);
   const locale = normalizeLocale(language) ?? "es";
   return (
-    <html lang={locale} className={atkinson.variable}>
+    <html lang={locale} className={`${atkinson.variable} ${jakarta.variable} ${mono.variable}`}>
       <body><LanguageProvider locale={locale} messages={messages}>{children}</LanguageProvider></body>
     </html>
   );
