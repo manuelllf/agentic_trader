@@ -1,4 +1,4 @@
--- migraciones-liga: 024
+-- migraciones-liga: 025
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -473,10 +473,7 @@ CREATE FUNCTION liga.es_pro() RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO ''
     AS $$
-  select exists (
-    select 1 from liga.planes_usuario
-    where usuario_id = (select auth.uid()) and plan = 'pro'
-      and desde <= now() and (hasta is null or hasta > now()));
+  select coalesce(liga.tiene_pro((select auth.uid())), false);
 $$;
 
 
@@ -663,8 +660,9 @@ CREATE FUNCTION liga.puede_ver_posiciones(p_inscripcion bigint) RETURNS boolean
     select 1 from liga.inscripciones i join liga.estrategias e on e.id = i.estrategia_id
     where i.id = p_inscripcion
       and (e.dueno_id = (select auth.uid())
-           or (e.tipo = 'usuario' and e.visibilidad = 'publicada' and not e.oculta
-               and liga.es_pro())));
+           or (liga.es_pro()
+               and (e.tipo = 'casa'
+                    or (e.tipo = 'usuario' and e.visibilidad = 'publicada' and not e.oculta)))));
 $$;
 
 
@@ -713,6 +711,23 @@ begin
   raise exception '%.% es de solo añadir', tg_table_schema, tg_table_name
     using errcode = 'P0001';
 end $_$;
+
+
+--
+-- Name: tiene_pro(uuid); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.tiene_pro(p_usuario uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select exists (
+    select 1 from liga.planes_usuario
+    where usuario_id = p_usuario and plan = 'pro'
+      and desde <= now() and (hasta is null or hasta > now()))
+  or exists (
+    select 1 from liga.roles_usuario where usuario_id = p_usuario and rol = 'admin');
+$$;
 
 
 --
@@ -8435,6 +8450,13 @@ REVOKE ALL ON FUNCTION liga.recetas_guarda() FROM PUBLIC;
 --
 
 REVOKE ALL ON FUNCTION liga.solo_anadir() FROM PUBLIC;
+
+
+--
+-- Name: FUNCTION tiene_pro(p_usuario uuid); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.tiene_pro(p_usuario uuid) FROM PUBLIC;
 
 
 --

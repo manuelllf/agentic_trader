@@ -298,11 +298,8 @@ def evidencia_formacion_ficha(usuario_id: str, estrategia_id: str) -> dict | Non
               and i.estado in ('formada', 'cerrada')
               and j.estado in ('formada', 'cerrada')
               and (e.dueno_id = cast(:u as uuid) or (
-                e.visibilidad = 'publicada' and not e.oculta and exists (
-                  select 1 from liga.planes_usuario p
-                  where p.usuario_id = cast(:u as uuid) and p.plan = 'pro'
-                    and p.desde <= now() and (p.hasta is null or p.hasta > now())
-                )
+                e.visibilidad = 'publicada' and not e.oculta
+                and liga.tiene_pro(cast(:u as uuid))
               ))
             order by j.dia_base desc, j.id desc, i.id desc
             limit 2

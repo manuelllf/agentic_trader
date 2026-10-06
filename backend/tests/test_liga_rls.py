@@ -396,8 +396,9 @@ def test_la_jornada_solo_fija_la_foto_que_uso_el_escaneo(cx):
                       (jid,)).rowcount == 1
 
 
-def test_posiciones_propias_publicadas_con_pro_y_nunca_la_casa(cx):
+def test_posiciones_propias_publicadas_y_las_de_la_casa_con_pro(cx):
     autor, pro, gratis = _usuario(cx, pro=True), _usuario(cx, pro=True), _usuario(cx)
+    admin = _usuario(cx, rol="admin")
     jid = _jornada(cx)
     publica, rp = _lista(cx, autor)
     _como(cx, autor)
@@ -421,12 +422,33 @@ def test_posiciones_propias_publicadas_con_pro_y_nunca_la_casa(cx):
     _como(cx, pro)
     assert _filas(cx, "select ticker from liga.posiciones where inscripcion_id = %s", (ip,)) == \
         [("AAA",)]
-    assert _filas(cx, "select 1 from liga.posiciones where inscripcion_id = %s", (ic,)) == []
+    assert _filas(cx, "select ticker from liga.posiciones where inscripcion_id = %s", (ic,)) == \
+        [("CASA1",)]
+    _como(cx, admin)
+    assert _filas(cx, "select ticker from liga.posiciones where inscripcion_id = %s", (ic,)) == \
+        [("CASA1",)]
     _como(cx, gratis)
     assert _filas(cx, "select 1 from liga.posiciones") == []
     _como(cx, None)
     _falla(cx, "select 1 from liga.posiciones")
     assert _filas(cx, "select 1 from liga.inscripciones where id = %s", (ic,)) == [(1,)]
+
+
+def test_el_admin_cuenta_como_pro_aunque_no_tenga_plan(cx):
+    admin, moderador = _usuario(cx, rol="admin"), _usuario(cx, rol="moderador")
+    gratis, pro, caducado = _usuario(cx), _usuario(cx, pro=True), _usuario(cx)
+    _sistema(cx)
+    cx.execute("insert into liga.planes_usuario (usuario_id, plan, desde, hasta, origen) "
+               "values (%s, 'pro', now() - interval '2 days', now() - interval '1 day', 'admin')",
+               (caducado,))
+    for uid, esperado in ((admin, True), (pro, True), (moderador, False), (gratis, False),
+                          (caducado, False)):
+        _como(cx, uid)
+        assert _filas(cx, "select liga.es_pro()") == [(esperado,)]
+    _como(cx, None)
+    _falla(cx, "select liga.es_pro()")
+    _como(cx, admin)
+    _falla(cx, "select liga.tiene_pro(%s)", (gratis,))
 
 
 def test_los_resultados_son_publicos_y_no_se_tocan(cx):

@@ -696,9 +696,8 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
             "select ticker, peso from liga.posiciones where inscripcion_id = :i order by peso desc"
         ), {"i": ins.id}).all()
     pro = bool(db.execute(text("select liga.es_pro()")).scalar())
-    puede_ver_detalle = (f.tipo != "casa" and
-                         (f.dueno == ident.uid or
-                          (pro and f.visibilidad == "publicada")))
+    puede_ver_detalle = (f.dueno == ident.uid or
+                         (pro and (f.tipo == "casa" or f.visibilidad == "publicada")))
     retorno = (rendimiento.datos_ficha(db, f.eid, usuario_id=ident.uid)
                if puede_ver_detalle else {
         "estado": "privado",
