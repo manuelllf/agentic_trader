@@ -335,6 +335,22 @@ def evidencia_formacion_ficha(usuario_id: str, estrategia_id: str) -> dict | Non
         db.close()
 
 
+def notas_de_empresa(scan_run_id: int, ticker: str) -> NotasJev | None:
+    """Las 4 notas de una empresa en el escaneo de una jornada; `scan_audit` está vetada a
+    `authenticated`, así que solo se lee como sistema."""
+    db = fabrica_sistema()
+    try:
+        fila = db.execute(text("""
+            select jev_fundamentals, jev_valuation, jev_financing, jev_catalyst
+            from scan_audit
+            where scan_run_id = :s and ticker = :t and jev_fundamentals is not null
+            order by id desc limit 1
+        """), {"s": scan_run_id, "t": ticker}).one_or_none()
+        return NotasJev.desde_bd(*fila) if fila is not None else None
+    finally:
+        db.close()
+
+
 def respuestas_sistema(pregunta: str | None, foto_id: int) -> dict[str, Respuesta]:
     """Solo de la caché (`liga.respuestas_ia`, vetada a `authenticated`): aquí no se llama a IA."""
     if not pregunta:

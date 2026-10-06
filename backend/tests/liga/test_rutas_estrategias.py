@@ -9,6 +9,7 @@ import os
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -556,6 +557,46 @@ def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
 
     sin_pro = cliente.get(f"/liga/fichas/{eid}", headers=cab(libre)).json()
     assert sin_pro["receta"] is None
+
+
+def test_las_notas_de_una_empresa_solo_las_da_una_cartera_visible(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, foto_con_escaneo, jornada_con_posicion, cx = api
+    foto, escaneo = foto_con_escaneo(_EMPRESAS)
+    duena = usuario(pro=True)
+    eid = _crear(cliente, cab, duena, "Con notas")
+    receta = _receta(cliente, cab, duena, eid).json()
+    jornada_con_posicion(eid, receta["id"], "ZPA", "50.0000")
+    cx.execute("update liga.jornadas set foto_id = %s, scan_run_id = %s where id in "
+               "(select jornada_id from liga.inscripciones where estrategia_id = %s)",
+               (foto, escaneo, eid))
+    ruta = f"/liga/fichas/{eid}/empresas/ZPA"
+
+    propia = cliente.get(ruta, headers=cab(duena))
+    assert propia.status_code == 200, propia.text
+    datos = propia.json()
+    assert datos["ticker"] == "ZPA" and datos["jornada"] == 1
+    assert {k: Decimal(v) for k, v in datos["notas"].items()} == {
+        "negocio": Decimal(9), "precio": Decimal(8), "deuda": Decimal(7), "pronto": Decimal(6)}
+
+    # Una empresa que no está en la cartera, o una cuenta que no puede verla, no recibe nada.
+    assert cliente.get(f"/liga/fichas/{eid}/empresas/ZPB", headers=cab(duena)).status_code == 404
+    libre = usuario()
+    assert cliente.get(ruta, headers=cab(libre)).status_code == 404
+    assert cliente.get(ruta).status_code == 401
+
+    # Publicada la ve un Pro; quien no es Pro sigue sin verla.
+    r = cliente.patch(f"/liga/estrategias/{eid}", json={"visibilidad": "publicada",
+                                                        "declara_posiciones": "si"},
+                      headers=cab(duena))
+    assert r.status_code == 200, r.text
+    assert cliente.get(ruta, headers=cab(usuario(pro=True))).status_code == 200
+    assert cliente.get(ruta, headers=cab(libre)).status_code == 404
+
+    # Si la jornada no guardó su escaneo, la empresa se ve pero sin notas.
+    cx.execute("update liga.jornadas set foto_id = null, scan_run_id = null where id in "
+               "(select jornada_id from liga.inscripciones where estrategia_id = %s)", (eid,))
+    sin = cliente.get(ruta, headers=cab(duena))
+    assert sin.status_code == 200 and sin.json()["notas"] is None
 
 
 def test_la_casa_la_ve_pro_en_directo_y_gratis_al_cerrar_la_jornada(api) -> None:  # noqa: ANN001

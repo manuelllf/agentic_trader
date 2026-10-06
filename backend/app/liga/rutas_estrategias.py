@@ -10,7 +10,7 @@ reserva al sistema (`liga.pruebas`) pasan por `estrategias.py`, que abre su prop
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -228,6 +228,14 @@ class JornadaFichaOut(BaseModel):
 class PosicionOut(BaseModel):
     ticker: str
     peso: Decimal
+
+
+class NotasEmpresaOut(BaseModel):
+    """Las 4 notas de Jev (0 a 9) de una empresa, con su jornada y el día de la foto."""
+    ticker: str
+    jornada: int
+    dia: date
+    notas: dict[str, Decimal] | None
 
 
 class FichaOut(BaseModel):
@@ -755,6 +763,32 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         rendimiento=retorno, mercado=mercado,
         casa_metodologia=(casas_metodologia.metodologia(f.casa_clave, completa=en_directo)
                           if f.tipo == "casa" else None))
+
+
+@router.get("/fichas/{id}/empresas/{ticker}", response_model=NotasEmpresaOut)
+def notas_empresa(id: uuid.UUID, ticker: Ticker, ident: Identidad = Depends(require_usuario),
+                  db: Session = Depends(db_usuario)) -> NotasEmpresaOut:
+    """Solo si la cartera que tiene la empresa es visible para quien pregunta: `liga.posiciones`
+    ya filtra por RLS, así que aquí no se repiten las reglas de plan."""
+    t = _ticker(ticker)
+    fila = db.execute(text("""
+        select j.numero, j.dia_base, j.scan_run_id
+        from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
+        where i.estrategia_id = :e and i.estado in ('formada', 'cerrada')
+          and j.estado in ('formada', 'cerrada')
+          and exists (select 1 from liga.posiciones p
+                      where p.inscripcion_id = i.id and p.ticker = :t)
+        order by j.dia_base desc, j.id desc, i.id desc limit 1
+    """), {"e": id, "t": t}).one_or_none()
+    if fila is None:
+        raise HTTPException(404, "Esa empresa no está en una cartera que puedas ver.")
+    notas = (estrategias.notas_de_empresa(fila.scan_run_id, t)
+             if fila.scan_run_id is not None else None)
+    return NotasEmpresaOut(
+        ticker=t, jornada=fila.numero, dia=fila.dia_base,
+        notas=None if notas is None else {
+            "negocio": notas.fundamentals, "precio": notas.valuation,
+            "deuda": notas.financing, "pronto": notas.catalyst})
 
 
 # ---- Copiar (Pro) ---------------------------------------------------------------------------
