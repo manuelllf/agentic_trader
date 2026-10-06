@@ -227,10 +227,11 @@ def llamar_ia_jev(*, finalidad: str, modelo: str, state: str, pregunta: str,
 
 def registrar_llamada(*, finalidad: str, usuario_id: str | None, llamada: LlamadaIA,
                       creditos: Decimal | None = None, cache: bool = False,
-                      fabrica: Fabrica | None = None) -> int | None:
+                      fabrica: Fabrica | None = None, detalle: dict | None = None) -> int | None:
     """Fila de `llm_call` (sin texto; se salta si es acierto de caché) + auditoría + un log
     limpio. `creditos` es el movimiento neto de este uso (negativo cobrado, positivo devuelto);
-    `None` si es gratis. `fabrica`: ver `verificar_disponible`."""
+    `None` si es gratis. `detalle`: datos de más para la auditoría (p. ej. la estrategia).
+    `fabrica`: ver `verificar_disponible`."""
     from app.models import LLMCall
 
     db = (fabrica or fabrica_sistema)()
@@ -251,6 +252,7 @@ def registrar_llamada(*, finalidad: str, usuario_id: str | None, llamada: Llamad
             "coste_usd": llamada.coste_usd if not cache else 0.0,
             "tokens": llamada.tokens_salida, "cache": cache,
             "creditos": str(creditos) if creditos is not None else None,
+            **(detalle or {}),
         }, usuario_id)
         db.commit()
     finally:
@@ -262,19 +264,28 @@ def registrar_llamada(*, finalidad: str, usuario_id: str | None, llamada: Llamad
     return llm_call_id
 
 
-def veces_hoy(finalidad: str, usuario_id: str) -> int:
-    """Cuántas veces se ha usado ya esta finalidad hoy (huso de Madrid), contadas de
-    `liga.auditoria` — a diferencia de `acceso.LimiteFrecuencia` sobrevive a un reinicio."""
-    hoy = datetime.now(TZ_MADRID).date()
-    inicio = datetime(hoy.year, hoy.month, hoy.day, tzinfo=TZ_MADRID)
+def veces_desde(finalidad: str, usuario_id: str, desde: datetime,
+                estrategia_id: str | None = None) -> int:
+    """Cuántas veces ha usado esta finalidad desde `desde` (y, si se dice, en esa estrategia),
+    contadas de `liga.auditoria` — a diferencia de `acceso.LimiteFrecuencia` sobrevive a un
+    reinicio."""
     db = fabrica_sistema()
     try:
         return db.execute(text("""
             select count(*) from liga.auditoria
-            where accion = :a and actor_id = cast(:u as uuid) and creada >= :inicio
-        """), {"a": f"ia.{finalidad}", "u": usuario_id, "inicio": inicio}).scalar_one()
+            where accion = :a and actor_id = cast(:u as uuid) and creada >= :desde
+              and (cast(:e as text) is null or detalle ->> 'estrategia_id' = :e)
+        """), {"a": f"ia.{finalidad}", "u": usuario_id, "desde": desde,
+               "e": estrategia_id}).scalar_one()
     finally:
         db.close()
+
+
+def veces_hoy(finalidad: str, usuario_id: str) -> int:
+    """Cuántas veces se ha usado ya esta finalidad hoy (huso de Madrid)."""
+    hoy = datetime.now(TZ_MADRID).date()
+    return veces_desde(finalidad, usuario_id, datetime(hoy.year, hoy.month, hoy.day,
+                                                       tzinfo=TZ_MADRID))
 
 
 # ---- Créditos: reserva, liquidación y devolución -------------------------------------------------

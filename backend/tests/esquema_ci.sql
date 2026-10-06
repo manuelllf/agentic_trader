@@ -1,4 +1,4 @@
--- migraciones-liga: 029
+-- migraciones-liga: 030
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -326,8 +326,7 @@ begin
       values (new.id, 'terminos', '1'), (new.id, 'privacidad', '1');
   end if;
   if new.email_confirmed_at is not null then
-    select coalesce((select (a.valor #>> '{}')::numeric from liga.ajustes a
-      where a.clave = 'creditos.bienvenida' and jsonb_typeof(a.valor) = 'number'), 15) into regalo;
+    regalo := liga.creditos_de_bienvenida();
     if regalo > 0 then
       perform liga.cargar_creditos(new.id, regalo, 'regalo', 'bienvenida');
     end if;
@@ -420,6 +419,19 @@ begin
   get diagnostics n = row_count;
   return n;
 end $$;
+
+
+--
+-- Name: creditos_de_bienvenida(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.creditos_de_bienvenida() RETURNS numeric
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select coalesce((select (a.valor #>> '{}')::numeric from liga.ajustes a
+                   where a.clave = 'creditos.bienvenida' and jsonb_typeof(a.valor) = 'number'), 30);
+$$;
 
 
 --
@@ -8548,6 +8560,13 @@ REVOKE ALL ON FUNCTION liga.completar_premio() FROM PUBLIC;
 
 
 --
+-- Name: FUNCTION creditos_de_bienvenida(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.creditos_de_bienvenida() FROM PUBLIC;
+
+
+--
 -- Name: FUNCTION custom_access_token_hook(event jsonb); Type: ACL; Schema: liga; Owner: -
 --
 
@@ -10485,8 +10504,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $$
 declare regalo numeric;
 begin
   if old.email_confirmed_at is null and new.email_confirmed_at is not null then
-    select coalesce((select (a.valor #>> '{}')::numeric from liga.ajustes a
-      where a.clave = 'creditos.bienvenida' and jsonb_typeof(a.valor) = 'number'), 15) into regalo;
+    regalo := liga.creditos_de_bienvenida();
     if regalo > 0 and not exists (select 1 from liga.creditos_movimientos
       where usuario_id = new.id and idempotencia = 'bienvenida') then
       perform liga.cargar_creditos(new.id, regalo, 'regalo', 'bienvenida');

@@ -52,7 +52,7 @@
   "builder_no_rules_all_pass": "Without rules, all companies pass.",
   "builder_describe_strategy": "Describe your strategy",
   "builder_describe_help": "Describe it in your own words and we'll turn it into rules you can review and adjust.",
-  "builder_uses_remaining": "You have {count, plural, one {# use} other {# uses}} left today.",
+  "builder_uses_remaining": "You have {count, plural, one {# use} other {# uses}} left on this strategy and this month.",
   "builder_idea_example": "e.g., large companies with little debt that aren't overpriced",
   "builder_interpreting": "Interpreting…",
   "builder_interpret_strategy": "Interpret strategy",

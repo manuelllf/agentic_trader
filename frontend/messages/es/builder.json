@@ -52,7 +52,7 @@
   "builder_no_rules_all_pass": "Sin reglas, pasan todas las empresas.",
   "builder_describe_strategy": "Describe tu estrategia",
   "builder_describe_help": "Cuéntalo con tus palabras y lo traducimos a reglas que puedes revisar y ajustar.",
-  "builder_uses_remaining": "Te quedan {count, plural, one {# uso hoy} other {# usos hoy}}.",
+  "builder_uses_remaining": "Te quedan {count, plural, one {# uso} other {# usos}} en esta estrategia y este mes.",
   "builder_idea_example": "p. ej. empresas grandes, con poca deuda, que no estén caras",
   "builder_interpreting": "Interpretando…",
   "builder_interpret_strategy": "Interpretar estrategia",

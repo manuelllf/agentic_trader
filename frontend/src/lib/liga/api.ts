@@ -546,13 +546,14 @@ export type ConvertirResultado = {
   pesos: Record<string, number> | null;
   pregunta: string | null;
   nombre: string | null;
-  usos_hoy: number;
-  usos_tope: number;
+  quedan: number;
 };
 
-export async function convertirFrase(frase: string): Promise<ConvertirResultado | string> {
+export async function convertirFrase(
+  frase: string, estrategiaId?: string,
+): Promise<ConvertirResultado | string> {
   return llamar<ConvertirResultado>("/liga/convertir", {
-    method: "POST", body: JSON.stringify({ frase }),
+    method: "POST", body: JSON.stringify({ frase, estrategia_id: estrategiaId ?? null }),
   }, true, 60000);
 }
 

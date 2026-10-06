@@ -1,5 +1,5 @@
 """Conversor «Descríbelo» (plan §10, F6-A): descarta reglas y compañías que no debería devolver,
-nunca nombra una empresa y respeta el tope de 5/día. Proveedor simulado, nunca IA real. Contra el
+nunca nombra una empresa y respeta los topes por plan. Proveedor simulado, nunca IA real. Contra el
 Postgres de pruebas; se salta sin `LIGA_TEST_DATABASE_URL`."""
 
 from __future__ import annotations
@@ -77,6 +77,7 @@ def entorno(monkeypatch):  # noqa: ANN001, ANN201
         cx.execute("delete from liga.auditoria where actor_id = %s", (uid,))
         cx.execute("set session_replication_role = origin")
         cx.execute("delete from llm_call where stage = 'liga_conversor'")
+        cx.execute("delete from liga.estrategias where dueno_id = %s", (uid,))
         cx.execute("delete from fundamentals_snapshot where foto_id = %s", (fid,))
         cx.execute("delete from foto where id = %s", (fid,))
         cx.execute("delete from auth.users where id = %s", (uid,))
@@ -98,7 +99,7 @@ def test_descarta_reglas_invalidas_y_conserva_las_validas(entorno, monkeypatch) 
     })
     monkeypatch.setattr(app_llm, "get_llm", _get_llm_de(bruto))
     sugerencia, usos = conversor.convertir(uid, "empresas grandes")
-    assert usos == 1
+    assert (usos.mes, usos.quedan) == (1, 29)
     assert sugerencia.reglas == [{"clave": "grandes", "params": {}}]
 
 
@@ -170,15 +171,56 @@ def test_legacy_sin_interpretacion_no_inventa_exactitud(entorno, monkeypatch) ->
     assert sugerencia.interpretacion == []
 
 
-def test_sexta_llamada_del_dia_da_429(entorno, monkeypatch) -> None:  # noqa: ANN001
+def _estrategia_de(cx, uid: str) -> str:  # noqa: ANN001
+    return str(cx.execute(
+        "insert into liga.estrategias (dueno_id, nombre, forma, dibujo, color1, color2) "
+        "values (%s, 'Mía', 'escudo', 'liso', '#0B6E68', '#FFFFFF') returning id",
+        (uuid.UUID(uid),)).fetchone()[0])
+
+
+def test_gratis_tiene_5_usos_por_estrategia_y_pro_20(entorno, monkeypatch) -> None:  # noqa: ANN001
     cx, uid = entorno
     bruto = json.dumps({"reglas": [], "pesos": None, "pregunta": None, "nombre": None})
     monkeypatch.setattr(app_llm, "get_llm", _get_llm_de(bruto))
-    for _ in range(conversor.TOPE_DIARIO):
-        conversor.convertir(uid, "algo")
+    propia, otra = _estrategia_de(cx, uid), _estrategia_de(cx, uid)
+    for _ in range(5):
+        conversor.convertir(uid, "algo", propia)
     with pytest.raises(HTTPException) as exc:
-        conversor.convertir(uid, "algo")
-    assert exc.value.status_code == 429
+        conversor.convertir(uid, "algo", propia)
+    assert exc.value.status_code == 429 and "esta estrategia" in exc.value.detail
+    _, usos = conversor.convertir(uid, "algo", otra)          # otra estrategia, otro tope
+    assert usos.quedan == 4
+
+    cx.execute("insert into liga.planes_usuario (usuario_id, plan, origen) "
+               "values (%s, 'pro', 'demo')", (uuid.UUID(uid),))
+    _, usos = conversor.convertir(uid, "algo", propia)        # con Pro, la misma ya no está llena
+    assert usos.quedan == 14
+
+
+def test_el_tope_del_mes_vale_para_toda_la_cuenta_y_una_estrategia_ajena_no_cuenta(  # noqa: ANN001
+        entorno, monkeypatch) -> None:
+    cx, uid = entorno
+    bruto = json.dumps({"reglas": [], "pesos": None, "pregunta": None, "nombre": None})
+    monkeypatch.setattr(app_llm, "get_llm", _get_llm_de(bruto))
+    ajena = str(uuid.uuid4())
+    for _ in range(30):
+        conversor.convertir(uid, "algo", ajena)               # sin estrategia propia: solo el mes
+    with pytest.raises(HTTPException) as exc:
+        conversor.convertir(uid, "algo", ajena)
+    assert exc.value.status_code == 429 and "este mes" in exc.value.detail
+
+
+def test_sin_pro_la_ia_no_propone_pregunta_y_con_pro_si(entorno, monkeypatch) -> None:  # noqa: ANN001
+    cx, uid = entorno
+    bruto = json.dumps({"reglas": [], "pesos": {"negocio": 40, "pregunta": 30},
+                        "pregunta": "¿Tiene ventaja competitiva?", "nombre": None})
+    monkeypatch.setattr(app_llm, "get_llm", _get_llm_de(bruto))
+    sugerencia, _ = conversor.convertir(uid, "algo")
+    assert sugerencia.pregunta is None and "pregunta" not in (sugerencia.pesos or {})
+    cx.execute("insert into liga.planes_usuario (usuario_id, plan, origen) "
+               "values (%s, 'pro', 'demo')", (uuid.UUID(uid),))
+    sugerencia, _ = conversor.convertir(uid, "algo")
+    assert sugerencia.pregunta == "¿Tiene ventaja competitiva?"
 
 
 def test_interruptor_apagado_da_503(entorno, monkeypatch) -> None:  # noqa: ANN001

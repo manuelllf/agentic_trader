@@ -108,7 +108,7 @@ def test_pruebas_hoy_cuenta_liga_pruebas_del_usuario(entorno) -> None:  # noqa: 
                 "idempotencia) values (%s, %s, 1, 0, %s)", (uid, rid, uuid.uuid4().hex))
 
 
-# ---- Lecturas: 50 al día, contadas por lo comprado ------------------------------------------
+# ---- Lecturas: 30 al día, contadas por lo comprado ------------------------------------------
 
 
 def test_lecturas_hoy_cuenta_solo_el_motivo_lectura(entorno) -> None:  # noqa: ANN001

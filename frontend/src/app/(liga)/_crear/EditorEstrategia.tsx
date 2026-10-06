@@ -133,7 +133,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   const [convFrase, setConvFrase] = useState("");
   const [convOcupado, setConvOcupado] = useState(false);
   const [convError, setConvError] = useState<string | null>(null);
-  const [convUsos, setConvUsos] = useState<{ hoy: number; tope: number } | null>(null);
+  const [convQuedan, setConvQuedan] = useState<number | null>(null);
   const [convAviso, setConvAviso] = useState<string | null>(null);
   const [filtroFrase, setFiltroFrase] = useState("");
   const [busquedaFiltros, setBusquedaFiltros] = useState("");
@@ -629,9 +629,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     if (!filtroFrase.trim()) return;
     setConvOcupado(true); setFiltroError(null); setFiltroSugerido(null);
     try {
-      const r = await convertirFrase(filtroFrase.trim());
+      const r = await convertirFrase(filtroFrase.trim(), id);
       if (typeof r === "string") { setFiltroError(r); return; }
-      setConvUsos({ hoy: r.usos_hoy, tope: r.usos_tope });
+      setConvQuedan(r.quedan);
       setFiltroSugerido({ reglas: r.reglas, interpretacion: r.interpretacion ?? [] });
     } finally { setConvOcupado(false); }
   }
@@ -640,10 +640,10 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     if (!convFrase.trim()) return;
     setConvOcupado(true);
     setConvError(null);
-    const r = await convertirFrase(convFrase.trim());
+    const r = await convertirFrase(convFrase.trim(), id);
     setConvOcupado(false);
     if (typeof r === "string") { setConvError(r); return; }
-    setConvUsos({ hoy: r.usos_hoy, tope: r.usos_tope });
+    setConvQuedan(r.quedan);
     // La sugerencia se guarda como borrador; el usuario revisa las reglas antes de ejecutarlas.
     const clavesConocidas = new Set((catalogo as Catalogo).reglas.map((c) => c.clave));
     const reglasNuevas = r.reglas.filter(
@@ -851,7 +851,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
           {t("builder_describe_strategy")}
           <small>
             {t("builder_describe_help")}
-            {convUsos && ` ${t("builder_uses_remaining", { count: Math.max(0, convUsos.tope - convUsos.hoy) })}`}
+            {convQuedan !== null && ` ${t("builder_uses_remaining", { count: Math.max(0, convQuedan) })}`}
           </small>
         </label>
         <textarea id="convFrase" className="inp" maxLength={300} rows={2}

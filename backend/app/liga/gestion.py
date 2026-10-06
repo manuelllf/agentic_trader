@@ -115,7 +115,7 @@ CATALOGO: dict[str, AjusteMeta] = {
         grupo="Créditos", titulo="Créditos de bienvenida",
         ayuda="Créditos que recibe una sola vez cada cuenta nueva al crearse. Solo afecta a las "
               "cuentas que se creen desde ahora; 0 lo apaga.",
-        tipo="dolares", unidad="créditos", minimo=Decimal(0), maximo=None, defecto=15),
+        tipo="dolares", unidad="créditos", minimo=Decimal(0), maximo=None, defecto=30),
     # Foto automática de la jornada (backlog, plan §8/§13): al terminar el escaneo mensual de
     # decisión, designa sola la foto+escaneo de la próxima jornada sin foto. Encendido por
     # defecto; el botón manual sigue de reserva si se apaga o si algo no encaja.

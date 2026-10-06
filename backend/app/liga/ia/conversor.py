@@ -2,7 +2,8 @@
 catálogo + pesos, pregunta y nombre sugeridos. DeepSeek Flash barato, salida JSON validada contra
 el catálogo (se descarta cualquier clave o ajuste que no exista) y nunca nombra una empresa (se
 filtra contra la última foto). Es una ayuda: el constructor a mano sigue siendo lo primero, esto
-solo rellena un borrador que el usuario revisa antes de guardar nada. Gratis; tope 5/día."""
+solo rellena un borrador que el usuario revisa antes de guardar nada. Gratis, con topes por
+estrategia y al mes según el plan (`limites.TOPES_CONVERSOR`)."""
 
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from typing import Literal
 from fastapi import HTTPException
 
 from app.i18n import current_locale, translate
+from app.liga import limites
 from app.liga.ia import comun
 from app.liga.motor.catalogo import (  # noqa: PLC2701
     CATALOGO,
@@ -30,7 +32,6 @@ from app.liga.procesos.foto import _foto  # noqa: PLC2701 — mismo reuso que es
 
 logger = logging.getLogger("app.liga.ia")
 
-TOPE_DIARIO = 5
 LARGO_FRASE = 300
 _LARGO_PREGUNTA = 160
 _LARGO_NOMBRE = 28
@@ -231,17 +232,17 @@ def _menciona_empresa(texto: str | None, empresas: tuple[EmpresaFoto, ...]) -> b
     return False
 
 
-def convertir(usuario_id: str, frase: str) -> tuple[Sugerencia, int]:
-    """La sugerencia y cuántas veces se ha usado el conversor hoy (contando esta). El tope se
-    cuenta en `liga.auditoria` (sobrevive a un reinicio), no en memoria."""
-    usos = comun.veces_hoy("conversor", usuario_id)
-    if usos >= TOPE_DIARIO:
-        raise HTTPException(
-            429, translate('liga_converter_daily_limit', count=TOPE_DIARIO))
+def convertir(usuario_id: str, frase: str,
+              estrategia_id: str | None = None) -> tuple[Sugerencia, limites.UsosConversor]:
+    """La sugerencia y lo que queda de conversor (contando esta vez). Los topes, por estrategia y
+    al mes según el plan, se cuentan en `liga.auditoria` (sobreviven a un reinicio). Sin Pro la IA
+    solo propone reglas y pesos: la pregunta la escribe cada cual."""
+    usos, propia = limites.exigir_conversor_disponible(usuario_id, estrategia_id)
     contenido, llamada = comun.llamar_ia(
         finalidad="conversor", usuario_id=usuario_id, modelo=_MODELO,
         system=_system_prompt(current_locale.get()), user=_user_prompt(frase))
-    comun.registrar_llamada(finalidad="conversor", usuario_id=usuario_id, llamada=llamada)
+    comun.registrar_llamada(finalidad="conversor", usuario_id=usuario_id, llamada=llamada,
+                            detalle={"estrategia_id": propia} if propia else None)
     if contenido is None:
         raise HTTPException(503, "No se pudo generar la sugerencia ahora. Prueba en un momento.")
     try:
@@ -255,6 +256,9 @@ def convertir(usuario_id: str, frase: str) -> tuple[Sugerencia, int]:
     pesos = _pesos_validos(bruto.get("pesos"))
     pregunta = bruto.get("pregunta") if isinstance(bruto.get("pregunta"), str) else None
     nombre = bruto.get("nombre") if isinstance(bruto.get("nombre"), str) else None
+    if not usos.pro:
+        pregunta = None
+        pesos = {k: v for k, v in pesos.items() if k != "pregunta"} if pesos else pesos
 
     empresas = _empresas_actuales()
     if _menciona_empresa(pregunta, empresas):
@@ -266,4 +270,4 @@ def convertir(usuario_id: str, frase: str) -> tuple[Sugerencia, int]:
 
     interpretacion = _interpretaciones_validas(bruto.get("interpretacion"), reglas, empresas)
     return Sugerencia(reglas=reglas, pesos=pesos, pregunta=pregunta, nombre=nombre,
-                      interpretacion=interpretacion), usos + 1
+                      interpretacion=interpretacion), usos.con_uno_mas()

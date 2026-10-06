@@ -18,13 +18,14 @@ from app.liga import acceso, estrategias, limites
 from app.liga.auth import Identidad, require_jugador, require_usuario
 from app.liga.db import db_usuario
 from app.liga.ia import conversor, lectura
-from app.liga.ia.conversor import LARGO_FRASE, TOPE_DIARIO
+from app.liga.ia.conversor import LARGO_FRASE
 
 router = APIRouter(tags=["liga-ia"])
 
 
 class ConvertirIn(BaseModel):
     frase: str = Field(min_length=1, max_length=LARGO_FRASE)
+    estrategia_id: uuid.UUID | None = None   # la que se está editando, si ya existe
 
 
 class ReglaSugeridaOut(BaseModel):
@@ -45,17 +46,16 @@ class ConvertirOut(BaseModel):
     pregunta: str | None
     nombre: str | None
     interpretacion: list[InterpretacionOut] = Field(default_factory=list, max_length=12)
-    usos_hoy: int
-    usos_tope: int
+    quedan: int   # usos que le quedan en esta estrategia y este mes, el menor de los dos
 
 
 @router.post("/convertir", response_model=ConvertirOut, dependencies=[Depends(acceso.ocupar_ia)])
 def convertir(body: ConvertirIn, ident: Identidad = Depends(require_usuario)) -> ConvertirOut:
-    sugerencia, usos = conversor.convertir(ident.uid, body.frase)
+    estrategia_id = str(body.estrategia_id) if body.estrategia_id else None
+    sugerencia, usos = conversor.convertir(ident.uid, body.frase, estrategia_id)
     return ConvertirOut(
         reglas=[ReglaSugeridaOut(**r) for r in sugerencia.reglas], pesos=sugerencia.pesos,
-        pregunta=sugerencia.pregunta, nombre=sugerencia.nombre, usos_hoy=usos,
-        usos_tope=TOPE_DIARIO,
+        pregunta=sugerencia.pregunta, nombre=sugerencia.nombre, quedan=usos.quedan,
         interpretacion=[InterpretacionOut(
             intencion=i.intencion, tipo=i.tipo, regla=i.regla, motivo=i.motivo,
         ) for i in sugerencia.interpretacion])

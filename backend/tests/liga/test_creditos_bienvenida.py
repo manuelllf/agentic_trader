@@ -1,6 +1,6 @@
-"""Regalo único de bienvenida al crearse una cuenta (`liga.alta_usuario`, sql 015): 15 créditos por
-defecto, configurable desde `liga.ajustes` (`creditos.bienvenida`) y 0 lo apaga. Contra el
-Postgres de pruebas; todo se limpia al final."""
+"""Regalo único de bienvenida al crearse una cuenta (`liga.alta_usuario`, sql 015 y 030): 30
+créditos por defecto, configurable desde `liga.ajustes` (`creditos.bienvenida`) y 0 lo apaga.
+Contra el Postgres de pruebas; todo se limpia al final."""
 
 from __future__ import annotations
 
@@ -46,18 +46,18 @@ def _movimientos(cx, uid: uuid.UUID) -> list[tuple]:  # noqa: ANN001
                       "where usuario_id = %s", (uid,)).fetchall()
 
 
-def test_cuenta_nueva_recibe_15_de_bienvenida_una_sola_vez(cx) -> None:  # noqa: ANN001
+def test_cuenta_nueva_recibe_30_de_bienvenida_una_sola_vez(cx) -> None:  # noqa: ANN001
     uid = _nueva_cuenta(cx)
     assert [(float(i), m, k) for i, m, k in _movimientos(cx, uid)] == [
-        (15.0, "regalo", "bienvenida")]
+        (30.0, "regalo", "bienvenida")]
     # Repetir la concesión (mismo disparador, misma clave) no regala otra vez.
-    cx.execute("select liga.cargar_creditos(%s, 15, 'regalo', 'bienvenida')", (uid,))
+    cx.execute("select liga.cargar_creditos(%s, 30, 'regalo', 'bienvenida')", (uid,))
     assert len(_movimientos(cx, uid)) == 1
 
 
 def test_el_importe_se_cambia_desde_ajustes_y_cero_lo_apaga(cx) -> None:  # noqa: ANN001
-    cx.execute("insert into liga.ajustes (clave, valor) values ('creditos.bienvenida', '30')")
-    assert [float(i) for i, _m, _k in _movimientos(cx, _nueva_cuenta(cx))] == [30.0]
+    cx.execute("insert into liga.ajustes (clave, valor) values ('creditos.bienvenida', '50')")
+    assert [float(i) for i, _m, _k in _movimientos(cx, _nueva_cuenta(cx))] == [50.0]
 
     cx.execute("update liga.ajustes set valor = '0' where clave = 'creditos.bienvenida'")
     assert _movimientos(cx, _nueva_cuenta(cx)) == []
@@ -65,7 +65,7 @@ def test_el_importe_se_cambia_desde_ajustes_y_cero_lo_apaga(cx) -> None:  # noqa
 
 def test_un_valor_que_no_es_numero_no_rompe_el_alta_y_usa_el_defecto(cx) -> None:  # noqa: ANN001
     cx.execute("insert into liga.ajustes (clave, valor) values ('creditos.bienvenida', 'true')")
-    assert [float(i) for i, _m, _k in _movimientos(cx, _nueva_cuenta(cx))] == [15.0]
+    assert [float(i) for i, _m, _k in _movimientos(cx, _nueva_cuenta(cx))] == [30.0]
 
 
 def test_registro_reserva_alias_y_regala_solo_al_confirmar(cx) -> None:  # noqa: ANN001
@@ -92,7 +92,7 @@ def test_registro_reserva_alias_y_regala_solo_al_confirmar(cx) -> None:  # noqa:
         cx.execute("update auth.users set email_confirmed_at = now() where id = %s", (uid,))
         cx.execute("update auth.users set email_confirmed_at = now() where id = %s", (uid,))
         assert len(_movimientos(cx, uid)) == 1
-        assert float(_movimientos(cx, uid)[0][0]) == 15
+        assert float(_movimientos(cx, uid)[0][0]) == 30
     finally:
         cx.execute("delete from liga.ajustes where clave = 'liga.registro.abierto'")
 
