@@ -564,11 +564,14 @@ def _escribir(db: Session, jornada_id: int, ctx: Contexto, plan: Plan, sin_preci
         if c.posiciones is None:
             logger.info("Jornada %s: %s no juega. %s", j.id, c.clave, c.motivo)
     entradas = plan.entradas + entradas_casa(plan, ids)
+    db.execute(text("select liga.completar_premio()"))
+    optan = set(db.execute(text("select id from liga.estrategias where opta_premio")).scalars())
     for e in entradas:
         if e.quitadas_vaciadas:
             e.receta_id = _version_sin_quitadas(db, e.estrategia_id, e.receta_id)
         ins = Inscripcion(jornada_id=j.id, estrategia_id=e.estrategia_id, receta_id=e.receta_id,
-                          n_pasan=e.n_pasan, estado=e.estado)
+                          n_pasan=e.n_pasan, estado=e.estado,
+                          optaba_premio=e.estrategia_id in optan)
         db.add(ins)
         db.flush()
         db.add_all(Posicion(inscripcion_id=ins.id, ticker=t, peso=p) for t, p in e.posiciones)

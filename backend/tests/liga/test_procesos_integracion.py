@@ -255,7 +255,8 @@ def _cuenta(fabrica, sql: str, **p) -> int:  # noqa: ANN001, ANN003
 def _inscripciones(fabrica, jornada_id: int) -> dict:  # noqa: ANN001
     with comun.sesion(fabrica) as db:
         filas = db.execute(text(
-            "select i.id, e.id as eid, e.casa_clave, i.estado, i.receta_id, i.n_pasan "
+            "select i.id, e.id as eid, e.casa_clave, i.estado, i.receta_id, i.n_pasan, "
+            "i.optaba_premio "
             "from liga.inscripciones i join liga.estrategias e on e.id = i.estrategia_id "
             "where i.jornada_id = :j"), {"j": jornada_id}).all()
         pos = datos.posiciones(db, [f.id for f in filas])
@@ -860,6 +861,20 @@ def test_una_cuenta_suspendida_no_se_inscribe_en_la_jornada(fabrica, mercado, mu
     foto.ejecutar(ene, fabrica=fabrica)
     formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
     assert set(_inscripciones(fabrica, ene)) == {"alpha", "omega", "lambda"}
+
+
+def test_al_formar_se_guarda_cual_optaba_al_premio_y_se_completa_la_que_faltaba(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    with comun.sesion(fabrica) as db:
+        sola = _estrategia(db, _usuario(db), "Sola")
+        db.execute(text("update liga.estrategias set opta_premio = true where id = :e"),
+                   {"e": mundo["pregunta"]})
+        db.commit()
+    foto.ejecutar(ene, fabrica=fabrica)
+    formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    optaban = {k for k, v in _inscripciones(fabrica, ene).items() if v["fila"].optaba_premio}
+    assert optaban == {mundo["pregunta"], sola}
 
 
 def test_para_probar_vale_un_escaneo_con_notas_aunque_no_sea_de_decision(fabrica, mundo) -> None:  # noqa: ANN001

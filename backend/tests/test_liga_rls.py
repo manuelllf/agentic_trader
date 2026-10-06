@@ -282,6 +282,65 @@ def test_gratis_juega_una_y_pro_tres(cx):
     _falla(cx, "update liga.estrategias set estado = 'apuntada' where id = %s", (ids[3],))
 
 
+def _mensaje(cx, sql: str, params: tuple | None = None) -> str:
+    """El texto con el que la base rechaza la operación."""
+    with pytest.raises(psycopg.Error) as e, cx.transaction():
+        cx.execute(sql, params)
+    return e.value.diag.message_primary
+
+
+def test_el_tope_dice_que_plan_tienes_y_que_te_daria_pro(cx):
+    a, p = _usuario(cx), _usuario(cx, pro=True)
+    gratis = [_lista(cx, a, f"G{i}")[0] for i in range(2)]
+    pro = [_lista(cx, p, f"P{i}")[0] for i in range(4)]
+    apuntar = "update liga.estrategias set estado = 'apuntada' where id = %s"
+    _como(cx, a)
+    cx.execute(apuntar, (gratis[0],))
+    assert _mensaje(cx, apuntar, (gratis[1],)) == (
+        "Con el plan gratuito solo puedes tener una estrategia en juego. Con Pro, hasta tres")
+    _como(cx, p)
+    for eid in pro[:3]:
+        cx.execute(apuntar, (eid,))
+    assert _mensaje(cx, apuntar, (pro[3],)) == (
+        "Con Pro puedes tener hasta tres estrategias en juego a la vez")
+
+
+def _opta(cx, eid: uuid.UUID) -> bool:
+    return _filas(cx, "select opta_premio from liga.estrategias where id = %s", (eid,))[0][0]
+
+
+def test_cada_cuenta_tiene_una_estrategia_que_opta_al_premio(cx):
+    p, otro = _usuario(cx, pro=True), _usuario(cx)
+    a, b, c = (_lista(cx, p, n)[0] for n in ("A", "B", "C"))
+    ajena, _ = _lista(cx, otro, "Ajena")
+    apuntar = "update liga.estrategias set estado = 'apuntada' where id = %s"
+    _como(cx, p)
+    cx.execute(apuntar, (a,))
+    cx.execute(apuntar, (b,))
+    assert (_opta(cx, a), _opta(cx, b), _opta(cx, c)) == (True, False, False)
+
+    cx.execute("select liga.designar_premio(%s)", (b,))
+    assert (_opta(cx, a), _opta(cx, b)) == (False, True)
+    assert _mensaje(cx, "select liga.designar_premio(%s)", (c,)) == (
+        "Solo puede optar al premio una estrategia tuya que esté en juego")
+    _falla(cx, "update liga.estrategias set opta_premio = true where id = %s", (a,))
+
+    _como(cx, otro)
+    cx.execute(apuntar, (ajena,))
+    _falla(cx, "select liga.designar_premio(%s)", (a,))
+    assert _opta(cx, ajena)
+    _como(cx, p)
+    assert (_opta(cx, a), _opta(cx, b)) == (False, True)
+
+    cx.execute("update liga.estrategias set estado = 'retirada' where id = %s", (b,))
+    assert (_opta(cx, a), _opta(cx, b)) == (False, False)
+    _sistema(cx)
+    assert _filas(cx, "select liga.completar_premio()")[0][0] >= 1
+    assert _filas(cx, "select liga.completar_premio()") == [(0,)]
+    _como(cx, p)
+    assert (_opta(cx, a), _opta(cx, b)) == (True, False)
+
+
 def test_apuntar_exige_al_menos_una_regla(cx):
     a = _usuario(cx)
     eid = _estrategia(cx, a)
@@ -694,6 +753,7 @@ def test_funciones_security_definer_solo_para_quien_toca(cx):
           and has_function_privilege(r.rolname, p.oid, 'EXECUTE')""")}
     assert ejecutables == {
         ("authorize", "authenticated"), ("es_pro", "authenticated"),
+        ("designar_premio", "authenticated"),
         ("puede_ver_posiciones", "authenticated"), ("es_miembro", "authenticated"),
         ("unirse_liga", "authenticated"), ("registrar_visita", "authenticated"),
         ("exportar_visitas", "authenticated"),

@@ -9,7 +9,7 @@ import { BarraPestanas, Boton, Cargando, Escudo, ErrorLiga, Segmentado, Vacio, c
   from "../_ui";
 import {
   borrarEstrategia, cadaDia1, desapuntar, apuntar as apuntarApi, getJornadaPublica,
-  getClasificacion, getPortada, miVentana, misEstrategias, type Clasificacion, type Estrategia,
+  getClasificacion, getPortada, miVentana, misEstrategias, optarAlPremio, type Clasificacion, type Estrategia,
   type JornadaDetalle, type Portada, type Ventana,
 } from "@/lib/liga/api";
 import { mutar, useCache } from "@/lib/liga/cache";
@@ -89,6 +89,14 @@ export default function Mias() {
     setAviso(null);
     const r = await desapuntar(id);
     if (typeof r === "string") setAviso(r); else parchearFila(id, r);
+    setOcupada(null);
+  }
+
+  async function alOptarAlPremio(id: string) {
+    setOcupada(id);
+    setAviso(null);
+    const r = await optarAlPremio(id);
+    if (typeof r === "string") setAviso(r); else mutar<ListaEstrategias>("mis-estrategias", () => r);
     setOcupada(null);
   }
 
@@ -185,7 +193,7 @@ export default function Mias() {
                 <div className="mias-cab">
                   <Link href={`/ficha/${e.id}`} className="mias-identidad">
                     <Escudo valor={e.escudo} etiqueta={t("strategies_crest", { name: e.nombre })} tamano={34} />
-                    <span><h2>{e.nombre}</h2><small>{ETIQUETA_ESTADO[e.estado] ? t(ETIQUETA_ESTADO[e.estado]) : e.estado}</small></span>
+                    <span><h2>{e.nombre}</h2><small>{ETIQUETA_ESTADO[e.estado] ? t(ETIQUETA_ESTADO[e.estado]) : e.estado}{e.opta_premio && ` · ${t("strategies_prize_entered")}`}</small></span>
                     {puesto != null && (
                       <span className="mias-puesto num" aria-label={t("common_ranking_posicion_aria", { count: puesto })}>
                         #{puesto}
@@ -256,6 +264,14 @@ export default function Mias() {
                       {e.estado === "borrador" && <Boton tamano="pequeno" variante="discreto" disabled={pendiente} onClick={() => alBorrar(e.id, e.nombre)}>{t("strategies_delete")}</Boton>}
                       {e.estado === "apuntada" && <Boton tamano="pequeno" disabled={pendiente} onClick={() => alDesapuntar(e.id)}>{t("strategies_remove_from_round")}</Boton>}
                     </div>
+                    {(e.estado === "apuntada" || e.estado === "jugando") && (
+                      <div className="mias-renovacion">
+                        <span>{t("strategies_prize_label")}</span>
+                        {e.opta_premio
+                          ? <small>{t("strategies_prize_note")}</small>
+                          : <Boton tamano="pequeno" disabled={pendiente} onClick={() => alOptarAlPremio(e.id)}>{t("strategies_prize_choose")}</Boton>}
+                      </div>
+                    )}
                     {(e.estado === "apuntada" || e.estado === "jugando") && (
                       <div className="mias-renovacion">
                         <span>{t("strategies_next_month")}</span>

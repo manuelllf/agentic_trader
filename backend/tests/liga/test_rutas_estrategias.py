@@ -237,7 +237,8 @@ def test_limite_gratis_una_en_juego_y_pro_hasta_tres(api) -> None:  # noqa: ANN0
     e2 = _crear(cliente, cab, gratis, "Dos")
     _receta(cliente, cab, gratis, e2)
     r = cliente.post(f"/liga/estrategias/{e2}/apuntar", headers=cab(gratis))
-    assert r.status_code == 422 and "plan" in r.json()["detail"].lower()
+    assert r.status_code == 422 and r.json()["detail"] == (
+        "Con el plan gratuito solo puedes tener una estrategia en juego. Con Pro, hasta tres")
 
     pro = usuario(pro=True)
     ids = [_crear(cliente, cab, pro, f"Pro {i}") for i in range(3)]
@@ -245,6 +246,28 @@ def test_limite_gratis_una_en_juego_y_pro_hasta_tres(api) -> None:  # noqa: ANN0
         _receta(cliente, cab, pro, eid)
         r = cliente.post(f"/liga/estrategias/{eid}/apuntar", headers=cab(pro))
         assert r.status_code == 200, r.text
+
+
+def test_la_estrategia_que_opta_al_premio_se_elige_por_la_api(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, *_ = api
+    pro = usuario(pro=True)
+    primera, segunda, borrador = (_crear(cliente, cab, pro, n) for n in ("Una", "Dos", "Tres"))
+    for eid in (primera, segunda):
+        _receta(cliente, cab, pro, eid)
+        assert cliente.post(f"/liga/estrategias/{eid}/apuntar",
+                            headers=cab(pro)).status_code == 200
+
+    def optan() -> list[str]:
+        mias = cliente.get("/liga/estrategias", headers=cab(pro)).json()
+        return [e["id"] for e in mias if e["opta_premio"]]
+
+    assert optan() == [primera]
+    r = cliente.post(f"/liga/estrategias/{segunda}/premio", headers=cab(pro))
+    assert r.status_code == 200 and optan() == [segunda]
+    assert [e["id"] for e in r.json() if e["opta_premio"]] == [segunda]
+    r = cliente.post(f"/liga/estrategias/{borrador}/premio", headers=cab(pro))
+    assert r.status_code == 403 and "en juego" in r.json()["detail"]
+    assert optan() == [segunda]
 
 
 def test_pregunta_propia_y_publicar_son_de_pro(api) -> None:  # noqa: ANN001

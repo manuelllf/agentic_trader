@@ -116,6 +116,7 @@ export type Estrategia = {
   cada_dia_1: "revisar" | "mantener";
   oculta: boolean;
   receta_id: number | null;
+  opta_premio: boolean;
   creada: string;
   actualizada: string;
 };
@@ -394,6 +395,10 @@ export async function apuntar(id: string): Promise<Estrategia | string> {
 
 export async function desapuntar(id: string): Promise<Estrategia | string> {
   return llamar<Estrategia>(`/liga/estrategias/${id}/desapuntar`, { method: "POST" });
+}
+
+export async function optarAlPremio(id: string): Promise<Estrategia[] | string> {
+  return llamar<Estrategia[]>(`/liga/estrategias/${id}/premio`, { method: "POST" });
 }
 
 export async function cadaDia1(

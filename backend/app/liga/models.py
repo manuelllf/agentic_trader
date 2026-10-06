@@ -172,6 +172,7 @@ class Estrategia(LigaBase):
     actualizada: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
     actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    opta_premio: Mapped[bool] = mapped_column(Boolean, server_default=DB)
 
 
 class Receta(LigaBase):
@@ -213,6 +214,7 @@ class Inscripcion(LigaBase):
     creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
     actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
     actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    optaba_premio: Mapped[bool] = mapped_column(Boolean, server_default=DB)
 
 
 class Posicion(LigaBase):

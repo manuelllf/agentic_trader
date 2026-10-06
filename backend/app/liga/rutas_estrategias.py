@@ -55,7 +55,7 @@ _LIMITE_CAMBIOS = acceso.LimiteFrecuencia(tope=20, ventana_s=60)
 
 _CAMPOS_ESTRATEGIA = """
     id, nombre, forma, dibujo, color1, color2, iniciales, visibilidad, declara_posiciones,
-    destacable, estado, cada_dia_1, oculta, receta_id, creada, actualizada
+    destacable, estado, cada_dia_1, oculta, receta_id, opta_premio, creada, actualizada
 """
 
 
@@ -102,6 +102,7 @@ class EstrategiaOut(BaseModel):
     cada_dia_1: str
     oculta: bool
     receta_id: int | None
+    opta_premio: bool
     creada: datetime
     actualizada: datetime
 
@@ -256,7 +257,8 @@ def _a_salida(f) -> EstrategiaOut:  # noqa: ANN001
                          iniciales=f.iniciales),
         visibilidad=f.visibilidad, declara_posiciones=f.declara_posiciones,
         destacable=f.destacable, estado=f.estado, cada_dia_1=f.cada_dia_1, oculta=f.oculta,
-        receta_id=f.receta_id, creada=f.creada, actualizada=f.actualizada)
+        receta_id=f.receta_id, opta_premio=f.opta_premio, creada=f.creada,
+        actualizada=f.actualizada)
 
 
 def _receta_out(r) -> RecetaOut:  # noqa: ANN001
@@ -432,6 +434,18 @@ def apuntar(id: uuid.UUID, db: Session = Depends(db_usuario)) -> EstrategiaOut:
 @router.post("/estrategias/{id}/desapuntar", response_model=EstrategiaOut)
 def desapuntar(id: uuid.UUID, db: Session = Depends(db_usuario)) -> EstrategiaOut:
     return _cambiar_estado(db, id, "borrador")
+
+
+@router.post("/estrategias/{id}/premio", response_model=list[EstrategiaOut])
+def optar_al_premio(id: uuid.UUID, db: Session = Depends(db_usuario)) -> list[EstrategiaOut]:
+    """Esta es la estrategia de la cuenta que opta al premio. Cuenta desde la próxima jornada que
+    se forme; las ya formadas conservan la que optaba."""
+    try:
+        with db.begin_nested():
+            db.execute(text("select liga.designar_premio(:i)"), {"i": id})
+    except DBAPIError as e:
+        raise estrategias.mapear_error(e) from e
+    return mis_estrategias(db)
 
 
 @router.post("/estrategias/{id}/cada-dia-1", response_model=EstrategiaOut)

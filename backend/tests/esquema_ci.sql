@@ -1,4 +1,4 @@
--- migraciones-liga: 026
+-- migraciones-liga: 027
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -400,6 +400,29 @@ end $$;
 
 
 --
+-- Name: completar_premio(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.completar_premio() RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  n integer;
+begin
+  update liga.estrategias e set opta_premio = true
+  where e.tipo = 'usuario' and e.estado in ('apuntada', 'jugando')
+    and not exists (select 1 from liga.estrategias x where x.dueno_id = e.dueno_id and x.opta_premio)
+    and e.id = (select y.id from liga.estrategias y
+                where y.dueno_id = e.dueno_id and y.tipo = 'usuario'
+                  and y.estado in ('apuntada', 'jugando')
+                order by y.creada, y.id limit 1);
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+
+--
 -- Name: custom_access_token_hook(jsonb); Type: FUNCTION; Schema: liga; Owner: -
 --
 
@@ -422,6 +445,30 @@ begin
   claims := jsonb_set(claims, '{user_role}', coalesce(to_jsonb(rol_mayor::text), 'null'::jsonb));
   claims := jsonb_set(claims, '{plan}', to_jsonb(case when pro then 'pro' else 'gratis' end));
   return jsonb_set(event, '{claims}', claims);
+end $$;
+
+
+--
+-- Name: designar_premio(uuid); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.designar_premio(p_estrategia uuid) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  uid uuid := (select auth.uid());
+begin
+  if not exists (
+       select 1 from liga.estrategias e
+       where e.id = p_estrategia and e.dueno_id = uid and e.tipo = 'usuario'
+         and e.estado in ('apuntada', 'jugando')) then
+    raise exception 'Solo puede optar al premio una estrategia tuya que esté en juego'
+      using errcode = '42501';
+  end if;
+  update liga.estrategias set opta_premio = false
+    where dueno_id = uid and opta_premio and id <> p_estrategia;
+  update liga.estrategias set opta_premio = true where id = p_estrategia;
 end $$;
 
 
@@ -512,6 +559,9 @@ begin
   if tg_op = 'UPDATE' then
     new.actualizada := now();
   end if;
+  if new.estado not in ('apuntada', 'jugando') then
+    new.opta_premio := false;
+  end if;
   if current_user = 'postgres' or liga.es_admin() then
     return new;
   end if;
@@ -565,10 +615,21 @@ begin
     into en_juego, borradores
     from liga.estrategias e where e.dueno_id = uid;
   if new.estado in ('apuntada', 'jugando') and en_juego >= tope then
-    raise exception 'Tu plan permite % en juego a la vez', tope using errcode = '23514';
+    if pro then
+      raise exception 'Con Pro puedes tener hasta tres estrategias en juego a la vez'
+        using errcode = '23514';
+    end if;
+    raise exception 'Con el plan gratuito solo puedes tener una estrategia en juego. Con Pro, hasta tres'
+      using errcode = '23514';
   end if;
   if new.estado = 'borrador' and borradores >= 10 then
     raise exception 'Como mucho 10 borradores' using errcode = '23514';
+  end if;
+
+  if new.estado in ('apuntada', 'jugando') and not new.opta_premio and not exists (
+       select 1 from liga.estrategias e
+       where e.dueno_id = uid and e.opta_premio and e.id <> new.id) then
+    new.opta_premio := true;
   end if;
   return new;
 end $$;
@@ -1761,6 +1822,7 @@ CREATE TABLE liga.estrategias (
     actualizada timestamp with time zone DEFAULT now() NOT NULL,
     creado_por uuid DEFAULT auth.uid(),
     actualizado_por uuid,
+    opta_premio boolean DEFAULT false NOT NULL,
     CONSTRAINT casa_coherente CHECK (((tipo = 'casa'::text) = (casa_clave IS NOT NULL))),
     CONSTRAINT casa_sin_dueno CHECK (((tipo = 'usuario'::text) OR (dueno_id IS NULL))),
     CONSTRAINT estrategias_cada_dia_1_check CHECK ((cada_dia_1 = ANY (ARRAY['revisar'::text, 'mantener'::text]))),
@@ -1775,6 +1837,7 @@ CREATE TABLE liga.estrategias (
     CONSTRAINT estrategias_nombre_check CHECK (((length(nombre) >= 1) AND (length(nombre) <= 28))),
     CONSTRAINT estrategias_tipo_check CHECK ((tipo = ANY (ARRAY['usuario'::text, 'casa'::text]))),
     CONSTRAINT estrategias_visibilidad_check CHECK ((visibilidad = ANY (ARRAY['privada'::text, 'publicada'::text]))),
+    CONSTRAINT opta_premio_en_juego CHECK (((NOT opta_premio) OR ((tipo = 'usuario'::text) AND (estado = ANY (ARRAY['apuntada'::text, 'jugando'::text]))))),
     CONSTRAINT publicada_declara CHECK (((visibilidad = 'privada'::text) OR (declara_posiciones IS NOT NULL)))
 );
 
@@ -1794,6 +1857,7 @@ CREATE TABLE liga.inscripciones (
     creado_por uuid DEFAULT auth.uid(),
     actualizado_en timestamp with time zone,
     actualizado_por uuid,
+    optaba_premio boolean DEFAULT false NOT NULL,
     CONSTRAINT inscripciones_estado_check CHECK ((estado = ANY (ARRAY['inscrita'::text, 'formada'::text, 'sin_empresas'::text, 'cerrada'::text]))),
     CONSTRAINT inscripciones_n_pasan_check CHECK ((n_pasan >= 0))
 );
@@ -5553,6 +5617,13 @@ CREATE INDEX ix_reportes_resuelto_por ON liga.reportes USING btree (resuelto_por
 
 
 --
+-- Name: ux_estrategias_opta_premio; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_estrategias_opta_premio ON liga.estrategias USING btree (dueno_id) WHERE opta_premio;
+
+
+--
 -- Name: ux_perfiles_alias; Type: INDEX; Schema: liga; Owner: -
 --
 
@@ -8359,11 +8430,26 @@ REVOKE ALL ON FUNCTION liga.cargar_creditos(p_usuario uuid, p_importe numeric, p
 
 
 --
+-- Name: FUNCTION completar_premio(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.completar_premio() FROM PUBLIC;
+
+
+--
 -- Name: FUNCTION custom_access_token_hook(event jsonb); Type: ACL; Schema: liga; Owner: -
 --
 
 REVOKE ALL ON FUNCTION liga.custom_access_token_hook(event jsonb) FROM PUBLIC;
 GRANT ALL ON FUNCTION liga.custom_access_token_hook(event jsonb) TO supabase_auth_admin;
+
+
+--
+-- Name: FUNCTION designar_premio(p_estrategia uuid); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.designar_premio(p_estrategia uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.designar_premio(p_estrategia uuid) TO authenticated;
 
 
 --

@@ -52,7 +52,8 @@ def exportar(db: Session) -> dict:
     """)).all()
     estrategias = db.execute(text("""
         select id::text as id, nombre, forma, dibujo, color1, color2, iniciales, visibilidad,
-               declara_posiciones, destacable, estado, cada_dia_1, receta_id, creada, actualizada
+               declara_posiciones, destacable, estado, cada_dia_1, receta_id, opta_premio,
+               creada, actualizada
         from liga.estrategias
         where dueno_id = (select auth.uid()) and tipo = 'usuario'
         order by creada
@@ -67,7 +68,7 @@ def exportar(db: Session) -> dict:
     """)).all()
     inscripciones = db.execute(text("""
         select i.id, i.jornada_id, i.estrategia_id::text as estrategia_id, i.receta_id,
-               i.n_pasan, i.estado, res.rentabilidad, res.puntos
+               i.n_pasan, i.estado, i.optaba_premio, res.rentabilidad, res.puntos
         from liga.inscripciones i
         join liga.estrategias e on e.id = i.estrategia_id
         left join liga.resultados res on res.inscripcion_id = i.id
