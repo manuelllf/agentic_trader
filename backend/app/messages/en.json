@@ -172,7 +172,7 @@
   "api_error_db_ese_codigo_no_es_de_ninguna_liga": "This code does not match any league",
   "api_error_db_la_estrategia_no_pertenece_a_tu_cuenta": "This strategy does not belong to your account",
   "api_error_db_la_foto_y_el_escaneo_de_la_jornada_tienen_que_ser_los_mismos": "A round's photo must be the one its scan used",
-  "api_error_db_la_inscripcion_no_pertenece_a_tu_estrategia":"This enrollment does not belong to your strategy",
+  "api_error_db_la_inscripcion_no_pertenece_a_tu_estrategia": "This enrollment does not belong to your strategy",
   "api_error_db_la_pregunta_propia_es_de_pro": "A custom criterion requires Pro",
   "api_error_db_la_receta_no_es_de_esta_estrategia": "This configuration does not belong to this strategy",
   "api_error_db_la_receta_tiene_que_ser_de_una_estrategia_tuya": "The configuration must belong to one of your strategies",
@@ -338,5 +338,6 @@
   "liga_casa_omega_paso_3_titulo": "Four slots",
   "liga_casa_omega_paso_3_texto": "The portfolio is four slots of $500, $2,000 in total. Alerts fill them in order of arrival and the same company cannot take two slots in a month. An empty slot is cash and earns 0%.",
   "liga_casa_omega_paso_4_titulo": "The exit",
-  "liga_casa_omega_paso_4_texto": "Each position closes when it reaches its target, between 11% and 40% depending on how strong the start was, or after 90 days, whichever comes first. There is no price stop. The slot is then free for the next alert."
+  "liga_casa_omega_paso_4_texto": "Each position closes when it reaches its target, between 11% and 40% depending on how strong the start was, or after 90 days, whichever comes first. There is no price stop. The slot is then free for the next alert.",
+  "api_error_esa_empresa_no_esta_en_una_cartera_que_puedas_ver": "That company is not in a portfolio you can see."
 }
