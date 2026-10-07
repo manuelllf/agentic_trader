@@ -15,5 +15,6 @@ export * from "./OpcionRadio";
 export * from "./OrdenLista";
 export * from "./Segmentado";
 export * from "./Tarjeta";
+export * from "./TarjetaEstrategia";
 export * from "./Vacio";
 export * from "./VentanaCambios";
