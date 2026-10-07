@@ -49,7 +49,7 @@ export default function PwaInstall() {
 
   return (
     <aside className="pwa-install" aria-label={t("system_instalar_vennett")}>
-      <Image src="/favicon.svg?v=vennett-6" alt="" width={32} height={32} />
+      <Image src="/favicon.svg?v=vennett-8" alt="" width={32} height={32} />
       <div>
         <p><strong>{t("system_vennett_a_mano")}</strong></p>
         <p>{t("system_acceso_movil")}</p>

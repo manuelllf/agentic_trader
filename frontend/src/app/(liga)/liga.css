@@ -88,9 +88,9 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 }
 .lg .wordmark::before {
   content: ""; width: 32px; height: 32px;
-  background: url("/favicon.svg?v=vennett-6") center / contain no-repeat;
+  background: url("/favicon.svg?v=vennett-8") center / contain no-repeat;
 }
-.lg .wordmark svg { display: block; height: 23px; width: auto; }
+.lg .wordmark svg { display: block; height: 24px; width: auto; }
 
 :is(.lg, .salas) .pwa-install {
   position: fixed; z-index: 50; bottom: calc(80px + env(safe-area-inset-bottom));
@@ -283,7 +283,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   display: inline-flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px 0 11px; justify-self: start;
   border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
 }
-.lg .sello .marca { display: block; height: 13px; width: auto; }
+.lg .sello .marca { display: block; height: 14px; width: auto; }
 .lg .sello i { width: 1px; height: 16px; background: var(--line2); }
 .lg .sello b { font-size: 14px; font-weight: 700; letter-spacing: .01em; color: var(--ink2); }
 .lg .puntos {
@@ -837,7 +837,7 @@ html:has(body .lg .pel-portada), body:has(.lg .pel-portada) {
 }
 .lg .pel-cabecera > * { pointer-events: auto; }
 .lg .pel-cabecera nav { display: flex; align-items: center; gap: 2px; }
-.lg .pel-cabecera .wordmark { color: var(--pel-tinta); }
+.lg .pel-cabecera .wordmark { color: var(--pel-tinta); --accent: #4FA39D; }
 .lg .pel-enlace { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; font-size: 14px; color: var(--pel-tinta2); text-decoration: none; white-space: nowrap; }
 .lg .pel-enlace .largo { display: none; }
 .lg .pel-btn {
@@ -988,7 +988,7 @@ html:has(body .lg .pel-portada), body:has(.lg .pel-portada) {
 }
 @media (min-width: 900px) and (min-aspect-ratio: 11/10) {
   .lg .pel-portada { --pel-margen: 40px; }
-  .lg .pel-cabecera .wordmark svg { height: 24px; }
+  .lg .pel-cabecera .wordmark svg { height: 25px; }
   .lg .pel-franja { left: 56px; right: auto; top: 100px; width: min(31vw, 460px); height: auto; bottom: calc(var(--pel-pie) + 40px); }
   .lg .pel-it { justify-content: center; gap: 12px; }
   .lg .pel-tesis p { font-size: clamp(34px, 3.4vw, 54px); }
