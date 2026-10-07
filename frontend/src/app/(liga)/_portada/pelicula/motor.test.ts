@@ -55,7 +55,9 @@ describe("motor de la portada", () => {
     escena.desmontar();
   });
 
-  it("avanza sin tiempo fijado y se pausa por las condiciones de la escena", () => {
+  // Monta la escena cinco veces y pinta unos 1.500 fotogramas completos (7-9 ms cada uno en jsdom):
+  // no cabe en los 5 s por defecto, y en el CI aún tarda más.
+  it("avanza sin tiempo fijado y se pausa por las condiciones de la escena", { timeout: 30_000 }, () => {
     const inicial = montar();
     expect(Number(inicial.item("tesis").style.opacity)).toBe(0);
     inicial.reloj.avanzar(8.5);
