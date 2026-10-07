@@ -8,7 +8,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import { InfoTip } from "@/components/InfoTip";
 import {
-  BarraPestanas, Boton, Cargando, Escudo, ErrorLiga, OpcionRadio, Segmentado,
+  BarraPestanas, Boton, CabeceraApp, Cargando, Escudo, ErrorLiga, OpcionRadio, Segmentado,
   escudoAleatorio, luminancia, PALETA, type EscudoValor,
 } from "../_ui";
 import {
@@ -299,7 +299,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   if (!sesionLista || cargandoInicial) {
     return (
       <main className="scroll constructor" aria-busy="true">
-        <h1 className="h1 constructor-titulo">{estrategiaIdInicial ? t("builder_edit_title") : t("builder_new_title")}</h1>
+        <CabeceraApp titulo={estrategiaIdInicial ? t("builder_edit_title") : t("builder_new_title")} />
         <nav className="constructor-etapas" aria-label={t("builder_steps_aria")}>
           {ETAPAS.map((titulo, i) => <button key={titulo} type="button" disabled aria-current={etapa === i ? "step" : undefined}>{t(titulo)}</button>)}
         </nav>
@@ -724,7 +724,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
   return (
     <main className="scroll constructor">
-      <h1 className="h1 constructor-titulo">{estrategiaIdInicial ? t("builder_edit_title") : t("builder_new_title")}</h1>
+      <CabeceraApp titulo={estrategiaIdInicial ? t("builder_edit_title") : t("builder_new_title")} />
       <nav ref={pasosRef} className="constructor-etapas" aria-label={t("builder_steps_aria")}>
         {ETAPAS.map((titulo, i) => <button key={titulo} type="button" aria-current={etapa === i ? "step" : undefined}
           disabled={ocupado || convOcupado} onClick={() => void irEtapa(i)}>{t(titulo)}</button>)}

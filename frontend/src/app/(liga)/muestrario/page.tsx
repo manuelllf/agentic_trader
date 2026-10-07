@@ -17,7 +17,7 @@ import { Escudo, escudoCasa, type EscudoValor } from "../_ui/Escudo";
 import { FilaEquipo } from "../_ui/FilaEquipo";
 import { Tarjeta } from "../_ui/Tarjeta";
 import { Vacio } from "../_ui/Vacio";
-import { Marca } from "../_ui/Marca";
+import { CabeceraApp } from "../_ui/CabeceraApp";
 
 const ESCUDO_A: EscudoValor = { forma: "escudo", dibujo: "mitades", color1: "#1D3A6E", color2: "#FFFFFF", iniciales: "" };
 const ESCUDO_B: EscudoValor = { forma: "hexagono", dibujo: "diagonal", color1: "#8FBF3F", color2: "#141414", iniciales: "" };
@@ -84,22 +84,9 @@ export default function Muestrario() {
 
       <Seccion titulo={t("strategies_showcase_account")}>
         <p className="fine">{t("strategies_showcase_account_note")}</p>
-        <div className="sencilla-top" style={{ marginTop: 12, paddingBottom: 150 }}>
-          <span className="wordmark"><Marca /></span>
-          <div className="cuenta">
-            <button type="button" className="cuenta-boton" aria-expanded="true">
-              <span>admin</span>
-              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8"
-                      strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <div className="cuenta-menu" role="menu">
-              <a className="cuenta-item" role="menuitem" href="#">{t("strategies_showcase_your_account")}</a>
-              <a className="cuenta-item" role="menuitem" href="#">{t("strategies_showcase_admin")}</a>
-              <button type="button" className="cuenta-item salir" role="menuitem">{t("strategies_showcase_sign_out")}</button>
-            </div>
-          </div>
+        <div style={{ marginTop: 12 }}>
+          <CabeceraApp anio={2026} />
+          <CabeceraApp titulo={t("private_leagues_title")} />
         </div>
       </Seccion>
 

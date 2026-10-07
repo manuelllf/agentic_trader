@@ -264,8 +264,13 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .qr { display: block; width: 200px; height: 200px; margin: 4px auto 0; padding: 10px;
   border-radius: var(--radius-card); background: #FFFFFF; }
 .lg .secreto { font-size: 15px; word-break: break-all; color: var(--ink2); }
-.lg .cuenta { position: relative; }
-.lg .cuenta-hueco { display: inline-block; min-width: 44px; min-height: 44px; }
+/* Cabecera común de las pestañas: sello a la izquierda o título centrado, y el menú de la cuenta. */
+.lg .cab { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 52px; }
+.lg .cab.centrada { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+.lg .cab-titulo { grid-column: 2; margin: 0; text-align: center; font-size: 17px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .cab .cuenta { position: relative; justify-self: end; }
+.lg .cab.centrada .cuenta { grid-column: 3; }
+.lg .cuenta-hueco { display: inline-block; width: 36px; height: 36px; }
 .lg .cuenta-boton {
   display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px 0 12px;
   min-width: 0; max-width: 100%; border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 16px;
@@ -274,29 +279,36 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .cuenta-boton > span { min-width: 0; max-width: 15ch; overflow-wrap: anywhere; }
 .lg .cuenta-boton svg { color: var(--muted); }
 .lg .cuenta-boton[aria-expanded="true"] svg { transform: rotate(180deg); }
-.lg .cuenta-menu {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; min-width: 208px;
-  display: flex; flex-direction: column; padding: 6px; border-radius: var(--radius-card);
-  background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 14px 34px -16px var(--shadow);
+.lg .sello {
+  display: inline-flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px 0 11px; justify-self: start;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
 }
-.lg .cuenta-item {
-  display: flex; align-items: center; min-height: 48px; padding: 0 14px; border: 0;
-  border-radius: var(--control-radius); background: transparent; color: var(--ink); font: inherit;
-  font-size: 16px; font-weight: 700; text-align: left; text-decoration: none; cursor: pointer;
+.lg .sello .marca { display: block; height: 13px; width: auto; }
+.lg .sello i { width: 1px; height: 16px; background: var(--line2); }
+.lg .sello b { font-size: 14px; font-weight: 700; letter-spacing: .01em; color: var(--ink2); }
+.lg .puntos {
+  position: relative; display: grid; place-items: center; width: 36px; height: 36px; padding: 0;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink2); cursor: pointer;
 }
-.lg .cuenta-item:active { background: var(--surface); }
-.lg .cuenta-item.salir { color: var(--ink2); font-weight: 400; }
-
-/* ---- Cabecera de app + pestañas (DESIGN.md §5) --------------------------------------------- */
-
-.lg .cab {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-  gap: 4px 8px; min-height: 44px;
+.lg .puntos::after { content: ""; position: absolute; inset: -4px; }
+.lg .puntos[aria-expanded="true"] { border-color: var(--line2); background: var(--raised); color: var(--ink); }
+.lg .cuenta .cuenta-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: block; width: min(232px, calc(100vw - 2 * var(--page-gutter))); min-width: 0;
+  padding: 6px; border: 1px solid var(--line2); border-radius: 12px; background: var(--raised);
+  box-shadow: 0 18px 40px -12px var(--shadow);
 }
-/* Con poco ancho los chips pasan a una segunda línea en vez de partir su texto. */
-.lg .cab-r { display: flex; flex: 0 1 auto; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; min-width: 0; max-width: 100%; }
-.lg .titulo-cuenta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-width: 0; }
-.lg .titulo-cuenta .h1 { margin-top: 0; min-width: 0; overflow-wrap: anywhere; font-size: clamp(1.35rem, 4vw, 1.75rem); }
+.lg .cuenta .cuenta-menu .quien { padding: 8px 12px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 1.3; color: var(--muted); }
+.lg .cuenta .cuenta-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; text-align: left; text-decoration: none; cursor: pointer;
+}
+.lg .cuenta .cuenta-item svg { flex: none; color: var(--muted); }
+.lg .cuenta .cuenta-item.salir { color: var(--ink2); font-weight: 500; }
+.lg .cuenta .cuenta-item:active { background: var(--surface); }
+.lg .cuenta .cuenta-menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--line); }
+.lg .cuenta .cuenta-menu .legal { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4px; padding: 2px 6px 4px; }
+.lg .cuenta .cuenta-menu .legal p { grid-column: 1 / -1; padding: 6px 6px 2px; font-size: 12px; color: var(--muted); }
+.lg .cuenta .cuenta-menu .legal a { display: flex; align-items: center; min-height: 40px; padding: 0 6px; font-size: 13px; font-weight: 500; color: var(--ink2); text-decoration: none; }
 
 .lg .scroll {
   flex: 1; width: 100%; max-width: var(--app-width); margin: 0 auto;
@@ -355,18 +367,6 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
    crece hacia arriba y abajo sin mover nada. */
 .lg .seg.sm button::after { content: ""; position: absolute; inset: -8px 0; }
 
-.lg .opt {
-  display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 14px 16px; border: 0;
-  border-radius: var(--radius-card); background: var(--surface); text-align: left; cursor: pointer; font: inherit;
-}
-.lg .opt + .opt { margin-top: 8px; }
-.lg .opt[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
-.lg .opt .dot {
-  flex: 0 0 20px; height: 20px; margin-top: 2px; border-radius: 50%;
-  box-shadow: inset 0 0 0 2px var(--line2);
-}
-.lg .opt[aria-checked="true"] .dot { box-shadow: inset 0 0 0 6px var(--ink); }
-.lg .opt b { display: block; font-size: 16px; color: var(--ink); }
 /* Orden de la clasificación: dos palabras, la activa subrayada, a modo de cabecera de la lista.
    El área de toque llega a 44 px sin cambiar lo que se ve. */
 .lg .orden { display: flex; gap: 20px; margin: 0 2px 8px; border-bottom: 1px solid var(--line); }
@@ -381,6 +381,18 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .orden button::after { content: ""; position: absolute; inset: -8px -6px; }
 .lg .orden button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
+.lg .opt {
+  display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 14px 16px; border: 0;
+  border-radius: var(--radius-card); background: var(--surface); text-align: left; cursor: pointer; font: inherit;
+}
+.lg .opt + .opt { margin-top: 8px; }
+.lg .opt[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
+.lg .opt .dot {
+  flex: 0 0 20px; height: 20px; margin-top: 2px; border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--line2);
+}
+.lg .opt[aria-checked="true"] .dot { box-shadow: inset 0 0 0 6px var(--ink); }
+.lg .opt b { display: block; font-size: 16px; color: var(--ink); }
 .lg .opt span { display: block; margin-top: 2px; font-size: 14px; line-height: 1.4; color: var(--muted); }
 .lg .opt[disabled] { opacity: .5; cursor: not-allowed; }
 

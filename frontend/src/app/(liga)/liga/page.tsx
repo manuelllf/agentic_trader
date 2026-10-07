@@ -15,7 +15,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
 import {
-  BarraPestanas, Cargando, Clasificacion as TablaClasificacion, escudoCasa, ErrorLiga,
+  BarraPestanas, CabeceraApp, Cargando, Clasificacion as TablaClasificacion, escudoCasa, ErrorLiga,
   FilaEquipo, FilaJornada, HuecoClasificacion, OrdenLista, Segmentado, Vacio,
 } from "../_ui";
 import {
@@ -28,6 +28,7 @@ import { useSesion } from "../_sesion/SesionContext";
 import { useCache } from "@/lib/liga/cache";
 import { precargarFicha } from "@/lib/liga/ficha";
 import { PremioAnual } from "./PremioAnual";
+import { anioDeLiga } from "@/lib/liga/anio";
 
 type Vista = "tabla" | "jornada";
 
@@ -119,6 +120,7 @@ function LigaContenido() {
   // instante y se revalida en segundo plano, en vez de repetir el esqueleto (H1/M6 del informe).
   const { datos: portada, cargando: cargandoPortada, refrescar: refrescarPortada } =
     useCache<Portada | string>("portada", getPortada, 120000);
+  const anio = anioDeLiga(typeof portada === "object" ? portada : null);
   const hayTemporada = typeof portada === "object" && !!portada && portada.temporada !== null;
   const { datos: clasificacion, refrescar: refrescarClasificacion } =
     useCache<Clasificacion | string>(
@@ -160,6 +162,7 @@ function LigaContenido() {
   if (cargandoPortada) {
     return (
       <main className="scroll">
+        <CabeceraApp anio={anio} />
         <h1 className="h1">{t("league_titulo")}</h1>
         <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
         <BarraPestanas />
@@ -170,6 +173,7 @@ function LigaContenido() {
   if (typeof portada === "string") {
     return (
       <main className="scroll">
+        <CabeceraApp anio={anio} />
         <h1 className="h1">{t("league_titulo")}</h1>
         <ErrorLiga titulo={t("league_error_portada")} mensaje={portada}
                    accion={{ texto: t("league_reintentar"), onClick: refrescarPortada }} />
@@ -183,6 +187,7 @@ function LigaContenido() {
 
   return (
     <main className="scroll">
+        <CabeceraApp anio={anio} />
         <h1 className="h1">{t("league_titulo")}</h1>
 
       {temporada === null ? (

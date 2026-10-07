@@ -3,9 +3,8 @@
 import { useTranslations } from "next-intl";
 import { miVentana, verEstrategia, type Estrategia, type Ventana } from "@/lib/liga/api";
 import { useCache } from "@/lib/liga/cache";
-import { Sesion } from "../_sesion/Sesion";
 import { useSesionRequerida } from "../_sesion/SesionContext";
-import { BarraPestanas, Cargando, VentanaCambios } from "../_ui";
+import { BarraPestanas, CabeceraApp, Cargando, VentanaCambios } from "../_ui";
 import { EditorEstrategia } from "./EditorEstrategia";
 
 /** Del corte hasta que abre la jornada la estrategia ya tiene su cartera formada y solo admite
@@ -30,7 +29,7 @@ export function EditorOVentana({ estrategiaId }: { estrategiaId: string }) {
   const nombre = typeof estrategia === "object" && estrategia ? estrategia.nombre : "";
   return (
     <main className="scroll">
-      <div className="titulo-cuenta"><h1 className="h1">{nombre || t("builder_metadata_edit")}</h1><Sesion /></div>
+      <CabeceraApp titulo={nombre || t("builder_metadata_edit")} />
       <VentanaCambios ventana={ventana} nombre={nombre} alCerrarse={refrescar} />
       <BarraPestanas />
     </main>

@@ -4,8 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
-import { Sesion } from "../_sesion/Sesion";
-import { BarraPestanas, Boton, Cargando, Escudo, ErrorLiga, Segmentado, Vacio, cierreDeCambios }
+import { BarraPestanas, Boton, CabeceraApp, Cargando, Escudo, ErrorLiga, Segmentado, Vacio, cierreDeCambios }
   from "../_ui";
 import {
   borrarEstrategia, cadaDia1, desapuntar, apuntar as apuntarApi, getJornadaPublica,
@@ -157,7 +156,7 @@ export default function Mias() {
 
   return (
     <main className="scroll">
-      <div className="titulo-cuenta"><h1 className="h1">{t("strategies_mine_title")}</h1><Sesion /></div>
+      <CabeceraApp titulo={t("strategies_mine_title")} />
       <div className="mias-cabecera">
         <span className="meta">{Array.isArray(estrategias) ? t("strategies_count", { count: estrategias.length }) : ""}{conNovedades > 0 && ` · ${t("strategies_with_news", { count: conNovedades })}`}</span>
           <Link href="/crear" className="btn pri small">{t("strategies_create")}</Link>

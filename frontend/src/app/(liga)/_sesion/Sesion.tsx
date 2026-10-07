@@ -1,16 +1,22 @@
 "use client";
 
-// Cabecera de sesión: «Entrar» sin cuenta; con cuenta, un botón con el alias que abre un menú
-// corto (Panel de control solo al admin, y Salir). Se abre al tocar, nunca al pasar por encima.
-//
-// Lee de `SesionContext` (montado una vez en `(liga)/layout.tsx`): no vuelve a pedir la sesión ni
-// `Yo` al cambiar de pestaña, así que ya no se remonta ni parpadea en cada navegación. El hueco
-// "cargando" solo se ve una vez, en la primera carga de la app entera.
+// Sin foto de perfil, la cuenta vive detrás de los tres puntos.
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import { useSesion } from "./SesionContext";
+
+const iconos = {
+  u: <><circle cx="12" cy="8" r="3.6" /><path d="M5 20c.6-3.6 3.5-5.6 7-5.6s6.4 2 7 5.6" /></>,
+  p: <><path d="M12 3 4.5 6v5.5c0 4.4 3.1 7.6 7.5 9.5 4.4-1.9 7.5-5.1 7.5-9.5V6Z" /><path d="m9 12 2.2 2.2L15.5 10" /></>,
+  s: <><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10" /><path d="M15 8l4 4-4 4M19 12H9" /></>,
+};
+
+function Icono({ tipo }: { tipo: keyof typeof iconos }) {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{iconos[tipo]}</svg>;
+}
 
 export function Sesion() {
   const t = useTranslations();
@@ -36,31 +42,34 @@ export function Sesion() {
     setAbierto(false);
     await cerrarSesion();
   };
-
   if (estado === "cargando") return <span className="cuenta-hueco" aria-hidden="true" />;
-  if (estado === "fuera") {
-    return <Link href="/entrar" className="btn small discreto">{t("account_entrar")}</Link>;
-  }
+  const dentro = estado === "dentro";
   const panel = yo?.aal2 ? "/admin" : "/cuenta/verificacion?next=/admin";
+  const cerrar = () => setAbierto(false);
+
   return (
     <div className="cuenta" ref={caja}>
-      <button type="button" className="cuenta-boton" aria-haspopup="menu"
-              aria-expanded={abierto} onClick={() => setAbierto((a) => !a)}>
-        <span>{yo?.alias ?? t("account_tu_cuenta")}</span>
-        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-          <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8"
-                strokeLinecap="round" strokeLinejoin="round" />
+      <button type="button" className="puntos" aria-haspopup="menu" aria-expanded={abierto}
+        aria-label={t("account_menu_aria")} onClick={() => setAbierto((a) => !a)}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
         </svg>
       </button>
       {abierto && (
         <div className="cuenta-menu" role="menu">
-          <Link href="/cuenta" role="menuitem" className="cuenta-item">{t("account_tu_cuenta")}</Link>
-          {yo?.admin && (
-            <Link href={panel} role="menuitem" className="cuenta-item">{t("account_panel_control")}</Link>
-          )}
-          <button type="button" role="menuitem" className="cuenta-item salir" onClick={salir}>
-            {t("account_salir")}
-          </button>
+          {dentro && <div className="quien">{t("account_sesion_de", { alias: yo?.alias ?? t("account_tu_cuenta") })}</div>}
+          {dentro ? <>
+            <Link href="/cuenta" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_tu_cuenta")}</Link>
+            {yo?.admin && <Link href={panel} role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="p" />{t("account_panel_control")}</Link>}
+          </> : <Link href="/entrar" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_entrar")}</Link>}
+          <hr />
+          <div className="legal"><p>{t("account_legal")}</p>
+            <Link href="/legal/aviso" role="menuitem" onClick={cerrar}>{t("account_aviso_legal")}</Link>
+            <Link href="/legal/privacidad" role="menuitem" onClick={cerrar}>{t("account_privacidad")}</Link>
+            <Link href="/legal/terminos" role="menuitem" onClick={cerrar}>{t("account_terminos")}</Link>
+            <Link href="/legal/cookies" role="menuitem" onClick={cerrar}>{t("account_cookies")}</Link>
+          </div>
+          {dentro && <><hr /><button type="button" role="menuitem" className="cuenta-item salir" onClick={salir}><Icono tipo="s" />{t("account_salir")}</button></>}
         </div>
       )}
     </div>

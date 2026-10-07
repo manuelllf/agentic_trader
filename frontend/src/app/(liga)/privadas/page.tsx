@@ -7,7 +7,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import { useRouter } from "next/navigation";
-import { BarraPestanas, Boton, Cargando, ErrorLiga, Vacio } from "../_ui";
+import { BarraPestanas, Boton, CabeceraApp, Cargando, ErrorLiga, Vacio } from "../_ui";
 import { crearLiga, misLigas, unirseLiga, type LigaResumen } from "@/lib/liga/api";
 import { invalidar, useCache } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
@@ -85,7 +85,7 @@ export default function Privadas() {
 
   return (
     <main className="scroll privadas">
-      <h1 className="h1">{t("private_leagues_title")}</h1>
+      <CabeceraApp titulo={t("private_leagues_title")} />
       <p className="meta">{t("private_leagues_intro")}</p>
 
       {!sesionLista || (estado === "dentro" && !yo) || cargando ? (
