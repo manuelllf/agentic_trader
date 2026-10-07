@@ -13,9 +13,9 @@ export interface Textos {
   t: (clave: string, valores?: Record<string, string | number>) => string;
 }
 
-// Guion, en segundos. Hasta `intro` la película corre sola; el resto lo reparte el scroll.
+// Guion, en segundos.
 const T = {
-  intro: 7.0, cierre: 4.0, alejar0: 3.4, alejar1: 6.4,
+  cierre: 4.0, alejar0: 3.4, alejar1: 6.4,
   oscurecer0: 7.2, oscurecer1: 8.2, aclarar0: 12.7, aclarar1: 13.6,
   escribir0: 8.1, escribir1: 11.7,
   regla: [[13.7, 15.5], [15.8, 17.6], [17.9, 19.7], [20.0, 21.8]], barrido: 1.3,
@@ -51,7 +51,7 @@ const hex = (h: string): Rgb => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3
 const C = {
   suelo: hex("#0A0C0D"), panel: hex("#111517"), plano: hex("#1A1F21"), sube: hex("#1F7064"), baja: hex("#8E3B34"),
   fantasma: hex("#121618"), tinta: hex("#EEF2F0"), tinta2: hex("#B9C2BE"), mudo: hex("#7F8A86"), teal: hex("#3FC7BF"),
-  barra: hex("#2A3336"), violeta: hex("#BFA2D8"), bien: hex("#5CC98A"), mal: hex("#F08A7E"),
+  barra: hex("#2A3336"), azul: hex("#26D6D0"), bien: hex("#5CC98A"), mal: hex("#F08A7E"),
   cartera: ["#3FC7BF", "#2FA8A1", "#238C86", "#1A716C", "#145A56"].map(hex),
 };
 function colorCambio(chg: number): Rgb {
@@ -97,7 +97,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
   const pieza = <E extends HTMLElement = HTMLElement>(n: string) => raiz.querySelector<E>(`[data-p="${n}"]`)!;
   const piezas = <E extends HTMLElement = HTMLElement>(n: string) => [...raiz.querySelectorAll<E>(`[data-p="${n}"]`)];
   const escena = pieza("escena"), lienzo = pieza<HTMLCanvasElement>("lienzo"), franja = pieza("franja");
-  const pelicula = pieza("pelicula"), selector = pieza<HTMLInputElement>("per"), ficha = pieza("ficha");
+  const selector = pieza<HTMLInputElement>("per"), ficha = pieza("ficha");
   const ctx = lienzo.getContext("2d")!;
   const reducido = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const { t, locale } = textos;
@@ -375,9 +375,9 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
       const lx = P.x + P.w * tramo(tt, a, a + T.barrido);
       const fin = 1 - tramo(tt, a + T.barrido, a + T.barrido + 0.25);
       const grad = ctx.createLinearGradient(lx - 90, 0, lx, 0);
-      grad.addColorStop(0, rgb(C.violeta, 0)); grad.addColorStop(1, rgb(C.violeta, 0.16 * fin));
+      grad.addColorStop(0, rgb(C.azul, 0)); grad.addColorStop(1, rgb(C.azul, 0.16 * fin));
       ctx.fillStyle = grad; ctx.fillRect(lx - 90, P.y, 90, P.h);
-      ctx.fillStyle = rgb(C.violeta, 0.95 * fin); ctx.fillRect(lx - 0.75, P.y - 6, 1.5, P.h + 12);
+      ctx.fillStyle = rgb(C.azul, 0.95 * fin); ctx.fillRect(lx - 0.75, P.y - 6, 1.5, P.h + 12);
     }
   }
 
@@ -688,8 +688,6 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
     const mov = movimiento(yo);
     texto(pieza("verSub"), t("landing_veredicto_sub", { tu: porcentaje(SERIES.tu[DIAS], 1, locale),
       sp: porcentaje(SERIES.sp[DIAS], 1, locale), puesto: yo.puesto, total: SERIES.todas.length }) + (mov ? ` · ${mov}` : ""));
-    // Aviso de que la película sigue bajando, hasta que se usa el scroll.
-    estilo(pieza("desliza"), tramo(tt, T.intro - 0.6, T.intro) * (1 - tramo(scrollY - pelicula.offsetTop, 8, 60)));
   }
 
   function actualizarReglas() {
@@ -732,22 +730,17 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
   }
   const cerrarFicha = () => { ficha.hidden = true; };
 
-  // --- Reproducción: la apertura se ve sola y después manda el scroll ----------------------------
-  let tVis = 0, ultimo = 0, marco = 0, espera = 0, desde = 0;
+  // --- Reproducción: corre sola, como un vídeo pero en vivo, y acaba en el último plano -------------
+  // Se para mientras no se ve, con la ficha de una empresa abierta o mientras se mueve el PER.
+  let tVis = 0, ultimo = 0, marco = 0, espera = 0, enPantalla = true, arrastrando = false;
   const consulta = new URLSearchParams(location.search);
-  // `?t=24` abre la película en ese segundo, para enlazar un momento concreto.
+  // `?t=24` abre la película parada en ese segundo, para enlazar un momento concreto.
   const inicio = consulta.has("t") ? clamp(Number(consulta.get("t")) || 0, 0, T.D) : null;
-  const largo = () => Math.max(1, pelicula.offsetHeight - innerHeight);
-  const avance = () => clamp((scrollY - pelicula.offsetTop) / largo(), 0, 1);
-  const scrollDe = (tt: number) => pelicula.offsetTop + clamp((tt - T.intro) / (T.D - T.intro), 0, 1) * largo();
+  const corre = () => inicio == null && !reducido && enPantalla && !arrastrando && ficha.hidden && !document.hidden;
 
   function bucle(ahora: number) {
     const dt = Math.min(0.05, (ahora - (ultimo || ahora)) / 1000); ultimo = ahora;
-    if (!desde) desde = ahora;
-    const apertura = inicio != null && inicio <= T.intro ? inicio : reducido ? T.intro : Math.min(T.intro, (ahora - desde) / 1000);
-    const a = avance();
-    const objetivo = a > 0 ? T.intro + a * (T.D - T.intro) : apertura;
-    tVis = reducido ? objetivo : tVis + (objetivo - tVis) * (1 - Math.exp(-dt * 9));
+    if (corre()) tVis = Math.min(T.D, tVis + dt);
     dibujar(tVis); actualizarDOM(tVis);
     marco = requestAnimationFrame(bucle);
   }
@@ -784,23 +777,36 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
     if (golpe) abrirFicha(...golpe);
   };
   const alRedimensionar = () => { clearTimeout(espera); espera = window.setTimeout(rehacer, 120); };
+  const alAgarrar = () => { arrastrando = true; };
+  const alSoltar = () => { arrastrando = false; };
+  const vigia = new IntersectionObserver(([e]) => { enPantalla = e.intersectionRatio > 0.35; }, { threshold: [0, 0.35, 1] });
 
   medir(); fijarRangos(); maquetar(); pintarFondo(); posicionar(); grano(); actualizarReglas();
-  if (inicio != null && inicio > T.intro) window.scrollTo(0, scrollDe(inicio));
-  tVis = inicio ?? 0;
+  // Con «reducir movimiento» se ve directamente el último plano: la liga y la invitación.
+  tVis = inicio ?? (reducido ? T.D : 0);
   addEventListener("scroll", alScroll, { passive: true });
   addEventListener("resize", alRedimensionar);
+  addEventListener("pointerup", alSoltar);
+  addEventListener("pointercancel", alSoltar);
   escena.addEventListener("click", alPulsarEscena);
+  selector.addEventListener("pointerdown", alAgarrar);
   selector.addEventListener("input", alCambiarPer);
+  selector.addEventListener("change", alSoltar);
+  vigia.observe(escena);
   document.fonts?.ready.then(() => { if (marco) rehacer(); });
   marco = requestAnimationFrame(bucle);
 
   return () => {
     cancelAnimationFrame(marco); marco = 0;
     clearTimeout(espera);
+    vigia.disconnect();
     removeEventListener("scroll", alScroll);
     removeEventListener("resize", alRedimensionar);
+    removeEventListener("pointerup", alSoltar);
+    removeEventListener("pointercancel", alSoltar);
     escena.removeEventListener("click", alPulsarEscena);
+    selector.removeEventListener("pointerdown", alAgarrar);
     selector.removeEventListener("input", alCambiarPer);
+    selector.removeEventListener("change", alSoltar);
   };
 }

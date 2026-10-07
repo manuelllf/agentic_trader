@@ -1,7 +1,7 @@
 "use client";
 
-// Portada sin sesión: una escena que se ve sola al entrar y luego avanza con el scroll, con un
-// único ejemplo rotulado como tal. Con sesión no enseña nada y redirige a /liga, sin parpadeo.
+// Portada sin sesión: una escena que corre sola al entrar y cabe justa en la pantalla, con un único
+// ejemplo rotulado como tal. Con sesión no enseña nada y redirige a /liga, sin parpadeo.
 
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -29,17 +29,6 @@ export function Portada() {
       </header>
 
       <Pelicula />
-
-      <footer className="pel-legal">
-        <nav>
-          <Link href="/como-funciona">{t("landing_como_funciona")}</Link>
-          <Link href="/legal/aviso">{t("landing_aviso_legal")}</Link>
-          <Link href="/legal/privacidad">{t("landing_privacidad")}</Link>
-          <Link href="/legal/terminos">{t("landing_terminos")}</Link>
-          <Link href="/legal/cookies">{t("landing_cookies")}</Link>
-        </nav>
-        <p>{t("landing_aviso_ejemplo")}</p>
-      </footer>
     </main>
   );
 }

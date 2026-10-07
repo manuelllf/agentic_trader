@@ -5,7 +5,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { miles } from "@/lib/liga/format";
 import { montarPelicula } from "./pelicula/motor";
 import { PER_MAX, PER_MIN, PESOS, UMBRALES, UNIVERSO } from "./pelicula/universo";
@@ -33,11 +33,21 @@ export function Pelicula() {
   const t = useTranslations();
   const locale = useLocale() === "en" ? "en" : "es";
   const raiz = useRef<HTMLDivElement>(null);
+  const legal = useRef<HTMLDivElement>(null);
+  const [legalAbierto, setLegalAbierto] = useState(false);
 
   useEffect(() => {
     if (!raiz.current) return;
     return montarPelicula(raiz.current, { locale, t: (clave, valores) => t(clave, valores) });
   }, [locale, t]);
+
+  // El panel legal del móvil se cierra al tocar fuera.
+  useEffect(() => {
+    if (!legalAbierto) return;
+    const fuera = (ev: PointerEvent) => { if (!legal.current?.contains(ev.target as Node)) setLegalAbierto(false); };
+    document.addEventListener("pointerdown", fuera);
+    return () => document.removeEventListener("pointerdown", fuera);
+  }, [legalAbierto]);
 
   const tesis = t("landing_tesis");
   let cursor = 0;
@@ -56,7 +66,7 @@ export function Pelicula() {
 
   return (
     <div ref={raiz} className="pel">
-      <section data-p="pelicula" className="pel-film" aria-labelledby="pel-titulo">
+      <section className="pel-film" aria-labelledby="pel-titulo">
         <div data-p="escena" className="pel-escena">
           <canvas data-p="lienzo" aria-hidden="true" />
           <div className="pel-fx pel-vineta" />
@@ -128,7 +138,7 @@ export function Pelicula() {
                   <Link href="/entrar?next=/crear" className="pel-btn pri">{t("landing_crea_tuya")}</Link>
                   <Link href="/liga" className="pel-btn">{t("landing_ver_liga")}</Link>
                 </div>
-                <small>{t("landing_papel")}</small>
+                <small>{t("landing_aviso_ejemplo")}</small>
               </div>
             </div>
 
@@ -137,7 +147,17 @@ export function Pelicula() {
 
           <div className="pel-pie">
             <span className="pel-ejemplo">{t("landing_ejemplo_largo")}</span>
-            <span className="pel-desliza" data-p="desliza">{t("landing_desliza")}<i aria-hidden="true" /></span>
+            <div className="pel-legal" ref={legal}>
+              <button type="button" className="pel-legal-boton" aria-expanded={legalAbierto} aria-controls="pel-legales"
+                onClick={() => setLegalAbierto((a) => !a)}>{t("landing_legal")}</button>
+              <nav id="pel-legales" className={`pel-legales${legalAbierto ? " abierto" : ""}`} aria-label={t("landing_legal")}>
+                <Link href="/como-funciona">{t("landing_como_funciona")}</Link>
+                <Link href="/legal/aviso">{t("landing_aviso_legal")}</Link>
+                <Link href="/legal/privacidad">{t("landing_privacidad")}</Link>
+                <Link href="/legal/terminos">{t("landing_terminos")}</Link>
+                <Link href="/legal/cookies">{t("landing_cookies")}</Link>
+              </nav>
+            </div>
           </div>
         </div>
       </section>

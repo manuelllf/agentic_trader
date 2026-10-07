@@ -781,13 +781,17 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 }
 .lg .code .btn { min-height: 44px; padding: 0 14px; background: var(--raised); font-size: 15px; letter-spacing: 0; }
 
-/* ---- Portada sin sesión: una escena que se ve sola al entrar y luego avanza con el scroll -------
+/* ---- Portada sin sesión: una escena que corre sola al entrar, como un vídeo pero en vivo ---------
    Siempre oscura, como una sala, en los dos temas. En móvil el texto va en una franja abajo; en
    escritorio, a la izquierda, y la imagen ocupa el resto. */
 
+/* Cabe justa en la pantalla: sin scroll en ningún sentido ni hueco reservado a la barra. */
+html:has(body .lg .pel-portada), body:has(.lg .pel-portada) {
+  height: 100%; overflow: hidden; overscroll-behavior: none; scrollbar-gutter: auto;
+}
 .lg .pel-portada {
   --pel-suelo: #0A0C0D; --pel-panel: #111517; --pel-tinta: #EEF2F0; --pel-tinta2: #B9C2BE; --pel-mudo: #7F8A86;
-  --pel-linea: rgba(238, 242, 240, .12); --pel-teal: #3FC7BF; --pel-violeta: #8453A4; --pel-violeta-tinta: #BFA2D8;
+  --pel-linea: rgba(238, 242, 240, .12); --pel-teal: #3FC7BF; --pel-azul: #26D6D0; --pel-azul-hondo: #0F9E98;
   --pel-bien: #5CC98A; --pel-mal: #F08A7E;
   --pel-display: var(--font-display, "Plus Jakarta Sans"), var(--font-lg, system-ui), sans-serif;
   --pel-data: var(--font-data, "Atkinson Hyperlegible Mono"), ui-monospace, Menlo, Consolas, monospace;
@@ -795,7 +799,8 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   --pel-pie: 40px; --pel-franja: 214px; --pel-margen: 16px;
   /* El selector de idioma lee estos tokens. */
   --surface: var(--pel-panel); --ink: var(--pel-tinta); --line: var(--pel-linea);
-  color-scheme: dark; position: relative; background: var(--pel-suelo); color: var(--pel-tinta); font-family: var(--pel-ui);
+  color-scheme: dark; position: relative; height: 100vh; height: 100dvh; overflow: hidden;
+  background: var(--pel-suelo); color: var(--pel-tinta); font-family: var(--pel-ui);
 }
 .lg .pel-cabecera {
   position: fixed; z-index: 30; inset: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -815,9 +820,9 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .pel-btn.small { min-height: 38px; padding: 0 14px; font-size: 14px; }
 .lg .pel-btn.pri { border-color: transparent; background: var(--pel-teal); color: #061413; }
 
-/* El scroll es la línea de tiempo: la escena se queda fija mientras la película avanza. */
-.lg .pel-film { position: relative; height: calc(100svh * 10); }
-.lg .pel-escena { position: sticky; top: 0; height: 100svh; overflow: hidden; background: var(--pel-suelo); }
+/* La escena es toda la página: el pie legal vive en su barra de abajo. */
+.lg .pel, .lg .pel-film { position: relative; height: 100%; }
+.lg .pel-escena { position: relative; height: 100%; overflow: hidden; background: var(--pel-suelo); }
 .lg .pel-escena canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .lg .pel-fx { position: absolute; inset: 0; pointer-events: none; }
 .lg .pel-vineta { background: radial-gradient(120% 90% at 50% 42%, transparent 58%, rgba(0, 0, 0, .55) 100%); }
@@ -863,7 +868,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .pel-tesis .ph { position: relative; }
 .lg .pel-tesis .ph::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: -.06em; height: .07em; border-radius: 2px;
-  background: var(--pel-violeta-tinta); transform-origin: 0 50%; transform: scaleX(var(--u, 0));
+  background: var(--pel-azul); transform-origin: 0 50%; transform: scaleX(var(--u, 0));
 }
 .lg .pel-reglas, .lg .pel-pesos { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .lg .pel-reglas li, .lg .pel-pesos li {
@@ -871,20 +876,20 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   border-bottom: 1px solid var(--pel-linea); will-change: opacity, transform;
 }
 .lg .pel-reglas .rt, .lg .pel-pesos .pt { font: 600 15px/1.2 var(--pel-ui); }
-.lg .pel-reglas li.activa .rt { color: var(--pel-violeta-tinta); }
-.lg .pel-reglas .rv { font: 600 12.5px/1 var(--pel-data); color: var(--pel-violeta-tinta); font-variant-numeric: tabular-nums; }
+.lg .pel-reglas li.activa .rt { color: var(--pel-azul); }
+.lg .pel-reglas .rv { font: 600 12.5px/1 var(--pel-data); color: var(--pel-azul); font-variant-numeric: tabular-nums; }
 .lg .pel-reglas .rd { min-width: 4.4em; text-align: right; font: 400 11.5px/1 var(--pel-data); color: var(--pel-mudo); font-variant-numeric: tabular-nums; }
 .lg .pel-deslizador { grid-column: 1 / -1; padding: 0 0 4px; }
 .lg .pel-deslizador input { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 28px; margin: 0; background: transparent; touch-action: pan-y; }
 .lg .pel-deslizador input::-webkit-slider-runnable-track {
-  height: 2px; border-radius: 2px; background: linear-gradient(to right, var(--pel-violeta-tinta) var(--p, 8%), var(--pel-linea) var(--p, 8%));
+  height: 2px; border-radius: 2px; background: linear-gradient(to right, var(--pel-azul) var(--p, 8%), var(--pel-linea) var(--p, 8%));
 }
 .lg .pel-deslizador input::-moz-range-track { height: 2px; border-radius: 2px; background: var(--pel-linea); }
-.lg .pel-deslizador input::-moz-range-progress { height: 2px; background: var(--pel-violeta-tinta); }
+.lg .pel-deslizador input::-moz-range-progress { height: 2px; background: var(--pel-azul); }
 .lg .pel-deslizador input::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 22px; height: 22px; margin-top: -10px; border-radius: 50%; background: var(--pel-tinta); border: 5px solid var(--pel-violeta);
+  -webkit-appearance: none; width: 22px; height: 22px; margin-top: -10px; border-radius: 50%; background: var(--pel-tinta); border: 5px solid var(--pel-azul-hondo);
 }
-.lg .pel-deslizador input::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--pel-tinta); border: 5px solid var(--pel-violeta); }
+.lg .pel-deslizador input::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--pel-tinta); border: 5px solid var(--pel-azul-hondo); }
 .lg .pel-pista { font: 400 11px/1.3 var(--pel-data); color: var(--pel-mudo); }
 .lg .pel-pesos li { grid-template-columns: minmax(0, 1fr) 74px 3.2em; }
 .lg .pel-pesos .pb { height: 3px; border-radius: 2px; background: var(--pel-linea); overflow: hidden; }
@@ -894,6 +899,12 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .pel-lectura b { color: var(--pel-teal); }
 .lg .pel-veredicto b { display: block; font: 800 clamp(30px, 8.6vw, 64px)/1 var(--pel-display); letter-spacing: -.03em; color: var(--pel-bien); }
 .lg .pel-veredicto b.dn { color: var(--pel-mal); }
+/* En móvil el plano final crece hacia arriba sobre la liga: un fundido detrás para leerlo limpio. */
+.lg .pel-fin { top: auto; }
+.lg .pel-fin::before {
+  content: ""; position: absolute; z-index: -1; inset: -56px calc(-1 * var(--pel-margen)) 0; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(10, 12, 13, 0), rgba(10, 12, 13, .94) 56px);
+}
 .lg .pel-fin h1 { margin: 0; font: 800 clamp(30px, 8.2vw, 70px)/1.02 var(--pel-display); letter-spacing: -.035em; text-wrap: balance; }
 .lg .pel-fin p { margin: 0; max-width: 34em; color: var(--pel-tinta2); }
 .lg .pel-fin small { font: 400 11.5px/1.3 var(--pel-data); color: var(--pel-mudo); }
@@ -917,25 +928,32 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .pel-pie {
   position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--pel-pie) + env(safe-area-inset-bottom, 0px));
   padding: 0 var(--pel-margen) env(safe-area-inset-bottom, 0px); display: flex; align-items: center;
+  justify-content: space-between; gap: 12px;
   font: 600 10px/1.2 var(--pel-data); letter-spacing: .08em; text-transform: uppercase; color: var(--pel-mudo);
   background: linear-gradient(to top, rgba(10, 12, 13, .9), rgba(10, 12, 13, 0)); pointer-events: none;
 }
-.lg .pel-ejemplo { color: var(--pel-violeta-tinta); white-space: nowrap; }
-.lg .pel-desliza {
-  position: absolute; right: var(--pel-margen); top: 50%; translate: 0 -50%; display: flex; align-items: center; gap: 8px;
-  padding-left: 12px; background: var(--pel-suelo); color: var(--pel-tinta2); white-space: nowrap;
-}
-.lg .pel-desliza i { width: 1px; height: 16px; background: currentColor; animation: pel-baja 1.6s ease-in-out infinite; }
-@keyframes pel-baja { 0%, 100% { transform: translateY(-3px); opacity: .4; } 50% { transform: translateY(3px); opacity: 1; } }
+.lg .pel-ejemplo { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--pel-azul); white-space: nowrap; }
 
-.lg .pel-legal {
-  display: grid; gap: 10px; padding: 24px var(--pel-margen) calc(24px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--pel-linea); font-size: 13px; color: var(--pel-mudo);
+/* Pie legal: en móvil, detrás de «Legal» en un panel que sube; en escritorio, en línea. */
+.lg .pel-legal { position: relative; flex: none; pointer-events: auto; }
+.lg .pel-legal-boton {
+  min-height: 40px; padding: 0 2px; border: 0; background: none; cursor: pointer;
+  font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--pel-tinta2);
 }
-.lg .pel-legal nav { display: flex; flex-wrap: wrap; gap: 0 18px; }
-.lg .pel-legal a { display: inline-flex; align-items: center; min-height: 36px; color: var(--pel-tinta2); text-decoration: none; }
-.lg .pel-legal p { margin: 0; max-width: 60em; }
+.lg .pel-legales {
+  display: none; position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 25; flex-direction: column;
+  width: max-content; max-width: calc(100vw - 2 * var(--pel-margen)); padding: 6px; border-radius: 12px;
+  border: 1px solid var(--pel-linea); background: rgba(17, 21, 23, .97); box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+}
+.lg .pel-legales.abierto { display: flex; }
+.lg .pel-legales a {
+  display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px;
+  font: 600 14px/1.2 var(--pel-ui); letter-spacing: 0; text-transform: none; color: var(--pel-tinta); text-decoration: none;
+}
 
+@media (max-width: 359px) {
+  .lg .pel-enlace { display: none; }
+}
 @media (min-width: 440px) {
   .lg .pel-enlace .largo { display: inline; }
   .lg .pel-enlace .corto { display: none; }
@@ -949,11 +967,18 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   .lg .pel-frase { font-size: clamp(30px, 2.9vw, 44px); }
   .lg .pel-reglas li, .lg .pel-pesos li { min-height: 40px; }
   .lg .pel-reglas .rt, .lg .pel-pesos .pt { font-size: 16px; }
+  .lg .pel-fin { top: 0; }
+  .lg .pel-fin::before { display: none; }
   .lg .pel-fin h1 { font-size: clamp(44px, 4.6vw, 72px); }
-  .lg .pel-legal { padding-inline: 56px; }
+  .lg .pel-legal-boton { display: none; }
+  .lg .pel-legales {
+    display: flex; position: static; flex-direction: row; gap: 0 18px; width: auto; max-width: none; padding: 0;
+    border: 0; background: none; box-shadow: none;
+  }
+  .lg .pel-legales a { min-height: 40px; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--pel-tinta2); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lg .pel-grano, .lg .pel-desliza i { animation: none; }
+  .lg .pel-grano { animation: none; }
 }
 
 
