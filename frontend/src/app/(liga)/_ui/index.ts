@@ -12,6 +12,7 @@ export * from "./Escudo";
 export * from "./FilaEquipo";
 export * from "./FilaJornada";
 export * from "./OpcionRadio";
+export * from "./OrdenLista";
 export * from "./Segmentado";
 export * from "./Tarjeta";
 export * from "./Vacio";

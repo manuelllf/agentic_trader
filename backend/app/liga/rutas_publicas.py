@@ -22,6 +22,16 @@ from app.liga.comparativa import (
 from app.liga.db import db_anon
 from app.liga.procesos import diario, premio
 
+Orden = Literal["rentabilidad", "puntos"]
+
+
+def ordenar_por_rentabilidad(filas: list, acumulados: dict[str, dict]) -> list:
+    """Mayor rentabilidad acumulada primero y sin acumulado al final; los empates siguen el
+    orden de entrada (puntos, diferencia, alta)."""
+    return sorted(filas, key=lambda f: (
+        f.eid not in acumulados,
+        -acumulados[f.eid]["rentabilidad"] if f.eid in acumulados else Decimal(0)))
+
 
 def exigir_visible() -> None:
     """Interruptor de emergencia (plan §14, `liga.visible`): apagado, lo público responde 503 con
@@ -246,8 +256,10 @@ def _detalle(db: Session, j: JornadaOut) -> JornadaDetalle:
 def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
                   cuantos: int = Query(50, ge=1, le=100),
                   alias: str | None = Query(None, min_length=1, max_length=20),
+                  orden: Orden = Query("rentabilidad"),
                   db: Session = Depends(db_anon)) -> Clasificacion:
-    """Puntos, luego diferencia compuesta contra el S&P, luego fecha de alta (plan §8)."""
+    """Por defecto, rentabilidad acumulada de la temporada; con `orden=puntos`, puntos,
+    luego diferencia compuesta contra el S&P y fecha de alta."""
     t = _temporada(db, temporada)
     if t is None:
         raise HTTPException(404, "Esa temporada no existe.")
@@ -257,19 +269,37 @@ def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
         where c.temporada_id = :t
     """
     total = db.execute(text(f"select count(*) {base}"), {"t": t.id}).scalar_one()
+    columnas = f"{_EQUIPO}, c.puntos, c.jornadas, c.ganadas, c.empatadas, c.perdidas, c.dif_sp"
+    orden_sql = "c.puntos desc, c.dif_sp desc, e.creada, e.id"
+    consulta = f"select {columnas} {base} order by {orden_sql}"
+    if orden == "rentabilidad":
+        todas = db.execute(text(consulta), {"t": t.id}).all()
+        acumulados = retornos_acumulados(db, [f.eid for f in todas])
+        ordenadas = ordenar_por_rentabilidad(todas, acumulados)
+        filas = ordenadas[desde:desde + cuantos]
+        mias = []
+        if alias:
+            mias = [
+                _fila(i + 1, f, acumulados.get(f.eid))
+                for i, f in enumerate(ordenadas)
+                if i >= desde + cuantos and f.alias == alias.strip().lower()
+            ][:10]
+        return Clasificacion(
+            temporada=t, total=total,
+            filas=[_fila(desde + i + 1, f, acumulados.get(f.eid))
+                   for i, f in enumerate(filas)],
+            mias=mias)
     filas = db.execute(text(f"""
-        select {_EQUIPO}, c.puntos, c.jornadas, c.ganadas, c.empatadas, c.perdidas, c.dif_sp
-        {base}
-        order by c.puntos desc, c.dif_sp desc, e.creada, e.id
+        {consulta}
         offset :desde limit :cuantos
     """), {"t": t.id, "desde": desde, "cuantos": cuantos}).all()
     fuera = []
     if alias:
         fuera = db.execute(text(f"""
             select * from (
-              select {_EQUIPO}, c.puntos, c.jornadas, c.ganadas, c.empatadas, c.perdidas, c.dif_sp,
+              select {columnas},
                      row_number() over (
-                       order by c.puntos desc, c.dif_sp desc, e.creada, e.id) as pos
+                       order by {orden_sql}) as pos
               {base}
             ) r
             where r.alias = :alias and r.pos > :ultima

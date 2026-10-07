@@ -367,6 +367,20 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 }
 .lg .opt[aria-checked="true"] .dot { box-shadow: inset 0 0 0 6px var(--ink); }
 .lg .opt b { display: block; font-size: 16px; color: var(--ink); }
+/* Orden de la clasificación: dos palabras, la activa subrayada, a modo de cabecera de la lista.
+   El área de toque llega a 44 px sin cambiar lo que se ve. */
+.lg .orden { display: flex; gap: 20px; margin: 0 2px 8px; border-bottom: 1px solid var(--line); }
+.lg .orden button {
+  position: relative; padding: 8px 0 9px; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: var(--w-strong); line-height: 1; color: var(--muted); white-space: nowrap;
+}
+.lg .orden button[aria-pressed="true"] { color: var(--ink); }
+.lg .orden button[aria-pressed="true"]::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 1px; background: var(--accent);
+}
+.lg .orden button::after { content: ""; position: absolute; inset: -8px -6px; }
+.lg .orden button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
 .lg .opt span { display: block; margin-top: 2px; font-size: 14px; line-height: 1.4; color: var(--muted); }
 .lg .opt[disabled] { opacity: .5; cursor: not-allowed; }
 
@@ -603,7 +617,9 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .tr.financiero .pos small { margin-top: 2px; font-size: 10px; font-weight: var(--w-strong); }
 .lg .fila-res { display: grid; justify-items: end; gap: 2px; white-space: nowrap; }
 .lg .fila-res .vsp { font-size: 11.5px; line-height: 1.2; color: var(--muted); }
-.lg .tr.financiero .sub { flex-wrap: wrap; gap: 0 6px; }
+.lg .tr.financiero .sub { flex-wrap: nowrap; gap: 0 6px; }
+.lg .tr.financiero .sub > * { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lg .tr.financiero .sub > :last-child:not(:first-child) { flex: none; }
 .lg .tr.financiero .sub > * + *::before { content: "·"; margin-right: 6px; color: var(--muted); }
 .lg .jr:disabled, .lg .tr:disabled { cursor: default; }
 @media (hover: hover) and (pointer: fine) {

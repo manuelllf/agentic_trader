@@ -181,3 +181,66 @@ def test_el_premio_solo_se_ve_si_se_enciende_y_no_nombra_a_nadie(liga) -> None: 
     finally:
         cx.execute("delete from liga.ajustes where clave = 'premio.visible'")
         cx.close()
+
+
+def test_la_clasificacion_se_ordena_por_rentabilidad_o_por_puntos(liga) -> None:  # noqa: ANN001
+    from decimal import Decimal
+
+    cliente, usuario, estrategia, temporada, jornada, juega = liga
+    sufijo = uuid.uuid4().hex[:6]
+    ana = usuario(f"ana_{sufijo}")
+    beto = usuario(f"beto_{sufijo}")
+    cleo = usuario(f"cleo_{sufijo}")
+    e1, r1 = estrategia(ana, "Constante")
+    e2, r2 = estrategia(beto, "Golpe")
+    e3, r3 = estrategia(cleo, "Una sola")
+    tid = temporada()
+    hoy = date.today()
+    j1 = jornada(tid, 1, "cerrada", "1.0000", hoy - timedelta(days=60))
+    j2 = jornada(tid, 2, "cerrada", "1.0000", hoy - timedelta(days=30))
+    juega(j1, e1, r1, "2.0000", 3)
+    juega(j2, e1, r1, "1.5000", 3)
+    juega(j1, e2, r2, "-5.0000", 0)
+    juega(j2, e2, r2, "9.0000", 3)
+    juega(j1, e3, r3, "1.0000", 1)
+
+    url = f"/liga/publico/clasificacion?temporada={tid}"
+    defecto = cliente.get(url).json()
+    rentabilidad = cliente.get(f"{url}&orden=rentabilidad").json()
+    for c in (defecto, rentabilidad):
+        assert c["total"] == 3
+        assert [f["equipo"]["nombre"] for f in c["filas"]] == [
+            "Golpe", "Constante", "Una sola"]
+        assert [f["posicion"] for f in c["filas"]] == [1, 2, 3]
+        assert [Decimal(f["acumulado"]["rentabilidad"]) for f in c["filas"]] == [
+            Decimal("9.0"), Decimal("1.5"), Decimal("1.0")]
+        assert all(f["movimiento"] is None for f in c["filas"])
+
+    puntos = cliente.get(f"{url}&orden=puntos").json()
+    assert puntos["total"] == 3
+    assert [f["equipo"]["nombre"] for f in puntos["filas"]] == [
+        "Constante", "Golpe", "Una sola"]
+    assert [f["puntos"] for f in puntos["filas"]] == [6, 3, 1]
+    assert [f["movimiento"] for f in puntos["filas"]] == [0, 1, -1]
+
+    pagina = cliente.get(
+        f"{url}&orden=rentabilidad&cuantos=1&alias=ana_{sufijo}").json()
+    assert pagina["total"] == 3
+    assert [f["equipo"]["nombre"] for f in pagina["filas"]] == ["Golpe"]
+    assert [(f["posicion"], f["equipo"]["nombre"]) for f in pagina["mias"]] == [
+        (2, "Constante")]
+    assert all(f["movimiento"] is None for f in pagina["filas"] + pagina["mias"])
+
+    desplazada = cliente.get(f"{url}&orden=rentabilidad&desde=1&cuantos=1").json()
+    assert desplazada["total"] == 3
+    assert [(f["posicion"], f["equipo"]["nombre"]) for f in desplazada["filas"]] == [
+        (2, "Constante")]
+    assert all(f["movimiento"] is None for f in desplazada["filas"])
+
+    pagina_puntos = cliente.get(
+        f"{url}&orden=puntos&cuantos=1&alias=beto_{sufijo}").json()
+    assert pagina_puntos["total"] == 3
+    assert [f["equipo"]["nombre"] for f in pagina_puntos["filas"]] == ["Constante"]
+    assert [(f["posicion"], f["equipo"]["nombre"]) for f in pagina_puntos["mias"]] == [
+        (2, "Golpe")]
+    assert cliente.get(f"{url}&orden=otra").status_code == 422

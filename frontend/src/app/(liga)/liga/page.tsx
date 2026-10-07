@@ -16,12 +16,12 @@ import { normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
 import {
   BarraPestanas, Cargando, Clasificacion as TablaClasificacion, escudoCasa, ErrorLiga,
-  FilaEquipo, FilaJornada, HuecoClasificacion, Segmentado, Vacio,
+  FilaEquipo, FilaJornada, HuecoClasificacion, OrdenLista, Segmentado, Vacio,
 } from "../_ui";
 import {
   getClasificacion, getJornadaPublica, getPortada,
   type Clasificacion, type EquipoPublico, type FilaClasificacion, type JornadaDetalle,
-  type Portada,
+  type OrdenClasificacion, type Portada,
 } from "@/lib/liga/api";
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
 import { useSesion } from "../_sesion/SesionContext";
@@ -102,9 +102,16 @@ function LigaContenido() {
   const parametros = useSearchParams();
   const { yo } = useSesion();
   const vista: Vista = parametros.get("vista") === "tabla" ? "tabla" : "jornada";
+  const orden: OrdenClasificacion = parametros.get("orden") === "puntos" ? "puntos" : "rentabilidad";
   const setVista = (valor: Vista) => {
     const query = new URLSearchParams(parametros.toString());
     if (valor === "tabla") query.set("vista", valor); else query.delete("vista");
+    router.replace(`/liga${query.size ? `?${query}` : ""}`, { scroll: false });
+  };
+  const setOrden = (valor: OrdenClasificacion) => {
+    if (valor === orden) return;
+    const query = new URLSearchParams(parametros.toString());
+    if (valor === "puntos") query.set("orden", valor); else query.delete("orden");
     router.replace(`/liga${query.size ? `?${query}` : ""}`, { scroll: false });
   };
 
@@ -115,8 +122,8 @@ function LigaContenido() {
   const hayTemporada = typeof portada === "object" && !!portada && portada.temporada !== null;
   const { datos: clasificacion, refrescar: refrescarClasificacion } =
     useCache<Clasificacion | string>(
-      vista === "tabla" && hayTemporada ? `clasificacion:${yo?.alias ?? ""}` : null,
-      () => getClasificacion({ alias: yo?.alias }),
+      vista === "tabla" && hayTemporada ? `clasificacion:${orden}:${yo?.alias ?? ""}` : null,
+      () => getClasificacion({ alias: yo?.alias, orden }),
     );
   const idEnJuego = typeof portada === "object" && portada ? portada.en_juego?.id ?? null : null;
   const { datos: jornada, refrescar: refrescarJornada } = useCache<JornadaDetalle | string>(
@@ -137,6 +144,10 @@ function LigaContenido() {
       etiqueta={etiquetaEquipo(f.equipo, yo?.alias ?? null, (key) => t(key))}
       vsIndice={f.dif_sp}
       puntos={f.puntos}
+      orden={orden}
+      ganadas={f.ganadas}
+      empatadas={f.empatadas}
+      perdidas={f.perdidas}
       acumulado={f.acumulado}
       movimiento={f.movimiento}
       tipo={f.equipo.casa ? "casa" : (yo && f.equipo.autor === yo.alias) ? "mia" : "normal"}
@@ -144,6 +155,7 @@ function LigaContenido() {
       alAcercar={() => precargarFicha(f.equipo.id)}
     />
   );
+  const mostrarOrden = clasificacion === undefined || (typeof clasificacion === "object" && clasificacion !== null && clasificacion.filas.length > 0);
 
   if (cargandoPortada) {
     return (
@@ -213,34 +225,40 @@ function LigaContenido() {
           </div>
 
           {vista === "tabla" ? (
-            clasificacion === undefined ? (
-              <div style={{ marginTop: 20 }}><Cargando filas={5} /></div>
-            ) : typeof clasificacion === "string" ? (
-              <ErrorLiga titulo={t("league_error_clasificacion")} mensaje={clasificacion}
-                         accion={{ texto: t("league_reintentar"), onClick: refrescarClasificacion }} />
-            ) : clasificacion.filas.length === 0 ? (
-              <Vacio titulo={t("league_sin_clasificacion")}
-                     texto={textoSinClasificacion(portada, (key, values) => t(key, values), locale)}
-                     accion={yo
-                       ? { texto: t("league_crear_mia"), onClick: () => { window.location.href = "/crear"; } }
-                       : { texto: t("league_entrar"), onClick: () => { window.location.href = "/entrar"; } }} />
-            ) : (
-              <div className="sec" style={{ marginTop: 20 }}>
-                <TablaClasificacion>
-                  {clasificacion.filas.map(filaDe)}
-                  {clasificacion.total > clasificacion.filas.length && (
-                    <HuecoClasificacion>
-                      {t("league_mas_filas", { count: clasificacion.total - clasificacion.filas.length - clasificacion.mias.length })}
-                    </HuecoClasificacion>
-                  )}
-                  {clasificacion.mias.map(filaDe)}
-                </TablaClasificacion>
-                <div className="legend">
-                  <p>{t("league_leyenda_casa")}</p>
-                  <p>{t("league_leyenda_vs_sp")}</p>
+            <>
+              {mostrarOrden && <div style={{ marginTop: 16 }}><OrdenLista etiquetaGrupo={t("league_orden_aria")} valor={orden}
+                  opciones={[{ valor: "rentabilidad", etiqueta: t("league_orden_rentabilidad") }, { valor: "puntos", etiqueta: t("league_orden_puntos") }]}
+                  onChange={setOrden} /></div>}
+              {clasificacion === undefined ? (
+                <div style={{ marginTop: 8 }}><Cargando filas={5} /></div>
+              ) : typeof clasificacion === "string" ? (
+                <ErrorLiga titulo={t("league_error_clasificacion")} mensaje={clasificacion}
+                           accion={{ texto: t("league_reintentar"), onClick: refrescarClasificacion }} />
+              ) : clasificacion.filas.length === 0 ? (
+                <Vacio titulo={t("league_sin_clasificacion")}
+                       texto={textoSinClasificacion(portada, (key, values) => t(key, values), locale)}
+                       accion={yo
+                         ? { texto: t("league_crear_mia"), onClick: () => { window.location.href = "/crear"; } }
+                         : { texto: t("league_entrar"), onClick: () => { window.location.href = "/entrar"; } }} />
+              ) : (
+                <div className="sec" style={{ marginTop: 0 }}>
+                  <TablaClasificacion>
+                    {clasificacion.filas.map(filaDe)}
+                    {clasificacion.total > clasificacion.filas.length && (
+                      <HuecoClasificacion>
+                        {t("league_mas_filas", { count: clasificacion.total - clasificacion.filas.length - clasificacion.mias.length })}
+                      </HuecoClasificacion>
+                    )}
+                    {clasificacion.mias.map(filaDe)}
+                  </TablaClasificacion>
+                  <div className="legend">
+                    <p>{t("league_leyenda_casa")}</p>
+                    {orden === "rentabilidad" ? <p>{t("league_leyenda_orden_rentabilidad")}</p> : <p>{t("league_leyenda_orden_puntos")}</p>}
+                    {orden === "rentabilidad" && <p>{t("league_leyenda_vs_sp")}</p>}
+                  </div>
                 </div>
-              </div>
-            )
+              )}
+            </>
           ) : jornada === undefined ? (
             portada.en_juego ? <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
               : (

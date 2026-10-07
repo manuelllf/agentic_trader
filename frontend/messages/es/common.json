@@ -54,5 +54,6 @@
   "common_seguimiento_ninguna": "Ninguna",
   "common_ranking_sobre_sp": "{value} pp sobre el S&P",
   "common_ranking_bajo_sp": "{value} pp bajo el S&P",
-  "common_ranking_igual_sp": "Igual que el S&P"
+  "common_ranking_igual_sp": "Igual que el S&P",
+  "common_ranking_puntos_balance": "Puntos y balance de jornadas"
 }

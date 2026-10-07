@@ -649,6 +649,8 @@ export type FilaClasificacion = {
   movimiento: number | null;
 };
 
+export type OrdenClasificacion = "rentabilidad" | "puntos";
+
 /** `mias`: las del alias pedido que quedan fuera de la página, con su posición real. */
 export type Clasificacion = {
   temporada: TemporadaPublica; total: number; filas: FilaClasificacion[]; mias: FilaClasificacion[];
@@ -675,13 +677,14 @@ export async function getPremio(): Promise<PremioPublico | string> {
 }
 
 export async function getClasificacion(
-  opciones: { temporada?: number; desde?: number; cuantos?: number; alias?: string } = {},
+  opciones: { temporada?: number; desde?: number; cuantos?: number; alias?: string; orden?: OrdenClasificacion } = {},
 ): Promise<Clasificacion | string> {
   const q = new URLSearchParams();
   if (opciones.alias) q.set("alias", opciones.alias);
   if (opciones.temporada != null) q.set("temporada", String(opciones.temporada));
   q.set("desde", String(opciones.desde ?? 0));
   q.set("cuantos", String(opciones.cuantos ?? 50));
+  q.set("orden", opciones.orden ?? "rentabilidad");
   return llamar<Clasificacion>(`/liga/publico/clasificacion?${q.toString()}`, {}, false);
 }
 

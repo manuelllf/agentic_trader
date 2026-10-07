@@ -58,6 +58,10 @@ export interface FilaEquipoProps {
   acumulado?: RentabilidadAcumulada | null;
   /** Places moved up since the immediately preceding completed league period. */
   movimiento?: number | null;
+  orden?: "rentabilidad" | "puntos";
+  ganadas?: number;
+  empatadas?: number;
+  perdidas?: number;
   tipo?: TipoFila;
   /** Sin tinte propio desde el rediseño; se acepta por compatibilidad con quien aún lo pasa. */
   colorCasa?: string;
@@ -78,6 +82,10 @@ export function FilaEquipo({
   puntos,
   acumulado,
   movimiento,
+  orden,
+  ganadas,
+  empatadas,
+  perdidas,
   tipo = "normal",
   abrible = true,
   onClick,
@@ -100,7 +108,7 @@ export function FilaEquipo({
   const posicion = (
     <span className="pos num">
       <span aria-label={t("common_ranking_posicion_aria", { count: puesto })}>{puesto}</span>
-      {acumulado !== undefined && sube !== 0 && (
+      {acumulado !== undefined && orden !== "rentabilidad" && sube !== 0 && (
         <small className={`move ${sube > 0 ? "up" : "dn"}`}
           aria-label={t(sube > 0 ? "common_ranking_sube_posiciones" : "common_ranking_baja_posiciones", { count: Math.abs(sube) })}>
           {sube > 0 ? "↑" : "↓"}{Math.abs(sube)}
@@ -125,13 +133,22 @@ export function FilaEquipo({
             <b>{nombre}</b>
             <span className="sub">
               <span>{etiqueta}</span>
-              {acumulado?.incompleta && <span>{t("common_ranking_periodos_seguidos", { count: acumulado.periodos })}</span>}
-              <span className="num">{puntos} pts</span>
+              {orden !== "puntos" && <>
+                {acumulado?.incompleta && <span>{t("common_ranking_periodos_seguidos", { count: acumulado.periodos })}</span>}
+                <span className="num">{t("strategies_points", { count: puntos })}</span>
+              </>}
             </span>
           </span>
         </span>
-        <span className="fila-res" aria-label={t("common_ranking_rentabilidad_benchmark")}>
-          {acumulado ? (
+        <span className="fila-res" aria-label={t(orden === "puntos" ? "common_ranking_puntos_balance" : "common_ranking_rentabilidad_benchmark")}>
+          {orden === "puntos" ? (
+            <>
+              <span className="ret num">{t("strategies_points", { count: puntos })}</span>
+              {ganadas !== undefined && empatadas !== undefined && perdidas !== undefined && (
+                <span className="vsp num">{ganadas}{t("common_ranking_letra_ganada")} · {empatadas}{t("common_ranking_letra_empate")} · {perdidas}{t("common_ranking_letra_perdida")}</span>
+              )}
+            </>
+          ) : acumulado ? (
             <>
               <span className={`ret num ${claseSigno(acumulado.rentabilidad)}`}>{porcentaje(acumulado.rentabilidad, 1, locale)}</span>
               <span className="vsp num">{fraseVsIndice(t, acumulado.diferencia_pp, locale)}</span>
@@ -171,7 +188,7 @@ export function FilaEquipo({
       </span>
       <span className={`vs num ${claseSigno(vsIndice)}`}>{porcentaje(vsIndice, 1, locale).replace(/%$/, "pp")}</span>
       <span className="rankmeta">
-        <span className="pts num">{puntos} pts</span>
+        <span className="pts num">{t("strategies_points", { count: puntos })}</span>
       </span>
     </button>
   );
