@@ -58,7 +58,7 @@
   "legal_privacy_more_details": "More information is in the",
   "legal_privacy_data_title": "What data we process",
   "legal_privacy_account": "Account",
-  "legal_privacy_account_data": "email, password (stored encrypted), sign-up and access dates, and technical data about your sessions, which is logged for security.",
+  "legal_privacy_account_data": "email, password if you have one (stored encrypted), sign-up and access dates, and technical data about your sessions, which is logged for security. If you sign in with Google, Google also shares your name with us.",
   "legal_privacy_profile": "Profile",
   "legal_privacy_profile_data": "an alias different from your real name, which is the only name others see; your light or dark theme and, if you choose one, your language. Your email is not shown to anyone.",
   "legal_privacy_created_content": "What you create",

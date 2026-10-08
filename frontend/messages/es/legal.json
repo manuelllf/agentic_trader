@@ -58,7 +58,7 @@
   "legal_privacy_more_details": "Más datos en el",
   "legal_privacy_data_title": "Qué datos tratamos",
   "legal_privacy_account": "Cuenta",
-  "legal_privacy_account_data": "correo, contraseña (guardada cifrada), fechas de alta y de acceso, y datos técnicos de tus sesiones, que se registran por seguridad.",
+  "legal_privacy_account_data": "correo, contraseña si la tienes (guardada cifrada), fechas de alta y de acceso, y datos técnicos de tus sesiones, que se registran por seguridad. Si entras con Google, Google nos comparte además tu nombre.",
   "legal_privacy_profile": "Perfil",
   "legal_privacy_profile_data": "un alias distinto de tu nombre real, el único que ven los demás; tu tema claro u oscuro y, si lo eliges, tu idioma. Tu correo no se muestra a nadie.",
   "legal_privacy_created_content": "Lo que creas",
