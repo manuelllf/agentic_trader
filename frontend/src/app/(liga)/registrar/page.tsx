@@ -1,13 +1,12 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { LanguageSelector } from "@/i18n/LanguageSelector";
 import Link from "next/link";
 import { useState } from "react";
 import { Boton, CampoClave } from "../_ui";
 import { useSupabase } from "@/lib/liga/supabase";
-import { claveValida, solicitarCorreo, useAccesoCorreo } from "@/lib/liga/registro";
-import { Marca } from "../_ui/Marca";
+import { claveValida, requisitosClave, solicitarCorreo, useAccesoCorreo } from "@/lib/liga/registro";
+import { MarcoAcceso } from "../_ui/MarcoAcceso";
 
 export default function Registrar() {
   const t = useTranslations();
@@ -16,16 +15,15 @@ export default function Registrar() {
   const [email, setEmail] = useState("");
   const [alias, setAlias] = useState("");
   const [clave, setClave] = useState("");
-  const [confirmacion, setConfirmacion] = useState("");
   const [acepta, setAcepta] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [error, setError] = useState("");
+  const requisitos = requisitosClave(clave);
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     if (ocupado || !sb || !acceso?.registro_abierto) return;
     if (!claveValida(clave)) { setError(t("auth_clave_requisitos")); return; }
-    if (clave !== confirmacion) { setError(t("auth_contrasenas_distintas")); return; }
     setOcupado(true); setError("");
     const fallo = await solicitarCorreo("", { email, alias, clave, acepta_terminos: acepta });
     if (fallo) { setOcupado(false); setError(fallo); }
@@ -37,17 +35,15 @@ export default function Registrar() {
       } catch {
         falloAcceso = true;
       }
-      setClave(""); setConfirmacion("");
+      setClave("");
       setOcupado(false);
       if (falloAcceso) setEnviado(true);
       else window.location.assign("/liga");
     }
   }
-  return <main className="sencilla">
-    <header className="sencilla-top"><Link href="/" className="wordmark"><Marca /></Link><LanguageSelector /></header>
-    <section className="sencilla-cuerpo arriba" aria-labelledby="titular">
-      <h1 id="titular">{enviado ? t("auth_cuenta_creada") : t("auth_crear_cuenta")}</h1>
+  return <MarcoAcceso pestana="crear">
       {enviado ? <>
+        <h2>{t("auth_cuenta_creada")}</h2>
         <p>{t("auth_cuenta_creada_entrada")}</p>
         <Link href="/entrar" className="btn">{t("auth_entrar")}</Link>
       </> : <form className="form" onSubmit={enviar}>
@@ -61,10 +57,15 @@ export default function Registrar() {
           <span className="nota" id="ayuda-alias">{t("auth_ayuda_alias")}</span></label>
         <CampoClave autoComplete="new-password" minLength={8} maxLength={200} required value={clave}
           onChange={e => setClave(e.target.value)} aria-describedby="ayuda-clave" />
-        <p className="nota" id="ayuda-clave">{t("auth_clave_requisitos")}</p>
-        <CampoClave titulo={t("auth_confirmar_contrasena")} autoComplete="new-password" required maxLength={200}
-          value={confirmacion} onChange={e => setConfirmacion(e.target.value)} />
-        <label className="registro-aceptacion"><input type="checkbox" required checked={acepta}
+        <ul className="acc-req" id="ayuda-clave" aria-live="polite">
+          <li className={requisitos.longitud ? "hecho" : undefined}>
+            <span aria-hidden="true">{requisitos.longitud ? "✓" : "○"}</span>{t("auth_req_longitud")}</li>
+          <li className={requisitos.mayuscula ? "hecho" : undefined}>
+            <span aria-hidden="true">{requisitos.mayuscula ? "✓" : "○"}</span>{t("auth_req_mayuscula")}</li>
+          <li className={requisitos.simbolo ? "hecho" : undefined}>
+            <span aria-hidden="true">{requisitos.simbolo ? "✓" : "○"}</span>{t("auth_req_simbolo")}</li>
+        </ul>
+        <label className="acc-acepta"><input className="acc-chk" type="checkbox" required checked={acepta}
           onChange={e => setAcepta(e.target.checked)} /><span>{t.rich("auth_aceptacion_legal", { terms: chunks => <Link href="/legal/terminos">{chunks}</Link>, privacy: chunks => <Link href="/legal/privacidad">{chunks}</Link> })}</span></label>
         <Boton type="submit" variante="principal" ancho="completo" disabled={ocupado || !sb || !acceso?.registro_abierto}>
           {ocupado ? t("auth_creando_cuenta") : t("auth_crear_cuenta")}</Boton>
@@ -72,7 +73,5 @@ export default function Registrar() {
       {error && <p className="aviso" role="alert">{error}</p>}
       {sb === null && <p className="nota">{t("auth_registro_no_disponible")}</p>}
       {acceso && !acceso.registro_abierto && <p className="nota">{t("auth_registro_cerrado")}</p>}
-      <p><Link href="/entrar">{t("auth_ya_tengo_cuenta")}</Link></p>
-    </section>
-  </main>;
+  </MarcoAcceso>;
 }

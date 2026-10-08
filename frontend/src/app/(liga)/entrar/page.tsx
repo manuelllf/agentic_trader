@@ -4,13 +4,12 @@
 // mismo: sin él la sesión se queda en aal1 y las salas no abren.
 
 import { useTranslations } from "next-intl";
-import { LanguageSelector } from "@/i18n/LanguageSelector";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Boton, CampoClave } from "../_ui";
 import { entrarConAlias } from "@/lib/liga/api";
 import { destinoSeguro, useSupabase } from "@/lib/liga/supabase";
-import { Marca } from "../_ui/Marca";
+import { MarcoAcceso } from "../_ui/MarcoAcceso";
+import { CampoCodigo } from "../_ui/CampoCodigo";
 
 type Paso = "credenciales" | "codigo";
 
@@ -91,20 +90,13 @@ export default function Entrar() {
   };
 
   return (
-    <main className="sencilla">
-      <header className="sencilla-top">
-        <Link href="/" className="wordmark"><Marca /></Link>
-      <LanguageSelector /></header>
-
-      <section className="sencilla-cuerpo arriba" aria-labelledby="titular">
+    <MarcoAcceso pestana="entrar" modo={paso === "codigo" ? "codigo" : "completo"}>
         {sb === null ? (
           <>
-            <h1 id="titular">{t("auth_entrar")}</h1>
             <p className="nota">{t("auth_cuentas_cerradas")}</p>
           </>
         ) : paso === "credenciales" ? (
           <>
-            <h1 id="titular">{t("auth_entrar")}</h1>
             <form className="form" onSubmit={entrar}>
               <label className="campo">
                 <span className="lbl">{t("auth_usuario_email")}</span>
@@ -121,19 +113,12 @@ export default function Entrar() {
                 {ocupado ? t("auth_entrando") : t("auth_entrar")}
               </Boton>
             </form>
-            <p>{t("auth_sin_cuenta")} <Link href="/registrar">{t("auth_crear_cuenta")}</Link></p>
           </>
         ) : (
           <>
-            <h1 id="titular">{t("auth_tu_codigo")}</h1>
             <p className="nota">{t("auth_codigo_instrucciones")}</p>
             <form className="form" onSubmit={verificar}>
-              <label className="campo">
-                <span className="lbl">{t("auth_codigo")}</span>
-                <input className="inp codigo" inputMode="numeric" autoComplete="one-time-code"
-                       pattern="[0-9]{6}" maxLength={6} required autoFocus value={codigo}
-                       onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))} />
-              </label>
+              <CampoCodigo value={codigo} onChange={setCodigo} autoFocus disabled={ocupado} />
               {error && <p className="aviso" role="alert">{error}</p>}
               <Boton type="submit" variante="principal" ancho="completo"
                      disabled={ocupado || codigo.length !== 6}>
@@ -142,7 +127,6 @@ export default function Entrar() {
             </form>
           </>
         )}
-      </section>
-    </main>
+    </MarcoAcceso>
   );
 }

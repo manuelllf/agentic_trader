@@ -21,10 +21,17 @@ export function useAccesoCorreo() {
   return estado;
 }
 
+export function requisitosClave(clave: string): { longitud: boolean; mayuscula: boolean; simbolo: boolean } {
+  return {
+    longitud: Array.from(clave).length >= 8,
+    mayuscula: /\p{Lu}/u.test(clave),
+    simbolo: /[^\p{L}\p{N}\s]/u.test(clave),
+  };
+}
+
 export function claveValida(clave: string): boolean {
-  const longitud = Array.from(clave).length;
-  return longitud >= 8 && longitud <= 200 && /\p{Lu}/u.test(clave)
-    && /[^\p{L}\p{N}\s]/u.test(clave);
+  const requisitos = requisitosClave(clave);
+  return requisitos.longitud && Array.from(clave).length <= 200 && requisitos.mayuscula && requisitos.simbolo;
 }
 
 export async function solicitarCorreo(

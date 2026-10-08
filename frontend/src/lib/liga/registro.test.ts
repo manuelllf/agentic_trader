@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { claveValida, completarEnlace } from "./registro";
+import { claveValida, requisitosClave, completarEnlace } from "./registro";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("contraseñas", () => {
+  it("desglosa los requisitos con Unicode y cuenta caracteres completos", () => {
+    expect(requisitosClave("Ábcdefg!")).toEqual({ longitud: true, mayuscula: true, simbolo: true });
+    expect(requisitosClave("abcdefg ")).toEqual({ longitud: true, mayuscula: false, simbolo: false });
+    expect(requisitosClave("A😀aaaaa")).toEqual({ longitud: false, mayuscula: true, simbolo: true });
+    expect(requisitosClave("A!".repeat(101)).longitud).toBe(true);
+    expect(claveValida("A!".repeat(101))).toBe(false);
+  });
   it("exige longitud, mayúscula y símbolo, permitiendo frases y gestores", () => {
     expect(claveValida("Una frase segura!")).toBe(true);
     for (const clave of ["Corta!", "sinmayuscula!", "SinSimbolo123", "Mayuscula ", "A!".repeat(101)]) {
