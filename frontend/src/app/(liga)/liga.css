@@ -1287,6 +1287,11 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .acc .acc-req li.hecho { background: var(--accent-bg); color: var(--accent); }
 .lg .acc .acc-acepta { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; font-size: 15px; line-height: 1.5; }
 .lg .acc .acc-acepta a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+/* En modo oscuro, el acento de las pantallas de acceso va algo menos saturado; el resto de la app no cambia. */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .lg .acc { --accent: #74A9A4; --accent-bg: rgba(116, 169, 164, .16); --btn: #74A9A4; }
+}
+html[data-theme="dark"] .lg .acc { --accent: #74A9A4; --accent-bg: rgba(116, 169, 164, .16); --btn: #74A9A4; }
 /* Google va primero y en neutro: es la vía de menos fricción de la pantalla. */
 .lg .acc .acc-google { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%;
   min-height: 50px; border-radius: 10px; border: 1px solid var(--line2); background: var(--raised);
