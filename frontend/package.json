@@ -19,7 +19,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.6",
+    "@eslint/eslintrc": "^3.3.7",
     "@formatjs/icu-messageformat-parser": "^3.5.20",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.0.0",
