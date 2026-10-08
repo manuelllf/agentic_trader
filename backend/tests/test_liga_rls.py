@@ -815,4 +815,5 @@ def test_funciones_security_definer_solo_para_quien_toca(cx):
         ("puede_ver_posiciones", "authenticated"), ("es_miembro", "authenticated"),
         ("unirse_liga", "authenticated"), ("registrar_visita", "authenticated"),
         ("exportar_visitas", "authenticated"),
+        ("aceptar_terminos", "authenticated"), ("cuenta_pendiente", "authenticated"),
     }
