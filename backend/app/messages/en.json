@@ -164,6 +164,7 @@
   "liga_converter_strategy_limit": "You have used the converter {count} times on this strategy. Build the rest by hand.",
   "liga_converter_month_limit": "You have used the converter {count} times this month. Come back next month, or build your filter by hand.",
   "api_error_db_acepta_los_terminos": "Accept the terms",
+  "api_error_db_sin_sesion": "No session",
   "api_error_db_como_mucho_10_borradores": "You can have up to 10 drafts",
   "api_error_db_crear_ligas_privadas_es_de_pro": "Creating private leagues requires Pro",
   "api_error_db_el_registro_esta_cerrado": "Registration is closed",
