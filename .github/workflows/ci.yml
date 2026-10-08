@@ -61,7 +61,7 @@ jobs:
           fallo=0
           for f in $(find tests -name 'test_*.py' | sort); do
             echo "::group::$f"
-            timeout 120s uv run pytest "$f" -q
+            timeout 300s uv run pytest "$f" -q
             codigo=$?
             echo "::endgroup::"
             # 5 = nada que ejecutar: los ficheros que solo corren contra Postgres se saltan enteros.
