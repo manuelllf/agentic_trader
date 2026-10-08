@@ -18,7 +18,7 @@ export default async function Privacidad() {
     >
       <h2>{t("legal_privacy_controller")}</h2>
       <p>
-        {TITULAR.nombre} ({t("legal_holder_location")}). {t("legal_contact_label")}: <Contacto />. {t("legal_privacy_more_details")} {" "}
+        {TITULAR.nombre} ({t("legal_holder_location")}). {t("legal_contact_label")}: <Contacto uso="legal" />. {t("legal_privacy_more_details")} {" "}
         <Link href="/legal/aviso">{t("legal_notice_title")}</Link>.
       </p>
 
@@ -40,7 +40,7 @@ export default async function Privacidad() {
       <h2>{t("legal_privacy_purpose_basis")}</h2>
       <ul>
         <li><b>{t("legal_privacy_service")}</b> ({t("legal_gdpr_art_6_1_b")}): {t("legal_privacy_service_basis")}</li>
-        <li><b>{t("legal_privacy_security")}</b> ({t("legal_gdpr_art_6_1_f")}): {t("legal_privacy_security_basis")} <Link href="#derechos">{t("legal_privacy_rights_ref")}</Link>.</li>
+        <li><b>{t("legal_privacy_security")}</b> ({t("legal_gdpr_art_6_1_f")}): {t("legal_privacy_security_basis")} <Link href="#derechos">{t("legal_privacy_rights_ref")}</Link>).</li>
         <li><b>{t("legal_privacy_ai_features")}</b> ({t("legal_gdpr_art_6_1_a")}): {t("legal_privacy_ai_basis")}</li>
         <li><b>{t("legal_privacy_legal_obligation")}</b> ({t("legal_gdpr_art_6_1_c")}): {t("legal_privacy_legal_basis")}</li>
       </ul>
@@ -60,7 +60,7 @@ export default async function Privacidad() {
       <h2>{t("legal_privacy_processors")}</h2>
       <p>{t("legal_privacy_processors_intro")}</p>
       <ul>
-        <li>{t("legal_privacy_supabase")}</li><li>{t("legal_privacy_railway")}</li><li>{t("legal_privacy_vercel")}</li>
+        <li>{t("legal_privacy_processor_db")}</li><li>{t("legal_privacy_processor_app")}</li><li>{t("legal_privacy_processor_web")}</li>
       </ul>
       <p>
         {t("legal_privacy_transfers_outside_eu")}
@@ -73,7 +73,7 @@ export default async function Privacidad() {
 
       <h2 id="derechos">{t("legal_privacy_rights")}</h2>
       <p>
-        {t("legal_privacy_rights_intro")} <Link href="/cuenta">{t("legal_account_link")}</Link>{t("legal_privacy_rights_account_actions")} <Contacto />. {t("legal_privacy_rights_authority")}
+        {t("legal_privacy_rights_intro")} <Link href="/cuenta">{t("legal_account_link")}</Link>{t("legal_privacy_rights_account_actions")} <Contacto uso="legal" />. {t("legal_privacy_rights_authority")}
       </p>
 
       <h2>{t("legal_privacy_security_minors")}</h2>

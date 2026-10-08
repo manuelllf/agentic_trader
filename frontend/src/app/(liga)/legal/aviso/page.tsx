@@ -15,7 +15,7 @@ export default async function Aviso() {
       <ul>
         <li><b>{t("legal_notice_name")}</b>: {TITULAR.nombre}</li>
         <li><b>{t("legal_notice_location")}</b>: {t("legal_holder_location")}</li>
-        <li><b>{t("legal_contact_label")}</b>: <Contacto /></li>
+        <li><b>{t("legal_contact_label")}</b>: <Contacto uso="info" /></li>
       </ul>
       <p>
         {t("legal_notice_service_description")}

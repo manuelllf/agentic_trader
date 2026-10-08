@@ -26,7 +26,7 @@ export default async function Terminos() {
 
       <h2>{t("legal_terms_provider")}</h2>
       <p>
-        {TITULAR.nombre} ({t("legal_holder_location")}). {t("legal_contact_label")}: <Contacto />. {t("legal_terms_more_details")} {" "}
+        {TITULAR.nombre} ({t("legal_holder_location")}). {t("legal_contact_label")}: <Contacto uso="general" />. {t("legal_terms_more_details")} {" "}
         <Link href="/legal/aviso">{t("legal_notice_title")}</Link>.
       </p>
 
@@ -39,7 +39,7 @@ export default async function Terminos() {
 
       <h2>{t("legal_terms_publishing")}</h2>
       <ul>
-        <li>{t("legal_terms_public_content")}</li><li>{t("legal_terms_display_content")}</li><li>{t("legal_terms_no_personal_data")}</li>
+        <li>{t("legal_terms_public_content")}</li><li>{t("legal_terms_display_content")}</li><li>{t("legal_terms_no_personal_data")}</li><li>{t("legal_terms_report")} <Contacto uso="abuso" />.</li>
       </ul>
 
       <h2>{t("legal_terms_ai")}</h2>

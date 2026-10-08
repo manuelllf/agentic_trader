@@ -1,29 +1,28 @@
-import Link from "next/link";
-import { localeTag } from "@/i18n/locale";
+import { getLocale } from "next-intl/server";
+import { localeTag, normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
-import { getTranslations } from "next-intl/server";
 
 // Datos del titular y versión de los textos legales, en un solo sitio.
-export const TITULAR = {
-  nombre: "Manuel Llao Freire",
-  ubicacion: "Galicia, España",
-  // Con correo, todos los textos lo enseñan; sin él, remiten a la propia app.
-  correo: null as string | null,
-};
+export const TITULAR = { nombre: "Manuel Llao Freire" };
 
-export const VERSION_LEGAL = "2026-10-03";
+export const VERSION_LEGAL = "2026-10-08";
 export function fechaLegal(locale: Locale): string {
   return new Intl.DateTimeFormat(localeTag(locale), { dateStyle: "long", timeZone: "UTC" })
     .format(new Date(`${VERSION_LEGAL}T00:00:00Z`));
 }
 
-/** Cómo contactar con el titular: el correo si existe; si no, la propia aplicación. */
-export async function Contacto() {
-  const t = await getTranslations();
-  if (TITULAR.correo) return <a href={`mailto:${TITULAR.correo}`}>{TITULAR.correo}</a>;
-  return (
-    <>
-      {t("legal_contact_in_app_before")} (<Link href="/cuenta">{t("legal_account_link")}</Link>{t("legal_contact_in_app_after")})
-    </>
-  );
+// Un alias por función. El de uso general cambia de idioma.
+const CORREOS = {
+  info: "info@vennett.app",
+  legal: "legal@vennett.app",
+  abuso: "abuse@vennett.app",
+  general: { es: "hola@vennett.app", en: "hello@vennett.app" },
+} as const;
+
+/** Correo de contacto para una función concreta de los textos legales. */
+export async function Contacto({ uso }: { uso: "info" | "legal" | "abuso" | "general" }) {
+  const correo = uso === "general"
+    ? CORREOS.general[normalizeLocale(await getLocale()) ?? "es"]
+    : CORREOS[uso];
+  return <a href={`mailto:${correo}`}>{correo}</a>;
 }
