@@ -11,7 +11,6 @@
   "strategies_state_signed_up": "Próxima jornada",
   "strategies_state_playing": "Jugando",
   "strategies_state_retired": "Retirada",
-  "strategies_delete_draft_confirm": "¿Borrar el borrador «{name}»? No se puede deshacer.",
   "strategies_crest": "Escudo de {name}",
   "strategies_this_month": "Este mes",
   "strategies_no_data": "Sin datos",
@@ -278,5 +277,10 @@
   "strategies_company_notes_source": "Notas del escaneo del {date}, jornada {round}. Son las que sirvieron para formar esta cartera.",
   "strategies_company_notes_none": "Esa jornada no guardó notas de las empresas. La cartera se formó con otro método, que puedes ver en la pestaña Metodología.",
   "strategies_company_notes_how": "Cómo se calculan las notas",
-  "strategies_showcase_portfolio": "Cartera de una estrategia"
+  "strategies_showcase_portfolio": "Cartera de una estrategia",
+  "strategies_delete_draft_title": "¿Borrar «{name}»?",
+  "strategies_delete_draft_body": "Es un borrador: se borra entero y no se puede deshacer.",
+  "strategies_delete_draft_action": "Borrar borrador",
+  "strategies_report_title": "Reportar esta estrategia",
+  "strategies_report_reason": "Motivo del reporte"
 }

@@ -57,7 +57,6 @@
   "private_leagues_member_since": "Desde {date}",
   "private_leagues_remove_confirm": "¿Expulsar a {alias}?",
   "private_leagues_remove": "Expulsar",
-  "private_leagues_leave_confirm": "¿Salir de esta liga?",
   "private_leagues_leave": "Salir de esta liga",
   "private_leagues_close": "Cerrar",
   "private_leagues_people": "{count, plural, one {# persona} other {# personas}}",
@@ -70,5 +69,8 @@
   "private_leagues_best_group": "Mejor del grupo",
   "private_leagues_no_result_yet": "Sin resultado todavía",
   "private_leagues_waiting_close": "Esperando su primer cierre.",
-  "private_leagues_invite_and_members": "Invitar y miembros"
+  "private_leagues_invite_and_members": "Invitar y miembros",
+  "private_leagues_remove_body": "Saldrá de «{name}». Con el código de invitación actual podría volver a entrar: si no quieres, genera otro después.",
+  "private_leagues_leave_title": "¿Salir de «{name}»?",
+  "private_leagues_leave_body": "Dejarás de estar en su clasificación. Para volver necesitarás un código de invitación."
 }

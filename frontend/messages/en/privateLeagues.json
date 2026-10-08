@@ -57,7 +57,6 @@
   "private_leagues_member_since": "Since {date}",
   "private_leagues_remove_confirm": "Remove {alias}?",
   "private_leagues_remove": "Remove",
-  "private_leagues_leave_confirm": "Leave this league?",
   "private_leagues_leave": "Leave this league",
   "private_leagues_close": "Close",
   "private_leagues_people": "{count, plural, one {# person} other {# people}}",
@@ -70,5 +69,8 @@
   "private_leagues_best_group": "Best in group",
   "private_leagues_no_result_yet": "No result yet",
   "private_leagues_waiting_close": "Waiting for the first close.",
-  "private_leagues_invite_and_members": "Invite and members"
+  "private_leagues_invite_and_members": "Invite and members",
+  "private_leagues_remove_body": "They will leave “{name}”. With the current invite code they could join again: if you don't want that, generate a new one afterwards.",
+  "private_leagues_leave_title": "Leave “{name}”?",
+  "private_leagues_leave_body": "You will no longer be in its standings. To come back you will need an invite code."
 }

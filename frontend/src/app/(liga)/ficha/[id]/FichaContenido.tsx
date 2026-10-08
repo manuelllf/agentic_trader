@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useConfirmar } from "@/components/Confirmar";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
@@ -67,6 +68,7 @@ function CarteraSinEvidencia({ fichaId, posiciones, mercado }: { fichaId: string
 
 export function FichaContenido({ id }: { id: string }) {
   const t = useTranslations();
+  const { pedirTexto, dialogo } = useConfirmar();
   const locale = normalizeLocale(useLocale()) ?? "es";
   const date = (value: string) => fecha(value, new Date(), locale);
   const percent = (value: number) => porcentaje(value, 1, locale);
@@ -111,8 +113,8 @@ export function FichaContenido({ id }: { id: string }) {
   }
 
   async function alReportar() {
-    const motivo = window.prompt(t("strategies_report_prompt"));
-    if (!motivo || !motivo.trim()) return;
+    const motivo = await pedirTexto({ titulo: t("strategies_report_title"), texto: t("strategies_report_prompt"), aceptar: t("common_enviar"), etiqueta: t("strategies_report_reason") });
+    if (!motivo) return;
     setOcupado(true);
     const r = await reportar("estrategia", id, motivo.trim());
     setOcupado(false);
@@ -293,6 +295,7 @@ export function FichaContenido({ id }: { id: string }) {
       )}
 
       <BarraPestanas />
+      {dialogo}
     </main>
   );
 }

@@ -4,6 +4,7 @@
 // Cada escritura pasa por su confirmación; los mensajes de error son los que manda la API.
 
 import Link from "next/link";
+import { useConfirmar } from "@/components/Confirmar";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -30,6 +31,7 @@ const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.messa
 
 function Detalle() {
   const t = useTranslations();
+  const { confirmar, dialogo } = useConfirmar();
   const locale = useLocale();
   const FECHA = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" });
   const FECHA_HORA = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
@@ -68,44 +70,44 @@ function Detalle() {
     try { await accion(); cargar(); } catch (e) { setFallo(errorText(e)); } finally { setOcupado(false); }
   };
 
-  const cambiarRol = (rol: string, conceder: boolean) => {
-    if (!window.confirm(t(conceder ? "admin_user_confirm_grant_role" : "admin_user_confirm_remove_role", { role: rolLabel(rol) }))) return;
+  const cambiarRol = async (rol: string, conceder: boolean) => {
+    if (!(await confirmar({ titulo: t(conceder ? "admin_user_confirm_grant_role" : "admin_user_confirm_remove_role", { role: rolLabel(rol) }), aceptar: t("common_confirmar"), peligro: !conceder }))) return;
     void conFallo(() => post(`/liga/admin/usuarios/${id}/rol`, { rol, conceder }));
   };
 
-  const darPro = () => {
-    if (!window.confirm(hasta ? t("admin_user_confirm_pro_until", { date: hasta }) : t("admin_user_confirm_pro_no_end"))) return;
+  const darPro = async () => {
+    if (!(await confirmar({ titulo: hasta ? t("admin_user_confirm_pro_until", { date: hasta }) : t("admin_user_confirm_pro_no_end"), aceptar: t("common_confirmar") }))) return;
     void conFallo(() =>
       post(`/liga/admin/usuarios/${id}/plan`, { hasta: hasta ? new Date(hasta).toISOString() : null }));
   };
 
-  const quitarPro = () => {
-    if (!window.confirm(t("admin_user_confirm_remove_pro"))) return;
+  const quitarPro = async () => {
+    if (!(await confirmar({ titulo: t("admin_user_confirm_remove_pro"), aceptar: t("common_confirmar"), peligro: true }))) return;
     void conFallo(() => post(`/liga/admin/usuarios/${id}/plan/quitar`, {}));
   };
 
-  const darPase = () => {
-    if (!window.confirm(hastaPase ? t("admin_user_confirm_pass_until", { date: hastaPase }) : t("admin_user_confirm_pass_no_end"))) return;
+  const darPase = async () => {
+    if (!(await confirmar({ titulo: hastaPase ? t("admin_user_confirm_pass_until", { date: hastaPase }) : t("admin_user_confirm_pass_no_end"), aceptar: t("common_confirmar") }))) return;
     void conFallo(() =>
       post(`/liga/admin/usuarios/${id}/pase`, { hasta: hastaPase ? new Date(hastaPase).toISOString() : null }));
   };
 
-  const quitarPase = () => {
-    if (!window.confirm(t("admin_user_confirm_remove_pass"))) return;
+  const quitarPase = async () => {
+    if (!(await confirmar({ titulo: t("admin_user_confirm_remove_pass"), aceptar: t("common_confirmar"), peligro: true }))) return;
     void conFallo(() => post(`/liga/admin/usuarios/${id}/pase/quitar`, {}));
   };
 
-  const suspender = () => {
+  const suspender = async () => {
     if (!u) return;
     const nuevo = !u.suspendido;
-    if (!window.confirm(t(nuevo ? "admin_user_confirm_suspend" : "admin_user_confirm_reactivate"))) return;
+    if (!(await confirmar({ titulo: t(nuevo ? "admin_user_confirm_suspend" : "admin_user_confirm_reactivate"), aceptar: t("common_confirmar"), peligro: nuevo }))) return;
     void conFallo(() => post(`/liga/admin/usuarios/${id}/suspender`, { suspendido: nuevo }));
   };
 
-  const darCreditos = (e: React.FormEvent) => {
+  const darCreditos = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!importe || Number(importe) <= 0) { setFallo(t("admin_user_amount_positive")); return; }
-    if (!window.confirm(t("admin_user_confirm_credits", { amount: importe, reason: t(motivo === "regalo" ? "admin_user_gift" : "admin_user_adjustment") }))) return;
+    if (!(await confirmar({ titulo: t("admin_user_confirm_credits", { amount: importe, reason: t(motivo === "regalo" ? "admin_user_gift" : "admin_user_adjustment") }), aceptar: t("common_confirmar") }))) return;
     void conFallo(async () => {
       await post("/liga/admin/creditos", {
         usuario_id: id, importe, motivo, idempotencia: crypto.randomUUID(),
@@ -289,6 +291,7 @@ function Detalle() {
           </section>
         </>
       )}
+      {dialogo}
     </main>
   );
 }

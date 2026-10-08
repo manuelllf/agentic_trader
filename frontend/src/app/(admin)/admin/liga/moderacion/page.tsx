@@ -4,6 +4,7 @@
 // (solo listar y ocultar), así que aquí solo se ofrece ocultar.
 
 import Link from "next/link";
+import { useConfirmar } from "@/components/Confirmar";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
@@ -20,6 +21,7 @@ const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.messa
 
 function Moderacion() {
   const t = useTranslations();
+  const { confirmar, dialogo } = useConfirmar();
   const locale = useLocale();
   const CUANDO = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const labels: Record<Reporte["tipo"], string> = { alias: t("admin_moderation_alias"), estrategia: t("admin_moderation_strategy"), liga: t("admin_moderation_league"), pregunta: t("admin_moderation_question") };
@@ -37,7 +39,7 @@ function Moderacion() {
   useEffect(cargar, [cargar]);
 
   const ocultar = async (r: Reporte) => {
-    if (!window.confirm(t("admin_moderation_confirm_hide", { item: confirmations[r.tipo] }))) return;
+    if (!(await confirmar({ titulo: t("admin_moderation_confirm_hide", { item: confirmations[r.tipo] }), aceptar: t("common_confirmar"), peligro: true }))) return;
     setOcupado(r.id); setFallo("");
     try {
       await post("/liga/moderacion/ocultar", { reporte_id: r.id });
@@ -84,6 +86,7 @@ function Moderacion() {
         </ul>
         </>
       )}
+      {dialogo}
     </main>
   );
 }

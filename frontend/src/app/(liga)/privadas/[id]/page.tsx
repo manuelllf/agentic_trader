@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import Link from "next/link";
+import { useConfirmar } from "@/components/Confirmar";
 import { useParams, useRouter } from "next/navigation";
 import {
   BarraPestanas, Boton, Cargando, Clasificacion as TablaClasificacion, ErrorLiga, FilaEquipo,
@@ -20,6 +21,7 @@ import "../privadas.css";
 
 export default function PrivadaDetalle() {
   const t = useTranslations();
+  const { confirmar, dialogo } = useConfirmar();
   const locale = normalizeLocale(useLocale()) ?? "es";
   const date = (value: string) => fecha(value, new Date(), locale);
   const percent = (value: number) => porcentaje(value, 1, locale);
@@ -136,17 +138,18 @@ export default function PrivadaDetalle() {
                 <code className="priv-codigo">{liga.codigo}</code>
                 <Boton ancho="completo" onClick={async () => { try { await navigator.clipboard.writeText(liga.codigo!); setCopiado(true); } catch { setAviso(t("private_leagues_copy_manually")); } }}>{copiado ? t("private_leagues_code_copied") : t("private_leagues_copy_code")}</Boton>
                 <details className="priv-metodo"><summary>{t("private_leagues_change_code")}</summary><p>{t("private_leagues_change_code_note")}</p>
-                  <Boton disabled={ocupada} onClick={() => { if (window.confirm(t("private_leagues_change_code_confirm"))) void gestionar(() => rotarCodigoLiga(id)); }}>{t("private_leagues_generate_code")}</Boton>
+                  <Boton disabled={ocupada} onClick={async () => { if (!(await confirmar({ titulo: t("private_leagues_change_code_confirm"), texto: t("private_leagues_change_code_note"), aceptar: t("private_leagues_generate_code") }))) return; void gestionar(() => rotarCodigoLiga(id)); }}>{t("private_leagues_generate_code")}</Boton>
                 </details>
               </div>}
               {liga.miembros.map((m) => <div className="priv-miembro" key={m.alias}><span>{m.alias}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}<small>{t("private_leagues_member_since", { date: date(m.unido.slice(0, 10)) })}</small></span>
-                {liga.es_dueno && !m.es_yo && <Boton variante="discreto" disabled={ocupada} onClick={() => { if (window.confirm(t("private_leagues_remove_confirm", { alias: m.alias }))) void gestionar(() => expulsarDeLiga(id, m.alias)); }}>{t("private_leagues_remove")}</Boton>}</div>)}
-              {!liga.es_dueno && <Boton disabled={ocupada} onClick={() => { if (window.confirm(t("private_leagues_leave_confirm"))) void gestionar(() => salirLiga(id), true); }}>{t("private_leagues_leave")}</Boton>}
+                {liga.es_dueno && !m.es_yo && <Boton variante="discreto" disabled={ocupada} onClick={async () => { if (!(await confirmar({ titulo: t("private_leagues_remove_confirm", { alias: m.alias }), texto: t("private_leagues_remove_body", { name: liga.nombre }), aceptar: t("private_leagues_remove"), peligro: true }))) return; void gestionar(() => expulsarDeLiga(id, m.alias)); }}>{t("private_leagues_remove")}</Boton>}</div>)}
+              {!liga.es_dueno && <Boton disabled={ocupada} onClick={async () => { if (!(await confirmar({ titulo: t("private_leagues_leave_title", { name: liga.nombre }), texto: t("private_leagues_leave_body"), aceptar: t("private_leagues_leave"), peligro: true }))) return; void gestionar(() => salirLiga(id), true); }}>{t("private_leagues_leave")}</Boton>}
             </details>
           </aside>
         </div>
       </>}
     {aviso && <p className="aviso" role="alert">{aviso}</p>}
     <BarraPestanas />
+    {dialogo}
   </main>;
 }

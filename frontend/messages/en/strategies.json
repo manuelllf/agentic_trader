@@ -11,7 +11,6 @@
   "strategies_state_signed_up": "Next round",
   "strategies_state_playing": "Playing",
   "strategies_state_retired": "Retired",
-  "strategies_delete_draft_confirm": "Delete the draft “{name}”? This can't be undone.",
   "strategies_crest": "{name} team crest",
   "strategies_this_month": "This month",
   "strategies_no_data": "No data",
@@ -278,5 +277,10 @@
   "strategies_company_notes_source": "Scores from the {date} scan, round {round}. They are the ones used to build this portfolio.",
   "strategies_company_notes_none": "That round did not save company scores. The portfolio was built with another method, which you can see in the Methodology tab.",
   "strategies_company_notes_how": "How the scores are calculated",
-  "strategies_showcase_portfolio": "Strategy portfolio"
+  "strategies_showcase_portfolio": "Strategy portfolio",
+  "strategies_delete_draft_title": "Delete “{name}”?",
+  "strategies_delete_draft_body": "It is a draft: it is deleted completely and this cannot be undone.",
+  "strategies_delete_draft_action": "Delete draft",
+  "strategies_report_title": "Report this strategy",
+  "strategies_report_reason": "Reason for the report"
 }

@@ -5,6 +5,7 @@
 // automático falló; el normal corre solo al cerrar la última jornada.
 
 import Link from "next/link";
+import { useConfirmar } from "@/components/Confirmar";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
@@ -21,6 +22,7 @@ const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.messa
 
 function Premio() {
   const t = useTranslations();
+  const { confirmar, dialogo } = useConfirmar();
   const locale = useLocale();
   const euros = (v: string) => new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(Number(v));
   const porcentaje = (v: string) => `${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v))} %`;
@@ -37,7 +39,7 @@ function Premio() {
   useEffect(() => cargar(), [cargar]);
 
   const calcular = async (id: number) => {
-    if (!window.confirm(t("admin_prize_confirm_calculate"))) return;
+    if (!(await confirmar({ titulo: t("admin_prize_confirm_calculate"), aceptar: t("common_confirmar") }))) return;
     setOcupado(true); setFallo("");
     try {
       await post(`/liga/admin/procesos/premio/ejecutar`, { temporada_id: id });
@@ -113,6 +115,7 @@ function Premio() {
           )}
         </>
       )}
+      {dialogo}
     </main>
   );
 }

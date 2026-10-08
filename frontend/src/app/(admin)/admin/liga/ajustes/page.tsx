@@ -4,6 +4,7 @@
 // claves JSON en crudo (feedback de Manuel: «no se entiende qué poner ni si va o no va»).
 
 import Link from "next/link";
+import { useConfirmar } from "@/components/Confirmar";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
@@ -38,6 +39,7 @@ const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.messa
 
 function Ajustes() {
   const t = useTranslations();
+  const { confirmar, dialogo } = useConfirmar();
   const locale = useLocale();
   const fecha = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const dollars = (v: string | number) => new Intl.NumberFormat(locale, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v));
@@ -88,7 +90,7 @@ function Ajustes() {
 
   const guardarInterruptor = async (a: Ajuste, nuevo: boolean) => {
     if (a.grupo === "IA" && nuevo
-        && !window.confirm(t("admin_settings_confirm_ai"))) {
+        && !(await confirmar({ titulo: t("admin_settings_confirm_ai"), aceptar: t("common_confirmar") }))) {
       return;
     }
     setOcupada(a.clave); setErroresFila((e) => ({ ...e, [a.clave]: "" }));
@@ -128,7 +130,7 @@ function Ajustes() {
   };
 
   const restablecer = async (a: Ajuste) => {
-    if (!window.confirm(t("admin_settings_reset_confirm", { title: ajustesLabel(a).title, value: valor(a, a.defecto) }))) return;
+    if (!(await confirmar({ titulo: t("admin_settings_reset_confirm", { title: ajustesLabel(a).title, value: valor(a, a.defecto) }), aceptar: t("common_confirmar") }))) return;
     setOcupada(a.clave); setErroresFila((e) => ({ ...e, [a.clave]: "" }));
     try {
       const fila = await del<Ajuste>(`/liga/admin/ajustes/${encodeURIComponent(a.clave)}`);
@@ -249,6 +251,7 @@ function Ajustes() {
           );
         })
       )}
+      {dialogo}
     </main>
   );
 }

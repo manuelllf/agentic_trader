@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useConfirmar } from "@/components/Confirmar";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
@@ -33,6 +34,7 @@ function parchearFila(id: string, cambios: Partial<Estrategia> | Estrategia) {
 
 export default function Mias() {
   const t = useTranslations();
+  const { confirmar, dialogo } = useConfirmar();
   const locale = normalizeLocale(useLocale()) ?? "es";
   const percent = (value: number) => porcentaje(value, 1, locale);
   const points = (value: number) => signo(value, 1, locale);
@@ -119,7 +121,7 @@ export default function Mias() {
   }
 
   async function alBorrar(id: string, nombre: string) {
-    if (!window.confirm(t("strategies_delete_draft_confirm", { name: nombre }))) return;
+    if (!(await confirmar({ titulo: t("strategies_delete_draft_title", { name: nombre }), texto: t("strategies_delete_draft_body"), aceptar: t("strategies_delete_draft_action"), peligro: true }))) return;
     setOcupada(id);
     setAviso(null);
     const r = await borrarEstrategia(id);
@@ -275,6 +277,7 @@ export default function Mias() {
       {aviso && <p className="aviso" role="alert" style={{ marginTop: 16 }}>{aviso}</p>}
 
       <BarraPestanas />
+      {dialogo}
     </main>
   );
 }
