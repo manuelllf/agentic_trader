@@ -20,15 +20,23 @@ export default function Callback() {
     const tokenHash = parametros.get("token_hash");
     const tipo = parametros.get("type");
     const destino = destinoSeguro(parametros.get("next"));
-    if (!sb || (!code && !tokenHash)) { setFallo(true); return; }
+    if (!sb) { setFallo(true); return; }
     void (async () => {
       try {
-        const { error } = tokenHash && (tipo === "magiclink" || tipo === "recovery")
-          ? await supabase()!.auth.verifyOtp({ token_hash: tokenHash, type: tipo })
-          : await supabase()!.auth.exchangeCodeForSession(code ?? "");
-        if (error) setFallo(true);
-        else window.location.replace(destino);
-      } catch { setFallo(true); }
+        const tipoOtp = tipo === "magiclink" || tipo === "recovery" ? tipo : null;
+        const usaOtp = Boolean(tokenHash) && tipoOtp !== null;
+        if (usaOtp || code) {
+          const { error } = usaOtp
+            ? await supabase()!.auth.verifyOtp({ token_hash: tokenHash!, type: tipoOtp! })
+            : await supabase()!.auth.exchangeCodeForSession(code!);
+          if (!error) { window.location.replace(destino); return; }
+        }
+      } catch { /* el intercambio falló: se comprueba si ya hay sesión abajo */ }
+      // Antes de avisar de un enlace caducado, miramos si la sesión ya está puesta: así no
+      // aparece el aviso un instante cuando la vuelta llega bien.
+      const sesion = await supabase()!.auth.getSession().then(r => r.data.session, () => null);
+      if (sesion) window.location.replace(destino);
+      else setFallo(true);
     })();
   }, [sb]);
 
