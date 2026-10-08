@@ -14,8 +14,10 @@ export function supabase(): SupabaseClient | null {
   if (cliente === undefined) {
     cliente = URL && CLAVE
       ? createClient(URL, CLAVE, {
+          // PKCE: la vuelta de Google, del enlace al correo o de la recuperación llega con `?code=`
+          // y la página `auth/callback` lo cambia por sesión.
           auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false,
-            storageKey: "liguilla-sesion" },
+            flowType: "pkce", storageKey: "liguilla-sesion" },
         })
       : null;
   }

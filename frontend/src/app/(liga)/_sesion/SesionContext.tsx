@@ -10,6 +10,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { debeCompletarCuenta } from "@/lib/liga/cuenta";
 import { sessionViewKey } from "@/lib/liga/sessionView";
 import { getYo, type Yo } from "@/lib/liga/api";
 import { supabase, tokenSesion, useSupabase } from "@/lib/liga/supabase";
@@ -58,6 +59,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
   const { setAccount } = useLanguage();
   const sb = useSupabase();
   const pathname = usePathname();
+  const router = useRouter();
   const [estado, setEstado] = useState<EstadoSesion>("cargando");
   const [email, setEmail] = useState<string | null>(null);
   const [uid, setUid] = useState<string | null>(null);
@@ -145,6 +147,12 @@ export function SesionProvider({ children }: { children: ReactNode }) {
     if (estado === "fuera") setAccount(null);
     else if (uid && yo) setAccount({ id: uid, locale: yo.idioma ?? null });
   }, [estado, uid, yo, setAccount]);
+
+  useEffect(() => {
+    if (estado === "dentro" && debeCompletarCuenta(yo?.pendiente === true, pathname)) {
+      router.replace(`/completar?next=${encodeURIComponent(pathname + window.location.search)}`);
+    }
+  }, [estado, yo?.pendiente, pathname, router]);
 
   const cerrarSesion = async () => {
     await supabase()?.auth.signOut();

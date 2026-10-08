@@ -45,3 +45,8 @@ export async function borrarMiCuenta(confirmacion: string, clave: string): Promi
     return browserText("system_delete_account_retry");
   }
 }
+
+export function debeCompletarCuenta(pendiente: boolean, ruta: string): boolean {
+  return pendiente && !["/completar", "/auth/callback", "/legal", "/entrar", "/registrar", "/cambiar-clave"]
+    .some(prefijo => ruta.startsWith(prefijo));
+}

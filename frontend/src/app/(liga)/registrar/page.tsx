@@ -2,9 +2,10 @@
 
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Boton, CampoClave } from "../_ui";
-import { useSupabase } from "@/lib/liga/supabase";
+import { GOOGLE_ACTIVO, APPLE_ACTIVO } from "@/lib/liga/proveedores";
+import { destinoSeguro, useSupabase } from "@/lib/liga/supabase";
 import { claveValida, requisitosClave, solicitarCorreo, useAccesoCorreo } from "@/lib/liga/registro";
 import { MarcoAcceso } from "../_ui/MarcoAcceso";
 
@@ -19,6 +20,22 @@ export default function Registrar() {
   const [ocupado, setOcupado] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [error, setError] = useState("");
+  const [destino, setDestino] = useState("/liga");
+  useEffect(() => {
+    setDestino(destinoSeguro(new URLSearchParams(window.location.search).get("next")));
+  }, []);
+  const entrarProveedor = async (provider: "google" | "apple") => {
+    if (!sb || ocupado) return;
+    setOcupado(true); setError("");
+    try {
+      const { error } = await sb.auth.signInWithOAuth({ provider, options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(destino)}`,
+      } });
+      if (error) setError(t("auth_sin_proveedor"));
+    } catch { setError(t("auth_sin_proveedor")); }
+    finally { setOcupado(false); }
+  };
+
   const requisitos = requisitosClave(clave);
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -69,6 +86,10 @@ export default function Registrar() {
           onChange={e => setAcepta(e.target.checked)} /><span>{t.rich("auth_aceptacion_legal", { terms: chunks => <Link href="/legal/terminos">{chunks}</Link>, privacy: chunks => <Link href="/legal/privacidad">{chunks}</Link> })}</span></label>
         <Boton type="submit" variante="principal" ancho="completo" disabled={ocupado || !sb || !acceso?.registro_abierto}>
           {ocupado ? t("auth_creando_cuenta") : t("auth_crear_cuenta")}</Boton>
+              {GOOGLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
+                onClick={() => void entrarProveedor("google")}>{t("auth_continuar_google")}</Boton>}
+              {APPLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
+                onClick={() => void entrarProveedor("apple")}>{t("auth_continuar_apple")}</Boton>}
       </form>}
       {error && <p className="aviso" role="alert">{error}</p>}
       {sb === null && <p className="nota">{t("auth_registro_no_disponible")}</p>}

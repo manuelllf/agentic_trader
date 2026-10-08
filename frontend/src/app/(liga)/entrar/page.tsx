@@ -5,17 +5,19 @@
 
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
+import { GOOGLE_ACTIVO, APPLE_ACTIVO } from "@/lib/liga/proveedores";
 import { Boton, CampoClave } from "../_ui";
 import { entrarConAlias } from "@/lib/liga/api";
 import { destinoSeguro, useSupabase } from "@/lib/liga/supabase";
 import { MarcoAcceso } from "../_ui/MarcoAcceso";
 import { CampoCodigo } from "../_ui/CampoCodigo";
 
-type Paso = "credenciales" | "codigo";
+type Paso = "credenciales" | "codigo" | "recuperar" | "enlace";
 
 export default function Entrar() {
   const t = useTranslations();
   const [paso, setPaso] = useState<Paso>("credenciales");
+  const [enviado, setEnviado] = useState(false);
   const [email, setEmail] = useState("");
   const [clave, setClave] = useState("");
   const [codigo, setCodigo] = useState("");
@@ -27,6 +29,42 @@ export default function Entrar() {
   useEffect(() => {
     setDestino(destinoSeguro(new URLSearchParams(window.location.search).get("next")));
   }, []);
+
+  const entrarProveedor = async (provider: "google" | "apple") => {
+    if (!sb || ocupado) return;
+    setOcupado(true); setError("");
+    try {
+      const { error } = await sb.auth.signInWithOAuth({ provider, options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(destino)}`,
+      } });
+      if (error) setError(t("auth_sin_proveedor"));
+    } catch { setError(t("auth_sin_proveedor")); }
+    finally { setOcupado(false); }
+  };
+
+  const cambiarModo = (modo: Paso) => {
+    setPaso(modo); setError(""); setEnviado(false);
+  };
+
+  const enviarCorreo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sb || ocupado) return;
+    setOcupado(true); setError("");
+    try {
+      if (paso === "recuperar") {
+        await sb.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/cambiar-clave")}`,
+        });
+      } else {
+        await sb.auth.signInWithOtp({ email: email.trim(), options: {
+          shouldCreateUser: false,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(destino)}`,
+        } });
+      }
+    } catch {
+      // La respuesta uniforme evita revelar si el correo tiene cuenta.
+    } finally { setEnviado(true); setOcupado(false); }
+  };
 
   const seguir = () => window.location.assign(destino);
 
@@ -112,8 +150,27 @@ export default function Entrar() {
                      disabled={ocupado || !sb || !email || !clave}>
                 {ocupado ? t("auth_entrando") : t("auth_entrar")}
               </Boton>
+              {GOOGLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
+                onClick={() => void entrarProveedor("google")}>{t("auth_continuar_google")}</Boton>}
+              {APPLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
+                onClick={() => void entrarProveedor("apple")}>{t("auth_continuar_apple")}</Boton>}
+              <Boton variante="discreto" ancho="completo" disabled={ocupado}
+                onClick={() => cambiarModo("recuperar")}>{t("auth_olvide_contrasena")}</Boton>
+              <Boton variante="discreto" ancho="completo" disabled={ocupado}
+                onClick={() => cambiarModo("enlace")}>{t("auth_entrar_con_enlace")}</Boton>
             </form>
           </>
+        ) : paso !== "codigo" ? (
+          <form className="form" onSubmit={enviarCorreo}>
+            <label className="campo"><span className="lbl">{t("auth_email")}</span>
+              <input className="inp" type="email" autoComplete="email" autoCapitalize="none" required
+                value={email} onChange={e => setEmail(e.target.value)} /></label>
+            {enviado && <p className="nota" role="status">{t("auth_correo_enviado_generico")}</p>}
+            <Boton type="submit" variante="principal" ancho="completo" disabled={ocupado || !sb || !email.trim()}>
+              {ocupado ? t("auth_enviando") : t("auth_enviar_enlace")}</Boton>
+            <Boton variante="secundario" ancho="completo" disabled={ocupado}
+              onClick={() => cambiarModo("credenciales")}>{t("auth_volver_entrar")}</Boton>
+          </form>
         ) : (
           <>
             <p className="nota">{t("auth_codigo_instrucciones")}</p>

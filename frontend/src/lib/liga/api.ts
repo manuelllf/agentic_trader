@@ -9,6 +9,7 @@ import { browserLocale, type Locale } from "../../i18n/locale";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type Yo = {
+  pendiente: boolean;
   alias: string;
   plan: "gratis" | "pro";
   puede_crear_liga: boolean;
@@ -70,6 +71,23 @@ export async function cambiarAlias(alias: string): Promise<Yo | string> {
       method: "PATCH",
       headers: { Authorization: `Bearer ${sesion.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ alias }),
+      cache: "no-store",
+    });
+    if (res.ok) return (await res.json()) as Yo;
+    const cuerpo = (await res.json().catch(() => ({}))) as { detail?: unknown };
+    return typeof cuerpo.detail === "string" ? cuerpo.detail : browserText("system_save_failed");
+  } catch {
+    return browserText("system_save_failed");
+  }
+}
+
+export async function aceptarTerminos(): Promise<Yo | string> {
+  const sesion = await tokenSesion();
+  if (!sesion) return browserText("system_session_expired");
+  try {
+    const res = await fetch(`${API_URL}/liga/yo/terminos`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sesion.token}` },
       cache: "no-store",
     });
     if (res.ok) return (await res.json()) as Yo;
