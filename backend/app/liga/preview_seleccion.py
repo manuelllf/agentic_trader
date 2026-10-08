@@ -1,4 +1,4 @@
-"""Vista previa sin persistencia ni llamadas LLM, sobre la última foto y las notas guardadas."""
+"""Vista previa sin persistencia ni llamadas LLM, sobre la imagen global de referencia."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ def _sin_datos(mensaje: str) -> PreviewSeleccionOut:
 @router.post("/seleccion/preview", response_model=PreviewSeleccionOut)
 def previsualizar(body: PreviewSeleccionIn,
                   ident: Identidad = Depends(require_jugador)) -> PreviewSeleccionOut:
-    """Evalúa lo escrito contra la última foto guardada; lectura acotada por usuario."""
+    """Usa la imagen global para que todos los borradores compartan referencia."""
     if not _LIMITE_PREVIEW.permitido(ident.uid):
         raise HTTPException(429, "Has cambiado la selección muchas veces. Espera un momento.")
     pregunta = (body.pregunta or "").strip() or None
@@ -85,7 +85,7 @@ def previsualizar(body: PreviewSeleccionIn,
         body.pesos, body.n_empresas, body.reparto, body.max_por_sector,
     )
     try:
-        contexto = estrategias.foto_y_notas_actuales()
+        contexto = estrategias.contexto_de_referencia()
     except HTTPException as exc:
         if exc.status_code in (404, 409):
             return _sin_datos(present_error_detail(exc.detail, current_locale.get()))

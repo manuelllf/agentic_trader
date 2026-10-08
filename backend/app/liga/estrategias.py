@@ -283,6 +283,38 @@ def foto_y_notas_de(foto_id: int) -> Contexto:
         db.close()
 
 
+def foto_y_notas_jornada(foto_id: int, scan_run_id: int) -> Contexto:
+    """Lee exclusivamente la foto y las notas que se designaron para la jornada."""
+    db = fabrica_sistema()
+    try:
+        empresas, notas = _empresas_y_notas(db, foto_id, scan_run_id)
+        return Contexto(foto_id, scan_run_id, False, empresas, notas)
+    finally:
+        db.close()
+
+
+def jornada_de_referencia() -> tuple[int, int] | None:
+    """La imagen designada es común a todas las estrategias, incluso sin inscripciones."""
+    db = fabrica_sistema()
+    try:
+        fila = db.execute(text("""
+            select foto_id, scan_run_id from liga.jornadas
+            where estado in ('programada', 'formada', 'cerrada')
+              and foto_id is not null and scan_run_id is not null
+            order by dia_base desc, id desc
+            limit 1
+        """)).one_or_none()
+        return (fila.foto_id, fila.scan_run_id) if fila is not None else None
+    finally:
+        db.close()
+
+
+def contexto_de_referencia() -> Contexto:
+    """Mantiene la imagen global de la jornada mientras la receta del editor cambia."""
+    referencia = jornada_de_referencia()
+    return foto_y_notas_jornada(*referencia) if referencia else foto_y_notas_actuales()
+
+
 def evidencia_formacion_ficha(usuario_id: str, estrategia_id: str) -> dict | None:
     """Autoriza leer la foto exacta de formación, sin suplir lo ausente con datos actuales."""
     db = fabrica_sistema()

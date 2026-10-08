@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+import pytest
 from fastapi import HTTPException
 
 from app.liga import preview_seleccion as ruta
@@ -7,6 +8,12 @@ from app.liga.auth import Identidad
 from app.liga.estrategias import Contexto
 from app.liga.motor.catalogo import EmpresaFoto
 from app.liga.motor.seleccion import NotasJev
+
+
+@pytest.fixture(autouse=True)
+def sin_jornada_de_referencia(monkeypatch):
+    # Sin BD: la imagen sale de `foto_y_notas_actuales`, que cada prueba parchea.
+    monkeypatch.setattr(ruta.estrategias, "jornada_de_referencia", lambda: None)
 
 
 def _body() -> ruta.PreviewSeleccionIn:

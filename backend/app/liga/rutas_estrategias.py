@@ -667,7 +667,7 @@ def por_que(id: uuid.UUID, ticker: Ticker, ident: Identidad = Depends(require_us
     _exigir_calculo_disponible(ident.uid)
     t = _ticker(ticker)
     receta = _receta_de(db, id)
-    ctx = estrategias.foto_y_notas_actuales()
+    ctx = estrategias.contexto_de_referencia()
     seleccion = _seleccionar_con(ctx, receta)
     motivo = explicar(t, seleccion, datos.receta_motor(receta))
     return PorQueOut(ticker=t, motivo=presentar(motivo, current_locale.get()))
