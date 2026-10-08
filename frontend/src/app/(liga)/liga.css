@@ -1297,6 +1297,26 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .acc .acc-olvido { align-self: flex-end; min-height: 44px; margin-top: -8px; padding: 0 2px;
   font-size: 14px; color: var(--ink2); text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; }
 .lg .acc .acc-sep + .form { margin-top: 18px; }
+/* En móvil, la pantalla entera cabe sin desplazarse: cabecera corta y campos más juntos. */
+@media (max-width: 879px) {
+  .lg .acc .acc-portada { min-height: 0; }
+  .lg .acc .acc-sub { display: none; }
+  .lg .acc .acc-intro { margin-top: 20px; gap: 6px; }
+  .lg .acc .acc-intro h1 { font-size: 24px; }
+  .lg .acc .form { gap: 12px; margin-top: 16px; }
+  .lg .acc .acc-sep { margin-top: 12px; }
+  .lg .acc .acc-sep + .form { margin-top: 12px; }
+  .lg .acc .acc-google { min-height: 46px; }
+  .lg .acc .form { gap: 10px; }
+  .lg .acc .acc-req { margin-top: -4px; }
+  .lg .acc .acc-req { flex-wrap: nowrap; }
+  .lg .acc .acc-req li { padding: 4px 6px; font-size: 12px; }
+  .lg .acc .inp { min-height: 44px; }
+  .lg .acc .acc-cambio { margin-top: 6px; }
+  .lg .acc .acc-pie { padding-top: 6px; gap: 2px; font-size: 12px; line-height: 1.35; }
+  .lg .acc.sencilla { padding-top: 12px; padding-bottom: 8px; }
+  .lg .acc .acc-pie div a { min-height: 36px; }
+}
 .lg .acc .acc-chk { appearance: none; flex: none; display: grid; place-items: center; width: 24px; height: 24px;
   margin: 0; border: 1.5px solid var(--line2); border-radius: 7px; background: var(--bg); cursor: pointer; }
 .lg .acc .acc-chk:checked { background: var(--btn); border-color: var(--btn); color: var(--btn-ink); }
