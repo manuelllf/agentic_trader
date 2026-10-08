@@ -1354,19 +1354,12 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
   .lg .acc .acc-seg { display: grid; }
   .lg .acc .form { margin-top: 20px; }
   .lg .acc .acc-intro h1 { margin-top: 0; }
-  .lg .acc:not(.acc-solo) { display: grid; grid-template-columns: 1.1fr 1fr; grid-template-rows: auto 1fr;
-    column-gap: 64px; padding: 28px 32px 22px; background: linear-gradient(to right, var(--surface) 0 52.38%, var(--bg) 52.38% 100%); }
-  .lg .acc:not(.acc-solo) .sencilla-top { grid-column: 1 / -1; }
-  .lg .acc:not(.acc-solo) .acc-intro { grid-column: 1; grid-row: 2; align-self: center; margin: 28px auto; max-width: 440px; gap: 14px; }
-  .lg .acc:not(.acc-solo) .acc-intro h1 { font-size: 34px; order: -2; }
-  .lg .acc:not(.acc-solo) .acc-sub { order: -1; }
-  .lg .acc:not(.acc-solo) .acc-puntos { display: flex; flex-direction: column; gap: 8px; list-style: none;
-    padding: 0; font-size: 15px; color: var(--ink2); }
-  .lg .acc:not(.acc-solo) .acc-puntos li { display: flex; gap: 10px; }
-  .lg .acc:not(.acc-solo) .acc-puntos li::before { content: ""; flex: none; width: 8px; height: 8px;
-    margin-top: 7px; border-radius: 50%; background: var(--accent); }
-  .lg .acc:not(.acc-solo) .acc-panel { grid-column: 2; grid-row: 2; width: 100%; max-width: 340px;
-    align-self: center; justify-self: center; margin: 28px 0; }
-  .lg .acc:not(.acc-solo) .acc-seg { margin-top: 0; }
-  .lg .acc.acc-solo { max-width: 440px; }
+  /* Escritorio: una columna centrada. El encabezado va fijo arriba y título más formulario quedan en el centro. */
+  .lg .acc { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto auto 1fr;
+    padding: 28px 32px 22px; background: var(--bg); }
+  .lg .acc .sencilla-top { grid-row: 1; }
+  .lg .acc .acc-intro { grid-row: 3; justify-self: center; width: min(440px, 100%); margin: 0 0 28px; gap: 12px; text-align: center; }
+  .lg .acc .acc-intro h1 { font-size: 34px; }
+  .lg .acc .acc-puntos, .lg .acc .acc-arte-bloque { display: none; }
+  .lg .acc .acc-panel { grid-row: 4; justify-self: center; width: min(440px, 100%); }
 }
