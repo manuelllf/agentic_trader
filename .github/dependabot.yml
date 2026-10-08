@@ -5,16 +5,16 @@ updates:
     directory: "/backend"
     schedule:
       interval: "weekly"
-    target-branch: "20260927_liguilla"
+    target-branch: "main"
 
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
       interval: "weekly"
-    target-branch: "20260927_liguilla"
+    target-branch: "main"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    target-branch: "20260927_liguilla"
+    target-branch: "main"
