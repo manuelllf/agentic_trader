@@ -42,11 +42,8 @@ async function generar() {
   await fs.writeFile(path.join(publico, "favicon.svg"), tesela);
   await fs.writeFile(path.join(publico, "../src/lib/brandIcon.ts"),
     `// Fuente vectorial compartida con las tarjetas exportadas.\nexport const VENNETT_ICON = ${JSON.stringify(tesela.trim())};\n`);
-  // Android recorta el icono en círculo: también el normal va a sangre completa, sin esquinas transparentes.
-  for (const lado of [192, 512]) {
-    await rasterizar(mascara, lado).png().toFile(path.join(publico, `icon-${lado}.png`));
-    await rasterizar(mascara, lado).png().toFile(path.join(publico, `icon-maskable-${lado}.png`));
-  }
+  // Android recorta el icono en círculo: va a sangre completa y el manifest lo declara "any maskable".
+  for (const lado of [192, 512]) await rasterizar(mascara, lado).png().toFile(path.join(publico, `icon-${lado}.png`));
   await rasterizar(cuadrado, 180).flatten({ background: "#F0F6F6" }).png().toFile(path.join(publico, "apple-touch-icon.png"));
   await rasterizar(aviso, 192).png().toFile(path.join(publico, "notif-192.png"));
   await rasterizar(insignia, 96).png().toFile(path.join(publico, "badge-96.png"));
