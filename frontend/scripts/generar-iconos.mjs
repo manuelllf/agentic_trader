@@ -24,9 +24,12 @@ const svg = (interior) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 const centrar = (escala, interior) => `<g transform="translate(100 100) scale(${escala}) translate(-100.5 -101.5)">${interior}</g>`;
 const silueta = (color) => `<g fill="${color}">${T1}${T2}</g>`;
 
-const cuadrado = svg(DEFS + FONDO + FIGURA); // iOS pone sus propias esquinas
+// Icono de app: fondo a sangre completa y solo las dos velas. Sin rayas ni línea de nivel.
+const VELAS = `<g fill="url(#vn-tinta)">${T1}</g><g fill="url(#vn-petroleo)">${T2}</g>`;
+const FONDO_APP = '<rect width="200" height="200" fill="url(#vn-fondo)"/>';
+const cuadrado = svg(DEFS + FONDO_APP + centrar(0.8, VELAS)); // iOS pone sus propias esquinas; las velas quedan en el 80 % central
 const tesela = svg(`${DEFS}<g clip-path="url(#vn-tesela)">${FONDO}${FIGURA}</g>`);
-const mascara = svg(DEFS + FONDO + centrar(0.8, FIGURA)); // Android puede recortar hasta el 80 % central
+const mascara = cuadrado; // Android puede recortar en círculo: mismo dibujo a sangre completa
 // Las notificaciones piden neutro: el icono grande en tinta sobre blanco y la insignia solo como silueta (Android usa su alfa).
 const aviso = svg(`<rect width="200" height="200" fill="#FFFFFF"/>${centrar(0.78, silueta("#111315"))}`);
 const insignia = svg(centrar(1.15, silueta("#FFFFFF")));

@@ -33,9 +33,9 @@ const baseMetadata: Metadata = {
     icon: [
       { url: "/favicon.svg?v=vennett-8", type: "image/svg+xml" },
       { url: "/favicon.ico?v=vennett-8", sizes: "32x32", type: "image/x-icon" },
-      { url: "/icon-192.png?v=vennett-8", sizes: "192x192", type: "image/png" },
+      { url: "/icon-192.png?v=vennett-9", sizes: "192x192", type: "image/png" },
     ],
-    apple: "/apple-touch-icon.png?v=vennett-8",
+    apple: "/apple-touch-icon.png?v=vennett-9",
   },
 };
 
