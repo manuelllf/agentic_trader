@@ -56,9 +56,9 @@ export function paletaDe(tema: "claro" | "oscuro") {
     cartera: ["#0B6E68", "#09615C", "#085550", "#064843", "#053B37"].map(hex),
   };
   return {
-    suelo: hex("#0A0C0D"), panel: hex("#111517"), plano: hex("#20272A"), sube: hex("#1DB05A"), baja: hex("#E5484D"),
+    suelo: hex("#0A0C0D"), panel: hex("#111517"), plano: hex("#20272A"), sube: hex("#4E9E7A"), baja: hex("#C66A62"),
     fantasma: hex("#121618"), tinta: hex("#EEF2F0"), tinta2: hex("#B9C2BE"), mudo: hex("#7F8A86"), teal: hex("#3FC7BF"),
-    barra: hex("#2A3336"), azul: hex("#26D6D0"), bien: hex("#4FD694"), mal: hex("#FF7A6B"),
+    barra: hex("#2A3336"), azul: hex("#26D6D0"), bien: hex("#7FBF9E"), mal: hex("#E08C80"),
     cartera: ["#3FC7BF", "#2FA8A1", "#238C86", "#1A716C", "#145A56"].map(hex),
   };
 }
