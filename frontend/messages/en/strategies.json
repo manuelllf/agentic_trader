@@ -90,7 +90,7 @@
   "strategies_portfolio_provisional_result": "Provisional portfolio result",
   "strategies_portfolio_month": "Portfolio · this month",
   "strategies_sp_same_period": "S&P 500 · same period",
-  "strategies_market_freshness": "Provisional since {date} · {checked} · data from {dataDate}. Refreshes every 2 min. Yahoo may provide delayed quotes.",
+  "strategies_market_freshness": "Provisional since {date} · {checked} · data from {dataDate}. Refreshes every 2 min. Quotes may be delayed.",
   "strategies_checked_at": "checked at {time}",
   "strategies_waiting_market": "waiting for a market update",
   "strategies_detail_tabs": "Strategy details",

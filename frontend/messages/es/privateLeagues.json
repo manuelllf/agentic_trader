@@ -38,7 +38,7 @@
   "private_leagues_rep_strategy_question": "¿Qué estrategia representa a cada persona?",
   "private_leagues_rep_strategy_answer": "La mejor clasificada de la temporada. Si aún no tiene puntos, se usa la más antigua de sus estrategias con cartera formada en la temporada. No hace falta inscribirla otra vez en esta liga.",
   "private_leagues_cumulative_note": "El acumulado muestra el periodo de cada estrategia, que puede ser distinto. Compartir liga no da acceso a metodologías privadas.",
-  "private_leagues_market_checked": "Mercado consultado a las {time}. Las cotizaciones de Yahoo pueden tener retraso.",
+  "private_leagues_market_checked": "Mercado consultado a las {time}. Las cotizaciones pueden tener retraso.",
   "private_leagues_private_strategy": "Estrategia privada",
   "private_leagues_you": "tú",
   "private_leagues_join_create_note": "Crea una estrategia y apúntala a la próxima jornada para empezar a comparar.",

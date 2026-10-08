@@ -90,7 +90,7 @@
   "strategies_portfolio_provisional_result": "Resultado provisional de la cartera",
   "strategies_portfolio_month": "Cartera · este mes",
   "strategies_sp_same_period": "S&P 500 · mismo periodo",
-  "strategies_market_freshness": "Provisional desde {date} · {checked} · datos del {dataDate}. Refresco cada 2 min. Yahoo puede entregar cotizaciones con retraso.",
+  "strategies_market_freshness": "Provisional desde {date} · {checked} · datos del {dataDate}. Refresco cada 2 min. Las cotizaciones pueden tener retraso.",
   "strategies_checked_at": "consultado a las {time}",
   "strategies_waiting_market": "esperando actualización de mercado",
   "strategies_detail_tabs": "Ficha de la estrategia",

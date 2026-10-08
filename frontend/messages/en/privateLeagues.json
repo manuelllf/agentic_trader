@@ -38,7 +38,7 @@
   "private_leagues_rep_strategy_question": "Which strategy represents each person?",
   "private_leagues_rep_strategy_answer": "The highest-ranked strategy for the season. If it has no points yet, the oldest strategy with a portfolio formed this season is used. You don't need to sign it up for this league again.",
   "private_leagues_cumulative_note": "Cumulative results cover each strategy's own period, which may differ. Sharing a league doesn't grant access to private methodologies.",
-  "private_leagues_market_checked": "Market checked at {time}. Yahoo quotes may be delayed.",
+  "private_leagues_market_checked": "Market checked at {time}. Quotes may be delayed.",
   "private_leagues_private_strategy": "Private strategy",
   "private_leagues_you": "you",
   "private_leagues_join_create_note": "Create a strategy and sign it up for the next round to start comparing.",
