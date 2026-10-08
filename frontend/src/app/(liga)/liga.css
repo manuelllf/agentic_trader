@@ -1287,6 +1287,16 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .acc .acc-req li.hecho { background: var(--accent-bg); color: var(--accent); }
 .lg .acc .acc-acepta { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; font-size: 15px; line-height: 1.5; }
 .lg .acc .acc-acepta a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+/* Google va primero y en neutro: es la vía de menos fricción de la pantalla. */
+.lg .acc .acc-google { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%;
+  min-height: 50px; border-radius: 10px; border: 1px solid var(--line2); background: var(--raised);
+  color: var(--ink); font-size: 16px; font-weight: 600; cursor: pointer; }
+.lg .acc .acc-google[disabled] { opacity: .5; cursor: not-allowed; }
+.lg .acc .acc-sep { display: flex; align-items: center; gap: 12px; margin: 22px 0 0; color: var(--muted); font-size: 14px; }
+.lg .acc .acc-sep::before, .lg .acc .acc-sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.lg .acc .acc-olvido { align-self: flex-end; min-height: 44px; margin-top: -8px; padding: 0 2px;
+  font-size: 14px; color: var(--ink2); text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; }
+.lg .acc .acc-sep + .form { margin-top: 18px; }
 .lg .acc .acc-chk { appearance: none; flex: none; display: grid; place-items: center; width: 24px; height: 24px;
   margin: 0; border: 1.5px solid var(--line2); border-radius: 7px; background: var(--bg); cursor: pointer; }
 .lg .acc .acc-chk:checked { background: var(--btn); border-color: var(--btn); color: var(--btn-ink); }

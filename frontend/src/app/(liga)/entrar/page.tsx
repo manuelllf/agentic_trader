@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { GOOGLE_ACTIVO, APPLE_ACTIVO } from "@/lib/liga/proveedores";
 import { Boton, CampoClave } from "../_ui";
+import { BotonGoogle, Separador } from "../_ui/AccesoProveedor";
 import { entrarConAlias } from "@/lib/liga/api";
 import { destinoSeguro, useSupabase } from "@/lib/liga/supabase";
 import { MarcoAcceso } from "../_ui/MarcoAcceso";
@@ -135,6 +136,11 @@ export default function Entrar() {
           </>
         ) : paso === "credenciales" ? (
           <>
+            {GOOGLE_ACTIVO && <BotonGoogle texto={t("auth_continuar_google")} disabled={ocupado || !sb}
+              onClick={() => void entrarProveedor("google")} />}
+            {APPLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
+              onClick={() => void entrarProveedor("apple")}>{t("auth_continuar_apple")}</Boton>}
+            <Separador texto={t("auth_o")} />
             <form className="form" onSubmit={entrar}>
               <label className="campo">
                 <span className="lbl">{t("auth_usuario_email")}</span>
@@ -145,17 +151,13 @@ export default function Entrar() {
               </label>
               <CampoClave autoComplete="current-password" required
                 value={clave} onChange={(e) => setClave(e.target.value)} />
+              <button type="button" className="acc-olvido" disabled={ocupado}
+                onClick={() => cambiarModo("recuperar")}>{t("auth_olvide_contrasena")}</button>
               {error && <p className="aviso" role="alert">{error}</p>}
               <Boton type="submit" variante="principal" ancho="completo"
                      disabled={ocupado || !sb || !email || !clave}>
                 {ocupado ? t("auth_entrando") : t("auth_entrar")}
               </Boton>
-              {GOOGLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
-                onClick={() => void entrarProveedor("google")}>{t("auth_continuar_google")}</Boton>}
-              {APPLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
-                onClick={() => void entrarProveedor("apple")}>{t("auth_continuar_apple")}</Boton>}
-              <Boton variante="discreto" ancho="completo" disabled={ocupado}
-                onClick={() => cambiarModo("recuperar")}>{t("auth_olvide_contrasena")}</Boton>
               <Boton variante="discreto" ancho="completo" disabled={ocupado}
                 onClick={() => cambiarModo("enlace")}>{t("auth_entrar_con_enlace")}</Boton>
             </form>

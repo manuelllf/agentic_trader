@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Boton, CampoClave } from "../_ui";
+import { BotonGoogle, Separador } from "../_ui/AccesoProveedor";
 import { GOOGLE_ACTIVO, APPLE_ACTIVO } from "@/lib/liga/proveedores";
 import { destinoSeguro, useSupabase } from "@/lib/liga/supabase";
 import { claveValida, requisitosClave, solicitarCorreo, useAccesoCorreo } from "@/lib/liga/registro";
@@ -59,6 +60,13 @@ export default function Registrar() {
     }
   }
   return <MarcoAcceso pestana="crear">
+      {!enviado && <>
+        {GOOGLE_ACTIVO && <BotonGoogle texto={t("auth_continuar_google")} disabled={ocupado || !sb}
+          onClick={() => void entrarProveedor("google")} />}
+        {APPLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
+          onClick={() => void entrarProveedor("apple")}>{t("auth_continuar_apple")}</Boton>}
+        <Separador texto={t("auth_o")} />
+      </>}
       {enviado ? <>
         <h2>{t("auth_cuenta_creada")}</h2>
         <p>{t("auth_cuenta_creada_entrada")}</p>
@@ -86,10 +94,6 @@ export default function Registrar() {
           onChange={e => setAcepta(e.target.checked)} /><span>{t.rich("auth_aceptacion_legal", { terms: chunks => <Link href="/legal/terminos">{chunks}</Link>, privacy: chunks => <Link href="/legal/privacidad">{chunks}</Link> })}</span></label>
         <Boton type="submit" variante="principal" ancho="completo" disabled={ocupado || !sb || !acceso?.registro_abierto}>
           {ocupado ? t("auth_creando_cuenta") : t("auth_crear_cuenta")}</Boton>
-              {GOOGLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
-                onClick={() => void entrarProveedor("google")}>{t("auth_continuar_google")}</Boton>}
-              {APPLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
-                onClick={() => void entrarProveedor("apple")}>{t("auth_continuar_apple")}</Boton>}
       </form>}
       {error && <p className="aviso" role="alert">{error}</p>}
       {sb === null && <p className="nota">{t("auth_registro_no_disponible")}</p>}
