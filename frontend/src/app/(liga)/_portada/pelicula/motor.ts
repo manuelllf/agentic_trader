@@ -48,15 +48,25 @@ type Rgb = [number, number, number];
 const mezcla = (a: Rgb, b: Rgb, p: number): Rgb => [lerp(a[0], b[0], p), lerp(a[1], b[1], p), lerp(a[2], b[2], p)];
 const rgb = (c: Rgb, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const hex = (h: string): Rgb => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-const C = {
-  suelo: hex("#0A0C0D"), panel: hex("#111517"), plano: hex("#1A1F21"), sube: hex("#1F7064"), baja: hex("#8E3B34"),
-  fantasma: hex("#121618"), tinta: hex("#EEF2F0"), tinta2: hex("#B9C2BE"), mudo: hex("#7F8A86"), teal: hex("#3FC7BF"),
-  barra: hex("#2A3336"), azul: hex("#26D6D0"), bien: hex("#5CC98A"), mal: hex("#F08A7E"),
-  cartera: ["#3FC7BF", "#2FA8A1", "#238C86", "#1A716C", "#145A56"].map(hex),
-};
-function colorCambio(chg: number): Rgb {
-  const k = Math.pow(Math.min(Math.abs(chg) / 3, 1), 0.75);
-  return mezcla(C.plano, chg >= 0 ? C.sube : C.baja, k);
+export function paletaDe(tema: "claro" | "oscuro") {
+  if (tema === "claro") return {
+    suelo: hex("#FFFFFF"), panel: hex("#F2F3F5"), plano: hex("#E4E6E9"), sube: hex("#0E9F4A"), baja: hex("#E5484D"),
+    fantasma: hex("#F2F3F5"), tinta: hex("#111315"), tinta2: hex("#41464C"), mudo: hex("#646D76"), teal: hex("#0B6E68"),
+    barra: hex("#646D76"), azul: hex("#0B6E68"), bien: hex("#0F9D58"), mal: hex("#E0493F"),
+    cartera: ["#0B6E68", "#09615C", "#085550", "#064843", "#053B37"].map(hex),
+  };
+  return {
+    suelo: hex("#0A0C0D"), panel: hex("#111517"), plano: hex("#20272A"), sube: hex("#1DB05A"), baja: hex("#E5484D"),
+    fantasma: hex("#121618"), tinta: hex("#EEF2F0"), tinta2: hex("#B9C2BE"), mudo: hex("#7F8A86"), teal: hex("#3FC7BF"),
+    barra: hex("#2A3336"), azul: hex("#26D6D0"), bien: hex("#4FD694"), mal: hex("#FF7A6B"),
+    cartera: ["#3FC7BF", "#2FA8A1", "#238C86", "#1A716C", "#145A56"].map(hex),
+  };
+}
+
+function colorCambio(paleta: ReturnType<typeof paletaDe>, chg: number): Rgb {
+  // Un movimiento pequeño ya se ve sólido: si no, las celdas quedan a medio camino del fondo.
+  const k = Math.pow(Math.min(Math.abs(chg) / 1, 1), 0.4);
+  return mezcla(paleta.plano, chg >= 0 ? paleta.sube : paleta.baja, k);
 }
 
 interface Zona { x: number; y: number; w: number; h: number }
@@ -93,7 +103,8 @@ function squarify<T extends { v: number }>(items: T[], x: number, y: number, w: 
 }
 
 /** Monta la película dentro de `raiz` y devuelve la función que la desmonta. */
-export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
+export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" | "oscuro" = "oscuro"): () => void {
+  const paleta = paletaDe(tema);
   const pieza = <E extends HTMLElement = HTMLElement>(n: string) => raiz.querySelector<E>(`[data-p="${n}"]`)!;
   const piezas = <E extends HTMLElement = HTMLElement>(n: string) => [...raiz.querySelectorAll<E>(`[data-p="${n}"]`)];
   const escena = pieza("escena"), lienzo = pieza<HTMLCanvasElement>("lienzo"), franja = pieza("franja");
@@ -256,7 +267,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
       const b = e.id * 4, ex = L0.R[b], ey = L0.R[b + 1], ew = L0.R[b + 2], eh = L0.R[b + 3];
       if (!(ew > 0)) continue;
       const g = Math.min(0.5, ew * 0.1, eh * 0.1);
-      f.fillStyle = rgb(colorCambio(cambioEn(e, T.cierre)));
+      f.fillStyle = rgb(colorCambio(paleta, cambioEn(e, T.cierre)));
       f.fillRect(ex + g, ey + g, ew - 2 * g, eh - 2 * g);
     }
   }
@@ -271,9 +282,9 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
       let ex = L0.R[b], ey = L0.R[b + 1], ew = L0.R[b + 2], eh = L0.R[b + 3];
       if (!(ew > 0)) continue;
       let alfa = 1, fantasma = 0, rotulo = 1;
-      let color = colorCambio(cambioEn(e, tt));
+      let color = colorCambio(paleta, cambioEn(e, tt));
       const fl = destello(e, tt);
-      if (fl > 0) color = mezcla(color, C.tinta, 0.14 * fl);
+      if (fl > 0) color = mezcla(color, paleta.tinta, 0.14 * fl);
       const k = EV.caida[e.id];
       if (k >= 0) {
         const tp = T.regla[k][0] + ((ex + ew / 2 - P.x) / P.w) * T.barrido;
@@ -288,7 +299,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
           const d2 = top ? 0.12 * r : 0.3 + 0.7 * (r / nViv);
           const q = entradaSalida(tramo(tt, T.lista0 + d2, T.lista0 + d2 + 1.3));
           ex = lerp(ex, LISTA[b], q); ey = lerp(ey, LISTA[b + 1], q); ew = lerp(ew, LISTA[b + 2], q); eh = lerp(eh, LISTA[b + 3], q);
-          color = mezcla(color, top ? C.cartera[r] : C.barra, q);
+          color = mezcla(color, top ? paleta.cartera[r] : paleta.barra, q);
           rotulo = 1 - tramo(q, 0, 0.35);
           if (tt >= T.cartera0) {
             if (top) {
@@ -314,7 +325,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
       if (fantasma > 0) {
         const s = 1 - 0.42 * fantasma;
         ex += (ew * (1 - s)) / 2; ey += (eh * (1 - s)) / 2; ew *= s; eh *= s;
-        color = mezcla(color, C.fantasma, 0.9 * fantasma);
+        color = mezcla(color, paleta.fantasma, 0.9 * fantasma);
         rotulo *= 1 - fantasma;
       }
       if (ex + ew < 0 || ey + eh < 0 || ex > W || ey > H) continue;
@@ -333,11 +344,11 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
       const conCambio = eh > f * 2.7 && f >= 9;
       const cy = ey + eh / 2 - (conCambio ? f * 0.36 : 0);
       ctx.font = `700 ${f.toFixed(1)}px ${F.dato}`;
-      ctx.fillStyle = rgb(C.tinta, 0.92 * a);
+      ctx.fillStyle = rgb(paleta.tinta, 0.92 * a);
       ctx.fillText(ticker, ex + ew / 2, cy);
       if (conCambio) {
         ctx.font = `400 ${(f * 0.6).toFixed(1)}px ${F.dato}`;
-        ctx.fillStyle = rgb(C.tinta, 0.62 * a);
+        ctx.fillStyle = rgb(paleta.tinta, 0.62 * a);
         ctx.fillText(porcentaje(chg, 2, locale), ex + ew / 2, cy + f * 0.92);
       }
     }
@@ -357,9 +368,9 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
         const txt = (sectores[s.s] ?? "").toLocaleUpperCase(locale);
         const tw = ctx.measureText(txt).width;
         if (sw < tw + 14 || sh < 34) continue;
-        ctx.fillStyle = rgb(C.suelo, 0.62 * a);
+        ctx.fillStyle = rgb(paleta.suelo, 0.62 * a);
         ctx.fillRect(sx + 1, sy + 1, tw + 10, 15);
-        ctx.fillStyle = rgb(C.tinta2, 0.85 * a);
+        ctx.fillStyle = rgb(paleta.tinta2, 0.85 * a);
         ctx.fillText(txt, sx + 6, sy + 12);
       }
     };
@@ -375,9 +386,9 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
       const lx = P.x + P.w * tramo(tt, a, a + T.barrido);
       const fin = 1 - tramo(tt, a + T.barrido, a + T.barrido + 0.25);
       const grad = ctx.createLinearGradient(lx - 90, 0, lx, 0);
-      grad.addColorStop(0, rgb(C.azul, 0)); grad.addColorStop(1, rgb(C.azul, 0.16 * fin));
+      grad.addColorStop(0, rgb(paleta.azul, 0)); grad.addColorStop(1, rgb(paleta.azul, 0.16 * fin));
       ctx.fillStyle = grad; ctx.fillRect(lx - 90, P.y, 90, P.h);
-      ctx.fillStyle = rgb(C.azul, 0.95 * fin); ctx.fillRect(lx - 0.75, P.y - 6, 1.5, P.h + 12);
+      ctx.fillStyle = rgb(paleta.azul, 0.95 * fin); ctx.fillRect(lx - 0.75, P.y - 6, 1.5, P.h + 12);
     }
   }
 
@@ -391,31 +402,31 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
       if (enLista > 0.01) {
         const lx = LISTA[b], ly = LISTA[b + 1], lw = LISTA[b + 2];
         ctx.textBaseline = "middle"; ctx.textAlign = "left";
-        ctx.font = `600 ${ANCHO ? 12 : 11}px ${F.dato}`; ctx.fillStyle = rgb(C.suelo, 0.75 * enLista);
+        ctx.font = `600 ${ANCHO ? 12 : 11}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.75 * enLista);
         ctx.fillText(String(k + 1), lx + 12, ly + filaH / 2);
-        ctx.font = `700 ${ANCHO ? 16 : 14}px ${F.dato}`; ctx.fillStyle = rgb(C.suelo, 0.95 * enLista);
+        ctx.font = `700 ${ANCHO ? 16 : 14}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.95 * enLista);
         ctx.fillText(ticker, lx + 34, ly + filaH / 2);
         const tw = ctx.measureText(ticker).width;
-        ctx.font = `600 ${ANCHO ? 14 : 12.5}px ${F.ui}`; ctx.fillStyle = rgb(C.suelo, 0.72 * enLista);
+        ctx.font = `600 ${ANCHO ? 14 : 12.5}px ${F.ui}`; ctx.fillStyle = rgb(paleta.suelo, 0.72 * enLista);
         ctx.fillText(e.nombre ?? "", lx + 44 + tw, ly + filaH / 2);
         ctx.textAlign = "right";
-        ctx.font = `700 ${ANCHO ? 14 : 12.5}px ${F.dato}`; ctx.fillStyle = rgb(C.suelo, 0.9 * enLista);
+        ctx.font = `700 ${ANCHO ? 14 : 12.5}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.9 * enLista);
         ctx.fillText(t("landing_nota", { valor: decimal(e.nota, 1) }), lx + lw - 12, ly + filaH / 2);
       }
       if (enBarra > 0.01) {
         const bx = BARRA[b], by = BARRA[b + 1], bw = BARRA[b + 2], bh = BARRA[b + 3];
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         const f = Math.min(ANCHO ? 18 : 14, bw / (ticker.length * 0.7 + 0.4));
-        ctx.font = `700 ${f.toFixed(1)}px ${F.dato}`; ctx.fillStyle = rgb(C.suelo, 0.95 * enBarra);
+        ctx.font = `700 ${f.toFixed(1)}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.95 * enBarra);
         ctx.fillText(ticker, bx + bw / 2, by + bh / 2 - f * 0.45);
-        ctx.font = `400 ${(f * 0.72).toFixed(1)}px ${F.dato}`; ctx.fillStyle = rgb(C.suelo, 0.75 * enBarra);
+        ctx.font = `400 ${(f * 0.72).toFixed(1)}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.75 * enBarra);
         ctx.fillText(t("landing_peso_tramo", { valor: 20 }), bx + bw / 2, by + bh / 2 + f * 0.62);
       }
     });
     const resto = EV.vivas.length - 5;
     if (enLista > 0.01 && resto > 0) {
       ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-      ctx.font = `600 11px ${F.dato}`; ctx.fillStyle = rgb(C.mudo, enLista);
+      ctx.font = `600 11px ${F.dato}`; ctx.fillStyle = rgb(paleta.mudo, enLista);
       ctx.fillText(t("landing_mas_ordenadas", { cuantas: miles(resto, locale) }), P.x, listaY0 - 5);
     }
   }
@@ -438,17 +449,17 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
     const hasta = DIAS * tramo(tt, T.trazo0, T.trazo1);
     if (ejes > 0.01) {
       ctx.save();
-      ctx.strokeStyle = rgb(C.mudo, 0.55 * ejes); ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+      ctx.strokeStyle = rgb(paleta.mudo, 0.55 * ejes); ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
       ctx.beginPath(); ctx.moveTo(G.x0, G.y(0)); ctx.lineTo(G.x1, G.y(0)); ctx.stroke();
       ctx.setLineDash([]);
       ctx.font = `600 ${ANCHO ? 11 : 10}px ${F.dato}`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
       for (let j = 0; j < 6; j++) {
         const xa = G.x(j * SESIONES_JORNADA), xb = G.x((j + 1) * SESIONES_JORNADA), viva = hasta >= j * SESIONES_JORNADA;
-        if (j) { ctx.fillStyle = rgb(C.tinta, 0.07 * ejes); ctx.fillRect(xa, G.yA - 10, 1, G.yB - G.yA + 16); }
-        ctx.fillStyle = rgb(viva ? C.tinta2 : C.mudo, (viva ? 0.9 : 0.4) * ejes);
+        if (j) { ctx.fillStyle = rgb(paleta.tinta, 0.07 * ejes); ctx.fillRect(xa, G.yA - 10, 1, G.yB - G.yA + 16); }
+        ctx.fillStyle = rgb(viva ? paleta.tinta2 : paleta.mudo, (viva ? 0.9 : 0.4) * ejes);
         ctx.fillText(t("landing_jornada_corta", { numero: j + 1 }), (xa + xb) / 2, G.yB + 24);
       }
-      ctx.textAlign = "left"; ctx.fillStyle = rgb(C.mudo, 0.8 * ejes);
+      ctx.textAlign = "left"; ctx.fillStyle = rgb(paleta.mudo, 0.8 * ejes);
       ctx.fillText(porcentaje(0, 0, locale), G.x1 + 8, G.y(0) + 4);
       ctx.restore();
     }
@@ -459,7 +470,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
       for (let d = 0; d < Math.min(hasta, DIAS); d++) {
         const d2 = Math.min(d + 1, hasta);
         const tu1 = SERIES.tu[d], tu2 = valorEn(SERIES.tu, d2), sp1 = SERIES.sp[d], sp2 = valorEn(SERIES.sp, d2);
-        ctx.fillStyle = rgb(tu1 + tu2 >= sp1 + sp2 ? C.bien : C.mal, a);
+        ctx.fillStyle = rgb(tu1 + tu2 >= sp1 + sp2 ? paleta.bien : paleta.mal, a);
         ctx.beginPath(); ctx.moveTo(G.x(d), G.y(tu1)); ctx.lineTo(G.x(d2), G.y(tu2));
         ctx.lineTo(G.x(d2), G.y(sp2)); ctx.lineTo(G.x(d), G.y(sp1)); ctx.closePath(); ctx.fill();
       }
@@ -468,15 +479,15 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
     if (hasta <= 0) return;
     const spA = 1 - tramo(tt, T.filas0, T.filas0 + 0.6);
     if (spA > 0.01) {
-      ctx.save(); ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5; ctx.strokeStyle = rgb(C.tinta2, 0.8 * spA);
+      ctx.save(); ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5; ctx.strokeStyle = rgb(paleta.tinta2, 0.8 * spA);
       trazar(SERIES.sp, hasta, xy); ctx.stroke(); ctx.restore();
     }
     if (tt >= T.filas0) return;
-    ctx.lineWidth = ANCHO ? 3 : 2.5; ctx.strokeStyle = rgb(C.teal); ctx.lineJoin = "round";
+    ctx.lineWidth = ANCHO ? 3 : 2.5; ctx.strokeStyle = rgb(paleta.teal); ctx.lineJoin = "round";
     trazar(SERIES.tu, hasta, xy); ctx.stroke();
     const [px, py] = xy(hasta, valorEn(SERIES.tu, hasta)), [sx, sy] = xy(hasta, valorEn(SERIES.sp, hasta));
-    ctx.fillStyle = rgb(C.tinta2, spA); ctx.beginPath(); ctx.arc(sx, sy, 3, 0, 7); ctx.fill();
-    ctx.fillStyle = rgb(C.teal); ctx.strokeStyle = rgb(C.suelo); ctx.lineWidth = 2;
+    ctx.fillStyle = rgb(paleta.tinta2, spA); ctx.beginPath(); ctx.arc(sx, sy, 3, 0, 7); ctx.fill();
+    ctx.fillStyle = rgb(paleta.teal); ctx.strokeStyle = rgb(paleta.suelo); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(px, py, 5, 0, 7); ctx.fill(); ctx.stroke();
     if (hasta >= DIAS - 0.01) rotulosFinales(spA * (1 - liga));
   }
@@ -489,11 +500,11 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
     const rx = G.x1 + 10;
     ctx.font = `700 ${ANCHO ? 15 : 13}px ${F.dato}`;
-    ctx.fillStyle = rgb(C.teal, a); ctx.fillText(porcentaje(vt, 1, locale), rx, yt - 7);
-    ctx.fillStyle = rgb(C.tinta2, a); ctx.fillText(porcentaje(vs, 1, locale), rx, ys - 7);
+    ctx.fillStyle = rgb(paleta.teal, a); ctx.fillText(porcentaje(vt, 1, locale), rx, yt - 7);
+    ctx.fillStyle = rgb(paleta.tinta2, a); ctx.fillText(porcentaje(vs, 1, locale), rx, ys - 7);
     ctx.font = `400 ${ANCHO ? 11 : 10}px ${F.dato}`;
-    ctx.fillStyle = rgb(C.teal, 0.8 * a); ctx.fillText(t("landing_tu_estrategia_corta"), rx, yt + 8);
-    ctx.fillStyle = rgb(C.mudo, a); ctx.fillText(t("landing_sp500"), rx, ys + 8);
+    ctx.fillStyle = rgb(paleta.teal, 0.8 * a); ctx.fillText(t("landing_tu_estrategia_corta"), rx, yt + 8);
+    ctx.fillStyle = rgb(paleta.mudo, a); ctx.fillText(t("landing_sp500"), rx, ys + 8);
   }
 
   // --- Liga: todas salen del mismo día y cada línea acaba tumbada en su fila -----------------------
@@ -511,7 +522,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
         return [lerp(px, f.x + (f.w * d) / DIAS, p), lerp(py, f.y + f.h - 1, p)];
       } : xy;
       ctx.lineWidth = yo ? (ANCHO ? 3 : 2.5) : 1;
-      ctx.strokeStyle = yo ? rgb(C.teal, a) : rgb(C.tinta2, a * (1 - 0.6 * tramo(p, 0.5, 1)));
+      ctx.strokeStyle = yo ? rgb(paleta.teal, a) : rgb(paleta.tinta2, a * (1 - 0.6 * tramo(p, 0.5, 1)));
       trazar(s.serie, yo ? DIAS : Math.min(lineas, DIAS), map);
       ctx.stroke();
     }
@@ -535,41 +546,41 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
       ctx.save();
       const cy = f.y + (f.h - 2) / 2;
       if (!f.estrategia) {
-        ctx.setLineDash([4, 4]); ctx.strokeStyle = rgb(C.tinta2, 0.45 * fondo); ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]); ctx.strokeStyle = rgb(paleta.tinta2, 0.45 * fondo); ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(f.x, f.y + f.h / 2); ctx.lineTo(f.x + f.w, f.y + f.h / 2); ctx.stroke();
         ctx.setLineDash([]);
         ctx.font = `600 ${ANCHO ? 12 : 11}px ${F.dato}`; ctx.textBaseline = "middle"; ctx.textAlign = "center";
         const etiqueta = t("landing_sp_fila", { valor: porcentaje(f.valor, 1, locale) }), tw = ctx.measureText(etiqueta).width;
-        ctx.fillStyle = rgb(C.suelo); ctx.fillRect(f.x + f.w / 2 - tw / 2 - 10, f.y + f.h / 2 - 9, tw + 20, 18);
-        ctx.fillStyle = rgb(C.tinta2, texto); ctx.fillText(etiqueta, f.x + f.w / 2, f.y + f.h / 2);
+        ctx.fillStyle = rgb(paleta.suelo); ctx.fillRect(f.x + f.w / 2 - tw / 2 - 10, f.y + f.h / 2 - 9, tw + 20, 18);
+        ctx.fillStyle = rgb(paleta.tinta2, texto); ctx.fillText(etiqueta, f.x + f.w / 2, f.y + f.h / 2);
         ctx.restore();
         continue;
       }
       const s = f.estrategia, yo = s.indice === -1;
       redondo(f.x, f.y, f.w, f.h - 2, 12);
-      ctx.fillStyle = yo ? `rgba(63,199,191,${0.13 * fondo})` : rgb(C.panel, 0.92 * fondo); ctx.fill();
-      ctx.strokeStyle = yo ? rgb(C.teal, 0.9 * fondo) : rgb(C.tinta, 0.1 * fondo); ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = yo ? rgb(paleta.teal, 0.13 * fondo) : rgb(paleta.panel, 0.92 * fondo); ctx.fill();
+      ctx.strokeStyle = yo ? rgb(paleta.teal, 0.9 * fondo) : rgb(paleta.tinta, 0.1 * fondo); ctx.lineWidth = 1; ctx.stroke();
       ctx.globalAlpha = texto;
       ctx.textBaseline = "middle"; ctx.textAlign = "left";
-      ctx.font = `700 ${ANCHO ? 13 : 12}px ${F.dato}`; ctx.fillStyle = rgb(yo ? C.teal : C.tinta2);
+      ctx.font = `700 ${ANCHO ? 13 : 12}px ${F.dato}`; ctx.fillStyle = rgb(yo ? paleta.teal : paleta.tinta2);
       ctx.fillText(String(s.puesto), f.x + 12, cy);
       const nx = f.x + (ANCHO ? 48 : 40);
-      ctx.font = `700 ${ANCHO ? 15 : 13.5}px ${F.ui}`; ctx.fillStyle = rgb(C.tinta);
+      ctx.font = `700 ${ANCHO ? 15 : 13.5}px ${F.ui}`; ctx.fillStyle = rgb(paleta.tinta);
       ctx.fillText(nombreDe(s), nx, cy - 7);
-      ctx.font = `400 ${ANCHO ? 11.5 : 10.5}px ${F.dato}`; ctx.fillStyle = rgb(C.mudo);
+      ctx.font = `400 ${ANCHO ? 11.5 : 10.5}px ${F.dato}`; ctx.fillStyle = rgb(paleta.mudo);
       const sub = yo ? `${t("landing_tu")}  ${movimiento(s)}` : s.casa ? t("landing_casa") : s.alias ?? "";
       ctx.fillText(sub.trim(), nx, cy + 9);
       ctx.textAlign = "right";
-      ctx.font = `700 ${ANCHO ? 16 : 14}px ${F.dato}`; ctx.fillStyle = rgb(f.valor >= 0 ? C.bien : C.mal);
+      ctx.font = `700 ${ANCHO ? 16 : 14}px ${F.dato}`; ctx.fillStyle = rgb(f.valor >= 0 ? paleta.bien : paleta.mal);
       ctx.fillText(porcentaje(f.valor, 1, locale), f.x + f.w - 12, cy - 7);
-      ctx.font = `400 ${ANCHO ? 11.5 : 10.5}px ${F.dato}`; ctx.fillStyle = rgb(C.mudo);
+      ctx.font = `400 ${ANCHO ? 11.5 : 10.5}px ${F.dato}`; ctx.fillStyle = rgb(paleta.mudo);
       ctx.fillText(fraseVsIndice(t, f.valor - SERIES.sp[DIAS], locale), f.x + f.w - 12, cy + 9);
       ctx.restore();
     }
     const a = tramo(tt, T.filas0 + 0.6, T.filas0 + 1.2) * (1 - 0.55 * fin);
     for (const f of FILAS) {
       if (!f.corte || a <= 0.01) continue;
-      ctx.fillStyle = rgb(C.mudo, a); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `700 12px ${F.dato}`;
+      ctx.fillStyle = rgb(paleta.mudo, a); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `700 12px ${F.dato}`;
       ctx.fillText("···", f.x + f.w / 2, f.y - 8);
     }
   }
@@ -577,7 +588,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
   // --- Fotograma ---------------------------------------------------------------------------------
   function dibujar(tt: number) {
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    ctx.fillStyle = rgb(C.suelo); ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = rgb(paleta.suelo); ctx.fillRect(0, 0, W, H);
     const fondo = 0.07 * suave(tramo(tt, T.lista0 - 0.4, T.lista0 + 1.2));
     if (fondo > 0.003 && FONDO) { ctx.globalAlpha = fondo; ctx.drawImage(FONDO, 0, 0, W, H); ctx.globalAlpha = 1; }
     GOLPES = [];
@@ -587,15 +598,15 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos): () => void {
     dibujarGrafica(tt);
     const osc = 0.64 * suave(tramo(tt, T.oscurecer0, T.oscurecer1)) * (1 - suave(tramo(tt, T.aclarar0, T.aclarar1)))
       + 0.45 * suave(tramo(tt, T.D - 3.8, T.D - 2.6));
-    if (osc > 0.003) { ctx.fillStyle = rgb(C.suelo, osc); ctx.fillRect(0, 0, W, H); }
+    if (osc > 0.003) { ctx.fillStyle = rgb(paleta.suelo, osc); ctx.fillRect(0, 0, W, H); }
     // Mientras el mapa llena la pantalla, la franja de texto necesita su sombra.
     const sombra = 0.9 * tramo(tt, T.cierre - 0.2, T.cierre + 0.4) * (1 - tramo(tt, T.alejar0, T.alejar1));
     if (sombra > 0.01) {
       const tz = franja.getBoundingClientRect(), st = escena.getBoundingClientRect();
       const grad = ANCHO ? ctx.createLinearGradient(0, 0, tz.right - st.left + 140, 0)
         : ctx.createLinearGradient(0, tz.top - st.top - 90, 0, H);
-      grad.addColorStop(0, rgb(C.suelo, ANCHO ? sombra : 0)); grad.addColorStop(ANCHO ? 0.6 : 0.35, rgb(C.suelo, sombra * 0.85));
-      grad.addColorStop(1, rgb(C.suelo, ANCHO ? 0 : sombra));
+      grad.addColorStop(0, rgb(paleta.suelo, ANCHO ? sombra : 0)); grad.addColorStop(ANCHO ? 0.6 : 0.35, rgb(paleta.suelo, sombra * 0.85));
+      grad.addColorStop(1, rgb(paleta.suelo, ANCHO ? 0 : sombra));
       ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
     }
   }

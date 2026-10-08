@@ -36,10 +36,28 @@ export function Pelicula() {
   const legal = useRef<HTMLDivElement>(null);
   const [legalAbierto, setLegalAbierto] = useState(false);
 
+  const [tema, setTema] = useState<"claro" | "oscuro" | null>(null);
+
   useEffect(() => {
-    if (!raiz.current) return;
-    return montarPelicula(raiz.current, { locale, t: (clave, valores) => t(clave, valores) });
-  }, [locale, t]);
+    const preferencia = window.matchMedia("(prefers-color-scheme: dark)");
+    const actualizar = () => {
+      const elegido = document.documentElement.dataset.theme;
+      setTema(elegido === "light" ? "claro" : elegido === "dark" ? "oscuro" : preferencia.matches ? "oscuro" : "claro");
+    };
+    const observador = new MutationObserver(actualizar);
+    observador.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    preferencia.addEventListener("change", actualizar);
+    actualizar();
+    return () => {
+      observador.disconnect();
+      preferencia.removeEventListener("change", actualizar);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (tema === null || !raiz.current) return;
+    return montarPelicula(raiz.current, { locale, t: (clave, valores) => t(clave, valores) }, tema);
+  }, [locale, t, tema]);
 
   // El panel legal del móvil se cierra al tocar fuera.
   useEffect(() => {

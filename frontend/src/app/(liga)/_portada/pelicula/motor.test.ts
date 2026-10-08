@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fijarOcultoDelDocumento, montar, restaurarEntorno } from "./motor.fixture";
+import { montarPelicula, paletaDe } from "./motor";
+import { traductor, fijarOcultoDelDocumento, montar, restaurarEntorno } from "./motor.fixture";
 
 // El marcado de `Pelicula` se pinta siempre en español; el idioma del motor se elige en `montar`.
 vi.mock("next-intl", async () => {
@@ -18,6 +19,25 @@ vi.mock("next/link", async () => {
 afterEach(restaurarEntorno);
 
 describe("motor de la portada", () => {
+  it("las paletas comparten claves y el suelo sigue el tema", () => {
+    const claro = paletaDe("claro"), oscuro = paletaDe("oscuro");
+    expect(Object.keys(claro).sort()).toEqual(Object.keys(oscuro).sort());
+    expect(claro.suelo).toEqual([255, 255, 255]);
+    expect(oscuro.suelo).toEqual([10, 12, 13]);
+  });
+
+  it("monta en claro y devuelve la limpieza en una ventana de 390 px", () => {
+    const escena = montar({ tiempo: 0.5 });
+    escena.limpiar();
+    const limpiar = montarPelicula(escena.pelicula, { locale: "es", t: traductor("es") }, "claro");
+    expect(typeof limpiar).toBe("function");
+    escena.reloj.avanzar(0.1);
+    expect(escena.llamadas.some((l) => l.metodo === "fillRect")).toBe(true);
+    limpiar();
+    expect(escena.reloj.pendientes()).toBe(0);
+    escena.desmontar();
+  });
+
   it("monta parado en un segundo, dibuja un fotograma y devuelve la limpieza", () => {
     const escena = montar({ tiempo: 0.5 });
     escena.reloj.avanzar(0.1);

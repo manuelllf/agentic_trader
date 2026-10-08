@@ -809,51 +809,80 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 }
 .lg .code .btn { min-height: 44px; padding: 0 14px; background: var(--raised); font-size: 15px; letter-spacing: 0; }
 
-/* ---- Portada sin sesión: una escena que corre sola al entrar, como un vídeo pero en vivo ---------
-   Siempre oscura, como una sala, en los dos temas. En móvil el texto va en una franja abajo; en
-   escritorio, a la izquierda, y la imagen ocupa el resto. */
+/* Portada sin sesión: sigue el tema para mantener la lectura de la escena y sus textos.
+   El texto ocupa una franja inferior en móvil y el lateral izquierdo en escritorio. */
 
 /* Cabe justa en la pantalla: sin scroll en ningún sentido ni hueco reservado a la barra. */
 html:has(body .lg .pel-portada), body:has(.lg .pel-portada) {
   height: 100%; overflow: hidden; overscroll-behavior: none; scrollbar-gutter: auto;
 }
 .lg .pel-portada {
-  --pel-suelo: #0A0C0D; --pel-panel: #111517; --pel-tinta: #EEF2F0; --pel-tinta2: #B9C2BE; --pel-mudo: #7F8A86;
-  --pel-linea: rgba(238, 242, 240, .12); --pel-teal: #3FC7BF; --pel-azul: #26D6D0; --pel-azul-hondo: #0F9E98;
-  --pel-bien: #5CC98A; --pel-mal: #F08A7E;
+  --pel-suelo: #FFFFFF; --pel-panel: #F2F3F5; --pel-tinta: #111315; --pel-tinta2: #41464C; --pel-mudo: #646D76;
+  --pel-linea: #E4E6E9; --pel-teal: #0B6E68; --pel-azul: #0B6E68; --pel-azul-hondo: #0B6E68;
+  --pel-bien: #12804A; --pel-mal: #C0392B;
+  --pel-accent: #0B6E68; --pel-btn-ink: #FFFFFF;
+  --pel-boton: rgba(242, 243, 245, .7); --pel-recuento: rgba(255, 255, 255, .72); --pel-velo: rgba(17, 19, 21, .06);
+  --pel-fondo-rgb: 255, 255, 255; --pel-panel-rgb: 242, 243, 245;
+  --pel-sombra: rgba(17, 19, 21, .10); --pel-halo: rgba(192, 57, 43, .18);
   --pel-display: var(--font-display, "Plus Jakarta Sans"), var(--font-lg, system-ui), sans-serif;
   --pel-data: var(--font-data, "Atkinson Hyperlegible Mono"), ui-monospace, Menlo, Consolas, monospace;
   --pel-ui: var(--font-lg, system-ui), system-ui, sans-serif;
   --pel-pie: 40px; --pel-franja: 214px; --pel-margen: 16px;
   /* El selector de idioma lee estos tokens. */
   --surface: var(--pel-panel); --ink: var(--pel-tinta); --line: var(--pel-linea);
-  color-scheme: dark; position: relative; height: 100vh; height: 100dvh; overflow: hidden;
+  color-scheme: light; position: relative; height: 100vh; height: 100dvh; overflow: hidden;
   background: var(--pel-suelo); color: var(--pel-tinta); font-family: var(--pel-ui);
 }
+body:has(.lg .pel-portada) { background: #FFFFFF; }
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .lg .pel-portada {
+    --pel-suelo: #0A0C0D; --pel-panel: #111517; --pel-tinta: #EEF2F0; --pel-tinta2: #B9C2BE; --pel-mudo: #7F8A86;
+    --pel-linea: rgba(238, 242, 240, .12); --pel-teal: #3FC7BF; --pel-azul: #26D6D0; --pel-azul-hondo: #0F9E98;
+    --pel-bien: #5CC98A; --pel-mal: #F08A7E;
+    --pel-accent: #4FA39D; --pel-btn-ink: #061413;
+    --pel-boton: rgba(17, 21, 23, .7); --pel-recuento: rgba(10, 12, 13, .72); --pel-velo: rgba(0, 0, 0, .22);
+    --pel-fondo-rgb: 10, 12, 13; --pel-panel-rgb: 17, 21, 23;
+    --pel-sombra: rgba(0, 0, 0, .5); --pel-halo: rgba(240, 138, 126, .18);
+    color-scheme: dark;
+  }
+  html:not([data-theme="light"]) body:has(.lg .pel-portada) { background: #0E0F10; }
+}
+html[data-theme="dark"] .lg .pel-portada {
+  --pel-suelo: #0A0C0D; --pel-panel: #111517; --pel-tinta: #EEF2F0; --pel-tinta2: #B9C2BE; --pel-mudo: #7F8A86;
+  --pel-linea: rgba(238, 242, 240, .12); --pel-teal: #3FC7BF; --pel-azul: #26D6D0; --pel-azul-hondo: #0F9E98;
+  --pel-bien: #5CC98A; --pel-mal: #F08A7E;
+  --pel-accent: #4FA39D; --pel-btn-ink: #061413;
+  --pel-boton: rgba(17, 21, 23, .7); --pel-recuento: rgba(10, 12, 13, .72); --pel-velo: rgba(0, 0, 0, .22);
+  --pel-fondo-rgb: 10, 12, 13; --pel-panel-rgb: 17, 21, 23;
+  --pel-sombra: rgba(0, 0, 0, .5); --pel-halo: rgba(240, 138, 126, .18);
+  color-scheme: dark;
+}
+html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
+
 .lg .pel-cabecera {
   position: fixed; z-index: 30; inset: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--pel-margen) 10px;
-  background: linear-gradient(to bottom, rgba(10, 12, 13, .85), rgba(10, 12, 13, 0)); pointer-events: none;
+  background: linear-gradient(to bottom, rgba(var(--pel-fondo-rgb), .85), rgba(var(--pel-fondo-rgb), 0)); pointer-events: none;
 }
 .lg .pel-cabecera > * { pointer-events: auto; }
 .lg .pel-cabecera nav { display: flex; align-items: center; gap: 2px; }
-.lg .pel-cabecera .wordmark { color: var(--pel-tinta); --accent: #4FA39D; }
+.lg .pel-cabecera .wordmark { color: var(--pel-tinta); --accent: var(--pel-accent); }
 .lg .pel-enlace { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; font-size: 14px; color: var(--pel-tinta2); text-decoration: none; white-space: nowrap; }
 .lg .pel-enlace .largo { display: none; }
 .lg .pel-btn {
   display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 20px; border-radius: 12px;
-  border: 1px solid var(--pel-linea); background: rgba(17, 21, 23, .7); color: var(--pel-tinta);
+  border: 1px solid var(--pel-linea); background: var(--pel-boton); color: var(--pel-tinta);
   font: 700 15px/1 var(--pel-ui); text-decoration: none;
 }
 .lg .pel-btn.small { min-height: 38px; padding: 0 14px; font-size: 14px; }
-.lg .pel-btn.pri { border-color: transparent; background: var(--pel-teal); color: #061413; }
+.lg .pel-btn.pri { border-color: transparent; background: var(--pel-teal); color: var(--pel-btn-ink); }
 
 /* La escena es toda la página: el pie legal vive en su barra de abajo. */
 .lg .pel, .lg .pel-film { position: relative; height: 100%; }
 .lg .pel-escena { position: relative; height: 100%; overflow: hidden; background: var(--pel-suelo); }
 .lg .pel-escena canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .lg .pel-fx { position: absolute; inset: 0; pointer-events: none; }
-.lg .pel-vineta { background: radial-gradient(120% 90% at 50% 42%, transparent 58%, rgba(0, 0, 0, .55) 100%); }
+.lg .pel-vineta { background: radial-gradient(120% 90% at 50% 42%, transparent 58%, var(--pel-velo) 100%); }
 .lg .pel-grano { opacity: .06; mix-blend-mode: overlay; background-size: 180px 180px; animation: pel-grano .5s steps(5) infinite; }
 @keyframes pel-grano {
   0% { background-position: 0 0; } 20% { background-position: -37px 21px; } 40% { background-position: 53px -44px; }
@@ -864,12 +893,12 @@ html:has(body .lg .pel-portada), body:has(.lg .pel-portada) {
 
 .lg .pel-reloj, .lg .pel-recuento { position: absolute; font-family: var(--pel-data); }
 .lg .pel-reloj {
-  display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: rgba(10, 12, 13, .72);
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: var(--pel-recuento);
   font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--pel-tinta2);
 }
-.lg .pel-punto { width: 7px; height: 7px; border-radius: 50%; background: var(--pel-mal); box-shadow: 0 0 0 3px rgba(240, 138, 126, .18); }
+.lg .pel-punto { width: 7px; height: 7px; border-radius: 50%; background: var(--pel-mal); box-shadow: 0 0 0 3px var(--pel-halo); }
 .lg .pel-reloj.cerrado .pel-punto { background: var(--pel-mudo); box-shadow: none; }
-.lg .pel-recuento { z-index: 2; display: grid; gap: 2px; padding: 10px 14px; border-radius: 12px; background: rgba(10, 12, 13, .72); }
+.lg .pel-recuento { z-index: 2; display: grid; gap: 2px; padding: 10px 14px; border-radius: 12px; background: var(--pel-recuento); }
 .lg .pel-recuento b { font: 700 clamp(30px, 8.6vw, 56px)/1 var(--pel-data); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .lg .pel-recuento span { font: 600 11px/1.2 var(--pel-data); letter-spacing: .08em; text-transform: uppercase; color: var(--pel-tinta2); }
 .lg .pel-visor { position: absolute; }
@@ -931,7 +960,7 @@ html:has(body .lg .pel-portada), body:has(.lg .pel-portada) {
 .lg .pel-fin { top: auto; }
 .lg .pel-fin::before {
   content: ""; position: absolute; z-index: -1; inset: -56px calc(-1 * var(--pel-margen)) 0; pointer-events: none;
-  background: linear-gradient(to bottom, rgba(10, 12, 13, 0), rgba(10, 12, 13, .94) 56px);
+  background: linear-gradient(to bottom, rgba(var(--pel-fondo-rgb), 0), rgba(var(--pel-fondo-rgb), .94) 56px);
 }
 .lg .pel-fin h1 { margin: 0; font: 800 clamp(30px, 8.2vw, 70px)/1.02 var(--pel-display); letter-spacing: -.035em; text-wrap: balance; }
 .lg .pel-fin p { margin: 0; max-width: 34em; color: var(--pel-tinta2); }
@@ -941,7 +970,7 @@ html:has(body .lg .pel-portada), body:has(.lg .pel-portada) {
 /* Ficha de una empresa al tocarla: por qué cumple o no cada regla. */
 .lg .pel-ficha {
   position: absolute; z-index: 20; width: min(300px, calc(100% - 32px)); padding: 12px 14px; border-radius: 14px;
-  background: rgba(17, 21, 23, .96); border: 1px solid var(--pel-linea); box-shadow: 0 18px 50px rgba(0, 0, 0, .5); pointer-events: auto;
+  background: rgba(var(--pel-panel-rgb), .96); border: 1px solid var(--pel-linea); box-shadow: 0 18px 50px var(--pel-sombra); pointer-events: auto;
 }
 .lg .pel-ficha h3 { margin: 0 0 2px; display: flex; justify-content: space-between; gap: 8px; font: 700 15px/1.2 var(--pel-ui); }
 .lg .pel-ficha h3 span { font: 600 12px/1.2 var(--pel-data); color: var(--pel-tinta2); }
@@ -958,7 +987,7 @@ html:has(body .lg .pel-portada), body:has(.lg .pel-portada) {
   padding: 0 var(--pel-margen) env(safe-area-inset-bottom, 0px); display: flex; align-items: center;
   justify-content: space-between; gap: 12px;
   font: 600 10px/1.2 var(--pel-data); letter-spacing: .08em; text-transform: uppercase; color: var(--pel-mudo);
-  background: linear-gradient(to top, rgba(10, 12, 13, .9), rgba(10, 12, 13, 0)); pointer-events: none;
+  background: linear-gradient(to top, rgba(var(--pel-fondo-rgb), .94) 55%, rgba(var(--pel-fondo-rgb), 0)); pointer-events: none;
 }
 .lg .pel-ejemplo { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--pel-azul); white-space: nowrap; }
 
@@ -971,7 +1000,7 @@ html:has(body .lg .pel-portada), body:has(.lg .pel-portada) {
 .lg .pel-legales {
   display: none; position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 25; flex-direction: column;
   width: max-content; max-width: calc(100vw - 2 * var(--pel-margen)); padding: 6px; border-radius: 12px;
-  border: 1px solid var(--pel-linea); background: rgba(17, 21, 23, .97); box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+  border: 1px solid var(--pel-linea); background: rgba(var(--pel-panel-rgb), .97); box-shadow: 0 18px 50px var(--pel-sombra);
 }
 .lg .pel-legales.abierto { display: flex; }
 .lg .pel-legales a {
