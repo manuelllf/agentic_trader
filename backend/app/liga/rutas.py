@@ -56,6 +56,8 @@ class Yo(BaseModel):
     admin: bool   # enseña el «Panel de control»; entrar en las salas pide además el 2FA
     aal2: bool
     idioma: Literal["es", "en"] | None = None
+    # Cuenta creada con Google o con un enlace que aún no ha aceptado los términos.
+    pendiente: bool = False
 
 
 class EntrarIn(BaseModel):
@@ -133,6 +135,7 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
         select p.alias, liga.es_pro() as pro, liga.puede_crear_liga() as puede_crear_liga,
                liga.authorize('admin.salas') as admin,
                liga.aal2() as aal2, privado.idioma,
+               liga.cuenta_pendiente() as pendiente,
                array(select r.rol::text from liga.roles_usuario r
                      where r.usuario_id = p.id order by r.rol) as roles
         from liga.perfiles p
@@ -143,7 +146,16 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
         raise HTTPException(404, "No encontramos tu perfil.")
     return Yo(alias=fila.alias, plan="pro" if fila.pro else "gratis",
               puede_crear_liga=fila.puede_crear_liga, roles=list(fila.roles),
-              admin=fila.admin, aal2=fila.aal2, idioma=fila.idioma)
+              admin=fila.admin, aal2=fila.aal2, idioma=fila.idioma, pendiente=fila.pendiente)
+
+
+@router.post("/yo/terminos", response_model=Yo)
+def aceptar_terminos(ident: Identidad = Depends(require_usuario),
+                     db: Session = Depends(db_usuario)) -> Yo:
+    """Acepta los términos y la privacidad al completar una cuenta nueva. Lo anota la función SQL,
+    que no duplica nada si se repite."""
+    db.execute(text("select liga.aceptar_terminos()"))
+    return yo(db)
 
 
 class CambioIdioma(BaseModel):
