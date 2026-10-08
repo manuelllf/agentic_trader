@@ -33,6 +33,17 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  // El alias automático de Vercel no admite redirección por su API: va aquí.
+  async redirects() {
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "agentic-trader-manuelllf.vercel.app" }],
+        destination: "https://vennett.app/:path*",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default createNextIntlPlugin()(nextConfig);

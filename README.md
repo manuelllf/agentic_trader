@@ -10,7 +10,7 @@ propone una cartera concentrada. Ninguna orden real se ejecuta sin aprobación e
 > Proyecto personal. No es asesoramiento financiero. Por defecto funciona en simulación
 > (`DRY_RUN`): no envía órdenes al bróker.
 
-**En producción:** <https://agentic-trader-manuelllf.vercel.app>. **Vennett** (ver abajo) está en
+**En producción:** <https://vennett.app>. **Vennett** (ver abajo) está en
 beta cerrada, por invitación; las salas de administración viven bajo `/admin`, solo con una cuenta
 de administrador y verificación en dos pasos.
 
