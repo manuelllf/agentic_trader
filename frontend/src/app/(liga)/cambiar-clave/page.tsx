@@ -32,7 +32,7 @@ export default function CambiarClave() {
   };
 
   if (estado !== "dentro") return null;
-  return <MarcoAcceso pestana="entrar">
+  return <MarcoAcceso modo="tramite" titular={t("auth_recuperar_contrasena")}>
     <form className="form" onSubmit={enviar}>
       <CampoClave titulo={t("auth_nueva_contrasena")} autoComplete="new-password" required
         value={clave} onChange={e => setClave(e.target.value)} />

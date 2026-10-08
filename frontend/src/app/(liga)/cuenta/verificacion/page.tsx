@@ -4,12 +4,12 @@
 // superada en esta sesión, el Panel de control no abre.
 
 import { useTranslations } from "next-intl";
-import { LanguageSelector } from "@/i18n/LanguageSelector";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Boton, Cargando } from "../../_ui";
+import { CampoCodigo } from "../../_ui/CampoCodigo";
+import { MarcoAcceso } from "../../_ui/MarcoAcceso";
 import { destinoSeguro, useSupabase } from "@/lib/liga/supabase";
-import { Marca } from "../../_ui/Marca";
 
 type Estado =
   | { paso: "cargando" }
@@ -84,12 +84,7 @@ export default function Verificacion() {
 
   const formCodigo = (
     <form className="form" onSubmit={verificar}>
-      <label className="campo">
-        <span className="lbl">{t("account_codigo")}</span>
-        <input className="inp codigo" inputMode="numeric" autoComplete="one-time-code"
-               pattern="[0-9]{6}" maxLength={6} required value={codigo}
-               onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ""))} />
-      </label>
+      <CampoCodigo value={codigo} onChange={setCodigo} autoFocus disabled={ocupado} />
       {error && <p className="aviso" role="alert">{t(error)}</p>}
       <Boton type="submit" variante="principal" ancho="completo"
              disabled={ocupado || codigo.length !== 6}>
@@ -99,41 +94,32 @@ export default function Verificacion() {
   );
 
   return (
-    <main className="sencilla">
-      <header className="sencilla-top">
-        <Link href="/" className="wordmark"><Marca /></Link>
-      <LanguageSelector /></header>
-
-      <section className="sencilla-cuerpo arriba" aria-labelledby="titular">
-        <h1 id="titular">{t("account_verificacion")}</h1>
-        {sb === null ? (
-          <p className="nota">{t("account_cuentas_cerradas")}</p>
-        ) : estado.paso === "cargando" ? (
-          error ? <p className="aviso" role="alert">{t(error)}</p> : <Cargando filas={2} />
-        ) : estado.paso === "alta" ? (
-          <>
-            <p className="nota">
-              {t("account_escanear_qr")}
-            </p>
-            {/* eslint-disable-next-line @next/next/no-img-element -- QR en data URI de Supabase */}
-            <img className="qr" src={estado.qr} alt={t("account_qr_alt")} />
-            <p className="secreto">
-              {t("account_clave_manual")} <b className="num">{estado.secreto}</b>
-            </p>
-            {formCodigo}
-          </>
-        ) : estado.paso === "codigo" ? (
-          <>
-            <p className="nota">{t("account_codigo_actual")}</p>
-            {formCodigo}
-          </>
-        ) : (
-          <>
-            <p className="nota">{t("account_sesion_verificada")}</p>
-            <Link href={destino} className="btn pri wide">{t("account_seguir")}</Link>
-          </>
-        )}
-      </section>
-    </main>
+    <MarcoAcceso modo="tramite" titular={t("account_verificacion")}>
+      {sb === null ? (
+        <p className="nota">{t("account_cuentas_cerradas")}</p>
+      ) : estado.paso === "cargando" ? (
+        error ? <p className="aviso" role="alert">{t(error)}</p> : <Cargando filas={2} />
+      ) : estado.paso === "alta" ? (
+        <>
+          <p className="nota">{t("account_escanear_qr")}</p>
+          {/* eslint-disable-next-line @next/next/no-img-element -- QR en data URI de Supabase */}
+          <img className="qr" src={estado.qr} alt={t("account_qr_alt")} />
+          <p className="secreto">
+            {t("account_clave_manual")} <b className="num">{estado.secreto}</b>
+          </p>
+          {formCodigo}
+        </>
+      ) : estado.paso === "codigo" ? (
+        <>
+          <p className="nota">{t("account_codigo_actual")}</p>
+          {formCodigo}
+        </>
+      ) : (
+        <>
+          <p className="nota">{t("account_sesion_verificada")}</p>
+          <Link href={destino} className="btn pri wide">{t("account_seguir")}</Link>
+        </>
+      )}
+    </MarcoAcceso>
   );
 }

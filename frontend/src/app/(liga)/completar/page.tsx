@@ -46,8 +46,7 @@ export default function Completar() {
   };
 
   if (estado !== "dentro" || !yo?.pendiente || !destino) return null;
-  return <MarcoAcceso pestana="crear">
-    <h2>{t("auth_completa_titulo")}</h2>
+  return <MarcoAcceso modo="tramite" titular={t("auth_completa_titulo")}>
     <p className="nota">{t("auth_completa_texto")}</p>
     <form className="form" onSubmit={enviar}>
       {pideAlias && <label className="campo"><span className="lbl">{t("auth_nombre_usuario")}</span>

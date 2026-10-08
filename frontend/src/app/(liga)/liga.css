@@ -1301,10 +1301,14 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 @media (max-width: 879px) {
   .lg .acc .acc-portada { min-height: 0; }
   .lg .acc .acc-sub { display: none; }
-  .lg .acc .acc-intro { margin-top: 16px; gap: 0; text-align: center; }
+  .lg .acc .acc-intro { margin-top: 0; gap: 0; text-align: center; }
   .lg .acc .acc-intro h1 { font-size: 20px; line-height: 1.15; letter-spacing: -.02em; }
-  /* El bloque de acceso se pega al pie: Google y los campos quedan al alcance del pulgar. */
-  .lg .acc .acc-panel { justify-content: flex-end; margin-top: 24px; }
+  /* Título y formulario van juntos en la mitad baja; el hueco sobrante queda bajo la cabecera. */
+  .lg .acc .acc-portada { flex: 1; justify-content: flex-end; }
+  .lg .acc .acc-intro { margin-bottom: 20px; }
+  .lg .acc .acc-panel { flex: 0 0 auto; }
+  .lg .acc .acc-panel > .acc-pie { margin-top: 0; padding-top: 14px; }
+  .lg .acc .acc-panel { justify-content: flex-end; }
   .lg .acc .form { gap: 10px; margin-top: 0; }
   .lg .acc .campo { gap: 5px; }
   .lg .acc .lbl { font-size: 13px; }
@@ -1339,11 +1343,6 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
   font-size: 13.5px; line-height: 1.45; color: var(--muted); }
 .lg .acc .acc-pie a { display: inline-flex; align-items: center; min-height: 44px;
   text-decoration: underline; text-underline-offset: 3px; }
-.lg .acc.acc-codigo .acc-portada { min-height: 0; }
-.lg .acc.acc-codigo .acc-intro { margin-top: 56px; }
-.lg .acc.acc-codigo h1 { font-size: 28px; }
-.lg .acc.acc-codigo .form { margin-top: 20px; }
-.lg .acc.acc-codigo .acc-panel > .nota { margin-top: 12px; font-size: 16px; }
 .lg .acc .language-control button { min-height: 44px; min-width: 44px; background: var(--bg); border: 1px solid var(--line); }
 .lg .acc a:focus-visible, .lg .acc button:focus-visible, .lg .acc input:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--accent-bg); }
@@ -1355,19 +1354,19 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
   .lg .acc .acc-seg { display: grid; }
   .lg .acc .form { margin-top: 20px; }
   .lg .acc .acc-intro h1 { margin-top: 0; }
-  .lg .acc:not(.acc-codigo) { display: grid; grid-template-columns: 1.1fr 1fr; grid-template-rows: auto 1fr;
+  .lg .acc:not(.acc-solo) { display: grid; grid-template-columns: 1.1fr 1fr; grid-template-rows: auto 1fr;
     column-gap: 64px; padding: 28px 32px 22px; background: linear-gradient(to right, var(--surface) 0 52.38%, var(--bg) 52.38% 100%); }
-  .lg .acc:not(.acc-codigo) .sencilla-top { grid-column: 1 / -1; }
-  .lg .acc:not(.acc-codigo) .acc-intro { grid-column: 1; grid-row: 2; align-self: center; margin: 28px auto; max-width: 440px; gap: 14px; }
-  .lg .acc:not(.acc-codigo) .acc-intro h1 { font-size: 34px; order: -2; }
-  .lg .acc:not(.acc-codigo) .acc-sub { order: -1; }
-  .lg .acc:not(.acc-codigo) .acc-puntos { display: flex; flex-direction: column; gap: 8px; list-style: none;
+  .lg .acc:not(.acc-solo) .sencilla-top { grid-column: 1 / -1; }
+  .lg .acc:not(.acc-solo) .acc-intro { grid-column: 1; grid-row: 2; align-self: center; margin: 28px auto; max-width: 440px; gap: 14px; }
+  .lg .acc:not(.acc-solo) .acc-intro h1 { font-size: 34px; order: -2; }
+  .lg .acc:not(.acc-solo) .acc-sub { order: -1; }
+  .lg .acc:not(.acc-solo) .acc-puntos { display: flex; flex-direction: column; gap: 8px; list-style: none;
     padding: 0; font-size: 15px; color: var(--ink2); }
-  .lg .acc:not(.acc-codigo) .acc-puntos li { display: flex; gap: 10px; }
-  .lg .acc:not(.acc-codigo) .acc-puntos li::before { content: ""; flex: none; width: 8px; height: 8px;
+  .lg .acc:not(.acc-solo) .acc-puntos li { display: flex; gap: 10px; }
+  .lg .acc:not(.acc-solo) .acc-puntos li::before { content: ""; flex: none; width: 8px; height: 8px;
     margin-top: 7px; border-radius: 50%; background: var(--accent); }
-  .lg .acc:not(.acc-codigo) .acc-panel { grid-column: 2; grid-row: 2; width: 100%; max-width: 340px;
+  .lg .acc:not(.acc-solo) .acc-panel { grid-column: 2; grid-row: 2; width: 100%; max-width: 340px;
     align-self: center; justify-self: center; margin: 28px 0; }
-  .lg .acc:not(.acc-codigo) .acc-seg { margin-top: 0; }
-  .lg .acc.acc-codigo { max-width: 440px; }
+  .lg .acc:not(.acc-solo) .acc-seg { margin-top: 0; }
+  .lg .acc.acc-solo { max-width: 440px; }
 }

@@ -7,20 +7,22 @@ import { LanguageSelector } from "@/i18n/LanguageSelector";
 import { ArteAcceso } from "./ArteAcceso";
 import { Marca } from "./Marca";
 
-export function MarcoAcceso({ pestana, children, modo = "completo" }: {
-  pestana: "entrar" | "crear"; children: ReactNode; modo?: "completo" | "codigo";
+/* Sin pestañas: el código de un solo uso ("codigo") y los trámites de cuenta ("tramite"), con su propio titular. */
+export function MarcoAcceso({ pestana, children, modo = "completo", titular }: {
+  pestana?: "entrar" | "crear"; children: ReactNode; modo?: "completo" | "codigo" | "tramite"; titular?: string;
 }) {
   const t = useTranslations();
   const codigo = modo === "codigo";
-  return <main className={`sencilla acc${codigo ? " acc-codigo" : ""}`}>
-    {!codigo && <ArteAcceso variante="fondo" />}
+  const solo = modo !== "completo";
+  return <main className={`sencilla acc${solo ? " acc-solo" : ""}`}>
+    {!solo && <ArteAcceso variante="fondo" />}
     <div className="acc-portada">
       <header className="sencilla-top">
         <Link href="/" className="wordmark"><Marca /></Link>
         <LanguageSelector />
       </header>
       <section className="acc-intro" aria-labelledby="acc-titular">
-        {codigo ? <h1 id="acc-titular">{t("auth_tu_codigo")}</h1> : <>
+        {solo ? <h1 id="acc-titular">{titular ?? t("auth_tu_codigo")}</h1> : <>
           <ArteAcceso variante="bloque" />
           <h1 id="acc-titular">
             <span className="acc-t-movil">{t(pestana === "entrar" ? "auth_entrar" : "auth_crear_cuenta")}</span>
@@ -36,14 +38,14 @@ export function MarcoAcceso({ pestana, children, modo = "completo" }: {
       </section>
     </div>
     <div className="acc-panel">
-      {!codigo && <nav className="acc-seg" aria-label={t("auth_pestanas")}>
+      {!solo && <nav className="acc-seg" aria-label={t("auth_pestanas")}>
         <Link href="/entrar" className={pestana === "entrar" ? "on" : undefined}
           aria-current={pestana === "entrar" ? "page" : undefined}>{t("auth_entrar")}</Link>
         <Link href="/registrar" className={pestana === "crear" ? "on" : undefined}
           aria-current={pestana === "crear" ? "page" : undefined}>{t("auth_crear_cuenta")}</Link>
       </nav>}
       {children}
-      {!codigo && <p className="acc-cambio">
+      {!solo && <p className="acc-cambio">
         {t(pestana === "entrar" ? "auth_sin_cuenta_pregunta" : "auth_con_cuenta_pregunta")}{" "}
         <Link href={pestana === "entrar" ? "/registrar" : "/entrar"}>
           {t(pestana === "entrar" ? "auth_crear_cuenta" : "auth_entrar")}
