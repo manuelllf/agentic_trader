@@ -15,7 +15,7 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync --extra dev
       # Solo la liguilla bloquea: el resto arrastra deuda previa (imports sin ordenar). B008 =
       # `Depends` como valor por defecto, el idioma de FastAPI del código.
@@ -44,7 +44,7 @@ jobs:
       LIGA_TEST_DATABASE_URL: postgresql://postgres:ci@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v7
       # `analytics` (duckdb) para las pruebas del archivo histórico; `postgres` (psycopg) para las
       # que hablan con la base de pruebas.
       - run: uv sync --extra dev --extra analytics --extra postgres
@@ -80,7 +80,7 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync --extra dev
       # Solo informa por ahora: hay avisos conocidos sin triar todavía. Cuando se haga la primera
       # pasada de limpieza, quitar `continue-on-error` para que CI corte en adelante.
