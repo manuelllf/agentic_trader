@@ -252,6 +252,9 @@ npm run dev
 
 - Las salas de administración solo abren con una cuenta con rol de administrador y segundo
   factor; no hay contraseña compartida.
+- Las cuentas de Vennett entran con contraseña, con Google o con un enlace al correo. La
+  recuperación de contraseña también llega por correo, y las cuentas nuevas aceptan los términos
+  antes de seguir.
 - Nada se ejecuta en la cuenta real sin una aprobación explícita del usuario por cada orden.
 - `DRY_RUN` activo por defecto: las aprobaciones se registran, pero no se envían órdenes.
 - Las órdenes son a límite, nunca a mercado.
