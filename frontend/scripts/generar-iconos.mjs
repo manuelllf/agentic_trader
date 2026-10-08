@@ -29,7 +29,8 @@ const VELAS = `<g fill="url(#vn-tinta)">${T1}</g><g fill="url(#vn-petroleo)">${T
 const FONDO_APP = '<rect width="200" height="200" fill="url(#vn-fondo)"/>';
 const cuadrado = svg(DEFS + FONDO_APP + centrar(0.8, VELAS)); // iOS pone sus propias esquinas; las velas quedan en el 80 % central
 const tesela = svg(`${DEFS}<g clip-path="url(#vn-tesela)">${FONDO}${FIGURA}</g>`);
-const mascara = cuadrado; // Android puede recortar en círculo: mismo dibujo a sangre completa
+// Disco petróleo con esquinas transparentes: el lanzador de Android lo muestra redondo, no como baldosa.
+const redondo = svg(`${DEFS}<circle cx="100" cy="100" r="100" fill="url(#vn-fondo)"/>${centrar(0.8, VELAS)}`);
 // Las notificaciones piden neutro: el icono grande en tinta sobre blanco y la insignia solo como silueta (Android usa su alfa).
 const aviso = svg(`<rect width="200" height="200" fill="#FFFFFF"/>${centrar(0.78, silueta("#111315"))}`);
 const insignia = svg(centrar(1.15, silueta("#FFFFFF")));
@@ -42,8 +43,7 @@ async function generar() {
   await fs.writeFile(path.join(publico, "favicon.svg"), tesela);
   await fs.writeFile(path.join(publico, "../src/lib/brandIcon.ts"),
     `// Fuente vectorial compartida con las tarjetas exportadas.\nexport const VENNETT_ICON = ${JSON.stringify(tesela.trim())};\n`);
-  // Android recorta el icono en círculo: va a sangre completa y el manifest lo declara "any maskable".
-  for (const lado of [192, 512]) await rasterizar(mascara, lado).png().toFile(path.join(publico, `icon-${lado}.png`));
+  for (const lado of [192, 512]) await rasterizar(redondo, lado).png().toFile(path.join(publico, `icon-${lado}.png`));
   await rasterizar(cuadrado, 180).flatten({ background: "#F0F6F6" }).png().toFile(path.join(publico, "apple-touch-icon.png"));
   await rasterizar(aviso, 192).png().toFile(path.join(publico, "notif-192.png"));
   await rasterizar(insignia, 96).png().toFile(path.join(publico, "badge-96.png"));
