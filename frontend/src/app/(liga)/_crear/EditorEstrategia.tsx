@@ -3,6 +3,7 @@
 // La selección puede probarse sin crear estrategia; guardar o inscribir requiere identidad.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
@@ -1106,6 +1107,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                        ayuda={t("builder_published_help")}
                        onClick={() => pro && setVisibilidad("publicada")} />
         </div>
+        {!pro && <Link href="/planes" className="btn small" style={{ marginTop: 12 }}>{t("planes_ver")}</Link>}
         {visibilidad === "publicada" && (
           <div style={{ marginTop: 16 }}>
             <p style={{ fontSize: 16, color: "var(--ink)" }}>{t("builder_position_declaration")}</p>

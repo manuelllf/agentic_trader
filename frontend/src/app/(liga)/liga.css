@@ -306,9 +306,6 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .cuenta .cuenta-item.salir { color: var(--ink2); font-weight: 500; }
 .lg .cuenta .cuenta-item:active { background: var(--surface); }
 .lg .cuenta .cuenta-menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--line); }
-.lg .cuenta .cuenta-menu .legal { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4px; padding: 2px 6px 4px; }
-.lg .cuenta .cuenta-menu .legal p { grid-column: 1 / -1; padding: 6px 6px 2px; font-size: 12px; color: var(--muted); }
-.lg .cuenta .cuenta-menu .legal a { display: flex; align-items: center; min-height: 40px; padding: 0 6px; font-size: 13px; font-weight: 500; color: var(--ink2); text-decoration: none; }
 
 .lg .scroll {
   flex: 1; width: 100%; max-width: var(--app-width); margin: 0 auto;
@@ -1407,15 +1404,14 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
   .lg .acc .acc-centro h1 { font-size: 26px; }
 }
 
-/* Planes dentro de la app: una columna en móvil, dos en escritorio. */
-.lg .planes { max-width: 880px; margin: 0 auto; padding: 24px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
-.lg .planes h1 { font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -.02em; margin: 0; }
+/* Planes dentro de la app: filas de lista con línea fina, como las clasificaciones (no cajas). */
+.lg .planes { max-width: 680px; margin: 0 auto; padding: 24px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
 .lg .planes-intro { margin: 0; color: var(--ink2); font-size: 15px; line-height: 1.5; }
-.lg .planes-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 12px; }
-.lg .plan { display: flex; flex-direction: column; justify-content: space-between; gap: 16px; padding: 18px;
-  border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
-.lg .plan h2 { margin: 0; font-size: 18px; font-weight: 700; }
-.lg .plan-precio { margin: 6px 0 0; font-size: 15px; color: var(--ink2); }
-.lg .plan-precio span { font-size: 28px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; }
-.lg .plan-elegir { min-height: 44px; }
-@media (min-width: 640px) { .lg .planes-lista { grid-template-columns: 1fr 1fr; } }
+.lg .planes-lista { list-style: none; margin: 0; padding: 0; }
+.lg .plan { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 68px; padding: 10px 0;
+  border-bottom: 1px solid var(--line); }
+.lg .plan-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lg .plan-nombre { font-size: 16px; font-weight: 600; color: var(--ink); }
+.lg .plan-precio { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .plan-precio strong { font-size: 16px; font-weight: 700; color: var(--ink); }
+.lg .plan-elegir { flex: none; min-height: 44px; white-space: nowrap; }

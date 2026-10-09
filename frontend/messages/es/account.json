@@ -50,7 +50,6 @@
   "account_cookies": "Cookies",
   "account_menu_aria": "Cuenta",
   "account_sesion_de": "Sesión de {alias}",
-  "account_legal": "Legal",
   "account_clave_requisitos": "Al menos 8 caracteres, una mayúscula y un símbolo.",
   "account_verificacion_preparar_fallo": "No se pudo preparar la verificación. Recarga la página para intentarlo otra vez.",
   "account_codigo_invalido": "Ese código no vale. Mira el que marca ahora tu app y escríbelo otra vez.",
@@ -63,7 +62,6 @@
   "account_codigo_actual": "Escribe el código que marca ahora tu app de verificación.",
   "account_sesion_verificada": "Listo: esta sesión ya está verificada.",
   "account_seguir": "Seguir",
-  "account_idioma": "Idioma",
   "account_metodo": "Cómo funciona la liga",
   "account_metodo_ayuda": "Cómo se forman las carteras, qué significan las notas de 0 a 9 y cómo se mide el rendimiento. Es público.",
   "account_ver_metodo": "Ver el método"

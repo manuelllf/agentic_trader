@@ -9,7 +9,7 @@
   "planes_media_periodo": "for 6 months",
   "planes_temporada_nombre": "Season",
   "planes_temporada_precio": "€49",
-  "planes_temporada_periodo": "for 12 months, January to December",
+  "planes_temporada_periodo": "for 12 months",
   "planes_liga_nombre": "League pack",
   "planes_liga_precio": "€25",
   "planes_liga_periodo": "one private league for 12 months",
@@ -17,5 +17,8 @@
   "planes_pago_no_disponible": "Payments are not available yet. Try again later.",
   "planes_pago_error": "Could not open the payment. Try again in a moment.",
   "planes_entra": "Sign in to choose a plan.",
-  "planes_cargando": "Opening payment…"
+  "planes_cargando": "Opening payment…",
+  "planes_ver": "See plans",
+  "planes_ya_pro": "You already have an active Pro plan.",
+  "planes_ya_pase": "You already have a league pass."
 }

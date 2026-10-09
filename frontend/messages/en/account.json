@@ -50,7 +50,6 @@
   "account_cookies": "Cookies",
   "account_menu_aria": "Account",
   "account_sesion_de": "Signed in as {alias}",
-  "account_legal": "Legal",
   "account_clave_requisitos": "At least 8 characters, one uppercase letter, and one symbol.",
   "account_verificacion_preparar_fallo": "Could not prepare verification. Reload the page to try again.",
   "account_codigo_invalido": "That code is invalid. Enter the current code from your authenticator app.",
@@ -63,7 +62,6 @@
   "account_codigo_actual": "Enter the current code from your authenticator app.",
   "account_sesion_verificada": "Done. This session is now verified.",
   "account_seguir": "Continue",
-  "account_idioma": "Language",
   "account_metodo": "How the league works",
   "account_metodo_ayuda": "How portfolios are built, what the 0 to 9 scores mean and how performance is measured. It is public.",
   "account_ver_metodo": "See the method"

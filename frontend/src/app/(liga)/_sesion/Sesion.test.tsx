@@ -11,7 +11,9 @@ vi.mock("next/link", async () => {
     React.createElement("a", { href: p.href, className: p.className, role: p.role, onClick: p.onClick }, p.children) };
 });
 vi.mock("next-intl", async () => {
-  const es = (await import("../../../../messages/es/account.json")).default as Record<string, string>;
+  const cuenta = (await import("../../../../messages/es/account.json")).default as Record<string, string>;
+  const planes = (await import("../../../../messages/es/planes.json")).default as Record<string, string>;
+  const es = { ...cuenta, ...planes };
   const t = (key: string, values?: Record<string, string | number>) =>
     (es[key] ?? key).replace(/\{(\w+)\}/g, (_, name: string) => String(values?.[name] ?? `{${name}}`));
   return { useTranslations: () => t };
@@ -43,7 +45,8 @@ describe("Sesion", () => {
     expect(el.textContent).toContain("Sesión de manuel");
     expect(el.textContent).toContain("Tu cuenta"); expect(el.textContent).toContain("Salir");
     expect(el.textContent).not.toContain("Panel de control");
-    for (const texto of ["Aviso legal", "Privacidad", "Términos", "Cookies"]) expect(el.textContent).toContain(texto);
+    expect(el.querySelector('a[href="/planes"]')?.textContent).toBe("Planes");
+    expect(el.querySelector('a[href^="/legal"]')).toBeNull();
   });
   it("usa el destino de admin según aal2", () => {
     sesion.yo = { alias: "manuel", admin: true, aal2: true };
@@ -61,12 +64,12 @@ describe("Sesion", () => {
     abrir(el); act(() => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
     expect(el.querySelector('[role="menu"]')).toBeNull();
   });
-  it("muestra entrar y legal sin sesión", () => {
+  it("muestra solo entrar sin sesión", () => {
     sesion.estado = "fuera"; sesion.yo = null;
     const el = montar(); abrir(el);
     expect(el.querySelector('a[href="/entrar"]')?.textContent).toBe("Entrar");
     expect(el.textContent).not.toContain("Salir"); expect(el.textContent).not.toContain("Sesión de");
-    expect(el.querySelectorAll(".legal a")).toHaveLength(4);
+    expect(el.querySelector('a[href^="/legal"]')).toBeNull();
   });
   it("deja solo un hueco mientras carga", () => {
     sesion.estado = "cargando";

@@ -2,7 +2,7 @@ import type { AbstractIntlMessages } from "next-intl";
 import type { Locale } from "./locale";
 
 export const DOMAINS = ["common", "landing", "auth", "league", "strategies", "builder",
-  "privateLeagues", "account", "legal", "help", "admin", "alpha", "alphaOperations", "beta", "omega", "system"] as const;
+  "privateLeagues", "account", "planes", "legal", "help", "admin", "alpha", "alphaOperations", "beta", "omega", "system"] as const;
 
 export async function loadMessages(locale: Locale): Promise<AbstractIntlMessages> {
   const catalogs = await Promise.all(DOMAINS.map(async (domain) => {

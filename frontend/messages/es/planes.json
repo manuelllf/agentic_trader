@@ -9,7 +9,7 @@
   "planes_media_periodo": "por 6 meses",
   "planes_temporada_nombre": "Temporada",
   "planes_temporada_precio": "49 €",
-  "planes_temporada_periodo": "por 12 meses, de enero a diciembre",
+  "planes_temporada_periodo": "por 12 meses",
   "planes_liga_nombre": "Pack liga",
   "planes_liga_precio": "25 €",
   "planes_liga_periodo": "una liga privada durante 12 meses",
@@ -17,5 +17,8 @@
   "planes_pago_no_disponible": "Los pagos todavía no están disponibles. Prueba más tarde.",
   "planes_pago_error": "No se pudo abrir el pago. Prueba en un momento.",
   "planes_entra": "Entra para elegir un plan.",
-  "planes_cargando": "Abriendo el pago…"
+  "planes_cargando": "Abriendo el pago…",
+  "planes_ver": "Ver planes",
+  "planes_ya_pro": "Ya tienes Pro activo.",
+  "planes_ya_pase": "Ya tienes un pase para crear ligas."
 }

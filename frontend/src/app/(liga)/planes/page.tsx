@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { abrirPago, type ProductoPago } from "@/lib/liga/pagos";
+import { CabeceraApp } from "../_ui";
 
 /* Los planes viven dentro de la app, fuera del registro: quien ya entró los elige cuando le interesa. */
 const PLANES: { producto: ProductoPago; clave: "mensual" | "media" | "temporada" | "liga" }[] = [
@@ -30,18 +31,18 @@ export default function Planes() {
   }
 
   return <main className="planes">
-    <h1>{t("planes_titulo")}</h1>
+    <CabeceraApp titulo={t("planes_titulo")} />
     <p className="planes-intro">{t("planes_intro")}</p>
     <ul className="planes-lista">
       {PLANES.map(({ producto, clave }) => <li key={producto} className="plan">
-        <div className="plan-cabecera">
-          <h2>{t(`planes_${clave}_nombre` as Parameters<typeof t>[0])}</h2>
-          <p className="plan-precio">
-            <span>{t(`planes_${clave}_precio` as Parameters<typeof t>[0])}</span>{" "}
-            <small>{t(`planes_${clave}_periodo` as Parameters<typeof t>[0])}</small>
-          </p>
+        <div className="plan-texto">
+          <span className="plan-nombre">{t(`planes_${clave}_nombre` as Parameters<typeof t>[0])}</span>
+          <span className="plan-precio">
+            <strong>{t(`planes_${clave}_precio` as Parameters<typeof t>[0])}</strong>{" "}
+            {t(`planes_${clave}_periodo` as Parameters<typeof t>[0])}
+          </span>
         </div>
-        <button type="button" className="btn plan-elegir" disabled={ocupado !== null}
+        <button type="button" className="btn small plan-elegir" disabled={ocupado !== null}
           onClick={() => elegir(producto)}>
           {ocupado === producto ? t("planes_cargando") : t("planes_elegir")}
         </button>

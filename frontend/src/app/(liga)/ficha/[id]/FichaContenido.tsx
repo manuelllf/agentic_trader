@@ -283,6 +283,7 @@ export function FichaContenido({ id }: { id: string }) {
                   ) : (
                     <div className="lock">
                       {t("strategies_pro_copy_note")}
+                      <Link href="/planes" className="btn pri wide">{t("planes_ver")}</Link>
                     </div>
                   )
                 )}

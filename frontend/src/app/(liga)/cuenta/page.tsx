@@ -165,10 +165,6 @@ export default function Cuenta() {
             </form>
 
             <div className="form">
-              <div className="flex items-center justify-between gap-3">
-                <span className="lbl">{t("account_idioma")}</span>
-                <LanguageSelector />
-              </div>
               <div className="campo">
                 <span className="lbl">{t("account_correo")}</span>
                 <span className="nota">{t("account_correo_privado", { email: email ?? "" })}</span>
@@ -203,7 +199,7 @@ export default function Cuenta() {
                 <span className="lbl">{t("planes_titulo")}</span>
                 <span className="nota">{t("planes_intro")}</span>
               </div>
-              <Link href="/planes" className="btn small">{t("planes_titulo")}</Link>
+              <Link href="/planes" className="btn small">{t("planes_ver")}</Link>
             </div>
 
             <AvisosDispositivo />

@@ -18,6 +18,7 @@ export async function abrirPago(producto: ProductoPago): Promise<{ url: string }
       body: JSON.stringify({ producto }),
       cache: "no-store",
     });
+    if (res.status === 409) return { error: producto === "pack_liga" ? "planes_ya_pase" : "planes_ya_pro" };
     if (res.status === 503) return { error: "planes_pago_no_disponible" };
     if (!res.ok) return { error: "planes_pago_error" };
     const cuerpo = (await res.json()) as { url?: string };

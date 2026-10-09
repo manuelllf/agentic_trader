@@ -11,6 +11,7 @@ const iconos = {
   u: <><circle cx="12" cy="8" r="3.6" /><path d="M5 20c.6-3.6 3.5-5.6 7-5.6s6.4 2 7 5.6" /></>,
   p: <><path d="M12 3 4.5 6v5.5c0 4.4 3.1 7.6 7.5 9.5 4.4-1.9 7.5-5.1 7.5-9.5V6Z" /><path d="m9 12 2.2 2.2L15.5 10" /></>,
   s: <><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10" /><path d="M15 8l4 4-4 4M19 12H9" /></>,
+  l: <><path d="M9 6h11M9 12h11M9 18h11" /><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" /></>,
 };
 
 function Icono({ tipo }: { tipo: keyof typeof iconos }) {
@@ -60,15 +61,9 @@ export function Sesion() {
           {dentro && <div className="quien">{t("account_sesion_de", { alias: yo?.alias ?? t("account_tu_cuenta") })}</div>}
           {dentro ? <>
             <Link href="/cuenta" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_tu_cuenta")}</Link>
+            <Link href="/planes" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="l" />{t("planes_titulo")}</Link>
             {yo?.admin && <Link href={panel} role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="p" />{t("account_panel_control")}</Link>}
           </> : <Link href="/entrar" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_entrar")}</Link>}
-          <hr />
-          <div className="legal"><p>{t("account_legal")}</p>
-            <Link href="/legal/aviso" role="menuitem" onClick={cerrar}>{t("account_aviso_legal")}</Link>
-            <Link href="/legal/privacidad" role="menuitem" onClick={cerrar}>{t("account_privacidad")}</Link>
-            <Link href="/legal/terminos" role="menuitem" onClick={cerrar}>{t("account_terminos")}</Link>
-            <Link href="/legal/cookies" role="menuitem" onClick={cerrar}>{t("account_cookies")}</Link>
-          </div>
           {dentro && <><hr /><button type="button" role="menuitem" className="cuenta-item salir" onClick={salir}><Icono tipo="s" />{t("account_salir")}</button></>}
         </div>
       )}
