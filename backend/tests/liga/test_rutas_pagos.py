@@ -128,3 +128,34 @@ def test_checkout_sin_configuracion_responde_503(monkeypatch):  # noqa: ANN001
     cliente = _cliente_con_sesion(monkeypatch)
     r = cliente.post("/liga/pagos/lemon/checkout", json={"producto": "mensual"})
     assert r.status_code == 503
+
+
+class _Respuesta:
+    status_code = 201
+
+    def json(self):  # noqa: ANN201
+        return {"data": {"attributes": {"url": "https://vennett.lemonsqueezy.com/checkout/buy/prueba"}}}
+
+
+@pytest.mark.parametrize(("modo", "esperado"), [("test", True), ("live", False)])
+def test_checkout_pide_a_lemon_el_modo_del_servidor(monkeypatch, modo, esperado):  # noqa: ANN001
+    from app.liga import pagos as pagos_mod
+    from app.liga import rutas_pagos
+
+    enviado = {}
+
+    def fingir(url, **kwargs):  # noqa: ANN001, ANN202
+        enviado.update(kwargs["json"]["data"])
+        return _Respuesta()
+
+    monkeypatch.setattr(pagos_mod, "clave_si_ya_tiene", lambda uid, producto: None)
+    monkeypatch.setattr(settings, "lemon_api_key", "clave-de-prueba")
+    monkeypatch.setattr(settings, "lemon_store_id", "494051")
+    monkeypatch.setattr(settings, "lemon_modo", modo)
+    monkeypatch.setattr(settings, "lemon_variantes", {"2228229": "mensual"})
+    monkeypatch.setattr(rutas_pagos.httpx, "post", fingir)
+    cliente = _cliente_con_sesion(monkeypatch)
+    r = cliente.post("/liga/pagos/lemon/checkout", json={"producto": "mensual"})
+    assert r.status_code == 200
+    assert enviado["attributes"]["test_mode"] is esperado
+    assert enviado["relationships"]["variant"]["data"]["id"] == "2228229"

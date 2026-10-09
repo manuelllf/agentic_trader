@@ -67,6 +67,8 @@ def checkout(body: CheckoutIn, ident: Identidad = Depends(require_usuario)) -> C
     payload = {"data": {
         "type": "checkouts",
         "attributes": {
+            # Sin esto Lemon crea el checkout en modo real: una variante de prueba da 404.
+            "test_mode": settings.lemon_modo == "test",
             "checkout_data": {"custom": {"user_id": ident.uid}},
             "product_options": {"redirect_url": settings.lemon_url_retorno},
         },
