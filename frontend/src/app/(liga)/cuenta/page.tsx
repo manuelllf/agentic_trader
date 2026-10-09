@@ -37,6 +37,8 @@ export default function Cuenta() {
   const [descargando, setDescargando] = useState(false);
   const [confirmacion, setConfirmacion] = useState("");
   const [claveBaja, setClaveBaja] = useState("");
+  // null mientras se mira la sesión; false en cuentas solo de Google (sin contraseña que pedir).
+  const [conClave, setConClave] = useState<boolean | null>(null);
   const [errorBaja, setErrorBaja] = useState("");
   const [dandoBaja, setDandoBaja] = useState(false);
   const [claveNueva, setClaveNueva] = useState("");
@@ -53,6 +55,22 @@ export default function Cuenta() {
       setAliasListo(true);
     }
   }, [yo, aliasListo]);
+
+  useEffect(() => {
+    if (!sb) return;
+    void sb.auth.getSession().then(({ data }) => {
+      const proveedores: string[] = data.session?.user.app_metadata?.providers ?? [];
+      setConClave(proveedores.includes("email"));
+    });
+  }, [sb]);
+
+  const confirmarConGoogle = async () => {
+    if (!sb) return;
+    const { error } = await sb.auth.signInWithOAuth({ provider: "google", options: {
+      redirectTo: `${window.location.origin}/cuenta`,
+    } });
+    if (error) setErrorBaja(t("auth_sin_proveedor"));
+  };
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +134,7 @@ export default function Cuenta() {
     if (dandoBaja || !sb) return;
     setDandoBaja(true);
     setErrorBaja("");
-    const fuera = await borrarMiCuenta(confirmacion.trim(), claveBaja);
+    const fuera = await borrarMiCuenta(confirmacion.trim(), conClave ? claveBaja : "");
     if (fuera) {
       setErrorBaja(fuera);
       setDandoBaja(false);
@@ -242,14 +260,22 @@ export default function Cuenta() {
                        autoCorrect="off" spellCheck={false}
                        onChange={(e) => setConfirmacion(e.target.value)} />
               </label>
-              <label className="campo">
-                <span className="lbl">{t("account_tu_contrasena")}</span>
-                <input className="inp" type="password" autoComplete="current-password"
-                       value={claveBaja} onChange={(e) => setClaveBaja(e.target.value)} />
-              </label>
+              {conClave === true && (
+                <label className="campo">
+                  <span className="lbl">{t("account_tu_contrasena")}</span>
+                  <input className="inp" type="password" autoComplete="current-password"
+                         value={claveBaja} onChange={(e) => setClaveBaja(e.target.value)} />
+                </label>
+              )}
+              {conClave === false && <>
+                <p className="nota">{t("account_baja_con_google")}</p>
+                <Boton type="button" variante="secundario" ancho="completo" onClick={() => void confirmarConGoogle()}>
+                  {t("account_confirmar_con_google")}
+                </Boton>
+              </>}
               {errorBaja && <p className="aviso" role="alert">{errorBaja}</p>}
               <Boton type="submit" ancho="completo"
-                     disabled={dandoBaja || !claveBaja
+                     disabled={dandoBaja || conClave === null || (conClave && !claveBaja)
                        || confirmacion.trim().toLowerCase() !== yo.alias}>
                 {dandoBaja ? t("account_borrando") : t("account_borrar_cuenta")}
               </Boton>

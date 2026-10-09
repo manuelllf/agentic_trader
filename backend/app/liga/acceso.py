@@ -171,6 +171,17 @@ def _pedir_sesion(email: str, clave: str) -> dict | None:
     return r.json() if r.status_code == 200 else None
 
 
+_VENTANA_REAUTENTICACION_S = 600
+
+
+def reautenticado_hace_poco(claims: dict) -> bool:
+    """Cuentas sin contraseña (solo Google): la sesión tiene que haber empezado con un inicio de
+    sesión reciente. `amr` guarda cuándo se entró y cómo; un refresco de token no lo renueva."""
+    marcas = [a.get("timestamp") for a in claims.get("amr") or [] if isinstance(a, dict)]
+    return any(isinstance(m, int | float) and time.time() - m <= _VENTANA_REAUTENTICACION_S
+               for m in marcas)
+
+
 def clave_correcta(uid: str, clave: str) -> bool:
     """Vuelve a comprobar la contraseña contra Supabase Auth, para lo que no se deshace: una
     sesión robada no basta, hay que saberla. Solo dice sí o no."""

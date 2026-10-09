@@ -73,14 +73,18 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
     monkeypatch.setattr(liga_db, "SessionLocal", fabrica_sesion)
     monkeypatch.setattr(app_db, "SessionLocal", fabrica_sesion)
 
-    def token(uid: str, aal: str = "aal1") -> str:
+    def token(uid: str, aal: str = "aal1", proveedores: tuple = ("email",),
+              amr: list | None = None) -> str:
         ahora = int(time.time())
         claims = {"sub": uid, "aud": "authenticated", "role": "authenticated",
-                 "iss": EMISOR + "/auth/v1", "exp": ahora + 3600, "iat": ahora, "aal": aal}
+                 "iss": EMISOR + "/auth/v1", "exp": ahora + 3600, "iat": ahora, "aal": aal,
+                 "app_metadata": {"providers": list(proveedores)}}
+        if amr is not None:
+            claims["amr"] = amr
         return jwt.encode(claims, clave, algorithm="ES256")
 
-    def cab(uid: str) -> dict:
-        return {"Authorization": f"Bearer {token(uid)}"}
+    def cab(uid: str, proveedores: tuple = ("email",), amr: list | None = None) -> dict:
+        return {"Authorization": f"Bearer {token(uid, proveedores=proveedores, amr=amr)}"}
 
     app = FastAPI()
     app.include_router(router)
@@ -283,6 +287,23 @@ def test_borrar_la_cuenta_retira_y_oculta_sus_estrategias_que_jugaban(api) -> No
     sin_apuntar = cx.execute("select estado, visibilidad from liga.estrategias where id = %s",
                              (borrador,)).fetchone()
     assert sin_apuntar == ("borrador", "privada")
+
+
+def test_baja_de_cuenta_google_pide_inicio_reciente_con_google(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, existe, borrar_de_verdad, llamadas, cx, creado = api
+    uid = usuario("baja_google")
+    ahora = time.time()
+    solo_viejo = [{"method": "oauth", "timestamp": int(ahora - 3600)}]
+    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_google"},
+                        headers=cab(uid, proveedores=("google",), amr=solo_viejo))
+    assert r.status_code == 403, r.text
+    assert llamadas == []
+
+    reciente = [{"method": "oauth", "timestamp": int(ahora - 30)}]
+    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_google"},
+                        headers=cab(uid, proveedores=("google",), amr=reciente))
+    assert r.status_code == 204, r.text
+    assert len(llamadas) == 1
 
 
 def test_baja_feliz_deja_la_estrategia_retirada_y_borra_lo_personal(api) -> None:  # noqa: ANN001

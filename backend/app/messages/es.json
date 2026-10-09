@@ -164,6 +164,8 @@
   "liga_converter_strategy_limit": "Ya has usado el conversor {count} veces en esta estrategia. Construye el resto a mano.",
   "liga_converter_month_limit": "Ya has usado el conversor {count} veces este mes. Vuelve el mes que viene, o construye tu filtro a mano.",
   "api_error_db_acepta_los_terminos": "Acepta los términos",
+  "api_error_baja_clave_falta": "Escribe tu contraseña para confirmar la baja.",
+  "api_error_baja_reautenticar": "Para borrar una cuenta de Google, confirma con Google justo antes.",
   "api_error_db_sin_sesion": "Sin sesión",
   "api_error_db_como_mucho_10_borradores": "Como mucho 10 borradores",
   "api_error_db_crear_ligas_privadas_es_de_pro": "Crear ligas privadas es de Pro",

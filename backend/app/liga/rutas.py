@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.i18n import translate
 from app.liga import (
     acceso,
     borradores,
@@ -187,13 +188,15 @@ def exportar_datos(ident: Identidad = Depends(require_usuario),
 
 class BajaIn(BaseModel):
     confirmacion: str = Field(min_length=1, max_length=40)
-    clave: str = Field(min_length=1, max_length=200)
+    # Vacía en cuentas sin contraseña (solo Google): ahí vale un inicio de sesión reciente.
+    clave: str = Field(default="", max_length=200)
 
 
 @router.delete("/yo", status_code=204, response_class=Response)
 def borrar_cuenta(body: BajaIn, ident: Identidad = Depends(require_usuario),
                   db: Session = Depends(db_usuario)) -> Response:
-    """Confirmación = escribir el propio alias y la contraseña. Un admin no puede darse de baja
+    """Confirmación = escribir el propio alias y, con contraseña, la contraseña; sin ella (cuenta de
+    Google) entrar de nuevo con Google justo antes. Un admin no puede darse de baja
     a sí mismo (se quedaría sin nadie que gestione la liga): otro admin le quita antes el rol."""
     fila = db.execute(text("""
         select p.alias, liga.authorize('admin.liga') as admin
@@ -207,7 +210,12 @@ def borrar_cuenta(body: BajaIn, ident: Identidad = Depends(require_usuario),
         raise HTTPException(422, "Escribe tu nombre de usuario tal cual para confirmar la baja.")
     if not _LIMITE_BAJA.permitido(ident.uid):
         raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
-    if not acceso.clave_correcta(ident.uid, body.clave):
-        raise HTTPException(403, "La contraseña no es correcta.")
+    if "email" in (ident.claims.get("app_metadata") or {}).get("providers", []):
+        if not body.clave:
+            raise HTTPException(422, translate("api_error_baja_clave_falta"))
+        if not acceso.clave_correcta(ident.uid, body.clave):
+            raise HTTPException(403, "La contraseña no es correcta.")
+    elif not acceso.reautenticado_hace_poco(ident.claims):
+        raise HTTPException(403, translate("api_error_baja_reautenticar"))
     cuenta.borrar_cuenta(ident.uid)
     return Response(status_code=204)

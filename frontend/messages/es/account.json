@@ -43,6 +43,8 @@
   "account_ayuda_baja": "Se borra ya: tu perfil, tus créditos y tus datos personales desaparecen. Tus estrategias se quedan en la clasificación, pero sin autor («Estrategia retirada»). No se puede deshacer.",
   "account_confirmar_baja": "Escribe «{alias}» para confirmar",
   "account_tu_contrasena": "Tu contraseña",
+  "account_baja_con_google": "Tu cuenta entra con Google, así que confirma con Google antes de borrarla.",
+  "account_confirmar_con_google": "Confirmar con Google",
   "account_borrando": "Borrando…",
   "account_aviso_legal": "Aviso legal",
   "account_privacidad": "Privacidad",
