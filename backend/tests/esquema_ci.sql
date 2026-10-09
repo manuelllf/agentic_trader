@@ -10697,3 +10697,31 @@ begin
   end if;
   return new;
 end $$;
+
+-- Pagos con Lemon Squeezy (migraciones 035 y 036).
+CREATE TABLE liga.eventos_pago (
+  clave text PRIMARY KEY,
+  evento text NOT NULL,
+  lemon_id text,
+  recibido_en timestamptz NOT NULL DEFAULT now(),
+  procesado_en timestamptz,
+  estado text NOT NULL CONSTRAINT eventos_pago_estado_check CHECK (estado IN ('recibido', 'aplicado', 'ignorado', 'obsoleto', 'duplicado', 'rechazado'))
+);
+CREATE INDEX ix_eventos_pago_lemon ON liga.eventos_pago USING btree (lemon_id) WHERE (lemon_id IS NOT NULL);
+
+CREATE TABLE liga.compras_pago (
+  lemon_id text PRIMARY KEY,
+  usuario_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+  producto text NOT NULL CHECK (producto IN ('mensual', 'media_temporada', 'temporada', 'pack_liga')),
+  estado text NOT NULL,
+  actualizado_lemon timestamptz NOT NULL,
+  actualizado_local timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_compras_pago_usuario ON liga.compras_pago USING btree (usuario_id);
+
+ALTER TABLE liga.eventos_pago ENABLE ROW LEVEL SECURITY;
+ALTER TABLE liga.compras_pago ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON liga.eventos_pago FROM authenticated, anon;
+GRANT SELECT ON liga.compras_pago TO authenticated;
+CREATE POLICY dueno_lee ON liga.compras_pago FOR SELECT TO authenticated USING (usuario_id = (SELECT auth.uid()));
+CREATE POLICY admin_lee ON liga.compras_pago FOR SELECT TO authenticated USING ((SELECT liga.es_admin()));

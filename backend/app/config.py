@@ -57,6 +57,17 @@ class Settings(BaseSettings):
     # nuevas y la petición cae con «Invalid JWT»); vacía = la baja responde 503.
     supabase_secret_key: str = ""
 
+    # Lemon Squeezy (pagos de la liga). La clave de API y el secreto de firma van solo a Railway.
+    # `lemon_variantes` es JSON: {"<id de variante>": "<producto>"}.
+    # Modo "test" hasta la aprobación: un evento de otro modo se ignora.
+    lemon_api_key: str = ""
+    lemon_webhook_secret: str = ""
+    lemon_store_id: str = ""
+    lemon_modo: str = "test"
+    lemon_variantes: dict[str, str] = {}
+    # A dónde vuelve el comprador tras pagar (la web, no Lemon).
+    lemon_url_retorno: str = "https://vennett.app/cuenta"
+
     # LLM. Método = ranker fundamental (whitepaper DeepSeek): V4-Pro razonador en TODO
     # (scorer por nombre + outlook macro + construcción). enable_llm=False → escaneo no falla.
     enable_llm: bool = False
