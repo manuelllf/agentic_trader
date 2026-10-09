@@ -81,7 +81,7 @@ def test_la_seleccion_es_la_misma_y_el_porque_cambia_de_idioma() -> None:
     assert presentar(primera.porque, "es").startswith("Destaca en «que el negocio vaya bien».")
     assert presentar(primera.porque, "en") == "Stands out in \"fundamentals\". Score 78."
     assert presentar(explicar("ACME", resultado, receta), "en") == (
-        "Acme Inc makes it: it ranks #2, with a 33% weight.")
+        "makes it as #2, with a 33% weight.")
 
 
 def test_un_texto_se_copia_y_se_serializa_sin_perder_su_redaccion() -> None:
