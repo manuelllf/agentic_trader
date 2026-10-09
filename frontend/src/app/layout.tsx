@@ -3,6 +3,7 @@ import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next, Plus_Jakarta_Sa
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import { LanguageProvider } from "@/i18n/Provider";
 import { normalizeLocale } from "@/i18n/locale";
+import { PANTALLAS_ARRANQUE } from "@/lib/pantallasArranque";
 // Aquí y no en (liga)/layout: la 404 cuelga de este layout y, si no, sale sin estilos. Todo va
 // bajo .lg, así que las salas no se enteran.
 import "./(liga)/liga.css";
@@ -61,6 +62,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const locale = normalizeLocale(language) ?? "es";
   return (
     <html lang={locale} className={`${atkinson.variable} ${jakarta.variable} ${mono.variable}`}>
+      <head>
+        {PANTALLAS_ARRANQUE.map(({ ancho, alto, dpr }) => <link key={`${ancho}x${alto}`} rel="apple-touch-startup-image"
+          href={`/apple-splash-${ancho}x${alto}.png`}
+          media={`(device-width: ${ancho / dpr}px) and (device-height: ${alto / dpr}px) and (-webkit-device-pixel-ratio: ${dpr}) and (orientation: portrait)`} />)}
+      </head>
       <body><LanguageProvider locale={locale} messages={messages}>{children}</LanguageProvider></body>
     </html>
   );

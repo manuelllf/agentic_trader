@@ -51,7 +51,7 @@ self.addEventListener("fetch", (event) => {
   }
   const publica = event.request.mode === "navigate"
     && (url.pathname === "/" || url.pathname === "/como-funciona" || url.pathname.startsWith("/legal/"));
-  const marca = /^\/(?:favicon\.(?:svg|ico)|marca\.svg|icon-[\w-]+\.png|apple-touch-icon\.png|manifest\.webmanifest|admin\/manifest\.json)$/.test(url.pathname);
+  const marca = /^\/(?:favicon\.(?:svg|ico)|marca\.svg|icon-[\w-]+\.png|apple-touch-icon\.png|apple-splash-[\dx]+\.png|manifest\.webmanifest|admin\/manifest\.json)$/.test(url.pathname);
   if (!publica && !marca) return;
   event.respondWith(
     fetch(event.request)

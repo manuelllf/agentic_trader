@@ -1,0 +1,2 @@
+// Pantallas de arranque de iPhone: las genera scripts/generar-iconos.mjs.
+export const PANTALLAS_ARRANQUE = [{"ancho":1290,"alto":2796,"dpr":3},{"ancho":1179,"alto":2556,"dpr":3},{"ancho":1170,"alto":2532,"dpr":3},{"ancho":1284,"alto":2778,"dpr":3},{"ancho":1206,"alto":2622,"dpr":3},{"ancho":1320,"alto":2868,"dpr":3},{"ancho":1242,"alto":2688,"dpr":3},{"ancho":1125,"alto":2436,"dpr":3},{"ancho":828,"alto":1792,"dpr":2},{"ancho":750,"alto":1334,"dpr":2},{"ancho":640,"alto":1136,"dpr":2}];

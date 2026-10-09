@@ -37,12 +37,35 @@ const insignia = svg(centrar(1.15, silueta("#FFFFFF")));
 
 const rasterizar = (fuente, lado) => sharp(Buffer.from(fuente), { density: Math.ceil((72 * lado) / 200) }).resize(lado, lado);
 
+// Pantalla de arranque de la app instalada en iPhone: iOS la escala desde un icono pequeño y sale borrosa.
+// Cada medida es la del panel del dispositivo (px físicos) y su densidad (dpr), que pide el enlace del layout.
+const PANTALLAS_ARRANQUE = [
+  { ancho: 1290, alto: 2796, dpr: 3 }, { ancho: 1179, alto: 2556, dpr: 3 }, { ancho: 1170, alto: 2532, dpr: 3 },
+  { ancho: 1284, alto: 2778, dpr: 3 }, { ancho: 1206, alto: 2622, dpr: 3 }, { ancho: 1320, alto: 2868, dpr: 3 },
+  { ancho: 1242, alto: 2688, dpr: 3 }, { ancho: 1125, alto: 2436, dpr: 3 }, { ancho: 828, alto: 1792, dpr: 2 },
+  { ancho: 750, alto: 1334, dpr: 2 }, { ancho: 640, alto: 1136, dpr: 2 },
+];
+// Fondo blanco como el tema claro y el disco de la app centrado, a la resolución de cada pantalla.
+const arranque = (ancho, alto) => {
+  const lado = Math.round(Math.min(ancho, alto) * 0.42);
+  const x = (ancho - lado) / 2;
+  const y = (alto - lado) / 2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${ancho}" height="${alto}" viewBox="0 0 ${ancho} ${alto}">${DEFS}`
+    + `<rect width="${ancho}" height="${alto}" fill="#FFFFFF"/>`
+    + `<g transform="translate(${x} ${y}) scale(${lado / 200})"><circle cx="100" cy="100" r="100" fill="url(#vn-fondo)"/>${centrar(0.8, VELAS)}</g></svg>\n`;
+};
+
 async function generar() {
   const publico = path.join(path.dirname(fileURLToPath(import.meta.url)), "../public");
   await fs.writeFile(path.join(publico, "logo.svg"), cuadrado);
   await fs.writeFile(path.join(publico, "favicon.svg"), tesela);
   await fs.writeFile(path.join(publico, "../src/lib/brandIcon.ts"),
     `// Fuente vectorial compartida con las tarjetas exportadas.\nexport const VENNETT_ICON = ${JSON.stringify(tesela.trim())};\n`);
+  await fs.writeFile(path.join(publico, "../src/lib/pantallasArranque.ts"),
+    `// Pantallas de arranque de iPhone: las genera scripts/generar-iconos.mjs.\nexport const PANTALLAS_ARRANQUE = ${JSON.stringify(PANTALLAS_ARRANQUE)};\n`);
+  for (const { ancho, alto } of PANTALLAS_ARRANQUE) {
+    await sharp(Buffer.from(arranque(ancho, alto))).png().toFile(path.join(publico, `apple-splash-${ancho}x${alto}.png`));
+  }
   for (const lado of [192, 512]) await rasterizar(redondo, lado).png().toFile(path.join(publico, `icon-${lado}.png`));
   await rasterizar(cuadrado, 180).flatten({ background: "#F0F6F6" }).png().toFile(path.join(publico, "apple-touch-icon.png"));
   await rasterizar(aviso, 192).png().toFile(path.join(publico, "notif-192.png"));
