@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const sesion = vi.hoisted(() => ({ estado: "dentro" as string, yo: { alias: "manuel", admin: false, aal2: false } as null | { alias: string; admin: boolean; aal2: boolean }, cerrarSesion: vi.fn() }));
+const sesion = vi.hoisted(() => ({ estado: "dentro" as string, yo: { alias: "manuel", admin: false, aal2: false } as null | { alias: string; admin: boolean; aal2: boolean; plan?: "gratis" | "pro"; pase_liga?: boolean }, cerrarSesion: vi.fn() }));
 vi.mock("./SesionContext", () => ({ useSesion: () => sesion }));
 vi.mock("next/link", async () => {
   const React = await import("react");
@@ -47,6 +47,16 @@ describe("Sesion", () => {
     expect(el.textContent).not.toContain("Panel de control");
     expect(el.querySelector('a[href="/planes"]')?.textContent).toBe("Planes");
     expect(el.querySelector('a[href^="/legal"]')).toBeNull();
+  });
+  it("muestra la insignia de Pro y la del pase cuando el usuario los tiene", () => {
+    sesion.yo = { alias: "manuel", admin: false, aal2: false, plan: "pro", pase_liga: true };
+    const el = montar(); abrir(el);
+    const insignias = [...el.querySelectorAll(".insignias .chip")].map((c) => c.textContent);
+    expect(insignias).toEqual(["Pro", "Pase de liga"]);
+  });
+  it("no muestra insignias a quien no tiene Pro ni pase", () => {
+    const el = montar(); abrir(el);
+    expect(el.querySelector(".insignias")).toBeNull();
   });
   it("usa el destino de admin según aal2", () => {
     sesion.yo = { alias: "manuel", admin: true, aal2: true };

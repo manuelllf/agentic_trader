@@ -1,7 +1,7 @@
 {
   "private_leagues_title": "Private leagues",
   "private_leagues_intro": "Follow your group's strategies, compare results, and see how each person invests.",
-  "private_leagues_create_needs_pro": "Joining with a code is free. Creating a league is for Pro or for anyone with a league pass.",
+  "private_leagues_create_needs_pro": "Joining with a code is free. Creating leagues is for Pro (up to two) or for anyone with a league pass (one).",
   "private_leagues_load_error": "Couldn't load your leagues",
   "private_leagues_retry_later": "Try again in a moment.",
   "private_leagues_retry": "Try again",

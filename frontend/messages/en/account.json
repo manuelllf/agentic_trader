@@ -50,6 +50,8 @@
   "account_cookies": "Cookies",
   "account_menu_aria": "Account",
   "account_sesion_de": "Signed in as {alias}",
+  "account_badge_pro": "Pro",
+  "account_badge_pase": "League pass",
   "account_clave_requisitos": "At least 8 characters, one uppercase letter, and one symbol.",
   "account_verificacion_preparar_fallo": "Could not prepare verification. Reload the page to try again.",
   "account_codigo_invalido": "That code is invalid. Enter the current code from your authenticator app.",

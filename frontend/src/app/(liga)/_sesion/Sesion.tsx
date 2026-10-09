@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import { useSesion } from "./SesionContext";
+import { Chip } from "../_ui/Chip";
 
 const iconos = {
   u: <><circle cx="12" cy="8" r="3.6" /><path d="M5 20c.6-3.6 3.5-5.6 7-5.6s6.4 2 7 5.6" /></>,
@@ -59,6 +60,12 @@ export function Sesion() {
       {abierto && (
         <div className="cuenta-menu" role="menu">
           {dentro && <div className="quien">{t("account_sesion_de", { alias: yo?.alias ?? t("account_tu_cuenta") })}</div>}
+          {dentro && (yo?.plan === "pro" || yo?.pase_liga) && (
+            <div className="insignias">
+              {yo?.plan === "pro" && <Chip>{t("account_badge_pro")}</Chip>}
+              {yo?.pase_liga && <Chip>{t("account_badge_pase")}</Chip>}
+            </div>
+          )}
           {dentro ? <>
             <Link href="/cuenta" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_tu_cuenta")}</Link>
             <Link href="/planes" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="l" />{t("planes_titulo")}</Link>

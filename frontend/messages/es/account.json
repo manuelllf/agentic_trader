@@ -50,6 +50,8 @@
   "account_cookies": "Cookies",
   "account_menu_aria": "Cuenta",
   "account_sesion_de": "Sesión de {alias}",
+  "account_badge_pro": "Pro",
+  "account_badge_pase": "Pase de liga",
   "account_clave_requisitos": "Al menos 8 caracteres, una mayúscula y un símbolo.",
   "account_verificacion_preparar_fallo": "No se pudo preparar la verificación. Recarga la página para intentarlo otra vez.",
   "account_codigo_invalido": "Ese código no vale. Mira el que marca ahora tu app y escríbelo otra vez.",

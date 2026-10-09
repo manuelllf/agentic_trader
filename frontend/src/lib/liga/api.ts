@@ -13,6 +13,7 @@ export type Yo = {
   alias: string;
   plan: "gratis" | "pro";
   puede_crear_liga: boolean;
+  pase_liga?: boolean;
   roles: string[];
   admin: boolean;
   aal2: boolean;

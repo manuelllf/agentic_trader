@@ -23,7 +23,7 @@ export default function Planes() {
     setAviso(null);
     const res = await abrirPago(producto);
     if ("url" in res) {
-      window.location.assign(res.url);
+      window.location.replace(res.url);
       return;
     }
     setAviso(t(res.error as Parameters<typeof t>[0]));

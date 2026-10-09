@@ -1,7 +1,7 @@
 {
   "private_leagues_title": "Ligas privadas",
   "private_leagues_intro": "Sigue las estrategias de tu grupo, compara resultados y entiende cómo invierte cada persona.",
-  "private_leagues_create_needs_pro": "Unirte con un código es gratis. Crear una liga es de Pro o de quien tiene un pase de liga.",
+  "private_leagues_create_needs_pro": "Unirte con un código es gratis. Crear ligas es de Pro (hasta dos) o de quien tiene un pase de liga (una).",
   "private_leagues_load_error": "No se pudieron cargar tus ligas",
   "private_leagues_retry_later": "Reintenta en un momento.",
   "private_leagues_retry": "Reintentar",
