@@ -107,7 +107,7 @@ export default function Privadas() {
           ) : (
             <div className="priv-lista">
               {ligas?.map((l) => {
-                const mes = l.mes == null ? null : Number(l.mes);
+                const mio = l.mio == null ? null : Number(l.mio);
                 const sp = l.sp500_mes == null ? null : Number(l.sp500_mes);
                 return (
                   <Link key={l.id} href={`/privadas/${l.id}`} className="priv-liga">
@@ -115,17 +115,15 @@ export default function Privadas() {
                       <h3>{l.nombre}</h3>
                       <span className="priv-eyebrow">{t("private_leagues_people", { count: l.n_miembros })}</span>
                     </span>
-                    {mes !== null ? (
-                      <>
-                        <span className="priv-liga-cifra">
-                          <b className={`num ${claseSigno(mes)}`}>{percent(mes)}</b>
-                          <span className="num">{sp !== null ? t("private_leagues_month_vs", { sp: percent(sp) }) : t("private_leagues_this_month")}</span>
-                        </span>
-                        {l.lider && <span className="priv-liga-lider">{t("private_leagues_leads")} <b>{l.lider}</b></span>}
-                      </>
+                    {mio !== null ? (
+                      <span className="priv-liga-cifra">
+                        <b className={`num ${claseSigno(mio)}`}>{percent(mio)}</b>
+                        <span className="num">{sp !== null ? t("private_leagues_month_vs", { sp: percent(sp) }) : t("private_leagues_this_month")}</span>
+                      </span>
                     ) : (
                       <span className="priv-liga-vacio">{t("private_leagues_no_month_result")}</span>
                     )}
+                    {l.lider && <span className="priv-liga-lider">{t("private_leagues_leads")} <b>{l.lider}</b></span>}
                   </Link>
                 );
               })}

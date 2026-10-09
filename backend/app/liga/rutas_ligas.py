@@ -58,8 +58,8 @@ class LigaResumenOut(BaseModel):
 
 
 class LigaListaOut(LigaResumenOut):
-    """Resumen para la lista: resultado del mes de la estrategia que va primera."""
-    mes: Decimal | None = None
+    """Resumen para la lista: tu resultado del mes, el S&P 500 y la estrategia que va primera."""
+    mio: Decimal | None = None
     sp500_mes: Decimal | None = None
     lider: str | None = None
 
@@ -109,11 +109,11 @@ def mis_ligas(ident: Identidad = Depends(require_usuario),
                (select count(*) from liga.miembros_liga m where m.liga_id = l.id) as n_miembros
         from liga.ligas_privadas l order by l.creada desc
     """)).all()
-    lideres, sp = _lideres_del_mes(db, [f.id for f in filas])
+    resultados, sp = _resultados_del_mes(db, [f.id for f in filas], ident.uid)
     return [
         LigaListaOut(**_resumen(f, ident.uid, f.n_miembros).model_dump(),
-                     mes=lideres.get(str(f.id), {}).get("mes"), sp500_mes=sp,
-                     lider=lideres.get(str(f.id), {}).get("lider"))
+                     mio=resultados.get(str(f.id), {}).get("mio"), sp500_mes=sp,
+                     lider=resultados.get(str(f.id), {}).get("lider"))
         for f in filas
     ]
 
@@ -195,8 +195,9 @@ def _miembros(db: Session, liga_ids: list, temporada: int | None, jornada_id: in
     """), {"ids": liga_ids, "t": temporada, "j": jornada_id}).all()
 
 
-def _lideres_del_mes(db: Session, liga_ids: list) -> tuple[dict[str, dict], Decimal | None]:
-    """Por liga, la estrategia con mejor resultado del mes y el S&P 500 de esa jornada."""
+def _resultados_del_mes(db: Session, liga_ids: list,
+                        uid: str) -> tuple[dict[str, dict], Decimal | None]:
+    """Por liga: tu resultado del mes (si tienes estrategia formada), el primero y el S&P 500."""
     if not liga_ids:
         return {}, None
     temporada = _temporada_actual(db)
@@ -205,15 +206,17 @@ def _lideres_del_mes(db: Session, liga_ids: list) -> tuple[dict[str, dict], Deci
     if not vivo:
         return {}, None
     por_inscripcion = vivo["por_inscripcion"]
-    mejores: dict[str, dict] = {}
+    resultados: dict[str, dict] = {}
     for m in _miembros(db, liga_ids, temporada, jornada.id):
         rentabilidad = por_inscripcion.get(m.inscripcion_id, {}).get("rentabilidad")
         if rentabilidad is None:
             continue
-        actual = mejores.get(m.liga_id)
-        if actual is None or rentabilidad > actual["mes"]:
-            mejores[m.liga_id] = {"mes": rentabilidad, "lider": m.nombre}
-    return mejores, vivo["sp"]
+        fila = resultados.setdefault(m.liga_id, {})
+        if "lider" not in fila or rentabilidad > fila["mes_lider"]:
+            fila.update(mes_lider=rentabilidad, lider=m.nombre)
+        if m.usuario_id == uid:
+            fila["mio"] = rentabilidad
+    return resultados, vivo["sp"]
 
 
 @router.get("/ligas/{id}", response_model=LigaDetalleOut)
