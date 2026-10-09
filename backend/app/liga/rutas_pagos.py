@@ -81,9 +81,15 @@ def checkout(body: CheckoutIn, ident: Identidad = Depends(require_usuario)) -> C
     except httpx.HTTPError as e:
         raise HTTPException(502, "No se pudo abrir el pago. Prueba en un momento.") from e
     if r.status_code >= 300:
-        logger.error("Lemon checkout respondió %s", r.status_code)
+        logger.error("Lemon checkout respondió %s para %s", r.status_code, body.producto)
         raise HTTPException(502, "No se pudo abrir el pago. Prueba en un momento.")
-    return CheckoutOut(url=r.json()["data"]["attributes"]["url"])
+    try:
+        url = r.json()["data"]["attributes"]["url"]
+    except (ValueError, KeyError, TypeError) as e:
+        logger.error("Lemon checkout sin URL en la respuesta para %s", body.producto)
+        raise HTTPException(502, "No se pudo abrir el pago. Prueba en un momento.") from e
+    logger.info("Checkout de Lemon abierto: %s", body.producto)
+    return CheckoutOut(url=url)
 
 
 def _mapa_variantes() -> dict[str, str]:

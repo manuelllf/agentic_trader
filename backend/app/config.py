@@ -6,6 +6,8 @@ aquí permite tener un único punto de verdad y validación de tipos al arrancar
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -63,7 +65,7 @@ class Settings(BaseSettings):
     lemon_api_key: str = ""
     lemon_webhook_secret: str = ""
     lemon_store_id: str = ""
-    lemon_modo: str = "test"
+    lemon_modo: Literal["test", "live"] = "test"
     lemon_variantes: dict[str, str] = {}
     # A dónde vuelve el comprador tras pagar (la web, no Lemon).
     lemon_url_retorno: str = "https://vennett.app/cuenta"

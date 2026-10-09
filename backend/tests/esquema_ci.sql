@@ -10725,3 +10725,9 @@ REVOKE ALL ON liga.eventos_pago FROM authenticated, anon;
 GRANT SELECT ON liga.compras_pago TO authenticated;
 CREATE POLICY dueno_lee ON liga.compras_pago FOR SELECT TO authenticated USING (usuario_id = (SELECT auth.uid()));
 CREATE POLICY admin_lee ON liga.compras_pago FOR SELECT TO authenticated USING ((SELECT liga.es_admin()));
+
+-- Cada derecho de pago guarda la compra de Lemon que lo dio (migración 037).
+ALTER TABLE liga.planes_usuario ADD COLUMN compra_lemon_id text;
+ALTER TABLE liga.pases_liga ADD COLUMN compra_lemon_id text;
+CREATE INDEX ix_planes_usuario_compra ON liga.planes_usuario USING btree (compra_lemon_id) WHERE (compra_lemon_id IS NOT NULL);
+CREATE INDEX ix_pases_liga_compra ON liga.pases_liga USING btree (compra_lemon_id) WHERE (compra_lemon_id IS NOT NULL);

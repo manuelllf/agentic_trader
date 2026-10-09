@@ -109,3 +109,57 @@ def test_baja_corta_el_pro_de_pago(usuario):  # noqa: ANN001
     assert _cuenta(usuario, "select count(*) from liga.planes_usuario "
                             "where usuario_id = %s and origen = 'pago' "
                             "and (hasta is null or hasta > now())") == 0
+
+
+def test_baja_de_una_suscripcion_no_toca_la_otra(usuario):  # noqa: ANN001
+    primera = _evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
+                      renews_at="2026-11-10T00:00:00.000000Z")
+    segunda = json.loads(_evento(usuario, "subscription_created", "2026-10-10T11:00:00.000000Z",
+                                 renews_at="2026-12-10T00:00:00.000000Z"))
+    segunda["data"]["id"] = "5002"
+    _aplicar(primera)
+    _aplicar(json.dumps(segunda).encode())
+    baja = _evento(usuario, "subscription_expired", "2026-10-12T10:00:00.000000Z", estado="expired")
+    _aplicar(baja)
+    assert _cuenta(usuario, "select count(*) from liga.planes_usuario where usuario_id = %s "
+                            "and compra_lemon_id = '5002' "
+                            "and (hasta is null or hasta > now())") == 1
+
+
+def test_renovacion_extiende_la_misma_fila(usuario):  # noqa: ANN001
+    _aplicar(_evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
+                     renews_at="2026-11-10T00:00:00.000000Z"))
+    _aplicar(_evento(usuario, "subscription_updated", "2026-11-10T10:00:00.000000Z",
+                     renews_at="2026-12-10T00:00:00.000000Z"))
+    assert _cuenta(usuario, "select count(*) from liga.planes_usuario "
+                            "where usuario_id = %s and origen = 'pago'") == 1
+
+
+def test_cancelacion_conserva_el_acceso_hasta_ends_at(usuario):  # noqa: ANN001
+    _aplicar(_evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
+                     renews_at="2026-11-10T00:00:00.000000Z"))
+    _aplicar(_evento(usuario, "subscription_cancelled", "2026-10-11T10:00:00.000000Z",
+                     status="cancelled", ends_at="2026-11-10T00:00:00.000000Z"))
+    assert _cuenta(usuario, "select count(*) from liga.planes_usuario where usuario_id = %s "
+                            "and origen = 'pago' and hasta > now()") == 1
+
+
+def test_reembolso_de_pack_quita_el_pase(usuario):  # noqa: ANN001
+    _aplicar(_evento(usuario, "order_created", "2026-10-10T10:00:00.000000Z", variante=444,
+                     created_at="2026-10-10T10:00:00.000000Z"))
+    reembolso = json.loads(_evento(usuario, "order_refunded", "2026-10-12T10:00:00.000000Z",
+                                   variante=444))
+    reembolso["data"]["id"] = "5001"
+    assert _aplicar(json.dumps(reembolso).encode()) == "aplicado"
+    assert _cuenta(usuario, "select count(*) from liga.pases_liga where usuario_id = %s "
+                            "and origen = 'pago' and hasta > now()") == 0
+
+
+def test_evento_de_la_misma_compra_no_se_pisa_con_uno_mas_viejo(usuario):  # noqa: ANN001
+    _aplicar(_evento(usuario, "subscription_updated", "2026-10-12T10:00:00.000000Z",
+                     renews_at="2026-12-12T00:00:00.000000Z"))
+    viejo = _evento(usuario, "subscription_updated", "2026-10-10T10:00:00.000000Z",
+                    renews_at="2026-11-10T00:00:00.000000Z")
+    assert _aplicar(viejo) == "obsoleto"
+    assert _cuenta(usuario, "select count(*) from liga.planes_usuario where usuario_id = %s "
+                            "and hasta > '2026-12-01T00:00:00Z'") == 1
