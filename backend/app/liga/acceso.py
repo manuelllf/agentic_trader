@@ -18,7 +18,6 @@ from sqlalchemy import text
 from app.config import settings
 from app.db import SessionLocal
 from app.liga.auth import Identidad, require_jugador
-from app.liga.procesos.comun import fabrica_sistema
 
 logger = logging.getLogger(__name__)
 
@@ -171,24 +170,6 @@ def _pedir_sesion(email: str, clave: str) -> dict | None:
     return r.json() if r.status_code == 200 else None
 
 
-_VENTANA_REAUTENTICACION_S = 600
-
-
-def reautenticado_hace_poco(claims: dict) -> bool:
-    """Cuentas sin contraseña (solo Google): la sesión tiene que haber empezado con un inicio de
-    sesión reciente. `amr` guarda cuándo se entró y cómo; un refresco de token no lo renueva."""
-    marcas = [a.get("timestamp") for a in claims.get("amr") or [] if isinstance(a, dict)]
-    return any(isinstance(m, int | float) and time.time() - m <= _VENTANA_REAUTENTICACION_S
-               for m in marcas)
-
-
-def clave_correcta(uid: str, clave: str) -> bool:
-    """Vuelve a comprobar la contraseña contra Supabase Auth, para lo que no se deshace: una
-    sesión robada no basta, hay que saberla. Solo dice sí o no."""
-    with fabrica_sistema() as db:
-        email = db.execute(text("select email from auth.users where id = cast(:u as uuid)"),
-                           {"u": uid}).scalar()
-    return bool(email) and _pedir_sesion(email, clave) is not None
 
 
 def entrar_con_alias(usuario: str, clave: str, ip: str) -> dict:

@@ -26,16 +26,16 @@ export async function exportarMisDatos(): Promise<{ texto: string } | { error: s
 }
 
 /** Da de baja la cuenta ya (D17): borra al usuario en Supabase Auth y anonimiza sus estrategias.
- *  `confirmacion` tiene que ser el alias tal cual y `clave` la contraseña (una sesión robada no
- *  basta). null si ha ido bien; si no, el motivo. */
-export async function borrarMiCuenta(confirmacion: string, clave: string): Promise<string | null> {
+ *  `confirmacion` tiene que ser la palabra de confirmación (ELIMINAR o DELETE). null si ha ido
+ *  bien; si no, el motivo. */
+export async function borrarMiCuenta(confirmacion: string): Promise<string | null> {
   const sesion = await tokenSesion();
   if (!sesion) return browserText("system_session_expired");
   try {
     const res = await fetch(`${API_URL}/liga/yo`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${sesion.token}`, "Accept-Language": browserLocale(), "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmacion, clave }),
+      body: JSON.stringify({ confirmacion }),
       cache: "no-store",
     });
     if (res.status === 204) return null;

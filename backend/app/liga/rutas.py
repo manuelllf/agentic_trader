@@ -46,7 +46,6 @@ router.include_router(registro.router)
 
 # Exporta recorre toda su cuenta: como las pruebas de estrategias.py, cara de abusar sin freno.
 _LIMITE_EXPORTAR = acceso.LimiteFrecuencia(tope=3, ventana_s=60 * 60)
-_LIMITE_BAJA = acceso.LimiteFrecuencia(tope=5, ventana_s=15 * 60)
 
 
 class Yo(BaseModel):
@@ -188,34 +187,27 @@ def exportar_datos(ident: Identidad = Depends(require_usuario),
 
 class BajaIn(BaseModel):
     confirmacion: str = Field(min_length=1, max_length=40)
-    # Vacía en cuentas sin contraseña (solo Google): ahí vale un inicio de sesión reciente.
-    clave: str = Field(default="", max_length=200)
+
+
+# La palabra de confirmación depende del idioma de la interfaz; el backend acepta las dos.
+_PALABRAS_BAJA = {"eliminar", "delete"}
 
 
 @router.delete("/yo", status_code=204, response_class=Response)
 def borrar_cuenta(body: BajaIn, ident: Identidad = Depends(require_usuario),
                   db: Session = Depends(db_usuario)) -> Response:
-    """Confirmación = escribir el propio alias y, con contraseña, la contraseña; sin ella (cuenta de
-    Google) entrar de nuevo con Google justo antes. Un admin no puede darse de baja
-    a sí mismo (se quedaría sin nadie que gestione la liga): otro admin le quita antes el rol."""
+    """Confirmación = escribir ELIMINAR (o DELETE). Con la sesión iniciada basta: sin contraseña ni
+    nuevo inicio de sesión. Un admin no puede darse de baja a sí mismo (se quedaría sin nadie que
+    gestione la liga): otro admin le quita antes el rol."""
     fila = db.execute(text("""
-        select p.alias, liga.authorize('admin.liga') as admin
+        select liga.authorize('admin.liga') as admin
         from liga.perfiles p where p.id = (select auth.uid())
     """)).one_or_none()
     if fila is None:
         raise HTTPException(404, "No encontramos tu perfil.")
     if fila.admin:
         raise HTTPException(409, "Como administrador no puedes darte de baja tú mismo.")
-    if body.confirmacion.strip().lower() != fila.alias:
-        raise HTTPException(422, "Escribe tu nombre de usuario tal cual para confirmar la baja.")
-    if not _LIMITE_BAJA.permitido(ident.uid):
-        raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
-    if "email" in (ident.claims.get("app_metadata") or {}).get("providers", []):
-        if not body.clave:
-            raise HTTPException(422, translate("api_error_baja_clave_falta"))
-        if not acceso.clave_correcta(ident.uid, body.clave):
-            raise HTTPException(403, "La contraseña no es correcta.")
-    elif not acceso.reautenticado_hace_poco(ident.claims):
-        raise HTTPException(403, translate("api_error_baja_reautenticar"))
+    if body.confirmacion.strip().lower() not in _PALABRAS_BAJA:
+        raise HTTPException(422, translate("api_error_baja_confirmacion"))
     cuenta.borrar_cuenta(ident.uid)
     return Response(status_code=204)

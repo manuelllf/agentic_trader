@@ -18,12 +18,11 @@ URL = os.environ.get("LIGA_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DATABASE_URL)")
 
 EMISOR = "https://proyecto.supabase.co"
-CLAVE_BUENA = "la-contrasena-buena"
 
 
-def _baja(cliente, cab, uid: str, confirmacion: str, clave: str = CLAVE_BUENA):  # noqa: ANN001, ANN202
-    cuerpo = {"confirmacion": confirmacion, "clave": clave}
-    return cliente.request("DELETE", "/liga/yo", json=cuerpo, headers=cab(uid))
+def _baja(cliente, cab, uid: str, confirmacion: str = "ELIMINAR"):  # noqa: ANN001, ANN202
+    return cliente.request("DELETE", "/liga/yo", json={"confirmacion": confirmacion},
+                           headers=cab(uid))
 
 
 @pytest.fixture
@@ -60,31 +59,19 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
 
     monkeypatch.setattr(cuenta.httpx, "delete", _delete_falso)
 
-    from app.liga import acceso
-    from app.liga import rutas as rutas_liga
-
-    # Supabase Auth simulado: solo acepta la contraseña buena.
-    monkeypatch.setattr(acceso, "_pedir_sesion",
-                        lambda _e, clave: {"access_token": "t"} if clave == CLAVE_BUENA else None)
-    monkeypatch.setattr(rutas_liga, "_LIMITE_BAJA", acceso.LimiteFrecuencia(tope=5, ventana_s=60))
-
     motor = create_engine(URL.replace("postgresql://", "postgresql+psycopg://", 1))
     fabrica_sesion = sessionmaker(bind=motor)
     monkeypatch.setattr(liga_db, "SessionLocal", fabrica_sesion)
     monkeypatch.setattr(app_db, "SessionLocal", fabrica_sesion)
 
-    def token(uid: str, aal: str = "aal1", proveedores: tuple = ("email",),
-              amr: list | None = None) -> str:
+    def token(uid: str, aal: str = "aal1") -> str:
         ahora = int(time.time())
         claims = {"sub": uid, "aud": "authenticated", "role": "authenticated",
-                 "iss": EMISOR + "/auth/v1", "exp": ahora + 3600, "iat": ahora, "aal": aal,
-                 "app_metadata": {"providers": list(proveedores)}}
-        if amr is not None:
-            claims["amr"] = amr
+                 "iss": EMISOR + "/auth/v1", "exp": ahora + 3600, "iat": ahora, "aal": aal}
         return jwt.encode(claims, clave, algorithm="ES256")
 
-    def cab(uid: str, proveedores: tuple = ("email",), amr: list | None = None) -> dict:
-        return {"Authorization": f"Bearer {token(uid, proveedores=proveedores, amr=amr)}"}
+    def cab(uid: str) -> dict:
+        return {"Authorization": f"Bearer {token(uid)}"}
 
     app = FastAPI()
     app.include_router(router)
@@ -219,33 +206,18 @@ def test_baja_con_confirmacion_equivocada_no_hace_nada(api) -> None:  # noqa: AN
     assert llamadas == []
 
 
-def test_baja_con_contrasena_mala_o_sin_ella_no_hace_nada(api) -> None:  # noqa: ANN001
-    """Una sesión robada no basta para borrar la cuenta: hay que saber la contraseña."""
+def test_baja_con_la_palabra_no_pide_contrasena_y_acepta_minusculas(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
-    uid = usuario("baja_clave")
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_clave", "clave": "otra"},
-                        headers=cab(uid))
-    assert r.status_code == 403, r.text
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_clave"}, headers=cab(uid))
-    assert r.status_code == 422, r.text
-    assert existe(uid)
-    assert llamadas == []
-
-
-def test_probar_contrasenas_en_la_baja_tiene_tope(api) -> None:  # noqa: ANN001
-    cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
-    uid = usuario("baja_tope")
-    cuerpo = {"confirmacion": "baja_tope", "clave": "otra"}
-    codigos = [cliente.request("DELETE", "/liga/yo", json=cuerpo, headers=cab(uid)).status_code
-               for _ in range(6)]
-    assert codigos == [403] * 5 + [429]
-    assert existe(uid) and llamadas == []
+    uid = usuario("baja_palabra")
+    r = _baja(cliente, cab, uid, "eliminar")
+    assert r.status_code == 204, r.text
+    assert len(llamadas) == 1
 
 
 def test_admin_no_puede_darse_de_baja_a_si_mismo(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
     uid = usuario("baja_admin", rol="admin")
-    r = _baja(cliente, cab, uid, "baja_admin")
+    r = _baja(cliente, cab, uid)
     assert r.status_code == 409, r.text
     assert existe(uid)
     assert llamadas == []
@@ -257,7 +229,7 @@ def test_baja_sin_clave_secreta_responde_503(api, monkeypatch) -> None:  # noqa:
     monkeypatch.setattr(auth.settings, "supabase_secret_key", "")
     cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
     uid = usuario("baja_sin_clave")
-    r = _baja(cliente, cab, uid, "baja_sin_clave")
+    r = _baja(cliente, cab, uid)
     assert r.status_code == 503, r.text
     assert existe(uid)
     assert llamadas == []
@@ -289,23 +261,6 @@ def test_borrar_la_cuenta_retira_y_oculta_sus_estrategias_que_jugaban(api) -> No
     assert sin_apuntar == ("borrador", "privada")
 
 
-def test_baja_de_cuenta_google_pide_inicio_reciente_con_google(api) -> None:  # noqa: ANN001
-    cliente, cab, usuario, existe, borrar_de_verdad, llamadas, cx, creado = api
-    uid = usuario("baja_google")
-    ahora = time.time()
-    solo_viejo = [{"method": "oauth", "timestamp": int(ahora - 3600)}]
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_google"},
-                        headers=cab(uid, proveedores=("google",), amr=solo_viejo))
-    assert r.status_code == 403, r.text
-    assert llamadas == []
-
-    reciente = [{"method": "oauth", "timestamp": int(ahora - 30)}]
-    r = cliente.request("DELETE", "/liga/yo", json={"confirmacion": "baja_google"},
-                        headers=cab(uid, proveedores=("google",), amr=reciente))
-    assert r.status_code == 204, r.text
-    assert len(llamadas) == 1
-
-
 def test_baja_feliz_deja_la_estrategia_retirada_y_borra_lo_personal(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, existe, borrar_de_verdad, llamadas, cx, creado = api
     uid = usuario("baja_bien", pro=True)
@@ -313,7 +268,7 @@ def test_baja_feliz_deja_la_estrategia_retirada_y_borra_lo_personal(api) -> None
     r = cliente.post(f"/liga/estrategias/{eid}/receta", json=RECETA_BASICA, headers=cab(uid))
     assert r.status_code == 201, r.text
 
-    r = _baja(cliente, cab, uid, "baja_bien")
+    r = _baja(cliente, cab, uid)
     assert r.status_code == 204, r.text
     assert len(llamadas) == 1 and uid in llamadas[0]
 
