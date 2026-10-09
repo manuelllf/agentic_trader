@@ -91,9 +91,9 @@ def test_tope_por_sector_salta_a_la_siguiente_y_lo_explica():
     assert [e.ticker for e in s.elegidas] == ["T1", "T2", "H1"]
     assert [f.ticker for f in s.saltadas_por_sector] == ["T3"]
     assert explicar("T3", s, r) == (
-        "T3 Inc pasa tus reglas, pero ya hay 2 de tecnología y no caben más.")
+        "pasa tus reglas, pero ya hay 2 de tecnología y no caben más.")
     assert explicar("E1", s, r) == (
-        "E1 Inc pasa tus reglas, pero queda la 5.ª por nota (5,6) y entran las 3 primeras.")
+        "pasa tus reglas, pero queda la 5.ª por nota (5,6) y entran las 3 primeras.")
 
 
 def test_sin_sector_cuentan_como_un_sector_mas():
@@ -103,7 +103,7 @@ def test_sin_sector_cuentan_como_un_sector_mas():
     s = seleccionar(empresas, r, n)
     assert [e.ticker for e in s.elegidas] == ["A", "C"]
     assert explicar("B", s, r) == (
-        "B Inc pasa tus reglas, pero ya hay 1 sin sector conocido y no caben más.")
+        "pasa tus reglas, pero ya hay 1 sin sector conocido y no caben más.")
 
 
 def test_tope_por_sector_mayor_que_n_es_como_no_ponerlo():
@@ -151,7 +151,7 @@ def test_reparto_por_nota_con_nota_0_no_entra_con_peso_0():
     assert [f.ticker for f in s.sin_peso] == ["CERO"]
     assert s.caja_pct == Decimal("0.0000")
     assert explicar("CERO", s, r) == (
-        "CERO Inc pasa tus reglas, pero su nota es 0 y, repartiendo por nota, no pesa nada.")
+        "pasa tus reglas, pero su nota es 0 y, repartiendo por nota, no pesa nada.")
 
 
 def test_reparto_por_nota_con_todas_a_0_va_a_partes_iguales():
@@ -168,11 +168,11 @@ def test_quitadas_a_mano_sin_notas_y_reglas_que_no_cumplen():
     assert [e.ticker for e in s.elegidas] == ["A"]
     assert s.fila("SINNOTA").fallo == SIN_NOTAS
     assert explicar("QUITADA", s, r) == (
-        "QUITADA Inc: la quitaste tú. Si la quieres de vuelta, recupérala en tus reglas.")
+        "la quitaste tú. Si la quieres de vuelta, recupérala en tus reglas.")
     assert explicar("CHICA", s, r) == (
-        f"CHICA Inc no entra: vale 1.900{NBSP}M$ y pides más de 2.000{NBSP}M$.")
-    assert explicar("SINNOTA", s, r) == f"SINNOTA Inc no entra: {SIN_NOTAS}."
-    assert explicar("A", s, r) == f"A Inc entra: es la 1.ª, con un 33{NBSP}%."
+        f"no entra: vale 1.900{NBSP}M$ y pides más de 2.000{NBSP}M$.")
+    assert explicar("SINNOTA", s, r) == f"no entra: {SIN_NOTAS}."
+    assert explicar("A", s, r) == f"entra como la 1.ª, con un 33{NBSP}%."
     assert explicar("NOESTA", s, r) == "NOESTA no está entre las empresas de la foto de este mes."
 
 
@@ -209,7 +209,7 @@ def test_la_pregunta_entra_en_la_media_y_sin_respuesta_no_se_pasa():
     assert [e.ticker for e in s.elegidas] == ["SI", "NO"]
     assert s.elegidas[0].porque == "La IA contesta que sí, con seguridad alta. Nota 71."
     assert s.fila("SINPREGUNTA").fallo == SIN_RESPUESTA
-    assert explicar("SINPREGUNTA", s, r) == f"SINPREGUNTA Inc no entra: {SIN_RESPUESTA}."
+    assert explicar("SINPREGUNTA", s, r) == f"no entra: {SIN_RESPUESTA}."
 
 
 def test_si_solo_pesa_la_pregunta_la_nota_es_la_de_la_respuesta():
