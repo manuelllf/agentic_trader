@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.config import settings
+from app.i18n import translate
 from app.liga import acceso, pagos
 from app.liga.auth import Identidad, require_usuario
 from app.liga.pagos_lemon import PRODUCTOS, interpretar, verificar_firma
@@ -56,6 +57,9 @@ async def webhook(request: Request) -> dict:
 def checkout(body: CheckoutIn, ident: Identidad = Depends(require_usuario)) -> CheckoutOut:
     if not _LIMITE_CHECKOUT.permitido(ident.uid):
         raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
+    clave = pagos.clave_si_ya_tiene(ident.uid, body.producto)
+    if clave:
+        raise HTTPException(409, translate(clave))
     variante = _variante_de(body.producto)
     if not variante or not settings.lemon_api_key or not settings.lemon_store_id:
         raise HTTPException(503, "Los pagos todavía no están activos.")

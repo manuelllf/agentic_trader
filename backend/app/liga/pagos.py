@@ -11,6 +11,7 @@ from datetime import datetime
 
 from sqlalchemy import text
 
+from app.liga.gestion import hay_derecho_vigente
 from app.liga.pagos_lemon import Accion, clave_idempotencia
 from app.liga.procesos.comun import auditar, fabrica_sistema
 
@@ -119,3 +120,17 @@ def _cortar(db, tabla: str, accion: Accion) -> None:  # noqa: ANN001
         f"update {tabla} set hasta = :f where compra_lemon_id = :c and origen = 'pago' "
         "and (hasta is null or hasta > :f)"),
         {"f": fin, "c": accion.lemon_id})
+
+
+def clave_si_ya_tiene(usuario_id: str, producto: str) -> str | None:
+    """Motivo para no abrir otro pago: un Pro vigente de cualquier origen (pagado o concedido por el
+    admin) o un pase vigente. Devuelve la clave del texto de la API, o None si puede comprar."""
+    db = fabrica_sistema()
+    try:
+        if producto == "pack_liga":
+            vigente = hay_derecho_vigente(db, usuario_id, "pases_liga")
+            return "api_error_pase_ya_activo" if vigente else None
+        vigente = hay_derecho_vigente(db, usuario_id, "planes_usuario", "and plan = 'pro'")
+        return "api_error_pro_ya_activo" if vigente else None
+    finally:
+        db.close()

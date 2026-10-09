@@ -96,3 +96,35 @@ def test_cuerpo_demasiado_grande_responde_413(cliente):  # noqa: ANN001
     r = cliente.post("/liga/pagos/lemon/webhook", content=cuerpo,
                      headers={"X-Signature": _firma(cuerpo)})
     assert r.status_code == 413
+
+
+def _cliente_con_sesion(monkeypatch):  # noqa: ANN001, ANN202
+    """Cliente de la ruta con una sesión de prueba, sin pasar por Supabase."""
+    from app.liga.auth import Identidad, require_usuario
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[require_usuario] = lambda: Identidad(
+        uid=USUARIO, aal="aal1", claims={})
+    return TestClient(app)
+
+
+def test_checkout_con_pro_vigente_no_abre_pago(monkeypatch):  # noqa: ANN001
+    from app.liga import pagos as pagos_mod
+
+    monkeypatch.setattr(pagos_mod, "clave_si_ya_tiene",
+                        lambda uid, producto: "api_error_pro_ya_activo")
+    cliente = _cliente_con_sesion(monkeypatch)
+    r = cliente.post("/liga/pagos/lemon/checkout", json={"producto": "mensual"})
+    assert r.status_code == 409
+    assert r.json()["detail"] == "Ya tienes Pro activo."
+
+
+def test_checkout_sin_configuracion_responde_503(monkeypatch):  # noqa: ANN001
+    from app.liga import pagos as pagos_mod
+
+    monkeypatch.setattr(pagos_mod, "clave_si_ya_tiene", lambda uid, producto: None)
+    monkeypatch.setattr(settings, "lemon_api_key", "")
+    cliente = _cliente_con_sesion(monkeypatch)
+    r = cliente.post("/liga/pagos/lemon/checkout", json={"producto": "mensual"})
+    assert r.status_code == 503
