@@ -101,7 +101,9 @@ def test_preview_sin_nombre_explica_y_recalcula_exclusiones_sin_guardar(monkeypa
     body = _body().model_copy(update={"ticker": " aaa "})
     identidad = Identidad(uid="u1", aal="aal1", claims={})
     primera = ruta.previsualizar(body, identidad)
-    assert "AAA entra" in primera.explicacion
+    # El nombre sale una sola vez, en el encabezado de la empresa; la explicación no lo repite.
+    assert primera.explicacion.startswith("entra como la 1.")
+    assert "AAA" not in primera.explicacion
     assert "id" not in primera.model_dump()
 
     excluida = ruta.previsualizar(body.model_copy(update={"excluidas": ["AAA"]}), identidad)
