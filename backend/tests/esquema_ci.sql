@@ -1,4 +1,4 @@
--- migraciones-liga: 034
+-- migraciones-liga: 039
 -- migraciones-saneamiento: 11
 --
 -- PostgreSQL database dump
@@ -10731,3 +10731,54 @@ ALTER TABLE liga.planes_usuario ADD COLUMN compra_lemon_id text;
 ALTER TABLE liga.pases_liga ADD COLUMN compra_lemon_id text;
 CREATE INDEX ix_planes_usuario_compra ON liga.planes_usuario USING btree (compra_lemon_id) WHERE (compra_lemon_id IS NOT NULL);
 CREATE INDEX ix_pases_liga_compra ON liga.pases_liga USING btree (compra_lemon_id) WHERE (compra_lemon_id IS NOT NULL);
+
+-- Los pagos llevan rastro de creación y de cambio; el registro de webhooks lo lee solo el admin (migración 039).
+ALTER TABLE liga.eventos_pago ADD COLUMN creado_por uuid DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE liga.compras_pago ADD COLUMN creado timestamp with time zone DEFAULT now() NOT NULL;
+ALTER TABLE liga.compras_pago ADD COLUMN creado_por uuid DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE liga.compras_pago ADD COLUMN actualizado_por uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+CREATE TRIGGER traza BEFORE UPDATE ON liga.compras_pago FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria('actualizado_local', 'actualizado_por');
+GRANT SELECT ON liga.eventos_pago TO authenticated;
+CREATE POLICY admin_lee ON liga.eventos_pago FOR SELECT TO authenticated USING ((SELECT liga.es_admin() AS es_admin));
+
+-- Crear ligas tiene tope: Pro incluye dos y cada pase de liga vigente, una (migración 038).
+CREATE FUNCTION liga.ligas_incluidas(p_usuario uuid) RETURNS integer
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO ''
+    AS $$
+  select (case when liga.tiene_pro(p_usuario) then 2 else 0 end)
+       + (select count(*)::integer from liga.pases_liga
+          where usuario_id = p_usuario and desde <= now() and (hasta is null or hasta > now()));
+$$;
+REVOKE ALL ON FUNCTION liga.ligas_incluidas(uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.ligas_incluidas(uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION liga.ligas_guarda() RETURNS trigger
+    LANGUAGE plpgsql SET search_path TO ''
+    AS $$
+begin
+  if current_user = 'postgres' or liga.es_admin() then
+    return new;
+  end if;
+  if tg_op = 'INSERT' then
+    if not liga.puede_crear_liga() then
+      raise exception 'Crear ligas privadas es de Pro o de quien tiene un pase de liga'
+        using errcode = '42501';
+    end if;
+    if (select count(*) from liga.ligas_privadas where dueno_id = (select auth.uid()))
+       >= liga.ligas_incluidas((select auth.uid())) then
+      raise exception 'Ya tienes todas tus ligas incluidas' using errcode = '42501';
+    end if;
+    if new.oculta then
+      raise exception 'Una liga nueva nace visible' using errcode = '42501';
+    end if;
+    return new;
+  end if;
+  if old.dueno_id is distinct from (select auth.uid())
+     and (to_jsonb(new) - 'oculta') <> (to_jsonb(old) - 'oculta') then
+    raise exception 'Solo el dueño edita su liga' using errcode = '42501';
+  end if;
+  if new.oculta is distinct from old.oculta and not liga.authorize('moderacion.revisar') then
+    raise exception 'Solo moderación puede ocultar una liga' using errcode = '42501';
+  end if;
+  return new;
+end $$;

@@ -176,6 +176,7 @@ def test_el_pase_de_liga_deja_crear_ligas_y_quitarlo_lo_cierra(api) -> None:  # 
     admin, jugador = usuario(rol="admin"), usuario()
     a2, cuenta = cab(admin, aal="aal2"), cab(jugador)
     assert cliente.get("/liga/yo", headers=cuenta).json()["puede_crear_liga"] is False
+    assert cliente.get("/liga/yo", headers=cuenta).json()["pase_liga"] is False
     crear = {"nombre": "Con o sin pase"}
     assert cliente.post("/liga/ligas", json=crear, headers=cuenta).status_code == 403
 
@@ -183,12 +184,42 @@ def test_el_pase_de_liga_deja_crear_ligas_y_quitarlo_lo_cierra(api) -> None:  # 
     assert r.status_code == 200, r.text
     assert r.json()["pase_liga"] is True and r.json()["plan"] == "gratis"
     yo = cliente.get("/liga/yo", headers=cuenta).json()
-    assert yo["puede_crear_liga"] is True and yo["plan"] == "gratis"
+    assert yo["puede_crear_liga"] is True and yo["plan"] == "gratis" and yo["pase_liga"] is True
     assert cliente.post("/liga/ligas", json=crear, headers=cuenta).status_code == 201
 
     r = cliente.post(f"/liga/admin/usuarios/{jugador}/pase/quitar", headers=a2)
     assert r.status_code == 200 and r.json()["pase_liga"] is False
+    assert cliente.get("/liga/yo", headers=cuenta).json()["pase_liga"] is False
     assert cliente.post("/liga/ligas", json=crear, headers=cuenta).status_code == 403
+
+
+def test_pro_incluye_dos_ligas_y_cada_pase_una_mas(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, _cx = api
+    admin, jugador = usuario(rol="admin"), usuario()
+    a2, cuenta = cab(admin, aal="aal2"), cab(jugador)
+
+    def crear(nombre):  # noqa: ANN001, ANN202
+        return cliente.post("/liga/ligas", json={"nombre": nombre}, headers=cuenta).status_code
+
+    assert cliente.post(f"/liga/admin/usuarios/{jugador}/plan", json={"hasta": None},
+                        headers=a2).status_code == 200
+    assert [crear("Primera"), crear("Segunda"), crear("Tercera")] == [201, 201, 403]
+    assert cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None},
+                        headers=a2).status_code == 200
+    assert [crear("Tercera"), crear("Cuarta")] == [201, 403]
+
+
+def test_el_pase_solo_da_una_liga(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, _cx = api
+    admin, jugador = usuario(rol="admin"), usuario()
+    a2, cuenta = cab(admin, aal="aal2"), cab(jugador)
+
+    def crear(nombre):  # noqa: ANN001, ANN202
+        return cliente.post("/liga/ligas", json={"nombre": nombre}, headers=cuenta).status_code
+
+    assert cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None},
+                        headers=a2).status_code == 200
+    assert [crear("Primera"), crear("Segunda")] == [201, 403]
 
 
 def test_alta_de_usuario_desde_admin(api, monkeypatch) -> None:  # noqa: ANN001

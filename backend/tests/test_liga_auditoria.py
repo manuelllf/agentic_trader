@@ -37,6 +37,8 @@ RASTRO = {
     "perfiles_privados": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "permisos_rol": (None, None, None, None),  # catálogo estático, solo lo toca una migración
     "pases_liga": ("desde", "concedido_por", None, None),  # append-only, como planes_usuario
+    "compras_pago": ("creado", "creado_por", "actualizado_local", "actualizado_por"),
+    "eventos_pago": ("recibido_en", "creado_por", None, None),  # de solo añadir, la escribe el webhook
     "planes_usuario": ("desde", "concedido_por", None, None),  # append-only
     "premios": ("creado", "creado_por", None, None),  # de solo añadir, la escribe el sistema
     "premios_temporada": ("calculado", "creado_por", None, None),  # idem

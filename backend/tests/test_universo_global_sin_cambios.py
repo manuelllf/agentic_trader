@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
@@ -44,6 +46,9 @@ def test_la_misma_tanda_no_se_guarda_dos_veces(db):
 
 def test_un_cambio_real_si_crea_tanda_nueva(db):
     universe_global.sincronizar_desde_archivo(db, (_CABECERA + _BASE).encode())
+    # El reloj de Windows tiene ~16 ms de resolución: sin esta pausa,
+    # dos tandas caen en el mismo instante y se cuentan como una.
+    time.sleep(0.02)
     cambiado = _BASE.replace("Beta Corp", "Beta Holdings")
     out = universe_global.sincronizar_desde_archivo(db, (_CABECERA + cambiado).encode())
     assert out["sin_cambios"] is False

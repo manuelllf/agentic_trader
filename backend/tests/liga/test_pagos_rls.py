@@ -76,13 +76,12 @@ def test_cada_cuenta_solo_ve_sus_derechos_de_pago(cx):  # noqa: ANN001
     assert filas and all(f[0] == str(bruno) for f in filas)
 
 
-def test_nadie_lee_el_registro_de_webhooks(cx):  # noqa: ANN001
+def test_solo_el_admin_lee_el_registro_de_webhooks(cx):  # noqa: ANN001
     _sistema(cx)
     cx.execute("insert into liga.eventos_pago (clave, evento, estado) "
                "values (%s, 'subscription_created', 'aplicado')", (uuid.uuid4().hex,))
     _como(cx, _usuario(cx))
-    with pytest.raises(Exception, match="permission denied"):  # noqa: PT011
-        cx.execute("select count(*) from liga.eventos_pago")
+    assert cx.execute("select count(*) from liga.eventos_pago").fetchone()[0] == 0
     cx.rollback()
     _como(cx, None)
     with pytest.raises(Exception, match="permission denied"):  # noqa: PT011
