@@ -66,7 +66,9 @@ async function generar() {
   for (const { ancho, alto } of PANTALLAS_ARRANQUE) {
     await sharp(Buffer.from(arranque(ancho, alto))).png().toFile(path.join(publico, `apple-splash-${ancho}x${alto}.png`));
   }
-  for (const lado of [192, 512]) await rasterizar(redondo, lado).png().toFile(path.join(publico, `icon-${lado}.png`));
+  for (const lado of [192, 512, 1024]) await rasterizar(redondo, lado).png().toFile(path.join(publico, `icon-${lado}.png`));
+  // Maskable: fondo a sangre completa y las velas dentro de la zona segura que Android recorta en círculo o squircle.
+  await rasterizar(cuadrado, 512).png().toFile(path.join(publico, "icon-maskable-512.png"));
   await rasterizar(cuadrado, 180).flatten({ background: "#F0F6F6" }).png().toFile(path.join(publico, "apple-touch-icon.png"));
   await rasterizar(aviso, 192).png().toFile(path.join(publico, "notif-192.png"));
   await rasterizar(insignia, 96).png().toFile(path.join(publico, "badge-96.png"));
