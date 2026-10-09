@@ -243,17 +243,19 @@ def test_comprar_la_misma_lectura_a_la_vez_no_duplica_el_cobro(api) -> None:  # 
     servidor de (usuario, lectura), no de una clave que manda el cliente distinta en cada click."""
     import threading
 
-    from app.liga.ia import lectura as lectura_mod
-
-    cliente, cab, usuario, foto_con_escaneo, finalista, cx = api
-    fid, rid = foto_con_escaneo()
-    finalista(rid, "ZSA", "Informe de ZSA.")
+    cliente, cab, usuario, foto_con_escaneo, _finalista, cx = api
+    foto_con_escaneo()
     uid = usuario(creditos=100)
-    _crear_y_probar(cliente, cab, uid)
-    # La fila de `liga.lecturas` se crea aparte, fuera de la carrera: la creación concurrente de
-    # la MISMA lectura nueva es una carrera distinta (de creación, no de dinero) y no es lo que
-    # este test comprueba -- aquí solo importa que el COBRO no se duplique.
-    assert lectura_mod.obtener_o_crear("ZSA", fid, rid, uid) is not None
+    _eid, prueba = _crear_y_probar(cliente, cab, uid)
+    # La prueba se engancha a la foto más reciente de la base, que con otros tests corriendo a la
+    # vez no tiene por qué ser la de este escaneo. El informe se deja escrito para la foto que el
+    # servidor usa de verdad: así las peticiones leen de la caché y solo se mide el cobro. La
+    # creación concurrente de una lectura nueva es otra carrera, y no es lo que se prueba aquí.
+    cx.execute("insert into liga.lecturas (ticker, foto_id, texto, fuentes) "
+               "values ('ZSA', %s, 'Informe de ZSA.', '[]'::jsonb) "
+               "on conflict (ticker, foto_id) do nothing", (prueba["foto_id"],))
+    saldo_inicial = cx.execute("select saldo from liga.v_saldo where usuario_id = %s",
+                               (uuid.UUID(uid),)).fetchone()[0]
 
     respuestas: list = []
     lock = threading.Lock()
@@ -276,7 +278,7 @@ def test_comprar_la_misma_lectura_a_la_vez_no_duplica_el_cobro(api) -> None:  # 
 
     saldo = cx.execute("select saldo from liga.v_saldo where usuario_id = %s",
                       (uuid.UUID(uid),)).fetchone()[0]
-    assert saldo == 95
+    assert saldo == saldo_inicial - 5
     n_movimientos = cx.execute(
         "select count(*) from liga.creditos_movimientos "
         "where usuario_id = %s and motivo = 'lectura'",
