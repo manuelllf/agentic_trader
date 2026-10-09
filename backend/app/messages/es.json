@@ -341,5 +341,9 @@
   "liga_casa_omega_paso_3_texto": "La cartera son cuatro huecos de 500 $, 2.000 $ en total. Las alertas los llenan por orden de llegada y una misma empresa no ocupa dos huecos en el mes. Un hueco vacío es caja y rinde 0 %.",
   "liga_casa_omega_paso_4_titulo": "La salida",
   "liga_casa_omega_paso_4_texto": "Cada posición se cierra al alcanzar su objetivo, entre un 11 % y un 40 % según la fuerza del arranque, o a los 90 días, lo que llegue antes. No hay stop de precio. El hueco queda libre para la siguiente alerta.",
-  "api_error_esa_empresa_no_esta_en_una_cartera_que_puedas_ver": "Esa empresa no está en una cartera que puedas ver."
+  "api_error_esa_empresa_no_esta_en_una_cartera_que_puedas_ver": "Esa empresa no está en una cartera que puedas ver.",
+  "api_error_admin_pro_ya_activo": "El usuario ya tiene Pro activo.",
+  "api_error_admin_pase_ya_activo": "El usuario ya tiene un pase para crear ligas.",
+  "api_error_pro_ya_activo": "Ya tienes Pro activo.",
+  "api_error_pase_ya_activo": "Ya tienes un pase para crear ligas."
 }

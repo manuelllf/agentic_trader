@@ -553,3 +553,55 @@ def test_una_cuenta_suspendida_no_puede_gastar_ia_pero_la_activa_si_entra(api) -
                          ("/liga/lecturas/AAPL", {"idempotencia": "clave-de-prueba-1"})):
         r = cliente.post(ruta, json=cuerpo, headers=cab(jugador))
         assert r.status_code == 403 and "suspendida" in r.json()["detail"], (ruta, r.text)
+
+
+# ---- derechos duplicados: un Pro o un pase vigentes no se conceden otra vez ----------------------
+
+
+def test_admin_no_da_pro_a_quien_ya_lo_paga_con_lemon(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    jugador = usuario()
+    cx.execute("insert into liga.planes_usuario (usuario_id, plan, hasta, origen) "
+               "values (%s, 'pro', now() + interval '20 days', 'pago')", (jugador,))
+    r = cliente.post(f"/liga/admin/usuarios/{jugador}/plan", json={"hasta": None},
+                     headers=cab(admin, aal="aal2"))
+    assert r.status_code == 409 and "Pro activo" in r.json()["detail"], r.text
+
+
+def test_admin_no_da_pro_dos_veces(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, _cx = api
+    admin = usuario(rol="admin")
+    jugador = usuario(pro=True)
+    r = cliente.post(f"/liga/admin/usuarios/{jugador}/plan", json={"hasta": None},
+                     headers=cab(admin, aal="aal2"))
+    assert r.status_code == 409, r.text
+
+
+def test_quitar_pro_del_admin_no_corta_el_pagado(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    jugador = usuario(pro=True)  # concedido por el admin
+    cx.execute("insert into liga.planes_usuario "
+               "(usuario_id, plan, hasta, origen, compra_lemon_id) "
+               "values (%s, 'pro', now() + interval '20 days', 'pago', 'suscripcion-1')",
+               (jugador,))
+    r = cliente.post(f"/liga/admin/usuarios/{jugador}/plan/quitar", headers=cab(admin, aal="aal2"))
+    assert r.status_code == 200, r.text
+    pagado = cx.execute("select count(*) from liga.planes_usuario where usuario_id = %s "
+                        "and origen = 'pago' and hasta > now()", (jugador,)).fetchone()[0]
+    assert pagado == 1
+    concedido = cx.execute("select count(*) from liga.planes_usuario where usuario_id = %s "
+                           "and origen = 'admin' and hasta > now()", (jugador,)).fetchone()[0]
+    assert concedido == 0
+
+
+def test_pase_de_liga_duplicado_se_rechaza(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, _cx = api
+    admin = usuario(rol="admin")
+    jugador = usuario()
+    a2 = cab(admin, aal="aal2")
+    assert cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None},
+                        headers=a2).status_code == 200
+    r = cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None}, headers=a2)
+    assert r.status_code == 409, r.text

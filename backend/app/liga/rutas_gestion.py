@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.i18n import translate
 from app.liga import estrategias, gestion
 from app.liga.auth import Identidad, require_admin, require_moderador
 from app.liga.db import db_usuario
@@ -256,6 +257,8 @@ def dar_plan_pro(id: uuid.UUID, body: PlanIn, ident: Identidad = Depends(require
                  db: Session = Depends(db_usuario)) -> UsuarioDetalleOut:
     try:
         gestion.fijar_plan_pro(str(id), body.hasta, ident.uid)
+    except gestion.DerechoYaVigente as e:
+        raise HTTPException(409, translate(e.clave)) from e
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
     return ver_usuario(id, db)
@@ -273,6 +276,8 @@ def dar_pase_liga(id: uuid.UUID, body: PlanIn, ident: Identidad = Depends(requir
                   db: Session = Depends(db_usuario)) -> UsuarioDetalleOut:
     try:
         gestion.fijar_pase_liga(str(id), body.hasta, ident.uid)
+    except gestion.DerechoYaVigente as e:
+        raise HTTPException(409, translate(e.clave)) from e
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
     return ver_usuario(id, db)

@@ -341,5 +341,9 @@
   "liga_casa_omega_paso_3_texto": "The portfolio is four slots of $500, $2,000 in total. Alerts fill them in order of arrival and the same company cannot take two slots in a month. An empty slot is cash and earns 0%.",
   "liga_casa_omega_paso_4_titulo": "The exit",
   "liga_casa_omega_paso_4_texto": "Each position closes when it reaches its target, between 11% and 40% depending on how strong the start was, or after 90 days, whichever comes first. There is no price stop. The slot is then free for the next alert.",
-  "api_error_esa_empresa_no_esta_en_una_cartera_que_puedas_ver": "That company is not in a portfolio you can see."
+  "api_error_esa_empresa_no_esta_en_una_cartera_que_puedas_ver": "That company is not in a portfolio you can see.",
+  "api_error_admin_pro_ya_activo": "The user already has an active Pro plan.",
+  "api_error_admin_pase_ya_activo": "The user already has a league pass.",
+  "api_error_pro_ya_activo": "You already have an active Pro plan.",
+  "api_error_pase_ya_activo": "You already have a league pass."
 }

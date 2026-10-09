@@ -359,9 +359,28 @@ def suspender(usuario_id: str, suspendido: bool, actor: str) -> None:
     conceder_rol(usuario_id, "usuario", not suspendido, actor)
 
 
+class DerechoYaVigente(Exception):
+    """El usuario ya tiene un Pro o un pase vigentes; `clave` es el texto de la API."""
+
+    def __init__(self, clave: str) -> None:
+        super().__init__(clave)
+        self.clave = clave
+
+
+def hay_derecho_vigente(db: Session, usuario_id: str, tabla: str, condicion: str = "") -> bool:
+    """Si hay algún derecho vigente de cualquier origen. Un derecho sin fin (`hasta` nulo) cuenta:
+    por eso se pregunta con `exists` y no con un máximo de fechas, que daría nulo."""
+    consulta = (f"select exists (select 1 from liga.{tabla} "
+                "where usuario_id = cast(:u as uuid) "
+                f"{condicion} and desde <= now() and (hasta is null or hasta > now()))")
+    return bool(db.execute(text(consulta), {"u": usuario_id}).scalar())
+
+
 def fijar_plan_pro(usuario_id: str, hasta: datetime | None, actor: str) -> None:
     db = fabrica_sistema()
     try:
+        if hay_derecho_vigente(db, usuario_id, "planes_usuario", "and plan = 'pro'"):
+            raise DerechoYaVigente("api_error_admin_pro_ya_activo")
         db.execute(text(
             "insert into liga.planes_usuario (usuario_id, plan, hasta, origen, concedido_por) "
             "values (cast(:u as uuid), 'pro', :h, 'admin', cast(:a as uuid))"),
@@ -369,17 +388,21 @@ def fijar_plan_pro(usuario_id: str, hasta: datetime | None, actor: str) -> None:
         auditar(db, "admin.plan", f"usuario:{usuario_id}",
                 {"plan": "pro", "hasta": hasta.isoformat() if hasta else None}, actor)
         db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
 
 def quitar_plan_pro(usuario_id: str, actor: str) -> None:
-    """No borra el historial: cierra ya (`hasta = now()`) las concesiones Pro vigentes."""
+    """Cierra ya el Pro que concedió el admin. El Pro pagado con Lemon no se toca: lo cierra su
+    propio evento de cobro, que es quien sabe si la persona sigue pagando."""
     db = fabrica_sistema()
     try:
         db.execute(text(
             "update liga.planes_usuario set hasta = now() "
-            "where usuario_id = cast(:u as uuid) and plan = 'pro' "
+            "where usuario_id = cast(:u as uuid) and plan = 'pro' and origen = 'admin' "
             "and desde <= now() and (hasta is null or hasta > now())"), {"u": usuario_id})
         auditar(db, "admin.plan", f"usuario:{usuario_id}", {"plan": "gratis"}, actor)
         db.commit()
@@ -390,6 +413,8 @@ def quitar_plan_pro(usuario_id: str, actor: str) -> None:
 def fijar_pase_liga(usuario_id: str, hasta: datetime | None, actor: str) -> None:
     db = fabrica_sistema()
     try:
+        if hay_derecho_vigente(db, usuario_id, "pases_liga"):
+            raise DerechoYaVigente("api_error_admin_pase_ya_activo")
         db.execute(text(
             "insert into liga.pases_liga (usuario_id, hasta, origen, concedido_por) "
             "values (cast(:u as uuid), :h, 'admin', cast(:a as uuid))"),
@@ -397,17 +422,20 @@ def fijar_pase_liga(usuario_id: str, hasta: datetime | None, actor: str) -> None
         auditar(db, "admin.pase", f"usuario:{usuario_id}",
                 {"pase": "liga", "hasta": hasta.isoformat() if hasta else None}, actor)
         db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
 
 def quitar_pase_liga(usuario_id: str, actor: str) -> None:
-    """Como el plan: no borra el historial, cierra ya los pases vigentes."""
+    """Como el plan: cierra ya solo el pase que concedió el admin, no el pagado."""
     db = fabrica_sistema()
     try:
         db.execute(text(
             "update liga.pases_liga set hasta = now() "
-            "where usuario_id = cast(:u as uuid) "
+            "where usuario_id = cast(:u as uuid) and origen = 'admin' "
             "and desde <= now() and (hasta is null or hasta > now())"), {"u": usuario_id})
         auditar(db, "admin.pase", f"usuario:{usuario_id}", {"pase": None}, actor)
         db.commit()
