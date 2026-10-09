@@ -1247,7 +1247,8 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .acc .sencilla-top { flex-wrap: nowrap; }
 .lg .acc .wordmark { min-height: 44px; display: flex; align-items: center; }
 .lg .acc .wordmark::before { display: none; }
-.lg .acc .acc-portada { position: relative; z-index: 1; display: flex; flex-direction: column; min-height: 250px; }
+/* Por encima del panel: el desplegable de idioma sale de la cabecera y no debe quedar bajo el botón de Google. */
+.lg .acc .acc-portada { position: relative; z-index: 2; display: flex; flex-direction: column; min-height: 250px; }
 .lg .acc .acc-intro { display: flex; flex-direction: column; gap: 12px; margin-top: auto; }
 .lg .acc .acc-intro h1 { margin-top: auto; }
 .lg .acc .acc-t-esc, .lg .acc .acc-arte-bloque { display: none; }
