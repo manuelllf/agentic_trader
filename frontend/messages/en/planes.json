@@ -1,0 +1,21 @@
+{
+  "planes_titulo": "Plans",
+  "planes_intro": "Pro lets you enter up to three strategies, see the house live and copy published strategies. Prices include VAT.",
+  "planes_mensual_nombre": "Monthly",
+  "planes_mensual_precio": "€4.99",
+  "planes_mensual_periodo": "per month",
+  "planes_media_nombre": "Half season",
+  "planes_media_precio": "€25",
+  "planes_media_periodo": "for 6 months",
+  "planes_temporada_nombre": "Season",
+  "planes_temporada_precio": "€49",
+  "planes_temporada_periodo": "for 12 months, January to December",
+  "planes_liga_nombre": "League pack",
+  "planes_liga_precio": "€25",
+  "planes_liga_periodo": "one private league for 12 months",
+  "planes_elegir": "Choose",
+  "planes_pago_no_disponible": "Payments are not available yet. Try again later.",
+  "planes_pago_error": "Could not open the payment. Try again in a moment.",
+  "planes_entra": "Sign in to choose a plan.",
+  "planes_cargando": "Opening payment…"
+}

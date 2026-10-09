@@ -198,6 +198,14 @@ export default function Cuenta() {
               <Link href="/como-funciona" className="btn small">{t("account_ver_metodo")}</Link>
             </div>
 
+            <div className="form">
+              <div className="campo">
+                <span className="lbl">{t("planes_titulo")}</span>
+                <span className="nota">{t("planes_intro")}</span>
+              </div>
+              <Link href="/planes" className="btn small">{t("planes_titulo")}</Link>
+            </div>
+
             <AvisosDispositivo />
 
             <form className="form" onSubmit={cambiarClave}>

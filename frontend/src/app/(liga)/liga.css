@@ -1313,19 +1313,19 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
   .lg .acc .form { gap: 10px; margin-top: 0; }
   .lg .acc .campo { gap: 5px; }
   .lg .acc .lbl { font-size: 13px; }
-  .lg .acc .inp { min-height: 40px; padding: 0 12px; }
-  .lg .acc .clave-ojo { width: 36px; height: 36px; }
-  .lg .acc .btn { min-height: 40px; font-size: 14px; }
-  .lg .acc .acc-google { min-height: 40px; gap: 8px; font-size: 14px; }
+  .lg .acc .inp { min-height: 44px; padding: 0 12px; }
+  .lg .acc .clave-ojo { width: 44px; height: 44px; }
+  .lg .acc .btn { min-height: 44px; font-size: 16px; }
+  .lg .acc .acc-google { min-height: 44px; gap: 8px; font-size: 16px; }
   .lg .acc .acc-google svg { width: 16px; height: 16px; }
   .lg .acc .acc-sep { margin-top: 12px; font-size: 12px; }
   .lg .acc .acc-sep + .form { margin-top: 12px; }
-  .lg .acc .acc-olvido { min-height: 32px; margin-top: -4px; font-size: 12px; }
+  .lg .acc .acc-olvido { min-height: 44px; margin-top: -4px; font-size: 14px; }
   .lg .acc .acc-req { margin-top: -4px; flex-wrap: nowrap; }
-  .lg .acc .acc-req li { padding: 2px 6px; font-size: 11px; }
-  .lg .acc .acc-acepta { min-height: 36px; font-size: 13px; }
-  .lg .acc .acc-cambio { margin-top: 2px; font-size: 13px; }
-  .lg .acc .acc-cambio a { min-height: 36px; }
+  .lg .acc .acc-req li { padding: 2px 6px; font-size: 12px; }
+  .lg .acc .acc-acepta { min-height: 44px; font-size: 15px; }
+  .lg .acc .acc-cambio { margin-top: 2px; font-size: 14px; }
+  .lg .acc .acc-cambio a { min-height: 44px; }
   .lg .acc .acc-panel > .acc-pie { margin-top: 0; padding-top: 6px; gap: 2px; font-size: 11px; line-height: 1.35; }
   .lg .acc.sencilla { padding-top: 12px; padding-bottom: 8px; }
   .lg .acc .acc-pie div a { min-height: 36px; }
@@ -1364,3 +1364,58 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
   .lg .acc .acc-puntos, .lg .acc .acc-arte-bloque { display: none; }
   .lg .acc .acc-panel { grid-row: 4; justify-self: center; width: min(440px, 100%); }
 }
+
+/* Acceso (entrar, crear, trámites): cabecera con la marca y el idioma, formulario centrado y pie
+   con lo legal. Móvil primero; en escritorio el mismo orden, con la columna un poco más ancha. */
+.lg .acc { min-height: 100vh; min-height: 100dvh; padding: 0; display: flex; flex-direction: column; }
+.lg .acc .acc-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 56px; padding: 8px 16px; }
+.lg .acc .acc-cabecera .wordmark { min-height: 44px; display: flex; align-items: center; }
+.lg .acc .acc-centro { flex: 1; width: 100%; max-width: 400px; margin: 0 auto; padding: 24px 16px 24px;
+  display: flex; flex-direction: column; gap: 24px; }
+.lg .acc .acc-centro h1 { font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: -.02em;
+  text-align: center; margin: 0; }
+.lg .acc .acc-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.lg .acc .acc-formulario { display: flex; flex-direction: column; gap: 16px; }
+.lg .acc .acc-cambio { margin: 0; text-align: center; font-size: 15px; color: var(--ink2); }
+.lg .acc .acc-cambio a { display: inline-flex; align-items: center; min-height: 44px; }
+.lg .acc .acc-pie-pagina { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 16px 16px 20px;
+  font-size: 13px; line-height: 1.4; color: var(--muted); text-align: center; }
+.lg .acc .acc-pie-pagina nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 12px; }
+.lg .acc .acc-pie-pagina a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink2); }
+.lg .acc .acc-pie-pagina p { margin: 0; }
+/* Móvil sin desplazamiento: entrar y crear caben en la pantalla completa, desde 360×640. La
+   pestaña ya dice dónde estás, así que el título se oculta; el espacio se reparte entre campos. */
+@media (max-width: 879px) {
+  .lg .acc:not(.acc-solo) { min-height: 100vh; min-height: 100dvh; }
+  .lg .acc:not(.acc-solo) .acc-centro { flex: 1; min-height: 0; justify-content: center; gap: 8px;
+    padding: 4px 16px 0; }
+  .lg .acc:not(.acc-solo) .acc-centro h1 { display: none; }
+  .lg .acc:not(.acc-solo) .acc-seg { margin-top: 0; }
+  .lg .acc:not(.acc-solo) .acc-formulario { gap: 8px; }
+  .lg .acc:not(.acc-solo) .acc-formulario .acc-sep { margin-top: 0; }
+  .lg .acc:not(.acc-solo) .acc-formulario .acc-sep + .form { margin-top: 0; }
+  .lg .acc:not(.acc-solo) .acc-cabecera { min-height: 52px; padding: 4px 16px; }
+  .lg .acc:not(.acc-solo) .form { gap: 8px; }
+  .lg .acc:not(.acc-solo) .acc-pie-pagina { padding: 0 16px; gap: 0; font-size: 12px; }
+  .lg .acc:not(.acc-solo) .acc-pie-pagina > p { display: none; }
+  /* La pestaña ya cambia de pantalla: el enlace de abajo sobra y se quita para ganar altura. */
+  .lg .acc:not(.acc-solo) .acc-cambio { display: none; }
+}
+@media (min-width: 880px) {
+  .lg .acc .acc-centro { max-width: 440px; padding-top: 48px; }
+  .lg .acc .acc-centro h1 { font-size: 26px; }
+}
+
+/* Planes dentro de la app: una columna en móvil, dos en escritorio. */
+.lg .planes { max-width: 880px; margin: 0 auto; padding: 24px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+.lg .planes h1 { font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -.02em; margin: 0; }
+.lg .planes-intro { margin: 0; color: var(--ink2); font-size: 15px; line-height: 1.5; }
+.lg .planes-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 12px; }
+.lg .plan { display: flex; flex-direction: column; justify-content: space-between; gap: 16px; padding: 18px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.lg .plan h2 { margin: 0; font-size: 18px; font-weight: 700; }
+.lg .plan-precio { margin: 6px 0 0; font-size: 15px; color: var(--ink2); }
+.lg .plan-precio span { font-size: 28px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; }
+.lg .plan-elegir { min-height: 44px; }
+@media (min-width: 640px) { .lg .planes-lista { grid-template-columns: 1fr 1fr; } }
