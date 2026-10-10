@@ -264,12 +264,11 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .qr { display: block; width: 200px; height: 200px; margin: 4px auto 0; padding: 10px;
   border-radius: var(--radius-card); background: #FFFFFF; }
 .lg .secreto { font-size: 15px; word-break: break-all; color: var(--ink2); }
-/* Cabecera común de las pestañas: sello a la izquierda o título centrado, y el menú de la cuenta. */
-.lg .cab { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 52px; }
+/* Cabecera común de las pestañas: el menú de la cuenta a la izquierda, y después el sello o el título centrado. */
+.lg .cab { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; height: 52px; }
 .lg .cab.centrada { grid-template-columns: 44px minmax(0, 1fr) 44px; }
 .lg .cab-titulo { grid-column: 2; margin: 0; text-align: center; font-size: 17px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lg .cab .cuenta { position: relative; justify-self: end; }
-.lg .cab.centrada .cuenta { grid-column: 3; }
+.lg .cab .cuenta { position: relative; justify-self: start; }
 .lg .cuenta-hueco { display: inline-block; width: 36px; height: 36px; }
 .lg .cuenta-boton {
   display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px 0 12px;
@@ -293,7 +292,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .puntos::after { content: ""; position: absolute; inset: -4px; }
 .lg .puntos[aria-expanded="true"] { border-color: var(--line2); background: var(--raised); color: var(--ink); }
 .lg .cuenta .cuenta-menu {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: block; width: min(232px, calc(100vw - 2 * var(--page-gutter))); min-width: 0;
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; display: block; width: min(232px, calc(100vw - 2 * var(--page-gutter))); min-width: 0;
   padding: 6px; border: 1px solid var(--line2); border-radius: 12px; background: var(--raised);
   box-shadow: 0 18px 40px -12px var(--shadow);
 }
