@@ -113,6 +113,7 @@
   "legal_privacy_processor_db": "Base de datos y cuentas, alojadas en la UE.",
   "legal_privacy_processor_app": "Servidor de la aplicación, alojado en la UE.",
   "legal_privacy_processor_web": "Alojamiento de esta web, que ve tu IP al entrar, como cualquier servidor web.",
+  "legal_privacy_processor_correo": "Resend (empresa de Estados Unidos) entrega los correos de acceso: tu dirección y el enlace para confirmar tu cuenta o cambiar tu contraseña. Es encargado del tratamiento.",
   "legal_privacy_processor_lemon": "Lemon Squeezy (Estados Unidos) vende los planes y cobra. No actúa por nuestra cuenta: trata tus datos de pago como responsable propio, con su propia política de privacidad. A nosotros nos envía qué compraste, sus fechas y su estado.",
   "legal_privacy_transfers_outside_eu": "Algunos de estos proveedores tienen su matriz en Estados Unidos. Si un dato sale de la UE, se protege con las cláusulas contractuales tipo de la Comisión Europea o con el Marco de Privacidad de Datos UE-EE. UU.",
   "legal_privacy_retention": "Cuánto tiempo los guardamos",

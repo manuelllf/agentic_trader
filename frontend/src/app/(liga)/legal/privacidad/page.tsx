@@ -67,6 +67,7 @@ export default async function Privacidad() {
       <p>{t("legal_privacy_processors_intro")}</p>
       <ul>
         <li>{t("legal_privacy_processor_db")}</li><li>{t("legal_privacy_processor_app")}</li><li>{t("legal_privacy_processor_web")}</li>
+        <li>{t("legal_privacy_processor_correo")}</li>
       </ul>
       <p>{t("legal_privacy_processor_lemon")}</p>
       <p>

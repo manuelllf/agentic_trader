@@ -40,7 +40,7 @@ def test_alta_no_devuelve_tokens_y_envia_solo_metadata_de_perfil(cliente):
     assert llamada["params"] == {}
     assert llamada["json"]["email"] == "usuario@correo.es"
     assert llamada["json"]["data"] == {
-        "alias": "usuario", "terminos_version": registro.VERSION_TERMINOS}
+        "alias": "usuario", "terminos_version": registro.VERSION_TERMINOS, "idioma": "es"}
     assert "Authorization" not in llamada["headers"]
 
 
@@ -59,12 +59,59 @@ def test_datos_invalidos_no_llegan_al_proveedor(cliente, cambios):
     assert not pedidos
 
 
-def test_cierre_bloquea_alta_y_correos_pospuestos(cliente, monkeypatch):
+def test_cierre_bloquea_alta_pero_permite_correos(cliente, monkeypatch):
     client, pedidos = cliente
     monkeypatch.setattr(registro.gestion, "registro_abierto", lambda: False)
     assert client.post("/registro", json=datos()).status_code == 403
-    for ruta in ("/recuperar", "/reenviar"):
-        assert client.post("/registro" + ruta, json=datos()).status_code == 404
+    assert not pedidos
+    for ruta, proveedor, cuerpo, enlace in (
+        ("/recuperar", "recover", {"email": "usuario@correo.es"}, registro.ENLACE_CLAVE),
+        ("/reenviar", "resend", {"type": "signup", "email": "usuario@correo.es"},
+         registro.ENLACE_ENTRADA),
+    ):
+        respuesta = client.post("/registro" + ruta, json=datos())
+        assert respuesta.status_code == 200
+        assert respuesta.json() == {"ok": True}
+        url, llamada = pedidos[-1]
+        assert url == "https://auth.invalid/auth/v1/" + proveedor
+        assert llamada["json"] == cuerpo
+        assert llamada["params"] == {"redirect_to": "http://localhost:3000" + enlace}
+    assert len(pedidos) == 2
+
+
+@pytest.mark.parametrize("idioma", ["en", "EN-US,en;q=0.9"])
+def test_alta_guarda_idioma_ingles(cliente, idioma):
+    client, pedidos = cliente
+    respuesta = client.post("/registro", json=datos(), headers={"Accept-Language": idioma})
+    assert respuesta.status_code == 200
+    assert pedidos[0][1]["json"]["data"] == {
+        "alias": "usuario", "terminos_version": registro.VERSION_TERMINOS, "idioma": "en"}
+
+
+@pytest.mark.parametrize("ruta", ["/recuperar", "/reenviar"])
+def test_correo_oculta_rechazo_del_proveedor(cliente, monkeypatch, ruta):
+    client, _ = cliente
+    monkeypatch.setattr(registro.httpx, "post", lambda *a, **k: httpx.Response(
+        400, json={"message": "Cuenta existente: privado@correo.es"}))
+    respuesta = client.post("/registro" + ruta, json=datos())
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {"ok": True}
+
+
+@pytest.mark.parametrize("estado, esperado", [(429, 429), (500, 503), (401, 503), (403, 503)])
+def test_recuperacion_conserva_errores_del_proveedor(cliente, monkeypatch, estado, esperado):
+    client, _ = cliente
+    monkeypatch.setattr(registro.httpx, "post", lambda *a, **k: httpx.Response(estado))
+    assert client.post("/registro/recuperar", json=datos()).status_code == esperado
+
+
+@pytest.mark.parametrize("ruta", ["/recuperar", "/reenviar"])
+@pytest.mark.parametrize("cambios", [
+    {"email": "no-es-email"}, {"origen": "https://atacante.example"},
+])
+def test_correo_invalido_no_llega_al_proveedor(cliente, ruta, cambios):
+    client, pedidos = cliente
+    assert client.post("/registro" + ruta, json=datos(**cambios)).status_code == 422
     assert not pedidos
 
 

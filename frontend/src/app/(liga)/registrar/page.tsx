@@ -20,6 +20,7 @@ export default function Registrar() {
   const [acepta, setAcepta] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [enviado, setEnviado] = useState(false);
+  const [reenviado, setReenviado] = useState(false);
   const [error, setError] = useState("");
   const [destino, setDestino] = useState("/liga");
   useEffect(() => {
@@ -71,6 +72,16 @@ export default function Registrar() {
         <h2>{t("auth_cuenta_creada")}</h2>
         <p>{t("auth_cuenta_creada_entrada")}</p>
         <Link href="/entrar" className="btn">{t("auth_entrar")}</Link>
+        <Boton variante="secundario" ancho="completo" disabled={ocupado || !acceso?.correo_disponible}
+          onClick={async () => {
+            if (ocupado || !acceso?.correo_disponible) return;
+            setOcupado(true); setError(""); setReenviado(false);
+            const fallo = await solicitarCorreo("/reenviar", { email });
+            setOcupado(false);
+            if (fallo) setError(fallo);
+            else setReenviado(true);
+          }}>{ocupado ? t("auth_enviando") : t("auth_reenviar_confirmacion")}</Boton>
+        {reenviado && <p role="status">{t("auth_correo_enviado_generico")}</p>}
       </> : <form className="form" onSubmit={enviar}>
         <label className="campo"><span className="lbl">{t("auth_email")}</span>
           <input className="inp" type="email" autoComplete="email" autoCapitalize="none" maxLength={254}

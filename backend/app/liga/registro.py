@@ -28,6 +28,8 @@ RESERVADOS = {"admin", "administrador", "alpha", "beta", "omega", "lambda", "jev
               "liguilla", "liga", "vennett", "soporte", "ayuda", "moderador",
               "moderacion", "casa", "sistema", "root", "staff"}
 VERSION_TERMINOS = "2"
+ENLACE_CLAVE = "/auth/callback?next=%2Fcambiar-clave"
+ENLACE_ENTRADA = "/auth/callback?next=%2Fliga"
 
 
 @router.get("")
@@ -74,7 +76,7 @@ def _preparar(body: CorreoIn, request: Request) -> tuple[str, str]:
     return email, origen
 
 
-def _enviar(ruta: str, datos: dict, destino: str) -> None:
+def _enviar(ruta: str, datos: dict, destino: str, *, sin_revelar: bool = False) -> None:
     try:
         respuesta = httpx.post(
             settings.supabase_url.rstrip("/") + "/auth/v1/" + ruta,
@@ -85,6 +87,11 @@ def _enviar(ruta: str, datos: dict, destino: str) -> None:
         raise HTTPException(503, "No se pudo enviar el correo. Prueba en un momento.") from None
     if respuesta.status_code == 429:
         raise HTTPException(429, "Espera unos minutos antes de pedir otro correo.")
+    codigo = respuesta.status_code
+    if sin_revelar and 400 <= codigo < 500 and codigo not in (401, 403):
+        # Sin cuenta o ya confirmada, el proveedor responde error: no se lo decimos al usuario.
+        logger.info("Correo %s sin efecto en el proveedor (%s)", ruta, codigo)
+        return
     if respuesta.status_code >= 400:
         # No reenviamos mensajes que puedan revelar cuentas o datos internos del proveedor.
         if ruta == "signup":
@@ -118,6 +125,10 @@ def _vigilar_pico() -> None:
         logger.exception("No se pudo avisar del pico de altas")
 
 
+def _idioma(request: Request) -> str:
+    return "en" if request.headers.get("accept-language", "").lower().startswith("en") else "es"
+
+
 @router.post("")
 def registrar(body: RegistroIn, request: Request) -> dict:
     if not gestion.registro_abierto():
@@ -132,13 +143,22 @@ def registrar(body: RegistroIn, request: Request) -> dict:
     if not validar_clave(clave):
         raise HTTPException(422, "Usa al menos 8 caracteres, una mayúscula y un símbolo.")
     _enviar("signup", {"email": email, "password": clave,
-                      "data": {"alias": alias, "terminos_version": VERSION_TERMINOS}},
+                      "data": {"alias": alias, "terminos_version": VERSION_TERMINOS,
+                               "idioma": _idioma(request)}},
             "")
     _vigilar_pico()
     return {"ok": True}
 
 
 @router.post("/recuperar")
+def recuperar(body: CorreoIn, request: Request) -> dict:
+    email, origen = _preparar(body, request)
+    _enviar("recover", {"email": email}, origen + ENLACE_CLAVE, sin_revelar=True)
+    return {"ok": True}
+
+
 @router.post("/reenviar")
-def correo_pospuesto() -> None:
-    raise HTTPException(404, "Not Found")
+def reenviar(body: CorreoIn, request: Request) -> dict:
+    email, origen = _preparar(body, request)
+    _enviar("resend", {"type": "signup", "email": email}, origen + ENLACE_ENTRADA, sin_revelar=True)
+    return {"ok": True}
