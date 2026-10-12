@@ -94,11 +94,16 @@ def interpretar(evento: dict, mapa_variantes: dict[str, str], modo: str) -> Acci
                 actualizado_en=actualizado)
 
     if nombre in _ALTA:
-        if attrs.get("status") not in ("active", "on_trial"):
+        estado = attrs.get("status")
+        if estado in ("unpaid", "expired", "paused"):
+            return Accion("baja", **base)
+        if estado not in ("active", "on_trial", "past_due"):
             return _ignorar("estado_no_activo", **base)
         if producto is None:
             return _ignorar("variante_desconocida", **base)
-        hasta = _fecha(attrs.get("renews_at")) or _fecha(attrs.get("ends_at"))
+        hasta = _fecha(attrs.get("renews_at"))
+        if estado != "past_due":
+            hasta = hasta or _fecha(attrs.get("ends_at"))
         if hasta is None:
             return _ignorar("sin_fecha_de_fin", **base)
         tipo = "pase" if producto == "pack_liga" else "pro"

@@ -188,10 +188,39 @@ def test_alta_sin_fecha_de_fin_se_ignora():
     assert accion.tipo == "ignorar" and accion.motivo == "sin_fecha_de_fin"
 
 
-def test_estado_no_activo_en_alta_se_ignora():
+def test_atrasada_mantiene_pro_hasta_el_proximo_reintento():
     accion = interpretar(
         _evento("subscription_updated", estado="past_due",
                 renews_at="2027-01-10T00:00:00.000000Z"), MAPA, "test")
+    assert accion.tipo == "pro"
+    assert accion.hasta.isoformat() == "2027-01-10T00:00:00+00:00"
+
+
+def test_atrasada_sin_reintento_se_ignora_aunque_tenga_ends_at():
+    accion = interpretar(_evento("subscription_updated", estado="past_due",
+                                 ends_at="2027-01-10T00:00:00Z"), MAPA, "test")
+    assert accion.tipo == "ignorar" and accion.motivo == "sin_fecha_de_fin"
+
+
+def test_impagada_corta_pro():
+    accion = interpretar(_evento("subscription_updated", estado="unpaid"), MAPA, "test")
+    assert accion.tipo == "baja" and accion.hasta is None
+    assert accion.lemon_id == "98765"
+
+
+def test_caducada_corta_pro():
+    accion = interpretar(_evento("subscription_updated", estado="expired"), MAPA, "test")
+    assert accion.tipo == "baja" and accion.hasta is None
+
+
+def test_pausada_corta_pro():
+    accion = interpretar(_evento("subscription_updated", estado="paused"), MAPA, "test")
+    assert accion.tipo == "baja" and accion.hasta is None
+
+
+def test_actualizacion_cancelada_deja_el_fin_al_evento_de_cancelacion():
+    accion = interpretar(_evento("subscription_updated", estado="cancelled",
+                                 ends_at="2027-01-10T00:00:00Z"), MAPA, "test")
     assert accion.tipo == "ignorar" and accion.motivo == "estado_no_activo"
 
 

@@ -349,5 +349,9 @@
   "api_error_pro_ya_activo": "Ya tienes Pro activo.",
   "api_error_no_tienes_suscripcion_que_cambiar": "No tienes una suscripción de Lemon que cambiar.",
   "api_error_ya_tienes_este_plan": "Ya tienes este plan.",
-  "api_error_no_se_pudo_cambiar_el_plan": "No se pudo cambiar el plan. Prueba en un momento."
+  "api_error_no_se_pudo_cambiar_el_plan": "No se pudo cambiar el plan. Prueba en un momento.",
+  "api_error_no_se_pudo_leer_la_suscripcion": "No se pudo leer la suscripción. Prueba en un momento.",
+  "api_error_no_se_pudo_cancelar_la_suscripcion": "No se pudo cancelar la suscripción. Prueba en un momento.",
+  "api_error_no_se_pudo_reanudar_la_suscripcion": "No se pudo reanudar la suscripción. Prueba en un momento.",
+  "api_error_esta_suscripcion_ya_no_se_puede_reanudar": "Esta suscripción ya no se puede reanudar."
 }
