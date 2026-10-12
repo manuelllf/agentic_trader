@@ -50,3 +50,8 @@ export function debeCompletarCuenta(pendiente: boolean, ruta: string): boolean {
   return pendiente && !["/completar", "/auth/callback", "/legal", "/entrar", "/registrar", "/cambiar-clave"]
     .some(prefijo => ruta.startsWith(prefijo));
 }
+
+export function correoOculto(email: string): string {
+  const arroba = email.indexOf("@");
+  return arroba < 0 ? "•••••" : `${email.slice(0, 1)}•••••${email.slice(arroba)}`;
+}

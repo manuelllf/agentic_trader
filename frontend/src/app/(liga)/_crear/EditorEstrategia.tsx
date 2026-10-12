@@ -1107,7 +1107,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                        ayuda={t("builder_published_help")}
                        onClick={() => pro && setVisibilidad("publicada")} />
         </div>
-        {!pro && <Link href="/cuenta#plan" className="btn small" style={{ marginTop: 12 }}>{t("planes_ver")}</Link>}
+        {!pro && <Link href="/cuenta/plan" className="btn small" style={{ marginTop: 12 }}>{t("planes_ver")}</Link>}
         {visibilidad === "publicada" && (
           <div style={{ marginTop: 16 }}>
             <p style={{ fontSize: 16, color: "var(--ink)" }}>{t("builder_position_declaration")}</p>

@@ -68,7 +68,7 @@ export function Sesion() {
           )}
           {dentro ? <>
             <Link href="/cuenta" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_tu_cuenta")}</Link>
-            <Link href="/cuenta#plan" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="l" />{t("planes_titulo")}</Link>
+            <Link href="/cuenta/plan" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="l" />{t("planes_titulo")}</Link>
             {yo?.admin && <Link href={panel} role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="p" />{t("account_panel_control")}</Link>}
           </> : <Link href="/entrar" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_entrar")}</Link>}
           {dentro && <><hr /><button type="button" role="menuitem" className="cuenta-item salir" onClick={salir}><Icono tipo="s" />{t("account_salir")}</button></>}

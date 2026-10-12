@@ -1425,3 +1425,21 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .cuenta-plan .cuenta-plan-pago { display: flex; flex-direction: column; gap: 8px; }
 .lg .cuenta-plan .cuenta-plan-pago { padding-top: 18px; border-top: 1px solid var(--line); }
 .lg .cuenta-plan .btn { min-height: 44px; white-space: normal; }
+
+.lg .sencilla-cuerpo.arriba > .ajustes { width: 100%; max-width: 28rem; }
+.lg .ajustes .ajustes-grupo { margin-top: 24px; }
+.lg .ajustes .ajustes-etq { margin: 0 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.lg .ajustes .ajustes-lista { list-style: none; padding: 0; margin: 0; border-bottom: 1px solid var(--line); }
+.lg .ajustes .ajustes-fila { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 0; box-sizing: border-box; border-top: 1px solid var(--line); text-decoration: none; color: var(--muted); }
+.lg .ajustes .ajustes-con-sub { min-height: 64px; }
+.lg .ajustes .ajustes-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.lg .ajustes .ajustes-nombre { font-size: 16px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.lg .ajustes .ajustes-valor { min-width: 0; max-width: 52%; font-size: 15px; color: var(--muted); text-align: right; overflow-wrap: anywhere; }
+.lg .ajustes .ajustes-sub { font-size: 14px; color: var(--muted); }
+.lg .ajustes .ajustes-nota { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.lg .ajustes .ajustes-fila svg, .lg .ajustes .ajustes-volver svg { flex: none; }
+.lg .ajustes .ajustes-baja { margin-top: 32px; border-bottom: 0; }
+.lg .ajustes .ajustes-peligro { border-top: 0; color: var(--bad); }
+.lg .ajustes .ajustes-peligro .ajustes-nombre { color: var(--bad); }
+.lg .ajustes .ajustes-volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--muted); text-decoration: none; }
+.lg .ajustes .ajustes-fila:focus-visible, .lg .ajustes .ajustes-volver:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -3,7 +3,7 @@
 // Estado del plan y enlaces al portal de Lemon.
 
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import type { Yo } from "@/lib/liga/api";
 import type { ProductoPago, Suscripcion } from "@/lib/liga/pagos";
 
@@ -29,17 +29,11 @@ export function PlanCuentaVista({ yo, suscripcion, comprar: pedirCompra }: Props
   const t = useTranslations();
   const locale = useLocale();
   const base = useId();
-  const seccion = useRef<HTMLElement>(null);
   const [comprando, setComprando] = useState<ProductoPago | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
   const actual = esPro(yo.plan_pago) ? yo.plan_pago : null;
   const proDelAdmin = yo.plan === "pro" && actual === null;
-
-  // Desde «Ver planes» o el menú se llega con #plan: la sección se pone arriba.
-  useEffect(() => {
-    if (window.location.hash === "#plan") seccion.current?.scrollIntoView({ block: "start" });
-  }, []);
 
   async function comprar(producto: ProductoPago) {
     if (comprando || !pedirCompra) return;
@@ -64,7 +58,7 @@ export function PlanCuentaVista({ yo, suscripcion, comprar: pedirCompra }: Props
   const cancelada = suscripcion?.estado === "cancelada";
 
   return (
-    <section ref={seccion} className="form cuenta-plan" aria-labelledby={`${base}-titulo`}>
+    <section className="form cuenta-plan" aria-labelledby={`${base}-titulo`}>
       <p className="cuenta-plan-etiqueta">{t("planes_plan_actual")}</p>
 
       {yo.plan === "gratis" ? (
