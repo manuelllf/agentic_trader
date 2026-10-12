@@ -13,7 +13,7 @@ export default async function Privacidad() {
     <PlantillaLegal
       titulo={t("legal_privacy_policy")}
       resumen={[
-        t("legal_privacy_summary_1"), t("legal_privacy_summary_2"), t("legal_privacy_summary_3"), t("legal_privacy_summary_4"),
+        t("legal_privacy_summary_1"), t("legal_privacy_summary_2"), t("legal_privacy_summary_3"), t("legal_privacy_summary_4"), t("legal_privacy_summary_5"),
       ]}
     >
       <h2>{t("legal_privacy_controller")}</h2>
@@ -29,6 +29,7 @@ export default async function Privacidad() {
         <li><b>{t("legal_privacy_created_content")}</b>: {t("legal_privacy_created_content_data")}</li>
         <li><b>{t("legal_privacy_account_visits")}</b>: {t("legal_privacy_account_visits_data")}</li>
         <li><b>{t("legal_privacy_credits_plan")}</b>: {t("legal_privacy_credits_plan_data")}</li>
+        <li><b>{t("legal_privacy_purchases")}</b>: {t("legal_privacy_purchases_data")}</li>
         <li><b>{t("legal_privacy_ai_usage")}</b>: {t("legal_privacy_ai_usage_data")}</li>
         <li><b>{t("legal_privacy_reports_errors")}</b>: {t("legal_privacy_reports_errors_data")}</li>
         <li><b>{t("legal_privacy_records")}</b>: {t("legal_privacy_records_data")}</li>
@@ -40,6 +41,7 @@ export default async function Privacidad() {
       <h2>{t("legal_privacy_purpose_basis")}</h2>
       <ul>
         <li><b>{t("legal_privacy_service")}</b> ({t("legal_gdpr_art_6_1_b")}): {t("legal_privacy_service_basis")}</li>
+        <li><b>{t("legal_privacy_payments")}</b> ({t("legal_gdpr_art_6_1_b")}): {t("legal_privacy_payments_basis")}</li>
         <li><b>{t("legal_privacy_security")}</b> ({t("legal_gdpr_art_6_1_f")}): {t("legal_privacy_security_basis")} <Link href="#derechos">{t("legal_privacy_rights_ref")}</Link>).</li>
         <li><b>{t("legal_privacy_ai_features")}</b> ({t("legal_gdpr_art_6_1_a")}): {t("legal_privacy_ai_basis")}</li>
         <li><b>{t("legal_privacy_legal_obligation")}</b> ({t("legal_gdpr_art_6_1_c")}): {t("legal_privacy_legal_basis")}</li>
@@ -62,13 +64,14 @@ export default async function Privacidad() {
       <ul>
         <li>{t("legal_privacy_processor_db")}</li><li>{t("legal_privacy_processor_app")}</li><li>{t("legal_privacy_processor_web")}</li>
       </ul>
+      <p>{t("legal_privacy_processor_lemon")}</p>
       <p>
         {t("legal_privacy_transfers_outside_eu")}
       </p>
 
       <h2>{t("legal_privacy_retention")}</h2>
       <ul>
-        <li>{t("legal_privacy_retention_account")}</li><li>{t("legal_privacy_retention_strategies")}</li><li>{t("legal_privacy_retention_reports")}</li><li>{t("legal_privacy_retention_logs")}</li><li>{t("legal_privacy_retention_backups")}</li>
+        <li>{t("legal_privacy_retention_account")}</li><li>{t("legal_privacy_retention_purchases")}</li><li>{t("legal_privacy_retention_strategies")}</li><li>{t("legal_privacy_retention_reports")}</li><li>{t("legal_privacy_retention_logs")}</li><li>{t("legal_privacy_retention_backups")}</li>
       </ul>
 
       <h2 id="derechos">{t("legal_privacy_rights")}</h2>

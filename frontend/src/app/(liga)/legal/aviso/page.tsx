@@ -5,8 +5,6 @@ import { getTranslations } from "next-intl/server";
 
 export async function generateMetadata() { const t = await getTranslations(); return { title: `${t("legal_notice_title")} — Vennett` }; }
 
-// Solo nombre, lugar y contacto mientras no haya actividad económica; al cobrar hay que añadir
-// NIF y domicilio.
 export default async function Aviso() {
   const t = await getTranslations();
   return (
@@ -15,6 +13,8 @@ export default async function Aviso() {
       <ul>
         <li><b>{t("legal_notice_name")}</b>: {TITULAR.nombre}</li>
         <li><b>{t("legal_notice_location")}</b>: {t("legal_holder_location")}</li>
+        {TITULAR.nif !== null && <li><b>{t("legal_notice_nif")}</b>: {TITULAR.nif}</li>}
+        {TITULAR.domicilio !== null && <li><b>{t("legal_notice_address")}</b>: {TITULAR.domicilio}</li>}
         <li><b>{t("legal_contact_label")}</b>: <Contacto uso="info" /></li>
       </ul>
       <p>

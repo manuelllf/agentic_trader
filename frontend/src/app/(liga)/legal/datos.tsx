@@ -3,9 +3,12 @@ import { localeTag, normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
 
 // Datos del titular y versión de los textos legales, en un solo sitio.
-export const TITULAR = { nombre: "Manuel Llao Freire" };
+// Hay que rellenar NIF y domicilio antes de cobrar.
+export const TITULAR: { nombre: string; nif: string | null; domicilio: string | null } = {
+  nombre: "Manuel Llao Freire", nif: null, domicilio: null,
+};
 
-export const VERSION_LEGAL = "2026-10-08";
+export const VERSION_LEGAL = "2026-10-12";
 export function fechaLegal(locale: Locale): string {
   return new Intl.DateTimeFormat(localeTag(locale), { dateStyle: "long", timeZone: "UTC" })
     .format(new Date(`${VERSION_LEGAL}T00:00:00Z`));

@@ -5,8 +5,6 @@ import { getTranslations } from "next-intl/server";
 
 export async function generateMetadata() { const t = await getTranslations(); return { title: `${t("legal_terms_title")} — Vennett` }; }
 
-// Al cobrar algo real hay que revisar créditos y plan Pro (precio, desistimiento, factura) y
-// completar el aviso legal con NIF y domicilio.
 export default async function Terminos() {
   const t = await getTranslations();
   return (
@@ -32,7 +30,7 @@ export default async function Terminos() {
 
       <h2>{t("legal_terms_your_account")}</h2>
       <ul>
-        <li>{t("legal_terms_account_age")} <Link href="/legal/privacidad">{t("legal_privacy_policy")}</Link>.</li>
+        <li>{t("legal_terms_account_age")} <Link href="/legal/privacidad">{t("legal_privacy_policy")}</Link>. {t("legal_terms_purchase_age")}</li>
         <li>{t("legal_terms_password")} <Link href="/cuenta">{t("legal_account_link")}</Link>.</li>
         <li>{t("legal_terms_delete_account")}</li>
       </ul>
@@ -49,7 +47,12 @@ export default async function Terminos() {
 
       <h2>{t("legal_terms_credits_pro")}</h2>
       <ul>
-        <li>{t.rich("legal_terms_credits", { b: (chunks) => <b>{chunks}</b> })}</li><li>{t("legal_terms_pro_free")}</li>
+        <li>{t.rich("legal_terms_credits", { b: (chunks) => <b>{chunks}</b> })}</li>
+        <li>{t("legal_terms_plans")}</li>
+        <li>{t("legal_terms_seller")}</li>
+        <li>{t("legal_terms_cancel")}</li>
+        <li>{t("legal_terms_refund")} <Contacto uso="legal" />. {t("legal_terms_refund_after")}</li>
+        <li>{t("legal_terms_access_lost")}</li>
       </ul>
 
       <h2>{t("legal_terms_acceptable_use")}</h2>
