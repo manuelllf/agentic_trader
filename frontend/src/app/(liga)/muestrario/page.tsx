@@ -7,6 +7,7 @@ import { normalizeLocale } from "@/i18n/locale";
 import type { RendimientoFicha, Yo } from "@/lib/liga/api";
 import type { Suscripcion } from "@/lib/liga/pagos";
 import { PlanCuentaVista } from "../cuenta/PlanCuentaVista";
+import { AvisosAltaVista } from "../avisos-alta/AvisosAltaVista";
 import { CuentaHub } from "../cuenta/CuentaHub";
 import { GraficaRendimiento } from "../ficha/[id]/GraficaRendimiento";
 import { ListaEmpresas } from "../ficha/[id]/ListaEmpresas";
@@ -106,6 +107,8 @@ export default function Muestrario() {
           <CabeceraApp anio={2026} />
           <CabeceraApp titulo={t("private_leagues_title")} />
         </div>
+        <AvisosAltaVista variante="avisos" ocupado={false} error={null} onActivar={() => {}} onSeguir={() => {}} />
+        <AvisosAltaVista variante="ios" ocupado={false} error={null} onActivar={() => {}} onSeguir={() => {}} />
         <CuentaHub yo={MUESTRA_GRATIS} email="muestra@gmail.com" />
         <CuentaHub yo={{ ...MUESTRA_PRO, aal2: true }} email="muestra@gmail.com" />
         <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={MUESTRA_SUSCRIPCION} />

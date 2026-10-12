@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { destinoConAvisos } from "@/lib/liga/avisos";
 import { destinoSeguro, supabase, useSupabase } from "@/lib/liga/supabase";
 
 export default function Callback() {
@@ -19,6 +20,7 @@ export default function Callback() {
     // Las plantillas de correo mandan token_hash (no depende del navegador que pidió el enlace).
     const tokenHash = parametros.get("token_hash");
     const tipo = parametros.get("type");
+    const recuperacion = tipo === "recovery";
     const destino = destinoSeguro(parametros.get("next"));
     if (!sb) { setFallo(true); return; }
     void (async () => {
@@ -29,13 +31,19 @@ export default function Callback() {
           const { error } = usaOtp
             ? await supabase()!.auth.verifyOtp({ token_hash: tokenHash!, type: tipoOtp! })
             : await supabase()!.auth.exchangeCodeForSession(code!);
-          if (!error) { window.location.replace(destino); return; }
+          if (!error) {
+            const siguiente = recuperacion ? destino : await destinoConAvisos("confirmar", destino);
+            window.location.replace(siguiente); return;
+          }
         }
       } catch { /* el intercambio falló: se comprueba si ya hay sesión abajo */ }
       // Antes de avisar de un enlace caducado, miramos si la sesión ya está puesta: así no
       // aparece el aviso un instante cuando la vuelta llega bien.
       const sesion = await supabase()!.auth.getSession().then(r => r.data.session, () => null);
-      if (sesion) window.location.replace(destino);
+      if (sesion) {
+        const siguiente = recuperacion ? destino : await destinoConAvisos("confirmar", destino);
+        window.location.replace(siguiente);
+      }
       else setFallo(true);
     })();
   }, [sb]);

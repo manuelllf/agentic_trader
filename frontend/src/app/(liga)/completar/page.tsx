@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { destinoConAvisos } from "@/lib/liga/avisos";
 import { aceptarTerminos, cambiarAlias } from "@/lib/liga/api";
 import { esAliasValido } from "@/lib/liga/proveedores";
 import { destinoSeguro } from "@/lib/liga/supabase";
@@ -41,7 +42,7 @@ export default function Completar() {
       }
       const aceptacion = await aceptarTerminos();
       if (typeof aceptacion === "string") { setError(aceptacion); return; }
-      window.location.assign(destino);
+      window.location.assign(await destinoConAvisos("resto", destino));
     } finally { setOcupado(false); }
   };
 

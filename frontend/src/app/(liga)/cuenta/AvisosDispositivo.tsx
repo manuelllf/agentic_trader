@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
-  avisosSoportados, bajaAvisos, claveAServidor, claveAvisos, estadoAvisos, suscribirAvisos,
+  activarAvisos, avisosSoportados, bajaAvisos, estadoAvisos,
 } from "@/lib/liga/avisos";
 import { Boton } from "../_ui";
 
@@ -42,18 +42,10 @@ export function AvisosDispositivo() {
     setOcupado(true);
     setError(null);
     try {
-      if ((await Notification.requestPermission()) !== "granted") { setEstado("bloqueado"); return; }
-      const reg = await navigator.serviceWorker.ready;
-      const clave = await claveAvisos();
-      if (typeof clave === "string") { setError(clave); return; }
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true, applicationServerKey: claveAServidor(clave.key),
-      });
-      const r = await suscribirAvisos(sub.toJSON());
-      if (typeof r === "string") { setError(r); await sub.unsubscribe(); return; }
-      setEstado("activo");
-    } catch {
-      setError(t("account_avisos_error"));
+      const resultado = await activarAvisos();
+      if (resultado === "bloqueado") setEstado("bloqueado");
+      else if (resultado === "error") setError(t("account_avisos_error"));
+      else if (resultado === null) setEstado("activo");
     } finally {
       setOcupado(false);
     }
