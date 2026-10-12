@@ -1,6 +1,6 @@
 "use client";
 
-// El plan de la cuenta: el actual y a qué puedes cambiarlo. Lemon cobra; aquí solo se elige.
+// Estado del plan y enlaces al portal de Lemon.
 
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
@@ -23,24 +23,15 @@ type Props = {
   yo: Yo;
   suscripcion: Suscripcion | null;
   comprar?: (producto: ProductoPago) => Promise<{ url: string } | { error: string }>;
-  cambiar?: (producto: Pro) => Promise<{ ok: true } | { error: string }>;
-  pedido?: boolean;
-  cancelar?: () => Promise<{ ok: true } | { error: string }>;
-  reanudar?: () => Promise<{ ok: true } | { error: string }>;
 };
 
-export function PlanCuentaVista({ yo, suscripcion, comprar: pedirCompra, cambiar: pedirCambio,
-  pedido, cancelar, reanudar }: Props) {
+export function PlanCuentaVista({ yo, suscripcion, comprar: pedirCompra }: Props) {
   const t = useTranslations();
   const locale = useLocale();
   const base = useId();
   const seccion = useRef<HTMLElement>(null);
-  const [elegido, setElegido] = useState<Pro | null>(null);
-  const [cambiando, setCambiando] = useState(false);
   const [comprando, setComprando] = useState<ProductoPago | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [confirmando, setConfirmando] = useState(false);
-  const [gestionando, setGestionando] = useState(false);
 
   const actual = esPro(yo.plan_pago) ? yo.plan_pago : null;
   const proDelAdmin = yo.plan === "pro" && actual === null;
@@ -49,15 +40,6 @@ export function PlanCuentaVista({ yo, suscripcion, comprar: pedirCompra, cambiar
   useEffect(() => {
     if (window.location.hash === "#plan") seccion.current?.scrollIntoView({ block: "start" });
   }, []);
-
-  async function cambiar() {
-    if (!elegido || cambiando || !pedirCambio) return;
-    setCambiando(true);
-    setAviso(null);
-    const res = await pedirCambio(elegido);
-    setCambiando(false);
-    if ("error" in res) setAviso(t(res.error as Parameters<typeof t>[0]));
-  }
 
   async function comprar(producto: ProductoPago) {
     if (comprando || !pedirCompra) return;
@@ -80,16 +62,6 @@ export function PlanCuentaVista({ yo, suscripcion, comprar: pedirCompra, cambiar
     ?? yo.plan_pago_hasta) ?? t("planes_fecha_no_disponible");
   const activa = !suscripcion || suscripcion.estado === "activa";
   const cancelada = suscripcion?.estado === "cancelada";
-
-  async function gestionar(accion: Props["cancelar"]) {
-    if (!accion || gestionando) return;
-    setGestionando(true);
-    setAviso(null);
-    const res = await accion();
-    setGestionando(false);
-    if ("error" in res) setAviso(t(res.error as Parameters<typeof t>[0]));
-    else setConfirmando(false);
-  }
 
   return (
     <section ref={seccion} className="form cuenta-plan" aria-labelledby={`${base}-titulo`}>
@@ -152,80 +124,33 @@ export function PlanCuentaVista({ yo, suscripcion, comprar: pedirCompra, cambiar
           {actual && cancelada && (
             <>
               <p className="cuenta-plan-nota">{t("planes_cancelada", { fecha: fechaFin })}</p>
-              <button type="button" className="btn pri" disabled={gestionando || !reanudar}
-                onClick={() => gestionar(reanudar)}>{t("planes_reanudar")}</button>
+              <p className="cuenta-plan-nota">{t("planes_cancelada_ayuda")}</p>
             </>
           )}
           {actual && !activa && !cancelada && (
             <>
               <p className="aviso" role="status">{t("planes_atrasada")}</p>
               {suscripcion?.tarjeta_url && (
-                <a className="btn pri small" href={suscripcion.tarjeta_url} target="_blank"
+                <a className="btn pri" href={suscripcion.tarjeta_url} target="_blank"
                   rel="noopener noreferrer">{t("planes_actualizar_tarjeta")}</a>
               )}
-            </>
-          )}
-
-          {actual && activa && (
-            <>
-              <h3 className="cuenta-plan-subtitulo">{t("planes_cambiar_a")}</h3>
-              <fieldset className="cuenta-plan-opciones">
-                <legend className="sr-only">{t("planes_cambiar_a")}</legend>
-                {PRO.filter((p) => p !== actual).map((p) => (
-                  <label key={p} className="cuenta-plan-opcion">
-                    <input type="radio" name={`${base}-duracion`} value={p} checked={elegido === p}
-                      onChange={() => setElegido(p)} />
-                    <span className="cuenta-plan-fila-texto">
-                      <span className="cuenta-plan-fila-nombre">{nombre(p)}</span>
-                      <span className="cuenta-plan-fila-detalle">
-                        {t(`planes_${CLAVE[p]}_cambio` as Parameters<typeof t>[0])}
-                      </span>
-                    </span>
-                    <span className="cuenta-plan-precio">
-                      {t(`planes_${CLAVE[p]}_precio` as Parameters<typeof t>[0])}
-                    </span>
-                  </label>
-                ))}
-              </fieldset>
-              <p className="cuenta-plan-nota">{t("planes_cambio_cobro")}</p>
-              <button type="button" className="btn pri wide" disabled={!elegido || cambiando}
-                onClick={cambiar}>
-                {cambiando ? t("planes_cambiando")
-                  : elegido ? t("planes_cambiar_boton", { plan: nombre(elegido) })
-                  : t("planes_cambiar_elige")}
-              </button>
-              {pedido && <p className="nota" role="status">{t("planes_cambio_pedido")}</p>}
             </>
           )}
 
           {actual && suscripcion && (
             <section className="cuenta-plan-pago" aria-labelledby={`${base}-pago`}>
-              <h3 id={`${base}-pago`} className="cuenta-plan-subtitulo">{t("planes_pago")}</h3>
+              <h3 id={`${base}-pago`} className="cuenta-plan-subtitulo">
+                {t("planes_suscripcion")}
+              </h3>
               {suscripcion.tarjeta_marca && suscripcion.tarjeta_ultimos4 && (
                 <p className="cuenta-plan-nota">{t("planes_tarjeta", {
                   marca: suscripcion.tarjeta_marca, ultimos: suscripcion.tarjeta_ultimos4,
                 })}</p>
               )}
+              <p className="cuenta-plan-nota">{t("planes_gestion_ayuda")}</p>
               {suscripcion.portal_url && (
-                <a className="btn small" href={suscripcion.portal_url} target="_blank"
-                  rel="noopener noreferrer">{t("planes_portal")}</a>
-              )}
-              {suscripcion.tarjeta_url && (
-                <a className="btn small" href={suscripcion.tarjeta_url} target="_blank"
-                  rel="noopener noreferrer">{t("planes_actualizar_tarjeta")}</a>
-              )}
-              {activa && !confirmando && (
-                <button type="button" className="btn small" disabled={!cancelar || gestionando}
-                  onClick={() => setConfirmando(true)}>{t("planes_cancelar")}</button>
-              )}
-              {activa && confirmando && (
-                <div className="cuenta-plan-confirmacion">
-                  <p className="nota">{t("planes_cancelar_confirmacion", { fecha: fechaFin })}</p>
-                  <button type="button" className="btn small" disabled={gestionando}
-                    onClick={() => gestionar(cancelar)}>{t("planes_confirmar_cancelacion")}</button>
-                  <button type="button" className="btn small" disabled={gestionando}
-                    onClick={() => setConfirmando(false)}>{t("planes_mantener")}</button>
-                </div>
+                <a className="btn pri" href={suscripcion.portal_url} target="_blank"
+                  rel="noopener noreferrer">{t("planes_gestionar")}</a>
               )}
             </section>
           )}

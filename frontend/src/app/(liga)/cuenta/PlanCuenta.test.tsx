@@ -7,15 +7,10 @@ import type { Suscripcion } from "@/lib/liga/pagos";
 
 const pagos = vi.hoisted(() => ({
   abrirPago: vi.fn(async () => ({ error: "planes_pago_error" })),
-  cambiarPlan: vi.fn(async () => ({ ok: true })),
   leerSuscripcion: vi.fn(async (): Promise<Suscripcion | { error: string }> =>
     ({ error: "planes_suscripcion_error" })),
-  cancelarSuscripcion: vi.fn(async () => ({ ok: true })),
-  reanudarSuscripcion: vi.fn(async () => ({ ok: true })),
-  refrescarYo: vi.fn(),
 }));
 vi.mock("@/lib/liga/pagos", () => pagos);
-vi.mock("../_sesion/SesionContext", () => ({ useSesion: () => ({ refrescarYo: pagos.refrescarYo }) }));
 vi.mock("next-intl", async () => {
   const cuenta = (await import("../../../../messages/es/account.json")).default as Record<string, string>;
   const planes = (await import("../../../../messages/es/planes.json")).default as Record<string, string>;
@@ -33,6 +28,11 @@ const proMensual: Yo = {
   roles: ["usuario"], admin: false, aal2: false, idioma: null,
   plan_pago: "mensual", plan_pago_hasta: "2026-11-10T12:00:00+00:00",
 };
+const activa: Suscripcion = {
+  estado: "activa", producto: "mensual", renueva_en: proMensual.plan_pago_hasta ?? null,
+  termina_en: null, tarjeta_marca: "Visa", tarjeta_ultimos4: "4242",
+  portal_url: "https://ejemplo.test/portal", tarjeta_url: "https://ejemplo.test/tarjeta",
+};
 
 let root: Root | undefined;
 let host: HTMLDivElement | undefined;
@@ -41,6 +41,10 @@ async function montar(yo: Yo): Promise<HTMLDivElement> {
   document.body.append(host);
   root = createRoot(host);
   await act(async () => root!.render(createElement(PlanCuenta, { yo })));
+  expect(host.querySelectorAll('input[type="radio"]')).toHaveLength(0);
+  const botones = [...host.querySelectorAll("button")].map((b) => b.textContent);
+  expect(botones).not.toContain("Cancelar suscripción");
+  expect(botones).not.toContain("Reanudar suscripción");
   return host;
 }
 afterEach(() => {
@@ -48,28 +52,29 @@ afterEach(() => {
   host?.remove();
   root = undefined;
   host = undefined;
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  pagos.leerSuscripcion.mockResolvedValue({ error: "planes_suscripcion_error" });
+  pagos.abrirPago.mockResolvedValue({ error: "planes_pago_error" });
 });
 
 describe("PlanCuenta", () => {
-  it("con Pro mensual enseña el plan, cuándo se renueva y solo las otras duraciones", async () => {
+  it("si falla la lectura conserva cabecera y renovación sin bloque Suscripción", async () => {
     const el = await montar(proMensual);
     expect(el.querySelector("h2")?.textContent).toBe("Pro · Mensual");
     expect(el.textContent).toContain("Se renueva el 10 de noviembre.");
-    const valores = [...el.querySelectorAll<HTMLInputElement>('input[type="radio"]')].map((r) => r.value);
-    expect(valores).toEqual(["media_temporada", "temporada"]);
+    expect(el.querySelector(".cuenta-plan-pago")).toBeNull();
+    expect(pagos.leerSuscripcion).toHaveBeenCalledOnce();
   });
 
-  it("no cambia hasta elegir una duración, y entonces lo pide a Lemon", async () => {
+  it("mientras carga conserva cabecera y renovación", async () => {
+    let resolver!: (res: Suscripcion) => void;
+    pagos.leerSuscripcion.mockReturnValueOnce(new Promise((resolve) => { resolver = resolve; }));
     const el = await montar(proMensual);
-    const boton = el.querySelector<HTMLButtonElement>("button.btn.pri")!;
-    expect(boton.disabled).toBe(true);
-    const temporada = el.querySelector<HTMLInputElement>('input[value="temporada"]')!;
-    await act(async () => { temporada.click(); });
-    expect(boton.disabled).toBe(false);
-    expect(boton.textContent).toBe("Cambiar a Temporada");
-    await act(async () => { boton.click(); });
-    expect(pagos.cambiarPlan).toHaveBeenCalledWith("temporada");
+    expect(el.querySelector("h2")?.textContent).toBe("Pro · Mensual");
+    expect(el.textContent).toContain("Se renueva el 10 de noviembre.");
+    expect(el.querySelector(".cuenta-plan-pago")).toBeNull();
+    await act(async () => { resolver(activa); });
+    expect(el.querySelector(".cuenta-plan-pago h3")?.textContent).toBe("Suscripción");
   });
 
   it("con un Pro que concedió el admin no ofrece cambiar ni pagar otro Pro", async () => {
@@ -85,6 +90,8 @@ describe("PlanCuenta", () => {
     expect(el.querySelector("h2")?.textContent).toBe("Gratis");
     const botones = [...el.querySelectorAll<HTMLButtonElement>("button")];
     expect(botones.map((b) => b.textContent)).toEqual(["Elegir", "Elegir", "Elegir", "Elegir"]);
+    expect(pagos.leerSuscripcion).not.toHaveBeenCalled();
+    expect(el.querySelector(".cuenta-plan-pago")).toBeNull();
     await act(async () => { botones[0].click(); });
     expect(pagos.abrirPago).toHaveBeenCalledWith("mensual");
   });
@@ -97,30 +104,29 @@ describe("PlanCuenta", () => {
     expect(pagos.abrirPago).toHaveBeenCalledWith("pack_liga");
   });
 
-  it("carga Lemon y recarga la suscripción y la cuenta al cancelar y reanudar", async () => {
-    const activa: Suscripcion = {
-      estado: "activa", producto: "mensual", renueva_en: proMensual.plan_pago_hasta ?? null,
-      termina_en: null, tarjeta_marca: null, tarjeta_ultimos4: null,
-      portal_url: null, tarjeta_url: null,
-    };
-    pagos.leerSuscripcion.mockResolvedValueOnce(activa)
-      .mockResolvedValueOnce({ ...activa, estado: "cancelada",
-        termina_en: proMensual.plan_pago_hasta ?? null })
-      .mockResolvedValueOnce(activa);
-    const el = await montar(proMensual);
-    const pulsar = async (texto: string) => {
-      const boton = [...el.querySelectorAll<HTMLButtonElement>("button")]
-        .find((b) => b.textContent === texto)!;
-      await act(async () => { boton.click(); });
-    };
-    await pulsar("Cancelar suscripción");
-    await pulsar("Confirmar cancelación");
-    expect(pagos.cancelarSuscripcion).toHaveBeenCalledOnce();
-    expect(el.textContent).toContain("Cancelada: sigues con Pro");
-    await pulsar("Reanudar suscripción");
-    expect(pagos.reanudarSuscripcion).toHaveBeenCalledOnce();
-    expect(pagos.leerSuscripcion).toHaveBeenCalledTimes(3);
-    expect(pagos.refrescarYo).toHaveBeenCalledTimes(2);
-    expect(el.textContent).toContain("Se renueva el 10 de noviembre.");
-  });
+  it.each(["activa", "cancelada", "atrasada"] as const)(
+    "carga el estado %s y enlaza al portal", async (estado) => {
+      pagos.leerSuscripcion.mockResolvedValueOnce({ ...activa, estado,
+        termina_en: estado === "cancelada" ? proMensual.plan_pago_hasta ?? null : null });
+      const el = await montar(proMensual);
+      expect(pagos.leerSuscripcion).toHaveBeenCalledOnce();
+      const enlaces = [...el.querySelectorAll<HTMLAnchorElement>("a")];
+      const portal = enlaces.find((a) => a.textContent === "Gestionar suscripción")!;
+      expect(portal.href).toBe(activa.portal_url);
+      expect(portal.target).toBe("_blank");
+      expect(portal.rel).toBe("noopener noreferrer");
+      expect(portal.className).toBe("btn pri");
+      const tarjeta = enlaces.find((a) => a.textContent === "Actualizar tarjeta");
+      if (estado === "atrasada") {
+        expect(el.textContent).toContain("No hemos podido cobrar tu suscripción.");
+        expect(tarjeta?.href).toBe(activa.tarjeta_url);
+        expect(tarjeta?.target).toBe("_blank");
+        expect(tarjeta?.rel).toBe("noopener noreferrer");
+      } else {
+        expect(tarjeta).toBeUndefined();
+        expect(el.textContent).toContain(estado === "activa"
+          ? "Se renueva el 10 de noviembre."
+          : "Cancelada: sigues con Pro hasta el 10 de noviembre.");
+      }
+    });
 });

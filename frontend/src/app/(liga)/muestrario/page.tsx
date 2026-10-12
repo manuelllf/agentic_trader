@@ -35,7 +35,6 @@ const MUESTRA_SUSCRIPCION: Suscripcion = {
   termina_en: null, tarjeta_marca: "Visa", tarjeta_ultimos4: "4242",
   portal_url: "https://ejemplo.test/portal", tarjeta_url: "https://ejemplo.test/tarjeta",
 };
-const GESTION_MUESTRA = async (): Promise<{ ok: true }> => ({ ok: true });
 
 const ESCUDO_A: EscudoValor ={ forma: "escudo", dibujo: "mitades", color1: "#1D3A6E", color2: "#FFFFFF", iniciales: "" };
 const ESCUDO_B: EscudoValor = { forma: "hexagono", dibujo: "diagonal", color1: "#8FBF3F", color2: "#141414", iniciales: "" };
@@ -106,11 +105,9 @@ export default function Muestrario() {
           <CabeceraApp anio={2026} />
           <CabeceraApp titulo={t("private_leagues_title")} />
         </div>
-        <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={MUESTRA_SUSCRIPCION}
-          cancelar={GESTION_MUESTRA} />
+        <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={MUESTRA_SUSCRIPCION} />
         <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={{ ...MUESTRA_SUSCRIPCION,
-          estado: "cancelada", termina_en: MUESTRA_PRO.plan_pago_hasta ?? null }}
-          reanudar={GESTION_MUESTRA} />
+          estado: "cancelada", termina_en: MUESTRA_PRO.plan_pago_hasta ?? null }} />
         <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={{ ...MUESTRA_SUSCRIPCION,
           estado: "atrasada" }} />
         <PlanCuentaVista yo={MUESTRA_GRATIS} suscripcion={null} />
