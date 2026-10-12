@@ -205,6 +205,7 @@ sin tocar código.
 | Memoria   | pgvector + fastembed (embeddings locales, sin coste)         |
 | Bróker    | IBKR Web API (OAuth 1.0a headless, `ibind`)                  |
 | Cuentas   | Supabase Auth (JWT verificado por JWKS, TOTP) · RLS por rol   |
+| Correo    | Resend (SMTP de Supabase, envío) · ImprovMX (recepción y reenvío) |
 | Pagos     | Lemon Squeezy (Pro y pase de liga; cobro, facturas y tarjeta los gestiona Lemon) |
 | Calendario | `exchange_calendars` (NYSE) para las jornadas               |
 | Scheduler | APScheduler                                                  |
