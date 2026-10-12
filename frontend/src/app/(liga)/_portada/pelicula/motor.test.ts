@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { montarPelicula, paletaDe } from "./motor";
+import { mapa, montarPelicula, paletaDe } from "./motor";
+import { crearUniverso } from "./universo";
 import { traductor, fijarOcultoDelDocumento, montar, restaurarEntorno } from "./motor.fixture";
 
 // El marcado de `Pelicula` se pinta siempre en español; el idioma del motor se elige en `montar`.
@@ -19,6 +20,106 @@ vi.mock("next/link", async () => {
 afterEach(restaurarEntorno);
 
 describe("motor de la portada", () => {
+  it("omite los porcentajes que no caben, manteniendo los tickers", () => {
+    const normal = montar({ tiempo: 7 });
+    normal.reloj.avanzar(0.1);
+    expect(normal.llamadas.some((l) => l.metodo === "fillText" && String(l.args[0]).includes("%"))).toBe(true);
+    normal.desmontar();
+    restaurarEntorno();
+    const escena = montar({ tiempo: 7, medirTexto: (texto, fuente) => texto.includes("%") ? 10_000
+      : texto.length * parseFloat(fuente.split(" ")[1]) * 0.6 });
+    escena.reloj.avanzar(0.1);
+    expect(escena.llamadas.some((l) => l.metodo === "fillText" && l.args[0] === "MSFT")).toBe(true);
+    expect(escena.llamadas.some((l) => l.metodo === "fillText" && String(l.args[0]).includes("%"))).toBe(false);
+    escena.desmontar();
+  });
+
+  it("pinta las cabeceras antes y omite tickers que chocan con ellas", () => {
+    const escena = montar({ tiempo: 7 });
+    escena.reloj.avanzar(0.1);
+    const llamadas = escena.llamadas;
+    const sectores = traductor("es")("landing_sectores").split("|").map((s) => s.toLocaleUpperCase("es"));
+    const cabeceras = llamadas.flatMap((l, i) => l.metodo === "fillText" && sectores.includes(String(l.args[0]))
+      ? [llamadas[i - 1].args.map(Number)] : []);
+    expect(cabeceras.length).toBeGreaterThan(0);
+    const tickers = new Set(crearUniverso().map((e) => e.ticker).filter(Boolean));
+    const etiquetas = llamadas.filter((l) => l.metodo === "fillText" && tickers.has(String(l.args[0])));
+    const ultimaCabecera = llamadas.findLastIndex((l) => l.metodo === "fillText" && sectores.includes(String(l.args[0])));
+    expect(llamadas.indexOf(etiquetas[0])).toBeGreaterThan(ultimaCabecera);
+    for (const l of etiquetas) {
+      const f = parseFloat(l.font.split(" ")[1]), w = String(l.args[0]).length * f * 0.6;
+      const x = Number(l.args[1]) - w / 2, y = Number(l.args[2]) - f / 2;
+      expect(cabeceras.some(([sx, sy, sw, sh]) => x < sx + sw && x + w > sx && y < sy + sh && y + f > sy)).toBe(false);
+    }
+    const dibujados = new Set(etiquetas.map((l) => String(l.args[0])));
+    expect(llamadas.some((l) => l.metodo === "measureText" && tickers.has(String(l.args[0])) && !dibujados.has(String(l.args[0])))).toBe(true);
+    escena.desmontar();
+  });
+
+  it("agrupa las empresas pequeñas por sector y reduce las casillas", () => {
+    const empresas = crearUniverso();
+    const plano = mapa(empresas, { x: 16, y: 64, w: 358, h: 552 }, 11, 1, empresas.length);
+    expect(plano.bloques.flatMap((b) => b.empresas).map((e) => e.id).sort((a, b) => a - b))
+      .toEqual(empresas.map((e) => e.id));
+    for (const sector of plano.sectores) {
+      const grupo = empresas.filter((e) => e.sector === sector.s), peso = grupo.reduce((s, e) => s + e.cap, 0);
+      const pequenas = grupo.filter((e) => sector.w * sector.h * e.cap / peso < 40);
+      const bloques = plano.bloques.filter((b) => b.empresas[0].sector === sector.s);
+      expect(bloques.filter((b) => b.empresas.length > 1)).toHaveLength(1);
+      expect(bloques.find((b) => b.empresas.length > 1)!.empresas).toEqual(pequenas);
+      for (const bloque of bloques) {
+        const pesoBloque = bloque.empresas.reduce((s, e) => s + e.cap, 0);
+        expect(bloque.w * bloque.h / (sector.w * sector.h)).toBeCloseTo(pesoBloque / peso, 10);
+      }
+    }
+    const escena = montar({ tiempo: 7 });
+    escena.reloj.avanzar(0.1);
+    const celdas = escena.llamadas.filter((l) => l.metodo === "fillRect" && Number(l.args[2]) > 0 && Number(l.args[3]) > 0);
+    expect(celdas.length).toBeGreaterThan(10);
+    expect(celdas.length).toBeLessThan(crearUniverso().length / 2);
+    expect(celdas.every((l) => l.args.every((v) => Number.isFinite(Number(v))))).toBe(true);
+    escena.desmontar();
+  });
+
+  it.each([320, 360, 430])("escala las fuentes del canvas con una escena de %i px", (ancho) => {
+    const fuentes = (w: number, tiempo: number) => {
+      const escena = montar({ tiempo, ancho: w });
+      escena.reloj.avanzar(0.1);
+      const tamaños = escena.llamadas.filter((l) => l.metodo === "fillText").map((l) => parseFloat(l.font.split(" ")[1]));
+      escena.desmontar();
+      restaurarEntorno();
+      return tamaños;
+    };
+    for (const tiempo of [7, 28, 33, 42, 50]) {
+      const base = fuentes(390, tiempo), escaladas = fuentes(ancho, tiempo);
+      expect(base.length).toBeGreaterThan(0);
+      expect(escaladas).toHaveLength(base.length);
+      escaladas.forEach((f, i) => expect(f / base[i]).toBeCloseTo(ancho / 390, 6));
+    }
+  });
+
+  it("el reloj y el contador pertenecen a sus bloques y no se posicionan sobre el mapa", () => {
+    const escena = montar({ tiempo: 24.6 });
+    escena.reloj.avanzar(0.1);
+    expect(escena.pieza("reloj").closest("[data-it]")).toBe(escena.item("cierre"));
+    expect(escena.pieza("recuento").closest("[data-it]")).toBe(escena.item("reglas"));
+    for (const n of ["reloj", "recuento"]) {
+      expect(escena.pieza(n).style.left).toBe("");
+      expect(escena.pieza(n).style.top).toBe("");
+      expect(escena.pieza(n).style.opacity).toBe("");
+    }
+    expect(escena.pieza("recuentoL").textContent).toBe(traductor("es")("landing_recuento_reglas"));
+    escena.desmontar();
+  });
+
+  it("limita el DPR a tres y lo comparte con la textura", () => {
+    vi.stubGlobal("devicePixelRatio", 4);
+    const escena = montar({ tiempo: 7 });
+    expect(escena.pelicula.style.getPropertyValue("--pel-dpr")).toBe("3");
+    expect(escena.pieza<HTMLCanvasElement>("lienzo").width).toBe(390 * 3);
+    escena.desmontar();
+  });
+
   it("las paletas comparten claves y el suelo sigue el tema", () => {
     const claro = paletaDe("claro"), oscuro = paletaDe("oscuro");
     expect(Object.keys(claro).sort()).toEqual(Object.keys(oscuro).sort());

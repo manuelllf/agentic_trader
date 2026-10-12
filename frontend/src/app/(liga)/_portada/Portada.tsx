@@ -21,10 +21,9 @@ export function Portada() {
       <header className="pel-cabecera">
         <span className="wordmark"><Marca /></span>
         <nav><LanguageSelector />
-          <Link href="/liga" className="pel-enlace">
-            <span className="largo">{t("landing_ver_liga")}</span><span className="corto">{t("landing_liga_corto")}</span>
-          </Link>
-          <Link href="/entrar" className="pel-btn small">{t("landing_entrar")}</Link>
+          <Link href="/liga" className="pel-enlace pel-solo-escritorio">{t("landing_ver_liga")}</Link>
+          <Link href="/entrar" className="pel-enlace">{t("landing_entrar")}</Link>
+          <Link href="/entrar?next=/crear" className="pel-btn small pri">{t("landing_crea_tuya")}</Link>
         </nav>
       </header>
 

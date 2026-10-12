@@ -91,13 +91,13 @@ export function Pelicula() {
           <div data-p="grano" className="pel-fx pel-grano" />
 
           <div className="pel-capas">
-            <div data-p="reloj" className="pel-reloj"><span className="pel-punto" /><span data-p="relojTxt" /></div>
             <div data-p="visor" className="pel-visor" aria-hidden="true"><i /><i /><i /><i /></div>
-            <div data-p="recuento" className="pel-recuento"><b data-p="recuentoN" /><span data-p="recuentoL" /></div>
 
             <div data-p="franja" className="pel-franja">
               <div data-it="cierre" className="pel-it">
-                <span className="pel-ceja">{t("landing_foto_ceja")}</span>
+                <div className="pel-ceja-linea"><span className="pel-ceja">{t("landing_foto_ceja")}</span>
+                  <div data-p="reloj" className="pel-reloj"><span className="pel-punto" /><span data-p="relojTxt" /></div>
+                </div>
                 <p className="pel-frase">{t("landing_foto_frase")}
                   <small>{t("landing_foto_sub", { cuantas: miles(UNIVERSO, locale) })}</small></p>
               </div>
@@ -106,7 +106,9 @@ export function Pelicula() {
                 <p data-p="tesis">{trozos}</p>
               </div>
               <div data-it="reglas" className="pel-it">
-                <span className="pel-ceja">{t("landing_tus_reglas")}</span>
+                <div className="pel-ceja-linea"><span className="pel-ceja">{t("landing_tus_reglas")}</span>
+                  <div data-p="recuento" className="pel-recuento"><b data-p="recuentoN" /><span data-p="recuentoL" /></div>
+                </div>
                 <ol className="pel-reglas">
                   {reglas.map(([nombre, valor]) => (
                     <li key={nombre} data-p="regla"><span className="rt">{nombre}</span><span className="rv">{valor}</span>

@@ -70,7 +70,8 @@ function colorCambio(paleta: ReturnType<typeof paletaDe>, chg: number): Rgb {
 }
 
 interface Zona { x: number; y: number; w: number; h: number }
-interface Mapa { R: Float32Array; sectores: (Zona & { s: number })[] }
+interface Bloque extends Zona { empresas: Empresa[] }
+interface Mapa { R: Float32Array; sectores: (Zona & { s: number })[]; bloques: Bloque[]; agrupadas: Set<number> }
 interface Fila extends Zona { estrategia: Estrategia | null; valor: number; j: number; corte: boolean }
 
 // Treemap «squarified»: rectángulos lo más cuadrados posible, de mayor a menor.
@@ -102,6 +103,32 @@ function squarify<T extends { v: number }>(items: T[], x: number, y: number, w: 
   }
 }
 
+export function mapa(lista: Empresa[], Z: Zona, numeroSectores: number, unidad: number, total: number): Mapa {
+  const R = new Float32Array(total * 4).fill(NaN);
+  const out: Mapa["sectores"] = [];
+  const bloques: Bloque[] = [], agrupadas = new Set<number>();
+  const grupos = Array.from({ length: numeroSectores }, (_, s) => ({ s, v: 0, emp: [] as Empresa[] }));
+  for (const e of lista) { grupos[e.sector].v += e.cap; grupos[e.sector].emp.push(e); }
+  squarify(grupos.filter((g) => g.v > 0).sort((a, b) => b.v - a.v), Z.x, Z.y, Z.w, Z.h, (g, gx, gy, gw, gh) => {
+    const m = Math.min(1.5 * unidad, gw * 0.02, gh * 0.02);
+    out.push({ s: g.s, x: gx + m, y: gy + m, w: gw - 2 * m, h: gh - 2 * m });
+    const area = (gw - 2 * m) * (gh - 2 * m);
+    const pequenas = g.emp.filter((e) => area * e.cap / g.v < 40 * unidad ** 2);
+    const ids = new Set(pequenas.map((e) => e.id));
+    const items = g.emp.filter((e) => !ids.has(e.id)).map((e) => ({ v: e.cap, empresas: [e] }));
+    if (pequenas.length) items.push({ v: pequenas.reduce((s, e) => s + e.cap, 0), empresas: pequenas });
+    items.sort((a, b) => b.v - a.v);
+    squarify(items, gx + m, gy + m, gw - 2 * m, gh - 2 * m, (o, ex, ey, ew, eh) => {
+      bloques.push({ empresas: o.empresas, x: ex, y: ey, w: ew, h: eh });
+      for (const e of o.empresas) {
+        const b = e.id * 4; R[b] = ex; R[b + 1] = ey; R[b + 2] = ew; R[b + 3] = eh;
+        if (o.empresas.length > 1) agrupadas.add(e.id);
+      }
+    });
+  });
+  return { R, sectores: out, bloques, agrupadas };
+}
+
 /** Monta la película dentro de `raiz` y devuelve la función que la desmonta. */
 export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" | "oscuro" = "oscuro"): () => void {
   const paleta = paletaDe(tema);
@@ -127,33 +154,21 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
   let SERIES: Series = crearSeries(EV.cartera);
 
   // --- Geometría ------------------------------------------------------------------------------
-  let W = 0, H = 0, DPR = 1, ANCHO = false;
+  const TOPE_DPR = 3;
+  let W = 0, H = 0, DPR = 1, U = 1, ANCHO = false;
+  const px = (n: number) => ANCHO ? n : n * U;
   let P: Zona = { x: 0, y: 0, w: 0, h: 0 };
   function medir() {
-    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    DPR = Math.min(window.devicePixelRatio || 1, TOPE_DPR);
     const r = escena.getBoundingClientRect();
     W = r.width; H = r.height;
+    U = W / 390;
+    raiz.style.setProperty("--pel-dpr", String(DPR));
     lienzo.width = Math.round(W * DPR); lienzo.height = Math.round(H * DPR);
     ANCHO = matchMedia("(min-width: 900px) and (min-aspect-ratio: 11/10)").matches;
     const tz = franja.getBoundingClientRect();
     if (ANCHO) P = { x: tz.right - r.left + 56, y: 96, w: W - (tz.right - r.left) - 56 - 48, h: H - 96 - 92 };
-    else P = { x: 16, y: 64, w: W - 32, h: Math.max(220, tz.top - r.top - 64 - 14) };
-  }
-
-  function mapa(lista: Empresa[], Z: Zona): Mapa {
-    const R = new Float32Array(EMP.length * 4).fill(NaN);
-    const out: Mapa["sectores"] = [];
-    const grupos = sectores.map((_, s) => ({ s, v: 0, emp: [] as Empresa[] }));
-    for (const e of lista) { grupos[e.sector].v += e.cap; grupos[e.sector].emp.push(e); }
-    squarify(grupos.filter((g) => g.v > 0).sort((a, b) => b.v - a.v), Z.x, Z.y, Z.w, Z.h, (g, gx, gy, gw, gh) => {
-      const m = Math.min(1.5, gw * 0.02, gh * 0.02);
-      out.push({ s: g.s, x: gx + m, y: gy + m, w: gw - 2 * m, h: gh - 2 * m });
-      const items = g.emp.slice().sort((a, b) => b.cap - a.cap).map((e) => ({ v: e.cap, e }));
-      squarify(items, gx + m, gy + m, gw - 2 * m, gh - 2 * m, (o, ex, ey, ew, eh) => {
-        const b = o.e.id * 4; R[b] = ex; R[b + 1] = ey; R[b + 2] = ew; R[b + 3] = eh;
-      });
-    });
-    return { R, sectores: out };
+    else P = { x: 16 * U, y: 64 * U, w: W - 32 * U, h: Math.max(220 * U, tz.top - r.top - 78 * U) };
   }
 
   // Lista ordenada, barra de la cartera y origen de la gráfica.
@@ -174,36 +189,36 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
     G.min = G.base[0]; G.max = G.base[1];
   }
   function maquetar() {
-    L0 = mapa(EMP, P);
-    L1 = mapa(EV.vivas, P);
+    L0 = mapa(EMP, P, sectores.length, px(1), EMP.length);
+    L1 = mapa(EV.vivas, P, sectores.length, px(1), EMP.length);
     LISTA = new Float32Array(EMP.length * 4).fill(NaN);
     RANGO = new Int16Array(EMP.length).fill(-1);
-    filaH = ANCHO ? 46 : 38;
-    const hueco = ANCHO ? 7 : 5;
+    filaH = ANCHO ? 46 : 38 * U;
+    const hueco = ANCHO ? 7 : 5 * U;
     const maxNota = EV.vivas[0] ? EV.vivas[0].nota : 1;
     EV.cartera.forEach((e, k) => {
-      const b = e.id * 4; LISTA[b] = P.x; LISTA[b + 1] = P.y + 8 + k * (filaH + hueco); LISTA[b + 2] = P.w; LISTA[b + 3] = filaH;
+      const b = e.id * 4; LISTA[b] = P.x; LISTA[b + 1] = P.y + px(8) + k * (filaH + hueco); LISTA[b + 2] = P.w; LISTA[b + 3] = filaH;
       RANGO[e.id] = k;
     });
     const resto = EV.vivas.filter((e) => RANGO[e.id] < 0);
-    listaY0 = P.y + 8 + 5 * (filaH + hueco) + 16;
-    const paso = resto.length ? Math.min(4, (P.y + P.h - listaY0) / resto.length) : 4, alto = Math.max(0.6, paso * 0.66);
+    listaY0 = P.y + px(8) + 5 * (filaH + hueco) + px(16);
+    const paso = resto.length ? Math.min(px(4), (P.y + P.h - listaY0) / resto.length) : px(4), alto = Math.max(px(0.6), paso * 0.66);
     resto.forEach((e, j) => {
       const b = e.id * 4;
-      LISTA[b] = P.x; LISTA[b + 1] = listaY0 + j * paso; LISTA[b + 2] = Math.max(6, P.w * 0.92 * (e.nota / maxNota)); LISTA[b + 3] = alto;
+      LISTA[b] = P.x; LISTA[b + 1] = listaY0 + j * paso; LISTA[b + 2] = Math.max(px(6), P.w * 0.92 * (e.nota / maxNota)); LISTA[b + 3] = alto;
       RANGO[e.id] = 5 + j;
     });
     BARRA = new Float32Array(EMP.length * 4).fill(NaN);
-    const bh = ANCHO ? 92 : 70, by = P.y + P.h * 0.46 - bh / 2, g = ANCHO ? 6 : 4;
+    const bh = ANCHO ? 92 : 70 * U, by = P.y + P.h * 0.46 - bh / 2, g = ANCHO ? 6 : 4 * U;
     EV.cartera.forEach((e, k) => {
       const b = e.id * 4, w = P.w / 5;
       BARRA[b] = P.x + k * w + g / 2; BARRA[b + 1] = by; BARRA[b + 2] = w - g; BARRA[b + 3] = bh;
     });
-    G.x0 = P.x + 10; G.x1 = P.x + P.w - (ANCHO ? 92 : 70);
-    G.yA = P.y + 34; G.yB = P.y + P.h - 34;
+    G.x0 = P.x + px(10); G.x1 = P.x + P.w - (ANCHO ? 92 : 70 * U);
+    G.yA = P.y + px(34); G.yB = P.y + P.h - px(34);
     ORIGEN = new Float32Array(EMP.length * 4).fill(NaN);
     EV.cartera.forEach((e, k) => {
-      const b = e.id * 4; ORIGEN[b] = G.x0 - 6; ORIGEN[b + 1] = G.y(0) - 26 + k * 10.4; ORIGEN[b + 2] = 12; ORIGEN[b + 3] = 8.4;
+      const b = e.id * 4; ORIGEN[b] = G.x0 - px(6); ORIGEN[b + 1] = G.y(0) - px(26) + k * px(10.4); ORIGEN[b + 2] = px(12); ORIGEN[b + 3] = px(8.4);
     });
     maquetarFilas();
   }
@@ -213,8 +228,8 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
   function maquetarFilas() {
     const entradas = [...SERIES.ranking.map((s) => ({ estrategia: s as Estrategia | null, valor: s.serie[DIAS] })),
       { estrategia: null, valor: SERIES.sp[DIAS] }].sort((a, b) => b.valor - a.valor);
-    const fh = ANCHO ? 50 : 44, gap = 6;
-    const n = Math.max(5, Math.floor((P.h + gap - 20) / (fh + gap)));
+    const fh = ANCHO ? 50 : 44 * U, gap = px(6);
+    const n = Math.max(5, Math.floor((P.h + gap - px(20)) / (fh + gap)));
     const fijas = [entradas.findIndex((e) => e.estrategia?.indice === -1), entradas.findIndex((e) => !e.estrategia)];
     let idx = entradas.map((_, i) => i).slice(0, n);
     for (const m of fijas.slice().sort((a, b) => a - b)) {
@@ -226,7 +241,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
     let extra = 0;
     FILAS = idx.map((i, j) => {
       const corte = j > 0 && i !== idx[j - 1] + 1;
-      if (corte) extra += 10;
+      if (corte) extra += px(10);
       return { ...entradas[i], corte, j, x: P.x, y: P.y + j * (fh + gap) + extra, w: ancho, h: fh };
     });
   }
@@ -263,25 +278,54 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
     FONDO.width = lienzo.width; FONDO.height = lienzo.height;
     const f = FONDO.getContext("2d")!;
     f.setTransform(DPR, 0, 0, DPR, 0, 0);
-    for (const e of EMP) {
-      const b = e.id * 4, ex = L0.R[b], ey = L0.R[b + 1], ew = L0.R[b + 2], eh = L0.R[b + 3];
-      if (!(ew > 0)) continue;
-      const g = Math.min(0.5, ew * 0.1, eh * 0.1);
-      f.fillStyle = rgb(colorCambio(paleta, cambioEn(e, T.cierre)));
+    for (const bloque of L0.bloques) {
+      const { x: ex, y: ey, w: ew, h: eh } = bloque;
+      const g = Math.min(ew, eh) < px(6) ? 0 : Math.min(0.5, ew * 0.1, eh * 0.1);
+      f.fillStyle = rgb(colorCambio(paleta, cambioBloque(bloque, T.cierre)));
       f.fillRect(ex + g, ey + g, ew - 2 * g, eh - 2 * g);
     }
   }
 
   let GOLPES: [Empresa, number, number, number, number][] = [];
+  function cambioBloque(bloque: Bloque, tt: number) {
+    const peso = bloque.empresas.reduce((s, e) => s + e.cap, 0);
+    return bloque.empresas.reduce((s, e) => s + e.cap * cambioEn(e, tt), 0) / peso;
+  }
   function dibujarMercado(tt: number) {
     const cam = camara(tt);
     const nViv = EV.vivas.length || 1;
     const etiquetas: [Empresa, number, number, number, number, number, number][] = [];
+    const apertura = suave(tramo(tt, T.retile0, T.retile1));
+    for (const bloque of L0.bloques) {
+      if (bloque.empresas.length < 2 || apertura >= 1) continue;
+      const ex = cam.tx + (bloque.x - cam.ox) * cam.s, ey = cam.ty + (bloque.y - cam.oy) * cam.s;
+      const ew = bloque.w * cam.s, eh = bloque.h * cam.s;
+      const peso = bloque.empresas.reduce((s, e) => s + e.cap, 0);
+      const vivas = bloque.empresas.reduce((s, e) => {
+        const k = EV.caida[e.id];
+        const tp = k < 0 ? Infinity : T.regla[k][0] + ((bloque.x + bloque.w / 2 - P.x) / P.w) * T.barrido;
+        return s + e.cap * (k < 0 ? 1 : 1 - salida(tramo(tt, tp, tp + 0.45)));
+      }, 0) / peso;
+      const color = mezcla(colorCambio(paleta, cambioBloque(bloque, tt)), paleta.fantasma, 0.9 * (1 - vivas));
+      const gap = Math.min(ew, eh) < px(6) ? 0 : 0.5;
+      ctx.fillStyle = rgb(color, 1 - apertura);
+      ctx.fillRect(ex + gap, ey + gap, ew - 2 * gap, eh - 2 * gap);
+    }
+    const aSeleccion = 1 - entradaSalida(tramo(tt, T.lista0, T.lista0 + 1.3));
+    if (tt >= T.retile1 && aSeleccion > 0) for (const bloque of L1.bloques) {
+      if (bloque.empresas.length < 2) continue;
+      const { x, y, w, h } = bloque;
+      const gap = Math.min(w, h) < px(6) ? 0 : 0.5;
+      ctx.fillStyle = rgb(colorCambio(paleta, cambioBloque(bloque, tt)), aSeleccion);
+      ctx.fillRect(x + gap, y + gap, w - 2 * gap, h - 2 * gap);
+    }
     for (const e of EMP) {
+      if (L0.agrupadas.has(e.id) && apertura === 0) continue;
+      if (L1.agrupadas.has(e.id) && tt >= T.retile1 && tt <= T.lista0) continue;
       const b = e.id * 4;
       let ex = L0.R[b], ey = L0.R[b + 1], ew = L0.R[b + 2], eh = L0.R[b + 3];
       if (!(ew > 0)) continue;
-      let alfa = 1, fantasma = 0, rotulo = 1;
+      let alfa = L0.agrupadas.has(e.id) ? apertura : 1, fantasma = 0, rotulo = 1;
       let color = colorCambio(paleta, cambioEn(e, tt));
       const fl = destello(e, tt);
       if (fl > 0) color = mezcla(color, paleta.tinta, 0.14 * fl);
@@ -301,6 +345,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
           ex = lerp(ex, LISTA[b], q); ey = lerp(ey, LISTA[b + 1], q); ew = lerp(ew, LISTA[b + 2], q); eh = lerp(eh, LISTA[b + 3], q);
           color = mezcla(color, top ? paleta.cartera[r] : paleta.barra, q);
           rotulo = 1 - tramo(q, 0, 0.35);
+          if (L1.agrupadas.has(e.id)) alfa *= 1 - aSeleccion;
           if (tt >= T.cartera0) {
             if (top) {
               const z = entradaSalida(tramo(tt, T.cartera0 + 0.08 * r, T.cartera0 + 0.08 * r + 1.3));
@@ -313,7 +358,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
               }
             } else {
               const f = tramo(tt, T.cartera0 - 0.2 + 0.5 * (r / nViv), T.cartera0 + 0.7 + 0.5 * (r / nViv));
-              alfa = 1 - suave(f); ey += 26 * f;
+              alfa = 1 - suave(f); ey += px(26) * f;
               if (alfa <= 0.01) continue;
             }
           }
@@ -329,37 +374,45 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
         rotulo *= 1 - fantasma;
       }
       if (ex + ew < 0 || ey + eh < 0 || ex > W || ey > H) continue;
-      const g = Math.min(0.5, ew * 0.1, eh * 0.1);
+      const g = Math.min(ew, eh) < px(6) ? 0 : Math.min(0.5, ew * 0.1, eh * 0.1);
       ctx.fillStyle = rgb(color, alfa);
       ctx.fillRect(ex + g, ey + g, ew - 2 * g, eh - 2 * g);
       if (e.ticker && tt < T.retile1 && alfa > 0.5) GOLPES.push([e, ex, ey, ew, eh]);
-      if (e.ticker && rotulo * alfa > 0.02 && ew > 26 && eh > 15) etiquetas.push([e, ex, ey, ew, eh, rotulo * alfa, cambioEn(e, tt)]);
+      if (e.ticker && rotulo * alfa > 0.02 && ew > px(26) && eh > px(15)) etiquetas.push([e, ex, ey, ew, eh, rotulo * alfa, cambioEn(e, tt)]);
     }
     // Rótulos de las casillas grandes: ticker y variación del día, como en un mapa de bolsa.
+    const cabeceras = dibujarSectores(tt, cam);
+    const choca = (x: number, y: number, w: number, h: number) => cabeceras.some((s) =>
+      x < s.x + s.w && x + w > s.x && y < s.y + s.h && y + h > s.y);
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const [e, ex, ey, ew, eh, a, chg] of etiquetas) {
       const ticker = e.ticker!;
-      const f = Math.min(ew / (ticker.length * 0.66 + 0.6), eh * 0.36, 30);
-      if (f < 8) continue;
-      const conCambio = eh > f * 2.7 && f >= 9;
+      const f = Math.min(ew / (ticker.length * 0.66 + 0.6), eh * 0.36, px(30));
+      if (f < px(8)) continue;
+      const cambio = porcentaje(chg, 2, locale);
+      ctx.font = `400 ${f * 0.6}px ${F.dato}`;
+      const conCambio = eh > f * 2.7 && f >= px(9) && ctx.measureText(cambio).width <= ew - px(4);
       const cy = ey + eh / 2 - (conCambio ? f * 0.36 : 0);
-      ctx.font = `700 ${f.toFixed(1)}px ${F.dato}`;
+      ctx.font = `700 ${f}px ${F.dato}`;
+      const tw = ctx.measureText(ticker).width;
+      if (tw > ew - px(4) || choca(ex + ew / 2 - tw / 2, cy - f / 2, tw, f)) continue;
       ctx.fillStyle = rgb(paleta.tinta, 0.92 * a);
       ctx.fillText(ticker, ex + ew / 2, cy);
       if (conCambio) {
-        ctx.font = `400 ${(f * 0.6).toFixed(1)}px ${F.dato}`;
+        ctx.font = `400 ${f * 0.6}px ${F.dato}`;
         ctx.fillStyle = rgb(paleta.tinta, 0.62 * a);
-        ctx.fillText(porcentaje(chg, 2, locale), ex + ew / 2, cy + f * 0.92);
+        const cw = ctx.measureText(cambio).width, dy = cy + f * 0.92;
+        if (!choca(ex + ew / 2 - cw / 2, dy - f * 0.3, cw, f * 0.6)) ctx.fillText(cambio, ex + ew / 2, dy);
       }
     }
-    dibujarSectores(tt, cam);
   }
 
   function dibujarSectores(tt: number, cam: ReturnType<typeof camara>) {
+    const cabeceras: Zona[] = [];
     const fuera = 1 - tramo(tt, T.retile0 - 0.4, T.retile0 + 0.3);
     const dentro = tramo(tt, T.retile1 - 0.4, T.retile1 + 0.2) * (1 - tramo(tt, T.lista0, T.lista0 + 0.5));
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ctx.font = `600 ${ANCHO ? 10 : 9}px ${F.dato}`;
+    ctx.font = `600 ${ANCHO ? 10 : 9 * U}px ${F.dato}`;
     const pinta = (lista: Mapa["sectores"], a: number, conCam: boolean) => {
       if (a <= 0.01) return;
       for (const s of lista) {
@@ -367,15 +420,17 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
         if (conCam) { sx = cam.tx + (sx - cam.ox) * cam.s; sy = cam.ty + (sy - cam.oy) * cam.s; sw *= cam.s; sh *= cam.s; }
         const txt = (sectores[s.s] ?? "").toLocaleUpperCase(locale);
         const tw = ctx.measureText(txt).width;
-        if (sw < tw + 14 || sh < 34) continue;
+        if (sw < tw + px(14) || sh < px(34)) continue;
+        cabeceras.push({ x: sx + px(1), y: sy + px(1), w: tw + px(10), h: px(15) });
         ctx.fillStyle = rgb(paleta.suelo, 0.62 * a);
-        ctx.fillRect(sx + 1, sy + 1, tw + 10, 15);
+        ctx.fillRect(sx + px(1), sy + px(1), tw + px(10), px(15));
         ctx.fillStyle = rgb(paleta.tinta2, 0.85 * a);
-        ctx.fillText(txt, sx + 6, sy + 12);
+        ctx.fillText(txt, sx + px(6), sy + px(12));
       }
     };
     pinta(L0.sectores, fuera, true);
     pinta(L1.sectores, dentro, false);
+    return cabeceras;
   }
 
   // Barrido de cada regla: una línea que cruza el mapa y apaga lo que no cumple.
@@ -385,10 +440,10 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
       if (tt < a || tt > a + T.barrido + 0.25) continue;
       const lx = P.x + P.w * tramo(tt, a, a + T.barrido);
       const fin = 1 - tramo(tt, a + T.barrido, a + T.barrido + 0.25);
-      const grad = ctx.createLinearGradient(lx - 90, 0, lx, 0);
+      const grad = ctx.createLinearGradient(lx - px(90), 0, lx, 0);
       grad.addColorStop(0, rgb(paleta.azul, 0)); grad.addColorStop(1, rgb(paleta.azul, 0.16 * fin));
-      ctx.fillStyle = grad; ctx.fillRect(lx - 90, P.y, 90, P.h);
-      ctx.fillStyle = rgb(paleta.azul, 0.95 * fin); ctx.fillRect(lx - 0.75, P.y - 6, 1.5, P.h + 12);
+      ctx.fillStyle = grad; ctx.fillRect(lx - px(90), P.y, px(90), P.h);
+      ctx.fillStyle = rgb(paleta.azul, 0.95 * fin); ctx.fillRect(lx - 0.75, P.y - px(6), 1.5, P.h + px(12));
     }
   }
 
@@ -402,32 +457,35 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
       if (enLista > 0.01) {
         const lx = LISTA[b], ly = LISTA[b + 1], lw = LISTA[b + 2];
         ctx.textBaseline = "middle"; ctx.textAlign = "left";
-        ctx.font = `600 ${ANCHO ? 12 : 11}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.75 * enLista);
-        ctx.fillText(String(k + 1), lx + 12, ly + filaH / 2);
-        ctx.font = `700 ${ANCHO ? 16 : 14}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.95 * enLista);
-        ctx.fillText(ticker, lx + 34, ly + filaH / 2);
+        ctx.font = `600 ${ANCHO ? 12 : 11 * U}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.75 * enLista);
+        ctx.fillText(String(k + 1), lx + px(12), ly + filaH / 2);
+        ctx.font = `700 ${ANCHO ? 16 : 14 * U}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.95 * enLista);
+        ctx.fillText(ticker, lx + px(34), ly + filaH / 2);
         const tw = ctx.measureText(ticker).width;
-        ctx.font = `600 ${ANCHO ? 14 : 12.5}px ${F.ui}`; ctx.fillStyle = rgb(paleta.suelo, 0.72 * enLista);
-        ctx.fillText(e.nombre ?? "", lx + 44 + tw, ly + filaH / 2);
+        ctx.font = `700 ${ANCHO ? 14 : 12.5 * U}px ${F.dato}`;
+        const nota = t("landing_nota", { valor: decimal(e.nota, 1) });
+        const nombreX = lx + px(44) + tw, nombreW = lx + lw - px(24) - ctx.measureText(nota).width - nombreX;
+        ctx.font = `600 ${ANCHO ? 14 : 12.5 * U}px ${F.ui}`; ctx.fillStyle = rgb(paleta.suelo, 0.72 * enLista);
+        if (nombreW > 0) ctx.fillText(e.nombre ?? "", nombreX, ly + filaH / 2, nombreW);
         ctx.textAlign = "right";
-        ctx.font = `700 ${ANCHO ? 14 : 12.5}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.9 * enLista);
-        ctx.fillText(t("landing_nota", { valor: decimal(e.nota, 1) }), lx + lw - 12, ly + filaH / 2);
+        ctx.font = `700 ${ANCHO ? 14 : 12.5 * U}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.9 * enLista);
+        ctx.fillText(nota, lx + lw - px(12), ly + filaH / 2);
       }
       if (enBarra > 0.01) {
         const bx = BARRA[b], by = BARRA[b + 1], bw = BARRA[b + 2], bh = BARRA[b + 3];
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        const f = Math.min(ANCHO ? 18 : 14, bw / (ticker.length * 0.7 + 0.4));
-        ctx.font = `700 ${f.toFixed(1)}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.95 * enBarra);
+        const f = Math.min(ANCHO ? 18 : 14 * U, bw / (ticker.length * 0.7 + 0.4));
+        ctx.font = `700 ${f}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.95 * enBarra);
         ctx.fillText(ticker, bx + bw / 2, by + bh / 2 - f * 0.45);
-        ctx.font = `400 ${(f * 0.72).toFixed(1)}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.75 * enBarra);
+        ctx.font = `400 ${f * 0.72}px ${F.dato}`; ctx.fillStyle = rgb(paleta.suelo, 0.75 * enBarra);
         ctx.fillText(t("landing_peso_tramo", { valor: 20 }), bx + bw / 2, by + bh / 2 + f * 0.62);
       }
     });
     const resto = EV.vivas.length - 5;
     if (enLista > 0.01 && resto > 0) {
       ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-      ctx.font = `600 11px ${F.dato}`; ctx.fillStyle = rgb(paleta.mudo, enLista);
-      ctx.fillText(t("landing_mas_ordenadas", { cuantas: miles(resto, locale) }), P.x, listaY0 - 5);
+      ctx.font = `600 ${px(11)}px ${F.dato}`; ctx.fillStyle = rgb(paleta.mudo, enLista);
+      ctx.fillText(t("landing_mas_ordenadas", { cuantas: miles(resto, locale) }), P.x, listaY0 - px(5));
     }
   }
 
@@ -452,15 +510,15 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
       ctx.strokeStyle = rgb(paleta.mudo, 0.55 * ejes); ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
       ctx.beginPath(); ctx.moveTo(G.x0, G.y(0)); ctx.lineTo(G.x1, G.y(0)); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.font = `600 ${ANCHO ? 11 : 10}px ${F.dato}`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+      ctx.font = `600 ${ANCHO ? 11 : 10 * U}px ${F.dato}`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
       for (let j = 0; j < 6; j++) {
         const xa = G.x(j * SESIONES_JORNADA), xb = G.x((j + 1) * SESIONES_JORNADA), viva = hasta >= j * SESIONES_JORNADA;
-        if (j) { ctx.fillStyle = rgb(paleta.tinta, 0.07 * ejes); ctx.fillRect(xa, G.yA - 10, 1, G.yB - G.yA + 16); }
+        if (j) { ctx.fillStyle = rgb(paleta.tinta, 0.07 * ejes); ctx.fillRect(xa, G.yA - px(10), 1, G.yB - G.yA + px(16)); }
         ctx.fillStyle = rgb(viva ? paleta.tinta2 : paleta.mudo, (viva ? 0.9 : 0.4) * ejes);
-        ctx.fillText(t("landing_jornada_corta", { numero: j + 1 }), (xa + xb) / 2, G.yB + 24);
+        ctx.fillText(t("landing_jornada_corta", { numero: j + 1 }), (xa + xb) / 2, G.yB + px(24));
       }
       ctx.textAlign = "left"; ctx.fillStyle = rgb(paleta.mudo, 0.8 * ejes);
-      ctx.fillText(porcentaje(0, 0, locale), G.x1 + 8, G.y(0) + 4);
+      ctx.fillText(porcentaje(0, 0, locale), G.x1 + px(8), G.y(0) + px(4));
       ctx.restore();
     }
     const filas = tramo(tt, T.filas0, T.filas0 + 0.5);
@@ -483,12 +541,12 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
       trazar(SERIES.sp, hasta, xy); ctx.stroke(); ctx.restore();
     }
     if (tt >= T.filas0) return;
-    ctx.lineWidth = ANCHO ? 3 : 2.5; ctx.strokeStyle = rgb(paleta.teal); ctx.lineJoin = "round";
+    ctx.lineWidth = ANCHO ? 3 : 2.5 * U; ctx.strokeStyle = rgb(paleta.teal); ctx.lineJoin = "round";
     trazar(SERIES.tu, hasta, xy); ctx.stroke();
-    const [px, py] = xy(hasta, valorEn(SERIES.tu, hasta)), [sx, sy] = xy(hasta, valorEn(SERIES.sp, hasta));
-    ctx.fillStyle = rgb(paleta.tinta2, spA); ctx.beginPath(); ctx.arc(sx, sy, 3, 0, 7); ctx.fill();
+    const [puntoX, puntoY] = xy(hasta, valorEn(SERIES.tu, hasta)), [sx, sy] = xy(hasta, valorEn(SERIES.sp, hasta));
+    ctx.fillStyle = rgb(paleta.tinta2, spA); ctx.beginPath(); ctx.arc(sx, sy, px(3), 0, 7); ctx.fill();
     ctx.fillStyle = rgb(paleta.teal); ctx.strokeStyle = rgb(paleta.suelo); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(px, py, 5, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(puntoX, puntoY, px(5), 0, 7); ctx.fill(); ctx.stroke();
     if (hasta >= DIAS - 0.01) rotulosFinales(spA * (1 - liga));
   }
 
@@ -496,15 +554,15 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
     if (a <= 0.01) return;
     const vt = SERIES.tu[DIAS], vs = SERIES.sp[DIAS];
     let yt = G.y(vt), ys = G.y(vs);
-    if (Math.abs(yt - ys) < 30) { const m = (yt + ys) / 2, s = yt < ys ? -1 : 1; yt = m + s * 15; ys = m - s * 15; }
+    if (Math.abs(yt - ys) < px(30)) { const m = (yt + ys) / 2, s = yt < ys ? -1 : 1; yt = m + s * px(15); ys = m - s * px(15); }
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    const rx = G.x1 + 10;
-    ctx.font = `700 ${ANCHO ? 15 : 13}px ${F.dato}`;
-    ctx.fillStyle = rgb(paleta.teal, a); ctx.fillText(porcentaje(vt, 1, locale), rx, yt - 7);
-    ctx.fillStyle = rgb(paleta.tinta2, a); ctx.fillText(porcentaje(vs, 1, locale), rx, ys - 7);
-    ctx.font = `400 ${ANCHO ? 11 : 10}px ${F.dato}`;
-    ctx.fillStyle = rgb(paleta.teal, 0.8 * a); ctx.fillText(t("landing_tu_estrategia_corta"), rx, yt + 8);
-    ctx.fillStyle = rgb(paleta.mudo, a); ctx.fillText(t("landing_sp500"), rx, ys + 8);
+    const rx = G.x1 + px(10);
+    ctx.font = `700 ${ANCHO ? 15 : 13 * U}px ${F.dato}`;
+    ctx.fillStyle = rgb(paleta.teal, a); ctx.fillText(porcentaje(vt, 1, locale), rx, yt - px(7));
+    ctx.fillStyle = rgb(paleta.tinta2, a); ctx.fillText(porcentaje(vs, 1, locale), rx, ys - px(7));
+    ctx.font = `400 ${ANCHO ? 11 : 10 * U}px ${F.dato}`;
+    ctx.fillStyle = rgb(paleta.teal, 0.8 * a); ctx.fillText(t("landing_tu_estrategia_corta"), rx, yt + px(8));
+    ctx.fillStyle = rgb(paleta.mudo, a); ctx.fillText(t("landing_sp500"), rx, ys + px(8));
   }
 
   // --- Liga: todas salen del mismo día y cada línea acaba tumbada en su fila -----------------------
@@ -521,7 +579,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
         const [px, py] = xy(d, v);
         return [lerp(px, f.x + (f.w * d) / DIAS, p), lerp(py, f.y + f.h - 1, p)];
       } : xy;
-      ctx.lineWidth = yo ? (ANCHO ? 3 : 2.5) : 1;
+      ctx.lineWidth = yo ? (ANCHO ? 3 : 2.5 * U) : 1;
       ctx.strokeStyle = yo ? rgb(paleta.teal, a) : rgb(paleta.tinta2, a * (1 - 0.6 * tramo(p, 0.5, 1)));
       trazar(s.serie, yo ? DIAS : Math.min(lineas, DIAS), map);
       ctx.stroke();
@@ -549,39 +607,40 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
         ctx.setLineDash([4, 4]); ctx.strokeStyle = rgb(paleta.tinta2, 0.45 * fondo); ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(f.x, f.y + f.h / 2); ctx.lineTo(f.x + f.w, f.y + f.h / 2); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.font = `600 ${ANCHO ? 12 : 11}px ${F.dato}`; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+        ctx.font = `600 ${ANCHO ? 12 : 11 * U}px ${F.dato}`; ctx.textBaseline = "middle"; ctx.textAlign = "center";
         const etiqueta = t("landing_sp_fila", { valor: porcentaje(f.valor, 1, locale) }), tw = ctx.measureText(etiqueta).width;
-        ctx.fillStyle = rgb(paleta.suelo); ctx.fillRect(f.x + f.w / 2 - tw / 2 - 10, f.y + f.h / 2 - 9, tw + 20, 18);
+        ctx.fillStyle = rgb(paleta.suelo); ctx.fillRect(f.x + f.w / 2 - tw / 2 - px(10), f.y + f.h / 2 - px(9), tw + px(20), px(18));
         ctx.fillStyle = rgb(paleta.tinta2, texto); ctx.fillText(etiqueta, f.x + f.w / 2, f.y + f.h / 2);
         ctx.restore();
         continue;
       }
       const s = f.estrategia, yo = s.indice === -1;
-      redondo(f.x, f.y, f.w, f.h - 2, 12);
+      redondo(f.x, f.y, f.w, f.h - 2, px(12));
       ctx.fillStyle = yo ? rgb(paleta.teal, 0.13 * fondo) : rgb(paleta.panel, 0.92 * fondo); ctx.fill();
       ctx.strokeStyle = yo ? rgb(paleta.teal, 0.9 * fondo) : rgb(paleta.tinta, 0.1 * fondo); ctx.lineWidth = 1; ctx.stroke();
       ctx.globalAlpha = texto;
       ctx.textBaseline = "middle"; ctx.textAlign = "left";
-      ctx.font = `700 ${ANCHO ? 13 : 12}px ${F.dato}`; ctx.fillStyle = rgb(yo ? paleta.teal : paleta.tinta2);
-      ctx.fillText(String(s.puesto), f.x + 12, cy);
-      const nx = f.x + (ANCHO ? 48 : 40);
-      ctx.font = `700 ${ANCHO ? 15 : 13.5}px ${F.ui}`; ctx.fillStyle = rgb(paleta.tinta);
-      ctx.fillText(nombreDe(s), nx, cy - 7);
-      ctx.font = `400 ${ANCHO ? 11.5 : 10.5}px ${F.dato}`; ctx.fillStyle = rgb(paleta.mudo);
+      ctx.font = `700 ${ANCHO ? 13 : 12 * U}px ${F.dato}`; ctx.fillStyle = rgb(yo ? paleta.teal : paleta.tinta2);
+      ctx.fillText(String(s.puesto), f.x + px(12), cy);
+      const nx = f.x + (ANCHO ? 48 : 40 * U);
+      const nombreW = f.w - (nx - f.x) - px(110);
+      ctx.font = `700 ${ANCHO ? 15 : 13.5 * U}px ${F.ui}`; ctx.fillStyle = rgb(paleta.tinta);
+      ctx.fillText(nombreDe(s), nx, cy - px(7), nombreW);
+      ctx.font = `400 ${ANCHO ? 11.5 : 10.5 * U}px ${F.dato}`; ctx.fillStyle = rgb(paleta.mudo);
       const sub = yo ? `${t("landing_tu")}  ${movimiento(s)}` : s.casa ? t("landing_casa") : s.alias ?? "";
-      ctx.fillText(sub.trim(), nx, cy + 9);
+      ctx.fillText(sub.trim(), nx, cy + px(9), nombreW);
       ctx.textAlign = "right";
-      ctx.font = `700 ${ANCHO ? 16 : 14}px ${F.dato}`; ctx.fillStyle = rgb(f.valor >= 0 ? paleta.bien : paleta.mal);
-      ctx.fillText(porcentaje(f.valor, 1, locale), f.x + f.w - 12, cy - 7);
-      ctx.font = `400 ${ANCHO ? 11.5 : 10.5}px ${F.dato}`; ctx.fillStyle = rgb(paleta.mudo);
-      ctx.fillText(fraseVsIndice(t, f.valor - SERIES.sp[DIAS], locale), f.x + f.w - 12, cy + 9);
+      ctx.font = `700 ${ANCHO ? 16 : 14 * U}px ${F.dato}`; ctx.fillStyle = rgb(f.valor >= 0 ? paleta.bien : paleta.mal);
+      ctx.fillText(porcentaje(f.valor, 1, locale), f.x + f.w - px(12), cy - px(7));
+      ctx.font = `400 ${ANCHO ? 11.5 : 10.5 * U}px ${F.dato}`; ctx.fillStyle = rgb(paleta.mudo);
+      ctx.fillText(fraseVsIndice(t, f.valor - SERIES.sp[DIAS], locale), f.x + f.w - px(12), cy + px(9), px(98));
       ctx.restore();
     }
     const a = tramo(tt, T.filas0 + 0.6, T.filas0 + 1.2) * (1 - 0.55 * fin);
     for (const f of FILAS) {
       if (!f.corte || a <= 0.01) continue;
-      ctx.fillStyle = rgb(paleta.mudo, a); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `700 12px ${F.dato}`;
-      ctx.fillText("···", f.x + f.w / 2, f.y - 8);
+      ctx.fillStyle = rgb(paleta.mudo, a); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `700 ${px(12)}px ${F.dato}`;
+      ctx.fillText("···", f.x + f.w / 2, f.y - px(8));
     }
   }
 
@@ -604,7 +663,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
     if (sombra > 0.01) {
       const tz = franja.getBoundingClientRect(), st = escena.getBoundingClientRect();
       const grad = ANCHO ? ctx.createLinearGradient(0, 0, tz.right - st.left + 140, 0)
-        : ctx.createLinearGradient(0, tz.top - st.top - 90, 0, H);
+        : ctx.createLinearGradient(0, tz.top - st.top - 90 * U, 0, H);
       grad.addColorStop(0, rgb(paleta.suelo, ANCHO ? sombra : 0)); grad.addColorStop(ANCHO ? 0.6 : 0.35, rgb(paleta.suelo, sombra * 0.85));
       grad.addColorStop(1, rgb(paleta.suelo, ANCHO ? 0 : sombra));
       ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
@@ -642,7 +701,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
   function actualizarDOM(tt: number) {
     for (const [el, a0, a1, b0, b1] of items) {
       const ent = salida(tramo(tt, a0, a1)), sal = suave(tramo(tt, b0, b1));
-      estilo(el, ent * (1 - sal), (1 - ent) * 16 - sal * 12);
+      estilo(el, ent * (1 - sal), (1 - ent) * px(16) - sal * px(12));
       el.classList.toggle("on", ent * (1 - sal) > 0.5);
     }
     // Reloj de Nueva York: la foto se toma al cierre.
@@ -650,14 +709,11 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
     texto(pieza("relojTxt"), cerrado ? t("landing_reloj_cierre")
       : t("landing_reloj_vivo", { hora: `15:59:5${6 + Math.min(Math.floor(clamp(tt, 0, T.cierre)), 3)}` }));
     pieza("reloj").classList.toggle("cerrado", cerrado);
-    estilo(pieza("reloj"), 1 - tramo(tt, 12.4, 13.0));
     const visor = pieza("visor");
     estilo(visor, tramo(tt, T.cierre, T.cierre + 0.45) * (1 - tramo(tt, T.lista0 - 0.6, T.lista0)));
     visor.style.scale = String(1 + 0.035 * (1 - salida(tramo(tt, T.cierre, T.cierre + 0.6))));
-    const idea = tramo(tt, T.oscurecer0, T.oscurecer1) * (1 - tramo(tt, T.aclarar0, T.aclarar1));
-    estilo(pieza("recuento"), tramo(tt, T.cierre + 0.2, T.cierre + 0.8) * (1 - tramo(tt, T.lista0 + 0.2, T.lista0 + 0.8)) * (1 - idea));
     texto(pieza("recuentoN"), miles(contarVivas(tt), locale));
-    texto(pieza("recuentoL"), tt < T.regla[0][0] ? t("landing_recuento_foto") : t("landing_recuento_reglas"));
+    texto(pieza("recuentoL"), t("landing_recuento_reglas"));
     // Tesis: se escribe sola y luego se subrayan las frases que se convierten en reglas.
     const n = Math.floor(caracteres.length * tramo(tt, T.escribir0, T.escribir1));
     if (n !== escritas) {
@@ -671,7 +727,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
     // Reglas: entran una a una y se marcan mientras su barrido cruza el mapa.
     reglas.forEach((li, k) => {
       const e = salida(tramo(tt, 13.0 + 0.14 * k, 13.6 + 0.14 * k));
-      estilo(li, e, 0, (1 - e) * -10);
+      estilo(li, e, 0, (1 - e) * px(-10));
       const a = T.regla[k][0];
       li.classList.toggle("activa", tt >= a - 0.1 && tt <= a + T.barrido + 0.2);
       estilo(li.querySelector<HTMLElement>('[data-p="reglaCuenta"]')!, tramo(tt, a + T.barrido, a + T.barrido + 0.3));
@@ -679,7 +735,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
     estilo(pieza("pista"), tramo(tt, T.retile1, T.retile1 + 0.5));
     pesos.forEach((li, k) => {
       const e = salida(tramo(tt, 25.7 + 0.12 * k, 26.4 + 0.12 * k));
-      estilo(li, e, 0, (1 - e) * -10);
+      estilo(li, e, 0, (1 - e) * px(-10));
       li.querySelector<HTMLElement>("i")!.style.transform = `scaleX(${(e * Number(li.dataset.peso) / 35).toFixed(3)})`;
     });
     // Lectura de la gráfica mientras se dibuja.
@@ -735,9 +791,9 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
     ficha.replaceChildren(h3, nodo("p", null, `${sectores[e.sector] ?? ""} · ${veredicto}`), ul);
     ficha.hidden = false;
     const tw = ficha.offsetWidth, th = ficha.offsetHeight;
-    let ty = ey + eh + 8;
-    if (ty + th > H - 70) ty = Math.max(70, ey - th - 8);
-    ficha.style.left = `${clamp(ex + ew / 2 - tw / 2, 12, W - tw - 12)}px`; ficha.style.top = `${ty}px`;
+    let ty = ey + eh + px(8);
+    if (ty + th > H - px(70)) ty = Math.max(px(70), ey - th - px(8));
+    ficha.style.left = `${clamp(ex + ew / 2 - tw / 2, px(12), W - tw - px(12))}px`; ficha.style.top = `${ty}px`;
   }
   const cerrarFicha = () => { ficha.hidden = true; };
 
@@ -765,10 +821,8 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
   function rehacer() { F = fuentes(); medir(); fijarRangos(); maquetar(); pintarFondo(); posicionar(); }
   function posicionar() {
     const fija = (el: HTMLElement, px: number, py: number) => { el.style.left = `${px}px`; el.style.top = `${py}px`; };
-    fija(pieza("recuento"), P.x + 14, P.y + 14);
-    const visor = pieza("visor"); fija(visor, P.x - 7, P.y - 7);
-    visor.style.width = `${P.w + 14}px`; visor.style.height = `${P.h + 14}px`;
-    const reloj = pieza("reloj"); reloj.style.right = `${W - (P.x + P.w) + 12}px`; reloj.style.top = `${P.y + 16}px`;
+    const visor = pieza("visor"); fija(visor, P.x - px(7), P.y - px(7));
+    visor.style.width = `${P.w + px(14)}px`; visor.style.height = `${P.h + px(14)}px`;
   }
   function grano() {
     const c = document.createElement("canvas"); c.width = c.height = 180;

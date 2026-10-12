@@ -27,14 +27,14 @@ export function traductor(idioma: Idioma) {
   };
 }
 
-export interface LlamadaLienzo { metodo: string; args: unknown[] }
+export interface LlamadaLienzo { metodo: string; args: unknown[]; font: string; fillStyle: string }
 
 /** Contexto 2D que acepta cualquier método del motor y anota las llamadas del último fotograma. */
-export function crearContextoFalso() {
+export function crearContextoFalso(medirTexto?: (texto: string, fuente: string) => number) {
   const llamadas: LlamadaLienzo[] = [];
   const propios: Record<string, unknown> = {};
   const resultados: Record<string, (...args: never[]) => unknown> = {
-    measureText: ((texto: string) => ({ width: texto.length * 6 })) as never,
+    measureText: ((texto: string) => ({ width: medirTexto?.(texto, String(propios.font)) ?? texto.length * parseFloat(String(propios.font).split(" ")[1]) * 0.6 })) as never,
     createLinearGradient: (() => ({ addColorStop() {} })) as never,
     createImageData: ((ancho: number, alto: number) => ({ data: new Uint8ClampedArray(ancho * alto * 4) })) as never,
   };
@@ -47,7 +47,7 @@ export function crearContextoFalso() {
         metodo = (...args: unknown[]) => {
           // Cada fotograma empieza con setTransform: solo se conserva el último.
           if (propiedad === "setTransform") llamadas.length = 0;
-          llamadas.push({ metodo: propiedad, args });
+          llamadas.push({ metodo: propiedad, args, font: String(propios.font), fillStyle: String(propios.fillStyle) });
           return resultados[propiedad]?.(...(args as never[]));
         };
         metodos.set(propiedad, metodo);
@@ -106,15 +106,14 @@ export function fijarOcultoDelDocumento(oculto: boolean) {
 const rect = (x: number, y: number, w: number, h: number): DOMRect =>
   ({ x, y, left: x, top: y, width: w, height: h, right: x + w, bottom: y + h, toJSON() {} }) as DOMRect;
 
-export interface Opciones { idioma?: Idioma; tiempo?: number; reducido?: boolean }
+export interface Opciones { idioma?: Idioma; tiempo?: number; reducido?: boolean; ancho?: number;
+  medirTexto?: (texto: string, fuente: string) => number }
 
-/**
- * Monta la película sobre el marcado real de `Pelicula` en una ventana móvil de 390x844.
- * Con `tiempo` la abre parada en ese segundo (`?t=`).
- */
+// Usa el marcado real para detectar cambios de estructura; la altura sigue la proporción de 390x844.
+// Con `tiempo` abre un fotograma parado para que las aserciones no dependan del reloj real.
 export function montar(opciones: Opciones = {}) {
-  const { idioma = "es", tiempo, reducido = false } = opciones;
-  const { contexto, llamadas } = crearContextoFalso();
+  const { idioma = "es", tiempo, reducido = false, ancho = 390, medirTexto } = opciones;
+  const { contexto, llamadas } = crearContextoFalso(medirTexto);
   const reloj = crearReloj();
   const observador = crearObservador();
   fijarOcultoDelDocumento(false);
@@ -134,8 +133,9 @@ export function montar(opciones: Opciones = {}) {
     pelicula.querySelector<E>(`[data-p="${nombre}"]`)!;
   const piezas = (nombre: string) => [...pelicula.querySelectorAll<HTMLElement>(`[data-p="${nombre}"]`)];
   const item = (nombre: string) => pelicula.querySelector<HTMLElement>(`[data-it="${nombre}"]`)!;
-  pieza("escena").getBoundingClientRect = () => rect(0, 0, 390, 844);
-  pieza("franja").getBoundingClientRect = () => rect(16, 630, 358, 214);
+  const u = ancho / 390;
+  pieza("escena").getBoundingClientRect = () => rect(0, 0, ancho, 844 * u);
+  pieza("franja").getBoundingClientRect = () => rect(16 * u, 630 * u, 358 * u, 214 * u);
 
   const limpiar = montarPelicula(pelicula, { locale: idioma, t: traductor(idioma) });
   return {
