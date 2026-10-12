@@ -1,11 +1,9 @@
--- migraciones-liga: 040
+-- migraciones-liga: 041
 -- migraciones-saneamiento: 11
---
 --
 -- PostgreSQL database dump
 --
 
-\restrict wE4N5sfGs6AQmp7eOcJwwn14hTSUnt6gMHscrKa43QwxMipI3Jf8zYzqjfTkUto
 
 -- Dumped from database version 17.11 (Debian 17.11-1.pgdg12+2)
 -- Dumped by pg_dump version 17.11 (Debian 17.11-1.pgdg12+2)
@@ -2179,6 +2177,13 @@ CREATE TABLE liga.formaciones_degradadas (
 
 
 --
+-- Name: TABLE formaciones_degradadas; Type: COMMENT; Schema: liga; Owner: -
+--
+
+COMMENT ON TABLE liga.formaciones_degradadas IS 'Inscripciones formadas sin la pregunta propia: sin_ia (apagada o no alcanzable), tope (gasto del mes), incompleta (Jev no contestó a alguna candidata) o tiempo (hora límite).';
+
+
+--
 -- Name: inscripciones; Type: TABLE; Schema: liga; Owner: -
 --
 
@@ -2421,12 +2426,12 @@ CREATE TABLE liga.perfiles (
 CREATE TABLE liga.perfiles_privados (
     id uuid NOT NULL,
     tema text DEFAULT 'auto'::text NOT NULL,
-    idioma text,
     baja_solicitada timestamp with time zone,
     creado timestamp with time zone DEFAULT now() NOT NULL,
     creado_por uuid DEFAULT auth.uid(),
     actualizado_en timestamp with time zone,
     actualizado_por uuid,
+    idioma text,
     CONSTRAINT perfiles_privados_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
     CONSTRAINT perfiles_privados_tema_check CHECK ((tema = ANY (ARRAY['auto'::text, 'claro'::text, 'oscuro'::text])))
 );
@@ -2543,17 +2548,24 @@ CREATE TABLE liga.pruebas (
     usuario_id uuid NOT NULL,
     receta_id bigint NOT NULL,
     foto_id bigint NOT NULL,
-    scan_run_id bigint,
     estado text DEFAULT 'pendiente'::text NOT NULL,
     n_evaluadas integer DEFAULT 0 NOT NULL,
     idempotencia text NOT NULL,
     creada timestamp with time zone DEFAULT now() NOT NULL,
     actualizado_en timestamp with time zone,
     actualizado_por uuid,
+    scan_run_id bigint,
     CONSTRAINT pruebas_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text, 'hecha'::text, 'fallida'::text]))),
     CONSTRAINT pruebas_idempotencia_check CHECK (((length(idempotencia) >= 8) AND (length(idempotencia) <= 80))),
     CONSTRAINT pruebas_n_evaluadas_check CHECK ((n_evaluadas >= 0))
 );
+
+
+--
+-- Name: COLUMN pruebas.scan_run_id; Type: COMMENT; Schema: liga; Owner: -
+--
+
+COMMENT ON COLUMN liga.pruebas.scan_run_id IS 'Escaneo utilizado al ejecutar la prueba; null en pruebas anteriores a esta referencia.';
 
 
 --
@@ -2585,11 +2597,11 @@ CREATE TABLE liga.recetas (
     CONSTRAINT recetas_idea_check CHECK ((length(idea) <= 400)),
     CONSTRAINT recetas_max_por_sector_check CHECK (((max_por_sector >= 0) AND (max_por_sector <= 10))),
     CONSTRAINT recetas_n_empresas_check CHECK ((n_empresas = ANY (ARRAY[3, 5, 7, 10]))),
-    CONSTRAINT recetas_peso_deuda_check CHECK (((peso_deuda >= 0) AND (peso_deuda <= 50) AND (((peso_deuda)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_negocio_check CHECK (((peso_negocio >= 0) AND (peso_negocio <= 50) AND (((peso_negocio)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_precio_check CHECK (((peso_precio >= 0) AND (peso_precio <= 50) AND (((peso_precio)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_pregunta_check CHECK (((peso_pregunta >= 0) AND (peso_pregunta <= 50) AND (((peso_pregunta)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_pronto_check CHECK (((peso_pronto >= 0) AND (peso_pronto <= 50) AND (((peso_pronto)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_deuda_check CHECK ((((peso_deuda >= 0) AND (peso_deuda <= 50)) AND (((peso_deuda)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_negocio_check CHECK ((((peso_negocio >= 0) AND (peso_negocio <= 50)) AND (((peso_negocio)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_precio_check CHECK ((((peso_precio >= 0) AND (peso_precio <= 50)) AND (((peso_precio)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_pregunta_check CHECK ((((peso_pregunta >= 0) AND (peso_pregunta <= 50)) AND (((peso_pregunta)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_pronto_check CHECK ((((peso_pronto >= 0) AND (peso_pronto <= 50)) AND (((peso_pronto)::integer % 5) = 0))),
     CONSTRAINT recetas_pregunta_check CHECK (((length(pregunta) >= 1) AND (length(pregunta) <= 160))),
     CONSTRAINT recetas_reparto_check CHECK ((reparto = ANY (ARRAY['igual'::text, 'nota'::text]))),
     CONSTRAINT reglas_lista CHECK ((jsonb_typeof(reglas) = 'array'::text))
@@ -11395,13 +11407,11 @@ CREATE EVENT TRIGGER ensure_rls ON ddl_command_end
 -- PostgreSQL database dump complete
 --
 
-\unrestrict wE4N5sfGs6AQmp7eOcJwwn14hTSUnt6gMHscrKa43QwxMipI3Jf8zYzqjfTkUto
 
 --
 -- PostgreSQL database dump
 --
 
-\restrict 14l9mNyHVMzTI9dnJWbJ92pb3Wc1sW9oprPaHNpcAiJ26wlHgtqjb8XATweE8A8
 
 -- Dumped from database version 17.11 (Debian 17.11-1.pgdg12+2)
 -- Dumped by pg_dump version 17.11 (Debian 17.11-1.pgdg12+2)
@@ -11435,4 +11445,4 @@ INSERT INTO liga.permisos_rol VALUES ('admin', 'admin.salas');
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 14l9mNyHVMzTI9dnJWbJ92pb3Wc1sW9oprPaHNpcAiJ26wlHgtqjb8XATweE8A8
+
