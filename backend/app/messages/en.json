@@ -348,10 +348,5 @@
   "api_error_admin_pro_ya_activo": "The user already has an active Pro plan.",
   "api_error_pro_ya_activo": "You already have an active Pro plan.",
   "api_error_no_tienes_suscripcion_que_cambiar": "You have no Lemon subscription to change.",
-  "api_error_ya_tienes_este_plan": "You already have this plan.",
-  "api_error_no_se_pudo_cambiar_el_plan": "Could not change the plan. Try again in a moment.",
-  "api_error_no_se_pudo_leer_la_suscripcion": "Could not read the subscription. Try again in a moment.",
-  "api_error_no_se_pudo_cancelar_la_suscripcion": "Could not cancel the subscription. Try again in a moment.",
-  "api_error_no_se_pudo_reanudar_la_suscripcion": "Could not resume the subscription. Try again in a moment.",
-  "api_error_esta_suscripcion_ya_no_se_puede_reanudar": "This subscription can no longer be resumed."
+  "api_error_no_se_pudo_leer_la_suscripcion": "Could not read the subscription. Try again in a moment."
 }

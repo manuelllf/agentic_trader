@@ -166,89 +166,23 @@ def test_pack_liga_no_se_bloquea_por_tener_pase():
     assert pagos.clave_si_ya_tiene(USUARIO, "pack_liga") is None
 
 
-def test_cambiar_plan_sin_pro_de_lemon_responde_409(monkeypatch):  # noqa: ANN001
-    from app.liga import pagos as pagos_mod
-
-    monkeypatch.setattr(pagos_mod, "plan_pago_vigente", lambda uid: None)
-    cliente = _cliente_con_sesion(monkeypatch)
-    r = cliente.post("/liga/pagos/lemon/cambiar-plan", json={"producto": "temporada"})
-    assert r.status_code == 409
-    assert r.json()["detail"] == "No tienes una suscripción de Lemon que cambiar."
-
-
-def test_cambiar_al_mismo_plan_responde_409(monkeypatch):  # noqa: ANN001
-    from app.liga import pagos as pagos_mod
-
-    monkeypatch.setattr(pagos_mod, "plan_pago_vigente", lambda uid: ("sub-1", "temporada"))
-    cliente = _cliente_con_sesion(monkeypatch)
-    r = cliente.post("/liga/pagos/lemon/cambiar-plan", json={"producto": "temporada"})
-    assert r.status_code == 409
-    assert r.json()["detail"] == "Ya tienes este plan."
-
-
-def test_cambiar_plan_pide_a_lemon_la_nueva_variante(monkeypatch):  # noqa: ANN001
-    from app.liga import pagos as pagos_mod
-    from app.liga import rutas_pagos
-
-    enviado = {}
-
-    def fingir(url, **kwargs):  # noqa: ANN001, ANN202
-        enviado["url"] = url
-        enviado["json"] = kwargs["json"]
-        return _Respuesta()
-
-    monkeypatch.setattr(pagos_mod, "plan_pago_vigente", lambda uid: ("sub-1", "mensual"))
-    monkeypatch.setattr(settings, "lemon_api_key", "clave-de-prueba")
-    monkeypatch.setattr(settings, "lemon_variantes", {"2228230": "temporada"})
-    monkeypatch.setattr(rutas_pagos.httpx, "patch", fingir)
-    cliente = _cliente_con_sesion(monkeypatch)
-    r = cliente.post("/liga/pagos/lemon/cambiar-plan", json={"producto": "temporada"})
-    assert r.status_code == 200 and r.json() == {"estado": "pedido"}
-    assert enviado["url"] == "https://api.lemonsqueezy.com/v1/subscriptions/sub-1"
-    assert enviado["json"]["data"]["attributes"] == {"variant_id": 2228230,
-                                                     "invoice_immediately": True}
-
-
-def test_cambiar_plan_si_lemon_no_responde_da_502(monkeypatch):  # noqa: ANN001
-    import httpx
-
-    from app.liga import pagos as pagos_mod
-    from app.liga import rutas_pagos
-
-    def caer(url, **kwargs):  # noqa: ANN001, ANN202
-        raise httpx.ConnectError("sin red")
-
-    monkeypatch.setattr(pagos_mod, "plan_pago_vigente", lambda uid: ("sub-1", "mensual"))
-    monkeypatch.setattr(settings, "lemon_api_key", "clave-de-prueba")
-    monkeypatch.setattr(settings, "lemon_variantes", {"2228230": "temporada"})
-    monkeypatch.setattr(rutas_pagos.httpx, "patch", caer)
-    cliente = _cliente_con_sesion(monkeypatch)
-    r = cliente.post("/liga/pagos/lemon/cambiar-plan", json={"producto": "temporada"})
-    assert r.status_code == 502
-
-
 @pytest.fixture
-def gestion(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    for nombre in ("_LIMITE_LECTURA", "_LIMITE_CANCELAR", "_LIMITE_REANUDAR"):
-        monkeypatch.setattr(rutas_pagos, nombre,
-                            acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10))
+def lectura(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    monkeypatch.setattr(rutas_pagos, "_LIMITE_LECTURA",
+                        acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10))
     monkeypatch.setattr(pagos, "plan_pago_vigente", lambda uid: ("sub-propia", "mensual"))
     monkeypatch.setattr(settings, "lemon_api_key", "valor-ficticio")
     monkeypatch.setattr(settings, "lemon_variantes", {"111": "mensual"})
     return _cliente_con_sesion(monkeypatch)
 
 
-def _pedir_gestion(cliente: TestClient, ruta: str) -> httpx.Response:
-    if ruta == "suscripcion":
-        return cliente.request("GET", f"/liga/pagos/lemon/{ruta}", json={"id": "ajena"})
-    return cliente.post(f"/liga/pagos/lemon/{ruta}", json={"id": "ajena"})
+def _pedir_lectura(cliente: TestClient) -> httpx.Response:
+    return cliente.request("GET", "/liga/pagos/lemon/suscripcion", json={"id": "ajena"})
 
 
-@pytest.mark.parametrize("ruta", ["suscripcion", "cancelar", "reanudar"])
-def test_gestion_sin_suscripcion(gestion: TestClient, monkeypatch: pytest.MonkeyPatch,
-                               ruta: str) -> None:
+def test_lectura_sin_suscripcion(lectura: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pagos, "plan_pago_vigente", lambda uid: None)
-    r = _pedir_gestion(gestion, ruta)
+    r = _pedir_lectura(lectura)
     assert r.status_code == 409
     assert r.json()["detail"] == "No tienes una suscripción de Lemon que cambiar."
 
@@ -258,7 +192,7 @@ def test_gestion_sin_suscripcion(gestion: TestClient, monkeypatch: pytest.Monkey
     ("past_due", "atrasada"), ("unpaid", "impagada"), ("paused", "pausada"),
     ("expired", "caducada"),
 ])
-def test_leer_suscripcion_traduce_datos(gestion: TestClient, monkeypatch: pytest.MonkeyPatch,
+def test_leer_suscripcion_traduce_datos(lectura: TestClient, monkeypatch: pytest.MonkeyPatch,
                                      estado: str, esperado: str) -> None:
     def leer(url: str, **kwargs: object) -> httpx.Response:
         assert url.endswith("/subscriptions/sub-propia")
@@ -270,7 +204,7 @@ def test_leer_suscripcion_traduce_datos(gestion: TestClient, monkeypatch: pytest
                      "update_payment_method": "https://ejemplo.test/tarjeta"}}}})
 
     monkeypatch.setattr(rutas_pagos.httpx, "get", leer)
-    r = _pedir_gestion(gestion, "suscripcion")
+    r = _pedir_lectura(lectura)
     assert r.status_code == 200
     assert r.json() == {
         "estado": esperado, "producto": "mensual", "renueva_en": "2027-01-10T00:00:00Z",
@@ -278,71 +212,33 @@ def test_leer_suscripcion_traduce_datos(gestion: TestClient, monkeypatch: pytest
         "portal_url": "https://ejemplo.test/portal", "tarjeta_url": "https://ejemplo.test/tarjeta"}
 
 
-@pytest.mark.parametrize(("ruta", "metodo"), [
-    ("suscripcion", "get"), ("cancelar", "delete"), ("reanudar", "patch"),
-])
-def test_gestion_error_de_red(gestion: TestClient, monkeypatch: pytest.MonkeyPatch,
-                             ruta: str, metodo: str) -> None:
+def test_lectura_error_de_red(lectura: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     def caer(url: str, **kwargs: object) -> httpx.Response:
         raise httpx.ConnectError("sin red")
 
-    monkeypatch.setattr(rutas_pagos.httpx, metodo, caer)
-    assert _pedir_gestion(gestion, ruta).status_code == 502
+    monkeypatch.setattr(rutas_pagos.httpx, "get", caer)
+    assert _pedir_lectura(lectura).status_code == 502
 
 
-@pytest.mark.parametrize(("ruta", "metodo"), [("cancelar", "delete"), ("reanudar", "patch")])
-def test_gestion_ignora_id_del_cliente(gestion: TestClient, monkeypatch: pytest.MonkeyPatch,
-                                     ruta: str, metodo: str) -> None:
-    def pedir(url: str, **kwargs: object) -> httpx.Response:
-        assert url == "https://api.lemonsqueezy.com/v1/subscriptions/sub-propia"
-        assert kwargs["headers"] == {
-            "Authorization": "Bearer valor-ficticio", "Accept": "application/vnd.api+json",
-            "Content-Type": "application/vnd.api+json"}
-        if ruta == "reanudar":
-            assert kwargs["json"] == {"data": {"type": "subscriptions", "id": "sub-propia",
-                                                "attributes": {"cancelled": False}}}
-        return httpx.Response(200)
-
-    monkeypatch.setattr(rutas_pagos.httpx, metodo, pedir)
-    r = _pedir_gestion(gestion, ruta)
-    assert r.status_code == 200 and r.json() == {"estado": "pedido"}
-
-
-@pytest.mark.parametrize("status", [400, 404, 422])
-def test_reanudar_fuera_de_gracia(gestion: TestClient, monkeypatch: pytest.MonkeyPatch,
-                                status: int) -> None:
-    monkeypatch.setattr(rutas_pagos.httpx, "patch",
-                        lambda *args, **kwargs: httpx.Response(status))
-    r = _pedir_gestion(gestion, "reanudar")
-    assert r.status_code == 409
-    assert r.json()["detail"] == "Esta suscripción ya no se puede reanudar."
-
-
-@pytest.mark.parametrize("ruta", ["suscripcion", "cancelar", "reanudar"])
-def test_gestion_sin_configuracion(gestion: TestClient, monkeypatch: pytest.MonkeyPatch,
-                                  ruta: str) -> None:
+def test_lectura_sin_configuracion(lectura: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "lemon_api_key", "")
-    assert _pedir_gestion(gestion, ruta).status_code == 503
+    assert _pedir_lectura(lectura).status_code == 503
 
 
-@pytest.mark.parametrize(("ruta", "metodo"), [
-    ("suscripcion", "get"), ("cancelar", "delete"), ("reanudar", "patch"),
-])
-def test_gestion_error_http(gestion: TestClient, monkeypatch: pytest.MonkeyPatch,
-                          ruta: str, metodo: str) -> None:
-    monkeypatch.setattr(rutas_pagos.httpx, metodo,
+def test_lectura_error_http(lectura: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rutas_pagos.httpx, "get",
                         lambda *args, **kwargs: httpx.Response(500))
-    assert _pedir_gestion(gestion, ruta).status_code == 502
+    assert _pedir_lectura(lectura).status_code == 502
 
 
 def test_lectura_sin_tarjeta_y_variante_desconocida(
-    gestion: TestClient, monkeypatch: pytest.MonkeyPatch,
+    lectura: TestClient, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(rutas_pagos.httpx, "get", lambda *args, **kwargs:
                         httpx.Response(200, json={"data": {"attributes": {
                             "status": "active", "variant_id": 999, "card_brand": "",
                             "card_last_four": "", "urls": {}}}}))
-    r = _pedir_gestion(gestion, "suscripcion")
+    r = _pedir_lectura(lectura)
     assert r.status_code == 200
     assert all(r.json()[campo] is None for campo in (
         "producto", "renueva_en", "termina_en", "tarjeta_marca", "tarjeta_ultimos4",
@@ -352,31 +248,22 @@ def test_lectura_sin_tarjeta_y_variante_desconocida(
 @pytest.mark.parametrize("attrs", [None, {"status": "desconocido"}, {
     "status": "active", "renews_at": "no es una fecha",
 }])
-def test_lectura_malformada(gestion: TestClient, monkeypatch: pytest.MonkeyPatch,
+def test_lectura_malformada(lectura: TestClient, monkeypatch: pytest.MonkeyPatch,
                           attrs: dict | None) -> None:
     monkeypatch.setattr(rutas_pagos.httpx, "get", lambda *args, **kwargs:
                         httpx.Response(200, json={"data": {"attributes": attrs}}))
-    assert _pedir_gestion(gestion, "suscripcion").status_code == 502
+    assert _pedir_lectura(lectura).status_code == 502
 
 
-@pytest.mark.parametrize(("ruta", "metodo"), [
-    ("suscripcion", "get"), ("cancelar", "delete"), ("reanudar", "patch"),
-])
-def test_limite_propio_de_gestion(gestion: TestClient, monkeypatch: pytest.MonkeyPatch,
-                                ruta: str, metodo: str) -> None:
+def test_limite_de_lectura(lectura: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     llamadas = []
 
     def responder(url: str, **kwargs: object) -> httpx.Response:
         llamadas.append(url)
         return httpx.Response(200, json={"data": {"attributes": {"status": "active"}}})
 
-    monkeypatch.setattr(rutas_pagos.httpx, metodo, responder)
+    monkeypatch.setattr(rutas_pagos.httpx, "get", responder)
     for _ in range(10):
-        assert _pedir_gestion(gestion, ruta).status_code == 200
-    assert _pedir_gestion(gestion, ruta).status_code == 429
+        assert _pedir_lectura(lectura).status_code == 200
+    assert _pedir_lectura(lectura).status_code == 429
     assert len(llamadas) == 10
-    for nombre in ("_LIMITE_LECTURA", "_LIMITE_CANCELAR", "_LIMITE_REANUDAR"):
-        otro = {"suscripcion": "_LIMITE_LECTURA", "cancelar": "_LIMITE_CANCELAR",
-                "reanudar": "_LIMITE_REANUDAR"}[ruta]
-        if nombre != otro:
-            assert getattr(rutas_pagos, nombre).permitido(USUARIO)

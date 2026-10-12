@@ -26,8 +26,6 @@ _LIMITE_CHECKOUT = acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10)
 _TAMANO_MAXIMO = 64 * 1024
 _LEMON_URL = "https://api.lemonsqueezy.com/v1"
 _LIMITE_LECTURA = acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10)
-_LIMITE_CANCELAR = acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10)
-_LIMITE_REANUDAR = acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10)
 
 
 def _cabeceras_lemon() -> dict[str, str]:
@@ -105,48 +103,6 @@ def checkout(body: CheckoutIn, ident: Identidad = Depends(require_usuario)) -> C
     return CheckoutOut(url=url)
 
 
-class CambioIn(BaseModel):
-    producto: Literal["mensual", "media_temporada", "temporada"]
-
-
-class CambioOut(BaseModel):
-    estado: str
-
-
-_LIMITE_CAMBIO = acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10)
-
-
-@router.post("/liga/pagos/lemon/cambiar-plan", response_model=CambioOut)
-def cambiar_plan(body: CambioIn, ident: Identidad = Depends(require_usuario)) -> CambioOut:
-    """Pasa la suscripción de Pro a otra duración en Lemon, con el prorrateo de siempre y el cobro
-    de la diferencia ahora. El Pro lo confirma el webhook de la suscripción, no esta respuesta."""
-    if not _LIMITE_CAMBIO.permitido(ident.uid):
-        raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
-    vigente = pagos.plan_pago_vigente(ident.uid)
-    if vigente is None:
-        raise HTTPException(409, translate("api_error_no_tienes_suscripcion_que_cambiar"))
-    suscripcion, actual = vigente
-    if actual == body.producto:
-        raise HTTPException(409, translate("api_error_ya_tienes_este_plan"))
-    variante = _variante_de(body.producto)
-    if not variante or not settings.lemon_api_key:
-        raise HTTPException(503, "Los pagos todavía no están activos.")
-
-    try:
-        r = httpx.patch(
-            f"{_LEMON_URL}/subscriptions/{suscripcion}", headers=_cabeceras_lemon(),
-            json={"data": {"type": "subscriptions", "id": suscripcion, "attributes": {
-                "variant_id": int(variante), "invoice_immediately": True}}},
-            timeout=15)
-    except httpx.HTTPError as e:
-        raise HTTPException(502, "No se pudo cambiar el plan. Prueba en un momento.") from e
-    if r.status_code >= 300:
-        logger.error("Lemon cambio de plan respondió %s para %s", r.status_code, body.producto)
-        raise HTTPException(502, "No se pudo cambiar el plan. Prueba en un momento.")
-    logger.info("Cambio de plan pedido a Lemon: %s", body.producto)
-    return CambioOut(estado="pedido")
-
-
 class SuscripcionOut(BaseModel):
     estado: Literal["activa", "cancelada", "atrasada", "impagada", "pausada", "caducada"]
     producto: str | None
@@ -158,8 +114,8 @@ class SuscripcionOut(BaseModel):
     tarjeta_url: str | None
 
 
-def _suscripcion_usuario(ident: Identidad, limite: acceso.LimiteFrecuencia) -> str:
-    if not limite.permitido(ident.uid):
+def _suscripcion_usuario(ident: Identidad) -> str:
+    if not _LIMITE_LECTURA.permitido(ident.uid):
         raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
     vigente = pagos.plan_pago_vigente(ident.uid)
     if vigente is None:
@@ -171,7 +127,7 @@ def _suscripcion_usuario(ident: Identidad, limite: acceso.LimiteFrecuencia) -> s
 
 @router.get("/liga/pagos/lemon/suscripcion", response_model=SuscripcionOut)
 def leer_suscripcion(ident: Identidad = Depends(require_usuario)) -> SuscripcionOut:
-    suscripcion = _suscripcion_usuario(ident, _LIMITE_LECTURA)
+    suscripcion = _suscripcion_usuario(ident)
     try:
         r = httpx.get(f"{_LEMON_URL}/subscriptions/{suscripcion}",
                       headers=_cabeceras_lemon(), timeout=15)
@@ -192,36 +148,6 @@ def leer_suscripcion(ident: Identidad = Depends(require_usuario)) -> Suscripcion
             tarjeta_url=urls.get("update_payment_method") or None)
     except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as e:
         raise HTTPException(502, "No se pudo leer la suscripción. Prueba en un momento.") from e
-
-
-@router.post("/liga/pagos/lemon/cancelar", response_model=CambioOut)
-def cancelar_suscripcion(ident: Identidad = Depends(require_usuario)) -> CambioOut:
-    suscripcion = _suscripcion_usuario(ident, _LIMITE_CANCELAR)
-    try:
-        r = httpx.delete(f"{_LEMON_URL}/subscriptions/{suscripcion}",
-                         headers=_cabeceras_lemon(), timeout=15)
-    except httpx.HTTPError as e:
-        raise HTTPException(502, "No se pudo cancelar la suscripción. Prueba en un momento.") from e
-    if r.status_code >= 300:
-        raise HTTPException(502, "No se pudo cancelar la suscripción. Prueba en un momento.")
-    return CambioOut(estado="pedido")
-
-
-@router.post("/liga/pagos/lemon/reanudar", response_model=CambioOut)
-def reanudar_suscripcion(ident: Identidad = Depends(require_usuario)) -> CambioOut:
-    suscripcion = _suscripcion_usuario(ident, _LIMITE_REANUDAR)
-    try:
-        r = httpx.patch(f"{_LEMON_URL}/subscriptions/{suscripcion}",
-                        headers=_cabeceras_lemon(), timeout=15,
-                        json={"data": {"type": "subscriptions", "id": suscripcion,
-                                       "attributes": {"cancelled": False}}})
-    except httpx.HTTPError as e:
-        raise HTTPException(502, "No se pudo reanudar la suscripción. Prueba en un momento.") from e
-    if r.status_code in (400, 404, 409, 422):
-        raise HTTPException(409, "Esta suscripción ya no se puede reanudar.")
-    if r.status_code >= 300:
-        raise HTTPException(502, "No se pudo reanudar la suscripción. Prueba en un momento.")
-    return CambioOut(estado="pedido")
 
 
 def _mapa_variantes() -> dict[str, str]:
