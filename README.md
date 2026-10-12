@@ -113,7 +113,7 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
   Pro y crea una metodología independiente, editable por su nueva persona propietaria.
 - **Visitas a la cuenta.** Registra inicio y última actividad también con sesiones recuperadas,
   agrupando actividad con menos de 30 minutos de separación. El administrador puede consultar
-  totales e historial; la exportación personal incluye borradores, visitas y revisiones.
+  totales e historial; la exportación personal incluye borradores, visitas, revisiones y compras.
 - **La IA puntúa; la selección es aritmética.** Un LLM (Jev) pone cuatro notas cerradas a cada
   empresa del universo y, si la estrategia lo pide, contesta su pregunta propia; otro modelo
   traduce la frase a reglas y explica los resultados. A partir de esas notas, el orden, los
@@ -131,7 +131,9 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
   jornadas, contra el mismo S&P 500 y con los mismos puntos; la liga solo lee de las salas, nunca escribe en ellas ni toca
   la cartera personal.
 - **Ligas privadas, copiar estrategias y créditos de IA** prepago para las llamadas que cuestan
-  dinero. Todavía sin pasarela de pago: los concede el administrador.
+  dinero. El plan Pro y el pase de liga se cobran con Lemon Squeezy, que actúa como vendedor: la
+  cuenta muestra el estado de la suscripción y enlaza a su portal. La pasarela sigue en modo de
+  prueba hasta el lanzamiento; el administrador también puede conceder Pro.
 - **Cada petición es su usuario en Postgres.** Seguridad a nivel de fila con políticas por rol
   probadas con una identidad real, la API de datos de la base sin esquemas expuestos, y un tope de
   gasto mensual que apaga toda la IA de la liga si se alcanza.
@@ -203,6 +205,7 @@ sin tocar código.
 | Memoria   | pgvector + fastembed (embeddings locales, sin coste)         |
 | Bróker    | IBKR Web API (OAuth 1.0a headless, `ibind`)                  |
 | Cuentas   | Supabase Auth (JWT verificado por JWKS, TOTP) · RLS por rol   |
+| Pagos     | Lemon Squeezy (Pro y pase de liga; cobro, facturas y tarjeta los gestiona Lemon) |
 | Calendario | `exchange_calendars` (NYSE) para las jornadas               |
 | Scheduler | APScheduler                                                  |
 | DB        | Postgres (Supabase) en producción; SQLite por defecto en local |
@@ -253,8 +256,8 @@ npm run dev
 - Las salas de administración solo abren con una cuenta con rol de administrador y segundo
   factor; no hay contraseña compartida.
 - Las cuentas de Vennett entran con contraseña, con Google o con un enlace al correo. La
-  recuperación de contraseña también llega por correo, y las cuentas nuevas aceptan los términos
-  antes de seguir.
+  recuperación de contraseña también llega por correo. Quien no ha aceptado la versión vigente de
+  los términos la acepta antes de seguir o pagar.
 - Nada se ejecuta en la cuenta real sin una aprobación explícita del usuario por cada orden.
 - `DRY_RUN` activo por defecto: las aprobaciones se registran, pero no se envían órdenes.
 - Las órdenes son a límite, nunca a mercado.
@@ -270,4 +273,4 @@ no otorga ningún permiso de uso, copia o distribución.
 
 La interfaz incluye español e inglés, detección del idioma del navegador y selección con banderas. La preferencia de cuenta se guarda en `liga.perfiles_privados.idioma`; preparar esta columna y sus permisos antes de desplegar. Los catálogos se comprueban con `npm run check:i18n` desde frontend.
 
-El registro MVP usa correo, usuario y contraseña, sin correos de confirmación, recuperación ni Google. Supabase Auth debe tener Email/password activo y Confirm email desactivado. El trigger de alta debe reservar el alias y registrar consentimientos también para usuarios que llegan confirmados; el registro se abre con el ajuste existente `liga.registro.abierto`. El segundo factor de cuentas existentes se conserva. La preparación y validación de producción se hacen por separado, preservando datos; el esquema CI no se aplica a producción.
+El registro usa correo y contraseña, con confirmación por correo, o una cuenta de Google. Quien entra con Google elige su alias después, en la pantalla de completar la cuenta. Los términos se aceptan en una versión concreta: cuando cambian, quien aceptó una versión anterior la vuelve a aceptar antes de seguir o pagar. Las altas se abren con el ajuste `liga.registro.abierto`. Los cambios de base de datos van en `backend/sql/liga/` y se aplican primero en Supabase; el volcado del CI (`backend/tests/esquema_ci.sql`) se regenera desde la base de pruebas. El segundo factor de las cuentas existentes se conserva.
