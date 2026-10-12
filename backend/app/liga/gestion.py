@@ -411,10 +411,9 @@ def quitar_plan_pro(usuario_id: str, actor: str) -> None:
 
 
 def fijar_pase_liga(usuario_id: str, hasta: datetime | None, actor: str) -> None:
+    """Cada pase vigente suma una liga: un segundo pase no se rechaza, se suma."""
     db = fabrica_sistema()
     try:
-        if hay_derecho_vigente(db, usuario_id, "pases_liga"):
-            raise DerechoYaVigente("api_error_admin_pase_ya_activo")
         db.execute(text(
             "insert into liga.pases_liga (usuario_id, hasta, origen, concedido_por) "
             "values (cast(:u as uuid), :h, 'admin', cast(:a as uuid))"),

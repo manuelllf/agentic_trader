@@ -159,3 +159,68 @@ def test_checkout_pide_a_lemon_el_modo_del_servidor(monkeypatch, modo, esperado)
     assert r.status_code == 200
     assert enviado["attributes"]["test_mode"] is esperado
     assert enviado["relationships"]["variant"]["data"]["id"] == "2228229"
+
+
+def test_pack_liga_no_se_bloquea_por_tener_pase():
+    assert pagos.clave_si_ya_tiene(USUARIO, "pack_liga") is None
+
+
+def test_cambiar_plan_sin_pro_de_lemon_responde_409(monkeypatch):  # noqa: ANN001
+    from app.liga import pagos as pagos_mod
+
+    monkeypatch.setattr(pagos_mod, "plan_pago_vigente", lambda uid: None)
+    cliente = _cliente_con_sesion(monkeypatch)
+    r = cliente.post("/liga/pagos/lemon/cambiar-plan", json={"producto": "temporada"})
+    assert r.status_code == 409
+    assert r.json()["detail"] == "No tienes una suscripción de Lemon que cambiar."
+
+
+def test_cambiar_al_mismo_plan_responde_409(monkeypatch):  # noqa: ANN001
+    from app.liga import pagos as pagos_mod
+
+    monkeypatch.setattr(pagos_mod, "plan_pago_vigente", lambda uid: ("sub-1", "temporada"))
+    cliente = _cliente_con_sesion(monkeypatch)
+    r = cliente.post("/liga/pagos/lemon/cambiar-plan", json={"producto": "temporada"})
+    assert r.status_code == 409
+    assert r.json()["detail"] == "Ya tienes este plan."
+
+
+def test_cambiar_plan_pide_a_lemon_la_nueva_variante(monkeypatch):  # noqa: ANN001
+    from app.liga import pagos as pagos_mod
+    from app.liga import rutas_pagos
+
+    enviado = {}
+
+    def fingir(url, **kwargs):  # noqa: ANN001, ANN202
+        enviado["url"] = url
+        enviado["json"] = kwargs["json"]
+        return _Respuesta()
+
+    monkeypatch.setattr(pagos_mod, "plan_pago_vigente", lambda uid: ("sub-1", "mensual"))
+    monkeypatch.setattr(settings, "lemon_api_key", "clave-de-prueba")
+    monkeypatch.setattr(settings, "lemon_variantes", {"2228230": "temporada"})
+    monkeypatch.setattr(rutas_pagos.httpx, "patch", fingir)
+    cliente = _cliente_con_sesion(monkeypatch)
+    r = cliente.post("/liga/pagos/lemon/cambiar-plan", json={"producto": "temporada"})
+    assert r.status_code == 200 and r.json() == {"estado": "pedido"}
+    assert enviado["url"] == "https://api.lemonsqueezy.com/v1/subscriptions/sub-1"
+    assert enviado["json"]["data"]["attributes"] == {"variant_id": 2228230,
+                                                     "invoice_immediately": True}
+
+
+def test_cambiar_plan_si_lemon_no_responde_da_502(monkeypatch):  # noqa: ANN001
+    import httpx
+
+    from app.liga import pagos as pagos_mod
+    from app.liga import rutas_pagos
+
+    def caer(url, **kwargs):  # noqa: ANN001, ANN202
+        raise httpx.ConnectError("sin red")
+
+    monkeypatch.setattr(pagos_mod, "plan_pago_vigente", lambda uid: ("sub-1", "mensual"))
+    monkeypatch.setattr(settings, "lemon_api_key", "clave-de-prueba")
+    monkeypatch.setattr(settings, "lemon_variantes", {"2228230": "temporada"})
+    monkeypatch.setattr(rutas_pagos.httpx, "patch", caer)
+    cliente = _cliente_con_sesion(monkeypatch)
+    r = cliente.post("/liga/pagos/lemon/cambiar-plan", json={"producto": "temporada"})
+    assert r.status_code == 502

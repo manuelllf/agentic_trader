@@ -276,8 +276,6 @@ def dar_pase_liga(id: uuid.UUID, body: PlanIn, ident: Identidad = Depends(requir
                   db: Session = Depends(db_usuario)) -> UsuarioDetalleOut:
     try:
         gestion.fijar_pase_liga(str(id), body.hasta, ident.uid)
-    except gestion.DerechoYaVigente as e:
-        raise HTTPException(409, translate(e.clave)) from e
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
     return ver_usuario(id, db)

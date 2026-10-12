@@ -98,6 +98,51 @@ def checkout(body: CheckoutIn, ident: Identidad = Depends(require_usuario)) -> C
     return CheckoutOut(url=url)
 
 
+class CambioIn(BaseModel):
+    producto: Literal["mensual", "media_temporada", "temporada"]
+
+
+class CambioOut(BaseModel):
+    estado: str
+
+
+_LIMITE_CAMBIO = acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10)
+
+
+@router.post("/liga/pagos/lemon/cambiar-plan", response_model=CambioOut)
+def cambiar_plan(body: CambioIn, ident: Identidad = Depends(require_usuario)) -> CambioOut:
+    """Pasa la suscripción de Pro a otra duración en Lemon, con el prorrateo de siempre y el cobro
+    de la diferencia ahora. El Pro lo confirma el webhook de la suscripción, no esta respuesta."""
+    if not _LIMITE_CAMBIO.permitido(ident.uid):
+        raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
+    vigente = pagos.plan_pago_vigente(ident.uid)
+    if vigente is None:
+        raise HTTPException(409, translate("api_error_no_tienes_suscripcion_que_cambiar"))
+    suscripcion, actual = vigente
+    if actual == body.producto:
+        raise HTTPException(409, translate("api_error_ya_tienes_este_plan"))
+    variante = _variante_de(body.producto)
+    if not variante or not settings.lemon_api_key:
+        raise HTTPException(503, "Los pagos todavía no están activos.")
+
+    try:
+        r = httpx.patch(
+            f"https://api.lemonsqueezy.com/v1/subscriptions/{suscripcion}",
+            headers={"Authorization": f"Bearer {settings.lemon_api_key}",
+                     "Accept": "application/vnd.api+json",
+                     "Content-Type": "application/vnd.api+json"},
+            json={"data": {"type": "subscriptions", "id": suscripcion, "attributes": {
+                "variant_id": int(variante), "invoice_immediately": True}}},
+            timeout=15)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, "No se pudo cambiar el plan. Prueba en un momento.") from e
+    if r.status_code >= 300:
+        logger.error("Lemon cambio de plan respondió %s para %s", r.status_code, body.producto)
+        raise HTTPException(502, "No se pudo cambiar el plan. Prueba en un momento.")
+    logger.info("Cambio de plan pedido a Lemon: %s", body.producto)
+    return CambioOut(estado="pedido")
+
+
 def _mapa_variantes() -> dict[str, str]:
     """Id de variante de Lemon → producto de la liga, desde la configuración."""
     return {str(k): v for k, v in settings.lemon_variantes.items() if v in PRODUCTOS}

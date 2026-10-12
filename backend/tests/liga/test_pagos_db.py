@@ -14,15 +14,16 @@ from app.liga.pagos_lemon import interpretar
 
 URL = os.environ.get("LIGA_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DATABASE_URL)")
-MAPA = {"111": "mensual", "444": "pack_liga"}
+MAPA = {"111": "mensual", "222": "temporada", "444": "pack_liga"}
 
 
-def _evento(uid: str, nombre: str, actualizado: str, variante: int = 111, **extra) -> bytes:
+def _evento(uid: str, nombre: str, actualizado: str, variante: int = 111,
+            compra: str = "5001", **extra) -> bytes:
     attrs = {"variant_id": variante, "status": "active", "updated_at": actualizado}
     attrs.update(extra)
     return json.dumps({
         "meta": {"event_name": nombre, "test_mode": True, "custom_data": {"user_id": uid}},
-        "data": {"id": "5001", "type": "subscriptions", "attributes": attrs},
+        "data": {"id": compra, "type": "subscriptions", "attributes": attrs},
     }).encode()
 
 
@@ -96,6 +97,32 @@ def test_pack_liga_da_pase_de_pago(usuario):  # noqa: ANN001
                      created_at="2026-10-10T10:00:00.000000Z")
     assert _aplicar(cuerpo) == "aplicado"
     assert _cuenta(usuario, "select count(*) from liga.pases_liga "
+                            "where usuario_id = %s and origen = 'pago'") == 1
+
+
+def test_dos_packs_dan_dos_pases_de_pago(usuario):  # noqa: ANN001
+    for pedido in ("pedido-1", "pedido-2"):
+        cuerpo = _evento(usuario, "order_created", "2026-10-10T10:00:00.000000Z", variante=444,
+                         compra=pedido, created_at="2026-10-10T10:00:00.000000Z")
+        assert _aplicar(cuerpo) == "aplicado"
+    assert _cuenta(usuario, "select count(*) from liga.pases_liga "
+                            "where usuario_id = %s and origen = 'pago'") == 2
+
+
+def test_cambio_de_variante_actualiza_el_producto_y_sigue_siendo_un_solo_pro(usuario):  # noqa: ANN001
+    import psycopg
+
+    alta = _evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
+                   renews_at="2026-11-10T00:00:00.000000Z")
+    cambio = _evento(usuario, "subscription_updated", "2026-10-11T10:00:00.000000Z", variante=222,
+                     renews_at="2027-04-10T00:00:00.000000Z")
+    assert _aplicar(alta) == "aplicado"
+    assert _aplicar(cambio) == "aplicado"
+    with psycopg.connect(URL, autocommit=True) as cx:
+        producto = cx.execute("select producto from liga.compras_pago "
+                              "where usuario_id = %s", (usuario,)).fetchone()[0]
+    assert producto == "temporada"
+    assert _cuenta(usuario, "select count(*) from liga.planes_usuario "
                             "where usuario_id = %s and origen = 'pago'") == 1
 
 

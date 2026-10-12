@@ -627,12 +627,30 @@ def test_quitar_pro_del_admin_no_corta_el_pagado(api) -> None:  # noqa: ANN001
     assert concedido == 0
 
 
-def test_pase_de_liga_duplicado_se_rechaza(api) -> None:  # noqa: ANN001
+def test_dos_pases_suman_dos_ligas(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, _cx = api
-    admin = usuario(rol="admin")
+    admin, jugador = usuario(rol="admin"), usuario()
+    a2, cuenta = cab(admin, aal="aal2"), cab(jugador)
+
+    def crear(nombre):  # noqa: ANN001, ANN202
+        return cliente.post("/liga/ligas", json={"nombre": nombre}, headers=cuenta).status_code
+
+    for _ in range(2):
+        r = cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None}, headers=a2)
+        assert r.status_code == 200, r.text
+    assert [crear("Primera"), crear("Segunda"), crear("Tercera")] == [201, 201, 403]
+
+
+def test_yo_dice_la_duracion_del_pro_que_cobra_lemon(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, cx = api
     jugador = usuario()
-    a2 = cab(admin, aal="aal2")
-    assert cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None},
-                        headers=a2).status_code == 200
-    r = cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None}, headers=a2)
-    assert r.status_code == 409, r.text
+    cuenta = cab(jugador)
+    assert cliente.get("/liga/yo", headers=cuenta).json()["plan_pago"] is None
+    suscripcion = f"sub-{jugador.replace('-', '')[:12]}"
+    cx.execute("insert into liga.compras_pago (lemon_id, usuario_id, producto, estado, "
+               "actualizado_lemon) values (%s, %s, 'temporada', 'active', now())",
+               (suscripcion, jugador))
+    cx.execute("insert into liga.planes_usuario (usuario_id, plan, hasta, origen, compra_lemon_id) "
+               "values (%s, 'pro', now() + interval '30 days', 'pago', %s)", (jugador, suscripcion))
+    yo = cliente.get("/liga/yo", headers=cuenta).json()
+    assert yo["plan_pago"] == "temporada" and yo["plan_pago_hasta"] is not None

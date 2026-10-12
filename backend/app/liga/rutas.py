@@ -3,6 +3,7 @@ Las respuestas son esquemas propios por público, nunca objetos ORM."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -53,6 +54,10 @@ class Yo(BaseModel):
     plan: Literal["gratis", "pro"]
     puede_crear_liga: bool   # Pro o pase de liga; unirse a una liga no lo pide
     pase_liga: bool = False  # solo el pase, no Pro: la insignia los distingue
+    # Duración del Pro que cobra Lemon («mensual», «media_temporada», «temporada»); nulo si no hay
+    # Pro de Lemon (sin Pro, o concedido por el admin).
+    plan_pago: str | None = None
+    plan_pago_hasta: datetime | None = None  # la próxima renovación de ese Pro
     roles: list[str]
     admin: bool   # enseña el «Panel de control»; entrar en las salas pide además el 2FA
     aal2: bool
@@ -137,6 +142,15 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
                exists (select 1 from liga.pases_liga pa
                        where pa.usuario_id = p.id and pa.desde <= now()
                          and (pa.hasta is null or pa.hasta > now())) as pase_liga,
+               (select cp.producto from liga.planes_usuario pu
+                  join liga.compras_pago cp on cp.lemon_id = pu.compra_lemon_id
+                 where pu.usuario_id = p.id and pu.plan = 'pro' and pu.origen = 'pago'
+                   and pu.desde <= now() and (pu.hasta is null or pu.hasta > now())
+                 order by pu.desde desc limit 1) as plan_pago,
+               (select pu.hasta from liga.planes_usuario pu
+                 where pu.usuario_id = p.id and pu.plan = 'pro' and pu.origen = 'pago'
+                   and pu.desde <= now() and (pu.hasta is null or pu.hasta > now())
+                 order by pu.desde desc limit 1) as plan_pago_hasta,
                liga.authorize('admin.salas') as admin,
                liga.aal2() as aal2, privado.idioma,
                liga.cuenta_pendiente() as pendiente,
@@ -150,8 +164,9 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
         raise HTTPException(404, "No encontramos tu perfil.")
     return Yo(alias=fila.alias, plan="pro" if fila.pro else "gratis",
               puede_crear_liga=fila.puede_crear_liga, pase_liga=fila.pase_liga,
-              roles=list(fila.roles), admin=fila.admin, aal2=fila.aal2, idioma=fila.idioma,
-              pendiente=fila.pendiente)
+              plan_pago=fila.plan_pago, plan_pago_hasta=fila.plan_pago_hasta,
+              roles=list(fila.roles), admin=fila.admin, aal2=fila.aal2,
+              idioma=fila.idioma, pendiente=fila.pendiente)
 
 
 @router.post("/yo/terminos", response_model=Yo)

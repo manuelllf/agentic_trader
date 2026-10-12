@@ -74,6 +74,7 @@ def _aplicar(db, accion: Accion, evento: str) -> None:  # noqa: ANN001
             "insert into liga.compras_pago (lemon_id, usuario_id, producto, estado, "
             "actualizado_lemon) values (:l, cast(:u as uuid), :p, :e, :a) "
             "on conflict (lemon_id) do update set estado = excluded.estado, "
+            "producto = excluded.producto, "
             "actualizado_lemon = excluded.actualizado_lemon, actualizado_local = now()"),
             {"l": accion.lemon_id, "u": accion.usuario_id, "p": accion.producto,
              "e": evento, "a": accion.actualizado_en})
@@ -123,14 +124,30 @@ def _cortar(db, tabla: str, accion: Accion) -> None:  # noqa: ANN001
 
 
 def clave_si_ya_tiene(usuario_id: str, producto: str) -> str | None:
-    """Motivo para no abrir otro pago: un Pro vigente de cualquier origen (pagado o concedido por el
-    admin) o un pase vigente. Devuelve la clave del texto de la API, o None si puede comprar."""
+    """Motivo para no abrir otro pago de Pro: ya hay un Pro vigente de cualquier origen (pagado o
+    concedido por el admin). Los pases se suman, así que nunca bloquean. Devuelve la clave del
+    texto de la API, o None si puede comprar."""
+    if producto == "pack_liga":
+        return None
     db = fabrica_sistema()
     try:
-        if producto == "pack_liga":
-            vigente = hay_derecho_vigente(db, usuario_id, "pases_liga")
-            return "api_error_pase_ya_activo" if vigente else None
         vigente = hay_derecho_vigente(db, usuario_id, "planes_usuario", "and plan = 'pro'")
         return "api_error_pro_ya_activo" if vigente else None
     finally:
         db.close()
+
+
+def plan_pago_vigente(usuario_id: str) -> tuple[str, str] | None:
+    """La suscripción de Lemon que da el Pro vigente y su producto. None si el Pro no viene de
+    Lemon (lo concedió el admin) o no hay Pro."""
+    db = fabrica_sistema()
+    try:
+        fila = db.execute(text(
+            "select pu.compra_lemon_id, cp.producto from liga.planes_usuario pu "
+            "join liga.compras_pago cp on cp.lemon_id = pu.compra_lemon_id "
+            "where pu.usuario_id = cast(:u as uuid) and pu.plan = 'pro' and pu.origen = 'pago' "
+            "and pu.desde <= now() and (pu.hasta is null or pu.hasta > now()) "
+            "order by pu.desde desc limit 1"), {"u": usuario_id}).first()
+    finally:
+        db.close()
+    return (fila.compra_lemon_id, fila.producto) if fila else None
