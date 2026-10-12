@@ -38,6 +38,12 @@ def registrar(cuerpo: bytes, accion: Accion, evento: str) -> str:
             log = logger.warning if accion.motivo == "disputa" else logger.info
             log("Webhook de Lemon ignorado: %s (%s, %s)", accion.motivo, evento,
                 accion.lemon_id)
+        elif accion.usuario_id and db.execute(text(
+            "select id from auth.users where id = cast(:u as uuid) for key share"),
+            {"u": accion.usuario_id}).first() is None:
+            estado = "ignorado"
+            logger.info("Webhook de Lemon ignorado: usuario borrado (%s, %s)",
+                        evento, accion.lemon_id)
         elif not _es_mas_reciente(db, accion):
             estado = "obsoleto"
             logger.info("Webhook de Lemon obsoleto (%s, %s)", evento, accion.lemon_id)
@@ -134,6 +140,17 @@ def clave_si_ya_tiene(usuario_id: str, producto: str) -> str | None:
     try:
         vigente = hay_derecho_vigente(db, usuario_id, "planes_usuario", "and plan = 'pro'")
         return "api_error_pro_ya_activo" if vigente else None
+    finally:
+        db.close()
+
+
+def suscripciones_de_usuario(usuario_id: str) -> list[str]:
+    db = fabrica_sistema()
+    try:
+        return list(db.execute(text(
+            "select lemon_id from liga.compras_pago where usuario_id = cast(:u as uuid) "
+            "and producto in ('mensual', 'media_temporada', 'temporada') "
+            "order by lemon_id"), {"u": usuario_id}).scalars().all())
     finally:
         db.close()
 

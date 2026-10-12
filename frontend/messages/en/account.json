@@ -72,5 +72,5 @@
   "account_plan_gratis_sub": "Choose a plan to create leagues",
   "account_plan_hasta": "Valid until {fecha}",
   "account_plan_concedido": "Granted by Vennett",
-  "account_baja_cancela_antes": "Before deleting it, cancel your subscription from “Plan” so Lemon stops charging you."
+  "account_baja_cancela_suscripcion": "Deleting your account cancels your subscription, and you won't be charged again."
 }

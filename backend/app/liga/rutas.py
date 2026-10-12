@@ -18,7 +18,9 @@ from app.liga import (
     borradores,
     cuenta,
     gestion,
+    lemon_suscripciones,
     limites,
+    pagos,
     preview_seleccion,
     registro,
     rutas_avisos,
@@ -229,5 +231,10 @@ def borrar_cuenta(body: BajaIn, ident: Identidad = Depends(require_usuario),
         raise HTTPException(409, "Como administrador no puedes darte de baja tú mismo.")
     if body.confirmacion.strip().lower() not in _PALABRAS_BAJA:
         raise HTTPException(422, translate("api_error_baja_confirmacion"))
+    try:
+        lemon_suscripciones.cancelar_suscripciones(pagos.suscripciones_de_usuario(ident.uid))
+    except lemon_suscripciones.CancelacionFallida as e:
+        raise HTTPException(502, translate(
+            "api_error_no_se_pudo_cancelar_tu_suscripcion")) from e
     cuenta.borrar_cuenta(ident.uid)
     return Response(status_code=204)

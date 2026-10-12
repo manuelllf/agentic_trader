@@ -72,5 +72,5 @@
   "account_plan_gratis_sub": "Elige un plan para crear ligas",
   "account_plan_hasta": "Vigente hasta el {fecha}",
   "account_plan_concedido": "Concedido por Vennett",
-  "account_baja_cancela_antes": "Antes de borrarla, cancela tu suscripción desde «Plan» para que Lemon deje de cobrarte."
+  "account_baja_cancela_suscripcion": "Al borrar tu cuenta se cancela tu suscripción y no se te volverá a cobrar."
 }

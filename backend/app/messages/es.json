@@ -348,5 +348,6 @@
   "api_error_admin_pro_ya_activo": "El usuario ya tiene Pro activo.",
   "api_error_pro_ya_activo": "Ya tienes Pro activo.",
   "api_error_no_tienes_suscripcion_que_cambiar": "No tienes una suscripción de Lemon que cambiar.",
-  "api_error_no_se_pudo_leer_la_suscripcion": "No se pudo leer la suscripción. Prueba en un momento."
+  "api_error_no_se_pudo_leer_la_suscripcion": "No se pudo leer la suscripción. Prueba en un momento.",
+  "api_error_no_se_pudo_cancelar_tu_suscripcion": "No hemos podido cancelar tu suscripción, así que no hemos borrado la cuenta. Prueba en un momento."
 }

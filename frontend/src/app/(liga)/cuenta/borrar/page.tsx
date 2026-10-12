@@ -32,7 +32,7 @@ export default function BorrarCuenta() {
   return <MarcoCuenta titulo={t("account_borrar_cuenta")}>
     <form className="form" onSubmit={darDeBaja}>
       <p className="nota">{t("account_ayuda_baja")}</p>
-      {yo?.plan_pago && <p className="nota">{t("account_baja_cancela_antes")}</p>}
+      {yo?.plan_pago && <p className="nota">{t("account_baja_cancela_suscripcion")}</p>}
       <label className="campo">
         <span className="lbl">{t("account_confirmar_baja", { palabra: t("account_palabra_baja") })}</span>
         <input className="inp" value={confirmacion} autoCapitalize="characters" autoCorrect="off"

@@ -17,6 +17,7 @@ from app.config import settings
 from app.i18n import translate
 from app.liga import acceso, pagos
 from app.liga.auth import Identidad, require_usuario
+from app.liga.lemon_suscripciones import LEMON_URL, cabeceras_lemon
 from app.liga.pagos_lemon import PRODUCTOS, interpretar, verificar_firma
 
 logger = logging.getLogger(__name__)
@@ -24,13 +25,7 @@ router = APIRouter(tags=["liga-pagos"])
 
 _LIMITE_CHECKOUT = acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10)
 _TAMANO_MAXIMO = 64 * 1024
-_LEMON_URL = "https://api.lemonsqueezy.com/v1"
 _LIMITE_LECTURA = acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10)
-
-
-def _cabeceras_lemon() -> dict[str, str]:
-    return {"Authorization": f"Bearer {settings.lemon_api_key}",
-            "Accept": "application/vnd.api+json", "Content-Type": "application/vnd.api+json"}
 
 
 class CheckoutIn(BaseModel):
@@ -87,7 +82,7 @@ def checkout(body: CheckoutIn, ident: Identidad = Depends(require_usuario)) -> C
     }}
     try:
         r = httpx.post(
-            f"{_LEMON_URL}/checkouts", headers=_cabeceras_lemon(),
+            f"{LEMON_URL}/checkouts", headers=cabeceras_lemon(),
             json=payload, timeout=15)
     except httpx.HTTPError as e:
         raise HTTPException(502, "No se pudo abrir el pago. Prueba en un momento.") from e
@@ -129,8 +124,8 @@ def _suscripcion_usuario(ident: Identidad) -> str:
 def leer_suscripcion(ident: Identidad = Depends(require_usuario)) -> SuscripcionOut:
     suscripcion = _suscripcion_usuario(ident)
     try:
-        r = httpx.get(f"{_LEMON_URL}/subscriptions/{suscripcion}",
-                      headers=_cabeceras_lemon(), timeout=15)
+        r = httpx.get(f"{LEMON_URL}/subscriptions/{suscripcion}",
+                      headers=cabeceras_lemon(), timeout=15)
         if r.status_code >= 300:
             raise HTTPException(502, "No se pudo leer la suscripción. Prueba en un momento.")
         attrs = r.json()["data"]["attributes"]

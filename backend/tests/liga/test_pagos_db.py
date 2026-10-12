@@ -71,6 +71,27 @@ def test_alta_da_pro_de_pago_y_guarda_la_compra(usuario):  # noqa: ANN001
                             "where usuario_id = %s and producto = 'mensual'") == 1
 
 
+def test_evento_de_usuario_borrado_se_ignora(usuario, caplog) -> None:  # noqa: ANN001
+    import psycopg
+
+    compra = f"borrado-{uuid.uuid4()}"
+    assert _aplicar(_evento(
+        usuario, "subscription_created", "2026-10-10T10:00:00.000000Z", compra=compra,
+        renews_at="2026-11-10T00:00:00.000000Z")) == "aplicado"
+    with psycopg.connect(URL, autocommit=True) as cx:
+        cx.execute("delete from auth.users where id = %s", (usuario,))
+    cuerpo = _evento(usuario, "subscription_cancelled", "2026-10-11T10:00:00.000000Z",
+                     compra=compra, status="cancelled")
+    with caplog.at_level("INFO", logger=pagos.__name__):
+        assert _aplicar(cuerpo) == "ignorado"
+    assert "usuario borrado" in caplog.text
+    assert _cuenta(usuario, "select count(*) from liga.compras_pago where usuario_id = %s") == 0
+    with psycopg.connect(URL, autocommit=True) as cx:
+        assert cx.execute("select estado from liga.eventos_pago where clave = %s",
+                          (pagos.clave_idempotencia(cuerpo),)).fetchone()[0] == "ignorado"
+    assert _aplicar(cuerpo) == "duplicado"
+
+
 def test_reenvio_del_mismo_evento_no_se_aplica_dos_veces(usuario):  # noqa: ANN001
     cuerpo = _evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
                      renews_at="2026-11-10T00:00:00.000000Z")

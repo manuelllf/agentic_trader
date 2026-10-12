@@ -54,6 +54,10 @@ def exportar(db: Session) -> dict:
         select documento, version, aceptado from liga.consentimientos
         where usuario_id = (select auth.uid()) order by aceptado
     """)).all()
+    compras = db.execute(text("""
+        select lemon_id, producto, estado, actualizado_lemon from liga.compras_pago
+        where usuario_id = (select auth.uid()) order by lemon_id
+    """)).all()
     estrategias = db.execute(text("""
         select id::text as id, nombre, forma, dibujo, color1, color2, iniciales, visibilidad,
                declara_posiciones, destacable, estado, cada_dia_1, receta_id, opta_premio,
@@ -128,6 +132,7 @@ def exportar(db: Session) -> dict:
         "roles": _filas(roles),
         "planes": _filas(planes),
         "pases_liga": _filas(pases),
+        "compras": _filas(compras),
         "consentimientos": _filas(consentimientos),
         "estrategias": _filas(estrategias),
         "recetas": _filas(recetas),

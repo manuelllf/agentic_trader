@@ -113,7 +113,7 @@ describe("Borrar", () => {
   it.each([null, "mensual"] as const)("nota de cancelación con plan_pago=%s", async plan => {
     mocks.yo.plan_pago = plan;
     const el = await montar(Borrar);
-    expect(el.textContent?.includes("Antes de borrarla, cancela tu suscripción desde «Plan» para que Lemon deje de cobrarte."))
+    expect(el.textContent?.includes("Al borrar tu cuenta se cancela tu suscripción y no se te volverá a cobrar."))
       .toBe(plan !== null);
   });
   it("conserva la confirmación y muestra el fallo sin cerrar sesión", async () => {

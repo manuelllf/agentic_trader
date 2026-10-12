@@ -174,6 +174,11 @@ def test_exportar_solo_trae_lo_propio(api) -> None:  # noqa: ANN001
     visita_a, visita_b = uuid.uuid4(), uuid.uuid4()
     cx.execute("insert into liga.visitas (usuario_id, session_id) values (%s, %s), (%s, %s)",
                (a, visita_a, b, visita_b))
+    compras = [f"export-{uuid.uuid4()}", f"export-{uuid.uuid4()}"]
+    for uid, compra in zip((a, b), compras, strict=True):
+        cx.execute("insert into liga.compras_pago "
+                   "(lemon_id, usuario_id, producto, estado, actualizado_lemon) "
+                   "values (%s, %s, 'mensual', 'subscription_created', now())", (compra, uid))
 
     r = cliente.get("/liga/yo/exportar", headers=cab(a))
     assert r.status_code == 200, r.text
@@ -188,13 +193,105 @@ def test_exportar_solo_trae_lo_propio(api) -> None:  # noqa: ANN001
     assert [v["estrategia_id"] for v in cuerpo["revisiones_estrategia"]] == [eid_a]
     assert len(cuerpo["visitas"]) == 1
     assert set(cuerpo["visitas"][0]) == {"inicio", "ultima_actividad"}
+    assert [c["lemon_id"] for c in cuerpo["compras"]] == [compras[0]]
+    assert set(cuerpo["compras"][0]) == {
+        "lemon_id", "producto", "estado", "actualizado_lemon"}
+    assert cuerpo["compras"][0]["producto"] == "mensual"
+    assert cuerpo["compras"][0]["estado"] == "subscription_created"
+    assert cuerpo["compras"][0]["actualizado_lemon"] is not None
 
     r_b = cliente.get("/liga/yo/exportar", headers=cab(b))
     ids_b = [e["id"] for e in r_b.json()["estrategias"]]
     assert eid_a not in ids_b
+    assert [c["lemon_id"] for c in r_b.json()["compras"]] == [compras[1]]
 
 
 # ---- baja: confirmación, admin y 503 sin clave -------------------------------------------------
+
+
+@pytest.mark.parametrize("producto", ["mensual", "media_temporada", "temporada"])
+def test_baja_cancela_antes_de_borrar(api, monkeypatch, producto: str) -> None:  # noqa: ANN001
+    from unittest.mock import Mock
+
+    import httpx
+
+    from app.liga import cuenta, lemon_suscripciones
+
+    cliente, cab, usuario, existe, borrar, llamadas, cx, _ = api
+    uid = usuario("baja_suscripcion")
+    compra = f"baja-{uuid.uuid4()}"
+    cx.execute("insert into liga.compras_pago "
+               "(lemon_id, usuario_id, producto, estado, actualizado_lemon) "
+               "values (%s, %s, %s, 'subscription_created', now())", (compra, uid, producto))
+    monkeypatch.setattr(lemon_suscripciones.settings, "lemon_api_key", "prueba")
+    get = Mock(return_value=httpx.Response(
+        200, json={"data": {"attributes": {"status": "active"}}}))
+    delete = Mock(return_value=httpx.Response(204))
+    monkeypatch.setattr(lemon_suscripciones.httpx, "get", get)
+    monkeypatch.setattr(lemon_suscripciones.httpx, "delete", delete)
+
+    def borrar_despues(ident: str) -> None:
+        delete.assert_called_once_with(
+            f"{lemon_suscripciones.LEMON_URL}/subscriptions/{compra}",
+            headers=lemon_suscripciones.cabeceras_lemon(), timeout=15)
+        assert existe(ident)
+        borrar(ident)
+
+    monkeypatch.setattr(cuenta, "borrar_cuenta", borrar_despues)
+    respuesta = _baja(cliente, cab, uid)
+    assert respuesta.status_code == 204, respuesta.text
+    assert not existe(uid)
+    assert llamadas == []
+
+
+def test_baja_si_cancelacion_falla_conserva_usuario(api, monkeypatch) -> None:  # noqa: ANN001
+    from unittest.mock import Mock
+
+    import httpx
+
+    from app.liga import cuenta, lemon_suscripciones
+
+    cliente, cab, usuario, existe, _, llamadas, cx, _ = api
+    uid = usuario("baja_fallo_lemon")
+    cx.execute("insert into liga.compras_pago "
+               "(lemon_id, usuario_id, producto, estado, actualizado_lemon) "
+               "values (%s, %s, 'mensual', 'subscription_created', now())",
+               (f"fallo-{uuid.uuid4()}", uid))
+    monkeypatch.setattr(lemon_suscripciones.settings, "lemon_api_key", "prueba")
+    monkeypatch.setattr(lemon_suscripciones.httpx, "get", Mock(return_value=httpx.Response(500)))
+    borrar = Mock()
+    monkeypatch.setattr(cuenta, "borrar_cuenta", borrar)
+    respuesta = _baja(cliente, cab, uid)
+    assert respuesta.status_code == 502, respuesta.text
+    assert existe(uid)
+    borrar.assert_not_called()
+    assert llamadas == []
+
+
+@pytest.mark.parametrize("con_pack", [False, True])
+def test_baja_sin_suscripciones_no_llama_a_lemon(api, monkeypatch, con_pack: bool) -> None:  # noqa: ANN001
+    from unittest.mock import Mock
+
+    from app.liga import cuenta, lemon_suscripciones
+
+    cliente, cab, usuario, _, _, llamadas, cx, _ = api
+    uid = usuario("baja_sin_suscripcion")
+    if con_pack:
+        cx.execute("insert into liga.compras_pago "
+                   "(lemon_id, usuario_id, producto, estado, actualizado_lemon) "
+                   "values (%s, %s, 'pack_liga', 'order_created', now())",
+                   (f"pack-{uuid.uuid4()}", uid))
+    get, delete, borrar = Mock(), Mock(), Mock()
+    monkeypatch.setattr(lemon_suscripciones.settings, "lemon_api_key", "")
+    monkeypatch.setattr(lemon_suscripciones.httpx, "get", get)
+    monkeypatch.setattr(lemon_suscripciones.httpx, "delete", delete)
+    monkeypatch.setattr(cuenta, "borrar_cuenta", borrar)
+    respuesta = _baja(cliente, cab, uid)
+    assert respuesta.status_code == 204, respuesta.text
+    borrar.assert_called_once_with(uid)
+    get.assert_not_called()
+    delete.assert_not_called()
+    assert llamadas == []
 
 
 def test_baja_con_confirmacion_equivocada_no_hace_nada(api) -> None:  # noqa: ANN001
