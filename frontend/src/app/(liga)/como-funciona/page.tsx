@@ -1,8 +1,12 @@
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { metadataCompartir } from "@/lib/sitio";
 import { Marca } from "../_ui/Marca";
 
-export async function generateMetadata() { const t = await getTranslations(); return { title: `${t("help_title")} — Vennett` }; }
+export async function generateMetadata() {
+  const [t, idioma] = await Promise.all([getTranslations(), getLocale()]);
+  return metadataCompartir({ titulo: `${t("help_title")} — Vennett`, descripcion: t("system_descripcion_compartir"), idioma, ruta: "/como-funciona" });
+}
 
 // Página pública de método: cómo entra cada empresa en una estrategia y qué pone la IA. Los números
 // del ejemplo son inventados y se rotulan como tal; el resto describe lo que hace el código

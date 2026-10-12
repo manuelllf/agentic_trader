@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
 import { Contacto, TITULAR } from "../datos";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { metadataCompartir } from "@/lib/sitio";
 
-export async function generateMetadata() { const t = await getTranslations(); return { title: `${t("legal_notice_title")} — Vennett` }; }
+export async function generateMetadata() {
+  const [t, idioma] = await Promise.all([getTranslations(), getLocale()]);
+  return metadataCompartir({ titulo: `${t("legal_notice_title")} — Vennett`, descripcion: t("system_descripcion_compartir"), idioma, ruta: "/legal/aviso" });
+}
 
 export default async function Aviso() {
   const t = await getTranslations();

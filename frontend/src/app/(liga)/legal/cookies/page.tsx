@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { PlantillaLegal } from "../PlantillaLegal";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { metadataCompartir } from "@/lib/sitio";
 
-export async function generateMetadata() { const t = await getTranslations(); return { title: `${t("legal_cookies_title")} — Vennett` }; }
+export async function generateMetadata() {
+  const [t, idioma] = await Promise.all([getTranslations(), getLocale()]);
+  return metadataCompartir({ titulo: `${t("legal_cookies_title")} — Vennett`, descripcion: t("system_descripcion_compartir"), idioma, ruta: "/legal/cookies" });
+}
 
 // La sesión en `localStorage` (`lib/liga/supabase.ts`) es lo único que guarda la web pública.
 // Si se añade algo (captcha, analítica), actualizar esta página antes de desplegarlo.

@@ -4,6 +4,7 @@ import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import { LanguageProvider } from "@/i18n/Provider";
 import { normalizeLocale } from "@/i18n/locale";
 import { PANTALLAS_ARRANQUE } from "@/lib/pantallasArranque";
+import { URL_PUBLICA } from "@/lib/sitio";
 // Aquí y no en (liga)/layout: la 404 cuelga de este layout y, si no, sale sin estilos. Todo va
 // bajo .lg, así que las salas no se enteran.
 import "./(liga)/liga.css";
@@ -26,6 +27,7 @@ const mono = Atkinson_Hyperlegible_Mono({
 });
 
 const baseMetadata: Metadata = {
+  metadataBase: new URL(URL_PUBLICA),
   title: "Vennett",
   applicationName: "Vennett",
   manifest: "/manifest.webmanifest",
@@ -42,6 +44,7 @@ const baseMetadata: Metadata = {
 
 export async function generateMetadata(): Promise<Metadata> {
   const [t, locale] = await Promise.all([getTranslations(), getLocale()]);
+  // Sin openGraph aquí: cada página define el suyo, y heredar el de la portada daría su URL a todas.
   return { ...baseMetadata, description: t("system_descripcion_app"),
     manifest: `/api/i18n/manifest?locale=${locale}` };
 }
