@@ -14,6 +14,8 @@ export type Yo = {
   plan: "gratis" | "pro";
   puede_crear_liga: boolean;
   pase_liga?: boolean;
+  plan_pago?: "mensual" | "media_temporada" | "temporada" | null;
+  plan_pago_hasta?: string | null;
   roles: string[];
   admin: boolean;
   aal2: boolean;

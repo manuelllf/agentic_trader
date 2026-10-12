@@ -4,7 +4,8 @@ import { useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { notFound } from "next/navigation";
 import { normalizeLocale } from "@/i18n/locale";
-import type { RendimientoFicha } from "@/lib/liga/api";
+import type { RendimientoFicha, Yo } from "@/lib/liga/api";
+import { PlanCuenta } from "../cuenta/PlanCuenta";
 import { GraficaRendimiento } from "../ficha/[id]/GraficaRendimiento";
 import { ListaEmpresas } from "../ficha/[id]/ListaEmpresas";
 import { Boton } from "../_ui/Boton";
@@ -19,7 +20,17 @@ import { Tarjeta } from "../_ui/Tarjeta";
 import { Vacio } from "../_ui/Vacio";
 import { CabeceraApp } from "../_ui/CabeceraApp";
 
-const ESCUDO_A: EscudoValor = { forma: "escudo", dibujo: "mitades", color1: "#1D3A6E", color2: "#FFFFFF", iniciales: "" };
+// Valores de ejemplo para enseñar las dos formas del plan en la cuenta.
+const MUESTRA_PRO: Yo = {
+  pendiente: false, alias: "ejemplo", plan: "pro", puede_crear_liga: true, pase_liga: false,
+  roles: ["usuario"], admin: false, aal2: false, idioma: null,
+  plan_pago: "mensual", plan_pago_hasta: "2026-11-10T00:00:00+00:00",
+};
+const MUESTRA_GRATIS: Yo = {
+  ...MUESTRA_PRO, plan: "gratis", puede_crear_liga: false, plan_pago: null, plan_pago_hasta: null,
+};
+
+const ESCUDO_A: EscudoValor ={ forma: "escudo", dibujo: "mitades", color1: "#1D3A6E", color2: "#FFFFFF", iniciales: "" };
 const ESCUDO_B: EscudoValor = { forma: "hexagono", dibujo: "diagonal", color1: "#8FBF3F", color2: "#141414", iniciales: "" };
 const ESCUDO_C: EscudoValor = { forma: "circulo", dibujo: "franja", color1: "#C0392B", color2: "#F2C94C", iniciales: "TG" };
 const ESCUDO_D: EscudoValor = { forma: "escudo", dibujo: "liso", color1: "#5B6470", iniciales: "M" };
@@ -88,6 +99,8 @@ export default function Muestrario() {
           <CabeceraApp anio={2026} />
           <CabeceraApp titulo={t("private_leagues_title")} />
         </div>
+        <PlanCuenta yo={MUESTRA_PRO} />
+        <PlanCuenta yo={MUESTRA_GRATIS} />
       </Seccion>
 
       <Seccion titulo={t("strategies_showcase_crest")}>

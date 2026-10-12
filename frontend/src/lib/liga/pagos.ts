@@ -18,7 +18,7 @@ export async function abrirPago(producto: ProductoPago): Promise<{ url: string }
       body: JSON.stringify({ producto }),
       cache: "no-store",
     });
-    if (res.status === 409) return { error: producto === "pack_liga" ? "planes_ya_pase" : "planes_ya_pro" };
+    if (res.status === 409) return { error: "planes_ya_pro" };
     if (res.status === 503) return { error: "planes_pago_no_disponible" };
     if (!res.ok) return { error: "planes_pago_error" };
     const cuerpo = (await res.json()) as { url?: string };
@@ -26,5 +26,28 @@ export async function abrirPago(producto: ProductoPago): Promise<{ url: string }
     return { url: cuerpo.url };
   } catch {
     return { error: "planes_pago_error" };
+  }
+}
+
+/** Pasa el Pro de Lemon a otra duración (`POST /liga/pagos/lemon/cambiar-plan`). Lemon confirma
+ *  el cambio después, por webhook: aquí solo se sabe que se ha pedido. */
+export async function cambiarPlan(producto: Exclude<ProductoPago, "pack_liga">):
+  Promise<{ ok: true } | { error: string }> {
+  const sesion = await tokenSesion();
+  if (!sesion) return { error: "planes_entra" };
+  try {
+    const res = await fetch(`${API_URL}/liga/pagos/lemon/cambiar-plan`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sesion.token}`, "Accept-Language": browserLocale(),
+        "Content-Type": "application/json" },
+      body: JSON.stringify({ producto }),
+      cache: "no-store",
+    });
+    if (res.status === 409) return { error: "planes_cambio_no_disponible" };
+    if (res.status === 503) return { error: "planes_pago_no_disponible" };
+    if (!res.ok) return { error: "planes_cambio_error" };
+    return { ok: true };
+  } catch {
+    return { error: "planes_cambio_error" };
   }
 }

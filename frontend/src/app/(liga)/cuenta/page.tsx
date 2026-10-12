@@ -15,6 +15,7 @@ import { useSupabase } from "@/lib/liga/supabase";
 import { fijar } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { AvisosDispositivo } from "./AvisosDispositivo";
+import { PlanCuenta } from "./PlanCuenta";
 import { Marca } from "../_ui/Marca";
 
 /** Dispara la descarga de un fichero de texto sin subirlo a ningún sitio: todo en el navegador. */
@@ -145,6 +146,7 @@ export default function Cuenta() {
           )
         ) : (
           <>
+            <div id="plan"><PlanCuenta yo={yo} /></div>
             <form className="form" onSubmit={guardar}>
               <label className="campo">
                 <span className="lbl">{t("account_nombre_liga")}</span>
@@ -192,14 +194,6 @@ export default function Cuenta() {
                 <span className="nota">{t("account_metodo_ayuda")}</span>
               </div>
               <Link href="/como-funciona" className="btn small">{t("account_ver_metodo")}</Link>
-            </div>
-
-            <div className="form">
-              <div className="campo">
-                <span className="lbl">{t("planes_titulo")}</span>
-                <span className="nota">{t("planes_intro")}</span>
-              </div>
-              <Link href="/planes" className="btn small">{t("planes_ver")}</Link>
             </div>
 
             <AvisosDispositivo />

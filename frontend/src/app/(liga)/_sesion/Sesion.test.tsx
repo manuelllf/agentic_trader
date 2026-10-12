@@ -45,7 +45,7 @@ describe("Sesion", () => {
     expect(el.textContent).toContain("Sesión de manuel");
     expect(el.textContent).toContain("Tu cuenta"); expect(el.textContent).toContain("Salir");
     expect(el.textContent).not.toContain("Panel de control");
-    expect(el.querySelector('a[href="/planes"]')?.textContent).toBe("Planes");
+    expect(el.querySelector('a[href="/cuenta#plan"]')?.textContent).toBe("Planes");
     expect(el.querySelector('a[href^="/legal"]')).toBeNull();
   });
   it("muestra la insignia de Pro y la del pase cuando el usuario los tiene", () => {
