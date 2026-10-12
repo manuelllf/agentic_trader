@@ -190,3 +190,38 @@ def test_evento_de_la_misma_compra_no_se_pisa_con_uno_mas_viejo(usuario):  # noq
     assert _aplicar(viejo) == "obsoleto"
     assert _cuenta(usuario, "select count(*) from liga.planes_usuario where usuario_id = %s "
                             "and hasta > '2026-12-01T00:00:00Z'") == 1
+
+
+def test_disputa_se_registra_sin_cambiar_derechos(usuario, caplog):  # noqa: ANN001
+    import psycopg
+
+    assert _aplicar(_evento(
+        usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
+        renews_at="2026-11-10T00:00:00.000000Z")) == "aplicado"
+    assert _aplicar(_evento(
+        usuario, "order_created", "2026-10-10T10:00:00.000000Z", variante=444,
+        compra="pack-disputa", created_at="2026-10-10T10:00:00.000000Z")) == "aplicado"
+    tablas = ("liga.planes_usuario", "liga.pases_liga")
+    antes = {tabla: _cuenta(usuario, f"select count(*) from {tabla} where usuario_id = %s")
+             for tabla in tablas}
+    with psycopg.connect(URL, autocommit=True) as cx:
+        derechos = {tabla: cx.execute(
+            f"select * from {tabla} where usuario_id = %s order by id", (usuario,)).fetchall()
+            for tabla in tablas}
+    cuerpo = _evento(usuario, "dispute_created", "2026-10-12T10:00:00.000000Z")
+    with caplog.at_level("WARNING", logger=pagos.__name__):
+        assert _aplicar(cuerpo) == "ignorado"
+    for tabla in tablas:
+        despues = _cuenta(usuario, f"select count(*) from {tabla} where usuario_id = %s")
+        assert despues == antes[tabla]
+    with psycopg.connect(URL, autocommit=True) as cx:
+        for tabla in tablas:
+            assert cx.execute(
+                f"select * from {tabla} where usuario_id = %s order by id",
+                (usuario,)).fetchall() == derechos[tabla]
+        assert cx.execute(
+            "select estado from liga.eventos_pago where clave = %s",
+            (pagos.clave_idempotencia(cuerpo),)).fetchone()[0] == "ignorado"
+    assert any(registro.levelname == "WARNING" and "disputa" in registro.getMessage()
+               and "dispute_created" in registro.getMessage() and "5001" in registro.getMessage()
+               for registro in caplog.records)

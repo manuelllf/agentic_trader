@@ -35,8 +35,9 @@ def registrar(cuerpo: bytes, accion: Accion, evento: str) -> str:
 
         if accion.tipo == "ignorar":
             estado = "ignorado"
-            logger.info("Webhook de Lemon ignorado: %s (%s, %s)", accion.motivo, evento,
-                        accion.lemon_id)
+            log = logger.warning if accion.motivo == "disputa" else logger.info
+            log("Webhook de Lemon ignorado: %s (%s, %s)", accion.motivo, evento,
+                accion.lemon_id)
         elif not _es_mas_reciente(db, accion):
             estado = "obsoleto"
             logger.info("Webhook de Lemon obsoleto (%s, %s)", evento, accion.lemon_id)

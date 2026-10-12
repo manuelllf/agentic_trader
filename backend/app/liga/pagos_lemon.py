@@ -73,6 +73,9 @@ def interpretar(evento: dict, mapa_variantes: dict[str, str], modo: str) -> Acci
         return _ignorar("modo_desconocido")
     if (modo == "test") != en_test:
         return _ignorar("modo_distinto")
+    if nombre.startswith("dispute_"):
+        # La forma de las disputas no está documentada; los reembolsos ya cortan el acceso.
+        return _ignorar("disputa", lemon_id=str(datos.get("id") or "") or None)
     try:
         usuario_id = str(uuid.UUID(str(usuario_id)))
     except (ValueError, TypeError, AttributeError):

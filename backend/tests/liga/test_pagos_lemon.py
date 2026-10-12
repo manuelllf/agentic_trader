@@ -4,6 +4,8 @@ datos ni red: los eventos son diccionarios con la forma que describe la document
 import hashlib
 import hmac
 
+import pytest
+
 from app.liga.pagos_lemon import clave_idempotencia, interpretar, verificar_firma
 
 SECRETO = "secreto-de-prueba"
@@ -228,3 +230,29 @@ def test_modo_inesperado_no_aplica_nada():
     accion = interpretar(_evento("subscription_created", test=False,
                                  renews_at="2027-01-10T00:00:00.000000Z"), MAPA, "tst")
     assert accion.tipo == "ignorar"
+
+
+@pytest.mark.parametrize("nombre", ["dispute_created", "dispute_resolved"])
+@pytest.mark.parametrize("usuario", [USUARIO, None, "no-es-un-uuid"])
+@pytest.mark.parametrize("modo, test", [("test", True), ("live", False)])
+def test_disputa_se_ignora_sin_exigir_usuario(nombre, usuario, modo, test):
+    accion = interpretar(_evento(nombre, usuario=usuario, test=test), MAPA, modo)
+    assert accion.tipo == "ignorar"
+    assert accion.motivo == "disputa"
+    assert accion.lemon_id == "98765"
+    assert accion.usuario_id is None
+
+
+@pytest.mark.parametrize("modo, test", [("test", False), ("live", True)])
+def test_disputa_de_otro_modo_se_ignora_por_modo(modo, test):
+    accion = interpretar(_evento("dispute_created", usuario=None, test=test), MAPA, modo)
+    assert accion.tipo == "ignorar"
+    assert accion.motivo == "modo_distinto"
+
+
+def test_disputa_sin_id_se_ignora():
+    evento = {"meta": {"event_name": "dispute_created", "test_mode": True}}
+    accion = interpretar(evento, MAPA, "test")
+    assert accion.tipo == "ignorar"
+    assert accion.motivo == "disputa"
+    assert accion.lemon_id is None
