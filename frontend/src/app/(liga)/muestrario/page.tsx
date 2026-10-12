@@ -5,7 +5,8 @@ import { useLocale, useTranslations } from "next-intl";
 import { notFound } from "next/navigation";
 import { normalizeLocale } from "@/i18n/locale";
 import type { RendimientoFicha, Yo } from "@/lib/liga/api";
-import { PlanCuenta } from "../cuenta/PlanCuenta";
+import type { Suscripcion } from "@/lib/liga/pagos";
+import { PlanCuentaVista } from "../cuenta/PlanCuentaVista";
 import { GraficaRendimiento } from "../ficha/[id]/GraficaRendimiento";
 import { ListaEmpresas } from "../ficha/[id]/ListaEmpresas";
 import { Boton } from "../_ui/Boton";
@@ -20,7 +21,7 @@ import { Tarjeta } from "../_ui/Tarjeta";
 import { Vacio } from "../_ui/Vacio";
 import { CabeceraApp } from "../_ui/CabeceraApp";
 
-// Valores de ejemplo para enseñar las dos formas del plan en la cuenta.
+// La vista recibe ejemplos para revisar estados sin pedir datos a Lemon.
 const MUESTRA_PRO: Yo = {
   pendiente: false, alias: "ejemplo", plan: "pro", puede_crear_liga: true, pase_liga: false,
   roles: ["usuario"], admin: false, aal2: false, idioma: null,
@@ -29,6 +30,12 @@ const MUESTRA_PRO: Yo = {
 const MUESTRA_GRATIS: Yo = {
   ...MUESTRA_PRO, plan: "gratis", puede_crear_liga: false, plan_pago: null, plan_pago_hasta: null,
 };
+const MUESTRA_SUSCRIPCION: Suscripcion = {
+  estado: "activa", producto: "mensual", renueva_en: MUESTRA_PRO.plan_pago_hasta ?? null,
+  termina_en: null, tarjeta_marca: "Visa", tarjeta_ultimos4: "4242",
+  portal_url: "https://ejemplo.test/portal", tarjeta_url: "https://ejemplo.test/tarjeta",
+};
+const GESTION_MUESTRA = async (): Promise<{ ok: true }> => ({ ok: true });
 
 const ESCUDO_A: EscudoValor ={ forma: "escudo", dibujo: "mitades", color1: "#1D3A6E", color2: "#FFFFFF", iniciales: "" };
 const ESCUDO_B: EscudoValor = { forma: "hexagono", dibujo: "diagonal", color1: "#8FBF3F", color2: "#141414", iniciales: "" };
@@ -99,8 +106,14 @@ export default function Muestrario() {
           <CabeceraApp anio={2026} />
           <CabeceraApp titulo={t("private_leagues_title")} />
         </div>
-        <PlanCuenta yo={MUESTRA_PRO} />
-        <PlanCuenta yo={MUESTRA_GRATIS} />
+        <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={MUESTRA_SUSCRIPCION}
+          cancelar={GESTION_MUESTRA} />
+        <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={{ ...MUESTRA_SUSCRIPCION,
+          estado: "cancelada", termina_en: MUESTRA_PRO.plan_pago_hasta ?? null }}
+          reanudar={GESTION_MUESTRA} />
+        <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={{ ...MUESTRA_SUSCRIPCION,
+          estado: "atrasada" }} />
+        <PlanCuentaVista yo={MUESTRA_GRATIS} suscripcion={null} />
       </Seccion>
 
       <Seccion titulo={t("strategies_showcase_crest")}>

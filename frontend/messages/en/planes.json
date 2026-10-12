@@ -45,5 +45,22 @@
   "planes_cambio_error": "Could not change the plan. Try again in a moment.",
   "planes_pago_no_disponible": "Payments are not available yet. Try again later.",
   "planes_pago_error": "Could not open the payment. Try again in a moment.",
-  "planes_entra": "Sign in to choose a plan."
+  "planes_entra": "Sign in to choose a plan.",
+  "planes_pago": "Payment",
+  "planes_tarjeta": "{marca} · last four digits: {ultimos}",
+  "planes_portal": "Manage payments and invoices",
+  "planes_actualizar_tarjeta": "Update card",
+  "planes_cancelar": "Cancel subscription",
+  "planes_cancelar_confirmacion": "Cancel today and keep Pro until {fecha}. There is no refund.",
+  "planes_confirmar_cancelacion": "Confirm cancellation",
+  "planes_mantener": "Keep subscription",
+  "planes_cancelada": "Cancelled: you keep Pro until {fecha}.",
+  "planes_reanudar": "Resume subscription",
+  "planes_atrasada": "We couldn't charge your subscription. Update your card to keep Pro.",
+  "planes_fecha_no_disponible": "the end of the paid period",
+  "planes_suscripcion_error": "Could not read the subscription. Try again in a moment.",
+  "planes_suscripcion_no_disponible": "You have no Lemon subscription to manage.",
+  "planes_cancelar_error": "Could not cancel the subscription. Try again in a moment.",
+  "planes_reanudar_error": "Could not resume the subscription. Try again in a moment.",
+  "planes_reanudar_no_disponible": "This subscription can no longer be resumed."
 }

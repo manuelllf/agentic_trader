@@ -45,5 +45,22 @@
   "planes_cambio_error": "No se pudo cambiar el plan. Prueba en un momento.",
   "planes_pago_no_disponible": "Los pagos todavía no están disponibles. Prueba más tarde.",
   "planes_pago_error": "No se pudo abrir el pago. Prueba en un momento.",
-  "planes_entra": "Entra para elegir un plan."
+  "planes_entra": "Entra para elegir un plan.",
+  "planes_pago": "Pago",
+  "planes_tarjeta": "{marca} · últimos cuatro dígitos: {ultimos}",
+  "planes_portal": "Gestionar pagos y facturas",
+  "planes_actualizar_tarjeta": "Actualizar tarjeta",
+  "planes_cancelar": "Cancelar suscripción",
+  "planes_cancelar_confirmacion": "Se cancela hoy y sigues con Pro hasta el {fecha}. No hay devolución.",
+  "planes_confirmar_cancelacion": "Confirmar cancelación",
+  "planes_mantener": "Mantener",
+  "planes_cancelada": "Cancelada: sigues con Pro hasta el {fecha}.",
+  "planes_reanudar": "Reanudar suscripción",
+  "planes_atrasada": "No hemos podido cobrar tu suscripción. Actualiza la tarjeta para no perder Pro.",
+  "planes_fecha_no_disponible": "final del periodo pagado",
+  "planes_suscripcion_error": "No se pudo leer la suscripción. Prueba en un momento.",
+  "planes_suscripcion_no_disponible": "No tienes una suscripción de Lemon que gestionar.",
+  "planes_cancelar_error": "No se pudo cancelar la suscripción. Prueba en un momento.",
+  "planes_reanudar_error": "No se pudo reanudar la suscripción. Prueba en un momento.",
+  "planes_reanudar_no_disponible": "Esta suscripción ya no se puede reanudar."
 }

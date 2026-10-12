@@ -1425,3 +1425,7 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .cuenta-plan .cuenta-plan-fila-detalle { font-size: 14px; color: var(--muted); }
 .lg .cuenta-plan .cuenta-plan-fila .btn { flex: none; min-width: 88px; }
 .lg .cuenta-plan .cuenta-plan-pase { display: flex; flex-direction: column; gap: 8px; padding-top: 18px; border-top: 1px solid var(--line); }
+.lg .cuenta-plan .cuenta-plan-pago,
+.lg .cuenta-plan .cuenta-plan-confirmacion { display: flex; flex-direction: column; gap: 8px; }
+.lg .cuenta-plan .cuenta-plan-pago { padding-top: 18px; border-top: 1px solid var(--line); }
+.lg .cuenta-plan .btn { min-height: 44px; white-space: normal; }
