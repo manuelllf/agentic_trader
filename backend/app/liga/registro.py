@@ -27,7 +27,7 @@ _alias = re.compile(r"^[a-z0-9_.]{3,20}$")
 RESERVADOS = {"admin", "administrador", "alpha", "beta", "omega", "lambda", "jev",
               "liguilla", "liga", "vennett", "soporte", "ayuda", "moderador",
               "moderacion", "casa", "sistema", "root", "staff"}
-VERSION_TERMINOS = "1"
+VERSION_TERMINOS = "2"
 
 
 @router.get("")

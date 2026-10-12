@@ -60,6 +60,8 @@ async def webhook(request: Request) -> dict:
 def checkout(body: CheckoutIn, ident: Identidad = Depends(require_usuario)) -> CheckoutOut:
     if not _LIMITE_CHECKOUT.permitido(ident.uid):
         raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
+    if not pagos.acepto_version_vigente(ident.uid):
+        raise HTTPException(403, translate("api_error_acepta_terminos_nuevos"))
     clave = pagos.clave_si_ya_tiene(ident.uid, body.producto)
     if clave:
         raise HTTPException(409, translate(clave))

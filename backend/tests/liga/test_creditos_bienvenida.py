@@ -76,7 +76,7 @@ def test_registro_reserva_alias_y_regala_solo_al_confirmar(cx) -> None:  # noqa:
     try:
         cx.execute("insert into auth.users (id, email, raw_user_meta_data) values (%s, %s, %s)",
                    (uid, f"{uid.hex}@prueba.local",
-                    '{"alias": "' + nombre + '", "terminos_version": "1"}'))
+                    '{"alias": "' + nombre + '", "terminos_version": "2"}'))
         cx.creados.append(uid)
         perfil = cx.execute("select alias from liga.perfiles where id = %s", (uid,)).fetchone()
         assert perfil[0] == nombre
@@ -86,7 +86,7 @@ def test_registro_reserva_alias_y_regala_solo_al_confirmar(cx) -> None:  # noqa:
         with pytest.raises(psycopg.errors.UniqueViolation):
             cx.execute("insert into auth.users (id, email, raw_user_meta_data) values (%s, %s, %s)",
                        (uuid.uuid4(), f"duplicado_{uid.hex}@prueba.local",
-                        '{"alias": "' + nombre + '", "terminos_version": "1"}'))
+                        '{"alias": "' + nombre + '", "terminos_version": "2"}'))
         assert cx.execute("select count(*) from liga.consentimientos where usuario_id = %s",
                           (uid,)).fetchone()[0] == 2
         cx.execute("update auth.users set email_confirmed_at = now() where id = %s", (uid,))
@@ -106,6 +106,6 @@ def test_registro_cerrado_rechaza_alta_directa_en_auth(cx) -> None:  # noqa: ANN
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             cx.execute("insert into auth.users (id, email, raw_user_meta_data) values (%s, %s, %s)",
                        (uuid.uuid4(), "cerrado@prueba.local",
-                        '{"alias": "cerrado", "terminos_version": "1"}'))
+                        '{"alias": "cerrado", "terminos_version": "2"}'))
     finally:
         cx.execute("delete from liga.ajustes where clave = 'liga.registro.abierto'")

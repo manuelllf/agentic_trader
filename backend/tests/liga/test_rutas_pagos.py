@@ -16,6 +16,7 @@ from app.liga.rutas_pagos import router
 
 SECRETO = "130221-de-prueba"
 USUARIO = "6f2c1e1a-0000-4000-8000-000000000001"
+_ACEPTO_VERSION_VIGENTE = pagos.acepto_version_vigente
 
 
 @pytest.fixture
@@ -103,6 +104,9 @@ def _cliente_con_sesion(monkeypatch):  # noqa: ANN001, ANN202
     """Cliente de la ruta con una sesión de prueba, sin pasar por Supabase."""
     from app.liga.auth import Identidad, require_usuario
 
+    monkeypatch.setattr(pagos, "acepto_version_vigente", lambda uid: True)
+    monkeypatch.setattr(rutas_pagos, "_LIMITE_CHECKOUT",
+                        acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10))
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[require_usuario] = lambda: Identidad(
@@ -267,3 +271,44 @@ def test_limite_de_lectura(lectura: TestClient, monkeypatch: pytest.MonkeyPatch)
         assert _pedir_lectura(lectura).status_code == 200
     assert _pedir_lectura(lectura).status_code == 429
     assert len(llamadas) == 10
+
+
+@pytest.mark.parametrize(("version", "estado"), [("1", 403), ("2", 200)])
+def test_checkout_exige_version_vigente(monkeypatch, version, estado):  # noqa: ANN001
+    from app.liga.registro import VERSION_TERMINOS
+
+    cliente = _cliente_con_sesion(monkeypatch)
+    consultas = []
+
+    class Db:
+        def execute(self, sql, params):  # noqa: ANN001, ANN201
+            consultas.append((str(sql), params))
+            assert params == {"u": USUARIO, "v": VERSION_TERMINOS}
+            assert "documento = 'terminos'" in str(sql)
+            assert "version = :v" in str(sql)
+            return self
+
+        def scalar(self) -> bool:
+            return version == VERSION_TERMINOS
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(pagos, "acepto_version_vigente", _ACEPTO_VERSION_VIGENTE)
+    monkeypatch.setattr(pagos, "fabrica_sistema", Db)
+    comprobaciones = []
+    monkeypatch.setattr(pagos, "clave_si_ya_tiene",
+                        lambda uid, producto: comprobaciones.append(producto))
+    monkeypatch.setattr(settings, "lemon_api_key", "valor-ficticio")
+    monkeypatch.setattr(settings, "lemon_store_id", "123")
+    monkeypatch.setattr(settings, "lemon_variantes", {"111": "mensual"})
+    llamadas = []
+    monkeypatch.setattr(rutas_pagos.httpx, "post",
+                        lambda *args, **kwargs: llamadas.append(kwargs) or _Respuesta())
+    r = cliente.post("/liga/pagos/lemon/checkout", json={"producto": "mensual"})
+    assert r.status_code == estado
+    assert len(consultas) == 1
+    assert len(comprobaciones) == len(llamadas) == (1 if estado == 200 else 0)
+    if estado == 403:
+        assert r.json()["detail"] == (
+            "Antes de pagar, acepta la nueva versión de los términos.")

@@ -1,9 +1,11 @@
--- migraciones-liga: 039
+-- migraciones-liga: 040
 -- migraciones-saneamiento: 11
+--
 --
 -- PostgreSQL database dump
 --
 
+\restrict wE4N5sfGs6AQmp7eOcJwwn14hTSUnt6gMHscrKa43QwxMipI3Jf8zYzqjfTkUto
 
 -- Dumped from database version 17.11 (Debian 17.11-1.pgdg12+2)
 -- Dumped by pg_dump version 17.11 (Debian 17.11-1.pgdg12+2)
@@ -287,22 +289,42 @@ $$;
 
 
 --
+-- Name: aceptar_terminos(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.aceptar_terminos() RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+begin
+  if auth.uid() is null then
+    raise exception 'Sin sesión' using errcode = '42501';
+  end if;
+  insert into liga.consentimientos (usuario_id, documento, version)
+    values (auth.uid(), 'terminos', liga.version_terminos()), (auth.uid(), 'privacidad', liga.version_terminos())
+    on conflict (usuario_id, documento, version) do nothing;
+end $$;
+
+
+--
 -- Name: alta_usuario(); Type: FUNCTION; Schema: liga; Owner: -
 --
 
 CREATE FUNCTION liga.alta_usuario() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO ''
-    AS $$
+    AS $_$
 declare
   regalo numeric;
   nombre text;
   abierto boolean;
   registro_publico boolean;
+  con_proveedor boolean;
 begin
+  con_proveedor := coalesce(new.raw_app_meta_data ->> 'provider', 'email') <> 'email';
   registro_publico := new.raw_user_meta_data ? 'alias'
     or new.raw_user_meta_data ? 'terminos_version';
-  if registro_publico or new.email_confirmed_at is null then
+  if not con_proveedor and (registro_publico or new.email_confirmed_at is null) then
     select coalesce((select a.valor = 'true'::jsonb from liga.ajustes a
       where a.clave = 'liga.registro.abierto'), false) into abierto;
     if not abierto then
@@ -312,7 +334,7 @@ begin
     if nombre is null or nombre !~ '^[a-z0-9_.]{3,20}$' or nombre in ('admin', 'vennett') then
       raise exception 'Nombre de usuario no válido' using errcode = '23514';
     end if;
-    if (new.raw_user_meta_data ->> 'terminos_version') is distinct from '1' then
+    if (new.raw_user_meta_data ->> 'terminos_version') is distinct from liga.version_terminos() then
       raise exception 'Acepta los términos' using errcode = '23514';
     end if;
   else
@@ -323,16 +345,16 @@ begin
   insert into liga.roles_usuario (usuario_id, rol) values (new.id, 'usuario');
   if registro_publico then
     insert into liga.consentimientos (usuario_id, documento, version)
-      values (new.id, 'terminos', '1'), (new.id, 'privacidad', '1');
+      values (new.id, 'terminos', liga.version_terminos()), (new.id, 'privacidad', liga.version_terminos());
   end if;
-  if new.email_confirmed_at is not null then
+  if new.email_confirmed_at is not null or con_proveedor then
     regalo := liga.creditos_de_bienvenida();
     if regalo > 0 then
       perform liga.cargar_creditos(new.id, regalo, 'regalo', 'bienvenida');
     end if;
   end if;
   return new;
-end $$;
+end $_$;
 
 
 --
@@ -422,6 +444,28 @@ end $$;
 
 
 --
+-- Name: confirmar_bienvenida(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.confirmar_bienvenida() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  regalo numeric;
+begin
+  if old.email_confirmed_at is null and new.email_confirmed_at is not null then
+    regalo := liga.creditos_de_bienvenida();
+    if regalo > 0 and not exists (select 1 from liga.creditos_movimientos
+      where usuario_id = new.id and idempotencia = 'bienvenida') then
+      perform liga.cargar_creditos(new.id, regalo, 'regalo', 'bienvenida');
+    end if;
+  end if;
+  return new;
+end $$;
+
+
+--
 -- Name: creditos_de_bienvenida(); Type: FUNCTION; Schema: liga; Owner: -
 --
 
@@ -431,6 +475,20 @@ CREATE FUNCTION liga.creditos_de_bienvenida() RETURNS numeric
     AS $$
   select coalesce((select (a.valor #>> '{}')::numeric from liga.ajustes a
                    where a.clave = 'creditos.bienvenida' and jsonb_typeof(a.valor) = 'number'), 30);
+$$;
+
+
+--
+-- Name: cuenta_pendiente(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.cuenta_pendiente() RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select not exists (select 1 from liga.consentimientos c
+                     where c.usuario_id = auth.uid() and c.documento = 'terminos'
+                       and c.version = liga.version_terminos());
 $$;
 
 
@@ -648,6 +706,66 @@ end $$;
 
 
 --
+-- Name: estrategias_revisadas_guarda(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.estrategias_revisadas_guarda() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO ''
+    AS $$
+begin
+  if new.usuario_id is distinct from (select auth.uid()) then
+    raise exception 'Solo puedes actualizar tus propias revisiones' using errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from liga.estrategias e
+    where e.id = new.estrategia_id and e.dueno_id = new.usuario_id and e.tipo = 'usuario'
+  ) then
+    raise exception 'La estrategia no pertenece a tu cuenta' using errcode = '42501';
+  end if;
+  if new.inscripcion_id is not null and not exists (
+    select 1 from liga.inscripciones i
+    where i.id = new.inscripcion_id and i.estrategia_id = new.estrategia_id
+  ) then
+    raise exception 'La inscripción no pertenece a tu estrategia' using errcode = '42501';
+  end if;
+  if new.resultado_inscripcion_id is not null and not exists (
+    select 1 from liga.resultados r join liga.inscripciones i on i.id = r.inscripcion_id
+    where r.inscripcion_id = new.resultado_inscripcion_id
+      and i.estrategia_id = new.estrategia_id
+  ) then
+    raise exception 'El resultado no pertenece a tu estrategia' using errcode = '42501';
+  end if;
+  new.revisada_en := now();
+  return new;
+end $$;
+
+
+--
+-- Name: exportar_visitas(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.exportar_visitas() RETURNS TABLE(inicio timestamp with time zone, ultima_actividad timestamp with time zone)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  v_usuario uuid := auth.uid();
+begin
+  if v_usuario is null then
+    raise exception 'authenticated identity required' using errcode = '28000';
+  end if;
+
+  return query
+  select v.inicio, v.ultima_actividad
+  from liga.visitas as v
+  where v.usuario_id = v_usuario
+  order by v.inicio, v.id;
+end;
+$$;
+
+
+--
 -- Name: inscripciones_guarda(); Type: FUNCTION; Schema: liga; Owner: -
 --
 
@@ -659,6 +777,29 @@ begin
   if new.receta_id is null and not exists (
        select 1 from liga.estrategias e where e.id = new.estrategia_id and e.tipo = 'casa') then
     raise exception 'Solo los equipos de la casa se inscriben sin receta' using errcode = '23502';
+  end if;
+  return new;
+end $$;
+
+
+--
+-- Name: jornadas_foto_y_escaneo(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.jornadas_foto_y_escaneo() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  foto_del_escaneo bigint;
+begin
+  if new.scan_run_id is null and new.foto_id is null then
+    return new;
+  end if;
+  select s.foto_id into foto_del_escaneo from public.scan_runs s where s.id = new.scan_run_id;
+  if new.scan_run_id is null or new.foto_id is distinct from foto_del_escaneo then
+    raise exception 'La foto y el escaneo de la jornada tienen que ser los mismos'
+      using errcode = '23514';
   end if;
   return new;
 end $$;
@@ -681,6 +822,10 @@ begin
       raise exception 'Crear ligas privadas es de Pro o de quien tiene un pase de liga'
         using errcode = '42501';
     end if;
+    if (select count(*) from liga.ligas_privadas where dueno_id = (select auth.uid()))
+       >= liga.ligas_incluidas((select auth.uid())) then
+      raise exception 'Ya tienes todas tus ligas incluidas' using errcode = '42501';
+    end if;
     if new.oculta then
       raise exception 'Una liga nueva nace visible' using errcode = '42501';
     end if;
@@ -695,6 +840,20 @@ begin
   end if;
   return new;
 end $$;
+
+
+--
+-- Name: ligas_incluidas(uuid); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.ligas_incluidas(p_usuario uuid) RETURNS integer
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select (case when liga.tiene_pro(p_usuario) then 2 else 0 end)
+       + (select count(*)::integer from liga.pases_liga
+          where usuario_id = p_usuario and desde <= now() and (hasta is null or hasta > now()));
+$$;
 
 
 --
@@ -774,6 +933,55 @@ begin
   end if;
   return new;
 end $$;
+
+
+--
+-- Name: registrar_visita(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.registrar_visita() RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  v_usuario uuid := auth.uid();
+  v_session uuid;
+  v_id bigint;
+  v_ultima timestamptz;
+begin
+  if v_usuario is null then
+    raise exception 'authenticated identity required' using errcode = '28000';
+  end if;
+
+  v_session := nullif(auth.jwt() ->> 'session_id', '')::uuid;
+  if v_session is null then
+    raise exception 'authenticated session required' using errcode = '28000';
+  end if;
+
+  -- Also serializes the first event, where a row lock alone cannot prevent duplicates.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(v_session::text, 0)
+  );
+
+  select v.id, v.ultima_actividad into v_id, v_ultima
+  from liga.visitas as v
+  where v.usuario_id = v_usuario and v.session_id = v_session
+  order by v.inicio desc, v.id desc
+  limit 1
+  for update;
+
+  if found and v_ultima > pg_catalog.clock_timestamp() - interval '30 minutes' then
+    -- Bound storage writes even if an authenticated client calls this directly in a tight loop.
+    update liga.visitas as v
+    set ultima_actividad = pg_catalog.clock_timestamp()
+    where v.id = v_id
+      and v.ultima_actividad <= pg_catalog.clock_timestamp() - interval '30 seconds';
+  else
+    insert into liga.visitas (usuario_id, session_id, inicio, ultima_actividad)
+    values (v_usuario, v_session, pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp());
+  end if;
+end;
+$$;
 
 
 --
@@ -889,6 +1097,18 @@ begin
   insert into liga.miembros_liga (liga_id, usuario_id) values (l.id, uid);
   return l.id;
 end $$;
+
+
+--
+-- Name: version_terminos(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.version_terminos() RETURNS text
+    LANGUAGE sql IMMUTABLE
+    SET search_path TO ''
+    AS $$
+  select '2'::text;
+$$;
 
 
 --
@@ -1768,6 +1988,42 @@ ALTER TABLE liga.avisos_error ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: borradores; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.borradores (
+    usuario_id uuid NOT NULL,
+    clave text NOT NULL,
+    contenido jsonb NOT NULL,
+    revision bigint DEFAULT 1 NOT NULL,
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado timestamp with time zone DEFAULT now() NOT NULL,
+    actualizado_por uuid DEFAULT auth.uid(),
+    CONSTRAINT borradores_contenido_check CHECK ((octet_length((contenido)::text) <= 40000)),
+    CONSTRAINT borradores_revision_check CHECK ((revision > 0))
+);
+
+
+--
+-- Name: compras_pago; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.compras_pago (
+    lemon_id text NOT NULL,
+    usuario_id uuid NOT NULL,
+    producto text NOT NULL,
+    estado text NOT NULL,
+    actualizado_lemon timestamp with time zone NOT NULL,
+    actualizado_local timestamp with time zone DEFAULT now() NOT NULL,
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado_por uuid,
+    CONSTRAINT compras_pago_producto_check CHECK ((producto = ANY (ARRAY['mensual'::text, 'media_temporada'::text, 'temporada'::text, 'pack_liga'::text])))
+);
+
+
+--
 -- Name: consentimientos; Type: TABLE; Schema: liga; Owner: -
 --
 
@@ -1873,6 +2129,52 @@ CREATE TABLE liga.estrategias (
     CONSTRAINT estrategias_visibilidad_check CHECK ((visibilidad = ANY (ARRAY['privada'::text, 'publicada'::text]))),
     CONSTRAINT opta_premio_en_juego CHECK (((NOT opta_premio) OR ((tipo = 'usuario'::text) AND (estado = ANY (ARRAY['apuntada'::text, 'jugando'::text]))))),
     CONSTRAINT publicada_declara CHECK (((visibilidad = 'privada'::text) OR (declara_posiciones IS NOT NULL)))
+);
+
+
+--
+-- Name: estrategias_revisadas; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.estrategias_revisadas (
+    usuario_id uuid DEFAULT auth.uid() NOT NULL,
+    estrategia_id uuid NOT NULL,
+    inscripcion_id bigint,
+    resultado_inscripcion_id bigint,
+    revisada_en timestamp with time zone DEFAULT now() NOT NULL,
+    creada timestamp with time zone DEFAULT now() NOT NULL,
+    creada_por uuid DEFAULT auth.uid(),
+    actualizado_en timestamp with time zone,
+    actualizado_por uuid
+);
+
+
+--
+-- Name: eventos_pago; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.eventos_pago (
+    clave text NOT NULL,
+    evento text NOT NULL,
+    lemon_id text,
+    recibido_en timestamp with time zone DEFAULT now() NOT NULL,
+    procesado_en timestamp with time zone,
+    estado text NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    CONSTRAINT eventos_pago_estado_check CHECK ((estado = ANY (ARRAY['recibido'::text, 'aplicado'::text, 'ignorado'::text, 'obsoleto'::text, 'duplicado'::text, 'rechazado'::text])))
+);
+
+
+--
+-- Name: formaciones_degradadas; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.formaciones_degradadas (
+    inscripcion_id bigint NOT NULL,
+    motivo text NOT NULL,
+    creada timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    CONSTRAINT formaciones_degradadas_motivo_check CHECK ((motivo = ANY (ARRAY['sin_ia'::text, 'tope'::text, 'incompleta'::text, 'tiempo'::text, 'quitadas_vaciadas'::text, 'sin_saldo'::text])))
 );
 
 
@@ -2075,6 +2377,7 @@ CREATE TABLE liga.pases_liga (
     hasta timestamp with time zone,
     origen text NOT NULL,
     concedido_por uuid,
+    compra_lemon_id text,
     CONSTRAINT pase_rango CHECK (((hasta IS NULL) OR (hasta > desde))),
     CONSTRAINT pases_liga_origen_check CHECK ((origen = ANY (ARRAY['admin'::text, 'demo'::text, 'pago'::text])))
 );
@@ -2118,12 +2421,13 @@ CREATE TABLE liga.perfiles (
 CREATE TABLE liga.perfiles_privados (
     id uuid NOT NULL,
     tema text DEFAULT 'auto'::text NOT NULL,
-    idioma text CHECK (idioma IN ('es', 'en')),
+    idioma text,
     baja_solicitada timestamp with time zone,
     creado timestamp with time zone DEFAULT now() NOT NULL,
     creado_por uuid DEFAULT auth.uid(),
     actualizado_en timestamp with time zone,
     actualizado_por uuid,
+    CONSTRAINT perfiles_privados_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
     CONSTRAINT perfiles_privados_tema_check CHECK ((tema = ANY (ARRAY['auto'::text, 'claro'::text, 'oscuro'::text])))
 );
 
@@ -2150,6 +2454,7 @@ CREATE TABLE liga.planes_usuario (
     hasta timestamp with time zone,
     origen text NOT NULL,
     concedido_por uuid,
+    compra_lemon_id text,
     CONSTRAINT plan_rango CHECK (((hasta IS NULL) OR (hasta > desde))),
     CONSTRAINT planes_usuario_origen_check CHECK ((origen = ANY (ARRAY['admin'::text, 'demo'::text, 'pago'::text])))
 );
@@ -2178,6 +2483,54 @@ CREATE TABLE liga.posiciones (
     ticker character varying(16) NOT NULL,
     peso numeric(10,4) NOT NULL,
     CONSTRAINT posiciones_peso_check CHECK (((peso > (0)::numeric) AND (peso <= (100)::numeric)))
+);
+
+
+--
+-- Name: premios; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.premios (
+    id bigint NOT NULL,
+    temporada_id smallint NOT NULL,
+    usuario_id uuid NOT NULL,
+    jornadas_jugadas smallint NOT NULL,
+    rentabilidad numeric(12,4) NOT NULL,
+    puesto smallint,
+    importe numeric(10,2),
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    CONSTRAINT premio_puesto_e_importe CHECK (((puesto IS NULL) = (importe IS NULL))),
+    CONSTRAINT premios_importe_check CHECK ((importe > (0)::numeric)),
+    CONSTRAINT premios_jornadas_jugadas_check CHECK (((jornadas_jugadas >= 1) AND (jornadas_jugadas <= 24))),
+    CONSTRAINT premios_puesto_check CHECK (((puesto >= 1) AND (puesto <= 3)))
+);
+
+
+--
+-- Name: premios_id_seq; Type: SEQUENCE; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.premios ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME liga.premios_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: premios_temporada; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.premios_temporada (
+    temporada_id smallint NOT NULL,
+    escalon smallint NOT NULL,
+    calculado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    CONSTRAINT premios_temporada_escalon_check CHECK ((escalon = ANY (ARRAY[0, 1, 2])))
 );
 
 
@@ -2232,11 +2585,11 @@ CREATE TABLE liga.recetas (
     CONSTRAINT recetas_idea_check CHECK ((length(idea) <= 400)),
     CONSTRAINT recetas_max_por_sector_check CHECK (((max_por_sector >= 0) AND (max_por_sector <= 10))),
     CONSTRAINT recetas_n_empresas_check CHECK ((n_empresas = ANY (ARRAY[3, 5, 7, 10]))),
-    CONSTRAINT recetas_peso_deuda_check CHECK ((((peso_deuda >= 0) AND (peso_deuda <= 50)) AND (((peso_deuda)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_negocio_check CHECK ((((peso_negocio >= 0) AND (peso_negocio <= 50)) AND (((peso_negocio)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_precio_check CHECK ((((peso_precio >= 0) AND (peso_precio <= 50)) AND (((peso_precio)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_pregunta_check CHECK ((((peso_pregunta >= 0) AND (peso_pregunta <= 50)) AND (((peso_pregunta)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_pronto_check CHECK ((((peso_pronto >= 0) AND (peso_pronto <= 50)) AND (((peso_pronto)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_deuda_check CHECK (((peso_deuda >= 0) AND (peso_deuda <= 50) AND (((peso_deuda)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_negocio_check CHECK (((peso_negocio >= 0) AND (peso_negocio <= 50) AND (((peso_negocio)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_precio_check CHECK (((peso_precio >= 0) AND (peso_precio <= 50) AND (((peso_precio)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_pregunta_check CHECK (((peso_pregunta >= 0) AND (peso_pregunta <= 50) AND (((peso_pregunta)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_pronto_check CHECK (((peso_pronto >= 0) AND (peso_pronto <= 50) AND (((peso_pronto)::integer % 5) = 0))),
     CONSTRAINT recetas_pregunta_check CHECK (((length(pregunta) >= 1) AND (length(pregunta) <= 160))),
     CONSTRAINT recetas_reparto_check CHECK ((reparto = ANY (ARRAY['igual'::text, 'nota'::text]))),
     CONSTRAINT reglas_lista CHECK ((jsonb_typeof(reglas) = 'array'::text))
@@ -2350,6 +2703,40 @@ CREATE TABLE liga.roles_usuario (
 
 
 --
+-- Name: suscripciones_push; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.suscripciones_push (
+    id bigint NOT NULL,
+    usuario_id uuid NOT NULL,
+    endpoint text NOT NULL,
+    p256dh text NOT NULL,
+    auth text NOT NULL,
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado_en timestamp with time zone,
+    actualizado_por uuid,
+    CONSTRAINT suscripciones_push_auth_check CHECK ((length(auth) <= 100)),
+    CONSTRAINT suscripciones_push_endpoint_check CHECK ((length(endpoint) <= 1000)),
+    CONSTRAINT suscripciones_push_p256dh_check CHECK ((length(p256dh) <= 200))
+);
+
+
+--
+-- Name: suscripciones_push_id_seq; Type: SEQUENCE; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.suscripciones_push ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME liga.suscripciones_push_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: temporadas; Type: TABLE; Schema: liga; Owner: -
 --
 
@@ -2413,6 +2800,54 @@ CREATE VIEW liga.v_saldo WITH (security_invoker='true') AS
     (sum(importe))::numeric(12,4) AS saldo
    FROM liga.creditos_movimientos
   GROUP BY usuario_id;
+
+
+--
+-- Name: visitas; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.visitas (
+    id bigint NOT NULL,
+    usuario_id uuid NOT NULL,
+    session_id uuid NOT NULL,
+    inicio timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    ultima_actividad timestamp with time zone DEFAULT clock_timestamp() NOT NULL
+);
+
+
+--
+-- Name: TABLE visitas; Type: COMMENT; Schema: liga; Owner: -
+--
+
+COMMENT ON TABLE liga.visitas IS 'Visit history, one row per authenticated visit; usuario_id is the actor.';
+
+
+--
+-- Name: COLUMN visitas.session_id; Type: COMMENT; Schema: liga; Owner: -
+--
+
+COMMENT ON COLUMN liga.visitas.session_id IS 'Signed Supabase auth session UUID; retained as a grouping key, not an IP or fingerprint.';
+
+
+--
+-- Name: COLUMN visitas.ultima_actividad; Type: COMMENT; Schema: liga; Owner: -
+--
+
+COMMENT ON COLUMN liga.visitas.ultima_actividad IS 'Server timestamp of the most recent qualifying interaction; updates are throttled.';
+
+
+--
+-- Name: visitas_id_seq; Type: SEQUENCE; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.visitas ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME liga.visitas_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
 
 
 --
@@ -4344,6 +4779,22 @@ ALTER TABLE ONLY liga.avisos_error
 
 
 --
+-- Name: borradores borradores_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.borradores
+    ADD CONSTRAINT borradores_pkey PRIMARY KEY (usuario_id, clave);
+
+
+--
+-- Name: compras_pago compras_pago_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.compras_pago
+    ADD CONSTRAINT compras_pago_pkey PRIMARY KEY (lemon_id);
+
+
+--
 -- Name: consentimientos consentimientos_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -4389,6 +4840,30 @@ ALTER TABLE ONLY liga.estrategias
 
 ALTER TABLE ONLY liga.estrategias
     ADD CONSTRAINT estrategias_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: estrategias_revisadas estrategias_revisadas_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.estrategias_revisadas
+    ADD CONSTRAINT estrategias_revisadas_pkey PRIMARY KEY (usuario_id, estrategia_id);
+
+
+--
+-- Name: eventos_pago eventos_pago_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.eventos_pago
+    ADD CONSTRAINT eventos_pago_pkey PRIMARY KEY (clave);
+
+
+--
+-- Name: formaciones_degradadas formaciones_degradadas_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.formaciones_degradadas
+    ADD CONSTRAINT formaciones_degradadas_pkey PRIMARY KEY (inscripcion_id, motivo);
 
 
 --
@@ -4480,6 +4955,14 @@ ALTER TABLE ONLY liga.omega_operaciones
 
 
 --
+-- Name: pases_liga pases_liga_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.pases_liga
+    ADD CONSTRAINT pases_liga_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: perfiles perfiles_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -4504,14 +4987,6 @@ ALTER TABLE ONLY liga.permisos_rol
 
 
 --
--- Name: pases_liga pases_liga_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
---
-
-ALTER TABLE ONLY liga.pases_liga
-    ADD CONSTRAINT pases_liga_pkey PRIMARY KEY (id);
-
-
---
 -- Name: planes_usuario planes_usuario_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -4525,6 +5000,30 @@ ALTER TABLE ONLY liga.planes_usuario
 
 ALTER TABLE ONLY liga.posiciones
     ADD CONSTRAINT posiciones_pkey PRIMARY KEY (inscripcion_id, ticker);
+
+
+--
+-- Name: premios premios_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.premios
+    ADD CONSTRAINT premios_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: premios premios_temporada_id_usuario_id_key; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.premios
+    ADD CONSTRAINT premios_temporada_id_usuario_id_key UNIQUE (temporada_id, usuario_id);
+
+
+--
+-- Name: premios_temporada premios_temporada_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.premios_temporada
+    ADD CONSTRAINT premios_temporada_pkey PRIMARY KEY (temporada_id);
 
 
 --
@@ -4592,11 +5091,35 @@ ALTER TABLE ONLY liga.roles_usuario
 
 
 --
+-- Name: suscripciones_push suscripciones_push_endpoint_key; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.suscripciones_push
+    ADD CONSTRAINT suscripciones_push_endpoint_key UNIQUE (endpoint);
+
+
+--
+-- Name: suscripciones_push suscripciones_push_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.suscripciones_push
+    ADD CONSTRAINT suscripciones_push_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: temporadas temporadas_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
 --
 
 ALTER TABLE ONLY liga.temporadas
     ADD CONSTRAINT temporadas_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: visitas visitas_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.visitas
+    ADD CONSTRAINT visitas_pkey PRIMARY KEY (id);
 
 
 --
@@ -5563,6 +6086,13 @@ CREATE INDEX ix_avisos_error_estado ON liga.avisos_error USING btree (estado, cr
 
 
 --
+-- Name: ix_compras_pago_usuario; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_compras_pago_usuario ON liga.compras_pago USING btree (usuario_id);
+
+
+--
 -- Name: ix_creditos_creado_por; Type: INDEX; Schema: liga; Owner: -
 --
 
@@ -5595,6 +6125,13 @@ CREATE INDEX ix_estrategias_dueno ON liga.estrategias USING btree (dueno_id);
 --
 
 CREATE INDEX ix_estrategias_receta ON liga.estrategias USING btree (receta_id) WHERE (receta_id IS NOT NULL);
+
+
+--
+-- Name: ix_eventos_pago_lemon; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_eventos_pago_lemon ON liga.eventos_pago USING btree (lemon_id) WHERE (lemon_id IS NOT NULL);
 
 
 --
@@ -5633,6 +6170,13 @@ CREATE INDEX ix_miembros_liga_usuario ON liga.miembros_liga USING btree (usuario
 
 
 --
+-- Name: ix_pases_liga_compra; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_pases_liga_compra ON liga.pases_liga USING btree (compra_lemon_id) WHERE (compra_lemon_id IS NOT NULL);
+
+
+--
 -- Name: ix_pases_liga_concedido_por; Type: INDEX; Schema: liga; Owner: -
 --
 
@@ -5658,6 +6202,20 @@ CREATE INDEX ix_planes_concedido_por ON liga.planes_usuario USING btree (concedi
 --
 
 CREATE INDEX ix_planes_usuario ON liga.planes_usuario USING btree (usuario_id, desde);
+
+
+--
+-- Name: ix_planes_usuario_compra; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_planes_usuario_compra ON liga.planes_usuario USING btree (compra_lemon_id) WHERE (compra_lemon_id IS NOT NULL);
+
+
+--
+-- Name: ix_premios_usuario; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_premios_usuario ON liga.premios USING btree (usuario_id);
 
 
 --
@@ -5700,6 +6258,27 @@ CREATE INDEX ix_reportes_autor ON liga.reportes USING btree (autor_id);
 --
 
 CREATE INDEX ix_reportes_resuelto_por ON liga.reportes USING btree (resuelto_por) WHERE (resuelto_por IS NOT NULL);
+
+
+--
+-- Name: ix_visitas_sesion_inicio; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_visitas_sesion_inicio ON liga.visitas USING btree (usuario_id, session_id, inicio DESC);
+
+
+--
+-- Name: ix_visitas_usuario_inicio; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_visitas_usuario_inicio ON liga.visitas USING btree (usuario_id, inicio DESC);
+
+
+--
+-- Name: suscripciones_push_usuario; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX suscripciones_push_usuario ON liga.suscripciones_push USING btree (usuario_id);
 
 
 --
@@ -6123,6 +6702,13 @@ CREATE TRIGGER liga_baja_usuario BEFORE DELETE ON auth.users FOR EACH ROW EXECUT
 
 
 --
+-- Name: users liga_confirmar_bienvenida; Type: TRIGGER; Schema: auth; Owner: -
+--
+
+CREATE TRIGGER liga_confirmar_bienvenida AFTER UPDATE OF email_confirmed_at ON auth.users FOR EACH ROW EXECUTE FUNCTION liga.confirmar_bienvenida();
+
+
+--
 -- Name: estrategias a_candado; Type: TRIGGER; Schema: liga; Owner: -
 --
 
@@ -6134,6 +6720,13 @@ CREATE TRIGGER a_candado BEFORE INSERT OR UPDATE OF estado ON liga.estrategias F
 --
 
 CREATE TRIGGER dueno_se_une AFTER INSERT ON liga.ligas_privadas FOR EACH ROW EXECUTE FUNCTION liga.dueno_se_une();
+
+
+--
+-- Name: jornadas foto_y_escaneo; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER foto_y_escaneo BEFORE INSERT OR UPDATE OF foto_id, scan_run_id ON liga.jornadas FOR EACH ROW EXECUTE FUNCTION liga.jornadas_foto_y_escaneo();
 
 
 --
@@ -6172,6 +6765,13 @@ CREATE TRIGGER guarda BEFORE INSERT ON liga.recetas FOR EACH ROW EXECUTE FUNCTIO
 
 
 --
+-- Name: estrategias_revisadas guarda_estrategia_revisada; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER guarda_estrategia_revisada BEFORE INSERT OR UPDATE ON liga.estrategias_revisadas FOR EACH ROW EXECUTE FUNCTION liga.estrategias_revisadas_guarda();
+
+
+--
 -- Name: auditoria solo_anadir; Type: TRIGGER; Schema: liga; Owner: -
 --
 
@@ -6190,6 +6790,20 @@ CREATE TRIGGER solo_anadir BEFORE DELETE OR UPDATE ON liga.consentimientos FOR E
 --
 
 CREATE TRIGGER solo_anadir BEFORE DELETE OR UPDATE ON liga.creditos_movimientos FOR EACH ROW EXECUTE FUNCTION liga.solo_anadir('auth.users', 'usuario_id');
+
+
+--
+-- Name: premios solo_anadir; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER solo_anadir BEFORE DELETE OR UPDATE ON liga.premios FOR EACH ROW EXECUTE FUNCTION liga.solo_anadir('auth.users', 'usuario_id');
+
+
+--
+-- Name: premios_temporada solo_anadir; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER solo_anadir BEFORE DELETE OR UPDATE ON liga.premios_temporada FOR EACH ROW EXECUTE FUNCTION liga.solo_anadir();
 
 
 --
@@ -6221,10 +6835,24 @@ CREATE TRIGGER traza BEFORE UPDATE ON liga.avisos_error FOR EACH ROW EXECUTE FUN
 
 
 --
+-- Name: compras_pago traza; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER traza BEFORE UPDATE ON liga.compras_pago FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria('actualizado_local', 'actualizado_por');
+
+
+--
 -- Name: estrategias traza; Type: TRIGGER; Schema: liga; Owner: -
 --
 
 CREATE TRIGGER traza BEFORE UPDATE ON liga.estrategias FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria('actualizada', 'actualizado_por');
+
+
+--
+-- Name: estrategias_revisadas traza; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER traza BEFORE UPDATE ON liga.estrategias_revisadas FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
 
 
 --
@@ -6274,6 +6902,13 @@ CREATE TRIGGER traza BEFORE UPDATE ON liga.perfiles_privados FOR EACH ROW EXECUT
 --
 
 CREATE TRIGGER traza BEFORE UPDATE ON liga.pruebas FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
+
+
+--
+-- Name: suscripciones_push traza; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER traza BEFORE UPDATE ON liga.suscripciones_push FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
 
 
 --
@@ -6621,6 +7256,38 @@ ALTER TABLE ONLY liga.avisos_error
 
 
 --
+-- Name: borradores borradores_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.borradores
+    ADD CONSTRAINT borradores_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: compras_pago compras_pago_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.compras_pago
+    ADD CONSTRAINT compras_pago_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: compras_pago compras_pago_creado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.compras_pago
+    ADD CONSTRAINT compras_pago_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: compras_pago compras_pago_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.compras_pago
+    ADD CONSTRAINT compras_pago_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: consentimientos consentimientos_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -6674,6 +7341,78 @@ ALTER TABLE ONLY liga.estrategias
 
 ALTER TABLE ONLY liga.estrategias
     ADD CONSTRAINT estrategias_receta_fk FOREIGN KEY (receta_id) REFERENCES liga.recetas(id);
+
+
+--
+-- Name: estrategias_revisadas estrategias_revisadas_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.estrategias_revisadas
+    ADD CONSTRAINT estrategias_revisadas_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: estrategias_revisadas estrategias_revisadas_creada_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.estrategias_revisadas
+    ADD CONSTRAINT estrategias_revisadas_creada_por_fkey FOREIGN KEY (creada_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: estrategias_revisadas estrategias_revisadas_estrategia_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.estrategias_revisadas
+    ADD CONSTRAINT estrategias_revisadas_estrategia_id_fkey FOREIGN KEY (estrategia_id) REFERENCES liga.estrategias(id) ON DELETE CASCADE;
+
+
+--
+-- Name: estrategias_revisadas estrategias_revisadas_inscripcion_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.estrategias_revisadas
+    ADD CONSTRAINT estrategias_revisadas_inscripcion_id_fkey FOREIGN KEY (inscripcion_id) REFERENCES liga.inscripciones(id) ON DELETE SET NULL;
+
+
+--
+-- Name: estrategias_revisadas estrategias_revisadas_resultado_inscripcion_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.estrategias_revisadas
+    ADD CONSTRAINT estrategias_revisadas_resultado_inscripcion_id_fkey FOREIGN KEY (resultado_inscripcion_id) REFERENCES liga.resultados(inscripcion_id) ON DELETE SET NULL;
+
+
+--
+-- Name: estrategias_revisadas estrategias_revisadas_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.estrategias_revisadas
+    ADD CONSTRAINT estrategias_revisadas_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: eventos_pago eventos_pago_creado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.eventos_pago
+    ADD CONSTRAINT eventos_pago_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: formaciones_degradadas formaciones_degradadas_creado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.formaciones_degradadas
+    ADD CONSTRAINT formaciones_degradadas_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: formaciones_degradadas formaciones_degradadas_inscripcion_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.formaciones_degradadas
+    ADD CONSTRAINT formaciones_degradadas_inscripcion_id_fkey FOREIGN KEY (inscripcion_id) REFERENCES liga.inscripciones(id) ON DELETE CASCADE;
 
 
 --
@@ -6789,6 +7528,22 @@ ALTER TABLE ONLY liga.omega_operaciones
 
 
 --
+-- Name: pases_liga pases_liga_concedido_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.pases_liga
+    ADD CONSTRAINT pases_liga_concedido_por_fkey FOREIGN KEY (concedido_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: pases_liga pases_liga_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.pases_liga
+    ADD CONSTRAINT pases_liga_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: perfiles perfiles_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -6837,22 +7592,6 @@ ALTER TABLE ONLY liga.perfiles_privados
 
 
 --
--- Name: pases_liga pases_liga_concedido_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
---
-
-ALTER TABLE ONLY liga.pases_liga
-    ADD CONSTRAINT pases_liga_concedido_por_fkey FOREIGN KEY (concedido_por) REFERENCES auth.users(id) ON DELETE SET NULL;
-
-
---
--- Name: pases_liga pases_liga_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
---
-
-ALTER TABLE ONLY liga.pases_liga
-    ADD CONSTRAINT pases_liga_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE;
-
-
---
 -- Name: planes_usuario planes_usuario_concedido_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -6874,6 +7613,30 @@ ALTER TABLE ONLY liga.planes_usuario
 
 ALTER TABLE ONLY liga.posiciones
     ADD CONSTRAINT posiciones_inscripcion_id_fkey FOREIGN KEY (inscripcion_id) REFERENCES liga.inscripciones(id) ON DELETE CASCADE;
+
+
+--
+-- Name: premios premios_temporada_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.premios
+    ADD CONSTRAINT premios_temporada_id_fkey FOREIGN KEY (temporada_id) REFERENCES liga.temporadas(id);
+
+
+--
+-- Name: premios_temporada premios_temporada_temporada_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.premios_temporada
+    ADD CONSTRAINT premios_temporada_temporada_id_fkey FOREIGN KEY (temporada_id) REFERENCES liga.temporadas(id);
+
+
+--
+-- Name: premios premios_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.premios
+    ADD CONSTRAINT premios_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 
 --
@@ -6933,6 +7696,30 @@ ALTER TABLE ONLY liga.roles_usuario
 
 
 --
+-- Name: suscripciones_push suscripciones_push_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.suscripciones_push
+    ADD CONSTRAINT suscripciones_push_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: suscripciones_push suscripciones_push_creado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.suscripciones_push
+    ADD CONSTRAINT suscripciones_push_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: suscripciones_push suscripciones_push_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.suscripciones_push
+    ADD CONSTRAINT suscripciones_push_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: temporadas temporadas_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -6946,6 +7733,14 @@ ALTER TABLE ONLY liga.temporadas
 
 ALTER TABLE ONLY liga.temporadas
     ADD CONSTRAINT temporadas_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: visitas visitas_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.visitas
+    ADD CONSTRAINT visitas_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 
 --
@@ -7311,6 +8106,13 @@ CREATE POLICY admin_lee ON liga.auditoria FOR SELECT TO authenticated USING (( S
 
 
 --
+-- Name: compras_pago admin_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin_lee ON liga.compras_pago FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
+
+
+--
 -- Name: consentimientos admin_lee; Type: POLICY; Schema: liga; Owner: -
 --
 
@@ -7325,17 +8127,24 @@ CREATE POLICY admin_lee ON liga.creditos_movimientos FOR SELECT TO authenticated
 
 
 --
+-- Name: eventos_pago admin_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin_lee ON liga.eventos_pago FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
+
+
+--
+-- Name: formaciones_degradadas admin_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin_lee ON liga.formaciones_degradadas FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
+
+
+--
 -- Name: lecturas admin_lee; Type: POLICY; Schema: liga; Owner: -
 --
 
 CREATE POLICY admin_lee ON liga.lecturas FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
-
-
---
--- Name: perfiles_privados admin_lee; Type: POLICY; Schema: liga; Owner: -
---
-
-CREATE POLICY admin_lee ON liga.perfiles_privados FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
 
 
 --
@@ -7346,10 +8155,10 @@ CREATE POLICY admin_lee ON liga.pases_liga FOR SELECT TO authenticated USING (( 
 
 
 --
--- Name: pases_liga dueno_lee; Type: POLICY; Schema: liga; Owner: -
+-- Name: perfiles_privados admin_lee; Type: POLICY; Schema: liga; Owner: -
 --
 
-CREATE POLICY dueno_lee ON liga.pases_liga FOR SELECT TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
+CREATE POLICY admin_lee ON liga.perfiles_privados FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
 
 
 --
@@ -7357,6 +8166,13 @@ CREATE POLICY dueno_lee ON liga.pases_liga FOR SELECT TO authenticated USING ((u
 --
 
 CREATE POLICY admin_lee ON liga.planes_usuario FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
+
+
+--
+-- Name: premios admin_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin_lee ON liga.premios FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
 
 
 --
@@ -7378,6 +8194,13 @@ CREATE POLICY admin_lee ON liga.respuestas_ia FOR SELECT TO authenticated USING 
 --
 
 CREATE POLICY admin_lee ON liga.roles_usuario FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
+
+
+--
+-- Name: visitas admin_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin_lee ON liga.visitas FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
 
 
 --
@@ -7413,6 +8236,12 @@ CREATE POLICY autor_manda ON liga.reportes FOR INSERT TO authenticated WITH CHEC
 ALTER TABLE liga.avisos_error ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: borradores; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.borradores ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: estrategias borrar; Type: POLICY; Schema: liga; Owner: -
 --
 
@@ -7427,6 +8256,12 @@ CREATE POLICY compradas ON liga.lecturas FOR SELECT TO authenticated USING ((EXI
    FROM liga.creditos_movimientos m
   WHERE ((m.lectura_id = lecturas.id) AND (m.usuario_id = ( SELECT auth.uid() AS uid))))));
 
+
+--
+-- Name: compras_pago; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.compras_pago ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: consentimientos; Type: ROW SECURITY; Schema: liga; Owner: -
@@ -7508,6 +8343,13 @@ CREATE POLICY dueno_expulsa ON liga.miembros_liga FOR DELETE TO authenticated US
 
 
 --
+-- Name: compras_pago dueno_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY dueno_lee ON liga.compras_pago FOR SELECT TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
+
+
+--
 -- Name: consentimientos dueno_lee; Type: POLICY; Schema: liga; Owner: -
 --
 
@@ -7522,6 +8364,23 @@ CREATE POLICY dueno_lee ON liga.creditos_movimientos FOR SELECT TO authenticated
 
 
 --
+-- Name: formaciones_degradadas dueno_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY dueno_lee ON liga.formaciones_degradadas FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM (liga.inscripciones i
+     JOIN liga.estrategias e ON ((e.id = i.estrategia_id)))
+  WHERE ((i.id = formaciones_degradadas.inscripcion_id) AND (e.dueno_id = ( SELECT auth.uid() AS uid))))));
+
+
+--
+-- Name: pases_liga dueno_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY dueno_lee ON liga.pases_liga FOR SELECT TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
+
+
+--
 -- Name: perfiles_privados dueno_lee; Type: POLICY; Schema: liga; Owner: -
 --
 
@@ -7533,6 +8392,13 @@ CREATE POLICY dueno_lee ON liga.perfiles_privados FOR SELECT TO authenticated US
 --
 
 CREATE POLICY dueno_lee ON liga.planes_usuario FOR SELECT TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
+
+
+--
+-- Name: premios dueno_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY dueno_lee ON liga.premios FOR SELECT TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
 
 
 --
@@ -7561,6 +8427,24 @@ CREATE POLICY editar ON liga.estrategias FOR UPDATE TO authenticated USING ((due
 --
 
 ALTER TABLE liga.estrategias ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: estrategias_revisadas; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.estrategias_revisadas ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: eventos_pago; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.eventos_pago ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: formaciones_degradadas; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.formaciones_degradadas ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: planes_usuario hook_lee; Type: POLICY; Schema: liga; Owner: -
@@ -7634,6 +8518,13 @@ CREATE POLICY leer ON liga.permisos_rol FOR SELECT TO authenticated USING (true)
 --
 
 CREATE POLICY leer ON liga.posiciones FOR SELECT TO authenticated USING (liga.puede_ver_posiciones(inscripcion_id));
+
+
+--
+-- Name: premios_temporada leer; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY leer ON liga.premios_temporada FOR SELECT TO anon, authenticated USING (true);
 
 
 --
@@ -7741,6 +8632,12 @@ CREATE POLICY moderar ON liga.estrategias FOR UPDATE TO authenticated USING ((( 
 ALTER TABLE liga.omega_operaciones ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: pases_liga; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.pases_liga ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: perfiles; Type: ROW SECURITY; Schema: liga; Owner: -
 --
 
@@ -7759,13 +8656,6 @@ ALTER TABLE liga.perfiles_privados ENABLE ROW LEVEL SECURITY;
 ALTER TABLE liga.permisos_rol ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: pases_liga; Type: ROW SECURITY; Schema: liga; Owner: -
---
-
-ALTER TABLE liga.pases_liga ENABLE ROW LEVEL SECURITY;
-
-
---
 -- Name: planes_usuario; Type: ROW SECURITY; Schema: liga; Owner: -
 --
 
@@ -7776,6 +8666,75 @@ ALTER TABLE liga.planes_usuario ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE liga.posiciones ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: premios; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.premios ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: premios_temporada; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.premios_temporada ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: borradores propia; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY propia ON liga.borradores TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid))) WITH CHECK ((usuario_id = ( SELECT auth.uid() AS uid)));
+
+
+--
+-- Name: suscripciones_push propia_borra; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY propia_borra ON liga.suscripciones_push FOR DELETE TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
+
+
+--
+-- Name: estrategias_revisadas propia_crea; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY propia_crea ON liga.estrategias_revisadas FOR INSERT TO authenticated WITH CHECK (((usuario_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1
+   FROM liga.estrategias e
+  WHERE ((e.id = estrategias_revisadas.estrategia_id) AND (e.dueno_id = ( SELECT auth.uid() AS uid)) AND (e.tipo = 'usuario'::text))))));
+
+
+--
+-- Name: suscripciones_push propia_crea; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY propia_crea ON liga.suscripciones_push FOR INSERT TO authenticated WITH CHECK ((usuario_id = ( SELECT auth.uid() AS uid)));
+
+
+--
+-- Name: estrategias_revisadas propia_edita; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY propia_edita ON liga.estrategias_revisadas FOR UPDATE TO authenticated USING (((usuario_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1
+   FROM liga.estrategias e
+  WHERE ((e.id = estrategias_revisadas.estrategia_id) AND (e.dueno_id = ( SELECT auth.uid() AS uid)) AND (e.tipo = 'usuario'::text)))))) WITH CHECK (((usuario_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1
+   FROM liga.estrategias e
+  WHERE ((e.id = estrategias_revisadas.estrategia_id) AND (e.dueno_id = ( SELECT auth.uid() AS uid)) AND (e.tipo = 'usuario'::text))))));
+
+
+--
+-- Name: estrategias_revisadas propia_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY propia_lee ON liga.estrategias_revisadas FOR SELECT TO authenticated USING (((usuario_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1
+   FROM liga.estrategias e
+  WHERE ((e.id = estrategias_revisadas.estrategia_id) AND (e.dueno_id = ( SELECT auth.uid() AS uid)) AND (e.tipo = 'usuario'::text))))));
+
+
+--
+-- Name: suscripciones_push propia_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY propia_lee ON liga.suscripciones_push FOR SELECT TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
+
 
 --
 -- Name: recetas propias; Type: POLICY; Schema: liga; Owner: -
@@ -7839,10 +8798,22 @@ CREATE POLICY salir ON liga.miembros_liga FOR DELETE TO authenticated USING ((us
 
 
 --
+-- Name: suscripciones_push; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.suscripciones_push ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: temporadas; Type: ROW SECURITY; Schema: liga; Owner: -
 --
 
 ALTER TABLE liga.temporadas ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: visitas; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.visitas ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: allocations admin_salas; Type: POLICY; Schema: public; Owner: -
@@ -8464,7 +9435,6 @@ GRANT USAGE ON SCHEMA auth TO authenticated;
 GRANT USAGE ON SCHEMA auth TO service_role;
 GRANT ALL ON SCHEMA auth TO supabase_auth_admin;
 GRANT ALL ON SCHEMA auth TO dashboard_user;
-GRANT USAGE ON SCHEMA auth TO postgres;
 
 
 --
@@ -8497,7 +9467,6 @@ GRANT ALL ON FUNCTION auth.email() TO dashboard_user;
 -- Name: FUNCTION jwt(); Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON FUNCTION auth.jwt() TO postgres;
 GRANT ALL ON FUNCTION auth.jwt() TO dashboard_user;
 
 
@@ -8521,6 +9490,14 @@ GRANT ALL ON FUNCTION auth.uid() TO dashboard_user;
 
 REVOKE ALL ON FUNCTION liga.aal2() FROM PUBLIC;
 GRANT ALL ON FUNCTION liga.aal2() TO authenticated;
+
+
+--
+-- Name: FUNCTION aceptar_terminos(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.aceptar_terminos() FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.aceptar_terminos() TO authenticated;
 
 
 --
@@ -8560,10 +9537,25 @@ REVOKE ALL ON FUNCTION liga.completar_premio() FROM PUBLIC;
 
 
 --
+-- Name: FUNCTION confirmar_bienvenida(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.confirmar_bienvenida() FROM PUBLIC;
+
+
+--
 -- Name: FUNCTION creditos_de_bienvenida(); Type: ACL; Schema: liga; Owner: -
 --
 
 REVOKE ALL ON FUNCTION liga.creditos_de_bienvenida() FROM PUBLIC;
+
+
+--
+-- Name: FUNCTION cuenta_pendiente(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.cuenta_pendiente() FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.cuenta_pendiente() TO authenticated;
 
 
 --
@@ -8628,10 +9620,32 @@ REVOKE ALL ON FUNCTION liga.estrategias_guarda() FROM PUBLIC;
 
 
 --
+-- Name: FUNCTION estrategias_revisadas_guarda(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.estrategias_revisadas_guarda() FROM PUBLIC;
+
+
+--
+-- Name: FUNCTION exportar_visitas(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.exportar_visitas() FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.exportar_visitas() TO authenticated;
+
+
+--
 -- Name: FUNCTION inscripciones_guarda(); Type: ACL; Schema: liga; Owner: -
 --
 
 REVOKE ALL ON FUNCTION liga.inscripciones_guarda() FROM PUBLIC;
+
+
+--
+-- Name: FUNCTION jornadas_foto_y_escaneo(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.jornadas_foto_y_escaneo() FROM PUBLIC;
 
 
 --
@@ -8642,10 +9656,26 @@ REVOKE ALL ON FUNCTION liga.ligas_guarda() FROM PUBLIC;
 
 
 --
+-- Name: FUNCTION ligas_incluidas(p_usuario uuid); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.ligas_incluidas(p_usuario uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.ligas_incluidas(p_usuario uuid) TO authenticated;
+
+
+--
 -- Name: FUNCTION perfiles_guarda(); Type: ACL; Schema: liga; Owner: -
 --
 
 REVOKE ALL ON FUNCTION liga.perfiles_guarda() FROM PUBLIC;
+
+
+--
+-- Name: FUNCTION puede_crear_liga(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.puede_crear_liga() FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.puede_crear_liga() TO authenticated;
 
 
 --
@@ -8664,18 +9694,18 @@ REVOKE ALL ON FUNCTION liga.recetas_guarda() FROM PUBLIC;
 
 
 --
+-- Name: FUNCTION registrar_visita(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.registrar_visita() FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.registrar_visita() TO authenticated;
+
+
+--
 -- Name: FUNCTION solo_anadir(); Type: ACL; Schema: liga; Owner: -
 --
 
 REVOKE ALL ON FUNCTION liga.solo_anadir() FROM PUBLIC;
-
-
---
--- Name: FUNCTION puede_crear_liga(); Type: ACL; Schema: liga; Owner: -
---
-
-REVOKE ALL ON FUNCTION liga.puede_crear_liga() FROM PUBLIC;
-GRANT ALL ON FUNCTION liga.puede_crear_liga() TO authenticated;
 
 
 --
@@ -8708,6 +9738,14 @@ GRANT ALL ON FUNCTION liga.unirse_liga(p_codigo text) TO authenticated;
 
 
 --
+-- Name: FUNCTION version_terminos(); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.version_terminos() FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.version_terminos() TO authenticated;
+
+
+--
 -- Name: FUNCTION rls_auto_enable(); Type: ACL; Schema: public; Owner: -
 --
 
@@ -8728,16 +9766,16 @@ GRANT ALL ON FUNCTION public.tocar_auditoria() TO service_role;
 -- Name: TABLE audit_log_entries; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.audit_log_entries TO dashboard_user;
+REVOKE ALL ON TABLE auth.audit_log_entries FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.audit_log_entries TO postgres;
 GRANT SELECT ON TABLE auth.audit_log_entries TO postgres WITH GRANT OPTION;
+GRANT ALL ON TABLE auth.audit_log_entries TO dashboard_user;
 
 
 --
 -- Name: TABLE custom_oauth_providers; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.custom_oauth_providers TO postgres;
 GRANT ALL ON TABLE auth.custom_oauth_providers TO dashboard_user;
 
 
@@ -8745,6 +9783,7 @@ GRANT ALL ON TABLE auth.custom_oauth_providers TO dashboard_user;
 -- Name: TABLE flow_state; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.flow_state FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.flow_state TO postgres;
 GRANT SELECT ON TABLE auth.flow_state TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.flow_state TO dashboard_user;
@@ -8754,6 +9793,7 @@ GRANT ALL ON TABLE auth.flow_state TO dashboard_user;
 -- Name: TABLE identities; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.identities FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.identities TO postgres;
 GRANT SELECT ON TABLE auth.identities TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.identities TO dashboard_user;
@@ -8763,15 +9803,17 @@ GRANT ALL ON TABLE auth.identities TO dashboard_user;
 -- Name: TABLE instances; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.instances TO dashboard_user;
+REVOKE ALL ON TABLE auth.instances FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.instances TO postgres;
 GRANT SELECT ON TABLE auth.instances TO postgres WITH GRANT OPTION;
+GRANT ALL ON TABLE auth.instances TO dashboard_user;
 
 
 --
 -- Name: TABLE mfa_amr_claims; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.mfa_amr_claims FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.mfa_amr_claims TO postgres;
 GRANT SELECT ON TABLE auth.mfa_amr_claims TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.mfa_amr_claims TO dashboard_user;
@@ -8781,6 +9823,7 @@ GRANT ALL ON TABLE auth.mfa_amr_claims TO dashboard_user;
 -- Name: TABLE mfa_challenges; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.mfa_challenges FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.mfa_challenges TO postgres;
 GRANT SELECT ON TABLE auth.mfa_challenges TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.mfa_challenges TO dashboard_user;
@@ -8790,6 +9833,7 @@ GRANT ALL ON TABLE auth.mfa_challenges TO dashboard_user;
 -- Name: TABLE mfa_factors; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.mfa_factors FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.mfa_factors TO postgres;
 GRANT SELECT ON TABLE auth.mfa_factors TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.mfa_factors TO dashboard_user;
@@ -8799,7 +9843,6 @@ GRANT ALL ON TABLE auth.mfa_factors TO dashboard_user;
 -- Name: TABLE mfa_recovery_code_sets; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.mfa_recovery_code_sets TO postgres;
 GRANT ALL ON TABLE auth.mfa_recovery_code_sets TO dashboard_user;
 
 
@@ -8807,7 +9850,6 @@ GRANT ALL ON TABLE auth.mfa_recovery_code_sets TO dashboard_user;
 -- Name: TABLE mfa_recovery_codes; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.mfa_recovery_codes TO postgres;
 GRANT ALL ON TABLE auth.mfa_recovery_codes TO dashboard_user;
 
 
@@ -8815,7 +9857,6 @@ GRANT ALL ON TABLE auth.mfa_recovery_codes TO dashboard_user;
 -- Name: TABLE oauth_authorizations; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.oauth_authorizations TO postgres;
 GRANT ALL ON TABLE auth.oauth_authorizations TO dashboard_user;
 
 
@@ -8823,7 +9864,6 @@ GRANT ALL ON TABLE auth.oauth_authorizations TO dashboard_user;
 -- Name: TABLE oauth_client_states; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.oauth_client_states TO postgres;
 GRANT ALL ON TABLE auth.oauth_client_states TO dashboard_user;
 
 
@@ -8831,7 +9871,6 @@ GRANT ALL ON TABLE auth.oauth_client_states TO dashboard_user;
 -- Name: TABLE oauth_clients; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.oauth_clients TO postgres;
 GRANT ALL ON TABLE auth.oauth_clients TO dashboard_user;
 
 
@@ -8839,7 +9878,6 @@ GRANT ALL ON TABLE auth.oauth_clients TO dashboard_user;
 -- Name: TABLE oauth_consents; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.oauth_consents TO postgres;
 GRANT ALL ON TABLE auth.oauth_consents TO dashboard_user;
 
 
@@ -8847,6 +9885,7 @@ GRANT ALL ON TABLE auth.oauth_consents TO dashboard_user;
 -- Name: TABLE one_time_tokens; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.one_time_tokens FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.one_time_tokens TO postgres;
 GRANT SELECT ON TABLE auth.one_time_tokens TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.one_time_tokens TO dashboard_user;
@@ -8856,9 +9895,10 @@ GRANT ALL ON TABLE auth.one_time_tokens TO dashboard_user;
 -- Name: TABLE refresh_tokens; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.refresh_tokens TO dashboard_user;
+REVOKE ALL ON TABLE auth.refresh_tokens FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.refresh_tokens TO postgres;
 GRANT SELECT ON TABLE auth.refresh_tokens TO postgres WITH GRANT OPTION;
+GRANT ALL ON TABLE auth.refresh_tokens TO dashboard_user;
 
 
 --
@@ -8866,13 +9906,13 @@ GRANT SELECT ON TABLE auth.refresh_tokens TO postgres WITH GRANT OPTION;
 --
 
 GRANT ALL ON SEQUENCE auth.refresh_tokens_id_seq TO dashboard_user;
-GRANT ALL ON SEQUENCE auth.refresh_tokens_id_seq TO postgres;
 
 
 --
 -- Name: TABLE saml_providers; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.saml_providers FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.saml_providers TO postgres;
 GRANT SELECT ON TABLE auth.saml_providers TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.saml_providers TO dashboard_user;
@@ -8882,6 +9922,7 @@ GRANT ALL ON TABLE auth.saml_providers TO dashboard_user;
 -- Name: TABLE saml_relay_states; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.saml_relay_states FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.saml_relay_states TO postgres;
 GRANT SELECT ON TABLE auth.saml_relay_states TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.saml_relay_states TO dashboard_user;
@@ -8891,6 +9932,8 @@ GRANT ALL ON TABLE auth.saml_relay_states TO dashboard_user;
 -- Name: TABLE schema_migrations; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.schema_migrations FROM postgres;
+GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.schema_migrations TO postgres;
 GRANT SELECT ON TABLE auth.schema_migrations TO postgres WITH GRANT OPTION;
 
 
@@ -8898,7 +9941,6 @@ GRANT SELECT ON TABLE auth.schema_migrations TO postgres WITH GRANT OPTION;
 -- Name: TABLE scim_tokens; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.scim_tokens TO postgres;
 GRANT ALL ON TABLE auth.scim_tokens TO dashboard_user;
 
 
@@ -8906,7 +9948,6 @@ GRANT ALL ON TABLE auth.scim_tokens TO dashboard_user;
 -- Name: TABLE scim_users; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.scim_users TO postgres;
 GRANT ALL ON TABLE auth.scim_users TO dashboard_user;
 
 
@@ -8914,6 +9955,7 @@ GRANT ALL ON TABLE auth.scim_users TO dashboard_user;
 -- Name: TABLE sessions; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.sessions FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.sessions TO postgres;
 GRANT SELECT ON TABLE auth.sessions TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.sessions TO dashboard_user;
@@ -8923,6 +9965,7 @@ GRANT ALL ON TABLE auth.sessions TO dashboard_user;
 -- Name: TABLE sso_domains; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.sso_domains FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.sso_domains TO postgres;
 GRANT SELECT ON TABLE auth.sso_domains TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.sso_domains TO dashboard_user;
@@ -8932,6 +9975,7 @@ GRANT ALL ON TABLE auth.sso_domains TO dashboard_user;
 -- Name: TABLE sso_providers; Type: ACL; Schema: auth; Owner: -
 --
 
+REVOKE ALL ON TABLE auth.sso_providers FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.sso_providers TO postgres;
 GRANT SELECT ON TABLE auth.sso_providers TO postgres WITH GRANT OPTION;
 GRANT ALL ON TABLE auth.sso_providers TO dashboard_user;
@@ -8941,16 +9985,16 @@ GRANT ALL ON TABLE auth.sso_providers TO dashboard_user;
 -- Name: TABLE users; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.users TO dashboard_user;
+REVOKE ALL ON TABLE auth.users FROM postgres;
 GRANT INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,MAINTAIN,UPDATE ON TABLE auth.users TO postgres;
 GRANT SELECT ON TABLE auth.users TO postgres WITH GRANT OPTION;
+GRANT ALL ON TABLE auth.users TO dashboard_user;
 
 
 --
 -- Name: TABLE webauthn_challenges; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.webauthn_challenges TO postgres;
 GRANT ALL ON TABLE auth.webauthn_challenges TO dashboard_user;
 
 
@@ -8958,7 +10002,6 @@ GRANT ALL ON TABLE auth.webauthn_challenges TO dashboard_user;
 -- Name: TABLE webauthn_credentials; Type: ACL; Schema: auth; Owner: -
 --
 
-GRANT ALL ON TABLE auth.webauthn_credentials TO postgres;
 GRANT ALL ON TABLE auth.webauthn_credentials TO dashboard_user;
 
 
@@ -8988,6 +10031,20 @@ GRANT SELECT ON TABLE liga.avisos_error TO authenticated;
 --
 
 GRANT UPDATE(estado) ON TABLE liga.avisos_error TO authenticated;
+
+
+--
+-- Name: TABLE borradores; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE liga.borradores TO authenticated;
+
+
+--
+-- Name: TABLE compras_pago; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.compras_pago TO authenticated;
 
 
 --
@@ -9118,6 +10175,41 @@ GRANT UPDATE(receta_id) ON TABLE liga.estrategias TO authenticated;
 
 
 --
+-- Name: TABLE estrategias_revisadas; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT,INSERT ON TABLE liga.estrategias_revisadas TO authenticated;
+
+
+--
+-- Name: COLUMN estrategias_revisadas.inscripcion_id; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT UPDATE(inscripcion_id) ON TABLE liga.estrategias_revisadas TO authenticated;
+
+
+--
+-- Name: COLUMN estrategias_revisadas.resultado_inscripcion_id; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT UPDATE(resultado_inscripcion_id) ON TABLE liga.estrategias_revisadas TO authenticated;
+
+
+--
+-- Name: TABLE eventos_pago; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.eventos_pago TO authenticated;
+
+
+--
+-- Name: TABLE formaciones_degradadas; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.formaciones_degradadas TO authenticated;
+
+
+--
 -- Name: TABLE inscripciones; Type: ACL; Schema: liga; Owner: -
 --
 
@@ -9190,6 +10282,13 @@ GRANT SELECT ON TABLE liga.omega_operaciones TO authenticated;
 
 
 --
+-- Name: TABLE pases_liga; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.pases_liga TO authenticated;
+
+
+--
 -- Name: TABLE perfiles; Type: ACL; Schema: liga; Owner: -
 --
 
@@ -9223,6 +10322,12 @@ GRANT SELECT ON TABLE liga.perfiles_privados TO authenticated;
 --
 
 GRANT UPDATE(tema) ON TABLE liga.perfiles_privados TO authenticated;
+
+
+--
+-- Name: COLUMN perfiles_privados.idioma; Type: ACL; Schema: liga; Owner: -
+--
+
 GRANT UPDATE(idioma) ON TABLE liga.perfiles_privados TO authenticated;
 
 
@@ -9231,13 +10336,6 @@ GRANT UPDATE(idioma) ON TABLE liga.perfiles_privados TO authenticated;
 --
 
 GRANT SELECT ON TABLE liga.permisos_rol TO authenticated;
-
-
---
--- Name: TABLE pases_liga; Type: ACL; Schema: liga; Owner: -
---
-
-GRANT SELECT ON TABLE liga.pases_liga TO authenticated;
 
 
 --
@@ -9253,6 +10351,21 @@ GRANT SELECT ON TABLE liga.planes_usuario TO authenticated;
 --
 
 GRANT SELECT ON TABLE liga.posiciones TO authenticated;
+
+
+--
+-- Name: TABLE premios; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.premios TO authenticated;
+
+
+--
+-- Name: TABLE premios_temporada; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.premios_temporada TO anon;
+GRANT SELECT ON TABLE liga.premios_temporada TO authenticated;
 
 
 --
@@ -9440,6 +10553,13 @@ GRANT SELECT ON TABLE liga.roles_usuario TO authenticated;
 
 
 --
+-- Name: TABLE suscripciones_push; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT,INSERT,DELETE ON TABLE liga.suscripciones_push TO authenticated;
+
+
+--
 -- Name: TABLE temporadas; Type: ACL; Schema: liga; Owner: -
 --
 
@@ -9460,6 +10580,13 @@ GRANT SELECT ON TABLE liga.v_clasificacion TO authenticated;
 --
 
 GRANT SELECT ON TABLE liga.v_saldo TO authenticated;
+
+
+--
+-- Name: TABLE visitas; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.visitas TO authenticated;
 
 
 --
@@ -10265,205 +11392,16 @@ CREATE EVENT TRIGGER ensure_rls ON ddl_command_end
 
 
 --
--- Borradores de trabajo y visitas autenticadas.
-CREATE TABLE liga.borradores (
-    usuario_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    clave text NOT NULL,
-    contenido jsonb NOT NULL,
-    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
-    creado timestamptz NOT NULL DEFAULT now(),
-    creado_por uuid DEFAULT auth.uid(),
-    actualizado timestamptz NOT NULL DEFAULT now(),
-    actualizado_por uuid DEFAULT auth.uid(),
-    PRIMARY KEY (usuario_id, clave),
-    CHECK (octet_length(contenido::text) <= 40000)
-);
-ALTER TABLE liga.borradores ENABLE ROW LEVEL SECURITY;
-CREATE POLICY propia ON liga.borradores TO authenticated
-    USING (usuario_id = (SELECT auth.uid())) WITH CHECK (usuario_id = (SELECT auth.uid()));
-GRANT SELECT, INSERT, UPDATE, DELETE ON liga.borradores TO authenticated;
-
-
--- Local review SQL only. The tracked Supabase migration and CI schema are maintained separately.
-
-create table liga.visitas (
-  id bigint generated always as identity primary key,
-  usuario_id uuid not null references auth.users(id) on delete cascade,
-  session_id uuid not null,
-  inicio timestamptz not null default clock_timestamp(),
-  ultima_actividad timestamptz not null default clock_timestamp()
-);
-
-comment on table liga.visitas is
-  'Visit history, one row per authenticated visit; usuario_id is the actor.';
-comment on column liga.visitas.session_id is
-  'Signed Supabase auth session UUID; retained as a grouping key, not an IP or fingerprint.';
-comment on column liga.visitas.ultima_actividad is
-  'Server timestamp of the most recent qualifying interaction; updates are throttled.';
-
-create index ix_visitas_usuario_inicio on liga.visitas (usuario_id, inicio desc);
-create index ix_visitas_sesion_inicio on liga.visitas (usuario_id, session_id, inicio desc);
-
-alter table liga.visitas enable row level security;
-create policy admin_lee on liga.visitas for select to authenticated
-  using ((select liga.es_admin()));
-
-revoke all on table liga.visitas from public, anon, authenticated;
-grant select on table liga.visitas to authenticated;
-
-create function liga.registrar_visita() returns void
-  language plpgsql
-  security definer
-  set search_path to ''
-as $$
-declare
-  v_usuario uuid := auth.uid();
-  v_session uuid;
-  v_id bigint;
-  v_ultima timestamptz;
-begin
-  if v_usuario is null then
-    raise exception 'authenticated identity required' using errcode = '28000';
-  end if;
-
-  v_session := nullif(auth.jwt() ->> 'session_id', '')::uuid;
-  if v_session is null then
-    raise exception 'authenticated session required' using errcode = '28000';
-  end if;
-
-  -- Also serializes the first event, where a row lock alone cannot prevent duplicates.
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended(v_session::text, 0)
-  );
-
-  select v.id, v.ultima_actividad into v_id, v_ultima
-  from liga.visitas as v
-  where v.usuario_id = v_usuario and v.session_id = v_session
-  order by v.inicio desc, v.id desc
-  limit 1
-  for update;
-
-  if found and v_ultima > pg_catalog.clock_timestamp() - interval '30 minutes' then
-    -- Bound storage writes even if an authenticated client calls this directly in a tight loop.
-    update liga.visitas as v
-    set ultima_actividad = pg_catalog.clock_timestamp()
-    where v.id = v_id
-      and v.ultima_actividad <= pg_catalog.clock_timestamp() - interval '30 seconds';
-  else
-    insert into liga.visitas (usuario_id, session_id, inicio, ultima_actividad)
-    values (v_usuario, v_session, pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp());
-  end if;
-end;
-$$;
-
-revoke all on function liga.registrar_visita() from public, anon;
-grant execute on function liga.registrar_visita() to authenticated;
-
-create function liga.exportar_visitas()
-returns table (inicio timestamptz, ultima_actividad timestamptz)
-language plpgsql
-security definer
-set search_path to ''
-as $$
-declare
-  v_usuario uuid := auth.uid();
-begin
-  if v_usuario is null then
-    raise exception 'authenticated identity required' using errcode = '28000';
-  end if;
-
-  return query
-  select v.inicio, v.ultima_actividad
-  from liga.visitas as v
-  where v.usuario_id = v_usuario
-  order by v.inicio, v.id;
-end;
-$$;
-
-revoke all on function liga.exportar_visitas() from public, anon;
-grant execute on function liga.exportar_visitas() to authenticated;
-
--- Vennett strategy review markers. User-scoped and writable only for the owner's strategies.
-create table liga.estrategias_revisadas (
-  usuario_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  estrategia_id uuid not null references liga.estrategias(id) on delete cascade,
-  inscripcion_id bigint references liga.inscripciones(id) on delete set null,
-  resultado_inscripcion_id bigint references liga.resultados(inscripcion_id) on delete set null,
-  revisada_en timestamptz not null default now(),
-  creada timestamptz not null default now(),
-  creada_por uuid default auth.uid() references auth.users(id) on delete set null,
-  actualizado_en timestamptz,
-  actualizado_por uuid references auth.users(id) on delete set null,
-  primary key (usuario_id, estrategia_id)
-);
-
-create function liga.estrategias_revisadas_guarda() returns trigger
-language plpgsql set search_path = '' as $$
-begin
-  if new.usuario_id is distinct from (select auth.uid()) then
-    raise exception 'Solo puedes actualizar tus propias revisiones' using errcode = '42501';
-  end if;
-  if not exists (
-    select 1 from liga.estrategias e
-    where e.id = new.estrategia_id and e.dueno_id = new.usuario_id and e.tipo = 'usuario'
-  ) then
-    raise exception 'La estrategia no pertenece a tu cuenta' using errcode = '42501';
-  end if;
-  if new.inscripcion_id is not null and not exists (
-    select 1 from liga.inscripciones i
-    where i.id = new.inscripcion_id and i.estrategia_id = new.estrategia_id
-  ) then
-    raise exception 'La inscripción no pertenece a tu estrategia' using errcode = '42501';
-  end if;
-  if new.resultado_inscripcion_id is not null and not exists (
-    select 1 from liga.resultados r join liga.inscripciones i on i.id = r.inscripcion_id
-    where r.inscripcion_id = new.resultado_inscripcion_id
-      and i.estrategia_id = new.estrategia_id
-  ) then
-    raise exception 'El resultado no pertenece a tu estrategia' using errcode = '42501';
-  end if;
-  new.revisada_en := now();
-  return new;
-end $$;
-revoke all on function liga.estrategias_revisadas_guarda() from public;
-
-create trigger guarda_estrategia_revisada before insert or update
-  on liga.estrategias_revisadas for each row execute function liga.estrategias_revisadas_guarda();
-create trigger traza before update on liga.estrategias_revisadas
-  for each row execute function liga.tocar_auditoria();
-
-alter table liga.estrategias_revisadas enable row level security;
-grant select, insert, update (inscripcion_id, resultado_inscripcion_id)
-  on liga.estrategias_revisadas to authenticated;
-
-create policy propia_lee on liga.estrategias_revisadas for select to authenticated
-  using (usuario_id = (select auth.uid()) and exists (
-    select 1 from liga.estrategias e
-    where e.id = estrategia_id and e.dueno_id = (select auth.uid()) and e.tipo = 'usuario'
-  ));
-create policy propia_crea on liga.estrategias_revisadas for insert to authenticated
-  with check (usuario_id = (select auth.uid()) and exists (
-    select 1 from liga.estrategias e
-    where e.id = estrategia_id and e.dueno_id = (select auth.uid()) and e.tipo = 'usuario'
-  ));
-create policy propia_edita on liga.estrategias_revisadas for update to authenticated
-  using (usuario_id = (select auth.uid()) and exists (
-    select 1 from liga.estrategias e
-    where e.id = estrategia_id and e.dueno_id = (select auth.uid()) and e.tipo = 'usuario'
-  ))
-  with check (usuario_id = (select auth.uid()) and exists (
-    select 1 from liga.estrategias e
-    where e.id = estrategia_id and e.dueno_id = (select auth.uid()) and e.tipo = 'usuario'
-  ));
-
 -- PostgreSQL database dump complete
 --
 
+\unrestrict wE4N5sfGs6AQmp7eOcJwwn14hTSUnt6gMHscrKa43QwxMipI3Jf8zYzqjfTkUto
 
 --
 -- PostgreSQL database dump
 --
 
+\restrict 14l9mNyHVMzTI9dnJWbJ92pb3Wc1sW9oprPaHNpcAiJ26wlHgtqjb8XATweE8A8
 
 -- Dumped from database version 17.11 (Debian 17.11-1.pgdg12+2)
 -- Dumped by pg_dump version 17.11 (Debian 17.11-1.pgdg12+2)
@@ -10497,288 +11435,4 @@ INSERT INTO liga.permisos_rol VALUES ('admin', 'admin.salas');
 -- PostgreSQL database dump complete
 --
 
-
-
-
-CREATE FUNCTION liga.confirmar_bienvenida() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $$
-declare
-  regalo numeric;
-begin
-  if old.email_confirmed_at is null and new.email_confirmed_at is not null then
-    regalo := liga.creditos_de_bienvenida();
-    if regalo > 0 and not exists (select 1 from liga.creditos_movimientos
-      where usuario_id = new.id and idempotencia = 'bienvenida') then
-      perform liga.cargar_creditos(new.id, regalo, 'regalo', 'bienvenida');
-    end if;
-  end if;
-  return new;
-end $$;
-REVOKE ALL ON FUNCTION liga.confirmar_bienvenida() FROM PUBLIC;
-CREATE TRIGGER liga_confirmar_bienvenida AFTER UPDATE OF email_confirmed_at ON auth.users
-FOR EACH ROW EXECUTE FUNCTION liga.confirmar_bienvenida();
-
--- liga_020: estrategias que jugaron una jornada sin su pregunta propia.
-create table liga.formaciones_degradadas (
-  inscripcion_id bigint not null references liga.inscripciones (id) on delete cascade,
-  motivo text not null
-    check (motivo in ('sin_ia', 'tope', 'incompleta', 'tiempo', 'quitadas_vaciadas', 'sin_saldo')),
-  creada timestamptz not null default now(),
-  creado_por uuid default auth.uid() references auth.users (id) on delete set null,
-  primary key (inscripcion_id, motivo)
-);
-alter table liga.formaciones_degradadas enable row level security;
-revoke all on table liga.formaciones_degradadas from public, anon, authenticated;
-grant select on table liga.formaciones_degradadas to authenticated;
-create policy dueno_lee on liga.formaciones_degradadas for select to authenticated
-  using (exists (
-    select 1 from liga.inscripciones i
-    join liga.estrategias e on e.id = i.estrategia_id
-    where i.id = inscripcion_id and e.dueno_id = (select auth.uid())));
-create policy admin_lee on liga.formaciones_degradadas for select to authenticated
-  using ((select liga.es_admin()));
-
--- liga_022: la foto y el escaneo que se fijan en una jornada tienen que ser pareja.
-create or replace function liga.jornadas_foto_y_escaneo() returns trigger
-language plpgsql
-security definer
-set search_path to ''
-as $$
-declare
-  foto_del_escaneo bigint;
-begin
-  if new.scan_run_id is null and new.foto_id is null then
-    return new;
-  end if;
-  select s.foto_id into foto_del_escaneo from public.scan_runs s where s.id = new.scan_run_id;
-  if new.scan_run_id is null or new.foto_id is distinct from foto_del_escaneo then
-    raise exception 'La foto y el escaneo de la jornada tienen que ser los mismos'
-      using errcode = '23514';
-  end if;
-  return new;
-end $$;
-revoke all on function liga.jornadas_foto_y_escaneo() from public;
-create trigger foto_y_escaneo before insert or update of foto_id, scan_run_id on liga.jornadas
-for each row execute function liga.jornadas_foto_y_escaneo();
-
--- liga_024: suscripciones de aviso (Web Push) de las cuentas.
-create table liga.suscripciones_push (
-  id bigint generated always as identity primary key,
-  usuario_id uuid not null references auth.users (id) on delete cascade,
-  endpoint text not null unique check (length(endpoint) <= 1000),
-  p256dh text not null check (length(p256dh) <= 200),
-  auth text not null check (length(auth) <= 100),
-  creado timestamptz not null default now(),
-  creado_por uuid default auth.uid() references auth.users (id) on delete set null,
-  actualizado_en timestamptz,
-  actualizado_por uuid references auth.users (id) on delete set null
-);
-create index suscripciones_push_usuario on liga.suscripciones_push (usuario_id);
-create trigger traza before update on liga.suscripciones_push
-  for each row execute function liga.tocar_auditoria();
-alter table liga.suscripciones_push enable row level security;
-revoke all on table liga.suscripciones_push from public, anon, authenticated;
-grant select, insert, delete on table liga.suscripciones_push to authenticated;
-create policy propia_lee on liga.suscripciones_push for select to authenticated
-  using (usuario_id = (select auth.uid()));
-create policy propia_crea on liga.suscripciones_push for insert to authenticated
-  with check (usuario_id = (select auth.uid()));
-create policy propia_borra on liga.suscripciones_push for delete to authenticated
-  using (usuario_id = (select auth.uid()));
-
--- liga_031: el premio anual, calculado una sola vez al cerrar la temporada.
-create table liga.premios_temporada (
-  temporada_id smallint primary key references liga.temporadas (id),
-  escalon smallint not null check (escalon in (0, 1, 2)),
-  calculado timestamptz not null default now(),
-  creado_por uuid default auth.uid()
-);
-create table liga.premios (
-  id bigint generated always as identity primary key,
-  temporada_id smallint not null references liga.temporadas (id),
-  usuario_id uuid not null references auth.users (id) on delete cascade,
-  jornadas_jugadas smallint not null check (jornadas_jugadas between 1 and 24),
-  rentabilidad numeric(12,4) not null,
-  puesto smallint check (puesto between 1 and 3),
-  importe numeric(10,2) check (importe > 0),
-  creado timestamptz not null default now(),
-  creado_por uuid default auth.uid(),
-  constraint premio_puesto_e_importe check ((puesto is null) = (importe is null)),
-  unique (temporada_id, usuario_id)
-);
-create index ix_premios_usuario on liga.premios (usuario_id);
-create trigger solo_anadir before update or delete on liga.premios_temporada
-  for each row execute function liga.solo_anadir();
-create trigger solo_anadir before update or delete on liga.premios
-  for each row execute function liga.solo_anadir('auth.users', 'usuario_id');
-alter table liga.premios_temporada enable row level security;
-alter table liga.premios enable row level security;
-revoke all on table liga.premios_temporada, liga.premios from public, anon, authenticated;
-grant select on liga.premios_temporada to anon, authenticated;
-grant select on liga.premios to authenticated;
-create policy leer on liga.premios_temporada for select to anon, authenticated using (true);
-create policy dueno_lee on liga.premios for select to authenticated
-  using (usuario_id = (select auth.uid()));
-create policy admin_lee on liga.premios for select to authenticated
-  using ((select liga.es_admin()));
-
--- liga_032 · Cuentas creadas con Google o con un enlace al correo: aceptar términos y saber si
--- falta completar la cuenta.
-create or replace function liga.aceptar_terminos() returns void
-language plpgsql security definer set search_path = '' as $$
-begin
-  if auth.uid() is null then
-    raise exception 'Sin sesión' using errcode = '42501';
-  end if;
-  insert into liga.consentimientos (usuario_id, documento, version)
-    values (auth.uid(), 'terminos', '1'), (auth.uid(), 'privacidad', '1')
-    on conflict (usuario_id, documento, version) do nothing;
-end $$;
-
-create or replace function liga.cuenta_pendiente() returns boolean
-language sql stable security definer set search_path = '' as $$
-  select exists (select 1 from liga.perfiles p
-                 where p.id = auth.uid() and p.alias like 'jugador\_%')
-     and not exists (select 1 from liga.consentimientos c
-                     where c.usuario_id = auth.uid() and c.documento = 'terminos');
-$$;
-
-revoke execute on function liga.aceptar_terminos(), liga.cuenta_pendiente() from public, anon;
-grant execute on function liga.aceptar_terminos(), liga.cuenta_pendiente() to authenticated;
-
--- liga_033 · «Pendiente» depende solo de los términos aceptados.
-create or replace function liga.cuenta_pendiente() returns boolean
-language sql stable security definer set search_path = '' as $$
-  select not exists (select 1 from liga.consentimientos c
-                     where c.usuario_id = auth.uid() and c.documento = 'terminos');
-$$;
-
--- liga_034 · El alta por un proveedor externo (Google) no es un registro con contraseña.
-create or replace function liga.alta_usuario() returns trigger
-language plpgsql security definer set search_path = '' as $$
-declare
-  regalo numeric;
-  nombre text;
-  abierto boolean;
-  registro_publico boolean;
-  con_proveedor boolean;
-begin
-  con_proveedor := coalesce(new.raw_app_meta_data ->> 'provider', 'email') <> 'email';
-  registro_publico := new.raw_user_meta_data ? 'alias'
-    or new.raw_user_meta_data ? 'terminos_version';
-  if not con_proveedor and (registro_publico or new.email_confirmed_at is null) then
-    select coalesce((select a.valor = 'true'::jsonb from liga.ajustes a
-      where a.clave = 'liga.registro.abierto'), false) into abierto;
-    if not abierto then
-      raise exception 'El registro está cerrado' using errcode = '42501';
-    end if;
-    nombre := lower(trim(new.raw_user_meta_data ->> 'alias'));
-    if nombre is null or nombre !~ '^[a-z0-9_.]{3,20}$' or nombre in ('admin', 'vennett') then
-      raise exception 'Nombre de usuario no válido' using errcode = '23514';
-    end if;
-    if (new.raw_user_meta_data ->> 'terminos_version') is distinct from '1' then
-      raise exception 'Acepta los términos' using errcode = '23514';
-    end if;
-  else
-    nombre := 'jugador_' || left(replace(new.id::text, '-', ''), 12);
-  end if;
-  insert into liga.perfiles (id, alias) values (new.id, nombre);
-  insert into liga.perfiles_privados (id) values (new.id);
-  insert into liga.roles_usuario (usuario_id, rol) values (new.id, 'usuario');
-  if registro_publico then
-    insert into liga.consentimientos (usuario_id, documento, version)
-      values (new.id, 'terminos', '1'), (new.id, 'privacidad', '1');
-  end if;
-  if new.email_confirmed_at is not null or con_proveedor then
-    regalo := liga.creditos_de_bienvenida();
-    if regalo > 0 then
-      perform liga.cargar_creditos(new.id, regalo, 'regalo', 'bienvenida');
-    end if;
-  end if;
-  return new;
-end $$;
-
--- Pagos con Lemon Squeezy (migraciones 035 y 036).
-CREATE TABLE liga.eventos_pago (
-  clave text PRIMARY KEY,
-  evento text NOT NULL,
-  lemon_id text,
-  recibido_en timestamptz NOT NULL DEFAULT now(),
-  procesado_en timestamptz,
-  estado text NOT NULL CONSTRAINT eventos_pago_estado_check CHECK (estado IN ('recibido', 'aplicado', 'ignorado', 'obsoleto', 'duplicado', 'rechazado'))
-);
-CREATE INDEX ix_eventos_pago_lemon ON liga.eventos_pago USING btree (lemon_id) WHERE (lemon_id IS NOT NULL);
-
-CREATE TABLE liga.compras_pago (
-  lemon_id text PRIMARY KEY,
-  usuario_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
-  producto text NOT NULL CHECK (producto IN ('mensual', 'media_temporada', 'temporada', 'pack_liga')),
-  estado text NOT NULL,
-  actualizado_lemon timestamptz NOT NULL,
-  actualizado_local timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX ix_compras_pago_usuario ON liga.compras_pago USING btree (usuario_id);
-
-ALTER TABLE liga.eventos_pago ENABLE ROW LEVEL SECURITY;
-ALTER TABLE liga.compras_pago ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON liga.eventos_pago FROM authenticated, anon;
-GRANT SELECT ON liga.compras_pago TO authenticated;
-CREATE POLICY dueno_lee ON liga.compras_pago FOR SELECT TO authenticated USING (usuario_id = (SELECT auth.uid()));
-CREATE POLICY admin_lee ON liga.compras_pago FOR SELECT TO authenticated USING ((SELECT liga.es_admin()));
-
--- Cada derecho de pago guarda la compra de Lemon que lo dio (migración 037).
-ALTER TABLE liga.planes_usuario ADD COLUMN compra_lemon_id text;
-ALTER TABLE liga.pases_liga ADD COLUMN compra_lemon_id text;
-CREATE INDEX ix_planes_usuario_compra ON liga.planes_usuario USING btree (compra_lemon_id) WHERE (compra_lemon_id IS NOT NULL);
-CREATE INDEX ix_pases_liga_compra ON liga.pases_liga USING btree (compra_lemon_id) WHERE (compra_lemon_id IS NOT NULL);
-
--- Los pagos llevan rastro de creación y de cambio; el registro de webhooks lo lee solo el admin (migración 039).
-ALTER TABLE liga.eventos_pago ADD COLUMN creado_por uuid DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE SET NULL;
-ALTER TABLE liga.compras_pago ADD COLUMN creado timestamp with time zone DEFAULT now() NOT NULL;
-ALTER TABLE liga.compras_pago ADD COLUMN creado_por uuid DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE SET NULL;
-ALTER TABLE liga.compras_pago ADD COLUMN actualizado_por uuid REFERENCES auth.users(id) ON DELETE SET NULL;
-CREATE TRIGGER traza BEFORE UPDATE ON liga.compras_pago FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria('actualizado_local', 'actualizado_por');
-GRANT SELECT ON liga.eventos_pago TO authenticated;
-CREATE POLICY admin_lee ON liga.eventos_pago FOR SELECT TO authenticated USING ((SELECT liga.es_admin() AS es_admin));
-
--- Crear ligas tiene tope: Pro incluye dos y cada pase de liga vigente, una (migración 038).
-CREATE FUNCTION liga.ligas_incluidas(p_usuario uuid) RETURNS integer
-    LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO ''
-    AS $$
-  select (case when liga.tiene_pro(p_usuario) then 2 else 0 end)
-       + (select count(*)::integer from liga.pases_liga
-          where usuario_id = p_usuario and desde <= now() and (hasta is null or hasta > now()));
-$$;
-REVOKE ALL ON FUNCTION liga.ligas_incluidas(uuid) FROM PUBLIC;
-GRANT ALL ON FUNCTION liga.ligas_incluidas(uuid) TO authenticated;
-
-CREATE OR REPLACE FUNCTION liga.ligas_guarda() RETURNS trigger
-    LANGUAGE plpgsql SET search_path TO ''
-    AS $$
-begin
-  if current_user = 'postgres' or liga.es_admin() then
-    return new;
-  end if;
-  if tg_op = 'INSERT' then
-    if not liga.puede_crear_liga() then
-      raise exception 'Crear ligas privadas es de Pro o de quien tiene un pase de liga'
-        using errcode = '42501';
-    end if;
-    if (select count(*) from liga.ligas_privadas where dueno_id = (select auth.uid()))
-       >= liga.ligas_incluidas((select auth.uid())) then
-      raise exception 'Ya tienes todas tus ligas incluidas' using errcode = '42501';
-    end if;
-    if new.oculta then
-      raise exception 'Una liga nueva nace visible' using errcode = '42501';
-    end if;
-    return new;
-  end if;
-  if old.dueno_id is distinct from (select auth.uid())
-     and (to_jsonb(new) - 'oculta') <> (to_jsonb(old) - 'oculta') then
-    raise exception 'Solo el dueño edita su liga' using errcode = '42501';
-  end if;
-  if new.oculta is distinct from old.oculta and not liga.authorize('moderacion.revisar') then
-    raise exception 'Solo moderación puede ocultar una liga' using errcode = '42501';
-  end if;
-  return new;
-end $$;
+\unrestrict 14l9mNyHVMzTI9dnJWbJ92pb3Wc1sW9oprPaHNpcAiJ26wlHgtqjb8XATweE8A8

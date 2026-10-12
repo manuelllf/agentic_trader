@@ -14,6 +14,7 @@ from sqlalchemy import text
 from app.liga.gestion import hay_derecho_vigente
 from app.liga.pagos_lemon import Accion, clave_idempotencia
 from app.liga.procesos.comun import auditar, fabrica_sistema
+from app.liga.registro import VERSION_TERMINOS
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,17 @@ def _cortar(db, tabla: str, accion: Accion) -> None:  # noqa: ANN001
         f"update {tabla} set hasta = :f where compra_lemon_id = :c and origen = 'pago' "
         "and (hasta is null or hasta > :f)"),
         {"f": fin, "c": accion.lemon_id})
+
+
+def acepto_version_vigente(usuario_id: str) -> bool:
+    db = fabrica_sistema()
+    try:
+        return bool(db.execute(text(
+            "select exists (select 1 from liga.consentimientos "
+            "where usuario_id = cast(:u as uuid) and documento = 'terminos' "
+            "and version = :v)"), {"u": usuario_id, "v": VERSION_TERMINOS}).scalar())
+    finally:
+        db.close()
 
 
 def clave_si_ya_tiene(usuario_id: str, producto: str) -> str | None:

@@ -4,6 +4,9 @@ import { correoOculto, debeCompletarCuenta } from "./cuenta";
 describe("debeCompletarCuenta", () => {
   it.each([
     [true, "/liga", true],
+    [true, "/cuenta/borrar", false],
+    [true, "/cuenta/datos", false],
+    [true, "/cuenta/plan", true],
     [false, "/liga", false],
     [true, "/completar", false],
     [true, "/auth/callback?x", false],

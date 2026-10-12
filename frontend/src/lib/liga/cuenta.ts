@@ -47,7 +47,7 @@ export async function borrarMiCuenta(confirmacion: string): Promise<string | nul
 }
 
 export function debeCompletarCuenta(pendiente: boolean, ruta: string): boolean {
-  return pendiente && !["/completar", "/auth/callback", "/legal", "/entrar", "/registrar", "/cambiar-clave"]
+  return pendiente && !["/cuenta/borrar", "/cuenta/datos", "/completar", "/auth/callback", "/legal", "/entrar", "/registrar", "/cambiar-clave"]
     .some(prefijo => ruta.startsWith(prefijo));
 }
 

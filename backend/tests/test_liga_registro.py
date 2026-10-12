@@ -39,7 +39,8 @@ def test_alta_no_devuelve_tokens_y_envia_solo_metadata_de_perfil(cliente):
     assert url.endswith("/signup")
     assert llamada["params"] == {}
     assert llamada["json"]["email"] == "usuario@correo.es"
-    assert llamada["json"]["data"] == {"alias": "usuario", "terminos_version": "1"}
+    assert llamada["json"]["data"] == {
+        "alias": "usuario", "terminos_version": registro.VERSION_TERMINOS}
     assert "Authorization" not in llamada["headers"]
 
 

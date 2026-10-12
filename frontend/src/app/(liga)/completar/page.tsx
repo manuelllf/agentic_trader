@@ -46,8 +46,8 @@ export default function Completar() {
   };
 
   if (estado !== "dentro" || !yo?.pendiente || !destino) return null;
-  return <MarcoAcceso modo="tramite" titular={t("auth_completa_titulo")}>
-    <p className="nota">{t("auth_completa_texto")}</p>
+  return <MarcoAcceso modo="tramite" titular={t(pideAlias ? "auth_completa_titulo" : "auth_cambio_titulo")}>
+    <p className="nota">{t(pideAlias ? "auth_completa_texto" : "auth_cambio_texto")}</p>
     <form className="form" onSubmit={enviar}>
       {pideAlias && <label className="campo"><span className="lbl">{t("auth_nombre_usuario")}</span>
         <input className="inp" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
@@ -59,7 +59,7 @@ export default function Completar() {
         })}</span></label>
       {error && <p className="aviso" role="alert">{error}</p>}
       <Boton type="submit" variante="principal" ancho="completo" disabled={ocupado || !acepta}>
-        {ocupado ? t("auth_guardando") : t("auth_completa_guardar")}</Boton>
+        {ocupado ? t("auth_guardando") : t(pideAlias ? "auth_completa_guardar" : "auth_cambio_guardar")}</Boton>
     </form>
   </MarcoAcceso>;
 }
