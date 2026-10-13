@@ -486,3 +486,56 @@ class Reporte(LigaBase):
     creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     resuelto_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
     resuelto: Mapped[datetime | None] = mapped_column(TSTZ)
+
+
+class IntencionSinRegla(LigaBase):
+    __tablename__ = "intenciones_sin_regla"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    intencion: Mapped[str] = mapped_column(Text)
+    tipo: Mapped[str] = mapped_column(Text)
+    regla: Mapped[str | None] = mapped_column(Text)
+    idioma: Mapped[str] = mapped_column(Text)
+    creado_en: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+
+
+class Actualizacion(LigaBase):
+    __tablename__ = "actualizaciones"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    usuario_id: Mapped[uuid.UUID] = mapped_column(UUID)
+    estado: Mapped[str] = mapped_column(Text)
+    total: Mapped[int] = mapped_column(Integer)
+    hechas: Mapped[int] = mapped_column(Integer, server_default=DB)
+    pregunta_hash: Mapped[str | None] = mapped_column(Text)
+    creado_en: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado_en: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)
+
+
+class NotaFresca(LigaBase):
+    __tablename__ = "notas_frescas"
+
+    ticker: Mapped[str] = mapped_column(String(16), primary_key=True)
+    dia: Mapped[date] = mapped_column(Date, primary_key=True)
+    jev_fundamentals: Mapped[int] = mapped_column(SmallInteger)
+    jev_valuation: Mapped[int] = mapped_column(SmallInteger)
+    jev_financing: Mapped[int] = mapped_column(SmallInteger)
+    jev_catalyst: Mapped[int] = mapped_column(SmallInteger)
+    creado_en: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+
+
+class RespuestaFresca(LigaBase):
+    __tablename__ = "respuestas_frescas"
+
+    pregunta_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(16), primary_key=True)
+    dia: Mapped[date] = mapped_column(Date, primary_key=True)
+    si: Mapped[bool] = mapped_column(Boolean)
+    seguridad: Mapped[str] = mapped_column(Text)
+    llm_call_id: Mapped[int | None] = mapped_column(BigInteger)
+    creado_en: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)

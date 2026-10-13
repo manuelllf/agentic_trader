@@ -18,6 +18,10 @@ pytestmark = pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DA
 # tabla -> (columna creación, columna "quién creó" o None, columna actualización o None,
 #           columna "quién actualizó" o None). None = no le corresponde, con el motivo al lado.
 RASTRO = {
+    "actualizaciones": ("creado_en", "creado_por", "actualizado_en", "actualizado_por"),
+    "notas_frescas": ("creado_en", "creado_por", None, None),
+    "respuestas_frescas": ("creado_en", "creado_por", None, None),
+    "intenciones_sin_regla": ("creado_en", "creado_por", None, None),  # solo_anadir
     "ajustes": ("creado", "creado_por", "actualizado", "actualizado_por"),
     "avisos_error": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "auditoria": ("creada", "actor_id", None, None),  # es su propia bitácora, solo_anadir
@@ -88,8 +92,8 @@ def test_toda_tabla_de_liga_entra_en_la_copia(cx) -> None:
     """Lo que no está en `copia.TABLAS` no se guarda en la copia de seguridad."""
     from app.liga.copia import TABLAS
 
-    # `permisos_rol` es configuración sembrada por la propia migración, no datos.
-    assert _tablas(cx) - {"permisos_rol"} == set(TABLAS)
+    # `permisos_rol` es configuración sembrada por la migración; las cachés de hoy se regeneran.
+    assert _tablas(cx) - {"permisos_rol", "notas_frescas", "respuestas_frescas"} == set(TABLAS)
 
 
 @pytest.mark.parametrize("tabla", sorted(RASTRO))

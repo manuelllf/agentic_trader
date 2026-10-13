@@ -44,7 +44,6 @@ class ConvertirOut(BaseModel):
     reglas: list[ReglaSugeridaOut]
     pesos: dict[str, int] | None
     pregunta: str | None
-    nombre: str | None
     interpretacion: list[InterpretacionOut] = Field(default_factory=list, max_length=12)
     quedan: int   # usos que le quedan en esta estrategia y este mes, el menor de los dos
 
@@ -55,7 +54,7 @@ def convertir(body: ConvertirIn, ident: Identidad = Depends(require_usuario)) ->
     sugerencia, usos = conversor.convertir(ident.uid, body.frase, estrategia_id)
     return ConvertirOut(
         reglas=[ReglaSugeridaOut(**r) for r in sugerencia.reglas], pesos=sugerencia.pesos,
-        pregunta=sugerencia.pregunta, nombre=sugerencia.nombre, quedan=usos.quedan,
+        pregunta=sugerencia.pregunta, quedan=usos.quedan,
         interpretacion=[InterpretacionOut(
             intencion=i.intencion, tipo=i.tipo, regla=i.regla, motivo=i.motivo,
         ) for i in sugerencia.interpretacion])

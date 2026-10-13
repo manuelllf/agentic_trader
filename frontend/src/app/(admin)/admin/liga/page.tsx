@@ -9,6 +9,7 @@ import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, get, post } from "@/lib/api";
 import { tokenSesion } from "@/lib/liga/supabase";
+import { Intenciones } from "./Intenciones";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -142,6 +143,7 @@ function Liga() {
       </section>
 
       {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
+      <Intenciones />
       {!estado ? (
         !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
       ) : (

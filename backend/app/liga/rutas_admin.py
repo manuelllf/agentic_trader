@@ -8,12 +8,14 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
-from app.liga import copia, rutas_gestion, visitas
+from app.liga import copia, intenciones, rutas_gestion, visitas
 from app.liga.auth import Identidad, require_admin
+from app.liga.db import db_usuario
 from app.liga.procesos import cerrar, diario, estado, formar, foto, premio, temporadas
 from app.liga.procesos.comun import ErrorProceso
 
@@ -182,3 +184,9 @@ def descargar_copia(ident: Identidad = Depends(require_admin)) -> Response:
 router.include_router(_procesos)
 router.include_router(rutas_gestion.router_admin, dependencies=ADMIN)
 router.include_router(visitas.router_admin, dependencies=ADMIN)
+
+
+@router.get("/intenciones", dependencies=ADMIN)
+def listar_intenciones(dias: int = Query(default=90, ge=1),
+                       db: Session = Depends(db_usuario)) -> list[dict]:
+    return intenciones.agrupar(db, dias)

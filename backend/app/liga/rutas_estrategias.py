@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.i18n import current_locale, translate
 from app.liga import (
     acceso,
+    actualizacion,
     cambios,
     casas_metodologia,
     estrategias,
@@ -30,7 +31,7 @@ from app.liga import (
     nombres,
     rendimiento,
 )
-from app.liga.auth import Identidad, require_usuario
+from app.liga.auth import Identidad, require_jugador, require_usuario
 from app.liga.db import db_anon, db_usuario
 from app.liga.ia import comun, moderacion, precios
 from app.liga.ia import pregunta as ia_pregunta
@@ -38,6 +39,7 @@ from app.liga.models import Receta as RecetaModelo
 from app.liga.motor.catalogo import RecetaNoValida
 from app.liga.motor.mensajes import presentar, presentar_lista
 from app.liga.motor.seleccion import explicar, seleccionar
+from app.liga.preview_seleccion import PreviewSeleccionIn
 from app.liga.procesos import datos, diario
 from app.liga.rutas_publicas import EscudoOut
 
@@ -280,6 +282,12 @@ def _receta_out(r) -> RecetaOut:  # noqa: ANN001
 def catalogo() -> dict:
     from app.i18n import current_locale, present_catalog
     return present_catalog(estrategias.catalogo_payload(), current_locale.get())
+
+
+@router.get("/catalogo/mercado")
+def catalogo_mercado(ident: Identidad = Depends(require_jugador)) -> dict:
+    from app.liga.mercado_stats import mercado
+    return mercado()
 
 
 # ---- Estrategias ------------------------------------------------------------------------------
@@ -805,3 +813,25 @@ def copiar(id: uuid.UUID, db: Session = Depends(db_usuario)) -> EstrategiaOut:
                       {"i": nueva_receta.estrategia_id}).one()
     moderacion.evaluar_lista(fila.nombre)
     return _a_salida(fila)
+
+
+@router.post("/seleccion/actualizar", status_code=202)
+def actualizar_seleccion(body: PreviewSeleccionIn,
+                         ident: Identidad = Depends(require_jugador)) -> dict:
+    actualizacion_id = actualizacion.iniciar(ident.uid, body)
+    # La lectura mantiene RLS aunque el trabajo ya haya arrancado.
+    from app.liga.db import sesion_como
+
+    with sesion_como(ident) as db:
+        total = db.execute(text("select total from liga.actualizaciones where id = :i"),
+                           {"i": actualizacion_id}).scalar_one()
+    return {"id": actualizacion_id, "total": total}
+
+
+@router.get("/seleccion/actualizacion")
+def estado_actualizacion(ident: Identidad = Depends(require_jugador),
+                         db: Session = Depends(db_usuario)) -> dict | None:
+    fila = actualizacion.ultima(db, ident.uid)
+    if fila is None:
+        return None
+    return {k: fila[k] for k in ("estado", "hechas", "total", "creada", "puede_repetir_el")}

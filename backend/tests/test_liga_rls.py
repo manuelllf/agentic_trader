@@ -818,3 +818,64 @@ def test_funciones_security_definer_solo_para_quien_toca(cx):
         ("aceptar_terminos", "authenticated"), ("cuenta_pendiente", "authenticated"),
         ("ligas_incluidas", "authenticated"),
     }
+
+
+def test_intenciones_solo_admin_lee_y_sistema_escribe(cx):
+    adm, usuario = _usuario(cx, rol="admin"), _usuario(cx)
+    _sistema(cx)
+    iid = cx.execute("insert into liga.intenciones_sin_regla (intencion, tipo, idioma) "
+                     "values ('test-intencion', 'no_disponible', 'es') returning id").fetchone()[0]
+    for persona, aal, visible in ((usuario, "aal2", False), (adm, "aal1", False),
+                                  (adm, "aal2", True)):
+        _como(cx, persona, aal=aal)
+        assert bool(_filas(cx, "select id from liga.intenciones_sin_regla where id = %s",
+                           (iid,))) == visible
+        _falla(cx, "insert into liga.intenciones_sin_regla (intencion, tipo, idioma) "
+                   "values ('otra', 'no_disponible', 'es')")
+    _como(cx, None)
+    _falla(cx, "select 1 from liga.intenciones_sin_regla")
+    _sistema(cx)
+    politica = _filas(cx, "select policyname, cmd from pg_policies "
+                         "where schemaname = 'liga' and tablename = 'intenciones_sin_regla'")
+    assert politica == [("admin", "SELECT")]
+
+
+@pytest.mark.parametrize("tabla, politicas", [
+    ("actualizaciones", {("propias", "SELECT"), ("crear", "INSERT"), ("admin", "SELECT")}),
+    ("notas_frescas", {("admin", "SELECT")}),
+    ("respuestas_frescas", {("admin", "SELECT")}),
+])
+def test_politicas_datos_de_hoy(cx, tabla, politicas):
+    _sistema(cx)
+    assert set(_filas(cx, "select policyname, cmd from pg_policies "
+                          "where schemaname = 'liga' and tablename = %s", (tabla,))) == politicas
+    assert _filas(cx, "select relrowsecurity from pg_class c join pg_namespace n "
+                      "on n.oid = c.relnamespace where n.nspname = 'liga' "
+                      "and c.relname = %s", (tabla,)) == [(True,)]
+
+
+def test_actualizacion_propia_y_caches_solo_admin(cx):
+    owner, other, admin = _usuario(cx), _usuario(cx), _usuario(cx, rol="admin")
+    _como(cx, owner)
+    aid = cx.execute("insert into liga.actualizaciones (usuario_id, estado, total) "
+                     "values (%s, 'en_curso', 1) returning id", (owner,)).fetchone()[0]
+    _falla(cx, "insert into liga.actualizaciones (usuario_id, estado, total) "
+               "values (%s, 'en_curso', 1)", (other,))
+    _falla(cx, "update liga.actualizaciones set estado = 'hecha' where id = %s", (aid,))
+    _sistema(cx)
+    cx.execute("insert into liga.notas_frescas "
+               "(ticker, dia, jev_fundamentals, jev_valuation, jev_financing, jev_catalyst) "
+               "values ('E14', current_date, 900, 800, 700, 600)")
+    cx.execute("insert into liga.respuestas_frescas "
+               "(pregunta_hash, ticker, dia, si, seguridad) "
+               "values (%s, 'E14', current_date, true, 'alta')", ('a' * 64,))
+    for uid in (owner, other, admin):
+        _como(cx, uid, aal="aal2" if uid == admin else "aal1")
+        assert bool(_filas(cx, "select id from liga.actualizaciones where id = %s", (aid,))) \
+            == (uid in (owner, admin))
+        for tabla in ("notas_frescas", "respuestas_frescas"):
+            assert bool(_filas(cx, f"select ticker from liga.{tabla} where ticker = 'E14'")) \
+                == (uid == admin)
+    _como(cx, None)
+    for tabla in ("actualizaciones", "notas_frescas", "respuestas_frescas"):
+        _falla(cx, f"select 1 from liga.{tabla}")

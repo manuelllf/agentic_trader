@@ -113,7 +113,7 @@ def test_nunca_nombra_una_empresa(entorno, monkeypatch) -> None:  # noqa: ANN001
     monkeypatch.setattr(app_llm, "get_llm", _get_llm_de(bruto))
     sugerencia, _ = conversor.convertir(uid, "tecnología puntera")
     assert sugerencia.pregunta is None
-    assert sugerencia.nombre is None
+    assert not hasattr(sugerencia, "nombre")
 
 
 def test_pesos_fuera_de_catalogo_se_descartan(entorno, monkeypatch) -> None:  # noqa: ANN001

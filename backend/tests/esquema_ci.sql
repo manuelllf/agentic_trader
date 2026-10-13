@@ -1,5 +1,5 @@
--- migraciones-liga: 041
--- migraciones-saneamiento: 11
+-- migraciones-liga: 043
+-- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
 --
@@ -1894,6 +1894,42 @@ CREATE TABLE auth.webauthn_credentials (
 
 
 --
+-- Name: actualizaciones; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.actualizaciones (
+    id bigint NOT NULL,
+    usuario_id uuid NOT NULL,
+    estado text NOT NULL,
+    total integer NOT NULL,
+    hechas integer DEFAULT 0 NOT NULL,
+    pregunta_hash text,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado_en timestamp with time zone DEFAULT now() NOT NULL,
+    actualizado_por uuid,
+    CONSTRAINT actualizaciones_estado_check CHECK ((estado = ANY (ARRAY['en_curso'::text, 'hecha'::text, 'fallida'::text]))),
+    CONSTRAINT actualizaciones_pregunta_hash_check CHECK ((pregunta_hash ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT actualizaciones_total_check CHECK (((total >= 1) AND (total <= 300))),
+    CONSTRAINT hechas_en_rango CHECK (((hechas >= 0) AND (hechas <= total)))
+);
+
+
+--
+-- Name: actualizaciones_id_seq; Type: SEQUENCE; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.actualizaciones ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME liga.actualizaciones_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: ajustes; Type: TABLE; Schema: liga; Owner: -
 --
 
@@ -2219,6 +2255,38 @@ ALTER TABLE liga.inscripciones ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY 
 
 
 --
+-- Name: intenciones_sin_regla; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.intenciones_sin_regla (
+    id bigint NOT NULL,
+    intencion text NOT NULL,
+    tipo text NOT NULL,
+    regla text,
+    idioma text NOT NULL,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    CONSTRAINT intenciones_sin_regla_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
+    CONSTRAINT intenciones_sin_regla_intencion_check CHECK (((length(intencion) >= 1) AND (length(intencion) <= 160))),
+    CONSTRAINT intenciones_sin_regla_tipo_check CHECK ((tipo = ANY (ARRAY['aproximada'::text, 'no_disponible'::text])))
+);
+
+
+--
+-- Name: intenciones_sin_regla_id_seq; Type: SEQUENCE; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.intenciones_sin_regla ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME liga.intenciones_sin_regla_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: jornadas; Type: TABLE; Schema: liga; Owner: -
 --
 
@@ -2320,6 +2388,22 @@ CREATE TABLE liga.miembros_liga (
     liga_id uuid NOT NULL,
     usuario_id uuid NOT NULL,
     unido timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid()
+);
+
+
+--
+-- Name: notas_frescas; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.notas_frescas (
+    ticker character varying(16) NOT NULL,
+    dia date NOT NULL,
+    jev_fundamentals smallint NOT NULL,
+    jev_valuation smallint NOT NULL,
+    jev_financing smallint NOT NULL,
+    jev_catalyst smallint NOT NULL,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL,
     creado_por uuid DEFAULT auth.uid()
 );
 
@@ -2654,6 +2738,24 @@ ALTER TABLE liga.reportes ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MINVALUE
     NO MAXVALUE
     CACHE 1
+);
+
+
+--
+-- Name: respuestas_frescas; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.respuestas_frescas (
+    pregunta_hash text NOT NULL,
+    ticker character varying(16) NOT NULL,
+    dia date NOT NULL,
+    si boolean NOT NULL,
+    seguridad text NOT NULL,
+    llm_call_id bigint,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    CONSTRAINT respuestas_frescas_pregunta_hash_check CHECK ((pregunta_hash ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT respuestas_frescas_seguridad_check CHECK ((seguridad = ANY (ARRAY['alta'::text, 'media'::text, 'baja'::text])))
 );
 
 
@@ -3818,8 +3920,16 @@ CREATE TABLE public.scan_audit (
     jev_catalyst smallint,
     jev_catalyst_conf smallint,
     jev_funded boolean,
-    scan_run_id bigint
+    scan_run_id bigint,
+    pasa_filtro_tecnico boolean
 );
+
+
+--
+-- Name: COLUMN scan_audit.pasa_filtro_tecnico; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.scan_audit.pasa_filtro_tecnico IS 'Pasa el suelo de liquidez y el tope del escaneo de decisión. NULL en escaneos anteriores o sin filtro técnico.';
 
 
 --
@@ -4767,6 +4877,14 @@ ALTER TABLE ONLY auth.webauthn_credentials
 
 
 --
+-- Name: actualizaciones actualizaciones_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.actualizaciones
+    ADD CONSTRAINT actualizaciones_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: ajustes ajustes_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -4895,6 +5013,14 @@ ALTER TABLE ONLY liga.inscripciones
 
 
 --
+-- Name: intenciones_sin_regla intenciones_sin_regla_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.intenciones_sin_regla
+    ADD CONSTRAINT intenciones_sin_regla_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: jornadas jornadas_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -4948,6 +5074,14 @@ ALTER TABLE ONLY liga.ligas_privadas
 
 ALTER TABLE ONLY liga.miembros_liga
     ADD CONSTRAINT miembros_liga_pkey PRIMARY KEY (liga_id, usuario_id);
+
+
+--
+-- Name: notas_frescas notas_frescas_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.notas_frescas
+    ADD CONSTRAINT notas_frescas_pkey PRIMARY KEY (ticker, dia);
 
 
 --
@@ -5068,6 +5202,14 @@ ALTER TABLE ONLY liga.recetas
 
 ALTER TABLE ONLY liga.reportes
     ADD CONSTRAINT reportes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: respuestas_frescas respuestas_frescas_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.respuestas_frescas
+    ADD CONSTRAINT respuestas_frescas_pkey PRIMARY KEY (pregunta_hash, ticker, dia);
 
 
 --
@@ -6077,6 +6219,13 @@ CREATE INDEX webauthn_credentials_user_id_idx ON auth.webauthn_credentials USING
 
 
 --
+-- Name: ix_actualizaciones_usuario; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_actualizaciones_usuario ON liga.actualizaciones USING btree (usuario_id, creado_en DESC);
+
+
+--
 -- Name: ix_ajustes_actualizado_por; Type: INDEX; Schema: liga; Owner: -
 --
 
@@ -6158,6 +6307,13 @@ CREATE INDEX ix_inscripciones_estrategia ON liga.inscripciones USING btree (estr
 --
 
 CREATE INDEX ix_inscripciones_receta ON liga.inscripciones USING btree (receta_id);
+
+
+--
+-- Name: ix_intenciones_sin_regla_creado; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX ix_intenciones_sin_regla_creado ON liga.intenciones_sin_regla USING btree (creado_en);
 
 
 --
@@ -6830,6 +6986,13 @@ CREATE TRIGGER solo_anadir BEFORE DELETE OR UPDATE ON liga.recetas FOR EACH ROW 
 --
 
 CREATE TRIGGER solo_anadir BEFORE DELETE OR UPDATE ON liga.resultados FOR EACH ROW EXECUTE FUNCTION liga.solo_anadir();
+
+
+--
+-- Name: actualizaciones tocar; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER tocar BEFORE UPDATE ON liga.actualizaciones FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
 
 
 --
@@ -8020,6 +8183,19 @@ ALTER TABLE auth.sso_providers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auth.users ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: actualizaciones; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.actualizaciones ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: actualizaciones admin; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin ON liga.actualizaciones FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
+
+
+--
 -- Name: ajustes admin; Type: POLICY; Schema: liga; Owner: -
 --
 
@@ -8048,6 +8224,13 @@ CREATE POLICY admin ON liga.inscripciones TO authenticated USING (( SELECT liga.
 
 
 --
+-- Name: intenciones_sin_regla admin; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin ON liga.intenciones_sin_regla FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
+
+
+--
 -- Name: jornadas admin; Type: POLICY; Schema: liga; Owner: -
 --
 
@@ -8066,6 +8249,13 @@ CREATE POLICY admin ON liga.ligas_privadas TO authenticated USING (( SELECT liga
 --
 
 CREATE POLICY admin ON liga.miembros_liga TO authenticated USING (( SELECT liga.es_admin() AS es_admin)) WITH CHECK (( SELECT liga.es_admin() AS es_admin));
+
+
+--
+-- Name: notas_frescas admin; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin ON liga.notas_frescas FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
 
 
 --
@@ -8101,6 +8291,13 @@ CREATE POLICY admin ON liga.recetas TO authenticated USING (( SELECT liga.es_adm
 --
 
 CREATE POLICY admin ON liga.reportes TO authenticated USING (( SELECT liga.es_admin() AS es_admin)) WITH CHECK (( SELECT liga.es_admin() AS es_admin));
+
+
+--
+-- Name: respuestas_frescas admin; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin ON liga.respuestas_frescas FOR SELECT TO authenticated USING (( SELECT liga.es_admin() AS es_admin));
 
 
 --
@@ -8280,6 +8477,13 @@ ALTER TABLE liga.compras_pago ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE liga.consentimientos ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: actualizaciones crear; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY crear ON liga.actualizaciones FOR INSERT TO authenticated WITH CHECK ((usuario_id = ( SELECT auth.uid() AS uid)));
+
 
 --
 -- Name: estrategias crear; Type: POLICY; Schema: liga; Owner: -
@@ -8479,6 +8683,12 @@ CREATE POLICY hook_lee ON liga.roles_usuario FOR SELECT TO supabase_auth_admin U
 ALTER TABLE liga.inscripciones ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: intenciones_sin_regla; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.intenciones_sin_regla ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: jornadas; Type: ROW SECURITY; Schema: liga; Owner: -
 --
 
@@ -8638,6 +8848,12 @@ CREATE POLICY moderar ON liga.estrategias FOR UPDATE TO authenticated USING ((( 
 
 
 --
+-- Name: notas_frescas; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.notas_frescas ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: omega_operaciones; Type: ROW SECURITY; Schema: liga; Owner: -
 --
 
@@ -8749,6 +8965,13 @@ CREATE POLICY propia_lee ON liga.suscripciones_push FOR SELECT TO authenticated 
 
 
 --
+-- Name: actualizaciones propias; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY propias ON liga.actualizaciones FOR SELECT TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
+
+
+--
 -- Name: recetas propias; Type: POLICY; Schema: liga; Owner: -
 --
 
@@ -8783,6 +9006,12 @@ ALTER TABLE liga.recetas ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE liga.reportes ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: respuestas_frescas; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.respuestas_frescas ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: respuestas_ia; Type: ROW SECURITY; Schema: liga; Owner: -
@@ -10018,6 +10247,13 @@ GRANT ALL ON TABLE auth.webauthn_credentials TO dashboard_user;
 
 
 --
+-- Name: TABLE actualizaciones; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT,INSERT ON TABLE liga.actualizaciones TO authenticated;
+
+
+--
 -- Name: TABLE ajustes; Type: ACL; Schema: liga; Owner: -
 --
 
@@ -10230,6 +10466,13 @@ GRANT SELECT ON TABLE liga.inscripciones TO authenticated;
 
 
 --
+-- Name: TABLE intenciones_sin_regla; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.intenciones_sin_regla TO authenticated;
+
+
+--
 -- Name: TABLE jornadas; Type: ACL; Schema: liga; Owner: -
 --
 
@@ -10284,6 +10527,13 @@ GRANT UPDATE(oculta) ON TABLE liga.ligas_privadas TO authenticated;
 --
 
 GRANT SELECT,DELETE ON TABLE liga.miembros_liga TO authenticated;
+
+
+--
+-- Name: TABLE notas_frescas; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.notas_frescas TO authenticated;
 
 
 --
@@ -10539,6 +10789,13 @@ GRANT UPDATE(resuelto_por) ON TABLE liga.reportes TO authenticated;
 --
 
 GRANT UPDATE(resuelto) ON TABLE liga.reportes TO authenticated;
+
+
+--
+-- Name: TABLE respuestas_frescas; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.respuestas_frescas TO authenticated;
 
 
 --

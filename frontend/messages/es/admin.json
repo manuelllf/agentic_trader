@@ -263,5 +263,17 @@
   "admin_user_movements_empty": "Sin movimientos.",
   "admin_user_role_usuario": "usuario",
   "admin_user_role_moderador": "moderador",
-  "admin_user_role_admin": "admin"
+  "admin_user_role_admin": "admin",
+  "admin_intenciones_titulo": "Lo que piden y aún no hay",
+  "admin_intenciones_periodo": "Últimos 90 días.",
+  "admin_intenciones_intencion": "Intención",
+  "admin_intenciones_recuento": "Recuento",
+  "admin_intenciones_tipo": "Tipo",
+  "admin_intenciones_regla": "Regla",
+  "admin_intenciones_tipo_aproximada": "Aproximada",
+  "admin_intenciones_tipo_no_disponible": "No disponible",
+  "admin_intenciones_sin_regla": "Sin regla",
+  "admin_intenciones_vacio": "Aún no hay intenciones registradas.",
+  "admin_intenciones_cargando": "Cargando intenciones…",
+  "admin_intenciones_error": "No se pudieron cargar las intenciones."
 }

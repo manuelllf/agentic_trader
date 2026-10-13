@@ -263,5 +263,17 @@
   "admin_user_movements_empty": "No transactions.",
   "admin_user_role_usuario": "user",
   "admin_user_role_moderador": "moderator",
-  "admin_user_role_admin": "admin"
+  "admin_user_role_admin": "admin",
+  "admin_intenciones_titulo": "What people ask for that is still missing",
+  "admin_intenciones_periodo": "Last 90 days.",
+  "admin_intenciones_intencion": "Intent",
+  "admin_intenciones_recuento": "Count",
+  "admin_intenciones_tipo": "Type",
+  "admin_intenciones_regla": "Rule",
+  "admin_intenciones_tipo_aproximada": "Approximate",
+  "admin_intenciones_tipo_no_disponible": "Unavailable",
+  "admin_intenciones_sin_regla": "No rule",
+  "admin_intenciones_vacio": "No intents recorded yet.",
+  "admin_intenciones_cargando": "Loading intents…",
+  "admin_intenciones_error": "Could not load intents."
 }

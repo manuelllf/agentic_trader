@@ -13,12 +13,13 @@ import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.liga.ia import comun, precios
-from app.liga.models import RespuestaIA
+from app.liga.models import RespuestaFresca, RespuestaIA
 from app.liga.motor.catalogo import EmpresaFoto
 from app.liga.motor.seleccion import Respuesta
 from app.liga.procesos import datos as procesos_datos
@@ -82,9 +83,15 @@ class ResultadoPregunta:
 
 
 def _cache(db: Session, pregunta_hash: str, foto_id: int,
-          tickers: list[str]) -> dict[str, Respuesta]:
+          tickers: list[str], dia: date | None = None) -> dict[str, Respuesta]:
     if not tickers:
         return {}
+    if dia is not None:
+        filas = db.execute(text("""
+            select ticker, si, seguridad from liga.respuestas_frescas
+            where pregunta_hash = :h and dia = :d and ticker = any(:t)
+        """), {"h": pregunta_hash, "d": dia, "t": tickers}).all()
+        return {f.ticker: Respuesta(f.si, f.seguridad) for f in filas}
     filas = db.execute(text("""
         select ticker, si, seguridad from liga.respuestas_ia
         where pregunta_hash = :h and foto_id = :f and ticker = any(:t)
@@ -96,12 +103,14 @@ def responder_pendientes(*, pregunta: str, foto_id: int, empresas: dict[str, Emp
                          candidatas: list[str], usuario_id: str | None = None,
                          fabrica: Fabrica | None = None, finalidad: str = "pregunta",
                          hasta: float | None = None, reloj=time.monotonic,  # noqa: ANN001
-                         trabajadores: int = TRABAJADORES) -> ResultadoPregunta:
+                         trabajadores: int = TRABAJADORES,
+                         dia: date | None = None) -> ResultadoPregunta:
     """Rellena la caché para las `candidatas` que aún no tengan respuesta a esta pregunta y foto;
     el resto sale de caché. `usuario_id` va en la auditoría de cada llamada; `None` cuando lo
     lanza la jornada (a coste del sistema, nunca a petición directa de un usuario), que usa la
     finalidad `formacion` con su interruptor y su tope. `hasta`: hora límite (`reloj`, por
     defecto `time.monotonic`); al llegar, se deja de preguntar y lo ya contestado queda guardado.
+    Con `dia` explícito usa exclusivamente la caché diaria; sin él conserva la de la foto.
     Se pregunta a `trabajadores` a la vez y las que fallan se reintentan una vez.
     `fabrica`: por defecto la del sistema; un proceso con la suya propia la pasa (tests,
     savepoints) -- ver `procesos.formar.rellenar_preguntas`."""
@@ -109,7 +118,8 @@ def responder_pendientes(*, pregunta: str, foto_id: int, empresas: dict[str, Emp
     pregunta_hash = procesos_datos.hash_pregunta(pregunta)
     db = f()
     try:
-        ya = _cache(db, pregunta_hash, foto_id, candidatas)
+        ya = (_cache(db, pregunta_hash, foto_id, candidatas, dia) if dia is not None
+              else _cache(db, pregunta_hash, foto_id, candidatas))
     finally:
         db.close()
     faltan = [t for t in candidatas if t not in ya]
@@ -147,12 +157,20 @@ def responder_pendientes(*, pregunta: str, foto_id: int, empresas: dict[str, Emp
             # `begin_nested` = savepoint: si esta fila choca (unique concurrente), solo se
             # deshace ELLA, no el resto del lote ya escrito en esta misma sesión compartida.
             with db.begin_nested():
-                db.add(RespuestaIA(pregunta_hash=pregunta_hash, ticker=ticker, foto_id=foto_id,
-                                   si=si, seguridad=seguridad, llm_call_id=llm_call_id))
+                modelo = RespuestaIA if dia is None else RespuestaFresca
+                referencia = {"foto_id": foto_id} if dia is None else {"dia": dia}
+                db.add(modelo(pregunta_hash=pregunta_hash, ticker=ticker, **referencia,
+                              si=si, seguridad=seguridad, llm_call_id=llm_call_id))
                 db.flush()
         except Exception:
             # Ya la escribió otra petición concurrente con la misma pregunta/ticker/foto
             # (unique): no es un fallo, se relee de la caché.
+            if dia is not None:
+                cache = _cache(db, pregunta_hash, foto_id, [ticker], dia)
+                ya.update(cache)
+                if ticker not in cache:
+                    raise
+                return True
             fila = db.execute(text("""
                 select si, seguridad from liga.respuestas_ia
                 where pregunta_hash = :h and ticker = :t and foto_id = :f
