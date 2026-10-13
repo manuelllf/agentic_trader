@@ -42,6 +42,7 @@ class _LLMNuncaLlamado:
 def _stub_universo(monkeypatch, symbols: list[str]) -> None:
     from app.screener import universe as universe_mod
 
+    monkeypatch.setattr(universe_mod, "tickers_elegibles", lambda db: list(symbols))
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
         list(symbols),
         {"fuente": "cierre", "at": "2026-09-17T20:30:00+00:00", "dias": 0, "size": len(symbols)},

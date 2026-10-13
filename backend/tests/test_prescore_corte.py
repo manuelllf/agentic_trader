@@ -73,6 +73,7 @@ def _stub_universo(monkeypatch, prescore) -> None:
     # corte no tendría nada "aún sin arrancar" que ahorrarse -- así se fuerza la cola real.
     monkeypatch.setattr(scan_service, "_PRESCORE_WORKERS", 4)
     monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)
+    monkeypatch.setattr(universe_mod, "tickers_elegibles", lambda db: list(_TICKERS))
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
         list(_TICKERS), {"fuente": "cierre", "at": "2026-09-23T20:30:00+00:00", "dias": 0,
                          "size": len(_TICKERS)}))

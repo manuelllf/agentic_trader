@@ -90,6 +90,7 @@ def _stub_universo(monkeypatch, symbols: list[str]) -> None:
     """Fixed universe from last-close snapshot."""
     from app.screener import universe as universe_mod
 
+    monkeypatch.setattr(universe_mod, "tickers_elegibles", lambda db: list(symbols))
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
         list(symbols),
         {"fuente": "cierre", "at": "2026-07-27T20:30:00+00:00", "dias": 0, "size": len(symbols)},

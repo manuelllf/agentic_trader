@@ -446,6 +446,8 @@ class ScanAudit(Base):
     jev_catalyst_conf: Mapped[int | None] = mapped_column(SmallInteger)
     # ¿Entró en la cartera mecánica de Jev (sombra sin dinero)? NULL = fila anterior.
     jev_funded: Mapped[bool | None] = mapped_column(default=None)
+    # NULL en escaneos anteriores o sin filtro técnico (universo global).
+    pasa_filtro_tecnico: Mapped[bool | None] = mapped_column(default=None)
     # Su escaneo. NULL = lote sin ScanRun (el del 4-ago, o uno cuyo ScanRun no se pudo guardar).
     scan_run_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("scan_runs.id", ondelete="CASCADE"))

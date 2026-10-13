@@ -175,6 +175,17 @@ def _foto_de_los_datos(datos: list) -> int | None:
     return foto_id if n >= 0.9 * len(datos) else None
 
 
+def muestra_de_decision(siempre: list[str], elegibles: list[str]) -> list[str]:
+    """Incluye primero los garantizados y después los elegibles, sin duplicados."""
+    return list(dict.fromkeys(siempre + elegibles))
+
+
+def bloque_macro_prescore(db: Session, macro: dict, prescore_llm) -> tuple[str, bool | None]:
+    """Bloque macro del prescore y el interruptor de contexto de Jev (None si no es Jev)."""
+    jev_macro = scan_config.jev_macro_activa(db) if isinstance(prescore_llm, JevProvider) else None
+    return macro_mod.bloque_macro(macro, con_contexto=jev_macro is not False), jev_macro
+
+
 def run_scan_and_store(db: Session, sample_size: int | None = None,
                        decide: bool = True,
                        llm_overrides: dict | None = None,
@@ -253,21 +264,16 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     else:
         n = settings.scan_sample_size
 
-    # 1) Nombres a analizar: posiciones + cartera personal (siempre) + el universo (entero por
-    # defecto). La cartera personal (`always_deep_tickers`) es SOLO para que Manuel vea la opinión
-    # del sistema sobre sus tickers — entran garantizados a fondo (carril "seguimiento" en
-    # `select_finalists`) pero compiten en igualdad en la selección, sin veto ni ventaja; no
-    # implica nada sobre la cartera del AGENTE ni toca sus posiciones personales de IBKR
-    # (`PersonalPosition`, totalmente aparte).
-    # La watchlist ya NO entra: el paper no tiene ninguna capa de "lo que vigilo", y garantizar
-    # sitio a los que ya puntuaron alto premia el éxito pasado (que correlaciona con haber subido).
+    # Alpha sigue las posiciones del agente y los garantizados aunque no sean técnicos.
+    # La watchlist solo da una marca en el ranking, sin acceso garantizado al análisis.
     held = {p.ticker: p for p in ledger.open_positions(db)}
     watch = set(watchlist_mod.tickers(db))   # solo para el badge del ranking, no da acceso
-    personal = list(settings.always_deep_tickers)
+    garantizados = list(settings.always_deep_tickers)
     always = (list(held.keys())
-             + [t for t in personal if t not in held])
+             + [t for t in garantizados if t not in held])
     # yahoo_symbol por ticker, SOLO para `modo_universo="global_topcap"` -- NASDAQ cotiza pelado,
     # el gather no necesita el mapa (ver `_gather` más abajo).
+    tecnicos: set[str] | None = None
     simbolos_global: dict[str, str | None] = {}
     if modo_universo == "global_topcap":
         # Universo FIJO (el top N por market cap ya rankeado, ver `top_market_cap_usd`): sin
@@ -293,6 +299,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         # la sesión en curso, así que filtrar en caliente a las 10:15 ET dejaba fuera casi todo el
         # mercado y colaba justo lo que tenía actividad anormal esa mañana.
         universo, universo_info = universe_mod.universe_for_scan(db)
+        tecnicos = set(universo)
         if universo_info["fuente"] == "seed":
             # Fallar RUIDOSAMENTE es mejor que escanear: un ranking salido de 40 nombres de
             # emergencia parecería normal en la web y no lo es.
@@ -309,7 +316,10 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 f"mercado sale a medias ({universo_info['size']} nombres). Elegir la cartera del "
                 "mes así sería mirar una fracción del mercado. Repite cuando exista la foto."
             )
-        sample = universe_mod.sample_for_scan(always, n, _scan_cursor(db), universe=universo)
+        if decide and n is None:
+            sample = muestra_de_decision(always, universe_mod.tickers_elegibles(db))
+        else:
+            sample = universe_mod.sample_for_scan(always, n, _scan_cursor(db), universe=universo)
         # OJO: el cursor NO avanza aquí sino al final. Avanzarlo ahora consumía la franja
         # aunque el escaneo reventase a mitad, y esos nombres no volvían hasta la siguiente vuelta.
 
@@ -442,8 +452,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     macro = macro_mod.get_macro(db)
     macro_block = macro_mod.bloque_macro(macro)
     es_jev = isinstance(prescore_llm, JevProvider)
-    jev_macro = scan_config.jev_macro_activa(db) if es_jev else None
-    macro_block_pre = macro_mod.bloque_macro(macro, con_contexto=jev_macro is not False)
+    macro_block_pre, jev_macro = bloque_macro_prescore(db, macro, prescore_llm)
     timings["macro"] = round(time.monotonic() - t0, 1)
     logger.info("Escaneo: MACRO completado en %.1fs (bloque %d chars, prescore %d chars, "
                 "Jev con contexto=%s, fuentes=%s).", timings["macro"], len(macro_block),
@@ -556,6 +565,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     prescored = [r for r in results if r[0].score > 0]
     # Desempate por market cap (criterio del paper): evita que orden de llegada decida frontera.
     prescored.sort(key=lambda x: (-x[0].score, -(x[1].market_cap or 0.0)))
+    siempre = set(held) | set(garantizados)
+    prescored_tecnico = (portfolio.de_filtro_tecnico(prescored, tecnicos, siempre)
+                        if tecnicos is not None else prescored)
+    prescored_lambda = portfolio.prescored_lambda(prescored, tecnicos)
+    if tecnicos is not None:
+        # Un recuento no es una incidencia: va al log, no a `issues`.
+        logger.info("Jev puntuó %d nombres; %d entran al análisis (técnicos y garantizados).",
+                    len(prescored), len(prescored_tecnico))
     # Fallo prescore = p.error (lote no parseable/degenerado tras 3 intentos).
     # Van a auditoría stage="prescore_error"; si no, desaparecen sin rastro.
     pre_errors = [(p, d) for p, d in results if p.error]
@@ -576,9 +593,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # Capa media: top-N/sector repuntuados (segunda opinión). El interruptor manda en todo escaneo.
     mid_scores: dict[str, float] | None = None
     if capa_media:
-        mid_candidates = portfolio.top_por_sector(prescored, settings.mid_per_sector)
+        mid_candidates = portfolio.top_por_sector(prescored_tecnico, settings.mid_per_sector)
         if len(mid_candidates) > settings.mid_candidates_cap:
-            sectores = {(d.sector or "").strip() for _p, d in prescored}
+            sectores = {(d.sector or "").strip() for _p, d in prescored_tecnico}
             issues.append(
                 f"capa media: {len(mid_candidates)} candidatos (más de "
                 f"{settings.mid_candidates_cap}); se recortan a los de mayor pre-score. "
@@ -587,7 +604,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         elif len(mid_candidates) < settings.mid_candidates_cap:
             # Relleno top-prescore global (sin duplicar ya entraron por sector).
             ya = {t for t in mid_candidates}
-            relleno = [p.ticker for p, _d in prescored if p.ticker not in ya]
+            relleno = [p.ticker for p, _d in prescored_tecnico if p.ticker not in ya]
             mid_candidates += relleno[:settings.mid_candidates_cap - len(mid_candidates)]
 
         _mid_kw = _sampling_kwargs(mid_cfg)
@@ -620,9 +637,9 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     per_sector = settings.deep_per_sector_mid if mid_scores else settings.deep_per_sector
     # Carril "watchlist" vacío a propósito: ver el motivo donde se arma `always`.
     finalists, lanes = portfolio.select_finalists(
-        prescored, set(held), (),
+        prescored_tecnico, set(held), (),
         per_sector, settings.deep_finalists_cap,
-        top_caps=settings.deep_top_caps, mid_scores=mid_scores, tracked=personal)
+        top_caps=settings.deep_top_caps, mid_scores=mid_scores, tracked=garantizados)
 
     # 5) PASO 2 — profundo (V4-Pro) + price target en finalistas.
     # Memoria vectorial solo al final (remember). Tesis previa quitada: cada escaneo juzga desde
@@ -782,7 +799,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     jev_cartera: list = []
     if es_jev:
         opadas = {t for t, r in deep.items() if r.under_acquisition is True}
-        jev_cartera = portfolio.cartera_jev(prescored, opadas, settings.jev_portfolio_n,
+        jev_cartera = portfolio.cartera_jev(prescored_lambda, opadas, settings.jev_portfolio_n,
                                             settings.jev_max_por_industria)
         if len(jev_cartera) < settings.jev_portfolio_n:
             issues.append(f"Cartera Jev incompleta: {len(jev_cartera)} de "
@@ -795,7 +812,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             db, prescored=prescored, failed=failed, finalists=finalists,
             deep=deep, selected=selected, construction=construction,
             pre_errors=pre_errors, deep_errors=deep_caidos, decide=decide,
-            lanes=lanes, mid_scores=mid_scores,
+            lanes=lanes, mid_scores=mid_scores, tecnicos=tecnicos,
             jev_cartera={p.ticker for p, _d in jev_cartera} if es_jev else None)
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")

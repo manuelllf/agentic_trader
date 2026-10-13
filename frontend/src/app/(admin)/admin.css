@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+.alpha-scan-fuera-filtro {
+  display: block;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 /* Solo las salas (Alpha, Beta, Omega) cargan esta hoja: la liguilla tiene la suya. */
 :root {
   --background: #0A0A0A;

@@ -284,6 +284,9 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                             <b style={{ color: T.ink }}>{f.ticker}</b>
                             {f.headline && <InfoTip text={f.headline} />}
                           </span>
+                          {f.pasa_filtro_tecnico === false && (
+                            <span className="alpha-scan-fuera-filtro">{t("alpha_scan_fuera_filtro")}</span>
+                          )}
                         </td>
                         <td className="max-w-0 truncate py-1" style={{ color: T.ink2 }}>{f.sector || "—"}</td>
                         <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.prescore)}</td>

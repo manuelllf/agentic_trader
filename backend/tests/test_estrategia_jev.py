@@ -259,6 +259,7 @@ def _stub_escaneo(monkeypatch, prescore) -> DeepFalso:  # noqa: ANN001
     monkeypatch.setattr(scan_service.settings, "min_positions", 1)
     monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
     monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)
+    monkeypatch.setattr(universe_mod, "tickers_elegibles", lambda db: list(_NIVELES))
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
         list(_NIVELES), {"fuente": "cierre", "at": "2026-09-23T20:30:00+00:00", "dias": 0,
                          "size": len(_NIVELES)}))

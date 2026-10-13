@@ -218,13 +218,16 @@ def scan_full(at: str | None = None, db: Session = Depends(get_db)) -> dict:
     """
     from datetime import datetime
 
-    from app.models import ScanRun, ScanRunMacroHeadline
+    from app.models import ScanAudit, ScanRun, ScanRunMacroHeadline
 
     q = db.query(ScanRun).filter(ScanRun.error.is_(None))   # uno reventado no tiene qué mostrar
     row = (q.filter(ScanRun.scan_at == datetime.fromisoformat(at)).first() if at
            else q.order_by(ScanRun.scan_at.desc()).first())
     if row is None:
         return {"scan": None}
+    filtros = dict(db.query(ScanAudit.ticker, ScanAudit.pasa_filtro_tecnico)
+                   .filter(ScanAudit.scan_run_id == row.id).all())
+    finalistas = [{**f, "pasa_filtro_tecnico": filtros.get(f["ticker"])} for f in row.finalists]
     titulares = (db.query(ScanRunMacroHeadline).filter_by(scan_run_id=row.id)
                  .order_by(ScanRunMacroHeadline.fuente, ScanRunMacroHeadline.posicion).all())
     return {"scan": {
@@ -234,7 +237,7 @@ def scan_full(at: str | None = None, db: Session = Depends(get_db)) -> dict:
         "macro_calendario": row.macro_wiki_scheduled, "macro_eventos": row.macro_wiki_events,
         "macro_titulares": [{"fuente": t.fuente, "texto": t.texto} for t in titulares],
         "universe": row.universe, "counters": row.counters, "cost": row.cost,
-        "issues": row.issues, "finalists": row.finalists, "construction": row.construction,
+        "issues": row.issues, "finalists": finalistas, "construction": row.construction,
     }}
 
 

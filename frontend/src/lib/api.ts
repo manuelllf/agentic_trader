@@ -278,6 +278,7 @@ export const getScanFunnel = (limit = 8) =>
  *  Protected (reveals tickers and theses). Unlike /scan/report which only has counters. */
 export interface ScanFullFinalist {
   ticker: string;
+  pasa_filtro_tecnico: boolean | null;
   sector: string;
   prescore: number | null;
   price: number | null;

@@ -45,7 +45,7 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
            deep: dict, selected: list, construction, pre_errors: list | None = None,
            deep_errors: list[str] | None = None, decide: bool | None = None,
            lanes: dict[str, str] | None = None, mid_scores: dict[str, float] | None = None,
-           jev_cartera: set[str] | None = None):  # noqa: ANN201
+           jev_cartera: set[str] | None = None, tecnicos: set[str] | None = None):  # noqa: ANN201
     """Añade la traza del embudo de ESTE escaneo (no borra las anteriores) y poda las viejas.
     Devuelve el `scan_at` del lote: el escaneo lo usa para colgarle su `scan_run_id`.
 
@@ -79,6 +79,7 @@ def record(db, *, prescored: list, failed: list[str], finalists: list[str],
         rows.append(ScanAudit(
             scan_at=now, ticker=t, sector=d.sector, prescore=p.score, price=d.price,
             reached_deep=in_deep, mid_score=mid_scores.get(t),
+            pasa_filtro_tecnico=(t in tecnicos) if tecnicos is not None else None,
             deep_score=deep[t].score if t in deep else None,
             selected=is_sel, funded=is_fund, weight_pct=funded.get(t), decide=decide,
             # Un profundo ilegible LLEGÓ al profundo (reached_deep se conserva) pero falló ahí.

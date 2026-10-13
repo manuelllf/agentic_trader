@@ -153,8 +153,8 @@ class Settings(BaseSettings):
     # Flash para la decisión de mañana (antes Pro) -- en prueba activa en el observatorio junto
     # con `mid_temperature`/`mid_reasoning_effort`, sin medir el resultado completo todavía.
     mid_model: str = "deepseek-flash"
-    # Corte de finalistas al profundo: top-`deep_per_sector` (amplitud) ∪ posiciones ∪ seguimiento
-    # personal ∪ watchlist ∪ mayores caps ∪ el resto por score, todo truncado a
+    # Corte de finalistas al profundo: top-`deep_per_sector` (amplitud) ∪ posiciones ∪ garantizados
+    # ∪ watchlist ∪ mayores caps ∪ el resto por score, todo truncado a
     # `deep_finalists_cap`.
     # El carril sectorial vale 2 en ambos casos: con 1, el carril "global" sin tope podía
     # repartir casi todo el profundo a un solo sector con tailwind fuerte del momento.
@@ -169,9 +169,8 @@ class Settings(BaseSettings):
     # (se probó subir la cartera a 7 a la vez; se revirtió a 5 el mismo día, pero 15 candidatos
     # para 5 huecos se queda: más margen real de elección para el constructor que los 10 de antes).
     select_count: int = 15                               # nombres al constructor
-    # Llegan SIEMPRE al profundo para ver la opinión del sistema sobre la cartera PERSONAL
-    # (IBKR) de Manuel; compiten en igualdad, sin veto — nunca implican nada sobre el agente.
-    always_deep_tickers: list[str] = ["MSFT", "HUMA", "ASTS", "BTC-USD"]
+    # Van al análisis aunque no pasen los filtros técnicos.
+    always_deep_tickers: list[str] = ["BTC-USD"]
     # Solo con `llm_provider="openrouter"` (pruebas locales); con "deepseek" el prescore es 1
     # llamada/ticker, fiel al paper — proveedor propio + concurrencia + caché lo hacen asumible.
     prescore_batch_size: int = 20

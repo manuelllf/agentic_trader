@@ -85,6 +85,16 @@ def top_por_sector(prescored: list, n: int) -> list[str]:
     return out
 
 
+def prescored_lambda(prescored: list, tecnicos: set[str] | None) -> list:
+    """Conserva en orden los técnicos de Lambda; sin `tecnicos`, todos."""
+    return [fila for fila in prescored if tecnicos is None or fila[0].ticker in tecnicos]
+
+
+def de_filtro_tecnico(prescored: list, tecnicos: set[str], siempre: set[str]) -> list:
+    """Conserva en orden los técnicos y los tickers que Alpha debe seguir siempre."""
+    return [fila for fila in prescored if fila[0].ticker in tecnicos or fila[0].ticker in siempre]
+
+
 def cartera_jev(prescored: list, excluir: set[str], n: int, max_por_industria: int) -> list:
     """Cartera mecánica de Jev: los `n` mejores por nota del prescore, con como mucho
     `max_por_industria` por industria. Pesos iguales; sin industria conocida no entra.
@@ -152,8 +162,8 @@ def select_finalists(
     (Antes el orden era el inverso — la watchlist caía primero, contradiciendo el
     "SIEMPRE al profundo" de la config justo en los mensuales, donde el tope sí muerde.)
 
-    `tracked`: tickers que SIEMPRE llegan al profundo por pedido explícito (hoy, la
-    cartera personal de Manuel — ver `settings.always_deep_tickers`) — no para tratarlos
+    `tracked`: tickers que SIEMPRE llegan al profundo por pedido explícito (hoy,
+    `settings.always_deep_tickers`) — no para tratarlos
     distinto en la selección (compiten en igualdad en `select_top`, sin veto ni ventaja), solo
     para GARANTIZAR que se analizan. Carril propio "seguimiento", justo detrás de "posicion":
     igual de incondicional, la diferencia es el motivo por el que están garantizados.
