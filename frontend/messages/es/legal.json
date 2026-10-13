@@ -142,7 +142,7 @@
   "legal_cookies_session_purpose": "Mantener tu sesión iniciada. Es necesario para el servicio que pides, por eso no requiere tu consentimiento.",
   "legal_cookies_session_duration": "Hasta que cierres sesión o borres los datos del sitio.",
   "legal_cookies_locale_purpose": "Preferencia de idioma explícita del perfil o del visitante. Es funcional y permite mostrar la interfaz en el idioma elegido.",
-  "legal_cookies_visitor_purpose": "Preferencia de idioma elegida por un visitante sin sesión. Se conserva separadamente de la preferencia de la cuenta.",
+  "legal_cookies_visitor_purpose": "Preferencia de idioma elegida por un visitante sin sesión. Al entrar, se guarda en la cuenta y esta cookie se borra.",
   "legal_cookies_locale_duration": "Un año.",
   "legal_cookies_if_changes": "Si esto cambia",
   "legal_cookies_changes_text": "Si añadimos algo (un captcha en el alta, por ejemplo), esta página se actualizará antes. No añadiremos analítica ni publicidad sin pedir antes tu consentimiento, con aceptar y rechazar al mismo nivel.",

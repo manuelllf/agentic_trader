@@ -48,3 +48,11 @@ export function browserLocale(): Locale {
 export function localeTag(locale: string): "es-ES" | "en-US" {
   return normalizeLocale(locale) === "en" ? "en-US" : "es-ES";
 }
+
+// La elección hecha antes de entrar gana al idioma de la cuenta: el perfil puede venir de una vez anterior.
+export function idiomaAlEntrar({ elegido, perfil, actual }: {
+  elegido: Locale | null; perfil: Locale | null; actual: Locale;
+}): { idioma: Locale; guardar: boolean; limpiar: boolean } {
+  if (elegido) return { idioma: elegido, guardar: elegido !== perfil, limpiar: true };
+  return { idioma: perfil ?? actual, guardar: false, limpiar: false };
+}

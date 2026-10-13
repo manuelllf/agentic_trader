@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptLanguage, deviceLocale, normalizeLocale, preferredLocale, readCookie } from "./locale";
+import { acceptLanguage, deviceLocale, idiomaAlEntrar, normalizeLocale, preferredLocale, readCookie } from "./locale";
 import { porcentaje, fecha, miles } from "../lib/liga/format";
 
 describe("language resolution", () => {
@@ -38,5 +38,20 @@ describe("localized financial presentation", () => {
     const now = new Date("2026-10-04T12:00:00Z");
     expect(fecha("2026-10-03T22:30:00Z", now, "es")).toBe("4 de octubre");
     expect(fecha("2026-10-03T22:30:00Z", now, "en")).toBe("October 4");
+  });
+});
+
+describe("idioma al entrar en la cuenta", () => {
+  it("la elección de la portada gana al idioma de la cuenta y se guarda", () => {
+    expect(idiomaAlEntrar({ elegido: "en", perfil: "es", actual: "en" })).toEqual({ idioma: "en", guardar: true, limpiar: true });
+  });
+  it("si la elección ya es la de la cuenta, no hay nada que guardar", () => {
+    expect(idiomaAlEntrar({ elegido: "es", perfil: "es", actual: "en" })).toEqual({ idioma: "es", guardar: false, limpiar: true });
+  });
+  it("sin elección en la portada, manda el idioma de la cuenta", () => {
+    expect(idiomaAlEntrar({ elegido: null, perfil: "en", actual: "es" })).toEqual({ idioma: "en", guardar: false, limpiar: false });
+  });
+  it("sin idioma en la cuenta, se queda el que ya se ve", () => {
+    expect(idiomaAlEntrar({ elegido: null, perfil: null, actual: "en" })).toEqual({ idioma: "en", guardar: false, limpiar: false });
   });
 });

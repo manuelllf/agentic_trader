@@ -3,7 +3,7 @@
 import { NextIntlClientProvider, type AbstractIntlMessages } from "next-intl";
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react";
-import { LOCALE_CHANGED, LOCALE_COOKIE, normalizeLocale,
+import { LOCALE_CHANGED, LOCALE_COOKIE, normalizeLocale, idiomaAlEntrar,
   deviceLocale, readCookie, VISITOR_COOKIE, type Locale } from "./locale";
 
 type Account = { id: string; locale: Locale | null };
@@ -24,6 +24,12 @@ function writeLocale(locale: Locale, visitor = false) {
   navigator.serviceWorker?.controller?.postMessage({ type: "VENNETT_LOCALE", locale });
 }
 
+// Una vez en la cuenta, la elección hecha en la portada ya no manda: se borra.
+function clearVisitorLocale() {
+  const security = location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${VISITOR_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${security}`;
+}
+
 export function LanguageProvider({ locale: initialLocale, messages: initialMessages, children }: {
   locale: Locale; messages: AbstractIntlMessages; children: React.ReactNode;
 }) {
@@ -35,6 +41,7 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
   const [failure, setFailure] = useState(false);
   const account = useRef<Account | null>(null);
   const defaultLocale = useRef(initialLocale);
+  const visibleLocale = useRef(initialLocale);
   const revision = useRef(0);
   const catalogs = useRef(new Map<Locale, AbstractIntlMessages>([[initialLocale, initialMessages]]));
 
@@ -43,7 +50,8 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
     if (initialLocale === locale) setMessages(initialMessages);
   }, [initialLocale, initialMessages, locale]);
 
-  const applyLocale = useCallback(async (next: Locale, visitor: boolean) => {
+  // Solo la elección del usuario se guarda en cookies; el idioma del dispositivo es un punto de partida.
+  const applyLocale = useCallback(async (next: Locale, { visitor, persist }: { visitor: boolean; persist: boolean }) => {
     const ticket = ++revision.current;
     setLoading(true);
     setFailure(false);
@@ -56,7 +64,8 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
         catalogs.current.set(next, catalog);
       }
       if (ticket !== revision.current) return;
-      writeLocale(next, visitor);
+      if (persist) writeLocale(next, visitor);
+      visibleLocale.current = next;
       setMessages(catalog);
       setLocale(next);
       const { refrescarPresentacion } = await import("@/lib/liga/cache");
@@ -72,7 +81,9 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
   }, [router]);
 
   const selectLocale = useCallback(async (next: Locale) => {
-    await applyLocale(next, account.current === null);
+    await applyLocale(next, { visitor: account.current === null, persist: true });
+    // Con sesión, la elección va al perfil: una anterior de la portada ya no vale.
+    if (account.current) clearVisitorLocale();
     if (!account.current || normalizeLocale(readCookie(LOCALE_COOKIE, document.cookie)) !== next) return;
     const owner = account.current.id;
     const { guardarIdioma } = await import("@/lib/liga/api");
@@ -86,30 +97,32 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
     const previous = account.current;
     if (previous?.id === next?.id) return;
     account.current = next;
-    if (next?.locale) {
-      const current = normalizeLocale(readCookie(LOCALE_COOKIE, document.cookie)) ?? defaultLocale.current;
-      if (next.locale !== current) void applyLocale(next.locale, false);
-    } else if (next) {
-      const visitor = normalizeLocale(readCookie(VISITOR_COOKIE, document.cookie));
-      if (visitor) {
-        void import("@/lib/liga/api").then(async ({ guardarIdioma }) => {
-          const result = await guardarIdioma(visitor, next.id);
-          if (account.current?.id !== next.id) return;
-          if (typeof result === "string") setFailure(true);
-          else account.current = { ...next, locale: visitor };
-        });
-      }
-    } else if (previous) {
-      const visitor = normalizeLocale(readCookie(VISITOR_COOKIE, document.cookie))
-        ?? deviceLocale(navigator.languages, navigator.language);
-      void applyLocale(visitor, false);
+    // Al salir de la cuenta, el idioma se queda: es la preferencia del usuario.
+    if (!next) return;
+    const decision = idiomaAlEntrar({
+      elegido: normalizeLocale(readCookie(VISITOR_COOKIE, document.cookie)),
+      perfil: next.locale,
+      actual: visibleLocale.current,
+    });
+    if (decision.idioma !== visibleLocale.current) void applyLocale(decision.idioma, { visitor: false, persist: true });
+    if (!decision.guardar) {
+      if (decision.limpiar) clearVisitorLocale();
+      return;
     }
+    const owner = next.id;
+    void import("@/lib/liga/api").then(async ({ guardarIdioma }) => {
+      const result = await guardarIdioma(decision.idioma, owner);
+      if (account.current?.id !== owner) return;
+      if (typeof result === "string") { setFailure(true); return; }
+      account.current = { id: owner, locale: decision.idioma };
+      clearVisitorLocale();
+    });
   }, [applyLocale]);
 
   useEffect(() => {
     if (account.current || normalizeLocale(readCookie(LOCALE_COOKIE, document.cookie))) return;
     const detected = deviceLocale(navigator.languages, navigator.language);
-    if (detected !== defaultLocale.current) void applyLocale(detected, false);
+    if (detected !== defaultLocale.current) void applyLocale(detected, { visitor: false, persist: false });
   }, [applyLocale]);
 
   useEffect(() => {
