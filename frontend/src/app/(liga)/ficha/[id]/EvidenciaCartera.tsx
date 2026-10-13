@@ -41,7 +41,7 @@ export function EvidenciaCartera({ fichaId, datos, mercado }: { fichaId: string;
   return (
     <section className="ficha-analisis" aria-label={t("strategies_evidence_portfolio")}>
       <h3 className="sec-t">{t("strategies_portfolio_count", { count: posiciones.length })}</h3>
-      <p className="fine">{t("strategies_evidence_select_company")}{mercado && ` ${t("strategies_month_provisional_hint")}`}</p>
+      <p className="fine">{t("strategies_evidence_select_company")}</p>
       <p className="fine">{t("strategies_evidence_round_context", { round: f.jornada_numero, date: f.desde, method: f.metodo === "mantenida" ? t("strategies_evidence_kept_positions") : t("strategies_evidence_fixed_photo") })}</p>
       {!f.receta_vigente && <p className="fine">{t("strategies_evidence_method_changed_note")}</p>}
       {f.estado_foto === "sin_datos" && <p className="fine">{t("strategies_evidence_photo_missing")}</p>}

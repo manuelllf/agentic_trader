@@ -38,7 +38,6 @@ export function RendimientoFicha({ datos, posiciones = [] }: {
       <p className="meta">{t("strategies_daily_performance_empty")}</p>
       {posiciones.length > 0 && <p className="fine">
         {t("strategies_position_summary", { count: posiciones.length, top: new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(posicionMaxima), cash: new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(Math.max(0, 100 - pesoInvertido)) })}
-        <InfoTip text={t("strategies_position_summary_help")} />
       </p>}
     </section>
   );
@@ -55,11 +54,11 @@ export function RendimientoFicha({ datos, posiciones = [] }: {
         <div><small className="block text-xs" style={{ color: "var(--muted)" }}>{t("strategies_top_weight")}</small><b className="num">{new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(posicionMaxima)} %</b></div>
         <div><small className="block text-xs" style={{ color: "var(--muted)" }}>{t("strategies_cash")}</small><b className="num">{new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(Math.max(0, 100 - pesoInvertido))} %</b></div>
       </div>}
-      <p className="mt-3 text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
-        {m && m.observaciones < OBSERVACIONES_MINIMAS
-          ? t("strategies_observations_missing", { count: m.observaciones, total: OBSERVACIONES_MINIMAS })
-          : t("strategies_observations_count", { count: m?.observaciones ?? 0 })}
-      </p>
+      {m && m.observaciones < OBSERVACIONES_MINIMAS && (
+        <p className="mt-3 text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
+          {t("strategies_observations_missing", { missing: OBSERVACIONES_MINIMAS - m.observaciones, total: OBSERVACIONES_MINIMAS })}
+        </p>
+      )}
       <details className="more">
         <summary>{t("strategies_more_metrics")}</summary>
         <div className="grid grid-cols-2 gap-2">

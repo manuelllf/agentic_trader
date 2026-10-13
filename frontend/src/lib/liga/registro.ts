@@ -49,7 +49,7 @@ export async function solicitarCorreo(
     const cuerpo = await respuesta.json().catch(() => ({}));
     return typeof cuerpo.detail === "string" ? cuerpo.detail : browserText("system_registration_invalid");
   } catch {
-    return browserText("system_registration_connection");
+    return browserText("system_offline");
   } finally {
     clearTimeout(espera);
   }

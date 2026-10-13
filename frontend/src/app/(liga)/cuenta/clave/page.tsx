@@ -21,7 +21,7 @@ export default function ClaveCuenta() {
     e.preventDefault();
     if (cambiando || !sb) return;
     if (!claveValida(claveNueva)) {
-      setAvisoClave({ tipo: "mal", texto: t("account_clave_requisitos") });
+      setAvisoClave({ tipo: "mal", texto: t("auth_clave_revisa") });
       return;
     }
     if (claveNueva !== confirmarClave) {
@@ -46,7 +46,7 @@ export default function ClaveCuenta() {
     <form className="form" onSubmit={cambiarClave}>
       <CampoClave titulo={t("account_cambiar_clave")} autoComplete="new-password" minLength={8}
         maxLength={200} required value={claveNueva} onChange={e => setClaveNueva(e.target.value)} />
-      <p className="nota">{t("account_clave_requisitos")}</p>
+      <p className="nota">{t("auth_clave_requisitos")}</p>
       <CampoClave titulo={t("account_confirmar_clave")} autoComplete="new-password" maxLength={200}
         required value={confirmarClave} onChange={e => setConfirmarClave(e.target.value)} />
       {avisoClave && <p className={avisoClave.tipo === "mal" ? "aviso" : "nota"} role="status">{avisoClave.texto}</p>}

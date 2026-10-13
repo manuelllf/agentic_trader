@@ -213,7 +213,7 @@ export default function Mias() {
                     </>}
                     {novedad.tipo === "resultado" && <b>{t("strategies_new_result")}</b>}
                     {novedad.tipo === "sin" && <span>{t("strategies_no_changes")}</span>}
-                    {novedad.tipo === "primera" && <span>{t("strategies_first_look")}</span>}
+                    {novedad.tipo === "primera" && <span>{t("common_seguimiento_primera_revision")}</span>}
                   </Link>
                 )}
                 {ventana && cierre && (

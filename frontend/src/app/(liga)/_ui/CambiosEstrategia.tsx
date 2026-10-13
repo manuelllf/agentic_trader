@@ -59,7 +59,7 @@ export function CambiosEstrategia({ resumen, alMostrar }: {
         </p>
       )}
       {resumen.quitadas_vaciadas && (
-        <p className={styles.note} role="status">{t("common_seguimiento_quitadas_vaciadas")}</p>
+        <p className={styles.note} role="status">{t("strategies_removed_cleared")}</p>
       )}
 
       {resultado ? (
@@ -78,7 +78,7 @@ export function CambiosEstrategia({ resumen, alMostrar }: {
           <b>{t("common_seguimiento_desde_revision")}</b>
           {resumen.cambio_desde_revision.entradas.length || resumen.cambio_desde_revision.salidas.length ? (
             <p>{t("common_seguimiento_cambios", { entradas: listaLocal(resumen.cambio_desde_revision.entradas), salidas: listaLocal(resumen.cambio_desde_revision.salidas) })}</p>
-          ) : <p>{t("common_seguimiento_sin_cambios")}</p>}
+          ) : <p>{t("strategies_no_changes")}</p>}
         </>}
         <b>{t("common_seguimiento_comparacion")}</b>
         {cambio ? (

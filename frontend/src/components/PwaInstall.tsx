@@ -52,7 +52,6 @@ export default function PwaInstall() {
       <Image src="/favicon.svg?v=vennett-8" alt="" width={32} height={32} />
       <div>
         <p><strong>{t("system_vennett_a_mano")}</strong></p>
-        <p>{t("system_acceso_movil")}</p>
       </div>
       <button
         onClick={install}

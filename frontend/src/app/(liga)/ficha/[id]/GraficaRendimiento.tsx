@@ -7,7 +7,7 @@ import { localeTag, type Locale } from "@/i18n/locale";
 import type { RendimientoFicha } from "@/lib/liga/api";
 import { claseSigno, porcentaje, signo } from "@/lib/liga/format";
 import {
-  OBSERVACIONES_MINIMAS, PERIODOS, caidaMaxima, decimalesDeTicks, indiceCercano, inicios, observaciones,
+  PERIODOS, caidaMaxima, decimalesDeTicks, indiceCercano, inicios,
   periodosDisponibles, ticksLimpios, ventana, type Periodo,
 } from "@/lib/liga/grafica";
 import { Segmentado } from "../../_ui/Segmentado";
@@ -81,7 +81,6 @@ export function GraficaRendimiento({ serie, metricas, locale }: {
   const marcasX = m <= 6 ? [0, m - 1] : [0, Math.round((m - 1) / 3), Math.round((2 * (m - 1)) / 3), m - 1];
 
   const caida = activo === "total" && metricas?.max_drawdown != null ? metricas.max_drawdown : caidaMaxima(puntos);
-  const n = activo === "total" && metricas ? metricas.observaciones : observaciones(puntos);
   const volatilidad = activo === "total" ? metricas?.volatilidad ?? null : null;
 
   const mover = (e: PointerEvent<SVGSVGElement>) => {
@@ -141,7 +140,7 @@ export function GraficaRendimiento({ serie, metricas, locale }: {
           <b className="num">{porcentaje(caida * 100, 1, locale)}</b><em>{t("strategies_drawdown_period")}</em></div>
         <div><small>{t("strategies_annual_volatility")}<InfoTip text={t("strategies_volatility_help")} /></small>
           <b className="num">{volatilidad === null ? "—" : porcentaje(volatilidad * 100, 1, locale).replace(/^\+/, "")}</b>
-          {volatilidad === null && <em>{t("strategies_vol_missing", { missing: Math.max(0, OBSERVACIONES_MINIMAS - n), total: OBSERVACIONES_MINIMAS })}</em>}</div>
+        </div>
       </div>
       <p className="fine">{t("strategies_chart_note")}</p>
     </div>

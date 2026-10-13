@@ -28,7 +28,9 @@ vi.mock("../_sesion/SesionContext", () => ({
 vi.mock("@/i18n/LanguageSelector", () => ({ LanguageSelector: () => null }));
 vi.mock("next/link", () => ({ default: (props: ComponentProps<"a">) => createElement("a", props) }));
 vi.mock("next-intl", async (importOriginal) => {
-  const es = (await import("../../../../messages/es/account.json")).default as Record<string, string>;
+  const cuenta = (await import("../../../../messages/es/account.json")).default as Record<string, string>;
+  const acceso = (await import("../../../../messages/es/auth.json")).default as Record<string, string>;
+  const es = { ...acceso, ...cuenta };
   return { ...await importOriginal<object>(), useTranslations: () => (key: string, values?: Record<string, string>) =>
     (es[key] ?? key).replace(/\{(\w+)\}/g, (_, name: string) => values?.[name] ?? `{${name}}`) };
 });
@@ -85,7 +87,7 @@ describe("Clave", () => {
     expect(mocks.requerida).toHaveBeenCalledWith("/cuenta/clave");
     await escribir(el.querySelectorAll("input")[0], "Ab!");
     await enviar(el);
-    expect(el.querySelector('[role="status"]')?.textContent).toBe("Al menos 8 caracteres, una mayúscula y un símbolo.");
+    expect(el.querySelector('[role="status"]')?.textContent).toBe("Revisa los requisitos de la contraseña.");
     expect(mocks.updateUser).not.toHaveBeenCalled();
   });
   it("avisa si las contraseñas no coinciden", async () => {

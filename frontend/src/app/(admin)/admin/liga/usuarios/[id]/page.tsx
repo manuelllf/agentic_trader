@@ -124,7 +124,7 @@ function Detalle() {
 
       {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
       {!u ? (
-        !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_user_loading")}</p>
+        !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
       ) : (
         <>
           <h1 className="mt-3 text-[19px] text-white"

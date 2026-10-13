@@ -20,7 +20,7 @@ export default function CambiarClave() {
   const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sb || ocupado || estado !== "dentro") return;
-    if (!claveValida(clave)) { setError(t("auth_clave_no_cumple")); return; }
+    if (!claveValida(clave)) { setError(t("auth_clave_requisitos")); return; }
     if (clave !== repetida) { setError(t("auth_contrasenas_distintas")); return; }
     setOcupado(true); setError("");
     try {

@@ -78,7 +78,7 @@ async function request(path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS)
 export async function get<T>(path: string): Promise<T> {
   const res = await request(path);
   if (res.status === 401) { onUnauthorized(); throw new ApiError(browserText("system_session_expired"), "http", 401); }
-  if (!res.ok) throw new ApiError(browserText("system_resource_failed", { path, status: res.status }), "http", res.status);
+  if (!res.ok) throw new ApiError(browserText("system_resource_failed"), "http", res.status);
   return res.json() as Promise<T>;
 }
 
@@ -92,7 +92,7 @@ export async function post<T>(path: string, body?: unknown, timeoutMs?: number):
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new ApiError(
-      (detail as { detail?: string }).detail ?? browserText("system_operation_failed", { status: res.status }),
+      (detail as { detail?: string }).detail ?? browserText("system_operation_failed"),
       "http", res.status,
     );
   }
@@ -110,7 +110,7 @@ export async function put<T>(path: string, body?: unknown, timeoutMs?: number): 
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new ApiError(
-      (detail as { detail?: string }).detail ?? browserText("system_operation_failed", { status: res.status }),
+      (detail as { detail?: string }).detail ?? browserText("system_operation_failed"),
       "http", res.status,
     );
   }
@@ -124,7 +124,7 @@ export async function del<T>(path: string): Promise<T> {
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new ApiError(
-      (detail as { detail?: string }).detail ?? browserText("system_operation_failed", { status: res.status }),
+      (detail as { detail?: string }).detail ?? browserText("system_operation_failed"),
       "http", res.status,
     );
   }
@@ -141,7 +141,7 @@ async function postFile<T>(path: string, field: string, file: File): Promise<T> 
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new ApiError(
-      (detail as { detail?: string }).detail ?? browserText("system_operation_failed", { status: res.status }),
+      (detail as { detail?: string }).detail ?? browserText("system_operation_failed"),
       "http", res.status,
     );
   }

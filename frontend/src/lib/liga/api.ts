@@ -115,7 +115,7 @@ export async function getYo(): Promise<Yo | null> {
 // (DESIGN.md §10); `SIN_SESION()`/`SIN_RED()` son los únicos que inventamos aquí.
 
 const SIN_SESION = () => browserText("system_session_expired");
-const SIN_RED = () => browserText("system_connection_failed");
+const SIN_RED = () => browserText("system_offline");
 
 export type Escudo = {
   forma: "circulo" | "escudo" | "hexagono";

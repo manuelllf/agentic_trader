@@ -42,7 +42,7 @@ export default function Registrar() {
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     if (ocupado || !sb || !acceso?.registro_abierto) return;
-    if (!claveValida(clave)) { setError(t("auth_clave_requisitos")); return; }
+    if (!claveValida(clave)) { setError(t("auth_clave_revisa")); return; }
     setOcupado(true); setError("");
     const fallo = await solicitarCorreo("", { email, alias, clave, acepta_terminos: acepta });
     if (fallo) { setOcupado(false); setError(fallo); }

@@ -149,7 +149,6 @@ export function Pelicula() {
               </div>
               <div data-it="liga" className="pel-it">
                 <span className="pel-ceja">{t("landing_liga_ceja")}</span>
-                <p className="pel-frase">{t("landing_liga_frase")}</p>
               </div>
               <div data-it="fin" className="pel-it pel-fin">
                 <h1>{t("landing_titular")}</h1>
@@ -166,12 +165,11 @@ export function Pelicula() {
           </div>
 
           <div className="pel-pie">
-            <span className="pel-ejemplo">{t("landing_ejemplo_largo")}</span>
+            <Link href="/como-funciona" className="pel-pie-enlace">{t("landing_como_funciona")}</Link>
             <div className="pel-legal" ref={legal}>
               <button type="button" className="pel-legal-boton" aria-expanded={legalAbierto} aria-controls="pel-legales"
                 onClick={() => setLegalAbierto((a) => !a)}>{t("landing_legal")}</button>
               <nav id="pel-legales" className={`pel-legales${legalAbierto ? " abierto" : ""}`} aria-label={t("landing_legal")}>
-                <Link href="/como-funciona">{t("landing_como_funciona")}</Link>
                 <Link href="/legal/aviso">{t("landing_aviso_legal")}</Link>
                 <Link href="/legal/privacidad">{t("landing_privacidad")}</Link>
                 <Link href="/legal/terminos">{t("landing_terminos")}</Link>

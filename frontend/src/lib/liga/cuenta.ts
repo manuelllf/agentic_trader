@@ -40,7 +40,7 @@ export async function borrarMiCuenta(confirmacion: string): Promise<string | nul
     });
     if (res.status === 204) return null;
     const cuerpo = (await res.json().catch(() => ({}))) as { detail?: unknown };
-    return typeof cuerpo.detail === "string" ? cuerpo.detail : browserText("system_delete_account_failed");
+    return typeof cuerpo.detail === "string" ? cuerpo.detail : browserText("system_delete_account_retry");
   } catch {
     return browserText("system_delete_account_retry");
   }

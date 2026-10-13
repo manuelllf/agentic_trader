@@ -180,7 +180,7 @@ function Usuarios() {
                             style={{ background: "#1f5f3a", color: "#9be0b3" }}>{t("admin_users_pro")}</span>
                     )}
                   </span>
-                  <span style={{ color: "#898781" }}>{u.roles.map((role) => ["usuario", "moderador", "admin"].includes(role) ? t(`admin_user_role_${role}`) : role).join(", ") || t("admin_users_role_user")}</span>
+                  <span style={{ color: "#898781" }}>{u.roles.map((role) => ["usuario", "moderador", "admin"].includes(role) ? t(`admin_user_role_${role}`) : role).join(", ") || t("admin_user_role_usuario")}</span>
                 </Link>
               </li>
             ))}
@@ -191,13 +191,13 @@ function Usuarios() {
                     onClick={() => setDesde(Math.max(0, desde - CUANTOS))}
                     className="min-h-[44px] rounded-lg px-4 disabled:opacity-40"
                     style={{ background: "#2c2c2a", color: "#c3c2b7" }}>
-              {t("admin_users_previous")}
+              {t("admin_previous")}
             </button>
             <button type="button" disabled={desde + CUANTOS >= lista.total || cargando}
                     onClick={() => setDesde(desde + CUANTOS)}
                     className="min-h-[44px] rounded-lg px-4 disabled:opacity-40"
                     style={{ background: "#2c2c2a", color: "#c3c2b7" }}>
-              {t("admin_users_next")}
+              {t("admin_next")}
             </button>
           </div>
         </>

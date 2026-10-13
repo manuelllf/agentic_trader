@@ -11,8 +11,7 @@ export async function generateMetadata() {
 // Página pública de método: cómo entra cada empresa en una estrategia y qué pone la IA. Los números
 // del ejemplo son inventados y se rotulan como tal; el resto describe lo que hace el código
 // (`backend/app/liga/motor`). Si cambia el motor (pesos, desempate, margen de empate), cambia aquí.
-type Quien = "ia" | "codigo";
-type Paso = { titulo: string; texto: string; cifra?: string; quien?: Quien; extra?: string };
+type Paso = { titulo: string; texto: string; cifra?: string; extra?: string };
 
 const PASOS: Paso[] = [
   {
@@ -23,23 +22,15 @@ const PASOS: Paso[] = [
   },
   {
     titulo: "help_step_3_title", texto: "help_step_3_text",
-    quien: "ia",
     extra: "help_step_3_extra",
   },
   {
     titulo: "help_step_4_title", texto: "help_step_4_text",
-    quien: "codigo",
   },
   {
     titulo: "help_step_5_title", texto: "help_step_5_text",
-    quien: "codigo",
   },
 ];
-
-const QUIEN: Record<Quien, string> = {
-  ia: "help_by_ai",
-  codigo: "help_by_code",
-};
 
 export default async function ComoFunciona() {
   const t = await getTranslations();
@@ -47,7 +38,6 @@ export default async function ComoFunciona() {
     <main className="sencilla cf">
       <header className="sencilla-top">
         <Link href="/" className="wordmark"><Marca /></Link>
-        <Link href="/liga" className="cf-cerrar">{t("help_go_to_league")}</Link>
       </header>
 
       <div className="cf-cuerpo">
@@ -65,7 +55,6 @@ export default async function ComoFunciona() {
                 <h2>{t(p.titulo)}</h2>
                 <p>{t(p.texto)}</p>
                 <div className="cf-etiquetas">
-                  {p.quien && <span className={`cf-quien ${p.quien}`}>{t(QUIEN[p.quien])}</span>}
                   {p.cifra && <span className="cf-cifra">{t(p.cifra)}</span>}
                 </div>
                 {p.extra && <p className="cf-extra">{t(p.extra)}</p>}
@@ -82,14 +71,12 @@ export default async function ComoFunciona() {
               <ul>
                 <li>{t("help_model_item_1")}</li><li>{t("help_model_item_2")}</li><li>{t("help_model_item_3")}</li><li>{t("help_model_item_4")}</li>
               </ul>
-              <p>{t("help_model_note")}</p>
             </div>
             <div className="cf-caja">
               <h3><span className="cf-punto codigo" aria-hidden="true" />{t("help_code_title")}</h3>
               <ul>
                 <li>{t("help_code_item_1")}</li><li>{t("help_code_item_2")}</li><li>{t("help_code_item_3")}</li><li>{t("help_code_item_4")}</li>
               </ul>
-              <p>{t("help_code_note")}</p>
             </div>
           </div>
         </section>

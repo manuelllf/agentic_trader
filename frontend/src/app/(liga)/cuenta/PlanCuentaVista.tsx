@@ -64,7 +64,6 @@ export function PlanCuentaVista({ yo, suscripcion, comprar: pedirCompra }: Props
       {yo.plan === "gratis" ? (
         <>
           <h2 id={`${base}-titulo`} className="cuenta-plan-titulo">{t("planes_gratis")}</h2>
-          <p className="cuenta-plan-nota">{t("planes_gratis_ayuda")}</p>
           <h3 className="cuenta-plan-subtitulo">{t("planes_elige")}</h3>
           <p className="cuenta-plan-nota">{t("planes_intro")}</p>
           <ul className="cuenta-plan-lista">

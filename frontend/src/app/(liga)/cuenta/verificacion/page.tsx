@@ -96,7 +96,7 @@ export default function Verificacion() {
   return (
     <MarcoAcceso modo="tramite" titular={t("account_verificacion")}>
       {sb === null ? (
-        <p className="nota">{t("account_cuentas_cerradas")}</p>
+        <p className="nota">{t("auth_cuentas_cerradas")}</p>
       ) : estado.paso === "cargando" ? (
         error ? <p className="aviso" role="alert">{t(error)}</p> : <Cargando filas={2} />
       ) : estado.paso === "alta" ? (

@@ -141,7 +141,6 @@ export default function Privadas() {
                 {ocupada ? t("private_leagues_wait") : t("private_leagues_join")}
               </Boton>
             </form>
-            <p className="fine">{t("private_leagues_members_see")}</p>
             {aviso && hoja === "unirse" && <p className="aviso" role="alert">{aviso}</p>}
           </HojaPrivadas>
 

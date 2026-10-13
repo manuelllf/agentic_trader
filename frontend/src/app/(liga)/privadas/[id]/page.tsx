@@ -115,11 +115,12 @@ export default function PrivadaDetalle() {
                 {pendientes.map((m) => (
                   <div className="priv-miembro" key={m.alias}>
                     <span>{m.alias}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}
-                      <small>{m.estrategia ? t("private_leagues_waiting_close")
-                        : m.es_yo ? t("private_leagues_join_create_note") : t("private_leagues_member_create_note")}</small></span>
+                      {m.estrategia ? <small>{t("private_leagues_waiting_close")}</small>
+                        : m.es_yo && <small>{t("private_leagues_join_create_note")}</small>}</span>
                     {m.es_yo && !m.estrategia && <Link className="link" href="/crear">{t("private_leagues_create_strategy")} →</Link>}
                   </div>
                 ))}
+                {pendientes.some((m) => !m.es_yo && !m.estrategia) && <p className="fine">{t("private_leagues_member_create_note")}</p>}
               </div>
             )}
 
@@ -137,7 +138,7 @@ export default function PrivadaDetalle() {
                 <p>{t("private_leagues_share_code_note")}</p>
                 <code className="priv-codigo">{liga.codigo}</code>
                 <Boton ancho="completo" onClick={async () => { try { await navigator.clipboard.writeText(liga.codigo!); setCopiado(true); } catch { setAviso(t("private_leagues_copy_manually")); } }}>{copiado ? t("private_leagues_code_copied") : t("private_leagues_copy_code")}</Boton>
-                <details className="priv-metodo"><summary>{t("private_leagues_change_code")}</summary><p>{t("private_leagues_change_code_note")}</p>
+                <details className="priv-metodo"><summary>{t("private_leagues_change_code")}</summary>
                   <Boton disabled={ocupada} onClick={async () => { if (!(await confirmar({ titulo: t("private_leagues_change_code_confirm"), texto: t("private_leagues_change_code_note"), aceptar: t("private_leagues_generate_code") }))) return; void gestionar(() => rotarCodigoLiga(id)); }}>{t("private_leagues_generate_code")}</Boton>
                 </details>
               </div>}

@@ -68,15 +68,13 @@ function SinJornada({ portada }: { portada: Portada }) {
              texto={t("league_sin_jornada_texto")} />
     );
   }
-  const apuntadas = portada.apuntadas ?? 0;
   const cerrada = new Date(p.cierre_inscripcion).getTime() < Date.now();
-  const cuantas = apuntadas > 0 ? `${t("league_resumen_apuntadas_corta", { count: apuntadas })}. ` : "";
   return cerrada ? (
     <Vacio titulo={t("league_jornada_fijada_titulo", { round: p.numero })}
-           texto={`${cuantas}${t("league_jornada_fijada_texto")}`} />
+           texto={t("league_jornada_fijada_texto")} />
   ) : (
     <Vacio titulo={t("league_jornada_proxima_titulo", { round: p.numero, date: date(p.dia_inicio) })}
-           texto={`${cuantas}${t("league_jornada_proxima_texto", { date: date(p.cierre_inscripcion), time: horaLocal(p.cierre_inscripcion, locale) })}`} />
+           texto={t("league_jornada_proxima_texto", { date: date(p.cierre_inscripcion), time: horaLocal(p.cierre_inscripcion, locale) })} />
   );
 }
 
@@ -258,7 +256,7 @@ function LigaContenido() {
                   </TablaClasificacion>
                   <div className="legend">
                     <p>{t("league_leyenda_casa")}</p>
-                    {orden === "rentabilidad" ? <p>{t("league_leyenda_orden_rentabilidad")}</p> : <p>{t("league_leyenda_orden_puntos")}</p>}
+                    {orden === "puntos" && <p>{t("league_leyenda_orden_puntos")}</p>}
                     {orden === "rentabilidad" && <p>{t("league_leyenda_vs_sp")}</p>}
                   </div>
                 </div>
@@ -317,7 +315,6 @@ function VistaJornada({
           {detalle.en_vivo ? t("league_cotizaciones_provisionales") : t("league_ultimo_cierre", { date: formatDate(detalle.hasta) })}
           {detalle.actualizado && t("league_consultado_a", { time: formatTime(detalle.actualizado) })}
           {t("league_actualiza_y_cierre")}
-          {!!detalle.precios_pendientes && t("league_precios_pendientes", { count: detalle.precios_pendientes })}
         </p>
       )}
       <p className="grp">{t("league_ganando_mes")} <small>{grupos.G.length}</small></p>

@@ -25,7 +25,7 @@ export default function Recuperar() {
   }
 
   return <MarcoAcceso modo="tramite" titular={t("auth_recuperar_contrasena")}>
-    {enviado ? <p role="status">{t("auth_recuperacion_enviada")}</p> :
+    {enviado ? <p role="status">{t("auth_correo_enviado_generico")}</p> :
       <form className="form" onSubmit={enviar}>
         <label className="campo"><span className="lbl">{t("auth_email_cuenta")}</span>
           <input className="inp" type="email" autoComplete="email" autoCapitalize="none" maxLength={254}

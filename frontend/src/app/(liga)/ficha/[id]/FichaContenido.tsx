@@ -70,7 +70,6 @@ export function FichaContenido({ id }: { id: string }) {
   const t = useTranslations();
   const { pedirTexto, dialogo } = useConfirmar();
   const locale = normalizeLocale(useLocale()) ?? "es";
-  const date = (value: string) => fecha(value, new Date(), locale);
   const percent = (value: number) => porcentaje(value, 1, locale);
   const router = useRouter();
   const { estado, yo } = useSesionRequerida(`/ficha/${id}`);
@@ -153,7 +152,7 @@ export function FichaContenido({ id }: { id: string }) {
           {ficha.mercado && <section className="ficha-marcador" aria-label={t("strategies_portfolio_provisional_result")}>
             <div><small>{t("strategies_portfolio_month")}</small><b className={ficha.mercado.rentabilidad == null ? "" : claseSigno(ficha.mercado.rentabilidad)}>{ficha.mercado.rentabilidad == null ? "—" : percent(ficha.mercado.rentabilidad)}</b></div>
             <div><small>{t("strategies_sp_same_period")}</small><b>{ficha.mercado.sp500 == null ? "—" : percent(ficha.mercado.sp500)}</b></div>
-            <p className="fine">{t("strategies_market_freshness", { date: date(ficha.mercado.desde), checked: ficha.mercado.consultado ? t("strategies_checked_at", { time: new Date(ficha.mercado.consultado).toLocaleTimeString(locale, {hour:"2-digit",minute:"2-digit"}) }) : t("strategies_waiting_market"), dataDate: date(ficha.mercado.dia) })}</p>
+            <p className="fine">{t("strategies_market_freshness", { checked: ficha.mercado.consultado ? t("strategies_checked_at", { time: new Date(ficha.mercado.consultado).toLocaleTimeString(locale, {hour:"2-digit",minute:"2-digit"}) }) : t("strategies_waiting_market") })}</p>
           </section>}
           <Segmentado className="ficha-nav" etiquetaGrupo={t("strategies_detail_tabs")} valor={vista} onChange={setVista}
             opciones={[{ valor: "cartera", etiqueta: t("strategies_portfolio") }, { valor: "metodo", etiqueta: t("strategies_methodology") }, { valor: "resultados", etiqueta: t("strategies_results") }]} />

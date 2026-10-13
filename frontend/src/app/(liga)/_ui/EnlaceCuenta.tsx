@@ -29,7 +29,7 @@ export function EnlaceCuenta({ recuperar = false }: { recuperar?: boolean }) {
   async function guardar(e: React.FormEvent) {
     e.preventDefault();
     if (ocupado || !sb || estado !== "listo") return;
-    if (!claveValida(clave)) { setError(t("auth_clave_requisitos")); return; }
+    if (!claveValida(clave)) { setError(t("auth_clave_revisa")); return; }
     if (clave !== confirmacion) { setError(t("auth_contrasenas_distintas")); return; }
     setOcupado(true); setError("");
     try {

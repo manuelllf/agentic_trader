@@ -706,8 +706,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       {!previewSeleccionCargando && !previewSeleccionError && previewSeleccion && previewSeleccion.estado !== "sin_datos" && (
         <>
           <p>
-            {previewSeleccion.mensaje} {t("builder_preview_counts", { evaluated: cifraPreview(previewSeleccion.evaluadas), passed: cifraPreview(previewSeleccion.cumplen_reglas), ranked: cifraPreview(previewSeleccion.candidatas_ordenadas), selected: cifraPreview(previewSeleccion.seleccionadas) })}
-            {previewSeleccion.caja_pct != null && previewSeleccion.caja_pct > 0.01 && ` ${t("builder_preview_cash", { percent: Math.round(previewSeleccion.caja_pct) })}`}
+            {previewSeleccion.mensaje} {t("builder_preview_counts", { evaluated: cifraPreview(previewSeleccion.evaluadas), passed: cifraPreview(previewSeleccion.cumplen_reglas) })}
           </p>
           {previewSeleccion.elegidas.length > 0 && (
             <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
@@ -739,14 +738,14 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       <h2 ref={etapaRef} tabIndex={-1} className="constructor-pregunta">{t(PREGUNTAS[etapa])}</h2>
       <div className="field constructor-reglas" hidden={etapa !== 1}>
         <div className="more filtro-asistente lenguaje-natural">
-          <label className="lbl" htmlFor="filtroFrase">{t("builder_add_filter_natural")}<small>{t("builder_ai_proposes_catalog_filters")}</small></label>
+          <label className="lbl" htmlFor="filtroFrase">{t("builder_add_filter_natural")}</label>
           <textarea id="filtroFrase" className="inp" rows={2} maxLength={300} value={filtroFrase}
             placeholder={t("builder_filter_example")}
             onChange={e => { setFiltroFrase(e.target.value); setFiltroSugerido(null); }} />
           <Boton variante="principal" disabled={convOcupado || !filtroFrase.trim()} onClick={sugerirFiltro}>
             {convOcupado ? t("builder_searching_rules") : t("builder_propose_rules")}
           </Boton>
-          <p className="fine">{t("builder_idea_sent_notice")}</p>
+          <p className="fine">{t("builder_convert_idea_notice")}</p>
           {filtroError && <p className="fine" role="alert">{filtroError}</p>}
           {filtroSugerido && <div className="review">
             {filtroSugerido.interpretacion.map((i, n) => <p className="fine" key={n}><b>{t(i.tipo === "exacta" ? "builder_exact" : i.tipo === "aproximada" ? "builder_approximate" : "builder_unavailable")}:</b> {i.intencion}. {i.motivo}</p>)}
@@ -964,7 +963,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
           maximo={b.n_empresas} reparto={b.reparto} porSector={b.max_por_sector} />
         {feedbackPreview}
         <p className="recipe-note">
-          {t(cadaDia1Opcion === "revisar" ? "builder_review_at_round_start" : "builder_keep_until_change")} {t("builder_preview_no_change")}
+          {t("builder_preview_no_change")}
         </p>
         <Boton variante="secundario" ancho="completo" style={{ marginTop: 14 }}
                disabled={ocupado} onClick={() => void verQueEntrarian()}>
@@ -1086,7 +1085,6 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
 
       <details className="review" hidden={etapa !== 4}>
         <summary>{t("builder_summary_next_review")}</summary>
-        <h3>{t("builder_before_signup")}</h3>
         <p>
           {b.reglas.length === 0
             ? t("builder_no_rules_summary", { count: b.n_empresas })

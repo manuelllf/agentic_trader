@@ -94,8 +94,6 @@
   "alpha_ops_observatory_running": "observatory scan",
   "alpha_ops_cancelling": "Cancelling…",
   "alpha_ops_stop_scan": "Stop scan",
-  "alpha_ops_mid_disabled": "(disabled; in-depth analysis follows prescoring directly)",
-  "alpha_ops_macro_market_only": "(market data only; DeepSeek always sees the full macro context)",
   "alpha_ops_real_cost": "This costs real money. ",
   "alpha_ops_launching": "Starting…",
   "alpha_ops_confirm": "Confirm",

@@ -746,7 +746,7 @@ export function montarPelicula(raiz: HTMLElement, textos: Textos, tema: "claro" 
     texto(pieza("lectSp"), t("landing_lectura_sp", { valor: porcentaje(vs, 1, locale) }));
     if (hasta > 1 && hasta < DIAS) { if (vt < vs - 0.3) debajo = true; else if (vt > vs + 0.3) debajo = false; }
     if (hasta >= DIAS) debajo = false;
-    texto(pieza("notaCap"), debajo ? t("landing_debajo_frase") : t("landing_nota_frase"));
+    texto(pieza("notaCap"), debajo ? t("landing_debajo_frase") : "");
     // Veredicto.
     const yo = SERIES.yo, dif = SERIES.tu[DIAS] - SERIES.sp[DIAS];
     const vf = pieza("verFrase");
