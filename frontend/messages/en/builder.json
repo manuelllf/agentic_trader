@@ -386,11 +386,12 @@
   "builder_revisar_nombre_ayuda": "Up to 28 letters",
   "builder_revisar_publicada": "Published, with Pro",
   "builder_revisar_sin_pruebas": "No backtesting: everything counts from the next first day of the month.",
-  "builder_actualizar_titulo": "Today?s data",
+  "builder_actualizar_titulo": "Today's data",
   "builder_actualizar_boton": "Refresh",
-  "builder_actualizar_ayuda": "Once a week you can request today?s data for your top 300 companies.",
+  "builder_actualizar_ayuda": "Once a week you can request today's data for your top 300 companies.",
   "builder_actualizar_proxima": "Next refresh: {fecha}",
-  "builder_actualizar_progreso": "Requesting today?s data? {count} of 300",
-  "builder_actualizar_hecha": "Today?s data and scores",
+  "builder_actualizar_progreso": "Requesting today's data… {count} of 300",
+  "builder_actualizar_hecha": "Today's data and scores",
+  "builder_actualizar_pregunta": "With your question: free for your strategy in play if your account is free; the rest cost credits.",
   "builder_actualizar_fallida": "Could not refresh now. Try again later."
 }

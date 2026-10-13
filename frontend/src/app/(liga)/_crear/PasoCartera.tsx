@@ -18,7 +18,7 @@ export type PropsCartera = {
   busca: string; buscar: (texto: string) => void; sugerencias: EmpresaBusqueda[];
   preguntar: (empresa: EmpresaBusqueda) => void; porque: { nombre: string; texto: string } | null;
   cadaDia1: "revisar" | "mantener"; cambiarCadaDia1: (valor: "revisar" | "mantener") => void;
-  receta?: RecetaEntrada; alActualizar?: () => void;
+  receta?: RecetaEntrada; estrategiaId?: string; alActualizar?: () => void;
   children?: ReactNode;
 };
 
@@ -61,7 +61,7 @@ export function PasoCartera(p: PropsCartera) {
         </li>)}</ul>
         {huecos > 0 && <p className="callout num">{t("builder_cartera_caja", { count: huecos, percent: pct(p.preview?.caja_pct ?? 0) })}</p>}
         {p.excluidas.length > 0 && <div><h3>{t("builder_cartera_quitadas")}</h3>{p.excluidas.map(ticker => <button type="button" className="link" key={ticker} onClick={() => p.recuperar(ticker)}>{t("builder_cartera_recuperar", { ticker })}</button>)}</div>}
-      {p.receta && p.alActualizar && <ActualizarHoy receta={p.receta} alActualizar={p.alActualizar} />}
+      {p.receta && p.alActualizar && <ActualizarHoy receta={p.receta} estrategiaId={p.estrategiaId} alActualizar={p.alActualizar} />}
         {p.children}
       </section>
       <section className="field">

@@ -842,9 +842,9 @@ export type ActualizacionDatos = {
   hechas: number; total: number; creada: string; puede_repetir_el: string;
 };
 
-export async function actualizarDatos(receta: RecetaEntrada): Promise<{ id: number; total: number } | string> {
+export async function actualizarDatos(receta: RecetaEntrada, estrategiaId?: string): Promise<{ id: number; total: number } | string> {
   return llamar<{ id: number; total: number }>("/liga/seleccion/actualizar", {
-    method: "POST", body: JSON.stringify(receta),
+    method: "POST", body: JSON.stringify({ ...receta, estrategia_id: estrategiaId ?? null }),
   }, true, 15000);
 }
 

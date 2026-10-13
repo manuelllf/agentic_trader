@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { actualizarDatos, getActualizacion, type ActualizacionDatos, type RecetaEntrada } from "@/lib/liga/api";
 
-export function ActualizarHoy({ receta, alActualizar }: { receta: RecetaEntrada; alActualizar: () => void }) {
+export function ActualizarHoy({ receta, estrategiaId, alActualizar }: { receta: RecetaEntrada; estrategiaId?: string; alActualizar: () => void }) {
   const t = useTranslations(), locale = useLocale();
   const [dato, setDato] = useState<ActualizacionDatos | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -49,7 +49,7 @@ export function ActualizarHoy({ receta, alActualizar }: { receta: RecetaEntrada;
     setCargando(true);
     setError(false);
     try {
-      const r = await actualizarDatos(receta);
+      const r = await actualizarDatos(receta, estrategiaId);
       if (typeof r === "string") { setError(true); setConsulta(n => n + 1); return; }
       setDato({ estado: "en_curso", hechas: 0, total: r.total,
         creada: new Date().toISOString(), puede_repetir_el: "" });
@@ -65,6 +65,7 @@ export function ActualizarHoy({ receta, alActualizar }: { receta: RecetaEntrada;
     <div className="actualizar-hoy-fila">
       <div><h3 className="lbl">{t("builder_actualizar_titulo")}</h3>
         <p className="fine">{t(fresca ? "builder_actualizar_hecha" : "builder_actualizar_ayuda")}</p>
+        {receta.pregunta && !fresca && <p className="fine">{t("builder_actualizar_pregunta")}</p>}
         {bloqueada && <p className="fine">{t("builder_actualizar_proxima", {
           fecha: new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(new Date(dato!.puede_repetir_el)),
         })}</p>}

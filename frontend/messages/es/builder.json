@@ -392,5 +392,6 @@
   "builder_actualizar_proxima": "Próxima actualización: {fecha}",
   "builder_actualizar_progreso": "Pidiendo datos de hoy… {count} de 300",
   "builder_actualizar_hecha": "Datos y notas de hoy",
+  "builder_actualizar_pregunta": "Con tu pregunta: gratis en tu estrategia en juego si tu cuenta es gratuita; en las demás, con créditos.",
   "builder_actualizar_fallida": "No se pudo actualizar ahora. Prueba en un rato."
 }

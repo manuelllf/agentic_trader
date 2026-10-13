@@ -710,7 +710,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       {etapa === 2 && <PasoCriterios catalogo={catalogo} pregunta={b.pregunta} pesos={b.pesos}
         pro={pro} actualizarB={actualizarB}>{feedbackPreview}</PasoCriterios>}
 
-      {etapa === 3 && <PasoCartera receta={recetaPreview ?? undefined} alActualizar={alActualizarDatos} preview={previewSeleccion} nEmpresas={b.n_empresas}
+      {etapa === 3 && <PasoCartera receta={recetaPreview ?? undefined} estrategiaId={id} alActualizar={alActualizarDatos} preview={previewSeleccion} nEmpresas={b.n_empresas}
         reparto={b.reparto} maxPorSector={b.max_por_sector} sectores={catalogo.sectores}
         criterios={Object.fromEntries(catalogo.pesos.claves.map(k => [k, VALORACIONES[k] ? t(VALORACIONES[k].titulo) : catalogo.pesos.etiquetas[k]]))}
         excluidas={b.excluidas} cambio={cambio ?? (movimientos.entran.length === 1 && movimientos.salen.length === 1

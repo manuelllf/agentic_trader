@@ -416,6 +416,24 @@ def candidatas_pregunta_de(ctx: Contexto, receta: RecetaModelo) -> list[str]:
     return candidatas_pregunta(list(ctx.empresas), procesos_datos.receta_motor(receta), ctx.notas)
 
 
+def pregunta_gratis(usuario_id: str, estrategia_id: uuid.UUID | None) -> bool:
+    """Sin Pro, la pregunta de la estrategia que juega es gratis; las demás pagan con créditos."""
+    if estrategia_id is None:
+        return False
+    db = fabrica_sistema()
+    try:
+        pro = db.execute(text("select liga.tiene_pro(cast(:u as uuid))"),
+                         {"u": usuario_id}).scalar_one()
+        en_juego = db.execute(text("""
+            select 1 from liga.estrategias
+            where id = cast(:e as uuid) and dueno_id = cast(:u as uuid)
+              and estado in ('apuntada', 'jugando')
+        """), {"e": str(estrategia_id), "u": usuario_id}).first()
+        return not pro and en_juego is not None
+    finally:
+        db.close()
+
+
 # Cuántas estrategias de usuario están apuntadas a la próxima jornada, para la portada pública. Es
 # solo un número (nada de quién ni cuáles) y se guarda 30 s: la portada se pide sin sesión.
 _APUNTADAS_TTL = 30.0

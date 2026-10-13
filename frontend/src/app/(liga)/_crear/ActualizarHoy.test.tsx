@@ -18,9 +18,9 @@ const dato = (estado: ActualizacionDatos["estado"]): ActualizacionDatos => ({ es
   creada: "2026-10-13T10:00:00Z", puede_repetir_el: "2026-10-20T10:00:00Z" });
 beforeEach(() => { vi.resetAllMocks(); vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-13T12:00:00Z")); });
 afterEach(() => { if (root) act(() => root.unmount()); vi.useRealTimers(); });
-async function montar() {
+async function montar(estrategiaId?: string, recetaActual: RecetaEntrada = receta) {
   const div = document.createElement("div"), alActualizar = vi.fn(); root = createRoot(div);
-  await act(async () => root.render(<ActualizarHoy receta={receta} alActualizar={alActualizar} />));
+  await act(async () => root.render(<ActualizarHoy receta={recetaActual} estrategiaId={estrategiaId} alActualizar={alActualizar} />));
   return { div, alActualizar };
 }
 it("deshabilita el botón hasta puede_repetir_el", async () => {
@@ -47,13 +47,23 @@ it("al terminar muestra datos y notas de hoy y avisa una sola vez", async () => 
   await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
   expect(getActualizacion).toHaveBeenCalledTimes(2);
 });
-it("pide la actualización con la receta y comienza el sondeo", async () => {
+it("pide la actualización con la receta y la estrategia, y comienza el sondeo", async () => {
   vi.mocked(getActualizacion).mockResolvedValueOnce(null).mockResolvedValue(dato("en_curso"));
   vi.mocked(actualizarDatos).mockResolvedValue({ id: 1, total: 300 });
-  const { div } = await montar();
+  const { div } = await montar("e-1");
   await act(async () => div.querySelector("button")!.click());
-  expect(actualizarDatos).toHaveBeenCalledWith(receta);
+  expect(actualizarDatos).toHaveBeenCalledWith(receta, "e-1");
   expect(div.querySelector("progress")).not.toBeNull();
+});
+it("dice que la pregunta es gratis solo en la estrategia en juego, si la hay", async () => {
+  vi.mocked(getActualizacion).mockResolvedValue(null);
+  const { div } = await montar(undefined, { ...receta, pregunta: "¿Crece?" });
+  expect(div.textContent).toContain("Con tu pregunta: gratis en tu estrategia en juego si tu cuenta es gratuita; en las demás, con créditos.");
+});
+it("no menciona créditos cuando la actualización no lleva pregunta", async () => {
+  vi.mocked(getActualizacion).mockResolvedValue(null);
+  const { div } = await montar();
+  expect(div.textContent).not.toContain("Con tu pregunta");
 });
 it("muestra el fallo sin reintentar", async () => {
   vi.mocked(getActualizacion).mockResolvedValueOnce(dato("en_curso")).mockResolvedValue(dato("fallida"));

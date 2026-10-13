@@ -1,5 +1,6 @@
 """Datos semanales con sesiones y proveedores falsos, sin red ni base de datos externa."""
 
+import uuid
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -154,6 +155,13 @@ def entorno(monkeypatch):
     ctx = Contexto(1, 2, False, empresas, notas)
     monkeypatch.setattr(servicio.estrategias, "contexto_de_referencia", lambda: ctx)
     monkeypatch.setattr(servicio.estrategias, "respuestas_sistema", lambda *_: {})
+    cuenta = SimpleNamespace(gratis=False, consultas=[])
+
+    def gratis_en_juego(uid, estrategia):
+        cuenta.consultas.append((uid, estrategia))
+        return cuenta.gratis
+
+    monkeypatch.setattr(servicio.estrategias, "pregunta_gratis", gratis_en_juego)
     gathers, prescores, preguntas, cobros = [], [], [], []
 
     def gather(ticker, *, db, ttl_h):
@@ -214,7 +222,8 @@ def entorno(monkeypatch):
 
     monkeypatch.setattr(servicio, "threading", SimpleNamespace(Thread=Hilo))
     return SimpleNamespace(b=b, ctx=ctx, gathers=gathers, prescores=prescores,
-                           preguntas=preguntas, cobros=cobros, pendientes=pendientes)
+                           preguntas=preguntas, cobros=cobros, pendientes=pendientes,
+                           cuenta=cuenta)
 
 
 def receta(**kw):
@@ -224,8 +233,8 @@ def receta(**kw):
         n_empresas=3, reparto="igual", max_por_sector=0, **kw)
 
 
-def ejecutar(e, body=None, uid="usuario"):
-    aid = servicio.iniciar(uid, body or receta())
+def ejecutar(e, body=None, uid="usuario", estrategia=None):
+    aid = servicio.iniciar(uid, body or receta(), estrategia)
     funcion, args = e.pendientes.pop(0)
     funcion(*args)
     return e.b.actualizaciones[aid]
@@ -391,6 +400,76 @@ def test_reparto_gratis_y_con_creditos(entorno, reparto):
     ejecutar(entorno, receta(pregunta="¿Crece?").model_copy(update={"reparto": reparto}), "pago")
     assert len(entorno.gathers) == 300
     assert [tipo for tipo, _ in entorno.cobros] == ["reserva", "cobro"]
+
+
+def test_pregunta_de_la_estrategia_en_juego_es_gratis_sin_pro(entorno):
+    e = entorno
+    e.cuenta.gratis = True
+    estrategia = uuid.uuid4()
+    f = ejecutar(e, receta(pregunta="¿Crece?"), "uno", estrategia)
+    assert (f["estado"], f["hechas"]) == ("hecha", 300)
+    assert len(e.preguntas) == 300 and len(e.b.respuestas) == 300
+    assert not e.cobros
+    assert e.cuenta.consultas == [("uno", estrategia)]
+
+
+def test_pregunta_con_pro_o_fuera_de_la_en_juego_cobra(entorno):
+    e = entorno
+    assert ejecutar(e, receta(pregunta="¿Crece?"), "pro", uuid.uuid4())["estado"] == "hecha"
+    assert [tipo for tipo, _ in e.cobros] == ["reserva", "cobro"]
+
+
+def test_pregunta_gratis_incompleta_falla_sin_cobrar(entorno, monkeypatch):
+    e = entorno
+    e.cuenta.gratis = True
+    monkeypatch.setattr(pregunta, "responder_pendientes",
+                        lambda **_: SimpleNamespace(respuestas={"T000": None}))
+    assert ejecutar(e, receta(pregunta="¿Crece?"), "uno", uuid.uuid4())["estado"] == "fallida"
+    assert not e.cobros
+
+
+@pytest.mark.parametrize("pro, en_juego, esperado", [
+    (False, True, True), (True, True, False), (False, False, False),
+])
+def test_pregunta_gratis_solo_sin_pro_y_en_juego(monkeypatch, pro, en_juego, esperado):
+    class Sesion:
+        def execute(self, sql, params=None):
+            if "tiene_pro" in str(sql):
+                return Resultado(valor=pro)
+            assert params["u"] == "uno"
+            return Resultado([SimpleNamespace()] if en_juego else [])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(servicio.estrategias, "fabrica_sistema", Sesion)
+    assert servicio.estrategias.pregunta_gratis("uno", uuid.uuid4()) is esperado
+
+
+def test_pregunta_gratis_sin_estrategia_no_consulta(monkeypatch):
+    def sin_bd():
+        raise AssertionError("sin estrategia no debe abrir sesión")
+    monkeypatch.setattr(servicio.estrategias, "fabrica_sistema", sin_bd)
+    assert servicio.estrategias.pregunta_gratis("uno", None) is False
+
+
+def test_ruta_pasa_la_estrategia_y_la_pregunta_es_gratis(entorno, monkeypatch):
+    e = entorno
+    e.cuenta.gratis = True
+    app = FastAPI()
+    app.include_router(rutas_estrategias.router)
+    ident = Identidad("uno", "aal1", {"sub": "uno", "role": "authenticated"})
+    app.dependency_overrides[require_jugador] = lambda: ident
+    app.dependency_overrides[db_usuario] = e.b.fabrica
+    monkeypatch.setattr("app.liga.db.sesion_como", servicio.sesion_como)
+    estrategia = uuid.uuid4()
+    cuerpo = receta(pregunta="¿Crece?").model_dump() | {"estrategia_id": str(estrategia)}
+    with TestClient(app) as cliente:
+        assert cliente.post("/seleccion/actualizar", json=cuerpo).status_code == 202
+    funcion, args = e.pendientes.pop(0)
+    funcion(*args)
+    assert e.cuenta.consultas == [("uno", estrategia)]
+    assert not e.cobros and len(e.preguntas) == 300
 
 
 def test_respuestas_y_notas_frescas_sustituyen_solo_hoy(entorno):

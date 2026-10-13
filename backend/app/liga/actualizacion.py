@@ -71,8 +71,9 @@ def _candidatas(body):
     return contexto, [f.ticker for f in resultado.pasan[:300]]
 
 
-def iniciar(usuario_id, receta) -> int:
+def iniciar(usuario_id, receta, estrategia_id=None) -> int:
     receta = receta.model_copy(update={"pregunta": (receta.pregunta or "").strip() or None})
+    gratis = bool(receta.pregunta) and estrategias.pregunta_gratis(usuario_id, estrategia_id)
     ident = Identidad(uid=usuario_id, aal="aal1",
                       claims={"sub": usuario_id, "role": "authenticated"})
     with sesion_como(ident) as db:
@@ -96,7 +97,7 @@ def iniciar(usuario_id, receta) -> int:
                "h": hash_pregunta(receta.pregunta) if receta.pregunta else None}).scalar_one()
     # La transacción de usuario debe estar confirmada antes de arrancar el hilo.
     try:
-        threading.Thread(target=_trabajo, args=(actualizacion_id, receta, usuario_id),
+        threading.Thread(target=_trabajo, args=(actualizacion_id, receta, usuario_id, gratis),
                          daemon=True).start()
     except Exception as exc:
         db = fabrica_sistema()
@@ -136,18 +137,27 @@ def frescas(notas, respuestas, pregunta, dia=None):
         db.close()
 
 
-def _responder(actualizacion_id, body, contexto, candidatas, usuario_id, dia):
+def _preguntar(body, contexto, candidatas, usuario_id, dia):
+    return ia_pregunta.responder_pendientes(
+        pregunta=body.pregunta, foto_id=contexto.foto_id, dia=dia,
+        empresas={e.ticker: e for e in contexto.empresas}, candidatas=candidatas,
+        usuario_id=usuario_id)
+
+
+def _responder(actualizacion_id, body, contexto, candidatas, usuario_id, dia, gratis):
     if not body.pregunta:
+        return
+    if gratis:
+        resultado = _preguntar(body, contexto, candidatas, usuario_id, dia)
+        if len(resultado.respuestas) != len(candidatas):
+            raise ErrorActualizacion("respuestas_incompletas")
         return
     importe = precios.precio_pregunta(len(candidatas))
     clave = comun.clave_cobro("pregunta", str(actualizacion_id), hash_pregunta(body.pregunta), dia)
     comun.reservar_creditos(usuario_id, importe, f"reserva:{clave}")
     liquidada = False
     try:
-        resultado = ia_pregunta.responder_pendientes(
-            pregunta=body.pregunta, foto_id=contexto.foto_id, dia=dia,
-            empresas={e.ticker: e for e in contexto.empresas}, candidatas=candidatas,
-            usuario_id=usuario_id)
+        resultado = _preguntar(body, contexto, candidatas, usuario_id, dia)
         entregadas = len(resultado.respuestas)
         if entregadas:
             comun.liquidar_creditos(usuario_id, importe, precios.precio_pregunta(entregadas),
@@ -163,7 +173,7 @@ def _responder(actualizacion_id, body, contexto, candidatas, usuario_id, dia):
         raise
 
 
-def _ejecutar(db, actualizacion_id, body, usuario_id):
+def _ejecutar(db, actualizacion_id, body, usuario_id, gratis=False):
     contexto, candidatas = _candidatas(body)
     if not candidatas:
         raise ErrorActualizacion("sin_candidatas")
@@ -209,7 +219,7 @@ def _ejecutar(db, actualizacion_id, body, usuario_id):
         db.execute(text("update liga.actualizaciones set hechas = :n where id = :i"),
                    {"n": hechas, "i": actualizacion_id})
         db.commit()
-    _responder(actualizacion_id, body, contexto, candidatas, usuario_id, dia)
+    _responder(actualizacion_id, body, contexto, candidatas, usuario_id, dia, gratis)
     _estado(db, actualizacion_id, "hecha")
 
 
@@ -221,7 +231,7 @@ def _liberar_memoria():
         pass
 
 
-def _trabajo(actualizacion_id, receta, usuario_id):
+def _trabajo(actualizacion_id, receta, usuario_id, gratis=False):
     db = None
     cerrojo = None
     try:
@@ -231,7 +241,7 @@ def _trabajo(actualizacion_id, receta, usuario_id):
             cerrojo.execute(text("select pg_advisory_xact_lock(hashtextextended(:k, 0))"),
                             {"k": "liga.cache_fresca"})
             db = fabrica_sistema()
-            _ejecutar(db, actualizacion_id, receta, usuario_id)
+            _ejecutar(db, actualizacion_id, receta, usuario_id, gratis)
     except Exception as exc:
         if db is None:
             db = fabrica_sistema()

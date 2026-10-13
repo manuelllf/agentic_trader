@@ -203,6 +203,12 @@ class PruebaIn(BaseModel):
     idempotencia: str | None = Field(default=None, min_length=8, max_length=80)
 
 
+class ActualizarIn(PreviewSeleccionIn):
+    """La receta de la vista previa y de qué estrategia sale: su pregunta puede ser gratis."""
+
+    estrategia_id: uuid.UUID | None = None
+
+
 class CostePreguntaOut(BaseModel):
     evaluadas: int
     en_cache: int
@@ -816,9 +822,9 @@ def copiar(id: uuid.UUID, db: Session = Depends(db_usuario)) -> EstrategiaOut:
 
 
 @router.post("/seleccion/actualizar", status_code=202)
-def actualizar_seleccion(body: PreviewSeleccionIn,
+def actualizar_seleccion(body: ActualizarIn,
                          ident: Identidad = Depends(require_jugador)) -> dict:
-    actualizacion_id = actualizacion.iniciar(ident.uid, body)
+    actualizacion_id = actualizacion.iniciar(ident.uid, body, body.estrategia_id)
     # La lectura mantiene RLS aunque el trabajo ya haya arrancado.
     from app.liga.db import sesion_como
 
