@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { metadataCompartir } from "./sitio";
+import { metadataCompartir, metadataSinIndexar } from "./sitio";
+
+describe("indexación", () => {
+  it("indexa lo público por defecto y deja fuera lo que se pida", () => {
+    const base = { titulo: "Título", descripcion: "Descripción", idioma: "es", ruta: "/ficha/1" };
+    expect(metadataCompartir(base).robots).toEqual({ index: true, follow: true });
+    expect(metadataCompartir({ ...base, indexar: false }).robots).toEqual({ index: false, follow: false });
+  });
+
+  it("una página de sesión lleva su título y queda fuera de los buscadores", () => {
+    expect(metadataSinIndexar("Cuenta — Vennett")).toEqual({
+      title: "Cuenta — Vennett", robots: { index: false, follow: false },
+    });
+  });
+});
 
 describe("metadataCompartir", () => {
   it.each([

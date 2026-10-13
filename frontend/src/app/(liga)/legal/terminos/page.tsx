@@ -6,7 +6,7 @@ import { metadataCompartir } from "@/lib/sitio";
 
 export async function generateMetadata() {
   const [t, idioma] = await Promise.all([getTranslations(), getLocale()]);
-  return metadataCompartir({ titulo: `${t("legal_terms_title")} — Vennett`, descripcion: t("system_descripcion_compartir"), idioma, ruta: "/legal/terminos" });
+  return metadataCompartir({ titulo: `${t("legal_terms_title")} — Vennett`, descripcion: t("meta_legal_terminos_descripcion"), idioma, ruta: "/legal/terminos" });
 }
 
 export default async function Terminos() {

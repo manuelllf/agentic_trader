@@ -6,7 +6,7 @@ import { metadataCompartir } from "@/lib/sitio";
 
 export async function generateMetadata() {
   const [t, idioma] = await Promise.all([getTranslations(), getLocale()]);
-  return metadataCompartir({ titulo: `${t("legal_privacy_title")} — Vennett`, descripcion: t("system_descripcion_compartir"), idioma, ruta: "/legal/privacidad" });
+  return metadataCompartir({ titulo: `${t("legal_privacy_title")} — Vennett`, descripcion: t("meta_legal_privacidad_descripcion"), idioma, ruta: "/legal/privacidad" });
 }
 
 // Solo lista los servicios que reciben datos de personas usuarias (no las fuentes de mercado).

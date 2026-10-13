@@ -5,7 +5,7 @@ import { EditorEstrategia } from "../_crear/EditorEstrategia";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations();
-  return { title: `${t("builder_metadata_create")} · Vennett` };
+  return { title: `${t("builder_metadata_create")} — Vennett` };
 }
 
 export default function Crear() {
