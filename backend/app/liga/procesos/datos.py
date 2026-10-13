@@ -21,13 +21,19 @@ from app.liga.motor.seleccion import Receta as RecetaMotor
 
 # Métricas de la foto que usa el catálogo (claves de yfinance en `fundamentals_snapshot.metricas`).
 _METRICAS = {
-    "dividendYield": "dividend_yield_pct",
     "revenueGrowth": "crecimiento_ventas",
     "operatingMargins": "margen_operativo",
     "returnOnEquity": "roe",
     "totalDebt": "deuda_total",
     "totalCash": "caja_total",
     "ebitda": "ebitda",
+    "priceToBook": "pb",
+    "enterpriseToEbitda": "ev_ebitda",
+    "returnOnAssets": "roa",
+    "profitMargins": "margen_neto",
+    "debtToEquity": "deuda_pn_pct",
+    "currentRatio": "liquidez_corriente",
+    "beta": "beta",
 }
 _SIN_DATO = {"", "n/d", "none"}
 
@@ -59,17 +65,56 @@ def cargar_empresas(db: Session, foto_id: int,
     return [EmpresaFoto(ticker=f.ticker, nombre=_texto(f.name), sector=_texto(f.sector),
                         industria=_texto(f.industry), market_cap_usd=f.market_cap_usd,
                         precio=f.price, max_52s=f.high_52w, per=f.pe_trailing,
-                        **_metricas_catalogo(f.metricas))
+                        **_metricas_catalogo(f.metricas, f.price),
+                        **_derivadas(f.metricas, f.price, f.market_cap_usd))
             for f in filas]
 
 
-def _metricas_catalogo(metricas: dict | str | None) -> dict[str, float]:
+def _metricas_catalogo(metricas: dict | str | None, precio: float | None) -> dict[str, float]:
     """Las métricas del catálogo que vengan como número real en el jsonb de la foto."""
     if isinstance(metricas, str):
         metricas = json.loads(metricas)
-    return {destino: float(v) for clave, destino in _METRICAS.items()
-            if isinstance(v := (metricas or {}).get(clave), (int, float))
-            and not isinstance(v, bool)}
+    datos = {destino: float(v) for clave, destino in _METRICAS.items()
+             if isinstance(v := (metricas or {}).get(clave), (int, float))
+             and not isinstance(v, bool)}
+    # La escala de dividendYield cambia según la fuente; dividendRate no tiene esa ambigüedad.
+    dividendo = (metricas or {}).get("dividendRate")
+    if (isinstance(dividendo, (int, float)) and not isinstance(dividendo, bool)
+            and dividendo > 0 and precio is not None and precio > 0):
+        datos["dividend_yield_pct"] = dividendo / precio * 100
+    return datos
+
+
+def _derivadas(metricas: dict | str | None, precio: float | None,
+               capitalizacion: float | None) -> dict[str, float | None]:
+    """Las métricas calculadas con los números reales de la foto y sus unidades del motor."""
+    if isinstance(metricas, str):
+        metricas = json.loads(metricas)
+
+    def numero(valor: object) -> float | None:
+        if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+            return float(valor)
+        return None
+
+    datos = metricas or {}
+    fcf = numero(datos.get("freeCashflow"))
+    cap = numero(capitalizacion)
+    volumen = numero(datos.get("averageVolume"))
+    precio = numero(precio)
+    cambio = numero(datos.get("52WeekChange"))
+    sp = numero(datos.get("SandP52WeekChange"))
+    derivadas = {
+        "fcf_pct": fcf / cap * 100 if fcf is not None and cap is not None and cap > 0 else None,
+        "vs_sp_52s": (cambio - sp) * 100 if cambio is not None and sp is not None else None,
+        "volumen_usd_dia": (volumen * precio / 1e6
+                            if volumen is not None and precio is not None and precio > 0 else None),
+    }
+    for clave, destino in (("payoutRatio", "payout_pct"),
+                           ("heldPercentInsiders", "directivos_pct"),
+                           ("shortPercentOfFloat", "cortos_pct")):
+        valor = numero(datos.get(clave))
+        derivadas[destino] = valor * 100 if valor is not None else None
+    return derivadas
 
 
 def cargar_notas(db: Session, scan_run_id: int) -> dict[str, NotasJev]:

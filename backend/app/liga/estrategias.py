@@ -24,6 +24,7 @@ from app.i18n import current_locale, translate
 from app.liga import nombres
 from app.liga.models import Receta as RecetaModelo
 from app.liga.motor.catalogo import CATALOGO, CATALOGO_VERSION, SECTORES_ES, EmpresaFoto
+from app.liga.motor.estilos import ESTILOS, PRESETS
 from app.liga.motor.mensajes import presentar, presentar_lista
 from app.liga.motor.seleccion import (
     ETIQUETAS_PESO,
@@ -99,19 +100,32 @@ def mapear_error(e: DBAPIError) -> HTTPException:
 # --- Catálogo para el constructor -----------------------------------------------------------------
 
 
+def _estilos_catalogo() -> list[dict]:
+    """Los siete estilos del constructor, con la receta de partida de cada uno."""
+    salida = []
+    for estilo in ESTILOS.values():
+        receta = estilo.receta()
+        salida.append({"clave": estilo.clave, "reglas": receta.reglas, "pesos": receta.pesos,
+                       "n_empresas": receta.n_empresas, "reparto": receta.reparto,
+                       "max_por_sector": receta.max_por_sector})
+    return salida
+
+
 def catalogo_payload() -> dict:
     reglas = [
         {
             "clave": r.clave,
+            "grupo": r.grupo,
             "titulo": r.titulo,
             "parametros": [
                 {"nombre": p.nombre, "etiqueta": p.etiqueta, "tipo": p.tipo,
                  "minimo": p.minimo, "maximo": p.maximo, "paso": p.paso, "defecto": p.defecto,
-                 "opcional": p.opcional}
+                 "opcional": p.opcional,
+                 **({"valores": list(p.valores)} if p.tipo == "lista" else {})}
                 for p in r.parametros
             ],
         }
-        for r in CATALOGO.values()
+        for r in CATALOGO.values() if r.ofrecida
     ]
     return {
         "version": CATALOGO_VERSION,
@@ -123,6 +137,8 @@ def catalogo_payload() -> dict:
         "repartos": list(REPARTOS),
         "max_por_sector": MAX_POR_SECTOR,
         "max_excluidas": MAX_EXCLUIDAS,
+        "estilos": _estilos_catalogo(),
+        "presets": PRESETS,
     }
 
 

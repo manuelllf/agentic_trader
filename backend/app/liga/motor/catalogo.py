@@ -69,8 +69,12 @@ class EmpresaFoto:
 
     Unidades: `market_cap_usd`, `deuda_total`, `caja_total` y `ebitda` en dólares (no millones);
     `dividend_yield_pct` ya en % (2.5 es un 2,5 %); `crecimiento_ventas`, `margen_operativo` y
-    `roe` en tanto por uno (0.05 es un 5 %); `per`, el de los últimos doce meses; `max_52s`, el
-    máximo del último año. `sector` e `industria`, los de Yahoo en inglés."""
+    `roe`, `roa` y `margen_neto` en tanto por uno (0.05 es un 5 %); `per`, el de los últimos
+    doce meses; `pb`, `ev_ebitda` y `liquidez_corriente` en veces; `fcf_pct` en % sobre la
+    capitalización; `deuda_pn_pct`, `payout_pct`, `directivos_pct` y `cortos_pct` en %;
+    `vs_sp_52s` en puntos porcentuales; `volumen_usd_dia` en millones de dólares al día;
+    `beta` sin unidad; `max_52s`, el máximo del último año. `sector` e `industria`, los de
+    Yahoo en inglés."""
 
     ticker: str
     nombre: str | None = None
@@ -87,6 +91,19 @@ class EmpresaFoto:
     deuda_total: float | None = None
     caja_total: float | None = None
     ebitda: float | None = None
+    pb: float | None = None
+    ev_ebitda: float | None = None
+    fcf_pct: float | None = None
+    roa: float | None = None
+    margen_neto: float | None = None
+    deuda_pn_pct: float | None = None
+    liquidez_corriente: float | None = None
+    payout_pct: float | None = None
+    beta: float | None = None
+    vs_sp_52s: float | None = None
+    volumen_usd_dia: float | None = None
+    directivos_pct: float | None = None
+    cortos_pct: float | None = None
 
 
 @dataclass(frozen=True)
@@ -102,6 +119,7 @@ class Parametro:
     defecto: int | float | None = None
     tipo: str = "numero"
     opcional: bool = False
+    valores: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -111,6 +129,8 @@ class ReglaCatalogo:
     fn_detalle: Callable[[Mapping[str, Any]], str] = field(repr=False)
     fn_evaluar: Callable[[EmpresaFoto, Mapping[str, Any]], str | None] = field(repr=False)
     parametros: tuple[Parametro, ...] = ()
+    grupo: str = ""
+    ofrecida: bool = True
 
     def params_por_defecto(self) -> dict[str, Any]:
         return {p.nombre: p.defecto for p in self.parametros if p.defecto is not None}
@@ -348,6 +368,54 @@ def _sin_sectores(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
     return None
 
 
+def _tamano(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
+    cap = _capitalizacion(e)
+    if cap is None:
+        return Texto("motor_sin_dato_capitalizacion")
+    desde, hasta = a_decimal(p["desde"]), a_decimal(p["hasta"])
+    if cap >= desde and (hasta == 5_000_000 or cap < hasta):
+        return None
+    if cap < desde:
+        return Texto("motor_tamano_minimo", cap=Usd(cap, (desde,)), desde=Usd(desde))
+    return Texto("motor_tamano_maximo", cap=Usd(cap, (hasta,)), hasta=Usd(hasta))
+
+
+def _detalle_tamano(p: Mapping[str, Any]) -> Texto:
+    desde, hasta = a_decimal(p["desde"]), a_decimal(p["hasta"])
+    if hasta == 5_000_000:
+        return Texto("motor_det_tamano_abierto", desde=Usd(desde))
+    return Texto("motor_det_tamano", desde=Usd(desde), hasta=Usd(hasta))
+
+
+def _comparar(e: EmpresaFoto, p: Mapping[str, Any], clave: str, campo: str,
+              mayor: bool, formato: type, escala: int = 1) -> Texto | None:
+    valor = a_decimal(getattr(e, campo))
+    if valor is None:
+        return Texto(f"motor_sin_dato_{campo}")
+    umbral = a_decimal(p["p"])
+    valor *= escala
+    if clave == "ev_ebitda" and valor <= 0:
+        return Texto("motor_ev_ebitda_no_positivo", valor=formato(valor))
+    cumple = valor > umbral if mayor else valor < umbral
+    if cumple:
+        return None
+    return Texto(f"motor_{clave}_fallo", valor=formato(valor, frente_a=(umbral,)),
+                 umbral=formato(umbral))
+
+
+def _castigadas_pct(e: EmpresaFoto, p: Mapping[str, Any]) -> Texto | None:
+    precio, maximo = a_decimal(e.precio), a_decimal(e.max_52s)
+    if precio is None or precio <= 0:
+        return Texto("motor_sin_dato_precio")
+    if maximo is None or maximo <= 0:
+        return Texto("motor_sin_dato_maximo")
+    caida = (1 - precio / maximo) * 100
+    umbral = a_decimal(p["p"])
+    if caida >= umbral:
+        return None
+    return Texto("motor_castigada_distancia", caida=Pct(caida, 1, (umbral,)), umbral=Pct(umbral))
+
+
 _ANIOS = Parametro("anios", "el ratio deuda neta/EBITDA máximo (veces)",
                    Decimal("0.5"), Decimal(5), Decimal("0.5"), 2)
 _PER = Parametro("per", "el PER máximo", Decimal(8), Decimal(40), Decimal(1), 18)
@@ -364,50 +432,133 @@ _SECTORES = Parametro("sectores", "los sectores", tipo="sectores")
 
 CATALOGO: dict[str, ReglaCatalogo] = {r.clave: r for r in (
     ReglaCatalogo("grandes", "Empresas grandes",
-                  lambda p: Texto("motor_det_cap_mayor", umbral=Usd(_GRANDE)), _grandes),
+                  lambda p: Texto("motor_det_cap_mayor", umbral=Usd(_GRANDE)), _grandes,
+                  grupo="tamano", ofrecida=False),
     ReglaCatalogo("medianas", "Medianas o grandes",
-                  lambda p: Texto("motor_det_cap_mayor", umbral=Usd(_MEDIANA)), _medianas),
+                  lambda p: Texto("motor_det_cap_mayor", umbral=Usd(_MEDIANA)), _medianas,
+                  grupo="tamano", ofrecida=False),
     ReglaCatalogo("pequenas", "Pequeñas",
                   lambda p: Texto("motor_det_cap_entre", desde=UsdAbierto(_PEQUENA),
                                   hasta=Usd(_MEDIANA)),
-                  _pequenas),
+                  _pequenas, grupo="tamano", ofrecida=False),
     ReglaCatalogo("deuda", "Poca deuda",
                   lambda p: Texto("motor_det_deuda", veces=Veces(a_decimal(p["anios"]))),
-                  _deuda, (_ANIOS,)),
+                  _deuda, (_ANIOS,), grupo="deuda"),
     ReglaCatalogo("caja_neta", "Más caja que deuda", lambda p: Texto("motor_det_caja_neta"),
-                  _caja_neta),
+                  _caja_neta, grupo="deuda"),
     ReglaCatalogo("barata", "Que no esté cara",
                   lambda p: Texto("motor_det_per", per=Cifra(a_decimal(p["per"]))), _barata,
-                  (_PER,)),
+                  (_PER,), grupo="precio"),
     ReglaCatalogo("dividendo", "Reparte dividendo",
                   lambda p: Texto("motor_det_dividendo",
                                   pct=Pct(a_decimal(p["dividendo_pct"]))),
-                  _dividendo, (_DIVIDENDO_PCT,)),
+                  _dividendo, (_DIVIDENDO_PCT,), grupo="dividendo"),
     ReglaCatalogo("crecen", "Crecimiento interanual de ventas",
                   lambda p: Texto("motor_det_crecimiento",
                                   pct=Pct(a_decimal(p["crecimiento_pct"]))),
-                  _crecen, (_CRECIMIENTO_PCT,)),
+                  _crecen, (_CRECIMIENTO_PCT,), grupo="crecimiento"),
     ReglaCatalogo("margen", "Buen margen",
                   lambda p: Texto("motor_det_margen", pct=Pct(a_decimal(p["margen_pct"]))),
-                  _margen, (_MARGEN_PCT,)),
+                  _margen, (_MARGEN_PCT,), grupo="rentabilidad"),
     ReglaCatalogo("rentables", "Muy rentables",
                   lambda p: Texto("motor_det_roe", pct=Pct(a_decimal(p["roe_pct"]))),
-                  _rentables, (_ROE_PCT,)),
+                  _rentables, (_ROE_PCT,), grupo="rentabilidad"),
     ReglaCatalogo("castigadas", "Castigadas",
-                  lambda p: Texto("motor_det_castigadas", pct=Pct(_CAIDA)), _castigadas),
+                  lambda p: Texto("motor_det_castigadas", pct=Pct(_CAIDA)), _castigadas,
+                  grupo="riesgo", ofrecida=False),
     ReglaCatalogo("sin_energia", "Sin energía", lambda p: Texto("motor_det_sin_energia"),
-                  _sin_energia),
+                  _sin_energia, grupo="sectores"),
     ReglaCatalogo("sin_bancos", "Sin bancos", lambda p: Texto("motor_det_sin_bancos"),
-                  _sin_bancos),
+                  _sin_bancos, grupo="sectores"),
     ReglaCatalogo("sin_tabaco", "Sin tabaco", lambda p: Texto("motor_det_sin_tabaco"),
-                  _sin_tabaco),
-    ReglaCatalogo("solo_chips", "Solo chips", lambda p: Texto("motor_det_chips"), _solo_chips),
+                  _sin_tabaco, grupo="sectores"),
+    ReglaCatalogo("solo_chips", "Solo chips", lambda p: Texto("motor_det_chips"),
+                  _solo_chips, grupo="sectores"),
     ReglaCatalogo("solo_sectores", "Solo estos sectores",
                   lambda p: Texto("motor_det_sectores", lista=ListaSectores(tuple(p["sectores"]))),
-                  _solo_sectores, (_SECTORES,)),
+                  _solo_sectores, (_SECTORES,), grupo="sectores"),
     ReglaCatalogo("sin_sectores", "Sin estos sectores",
                   lambda p: Texto("motor_det_sectores", lista=ListaSectores(tuple(p["sectores"]))),
-                  _sin_sectores, (_SECTORES,)),
+                  _sin_sectores, (_SECTORES,), grupo="sectores"),
+    ReglaCatalogo("pb", "Precio sobre valor contable",
+                  lambda p: Texto("motor_det_pb", umbral=Veces(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "pb", "pb", False, Veces, 1),
+                  (Parametro("p", "el umbral", Decimal("0.5"), Decimal("10"),
+                             Decimal("0.5"), 3),), grupo="precio"),
+    ReglaCatalogo("ev_ebitda", "EV/EBITDA",
+                  lambda p: Texto("motor_det_ev_ebitda", umbral=Veces(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "ev_ebitda", "ev_ebitda", False, Veces, 1),
+                  (Parametro("p", "el umbral", Decimal("2"), Decimal("40"),
+                             Decimal("1"), 12),), grupo="precio"),
+    ReglaCatalogo("fcf", "Flujo de caja libre",
+                  lambda p: Texto("motor_det_fcf", umbral=Pct(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "fcf", "fcf_pct", True, Pct, 1),
+                  (Parametro("p", "el umbral", Decimal("-10"), Decimal("20"),
+                             Decimal("0.5"), 4),), grupo="precio"),
+    ReglaCatalogo("roa", "Rentabilidad de los activos",
+                  lambda p: Texto("motor_det_roa", umbral=Pct(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "roa", "roa", True, Pct, 100),
+                  (Parametro("p", "el umbral", Decimal("0"), Decimal("30"),
+                             Decimal("1"), 6),), grupo="rentabilidad"),
+    ReglaCatalogo("margen_neto", "Margen neto",
+                  lambda p: Texto("motor_det_margen_neto", umbral=Pct(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "margen_neto", "margen_neto", True, Pct, 100),
+                  (Parametro("p", "el umbral", Decimal("0"), Decimal("50"),
+                             Decimal("1"), 10),), grupo="rentabilidad"),
+    ReglaCatalogo("deuda_pn", "Deuda sobre patrimonio neto",
+                  lambda p: Texto("motor_det_deuda_pn", umbral=Pct(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "deuda_pn", "deuda_pn_pct", False, Pct, 1),
+                  (Parametro("p", "el umbral", Decimal("0"), Decimal("300"),
+                             Decimal("10"), 100),), grupo="deuda"),
+    ReglaCatalogo("liquidez_corriente", "Liquidez corriente",
+                  lambda p: Texto("motor_det_liquidez_corriente", umbral=Veces(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "liquidez_corriente", "liquidez_corriente",
+                                         True, Veces, 1),
+                  (Parametro("p", "el umbral", Decimal("0.5"), Decimal("4"),
+                             Decimal("0.1"), 1.5),), grupo="deuda"),
+    ReglaCatalogo("payout", "Porcentaje del beneficio repartido",
+                  lambda p: Texto("motor_det_payout", umbral=Pct(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "payout", "payout_pct", False, Pct, 1),
+                  (Parametro("p", "el umbral", Decimal("10"), Decimal("150"),
+                             Decimal("5"), 70),), grupo="dividendo"),
+    ReglaCatalogo("beta", "Sensibilidad al mercado (beta)",
+                  lambda p: Texto("motor_det_beta", umbral=Cifra(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "beta", "beta", False, Cifra, 1),
+                  (Parametro("p", "el umbral", Decimal("0.2"), Decimal("2.5"),
+                             Decimal("0.1"), 1.2),), grupo="riesgo"),
+    ReglaCatalogo("fuerza_sp", "Fuerza frente al S&P 500",
+                  lambda p: Texto("motor_det_fuerza_sp", umbral=Cifra(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "fuerza_sp", "vs_sp_52s", True, Cifra, 1),
+                  (Parametro("p", "el umbral", Decimal("-50"), Decimal("100"),
+                             Decimal("5"), 0),), grupo="riesgo"),
+    ReglaCatalogo("liquidez", "Volumen diario en dólares",
+                  lambda p: Texto("motor_det_liquidez", umbral=Usd(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "liquidez", "volumen_usd_dia", True, Usd, 1),
+                  (Parametro("p", "el umbral", defecto=1, tipo="lista",
+                             valores=(0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100)),), grupo="riesgo"),
+    ReglaCatalogo("directivos", "Participación de directivos",
+                  lambda p: Texto("motor_det_directivos", umbral=Pct(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "directivos", "directivos_pct", True, Pct, 1),
+                  (Parametro("p", "el umbral", Decimal("0"), Decimal("50"),
+                             Decimal("1"), 5),), grupo="propiedad"),
+    ReglaCatalogo("cortos", "Posiciones cortas",
+                  lambda p: Texto("motor_det_cortos", umbral=Pct(a_decimal(p["p"]))),
+                  lambda e, p: _comparar(e, p, "cortos", "cortos_pct", False, Pct, 1),
+                  (Parametro("p", "el umbral", Decimal("0"), Decimal("40"),
+                             Decimal("1"), 10),), grupo="propiedad"),
+    ReglaCatalogo("castigadas_pct", "Caída desde el máximo",
+                  lambda p: Texto("motor_det_castigadas_pct", pct=Pct(a_decimal(p["p"]))),
+                  _castigadas_pct,
+                  (Parametro("p", "el umbral", Decimal(10), Decimal(80), Decimal(5), 30),),
+                  grupo="riesgo"),
+    ReglaCatalogo("tamano", "Tamaño", _detalle_tamano, _tamano,
+                  tuple(Parametro(nombre, etiqueta, defecto=defecto, tipo="lista",
+                                  valores=(20, 50, 100, 300, 500, 1000, 2000, 5000, 10000,
+                                           20000, 50000, 100000, 200000, 500000, 1000000,
+                                           5000000))
+                        for nombre, etiqueta, defecto in (("desde", "desde (M$)", 20),
+                                                         ("hasta", "hasta (M$)", 5000000))),
+                  grupo="tamano"),
 )}
 
 # Rangos de tamaño que no se solapan: juntas no dejan pasar a nadie.
@@ -462,8 +613,17 @@ def _validar_params(entrada: ReglaCatalogo, params: Mapping[str, Any]) -> list[T
                                      ajuste=p.nombre))
         elif p.tipo == "sectores":
             errores += _validar_sectores(entrada, params[p.nombre])
+        elif p.tipo == "lista":
+            valor = params[p.nombre]
+            if (isinstance(valor, bool) or not isinstance(valor, int | float | Decimal)
+                    or a_decimal(valor) is None or valor not in p.valores):
+                errores.append(Texto("motor_val_lista_valor", regla=Regla(entrada.clave),
+                                     etiqueta=Ajuste(p.nombre)))
         else:
             errores += _validar_numero(entrada, p, params[p.nombre])
+    if entrada.clave == "tamano" and not errores:
+        if a_decimal(params["desde"]) >= a_decimal(params["hasta"]):
+            errores.append(Texto("motor_val_tamano_orden"))
     return errores
 
 

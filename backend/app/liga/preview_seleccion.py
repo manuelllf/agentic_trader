@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from app.i18n import current_locale, present_error_detail, translate
 from app.liga import acceso, estrategias
 from app.liga.auth import Identidad, require_jugador
+from app.liga.mercado_stats import perfil_y_avisos, por_regla
 from app.liga.motor.catalogo import CATALOGO_VERSION
 from app.liga.motor.mensajes import presentar
 from app.liga.motor.seleccion import SIN_NOTAS, SIN_RESPUESTA, explicar, seleccionar
@@ -24,6 +25,7 @@ class ReglaPreviewIn(BaseModel):
 
 
 class PreviewSeleccionIn(BaseModel):
+    usar_frescas: bool = False
     idea: str | None = Field(default=None, max_length=400)
     reglas: list[ReglaPreviewIn] = Field(default_factory=list, max_length=30)
     excluidas: list[str] = Field(default_factory=list, max_length=100)
@@ -41,6 +43,8 @@ class EmpresaPreviewOut(BaseModel):
     sector: str | None
     peso: float
     porque: str
+    mejor: str | None = None
+    nota: int = Field(default=0, ge=0, le=100)
 
 
 class PreviewSeleccionOut(BaseModel):
@@ -60,6 +64,9 @@ class PreviewSeleccionOut(BaseModel):
     saltadas_por_sector: int | None
     caja_pct: float | None
     elegidas: list[EmpresaPreviewOut]
+    por_regla: list[dict] = Field(default_factory=list)
+    perfil: dict | None = None
+    avisos: list[dict] = Field(default_factory=list)
     explicacion: str | None = None
 
 
@@ -92,7 +99,12 @@ def previsualizar(body: PreviewSeleccionIn,
         raise
 
     respuestas = estrategias.respuestas_sistema(pregunta, contexto.foto_id)
-    resultado = seleccionar(list(contexto.empresas), receta, contexto.notas, respuestas)
+    notas = contexto.notas
+    if body.usar_frescas:
+        from app.liga.actualizacion import frescas
+
+        notas, respuestas = frescas(notas, respuestas, pregunta)
+    resultado = seleccionar(list(contexto.empresas), receta, notas, respuestas)
     sin_notas = sum(f.fallo == SIN_NOTAS for f in resultado.filas)
     sin_respuesta = sum(f.fallo == SIN_RESPUESTA for f in resultado.filas)
     reglas_ok = sum(
@@ -108,7 +120,10 @@ def previsualizar(body: PreviewSeleccionIn,
         mensaje = translate("liga_preview_plan_b")
     else:
         mensaje = translate("liga_preview_normal")
+    perfil, avisos = perfil_y_avisos(contexto.empresas, resultado, receta, reglas_ok)
     return PreviewSeleccionOut(
+        por_regla=por_regla(contexto.empresas, receta, current_locale.get()),
+        perfil=perfil, avisos=avisos,
         estado=estado, mensaje=mensaje, plan_b=contexto.plan_b,
         foto_id=contexto.foto_id, scan_run_id=contexto.scan_run_id,
         catalogo_version=receta.catalogo_version,
@@ -120,6 +135,7 @@ def previsualizar(body: PreviewSeleccionIn,
         caja_pct=float(resultado.caja_pct),
         elegidas=[EmpresaPreviewOut(
             ticker=e.ticker, nombre=e.fila.empresa.nombre, sector=e.fila.empresa.sector,
+            mejor=e.fila.mejor_nota, nota=round(e.fila.nota * 10),
             peso=float(e.peso), porque=presentar(e.porque, current_locale.get()),
         ) for e in resultado.elegidas],
         explicacion=presentar(explicar(body.ticker.strip().upper(), resultado, receta),

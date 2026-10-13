@@ -110,11 +110,10 @@ def test_yahoo_stored_metrics_map_without_dropping_zero_or_negative_values():
         "operatingMargins": 0.0,
         "returnOnEquity": -0.2,
         "dividendYield": 0.0,
-    }) == {
+    }, 88.0) == {
         "crecimiento_ventas": -0.1,
         "margen_operativo": 0.0,
         "roe": -0.2,
-        "dividend_yield_pct": 0.0,
     }
 
 
