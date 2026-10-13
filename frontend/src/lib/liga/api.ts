@@ -1,3 +1,4 @@
+import { obtener } from "./cache";
 import { browserText } from "../../i18n/browser";
 // Cliente de la API de la liga (`/liga/*`). Manda el token de Supabase; las salas usan lib/api.ts.
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -152,11 +153,26 @@ export type ParametroRegla = {
   paso: number | null;
   defecto: number | string | null;
   opcional?: boolean;
+  valores?: number[];
 };
 
-export type ReglaCatalogo = { clave: string; titulo: string; parametros: ParametroRegla[] };
+export type ReglaCatalogo = { clave: string; titulo: string; grupo?: string; ofrecida?: boolean; parametros: ParametroRegla[] };
+
+export type EstiloCatalogo = {
+  clave: string; reglas: ReglaElegida[]; pesos: Record<string, number>;
+  n_empresas: number; reparto: string; max_por_sector: number;
+};
+
+export type Mercado = {
+  foto_id: number; notas_del: string | null; n: number;
+  estilos: Record<string, { pasan: number; entran: number }>;
+  reglas?: Record<string, { cobertura: number; mediana: number | null; histograma: number[]; sola: number }>;
+  bandas?: Record<string, number>;
+};
 
 export type Catalogo = {
+  presets: Record<string, Record<string, number>>;
+  estilos: EstiloCatalogo[];
   version: number;
   sectores: Record<string, string>;
   reglas: ReglaCatalogo[];
@@ -200,6 +216,8 @@ export type EmpresaElegida = {
   sector: string | null;
   peso: number;
   porque: string;
+  nota?: number;
+  mejor?: string | null;
 };
 
 export type Prueba = {
@@ -223,7 +241,18 @@ export type Prueba = {
 };
 
 /** Counts and portfolio previewed from the latest saved market photo; this never creates a test. */
+export type MetricasCartera = Record<"per" | "margen_operativo" | "crecimiento" | "dividendo_medio" | "beta", number | null>;
+export type PerfilCartera = {
+  cartera: MetricasCartera; mercado: MetricasCartera;
+  tamanos: Record<string, number>;
+  sectores: { sector: string; peso: number; cuota_mercado: number }[];
+};
+export type AvisoCartera = { codigo: "caja" | "concentracion" | "sin_sector" | "pocas";
+  huecos?: number; pct?: number; sector?: string | null; cuota?: number; n?: number };
 export type PreviewSeleccion = {
+  perfil?: PerfilCartera | null;
+  avisos?: AvisoCartera[];
+  por_regla?: { clave: string; sola: number; sin_ella: number; detalle: string }[];
   catalogo_version: number;
   sin_peso: number | null;
   explicacion: string | null;
@@ -342,6 +371,7 @@ export async function llamar<T>(
   }
   if (res.status === 204) return undefined as T;
   if (ruta === "/liga/yo" && res.status === 404) return null as T;
+  if (ruta === "/liga/catalogo/mercado" && [404, 409].includes(res.status)) return null as T;
   const cuerpo = await res.json();
   if (res.ok) return cuerpo as T;
   const detalle = (cuerpo as { detail?: unknown } | null)?.detail;
@@ -361,6 +391,14 @@ export async function llamar<T>(
 /** Catálogo de reglas, pesos y opciones de la receta. Público: no hace falta sesión. */
 export async function getCatalogo(): Promise<Catalogo | string> {
   return llamar<Catalogo>("/liga/catalogo", {}, false);
+}
+
+export function getMercado(): Promise<Mercado | null | string> {
+  return obtener("mercado", async () => {
+    const resultado = await llamar<Mercado | null>("/liga/catalogo/mercado", {}, false);
+    if (typeof resultado === "string") throw new Error(resultado);
+    return resultado;
+  }).catch((error: Error) => error.message);
 }
 
 export async function misEstrategias(): Promise<Estrategia[] | string> {
@@ -475,7 +513,7 @@ export async function probarEstrategia(
 
 /** Read-only preview of a draft recipe against saved data; the abort signal drops stale edits. */
 export async function previsualizarSeleccion(
-  receta: RecetaEntrada & { ticker?: string }, signal?: AbortSignal,
+  receta: RecetaEntrada & { ticker?: string; usar_frescas?: boolean }, signal?: AbortSignal,
 ): Promise<PreviewSeleccion | string> {
   return llamar<PreviewSeleccion>("/liga/seleccion/preview", {
     method: "POST", body: JSON.stringify(receta), signal,
@@ -579,7 +617,6 @@ export type ConvertirResultado = {
   interpretacion: InterpretacionIdea[];
   pesos: Record<string, number> | null;
   pregunta: string | null;
-  nombre: string | null;
   quedan: number;
 };
 
@@ -798,4 +835,19 @@ export async function reportar(
     method: "POST", body: JSON.stringify({ tipo, objeto_id: objetoId, motivo }),
   });
   return typeof r === "string" ? r : true;
+}
+
+export type ActualizacionDatos = {
+  estado: "en_curso" | "hecha" | "fallida";
+  hechas: number; total: number; creada: string; puede_repetir_el: string;
+};
+
+export async function actualizarDatos(receta: RecetaEntrada): Promise<{ id: number; total: number } | string> {
+  return llamar<{ id: number; total: number }>("/liga/seleccion/actualizar", {
+    method: "POST", body: JSON.stringify(receta),
+  }, true, 15000);
+}
+
+export async function getActualizacion(): Promise<ActualizacionDatos | null | string> {
+  return llamar<ActualizacionDatos | null>("/liga/seleccion/actualizacion", {}, true, 15000);
 }

@@ -1451,3 +1451,6 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .ajustes .ajustes-peligro .ajustes-nombre { color: var(--bad); }
 .lg .ajustes .ajustes-volver { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--muted); text-decoration: none; }
 .lg .ajustes .ajustes-fila:focus-visible, .lg .ajustes .ajustes-volver:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.lg .cartera-hoja-velo { position: fixed; inset: 0; z-index: 20; background: var(--shadow); }
+.lg .sheet.cartera-hoja { top: auto; max-height: 85dvh; border-radius: var(--radius-card) var(--radius-card) 0 0; padding-bottom: env(safe-area-inset-bottom); }
