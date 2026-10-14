@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { PasoIdea } from "./PasoIdea";
 import { convertirFrase, getMercado, type Catalogo } from "@/lib/liga/api";
 vi.mock("@/lib/liga/api", () => ({ convertirFrase: vi.fn(), getMercado: vi.fn() }));
-vi.mock("next-intl", () => ({ useTranslations: () => (k: string, v?: { count: number }) => v ? `${k} ${v.count}` : k }));
+vi.mock("next-intl", () => ({ useLocale: () => "es", useTranslations: () => (k: string, v?: { count: number }) => v ? `${k} ${v.count}` : k }));
 vi.mock("../_ui", () => ({ Boton: ({ children, variante: _variante, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variante?: string }) => { void _variante; return <button {...props}>{children}</button>; } }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const claves = ["calidad", "maduros", "dividendo", "crecimiento", "balance", "castigadas", "pequenas"];
@@ -39,17 +39,23 @@ it("muestra las tres marcas y solo aplica la propuesta al aceptarla", async () =
   vi.mocked(convertirFrase).mockResolvedValue({ reglas: catalogo.estilos[0].reglas,
     interpretacion: ["exacta", "aproximada", "no_disponible"].map(tipo => ({ tipo, intencion: tipo, regla: null, motivo: "Detalle" })), quedan: 2, pesos: null, pregunta: null } as Awaited<ReturnType<typeof convertirFrase>>);
   const { div, actualizarB, alCambiarQuedan } = await montar();
-  await act(async () => (div.querySelector(".field button") as HTMLButtonElement).click());
+  await act(async () => (div.querySelector(".paso-bloque button") as HTMLButtonElement).click());
   expect(Array.from(div.querySelectorAll(".idea-propuesta li > span")).map(n => n.textContent)).toEqual(["✓", "≈", "–"]);
   expect(actualizarB).not.toHaveBeenCalled(); expect(alCambiarQuedan).toHaveBeenCalledWith(2);
-  act(() => (div.querySelector("section button") as HTMLButtonElement).click());
+  act(() => (div.querySelector(".propuesta button") as HTMLButtonElement).click());
   expect(actualizarB.mock.calls[0][0].reglas).toEqual(catalogo.estilos[0].reglas);
 });
-it("sin foto muestra un estado vacío y permite elegir un estilo", async () => {
-  const { div } = await montar(null);
-  expect(div.textContent).toContain("builder_idea_sin_mercado");
+it.each([null, "Entra en tu cuenta para seguir."])("sin mercado (%s) los estilos se eligen igual, sin recuento ni avisos", async mercado => {
+  const { div } = await montar(mercado);
   expect(div.querySelector('[role="alert"]')).toBeNull();
+  expect(div.textContent).not.toContain("Entra en tu cuenta");
   expect(div.querySelectorAll(".idea-estilo")).toHaveLength(7);
+  expect(div.querySelector(".idea-recuento")).toBeNull();
+});
+it("el detalle del estilo enseña sus reglas como frases cortas", async () => {
+  const { div } = await montar();
+  act(() => (div.querySelector(".idea-estilo-abrir") as HTMLButtonElement).click());
+  expect(div.querySelector(".idea-chips .chip")?.textContent).toBe("Margen");
 });
 it("empezar desde cero limpia las reglas y avanza", async () => {
   const { div, actualizarB, irReglas } = await montar();

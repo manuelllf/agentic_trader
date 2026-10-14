@@ -35,7 +35,7 @@ it("pone el tamano primero y une dos reglas con coma e y", () => {
 it("el nombre empieza vacio y no hay chips ni sugerencias", () => {
   const { div, props } = montar(); const input = div.querySelector("input")!;
   expect(input.value).toBe(""); expect(input.placeholder).toBe(es.builder_revisar_placeholder);
-  expect(input.maxLength).toBe(28); expect(div.textContent).toContain("Hasta 28 letras");
+  expect(input.maxLength).toBe(28);
   expect(div.querySelectorAll("button, .sugg, .chip")).toHaveLength(0);
   act(() => { const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     setter.call(input, "Mi estrategia"); input.dispatchEvent(new Event("input", { bubbles: true })); });

@@ -35,10 +35,21 @@ it.each(["es", "en"])("traduce todos los avisos desde su código en %s", idioma 
     expect(t(`builder_aviso_${codigo}`, { count: "2", percent: "70 %", sector: "Tecnología" })).not.toContain("builder_aviso_");
   }
 });
+it("cada empresa muestra ticker y sector, sin datos que no tiene", () => {
+  const { div } = montar();
+  expect(div.querySelector(".pick > div > span")?.textContent).toBe("AAA · Tecnología");
+});
+it("deja la caja como una fila de la lista y no la repite en los avisos", () => {
+  const { div } = montar();
+  const hueco = div.querySelector(".cartera-hueco")!;
+  expect(hueco.textContent).toContain("2 huecos en caja");
+  expect(hueco.textContent).toContain("66,7");
+  expect(Array.from(div.querySelectorAll(".cartera-perfil .callout"), e => e.textContent).join(" ")).not.toContain("caja");
+});
 it("pinta los avisos traducidos con los datos de la vista previa", () => {
   const { div } = montar();
   const avisos = Array.from(div.querySelectorAll('.cartera-perfil .callout'), e => e.textContent);
-  expect(avisos).toEqual(["2 huecos quedan en caja: 66,7\u00a0% de la cartera.", "70,0\u00a0% de la cartera está en Tecnología.",
+  expect(avisos).toEqual(["70,0\u00a0% de la cartera está en Tecnología.",
     "No hay empresas de Salud, que representa 12,0\u00a0% del mercado.", "Solo 8 empresas cumplen tus reglas."]);
 });
 it("pinta las cifras del perfil y la marca del mercado", () => {

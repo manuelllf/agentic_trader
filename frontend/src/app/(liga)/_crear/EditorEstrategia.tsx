@@ -308,12 +308,6 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   }, [etapa, cargandoInicial]);
 
   const pro = yo?.plan === "pro";
-  // Los porcentajes son la parte de cada peso sobre los que se ven: sin pregunta, no cuenta.
-  const totalPesos = useMemo(
-    () => (b ? Object.entries(b.pesos)
-      .reduce((a, [k, v]) => a + (k === "pregunta" && !b.pregunta.trim() ? 0 : v), 0) || 1 : 1),
-    [b],
-  );
 
   if (!sesionLista || cargandoInicial) {
     return (
@@ -644,40 +638,14 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
     setOcupado(false);
   }
 
-  // «Tu pregunta» solo pesa si hay pregunta escrita.
-  const wkeys = catalogo.pesos.claves.filter((k) => k !== "pregunta" || b.pregunta.trim());
-  const cifraPreview = (valor: number | null | undefined) =>
-    valor == null ? "—" : new Intl.NumberFormat(locale).format(valor);
   const cartera = previewDato?.valor.elegidas ?? [];
   const carteraProps = { elegidas: cartera, pasan: previewDato?.valor.cumplen_reglas ?? null,
     huecos: previewDato ? Math.max(0, b.n_empresas - cartera.length) : 0, ...movimientos };
-  const feedbackPreview = (
-    <details className="preview-resumen">
-      <summary>{previewSeleccionCargando ? t("builder_preview_updating")
-        : previewSeleccion ? t("builder_preview_result", { passed: cifraPreview(previewSeleccion.cumplen_reglas), selected: cifraPreview(previewSeleccion.seleccionadas), incomplete: previewSeleccion.estado === "incompleto" ? t("builder_missing_scores") : "" })
-          : previewSeleccionError ? t("builder_preview_unavailable") : t("builder_preview_saved")}</summary>
-      {!previewSeleccionCargando && previewSeleccionError &&
-        <p>{previewSeleccionError} {t("builder_preview_no_change")}</p>}
-      {!previewSeleccionCargando && !previewSeleccionError && previewSeleccion?.estado === "sin_datos" &&
-        <p>{previewSeleccion.mensaje} {t("builder_candidates_not_counted")}</p>}
-      {!previewSeleccionCargando && !previewSeleccionError && previewSeleccion && previewSeleccion.estado !== "sin_datos" && (
-        <>
-          <p>
-            {previewSeleccion.mensaje} {t("builder_preview_counts", { evaluated: cifraPreview(previewSeleccion.evaluadas), passed: cifraPreview(previewSeleccion.cumplen_reglas) })}
-          </p>
-          {previewSeleccion.elegidas.length > 0 && (
-            <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
-              {previewSeleccion.elegidas.map((e) => (
-                <li key={e.ticker}>{e.nombre ?? e.ticker} ({e.ticker}) · {new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Math.round(e.peso))} %</li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-      {!previewSeleccionCargando && !previewSeleccionError && !previewSeleccion &&
-        <p>{t("builder_counts_saved_snapshot")}</p>}
-    </details>
-  );
+  // La cartera ya se ve en vivo (barra inferior y panel): aquí solo se avisa de lo que falla.
+  const avisoPreview = previewSeleccionCargando ? null
+    : previewSeleccionError ? <p className="aviso" role="alert">{previewSeleccionError}</p>
+    : previewSeleccion && previewSeleccion.estado !== "disponible" && previewSeleccion.mensaje
+      ? <p className="callout" role="status">{previewSeleccion.mensaje}</p> : null;
 
   return (
     <main className="scroll constructor">
@@ -686,10 +654,13 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         {ETAPAS.map((titulo, i) => <button key={titulo} type="button" aria-current={etapa === i ? "step" : undefined}
           disabled={ocupado || convOcupado} onClick={() => void irEtapa(i)}>{t(titulo)}</button>)}
       </nav>
-      <p className="constructor-guardado" role="status">{autoguardado.estado === "Guardado" ? t("builder_autosave_saved") : autoguardado.estado === "Guardando…" ? t("builder_autosave_saving") : autoguardado.estado === "Cambios pendientes" ? t("builder_autosave_pending") : autoguardado.estado}
-        {!["Guardado", "Guardando…", "Cambios pendientes"].includes(autoguardado.estado)
-          && <button type="button" className="link" onClick={autoguardado.reintentar}>{t("builder_retry")}</button>}
-      </p>
+      {/* Guardar es automático: solo se dice algo si falla. */}
+      <div role="status" className="constructor-guardado">
+        {!["Guardado", "Guardando…", "Cambios pendientes"].includes(autoguardado.estado) && <>
+          <span>{autoguardado.estado}</span>
+          <button type="button" className="link" onClick={autoguardado.reintentar}>{t("builder_retry")}</button>
+        </>}
+      </div>
       <div className={`constructor-distribucion${etapa >= 3 ? " constructor-ancho" : ""}`}>
       <fieldset className="constructor-tarea" disabled={ocupado || convOcupado}
         onFocusCapture={e => { if (e.target instanceof HTMLInputElement && e.target.type === "number") deshacer.iniciar(b); }}
@@ -697,7 +668,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         onKeyDownCapture={e => { if (e.target instanceof HTMLInputElement && e.target.type === "range" && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(e.key)) deshacer.iniciar(b); }}
         onPointerUpCapture={() => deshacer.terminar(b)} onPointerCancelCapture={() => deshacer.terminar(b)}
         onKeyUpCapture={() => deshacer.terminar(b)} onBlurCapture={() => deshacer.terminar(b)}>
-      <h2 ref={etapaRef} tabIndex={-1} className="constructor-pregunta">{t(etapa === 0 ? "builder_idea_titulo" : PREGUNTAS[etapa])}</h2>
+      <h2 ref={etapaRef} tabIndex={-1} className="h1 constructor-pregunta">{t(etapa === 0 ? "builder_idea_titulo" : PREGUNTAS[etapa])}</h2>
       {etapa === 1 && <PasoReglas catalogo={catalogo} reglas={b.reglas} preview={previewSeleccion}
         estrategiaId={id} quedan={convQuedan} alCambiarQuedan={setConvQuedan}
         alCambiarOcupado={setConvOcupado} actualizarB={actualizarB} />}
@@ -708,7 +679,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         actualizarB={actualizarB} irReglas={() => irEtapa(1)} />}
 
       {etapa === 2 && <PasoCriterios catalogo={catalogo} pregunta={b.pregunta} pesos={b.pesos}
-        pro={pro} actualizarB={actualizarB}>{feedbackPreview}</PasoCriterios>}
+        pro={pro} actualizarB={actualizarB}>{avisoPreview}</PasoCriterios>}
 
       {etapa === 3 && <PasoCartera receta={recetaPreview ?? undefined} estrategiaId={id} alActualizar={alActualizarDatos} preview={previewSeleccion} nEmpresas={b.n_empresas}
         reparto={b.reparto} maxPorSector={b.max_por_sector} sectores={catalogo.sectores}
@@ -724,9 +695,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         }} leer={leerFicha} lecturas={lecturas.map(l => l.ticker)} busca={buscaQ} buscar={buscar}
         sugerencias={sugerencias} preguntar={preguntarPorQue} porque={porque}
         cadaDia1={cadaDia1Opcion} cambiarCadaDia1={setCadaDia1Opcion}>
-        {feedbackPreview}
-        <p className="recipe-note">{t("builder_preview_no_change")}</p>
-        <Boton variante="secundario" ancho="completo" style={{ marginTop: 14 }}
+        {avisoPreview}
+        <div className="cartera-pruebas">
+        <Boton variante="secundario" ancho="completo"
           disabled={ocupado} onClick={() => void verQueEntrarian()}>
           {ocupado ? t("builder_testing") : t("builder_preview_today")}
         </Boton>
@@ -734,12 +705,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
           onClick={async () => { setOcupado(true); try { await guardarPrueba(); } finally { setOcupado(false); } }}>
           {t("builder_save_check_question_cost")}
         </Boton>}
-        {typeof prueba === "string" && (
-          <p className="fine" style={{ textAlign: "center" }} role="status">{prueba}</p>
-        )}
+        {typeof prueba === "string" && <p className="fine" role="status">{prueba}</p>}
         {typeof prueba === "object" && prueba && b.pregunta && costePregunta && costePregunta.faltan > 0 && (
-          <Boton variante="secundario" ancho="completo" style={{ marginTop: 8 }}
-            disabled={ocupado} onClick={probarConPregunta}>
+          <Boton variante="secundario" ancho="completo" disabled={ocupado} onClick={probarConPregunta}>
             {ocupado ? t("builder_asking") : t("builder_test_question_cost", { count: costePregunta.creditos, companies: costePregunta.evaluadas })}
           </Boton>
         )}
@@ -747,34 +715,18 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
           {t("builder_partial_selection", { withoutScores: prueba.sin_notas, withoutAnswer: prueba.sin_respuesta })}
         </p>}
         {typeof prueba === "object" && prueba && prueba.elegidas.length > 0 && (
-          <Boton variante="secundario" ancho="completo" style={{ marginTop: 8 }} onClick={leerCarteraCompleta}>
+          <Boton variante="secundario" ancho="completo" onClick={leerCarteraCompleta}>
             {prueba.elegidas.every((e) => lecturas.some((l) => l.ticker === e.ticker)) ? t("builder_view_portfolio_reports")
               : t(prueba.id ? "builder_read_portfolio" : "builder_save_read_portfolio", { count: prueba.elegidas.length * 5 })}
           </Boton>
         )}
+        </div>
       </PasoCartera>}
 
-      <div className="field" hidden={etapa !== 4}>
-        <span className="lbl">{t("builder_method_before_confirming")}</span>
-        {convFrase && <p className="fine">{convFrase}</p>}
-        <p className="fine">{t("builder_rules_and_weights", { count: b.reglas.length, weights: wkeys.filter(k => b.pesos[k] > 0).map(k =>
-          `${VALORACIONES[k] ? t(VALORACIONES[k].titulo) : catalogo.pesos.etiquetas[k]} ${Math.round(b.pesos[k] * 100 / totalPesos)} %`).join(" · ") })}</p>
-        <details className="more">
-          <summary>{t("builder_view_chosen_conditions")}</summary>
-          {b.reglas.length ? b.reglas.map(r => {
-            const regla = catalogo.reglas.find(c => c.clave === r.clave);
-            return <p className="fine" key={r.clave}><b>{regla?.titulo ?? r.clave}</b>{regla?.parametros.map(p => {
-              const valor = r.params[p.nombre] ?? p.defecto;
-              const texto = Array.isArray(valor) ? valor.map(v => catalogo.sectores[String(v)] ?? String(v)).join(", ") : String(valor ?? t("builder_no_value"));
-              return ` · ${p.etiqueta}: ${texto}`;
-            }).join("")}</p>;
-          }) : <p className="fine">{t("builder_no_additional_universe_filters")}</p>}
-        </details>
-      </div>
       {etapa === 4 && <PasoRevisar preview={previewSeleccion} pesos={b.pesos}
         nEmpresas={b.n_empresas} reparto={b.reparto} maxPorSector={b.max_por_sector}
         nombre={nombre} cambiarNombre={setNombre} nombreRef={nombreRef}>
-      <div className="field">
+      <div className="paso-bloque">
         <div className="crest-ed">
           <button type="button" className="crest-btn" aria-label={t("builder_edit_crest")}
                   onClick={() => setEditorEscudoAbierto((v) => !v)}>
@@ -792,9 +744,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         )}
       </div>
 
-      <div className="field" hidden={etapa !== 4}>
-        <span className="lbl">{t("builder_who_can_see")}</span>
-        <div role="radiogroup" aria-label={t("builder_who_can_see")}>
+      <section className="paso-bloque" aria-labelledby="revisar-quien">
+        <h2 id="revisar-quien" className="sec-t">{t("builder_who_can_see")}</h2>
+        <div role="radiogroup" aria-labelledby="revisar-quien">
           <OpcionRadio marcada={visibilidad === "privada"}
                        titulo={t("builder_result_only")}
                        ayuda={t("builder_result_only_help")}
@@ -805,35 +757,22 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                        onClick={() => pro && setVisibilidad("publicada")} />
         </div>
         <p className="fine">{t("builder_revisar_sin_pruebas")}</p>
-        {!pro && <Link href="/cuenta/plan" className="btn small" style={{ marginTop: 12 }}>{t("planes_ver")}</Link>}
+        {!pro && <Link href="/cuenta/plan" className="link">{t("planes_ver")}</Link>}
         {visibilidad === "publicada" && (
-          <div style={{ marginTop: 16 }}>
-            <p style={{ fontSize: 16, color: "var(--ink)" }}>{t("builder_position_declaration")}</p>
-            <div style={{ marginTop: 10 }}>
-              <Segmentado etiquetaGrupo={t("builder_position_declaration")}
-                          opciones={[{ valor: "si", etiqueta: t("builder_yes") }, { valor: "no", etiqueta: t("builder_no") }]}
-                          valor={declaraPosiciones ?? ""}
-                          onChange={(v) => setDeclaraPosiciones(v as "si" | "no")} />
-            </div>
-            <p className="fine">
-              {t("builder_declaration_required")}
-              {!declaraPosiciones && ` ${t("builder_choose_declaration")}`}
-            </p>
+          <div className="revisar-declara">
+            <span className="lbl">{t("builder_position_declaration")}</span>
+            <Segmentado etiquetaGrupo={t("builder_position_declaration")}
+                        opciones={[{ valor: "si", etiqueta: t("builder_yes") }, { valor: "no", etiqueta: t("builder_no") }]}
+                        valor={declaraPosiciones ?? ""}
+                        onChange={(v) => setDeclaraPosiciones(v as "si" | "no")} />
+            {!declaraPosiciones && <p className="fine">{t("builder_declaration_required")}</p>}
           </div>
         )}
-      </div>
-
-
-      <div className="cta" hidden={etapa !== 4}>
-        {faltanReglas && <p className="callout" role="status" style={{ textAlign: "center" }}>
-          {t("builder_rules_required")}
-        </p>}
-        <p className="fine" style={{ textAlign: "center", marginTop: 2 }}>
-          {t("builder_revisar_sin_pruebas")}
-        </p>
-      </div>
+      </section>
+      {faltanReglas && <p className="callout" role="status">{t("builder_rules_required")}</p>}
       </PasoRevisar>}
-      {error && <p className="aviso" role="alert" style={{ marginTop: 16 }}>{error}</p>}
+      {etapa === 1 && avisoPreview}
+      {error && <p className="aviso" role="alert">{error}</p>}
       </fieldset>
       {etapa < 3 && <aside className="constructor-cartera"><CarteraViva {...carteraProps} />{usarFrescas && <p className="fine">{t("builder_actualizar_hecha")}</p>}</aside>}
       </div>

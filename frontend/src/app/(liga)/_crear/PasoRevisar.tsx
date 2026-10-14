@@ -35,16 +35,15 @@ export function PasoRevisar(p: PropsRevisar) {
       <b className="num">{cifra(e.n)}</b><span style={i === 2 ? { color: "var(--accent)" } : undefined}>{t(`builder_revisar_${e.clave}`)}</span>
       <i style={{ width: `${p.preview?.evaluadas && e.n != null ? Math.min(100, Math.max(5, Math.sqrt(e.n / p.preview.evaluadas) * 100)) : 5}%` }} />
     </li>)}</ol>
-    <p className="field">{detalles.length ? t("builder_revisar_busca", { rules: lista }) : t("builder_revisar_sin_reglas")}{" "}
+    <p className="revisar-frase">{detalles.length ? t("builder_revisar_busca", { rules: lista }) : t("builder_revisar_sin_reglas")}{" "}
       {t(`builder_revisar_preferencia_${preferencia}`)}{" "}
       {t("builder_revisar_cartera", { count: miles(p.nEmpresas, idioma), allocation: p.reparto === "igual" ? "equal" : "score",
         limit: p.maxPorSector ? "yes" : "no", sector: p.maxPorSector })}
     </p>
-    <div className="field">
+    <div className="paso-bloque">
       <label className="lbl" htmlFor="cName">{t("builder_revisar_nombre")}</label>
       <input ref={p.nombreRef} id="cName" className="inp" value={p.nombre} maxLength={28} autoComplete="off"
-        placeholder={t("builder_revisar_placeholder")} aria-describedby="revisar-nombre-ayuda" onChange={e => p.cambiarNombre(e.target.value)} />
-      <p id="revisar-nombre-ayuda" className="fine">{t("builder_revisar_nombre_ayuda")}</p>
+        placeholder={t("builder_revisar_placeholder")} onChange={e => p.cambiarNombre(e.target.value)} />
     </div>
     {p.children}
   </div>;

@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { PasoReglas } from "./PasoReglas";
 import { getMercado, type Catalogo, type PreviewSeleccion } from "@/lib/liga/api";
 vi.mock("@/lib/liga/api", () => ({ getMercado: vi.fn(), convertirFrase: vi.fn() }));
-vi.mock("next-intl", () => ({ useTranslations: () => traducir }));
+vi.mock("next-intl", () => ({ useLocale: () => "es", useTranslations: () => traducir, createTranslator: () => (k: string) => k }));
 const traducir = (k: string, v?: Record<string, unknown>) => k + (v ? " " + Object.values(v).join(" ") : "");
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const catalogo = { sectores: {}, reglas: [
@@ -25,7 +25,7 @@ async function montar() {
 }
 it("filtra por título y grupo y no ofrece reglas ocultas", async () => {
   const { div } = await montar();
-  const input = div.querySelector("input")!;
+  const input = div.querySelector("#reglas-busca") as HTMLInputElement;
   const escribir = (v: string) => act(() => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, v);
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -50,5 +50,10 @@ it("la i muestra medida, cálculo, impacto y cobertura", async () => {
 });
 it("marca en el histograma las barras hasta el PER máximo", async () => {
   const { div } = await montar(); expect(div.querySelectorAll("rect.si")).toHaveLength(18);
-  expect(div.textContent).toContain("builder_reglas_total 40 100");
+  expect(div.querySelector(".reglas-total")?.textContent).toBe("builder_reglas_total 10040");
+});
+it("la regla se lee como frase y su deslizador conserva la etiqueta accesible", async () => {
+  const { div } = await montar();
+  expect(div.querySelector(".reglas-cabecera output")?.textContent).toBe("builder_regla_maximo 18");
+  expect(div.querySelector(".regla-rango")?.getAttribute("aria-label")).toBe("PER");
 });

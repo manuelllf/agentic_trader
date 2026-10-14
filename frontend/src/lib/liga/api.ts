@@ -395,7 +395,8 @@ export async function getCatalogo(): Promise<Catalogo | string> {
 
 export function getMercado(): Promise<Mercado | null | string> {
   return obtener("mercado", async () => {
-    const resultado = await llamar<Mercado | null>("/liga/catalogo/mercado", {}, false);
+    // La ruta exige jugador: sin la sesión devuelve 401 y el constructor se queda sin recuentos.
+    const resultado = await llamar<Mercado | null>("/liga/catalogo/mercado");
     if (typeof resultado === "string") throw new Error(resultado);
     return resultado;
   }).catch((error: Error) => error.message);

@@ -33,23 +33,22 @@ export function PasoCriterios({ catalogo, pregunta, pesos, pro, actualizarB, chi
     (pesos[k] ?? 0) === (catalogo.presets[p][k] ?? 0))) ?? "";
 
   return <>
-    <div className="field pregunta-propia lenguaje-natural">
-      <label className="lbl" htmlFor="cQ">{t("builder_question")} <span>{t("builder_question_optional")}</span></label>
+    <div className="paso-bloque">
+      <label className="lbl" htmlFor="cQ">{t("builder_question")} <small>{t("builder_question_optional")}</small></label>
       <textarea id="cQ" className="inp" maxLength={160} placeholder={t("builder_question_example")}
         value={pregunta} onChange={e => actualizarB({ pregunta: e.target.value,
           pesos: pesosCoherentes(e.target.value, pesos).pesos })} />
       <p className="fine">{t(pro ? "builder_question_help_pro" : "builder_question_help_credits")}</p>
-      <p className="fine">{t("builder_question_privacy_notice")}{" "}
-        <a href="/como-funciona" target="_blank" rel="noopener noreferrer">{t("builder_how_question_used")}</a>
-      </p>
     </div>
-    <div className="field">
-      <span className="lbl">{t("builder_criteria_title")}</span>
+    <section className="paso-bloque" aria-labelledby="criterios-pesos">
+      <h2 id="criterios-pesos" className="sec-t">{t("builder_criteria_title")}</h2>
       <p className="fine">{t("builder_criteria_scores")}</p>
-      <Segmentado etiquetaGrupo={t("builder_criteria_presets")} valor={preset}
-        opciones={PRESETS.filter(p => catalogo.presets[p]).map(p => ({ valor: p, etiqueta: t(`builder_preset_${p}`) }))}
-        onChange={p => actualizarB({ pesos: pesosCoherentes(pregunta, catalogo.presets[p]).pesos })} />
-      <p className="fine">{t("builder_weight_zero_help")}</p>
+      <div className="criterios-presets">
+        <Segmentado etiquetaGrupo={t("builder_criteria_presets")} valor={preset}
+          opciones={PRESETS.filter(p => catalogo.presets[p]).map(p => ({ valor: p, etiqueta: t(`builder_preset_${p}`) }))}
+          onChange={p => actualizarB({ pesos: pesosCoherentes(pregunta, catalogo.presets[p]).pesos })} />
+      </div>
+      {!totalPesos && <p className="aviso" role="alert">{t("builder_weight_zero_help")}</p>}
       {claves.map((k, i) => <div className="wrow" key={k}>
         <label htmlFor={`w-${k}`}>{NOTAS[k] ? t(NOTAS[k].titulo) : catalogo.pesos.etiquetas[k]}
           {NOTAS[k] && <InfoTip text={t(NOTAS[k].ayuda)} />}</label>
@@ -59,6 +58,6 @@ export function PasoCriterios({ catalogo, pregunta, pesos, pro, actualizarB, chi
           onChange={e => actualizarB({ pesos: pesosCoherentes(pregunta, { ...pesos, [k]: Number(e.target.value) }).pesos })} />
       </div>)}
       {children}
-    </div>
+    </section>
   </>;
 }
