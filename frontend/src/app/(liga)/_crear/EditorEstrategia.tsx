@@ -67,7 +67,7 @@ function borradorInicial(cat: Catalogo): Borrador {
     pesos: Object.fromEntries(cat.pesos.claves.map((k) => [k, k === "pregunta" ? 0 : 20])),
     n_empresas: cat.n_empresas.includes(5) ? 5 : cat.n_empresas[0],
     reparto: cat.repartos[0],
-    max_por_sector: 2,
+    max_por_sector: 0,
   };
 }
 
