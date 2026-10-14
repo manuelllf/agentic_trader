@@ -2,7 +2,7 @@
 
 Sin imágenes de seguimiento ni botones de venta y con un solo enlace al contenido, para que se lea
 como un aviso y no como publicidad. Los textos llegan ya traducidos; aquí solo se escapan y colocan.
-El logo son dos PNG de `frontend/public/correo` (los clientes de correo no muestran SVG)."""
+El logo es un PNG de `frontend/public/correo` (los clientes de correo no muestran SVG)."""
 
 from __future__ import annotations
 
@@ -31,8 +31,6 @@ _OSCURO = """  @media (prefers-color-scheme: dark) {
     .gris { color: #9AA1A8 !important; }
     .enlace { color: #4FA39D !important; }
     .linea { border-color: #2A2F34 !important; }
-    .marca-clara { display: none !important; }
-    .marca-oscura { display: block !important; max-height: none !important; }
   }"""
 
 
@@ -59,9 +57,11 @@ def _tabla(filas: Sequence[Fila], columnas: tuple[str, str]) -> str:
             f'{"".join(html)}</table>')
 
 
-def _logo(base: str, variante: str, alt: str, estilo: str) -> str:
-    return (f'<img class="marca-{variante}" src="{escape(base)}/correo/marca-{variante}.png" '
-            f'width="132" height="28" alt="{alt}" style="{estilo}border:0;margin:0 0 28px;">')
+def _logo(base: str) -> str:
+    # Enlaza a la liga. Lleva su pastilla clara: Gmail en modo oscuro no invierte las imágenes.
+    imagen = (f'<img src="{escape(base)}/correo/marca-correo.png" width="200" height="48" '
+              'alt="Vennett" style="display:block;border:0;margin:0 0 28px;">')
+    return f'<a href="{escape(base)}/liga" style="text-decoration:none;border:0;">{imagen}</a>'
 
 
 def render(*, idioma: str, asunto: str, meta: str, intro: str, filas: Sequence[Fila],
@@ -94,8 +94,7 @@ def render(*, idioma: str, asunto: str, meta: str, intro: str, filas: Sequence[F
         f'<table {_PRES} class="hoja" '
         'style="max-width:600px;background:#FFFFFF;border-radius:6px;">',
         f'<tr><td style="padding:28px 28px 24px;{_LETRA}">',
-        _logo(base, "clara", "Vennett", "display:block;"),
-        _logo(base, "oscura", "", "display:none;max-height:0;overflow:hidden;mso-hide:all;"),
+        _logo(base),
         f'<h1 class="tinta" style="{_H1}">{e(asunto)}</h1>',
         f'<p class="gris" style="{_META}">{e(meta)}</p>',
         f'<p class="tinta2" style="{_INTRO}">{e(intro)}</p>',

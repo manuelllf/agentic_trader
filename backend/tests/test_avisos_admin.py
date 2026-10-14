@@ -37,7 +37,8 @@ def test_omega_avisa_por_push_y_por_correo_en_el_idioma_de_cada_cuenta(monkeypat
     assert "AAOI (suelo), ASTS (zigzag)" in es_texto
     assert "AAOI (floor), ASTS (zigzag)" in en_texto
     assert "Ver en Vennett: https://vennett.app/admin/omega" in es_texto
-    assert "https://vennett.app/correo/marca-clara.png" in es_html
+    assert "https://vennett.app/correo/marca-correo.png" in es_html
+    assert 'href="https://vennett.app/liga"' in es_html
     assert "https://vennett.app/cuenta/avisos" in es_html
 
 
