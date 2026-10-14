@@ -217,3 +217,15 @@ def test_cesta_60d_no_se_congela_en_backfill_historico(db, monkeypatch) -> None:
     )).mappings().one()
     assert fila["cesta_60d"] is None
     assert fila["gate_regimen"] is None
+
+
+def test_el_aviso_de_nuevas_lleva_ticker_y_tipo_de_cada_senal(db, monkeypatch) -> None:
+    """Sin esa lista el correo del aviso sale vacío (bug real: el escáner no la pasaba)."""
+    llamadas = []
+    monkeypatch.setattr("app.avisos_admin.avisar", lambda *a, **kw: llamadas.append((a, kw)))
+    procesar_señales(db, [_senal_sin_resolver("AAA"), _senal_sin_resolver("BBB")])
+    assert len(llamadas) == 1
+    args, kw = llamadas[0]
+    assert args[1] == "omega_nuevas"
+    assert kw["filas"] == [("AAA", "suelo"), ("BBB", "suelo")]
+    assert kw["count"] == 2

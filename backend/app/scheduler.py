@@ -269,6 +269,7 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
         if s["ticker"] not in apagados:
             nuevas += 1
             tickers_nuevos.append(s["ticker"])
+            filas_nuevas.append((s["ticker"], s["tipo"]))
     db.commit()
     if nuevas:
         logger.info("Momentum: %s señal(es) nueva(s) detectada(s), gate pendiente.", nuevas)
