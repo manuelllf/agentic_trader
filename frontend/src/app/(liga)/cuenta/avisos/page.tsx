@@ -3,10 +3,10 @@
 import { useTranslations } from "next-intl";
 import { useSesionRequerida } from "../../_sesion/SesionContext";
 import { MarcoCuenta } from "../MarcoCuenta";
-import { AvisosDispositivo } from "../AvisosDispositivo";
+import { AvisosCuenta } from "../AvisosCuenta";
 
 export default function Avisos() {
   const t = useTranslations();
-  useSesionRequerida("/cuenta/avisos");
-  return <MarcoCuenta titulo={t("account_avisos")}><AvisosDispositivo /></MarcoCuenta>;
+  const { email } = useSesionRequerida("/cuenta/avisos");
+  return <MarcoCuenta titulo={t("account_avisos")}><AvisosCuenta email={email} /></MarcoCuenta>;
 }

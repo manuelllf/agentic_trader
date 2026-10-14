@@ -21,6 +21,8 @@ export type Yo = {
   admin: boolean;
   aal2: boolean;
   idioma?: Locale | null;
+  avisos_correo?: boolean;
+  correo_avisos?: string | null;
 };
 
 export async function guardarIdioma(idioma: Locale, owner: string): Promise<{ idioma: Locale } | string> {

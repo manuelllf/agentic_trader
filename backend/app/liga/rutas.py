@@ -3,6 +3,7 @@ Las respuestas son esquemas propios por público, nunca objetos ORM."""
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Literal
 
@@ -64,6 +65,8 @@ class Yo(BaseModel):
     admin: bool   # enseña el «Panel de control»; entrar en las salas pide además el 2FA
     aal2: bool
     idioma: Literal["es", "en"] | None = None
+    avisos_correo: bool = False
+    correo_avisos: str | None = None   # vacío: los avisos van al correo de la cuenta
     # Cuenta creada con Google o con un enlace que aún no ha aceptado los términos.
     pendiente: bool = False
 
@@ -155,6 +158,7 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
                  order by pu.desde desc limit 1) as plan_pago_hasta,
                liga.authorize('admin.salas') as admin,
                liga.aal2() as aal2, privado.idioma,
+               coalesce(privado.avisos_correo, false) as avisos_correo, privado.correo_avisos,
                liga.cuenta_pendiente() as pendiente,
                array(select r.rol::text from liga.roles_usuario r
                      where r.usuario_id = p.id order by r.rol) as roles
@@ -168,7 +172,8 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
               puede_crear_liga=fila.puede_crear_liga, pase_liga=fila.pase_liga,
               plan_pago=fila.plan_pago, plan_pago_hasta=fila.plan_pago_hasta,
               roles=list(fila.roles), admin=fila.admin, aal2=fila.aal2,
-              idioma=fila.idioma, pendiente=fila.pendiente)
+              idioma=fila.idioma, avisos_correo=fila.avisos_correo,
+              correo_avisos=fila.correo_avisos, pendiente=fila.pendiente)
 
 
 @router.post("/yo/terminos", response_model=Yo)
@@ -194,6 +199,31 @@ def cambiar_idioma(body: CambioIdioma, db: Session = Depends(db_usuario)) -> Cam
     if resultado is None:
         raise HTTPException(404, "No encontramos tu perfil.")
     return body
+
+
+_CORREO = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+
+class AvisosCorreo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    activo: bool
+    correo: str | None = None   # vacío: el de la cuenta
+
+
+@router.put("/yo/avisos-correo", response_model=AvisosCorreo)
+def cambiar_avisos_correo(body: AvisosCorreo, db: Session = Depends(db_usuario)) -> AvisosCorreo:
+    """Si la cuenta recibe avisos por correo y a qué dirección. La de la cuenta no se copia aquí:
+    sin dirección propia, los avisos van a ella."""
+    correo = (body.correo or "").strip() or None
+    if correo is not None and (len(correo) > 254 or not _CORREO.fullmatch(correo)):
+        raise HTTPException(422, "Revisa la dirección de correo.")
+    resultado = db.execute(text("""
+        update liga.perfiles_privados set avisos_correo = :activo, correo_avisos = :correo
+        where id = (select auth.uid()) returning id
+    """), {"activo": body.activo, "correo": correo}).one_or_none()
+    if resultado is None:
+        raise HTTPException(404, "No encontramos tu perfil.")
+    return AvisosCorreo(activo=body.activo, correo=correo)
 
 
 # ---- Exportar y baja (plan §15, D17) --------------------------------------------------------

@@ -2516,6 +2516,9 @@ CREATE TABLE liga.perfiles_privados (
     actualizado_en timestamp with time zone,
     actualizado_por uuid,
     idioma text,
+    avisos_correo boolean DEFAULT false NOT NULL,
+    correo_avisos text,
+    CONSTRAINT perfiles_privados_correo_avisos_check CHECK (((correo_avisos IS NULL) OR ((length(correo_avisos) <= 254) AND (correo_avisos ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'::text)))),
     CONSTRAINT perfiles_privados_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
     CONSTRAINT perfiles_privados_tema_check CHECK ((tema = ANY (ARRAY['auto'::text, 'claro'::text, 'oscuro'::text])))
 );
@@ -10591,6 +10594,20 @@ GRANT UPDATE(tema) ON TABLE liga.perfiles_privados TO authenticated;
 --
 
 GRANT UPDATE(idioma) ON TABLE liga.perfiles_privados TO authenticated;
+
+
+--
+-- Name: COLUMN perfiles_privados.avisos_correo; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT UPDATE(avisos_correo) ON TABLE liga.perfiles_privados TO authenticated;
+
+
+--
+-- Name: COLUMN perfiles_privados.correo_avisos; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT UPDATE(correo_avisos) ON TABLE liga.perfiles_privados TO authenticated;
 
 
 --

@@ -35,8 +35,8 @@ def exportar(db: Session) -> dict:
         "select alias, oculto, creado from liga.perfiles where id = (select auth.uid())"
     )).one_or_none()
     privado = db.execute(text(
-        "select tema, idioma, baja_solicitada from liga.perfiles_privados "
-        "where id = (select auth.uid())"
+        "select tema, idioma, avisos_correo, correo_avisos, baja_solicitada "
+        "from liga.perfiles_privados where id = (select auth.uid())"
     )).one_or_none()
     roles = db.execute(text("""
         select rol::text as rol, concedido from liga.roles_usuario

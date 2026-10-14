@@ -250,6 +250,11 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:admin@example.com"  # sobrescribe con tu email vía .env
 
+    # Correo de los avisos por Resend. Sin clave no sale ninguno; el destino lo pone cada cuenta.
+    resend_api_key: str = ""
+    correo_remitente: str = "Vennett <info@vennett.app>"
+    url_publica: str = "https://vennett.app"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

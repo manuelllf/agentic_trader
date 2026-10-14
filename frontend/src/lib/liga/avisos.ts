@@ -13,6 +13,11 @@ export const suscribirAvisos = (sub: PushSubscriptionJSON) =>
 export const bajaAvisos = (endpoint: string) =>
   llamar<EstadoAvisos>("/liga/avisos/baja", { method: "POST", body: JSON.stringify({ endpoint }) });
 
+/** Avisos por correo de la cuenta; `correo` nulo es el de la propia cuenta. */
+export const guardarAvisosCorreo = (activo: boolean, correo: string | null) =>
+  llamar<{ activo: boolean; correo: string | null }>("/liga/yo/avisos-correo",
+    { method: "PUT", body: JSON.stringify({ activo, correo }) });
+
 /** ¿Este navegador puede recibir avisos? (En iPhone, solo con la app añadida a la pantalla de inicio.) */
 export function avisosSoportados(): boolean {
   return typeof window !== "undefined" && "serviceWorker" in navigator

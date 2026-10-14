@@ -15,6 +15,9 @@ vi.mock("next-intl", async (importOriginal) => {
 vi.mock("next/link", () => ({ default: (props: ComponentProps<"a">) => createElement("a", props) }));
 vi.mock("@/i18n/LanguageSelector", () => ({ LanguageSelector: () => null }));
 vi.mock("../_sesion/SesionContext", () => ({ useSesion: vi.fn() }));
+vi.mock("@/lib/liga/avisos", () => ({
+  avisosSoportados: () => false, estadoAvisos: vi.fn(), activarAvisos: vi.fn(), bajaAvisos: vi.fn(),
+}));
 import { CuentaHub } from "./CuentaHub";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -46,7 +49,7 @@ describe("CuentaHub", () => {
     ]);
     expect([...el.querySelectorAll(".ajustes-nombre")].map(n => n.textContent)).toEqual([
       "Tu nombre en la liga", "Correo", "Gratis", "Verificación en dos pasos", "Contraseña",
-      "Avisos en este dispositivo", "Descargar mis datos", "Cómo funciona la liga", "Legal", "Borrar mi cuenta",
+      "Avisos", "Descargar mis datos", "Cómo funciona la liga", "Legal", "Borrar mi cuenta",
     ]);
     expect([...el.querySelectorAll("a")].map(a => a.getAttribute("href"))).toEqual([
       "/cuenta/nombre", "/cuenta/plan", "/cuenta/verificacion?next=/cuenta", "/cuenta/clave",
@@ -74,5 +77,9 @@ describe("CuentaHub", () => {
   it.each([false, true])("solo muestra Activada con aal2=%s", aal2 => {
     const fila = montar({ ...gratis, aal2 }).querySelector('a[href^="/cuenta/verificacion"]')!;
     expect(fila.querySelector(".ajustes-valor")?.textContent ?? null).toBe(aal2 ? "Activada" : null);
+  });
+  it.each([[false, "Desactivados"], [true, "Correo"]])("resume los avisos con correo=%s", (avisos_correo, valor) => {
+    const fila = montar({ ...gratis, avisos_correo }).querySelector('a[href="/cuenta/avisos"]')!;
+    expect(fila.querySelector(".ajustes-valor")?.textContent).toBe(valor);
   });
 });

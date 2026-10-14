@@ -23,6 +23,14 @@ def _claves_de_ia_de_prueba(monkeypatch) -> None:  # noqa: ANN001
 
 
 @pytest.fixture(autouse=True)
+def _sin_correo_real(monkeypatch) -> None:  # noqa: ANN001
+    """Ningún test manda correo de verdad: sin clave, ni se buscan destinatarios ni sale nada."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "resend_api_key", "")
+
+
+@pytest.fixture(autouse=True)
 def _sin_regalo_de_bienvenida(request):  # noqa: ANN001, ANN201
     """Las cuentas nuevas reciben créditos de bienvenida (sql 015); casi todas las pruebas de
     créditos parten de saldo 0, así que el regalo se apaga en la BD de pruebas salvo en las

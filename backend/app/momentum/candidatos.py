@@ -19,7 +19,7 @@ import yfinance as yf
 from sqlalchemy import text, update
 from sqlalchemy.orm import Session
 
-from app import push
+from app import avisos_admin
 from app.db import SessionLocal
 from app.llm.trace import CallRecord
 from app.models import MomentumCandidato, MomentumGateLlamada, MomentumUniverso
@@ -95,9 +95,10 @@ def detectar_rupturas(db: Session) -> int:
     db.commit()
     if creados:
         plural = "s" if creados != 1 else ""
-        push.send_to_all(
-            db, title=f"Omega: {creados} candidato{plural} nuevo{plural}",
+        avisos_admin.avisar(
+            db, "omega_candidatos", title=f"Omega: {creados} candidato{plural} nuevo{plural}",
             body=", ".join(nuevos_tickers), url="/admin/omega", tag="agentic-omega-candidato",
+            filas=[(t, None) for t in nuevos_tickers], count=creados,
         )
     return creados
 

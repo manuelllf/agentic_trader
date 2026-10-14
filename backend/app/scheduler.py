@@ -175,7 +175,7 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
     import pandas as pd
     from sqlalchemy import text, update
 
-    from app import push
+    from app import avisos_admin
     from app.models import MomentumSenal
     from app.momentum import regimen
 
@@ -190,8 +190,9 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
     # inserta señales con entry_date de meses atrás (p.ej. al incorporar un ticker nuevo) -- ahí
     # pegar la cesta de hoy sería mentir sobre cuándo se midió. Sin dato es mejor que un dato falso.
     hoy = datetime.now(ZoneInfo(settings.scan_timezone)).date()
-    nuevas, tickers_nuevos = 0, []
+    nuevas, tickers_nuevos, filas_nuevas = 0, [], []
     reactivadas = []            # descartadas de suelo que vuelven a zona de entrada (misma señal)
+    tipos_reactivadas: dict[str, str] = {}   # ticker → tipo, para la tabla del correo
     resueltas_ejecutadas = []   # posiciones REALES (estado='ejecutada') que acaban de resolverse
     añadidas: set[tuple] = set()
     for s in todas:
@@ -240,6 +241,7 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
                 ))
                 if s["ticker"] not in apagados:
                     reactivadas.append(s["ticker"])
+                    tipos_reactivadas[s["ticker"]] = s["tipo"]
             elif not fila["resuelta"]:
                 # Sigue abierta, sin cruce ni reactivación: la ventana de caída máxima sigue
                 # creciendo cada día -- se refresca aquí (antes esto no se tocaba nunca hasta
@@ -271,25 +273,29 @@ def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) 
     if nuevas:
         logger.info("Momentum: %s señal(es) nueva(s) detectada(s), gate pendiente.", nuevas)
         plural = "es" if nuevas != 1 else ""
-        push.send_to_all(
-            db, title=f"Omega: {nuevas} señal{plural} nueva{plural and 's'}",
+        avisos_admin.avisar(
+            db, "omega_nuevas", title=f"Omega: {nuevas} señal{plural} nueva{plural and 's'}",
             body=", ".join(tickers_nuevos), url="/admin/omega", tag="agentic-omega",
+            filas=filas_nuevas, count=nuevas,
         )
     if reactivadas:
         logger.info("Momentum: %s señal(es) de suelo reactivada(s) (vuelven a zona).",
                     len(reactivadas))
         plural = "es" if len(reactivadas) != 1 else ""
-        push.send_to_all(
-            db,
+        avisos_admin.avisar(
+            db, "omega_reactivadas",
             title=f"Omega: {len(reactivadas)} señal{plural} vuelve{'n' if plural else ''} a zona",
             body=", ".join(dict.fromkeys(reactivadas)), url="/admin/omega", tag="agentic-omega",
+            filas=list(tipos_reactivadas.items()), count=len(tipos_reactivadas),
         )
     for r in resueltas_ejecutadas:
         motivo_txt = "objetivo alcanzado" if r["motivo"] == "objetivo" else "90 días cumplidos"
-        push.send_to_all(
-            db, title=f"Omega: {r['ticker']} -- {motivo_txt}",
+        avisos_admin.avisar(
+            db, "omega_resueltas", title=f"Omega: {r['ticker']} -- {motivo_txt}",
             body=f"Resultado {r['ret']:+.1f}%. Revisa si toca vender.",
             url="/admin/omega", tag="agentic-omega",
+            ticker=r["ticker"], motivo="objetivo" if r["motivo"] == "objetivo" else "plazo",
+            ret=r["ret"],
         )
     return {"nuevas": nuevas, "reactivadas": len(reactivadas),
             "resueltas": len(resueltas_ejecutadas)}

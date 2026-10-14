@@ -5,15 +5,14 @@ import { useTranslations } from "next-intl";
 import {
   activarAvisos, avisosSoportados, bajaAvisos, estadoAvisos,
 } from "@/lib/liga/avisos";
-import { Boton } from "../_ui";
 
-type Estado = "cargando" | "no-disponible" | "bloqueado" | "apagado" | "activo";
+export type EstadoPush = "cargando" | "no-disponible" | "bloqueado" | "apagado" | "activo";
 
-/** Avisos de la liga en este navegador (Web Push, sin correo): se activan y se quitan aquí, uno por
- *  dispositivo. */
-export function AvisosDispositivo() {
+/** Push de la liga en este navegador (Web Push, uno por dispositivo): su estado y cómo activarlo o
+ *  quitarlo. Lo usan la fila de Cuenta, para el resumen, y la página de avisos. */
+export function usePushDispositivo() {
   const t = useTranslations();
-  const [estado, setEstado] = useState<Estado>("cargando");
+  const [estado, setEstado] = useState<EstadoPush>("cargando");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,26 +69,5 @@ export function AvisosDispositivo() {
     }
   }
 
-  return (
-    <div className="form">
-      <div className="campo">
-        <span className="lbl">{t("account_avisos")}</span>
-        <span className="nota">{t("account_avisos_ayuda")}</span>
-        {estado === "no-disponible" && <span className="nota">{t("account_avisos_no_disponibles")}</span>}
-        {estado === "bloqueado" && <span className="nota" role="status">{t("account_avisos_bloqueados")}</span>}
-        {estado === "activo" && <span className="nota" role="status">{t("account_avisos_activos")}</span>}
-        {error && <span className="aviso" role="alert">{error}</span>}
-      </div>
-      {estado === "apagado" && (
-        <Boton type="button" ancho="completo" disabled={ocupado} onClick={() => void activar()}>
-          {ocupado ? t("account_guardando") : t("account_avisos_activar")}
-        </Boton>
-      )}
-      {estado === "activo" && (
-        <Boton type="button" ancho="completo" disabled={ocupado} onClick={() => void desactivar()}>
-          {ocupado ? t("account_guardando") : t("account_avisos_desactivar")}
-        </Boton>
-      )}
-    </div>
-  );
+  return { estado, ocupado, error, activar, desactivar };
 }

@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import type { Yo } from "@/lib/liga/api";
 import { correoOculto } from "@/lib/liga/cuenta";
 import { ChevronCuenta } from "./MarcoCuenta";
+import { usePushDispositivo } from "./usePushDispositivo";
 
 export function FilaCuenta({ href, nombre, valor, sub, peligro = false }: {
   href?: string; nombre: string; valor?: string; sub?: string; peligro?: boolean;
@@ -27,6 +28,17 @@ function Grupo({ titulo, children, nota }: { titulo: string; children: ReactNode
     <ul className="ajustes-lista">{children}</ul>
     {nota && <p className="ajustes-nota">{nota}</p>}
   </section>;
+}
+
+/** Una sola fila: el resumen de los avisos (push de este dispositivo y correo); el detalle, dentro. */
+function FilaAvisos({ correo }: { correo: boolean }) {
+  const t = useTranslations();
+  const { estado } = usePushDispositivo();
+  const push = estado === "activo";
+  const valor = estado === "cargando" ? undefined : t(push && correo ? "account_avisos_resumen_ambos"
+    : push ? "account_avisos_resumen_push" : correo ? "account_avisos_resumen_correo"
+      : "account_avisos_resumen_ninguno");
+  return <FilaCuenta href="/cuenta/avisos" nombre={t("account_avisos")} valor={valor} />;
 }
 
 export function CuentaHub({ yo, email }: { yo: Yo; email: string | null }) {
@@ -53,7 +65,7 @@ export function CuentaHub({ yo, email }: { yo: Yo; email: string | null }) {
       <FilaCuenta href="/cuenta/clave" nombre={t("account_clave")} />
     </Grupo>
     <Grupo titulo={t("account_grupo_avisos")}>
-      <FilaCuenta href="/cuenta/avisos" nombre={t("account_avisos")} />
+      <FilaAvisos correo={Boolean(yo.avisos_correo)} />
     </Grupo>
     <Grupo titulo={t("account_grupo_datos")}>
       <FilaCuenta href="/cuenta/datos" nombre={t("account_descargar_datos")} />
