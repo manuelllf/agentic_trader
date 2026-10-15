@@ -8,6 +8,7 @@ describe("CabeceraApp", () => {
   it("muestra el sello y año sin título en modo Liga", () => {
     const html = renderToStaticMarkup(<CabeceraApp anio={2026} />);
     expect(html).toContain("2026");
+    expect(html).toContain('<header class="cab cab-sello">');
     expect(html).toContain('class="sello"');
     expect(html).not.toContain("<h1");
   });

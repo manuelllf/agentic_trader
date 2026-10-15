@@ -156,6 +156,7 @@ function LigaContenido() {
       <main className="scroll">
         <CabeceraApp anio={anio} />
         <h1 className="h1">{t("league_titulo")}</h1>
+        <p className="meta anio-escritorio">{anio}</p>
         <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
         <BarraPestanas />
       </main>
@@ -167,6 +168,7 @@ function LigaContenido() {
       <main className="scroll">
         <CabeceraApp anio={anio} />
         <h1 className="h1">{t("league_titulo")}</h1>
+        <p className="meta anio-escritorio">{anio}</p>
         <ErrorLiga titulo={t("league_error_portada")} mensaje={portada}
                    accion={{ texto: t("league_reintentar"), onClick: refrescarPortada }} />
         <BarraPestanas />
@@ -181,6 +183,7 @@ function LigaContenido() {
     <main className="scroll">
         <CabeceraApp anio={anio} />
         <h1 className="h1">{t("league_titulo")}</h1>
+        <p className="meta anio-escritorio">{anio}</p>
 
       {temporada === null ? (
         <Vacio

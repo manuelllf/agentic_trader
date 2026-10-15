@@ -2,12 +2,14 @@
 
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSesion } from "../_sesion/SesionContext";
 import { getCatalogo, getCreditos, getPortada, misEstrategias, misLigas } from "@/lib/liga/api";
 import { precargar } from "@/lib/liga/cache";
 import { EstadoEnlace } from "./EstadoEnlace";
+import { Marca } from "./Marca";
+import { LanguageSelector } from "@/i18n/LanguageSelector";
 
 // `.tabbar` de la maqueta (DESIGN.md §5 y §6): Liga, Privadas, Crear y Mías, iconos de trazo
 // en línea (nada de librería de iconos).
@@ -49,7 +51,26 @@ export function BarraPestanas() {
   const t = useTranslations();
   const ruta = usePathname();
   const router = useRouter();
-  const { estado } = useSesion();
+  const { estado, yo, cerrarSesion } = useSesion();
+  const panel = yo?.aal2 ? "/admin" : "/cuenta/verificacion?next=/admin";
+  const [contraida, setContraida] = useState(false);
+
+  useEffect(() => {
+    let guardada = false;
+    try { guardada = localStorage.getItem("liga-barra") === "contraida"; } catch {}
+    setContraida(guardada);
+    if (guardada) document.documentElement.dataset.barra = "contraida";
+    else delete document.documentElement.dataset.barra;
+    return () => { delete document.documentElement.dataset.barra; };
+  }, []);
+
+  const alternar = () => {
+    const siguiente = !contraida;
+    setContraida(siguiente);
+    if (siguiente) document.documentElement.dataset.barra = "contraida";
+    else delete document.documentElement.dataset.barra;
+    try { localStorage.setItem("liga-barra", siguiente ? "contraida" : "abierta"); } catch {}
+  };
 
   // Precarga tanto el código (`router.prefetch`, de más al `<Link>` que ya lo hace solo al
   // entrar en el viewport) como los datos de las otras pestañas, después del primer pintado: al
@@ -77,6 +98,18 @@ export function BarraPestanas() {
 
   return (
     <nav className="tabbar" aria-label={t("common_secciones")}>
+      <div className="barra-marca solo-escritorio">
+        {contraida ? <img src="/icon-192.png?v=vennett-10" alt="" width={32} height={32} />
+          : <Marca className="barra-wordmark" />}
+        <button type="button" className="barra-alternar" onClick={alternar}
+          aria-label={t(contraida ? "common_barra_expandir" : "common_barra_contraer")}
+          aria-expanded={!contraida}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}
+            strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d={contraida ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"} />
+          </svg>
+        </button>
+      </div>
       {PESTANAS.map((p) => {
         const activa = p.clave === "crear" ? ruta?.startsWith("/crear")
           : p.clave === "mias" ? ruta?.startsWith("/mias")
@@ -93,10 +126,36 @@ export function BarraPestanas() {
                 event.preventDefault();
               }
             }}>
-            <EstadoEnlace texto={t(`common_${p.clave}`)} icono={p.icono} />
+            <EstadoEnlace claseEtiqueta={contraida ? "etiqueta sr-only-escritorio" : "etiqueta"} texto={t(`common_${p.clave}`)} icono={p.icono} />
           </Link>
         );
       })}
+      <div className="barra-pie solo-escritorio">
+        <LanguageSelector />
+        {estado === "dentro" && <>
+          {yo?.admin && <Link className="barra-accion" href={panel}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 3 4.5 6v5.5c0 4.4 3.1 7.6 7.5 9.5 4.4-1.9 7.5-5.1 7.5-9.5V6Z" /><path d="m9 12 2.2 2.2L15.5 10" />
+            </svg>
+            <span className={contraida ? "sr-only-escritorio" : undefined}>{t("account_panel_control")}</span>
+          </Link>}
+          <button type="button" className="barra-accion" onClick={() => cerrarSesion()}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10" /><path d="M15 8l4 4-4 4M19 12H9" />
+            </svg>
+            <span className={contraida ? "sr-only-escritorio" : undefined}>{t("account_salir")}</span>
+          </button>
+        </>}
+        {estado === "fuera" && <Link className="barra-accion" href="/entrar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8" r="3.6" /><path d="M5 20c.6-3.6 3.5-5.6 7-5.6s6.4 2 7 5.6" />
+          </svg>
+          <span className={contraida ? "sr-only-escritorio" : undefined}>{t("account_entrar")}</span>
+        </Link>}
+      </div>
     </nav>
   );
 }

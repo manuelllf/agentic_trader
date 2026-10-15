@@ -1,4 +1,6 @@
 {
+  "common_barra_contraer": "Collapse the sidebar",
+  "common_barra_expandir": "Expand the sidebar",
   "common_idioma": "Language",
   "common_idioma_error": "Could not save your language. Please try again.",
   "common_mas_informacion": "More information",

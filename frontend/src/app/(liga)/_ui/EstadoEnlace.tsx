@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { useLinkStatus } from "next/link";
 
 /** Next controla el estado real del enlace: no hay temporizadores ni espera artificial. */
-export function EstadoEnlace({ texto, icono }: { texto: string; icono: React.ReactNode }) {
+export function EstadoEnlace({ texto, icono, claseEtiqueta }: { texto: string; icono: React.ReactNode; claseEtiqueta?: string }) {
   const t = useTranslations();
   const { pending } = useLinkStatus();
 
@@ -14,7 +14,7 @@ export function EstadoEnlace({ texto, icono }: { texto: string; icono: React.Rea
         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {icono}
       </svg>
-      <span className="tab-texto" data-pending={pending || undefined}>
+      <span className={`tab-texto${claseEtiqueta ? ` ${claseEtiqueta}` : ""}`} data-pending={pending || undefined}>
         {texto}
         {pending && <span className="tab-pendiente" aria-hidden="true" />}
       </span>

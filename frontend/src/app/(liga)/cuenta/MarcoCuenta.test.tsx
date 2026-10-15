@@ -66,7 +66,8 @@ it("permite reintentar tras un error", () => {
   sesion.yoFallo = true;
   const el = montar();
   expect(el.textContent).toContain("No hemos podido cargar tu cuenta");
-  act(() => el.querySelector<HTMLButtonElement>("button")!.click());
+  const reintentar = [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Reintentar");
+  act(() => reintentar!.click());
   expect(sesion.refrescarYo).toHaveBeenCalledOnce();
 });
 
