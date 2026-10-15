@@ -27,7 +27,6 @@ import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
 import { useSesion } from "../_sesion/SesionContext";
 import { useCache } from "@/lib/liga/cache";
 import { precargarFicha } from "@/lib/liga/ficha";
-import { PremioAnual } from "./PremioAnual";
 import { anioDeLiga } from "@/lib/liga/anio";
 
 type Vista = "tabla" | "jornada";
@@ -219,8 +218,6 @@ function LigaContenido() {
           <p className="meta" style={{ marginTop: 10 }}>
             {resumenJuego(portada, (key, values) => t(key, values))}
           </p>
-          <PremioAnual />
-
           <div style={{ marginTop: 16 }}>
             <Segmentado etiquetaGrupo={t("league_vista_aria")} valor={vista} onChange={setVista}
                         opciones={[{ valor: "jornada", etiqueta: t("league_este_mes") },

@@ -9,7 +9,7 @@ import { BarraPestanas, Boton, CabeceraApp, Cargando, ErrorLiga, Segmentado, Tar
   from "../_ui";
 import {
   borrarEstrategia, cadaDia1, desapuntar, apuntar as apuntarApi, getJornadaPublica,
-  getClasificacion, getPortada, miVentana, misEstrategias, optarAlPremio, type Clasificacion, type Estrategia,
+  getClasificacion, getPortada, miVentana, misEstrategias, type Clasificacion, type Estrategia,
   type JornadaDetalle, type Portada, type Ventana,
 } from "@/lib/liga/api";
 import { mutar, useCache } from "@/lib/liga/cache";
@@ -91,14 +91,6 @@ export default function Mias() {
     setAviso(null);
     const r = await desapuntar(id);
     if (typeof r === "string") setAviso(r); else parchearFila(id, r);
-    setOcupada(null);
-  }
-
-  async function alOptarAlPremio(id: string) {
-    setOcupada(id);
-    setAviso(null);
-    const r = await optarAlPremio(id);
-    if (typeof r === "string") setAviso(r); else mutar<ListaEstrategias>("mis-estrategias", () => r);
     setOcupada(null);
   }
 
@@ -194,7 +186,6 @@ export default function Mias() {
                 escudoEtiqueta={t("strategies_crest", { name: e.nombre })}
                 estado={ETIQUETA_ESTADO[e.estado] ? t(ETIQUETA_ESTADO[e.estado]) : e.estado}
                 punto={e.estado === "jugando" ? "jugando" : e.estado === "apuntada" ? "apuntada" : "otro"}
-                premio={e.opta_premio ? t("strategies_prize_entered") : undefined}
                 puesto={puesto ?? undefined} movimiento={movimiento}
                 puestoEtiqueta={puesto != null ? t("common_ranking_posicion_aria", { count: puesto }) : undefined}
                 mes={(e.estado === "jugando" || acumulado) ? { etiqueta: t("strategies_this_month"),
@@ -243,13 +234,6 @@ export default function Mias() {
                 ajustes={<div className="mias-ajustes">
                   <Link href={`/crear/${e.id}`} className="mias-fila mias-fila-enlace">{t("strategies_edit")}</Link>
                   {(e.estado === "apuntada" || e.estado === "jugando") && <>
-                    <div className="mias-fila">
-                      <span>{t("strategies_prize_label")}</span>
-                      {e.opta_premio
-                        ? <span className="mias-ok">{t("strategies_prize_entered")}</span>
-                        : <Boton tamano="pequeno" disabled={pendiente} onClick={() => alOptarAlPremio(e.id)}>{t("strategies_prize_choose")}</Boton>}
-                    </div>
-                    {e.opta_premio && <div className="mias-fila mias-nota"><small>{t("strategies_prize_note")}</small></div>}
                     <div className="mias-fila">
                       <span>{t("strategies_next_month")}</span>
                         <div inert={pendiente || undefined}>

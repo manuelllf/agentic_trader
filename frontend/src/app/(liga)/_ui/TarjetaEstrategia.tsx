@@ -9,7 +9,6 @@ export interface TarjetaEstrategiaProps {
   escudoEtiqueta: string;
   estado: string;
   punto: "jugando" | "apuntada" | "otro";
-  premio?: string;
   puesto?: number;
   movimiento?: number;
   puestoEtiqueta?: string;
@@ -25,7 +24,7 @@ export interface TarjetaEstrategiaProps {
 }
 
 // La tarjeta resume la estrategia porque el detalle vive en la ficha.
-export function TarjetaEstrategia({ id, nombre, escudo, escudoEtiqueta, estado, punto, premio, puesto,
+export function TarjetaEstrategia({ id, nombre, escudo, escudoEtiqueta, estado, punto, puesto,
   movimiento, puestoEtiqueta, mes, abrible, ajustesAbiertos, ajustesEtiqueta, ocupada,
   onAjustes, alAcercar, lineas, ajustes }: TarjetaEstrategiaProps) {
   return (
@@ -40,7 +39,7 @@ export function TarjetaEstrategia({ id, nombre, escudo, escudoEtiqueta, estado, 
           <Escudo valor={escudo} etiqueta={escudoEtiqueta} tamano={36} />
           <span className="mias-nm">
             <h2>{nombre}</h2>
-            <small className="mias-est"><i className={`punto ${punto}`} aria-hidden="true" /><span>{estado}</span>{premio && <b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 4h8v5a4 4 0 0 1-8 0Z" /><path d="M8 6H5a2 2 0 0 0 2 4M16 6h3a2 2 0 0 1-2 4M12 13v4M9 20h6" /></svg>{premio}</b>}</small>
+            <small className="mias-est"><i className={`punto ${punto}`} aria-hidden="true" /><span>{estado}</span></small>
           </span>
         </Link>
         {mes && (

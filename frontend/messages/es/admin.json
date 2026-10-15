@@ -85,7 +85,7 @@
   "admin_settings_group_credits": "Créditos",
   "admin_settings_group_prize": "Premio",
   "admin_setting_prize_visible_title": "Enseñar el premio",
-  "admin_setting_prize_visible_help": "Muestra en la liga el premio anual, sus escalones y cuántas cuentas optan. Apagado hasta que un abogado revise las bases legales.",
+  "admin_setting_prize_visible_help": "Apagado hasta que un abogado revise las bases legales. Hoy la liga no enseña el premio.",
   "admin_setting_prize_threshold_basic_title": "Cuentas para activar el premio",
   "admin_setting_prize_threshold_basic_help": "Cuentas elegibles (con 10 jornadas jugadas) que hacen falta al cerrar la temporada para repartir el primer escalón. Con menos, no se activa.",
   "admin_setting_prize_threshold_full_title": "Cuentas para el premio completo",

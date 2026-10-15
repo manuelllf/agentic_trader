@@ -85,7 +85,7 @@
   "admin_settings_group_credits": "Credits",
   "admin_settings_group_prize": "Prize",
   "admin_setting_prize_visible_title": "Show the prize",
-  "admin_setting_prize_visible_help": "Shows the annual prize in the league, its tiers and how many accounts are entered. Off until a lawyer reviews the legal terms.",
+  "admin_setting_prize_visible_help": "Off until a lawyer reviews the legal terms. The league does not show the prize today.",
   "admin_setting_prize_threshold_basic_title": "Accounts to unlock the prize",
   "admin_setting_prize_threshold_basic_help": "Eligible accounts (with 10 rounds played) needed when the season closes to pay out the first tier. With fewer, it is not unlocked.",
   "admin_setting_prize_threshold_full_title": "Accounts for the full prize",

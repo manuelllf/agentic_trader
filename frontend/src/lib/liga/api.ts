@@ -461,10 +461,6 @@ export async function desapuntar(id: string): Promise<Estrategia | string> {
   return llamar<Estrategia>(`/liga/estrategias/${id}/desapuntar`, { method: "POST" });
 }
 
-export async function optarAlPremio(id: string): Promise<Estrategia[] | string> {
-  return llamar<Estrategia[]>(`/liga/estrategias/${id}/premio`, { method: "POST" });
-}
-
 export async function cadaDia1(
   id: string, opcion: "revisar" | "mantener",
 ): Promise<Estrategia | string> {
@@ -719,22 +715,6 @@ export type Clasificacion = {
 
 export async function getPortada(): Promise<Portada | string> {
   return llamar<Portada>("/liga/publico/portada", {}, false);
-}
-
-/** El premio anual, sin nombres. `visible` falso: no hay nada que enseñar todavía. */
-export type PremioPublico = {
-  visible: boolean;
-  temporada?: { id: number; nombre: string } | null;
-  calculado: boolean;
-  cuentas: number;
-  escalon: 0 | 1 | 2;
-  umbral_basico: number | null;
-  umbral_completo: number | null;
-  importes: Record<string, number[]>;
-};
-
-export async function getPremio(): Promise<PremioPublico | string> {
-  return llamar<PremioPublico>("/liga/publico/premio", {}, false);
 }
 
 export async function getClasificacion(

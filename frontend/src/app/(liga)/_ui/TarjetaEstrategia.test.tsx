@@ -35,11 +35,6 @@ describe("TarjetaEstrategia", () => {
     expect(html({ mes: null })).not.toContain("mias-res");
   });
 
-  it("muestra el premio solo cuando se proporciona", () => {
-    expect(html({ premio: "En el premio" })).toContain("En el premio");
-    expect(html()).not.toContain("En el premio");
-  });
-
   it("controla el enlace extendido y los ajustes conservando los pies", () => {
     expect(html()).toContain('class="mias-estrategia abrible"');
     const nodos = { lineas: <div>Pie permanente</div>, ajustes: <div>Panel de ajustes</div> };
