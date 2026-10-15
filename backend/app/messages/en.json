@@ -86,7 +86,7 @@
   "api_error_acepta_los_terminos_para_crear_la_cuenta": "Accept the terms to create an account.",
   "api_error_usa_al_menos_8_caracteres_una_mayuscula_y_un_simbolo": "Use at least 8 characters, one uppercase letter, and one symbol.",
   "api_error_no_se_pudo_enviar_el_correo_prueba_en_un_momento": "Could not send the email. Try again shortly.",
-  "api_error_no_se_pudo_crear_la_cuenta_prueba_otro_nombre_de_usuario_o_intentalo_mas_tarde": "Could not create your account. Try another username or try again later.",
+  "api_error_no_se_pudo_crear_la_cuenta_revisa_los_datos_o_entra_si_ya_tienes_cuenta": "Could not create your account. Check your details or sign in if you already have an account.",
   "api_error_ya_nos_has_avisado_varias_veces_danos_un_rato_para_mirarlo": "You have already sent several reports. Give us time to review them.",
   "api_error_no_encontramos_tu_perfil": "We could not find your profile.",
   "api_error_demasiadas_descargas_seguidas_espera_un_poco": "Too many downloads in a row. Wait a moment.",

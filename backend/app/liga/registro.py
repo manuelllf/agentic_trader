@@ -30,6 +30,7 @@ RESERVADOS = {"admin", "administrador", "alpha", "beta", "omega", "lambda", "jev
 VERSION_TERMINOS = "2"
 ENLACE_CLAVE = "/auth/callback?next=%2Fcambiar-clave"
 ENLACE_ENTRADA = "/auth/callback?next=%2Fliga"
+ENLACE_CONFIRMAR = "/confirmar"
 
 
 @router.get("")
@@ -95,13 +96,9 @@ def _enviar(ruta: str, datos: dict, destino: str, *, sin_revelar: bool = False) 
     if respuesta.status_code >= 400:
         # No reenviamos mensajes que puedan revelar cuentas o datos internos del proveedor.
         if ruta == "signup":
-            raise HTTPException(503, "No se pudo crear la cuenta. Prueba otro nombre de usuario "
-                                "o inténtalo más tarde.")
+            raise HTTPException(503, "No se pudo crear la cuenta. Revisa los datos o entra si "
+                                "ya tienes cuenta.")
         raise HTTPException(503, "No se pudo completar la solicitud. Prueba en un momento.")
-
-    if ruta == "signup" and not respuesta.json().get("access_token"):
-        raise HTTPException(503, "No se pudo crear la cuenta. Prueba otro nombre de usuario "
-                            "o inténtalo más tarde.")
 
 
 def _vigilar_pico() -> None:
@@ -145,7 +142,7 @@ def registrar(body: RegistroIn, request: Request) -> dict:
     _enviar("signup", {"email": email, "password": clave,
                       "data": {"alias": alias, "terminos_version": VERSION_TERMINOS,
                                "idioma": _idioma(request)}},
-            "")
+            origen + ENLACE_CONFIRMAR)
     _vigilar_pico()
     return {"ok": True}
 
@@ -160,5 +157,6 @@ def recuperar(body: CorreoIn, request: Request) -> dict:
 @router.post("/reenviar")
 def reenviar(body: CorreoIn, request: Request) -> dict:
     email, origen = _preparar(body, request)
-    _enviar("resend", {"type": "signup", "email": email}, origen + ENLACE_ENTRADA, sin_revelar=True)
+    _enviar("resend", {"type": "signup", "email": email}, origen + ENLACE_CONFIRMAR,
+            sin_revelar=True)
     return {"ok": True}

@@ -1206,6 +1206,33 @@ def test_el_aviso_sale_en_el_idioma_de_la_cuenta_y_poda_lo_que_el_navegador_dio_
     assert avisos.dispositivos(uid, fabrica) == [viva]
 
 
+def test_el_aviso_sale_tambien_por_correo_a_la_direccion_propia_o_a_la_de_la_cuenta(
+        fabrica, mercado, mundo, monkeypatch) -> None:  # noqa: ANN001
+    from app import correo
+    from app.liga import avisos
+
+    enviados: list = []
+    monkeypatch.setattr(correo, "enviar", lambda destino, asunto, texto, html=None:
+                        enviados.append((destino, asunto)) or True)
+    uid = _dueno(fabrica, mundo["reglas"])
+    with comun.sesion(fabrica) as db:
+        cuenta = db.execute(text("select email from auth.users where id = cast(:u as uuid)"),
+                            {"u": uid}).scalar()
+        avisos.avisar(db, uid, "empieza")
+        assert enviados == []                                    # el correo viene apagado
+
+        db.execute(text("insert into liga.perfiles_privados (id, avisos_correo) "
+                        "values (:u, true) on conflict (id) do update set avisos_correo = true"),
+                   {"u": uid})
+        avisos.avisar(db, uid, "empieza")
+        assert enviados == [(cuenta, "Empieza la jornada")]
+
+        db.execute(text("update liga.perfiles_privados set correo_avisos = 'otra@ejemplo.com' "
+                        "where id = cast(:u as uuid)"), {"u": uid})
+        avisos.avisar(db, uid, "empieza")
+        assert enviados[1:] == [("otra@ejemplo.com", "Empieza la jornada")]
+
+
 def test_al_formar_se_avisa_de_la_cartera_y_de_lo_que_jugo_sin_su_pregunta(
         fabrica, mercado, mundo, empujes) -> None:  # noqa: ANN001
     uid = _dueno(fabrica, mundo["reglas"])

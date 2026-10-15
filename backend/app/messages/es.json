@@ -86,7 +86,7 @@
   "api_error_acepta_los_terminos_para_crear_la_cuenta": "Acepta los términos para crear la cuenta.",
   "api_error_usa_al_menos_8_caracteres_una_mayuscula_y_un_simbolo": "Usa al menos 8 caracteres, una mayúscula y un símbolo.",
   "api_error_no_se_pudo_enviar_el_correo_prueba_en_un_momento": "No se pudo enviar el correo. Prueba en un momento.",
-  "api_error_no_se_pudo_crear_la_cuenta_prueba_otro_nombre_de_usuario_o_intentalo_mas_tarde": "No se pudo crear la cuenta. Prueba otro nombre de usuario o inténtalo más tarde.",
+  "api_error_no_se_pudo_crear_la_cuenta_revisa_los_datos_o_entra_si_ya_tienes_cuenta": "No se pudo crear la cuenta. Revisa los datos o entra si ya tienes cuenta.",
   "api_error_ya_nos_has_avisado_varias_veces_danos_un_rato_para_mirarlo": "Ya nos has avisado varias veces. Danos un rato para mirarlo.",
   "api_error_no_encontramos_tu_perfil": "No encontramos tu perfil.",
   "api_error_demasiadas_descargas_seguidas_espera_un_poco": "Demasiadas descargas seguidas. Espera un poco.",

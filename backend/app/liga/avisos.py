@@ -1,6 +1,7 @@
-"""Avisos a las cuentas por Web Push (opt-in, uno por dispositivo). Sin correo.
+"""Avisos a las cuentas por Web Push (opt-in, uno por dispositivo) y, a quien lo activa en Cuenta ›
+Avisos, también por correo.
 
-Seis avisos, todos best-effort: si el push falla, la liga sigue y todo está en la web.
+Seis avisos, todos best-effort: si el push o el correo fallan, la liga sigue y todo está en la web.
 - Sin créditos para pagar tu pregunta: jugará sin ella (tres días antes del corte).
 - Tu cartera está formada (puedes cambiar empresas hasta tal hora).
 - Los cambios se cierran en una hora.
@@ -9,7 +10,8 @@ Seis avisos, todos best-effort: si el push falla, la liga sigue y todo está en 
 - La configuración cambió y no se aplicaron las quitadas.
 
 Va con sesión de sistema: la suscripción se guarda como la cuenta que la pide, y el envío mira las
-de cada dueño. El texto sale en el idioma privado de la cuenta (por defecto, español)."""
+de cada dueño. El texto sale en el idioma privado de la cuenta (por defecto, español). El correo
+lleva el mismo título y texto, a la dirección propia de los avisos o, si no, a la de la cuenta."""
 
 from __future__ import annotations
 
@@ -21,7 +23,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app import push
+from app import correo, correo_plantilla, push
 from app.i18n import Locale, translate
 from app.liga.motor.calendario import TZ_NUEVA_YORK
 from app.liga.procesos.comun import Fabrica, auditar, fabrica_sistema, sesion
@@ -36,6 +38,9 @@ _APERTURA = time(9, 30)                   # abre la bolsa de Nueva York
 _AVISO_APERTURA_HASTA = timedelta(hours=2)   # pasado esto, ya no se avisa de que empezó
 _ANTELACION_CIERRE = timedelta(hours=1)
 _ANTELACION_SIN_CREDITOS = timedelta(days=3)
+# Los avisos que, además del push, salen por correo a quien lo activó.
+_CON_CORREO = frozenset({"cartera_lista", "quitadas_vaciadas", "sin_pregunta", "sin_creditos",
+                         "empieza"})
 
 
 class DemasiadosDispositivos(ValueError):
@@ -94,10 +99,20 @@ def dispositivos(usuario_id: str, fabrica: Fabrica = fabrica_sistema) -> list[st
 # --- Texto ----------------------------------------------------------------------------------------
 
 
-def _idioma(db: Session, usuario_id: str) -> Locale:
-    valor = db.execute(text("select idioma from liga.perfiles_privados "
-                            "where id = cast(:u as uuid)"), {"u": usuario_id}).scalar()
-    return "en" if valor == "en" else "es"
+def _perfil(db: Session, usuario_id: str) -> tuple[Locale, str | None]:
+    """Idioma de la cuenta y, si activó el correo, la dirección de sus avisos: la propia o la de
+    su acceso."""
+    fila = db.execute(text("""
+        select p.idioma, p.avisos_correo, p.correo_avisos, u.email
+        from liga.perfiles_privados p left join auth.users u on u.id = p.id
+        where p.id = cast(:u as uuid)
+    """), {"u": usuario_id}).one_or_none()
+    if fila is None:
+        return "es", None
+    idioma: Locale = "en" if fila.idioma == "en" else "es"
+    if not fila.avisos_correo:
+        return idioma, None
+    return idioma, fila.correo_avisos or fila.email or None
 
 
 def _fecha(momento: datetime, idioma: Locale) -> str:
@@ -111,28 +126,42 @@ def _hora(momento: datetime) -> str:
     return momento.astimezone(TZ_MADRID).strftime("%H:%M")
 
 
+def _por_correo(destino: str, idioma: Locale, titulo: str, cuerpo: str, url: str) -> None:
+    """El mismo aviso por correo, con el diseño de los demás. Best-effort: nunca lanza."""
+    try:
+        texto, html = correo_plantilla.render(
+            idioma=idioma, asunto=titulo, intro=cuerpo,
+            enlace_texto=translate("correo_ver", idioma), ruta=url,
+            pie=translate("correo_pie", idioma), ajustes_texto=translate("correo_ajustes", idioma),
+            legal_texto=translate("correo_legal", idioma))
+        correo.enviar(destino, titulo, texto, html)
+    except Exception:
+        logger.exception("No se pudo mandar el aviso por correo")
+
+
 def avisar(db: Session, usuario_id: str, tipo: str, url: str = "/mias",
            cierra: datetime | None = None, **valores: str) -> int:
-    """Manda el aviso `tipo` a los dispositivos de la cuenta; devuelve a cuántos llegó. Quita las
-    suscripciones que el navegador dio de baja."""
+    """Manda el aviso `tipo` por push a la cuenta, y por correo si lo activó. Devuelve a cuántos
+    dispositivos llegó el push; poda las suscripciones que el navegador dio de baja."""
     subs = db.execute(text("select id, endpoint, p256dh, auth from liga.suscripciones_push "
                            "where usuario_id = cast(:u as uuid)"), {"u": usuario_id}).all()
-    if not subs:
-        return 0
-    idioma = _idioma(db, usuario_id)
+    idioma, destino = _perfil(db, usuario_id)
     if cierra is not None:
         valores = {**valores, "date": _fecha(cierra, idioma), "time": _hora(cierra)}
-    carga = json.dumps({"title": translate(f"push_{tipo}_title", idioma, **valores),
-                        "body": translate(f"push_{tipo}_body", idioma, **valores),
-                        "url": url, "tag": f"vennett-{tipo}"})
+    titulo = translate(f"push_{tipo}_title", idioma, **valores)
+    cuerpo = translate(f"push_{tipo}_body", idioma, **valores)
     enviados = 0
-    for s in subs:
-        resultado = push.enviar(s.endpoint, s.p256dh, s.auth, carga)
-        if resultado == "ok":
-            enviados += 1
-        elif resultado == "baja":
-            db.execute(text("delete from liga.suscripciones_push where id = :i"), {"i": s.id})
-    db.commit()
+    if subs:
+        carga = json.dumps({"title": titulo, "body": cuerpo, "url": url, "tag": f"vennett-{tipo}"})
+        for s in subs:
+            resultado = push.enviar(s.endpoint, s.p256dh, s.auth, carga)
+            if resultado == "ok":
+                enviados += 1
+            elif resultado == "baja":
+                db.execute(text("delete from liga.suscripciones_push where id = :i"), {"i": s.id})
+        db.commit()
+    if destino and tipo in _CON_CORREO:
+        _por_correo(destino, idioma, titulo, cuerpo, url)
     return enviados
 
 

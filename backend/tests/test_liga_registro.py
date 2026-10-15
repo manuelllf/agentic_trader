@@ -5,7 +5,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.i18n import present_error_detail
 from app.liga import acceso, registro
+
+ALTA_RECHAZADA_ES = "No se pudo crear la cuenta. Revisa los datos o entra si ya tienes cuenta."
+ALTA_RECHAZADA_EN = ("Could not create your account. Check your details or sign in if you "
+                     "already have an account.")
 
 
 @pytest.fixture
@@ -37,7 +42,6 @@ def test_alta_no_devuelve_tokens_y_envia_solo_metadata_de_perfil(cliente):
     assert client.post("/registro", json=datos()).json() == {"ok": True}
     url, llamada = pedidos[0]
     assert url.endswith("/signup")
-    assert llamada["params"] == {}
     assert llamada["json"]["email"] == "usuario@correo.es"
     assert llamada["json"]["data"] == {
         "alias": "usuario", "terminos_version": registro.VERSION_TERMINOS, "idioma": "es"}
@@ -67,7 +71,7 @@ def test_cierre_bloquea_alta_pero_permite_correos(cliente, monkeypatch):
     for ruta, proveedor, cuerpo, enlace in (
         ("/recuperar", "recover", {"email": "usuario@correo.es"}, registro.ENLACE_CLAVE),
         ("/reenviar", "resend", {"type": "signup", "email": "usuario@correo.es"},
-         registro.ENLACE_ENTRADA),
+         registro.ENLACE_CONFIRMAR),
     ):
         respuesta = client.post("/registro" + ruta, json=datos())
         assert respuesta.status_code == 200
@@ -137,20 +141,35 @@ def test_un_pico_de_altas_avisa_una_vez_y_no_bloquea(cliente, monkeypatch):
     assert avisos == ["Vennett: pico de altas"]
 
 
-def test_fallo_del_proveedor_no_filtra_sus_datos(cliente, monkeypatch):
+@pytest.mark.parametrize("estado", [400, 422, 500])
+def test_alta_rechazada_responde_con_mensaje_generico_sin_datos_del_proveedor(
+        cliente, monkeypatch, estado):
     client, _ = cliente
     monkeypatch.setattr(registro.httpx, "post", lambda *a, **k: httpx.Response(
-        400, json={"message": "Cuenta existente: privado@correo.es"}))
+        estado, json={"message": "Cuenta existente: privado@correo.es"}))
     respuesta = client.post("/registro", json=datos())
     assert respuesta.status_code == 503
+    assert respuesta.json() == {"detail": ALTA_RECHAZADA_ES}
+    assert present_error_detail(ALTA_RECHAZADA_ES, "en") == ALTA_RECHAZADA_EN
     assert "privado" not in respuesta.text
 
 
-def test_confirmacion_activa_no_se_presenta_como_alta_completa(cliente, monkeypatch):
+def test_alta_con_confirmacion_activa_sin_sesion_del_proveedor_es_correcta(cliente, monkeypatch):
     client, _ = cliente
     monkeypatch.setattr(registro.httpx, "post", lambda *a, **k: httpx.Response(
-        200, json={"id": "pendiente"}))
-    assert client.post("/registro", json=datos()).status_code == 503
+        200, json={"id": "pendiente", "email": "usuario@correo.es"}))
+    respuesta = client.post("/registro", json=datos())
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {"ok": True}
+
+
+@pytest.mark.parametrize("ruta", ["", "/reenviar"])
+@pytest.mark.parametrize("origen", ["http://localhost:3000", "http://localhost:3000/"])
+def test_el_correo_de_confirmacion_lleva_a_confirmar(cliente, ruta, origen):
+    client, pedidos = cliente
+    assert client.post("/registro" + ruta, json=datos(origen=origen)).status_code == 200
+    _, llamada = pedidos[0]
+    assert llamada["params"] == {"redirect_to": "http://localhost:3000/confirmar"}
 
 
 def test_auth_sin_configuracion_no_envia_correo(cliente, monkeypatch):
