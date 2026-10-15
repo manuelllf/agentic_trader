@@ -3,9 +3,8 @@ import { localeTag, normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
 
 // Datos del titular y versión de los textos legales, en un solo sitio.
-// Hay que rellenar NIF y domicilio antes de cobrar.
 export const TITULAR: { nombre: string; nif: string | null; domicilio: string | null } = {
-  nombre: "Manuel Llao Freire", nif: null, domicilio: null,
+  nombre: "Manuel Llao Freire", nif: "32735627A", domicilio: "Calle Luis de Requesens, 4",
 };
 
 export const VERSION_LEGAL = "2026-10-12";
