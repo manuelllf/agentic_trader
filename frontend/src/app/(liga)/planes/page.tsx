@@ -1,6 +1,12 @@
-import { redirect } from "next/navigation";
+import { getLocale, getTranslations } from "next-intl/server";
+import { metadataCompartir } from "@/lib/sitio";
+import { PlanesPublicos } from "./PlanesPublicos";
 
-// Los planes viven en la cuenta, junto al resto de lo tuyo: esta ruta solo manda allí.
+export async function generateMetadata() {
+  const [t, idioma] = await Promise.all([getTranslations(), getLocale()]);
+  return metadataCompartir({ titulo: `${t("planes_titulo")} — Vennett`, descripcion: t("meta_planes_descripcion"), idioma, ruta: "/planes" });
+}
+
 export default function Planes() {
-  redirect("/cuenta/plan");
+  return <PlanesPublicos />;
 }

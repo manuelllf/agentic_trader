@@ -16,7 +16,7 @@ function paginas(carpeta: string): string[] {
 
 const exportaMetadata = (archivo: string) => /generateMetadata|export const metadata/.test(readFileSync(archivo, "utf8"));
 
-// Las que solo redirigen (como /planes) no pintan nada: no necesitan título.
+// Las que solo redirigen no pintan nada: no necesitan título.
 const pintan = paginas(RAIZ).filter((ruta) => !readFileSync(ruta, "utf8").includes("redirect("));
 
 describe("metadatos por página de la liguilla", () => {

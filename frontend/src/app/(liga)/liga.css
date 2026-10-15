@@ -871,6 +871,8 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .pel-cabecera .language-control > button { min-width: calc(38 * var(--pel-u)); min-height: calc(38 * var(--pel-u)); padding: 0 calc(6 * var(--pel-u)); font-size: calc(12 * var(--pel-u)); gap: calc(4 * var(--pel-u)); }
 .lg .pel-cabecera .language-chevron { width: calc(10 * var(--pel-u)); height: calc(10 * var(--pel-u)); }
 .lg .pel-enlace { display: inline-flex; align-items: center; min-height: calc(44 * var(--pel-u)); padding: 0 calc(8 * var(--pel-u)); font-size: calc(14 * var(--pel-u)); color: var(--pel-tinta2); text-decoration: none; white-space: nowrap; }
+/* La cabecera del móvil va justa con tres elementos: lo que no cabe sale solo en escritorio y
+   Planes pasa a la barra de abajo. */
 .lg .pel-solo-escritorio { display: none; }
 .lg .pel-btn {
   display: inline-flex; align-items: center; justify-content: center; min-height: calc(46 * var(--pel-u)); padding: 0 calc(20 * var(--pel-u)); border-radius: calc(12 * var(--pel-u)); white-space: nowrap;
@@ -1021,6 +1023,7 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 @media (min-width: 900px) and (min-aspect-ratio: 11/10) {
   .lg .pel-portada { --pel-u: 1px; --pel-margen: 40px; }
   .lg .pel-solo-escritorio { display: inline-flex; }
+  .lg .pel-solo-movil { display: none; }
   .lg .pel-cabecera .wordmark svg { height: 25px; }
   .lg .pel-franja { left: 56px; right: auto; top: 100px; width: min(31vw, 460px); height: auto; bottom: calc(var(--pel-pie) + 40px); }
   .lg .pel-it { justify-content: center; gap: 12px; }

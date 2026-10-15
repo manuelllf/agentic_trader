@@ -6,17 +6,10 @@ import { useLocale, useTranslations } from "next-intl";
 import { useId, useState } from "react";
 import type { Yo } from "@/lib/liga/api";
 import type { ProductoPago, Suscripcion } from "@/lib/liga/pagos";
-
-type Pro = "mensual" | "media_temporada" | "temporada";
-type Clave = "mensual" | "media" | "temporada" | "liga";
-
-const CLAVE: Record<ProductoPago, Clave> = {
-  mensual: "mensual", media_temporada: "media", temporada: "temporada", pack_liga: "liga",
-};
-const PRO: Pro[] = ["mensual", "media_temporada", "temporada"];
+import { CLAVE_PLAN as CLAVE, ListaPlanes, PLANES_PRO, type PlanPro as Pro } from "../_ui/ListaPlanes";
 
 function esPro(producto: string | null | undefined): producto is Pro {
-  return PRO.includes(producto as Pro);
+  return PLANES_PRO.includes(producto as Pro);
 }
 
 type Props = {
@@ -66,34 +59,12 @@ export function PlanCuentaVista({ yo, suscripcion, comprar: pedirCompra }: Props
           <h2 id={`${base}-titulo`} className="cuenta-plan-titulo">{t("planes_gratis")}</h2>
           <h3 className="cuenta-plan-subtitulo">{t("planes_elige")}</h3>
           <p className="cuenta-plan-nota">{t("planes_intro")}</p>
-          <ul className="cuenta-plan-lista">
-            {PRO.map((p) => (
-              <li key={p} className="cuenta-plan-fila">
-                <span className="cuenta-plan-fila-texto">
-                  <span className="cuenta-plan-fila-nombre">
-                    {t("planes_pro_titulo", { duracion: nombre(p) })}
-                  </span>
-                  <span className="cuenta-plan-fila-detalle">
-                    {t(`planes_${CLAVE[p]}_detalle` as Parameters<typeof t>[0])}
-                  </span>
-                </span>
-                <button type="button" className="btn small" disabled={comprando !== null}
-                  onClick={() => comprar(p)}>
-                  {comprando === p ? t("planes_cargando") : t("planes_elegir")}
-                </button>
-              </li>
-            ))}
-            <li className="cuenta-plan-fila">
-              <span className="cuenta-plan-fila-texto">
-                <span className="cuenta-plan-fila-nombre">{t("planes_liga_nombre")}</span>
-                <span className="cuenta-plan-fila-detalle">{t("planes_liga_detalle")}</span>
-              </span>
-              <button type="button" className="btn small" disabled={comprando !== null}
-                onClick={() => comprar("pack_liga")}>
-                {comprando === "pack_liga" ? t("planes_cargando") : t("planes_elegir")}
-              </button>
-            </li>
-          </ul>
+          <ListaPlanes accion={(producto) => (
+            <button type="button" className="btn small" disabled={comprando !== null}
+              onClick={() => comprar(producto)}>
+              {comprando === producto ? t("planes_cargando") : t("planes_elegir")}
+            </button>
+          )} />
         </>
       ) : (
         <>
