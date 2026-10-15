@@ -218,13 +218,29 @@ async def _log_peticiones_lentas(request: Request, call_next):  # noqa: ANN001, 
 
 
 app.add_middleware(CuerpoAcotado, maximo=1024 * 1024, prefijo="/liga")
-# CORS va el último para quedar por fuera y cubrir también el 500 y el 413 que fabrican los otros.
+# CORS va por fuera de los demás para cubrir también el 500 y el 413 que fabrican.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_CABECERAS_SEGURIDAD = {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+}
+
+
+@app.middleware("http")
+async def cabeceras_de_seguridad(request: Request, call_next):
+    """Por fuera de CORS, para que las lleven también los errores y los preflight."""
+    respuesta = await call_next(request)
+    respuesta.headers.update(_CABECERAS_SEGURIDAD)
+    return respuesta
 
 
 def _sin_flotantes_no_finitos(x):  # noqa: ANN001, ANN202 — estructura arbitraria del detalle
