@@ -130,7 +130,7 @@ Solo se ejecutan las reglas del catálogo que la persona mantiene en su estrateg
 - **Equipos de la casa.** Alpha, Omega y Lambda (los tres métodos del sistema) juegan todas las
   jornadas, contra el mismo S&P 500 y con los mismos puntos; la liga solo lee de las salas, nunca escribe en ellas ni toca
   la cartera personal.
-- **Ligas privadas, copiar estrategias y créditos de IA** prepago para las llamadas que cuestan
+- **Ligas privadas, copiar estrategias y créditos de IA** para las llamadas que cuestan
   dinero. El plan Pro y el pase de liga se cobran con Lemon Squeezy, que actúa como vendedor: la
   cuenta muestra el estado de la suscripción y enlaza a su portal. La pasarela sigue en modo de
   prueba hasta el lanzamiento; el administrador también puede conceder Pro.

@@ -7,7 +7,7 @@
 //
 // No es un caché HTTP: vive en memoria de la pestaña del navegador, se vacía al recargar y es
 // intencionadamente tonto (sin TTL, sin reintentos) — con datos que cambian por acción del propio
-// usuario (apuntarse, comprar créditos...) la invalidación explícita (`invalidar`/`mutar`) basta.
+// usuario (apuntarse, gastar créditos...) la invalidación explícita (`invalidar`/`mutar`) basta.
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
