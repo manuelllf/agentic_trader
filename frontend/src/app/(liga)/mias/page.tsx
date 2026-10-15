@@ -73,10 +73,10 @@ export default function Mias() {
   const porEstrategia = Array.isArray(seguimiento)
     ? new Map(seguimiento.map((r) => [r.estrategia_id, r])) : null;
   const rankingPorEstrategia = typeof clasificacion === "object" && clasificacion
-    ? new Map([...clasificacion.filas, ...clasificacion.mias].map((f) => [f.equipo.id, f]))
+    ? new Map([...clasificacion.filas, ...clasificacion.mias].filter((f) => f.equipo.id !== null).map((f) => [f.equipo.id, f]))
     : null;
   const filasJornada = typeof detalleJornada === "object" && detalleJornada
-    ? new Map(detalleJornada.filas.map((f) => [f.equipo.id, f])) : null;
+    ? new Map(detalleJornada.filas.filter((f) => f.equipo.id !== null).map((f) => [f.equipo.id, f])) : null;
 
   async function alApuntar(id: string) {
     setOcupada(id);

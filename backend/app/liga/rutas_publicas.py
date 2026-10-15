@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.liga import estrategias, gestion
+from app.liga.auth import Identidad, identidad_opcional
 from app.liga.comparativa import (
     RentabilidadAcumulada,
     movimientos_clasificacion,
@@ -52,7 +53,7 @@ class EscudoOut(BaseModel):
 
 
 class EquipoOut(BaseModel):
-    id: str
+    id: str | None
     nombre: str
     escudo: EscudoOut
     casa: Literal["alpha", "omega", "lambda"] | None
@@ -163,17 +164,18 @@ _JOIN_EQUIPO = """
 """
 
 
-def _equipo(f) -> EquipoOut:  # noqa: ANN001
+def _equipo(f, con_id: bool) -> EquipoOut:  # noqa: ANN001
+    # El UUID permite abrir y copiar estrategias: solo se muestra con sesión.
     return EquipoOut(
-        id=f.eid, nombre=f.nombre, casa=f.casa_clave, autor=f.alias,
+        id=f.eid if con_id else None, nombre=f.nombre, casa=f.casa_clave, autor=f.alias,
         escudo=EscudoOut(forma=f.forma, dibujo=f.dibujo, color1=f.color1, color2=f.color2,
                          iniciales=f.iniciales))
 
 
-def _fila(posicion: int, f, acumulado: dict | None = None,
+def _fila(posicion: int, f, con_id: bool, acumulado: dict | None = None,
           movimiento: int | None = None) -> FilaClasificacion:  # noqa: ANN001
     return FilaClasificacion(
-        posicion=posicion, equipo=_equipo(f), puntos=f.puntos, jornadas=f.jornadas,
+        posicion=posicion, equipo=_equipo(f, con_id), puntos=f.puntos, jornadas=f.jornadas,
         ganadas=f.ganadas, empatadas=f.empatadas, perdidas=f.perdidas, dif_sp=f.dif_sp,
         acumulado=RentabilidadAcumulada.model_validate(acumulado) if acumulado else None,
         movimiento=movimiento)
@@ -223,7 +225,7 @@ def _filas_vivas(filas: list[FilaJornada], vivo: dict, ids: list) -> list[FilaJo
     return salida
 
 
-def _detalle(db: Session, j: JornadaOut) -> JornadaDetalle:
+def _detalle(db: Session, j: JornadaOut, con_id: bool) -> JornadaDetalle:
     en_juego = j.estado == "formada"
     filas = db.execute(text(f"""
         select i.id as iid, {_EQUIPO}, r.rentabilidad, r.puntos
@@ -237,7 +239,7 @@ def _detalle(db: Session, j: JornadaOut) -> JornadaDetalle:
     total = db.execute(text("select count(*) from liga.inscripciones where jornada_id = :j"),
                        {"j": j.id}).scalar_one()
     sp = j.sp_rentabilidad
-    salida = [FilaJornada(equipo=_equipo(f), rentabilidad=f.rentabilidad, puntos=f.puntos,
+    salida = [FilaJornada(equipo=_equipo(f, con_id), rentabilidad=f.rentabilidad, puntos=f.puntos,
                           dif_sp=(f.rentabilidad - sp) if f.rentabilidad is not None
                           and sp is not None else None)
               for f in filas]
@@ -257,9 +259,11 @@ def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
                   cuantos: int = Query(50, ge=1, le=100),
                   alias: str | None = Query(None, min_length=1, max_length=20),
                   orden: Orden = Query("rentabilidad"),
-                  db: Session = Depends(db_anon)) -> Clasificacion:
+                  db: Session = Depends(db_anon),
+                  ident: Identidad | None = Depends(identidad_opcional)) -> Clasificacion:
     """Por defecto, rentabilidad acumulada de la temporada; con `orden=puntos`, puntos,
     luego diferencia compuesta contra el S&P y fecha de alta."""
+    con_id = ident is not None
     t = _temporada(db, temporada)
     if t is None:
         raise HTTPException(404, "Esa temporada no existe.")
@@ -280,13 +284,13 @@ def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
         mias = []
         if alias:
             mias = [
-                _fila(i + 1, f, acumulados.get(f.eid))
+                _fila(i + 1, f, con_id, acumulados.get(f.eid))
                 for i, f in enumerate(ordenadas)
                 if i >= desde + cuantos and f.alias == alias.strip().lower()
             ][:10]
         return Clasificacion(
             temporada=t, total=total,
-            filas=[_fila(desde + i + 1, f, acumulados.get(f.eid))
+            filas=[_fila(desde + i + 1, f, con_id, acumulados.get(f.eid))
                    for i, f in enumerate(filas)],
             mias=mias)
     filas = db.execute(text(f"""
@@ -310,17 +314,20 @@ def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
     movimientos = movimientos_clasificacion(db, t.id)
     return Clasificacion(
         temporada=t, total=total,
-        filas=[_fila(desde + i + 1, f, acumulados.get(f.eid), movimientos.get(f.eid))
+        filas=[_fila(desde + i + 1, f, con_id, acumulados.get(f.eid), movimientos.get(f.eid))
                for i, f in enumerate(filas)],
-        mias=[_fila(f.pos, f, acumulados.get(f.eid), movimientos.get(f.eid)) for f in fuera])
+        mias=[_fila(f.pos, f, con_id, acumulados.get(f.eid), movimientos.get(f.eid))
+              for f in fuera])
 
 
 @router.get("/jornada/{jornada_id}", response_model=JornadaDetalle)
-def jornada(jornada_id: int, db: Session = Depends(db_anon)) -> JornadaDetalle:
+def jornada(jornada_id: int, db: Session = Depends(db_anon),
+            ident: Identidad | None = Depends(identidad_opcional)) -> JornadaDetalle:
+    con_id = ident is not None
     j = _jornada(db, "id = :j", {"j": jornada_id}, "id")
     if j is None:
         raise HTTPException(404, "Esa jornada no existe.")
-    return _detalle(db, j)
+    return _detalle(db, j, con_id)
 
 
 def _en_juego(db: Session) -> JornadaOut | None:
@@ -334,8 +341,10 @@ def premio_anual() -> PremioOut:
 
 
 @router.get("/portada", response_model=Portada)
-def portada(db: Session = Depends(db_anon)) -> Portada:
+def portada(db: Session = Depends(db_anon),
+            ident: Identidad | None = Depends(identidad_opcional)) -> Portada:
     """Solo datos reales: si aún no hay jornadas, la portada lo dice (plan §17)."""
+    con_id = ident is not None
     cerrada = _jornada(db, "estado = 'cerrada'", {}, "dia_fin desc")
     en_juego = _en_juego(db)
     inscritas = db.execute(text("select count(*) from liga.inscripciones where jornada_id = :j"),
@@ -344,7 +353,7 @@ def portada(db: Session = Depends(db_anon)) -> Portada:
         temporada=_temporada(db, None),
         proxima=_jornada(db, "estado = 'programada'", {}, "dia_inicio"),
         en_juego=en_juego,
-        ultima_cerrada=_detalle(db, cerrada) if cerrada else None,
+        ultima_cerrada=_detalle(db, cerrada, con_id) if cerrada else None,
         registro_abierto=gestion.registro_abierto(),
         apuntadas=estrategias.contar_apuntadas(),
         inscritas_en_juego=inscritas,

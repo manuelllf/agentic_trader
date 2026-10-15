@@ -16,11 +16,11 @@ import { normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
 import {
   BarraPestanas, CabeceraApp, Cargando, Clasificacion as TablaClasificacion, escudoCasa, ErrorLiga,
-  FilaEquipo, FilaJornada, HuecoClasificacion, OrdenLista, Segmentado, Vacio,
+  FilaEquipo, HuecoClasificacion, OrdenLista, Segmentado, Vacio,
 } from "../_ui";
 import {
   getClasificacion, getJornadaPublica, getPortada,
-  type Clasificacion, type EquipoPublico, type FilaClasificacion, type JornadaDetalle,
+  type Clasificacion, type FilaClasificacion, type JornadaDetalle,
   type OrdenClasificacion, type Portada,
 } from "@/lib/liga/api";
 import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
@@ -28,14 +28,9 @@ import { useSesion } from "../_sesion/SesionContext";
 import { useCache } from "@/lib/liga/cache";
 import { precargarFicha } from "@/lib/liga/ficha";
 import { anioDeLiga } from "@/lib/liga/anio";
+import { etiquetaEquipo, VistaJornada } from "./VistaJornada";
 
 type Vista = "tabla" | "jornada";
-
-function etiquetaEquipo(e: EquipoPublico, miAlias: string | null, t: (key: string) => string): string {
-  if (e.casa) return t("league_equipo_casa");
-  if (miAlias && e.autor === miAlias) return t("league_equipo_tuya");
-  return t("league_equipo_comunidad");
-}
 
 const horaLocal = (iso: string, locale: Locale) =>
   new Date(iso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
@@ -131,11 +126,11 @@ function LigaContenido() {
     120000,
   );
 
-  const abrir = (id: string) => router.push(`/ficha/${id}`);
+  const abrir = (id: string | null) => router.push(id ? `/ficha/${id}` : `/entrar?next=${encodeURIComponent("/liga")}`);
 
   const filaDe = (f: FilaClasificacion) => (
     <FilaEquipo
-      key={f.equipo.id}
+      key={f.equipo.id ?? `p${f.posicion}`}
       puesto={f.posicion}
       nombre={f.equipo.nombre}
       escudo={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo}
@@ -151,7 +146,7 @@ function LigaContenido() {
       movimiento={f.movimiento}
       tipo={f.equipo.casa ? "casa" : (yo && f.equipo.autor === yo.alias) ? "mia" : "normal"}
       onClick={() => abrir(f.equipo.id)}
-      alAcercar={() => precargarFicha(f.equipo.id)}
+      alAcercar={f.equipo.id ? () => { if (f.equipo.id) precargarFicha(f.equipo.id); } : undefined}
     />
   );
   const mostrarOrden = clasificacion === undefined || (typeof clasificacion === "object" && clasificacion !== null && clasificacion.filas.length > 0);
@@ -275,51 +270,5 @@ function LigaContenido() {
 
       <BarraPestanas />
     </main>
-  );
-}
-
-function VistaJornada({
-  detalle, miAlias, onAbrir,
-}: { detalle: JornadaDetalle; miAlias: string | null; onAbrir: (id: string) => void }) {
-  const t = useTranslations();
-  const locale = normalizeLocale(useLocale()) ?? "es";
-  const formatDate = (value: string) => fecha(value, new Date(), locale);
-  const formatTime = (value: string) => new Date(value).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
-  const conDatos = detalle.filas.filter((f) => f.rentabilidad !== null);
-  if (conDatos.length === 0) {
-    return (
-      <p className="callout" style={{ marginTop: 20 }}>
-        {t("league_jornada_sin_cierres")}
-      </p>
-    );
-  }
-  const grupos: Record<"G" | "E" | "P", typeof conDatos> = { G: [], E: [], P: [] };
-  for (const f of conDatos) {
-    const dif = f.dif_sp ?? 0;
-    grupos[dif > 0.2 ? "G" : dif >= -0.2 ? "E" : "P"].push(f);
-  }
-  const fila = (f: (typeof conDatos)[number]) => (
-    <FilaJornada key={f.equipo.id} nombre={f.equipo.nombre}
-      escudo={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo} casa={f.equipo.casa}
-      etiqueta={etiquetaEquipo(f.equipo, miAlias, (key) => t(key))}
-      rentabilidad={f.rentabilidad ?? 0} propia={!!miAlias && f.equipo.autor === miAlias}
-      onAbrir={() => onAbrir(f.equipo.id)} />
-  );
-  return (
-    <div className="sec" style={{ marginTop: 20 }}>
-      {detalle.provisional && detalle.hasta && (
-        <p className="meta">
-          {detalle.en_vivo ? t("league_cotizaciones_provisionales") : t("league_ultimo_cierre", { date: formatDate(detalle.hasta) })}
-          {detalle.actualizado && t("league_consultado_a", { time: formatTime(detalle.actualizado) })}
-          {t("league_actualiza_y_cierre")}
-        </p>
-      )}
-      <p className="grp">{t("league_ganando_mes")} <small>{grupos.G.length}</small></p>
-      {grupos.G.map(fila)}
-      <p className="grp">{t("league_empatando")} <small>{t("league_empate_ayuda")}</small></p>
-      {grupos.E.map(fila)}
-      <p className="grp">{t("league_perdiendo")} <small>{grupos.P.length}</small></p>
-      {grupos.P.map(fila)}
-    </div>
   );
 }

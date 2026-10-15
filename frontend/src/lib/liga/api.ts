@@ -335,7 +335,7 @@ export const vincularBorrador = (id: string, revision: number) =>
 export async function llamar<T>(
   ruta: string,
   opciones: RequestInit = {},
-  conSesion = true,
+  conSesion: boolean | "opcional" = true,
   timeout = opciones.method && opciones.method !== "GET" ? 60000 : 15000,
   usuarioEsperado?: string,
 ): Promise<T | string> {
@@ -350,9 +350,11 @@ export async function llamar<T>(
     ...(opciones.headers as Record<string, string> ?? {}) };
   if (conSesion) {
     const sesion = await tokenSesion(ctrl.signal);
-    if (!sesion) return SIN_SESION();
-    if (usuarioEsperado && sesion.uid !== usuarioEsperado) return browserText("system_account_changed");
-    cabeceras.Authorization = `Bearer ${sesion.token}`;
+    if (!sesion && conSesion === true) return SIN_SESION();
+    if (sesion) {
+      if (usuarioEsperado && sesion.uid !== usuarioEsperado) return browserText("system_account_changed");
+      cabeceras.Authorization = `Bearer ${sesion.token}`;
+    }
   }
   if (opciones.body) cabeceras["Content-Type"] = "application/json";
   let res: Response;
@@ -367,7 +369,7 @@ export async function llamar<T>(
     if (typeof navigator === "undefined" || navigator.onLine) avisarError(SIN_RED());
     return SIN_RED();
   }
-  if (res.status === 401 && conSesion) {
+  if (res.status === 401 && cabeceras.Authorization) {
     void sesionCaducada();
     return SIN_SESION();
   }
@@ -632,7 +634,7 @@ export async function convertirFrase(
 export type CasaClave = "alpha" | "omega" | "lambda";
 
 export type EquipoPublico = {
-  id: string;
+  id: string | null;
   nombre: string;
   escudo: Escudo;
   casa: CasaClave | null;
@@ -714,7 +716,7 @@ export type Clasificacion = {
 };
 
 export async function getPortada(): Promise<Portada | string> {
-  return llamar<Portada>("/liga/publico/portada", {}, false);
+  return llamar<Portada>("/liga/publico/portada", {}, "opcional");
 }
 
 export async function getClasificacion(
@@ -726,11 +728,11 @@ export async function getClasificacion(
   q.set("desde", String(opciones.desde ?? 0));
   q.set("cuantos", String(opciones.cuantos ?? 50));
   q.set("orden", opciones.orden ?? "rentabilidad");
-  return llamar<Clasificacion>(`/liga/publico/clasificacion?${q.toString()}`, {}, false);
+  return llamar<Clasificacion>(`/liga/publico/clasificacion?${q.toString()}`, {}, "opcional");
 }
 
 export async function getJornadaPublica(id: number): Promise<JornadaDetalle | string> {
-  return llamar<JornadaDetalle>(`/liga/publico/jornada/${id}`, {}, false);
+  return llamar<JornadaDetalle>(`/liga/publico/jornada/${id}`, {}, "opcional");
 }
 
 // ---- Ligas privadas (Pro), créditos y reportes ---------------------------------------------------
