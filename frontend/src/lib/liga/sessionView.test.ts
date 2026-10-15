@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sessionViewKey } from "./sessionView";
 
 describe("estado del formulario al establecer la sesión", () => {
-  it.each(["/entrar", "/registrar"])("conserva %s al aceptar credenciales", pathname => {
+  it.each(["/entrar", "/registrar", "/confirmar"])("conserva %s al aceptar credenciales", pathname => {
     expect(sessionViewKey(pathname, null)).toBe(sessionViewKey(pathname, "usuario-a"));
   });
   it.each(["/cuenta", "/mias", "/crear"])("separa las cuentas en %s", pathname => {

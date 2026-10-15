@@ -11,6 +11,8 @@ import { BotonGoogle, Separador } from "../_ui/AccesoProveedor";
 import { entrarConAlias } from "@/lib/liga/api";
 import { destinoSeguro, useSupabase } from "@/lib/liga/supabase";
 import { MarcoAcceso } from "../_ui/MarcoAcceso";
+import { mensajeErrorLogin } from "@/lib/liga/login";
+import { solicitarCorreo } from "@/lib/liga/registro";
 import { CampoCodigo } from "../_ui/CampoCodigo";
 
 type Paso = "credenciales" | "codigo" | "recuperar" | "enlace";
@@ -23,6 +25,8 @@ export default function Entrar() {
   const [clave, setClave] = useState("");
   const [codigo, setCodigo] = useState("");
   const [error, setError] = useState("");
+  const [correoSinConfirmar, setCorreoSinConfirmar] = useState(false);
+  const [reenviado, setReenviado] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [destino, setDestino] = useState("/liga");
   const sb = useSupabase();
@@ -44,7 +48,7 @@ export default function Entrar() {
   };
 
   const cambiarModo = (modo: Paso) => {
-    setPaso(modo); setError(""); setEnviado(false);
+    setPaso(modo); setError(""); setEnviado(false); setCorreoSinConfirmar(false); setReenviado(false);
   };
 
   const enviarCorreo = async (e: React.FormEvent) => {
@@ -74,12 +78,13 @@ export default function Entrar() {
     if (!sb || ocupado) return;
     setOcupado(true);
     setError("");
+    setCorreoSinConfirmar(false); setReenviado(false);
     try {
       let fallo: string | null;
       if (email.includes("@")) {
         const { error: e } = await sb.auth.signInWithPassword({ email: email.trim(), password: clave });
-        fallo = !e ? null : e.status === 429 ? t("auth_muchos_intentos")
-          : t("auth_credenciales_incorrectas");
+        setCorreoSinConfirmar(e?.code === "email_not_confirmed");
+        fallo = mensajeErrorLogin(e, t);
       } else {
         fallo = await entrarConAlias(sb, email, clave);
       }
@@ -146,7 +151,9 @@ export default function Entrar() {
                 <span className="lbl">{t("auth_usuario_email")}</span>
                 <input className="inp" type="text" autoComplete="username" required
                        autoCapitalize="none" autoCorrect="off" spellCheck={false}
-                       value={email} onChange={(e) => setEmail(e.target.value)}
+                       value={email} onChange={(e) => {
+                         setEmail(e.target.value); setCorreoSinConfirmar(false); setReenviado(false);
+                       }}
                        placeholder={t("auth_ejemplo_usuario")} />
               </label>
               <CampoClave autoComplete="current-password" required
@@ -154,6 +161,16 @@ export default function Entrar() {
               <button type="button" className="acc-olvido" disabled={ocupado}
                 onClick={() => cambiarModo("recuperar")}>{t("auth_olvide_contrasena")}</button>
               {error && <p className="aviso" role="alert">{error}</p>}
+              {correoSinConfirmar && email.includes("@") && <Boton variante="secundario" ancho="completo"
+                disabled={ocupado} onClick={async () => {
+                  if (ocupado) return;
+                  setOcupado(true); setError(""); setReenviado(false);
+                  const fallo = await solicitarCorreo("/reenviar", { email });
+                  setOcupado(false);
+                  if (fallo) setError(fallo);
+                  else setReenviado(true);
+                }}>{t("auth_reenviar_confirmacion")}</Boton>}
+              {reenviado && <p role="status">{t("auth_correo_enviado_generico")}</p>}
               <Boton type="submit" variante="principal" ancho="completo"
                      disabled={ocupado || !sb || !email || !clave}>
                 {ocupado ? t("auth_entrando") : t("auth_entrar")}

@@ -71,7 +71,6 @@ export default function Registrar() {
       {enviado ? <>
         <h2>{t("auth_cuenta_creada")}</h2>
         <p>{t("auth_cuenta_creada_entrada")}</p>
-        <Link href="/entrar" className="btn">{t("auth_entrar")}</Link>
         <Boton variante="secundario" ancho="completo" disabled={ocupado || !acceso?.correo_disponible}
           onClick={async () => {
             if (ocupado || !acceso?.correo_disponible) return;
