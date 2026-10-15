@@ -26,9 +26,8 @@ export default function Confirmar() {
     // El enlace solo vale una vez: no se procesa de nuevo si el efecto se repite.
     iniciado.current = true;
     if (!sb) { setEstado("invalido"); return; }
-    void confirmarAlta(sb).then(async (resultado) => {
-      if (resultado === "con-sesion") window.location.replace(await destinoConAvisos("confirmar", DESTINO));
-      else setEstado(resultado === "confirmada" ? "confirmada" : "invalido");
+    void confirmarAlta(sb).then((resultado) => {
+      setEstado(resultado === "confirmada" || resultado === "con-sesion" ? "confirmada" : "invalido");
     });
   }, [sb]);
 

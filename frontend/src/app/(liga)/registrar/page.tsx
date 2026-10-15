@@ -60,7 +60,7 @@ export default function Registrar() {
       else window.location.assign("/liga");
     }
   }
-  return <MarcoAcceso pestana="crear">
+  return <MarcoAcceso pestana="crear" sinCambio={enviado}>
       {!enviado && <>
         {GOOGLE_ACTIVO && <BotonGoogle texto={t("auth_continuar_google")} disabled={ocupado || !sb}
           onClick={() => void entrarProveedor("google")} />}

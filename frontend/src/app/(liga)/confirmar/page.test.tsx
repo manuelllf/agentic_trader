@@ -109,13 +109,17 @@ describe("confirmar", () => {
     expect(el.textContent).not.toContain("Cuenta confirmada");
   });
 
-  it("si ya hay sesión entra directamente, sin enseñar el error", async () => {
+  it("con-sesion muestra Cuenta confirmada y no redirige", async () => {
     registro.confirmarAlta.mockResolvedValue("con-sesion");
     avisos.destinoConAvisos.mockResolvedValue("/liga");
     const el = await montar();
-    expect(navegacion.replace).toHaveBeenCalledExactlyOnceWith("/liga");
+    expect(el.querySelector("h1")?.textContent).toBe("Cuenta confirmada");
+    expect(el.querySelector('[role="status"]')?.textContent).toBe("Correo confirmado. Tu cuenta está lista.");
+    expect(botones(el)).toEqual(["Entrar"]);
+    expect(navegacion.replace).not.toHaveBeenCalled();
+    expect(navegacion.assign).not.toHaveBeenCalled();
+    expect(avisos.destinoConAvisos).not.toHaveBeenCalled();
     expect(el.querySelector('[role="alert"]')).toBeNull();
-    expect(el.textContent).not.toContain("Cuenta confirmada");
   });
 
   it("sin cuentas disponibles no intenta confirmar y avisa del enlace", async () => {

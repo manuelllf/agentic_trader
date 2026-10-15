@@ -16,12 +16,12 @@ afterEach(() => {
   contenedor.remove();
 });
 
-function montar(pestana: "entrar" | "crear" = "entrar", modo: "completo" | "codigo" = "completo") {
+function montar(pestana: "entrar" | "crear" = "entrar", modo: "completo" | "codigo" = "completo", sinCambio = false) {
   contenedor = document.createElement("div");
   document.body.append(contenedor);
   raiz = createRoot(contenedor);
   act(() => raiz.render(<NextIntlClientProvider locale="es" messages={mensajes}>
-    <MarcoAcceso pestana={pestana} modo={modo}><form /></MarcoAcceso>
+    <MarcoAcceso pestana={pestana} modo={modo} sinCambio={sinCambio}><form /></MarcoAcceso>
   </NextIntlClientProvider>));
 }
 
@@ -69,6 +69,15 @@ describe("MarcoAcceso", () => {
     expect(cambio?.querySelector("a")?.getAttribute("href")).toBe("/entrar");
     expect(contenedor.querySelector('nav a[href="/registrar"]')?.getAttribute("aria-current")).toBe("page");
     expect(contenedor.querySelector('nav a[href="/entrar"]')?.hasAttribute("aria-current")).toBe(false);
+  });
+  it("con sinCambio no muestra las pestañas ni el enlace de cambio", () => {
+    montar("crear", "completo", true);
+    expect(contenedor.querySelector(".acc-seg")).toBeNull();
+    expect(contenedor.querySelector(".acc-cambio")).toBeNull();
+    expect(contenedor.querySelector('a[href="/entrar"]')).toBeNull();
+    expect(contenedor.querySelector('a[href="/registrar"]')).toBeNull();
+    expect(contenedor.querySelector("h1")?.textContent).toBe(mensajes.auth_crear_cuenta);
+    expect(contenedor.querySelector("form")).not.toBeNull();
   });
   it("el modo código omite pestañas y enlaces y muestra su pie", () => {
     montar("entrar", "codigo");
