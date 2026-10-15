@@ -39,6 +39,10 @@ const PESTANAS = [
       </>
     ),
   },
+  {
+    href: "/cuenta", clave: "cuenta",
+    icono: <><circle cx="12" cy="8" r="3.2" /><path d="M5 20c0-4 3.1-6 7-6s7 2 7 6" /></>,
+  },
 ] as const;
 
 export function BarraPestanas() {
@@ -77,10 +81,12 @@ export function BarraPestanas() {
         const activa = p.clave === "crear" ? ruta?.startsWith("/crear")
           : p.clave === "mias" ? ruta?.startsWith("/mias")
           : p.clave === "privadas" ? ruta?.startsWith("/privadas")
+          : p.clave === "cuenta" ? ruta?.startsWith("/cuenta")
           : p.clave === "liga" ? (ruta === "/liga" || ruta?.startsWith("/ficha"))
           : false;
         return (
           <Link key={p.clave} href={p.href} prefetch aria-current={activa ? "page" : undefined}
+            className={p.clave === "cuenta" ? "solo-escritorio" : undefined}
             onClick={(event) => {
               if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey
                 && !event.altKey && event.currentTarget.querySelector('[aria-busy="true"]')) {

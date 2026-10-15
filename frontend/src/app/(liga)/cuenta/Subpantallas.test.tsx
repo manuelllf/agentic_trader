@@ -26,6 +26,7 @@ vi.mock("../_sesion/SesionContext", () => ({
   },
 }));
 vi.mock("@/i18n/LanguageSelector", () => ({ LanguageSelector: () => null }));
+vi.mock("../_ui/BarraPestanas", () => ({ BarraPestanas: () => null }));
 vi.mock("next/link", () => ({ default: (props: ComponentProps<"a">) => createElement("a", props) }));
 vi.mock("next-intl", async (importOriginal) => {
   const cuenta = (await import("../../../../messages/es/account.json")).default as Record<string, string>;

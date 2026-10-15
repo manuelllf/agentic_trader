@@ -7,6 +7,7 @@ import { LanguageSelector } from "@/i18n/LanguageSelector";
 import { useSesion } from "../_sesion/SesionContext";
 import { Cargando } from "../_ui/Cargando";
 import { ErrorLiga } from "../_ui/ErrorLiga";
+import { BarraPestanas } from "../_ui";
 import { Marca } from "../_ui/Marca";
 
 export function ChevronCuenta({ volver = false }: { volver?: boolean }) {
@@ -25,7 +26,8 @@ export function EstadoCuenta({ children }: { children: ReactNode }) {
 
 export function MarcoCuenta({ titulo, children }: { titulo: string; children: ReactNode }) {
   const t = useTranslations();
-  return <main className="sencilla">
+  return <main className="sencilla con-barra">
+    <BarraPestanas />
     <header className="sencilla-top">
       <Link href="/" className="wordmark"><Marca /></Link><LanguageSelector />
     </header>

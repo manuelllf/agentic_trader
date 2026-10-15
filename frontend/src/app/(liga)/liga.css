@@ -122,6 +122,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   width: 100%; max-width: var(--app-width); margin: 0 auto;
   padding: var(--page-top) var(--page-gutter) 28px;
 }
+.lg .sencilla.con-barra { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
 .lg .sencilla-top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; min-height: 44px; }
 .lg .sencilla-cuerpo {
   flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px;
@@ -325,6 +326,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   color: var(--muted); text-align: center; text-decoration: none; overflow-wrap: anywhere; cursor: pointer;
 }
 .lg .tabbar svg { flex: 0 0 24px; width: 24px; height: 24px; }
+.lg .tabbar .solo-escritorio { display: none; }
 .lg .tab-contenido { display: contents; }
 .lg .tab-texto { position: relative; }
 .lg .tab-pendiente { position: absolute; inset-inline: 0; bottom: -5px; height: 2px; background: var(--accent); border-radius: 1px; }
@@ -332,7 +334,25 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 
 @media (min-width: 880px) {
   .lg { --page-top: max(28px, env(safe-area-inset-top)); }
-  .lg .tabbar button, .lg .tabbar a { flex-direction: row; gap: 10px; font-size: 15px; }
+  .lg .tabbar {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 220px; transform: none; max-width: none;
+    display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 20px 14px;
+    border-top: 0; border-right: 1px solid var(--line); background: var(--surface);
+  }
+  .lg .tabbar button, .lg .tabbar a {
+    flex-direction: row; justify-content: flex-start; gap: 10px; padding: 10px;
+    border-radius: 10px; min-height: 0; font-size: 15px;
+  }
+  .lg .tabbar .solo-escritorio { display: flex; }
+  .lg .sencilla.con-barra {
+    margin-left: 220px; margin-right: auto; max-width: 680px; width: auto;
+    padding-left: 40px; padding-right: 40px; padding-bottom: 40px;
+  }
+  .lg .sencilla.con-barra .sencilla-cuerpo.arriba > .ajustes { max-width: none; width: 100%; }
+  .lg .scroll {
+    margin-left: 220px; margin-right: auto; max-width: 680px; width: auto;
+    padding-left: 40px; padding-right: 40px; padding-bottom: 40px;
+  }
 }
 
 /* ---- Pantalla y secciones genéricas ---------------------------------------------------------- */
@@ -1129,12 +1149,10 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .cf-pie { margin-top: 22px; font-size: 14px; color: var(--muted); }
 
 @media (min-width: 880px) {
-  .lg .cf .cf-cuerpo { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); column-gap: 48px; align-items: start; }
-  .lg .cf-eyebrow, .lg .cf-cuerpo h1, .lg .cf-lead, .lg .cf-cta, .lg .cf-pie { grid-column: 1 / -1; }
+  .lg .cf .cf-cuerpo { width: 100%; max-width: 680px; margin-left: 0; margin-right: auto; }
   .lg .cf-eyebrow { margin-top: 36px; }
   .lg .cf-cuerpo h1 { max-width: 25ch; line-height: 1.1; }
-  .lg .cf-lead { max-width: 70ch; font-size: 19px; }
-  .lg .cf-pasos { grid-row: span 3; }
+  .lg .cf-lead { font-size: 19px; }
   .lg .cf-paso { padding-bottom: 32px; }
   .lg .cf-dos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lg .cf-cta { grid-template-columns: repeat(2, max-content); }
@@ -1215,7 +1233,7 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .info-tip button::before { inset: -15px; }
 @media (min-width: 880px) {
   .lg { --nav-height: 52px; }
-  .lg .tabbar button, .lg .tabbar a { font-size: 14px; font-weight: 600; }
+  .lg .tabbar button, .lg .tabbar a { font-weight: 600; }
 }
 @media (hover: hover) and (pointer: fine) and (min-width: 880px) {
   .lg { --control-height: 38px; --control-font: 14px; }
@@ -1438,6 +1456,9 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .cuenta-plan .btn { min-height: 44px; white-space: normal; }
 
 .lg .sencilla-cuerpo.arriba > .ajustes { width: 100%; max-width: 28rem; }
+@media (min-width: 880px) {
+  .lg .sencilla-cuerpo.arriba > .ajustes { max-width: 680px; width: 100%; }
+}
 .lg .ajustes .ajustes-grupo { margin-top: 24px; }
 .lg .ajustes .ajustes-etq { margin: 0 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .lg .ajustes .ajustes-lista { list-style: none; padding: 0; margin: 0; border-bottom: 1px solid var(--line); }

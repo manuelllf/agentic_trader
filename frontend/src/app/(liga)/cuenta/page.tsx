@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { LanguageSelector } from "@/i18n/LanguageSelector";
 import { useSesionRequerida } from "../_sesion/SesionContext";
+import { BarraPestanas } from "../_ui";
 import { Marca } from "../_ui/Marca";
 import { CuentaHub } from "./CuentaHub";
 import { EstadoCuenta } from "./MarcoCuenta";
@@ -11,7 +12,8 @@ import { EstadoCuenta } from "./MarcoCuenta";
 export default function Cuenta() {
   const t = useTranslations();
   const { yo, email } = useSesionRequerida("/cuenta");
-  return <main className="sencilla">
+  return <main className="sencilla con-barra">
+    <BarraPestanas />
     <header className="sencilla-top">
       <Link href="/" className="wordmark"><Marca /></Link><LanguageSelector />
     </header>

@@ -10,6 +10,7 @@
   "common_privadas": "Private",
   "common_crear": "Create",
   "common_mias": "Mine",
+  "common_cuenta": "Account",
   "common_ranking_posicion_aria": "Position {count}",
   "common_ranking_escudo": "Crest for {name}",
   "common_ranking_ganada": "Won",
