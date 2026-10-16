@@ -51,7 +51,7 @@ function Premio() {
   const cierrePendiente = estado?.temporadas.filter((x) => x.estado === "cerrada" && !x.calculado) ?? [];
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
+    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
       <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_prize_back")}</Link>
       <h1 className="mt-3 text-[19px] text-white" style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>
         {t("admin_prize_title")}
@@ -99,7 +99,7 @@ function Premio() {
               </p>
               <ul className="mt-3 border-t" style={{ borderColor: "#303030" }}>
                 {estado.filas.map((f) => (
-                  <li key={f.cuenta} className="border-b py-2" style={{ borderColor: "#303030" }}>
+                  <li key={f.cuenta} className="admin-par border-b py-2" style={{ borderColor: "#303030" }}>
                     <p className="text-white">
                       {f.puesto ? `${f.puesto}.º · ` : ""}{f.alias}
                       {f.importe && <span className="ml-2 font-bold" style={{ color: "#9be0b3" }}>{euros(f.importe)}</span>}

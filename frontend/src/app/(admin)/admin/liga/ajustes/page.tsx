@@ -146,7 +146,7 @@ function Ajustes() {
   };
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
+    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
       <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_settings_back")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_settings_title")}</h1>
@@ -181,7 +181,7 @@ function Ajustes() {
                   const errorFila = erroresFila[a.clave];
                   const encendido = a.efectivo === true;
                   return (
-                    <li key={a.clave} className="border-b py-3" style={{ borderColor: "#303030" }}>
+                    <li key={a.clave} className="admin-fila border-b py-3" style={{ borderColor: "#303030" }}>
                       <p className="text-white">{ajustesLabel(a).title}</p>
                       <p className="mt-0.5 text-[11.5px]" style={{ color: "#898781" }}>{ajustesLabel(a).help}</p>
 

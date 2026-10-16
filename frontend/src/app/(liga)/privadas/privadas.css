@@ -53,3 +53,34 @@
 @media (min-width: 64rem) { .lg .priv-contenido { grid-template-columns: minmax(0, 1fr) minmax(260px, .42fr); gap: 28px; } }
 @media (hover: hover) and (pointer: fine) { .lg .priv-liga:hover { background: var(--surface2); transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { .lg .priv-liga { transition: none; } .lg .priv-liga:hover { transform: none; } }
+
+@media (min-width: 880px) {
+  .lg .scroll.privadas:not(.privada-detalle) {
+    display: grid; grid-template-columns: minmax(0, 600px) minmax(0, 400px);
+    justify-content: center; align-content: start; align-items: start;
+  }
+  .lg .scroll.privadas:not(.privada-detalle) > :not(.tabbar) { grid-column: 1 / -1; }
+  .lg .scroll.privadas:not(.privada-detalle) > .cab { grid-column: 1; grid-row: 1; align-self: center; }
+  .lg .scroll.privadas:not(.privada-detalle) > .priv-barra {
+    grid-column: 2; grid-row: 1; justify-content: flex-end; margin-top: 0;
+  }
+  .lg .scroll.privadas:not(.privada-detalle) > .meta { grid-row: 2; max-width: var(--ancho-lectura); margin-top: 12px; }
+  .lg .scroll.privadas:not(.privada-detalle) > .fine { grid-row: 3; max-width: var(--ancho-lectura); font-size: 14px; color: var(--muted); margin-top: 12px; }
+  .lg .priv-lista { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lg .priv-liga { position: relative; padding-right: 36px; }
+  .lg .priv-liga::after { content: "→"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); }
+  .lg .priv-barra .btn { min-width: 0; flex: 0 1 auto; }
+  .lg .scroll.privada-detalle .priv-contenido { grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; }
+  .lg .privada-detalle .priv-gestion > .miembros-escritorio[hidden] { display: block; }
+  .lg .privada-detalle .priv-panel::details-content { content-visibility: visible; display: block; }
+  .lg .privada-detalle .priv-panel { padding: 0; border-radius: 0; background: transparent; }
+  .lg .privada-detalle .priv-codigo { font-family: inherit; }
+  .lg .privada-detalle .priv-clasificacion .ranking-cabecera,
+  .lg .privada-detalle .priv-clasificacion .tr.financiero,
+  .lg .privada-detalle .priv-clasificacion .jr { grid-template-columns: 88px minmax(0, 1fr) 160px 80px 18px; gap: 6px; padding-inline: 0; }
+}
+
+@media (min-width: 880px) and (max-width: 1199px) {
+  .lg .scroll.privada-detalle .priv-contenido { grid-template-columns: minmax(0, 1fr); }
+  .lg .privada-detalle .priv-gestion { width: 300px; max-width: 100%; }
+}

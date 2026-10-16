@@ -1,3 +1,6 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 // `.tbl-h` + filas de la maqueta (DESIGN.md §6 y §7). Es solo el armazón: las filas
@@ -8,8 +11,16 @@ export interface ClasificacionProps {
 }
 
 export function Clasificacion({ children }: ClasificacionProps) {
+  const t = useTranslations();
   return (
     <div className="ranking-lista">
+      <div className="ranking-cabecera" hidden aria-hidden="true">
+        <span />
+        <span>{t("strategies_strategy")}</span>
+        <span>{t("league_orden_rentabilidad")}</span>
+        <span>{t("common_ranking_puntos_balance")}</span>
+        <span />
+      </div>
       {children}
     </div>
   );

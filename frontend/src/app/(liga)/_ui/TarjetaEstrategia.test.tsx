@@ -59,3 +59,9 @@ describe("TarjetaEstrategia", () => {
     expect(html()).toMatch(/<button[^>]*aria-label="Ajustes de estrategia"/);
   });
 });
+
+it("conserva la diferencia m?vil y a?ade su referencia solo para escritorio", () => {
+  const salida = html({ mes: { etiqueta: "Este mes", valor: "+3,2 %", clase: "up", dif: "+1,4 pp", referencia: "+1,4 pp sobre el S&P" } });
+  expect(salida).toContain('<small class="num up">+1,4 pp</small>');
+  expect(salida).toContain('<small class="mias-referencia num up" hidden="" style="display:none">+1,4 pp sobre el S&amp;P</small>');
+});

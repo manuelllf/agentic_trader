@@ -63,7 +63,7 @@ export default function PrivadaDetalle() {
   const abrir = (m: MiembroLiga) => !!m.estrategia && (m.es_yo || m.estrategia.visibilidad === "publicada");
   const ir = (m: MiembroLiga) => () => { if (m.estrategia) router.push(`/ficha/${m.estrategia.id}`); };
 
-  return <main className="scroll privadas">
+  return <main className="scroll privadas privada-detalle">
     <Link href="/privadas" className="back">← {t("private_leagues_back")}</Link>
     {estado === "cargando" || cargando ? <Cargando filas={4} />
       : fallo || typeof liga === "string" ? <ErrorLiga titulo={t("private_leagues_detail_error")} mensaje={typeof liga === "string" ? liga : t("private_leagues_retry_later")} accion={{ texto: t("private_leagues_retry"), onClick: cargar }} />
@@ -133,6 +133,7 @@ export default function PrivadaDetalle() {
           </section>
 
           <aside className="priv-gestion">
+            <p className="miembros-escritorio meta" hidden>{t("private_leagues_people", { count: liga.n_miembros })}</p>
             <details className="priv-panel"><summary>{t("private_leagues_invite_and_members")}</summary>
               {liga.es_dueno && liga.codigo && <div className="priv-invitar">
                 <p>{t("private_leagues_share_code_note")}</p>

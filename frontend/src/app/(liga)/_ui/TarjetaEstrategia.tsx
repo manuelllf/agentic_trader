@@ -12,7 +12,7 @@ export interface TarjetaEstrategiaProps {
   puesto?: number;
   movimiento?: number;
   puestoEtiqueta?: string;
-  mes?: { etiqueta: string; valor: string; clase: "up" | "dn" | "fl" | ""; dif?: string } | null;
+  mes?: { etiqueta: string; valor: string; clase: "up" | "dn" | "fl" | ""; dif?: string; referencia?: string } | null;
   abrible: boolean;
   ajustesAbiertos: boolean;
   ajustesEtiqueta: string;
@@ -45,6 +45,7 @@ export function TarjetaEstrategia({ id, nombre, escudo, escudoEtiqueta, estado, 
         {mes && (
           <span className="mias-res">
             <u>{mes.etiqueta}</u><b className={`num ${mes.clase}`}>{mes.valor}</b>{mes.dif && <small className={`num ${mes.clase}`}>{mes.dif}</small>}
+            {mes.referencia && <small className={`mias-referencia num ${mes.clase}`} hidden style={{ display: "none" }}>{mes.referencia}</small>}
           </span>
         )}
         <button type="button" className="mias-mas" aria-expanded={ajustesAbiertos} aria-label={ajustesEtiqueta} onClick={onAjustes}>

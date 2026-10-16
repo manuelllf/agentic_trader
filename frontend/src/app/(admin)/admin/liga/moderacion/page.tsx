@@ -48,7 +48,7 @@ function Moderacion() {
   };
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
+    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
       <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_vennett")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_moderation_title")}</h1>
@@ -67,7 +67,7 @@ function Moderacion() {
         )}
         <ul className="mt-4 border-t" style={{ borderColor: "#303030" }}>
           {lista.filas.map((r) => (
-            <li key={r.id} className="border-b py-3" style={{ borderColor: "#303030" }}>
+            <li key={r.id} className="admin-fila border-b py-3" style={{ borderColor: "#303030" }}>
               <p style={{ color: "#898781" }}>{labels[r.tipo]}</p>
               <p className="mt-1 break-words text-[15px] text-white">
                 {r.contenido ?? t("admin_moderation_missing")}

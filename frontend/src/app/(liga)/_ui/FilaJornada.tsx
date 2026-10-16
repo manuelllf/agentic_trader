@@ -25,11 +25,13 @@ export interface FilaJornadaProps {
   /** Sin esto la fila es informativa: no se pulsa ni lleva flecha. */
   onAbrir?: () => void;
   propia?: boolean;
+  puestoEscritorio?: number;
+  diferenciaEscritorio?: number | null;
 }
 
 /** Fila de «Este mes»: escudo, nombre y resultado de la jornada, la misma en Liga y en Privadas. */
 export function FilaJornada({
-  nombre, escudo, casa, etiqueta, rentabilidad, diferencia, puesto, onAbrir, propia,
+  nombre, escudo, casa, etiqueta, rentabilidad, diferencia, puesto, onAbrir, propia, puestoEscritorio, diferenciaEscritorio,
 }: FilaJornadaProps) {
   const t = useTranslations();
   const locale = useLocale() === "en" ? "en" : "es";
@@ -40,6 +42,7 @@ export function FilaJornada({
       aria-busy={pendiente || undefined}
       onClick={() => { if (onAbrir && !pendiente) navegar(onAbrir); }}>
       <span className="name">
+        {puesto == null && puestoEscritorio != null && <span className="puesto-escritorio pos num" hidden style={{ display: "none" }}>{puestoEscritorio}</span>}
         {puesto != null && <span className="pos num">{puesto}</span>}
         <Escudo valor={escudo} casa={casa} baldosa tamano={28} etiqueta={t("league_escudo_de", { name: nombre })} />
         <span className="nm">
@@ -52,6 +55,7 @@ export function FilaJornada({
         {diferencia != null && (
           <span className="vsp num">{fraseVsIndice(t, diferencia, locale)}</span>
         )}
+        {diferencia == null && diferenciaEscritorio != null && <span className="diferencia-escritorio vsp num" hidden>{fraseVsIndice(t, diferenciaEscritorio, locale)}</span>}
       </span>
       {onAbrir
         ? (pendiente ? <span className="chev" aria-label={t("league_abriendo", { name: nombre })}>···</span> : <Chevron />)

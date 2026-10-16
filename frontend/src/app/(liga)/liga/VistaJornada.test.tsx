@@ -75,3 +75,9 @@ describe("VistaJornada", () => {
     expect(salida).not.toContain("Perdiendo");
   });
 });
+
+it("reserva puesto y referencia del ?ndice solo para escritorio", () => {
+  const salida = html([fila("a", 1.5)]);
+  expect(salida).toContain('puesto-escritorio pos num" hidden="" style="display:none"');
+  expect(salida).toContain('diferencia-escritorio vsp num" hidden=""');
+});

@@ -120,8 +120,28 @@ export function FichaContenido({ id }: { id: string }) {
     setAviso(typeof r === "string" ? r : t("strategies_report_thanks"));
   }
 
+  const reglasFicha = typeof ficha === "object" && ficha?.receta ? (
+    <div className="rules">
+      {ficha.receta.reglas.length === 0 && <p className="meta">{t("strategies_no_extra_filters")}</p>}
+      {ficha.receta.reglas.map((r, i) => (
+        <div className="rulec" key={i}>
+          <div>
+            <b>{typeof catalogo === "object" ? catalogo.reglas.find((d) => d.clave === r.clave)?.titulo ?? r.clave : r.clave}</b>
+            {Object.entries(r.params).map(([clave, valor]) => {
+              const parametro = typeof catalogo === "object"
+                ? catalogo.reglas.find((d) => d.clave === r.clave)?.parametros.find((p) => p.nombre === clave) : undefined;
+              const texto = Array.isArray(valor) ? valor.map((v) => typeof catalogo === "object"
+                ? catalogo.sectores[String(v)] ?? String(v) : String(v)).join(", ") : String(valor);
+              return <p className="fine" key={clave}>{parametro?.etiqueta ?? clave}: {texto}</p>;
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : null;
+
   return (
-    <main className="scroll">
+    <main className="scroll ficha-escritorio">
       <Link href="/liga" className="back" style={{ marginTop: 4 }} onClick={(evento) => {
         if (evento.ctrlKey || evento.metaKey || evento.shiftKey || evento.altKey) return;
         if (window.history.length > 1) { evento.preventDefault(); router.back(); }
@@ -149,6 +169,8 @@ export function FichaContenido({ id }: { id: string }) {
             </div>
           </div>
 
+          <div className="ficha-cuerpo">
+          <div className="ficha-principal">
           {ficha.mercado && <section className="ficha-marcador" aria-label={t("strategies_portfolio_provisional_result")}>
             <div><small>{t("strategies_portfolio_month")}</small><b className={ficha.mercado.rentabilidad == null ? "" : claseSigno(ficha.mercado.rentabilidad)}>{ficha.mercado.rentabilidad == null ? "—" : percent(ficha.mercado.rentabilidad)}</b></div>
             <div><small>{t("strategies_sp_same_period")}</small><b>{ficha.mercado.sp500 == null ? "—" : percent(ficha.mercado.sp500)}</b></div>
@@ -184,23 +206,7 @@ export function FichaContenido({ id }: { id: string }) {
               {metodo === "reglas" && <div className="sec">
                 <div className="sec-t">{t("strategies_its_rules")}</div>
                 <p className="fine">{t("strategies_saved_method_note")}</p>
-                <div className="rules">
-                  {ficha.receta.reglas.length === 0 && <p className="meta">{t("strategies_no_extra_filters")}</p>}
-                  {ficha.receta.reglas.map((r, i) => (
-                    <div className="rulec" key={i}>
-                      <div>
-                        <b>{typeof catalogo === "object" ? catalogo.reglas.find((d) => d.clave === r.clave)?.titulo ?? r.clave : r.clave}</b>
-                        {Object.entries(r.params).map(([clave, valor]) => {
-                          const parametro = typeof catalogo === "object"
-                            ? catalogo.reglas.find((d) => d.clave === r.clave)?.parametros.find((p) => p.nombre === clave) : undefined;
-                          const texto = Array.isArray(valor) ? valor.map((v) => typeof catalogo === "object"
-                            ? catalogo.sectores[String(v)] ?? String(v) : String(v)).join(", ") : String(valor);
-                          return <p className="fine" key={clave}>{parametro?.etiqueta ?? clave}: {texto}</p>;
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                {reglasFicha}
               </div>}
               {metodo === "reparto" && <div className="sec">
                 <div className="sec-t">{t("strategies_build_and_review")}</div>
@@ -269,6 +275,12 @@ export function FichaContenido({ id }: { id: string }) {
 
           {aviso && <p className="aviso" role="alert" style={{ marginTop: 16 }}>{aviso}</p>}
 
+          </div>
+          <aside className="ficha-lateral">
+            {ficha.receta && <section className="ficha-reglas" hidden>
+              <h3 className="sec-t">{t("strategies_its_rules")}</h3>
+              {reglasFicha}
+            </section>}
           <div className="cta">
             {ficha.es_dueno ? (
               <Link href={`/crear/${ficha.id}`} className="btn pri wide">{t("strategies_edit")}</Link>
@@ -290,6 +302,8 @@ export function FichaContenido({ id }: { id: string }) {
                 <Boton variante="discreto" onClick={alReportar} disabled={ocupado}>{t("strategies_report")}</Boton>
               </>
             )}
+          </div>
+          </aside>
           </div>
         </>
       )}

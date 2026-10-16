@@ -5,7 +5,7 @@
 
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Boton, Cargando } from "../../_ui";
 import { CampoCodigo } from "../../_ui/CampoCodigo";
 import { MarcoAcceso } from "../../_ui/MarcoAcceso";
@@ -20,6 +20,7 @@ type Estado =
 export default function Verificacion() {
   const t = useTranslations();
   const sb = useSupabase();
+  const alta = useRef({ cliente: sb, iniciada: false });
   const [estado, setEstado] = useState<Estado>({ paso: "cargando" });
   const [codigo, setCodigo] = useState("");
   const [error, setError] = useState("");
@@ -29,7 +30,10 @@ export default function Verificacion() {
   useEffect(() => {
     const next = destinoSeguro(new URLSearchParams(window.location.search).get("next"));
     setDestino(next);
-    if (!sb) return;
+    if (alta.current.cliente !== sb) alta.current = { cliente: sb, iniciada: false };
+    // StrictMode repite el efecto mientras el primer alta sigue en marcha.
+    if (!sb || alta.current.iniciada) return;
+    alta.current.iniciada = true;
     (async () => {
       const { data: sesion } = await sb.auth.getSession();
       if (!sesion.session) {
@@ -52,7 +56,7 @@ export default function Verificacion() {
         if (f.status === "unverified") await sb.auth.mfa.unenroll({ factorId: f.id });
       }
       const { data, error: fallo } = await sb.auth.mfa.enroll({
-        factorType: "totp", friendlyName: "Vennett",
+        factorType: "totp", friendlyName: `Vennett ${crypto.randomUUID()}`,
       });
       if (fallo || !data) {
         setError("account_verificacion_preparar_fallo");

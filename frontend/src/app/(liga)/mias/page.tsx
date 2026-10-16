@@ -14,7 +14,7 @@ import {
 } from "@/lib/liga/api";
 import { mutar, useCache } from "@/lib/liga/cache";
 import { precargarFicha } from "@/lib/liga/ficha";
-import { claseSigno, porcentaje, signo } from "@/lib/liga/format";
+import { claseSigno, fraseVsIndice, porcentaje, signo } from "@/lib/liga/format";
 import { getSeguimiento, type SeguimientoEstrategia }
   from "@/lib/liga/seguimiento";
 import { useSesionRequerida } from "../_sesion/SesionContext";
@@ -150,10 +150,12 @@ export default function Mias() {
 
   return (
     <main className="scroll">
+      <div className="mias-encabezado">
       <CabeceraApp titulo={t("strategies_mine_title")} />
       <div className="mias-cabecera">
         <span className="meta">{Array.isArray(estrategias) ? t("strategies_count", { count: estrategias.length }) : ""}{conNovedades > 0 && ` · ${t("strategies_with_news", { count: conNovedades })}`}</span>
           <Link href="/crear" className="btn pri small">{t("strategies_create")}</Link>
+      </div>
       </div>
 
       {estado === "cargando" || cargando ? (
@@ -191,7 +193,8 @@ export default function Mias() {
                 mes={(e.estado === "jugando" || acumulado) ? { etiqueta: t("strategies_this_month"),
                   valor: actual?.rentabilidad != null ? percent(actual.rentabilidad) : (e.estado === "jugando" && cargandoMes ? "…" : t("strategies_no_data")),
                   clase: actual?.rentabilidad != null ? claseSigno(actual.rentabilidad) : "",
-                  dif: actual?.dif_sp != null ? `${points(actual.dif_sp)} pp` : undefined } : null}
+                  dif: actual?.dif_sp != null ? `${points(actual.dif_sp)} pp` : undefined,
+                  referencia: actual?.dif_sp != null ? fraseVsIndice(t, actual.dif_sp, locale) : undefined } : null}
                 abrible={ajustes !== e.id} ajustesAbiertos={ajustes === e.id} ajustesEtiqueta={t("strategies_settings")}
                 ocupada={pendiente} onAjustes={() => setAjustes(ajustes === e.id ? null : e.id)} alAcercar={() => precargarFicha(e.id)}
                 lineas={<>

@@ -174,7 +174,6 @@
   "builder_live_cash": "{count, plural, one {Un hueco en caja} other {# huecos en caja}}",
   "builder_live_close": "Cerrar cartera",
   "builder_live_changed": "Cartera actualizada.",
-  "builder_live_bar": "{selected} empresas · de {passed} que cumplen",
   "builder_live_continue": "Continuar",
   "builder_idea_titulo": "¿Qué empresas buscas?",
   "builder_idea_palabras": "Cuéntalo con tus palabras",

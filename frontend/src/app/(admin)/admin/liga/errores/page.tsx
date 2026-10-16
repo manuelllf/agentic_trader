@@ -48,7 +48,7 @@ function Errores() {
   };
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
+    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
       <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_vennett")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_errors_title")}</h1>
@@ -80,7 +80,7 @@ function Errores() {
           )}
           <ul className="mt-4 border-t" style={{ borderColor: "#303030" }}>
             {lista.filas.map((a) => (
-              <li key={a.id} className="border-b py-3" style={{ borderColor: "#303030" }}>
+              <li key={a.id} className="admin-fila border-b py-3" style={{ borderColor: "#303030" }}>
                 <p className="break-words text-white">
                   {a.mensaje}
                 </p>

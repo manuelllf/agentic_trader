@@ -37,6 +37,7 @@ export function VistaJornada({
     <FilaJornada key={f.equipo.id ?? `p${detalle.filas.indexOf(f)}`} nombre={f.equipo.nombre}
       escudo={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo} casa={f.equipo.casa}
       etiqueta={etiquetaEquipo(f.equipo, miAlias, (key) => t(key))}
+      puestoEscritorio={conDatos.indexOf(f) + 1} diferenciaEscritorio={f.dif_sp}
       rentabilidad={f.rentabilidad ?? 0} propia={!!miAlias && f.equipo.autor === miAlias}
       onAbrir={() => onAbrir(f.equipo.id)} />
   );

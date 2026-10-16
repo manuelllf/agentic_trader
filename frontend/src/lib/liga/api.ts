@@ -647,6 +647,7 @@ export type TemporadaPublica = {
   cuenta: boolean;
   estado: string;
   n_jornadas: number;
+  clave: string | null;
 };
 
 export type JornadaPublica = {

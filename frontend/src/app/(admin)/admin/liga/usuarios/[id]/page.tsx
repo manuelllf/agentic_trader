@@ -117,7 +117,7 @@ function Detalle() {
   };
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
+    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
       <Link href="/admin/liga/usuarios" className="text-[12.5px]" style={{ color: "#898781" }}>
         {t("admin_user_back")}
       </Link>
@@ -144,7 +144,7 @@ function Detalle() {
                   <>
                     <ul className="mt-3 border-t" style={{ borderColor: "#303030" }}>
                       {historial.filas.map((v) => (
-                        <li key={v.inicio} className="border-b py-2" style={{ borderColor: "#303030" }}>
+                        <li key={v.inicio} className="admin-par border-b py-2" style={{ borderColor: "#303030" }}>
                           <p className="text-white">{t("admin_user_entry", { date: FECHA_HORA.format(new Date(v.inicio)) })}</p>
                           <p>{t("admin_user_last_activity", { date: FECHA_HORA.format(new Date(v.ultima_actividad)) })}</p>
                         </li>
@@ -278,7 +278,7 @@ function Detalle() {
             {movs && (
               <ul className="mt-4 border-t" style={{ borderColor: "#303030" }}>
                 {movs.filas.map((m) => (
-                  <li key={m.id} className="flex justify-between gap-2 border-b py-2"
+                  <li key={m.id} className="admin-movimiento admin-par flex justify-between gap-2 border-b py-2"
                       style={{ borderColor: "#303030" }}>
                     <span>{m.motivo === "regalo" ? t("admin_user_gift") : m.motivo === "ajuste" ? t("admin_user_adjustment") : m.motivo}</span>
                     <span className="text-white">{new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(Number(m.importe))}</span>

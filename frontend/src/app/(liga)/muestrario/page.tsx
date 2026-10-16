@@ -95,7 +95,7 @@ export default function Muestrario() {
   }
 
   return (
-    <main className="scroll">
+    <main className="scroll muestrario">
       <h1 className="h1">{t("strategies_showcase_title")}</h1>
       <p className="meta">
         {t("strategies_showcase_intro")}

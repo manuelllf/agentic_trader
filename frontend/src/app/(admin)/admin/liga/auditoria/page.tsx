@@ -46,7 +46,7 @@ function Auditoria() {
   };
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
+    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
       <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_vennett")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_audit_title")}</h1>
@@ -71,7 +71,7 @@ function Auditoria() {
           <p className="mt-4" style={{ color: "#898781" }}>{t("admin_audit_entries", { count: new Intl.NumberFormat(locale).format(lista.total) })}</p>
           <ul className="mt-2 border-t" style={{ borderColor: "#303030" }}>
             {lista.filas.map((e) => (
-              <li key={e.id} className="border-b py-2" style={{ borderColor: "#303030" }}>
+              <li key={e.id} className="admin-fila border-b py-2" style={{ borderColor: "#303030" }}>
                 <div className="flex justify-between gap-2">
                   <span className="text-white">{e.accion}</span>
                   <span style={{ color: "#67665f" }}>{CUANDO.format(new Date(e.creada))}</span>

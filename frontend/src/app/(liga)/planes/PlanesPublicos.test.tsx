@@ -43,6 +43,16 @@ afterEach(() => {
 });
 
 describe("PlanesPublicos", () => {
+  it("reserva los precios de la columna de escritorio sin cambiar los enlaces secundarios", () => {
+    const el = montar("fuera");
+    const precios = [...el.querySelectorAll<HTMLElement>(".planes-precio")];
+    expect(precios.map((precio) => precio.textContent)).toEqual([
+      "4,99 € al mes", "25 € por 6 meses", "49 € por 12 meses", "25 € por 12 meses",
+    ]);
+    expect(precios.every((precio) => precio.hidden)).toBe(true);
+    expect(elegir(el).every((enlace) => !enlace.classList.contains("pri"))).toBe(true);
+  });
+
   it("enseña los cuatro planes con sus precios", () => {
     const el = montar("fuera");
     expect(el.querySelector("h1")?.textContent).toBe("Planes");

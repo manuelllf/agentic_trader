@@ -114,7 +114,7 @@ function Liga() {
   };
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
+    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
       <Link href="/admin" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_rooms")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>Vennett</h1>
@@ -148,6 +148,7 @@ function Liga() {
         !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
       ) : (
         <>
+          <div className="admin-procesos">
           <section className="mt-5 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
             <h2 className="font-bold text-white">{t("admin_liga_daily_close")}</h2>
             <p className="mt-1" style={{ color: "#898781" }}>
@@ -168,6 +169,7 @@ function Liga() {
             </div>
           </section>
 
+          <div>
           {estado.temporadas.length === 0 ? (
             <section className="mt-4 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
               <h2 className="font-bold text-white">{t("admin_liga_no_seasons")}</h2>
@@ -222,6 +224,9 @@ function Liga() {
             </section>
           ))}
 
+          </div>
+          </div>
+
           {accion && (
             <section className="mt-5 rounded-xl border p-4" style={{ borderColor: "#3987e5" }}>
               <h2 className="font-bold text-white">{accion.titulo}</h2>
@@ -274,7 +279,7 @@ function Liga() {
             <h2 className="font-bold text-white">{t("admin_liga_last_attempts")}</h2>
             <ul className="mt-2">
               {Object.entries(estado.ultimo_intento).map(([p, i]) => (
-                <li key={p} className="flex justify-between gap-2 py-1">
+                <li key={p} className="admin-par flex justify-between gap-2 py-1">
                   <span>{nombreProceso(p)}</span>
                   <span style={{ color: !i ? "#898781" : i.ok ? "#5fb87a" : "#e66767" }}>
                     {!i ? t("admin_liga_never") : t("admin_liga_last_attempt_result", { result: i.ok ? t("admin_liga_ok") : t("admin_liga_failed"), date: CUANDO.format(new Date(i.cuando)) })}

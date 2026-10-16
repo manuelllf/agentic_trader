@@ -21,7 +21,7 @@ from app.liga.comparativa import (
     retornos_acumulados,
 )
 from app.liga.db import db_anon
-from app.liga.procesos import diario, premio
+from app.liga.procesos import diario, premio, temporadas
 
 Orden = Literal["rentabilidad", "puntos"]
 
@@ -66,6 +66,7 @@ class TemporadaOut(BaseModel):
     cuenta: bool
     estado: str
     n_jornadas: int
+    clave: str | None = None
 
 
 class JornadaOut(BaseModel):
@@ -189,7 +190,9 @@ def _temporada(db: Session, temporada_id: int | None) -> TemporadaOut | None:
         order by case estado when 'en_juego' then 0 when 'programada' then 1 else 2 end,
                  case when estado = 'cerrada' then -id else id end
         limit 1"""), {"t": temporada_id}).one_or_none()
-    return TemporadaOut(**f._mapping) if f else None
+    if f is None:
+        return None
+    return TemporadaOut(**f._mapping, clave=temporadas.CLAVES_TEMPORADA.get(f.nombre))
 
 
 def _jornada(db: Session, where: str, params: dict, orden: str) -> JornadaOut | None:

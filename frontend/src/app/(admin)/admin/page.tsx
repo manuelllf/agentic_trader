@@ -17,9 +17,9 @@ export default function Admin() {
   const t = useTranslations();
   return (
     <AuthGate>
-      <main className="mx-auto max-w-md px-4 pb-10 pt-8">
+      <main className="admin-escritorio mx-auto max-w-md px-4 pb-10 pt-8">
         <h1 className="text-[15px] font-bold text-white">{t("admin_home_rooms")}</h1>
-        <ul className="mt-4 border-t border-[#303030]">
+        <ul className="admin-salas mt-4 border-t border-[#303030]">
           {SALAS.map((s) => (
             <li key={s.href} className="border-b border-[#303030]">
               <Link href={s.href} className="flex min-h-[64px] flex-col justify-center gap-0.5 py-3">

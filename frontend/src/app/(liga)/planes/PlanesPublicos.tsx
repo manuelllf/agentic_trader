@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { LanguageSelector } from "@/i18n/LanguageSelector";
 import { useSesion } from "../_sesion/SesionContext";
-import { ListaPlanes } from "../_ui/ListaPlanes";
+import { CLAVE_PLAN, ListaPlanes } from "../_ui/ListaPlanes";
 import { Marca } from "../_ui/Marca";
 
 const PLAN_EN_CUENTA = "/cuenta/plan";
@@ -26,8 +26,13 @@ export function PlanesPublicos() {
           <h1 id="titular">{t("planes_titulo")}</h1>
           <div className="form cuenta-plan">
             <p className="cuenta-plan-nota">{t("planes_intro")}</p>
-            <ListaPlanes accion={() => (
-              <Link href={destino} className="btn small">{t("planes_elegir")}</Link>
+            <ListaPlanes accion={(producto) => (
+              <>
+                <span className="planes-precio" hidden>
+                  {t(`planes_${CLAVE_PLAN[producto]}_detalle` as Parameters<typeof t>[0]).split(" · ")[0]}
+                </span>
+                <Link href={destino} className="btn small">{t("planes_elegir")}</Link>
+              </>
             )} />
           </div>
         </div>

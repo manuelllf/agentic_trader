@@ -16,6 +16,13 @@
 .lg .constructor-avanzar { position: fixed; bottom: calc(var(--nav-height) + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 11; width: calc(100% - 2 * var(--page-gutter)); max-width: calc(var(--app-width) - 2 * var(--page-gutter)); display: flex; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); background: var(--bg); }
 .lg .constructor-avanzar > * { min-width: 0; }
 .lg .constructor-avanzar .btn { flex: 0 0 auto; }
+@media (min-width: 880px) {
+  .lg .scroll.constructor.ancho-amplio > .constructor-avanzar {
+    left: calc(var(--rail-ancho) + (100% - var(--rail-ancho)) / 2);
+    width: min(var(--ancho-app), calc(100% - var(--rail-ancho) - 2 * var(--margen-escritorio))); max-width: none;
+    bottom: 16px;
+  }
+}
 .lg .constructor-ver-cartera { flex: 1 1 auto; min-height: 44px; padding: 0; text-align: left; background: none; border: 0; font-size: 15px; font-weight: var(--w-strong); color: var(--ink); cursor: pointer; }
 
 /* Bloques de cada paso: el mismo ritmo que el resto de la app */
@@ -152,4 +159,17 @@
   .lg .constructor-distribucion.constructor-ancho { grid-template-columns: minmax(0, 1fr); }
   .lg .constructor-cartera { display: block; position: sticky; top: 64px; padding-top: 28px; }
   .lg .constructor-ver-cartera { visibility: hidden; }
+}
+
+@media (min-width: 880px) {
+  .lg .constructor-distribucion { grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; align-items: start; }
+  .lg .constructor-distribucion.constructor-ancho { grid-template-columns: minmax(0, 1fr); }
+  .lg .constructor-cartera { display: block; position: sticky; top: 64px; padding-top: 28px; }
+  .lg .constructor-ver-cartera { visibility: hidden; }
+  .lg .constructor-etapas { width: 100%; max-width: var(--ancho-app); }
+  .lg .constructor-etapas button { border-radius: 0; box-shadow: none; white-space: normal; overflow: visible; }
+  .lg .constructor :is(.starters, .reglas-lista) { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+  .lg .constructor .starter { width: 100%; height: auto; min-height: 46px; white-space: normal; }
+  .lg .constructor .reglas-grupo { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); column-gap: 16px; }
+  .lg .constructor .reglas-grupo-t { grid-column: 1 / -1; }
 }

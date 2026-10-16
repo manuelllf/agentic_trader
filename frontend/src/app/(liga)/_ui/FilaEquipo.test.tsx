@@ -26,7 +26,8 @@ describe("FilaEquipo ordenada", () => {
     expect(salida).toContain("21 pts");
     expect(salida).toContain("6G · 3E · 0P");
     expect(salida).toContain("↑2");
-    expect(salida).not.toContain(porcentaje(12.4, 1, "es"));
+    expect(salida).toContain('class="fila-res retorno-escritorio" hidden=""');
+    expect(salida).toContain(porcentaje(12.4, 1, "es"));
   });
   it("oculta el movimiento en rentabilidad y conserva la rentabilidad", () => {
     const salida = html({ orden: "rentabilidad" });
@@ -39,4 +40,11 @@ describe("FilaEquipo ordenada", () => {
   it("omite el balance si falta alguno de sus recuentos", () => {
     expect(html({ orden: "puntos", empatadas: 3, perdidas: 0 })).not.toContain("G · ");
   });
+});
+
+it("separa puntos en escritorio sin duplicarlos en m?vil", () => {
+  const salida = html({ orden: "rentabilidad", tipo: "mia" });
+  expect(salida).toContain('puntos-sub num');
+  expect(salida).toContain('class="puntos-escritorio num" hidden=""');
+  expect(salida).toContain('tr me financiero');
 });

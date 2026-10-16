@@ -56,7 +56,7 @@ function CosteIAPanel() {
     && Number(datos.total_pagado_usd) >= Number(datos.tope_mensual_usd) * 0.8;
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
+    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
       <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_vennett")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_cost_title")}</h1>
@@ -83,7 +83,7 @@ function CosteIAPanel() {
 
           <ul className="mt-4 border-t" style={{ borderColor: "#303030" }}>
             {datos.filas.map((f) => (
-              <li key={f.finalidad} className="border-b py-3" style={{ borderColor: "#303030" }}>
+              <li key={f.finalidad} className="admin-par border-b py-3" style={{ borderColor: "#303030" }}>
                 <div className="flex items-baseline justify-between">
                   <span className="font-bold text-white">{etiquetas[f.finalidad]}</span>
                   {f.bajo_objetivo && (
@@ -105,7 +105,7 @@ function CosteIAPanel() {
           <p className="mt-1 text-[11.5px]" style={{ color: "#67665f" }}>{t("admin_cost_breakdown_help")}</p>
           <ul className="mt-2 border-t" style={{ borderColor: "#303030" }}>
             {datos.desglose.map((p) => (
-              <li key={`${p.parte}-${p.detalle ?? ""}`} className="flex items-baseline justify-between gap-3 border-b py-2" style={{ borderColor: "#303030" }}>
+              <li key={`${p.parte}-${p.detalle ?? ""}`} className="admin-par flex items-baseline justify-between gap-3 border-b py-2" style={{ borderColor: "#303030" }}>
                 <span className="min-w-0 text-white">{partes[p.parte]}{p.detalle ? ` · ${p.detalle}` : ""}</span>
                 <span className="shrink-0" style={{ color: "#898781" }}>
                   {currency(p.pagado_usd)} · {t("admin_cost_calls_short", { count: new Intl.NumberFormat(locale).format(p.llamadas) })}

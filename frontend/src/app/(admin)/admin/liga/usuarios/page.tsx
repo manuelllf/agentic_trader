@@ -140,14 +140,14 @@ function Usuarios() {
   };
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
+    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
       <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_vennett")}</Link>
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_users_title")}</h1>
 
       <AltaUsuario onAlta={() => cargar(buscando, desde)} />
 
-      <form onSubmit={buscar} className="mt-4 flex gap-2">
+      <form onSubmit={buscar} className="admin-buscador mt-4 flex gap-2">
         <input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder={t("admin_users_search_placeholder")}
                className="min-h-[44px] flex-1 rounded-lg border px-3 text-white"
                style={{ background: "#141413", borderColor: "#303030" }} />
@@ -168,7 +168,7 @@ function Usuarios() {
             {lista.filas.map((u) => (
               <li key={u.id} className="border-b" style={{ borderColor: "#303030" }}>
                 <Link href={`/admin/liga/usuarios/${u.id}`}
-                      className="flex min-h-[56px] items-center justify-between gap-2 py-2">
+                      className="admin-usuario flex min-h-[56px] items-center justify-between gap-2 py-2">
                   <span>
                     <span className="text-white">{u.alias}</span>
                     {u.suspendido && (
@@ -181,6 +181,7 @@ function Usuarios() {
                     )}
                   </span>
                   <span style={{ color: "#898781" }}>{u.roles.map((role) => ["usuario", "moderador", "admin"].includes(role) ? t(`admin_user_role_${role}`) : role).join(", ") || t("admin_user_role_usuario")}</span>
+                  <svg className="admin-abrir hidden" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor"><path d="m6 3 5 5-5 5" /></svg>
                 </Link>
               </li>
             ))}

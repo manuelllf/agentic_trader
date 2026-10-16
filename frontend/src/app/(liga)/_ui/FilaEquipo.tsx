@@ -135,12 +135,12 @@ export function FilaEquipo({
               <span>{etiqueta}</span>
               {orden !== "puntos" && <>
                 {acumulado?.incompleta && <span>{t("common_ranking_periodos_seguidos", { count: acumulado.periodos })}</span>}
-                <span className="num">{t("strategies_points", { count: puntos })}</span>
+                <span className="puntos-sub num">{t("strategies_points", { count: puntos })}</span>
               </>}
             </span>
           </span>
         </span>
-        <span className="fila-res" aria-label={t(orden === "puntos" ? "common_ranking_puntos_balance" : "common_ranking_rentabilidad_benchmark")}>
+        <span className={`fila-res${orden === "puntos" ? " resultado-puntos" : ""}`} aria-label={t(orden === "puntos" ? "common_ranking_puntos_balance" : "common_ranking_rentabilidad_benchmark")}>
           {orden === "puntos" ? (
             <>
               <span className="ret num">{t("strategies_points", { count: puntos })}</span>
@@ -160,6 +160,13 @@ export function FilaEquipo({
             </>
           )}
         </span>
+        {orden === "puntos" && <span className="fila-res retorno-escritorio" hidden style={{ display: "none" }}>
+          {acumulado ? <>
+            <span className={`ret num ${claseSigno(acumulado.rentabilidad)}`}>{porcentaje(acumulado.rentabilidad, 1, locale)}</span>
+            <span className="vsp num">{fraseVsIndice(t, acumulado.diferencia_pp, locale)}</span>
+          </> : <><span className="ret num fl">?</span><span className="vsp">{t("strategies_no_closes")}</span></>}
+        </span>}
+        {orden !== "puntos" && <span className="puntos-escritorio num" hidden>{t("strategies_points", { count: puntos })}</span>}
         {abrible ? <Chevron pendiente={pendiente} /> : <span />}
         {estadoApertura}
       </button>

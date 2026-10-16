@@ -31,6 +31,8 @@ from app.liga.procesos.comun import (
 PRETEMPORADA = "Pretemporada"
 TEMPORADA_1 = "Temporada 1"
 ANIO_TEMPORADA_1 = 2027
+# Clave que la app traduce; el nombre guardado sigue en español.
+CLAVES_TEMPORADA = {PRETEMPORADA: "pretemporada", TEMPORADA_1: "temporada_1"}
 
 
 @dataclass(frozen=True)

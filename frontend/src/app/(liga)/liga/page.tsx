@@ -153,7 +153,7 @@ function LigaContenido() {
 
   if (cargandoPortada) {
     return (
-      <main className="scroll">
+      <main className="scroll liga-escritorio">
         <CabeceraApp anio={anio} />
         <h1 className="h1">{t("league_titulo")}</h1>
         <p className="meta anio-escritorio">{anio}</p>
@@ -165,7 +165,7 @@ function LigaContenido() {
 
   if (typeof portada === "string") {
     return (
-      <main className="scroll">
+      <main className="scroll liga-escritorio">
         <CabeceraApp anio={anio} />
         <h1 className="h1">{t("league_titulo")}</h1>
         <p className="meta anio-escritorio">{anio}</p>
@@ -180,7 +180,7 @@ function LigaContenido() {
   const { temporada } = portada;
 
   return (
-    <main className="scroll">
+    <main className="scroll liga-escritorio">
         <CabeceraApp anio={anio} />
         <h1 className="h1">{t("league_titulo")}</h1>
         <p className="meta anio-escritorio">{anio}</p>
@@ -201,7 +201,7 @@ function LigaContenido() {
             <div className="board">
               <div>
                 <b>{t("league_jornada_de", { round: portada.en_juego.numero, total: temporada.n_jornadas })}</b>
-                <span>{t("league_temporada", { season: temporada.nombre })}</span>
+                <span>{temporada.clave === "pretemporada" ? t("league_pretemporada") : temporada.clave === "temporada_1" ? t("league_temporada_1") : temporada.nombre}</span>
               </div>
               {portada.en_juego.sp_rentabilidad != null && (
                 <div className="r">

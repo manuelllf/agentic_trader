@@ -50,3 +50,95 @@ body {
 .overflow-x-auto {
   overscroll-behavior-x: contain;
 }
+
+@media (min-width: 880px) {
+  .admin-escritorio {
+    max-width: 960px;
+  }
+
+  .admin-salas {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+  }
+
+  .admin-procesos {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px;
+    align-items: start;
+  }
+
+  .admin-procesos > section {
+    border-width: 1px 0 0;
+    border-radius: 0;
+    padding: 16px 0;
+  }
+
+  .admin-par {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 24px;
+    border-bottom: 1px solid #303030;
+  }
+
+  .admin-par > :last-child {
+    text-align: right;
+  }
+
+  .admin-par > *, .admin-fila > *, .admin-usuario > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-fila {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 24px;
+    align-items: start;
+  }
+
+  .admin-fila > :first-child {
+    grid-column: 1;
+  }
+
+  .admin-fila > :nth-child(2) {
+    grid-column: 1;
+  }
+
+  .admin-fila > :nth-child(n + 3) {
+    grid-column: 2;
+  }
+
+  .admin-fila > button {
+    justify-self: start;
+  }
+
+  .admin-fila > :nth-child(3) {
+    grid-row: 1;
+  }
+
+  .admin-movimiento {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-buscador {
+    width: 480px;
+    max-width: 100%;
+  }
+
+  .admin-buscador > input {
+    min-width: 0;
+  }
+
+  .admin-usuario {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 24px;
+    column-gap: 24px;
+  }
+
+  .admin-abrir {
+    display: block;
+    justify-self: end;
+  }
+}

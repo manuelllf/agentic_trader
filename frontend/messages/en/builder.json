@@ -174,7 +174,6 @@
   "builder_live_cash": "{count, plural, one {One cash slot} other {# cash slots}}",
   "builder_live_close": "Close portfolio",
   "builder_live_changed": "Portfolio updated.",
-  "builder_live_bar": "{selected} companies · of {passed} meeting the rules",
   "builder_live_continue": "Continue",
   "builder_idea_titulo": "What companies are you looking for?",
   "builder_idea_palabras": "Describe it in your own words",

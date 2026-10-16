@@ -33,6 +33,11 @@ def test_sin_meses_libres_no_hay_pretemporada() -> None:
         [temporadas.PRETEMPORADA, temporadas.TEMPORADA_1]
 
 
+def test_cada_nombre_del_planificador_tiene_clave_para_traducir() -> None:
+    for plan in temporadas.planificar(date(2026, 9, 27)):
+        assert plan.nombre in temporadas.CLAVES_TEMPORADA
+
+
 def test_jornadas_de_la_temporada_encadenadas() -> None:
     t1 = temporadas.planificar(date(2026, 12, 3))[0]
     for a, b in zip(t1.jornadas, t1.jornadas[1:], strict=False):
