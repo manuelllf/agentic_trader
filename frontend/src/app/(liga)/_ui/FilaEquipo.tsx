@@ -47,6 +47,7 @@ const Chevron = ({ pendiente = false }: { pendiente?: boolean }) => (
 export interface FilaEquipoProps {
   puesto: number;
   nombre: string;
+  provisional?: boolean;
   escudo: EscudoValor;
   casa?: ClaveCasa | null;
   /** Resultado de las últimas jornadas, más reciente al final (letras G/E/P bajo el nombre). */
@@ -74,6 +75,7 @@ export interface FilaEquipoProps {
 export function FilaEquipo({
   puesto,
   nombre,
+  provisional,
   escudo,
   casa,
   resultados = [],
@@ -131,6 +133,7 @@ export function FilaEquipo({
           <Escudo valor={escudo} casa={casa} baldosa tamano={28} etiqueta={t("common_ranking_escudo", { name: nombre })} />
           <span className="nm">
             <b>{nombre}</b>
+            {provisional === true && <span className="fine" style={{ display: "block", marginTop: 0 }}>{t("liga_provisional_insignia")}</span>}
             <span className="sub">
               <span>{etiqueta}</span>
               {orden !== "puntos" && <>
@@ -181,6 +184,7 @@ export function FilaEquipo({
         <Escudo valor={escudo} casa={casa} etiqueta={t("common_ranking_escudo", { name: nombre })} />
         <span className="nm">
           <b>{nombre}</b>
+          {provisional === true && <span className="fine" style={{ display: "block", marginTop: 0 }}>{t("liga_provisional_insignia")}</span>}
           <span className="sub">
             {resultados.map((r, i) => (
               <span key={i} className={`rs ${r}`} aria-label={t(`common_ranking_${TEXTO_RESULTADO[r]}`)}>

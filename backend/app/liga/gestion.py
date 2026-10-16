@@ -67,6 +67,11 @@ CATALOGO: dict[str, AjusteMeta] = {
         ayuda="Enseña la liga a quien no ha iniciado sesión. Apagado: solo se ve iniciando "
               "sesión.",
         tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True),
+    "liga.clasificacion_viva": AjusteMeta(
+        grupo="Liga", titulo="Clasificación general en vivo",
+        ayuda="Suma a la clasificación general lo provisional de la jornada en juego, marcado como "
+              "provisional. Apagado: solo cuentan las jornadas cerradas.",
+        tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True),
     # IA de la liga (plan §10, F6): un interruptor por finalidad (ausente = apagado), el tope
     # mensual en dólares que los apaga todos, y el margen objetivo del panel de coste.
     "ia.conversor.activo": AjusteMeta(

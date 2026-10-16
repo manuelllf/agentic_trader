@@ -1,4 +1,6 @@
 {
+  "liga_clasificacion_provisional_nota": "Round {numero} is still in play: the standings are provisional.",
+  "liga_provisional_insignia": "Provisional",
   "league_titulo": "League",
   "league_error_portada": "Could not load the league",
   "league_error_clasificacion": "Could not load the standings",

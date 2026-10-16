@@ -229,7 +229,7 @@ def test_detalle_muestra_equipo_formado_y_mes_sin_abrir_datos_privados(api, monk
                 llamadas.append(jid)
                 return {"dia": hoy, "sp": Decimal("1.2"), "en_vivo": True,
                         "por_inscripcion": {inscripcion: {
-                            "rentabilidad": Decimal("2.5"), "dif": Decimal("1.3")}}}
+                            "rentabilidad": Decimal("2.5"), "dif": Decimal("1.3"), "puntos": 0}}}
 
             monkeypatch.setattr(rutas_ligas.diario, "vivo", vivo)
             response = cliente.get(f"/liga/ligas/{liga['id']}", headers=cab(miembro))
@@ -242,7 +242,8 @@ def test_detalle_muestra_equipo_formado_y_mes_sin_abrir_datos_privados(api, monk
             assert equipo["estrategia"]["id"] == eid
             assert equipo["estrategia"]["nombre"] == "Foso ancho"
             assert "receta" not in equipo["estrategia"]
-            assert equipo["puntos"] is None
+            assert equipo["puntos"] == 0
+            assert equipo["provisional"] is True
             assert Decimal(equipo["rentabilidad_mes"]) == Decimal("2.5")
             assert Decimal(equipo["diferencia_mes"]) == Decimal("1.3")
             sin_cartera = next(m for m in detalle["miembros"] if m["es_yo"])

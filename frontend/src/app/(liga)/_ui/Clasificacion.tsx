@@ -8,12 +8,16 @@ import type { ReactNode } from "react";
 // `viewTabla()` de la maqueta (cabecera, primeras filas, hueco, tu fila, hueco, leyenda).
 export interface ClasificacionProps {
   children: ReactNode;
+  jornada_provisional?: number | null;
 }
 
-export function Clasificacion({ children }: ClasificacionProps) {
+export function Clasificacion({ children, jornada_provisional }: ClasificacionProps) {
   const t = useTranslations();
   return (
     <div className="ranking-lista">
+      {jornada_provisional != null && <p className="fine">
+        {t("liga_clasificacion_provisional_nota", { numero: jornada_provisional })}
+      </p>}
       <div className="ranking-cabecera" hidden aria-hidden="true">
         <span />
         <span>{t("strategies_strategy")}</span>

@@ -1,4 +1,5 @@
 {
+  "admin_settings_group_league": "League",
   "admin_home_alpha_desc": "Live account: the agent proposes, you decide.",
   "admin_home_beta_desc": "Paper-trading replica of the same method.",
   "admin_home_omega_desc": "Sharp drawdowns, filtered by AI.",

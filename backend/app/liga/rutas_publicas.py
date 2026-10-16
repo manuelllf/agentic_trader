@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +18,7 @@ from app.liga import estrategias, gestion
 from app.liga.auth import Identidad, identidad_opcional
 from app.liga.comparativa import (
     RentabilidadAcumulada,
+    clasificacion_viva,
     movimientos_clasificacion,
     retornos_acumulados,
 )
@@ -91,6 +93,7 @@ class FilaClasificacion(BaseModel):
     dif_sp: Decimal
     acumulado: RentabilidadAcumulada | None = None
     movimiento: int | None = None
+    provisional: bool = False
 
 
 class Clasificacion(BaseModel):
@@ -100,6 +103,7 @@ class Clasificacion(BaseModel):
     # Las del `alias` pedido que quedan fuera de esta página, con su posición real: quien juega
     # se ve aunque esté más abajo de la fila 50. Todo esto ya es público.
     mias: list[FilaClasificacion] = []
+    jornada_provisional: int | None = None
 
 
 class FilaJornada(BaseModel):
@@ -174,12 +178,13 @@ def _equipo(f, con_id: bool) -> EquipoOut:  # noqa: ANN001
 
 
 def _fila(posicion: int, f, con_id: bool, acumulado: dict | None = None,
-          movimiento: int | None = None) -> FilaClasificacion:  # noqa: ANN001
+          movimiento: int | None = None,
+          provisional: bool = False) -> FilaClasificacion:  # noqa: ANN001
     return FilaClasificacion(
         posicion=posicion, equipo=_equipo(f, con_id), puntos=f.puntos, jornadas=f.jornadas,
         ganadas=f.ganadas, empatadas=f.empatadas, perdidas=f.perdidas, dif_sp=f.dif_sp,
         acumulado=RentabilidadAcumulada.model_validate(acumulado) if acumulado else None,
-        movimiento=movimiento)
+        movimiento=movimiento, provisional=provisional)
 
 
 def _temporada(db: Session, temporada_id: int | None) -> TemporadaOut | None:
@@ -257,6 +262,59 @@ def _detalle(db: Session, j: JornadaOut, con_id: bool) -> JornadaDetalle:
                           precios_pendientes=vivo.get("precios_pendientes", 0) if vivo else 0)
 
 
+def _clasificacion_viva_activa() -> bool:
+    return gestion._ajuste_booleano("liga.clasificacion_viva", True)
+
+
+def _general_viva(db: Session, t: TemporadaOut, jornada, vivo: dict,
+                  desde: int, cuantos: int, alias: str | None,
+                  orden: Orden, con_id: bool) -> Clasificacion:
+    vivas = clasificacion_viva(db, t.id, vivo, jornada)
+    oficiales = db.execute(text(f"""
+        select {_EQUIPO}, e.creada, c.puntos, c.jornadas, c.ganadas,
+               c.empatadas, c.perdidas, c.dif_sp
+        from liga.v_clasificacion c
+        {_JOIN_EQUIPO.format(col="c.estrategia_id")}
+        where c.temporada_id = :t
+    """), {"t": t.id}).all()
+    filas = {f.eid: SimpleNamespace(**f._mapping) for f in oficiales}
+    nuevas = [eid for eid in vivas if eid not in filas]
+    if nuevas:
+        equipos = db.execute(text(f"""
+            select {_EQUIPO}, e.creada
+            from liga.estrategias e
+            left join liga.perfiles p on p.id = e.dueno_id
+            where e.id::text = any(cast(:ids as text[]))
+        """), {"ids": nuevas}).all()
+        filas.update({f.eid: SimpleNamespace(**f._mapping) for f in equipos})
+    acumulados = retornos_acumulados(db, list(filas))
+    for eid, v in vivas.items():
+        if eid not in filas:
+            continue
+        f = filas[eid]
+        for campo in ("puntos", "jornadas", "ganadas", "empatadas", "perdidas", "dif_sp"):
+            setattr(f, campo, getattr(v, campo))
+        acumulados.pop(eid, None)
+        if v.acumulado is not None:
+            acumulados[eid] = v.acumulado
+    ordenadas = sorted(filas.values(), key=lambda f: (
+        -f.puntos, -f.dif_sp, f.creada, f.eid))
+    if orden == "rentabilidad":
+        ordenadas = ordenar_por_rentabilidad(ordenadas, acumulados)
+    movimientos = movimientos_clasificacion(db, t.id) if orden == "puntos" else {}
+
+    def fila(i: int, f) -> FilaClasificacion:
+        return _fila(i + 1, f, con_id, acumulados.get(f.eid),
+                     movimientos.get(f.eid), provisional=f.eid in vivas)
+
+    return Clasificacion(
+        temporada=t, total=len(ordenadas), jornada_provisional=jornada.numero,
+        filas=[fila(i, f) for i, f in enumerate(ordenadas) if desde <= i < desde + cuantos],
+        mias=[fila(i, f) for i, f in enumerate(ordenadas)
+              if (i < desde or i >= desde + cuantos)
+              and alias and f.alias == alias.strip().lower()][:10])
+
+
 @router.get("/clasificacion", response_model=Clasificacion)
 def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
                   cuantos: int = Query(50, ge=1, le=100),
@@ -270,6 +328,16 @@ def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
     t = _temporada(db, temporada)
     if t is None:
         raise HTTPException(404, "Esa temporada no existe.")
+    if _clasificacion_viva_activa():
+        en_juego = db.execute(text("""
+            select id, numero, dia_base from liga.jornadas
+            where temporada_id = :t and estado = 'formada'
+            order by dia_base desc limit 1
+        """), {"t": t.id}).one_or_none()
+        if en_juego is not None:
+            vivo = diario.vivo(en_juego.id)
+            if vivo and vivo.get("sp") is not None:
+                return _general_viva(db, t, en_juego, vivo, desde, cuantos, alias, orden, con_id)
     base = f"""
         from liga.v_clasificacion c
         {_JOIN_EQUIPO.format(col="c.estrategia_id")}

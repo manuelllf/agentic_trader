@@ -345,7 +345,7 @@ def test_ajustes_trae_metadato_y_efectivo_por_defecto(api) -> None:  # noqa: ANN
         "creditos.bienvenida", "procesos.foto.auto", "procesos.formar.auto",
         "procesos.cerrar.auto", "ia.formacion.activo", "ia.tope_formacion_usd",
         "procesos.formar.limite_preguntas_s", "premio.visible", "premio.umbral_basico",
-        "premio.umbral_completo",
+        "premio.umbral_completo", "liga.clasificacion_viva",
     }
     registro = filas["liga.registro.abierto"]
     assert registro["valor"] is None and registro["efectivo"] is False

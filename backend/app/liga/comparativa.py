@@ -47,9 +47,21 @@ def _diferencia_clasificacion(factor: Decimal, factor_sp: Decimal) -> Decimal:
         Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
-def retornos_acumulados(db: Session, estrategia_ids: list[str]) -> dict[str, dict]:
-    """Compone retornos y S&P del último tramo contiguo; un hueco reinicia el tramo."""
-    ids = list(dict.fromkeys(estrategia_ids))
+@dataclass(frozen=True)
+class FilaViva:
+    estrategia_id: str
+    puntos: int
+    jornadas: int
+    ganadas: int
+    empatadas: int
+    perdidas: int
+    dif_sp: Decimal
+    acumulado: dict | None
+    provisional: bool = True
+
+
+def periodos_cerrados(db: Session, ids: list[str]) -> dict[str, list[dict]]:
+    ids = list(dict.fromkeys(ids))
     if not ids:
         return {}
     rows = db.execute(text("""
@@ -65,24 +77,61 @@ def retornos_acumulados(db: Session, estrategia_ids: list[str]) -> dict[str, dic
           and j.sp_rentabilidad is not null
         order by e.id, j.dia_base, j.id, i.id
     """), {"ids": ids}).mappings().all()
-    grouped: dict[str, list[PeriodoOficial]] = defaultdict(list)
+    grouped: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
-        grouped[row["estrategia_id"]].append(PeriodoOficial(
-            estrategia_id=row["estrategia_id"], temporada_id=row["temporada_id"],
-            jornada_id=row["jornada_id"], numero=row["numero"], dia_base=row["dia_base"],
-            dia_fin=row["dia_fin"], rentabilidad=Decimal(row["rentabilidad"]),
-            sp500=Decimal(row["sp500"]), puntos=row["puntos"], creada=row["creada"],
-        ))
+        grouped[row["estrategia_id"]].append({
+            campo: row[campo] for campo in (
+                "dia_base", "dia_fin", "rentabilidad", "sp500", "puntos",
+                "temporada_id", "jornada_id", "numero")
+        })
+    return dict(grouped)
 
+
+def retornos_acumulados(db: Session, estrategia_ids: list[str]) -> dict[str, dict]:
     salida: dict[str, dict] = {}
-    for estrategia_id in ids:
-        resumen = acumular_periodos([
-            {"dia_base": p.dia_base, "dia_fin": p.dia_fin,
-             "rentabilidad": p.rentabilidad, "sp500": p.sp500}
-            for p in grouped.get(estrategia_id, [])
-        ])
+    for estrategia_id, periodos in periodos_cerrados(db, estrategia_ids).items():
+        resumen = acumular_periodos(periodos)
         if resumen:
             salida[estrategia_id] = resumen
+    return salida
+
+
+def clasificacion_viva(db: Session, temporada_id: int, vivo: dict,
+                       jornada) -> dict[str, FilaViva]:
+    valores = {str(iid): f for iid, f in vivo["por_inscripcion"].items()
+               if f.get("rentabilidad") is not None}
+    if not valores:
+        return {}
+    inscripciones = db.execute(text("""
+        select id::text as iid, estrategia_id::text as eid
+        from liga.inscripciones
+        where id::text = any(cast(:ids as text[])) and jornada_id = :j
+    """), {"ids": list(valores), "j": jornada.id}).mappings().all()
+    cerrados = periodos_cerrados(db, [i["eid"] for i in inscripciones])
+    salida = {}
+    for i in inscripciones:
+        eid = i["eid"]
+        f = valores[i["iid"]]
+        periodos = [p for p in cerrados.get(eid, []) if p["temporada_id"] == temporada_id]
+        provisional = {
+            "dia_base": jornada.dia_base, "dia_fin": vivo["dia"],
+            "rentabilidad": Decimal(str(f["rentabilidad"])),
+            "sp500": Decimal(str(vivo["sp"])),
+        }
+        todos = periodos + [provisional]
+        factor, factor_sp = Decimal(1), Decimal(1)
+        with localcontext() as ctx:
+            ctx.prec = 32
+            for p in todos:
+                factor *= _factor_clasificacion(Decimal(str(p["rentabilidad"])))
+                factor_sp *= _factor_clasificacion(Decimal(str(p["sp500"])))
+            diferencia = _diferencia_clasificacion(factor, factor_sp)
+        puntos = [p["puntos"] for p in periodos] + [f["puntos"]]
+        salida[eid] = FilaViva(
+            estrategia_id=eid, puntos=sum(puntos), jornadas=len(puntos),
+            ganadas=puntos.count(3), empatadas=puntos.count(1), perdidas=puntos.count(0),
+            dif_sp=diferencia, acumulado=acumular_periodos(
+                cerrados.get(eid, []) + [provisional]))
     return salida
 
 

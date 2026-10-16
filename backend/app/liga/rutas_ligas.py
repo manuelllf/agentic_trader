@@ -7,6 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,7 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.liga import acceso, estrategias, ligas
+from app.liga import acceso, comparativa, estrategias, gestion, ligas
 from app.liga.auth import Identidad, require_usuario
 from app.liga.comparativa import (
     RentabilidadAcumulada,
@@ -71,6 +72,7 @@ class MiembroLigaOut(BaseModel):
     puntos: int | None
     jornadas: int | None
     dif_sp: Decimal | None
+    provisional: bool = False
     acumulado: RentabilidadAcumulada | None = None
     movimiento: int | None = None
     estrategia: dict | None = None
@@ -160,7 +162,7 @@ def _temporada_actual(db: Session) -> int | None:
 
 def _jornada_formada(db: Session, temporada: int | None):  # noqa: ANN202
     return db.execute(text("""
-        select id, numero from liga.jornadas
+        select id, numero, dia_base from liga.jornadas
         where temporada_id = :t and estado = 'formada' order by dia_base desc limit 1
     """), {"t": temporada}).one_or_none()
 
@@ -193,6 +195,33 @@ def _miembros(db: Session, liga_ids: list, temporada: int | None, jornada_id: in
         where m.liga_id = any(:ids)
         order by m.liga_id, coalesce(s.puntos, -1) desc, coalesce(s.dif_sp, -999) desc, p.alias
     """), {"ids": liga_ids, "t": temporada, "j": jornada_id}).all()
+
+
+def _viva_por_estrategia(db: Session, temporada: int | None, jornada) -> dict:  # noqa: ANN001
+    if jornada is None or temporada is None:
+        return {}
+    if not gestion._ajuste_booleano("liga.clasificacion_viva", True):
+        return {}
+    vivo = diario.vivo(jornada.id)
+    if not vivo or vivo.get("sp") is None:
+        return {}
+    return comparativa.clasificacion_viva(db, temporada, vivo, jornada)
+
+
+def _aplicar_clasificacion_viva(filas, vivas: dict) -> list[SimpleNamespace]:  # noqa: ANN001
+    miembros = []
+    for fila in filas:
+        miembro = SimpleNamespace(**fila._mapping, provisional=False)
+        viva = vivas.get(miembro.estrategia_id)
+        if viva is not None:
+            miembro.puntos = viva.puntos
+            miembro.jornadas = viva.jornadas
+            miembro.dif_sp = viva.dif_sp
+            miembro.provisional = True
+        miembros.append(miembro)
+    return sorted(miembros, key=lambda m: (
+        m.liga_id, -(m.puntos if m.puntos is not None else -1),
+        -(m.dif_sp if m.dif_sp is not None else -999), m.alias))
 
 
 def _resultados_del_mes(db: Session, liga_ids: list,
@@ -231,12 +260,21 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
     temporada = _temporada_actual(db)
     jornada = _jornada_formada(db, temporada)
     miembros = _miembros(db, [id], temporada, jornada.id if jornada else None)
+    vivas = _viva_por_estrategia(db, temporada, jornada)
+    miembros = _aplicar_clasificacion_viva(miembros, vivas)
     n_miembros = len(miembros)
     estrategia_por_miembro = {
         m.alias: m.estrategia_id for m in miembros if m.estrategia_id is not None
     }
     ids_estrategias = list(estrategia_por_miembro.values())
     acumulados = retornos_acumulados(db, ids_estrategias)
+    for estrategia_id in ids_estrategias:
+        viva = vivas.get(estrategia_id)
+        if viva is not None:
+            if viva.acumulado is None:
+                acumulados.pop(estrategia_id, None)
+            else:
+                acumulados[estrategia_id] = viva.acumulado
     movimientos = (movimientos_grupo(db, temporada, estrategia_por_miembro)
                    if temporada is not None else {})
     vivo = diario.vivo(jornada.id) if jornada else None
@@ -251,6 +289,7 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         miembros=[
             MiembroLigaOut(alias=m.alias, es_yo=(m.usuario_id == ident.uid), unido=m.unido,
                           puntos=m.puntos, jornadas=m.jornadas, dif_sp=m.dif_sp,
+                          provisional=m.provisional,
                           acumulado=(RentabilidadAcumulada.model_validate(acumulados[m.estrategia_id])
                                      if m.estrategia_id in acumulados else None),
                           movimiento=movimientos.get(m.alias),

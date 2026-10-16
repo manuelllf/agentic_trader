@@ -88,11 +88,14 @@ export default function PrivadaDetalle() {
               ? liga.jornada_numero ? t("private_leagues_round_context", { round: liga.jornada_numero, quotes: liga.en_vivo ? t("private_leagues_provisional_quotes") : t("private_leagues_last_closes"), date: liga.datos_hasta ? ` · ${date(liga.datos_hasta)}` : ` · ${t("private_leagues_waiting_prices")}` })
                 : t("private_leagues_no_round_context")
               : t("private_leagues_standings_context")}</p>
+            {liga.jornada_numero != null && miembros.some((m) => m.provisional === true) && (
+              <p className="fine">{t("liga_clasificacion_provisional_nota", { numero: liga.jornada_numero })}</p>
+            )}
             {vista === "mes" ? (
               <div className="priv-filas">
                 {conResultado.map((m, i) => m.estrategia && (
                   <FilaJornada key={m.alias} puesto={i + 1} nombre={m.estrategia.nombre} escudo={m.estrategia.escudo}
-                    etiqueta={etiqueta(m, abrir(m))} rentabilidad={mes(m) ?? 0}
+                    provisional={m.provisional} etiqueta={etiqueta(m, abrir(m))} rentabilidad={mes(m) ?? 0}
                     diferencia={m.diferencia_mes == null ? null : Number(m.diferencia_mes)}
                     propia={m.es_yo} onAbrir={abrir(m) ? ir(m) : undefined} />
                 ))}
@@ -101,7 +104,7 @@ export default function PrivadaDetalle() {
               <TablaClasificacion>
                 {clasificados.map((m, i) => m.estrategia && (
                   <FilaEquipo key={m.alias} puesto={i + 1} nombre={m.estrategia.nombre} escudo={m.estrategia.escudo}
-                    etiqueta={etiqueta(m, abrir(m))} vsIndice={Number(m.dif_sp ?? 0)} puntos={m.puntos ?? 0}
+                    provisional={m.provisional} etiqueta={etiqueta(m, abrir(m))} vsIndice={Number(m.dif_sp ?? 0)} puntos={m.puntos ?? 0}
                     acumulado={m.acumulado} movimiento={m.movimiento} tipo={m.es_yo ? "mia" : "normal"}
                     abrible={abrir(m)} onClick={ir(m)}
                     alAcercar={() => { if (m.estrategia) precargarFicha(m.estrategia.id); }} />

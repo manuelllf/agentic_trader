@@ -26,7 +26,8 @@ def cliente(monkeypatch):
 
     class Db:
         def execute(self, *_args, **_kwargs):
-            return SimpleNamespace(all=lambda: filas, scalar_one=lambda: len(filas))
+            return SimpleNamespace(all=lambda: filas, scalar_one=lambda: len(filas),
+                                   one_or_none=lambda: None)
 
     temporada = rp.TemporadaOut(
         id=1, nombre="Liga", cuenta=True, estado="cerrada", n_jornadas=1)
@@ -34,6 +35,7 @@ def cliente(monkeypatch):
         id=1, temporada_id=1, numero=1, dia_inicio=date(2026, 9, 1),
         dia_fin=date(2026, 9, 30), cierre_inscripcion=datetime(2026, 9, 1, tzinfo=UTC),
         estado="cerrada", sp_rentabilidad=Decimal("1"))
+    monkeypatch.setattr(rp, "_clasificacion_viva_activa", lambda: True)
     monkeypatch.setattr(rp, "_temporada", lambda *_a: temporada)
     monkeypatch.setattr(rp, "_jornada", lambda _db, where, *_a:
                         jornada if where in ("id = :j", "estado = 'cerrada'") else None)

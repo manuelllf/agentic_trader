@@ -696,6 +696,7 @@ export type Portada = {
 };
 
 export type FilaClasificacion = {
+  provisional?: boolean;
   posicion: number;
   equipo: EquipoPublico;
   puntos: number;
@@ -714,6 +715,7 @@ export type OrdenClasificacion = "rentabilidad" | "puntos";
 /** `mias`: las del alias pedido que quedan fuera de la página, con su posición real. */
 export type Clasificacion = {
   temporada: TemporadaPublica; total: number; filas: FilaClasificacion[]; mias: FilaClasificacion[];
+  jornada_provisional?: number | null;
 };
 
 export async function getPortada(): Promise<Portada | string> {
@@ -754,6 +756,7 @@ export type LigaResumen = {
 };
 
 export type MiembroLiga = {
+  provisional?: boolean;
   alias: string;
   es_yo: boolean;
   unido: string;

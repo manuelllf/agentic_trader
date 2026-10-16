@@ -131,6 +131,7 @@ function LigaContenido() {
   const filaDe = (f: FilaClasificacion) => (
     <FilaEquipo
       key={f.equipo.id ?? `p${f.posicion}`}
+      provisional={f.provisional}
       puesto={f.posicion}
       nombre={f.equipo.nombre}
       escudo={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo}
@@ -240,7 +241,7 @@ function LigaContenido() {
                          : { texto: t("league_entrar"), onClick: () => { window.location.href = "/entrar"; } }} />
               ) : (
                 <div className="sec" style={{ marginTop: 0 }}>
-                  <TablaClasificacion>
+                  <TablaClasificacion jornada_provisional={clasificacion.jornada_provisional}>
                     {clasificacion.filas.map(filaDe)}
                     {clasificacion.total > clasificacion.filas.length && (
                       <HuecoClasificacion>

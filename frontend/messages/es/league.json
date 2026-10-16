@@ -1,4 +1,6 @@
 {
+  "liga_clasificacion_provisional_nota": "La jornada {numero} sigue en juego: los puestos son provisionales.",
+  "liga_provisional_insignia": "Provisional",
   "league_titulo": "Liga",
   "league_error_portada": "No se pudo cargar la liga",
   "league_error_clasificacion": "No se pudo cargar la clasificación",
