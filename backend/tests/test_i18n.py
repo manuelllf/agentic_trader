@@ -3,7 +3,16 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 
-from app.i18n import ERROR_KEYS, MESSAGES, current_locale, present_catalog, present_error_detail, resolve_locale
+import pytest
+
+from app.i18n import (
+    ERROR_KEYS,
+    MESSAGES,
+    current_locale,
+    present_catalog,
+    present_error_detail,
+    resolve_locale,
+)
 from app.liga.estrategias import catalogo_payload
 
 
@@ -44,6 +53,20 @@ def test_locale_context_does_not_leak_between_requests():
 def test_error_catalog_preserves_unknown_original_content():
     assert MESSAGES["es"].keys() == MESSAGES["en"].keys()
     for original, key in ERROR_KEYS.items():
-        assert present_error_detail(original, "es") == original
+        assert present_error_detail(original, "es") == MESSAGES["es"][key]
         assert present_error_detail(original, "en") == MESSAGES["en"][key]
     assert present_error_detail("Original user report", "en") == "Original user report"
+
+
+@pytest.mark.parametrize("locale", ["es", "en"])
+def test_error_origin_uses_presentation_catalog(locale):
+    assert present_error_detail("Publicar es de Pro", locale) == (
+        MESSAGES[locale]["api_error_db_publicar_es_de_pro"])
+    assert present_error_detail("Tu plan permite 3 en juego a la vez", locale) == (
+        MESSAGES[locale]["dberr_tpl_plan_en_juego"].format(a=3))
+    assert present_error_detail("Error desconocido", locale) == "Error desconocido"
+    assert present_error_detail(
+        "Con Pro puedes tener hasta tres estrategias en juego a la vez", locale) == (
+        MESSAGES[locale]["api_error_db_con_pro_puedes_tener_hasta_tres_en_juego"])
+    assert MESSAGES[locale]["api_error_db_con_pro_puedes_tener_hasta_tres_en_juego"] != (
+        MESSAGES[locale]["api_error_db_con_el_plan_gratuito_solo_una_en_juego"])

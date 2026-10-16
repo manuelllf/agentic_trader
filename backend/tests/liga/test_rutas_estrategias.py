@@ -68,8 +68,14 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
     def cab(uid: str, aal: str = "aal1") -> dict:
         return {"Authorization": f"Bearer {token(uid, aal)}"}
 
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    from app.main import translated_http_error
+
     app = FastAPI()
     app.include_router(router)
+    # Como en producción: el usuario recibe el texto traducido, no el de la base de datos.
+    app.add_exception_handler(StarletteHTTPException, translated_http_error)
     cliente = TestClient(app)
 
     cx = psycopg.connect(URL, autocommit=True)
@@ -239,7 +245,7 @@ def test_limite_gratis_una_en_juego_y_pro_hasta_tres(api) -> None:  # noqa: ANN0
     _receta(cliente, cab, gratis, e2)
     r = cliente.post(f"/liga/estrategias/{e2}/apuntar", headers=cab(gratis))
     assert r.status_code == 422 and r.json()["detail"] == (
-        "Con el plan gratuito solo puedes tener una estrategia en juego. Con Pro, hasta tres")
+        "Solo puedes tener una estrategia en juego a la vez.")
 
     pro = usuario(pro=True)
     ids = [_crear(cliente, cab, pro, f"Pro {i}") for i in range(3)]

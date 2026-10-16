@@ -2,6 +2,7 @@
 
 // La API proyecta la ficha según permisos; la interfaz nunca reconstruye una receta privada.
 
+import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useConfirmar } from "@/components/Confirmar";
@@ -292,7 +293,7 @@ export function FichaContenido({ id }: { id: string }) {
                       {t("strategies_copy_adjust")}
                     </Boton>
                   ) : (
-                    <div className="lock">
+                    PLANES_VISIBLES && <div className="lock">
                       {t("strategies_pro_copy_note")}
                       <Link href="/cuenta/plan" className="btn pri wide">{t("planes_ver")}</Link>
                     </div>

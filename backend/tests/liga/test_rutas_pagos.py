@@ -102,6 +102,7 @@ def test_cuerpo_demasiado_grande_responde_413(cliente):  # noqa: ANN001
 
 def _cliente_con_sesion(monkeypatch):  # noqa: ANN001, ANN202
     """Cliente de la ruta con una sesión de prueba, sin pasar por Supabase."""
+    monkeypatch.setattr(settings, "planes_visibles", True)
     from app.liga.auth import Identidad, require_usuario
 
     monkeypatch.setattr(pagos, "acepto_version_vigente", lambda uid: True)
@@ -188,7 +189,7 @@ def test_lectura_sin_suscripcion(lectura: TestClient, monkeypatch: pytest.Monkey
     monkeypatch.setattr(pagos, "plan_pago_vigente", lambda uid: None)
     r = _pedir_lectura(lectura)
     assert r.status_code == 409
-    assert r.json()["detail"] == "No tienes una suscripción de Lemon que cambiar."
+    assert r.json()["detail"] == "No hay ajustes disponibles para tu cuenta."
 
 
 @pytest.mark.parametrize(("estado", "esperado"), [
@@ -311,4 +312,14 @@ def test_checkout_exige_version_vigente(monkeypatch, version, estado):  # noqa: 
     assert len(comprobaciones) == len(llamadas) == (1 if estado == 200 else 0)
     if estado == 403:
         assert r.json()["detail"] == (
-            "Antes de pagar, acepta la nueva versión de los términos.")
+            "Acepta la nueva versión de los términos para continuar.")
+
+
+def test_planes_ocultos_conservan_webhook(
+    cliente: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "planes_visibles", False)
+    respuesta = cliente.post("/liga/pagos/lemon/checkout", json={"producto": "mensual"})
+    assert respuesta.status_code == 404
+    assert cliente.get("/liga/pagos/lemon/suscripcion").status_code == 404
+    assert cliente.post("/liga/pagos/lemon/webhook", content=_cuerpo()).status_code == 401

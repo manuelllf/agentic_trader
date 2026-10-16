@@ -1,5 +1,6 @@
 "use client";
 
+import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import { useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { notFound } from "next/navigation";
@@ -111,12 +112,14 @@ export default function Muestrario() {
         <AvisosAltaVista variante="ios" ocupado={false} error={null} onActivar={() => {}} onSeguir={() => {}} />
         <CuentaHub yo={MUESTRA_GRATIS} email="muestra@gmail.com" />
         <CuentaHub yo={{ ...MUESTRA_PRO, aal2: true }} email="muestra@gmail.com" />
+        {PLANES_VISIBLES && <>
         <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={MUESTRA_SUSCRIPCION} />
         <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={{ ...MUESTRA_SUSCRIPCION,
           estado: "cancelada", termina_en: MUESTRA_PRO.plan_pago_hasta ?? null }} />
         <PlanCuentaVista yo={MUESTRA_PRO} suscripcion={{ ...MUESTRA_SUSCRIPCION,
           estado: "atrasada" }} />
         <PlanCuentaVista yo={MUESTRA_GRATIS} suscripcion={null} />
+        </>}
       </Seccion>
 
       <Seccion titulo={t("strategies_showcase_crest")}>
@@ -153,8 +156,8 @@ export default function Muestrario() {
 
       <Seccion titulo={t("strategies_showcase_chip")}>
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <Chip>Pro</Chip>
-          <Chip onClick={() => setCargandoDemo((v) => !v)}>3,10 €</Chip>
+          {PLANES_VISIBLES && (<Chip>Pro</Chip>)}
+          {PLANES_VISIBLES && (<Chip onClick={() => setCargandoDemo((v) => !v)}>3,10 €</Chip>)}
         </div>
       </Seccion>
 

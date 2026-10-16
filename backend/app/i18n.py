@@ -48,14 +48,49 @@ def present_catalog(payload: dict, locale: Locale) -> dict:
     return result
 
 
+# El origen lo fija la base de datos o el código; el catálogo solo lo presenta.
+ORIGEN_ERRORES: dict[str, str] = {
+    "Copiar una estrategia es de Pro.":
+        "api_error_copiar_una_estrategia_es_de_pro",
+    "Los pagos todavía no están activos.":
+        "api_error_los_pagos_todavia_no_estan_activos",
+    "No se pudo abrir el pago. Prueba en un momento.":
+        "api_error_no_se_pudo_abrir_el_pago_prueba_en_un_momento",
+    "Crear ligas privadas es de Pro":
+        "api_error_db_crear_ligas_privadas_es_de_pro",
+    "La pregunta propia es de Pro":
+        "api_error_db_la_pregunta_propia_es_de_pro",
+    "Las ligas privadas son de Pro":
+        "api_error_db_las_ligas_privadas_son_de_pro",
+    "Publicar es de Pro":
+        "api_error_db_publicar_es_de_pro",
+    "Crear ligas privadas es de Pro o de quien tiene un pase de liga":
+        "api_error_db_crear_ligas_privadas_es_de_pro_o_pase",
+    "Con Pro puedes tener hasta tres estrategias en juego a la vez":
+        "api_error_db_con_pro_puedes_tener_hasta_tres_en_juego",
+    "Con el plan gratuito solo puedes tener una estrategia en juego. Con Pro, hasta tres":
+        "api_error_db_con_el_plan_gratuito_solo_una_en_juego",
+    "Ya tienes todas tus ligas incluidas":
+        "api_error_db_ya_tienes_todas_tus_ligas_incluidas",
+    "No se pudo leer la suscripción. Prueba en un momento.":
+        "api_error_no_se_pudo_leer_la_suscripcion",
+}
+ORIGEN_PLANTILLAS: tuple[tuple[str, str], ...] = (
+    ("Tu plan permite {a} en juego a la vez", "dberr_tpl_plan_en_juego"),
+)
+
+
 ERROR_KEYS = {value: key for key, value in MESSAGES["es"].items() if key.startswith("api_error_")}
+ERROR_KEYS.update(ORIGEN_ERRORES)
 
 
 # Mensajes de la base de datos: con huecos (`{a}`, `{b}`) o escritos en inglés por el proveedor.
 _PLANTILLAS_BD = tuple(
     (re.compile(re.escape(texto).replace(r"\{a\}", "(?P<a>.+?)").replace(r"\{b\}", "(?P<b>.+?)")),
      clave)
-    for clave, texto in MESSAGES["es"].items() if clave.startswith("dberr_tpl_"))
+    for texto, clave in (*ORIGEN_PLANTILLAS, *((texto, clave)
+                         for clave, texto in MESSAGES["es"].items()
+                         if clave.startswith("dberr_tpl_"))))
 _ORIGEN_INGLES = {"authenticated identity required": "dberr_login",
                   "authenticated session required": "dberr_login"}
 

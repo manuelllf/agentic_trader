@@ -26,23 +26,22 @@ const pintar = () => {
 };
 
 describe("Portada", () => {
-  it("enseña Planes junto a Entrar en la cabecera del visitante", () => {
+  it("oculta Planes en la cabecera del visitante", () => {
     sesion.valor = "fuera";
     const cabecera = pintar().querySelector("header.pel-cabecera nav")!;
     const enlaces = [...cabecera.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
     expect(enlaces).toEqual([
-      ["Ver la liga", "/liga"], ["Planes", "/planes"], ["Entrar", "/entrar"], ["Crea la tuya", "/entrar?next=/crear"],
+      ["Ver la liga", "/liga"], ["Entrar", "/entrar"], ["Crea la tuya", "/entrar?next=/crear"],
     ]);
   });
 
-  it("en el móvil, donde la cabecera no tiene sitio, Planes va en la barra de abajo", () => {
+  it("oculta Planes tanto en escritorio como en móvil", () => {
     sesion.valor = "fuera";
     const el = pintar();
     const cabecera = el.querySelector<HTMLAnchorElement>('header.pel-cabecera a[href="/planes"]')!;
-    expect(cabecera.classList.contains("pel-solo-escritorio")).toBe(true);
+    expect(cabecera).toBeNull();
     const pie = el.querySelector<HTMLAnchorElement>('.pel-pie a[href="/planes"]')!;
-    expect(pie.textContent).toBe("Planes");
-    expect(pie.classList.contains("pel-solo-movil")).toBe(true);
+    expect(pie).toBeNull();
   });
 
   it("con sesión no pinta nada: la portada solo es del visitante", () => {

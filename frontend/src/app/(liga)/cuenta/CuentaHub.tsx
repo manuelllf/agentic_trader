@@ -1,5 +1,6 @@
 "use client";
 
+import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
@@ -56,9 +57,9 @@ export function CuentaHub({ yo, email }: { yo: Yo; email: string | null }) {
       <FilaCuenta href="/cuenta/nombre" nombre={t("account_nombre_liga")} valor={yo.alias} />
       <FilaCuenta nombre={t("account_correo")} valor={correoOculto(email ?? "")} />
     </Grupo>
-    <Grupo titulo={t("account_grupo_plan")}>
+    {PLANES_VISIBLES && (<Grupo titulo={t("account_grupo_plan")}>
       <FilaCuenta href="/cuenta/plan" nombre={plan} sub={sub} />
-    </Grupo>
+    </Grupo>)}
     <Grupo titulo={t("account_grupo_seguridad")}>
       <FilaCuenta href="/cuenta/verificacion?next=/cuenta" nombre={t("account_verificacion")}
         valor={yo.aal2 ? t("account_activada") : undefined} />

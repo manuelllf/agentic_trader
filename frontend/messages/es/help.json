@@ -43,7 +43,7 @@
   "help_fairness_rules": "<b>Las reglas están versionadas.</b> Cada estrategia guarda con qué versión del catálogo jugó.",
   "help_fairness_results": "<b>Los resultados oficiales no se reescriben.</b> Se fijan al cerrar la jornada y se quedan así.",
   "help_fairness_scores": "<b>Todos fijan con las mismas notas.</b> Las notas se generan la tarde del último día de bolsa, y nadie conoce el movimiento del día 1 cuando la cartera se fija.",
-  "help_fairness_house": "<b>La casa puntúa como tú.</b> Alpha, Omega y Lambda juegan la misma jornada, contra el mismo S&P y con los mismos puntos; sus carteras vienen de los métodos del sistema. Con Pro ves la cartera de la casa en directo; sin Pro, la ves cuando acaba la jornada. La rentabilidad del mes la ve todo el mundo.",
+  "help_fairness_house": "<b>La casa puntúa como tú.</b> Alpha, Omega y Lambda juegan la misma jornada, contra el mismo S&P y con los mismos puntos; sus carteras vienen de los métodos del sistema. La cartera de la casa se publica cuando acaba la jornada. La rentabilidad del mes la ve todo el mundo.",
   "help_fairness_admin": "<b>Todo lo que hace la administración deja registro.</b>",
   "help_question_heading": "¿Algo no te cuadra?",
   "help_question_text": "En tu estrategia, «¿Por qué no sale X?» te dice si la empresa entraría y por qué. Y si sigue sin cuadrarte, escríbenos.",

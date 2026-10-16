@@ -2,6 +2,7 @@
 
 // Sin foto de perfil, la cuenta vive detrás de los tres puntos.
 
+import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
@@ -60,7 +61,7 @@ export function Sesion() {
       {abierto && (
         <div className="cuenta-menu" role="menu">
           {dentro && <div className="quien">{t("account_sesion_de", { alias: yo?.alias ?? t("account_tu_cuenta") })}</div>}
-          {dentro && (yo?.plan === "pro" || yo?.pase_liga) && (
+          {PLANES_VISIBLES && dentro && (yo?.plan === "pro" || yo?.pase_liga) && (
             <div className="insignias">
               {yo?.plan === "pro" && <Chip>{t("account_badge_pro")}</Chip>}
               {yo?.pase_liga && <Chip>{t("account_badge_pase")}</Chip>}
@@ -68,7 +69,7 @@ export function Sesion() {
           )}
           {dentro ? <>
             <Link href="/cuenta" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_tu_cuenta")}</Link>
-            <Link href="/cuenta/plan" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="l" />{t("planes_titulo")}</Link>
+            {PLANES_VISIBLES && (<Link href="/cuenta/plan" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="l" />{t("planes_titulo")}</Link>)}
             {yo?.admin && <Link href={panel} role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="p" />{t("account_panel_control")}</Link>}
           </> : <Link href="/entrar" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_entrar")}</Link>}
           {dentro && <><hr /><button type="button" role="menuitem" className="cuenta-item salir" onClick={salir}><Icono tipo="s" />{t("account_salir")}</button></>}

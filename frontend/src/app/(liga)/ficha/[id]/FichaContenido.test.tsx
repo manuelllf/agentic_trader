@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { Ficha } from "@/lib/liga/api";
 import { FichaContenido } from "./FichaContenido";
 
-const estado = vi.hoisted(() => ({ ficha: null as Ficha | string | null }));
+const estado = vi.hoisted(() => ({ ficha: null as Ficha | string | null, plan: "pro" }));
 vi.mock("next/link", () => ({ default: ({ children, ...props }: ComponentProps<"a">) => <a {...props}>{children}</a> }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
 vi.mock("next-intl", async (importOriginal) => ({
@@ -13,7 +13,7 @@ vi.mock("next-intl", async (importOriginal) => ({
   useTranslations: () => (clave: string) => clave,
 }));
 vi.mock("@/components/Confirmar", () => ({ useConfirmar: () => ({ pedirTexto: vi.fn(), dialogo: null }) }));
-vi.mock("../../_sesion/SesionContext", () => ({ useSesionRequerida: () => ({ estado: "dentro", yo: { plan: "pro" } }) }));
+vi.mock("../../_sesion/SesionContext", () => ({ useSesionRequerida: () => ({ estado: "dentro", yo: { plan: estado.plan } }) }));
 vi.mock("@/lib/liga/cache", () => ({
   invalidar: vi.fn(),
   useCache: (clave: string | null) => ({ datos: clave?.startsWith("ficha:") ? estado.ficha : undefined, cargando: false, refrescar: vi.fn() }),
@@ -27,6 +27,7 @@ vi.mock("../../_ui", () => ({
 }));
 
 beforeEach(() => {
+  estado.plan = "pro";
   estado.ficha = {
     id: "estrategia-1", nombre: "Foso ancho", casa: null, autor: "Ana", estado: "jugando",
     visibilidad: "publicada", es_dueno: true, escudo: { forma: "escudo", dibujo: "liso", color1: "#0B6E68", color2: null, iniciales: null },
@@ -61,4 +62,13 @@ it("mantiene el error y el enlace de vuelta sin mostrar reglas ni acciones de ot
   expect(salida).toContain("No disponible");
   expect(salida).toContain('href="/liga"');
   expect(salida).not.toContain('class="ficha-cuerpo"');
+});
+
+it("oculta el aviso comercial y el enlace de planes en una cuenta gratis", () => {
+  estado.plan = "gratis";
+  estado.ficha = { ...(estado.ficha as Ficha), es_dueno: false };
+  const salida = renderToStaticMarkup(<FichaContenido id="estrategia-1" />);
+  expect(salida).not.toContain('/cuenta/plan');
+  expect(salida).not.toContain('strategies_pro_copy_note');
+  expect(salida).toContain('strategies_report');
 });

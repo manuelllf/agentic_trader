@@ -3,6 +3,7 @@
 // La escena de la portada: el lienzo y sus capas de texto. El movimiento lo lleva `montarPelicula`;
 // aquí solo está el esqueleto con los textos del catálogo.
 
+import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -166,7 +167,7 @@ export function Pelicula() {
 
           <div className="pel-pie">
             <Link href="/como-funciona" className="pel-pie-enlace">{t("landing_como_funciona")}</Link>
-            <Link href="/planes" className="pel-pie-enlace pel-solo-movil">{t("landing_planes")}</Link>
+            {PLANES_VISIBLES && (<Link href="/planes" className="pel-pie-enlace pel-solo-movil">{t("landing_planes")}</Link>)}
             <div className="pel-legal" ref={legal}>
               <button type="button" className="pel-legal-boton" aria-expanded={legalAbierto} aria-controls="pel-legales"
                 onClick={() => setLegalAbierto((a) => !a)}>{t("landing_legal")}</button>

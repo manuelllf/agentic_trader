@@ -28,6 +28,11 @@ _TAMANO_MAXIMO = 64 * 1024
 _LIMITE_LECTURA = acceso.LimiteFrecuencia(tope=10, ventana_s=60 * 10)
 
 
+def _planes_visibles() -> None:
+    if not settings.planes_visibles:
+        raise HTTPException(404)
+
+
 class CheckoutIn(BaseModel):
     producto: Literal["mensual", "media_temporada", "temporada", "pack_liga"]
 
@@ -56,7 +61,8 @@ async def webhook(request: Request) -> dict:
     return {"estado": estado}
 
 
-@router.post("/liga/pagos/lemon/checkout", response_model=CheckoutOut)
+@router.post("/liga/pagos/lemon/checkout", response_model=CheckoutOut,
+             dependencies=[Depends(_planes_visibles)])
 def checkout(body: CheckoutIn, ident: Identidad = Depends(require_usuario)) -> CheckoutOut:
     if not _LIMITE_CHECKOUT.permitido(ident.uid):
         raise HTTPException(429, "Demasiados intentos. Espera unos minutos.")
@@ -122,7 +128,8 @@ def _suscripcion_usuario(ident: Identidad) -> str:
     return vigente[0]
 
 
-@router.get("/liga/pagos/lemon/suscripcion", response_model=SuscripcionOut)
+@router.get("/liga/pagos/lemon/suscripcion", response_model=SuscripcionOut,
+            dependencies=[Depends(_planes_visibles)])
 def leer_suscripcion(ident: Identidad = Depends(require_usuario)) -> SuscripcionOut:
     suscripcion = _suscripcion_usuario(ident)
     try:

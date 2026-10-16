@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     lemon_api_key: str = ""
     lemon_webhook_secret: str = ""
     lemon_store_id: str = ""
+    # Planes de pago ocultos: con False, checkout y suscripción responden 404.
+    planes_visibles: bool = False
     lemon_modo: Literal["test", "live"] = "test"
     lemon_variantes: dict[str, str] = {}
     # A dónde vuelve el comprador tras pagar (la web, no Lemon).

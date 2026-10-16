@@ -45,14 +45,14 @@ describe("CuentaHub", () => {
   it("ordena los grupos y todas las filas con sus destinos", () => {
     const el = montar();
     expect([...el.querySelectorAll("h2")].map(n => n.textContent)).toEqual([
-      "Tú", "Plan", "Seguridad", "Avisos", "Datos y ayuda",
+      "Tú", "Seguridad", "Avisos", "Datos y ayuda",
     ]);
     expect([...el.querySelectorAll(".ajustes-nombre")].map(n => n.textContent)).toEqual([
-      "Tu nombre en la liga", "Correo", "Gratis", "Verificación en dos pasos", "Contraseña",
+      "Tu nombre en la liga", "Correo", "Verificación en dos pasos", "Contraseña",
       "Avisos", "Descargar mis datos", "Cómo funciona la liga", "Legal", "Borrar mi cuenta",
     ]);
     expect([...el.querySelectorAll("a")].map(a => a.getAttribute("href"))).toEqual([
-      "/cuenta/nombre", "/cuenta/plan", "/cuenta/verificacion?next=/cuenta", "/cuenta/clave",
+      "/cuenta/nombre", "/cuenta/verificacion?next=/cuenta", "/cuenta/clave",
       "/cuenta/avisos", "/cuenta/datos", "/como-funciona", "/cuenta/legal", "/cuenta/borrar",
     ]);
     const correo = el.querySelectorAll("li")[1];
@@ -65,14 +65,13 @@ describe("CuentaHub", () => {
     expect(ultima.classList.contains("ajustes-peligro")).toBe(true);
   });
   it.each([
-    [gratis, "Gratis", "Elige un plan para crear ligas"],
-    [{ ...gratis, plan: "pro", plan_pago: "mensual", plan_pago_hasta: "2026-11-10T12:00:00Z" },
-      "Pro · Mensual", "Vigente hasta el 10 de noviembre"],
-    [{ ...gratis, plan: "pro", plan_pago: null }, "Pro", "Concedido por Vennett"],
-  ] as const)("muestra título y subtítulo del plan %#", (yo, titulo, sub) => {
-    const fila = montar(yo as Yo).querySelector('a[href="/cuenta/plan"]')!;
-    expect(fila.querySelector(".ajustes-nombre")?.textContent).toBe(titulo);
-    expect(fila.querySelector(".ajustes-sub")?.textContent).toBe(sub);
+    gratis,
+    { ...gratis, plan: "pro", plan_pago: "mensual", plan_pago_hasta: "2026-11-10T12:00:00Z" },
+    { ...gratis, plan: "pro", plan_pago: null },
+  ] as Yo[])("oculta el plan para cualquier cuenta %#", yo => {
+    const el = montar(yo);
+    expect(el.querySelector('a[href="/cuenta/plan"]')).toBeNull();
+    expect(el.textContent).not.toContain("Pro");
   });
   it.each([false, true])("solo muestra Activada con aal2=%s", aal2 => {
     const fila = montar({ ...gratis, aal2 }).querySelector('a[href^="/cuenta/verificacion"]')!;

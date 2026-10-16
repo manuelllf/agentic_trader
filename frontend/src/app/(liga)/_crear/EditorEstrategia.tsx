@@ -2,6 +2,7 @@
 
 // La selección puede probarse sin crear estrategia; guardar o inscribir requiere identidad.
 
+import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -757,7 +758,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                        onClick={() => pro && setVisibilidad("publicada")} />
         </div>
         <p className="fine">{t("builder_revisar_sin_pruebas")}</p>
-        {!pro && <Link href="/cuenta/plan" className="link">{t("planes_ver")}</Link>}
+        {PLANES_VISIBLES && !pro && <Link href="/cuenta/plan" className="link">{t("planes_ver")}</Link>}
         {visibilidad === "publicada" && (
           <div className="revisar-declara">
             <span className="lbl">{t("builder_position_declaration")}</span>
