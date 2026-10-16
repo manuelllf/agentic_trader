@@ -465,5 +465,7 @@
   "correo_resumen_salen": "Empresas que salen",
   "correo_resumen_ninguna": "Sin datos",
   "correo_resumen_estrategia": "Estrategia",
-  "correo_resumen_provisional": "Datos provisionales"
+  "correo_resumen_provisional": "Datos provisionales",
+  "api_error_captcha_invalido": "No hemos podido comprobar que eres una persona. Inténtalo de nuevo.",
+  "api_error_captcha_no_disponible": "No podemos comprobar la verificación ahora. Prueba en un momento."
 }

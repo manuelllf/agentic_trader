@@ -465,5 +465,7 @@
   "correo_resumen_salen": "Companies leaving",
   "correo_resumen_ninguna": "No data",
   "correo_resumen_estrategia": "Strategy",
-  "correo_resumen_provisional": "Provisional data"
+  "correo_resumen_provisional": "Provisional data",
+  "api_error_captcha_invalido": "We could not verify that you are a person. Try again.",
+  "api_error_captcha_no_disponible": "We cannot check the verification right now. Try again shortly."
 }

@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, SecretStr
 
 from app.config import settings
-from app.liga import acceso, gestion
+from app.liga import acceso, gestion, turnstile
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/registro")
@@ -43,6 +43,7 @@ def estado_registro() -> dict:
 class CorreoIn(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     origen: str = Field(min_length=1, max_length=300)
+    turnstile: str | None = None
 
 
 class RegistroIn(CorreoIn):
@@ -128,6 +129,7 @@ def _idioma(request: Request) -> str:
 
 @router.post("")
 def registrar(body: RegistroIn, request: Request) -> dict:
+    turnstile.verificar(body.turnstile, request.client.host if request.client else None)
     if not gestion.registro_abierto():
         raise HTTPException(403, "El registro está cerrado por ahora.")
     email, origen = _preparar(body, request)
@@ -149,6 +151,7 @@ def registrar(body: RegistroIn, request: Request) -> dict:
 
 @router.post("/recuperar")
 def recuperar(body: CorreoIn, request: Request) -> dict:
+    turnstile.verificar(body.turnstile, request.client.host if request.client else None)
     email, origen = _preparar(body, request)
     _enviar("recover", {"email": email}, origen + ENLACE_CLAVE, sin_revelar=True)
     return {"ok": True}
@@ -156,6 +159,7 @@ def recuperar(body: CorreoIn, request: Request) -> dict:
 
 @router.post("/reenviar")
 def reenviar(body: CorreoIn, request: Request) -> dict:
+    turnstile.verificar(body.turnstile, request.client.host if request.client else None)
     email, origen = _preparar(body, request)
     _enviar("resend", {"type": "signup", "email": email}, origen + ENLACE_CONFIRMAR,
             sin_revelar=True)

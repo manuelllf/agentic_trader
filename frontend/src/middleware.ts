@@ -49,7 +49,7 @@ export function middleware(request: NextRequest) {
     "default-src 'self'",
     // 'strict-dynamic' + nonce: los scripts que el propio Next inyecta (con el nonce) pueden a su
     // vez cargar los suyos (chunks) sin tener que listarlos uno a uno.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com`,
     // Tailwind v4 compila a CSS de verdad (sin runtime), pero el estilo en línea (`style={{...}}`,
     // usado en Escudo.tsx y otros) va por el atributo `style`, que solo permite 'unsafe-inline'
     // (los nonce de CSP no cubren ese atributo). Google Fonts (Fraunces, salas /admin) carga su
@@ -59,6 +59,7 @@ export function middleware(request: NextRequest) {
     // Fraunces (letra de las salas) sirve los ficheros de letra desde fonts.gstatic.com.
     "font-src 'self' https://fonts.gstatic.com",
     `connect-src ${connectSrc}`,
+    "frame-src 'self' https://challenges.cloudflare.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import TurnstileWidget from "@/components/TurnstileWidget";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Boton, CampoClave } from "../_ui";
@@ -22,6 +23,9 @@ export default function Registrar() {
   const [enviado, setEnviado] = useState(false);
   const [reenviado, setReenviado] = useState(false);
   const [error, setError] = useState("");
+  const [turnstile, setTurnstile] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const captchaPendiente = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim()) && !turnstile;
   const [destino, setDestino] = useState("/liga");
   useEffect(() => {
     setDestino(destinoSeguro(new URLSearchParams(window.location.search).get("next")));
@@ -41,10 +45,11 @@ export default function Registrar() {
   const requisitos = requisitosClave(clave);
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
-    if (ocupado || !sb || !acceso?.registro_abierto) return;
+    if (ocupado || captchaPendiente || !sb || !acceso?.registro_abierto) return;
     if (!claveValida(clave)) { setError(t("auth_clave_revisa")); return; }
     setOcupado(true); setError("");
-    const fallo = await solicitarCorreo("", { email, alias, clave, acepta_terminos: acepta });
+    const fallo = await solicitarCorreo("", { email, alias, clave, acepta_terminos: acepta, turnstile });
+    setTurnstile(""); setCaptchaReset(value => value + 1);
     if (fallo) { setOcupado(false); setError(fallo); }
     else {
       let falloAcceso = false;
@@ -71,11 +76,14 @@ export default function Registrar() {
       {enviado ? <>
         <h2>{t("auth_cuenta_creada")}</h2>
         <p>{t("auth_cuenta_creada_entrada")}</p>
-        <Boton variante="secundario" ancho="completo" disabled={ocupado || !acceso?.correo_disponible}
+        <TurnstileWidget onToken={setTurnstile} resetKey={captchaReset} />
+        {captchaPendiente && <p className="nota" role="status">{t("auth_captcha_pendiente")}</p>}
+        <Boton variante="secundario" ancho="completo" disabled={ocupado || captchaPendiente || !acceso?.correo_disponible}
           onClick={async () => {
-            if (ocupado || !acceso?.correo_disponible) return;
+            if (ocupado || captchaPendiente || !acceso?.correo_disponible) return;
             setOcupado(true); setError(""); setReenviado(false);
-            const fallo = await solicitarCorreo("/reenviar", { email });
+            const fallo = await solicitarCorreo("/reenviar", { email, turnstile });
+            setTurnstile(""); setCaptchaReset(value => value + 1);
             setOcupado(false);
             if (fallo) setError(fallo);
             else setReenviado(true);
@@ -102,7 +110,9 @@ export default function Registrar() {
         </ul>
         <label className="acc-acepta"><input className="acc-chk" type="checkbox" required checked={acepta}
           onChange={e => setAcepta(e.target.checked)} /><span>{t.rich("auth_aceptacion_legal", { terms: chunks => <Link href="/legal/terminos">{chunks}</Link>, privacy: chunks => <Link href="/legal/privacidad">{chunks}</Link> })}</span></label>
-        <Boton type="submit" variante="principal" ancho="completo" disabled={ocupado || !sb || !acceso?.registro_abierto}>
+        <TurnstileWidget onToken={setTurnstile} resetKey={captchaReset} />
+        {captchaPendiente && <p className="nota" role="status">{t("auth_captcha_pendiente")}</p>}
+        <Boton type="submit" variante="principal" ancho="completo" disabled={ocupado || captchaPendiente || !sb || !acceso?.registro_abierto}>
           {ocupado ? t("auth_creando_cuenta") : t("auth_crear_cuenta")}</Boton>
       </form>}
       {error && <p className="aviso" role="alert">{error}</p>}

@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # nuevas y la petición cae con «Invalid JWT»); vacía = la baja responde 503.
     supabase_secret_key: str = ""
 
+    # Clave secreta de Cloudflare Turnstile; vacía significa comprobación apagada.
+    turnstile_secret_key: str = ""
+
     # Lemon Squeezy (pagos de la liga). La clave de API y el secreto de firma van solo a Railway.
     # `lemon_variantes` es JSON: {"<id de variante>": "<producto>"}.
     # Modo "test" hasta la aprobación: un evento de otro modo se ignora.

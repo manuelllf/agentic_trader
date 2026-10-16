@@ -4,6 +4,7 @@
 // mismo: sin él la sesión se queda en aal1 y las salas no abren.
 
 import { useTranslations } from "next-intl";
+import TurnstileWidget from "@/components/TurnstileWidget";
 import { useEffect, useState } from "react";
 import { GOOGLE_ACTIVO, APPLE_ACTIVO } from "@/lib/liga/proveedores";
 import { Boton, CampoClave } from "../_ui";
@@ -25,6 +26,9 @@ export default function Entrar() {
   const [clave, setClave] = useState("");
   const [codigo, setCodigo] = useState("");
   const [error, setError] = useState("");
+  const [turnstile, setTurnstile] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const captchaPendiente = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim()) && !turnstile;
   const [correoSinConfirmar, setCorreoSinConfirmar] = useState(false);
   const [reenviado, setReenviado] = useState(false);
   const [ocupado, setOcupado] = useState(false);
@@ -161,15 +165,19 @@ export default function Entrar() {
               <button type="button" className="acc-olvido" disabled={ocupado}
                 onClick={() => cambiarModo("recuperar")}>{t("auth_olvide_contrasena")}</button>
               {error && <p className="aviso" role="alert">{error}</p>}
-              {correoSinConfirmar && email.includes("@") && <Boton variante="secundario" ancho="completo"
-                disabled={ocupado} onClick={async () => {
-                  if (ocupado) return;
+              {correoSinConfirmar && email.includes("@") && <>
+                <TurnstileWidget onToken={setTurnstile} resetKey={captchaReset} />
+                {captchaPendiente && <p className="nota" role="status">{t("auth_captcha_pendiente")}</p>}
+                <Boton variante="secundario" ancho="completo"
+                  disabled={ocupado || captchaPendiente} onClick={async () => {
+                  if (ocupado || captchaPendiente) return;
                   setOcupado(true); setError(""); setReenviado(false);
-                  const fallo = await solicitarCorreo("/reenviar", { email });
+                  const fallo = await solicitarCorreo("/reenviar", { email, turnstile });
+                  setTurnstile(""); setCaptchaReset(value => value + 1);
                   setOcupado(false);
                   if (fallo) setError(fallo);
                   else setReenviado(true);
-                }}>{t("auth_reenviar_confirmacion")}</Boton>}
+                }}>{t("auth_reenviar_confirmacion")}</Boton></>}
               {reenviado && <p role="status">{t("auth_correo_enviado_generico")}</p>}
               <Boton type="submit" variante="principal" ancho="completo"
                      disabled={ocupado || !sb || !email || !clave}>
