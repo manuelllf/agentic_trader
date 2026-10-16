@@ -146,6 +146,8 @@
   "push_cambios_cierran_body": "A las {time} tu cartera queda fijada para todo el mes.",
   "push_empieza_title": "Empieza la jornada",
   "push_empieza_body": "Tu cartera ya juega. Míralo en Mías.",
+  "correo_ia_tope_80_asunto": "Vennett: el gasto de IA va por el 80 % del tope",
+  "correo_ia_tope_80_intro": "Llevamos {gasto} $ de {tope} $ este mes. Al llegar al tope, la IA de la liga se para hasta el mes siguiente.",
   "correo_omega_nuevas_asunto": "Omega: {count} señales nuevas",
   "correo_omega_nuevas_asunto_uno": "Omega: 1 señal nueva",
   "correo_omega_nuevas_intro": "Estas son las señales que el escáner de hoy ha añadido a Omega.",
@@ -446,5 +448,9 @@
   "motor_val_lista_valor": "En «{regla}», {etiqueta} debe ser uno de los valores de la lista.",
   "motor_val_tamano_orden": "En «Tamaño», desde debe ser menor que hasta.",
   "liga_actualizacion_semanal": "Puedes actualizar los datos una vez cada siete días.",
-  "liga_actualizacion_sin_candidatas": "No hay empresas candidatas para actualizar."
+  "liga_actualizacion_sin_candidatas": "No hay empresas candidatas para actualizar.",
+  "push_omega_prueba_title": "Omega: aviso de prueba",
+  "push_omega_prueba_body": "Si lo ves, el aviso de Omega llega.",
+  "push_liga_prueba_title": "Vennett: aviso de prueba",
+  "push_liga_prueba_body": "Si lo ves, los avisos te llegan."
 }

@@ -4,7 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Yo } from "@/lib/liga/api";
 
-const { guardar, refrescarYo, sesion } = vi.hoisted(() => ({
+const { guardar, refrescarYo, sesion, push } = vi.hoisted(() => ({
+  push: { estado: "no-disponible", ocupado: false, error: null, activar: vi.fn(), desactivar: vi.fn() },
   guardar: vi.fn(), refrescarYo: vi.fn(), sesion: { yo: {} as Partial<Yo> },
 }));
 vi.mock("next-intl", async (importOriginal) => {
@@ -13,8 +14,10 @@ vi.mock("next-intl", async (importOriginal) => {
 });
 vi.mock("@/lib/liga/avisos", () => ({
   avisosSoportados: () => false, estadoAvisos: vi.fn(), activarAvisos: vi.fn(), bajaAvisos: vi.fn(),
+  probarAvisoCuenta: vi.fn(),
   guardarAvisosCorreo: (...args: unknown[]) => guardar(...args),
 }));
+vi.mock("./usePushDispositivo", () => ({ usePushDispositivo: () => push }));
 vi.mock("../_sesion/SesionContext", () => ({ useSesion: () => ({ yo: sesion.yo, refrescarYo }) }));
 import { AvisosCuenta } from "./AvisosCuenta";
 
@@ -39,7 +42,7 @@ async function escribirYSalir(input: HTMLInputElement, valor: string) {
   });
   await act(async () => { input.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
 }
-beforeEach(() => { guardar.mockReset(); guardar.mockResolvedValue({ activo: true, correo: null }); });
+beforeEach(() => { push.estado = "no-disponible"; guardar.mockReset(); guardar.mockResolvedValue({ activo: true, correo: null }); });
 afterEach(() => {
   if (root) act(() => root!.unmount());
   host?.remove();
@@ -48,6 +51,14 @@ afterEach(() => {
 });
 
 describe("AvisosCuenta", () => {
+  it("muestra la prueba solo con avisos activos en este dispositivo", () => {
+    push.estado = "activo";
+    const el = montar({});
+    expect([...el.querySelectorAll("button")].some(b => b.textContent === "Probar aviso")).toBe(true);
+    push.estado = "apagado";
+    act(() => root!.render(createElement(AvisosCuenta, { email: "ana@ejemplo.com" })));
+    expect([...el.querySelectorAll("button")].some(b => b.textContent === "Probar aviso")).toBe(false);
+  });
   it("activar el correo lo guarda con la dirección de la cuenta y enseña el campo", async () => {
     const el = montar({ avisos_correo: false, correo_avisos: null });
     expect(campo(el)).toBeNull();

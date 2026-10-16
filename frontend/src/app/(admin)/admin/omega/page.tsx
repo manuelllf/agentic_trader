@@ -14,7 +14,7 @@ import { ApiError, getFx } from "@/lib/api";
 import { money, signMoney } from "@/lib/format";
 import {
   adminDetectarCandidatos, adminScan, getAlertas, getCandidatos, getCuenta, getGateConfig,
-  getHistorial, getPreciosVivos, getRegimen, getScanProgreso, getValidacion, setGateConfig,
+  getHistorial, getPreciosVivos, getRegimen, getScanProgreso, getValidacion, probarAvisoOmega, setGateConfig,
 } from "./api";
 import type { GateProvider, ScanProgreso } from "./api";
 import { CandidatoBuscadorModal, CandidatosTabs } from "./components/Candidatos";
@@ -49,6 +49,23 @@ function SalaMomentumRoom() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [probandoAviso, setProbandoAviso] = useState(false);
+  const [avisoMsg, setAvisoMsg] = useState("");
+  async function probarAviso() {
+    if (probandoAviso) return;
+    setProbandoAviso(true);
+    setAvisoMsg("");
+    try {
+      const r = await probarAvisoOmega();
+      setAvisoMsg(r.dispositivos === 0
+        ? t("admin_omega_probar_sin_dispositivos")
+        : t("admin_omega_probar_resultado", { ok: r.ok, total: r.dispositivos }));
+    } catch {
+      setAvisoMsg(t("admin_omega_probar_error"));
+    } finally {
+      setProbandoAviso(false);
+    }
+  }
   const [scanMsg, setScanMsg] = useState("");
   const [scanProgreso, setScanProgreso] = useState<ScanProgreso | null>(null);
   const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -367,6 +384,12 @@ function SalaMomentumRoom() {
           <ActionChip onClick={refrescar} busy={refreshing} label={t("omega_attr_actualizar")} stroke>
             <path d="M3 12a9 9 0 0 1 15.3-6.3L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.3 6.3L3 16M3 21v-5h5" />
           </ActionChip>
+          <div className="col-span-4 min-w-0 mt-2">
+            <ActionChip onClick={probarAviso} busy={probandoAviso} label={t("admin_omega_probar_aviso")} stroke>
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+            </ActionChip>
+            {avisoMsg && <p role="status" className="mt-2 text-[12px] leading-relaxed" style={{ color: T.muted }}>{avisoMsg}</p>}
+          </div>
         </div>
 
         {error && (

@@ -255,6 +255,12 @@ def registrar_llamada(*, finalidad: str, usuario_id: str | None, llamada: Llamad
             **(detalle or {}),
         }, usuario_id)
         db.commit()
+        if not cache and finalidad != "formacion":
+            try:
+                _avisar_tope_80(db)
+            except Exception:
+                logger.exception("No se pudo avisar del gasto de IA")
+                db.rollback()
     finally:
         db.close()
     logger.info(
@@ -262,6 +268,39 @@ def registrar_llamada(*, finalidad: str, usuario_id: str | None, llamada: Llamad
         finalidad, usuario_id, llm_call_id, llamada.modelo, llamada.tokens_salida,
         llamada.coste_usd, cache, creditos)
     return llm_call_id
+
+
+def _avisar_tope_80(db: Session) -> None:
+    from app import avisos_admin
+
+    ahora = datetime.now(TZ_MADRID)
+    mes = ahora.strftime("%Y-%m")
+    inicio = ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    fin = inicio.replace(year=inicio.year + 1, month=1) if inicio.month == 12 else (
+        inicio.replace(month=inicio.month + 1))
+    tope = tope_mensual(db.execute(text("select valor from liga.ajustes where clave = :c"),
+                                   {"c": _CLAVE_TOPE}).scalar())
+    if tope is None:
+        return
+    db.execute(text("select pg_advisory_xact_lock(hashtext(:clave))"),
+               {"clave": f"aviso.ia_tope_80:{mes}"})
+    gasto = Decimal(str(db.execute(text("""
+        select coalesce(sum(cost_usd), 0) from llm_call
+        where stage = any(:etapas) and at >= :inicio and at < :fin
+    """), {"etapas": [s for f, s in _STAGE.items() if f != "formacion"],
+           "inicio": inicio, "fin": fin}).scalar_one()))
+    if gasto < tope * Decimal("0.8"):
+        return
+    objeto = f"mes:{mes}"
+    if db.execute(text("""
+        select exists(select 1 from liga.auditoria
+                      where accion = 'aviso.ia_tope_80' and objeto = :objeto)
+    """), {"objeto": objeto}).scalar_one():
+        return
+    avisos_admin.por_correo("ia_tope_80", "/admin/liga/ajustes",
+                            gasto=f"{gasto:.2f}", tope=f"{tope:.2f}")
+    auditar(db, "aviso.ia_tope_80", objeto, {"gasto": gasto, "tope": tope}, None)
+    db.commit()
 
 
 def veces_desde(finalidad: str, usuario_id: str, desde: datetime,

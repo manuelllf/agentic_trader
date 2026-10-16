@@ -20,6 +20,8 @@ from app.i18n import MESSAGES, Locale, translate
 logger = logging.getLogger(__name__)
 
 CANALES: dict[str, frozenset[str]] = {
+    "ia_tope_80": frozenset({"correo"}),
+    "omega_prueba": frozenset({"push"}),
     "omega_nuevas": frozenset({"push", "correo"}),
     "omega_reactivadas": frozenset({"push", "correo"}),
     "omega_resueltas": frozenset({"push", "correo"}),
@@ -30,14 +32,36 @@ _MESES_ES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "ag
              "septiembre", "octubre", "noviembre", "diciembre")
 
 
-def avisar(db: Session, tipo: str, *, title: str, body: str, url: str, tag: str,
-           filas: Sequence[correo_plantilla.Fila] = (), **valores: object) -> int:
+def avisar(db: Session | None, tipo: str, *, title: str, body: str, url: str, tag: str,
+           filas: Sequence[correo_plantilla.Fila] = (), resumen: dict | None = None,
+           **valores: object) -> int:
     """Manda el aviso por los canales del tipo. Devuelve los dispositivos que recibieron el push.
     El correo, como el push, nunca tira el proceso que avisa."""
     canales = CANALES.get(tipo, frozenset())
     enviados = 0
     if "push" in canales:
-        enviados = push.send_to_all(db, title=title, body=body, url=url, tag=tag)
+        from app.liga.procesos.comun import auditar, fabrica_sistema, sesion
+
+        if db is None:
+            with sesion(fabrica_sistema) as abierta:
+                return avisar(abierta, tipo, title=title, body=body, url=url, tag=tag,
+                              filas=filas, resumen=resumen, **valores)
+        panel = push.enviar_a_todos(db, title=title, body=body, url=url, tag=tag)
+        liga = push.enviar_a_admins_liga(db, title, body, url, tag,
+                                       ya_enviados=set(panel.get("endpoints", set())))
+        contadores = {"dispositivos": panel["total"] + liga["total"],
+                      **{k: panel[k] + liga[k] for k in ("ok", "baja", "error")}}
+        try:
+            auditar(db, "aviso.push", f"tipo:{tipo}",
+                    {**contadores, "liga_ok": liga["ok"], "liga_error": liga["error"]}, None)
+            db.commit()
+        except Exception:
+            logger.exception("No se pudo registrar el aviso")
+            if not db.is_active:
+                db.rollback()
+        if resumen is not None:
+            resumen.update(contadores)
+        enviados = contadores["ok"]
     if "correo" in canales:
         por_correo(tipo, url, filas, **valores)
     return enviados

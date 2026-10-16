@@ -10,11 +10,12 @@ y el push es solo el timbre.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from urllib.parse import urlparse
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -83,7 +84,7 @@ def enviar(endpoint: str, p256dh: str, auth: str, payload: str) -> str:
         logger.warning("pywebpush no instalado — push omitido.")
         return "error"
     if not _valid_push_endpoint(endpoint):     # defensa extra: jamás POSTear fuera
-        logger.warning("Push omitido: endpoint no reconocido (%s).", endpoint)
+        logger.warning("Push omitido: endpoint no reconocido (%s).", hash_endpoint(endpoint))
         return "error"
     try:
         webpush(
@@ -97,30 +98,69 @@ def enviar(endpoint: str, p256dh: str, auth: str, payload: str) -> str:
         code = getattr(exc.response, "status_code", None)
         if code in (404, 410):
             return "baja"
-        logger.warning("Push fallido (%s): %s", code, exc)
+        logger.warning("Push fallido: codigo=%s dispositivo=%s", code, hash_endpoint(endpoint))
     except Exception:
-        logger.exception("Push fallido")
+        logger.warning("Push fallido: codigo=excepcion dispositivo=%s", hash_endpoint(endpoint))
     return "error"
+
+
+def hash_endpoint(endpoint: str) -> str:
+    return hashlib.sha256(endpoint.encode()).hexdigest()[:12]
+
+
+def enviar_a_todos(
+    db: Session, title: str, body: str, url: str = "/admin/alpha", tag: str = "agentic-alpha",
+) -> dict:
+    resumen = {"total": 0, "ok": 0, "baja": 0, "error": 0}
+    if not settings.vapid_private_key:
+        logger.warning("Push omitido: faltan claves VAPID.")
+        return resumen
+    resumen["endpoints"] = set()
+    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
+    for s in db.scalars(select(PushSubscription)).all():
+        codigo = hash_endpoint(s.endpoint)
+        resumen["endpoints"].add(codigo)
+        resultado = enviar(s.endpoint, s.p256dh, s.auth, payload)
+        resumen["total"] += 1
+        resumen[resultado] += 1
+        if resultado == "baja":
+            db.delete(s)
+        elif resultado == "error":
+            logger.warning("Push fallido: codigo=error dispositivo=%s", codigo)
+    return resumen
 
 
 def send_to_all(
     db: Session, title: str, body: str, url: str = "/admin/alpha", tag: str = "agentic-alpha",
 ) -> int:
-    """Empuja a todos los dispositivos suscritos. Poda suscripciones muertas (404/410).
-
-    `tag`: agrupa notificaciones en el navegador (una misma `tag` colapsa la anterior). Cada
-    sala manda la suya (`agentic-alpha`, `agentic-omega`, ...) para no comerse avisos de
-    la otra -- ver `sw.js`."""
-    if not settings.vapid_private_key:
-        logger.info("Push omitido: faltan claves VAPID.")
-        return 0
-    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
-    sent = 0
-    for s in db.scalars(select(PushSubscription)).all():
-        resultado = enviar(s.endpoint, s.p256dh, s.auth, payload)
-        if resultado == "ok":
-            sent += 1
-        elif resultado == "baja":
-            db.delete(s)
+    resumen = enviar_a_todos(db, title, body, url, tag)
     db.commit()
-    return sent
+    return resumen["ok"]
+
+
+def enviar_a_admins_liga(
+    db: Session, title: str, body: str, url: str, tag: str, ya_enviados: set[str],
+) -> dict:
+    resumen = {"total": 0, "ok": 0, "baja": 0, "error": 0}
+    if not settings.vapid_private_key:
+        logger.warning("Push de liga omitido: faltan claves VAPID.")
+        return resumen
+    subs = db.execute(text("""
+        select s.id, s.endpoint, s.p256dh, s.auth from liga.suscripciones_push s
+        where exists (select 1 from liga.roles_usuario r
+                      where r.usuario_id = s.usuario_id and r.rol = 'admin')
+    """)).all()
+    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
+    for s in subs:
+        codigo = hash_endpoint(s.endpoint)
+        if codigo in ya_enviados:
+            continue
+        ya_enviados.add(codigo)
+        resultado = enviar(s.endpoint, s.p256dh, s.auth, payload)
+        resumen["total"] += 1
+        resumen[resultado] += 1
+        if resultado == "baja":
+            db.execute(text("delete from liga.suscripciones_push where id = :i"), {"i": s.id})
+        elif resultado == "error":
+            logger.warning("Push de liga fallido: codigo=error dispositivo=%s", codigo)
+    return resumen

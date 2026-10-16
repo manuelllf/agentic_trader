@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import Mock
 
 import pytest
 
@@ -24,11 +25,15 @@ def buzon(monkeypatch) -> list:  # noqa: ANN001
 
 def test_omega_avisa_por_push_y_por_correo_en_el_idioma_de_cada_cuenta(monkeypatch, buzon) -> None:  # noqa: ANN001
     pushes = []
-    monkeypatch.setattr("app.push.send_to_all", lambda db, **kw: pushes.append(kw) or 2)
-    n = avisos_admin.avisar(None, "omega_nuevas", title="Omega: 2 señales nuevas",
+    resumen = {"total": 1, "ok": 1, "baja": 0, "error": 0, "endpoints": set()}
+    monkeypatch.setattr("app.push.enviar_a_todos",
+                        lambda db, **kw: pushes.append(kw) or resumen)
+    monkeypatch.setattr("app.push.enviar_a_admins_liga", lambda *a, **kw:
+                        {"total": 0, "ok": 0, "baja": 0, "error": 0, "endpoints": set()})
+    n = avisos_admin.avisar(Mock(), "omega_nuevas", title="Omega: 2 señales nuevas",
                             body="AAOI, ASTS", url="/admin/omega", tag="agentic-omega",
                             filas=[("AAOI", "suelo"), ("ASTS", "zigzag")], count=2)
-    assert n == 2
+    assert n == resumen["ok"]
     assert pushes == [{"title": "Omega: 2 señales nuevas", "body": "AAOI, ASTS",
                        "url": "/admin/omega", "tag": "agentic-omega"}]
     (es_destino, es_asunto, es_texto, es_html), (en_destino, en_asunto, en_texto, _) = buzon

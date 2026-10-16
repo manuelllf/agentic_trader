@@ -3,6 +3,9 @@
 import { get, post, put } from "@/lib/api";
 import type { Candidato, Cuenta, Regimen, Senal, UniversoTicker, Validacion } from "./types";
 
+export const probarAvisoOmega = () =>
+  post<{ dispositivos: number; ok: number; baja: number; error: number }>("/momentum/admin/probar-aviso");
+
 export const getCuenta = () => get<Cuenta>("/momentum/cuenta");
 // Termómetro de régimen EN VIVO (cesta del universo a 60 sesiones) -- solo informativo, no
 // filtra nada por su cuenta (ver app/momentum/regimen.py).

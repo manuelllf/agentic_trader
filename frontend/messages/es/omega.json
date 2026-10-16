@@ -173,5 +173,9 @@
   "omega_sold_on": "Vendida {date}",
   "omega_alone_would_have": " · sola habría hecho {value}",
   "omega_scan_new_signals": "{nuevas, plural, one {# señal nueva} other {# señales nuevas}} de {total, plural, one {# ticker revisado} other {# tickers revisados}}.",
-  "omega_universe_active_off": "{activos, plural, one {# activo} other {# activos}} · {apagados, plural, one {# apagado} other {# apagados}}"
+  "omega_universe_active_off": "{activos, plural, one {# activo} other {# activos}} · {apagados, plural, one {# apagado} other {# apagados}}",
+  "admin_omega_probar_aviso": "Probar aviso de Omega",
+  "admin_omega_probar_resultado": "Enviado a {ok} de {total} dispositivos.",
+  "admin_omega_probar_sin_dispositivos": "No hay dispositivos suscritos. Activa los avisos en este navegador.",
+  "admin_omega_probar_error": "No se pudo enviar la prueba. Mira los logs del servidor."
 }

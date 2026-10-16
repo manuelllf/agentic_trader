@@ -3,6 +3,10 @@ import { llamar } from "./api";
 /** Dispositivos de la cuenta con avisos activados (sus endpoints) y cuántos se admiten. */
 export type EstadoAvisos = { dispositivos: string[]; maximo: number };
 
+export const probarAvisoCuenta = () =>
+  llamar<{ dispositivos: number; ok: number; baja: number; error: number }>(
+    "/liga/avisos/probar", { method: "POST" });
+
 export const claveAvisos = () => llamar<{ key: string }>("/liga/avisos/clave");
 
 export const estadoAvisos = () => llamar<EstadoAvisos>("/liga/avisos");

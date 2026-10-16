@@ -146,6 +146,8 @@
   "push_cambios_cierran_body": "At {time} your portfolio is fixed for the whole month.",
   "push_empieza_title": "The round has started",
   "push_empieza_body": "Your portfolio is now playing. Follow it in My strategies.",
+  "correo_ia_tope_80_asunto": "Vennett: AI spending is at 80% of the cap",
+  "correo_ia_tope_80_intro": "We have spent {gasto} $ of {tope} $ this month. When the cap is reached, the league's AI stops until next month.",
   "correo_omega_nuevas_asunto": "Omega: {count} new signals",
   "correo_omega_nuevas_asunto_uno": "Omega: 1 new signal",
   "correo_omega_nuevas_intro": "These are the signals today's scan added to Omega.",
@@ -446,5 +448,9 @@
   "motor_val_lista_valor": "In «{regla}», {etiqueta} must be one of the listed values.",
   "motor_val_tamano_orden": "In “Size”, from must be less than to.",
   "liga_actualizacion_semanal": "You can refresh the data once every seven days.",
-  "liga_actualizacion_sin_candidatas": "There are no candidate companies to refresh."
+  "liga_actualizacion_sin_candidatas": "There are no candidate companies to refresh.",
+  "push_omega_prueba_title": "Omega: test notification",
+  "push_omega_prueba_body": "If you see this, Omega notifications reach you.",
+  "push_liga_prueba_title": "Vennett: test notification",
+  "push_liga_prueba_body": "If you see this, notifications reach you."
 }

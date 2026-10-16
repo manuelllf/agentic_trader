@@ -80,5 +80,8 @@
   "account_plan_gratis_sub": "Opciones para crear ligas",
   "account_plan_hasta": "Vigente hasta el {fecha}",
   "account_plan_concedido": "Concedido por Vennett",
-  "account_baja_cancela_suscripcion": "Al borrar tu cuenta se cancela tu suscripción y no se te volverá a cobrar."
+  "account_baja_cancela_suscripcion": "Al borrar tu cuenta se cancela tu suscripción y no se te volverá a cobrar.",
+  "avisos_probar_boton": "Probar aviso",
+  "avisos_probar_resultado": "Enviado a {ok} de {total} dispositivos.",
+  "avisos_probar_error": "No se pudo enviar la prueba. Inténtalo de nuevo."
 }

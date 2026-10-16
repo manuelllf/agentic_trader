@@ -80,5 +80,8 @@
   "account_plan_gratis_sub": "Options for creating leagues",
   "account_plan_hasta": "Valid until {fecha}",
   "account_plan_concedido": "Granted by Vennett",
-  "account_baja_cancela_suscripcion": "Deleting your account cancels your subscription, and you won't be charged again."
+  "account_baja_cancela_suscripcion": "Deleting your account cancels your subscription, and you won't be charged again.",
+  "avisos_probar_boton": "Test alert",
+  "avisos_probar_resultado": "Sent to {ok} of {total} devices.",
+  "avisos_probar_error": "The test could not be sent. Try again."
 }

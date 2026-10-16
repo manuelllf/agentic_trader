@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { guardarAvisosCorreo } from "@/lib/liga/avisos";
+import { guardarAvisosCorreo, probarAvisoCuenta } from "@/lib/liga/avisos";
 import { useSesion } from "../_sesion/SesionContext";
 import { Interruptor } from "./Interruptor";
 import { usePushDispositivo } from "./usePushDispositivo";
@@ -21,6 +21,23 @@ export function AvisosCuenta({ email }: { email: string | null }) {
   const guardada = useRef(direccion);
   const [guardado, setGuardado] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [probandoAviso, setProbandoAviso] = useState(false);
+  const [avisoMsg, setAvisoMsg] = useState("");
+  async function probarAviso() {
+    if (probandoAviso) return;
+    setProbandoAviso(true);
+    setAvisoMsg("");
+    try {
+      const r = await probarAvisoCuenta();
+      setAvisoMsg(typeof r === "string" ? t("avisos_probar_error")
+        : t("avisos_probar_resultado", { ok: r.ok, total: r.dispositivos }));
+    } catch {
+      setAvisoMsg(t("avisos_probar_error"));
+    } finally {
+      setProbandoAviso(false);
+    }
+  }
 
   async function guardar(activo: boolean, valor: string): Promise<boolean> {
     const limpio = valor.trim();
@@ -58,6 +75,11 @@ export function AvisosCuenta({ email }: { email: string | null }) {
         <Interruptor activo={push.estado === "activo"} etiqueta={t("account_avisos_push")} desactivado={pushFijo}
           onCambio={activo => void (activo ? push.activar() : push.desactivar())} />
       </div></li>
+      {push.estado === "activo" && <li className="ajustes-campo">
+        <button type="button" className="btn small wide" disabled={probandoAviso || push.ocupado}
+          onClick={() => void probarAviso()}>{t("avisos_probar_boton")}</button>
+        {avisoMsg && <p className="ajustes-sub" role="status">{avisoMsg}</p>}
+      </li>}
       <li><div className="ajustes-fila">
         <span className="ajustes-texto"><span className="ajustes-nombre">{t("account_avisos_correo")}</span></span>
         <Interruptor activo={correoActivo} etiqueta={t("account_avisos_correo")}

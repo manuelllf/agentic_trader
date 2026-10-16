@@ -173,5 +173,9 @@
   "omega_sold_on": "Sold {date}",
   "omega_alone_would_have": " · on its own it would have made {value}",
   "omega_scan_new_signals": "{nuevas, plural, one {# new signal} other {# new signals}} from {total, plural, one {# ticker checked} other {# tickers checked}}.",
-  "omega_universe_active_off": "{activos} active · {apagados} off"
+  "omega_universe_active_off": "{activos} active · {apagados} off",
+  "admin_omega_probar_aviso": "Test Omega alert",
+  "admin_omega_probar_resultado": "Sent to {ok} of {total} devices.",
+  "admin_omega_probar_sin_dispositivos": "No subscribed devices. Turn on alerts in this browser.",
+  "admin_omega_probar_error": "The test could not be sent. Check the server logs."
 }

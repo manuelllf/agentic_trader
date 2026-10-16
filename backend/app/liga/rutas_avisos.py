@@ -5,8 +5,11 @@ guarda como la cuenta que la pide, en `app.liga.avisos`, que abre su propia sesi
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
 from app import push
 from app.i18n import translate
@@ -45,6 +48,27 @@ def clave(_ident: Identidad = Depends(require_usuario)) -> ClaveOut:
 @router.get("/avisos", response_model=EstadoOut)
 def estado(ident: Identidad = Depends(require_usuario)) -> EstadoOut:
     return EstadoOut(dispositivos=avisos.dispositivos(ident.uid), maximo=avisos.MAX_DISPOSITIVOS)
+
+
+@router.post("/avisos/probar")
+def probar(ident: Identidad = Depends(require_usuario)) -> dict:
+    from app.liga.procesos.comun import fabrica_sistema, sesion
+
+    resumen = {"dispositivos": 0, "ok": 0, "baja": 0, "error": 0}
+    with sesion(fabrica_sistema) as db:
+        subs = db.execute(text("select id, endpoint, p256dh, auth from liga.suscripciones_push "
+                               "where usuario_id = cast(:u as uuid)"), {"u": ident.uid}).all()
+        payload = json.dumps({"title": translate("push_liga_prueba_title"),
+                              "body": translate("push_liga_prueba_body"),
+                              "url": "/cuenta/avisos", "tag": "agentic-liga-prueba"})
+        for s in subs:
+            resultado = push.enviar(s.endpoint, s.p256dh, s.auth, payload)
+            resumen["dispositivos"] += 1
+            resumen[resultado] += 1
+            if resultado == "baja":
+                db.execute(text("delete from liga.suscripciones_push where id = :i"), {"i": s.id})
+        db.commit()
+    return resumen
 
 
 @router.post("/avisos/suscribir", response_model=EstadoOut)

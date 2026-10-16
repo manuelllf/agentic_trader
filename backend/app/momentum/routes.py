@@ -519,6 +519,17 @@ def gate_config_set(body: GateConfigIn, db: Session = Depends(get_db)) -> dict:
     return {"provider": gate_config.set_gate_provider(db, body.provider)}
 
 
+@router.post("/admin/probar-aviso")
+def probar_aviso(db: Session = Depends(get_db)) -> dict:
+    from app.avisos_admin import avisar
+
+    resumen: dict = {}
+    avisar(db, "omega_prueba", title=translate("push_omega_prueba_title"),
+           body=translate("push_omega_prueba_body"), url="/admin/omega",
+           tag="agentic-omega-prueba", resumen=resumen)
+    return resumen
+
+
 @router.post("/admin/scan")
 def admin_scan() -> dict:
     """Rescate manual del escaneo diario (mismo patrón que `/admin/universe-snapshot` del
