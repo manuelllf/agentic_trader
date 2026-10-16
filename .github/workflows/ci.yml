@@ -57,6 +57,8 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f tests/esquema_ci.sql
       - name: pytest, un fichero por vez y con tiempo máximo (nunca la batería entera junta)
         run: |
+          # Con `bash -e` (el de por defecto) el primer fichero fallido cortaba el bucle: así se ejecutan todos.
+          set +e
           set -uo pipefail
           fallo=0
           for f in $(find tests -name 'test_*.py' | sort); do
