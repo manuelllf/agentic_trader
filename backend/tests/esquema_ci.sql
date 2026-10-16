@@ -1,4 +1,4 @@
--- migraciones-liga: 045
+-- migraciones-liga: 046
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -2496,6 +2496,7 @@ CREATE TABLE liga.perfiles_privados (
     idioma text,
     avisos_correo boolean DEFAULT false NOT NULL,
     correo_avisos text,
+    resumen_correo boolean DEFAULT true NOT NULL,
     CONSTRAINT perfiles_privados_correo_avisos_check CHECK (((correo_avisos IS NULL) OR ((length(correo_avisos) <= 254) AND (correo_avisos ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'::text)))),
     CONSTRAINT perfiles_privados_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
     CONSTRAINT perfiles_privados_tema_check CHECK ((tema = ANY (ARRAY['auto'::text, 'claro'::text, 'oscuro'::text])))
@@ -10586,6 +10587,13 @@ GRANT UPDATE(avisos_correo) ON TABLE liga.perfiles_privados TO authenticated;
 --
 
 GRANT UPDATE(correo_avisos) ON TABLE liga.perfiles_privados TO authenticated;
+
+
+--
+-- Name: COLUMN perfiles_privados.resumen_correo; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT(resumen_correo),UPDATE(resumen_correo) ON TABLE liga.perfiles_privados TO authenticated;
 
 
 --

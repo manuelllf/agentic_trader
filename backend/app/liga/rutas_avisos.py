@@ -10,11 +10,13 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app import push
 from app.i18n import translate
 from app.liga import acceso, avisos
 from app.liga.auth import Identidad, require_usuario
+from app.liga.db import db_usuario
 
 router = APIRouter(tags=["liga-avisos"])
 
@@ -29,6 +31,7 @@ class ClaveOut(BaseModel):
 class EstadoOut(BaseModel):
     dispositivos: list[str]
     maximo: int
+    resumen_correo: bool
 
 
 class SuscripcionIn(BaseModel):
@@ -46,8 +49,12 @@ def clave(_ident: Identidad = Depends(require_usuario)) -> ClaveOut:
 
 
 @router.get("/avisos", response_model=EstadoOut)
-def estado(ident: Identidad = Depends(require_usuario)) -> EstadoOut:
-    return EstadoOut(dispositivos=avisos.dispositivos(ident.uid), maximo=avisos.MAX_DISPOSITIVOS)
+def estado(ident: Identidad = Depends(require_usuario),
+           db: Session = Depends(db_usuario)) -> EstadoOut:
+    activo = db.execute(text("select resumen_correo from liga.perfiles_privados "
+                             "where id = (select auth.uid())")).scalar_one()
+    return EstadoOut(dispositivos=avisos.dispositivos(ident.uid),
+                     maximo=avisos.MAX_DISPOSITIVOS, resumen_correo=activo)
 
 
 @router.post("/avisos/probar")
@@ -72,7 +79,8 @@ def probar(ident: Identidad = Depends(require_usuario)) -> dict:
 
 
 @router.post("/avisos/suscribir", response_model=EstadoOut)
-def suscribir(body: SuscripcionIn, ident: Identidad = Depends(require_usuario)) -> EstadoOut:
+def suscribir(body: SuscripcionIn, ident: Identidad = Depends(require_usuario),
+              db: Session = Depends(db_usuario)) -> EstadoOut:
     if not _LIMITE.permitido(ident.uid):
         raise HTTPException(429, translate("liga_alerts_too_fast"))
     try:
@@ -82,12 +90,25 @@ def suscribir(body: SuscripcionIn, ident: Identidad = Depends(require_usuario)) 
                             ) from e
     except ValueError as e:
         raise HTTPException(422, translate("liga_alerts_invalid")) from e
-    return EstadoOut(dispositivos=avisos.dispositivos(ident.uid), maximo=avisos.MAX_DISPOSITIVOS)
+    return estado(ident, db)
 
 
 @router.post("/avisos/baja", response_model=EstadoOut)
-def baja(body: BajaIn, ident: Identidad = Depends(require_usuario)) -> EstadoOut:
+def baja(body: BajaIn, ident: Identidad = Depends(require_usuario),
+         db: Session = Depends(db_usuario)) -> EstadoOut:
     if not _LIMITE.permitido(ident.uid):
         raise HTTPException(429, translate("liga_alerts_too_fast"))
     avisos.dar_de_baja(ident.uid, body.endpoint)
-    return EstadoOut(dispositivos=avisos.dispositivos(ident.uid), maximo=avisos.MAX_DISPOSITIVOS)
+    return estado(ident, db)
+
+
+class ResumenIn(BaseModel):
+    activo: bool
+
+
+@router.patch("/avisos/resumen", response_model=EstadoOut)
+def cambiar_resumen(body: ResumenIn, ident: Identidad = Depends(require_usuario),
+                    db: Session = Depends(db_usuario)) -> EstadoOut:
+    db.execute(text("update liga.perfiles_privados set resumen_correo = :a "
+                    "where id = (select auth.uid())"), {"a": body.activo})
+    return estado(ident, db)

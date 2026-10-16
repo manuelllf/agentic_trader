@@ -4,8 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Yo } from "@/lib/liga/api";
 
-const { guardar, refrescarYo, sesion, push } = vi.hoisted(() => ({
+const { guardar, refrescarYo, sesion, push, estadoResumen } = vi.hoisted(() => ({
   push: { estado: "no-disponible", ocupado: false, error: null, activar: vi.fn(), desactivar: vi.fn() },
+  estadoResumen: vi.fn().mockResolvedValue({ dispositivos: [], maximo: 3 }),
   guardar: vi.fn(), refrescarYo: vi.fn(), sesion: { yo: {} as Partial<Yo> },
 }));
 vi.mock("next-intl", async (importOriginal) => {
@@ -13,7 +14,8 @@ vi.mock("next-intl", async (importOriginal) => {
   return { ...await importOriginal<object>(), useTranslations: () => (key: string) => cuenta[key] };
 });
 vi.mock("@/lib/liga/avisos", () => ({
-  avisosSoportados: () => false, estadoAvisos: vi.fn(), activarAvisos: vi.fn(), bajaAvisos: vi.fn(),
+  avisosSoportados: () => false, estadoAvisos: (...args: unknown[]) => estadoResumen(...args),
+  cambiarResumenCorreo: vi.fn(), activarAvisos: vi.fn(), bajaAvisos: vi.fn(),
   probarAvisoCuenta: vi.fn(),
   guardarAvisosCorreo: (...args: unknown[]) => guardar(...args),
 }));
@@ -51,6 +53,14 @@ afterEach(() => {
 });
 
 describe("AvisosCuenta", () => {
+  it("muestra el resumen con el valor del estado", async () => {
+    estadoResumen.mockResolvedValueOnce({ dispositivos: [], maximo: 3, resumen_correo: false });
+    let el: HTMLDivElement;
+    await act(async () => { el = montar({}); });
+    const resumen = el!.querySelector<HTMLInputElement>("#avisos-resumen")!;
+    expect(resumen.checked).toBe(false);
+    expect(resumen.disabled).toBe(false);
+  });
   it("muestra la prueba solo con avisos activos en este dispositivo", () => {
     push.estado = "activo";
     const el = montar({});

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
-import { ApiError, get, post } from "@/lib/api";
+import { ApiError, get, post, probarResumenLiga } from "@/lib/api";
 import { tokenSesion } from "@/lib/liga/supabase";
 import { Intenciones } from "./Intenciones";
 
@@ -53,6 +53,9 @@ function Liga() {
   const [previa, setPrevia] = useState<unknown>(null);
   const [hecho, setHecho] = useState<unknown>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [resumenOcupado, setResumenOcupado] = useState<"semanal" | "mensual" | null>(null);
+  const [resumenMensaje, setResumenMensaje] = useState("");
+  const [resumenError, setResumenError] = useState(false);
   const [copiaOcupado, setCopiaOcupado] = useState(false);
   const [aceptarSinCierre, setAceptarSinCierre] = useState(false);
   // Al cerrar: valores en cartera a los que les falta el cierre del último día (viene en la vista previa).
@@ -81,6 +84,18 @@ function Liga() {
       setHecho(await post(`/liga/admin/procesos/${accion.proceso}/ejecutar`, cuerpo, 90_000));
       cargar();
     } catch (e) { setFallo(errorText(e)); } finally { setOcupado(false); }
+  };
+
+  const probarResumen = async (tipo: "semanal" | "mensual") => {
+    if (resumenOcupado) return;
+    setResumenOcupado(tipo); setResumenMensaje(""); setResumenError(false);
+    try {
+      const r = await probarResumenLiga(tipo);
+      setResumenMensaje(t("admin_liga_resumen_probar_resultado", { enviados: r.enviados }));
+    } catch {
+      setResumenError(true);
+      setResumenMensaje(t("admin_liga_resumen_probar_error"));
+    } finally { setResumenOcupado(null); }
   };
 
   const descargarCopia = async () => {
@@ -166,7 +181,16 @@ function Liga() {
                       style={{ background: "#2c2c2a" }}>
                 {t("admin_liga_run_now")}
               </button>
+              {(["semanal", "mensual"] as const).map(tipo => (
+                <button key={tipo} type="button" disabled={resumenOcupado !== null}
+                        onClick={() => void probarResumen(tipo)}
+                        className="min-h-[44px] rounded-lg px-4 py-2 font-bold text-white disabled:opacity-40"
+                        style={{ background: "#2c2c2a" }}>
+                  {t(tipo === "semanal" ? "admin_liga_resumen_probar_semanal" : "admin_liga_resumen_probar_mensual")}
+                </button>
+              ))}
             </div>
+            {resumenMensaje && <p className="mt-2" role={resumenError ? "alert" : "status"}>{resumenMensaje}</p>}
           </section>
 
           <div>

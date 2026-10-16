@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { guardarAvisosCorreo, probarAvisoCuenta } from "@/lib/liga/avisos";
+import { cambiarResumenCorreo, estadoAvisos, guardarAvisosCorreo, probarAvisoCuenta } from "@/lib/liga/avisos";
 import { useSesion } from "../_sesion/SesionContext";
 import { Interruptor } from "./Interruptor";
 import { usePushDispositivo } from "./usePushDispositivo";
@@ -21,6 +21,44 @@ export function AvisosCuenta({ email }: { email: string | null }) {
   const guardada = useRef(direccion);
   const [guardado, setGuardado] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [resumenActivo, setResumenActivo] = useState(true);
+  const [resumenOcupado, setResumenOcupado] = useState(true);
+  const [resumenError, setResumenError] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      try {
+        const estado = await estadoAvisos();
+        if (!vivo) return;
+        if (typeof estado === "string") setResumenError(true);
+        else setResumenActivo(estado.resumen_correo ?? true);
+      } catch {
+        if (vivo) setResumenError(true);
+      } finally {
+        if (vivo) setResumenOcupado(false);
+      }
+    })();
+    return () => { vivo = false; };
+  }, []);
+
+  async function cambiarResumen(activo: boolean) {
+    if (resumenOcupado) return;
+    const anterior = resumenActivo;
+    setResumenActivo(activo);
+    setResumenOcupado(true);
+    setResumenError(false);
+    try {
+      const r = await cambiarResumenCorreo(activo);
+      if (typeof r === "string") throw new Error(r);
+    } catch {
+      setResumenActivo(anterior);
+      setResumenError(true);
+    } finally {
+      setResumenOcupado(false);
+    }
+  }
 
   const [probandoAviso, setProbandoAviso] = useState(false);
   const [avisoMsg, setAvisoMsg] = useState("");
@@ -94,6 +132,17 @@ export function AvisosCuenta({ email }: { email: string | null }) {
         <span className="ajustes-sub" role="status">
           {guardado ? t("account_avisos_guardado") : t("account_avisos_enviar_a_ayuda")}</span>
       </li>}
+      <li className="ajustes-campo">
+        <span className="ajustes-nombre">{t("avisos_resumen_titulo")}</span>
+        <p id="avisos-resumen-ayuda" className="ajustes-sub">{t("avisos_resumen_ayuda")}</p>
+        <label className="ajustes-fila" htmlFor="avisos-resumen">
+          <span className="ajustes-texto">{t("avisos_resumen_activo")}</span>
+          <input id="avisos-resumen" type="checkbox" role="switch" checked={resumenActivo}
+            aria-describedby="avisos-resumen-ayuda" disabled={resumenOcupado}
+            className="h-5 w-5 shrink-0" onChange={e => void cambiarResumen(e.target.checked)} />
+        </label>
+        {resumenError && <p className="ajustes-nota aviso" role="alert">{t("avisos_resumen_error")}</p>}
+      </li>
     </ul>
     {push.estado === "no-disponible" && <p className="ajustes-nota">{t("account_avisos_no_disponibles")}</p>}
     {push.estado === "bloqueado" && <p className="ajustes-nota">{t("account_avisos_bloqueados")}</p>}

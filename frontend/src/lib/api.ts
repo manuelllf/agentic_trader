@@ -169,6 +169,9 @@ export async function logout() {
   if (typeof window !== "undefined") window.location.reload();
 }
 
+export const probarResumenLiga = (tipo: "semanal" | "mensual") =>
+  post<{ enviados: number }>("/liga/admin/resumenes/prueba", { tipo }, 90_000);
+
 export const getLedger = () => get<LedgerSnapshot>("/ledger");
 
 // Query params: decide=false for full universe without proposing. The switches (mid layer,

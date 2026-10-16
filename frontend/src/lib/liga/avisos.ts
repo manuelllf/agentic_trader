@@ -1,7 +1,7 @@
 import { llamar } from "./api";
 
 /** Dispositivos de la cuenta con avisos activados (sus endpoints) y cuántos se admiten. */
-export type EstadoAvisos = { dispositivos: string[]; maximo: number };
+export type EstadoAvisos = { dispositivos: string[]; maximo: number; resumen_correo?: boolean };
 
 export const probarAvisoCuenta = () =>
   llamar<{ dispositivos: number; ok: number; baja: number; error: number }>(
@@ -10,6 +10,10 @@ export const probarAvisoCuenta = () =>
 export const claveAvisos = () => llamar<{ key: string }>("/liga/avisos/clave");
 
 export const estadoAvisos = () => llamar<EstadoAvisos>("/liga/avisos");
+
+export const cambiarResumenCorreo = (activo: boolean) =>
+  llamar<{ resumen_correo: boolean }>("/liga/avisos/resumen",
+    { method: "PATCH", body: JSON.stringify({ activo }) });
 
 export const suscribirAvisos = (sub: PushSubscriptionJSON) =>
   llamar<EstadoAvisos>("/liga/avisos/suscribir", { method: "POST", body: JSON.stringify(sub) });

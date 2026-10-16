@@ -276,5 +276,9 @@
   "admin_intenciones_sin_regla": "No rule",
   "admin_intenciones_vacio": "No intents recorded yet.",
   "admin_intenciones_cargando": "Loading intents…",
-  "admin_intenciones_error": "Could not load intents."
+  "admin_intenciones_error": "Could not load intents.",
+  "admin_liga_resumen_probar_semanal": "Test weekly summary (only me)",
+  "admin_liga_resumen_probar_mensual": "Test round-close summary (only me)",
+  "admin_liga_resumen_probar_resultado": "Email sent: {enviados}.",
+  "admin_liga_resumen_probar_error": "The test could not be sent. Check the server logs."
 }

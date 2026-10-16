@@ -576,3 +576,15 @@ def ocultar(body: OcultarIn, ident: Identidad = Depends(require_moderador),
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
     return ReporteOut(**fila._mapping)
+
+
+class ResumenPruebaIn(BaseModel):
+    tipo: Literal["semanal", "mensual"]
+
+
+@router_admin.post("/resumenes/prueba")
+def probar_resumen(body: ResumenPruebaIn,
+                   ident: Identidad = Depends(require_admin)) -> dict:
+    from app.liga import resumenes
+
+    return resumenes.probar(ident.uid, body.tipo)

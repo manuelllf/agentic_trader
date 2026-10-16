@@ -452,5 +452,18 @@
   "push_omega_prueba_title": "Omega: aviso de prueba",
   "push_omega_prueba_body": "Si lo ves, el aviso de Omega llega.",
   "push_liga_prueba_title": "Vennett: aviso de prueba",
-  "push_liga_prueba_body": "Si lo ves, los avisos te llegan."
+  "push_liga_prueba_body": "Si lo ves, los avisos te llegan.",
+  "correo_resumen_semanal_asunto": "Tu semana en Vennett",
+  "correo_resumen_mensual_asunto": "Cierre de la jornada {numero} en Vennett",
+  "correo_resumen_intro": "Estos son los datos de tu estrategia. Son descriptivos: no son una recomendación.",
+  "correo_resumen_baja": "Para dejar de recibirlos, ve a Cuenta › Avisos y apaga el resumen por correo.",
+  "correo_resumen_rentabilidad": "Rentabilidad de la jornada",
+  "correo_resumen_sp": "S&P 500",
+  "correo_resumen_puesto_general": "Puesto general",
+  "correo_resumen_puesto_liga": "Puesto en {nombre}",
+  "correo_resumen_entran": "Empresas que entran",
+  "correo_resumen_salen": "Empresas que salen",
+  "correo_resumen_ninguna": "Sin datos",
+  "correo_resumen_estrategia": "Estrategia",
+  "correo_resumen_provisional": "Datos provisionales"
 }

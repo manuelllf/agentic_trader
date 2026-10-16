@@ -452,5 +452,18 @@
   "push_omega_prueba_title": "Omega: test notification",
   "push_omega_prueba_body": "If you see this, Omega notifications reach you.",
   "push_liga_prueba_title": "Vennett: test notification",
-  "push_liga_prueba_body": "If you see this, notifications reach you."
+  "push_liga_prueba_body": "If you see this, notifications reach you.",
+  "correo_resumen_semanal_asunto": "Your week at Vennett",
+  "correo_resumen_mensual_asunto": "Round {numero} closed at Vennett",
+  "correo_resumen_intro": "These are your strategy's numbers. They describe, they are not a recommendation.",
+  "correo_resumen_baja": "To stop receiving these, go to Account › Alerts and turn off the email summary.",
+  "correo_resumen_rentabilidad": "Round return",
+  "correo_resumen_sp": "S&P 500",
+  "correo_resumen_puesto_general": "Overall position",
+  "correo_resumen_puesto_liga": "Position in {nombre}",
+  "correo_resumen_entran": "Companies entering",
+  "correo_resumen_salen": "Companies leaving",
+  "correo_resumen_ninguna": "No data",
+  "correo_resumen_estrategia": "Strategy",
+  "correo_resumen_provisional": "Provisional data"
 }

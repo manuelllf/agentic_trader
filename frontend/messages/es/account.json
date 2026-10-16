@@ -83,5 +83,9 @@
   "account_baja_cancela_suscripcion": "Al borrar tu cuenta se cancela tu suscripción y no se te volverá a cobrar.",
   "avisos_probar_boton": "Probar aviso",
   "avisos_probar_resultado": "Enviado a {ok} de {total} dispositivos.",
-  "avisos_probar_error": "No se pudo enviar la prueba. Inténtalo de nuevo."
+  "avisos_probar_error": "No se pudo enviar la prueba. Inténtalo de nuevo.",
+  "avisos_resumen_titulo": "Resumen por correo",
+  "avisos_resumen_ayuda": "Cada lunes y al cerrar cada jornada te llega un correo con cómo va tu estrategia frente al S&P. Puedes darte de baja cuando quieras.",
+  "avisos_resumen_activo": "Recibir el resumen",
+  "avisos_resumen_error": "No se pudo cambiar el resumen. Inténtalo de nuevo."
 }
