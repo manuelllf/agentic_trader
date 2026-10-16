@@ -1,4 +1,4 @@
--- migraciones-liga: 044
+-- migraciones-liga: 045
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -619,8 +619,6 @@ CREATE FUNCTION liga.estrategias_guarda() RETURNS trigger
 declare
   uid uuid := (select auth.uid());
   moderacion boolean;
-  pro boolean;
-  tope integer;
   en_juego integer;
   borradores integer;
 begin
@@ -634,7 +632,6 @@ begin
     return new;
   end if;
   moderacion := liga.authorize('moderacion.revisar');
-  pro := liga.es_pro();
 
   if tg_op = 'INSERT' then
     if new.oculta or new.estado <> 'borrador' or new.receta_id is not null then
@@ -665,9 +662,6 @@ begin
     end if;
   end if;
 
-  if new.visibilidad = 'publicada' and not pro then
-    raise exception 'Publicar es de Pro' using errcode = '42501';
-  end if;
   if new.estado = 'apuntada' and new.receta_id is null then
     raise exception 'Para apuntarla hace falta su receta' using errcode = '23514';
   end if;
@@ -677,18 +671,12 @@ begin
     raise exception 'Para apuntarla hace falta al menos una regla' using errcode = '23514';
   end if;
 
-  tope := case when pro then 3 else 1 end;
   select count(*) filter (where e.estado in ('apuntada', 'jugando') and e.id <> new.id),
          count(*) filter (where e.estado = 'borrador' and e.id <> new.id)
     into en_juego, borradores
     from liga.estrategias e where e.dueno_id = uid;
-  if new.estado in ('apuntada', 'jugando') and en_juego >= tope then
-    if pro then
-      raise exception 'Con Pro puedes tener hasta tres estrategias en juego a la vez'
-        using errcode = '23514';
-    end if;
-    raise exception 'Con el plan gratuito solo puedes tener una estrategia en juego. Con Pro, hasta tres'
-      using errcode = '23514';
+  if new.estado in ('apuntada', 'jugando') and en_juego >= 1 then
+    raise exception 'Solo puedes tener una estrategia en juego a la vez' using errcode = '23514';
   end if;
   if new.estado = 'borrador' and borradores >= 10 then
     raise exception 'Como mucho 10 borradores' using errcode = '23514';
@@ -816,14 +804,6 @@ begin
     return new;
   end if;
   if tg_op = 'INSERT' then
-    if not liga.puede_crear_liga() then
-      raise exception 'Crear ligas privadas es de Pro o de quien tiene un pase de liga'
-        using errcode = '42501';
-    end if;
-    if (select count(*) from liga.ligas_privadas where dueno_id = (select auth.uid()))
-       >= liga.ligas_incluidas((select auth.uid())) then
-      raise exception 'Ya tienes todas tus ligas incluidas' using errcode = '42501';
-    end if;
     if new.oculta then
       raise exception 'Una liga nueva nace visible' using errcode = '42501';
     end if;
@@ -887,8 +867,7 @@ CREATE FUNCTION liga.puede_crear_liga() RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO ''
     AS $$
-  select coalesce(
-    liga.tiene_pro((select auth.uid())) or liga.tiene_pase_liga((select auth.uid())), false);
+  select coalesce((select auth.uid()) is not null, false);
 $$;
 
 
@@ -907,8 +886,7 @@ CREATE FUNCTION liga.puede_ver_posiciones(p_inscripcion bigint) RETURNS boolean
     where i.id = p_inscripcion
       and (e.dueno_id = (select auth.uid())
            or (e.tipo = 'casa' and (j.estado = 'cerrada' or liga.es_pro()))
-           or (e.tipo = 'usuario' and e.visibilidad = 'publicada' and not e.oculta
-               and liga.es_pro())));
+           or (e.tipo = 'usuario' and e.visibilidad = 'publicada' and not e.oculta)));
 $$;
 
 
@@ -2684,11 +2662,11 @@ CREATE TABLE liga.recetas (
     CONSTRAINT recetas_idea_check CHECK ((length(idea) <= 400)),
     CONSTRAINT recetas_max_por_sector_check CHECK (((max_por_sector >= 0) AND (max_por_sector <= 10))),
     CONSTRAINT recetas_n_empresas_check CHECK ((n_empresas = ANY (ARRAY[3, 5, 7, 10]))),
-    CONSTRAINT recetas_peso_deuda_check CHECK ((((peso_deuda >= 0) AND (peso_deuda <= 50)) AND (((peso_deuda)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_negocio_check CHECK ((((peso_negocio >= 0) AND (peso_negocio <= 50)) AND (((peso_negocio)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_precio_check CHECK ((((peso_precio >= 0) AND (peso_precio <= 50)) AND (((peso_precio)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_pregunta_check CHECK ((((peso_pregunta >= 0) AND (peso_pregunta <= 50)) AND (((peso_pregunta)::integer % 5) = 0))),
-    CONSTRAINT recetas_peso_pronto_check CHECK ((((peso_pronto >= 0) AND (peso_pronto <= 50)) AND (((peso_pronto)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_deuda_check CHECK (((peso_deuda >= 0) AND (peso_deuda <= 50) AND (((peso_deuda)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_negocio_check CHECK (((peso_negocio >= 0) AND (peso_negocio <= 50) AND (((peso_negocio)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_precio_check CHECK (((peso_precio >= 0) AND (peso_precio <= 50) AND (((peso_precio)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_pregunta_check CHECK (((peso_pregunta >= 0) AND (peso_pregunta <= 50) AND (((peso_pregunta)::integer % 5) = 0))),
+    CONSTRAINT recetas_peso_pronto_check CHECK (((peso_pronto >= 0) AND (peso_pronto <= 50) AND (((peso_pronto)::integer % 5) = 0))),
     CONSTRAINT recetas_pregunta_check CHECK (((length(pregunta) >= 1) AND (length(pregunta) <= 160))),
     CONSTRAINT recetas_reparto_check CHECK ((reparto = ANY (ARRAY['igual'::text, 'nota'::text]))),
     CONSTRAINT reglas_lista CHECK ((jsonb_typeof(reglas) = 'array'::text))
@@ -8990,12 +8968,12 @@ CREATE POLICY propias ON liga.recetas FOR SELECT TO authenticated USING ((EXISTS
 ALTER TABLE liga.pruebas ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: recetas publicadas_pro; Type: POLICY; Schema: liga; Owner: -
+-- Name: recetas publicadas; Type: POLICY; Schema: liga; Owner: -
 --
 
-CREATE POLICY publicadas_pro ON liga.recetas FOR SELECT TO authenticated USING ((( SELECT liga.es_pro() AS es_pro) AND (EXISTS ( SELECT 1
+CREATE POLICY publicadas ON liga.recetas FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
    FROM liga.estrategias e
-  WHERE ((e.id = recetas.estrategia_id) AND (e.tipo = 'usuario'::text) AND (e.visibilidad = 'publicada'::text) AND (NOT e.oculta))))));
+  WHERE ((e.id = recetas.estrategia_id) AND (e.tipo = 'usuario'::text) AND (e.visibilidad = 'publicada'::text) AND (NOT e.oculta)))));
 
 
 --

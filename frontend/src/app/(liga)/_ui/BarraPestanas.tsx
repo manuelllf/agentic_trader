@@ -1,5 +1,6 @@
 "use client";
 
+import { CREDITOS_VISIBLES } from "@/lib/liga/funciones";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -82,7 +83,7 @@ export function BarraPestanas() {
       if (estado === "dentro") {
         precargar("mis-estrategias", misEstrategias);
         precargar("mis-ligas", misLigas);
-        precargar("creditos", getCreditos);
+        if (CREDITOS_VISIBLES) precargar("creditos", getCreditos);
       } else if (estado === "fuera") {
         precargar("portada", getPortada);
       }

@@ -1,5 +1,6 @@
 "use client";
 
+import { ACTUALIZACION_VISIBLE, LECTURA_VISIBLE } from "@/lib/liga/funciones";
 import type { ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
@@ -54,7 +55,7 @@ export function PasoCartera(p: PropsCartera) {
               : e.nota != null && e.mejor ? t("builder_cartera_porque", { score: numero(e.nota, 0), criterion: p.criterios[e.mejor] ?? e.mejor }) : e.porque}</small>
             <div className="links">
               {p.cambio?.entra === e.ticker && <button type="button" className="link" onClick={() => p.recuperar(p.cambio!.sale)}>{t("builder_undo")}</button>}
-              <button type="button" className="link" onClick={() => p.leer(e.ticker)}>{t(p.lecturas.includes(e.ticker) ? "builder_view_report" : "builder_read_deep")}</button>
+              {LECTURA_VISIBLE && <button type="button" className="link" onClick={() => p.leer(e.ticker)}>{t(p.lecturas.includes(e.ticker) ? "builder_view_report" : "builder_read_deep")}</button>}
             </div>
           </div>
           <div className="pick-r"><span className="num">{pct(e.peso)}</span><button type="button" onClick={() => p.cambiar(e.ticker)}>{t("builder_change_company")}</button></div>
@@ -65,7 +66,7 @@ export function PasoCartera(p: PropsCartera) {
           </li>}</ul>
         {p.excluidas.length > 0 && <div className="cartera-quitadas"><span className="lbl">{t("builder_cartera_quitadas")}</span>
           <div className="sugg">{p.excluidas.map(ticker => <button type="button" key={ticker} onClick={() => p.recuperar(ticker)}>{t("builder_cartera_recuperar", { ticker })}</button>)}</div></div>}
-        {p.receta && p.alActualizar && <ActualizarHoy receta={p.receta} estrategiaId={p.estrategiaId} alActualizar={p.alActualizar} />}
+        {ACTUALIZACION_VISIBLE && p.receta && p.alActualizar && <ActualizarHoy receta={p.receta} estrategiaId={p.estrategiaId} alActualizar={p.alActualizar} />}
         {p.children}
       </section>
       <section className="paso-bloque">

@@ -68,11 +68,11 @@ it("recupera quitadas y permite tres empresas por sector", () => {
   act(() => Array.from(div.querySelectorAll('.seg')).at(-1)!.querySelectorAll('button')[3].click());
   expect(props.actualizarB).toHaveBeenCalledWith({ max_por_sector: 3 });
 });
-it("sustituye el porqué cuando hay cambio y conserva lectura y radio", () => {
+it("sustituye el porqué cuando hay cambio y oculta lectura y conserva radio", () => {
   const { div, props } = montar({ cambio: { entra: "AAA", sale: "BBB" } });
   expect(div.textContent).toContain("BBB");
-  act(() => Array.from(div.querySelectorAll('.pick .link')).at(-1)!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-  expect(props.leer).toHaveBeenCalledWith("AAA");
+  expect(div.textContent).not.toContain(es.builder_read_deep);
+  expect(props.leer).not.toHaveBeenCalled();
   expect(div.querySelectorAll('[role="radio"]')).toHaveLength(2);
 });
 it("explica la ausencia de perfil sin inventar cifras", () => {

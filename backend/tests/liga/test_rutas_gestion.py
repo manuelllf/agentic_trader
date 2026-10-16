@@ -171,14 +171,14 @@ def test_rol_plan_y_suspender_tienen_efecto_inmediato(api) -> None:  # noqa: ANN
     assert r.json()["suspendido"] is False
 
 
-def test_el_pase_de_liga_deja_crear_ligas_y_quitarlo_lo_cierra(api) -> None:  # noqa: ANN001
+def test_crear_ligas_es_gratis_con_y_sin_pase(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, _cx = api
     admin, jugador = usuario(rol="admin"), usuario()
     a2, cuenta = cab(admin, aal="aal2"), cab(jugador)
-    assert cliente.get("/liga/yo", headers=cuenta).json()["puede_crear_liga"] is False
+    assert cliente.get("/liga/yo", headers=cuenta).json()["puede_crear_liga"] is True
     assert cliente.get("/liga/yo", headers=cuenta).json()["pase_liga"] is False
     crear = {"nombre": "Con o sin pase"}
-    assert cliente.post("/liga/ligas", json=crear, headers=cuenta).status_code == 403
+    assert cliente.post("/liga/ligas", json=crear, headers=cuenta).status_code == 201
 
     r = cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None}, headers=a2)
     assert r.status_code == 200, r.text
@@ -190,10 +190,10 @@ def test_el_pase_de_liga_deja_crear_ligas_y_quitarlo_lo_cierra(api) -> None:  # 
     r = cliente.post(f"/liga/admin/usuarios/{jugador}/pase/quitar", headers=a2)
     assert r.status_code == 200 and r.json()["pase_liga"] is False
     assert cliente.get("/liga/yo", headers=cuenta).json()["pase_liga"] is False
-    assert cliente.post("/liga/ligas", json=crear, headers=cuenta).status_code == 403
+    assert cliente.post("/liga/ligas", json=crear, headers=cuenta).status_code == 201
 
 
-def test_pro_incluye_dos_ligas_y_cada_pase_una_mas(api) -> None:  # noqa: ANN001
+def test_pro_y_pase_no_limitan_crear_ligas(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, _cx = api
     admin, jugador = usuario(rol="admin"), usuario()
     a2, cuenta = cab(admin, aal="aal2"), cab(jugador)
@@ -203,13 +203,13 @@ def test_pro_incluye_dos_ligas_y_cada_pase_una_mas(api) -> None:  # noqa: ANN001
 
     assert cliente.post(f"/liga/admin/usuarios/{jugador}/plan", json={"hasta": None},
                         headers=a2).status_code == 200
-    assert [crear("Primera"), crear("Segunda"), crear("Tercera")] == [201, 201, 403]
+    assert [crear("Primera"), crear("Segunda"), crear("Tercera")] == [201, 201, 201]
     assert cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None},
                         headers=a2).status_code == 200
-    assert [crear("Tercera"), crear("Cuarta")] == [201, 403]
+    assert [crear("Tercera"), crear("Cuarta")] == [201, 201]
 
 
-def test_el_pase_solo_da_una_liga(api) -> None:  # noqa: ANN001
+def test_el_pase_no_limita_crear_ligas(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, _cx = api
     admin, jugador = usuario(rol="admin"), usuario()
     a2, cuenta = cab(admin, aal="aal2"), cab(jugador)
@@ -219,7 +219,7 @@ def test_el_pase_solo_da_una_liga(api) -> None:  # noqa: ANN001
 
     assert cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None},
                         headers=a2).status_code == 200
-    assert [crear("Primera"), crear("Segunda")] == [201, 403]
+    assert [crear("Primera"), crear("Segunda")] == [201, 201]
 
 
 def test_alta_de_usuario_desde_admin(api, monkeypatch) -> None:  # noqa: ANN001
@@ -627,7 +627,7 @@ def test_quitar_pro_del_admin_no_corta_el_pagado(api) -> None:  # noqa: ANN001
     assert concedido == 0
 
 
-def test_dos_pases_suman_dos_ligas(api) -> None:  # noqa: ANN001
+def test_dos_pases_no_limitan_crear_ligas(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, _cx = api
     admin, jugador = usuario(rol="admin"), usuario()
     a2, cuenta = cab(admin, aal="aal2"), cab(jugador)
@@ -638,7 +638,7 @@ def test_dos_pases_suman_dos_ligas(api) -> None:  # noqa: ANN001
     for _ in range(2):
         r = cliente.post(f"/liga/admin/usuarios/{jugador}/pase", json={"hasta": None}, headers=a2)
         assert r.status_code == 200, r.text
-    assert [crear("Primera"), crear("Segunda"), crear("Tercera")] == [201, 201, 403]
+    assert [crear("Primera"), crear("Segunda"), crear("Tercera")] == [201, 201, 201]
 
 
 def test_yo_dice_la_duracion_del_pro_que_cobra_lemon(api) -> None:  # noqa: ANN001

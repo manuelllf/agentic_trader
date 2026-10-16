@@ -1,5 +1,6 @@
 "use client";
 
+import { PREGUNTA_VISIBLE } from "@/lib/liga/funciones";
 import Link from "next/link";
 import { useConfirmar } from "@/components/Confirmar";
 import { useState } from "react";
@@ -218,7 +219,7 @@ export default function Mias() {
                     </> : <span>{t("window_mine_forming")}</span>}
                   </Link>
                 )}
-                {resumen?.sin_pregunta && (
+                {PREGUNTA_VISIBLE && resumen?.sin_pregunta && (
                   <Link href={`/ficha/${e.id}`} className="mias-linea">
                     <span>{t("strategies_without_question")}</span>
                   </Link>

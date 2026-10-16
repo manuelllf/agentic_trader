@@ -234,7 +234,7 @@ def test_flujo_crear_receta_apuntar(api) -> None:  # noqa: ANN001
 # ---- límites de plan y lo que es de Pro ----------------------------------------------------------
 
 
-def test_limite_gratis_una_en_juego_y_pro_hasta_tres(api) -> None:  # noqa: ANN001
+def test_limite_una_en_juego_para_todos(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, *_ = api
     gratis = usuario()
     e1 = _crear(cliente, cab, gratis, "Uno")
@@ -249,26 +249,34 @@ def test_limite_gratis_una_en_juego_y_pro_hasta_tres(api) -> None:  # noqa: ANN0
 
     pro = usuario(pro=True)
     ids = [_crear(cliente, cab, pro, f"Pro {i}") for i in range(3)]
-    for eid in ids:
+    for i, eid in enumerate(ids):
         _receta(cliente, cab, pro, eid)
         r = cliente.post(f"/liga/estrategias/{eid}/apuntar", headers=cab(pro))
-        assert r.status_code == 200, r.text
+        if i == 0:
+            assert r.status_code == 200, r.text
+        else:
+            assert r.status_code == 422 and r.json()["detail"] == (
+                "Solo puedes tener una estrategia en juego a la vez.")
 
 
 def test_la_estrategia_que_opta_al_premio_se_elige_por_la_api(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, *_ = api
     pro = usuario(pro=True)
     primera, segunda, borrador = (_crear(cliente, cab, pro, n) for n in ("Una", "Dos", "Tres"))
-    for eid in (primera, segunda):
-        _receta(cliente, cab, pro, eid)
-        assert cliente.post(f"/liga/estrategias/{eid}/apuntar",
-                            headers=cab(pro)).status_code == 200
+    _receta(cliente, cab, pro, primera)
+    assert cliente.post(f"/liga/estrategias/{primera}/apuntar",
+                        headers=cab(pro)).status_code == 200
 
     def optan() -> list[str]:
         mias = cliente.get("/liga/estrategias", headers=cab(pro)).json()
         return [e["id"] for e in mias if e["opta_premio"]]
 
     assert optan() == [primera]
+    assert cliente.post(f"/liga/estrategias/{primera}/desapuntar",
+                        headers=cab(pro)).status_code == 200
+    _receta(cliente, cab, pro, segunda)
+    assert cliente.post(f"/liga/estrategias/{segunda}/apuntar",
+                        headers=cab(pro)).status_code == 200
     r = cliente.post(f"/liga/estrategias/{segunda}/premio", headers=cab(pro))
     assert r.status_code == 200 and optan() == [segunda]
     assert [e["id"] for e in r.json() if e["opta_premio"]] == [segunda]
@@ -277,7 +285,7 @@ def test_la_estrategia_que_opta_al_premio_se_elige_por_la_api(api) -> None:  # n
     assert optan() == [segunda]
 
 
-def test_la_pregunta_propia_es_de_todos_y_publicar_es_de_pro(api) -> None:  # noqa: ANN001
+def test_la_pregunta_propia_y_publicar_son_de_todos(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, *_ = api
     gratis = usuario()
     eid = _crear(cliente, cab, gratis)
@@ -288,7 +296,7 @@ def test_la_pregunta_propia_es_de_todos_y_publicar_es_de_pro(api) -> None:  # no
     r = cliente.patch(f"/liga/estrategias/{eid}", json={"visibilidad": "publicada",
                                                         "declara_posiciones": "no"},
                       headers=cab(gratis))
-    assert r.status_code == 403, r.text
+    assert r.status_code == 200, r.text
 
     pro = usuario(pro=True)
     eid_pro = _crear(cliente, cab, pro, "Con pregunta")
@@ -516,7 +524,7 @@ def test_avisos_por_la_api_son_de_la_cuenta(api, monkeypatch) -> None:  # noqa: 
 def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, foto_con_escaneo, jornada_con_posicion, cx = api
     foto_con_escaneo(_EMPRESAS)
-    duena = usuario(pro=True)  # publicar es de Pro (plan §2.1)
+    duena = usuario()
     eid = _crear(cliente, cab, duena, "Publicada")
     receta = _receta(cliente, cab, duena, eid).json()
     jornada_con_posicion(eid, receta["id"], "ZPA", "50.0000")
@@ -550,7 +558,7 @@ def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     assert ajena["rendimiento"]["estado"] == "privado"
     assert ajena["rendimiento"]["serie"] == []
 
-    # Publicada, la ve un Pro; un Gratis sigue sin verla.
+    # Publicada, la ven las cuentas gratis y Pro.
     r = cliente.patch(f"/liga/estrategias/{eid}", json={"visibilidad": "publicada",
                                                         "declara_posiciones": "si"},
                      headers=cab(duena))
@@ -562,7 +570,9 @@ def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     assert con_pro["rendimiento"]["estado"] == "sin_datos"
 
     sin_pro = cliente.get(f"/liga/fichas/{eid}", headers=cab(libre)).json()
-    assert sin_pro["receta"] is None
+    assert sin_pro["receta"]["id"] == receta["id"]
+    assert sin_pro["posiciones"] == con_pro["posiciones"]
+    assert sin_pro["rendimiento"] == con_pro["rendimiento"]
 
 
 def test_las_notas_de_una_empresa_solo_las_da_una_cartera_visible(api) -> None:  # noqa: ANN001
@@ -590,13 +600,13 @@ def test_las_notas_de_una_empresa_solo_las_da_una_cartera_visible(api) -> None: 
     assert cliente.get(ruta, headers=cab(libre)).status_code == 404
     assert cliente.get(ruta).status_code == 401
 
-    # Publicada la ve un Pro; quien no es Pro sigue sin verla.
+    # Publicada, las notas se ven con cualquier cuenta.
     r = cliente.patch(f"/liga/estrategias/{eid}", json={"visibilidad": "publicada",
                                                         "declara_posiciones": "si"},
                       headers=cab(duena))
     assert r.status_code == 200, r.text
     assert cliente.get(ruta, headers=cab(usuario(pro=True))).status_code == 200
-    assert cliente.get(ruta, headers=cab(libre)).status_code == 404
+    assert cliente.get(ruta, headers=cab(libre)).status_code == 200
 
     # Si la jornada no guardó su escaneo, la empresa se ve pero sin notas.
     cx.execute("update liga.jornadas set foto_id = null, scan_run_id = null where id in "

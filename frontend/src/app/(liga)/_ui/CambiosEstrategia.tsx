@@ -1,5 +1,6 @@
 "use client";
 
+import { PREGUNTA_VISIBLE } from "@/lib/liga/funciones";
 import { useLocale, useTranslations } from "next-intl";
 import { localeTag } from "@/i18n/locale";
 import { useEffect, useRef } from "react";
@@ -53,7 +54,7 @@ export function CambiosEstrategia({ resumen, alMostrar }: {
         </p>
       )}
 
-      {resumen.sin_pregunta && (
+      {PREGUNTA_VISIBLE && resumen.sin_pregunta && (
         <p className={styles.note} role="status">
           {t("common_seguimiento_sin_pregunta", { motivo: resumen.sin_pregunta })}
         </p>

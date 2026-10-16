@@ -2,7 +2,7 @@
 
 // La API proyecta la ficha según permisos; la interfaz nunca reconstruye una receta privada.
 
-import { PLANES_VISIBLES } from "@/lib/liga/planes";
+import { PREGUNTA_VISIBLE } from "@/lib/liga/funciones";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useConfirmar } from "@/components/Confirmar";
@@ -73,7 +73,7 @@ export function FichaContenido({ id }: { id: string }) {
   const locale = normalizeLocale(useLocale()) ?? "es";
   const percent = (value: number) => porcentaje(value, 1, locale);
   const router = useRouter();
-  const { estado, yo } = useSesionRequerida(`/ficha/${id}`);
+  const { estado } = useSesionRequerida(`/ficha/${id}`);
   const sesionLista = estado !== "cargando";
   const { datos: catalogo } = useCache<Catalogo | string>("catalogo", getCatalogo);
 
@@ -221,7 +221,7 @@ export function FichaContenido({ id }: { id: string }) {
                   const total = Object.values(ficha.receta!.pesos).reduce((a, b) => a + b, 0) || 1;
                   const pct = Math.round((v * 100) / total);
                   return (
-                    <div className={`wrow${k === "pregunta" ? " own" : ""}`} key={k}>
+                    (k !== "pregunta" || PREGUNTA_VISIBLE) && <div className={`wrow${k === "pregunta" ? " own" : ""}`} key={k}>
                       <span>{ETIQUETA_PESO[k] ? t(ETIQUETA_PESO[k]) : k}</span>
                       <span className="num">{pct}&nbsp;%</span>
                       <div className="wbar"><i style={{ width: `${pct}%` }} /></div>
@@ -229,7 +229,7 @@ export function FichaContenido({ id }: { id: string }) {
                   );
                 })}
               </div>}
-              {metodo === "criterios" && ficha.receta.pregunta && (
+              {PREGUNTA_VISIBLE && metodo === "criterios" && ficha.receta.pregunta && (
                 <div className="sec">
                   <div className="sec-t">{t("strategies_ai_question")}</div>
                   <p className="q">«{ficha.receta.pregunta}»</p>
@@ -288,16 +288,9 @@ export function FichaContenido({ id }: { id: string }) {
             ) : (
               <>
                 {!ficha.casa && ficha.receta && (
-                  yo?.plan === "pro" ? (
-                    <Boton variante="principal" ancho="completo" disabled={ocupado} onClick={alCopiar}>
-                      {t("strategies_copy_adjust")}
-                    </Boton>
-                  ) : (
-                    PLANES_VISIBLES && <div className="lock">
-                      {t("strategies_pro_copy_note")}
-                      <Link href="/cuenta/plan" className="btn pri wide">{t("planes_ver")}</Link>
-                    </div>
-                  )
+                  <Boton variante="principal" ancho="completo" disabled={ocupado} onClick={alCopiar}>
+                    {t("strategies_copy_adjust")}
+                  </Boton>
                 )}
                 {!ficha.casa && !ficha.receta && <p className="fine">{t("strategies_copy_requires_published_pro")}</p>}
                 <Boton variante="discreto" onClick={alReportar} disabled={ocupado}>{t("strategies_report")}</Boton>

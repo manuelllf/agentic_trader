@@ -122,11 +122,11 @@ def _receta(cliente, cab, uid: str, eid: str, **cambios) -> dict:  # noqa: ANN00
 # ---- ligas privadas: crear, unirse, ver, salir, rotar el código -----------------------------
 
 
-def test_solo_pro_crea_una_liga(api) -> None:  # noqa: ANN001
+def test_cualquier_cuenta_crea_una_liga(api) -> None:  # noqa: ANN001
     cliente, cab, usuario = api
     gratis = usuario()
     r = cliente.post("/liga/ligas", json={"nombre": "Amigos"}, headers=cab(gratis))
-    assert r.status_code == 403, r.text
+    assert r.status_code == 201, r.text
 
     pro = usuario(pro=True)
     r = cliente.post("/liga/ligas", json={"nombre": "Amigos"}, headers=cab(pro))
@@ -171,7 +171,7 @@ def test_flujo_unirse_ver_y_salir(api) -> None:  # noqa: ANN001
     assert cliente.delete(f"/liga/ligas/{liga['id']}/yo", headers=cab(amigo)).status_code == 404
 
 
-def test_una_cuenta_gratuita_se_une_con_el_codigo_pero_no_crea(api) -> None:  # noqa: ANN001
+def test_una_cuenta_gratuita_se_une_con_el_codigo_y_crea(api) -> None:  # noqa: ANN001
     cliente, cab, usuario = api
     duena = usuario(pro=True)
     liga = cliente.post("/liga/ligas", json={"nombre": "Con amigos"}, headers=cab(duena)).json()
@@ -182,7 +182,7 @@ def test_una_cuenta_gratuita_se_une_con_el_codigo_pero_no_crea(api) -> None:  # 
     assert any(x["id"] == liga["id"] for x in cliente.get("/liga/ligas",
                                                            headers=cab(gratis)).json())
     r = cliente.post("/liga/ligas", json={"nombre": "Otra"}, headers=cab(gratis))
-    assert r.status_code == 403 and "pase de liga" in r.json()["detail"], r.text
+    assert r.status_code == 201, r.text
 
 
 def test_detalle_muestra_equipo_formado_y_mes_sin_abrir_datos_privados(api, monkeypatch) -> None:  # noqa: ANN001
@@ -367,19 +367,19 @@ def test_solo_la_duena_rota_el_codigo(api) -> None:  # noqa: ANN001
     assert r.json()["codigo"] != liga["codigo"]
 
 
-# ---- copiar una estrategia (Pro) --------------------------------------------------------------
+# Copiar una estrategia
 
 
-def test_copiar_es_de_pro_y_no_copia_lo_de_otro_sin_publicar(api) -> None:  # noqa: ANN001
+def test_copiar_es_gratis_y_no_copia_lo_de_otro_sin_publicar(api) -> None:  # noqa: ANN001
     cliente, cab, usuario = api
     autora = usuario(pro=True)
     eid = _crear_estrategia(cliente, cab, autora, "Original")
     _receta(cliente, cab, autora, eid, n_empresas=7)
 
     otro_gratis = usuario()
-    # De un gratis: aunque fuera suya, copiar es de Pro.
+    # Una cuenta gratis no copia una estrategia ajena sin publicar.
     r = cliente.post(f"/liga/estrategias/{eid}/copiar", headers=cab(otro_gratis))
-    assert r.status_code == 403, r.text
+    assert r.status_code == 404, r.text
 
     otro_pro = usuario(pro=True)
     # Aún borrador: RLS ni siquiera la deja ver, así que no hay qué copiar.
@@ -391,29 +391,29 @@ def test_copiar_es_de_pro_y_no_copia_lo_de_otro_sin_publicar(api) -> None:  # no
                       headers=cab(autora))
     assert r.status_code == 200, r.text
     # Publicada no basta: mientras siga en borrador, RLS tampoco la deja ver a un ajeno.
-    r = cliente.post(f"/liga/estrategias/{eid}/copiar", headers=cab(otro_pro))
+    r = cliente.post(f"/liga/estrategias/{eid}/copiar", headers=cab(otro_gratis))
     assert r.status_code == 404, r.text
     assert cliente.post(f"/liga/estrategias/{eid}/apuntar",
                         headers=cab(autora)).status_code == 200
 
-    r = cliente.post(f"/liga/estrategias/{eid}/copiar", headers=cab(otro_pro))
+    r = cliente.post(f"/liga/estrategias/{eid}/copiar", headers=cab(otro_gratis))
     assert r.status_code == 201, r.text
     copia = r.json()
     assert copia["id"] != eid and copia["nombre"] == "Original (copia)"
     assert copia["estado"] == "borrador"
 
     receta_copia = cliente.get(f"/liga/estrategias/{copia['id']}",
-                               headers=cab(otro_pro)).json()
+                               headers=cab(otro_gratis)).json()
     assert receta_copia["receta_id"] is not None
-    ficha_copia = cliente.get(f"/liga/fichas/{copia['id']}", headers=cab(otro_pro)).json()
+    ficha_copia = cliente.get(f"/liga/fichas/{copia['id']}", headers=cab(otro_gratis)).json()
     id_receta_copia = ficha_copia["receta"]["id"]
     assert ficha_copia["receta"]["n_empresas"] == 7
 
-    # Cambiar la receta original crea una versión nueva y deja intacta la copia del Pro.
+    # Cambiar la receta original crea una versión nueva y deja intacta la copia.
     receta_original_nueva = _receta(cliente, cab, autora, eid, n_empresas=10)
     assert receta_original_nueva["id"] != id_receta_copia
     ficha_copia_despues = cliente.get(f"/liga/fichas/{copia['id']}",
-                                      headers=cab(otro_pro)).json()
+                                      headers=cab(otro_gratis)).json()
     assert ficha_copia_despues["receta"]["id"] == id_receta_copia
     assert ficha_copia_despues["receta"]["n_empresas"] == 7
 

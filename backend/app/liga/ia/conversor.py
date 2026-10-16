@@ -270,9 +270,8 @@ def convertir(usuario_id: str, frase: str,
     reglas = _reglas_validas(bruto.get("reglas"))
     pesos = _pesos_validos(bruto.get("pesos"))
     pregunta = bruto.get("pregunta") if isinstance(bruto.get("pregunta"), str) else None
-    if not usos.pro:
-        pregunta = None
-        pesos = {k: v for k, v in pesos.items() if k != "pregunta"} if pesos else pesos
+    pregunta = None
+    pesos = {k: v for k, v in pesos.items() if k != "pregunta"} if pesos else pesos
 
     empresas = _empresas_actuales()
     if _menciona_empresa(pregunta, empresas):

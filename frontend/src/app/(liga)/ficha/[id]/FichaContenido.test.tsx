@@ -64,11 +64,12 @@ it("mantiene el error y el enlace de vuelta sin mostrar reglas ni acciones de ot
   expect(salida).not.toContain('class="ficha-cuerpo"');
 });
 
-it("oculta el aviso comercial y el enlace de planes en una cuenta gratis", () => {
+it("permite copiar y oculta el aviso comercial en una cuenta gratis", () => {
   estado.plan = "gratis";
   estado.ficha = { ...(estado.ficha as Ficha), es_dueno: false };
   const salida = renderToStaticMarkup(<FichaContenido id="estrategia-1" />);
   expect(salida).not.toContain('/cuenta/plan');
   expect(salida).not.toContain('strategies_pro_copy_note');
+  expect(salida).toContain('strategies_copy_adjust');
   expect(salida).toContain('strategies_report');
 });

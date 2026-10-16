@@ -1,4 +1,5 @@
 {
+  "api_error_db_solo_una_en_juego": "Solo puedes tener una estrategia en juego a la vez.",
   "api_error_acepta_terminos_nuevos": "Acepta la nueva versión de los términos para continuar.",
   "liga_catalogo_regla_grandes": "Empresas grandes",
   "liga_catalogo_regla_medianas": "Medianas o grandes",
@@ -64,7 +65,6 @@
   "api_error_no_existe_esa_estrategia": "No existe esa estrategia.",
   "api_error_todavia_no_has_guardado_ninguna_receta": "Todavía no has guardado ninguna receta.",
   "api_error_no_existe_esa_receta": "No existe esa receta.",
-  "api_error_copiar_una_estrategia_es_de_pro": "Copiar una estrategia no está disponible en tu cuenta.",
   "api_error_los_pagos_todavia_no_estan_activos": "Esta opción todavía no está disponible.",
   "api_error_no_se_pudo_abrir_el_pago_prueba_en_un_momento": "No se pudo abrir esta opción. Prueba en un momento.",
   "api_error_las_estrategias_de_la_casa_no_se_copian": "Las estrategias de la casa no se copian.",

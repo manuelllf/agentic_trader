@@ -19,10 +19,9 @@ function montar(pesos = equilibrado, pregunta = "") {
   act(() => root.render(<PasoCriterios catalogo={catalogo} pesos={pesos} pregunta={pregunta} pro={false} actualizarB={actualizarB} />));
   return { div, actualizarB };
 }
-it("pone la pregunta antes que los pesos y limita el texto", () => {
-  const { div } = montar(); const textarea = div.querySelector("textarea")!;
-  expect(textarea.compareDocumentPosition(div.querySelector('input')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(textarea.maxLength).toBe(160);
+it("oculta el campo de pregunta propia", () => {
+  const { div } = montar();
+  expect(div.querySelector("textarea")).toBeNull();
 });
 it("detecta el preset y aplica los pesos del catálogo", () => {
   const { div, actualizarB } = montar(negocio);
@@ -34,10 +33,11 @@ it("deja todos sin pulsar si no coinciden", () => {
   const { div } = montar({ ...equilibrado, pronto: 30 });
   expect(div.querySelector('[aria-pressed="true"]')).toBeNull();
 });
-it.each(["", "   ", "Pregunta"])("suma cien con pregunta %s", pregunta => {
+it.each(["", "   ", "Pregunta"])("oculta el peso de pregunta con pregunta %s", pregunta => {
   const { div } = montar({ negocio: 15, precio: 20, deuda: 25, pronto: 10, pregunta: 20 }, pregunta);
-  expect(Array.from(div.querySelectorAll('.wrow .num'), e => parseInt(e.textContent!)).reduce((a, b) => a + b, 0)).toBe(100);
-  expect(div.querySelectorAll('input')).toHaveLength(pregunta.trim() ? 5 : 4);
+  expect(Array.from(div.querySelectorAll('.wrow .num'), e => parseInt(e.textContent!)).reduce((a, b) => a + b, 0)).toBe(pregunta.trim() ? 78 : 100);
+  expect(div.querySelectorAll('input')).toHaveLength(4);
+  expect(div.querySelector("#w-pregunta")).toBeNull();
   div.querySelectorAll('input').forEach(e => { expect(e.min).toBe("0"); expect(e.max).toBe("50"); expect(e.step).toBe("5"); });
 });
 it("mantiene el peso de pregunta coherente al aplicar preset", () => {

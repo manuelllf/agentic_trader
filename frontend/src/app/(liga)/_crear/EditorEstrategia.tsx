@@ -2,6 +2,7 @@
 
 // La selección puede probarse sin crear estrategia; guardar o inscribir requiere identidad.
 
+import { ACTUALIZACION_VISIBLE, LECTURA_VISIBLE, PREGUNTA_VISIBLE } from "@/lib/liga/funciones";
 import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -702,12 +703,12 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
           disabled={ocupado} onClick={() => void verQueEntrarian()}>
           {ocupado ? t("builder_testing") : t("builder_preview_today")}
         </Boton>
-        {typeof prueba === "object" && prueba && b.pregunta && !costePregunta && <Boton variante="secundario" disabled={ocupado}
+        {PREGUNTA_VISIBLE && typeof prueba === "object" && prueba && b.pregunta && !costePregunta && <Boton variante="secundario" disabled={ocupado}
           onClick={async () => { setOcupado(true); try { await guardarPrueba(); } finally { setOcupado(false); } }}>
           {t("builder_save_check_question_cost")}
         </Boton>}
         {typeof prueba === "string" && <p className="fine" role="status">{prueba}</p>}
-        {typeof prueba === "object" && prueba && b.pregunta && costePregunta && costePregunta.faltan > 0 && (
+        {PREGUNTA_VISIBLE && typeof prueba === "object" && prueba && b.pregunta && costePregunta && costePregunta.faltan > 0 && (
           <Boton variante="secundario" ancho="completo" disabled={ocupado} onClick={probarConPregunta}>
             {ocupado ? t("builder_asking") : t("builder_test_question_cost", { count: costePregunta.creditos, companies: costePregunta.evaluadas })}
           </Boton>
@@ -715,7 +716,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         {typeof prueba === "object" && prueba && (prueba.sin_notas > 0 || prueba.sin_respuesta > 0) && <p className="fine">
           {t("builder_partial_selection", { withoutScores: prueba.sin_notas, withoutAnswer: prueba.sin_respuesta })}
         </p>}
-        {typeof prueba === "object" && prueba && prueba.elegidas.length > 0 && (
+        {LECTURA_VISIBLE && typeof prueba === "object" && prueba && prueba.elegidas.length > 0 && (
           <Boton variante="secundario" ancho="completo" onClick={leerCarteraCompleta}>
             {prueba.elegidas.every((e) => lecturas.some((l) => l.ticker === e.ticker)) ? t("builder_view_portfolio_reports")
               : t(prueba.id ? "builder_read_portfolio" : "builder_save_read_portfolio", { count: prueba.elegidas.length * 5 })}
@@ -752,10 +753,10 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
                        titulo={t("builder_result_only")}
                        ayuda={t("builder_result_only_help")}
                        onClick={() => { setVisibilidad("privada"); setDeclaraPosiciones(null); }} />
-          <OpcionRadio marcada={visibilidad === "publicada"} disabled={!pro}
+          <OpcionRadio marcada={visibilidad === "publicada"}
                        titulo={t("builder_revisar_publicada")}
                        ayuda={t("builder_published_help")}
-                       onClick={() => pro && setVisibilidad("publicada")} />
+                       onClick={() => setVisibilidad("publicada")} />
         </div>
         <p className="fine">{t("builder_revisar_sin_pruebas")}</p>
         {PLANES_VISIBLES && !pro && <Link href="/cuenta/plan" className="link">{t("planes_ver")}</Link>}
@@ -775,7 +776,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       {etapa === 1 && avisoPreview}
       {error && <p className="aviso" role="alert">{error}</p>}
       </fieldset>
-      {etapa < 3 && <aside className="constructor-cartera"><CarteraViva {...carteraProps} />{usarFrescas && <p className="fine">{t("builder_actualizar_hecha")}</p>}</aside>}
+      {etapa < 3 && <aside className="constructor-cartera"><CarteraViva {...carteraProps} />{ACTUALIZACION_VISIBLE && usarFrescas && <p className="fine">{t("builder_actualizar_hecha")}</p>}</aside>}
       </div>
       <div className="constructor-deshacer" aria-live="polite">
         {deshacer.disponible && <><span>{t("builder_live_changed")}</span> <button type="button" className="link" disabled={ocupado || convOcupado} onClick={() => {
@@ -783,7 +784,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
           if (copia) actualizarB(copia, false);
         }}>{t("builder_undo")}</button></>}
       </div>
-      <CarteraHoja abierta={hojaAbierta} onCerrar={cerrarHoja}><CarteraViva {...carteraProps} />{usarFrescas && <p className="fine">{t("builder_actualizar_hecha")}</p>}</CarteraHoja>
+      <CarteraHoja abierta={hojaAbierta} onCerrar={cerrarHoja}><CarteraViva {...carteraProps} />{ACTUALIZACION_VISIBLE && usarFrescas && <p className="fine">{t("builder_actualizar_hecha")}</p>}</CarteraHoja>
       <div className="constructor-avanzar">
         <button type="button" className="constructor-ver-cartera num" aria-expanded={hojaAbierta} aria-controls={hojaAbierta ? "cartera-hoja" : undefined} onClick={() => setHojaAbierta(true)}>
           {t("builder_live_count", { selected: miles(cartera.length, locale), passed: carteraProps.pasan === null ? "—" : miles(carteraProps.pasan, locale) })}
@@ -796,9 +797,9 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
         </Boton>}
       </div>
       <BarraPestanas />
-      <LecturasModal abierto={modalLecturas} tickers={tickersLecturas} activo={tickerLectura}
+      {LECTURA_VISIBLE && <LecturasModal abierto={modalLecturas} tickers={tickersLecturas} activo={tickerLectura}
         lecturas={lecturas} leyendo={leyendo} error={errorLectura}
-        onSeleccionar={setTickerLectura} onCerrar={() => setModalLecturas(false)} />
+        onSeleccionar={setTickerLectura} onCerrar={() => setModalLecturas(false)} />}
     </main>
   );
 }

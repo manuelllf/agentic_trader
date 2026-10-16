@@ -270,7 +270,7 @@ def test_transiciones_de_estado_permitidas(cx):
     cx.execute("update liga.estrategias set estado = 'retirada' where id = %s", (eid,))
 
 
-def test_gratis_juega_una_y_pro_tres(cx):
+def test_gratis_y_pro_juegan_una(cx):
     a, p = _usuario(cx), _usuario(cx, pro=True)
     primera, _ = _lista(cx, a, "Una")
     segunda, _ = _lista(cx, a, "Dos")
@@ -279,9 +279,9 @@ def test_gratis_juega_una_y_pro_tres(cx):
     _falla(cx, "update liga.estrategias set estado = 'apuntada' where id = %s", (segunda,))
     ids = [_lista(cx, p, f"P{i}")[0] for i in range(4)]
     _como(cx, p)
-    for eid in ids[:3]:
-        cx.execute("update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))
-    _falla(cx, "update liga.estrategias set estado = 'apuntada' where id = %s", (ids[3],))
+    cx.execute("update liga.estrategias set estado = 'apuntada' where id = %s", (ids[0],))
+    for eid in ids[1:]:
+        _falla(cx, "update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))
 
 
 def _mensaje(cx, sql: str, params: tuple | None = None) -> str:
@@ -291,7 +291,7 @@ def _mensaje(cx, sql: str, params: tuple | None = None) -> str:
     return e.value.diag.message_primary
 
 
-def test_el_tope_dice_que_plan_tienes_y_que_te_daria_pro(cx):
+def test_el_tope_es_el_mismo_para_gratis_y_pro(cx):
     a, p = _usuario(cx), _usuario(cx, pro=True)
     gratis = [_lista(cx, a, f"G{i}")[0] for i in range(2)]
     pro = [_lista(cx, p, f"P{i}")[0] for i in range(4)]
@@ -299,12 +299,11 @@ def test_el_tope_dice_que_plan_tienes_y_que_te_daria_pro(cx):
     _como(cx, a)
     cx.execute(apuntar, (gratis[0],))
     assert _mensaje(cx, apuntar, (gratis[1],)) == (
-        "Con el plan gratuito solo puedes tener una estrategia en juego. Con Pro, hasta tres")
+        "Solo puedes tener una estrategia en juego a la vez")
     _como(cx, p)
-    for eid in pro[:3]:
-        cx.execute(apuntar, (eid,))
-    assert _mensaje(cx, apuntar, (pro[3],)) == (
-        "Con Pro puedes tener hasta tres estrategias en juego a la vez")
+    cx.execute(apuntar, (pro[0],))
+    assert _mensaje(cx, apuntar, (pro[1],)) == (
+        "Solo puedes tener una estrategia en juego a la vez")
 
 
 def _opta(cx, eid: uuid.UUID) -> bool:
@@ -318,7 +317,9 @@ def test_cada_cuenta_tiene_una_estrategia_que_opta_al_premio(cx):
     apuntar = "update liga.estrategias set estado = 'apuntada' where id = %s"
     _como(cx, p)
     cx.execute(apuntar, (a,))
+    _sistema(cx)
     cx.execute(apuntar, (b,))
+    _como(cx, p)
     assert (_opta(cx, a), _opta(cx, b), _opta(cx, c)) == (True, False, False)
 
     cx.execute("select liga.designar_premio(%s)", (b,))
@@ -360,11 +361,11 @@ def test_apuntar_exige_al_menos_una_regla(cx):
     cx.execute("update liga.estrategias set receta_id = %s where id = %s", (otra_sin, eid))
 
 
-def test_publicar_es_de_pro_y_exige_declarar(cx):
+def test_publicar_es_gratis_y_exige_declarar(cx):
     a, p = _usuario(cx), _usuario(cx, pro=True)
     ea, ep = _estrategia(cx, a), _estrategia(cx, p)
     _como(cx, a)
-    _falla(cx, "update liga.estrategias set visibilidad = 'publicada', declara_posiciones = 'no' "
+    cx.execute("update liga.estrategias set visibilidad = 'publicada', declara_posiciones = 'no' "
                "where id = %s", (ea,))
     _como(cx, p)
     _falla(cx, "update liga.estrategias set visibilidad = 'publicada' where id = %s", (ep,))
@@ -372,7 +373,7 @@ def test_publicar_es_de_pro_y_exige_declarar(cx):
                "where id = %s", (ep,))
 
 
-def test_la_receta_publicada_la_ve_pro_y_no_gratis(cx):
+def test_la_receta_publicada_la_ven_pro_y_gratis(cx):
     autor, pro, gratis = _usuario(cx, pro=True), _usuario(cx, pro=True), _usuario(cx)
     eid, rid = _lista(cx, autor)
     _como(cx, autor)
@@ -381,7 +382,7 @@ def test_la_receta_publicada_la_ve_pro_y_no_gratis(cx):
     _como(cx, pro)
     assert _filas(cx, "select id from liga.recetas where id = %s", (rid,)) == [(rid,)]
     _como(cx, gratis)
-    assert _filas(cx, "select id from liga.recetas where id = %s", (rid,)) == []
+    assert _filas(cx, "select id from liga.recetas where id = %s", (rid,)) == [(rid,)]
     _como(cx, None)
     _falla(cx, "select id from liga.recetas")
 
@@ -457,7 +458,7 @@ def test_la_jornada_solo_fija_la_foto_que_uso_el_escaneo(cx):
                       (jid,)).rowcount == 1
 
 
-def test_posiciones_ajenas_con_pro_y_las_de_la_casa_sin_pro_al_cerrar_la_jornada(cx):
+def test_posiciones_publicadas_gratis_y_casa_sin_pro_al_cerrar_la_jornada(cx):
     autor, pro, gratis = _usuario(cx, pro=True), _usuario(cx, pro=True), _usuario(cx)
     admin = _usuario(cx, rol="admin")
     jid = _jornada(cx)
@@ -489,12 +490,13 @@ def test_posiciones_ajenas_con_pro_y_las_de_la_casa_sin_pro_al_cerrar_la_jornada
     assert _filas(cx, "select ticker from liga.posiciones where inscripcion_id = %s", (ic,)) == \
         [("CASA1",)]
     _como(cx, gratis)
-    assert _filas(cx, "select 1 from liga.posiciones") == []
+    assert _filas(cx, "select ticker from liga.posiciones where inscripcion_id = %s", (ip,)) == [("AAA",)]
+    assert _filas(cx, "select ticker from liga.posiciones where inscripcion_id = %s", (ic,)) == []
     _sistema(cx)
     cx.execute("update liga.jornadas set estado = 'cerrada', sp_rentabilidad = 1 where id = %s",
                (jid,))
     _como(cx, gratis)
-    assert _filas(cx, "select ticker from liga.posiciones") == [("CASA1",)]
+    assert sorted(_filas(cx, "select ticker from liga.posiciones")) == [("AAA",), ("CASA1",)]
     _como(cx, None)
     _falla(cx, "select 1 from liga.posiciones")
     assert _filas(cx, "select 1 from liga.inscripciones where id = %s", (ic,)) == [(1,)]
@@ -581,13 +583,13 @@ def test_haber_jugado_sin_pregunta_lo_ve_su_dueno_y_el_admin_y_nadie_mas(cx):
 # ---- ligas privadas
 # ----------------------------------------------------------------------------------
 
-def test_ligas_privadas_se_crean_con_pro_o_pase_y_se_entra_gratis_por_codigo(cx):
+def test_ligas_privadas_se_crean_y_se_entra_gratis_por_codigo(cx):
     p, q, g, fuera = (_usuario(cx, pro=True), _usuario(cx, pro=True), _usuario(cx),
                       _usuario(cx, pro=True))
     _como(cx, g)
-    assert _mensaje(cx, "insert into liga.ligas_privadas (nombre, codigo) "
-                        "values ('Amigos', 'ABCDEFGH')") == (
-        "Crear ligas privadas es de Pro o de quien tiene un pase de liga")
+    for codigo in ("GRATSABC", "GRATSACD", "GRATSADE"):
+        cx.execute("insert into liga.ligas_privadas (nombre, codigo) values ('Gratis', %s)",
+                   (codigo,))
     _como(cx, p)
     lid = cx.execute("insert into liga.ligas_privadas (nombre, codigo) values ('Amigos', "
                      "'ABCDEFGH') returning id").fetchone()[0]
@@ -640,7 +642,7 @@ def test_el_premio_lo_ve_su_cuenta_y_el_admin_y_nadie_lo_cambia(cx):
                "rentabilidad, puesto) values (%s, %s, 12, 1, 2)", (tid, b))    # puesto sin importe
 
 
-def test_el_pase_de_liga_deja_crear_ligas_mientras_vale(cx):
+def test_el_pase_de_liga_conserva_su_vigencia_y_privacidad(cx):
     con_pase, caducado, sin_pase = _usuario(cx), _usuario(cx), _usuario(cx)
     ajeno = _usuario(cx)
     _sistema(cx)
@@ -651,10 +653,14 @@ def test_el_pase_de_liga_deja_crear_ligas_mientras_vale(cx):
     _como(cx, con_pase)
     assert _filas(cx, "select liga.puede_crear_liga()") == [(True,)]
     cx.execute(crear, ("PASEABCD",))
+    _sistema(cx)
+    assert _filas(cx, "select liga.tiene_pase_liga(%s)", (con_pase,)) == [(True,)]
     for uid in (caducado, sin_pase):
+        assert _filas(cx, "select liga.tiene_pase_liga(%s)", (uid,)) == [(False,)]
+    for uid, codigo in ((caducado, "PASEEFGH"), (sin_pase, "PASEJKLM")):
         _como(cx, uid)
-        assert _filas(cx, "select liga.puede_crear_liga()") == [(False,)]
-        _falla(cx, crear, ("PASEEFGH",))
+        assert _filas(cx, "select liga.puede_crear_liga()") == [(True,)]
+        cx.execute(crear, (codigo,))
     _como(cx, con_pase)
     assert _filas(cx, "select 1 from liga.pases_liga") == [(1,)]
     _como(cx, ajeno)

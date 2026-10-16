@@ -254,6 +254,11 @@ def _sin_creditos(db: Session, fabrica: Fabrica) -> list[tuple[str, str]]:
 def _avisar_sin_creditos(db: Session, fabrica: Fabrica, ahora: datetime) -> int:
     """Tres días antes del corte: a quien no le alcanzan los créditos para pagar su pregunta, que
     jugará sin ella. Una sola vez por jornada."""
+    from app.liga.ia import comun as ia_comun
+
+    if ia_comun.razon_no_disponible("pregunta", fabrica) is not None:
+        return 0
+
     j = db.execute(text("""
         select id, cierre_inscripcion from liga.jornadas
         where estado = 'programada' and cierre_inscripcion > :ahora

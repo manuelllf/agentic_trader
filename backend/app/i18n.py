@@ -50,8 +50,7 @@ def present_catalog(payload: dict, locale: Locale) -> dict:
 
 # El origen lo fija la base de datos o el código; el catálogo solo lo presenta.
 ORIGEN_ERRORES: dict[str, str] = {
-    "Copiar una estrategia es de Pro.":
-        "api_error_copiar_una_estrategia_es_de_pro",
+    "Solo puedes tener una estrategia en juego a la vez": "api_error_db_solo_una_en_juego",
     "Los pagos todavía no están activos.":
         "api_error_los_pagos_todavia_no_estan_activos",
     "No se pudo abrir el pago. Prueba en un momento.":

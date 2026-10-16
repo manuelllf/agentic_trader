@@ -729,8 +729,8 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         """), {"r": f.receta_id}).one_or_none()
         receta_out = _receta_out(rf) if rf is not None else None
     pro = bool(db.execute(text("select liga.es_pro()")).scalar())
-    en_directo = f.dueno == ident.uid or (
-        pro and (f.tipo == "casa" or f.visibilidad == "publicada"))
+    en_directo = (f.dueno == ident.uid or (f.tipo == "usuario" and f.visibilidad == "publicada")
+                  or (pro and f.tipo == "casa"))
     con_retraso = f.tipo == "casa" and not en_directo   # sin Pro: al cerrar la jornada
     ins = db.execute(text("""
         select i.id, j.id as jornada_id, j.estado as jornada_estado, j.dia_base

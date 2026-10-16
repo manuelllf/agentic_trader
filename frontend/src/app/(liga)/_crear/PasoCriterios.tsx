@@ -1,5 +1,6 @@
 "use client";
 
+import { PREGUNTA_VISIBLE } from "@/lib/liga/funciones";
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { InfoTip } from "@/components/InfoTip";
@@ -33,13 +34,13 @@ export function PasoCriterios({ catalogo, pregunta, pesos, pro, actualizarB, chi
     (pesos[k] ?? 0) === (catalogo.presets[p][k] ?? 0))) ?? "";
 
   return <>
-    <div className="paso-bloque">
+    {PREGUNTA_VISIBLE && <div className="paso-bloque">
       <label className="lbl" htmlFor="cQ">{t("builder_question")} <small>{t("builder_question_optional")}</small></label>
       <textarea id="cQ" className="inp" maxLength={160} placeholder={t("builder_question_example")}
         value={pregunta} onChange={e => actualizarB({ pregunta: e.target.value,
           pesos: pesosCoherentes(e.target.value, pesos).pesos })} />
       <p className="fine">{t(pro ? "builder_question_help_pro" : "builder_question_help_credits")}</p>
-    </div>
+    </div>}
     <section className="paso-bloque" aria-labelledby="criterios-pesos">
       <h2 id="criterios-pesos" className="sec-t">{t("builder_criteria_title")}</h2>
       <p className="fine">{t("builder_criteria_scores")}</p>
@@ -49,7 +50,7 @@ export function PasoCriterios({ catalogo, pregunta, pesos, pro, actualizarB, chi
           onChange={p => actualizarB({ pesos: pesosCoherentes(pregunta, catalogo.presets[p]).pesos })} />
       </div>
       {!totalPesos && <p className="aviso" role="alert">{t("builder_weight_zero_help")}</p>}
-      {claves.map((k, i) => <div className="wrow" key={k}>
+      {claves.map((k, i) => (k !== "pregunta" || PREGUNTA_VISIBLE) && <div className="wrow" key={k}>
         <label htmlFor={`w-${k}`}>{NOTAS[k] ? t(NOTAS[k].titulo) : catalogo.pesos.etiquetas[k]}
           {NOTAS[k] && <InfoTip text={t(NOTAS[k].ayuda)} />}</label>
         <span className="num">{porcentajes[i]}&nbsp;%</span>

@@ -347,7 +347,6 @@ def evidencia_formacion_ficha(usuario_id: str, estrategia_id: str) -> dict | Non
               and j.estado in ('formada', 'cerrada')
               and (e.dueno_id = cast(:u as uuid) or (
                 e.visibilidad = 'publicada' and not e.oculta
-                and liga.tiene_pro(cast(:u as uuid))
               ))
             order by j.dia_base desc, j.id desc, i.id desc
             limit 2
@@ -617,7 +616,7 @@ def cartera_estrategia(estrategia_id: uuid.UUID) -> tuple[int, int, list[str]] |
     return cartera_prueba(fila.dueno_id, estrategia_id)
 
 
-# --- Copiar una estrategia (Pro; plan §11 y §2.1: «copiar» es de Pro) -----------------------------
+# Copiar una estrategia
 
 _LARGO_NOMBRE = 28
 _SUFIJO_COPIA = " (copia)"
@@ -631,10 +630,8 @@ def nombre_copia(nombre: str) -> str:
 
 def copiar_estrategia(db: Session, origen_id: uuid.UUID) -> RecetaModelo:
     """Estrategia y receta nuevas a nombre del que llama, a partir de una que puede ver (RLS
-    decide: la suya o una publicada visible si es Pro). Las de la casa no se copian nunca, y sin
+    decide: la suya o una publicada visible). Las de la casa no se copian nunca, y sin
     receta visible no hay qué copiar."""
-    if not db.execute(text("select liga.es_pro()")).scalar_one():
-        raise HTTPException(403, "Copiar una estrategia es de Pro.")
     origen = db.execute(text("""
         select tipo, nombre, forma, dibujo, color1, color2, iniciales, receta_id
         from liga.estrategias where id = :i

@@ -1272,6 +1272,9 @@ def test_los_recordatorios_salen_una_vez_por_jornada_y_en_su_hora(
 def test_tres_dias_antes_del_corte_se_avisa_a_quien_no_le_alcanzan_los_creditos(
         fabrica, mercado, mundo, empujes, monkeypatch) -> None:  # noqa: ANN001
     from app.liga import avisos, estrategias
+    from app.liga.ia import comun as ia_comun
+
+    monkeypatch.setattr(ia_comun, "razon_no_disponible", lambda *a, **k: "apagada")
 
     monkeypatch.setattr(estrategias, "fabrica_sistema", fabrica)
     sin_saldo, con_saldo = _cuenta_con_pregunta(fabrica, 0), _cuenta_con_pregunta(fabrica, 10)
@@ -1280,6 +1283,9 @@ def test_tres_dias_antes_del_corte_se_avisa_a_quien_no_le_alcanzan_los_creditos(
     corte = _cuenta(fabrica, "select cierre_inscripcion from liga.jornadas where id = :j",
                     j=mundo["enero"])
     assert avisos.job(fabrica, ahora=corte - timedelta(days=4))["sin_creditos"] == 0
+    # Sin pregunta no hay aviso de créditos.
+    assert avisos.job(fabrica, ahora=corte - timedelta(days=2))["sin_creditos"] == 0
+    monkeypatch.setattr(ia_comun, "razon_no_disponible", lambda *a, **k: None)
     assert avisos.job(fabrica, ahora=corte - timedelta(days=2))["sin_creditos"] == 1
     assert [c["title"] for _, c in empujes] == ["Tu pregunta no tiene créditos"]
     assert avisos.job(fabrica, ahora=corte - timedelta(days=1))["sin_creditos"] == 0

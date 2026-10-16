@@ -26,7 +26,7 @@ TOPE_ALIAS_30_DIAS = 3
 TOPE_PRUEBAS_DIA = 30
 TOPE_LECTURAS_DIA = 30
 # Conversor de la idea a reglas: (por estrategia, al mes) según el plan.
-TOPES_CONVERSOR = {"gratis": (5, 30), "pro": (20, 150)}
+TOPES_CONVERSOR = {"gratis": (20, 150), "pro": (20, 150)}
 
 
 def _inicio_dia_madrid() -> datetime:

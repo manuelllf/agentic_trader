@@ -1,4 +1,5 @@
 {
+  "api_error_db_solo_una_en_juego": "You can have one strategy in play at a time.",
   "api_error_acepta_terminos_nuevos": "Accept the updated terms to continue.",
   "liga_catalogo_regla_grandes": "Large companies",
   "liga_catalogo_regla_medianas": "Medium or large companies",
@@ -64,7 +65,6 @@
   "api_error_no_existe_esa_estrategia": "This strategy does not exist.",
   "api_error_todavia_no_has_guardado_ninguna_receta": "You have not saved a recipe yet.",
   "api_error_no_existe_esa_receta": "This recipe does not exist.",
-  "api_error_copiar_una_estrategia_es_de_pro": "Copying a strategy isn't available on your account.",
   "api_error_los_pagos_todavia_no_estan_activos": "This option is not available yet.",
   "api_error_no_se_pudo_abrir_el_pago_prueba_en_un_momento": "Could not open this option. Try again in a moment.",
   "api_error_las_estrategias_de_la_casa_no_se_copian": "House strategies cannot be copied.",

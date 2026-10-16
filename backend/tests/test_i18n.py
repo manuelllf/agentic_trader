@@ -60,13 +60,8 @@ def test_error_catalog_preserves_unknown_original_content():
 
 @pytest.mark.parametrize("locale", ["es", "en"])
 def test_error_origin_uses_presentation_catalog(locale):
-    assert present_error_detail("Publicar es de Pro", locale) == (
-        MESSAGES[locale]["api_error_db_publicar_es_de_pro"])
+    assert present_error_detail("Solo puedes tener una estrategia en juego a la vez", locale) == (
+        MESSAGES[locale]["api_error_db_solo_una_en_juego"])
     assert present_error_detail("Tu plan permite 3 en juego a la vez", locale) == (
         MESSAGES[locale]["dberr_tpl_plan_en_juego"].format(a=3))
     assert present_error_detail("Error desconocido", locale) == "Error desconocido"
-    assert present_error_detail(
-        "Con Pro puedes tener hasta tres estrategias en juego a la vez", locale) == (
-        MESSAGES[locale]["api_error_db_con_pro_puedes_tener_hasta_tres_en_juego"])
-    assert MESSAGES[locale]["api_error_db_con_pro_puedes_tener_hasta_tres_en_juego"] != (
-        MESSAGES[locale]["api_error_db_con_el_plan_gratuito_solo_una_en_juego"])
