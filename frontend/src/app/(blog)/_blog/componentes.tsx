@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SelectorIdiomaBlog } from "./SelectorIdiomaBlog";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Marca } from "@/app/(liga)/_ui/Marca";
@@ -8,13 +9,10 @@ import type { ArticuloResumen } from "@/lib/blog/publico";
 export type Textos = Record<string, string>;
 export const rutaBlog = (idioma: Locale, slug?: string) => `${idioma === "en" ? "/en" : ""}/blog${slug ? `/${encodeURIComponent(slug)}` : ""}`;
 
-export function Cabecera({ idioma, textos, slug }: { idioma: Locale; textos: Textos; slug?: string }) {
+export function Cabecera({ idioma, hrefEs, hrefEn }: { idioma: Locale; hrefEs: string; hrefEn: string }) {
   return <header className="blog-header">
-    {slug ? <Link href={rutaBlog(idioma)}>{textos.title}</Link> : <Link href={rutaBlog(idioma)}><Marca /></Link>}
-    <nav>{slug ? <Link href={rutaBlog(idioma === "es" ? "en" : "es", slug)} hrefLang={idioma === "es" ? "en" : "es"}>{textos.switch}</Link> : <>
-      <Link href="/blog" hrefLang="es" aria-current={idioma === "es" ? "page" : undefined}>ES</Link>
-      <Link href="/en/blog" hrefLang="en" aria-current={idioma === "en" ? "page" : undefined}>EN</Link>
-    </>}</nav>
+    <Link href="/" className="wordmark"><Marca /></Link>
+    <nav><SelectorIdiomaBlog idioma={idioma} hrefEs={hrefEs} hrefEn={hrefEn} /></nav>
   </header>;
 }
 

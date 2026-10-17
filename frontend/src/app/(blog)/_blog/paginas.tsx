@@ -34,18 +34,22 @@ export async function metadataBlog(idioma: Locale, slug?: string): Promise<Metad
 
 export async function Listado({ idioma }: { idioma: Locale }) {
   const textos = await textosBlog(idioma);
+  const hrefEs = rutaBlog("es");
+  const hrefEn = rutaBlog("en");
   let articulos;
   try { articulos = await listarPublicados(idioma); } catch { articulos = null; }
-  return <main lang={idioma}><Cabecera idioma={idioma} textos={textos} /><h1>{textos.title}</h1><p className="blog-entradilla">{textos.intro}</p>
+  return <main lang={idioma}><Cabecera idioma={idioma} hrefEs={hrefEs} hrefEn={hrefEn} /><h1>{textos.title}</h1><p className="blog-entradilla">{textos.intro}</p>
     {articulos === null ? <p role="alert">{textos.error}</p> : articulos.length === 0 ? <p>{textos.empty}</p> : <ul className="blog-lista">{articulos.map(articulo => <Fila key={articulo.slug} articulo={articulo} idioma={idioma} textos={textos} />)}</ul>}
     <Pie textos={textos} /></main>;
 }
 
 export async function Leccion({ idioma, slug }: { idioma: Locale; slug: string }) {
   const textos = await textosBlog(idioma);
+  const hrefEs = rutaBlog("es", slug);
+  const hrefEn = rutaBlog("en", slug);
   let articulo;
   try { articulo = await leerPublicado(slug, idioma); }
-  catch { return <main lang={idioma}><Cabecera idioma={idioma} textos={textos} slug={slug} /><p role="alert">{textos.error}</p><Pie textos={textos} articulo /></main>; }
+  catch { return <main lang={idioma}><Cabecera idioma={idioma} hrefEs={hrefEs} hrefEn={hrefEn} /><p role="alert">{textos.error}</p><Pie textos={textos} articulo /></main>; }
   if (!articulo) notFound();
   let articulos;
   try { articulos = await listarPublicados(idioma); } catch { articulos = null; }
@@ -55,7 +59,7 @@ export async function Leccion({ idioma, slug }: { idioma: Locale; slug: string }
   const datos = { "@context": "https://schema.org", "@type": "BlogPosting", headline: articulo.titulo, description: articulo.resumen,
     datePublished: articulo.publicado_en, inLanguage: idioma, mainEntityOfPage: `${URL_PUBLICA}${rutaBlog(idioma, slug)}`,
     publisher: { "@type": "Organization", name: "Vennett" } };
-  return <main lang={idioma}><Cabecera idioma={idioma} textos={textos} slug={slug} /><article>
+  return <main lang={idioma}><Cabecera idioma={idioma} hrefEs={hrefEs} hrefEn={hrefEn} /><article>
     <Fecha articulo={articulo} idioma={idioma} textos={textos} /><h1>{articulo.titulo}</h1><p className="blog-entradilla">{articulo.resumen}</p><Cuerpo cuerpo={articulo.cuerpo} />
     <Link className="blog-boton" href="/liga">{textos.cta}</Link>
     {articulos === null && <p role="alert">{textos.error}</p>}
