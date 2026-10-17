@@ -26,6 +26,9 @@ export default async function Terminos() {
         {t.rich("legal_terms_no_advice", { b: (chunks) => <b>{chunks}</b> })}
       </p>
 
+      <p>{t("legal_terms_blog")}</p>
+      <p>{t("legal_terms_summaries")}</p>
+
       <h2>{t("legal_terms_provider")}</h2>
       <p>
         {TITULAR.nombre} ({t("legal_holder_location")}). {t("legal_contact_label")}: <Contacto uso="general" />. {t("legal_terms_more_details")} {" "}
@@ -34,7 +37,7 @@ export default async function Terminos() {
 
       <h2>{t("legal_terms_your_account")}</h2>
       <ul>
-        <li>{t("legal_terms_account_age")} <Link href="/legal/privacidad">{t("legal_privacy_policy")}</Link>. {t("legal_terms_purchase_age")}</li>
+        <li>{t("legal_terms_account_age")} <Link href="/legal/privacidad">{t("legal_privacy_policy")}</Link>.</li>
         <li>{t("legal_terms_password")} <Link href="/cuenta">{t("legal_account_link")}</Link>.</li>
         <li>{t("legal_terms_delete_account")}</li>
       </ul>
@@ -52,12 +55,9 @@ export default async function Terminos() {
       <h2>{t("legal_terms_credits_pro")}</h2>
       <ul>
         <li>{t.rich("legal_terms_credits", { b: (chunks) => <b>{chunks}</b> })}</li>
-        <li>{t("legal_terms_plans")}</li>
-        <li>{t("legal_terms_seller")}</li>
-        <li>{t("legal_terms_cancel")}</li>
-        <li>{t("legal_terms_refund")} <Contacto uso="legal" />. {t("legal_terms_refund_after")}</li>
-        <li>{t("legal_terms_access_lost")}</li>
       </ul>
+
+      <p>{t("legal_terms_past_payments")} <Contacto uso="general" /></p>
 
       <h2>{t("legal_terms_acceptable_use")}</h2>
       <p>

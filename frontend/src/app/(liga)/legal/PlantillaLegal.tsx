@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { VERSION_LEGAL } from "./datos";
+import { VERSION_LEGAL, fechaLegal } from "./datos";
 import { getLocale, getTranslations } from "next-intl/server";
-import { normalizeLocale, localeTag } from "@/i18n/locale";
+import { normalizeLocale } from "@/i18n/locale";
 import { Marca } from "../_ui/Marca";
 
 // Envoltorio de las páginas legales. `resumen` es la primera capa: lo esencial en pocas líneas.
@@ -19,7 +19,7 @@ export async function PlantillaLegal({
 
       <div className="legal-cuerpo">
         <h1>{titulo}</h1>
-        <p className="legal-fecha">{t("legal_last_updated", { date: new Intl.DateTimeFormat(localeTag(locale), { dateStyle: "long", timeZone: "UTC" }).format(new Date(`${VERSION_LEGAL}T00:00:00Z`)), version: VERSION_LEGAL })}</p>
+        <p className="legal-fecha">{t("legal_last_updated", { date: fechaLegal(locale), version: VERSION_LEGAL })}</p>
         {resumen && (
           <section className="legal-resumen" aria-label={t("legal_summary_aria")}>
             <h2>{t("legal_summary_heading")}</h2>
