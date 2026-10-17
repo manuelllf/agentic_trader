@@ -50,7 +50,6 @@ function CarteraSinEvidencia({ fichaId, posiciones, mercado }: { fichaId: string
   }, [ticker]);
   const cotizacion = ticker ? mercado?.empresas[ticker] : null;
   return <section className="sec"><h3 className="sec-t">{t("strategies_portfolio_count", { count: posiciones.length })}</h3>
-    <p className="fine">{t("strategies_month_provisional_hint")}</p>
     <ListaEmpresas conPrecio columnaRetorno={t("strategies_col_month")} alAbrir={setTicker}
       filas={posiciones.map(p => ({
         ticker: p.ticker, peso: Number(p.peso),

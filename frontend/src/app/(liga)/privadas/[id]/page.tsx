@@ -95,7 +95,7 @@ export default function PrivadaDetalle() {
               <div className="priv-filas">
                 {conResultado.map((m, i) => m.estrategia && (
                   <FilaJornada key={m.alias} puesto={i + 1} nombre={m.estrategia.nombre} escudo={m.estrategia.escudo}
-                    provisional={m.provisional} etiqueta={etiqueta(m, abrir(m))} rentabilidad={mes(m) ?? 0}
+                    etiqueta={etiqueta(m, abrir(m))} rentabilidad={mes(m) ?? 0}
                     diferencia={m.diferencia_mes == null ? null : Number(m.diferencia_mes)}
                     propia={m.es_yo} onAbrir={abrir(m) ? ir(m) : undefined} />
                 ))}

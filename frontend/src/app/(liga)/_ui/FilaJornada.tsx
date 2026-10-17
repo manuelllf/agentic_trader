@@ -15,7 +15,6 @@ const Chevron = ({ pendiente = false }: { pendiente?: boolean }) => (
 
 export interface FilaJornadaProps {
   nombre: string;
-  provisional?: boolean;
   escudo: EscudoValor;
   casa?: ClaveCasa | null;
   etiqueta: string;
@@ -32,7 +31,7 @@ export interface FilaJornadaProps {
 
 /** Fila de «Este mes»: escudo, nombre y resultado de la jornada, la misma en Liga y en Privadas. */
 export function FilaJornada({
-  nombre, provisional, escudo, casa, etiqueta, rentabilidad, diferencia, puesto, onAbrir, propia, puestoEscritorio, diferenciaEscritorio,
+  nombre, escudo, casa, etiqueta, rentabilidad, diferencia, puesto, onAbrir, propia, puestoEscritorio, diferenciaEscritorio,
 }: FilaJornadaProps) {
   const t = useTranslations();
   const locale = useLocale() === "en" ? "en" : "es";
@@ -48,7 +47,6 @@ export function FilaJornada({
         <Escudo valor={escudo} casa={casa} baldosa tamano={28} etiqueta={t("league_escudo_de", { name: nombre })} />
         <span className="nm">
           <b>{nombre}</b>
-          {provisional === true && <span className="fine" style={{ display: "block", marginTop: 0 }}>{t("liga_provisional_insignia")}</span>}
           <span className="sub">{etiqueta}</span>
         </span>
       </span>

@@ -58,7 +58,7 @@ export function GraficaRendimiento({ serie, metricas, locale }: {
   const diferencia = punto.estrategia - punto.sp500;
   const rondaAbierta = puntos[m - 1].provisional ? puntos[m - 1].jornada : null;
   const subtitulo = cursor !== null
-    ? `${larga.format(aFecha(punto.dia)).replace(/\./g, "")}${punto.provisional ? t("strategies_provisional_suffix") : ""} · ${t("strategies_chart_since", { from: dia(puntos[0].dia) })}`
+    ? `${larga.format(aFecha(punto.dia)).replace(/\./g, "")} ·${t("strategies_chart_since", { from: dia(puntos[0].dia) })}`
     : `${t("strategies_chart_range", { from: dia(puntos[0].dia), to: dia(puntos[m - 1].dia) })}${rondaAbierta != null ? ` · ${t("strategies_chart_round_open", { n: rondaAbierta })}` : ""}`;
 
   const valores = puntos.flatMap((p) => [p.estrategia, p.sp500]);
@@ -71,7 +71,6 @@ export function GraficaRendimiento({ serie, metricas, locale }: {
   const trazo = (clave: "estrategia" | "sp500") =>
     puntos.map((p, k) => `${k === 0 || p.salto ? "M" : "L"}${x(k).toFixed(1)},${y(p[clave]).toFixed(1)}`).join(" ");
 
-  const primeraProvisional = puntos.findIndex((p) => p.provisional);
   const rondas = inicios(puntos);
   let yEstrategia = y(puntos[m - 1].estrategia), ySp = y(puntos[m - 1].sp500);
   if (Math.abs(yEstrategia - ySp) < 14) {
@@ -106,10 +105,6 @@ export function GraficaRendimiento({ serie, metricas, locale }: {
             <line x1={IZQ} x2={ancho - DER} y1={y(v)} y2={y(v)} className={v === 0 ? "zero" : "grid"} />
             <text x={IZQ - 7} y={y(v) + 4} textAnchor="end">{porcentaje(v, v === 0 ? 0 : decimales, locale)}</text>
           </g>)}
-          {primeraProvisional >= 0 && <>
-            <rect className="band" x={x(primeraProvisional)} y={ARRIBA} width={ancho - DER - x(primeraProvisional)} height={altoUtil} />
-            <text x={ancho - DER} y={ARRIBA - 9} textAnchor="end">{t("strategies_provisional")}</text>
-          </>}
           {rondas.map((r) => <g key={r.indice}>
             <line x1={x(r.indice)} x2={x(r.indice)} y1={ARRIBA} y2={ARRIBA + altoUtil} className="sep" />
             {x(r.indice) < ancho - DER - 80 && <text x={x(r.indice) + 4} y={ARRIBA - 9}>{t("strategies_round_short", { n: r.jornada })}</text>}

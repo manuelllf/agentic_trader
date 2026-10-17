@@ -374,7 +374,7 @@
   "liga_casa_omega_paso_1_titulo": "Five slots",
   "liga_casa_omega_paso_1_texto": "Five slots without capital or monetary amounts. Each starts at 1 and compounds its returns; Omega returns their mean minus 1. Cash earns 0%.",
   "liga_casa_omega_paso_2_titulo": "Every alert",
-  "liga_casa_omega_paso_2_texto": "The league captures every alert every 15 minutes, including those Manuel discards or executes. This simulation is independent of his room.",
+  "liga_casa_omega_paso_2_texto": "The league captures every alert every 15 minutes, including those the house discards or executes. This simulation is independent of the house's own room.",
   "liga_casa_omega_paso_3_titulo": "Freshness and priority",
   "liga_casa_omega_paso_3_texto": "Only alerts born within 5 calendar days qualify. Most recent first; exact timestamp ties use captured market capitalization, then ticker. Missing capitalization ranks last.",
   "liga_casa_omega_paso_4_titulo": "Hold without adding",

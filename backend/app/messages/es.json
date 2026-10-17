@@ -374,7 +374,7 @@
   "liga_casa_omega_paso_1_titulo": "Cinco huecos",
   "liga_casa_omega_paso_1_texto": "Cinco huecos sin capital ni importes. Cada uno empieza en 1 y compone sus retornos; Omega rinde la media de los cinco menos 1. La caja rinde 0 %.",
   "liga_casa_omega_paso_2_titulo": "Todas las alertas",
-  "liga_casa_omega_paso_2_texto": "La liga captura todas las alertas cada 15 minutos, también las descartadas o ejecutadas por Manuel. Es una simulación independiente de su sala.",
+  "liga_casa_omega_paso_2_texto": "La liga captura todas las alertas cada 15 minutos, también las descartadas o ejecutadas por la casa. Es una simulación independiente de su sala.",
   "liga_casa_omega_paso_3_titulo": "Frescura y prioridad",
   "liga_casa_omega_paso_3_texto": "Solo entran alertas nacidas hace 5 días naturales o menos. Se elige la más reciente; a igual instante, la mayor capitalización capturada y después el ticker. Sin capitalización, al final.",
   "liga_casa_omega_paso_4_titulo": "Hold sin ampliación",

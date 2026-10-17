@@ -73,7 +73,7 @@ export function RendimientoFicha({ datos, posiciones = [] }: {
           ))}
         </div>
       </details>
-      <p className="fine">{datos.metodologia} {datos.provisional_hasta && t("strategies_provisional_until", { date: datos.provisional_hasta })}</p>
+      <p className="fine">{datos.metodologia}</p>
       {datos.incompleta && <p className="fine">{t("strategies_incomplete_series_note")}</p>}
     </section>
   );
