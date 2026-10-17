@@ -131,7 +131,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
           {scan && (
             <>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1" style={{ color: T.ink2 }}>
-                <span>{t("alpha_regime_label")} <b style={{ color: T.ink }}>{scan.regime || "—"}</b></span>
+                <span>{t("alpha_regime_label")} <b style={{ color: T.ink }}>{scan.regime || "-"}</b></span>
                 {scan.vix != null && <span className={NUMS}>VIX <b style={{ color: T.ink }}>{scan.vix}</b></span>}
                 {scan.cost && (
                   <span className={NUMS} style={{ color: T.muted }}>
@@ -204,10 +204,10 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                         <td className="py-1"><b style={{ color: T.ink }}>{p.ticker}</b></td>
                         <td className="py-1" style={{ color: T.ink2 }}>{p.action}</td>
                         <td className="py-1 text-right" style={{ color: T.ink }}>
-                          {p.target_weight_pct != null ? `${p.target_weight_pct}%` : "—"}
+                          {p.target_weight_pct != null ? `${p.target_weight_pct}%` : "-"}
                         </td>
                         <td className="py-1 text-right" style={{ color: T.ink2 }}>
-                          {dist != null ? `${dist.toFixed(1)}%` : "—"}
+                          {dist != null ? `${dist.toFixed(1)}%` : "-"}
                         </td>
                       </tr>
                       );
@@ -233,7 +233,7 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                   <ul className="mt-1 space-y-0.5">
                     {scan.construction.omitted.map((o) => (
                       <li key={o.ticker} style={{ color: T.ink2 }}>
-                        <b style={{ color: T.ink }}>{o.ticker}</b> — {o.reason}
+                        <b style={{ color: T.ink }}>{o.ticker}</b>: {o.reason}
                       </li>
                     ))}
                   </ul>
@@ -288,12 +288,12 @@ function ScanFullModal({ onClose }: { onClose: () => void }) {
                             <span className="alpha-scan-fuera-filtro">{t("alpha_scan_fuera_filtro")}</span>
                           )}
                         </td>
-                        <td className="max-w-0 truncate py-1" style={{ color: T.ink2 }}>{f.sector || "—"}</td>
+                        <td className="max-w-0 truncate py-1" style={{ color: T.ink2 }}>{f.sector || "-"}</td>
                         <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.prescore)}</td>
                         <td className="py-1 text-right" style={{ color: T.ink2 }}>{fmtScore(f.mid_score)}</td>
                         <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(f.deep_score)}</td>
-                        <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.price != null ? `$${money(f.price, 2, locale)}` : "—"}</td>
-                        <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.ath != null ? `${f.ath.toFixed(1)}%` : "—"}</td>
+                        <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.price != null ? `$${money(f.price, 2, locale)}` : "-"}</td>
+                        <td className="py-1 text-right" style={{ color: T.ink2 }}>{f.ath != null ? `${f.ath.toFixed(1)}%` : "-"}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -179,7 +179,7 @@ export function UniversoGlobalSync() {
       <span className="text-[10.5px]" style={{ color: sinSincronizar ? T.warn : T.muted }}>
         {sinSincronizar
           ? t("alpha_global_not_synced")
-          : t("alpha_global_synced_count", { count: fmtNum(opciones.total, locale), date: opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString(localeTag(locale), { timeZone: "UTC" }) : "—" })}
+          : t("alpha_global_synced_count", { count: fmtNum(opciones.total, locale), date: opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString(localeTag(locale), { timeZone: "UTC" }) : "-" })}
       </span>
       {!armed ? (
         <button onClick={() => setArmed(true)} disabled={syncing}
@@ -309,7 +309,7 @@ export function FotoGlobalPicker() {
   return (
     <div className="flex w-full flex-col gap-2.5">
       <span className="flex items-center gap-1 text-[10.5px]" style={{ color: T.muted }}>
-        {t("alpha_global_synced_count", { count: fmtNum(opciones.total, locale), date: opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString(localeTag(locale), { timeZone: "UTC" }) : "—" })}
+        {t("alpha_global_synced_count", { count: fmtNum(opciones.total, locale), date: opciones.synced_at ? new Date(opciones.synced_at).toLocaleDateString(localeTag(locale), { timeZone: "UTC" }) : "-" })}
         <InfoTip text={t("alpha_global_filter_help")} />
       </span>
 
@@ -348,7 +348,7 @@ export function FotoGlobalPicker() {
             <>
               {t("alpha_global_count_summary", { matches: fmtNum(count, locale), selected: fmtNum(efectivo ?? 0, locale), minutes: minutosEstimados ?? 0 })}
             </>
-          ) : "—"}
+          ) : "-"}
         </span>
       </div>
 

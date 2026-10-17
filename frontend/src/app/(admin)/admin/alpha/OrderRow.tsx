@@ -59,7 +59,7 @@ export function OrderRow({ a, dry, onDecide, expiryDays }: {
           </span>
         </Td>
         <Td right><span className={NUMS}>{a.target_weight_pct}%</span></Td>
-        <Td right><span className={NUMS}>{a.est_price ? `$${money(a.est_price)}` : "—"}</span></Td>
+        <Td right><span className={NUMS}>{a.est_price ? `$${money(a.est_price)}` : "-"}</span></Td>
         <Td right>
           <span className={`inline-block min-w-[42px] rounded px-1.5 py-0.5 text-center text-[11.5px] font-bold ${NUMS}`}
                 style={{ background: T.base, color: T.ink }}>

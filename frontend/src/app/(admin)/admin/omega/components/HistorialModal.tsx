@@ -161,7 +161,7 @@ export function HistorialModal({ s, precioVivo, regimen, onClose }: {
                     {s.cierre_manual!.exit_date ? t("omega_sold_on", { date: fmtFecha(s.cierre_manual!.exit_date, locale) }) : t("omega_manual_sale")}
                     {soloSistema != null && t("omega_alone_would_have", { value: fmtRet(soloSistema, locale) })}
                   </span>
-                : s.exit_date && <span>{t("omega_exit_date", { date: fmtFecha(s.exit_date, locale), days: s.dias ?? "—" })}</span>}
+                : s.exit_date && <span>{t("omega_exit_date", { date: fmtFecha(s.exit_date, locale), days: s.dias ?? "-" })}</span>}
           </div>
         </div>
       </div>

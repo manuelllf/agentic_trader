@@ -65,7 +65,7 @@ def create_from_items(db: Session, items: list[dict], macro_summary: str) -> int
     if created:
         push.send_to_all(
             db,
-            title="Agentic Trader — Alpha",
+            title="Agentic Trader · Alpha",
             body=f"{created} operación(es) esperan tu decisión. Sí ejecuta, No descarta.",
             url="/admin/alpha",
         )

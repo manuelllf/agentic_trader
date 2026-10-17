@@ -65,7 +65,7 @@ export function EvidenciaCartera({ fichaId, datos, mercado }: { fichaId: string;
         return <article key={p.ticker}>
           <h3 className="sec-t">{t("strategies_evidence_weight", { weight: new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(p.peso)) })}</h3>
           <NotasEmpresa fichaId={fichaId} ticker={p.ticker} />
-          {mercado && <section className="sec"><h3 className="sec-t">{t("strategies_market_quote")}</h3><p className="meta">{t("strategies_price_label")}: {mercado.empresas[p.ticker]?.precio == null ? t("strategies_quote_pending") : Number(mercado.empresas[p.ticker]!.precio).toLocaleString(locale, {maximumFractionDigits: 4})}</p><p className="fine">{t("strategies_evidence_market_data", { date: mercado.empresas[p.ticker]?.dia ? fecha(mercado.empresas[p.ticker]!.dia!, new Date(), locale) : "—", since: mercado.desde ? fecha(mercado.desde, new Date(), locale) : "—", return: mercado.empresas[p.ticker]?.rentabilidad == null ? "—" : percent(mercado.empresas[p.ticker]!.rentabilidad!) })}</p></section>}
+          {mercado && <section className="sec"><h3 className="sec-t">{t("strategies_market_quote")}</h3><p className="meta">{t("strategies_price_label")}: {mercado.empresas[p.ticker]?.precio == null ? t("strategies_quote_pending") : Number(mercado.empresas[p.ticker]!.precio).toLocaleString(locale, {maximumFractionDigits: 4})}</p><p className="fine">{t("strategies_evidence_market_data", { date: mercado.empresas[p.ticker]?.dia ? fecha(mercado.empresas[p.ticker]!.dia!, new Date(), locale) : "-", since: mercado.desde ? fecha(mercado.desde, new Date(), locale) : "-", return: mercado.empresas[p.ticker]?.rentabilidad == null ? "-" : percent(mercado.empresas[p.ticker]!.rentabilidad!) })}</p></section>}
           <p className="fine">{t(p.origen === "mantenida" ? "strategies_evidence_position_kept" : "strategies_evidence_position_selected")}{" "}
             {p.reglas.length ? t("strategies_evidence_rules_verified", { verified: verificadas, total: p.reglas.length, unknown: desconocidas })
               : f.estado_reglas === "disponible" ? t("strategies_no_extra_filters") : t("strategies_evidence_no_verifiable_conditions")}</p>
@@ -74,7 +74,7 @@ export function EvidenciaCartera({ fichaId, datos, mercado }: { fichaId: string;
             {r.motivo ? ` · ${r.motivo}` : ""}.
           </p>)}
           {p.rendimiento.estado === "disponible" && p.rendimiento.rentabilidad_pct !== null ? <>
-            <p className="fine">{t("strategies_evidence_return_period", { from: p.rendimiento.desde ?? "—", to: p.rendimiento.hasta ?? "—", strategy: percent(p.rendimiento.rentabilidad_pct), sp: percent(p.rendimiento.sp500_pct!), difference: new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(p.rendimiento.diferencia_pp!) })}</p>
+            <p className="fine">{t("strategies_evidence_return_period", { from: p.rendimiento.desde ?? "-", to: p.rendimiento.hasta ?? "-", strategy: percent(p.rendimiento.rentabilidad_pct), sp: percent(p.rendimiento.sp500_pct!), difference: new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(p.rendimiento.diferencia_pp!) })}</p>
             {p.rendimiento.incompleta && <p className="fine">{t("strategies_evidence_missing_closes")}</p>}
           </> : <p className="fine">{t("strategies_evidence_no_common_closes")}</p>}
         </article>;

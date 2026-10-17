@@ -59,7 +59,7 @@ def _run_analytics_query(nombre: str, scan_run_id: int | None = None) -> list[di
     db_path = default_path()
     if not os.path.exists(db_path):
         raise HTTPException(
-            503, "Analítica sin sincronizar todavía — lanza POST /admin/sync-analytics primero.")
+            503, "Analítica sin sincronizar todavía. Lanza POST /admin/sync-analytics primero.")
     sql = _ANALYTICS_QUERIES[nombre]
     if "{where}" in sql:
         clause = f"where scan_run_id = {int(scan_run_id)}" if scan_run_id is not None else ""

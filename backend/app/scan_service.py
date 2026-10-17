@@ -470,7 +470,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                 issues.append("Eventos macro: Google News sin titulares; cubrió la reserva "
                               "de GDELT.")
             else:
-                issues.append("Eventos macro: sin titulares — Google News y la reserva de "
+                issues.append("Eventos macro: sin titulares. Google News y la reserva de "
                               "GDELT cayeron a la vez.")
     if not macro.get("datos"):
         issues.append("Datos de mercado del macro no disponibles (Yahoo): el bloque va sin ellos.")
@@ -583,7 +583,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             por_motivo.setdefault(p.error, []).append(p.ticker)
         partes = [f"{motivo} ({len(tickers)}): {', '.join(tickers)}"
                  for motivo, tickers in por_motivo.items()]
-        issues.append(f"{len(pre_errors)} pre-score(s) fallidos — " + " · ".join(partes))
+        issues.append(f"{len(pre_errors)} pre-score(s) fallidos: " +" · ".join(partes))
 
     # Finalistas al profundo: top-2/sector (amplitud) ∪ top-15 global + posiciones + watchlist,
     # truncado a un tope duro. El corte YA NO es ciego al macro (el prescore lo ve entero), así
@@ -760,7 +760,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         reason = (f"Ningún finalista alcanza el suelo de score ({floor})" if floor > 0
                   else "No se analizó ningún nombre")
         construction = constructor_mod.ConstructionResult(
-            cash_pct=100.0, positions=[], summary=f"{reason} — 100% en caja.",
+            cash_pct=100.0, positions=[], summary=f"{reason}. 100% en caja.",
         )
     else:
         # Informe COMPLETO por candidato, no un titular — fiel a Exhibit 2E ("we have the
@@ -1077,7 +1077,7 @@ def recheck(db: Session) -> dict:
         reason = (f"Ningún nombre del top alcanza el suelo ({floor})" if floor > 0
                   else "No hay nombres analizados")
         construction = constructor_mod.ConstructionResult(
-            cash_pct=100.0, positions=[], summary=f"{reason} — 100% en caja.")
+            cash_pct=100.0, positions=[], summary=f"{reason}. 100% en caja.")
     else:
         candidates_text = portfolio.candidates_text(
             selected, {r.ticker: r.sector for r in selected}, mcap_map)
@@ -1163,7 +1163,7 @@ def redeep(db: Session) -> dict:
     constructor_llm = None
     if not selected and not held:
         construction = constructor_mod.ConstructionResult(
-            cash_pct=100.0, positions=[], summary="Sin candidatos tras re-análisis — 100% caja.")
+            cash_pct=100.0, positions=[], summary="Sin candidatos tras re-análisis. 100% caja.")
     else:
         candidates_text = portfolio.candidates_text(
             selected, {t: d.sector for t, d in data_by_t.items()}, mcap_map)

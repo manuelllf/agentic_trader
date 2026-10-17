@@ -9,8 +9,8 @@ describe("indexación", () => {
   });
 
   it("una página de sesión lleva su título y queda fuera de los buscadores", () => {
-    expect(metadataSinIndexar("Cuenta — Vennett")).toEqual({
-      title: "Cuenta — Vennett", robots: { index: false, follow: false },
+    expect(metadataSinIndexar("Cuenta · Vennett")).toEqual({
+      title: "Cuenta · Vennett", robots: { index: false, follow: false },
     });
   });
 });

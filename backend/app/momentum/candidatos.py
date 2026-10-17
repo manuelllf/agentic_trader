@@ -227,7 +227,7 @@ def comprobar_filtros(candidato_id: int, db: Session) -> dict:
     else:
         excluido = industria.lower() in _INDUSTRIA_EXCLUIDA or sector.lower() in _SECTOR_EXCLUIDO
         sector_pass = not excluido
-        sector_detalle = f"{sector or '—'} / {industria or '—'}"
+        sector_detalle = f"{sector or '-'} / {industria or '-'}"
 
     señales = signals.señales_de_ticker(ticker)
     estad_pass = len(señales) > 0

@@ -52,7 +52,7 @@
   "alpha_ui_centro_de_operaciones": "Operations center",
   "alpha_ui_corriendo": "Running:",
   "alpha_ui_reutilizar_ultima_foto_de_fundamentales": "Reuse the latest fundamentals snapshot",
-  "alpha_ui_salta_el_gather_20_40_min_y_usa_la_ultima_foto_de_cada_ticker_sea_de_cuando_sea": "Skips gathering (about 20–40 minutes) and uses each ticker's latest snapshot, regardless of its age.",
+  "alpha_ui_salta_el_gather_20_40_min_y_usa_la_ultima_foto_de_cada_ticker_sea_de_cuando_sea": "Skips gathering (about 20 to 40 minutes) and uses each ticker's latest snapshot, regardless of its age.",
   "alpha_ui_modelo_por_etapa": "Model by stage",
   "alpha_ui_guardado_tambien_lo_usa_el_cron": "(saved; also used by the scheduled job)",
   "alpha_ui_configurar": "Configure",

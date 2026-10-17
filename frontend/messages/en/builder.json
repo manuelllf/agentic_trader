@@ -229,7 +229,7 @@
   "builder_reglas_total": "Meet your rules, out of {total}",
   "builder_regla_minimo": "min. {valor}",
   "builder_regla_maximo": "max. {valor}",
-  "builder_regla_rango": "{desde}–{hasta} M$",
+  "builder_regla_rango": "{desde} to {hasta} M$",
   "builder_grupo_tamano": "Size",
   "builder_grupo_deuda": "Debt",
   "builder_grupo_precio": "Price",

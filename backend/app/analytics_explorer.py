@@ -180,7 +180,7 @@ def _abrir(db_path: str):  # noqa: ANN001
 
     if not os.path.exists(db_path):
         raise FileNotFoundError(
-            "Analítica sin sincronizar todavía — lanza POST /admin/sync-analytics primero."
+            "Analítica sin sincronizar todavía. Lanza POST /admin/sync-analytics primero."
         )
     return duckdb.connect(db_path, read_only=True)
 

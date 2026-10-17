@@ -31,7 +31,7 @@ export function PasoCartera(p: PropsCartera) {
   const huecos = p.preview ? Math.max(0, p.nEmpresas - elegidas.length) : 0;
   const sector = (s: string | null | undefined) => s ? p.sectores[s] ?? s : t("builder_no_sector");
   const tamanos = perfil ? Object.entries(perfil.tamanos).filter(([, n]) => n > 0)
-    .map(([banda, n]) => t(`builder_cartera_tamano_${banda}`, { count: miles(n, locale) })).join(", ") : "—";
+    .map(([banda, n]) => t(`builder_cartera_tamano_${banda}`, { count: miles(n, locale) })).join(", ") : "-";
   return <div className="paso-cartera">
     <div>
       <div className="cartera-config">
@@ -82,8 +82,8 @@ export function PasoCartera(p: PropsCartera) {
     <aside className="cartera-perfil" aria-labelledby="cartera-frente"><h2 id="cartera-frente" className="sec-t">{t("builder_cartera_frente")}</h2>
       {perfil ? <>
         <table><thead><tr><th scope="col">{t("builder_cartera_metrica")}</th><th scope="col">{t("builder_cartera_tuya")}</th><th scope="col">{t("builder_cartera_mercado")}</th></tr></thead><tbody>
-          {(["per", "margen_operativo", "crecimiento", "dividendo_medio", "beta"] as const).map(k => <tr key={k}><th scope="row">{t(`builder_cartera_${k}`)}</th>{[perfil.cartera, perfil.mercado].map((m, i) => <td className="num" key={i}>{m[k] == null ? "—" : k === "per" || k === "beta" ? numero(m[k], k === "beta" ? 2 : 1) : pct(m[k])}</td>)}</tr>)}
-          <tr><th scope="row">{t("builder_cartera_tamano")}</th><td>{tamanos || "—"}</td><td>—</td></tr>
+          {(["per", "margen_operativo", "crecimiento", "dividendo_medio", "beta"] as const).map(k => <tr key={k}><th scope="row">{t(`builder_cartera_${k}`)}</th>{[perfil.cartera, perfil.mercado].map((m, i) => <td className="num" key={i}>{m[k] == null ? "-" : k === "per" || k === "beta" ? numero(m[k], k === "beta" ? 2 : 1) : pct(m[k])}</td>)}</tr>)}
+          <tr><th scope="row">{t("builder_cartera_tamano")}</th><td>{tamanos || "-"}</td><td>-</td></tr>
         </tbody></table>
         <div className="cartera-sectores">{perfil.sectores.map(s => <div className="cartera-sector" key={s.sector}>
           <span>{sector(s.sector)}</span><span className="cartera-riel"><span style={{ width: `${Math.min(100, Math.max(0, s.peso))}%` }} /><i style={{ left: `${Math.min(100, Math.max(0, s.cuota_mercado))}%` }} /></span>

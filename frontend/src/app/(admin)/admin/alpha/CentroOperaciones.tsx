@@ -343,7 +343,7 @@ export function CentroOperaciones({ report, escaneando, escaneandoDecide, onScan
           // de red, así que el motivo se lee del cuerpo y no del catch.
           const r = await snapshotUniverse();
           setMsg(r.ok
-            ? { text: t("alpha_ops_snapshot_done", { count: r.size != null ? fmtNum(r.size, locale) : "—" }) }
+            ? { text: t("alpha_ops_snapshot_done", { count: r.size != null ? fmtNum(r.size, locale) : "-" }) }
             : { text: r.error ?? t("alpha_ops_snapshot_error"), bad: true });
           break;
         }

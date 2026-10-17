@@ -97,7 +97,7 @@ class MemoryStore:
                  cache_dir: str | None = None) -> None:
         if not database_url.startswith(("postgresql", "postgres")):
             raise ValueError(
-                "La memoria vectorial requiere Postgres (pgvector) — DATABASE_URL apunta a "
+                "La memoria vectorial requiere Postgres (pgvector). DATABASE_URL apunta a"
                 f"{database_url.split(':', 1)[0]!r}, no a postgresql."
             )
         self._url = database_url

@@ -333,7 +333,7 @@ def señales_de_ticker(ticker: str) -> list[dict]:
     ath = precios.max()
     picos = zigzag(precios, REVERSAL_PCT)
     altos = [(f, p) for f, p, tipo in picos if tipo == "high"]
-    sector = SECTOR.get(ticker, "—")
+    sector = SECTOR.get(ticker, "-")
 
     señales = []
     for entrada in entradas_zigzag(precios, altos, ENTRY_TH):

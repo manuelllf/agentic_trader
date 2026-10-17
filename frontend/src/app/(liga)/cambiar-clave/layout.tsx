@@ -3,7 +3,7 @@ import { metadataSinIndexar } from "@/lib/sitio";
 
 export async function generateMetadata() {
   const t = await getTranslations();
-  return metadataSinIndexar(`${t("meta_cambiar_clave_titulo")} — Vennett`);
+  return metadataSinIndexar(`${t("meta_cambiar_clave_titulo")} · Vennett`);
 }
 
 export default function Layout({ children }: Readonly<{ children: React.ReactNode }>) {

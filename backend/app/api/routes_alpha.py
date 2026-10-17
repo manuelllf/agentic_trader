@@ -97,7 +97,7 @@ def real_allocate(body: AllocateIn, db: Session = Depends(get_db)) -> dict:
     from app.models import BOOK_REAL
 
     if body.currency == "EUR" and body.amount < 0:
-        raise HTTPException(422, "Las retiradas se hacen en $ — el consolidado vive en dólares.")
+        raise HTTPException(422, "Las retiradas se hacen en $. El consolidado vive en dólares.")
     ledger.allocate(db, body.amount, body.note, book=BOOK_REAL, currency=body.currency)
     return real_summary(db)
 

@@ -16,18 +16,18 @@ export const signMoney = (x: string | number, locale: Locale = "es") => {
   return `${n > 0 ? "+" : "−"}$${money(Math.abs(n), 2, locale)}`;
 };
 
-/** "12 jul, 16:30" (es-ES) o "—" sin fecha. */
+/** "12 jul, 16:30" (es-ES) o "-" sin fecha. */
 export const fmtTime = (iso: string | null, locale: Locale = "es") =>
   iso
     ? new Date(iso).toLocaleString(localeTag(locale), {
         day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
       })
-    : "—";
+    : "-";
 
-/** "+3.2%" / "-1.5%" / "—" si null. El número llega ya redondeado del backend; aquí no se toca. */
+/** "+3.2%" / "-1.5%" / "-" si null. El número llega ya redondeado del backend; aquí no se toca. */
 export const fmtPct = (v: number | null | undefined) =>
-  v != null ? `${v > 0 ? "+" : ""}${v}%` : "—";
+  v != null ? `${v > 0 ? "+" : ""}${v}%` : "-";
 
 /** Puntuación entera con la precisión del backend. */
 export const fmtScore = (v: number | null | undefined) =>
-  v != null ? Number(v).toFixed(0) : "—";
+  v != null ? Number(v).toFixed(0) : "-";

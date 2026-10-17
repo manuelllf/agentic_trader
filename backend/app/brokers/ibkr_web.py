@@ -195,7 +195,7 @@ class IbkrWebBroker:
                 ok=True, fill_price=None, simulated=False, status="working",
                 order_id=order_id or None,
                 message=f"IBKR orden {order_id or '?'} enviada LÍMITE ${limit} "
-                        f"({side} {quantity} {ticker}) — esperando ejecución.",
+                        f"({side} {quantity} {ticker}): esperando ejecución.",
             )
         except Exception as exc:  # noqa: BLE001 — el error debe llegar legible al panel
             logger.exception("Fallo enviando orden a IBKR")

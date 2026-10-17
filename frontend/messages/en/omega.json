@@ -159,7 +159,7 @@
   "omega_existing_scan": "A scan was already running. Following its progress.",
   "omega_broker_connected": "IBKR connected",
   "omega_broker_disconnected": "IBKR disconnected",
-  "omega_pending_signal_summary": "<strong>{count, plural, one {# signal} other {# signals}}</strong> from the fixed universe, detected by the daily scan, awaiting evaluation. Each evaluation makes a real DeepSeek API call (~$0.001–$0.003). Tap a signal to deselect it.",
+  "omega_pending_signal_summary": "<strong>{count, plural, one {# signal} other {# signals}}</strong> from the fixed universe, detected by the daily scan, awaiting evaluation. Each evaluation makes a real DeepSeek API call (~$0.001 to $0.003). Tap a signal to deselect it.",
   "omega_gate_progress": "Evaluating {done}/{total}",
   "omega_evaluate_selected": "Evaluate selected ({count})",
   "omega_candidates_ready": "{count, plural, one {# ApeWisdom candidate has passed its filters and is awaiting your gate.} other {# ApeWisdom candidates have passed their filters and are awaiting your gate.}}",

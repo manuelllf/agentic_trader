@@ -6,7 +6,7 @@
   "help_step_1_text": "On the last trading day of each month, we take a snapshot of about 3,000 U.S. companies and their data. Every strategy starts from that same snapshot.",
   "help_step_1_stat": "≈ 3,000 companies",
   "help_step_2_title": "Your rules filter companies out",
-  "help_step_2_text": "Sector, size, valuation—whatever you ask for. Companies that fail any rule are excluded, and we can tell you why: “It is worth $1.9B, and you asked for more than $2B.”",
+  "help_step_2_text": "Sector, size, valuation: whatever you ask for. Companies that fail any rule are excluded, and we can tell you why: “It is worth $1.9B, and you asked for more than $2B.”",
   "help_step_2_stat": "about 400 pass (example)",
   "help_step_3_title": "Each company gets four scores",
   "help_step_3_text": "AI (Jev) scores every company once a month, on four scores. You decide how much each one counts.",

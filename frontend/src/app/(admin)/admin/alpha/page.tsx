@@ -562,10 +562,10 @@ function SalaRealRoom() {
                       <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
                         <SideTag action={w.action} />
                         <span className="w-14 text-[14px] font-bold" style={{ color: T.ink }}>{w.ticker}</span>
-                        <Field k={t("alpha_requested")} v={w.requested_quantity ? qty4(w.requested_quantity, locale) : "—"} />
+                        <Field k={t("alpha_requested")} v={w.requested_quantity ? qty4(w.requested_quantity, locale) : "-"} />
                         <Field k={t("alpha_executed")} v={w.quantity ? qty4(w.quantity, locale) : "0"} />
-                        <Field k={t("alpha_est_price")} v={w.est_price ? `$${money(w.est_price, 2, locale)}` : "—"} />
-                        <Field k={t("alpha_ibkr_order")} v={w.broker_order_id ?? "—"} />
+                        <Field k={t("alpha_est_price")} v={w.est_price ? `$${money(w.est_price, 2, locale)}` : "-"} />
+                        <Field k={t("alpha_ibkr_order")} v={w.broker_order_id ?? "-"} />
                         <Field k={t("alpha_sent")} v={fmtTime(w.decided_at, locale)} />
                         <span className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: T.warn }}>
                           <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: T.warn }} />
@@ -656,15 +656,15 @@ function SalaRealRoom() {
             <section className="grid grid-cols-2 gap-x-6 gap-y-6 border-t pb-1 pt-4 md:grid-cols-3 xl:grid-cols-6"
                      style={{ borderColor: T.grid }}>
               <Kpi big label={t("alpha_net_worth")}
-                   value={summary && fx && equity > 0 ? `€${money(equity / fx, 0, locale)}` : "—"}
+                   value={summary && fx && equity > 0 ? `€${money(equity / fx, 0, locale)}` : "-"}
                    sub={summary ? `≈ $${money(equity, 2, locale)}` : undefined} />
-              <Kpi label={t("alpha_cash_eur")} value={summary ? `€${money(summary.cash.eur, 2, locale)}` : "—"} />
-              <Kpi label={t("alpha_cash_usd")} value={summary ? `$${money(summary.cash.usd, 2, locale)}` : "—"} />
-              <Kpi label={t("alpha_invested")} value={summary ? `$${money(summary.positions_value, 2, locale)}` : "—"}
+              <Kpi label={t("alpha_cash_eur")} value={summary ? `€${money(summary.cash.eur, 2, locale)}` : "-"} />
+              <Kpi label={t("alpha_cash_usd")} value={summary ? `$${money(summary.cash.usd, 2, locale)}` : "-"} />
+              <Kpi label={t("alpha_invested")} value={summary ? `$${money(summary.positions_value, 2, locale)}` : "-"}
                    sub={summary ? t("alpha_positions_count", { current: summary.positions.length, max: cfg?.max_positions ?? 5 }) : undefined} />
               {/* Realizado va de subtexto aquí (no su propio tile): con 7 KPIs la cuadrícula
                   quedaba descuadrada en móvil (2 columnas, última fila con uno solo). */}
-              <Kpi label={t("alpha_open_pnl")} value={summary ? signMoney(uPnl, locale) : "—"}
+              <Kpi label={t("alpha_open_pnl")} value={summary ? signMoney(uPnl, locale) : "-"}
                    tone={uPnl > 0 ? "good" : uPnl < 0 ? "bad" : undefined}
                    sub={summary
                      ? `${equity > 0 ? `${((uPnl / equity) * 100).toFixed(2)}% ${t("alpha_of_net_worth")} · ` : ""}${t("alpha_realized")} ${signMoney(rPnl, locale)}`
@@ -672,7 +672,7 @@ function SalaRealRoom() {
               {/* Primero lo que hace TU libro; el índice y el alpha, de contexto en la línea
                   pequeña — la comparación nunca por delante del resultado. */}
               <Kpi label={t("alpha_performance")}
-                   value={perf ? `${perf.portfolio_return_pct > 0 ? "+" : ""}${perf.portfolio_return_pct}%` : "—"}
+                   value={perf ? `${perf.portfolio_return_pct > 0 ? "+" : ""}${perf.portfolio_return_pct}%` : "-"}
                    tone={perf ? (perf.portfolio_return_pct >= 0 ? "good" : "bad") : undefined}
                    sub={perf?.spy_return_pct != null
                      ? `S&P ${perf.spy_return_pct > 0 ? "+" : ""}${perf.spy_return_pct}%${perf.alpha_pct != null
@@ -774,7 +774,7 @@ function SalaRealRoom() {
                      ${money(summary.positions_value, 2, locale)}
                    </span> : undefined}>
           {!summary || summary.positions.length === 0 ? (
-            <Empty>{t("alpha_ready_cash_help", { cashUsd: summary ? money(summary.cash.usd, 2, locale) : "—", cashEur: summary ? money(summary.cash.eur, 2, locale) : "—" })}</Empty>
+            <Empty>{t("alpha_ready_cash_help", { cashUsd: summary ? money(summary.cash.usd, 2, locale) : "-", cashEur: summary ? money(summary.cash.eur, 2, locale) : "-" })}</Empty>
           ) : (
             <>
               <Distribution summary={summary} equity={equity} fx={fx} />
@@ -819,7 +819,7 @@ function SalaRealRoom() {
               {perf && perf.positions.length > 0 && (
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2 text-[11px]"
                      style={{ borderColor: T.grid, color: T.muted }}>
-                  <span>{t("alpha_performance_since", { date: perf.since ?? "—" })}</span>
+                  <span>{t("alpha_performance_since", { date: perf.since ?? "-" })}</span>
                   <span className={NUMS}>{t("alpha_ui_coste")}{money(perf.cost_basis, 2, locale)}{t("alpha_ui_valor")}{money(perf.market_value, 2, locale)}
                   </span>
                 </div>
@@ -915,7 +915,7 @@ function SalaRealRoom() {
                             <Td right>
                               {/* PRECIO ACTUAL visible (lo que se mira); el coste medio, como sub-línea. */}
                               <div className={NUMS} style={{ color: T.ink }}>
-                                {p.price ? `$${money(p.price, 2, locale)}` : "—"}
+                                {p.price ? `$${money(p.price, 2, locale)}` : "-"}
                                 {!p.live && p.price && (
                                   <span className="ml-1 inline-flex items-center gap-0.5 text-[9px]" style={{ color: T.muted }}>
                                     {t("alpha_sync_label")}
@@ -924,14 +924,14 @@ function SalaRealRoom() {
                                 )}
                               </div>
                               <div className={`text-[10px] ${NUMS}`} style={{ color: T.muted }}>
-                                {t("alpha_cost_label")} {p.avg_cost ? `$${money(p.avg_cost, 2, locale)}` : "—"}
+                                {t("alpha_cost_label")} {p.avg_cost ? `$${money(p.avg_cost, 2, locale)}` : "-"}
                               </div>
                             </Td>
-                            <Td right><span className={NUMS} style={{ color: T.ink }}>{p.value ? `$${money(p.value, 2, locale)}` : "—"}</span></Td>
+                            <Td right><span className={NUMS} style={{ color: T.ink }}>{p.value ? `$${money(p.value, 2, locale)}` : "-"}</span></Td>
                             <Td right>
                               <span className={`${NUMS} font-semibold`}
                                     style={{ color: p.pnl == null ? T.muted : p.pnl >= 0 ? T.good : T.bad }}>
-                                {p.pnl != null ? signMoney(p.pnl, locale) : "—"}
+                                {p.pnl != null ? signMoney(p.pnl, locale) : "-"}
                               </span>
                             </Td>
                           </tr>
@@ -988,7 +988,7 @@ function SalaRealRoom() {
                 <b style={{ color: pushOn ? T.good : T.muted }}>
                   {pushOn == null ? "…" : pushOn ? t("alpha_active") : t("alpha_inactive")}
                 </b>
-                {" — "}
+                {": "}
                 {!pushOn ? (
                   <button onClick={enablePush}
                           className="underline decoration-dotted underline-offset-4"

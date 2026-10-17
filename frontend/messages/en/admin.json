@@ -46,7 +46,7 @@
   "admin_liga_auto_off": "Automation: off",
   "admin_liga_run_now": "Run now",
   "admin_liga_no_seasons": "There are no seasons yet",
-  "admin_liga_create_seasons_note": "Create the preseason (through December, not scored) and season 1 (January–December 2027), with its rounds.",
+  "admin_liga_create_seasons_note": "Create the preseason (through December, not scored) and season 1 (January to December 2027), with its rounds.",
   "admin_liga_preview_create": "Preview changes",
   "admin_liga_counts": "counts",
   "admin_liga_does_not_count": "does not count",

@@ -129,8 +129,8 @@ export function TickerAudit({ ticker, onClose }: { ticker: string; onClose: () =
                       <td className="py-1" style={{ color: T.ink2 }}>{s.stage}</td>
                       <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(s.prescore)}</td>
                       <td className="py-1 text-right" style={{ color: T.ink }}>{fmtScore(s.deep_score)}</td>
-                      <td className="py-1 text-right" style={{ color: T.ink2 }}>{s.price != null ? `$${money(s.price, 2, locale)}` : "—"}</td>
-                      <td className="py-1 text-right" style={{ color: T.ink2 }}>{s.weight_pct != null ? `${s.weight_pct}%` : "—"}</td>
+                      <td className="py-1 text-right" style={{ color: T.ink2 }}>{s.price != null ? `$${money(s.price, 2, locale)}` : "-"}</td>
+                      <td className="py-1 text-right" style={{ color: T.ink2 }}>{s.weight_pct != null ? `${s.weight_pct}%` : "-"}</td>
                     </tr>
                   ))}
                 </tbody>

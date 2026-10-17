@@ -350,7 +350,7 @@ function SombraRoom() {
         import("@/lib/outcomesCard"),
       ]);
       const theme = CARD_THEMES[themeForPreset(preset)];
-      const pct = (v: number | null) => (v == null ? "—" : `${sign(v)}${v.toFixed(1)}%`);
+      const pct = (v: number | null) => (v == null ? "-" : `${sign(v)}${v.toFixed(1)}%`);
       const g = c.groups;
       const barras = [
         ...(g.cartera.n ? [{ label: t("beta_held"), value: g.cartera.avg ?? 0,
@@ -544,7 +544,7 @@ function SombraRoom() {
           {/* El titular es LO QUE LLEVA LA CARTERA; el índice y el alpha son el contexto y
               van en la línea pequeña — la comparación nunca por delante del resultado. */}
           <Kpi label={t("beta_return")}
-               value={perf ? `${sign(perf.portfolio_return_pct)}${perf.portfolio_return_pct}%` : "—"}
+               value={perf ? `${sign(perf.portfolio_return_pct)}${perf.portfolio_return_pct}%` : "-"}
                sub={perf?.spy_return_pct != null
                  ? `S&P ${sign(perf.spy_return_pct)}${perf.spy_return_pct}%${perf.alpha_pct != null
                      ? ` · ${t("beta_alpha")} ${sign(perf.alpha_pct)}${perf.alpha_pct}%` : ""}`
@@ -788,7 +788,7 @@ function SombraRoom() {
                         {(proposal?.omitted ?? []).map((o) => (
                           <p key={o.ticker} className="text-[11.5px] leading-relaxed text-[#6E6E6B]">
                             <b className="font-semibold text-[#A3A3A0]">{o.ticker}</b>
-                            {o.reason ? ` — ${o.reason}` : ""}
+                            {o.reason ? `: ${o.reason}` : ""}
                           </p>
                         ))}
                       </div>

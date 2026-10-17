@@ -159,7 +159,7 @@
   "omega_existing_scan": "Ya había un escaneo en curso, sigo el suyo.",
   "omega_broker_connected": "IBKR conectado",
   "omega_broker_disconnected": "IBKR sin conexión",
-  "omega_pending_signal_summary": "<strong>{count, plural, one {# señal} other {# señales}}</strong> del universo fijo sin evaluar, detectadas por el escaneo diario. Cada evaluación hace una llamada real a DeepSeek (~$0.001–$0.003). Toca una para quitarla de la selección.",
+  "omega_pending_signal_summary": "<strong>{count, plural, one {# señal} other {# señales}}</strong> del universo fijo sin evaluar, detectadas por el escaneo diario. Cada evaluación hace una llamada real a DeepSeek (~$0.001 a $0.003). Toca una para quitarla de la selección.",
   "omega_gate_progress": "Evaluando {done}/{total}",
   "omega_evaluate_selected": "Evaluar seleccionadas ({count})",
   "omega_candidates_ready": "{count, plural, one {# candidato de ApeWisdom ya pasó sus filtros y espera tu gate.} other {# candidatos de ApeWisdom ya pasaron sus filtros y esperan tu gate.}}",

@@ -5,7 +5,7 @@ import { metadataCompartir } from "@/lib/sitio";
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const [t, idioma, { id }] = await Promise.all([getTranslations(), getLocale(), params]);
   return metadataCompartir({
-    titulo: `${t("meta_ficha_titulo")} — Vennett`, descripcion: t("meta_ficha_descripcion"), idioma,
+    titulo: `${t("meta_ficha_titulo")} · Vennett`, descripcion: t("meta_ficha_descripcion"), idioma,
     ruta: `/ficha/${encodeURIComponent(id)}`, indexar: false,
   });
 }

@@ -139,7 +139,7 @@ export function GraficaRendimiento({ serie, metricas, locale }: {
         <div><small>{t("strategies_max_drawdown")}<InfoTip text={t("strategies_drawdown_help")} /></small>
           <b className="num">{porcentaje(caida * 100, 1, locale)}</b><em>{t("strategies_drawdown_period")}</em></div>
         <div><small>{t("strategies_annual_volatility")}<InfoTip text={t("strategies_volatility_help")} /></small>
-          <b className="num">{volatilidad === null ? "—" : porcentaje(volatilidad * 100, 1, locale).replace(/^\+/, "")}</b>
+          <b className="num">{volatilidad === null ? "-" : porcentaje(volatilidad * 100, 1, locale).replace(/^\+/, "")}</b>
         </div>
       </div>
       <p className="fine">{t("strategies_chart_note")}</p>

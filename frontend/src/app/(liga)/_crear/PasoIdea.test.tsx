@@ -40,7 +40,7 @@ it("muestra las tres marcas y solo aplica la propuesta al aceptarla", async () =
     interpretacion: ["exacta", "aproximada", "no_disponible"].map(tipo => ({ tipo, intencion: tipo, regla: null, motivo: "Detalle" })), quedan: 2, pesos: null, pregunta: null } as Awaited<ReturnType<typeof convertirFrase>>);
   const { div, actualizarB, alCambiarQuedan } = await montar();
   await act(async () => (div.querySelector(".paso-bloque button") as HTMLButtonElement).click());
-  expect(Array.from(div.querySelectorAll(".idea-propuesta li > span")).map(n => n.textContent)).toEqual(["✓", "≈", "–"]);
+  expect(Array.from(div.querySelectorAll(".idea-propuesta li > span")).map(n => n.textContent)).toEqual(["✓", "≈", "-"]);
   expect(actualizarB).not.toHaveBeenCalled(); expect(alCambiarQuedan).toHaveBeenCalledWith(2);
   act(() => (div.querySelector(".propuesta button") as HTMLButtonElement).click());
   expect(actualizarB.mock.calls[0][0].reglas).toEqual(catalogo.estilos[0].reglas);

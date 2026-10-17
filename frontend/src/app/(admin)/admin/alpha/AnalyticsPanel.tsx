@@ -91,7 +91,7 @@ export function AnalyticsTable({ title, state, nav }: {
                 <tr key={i} className="border-t" style={{ borderColor: T.grid }}>
                   {cols.map((c) => (
                     <td key={c} className="px-2 py-1" style={{ color: T.ink2 }}>
-                      {row[c] == null ? "—" : String(row[c])}
+                      {row[c] == null ? "-" : String(row[c])}
                     </td>
                   ))}
                 </tr>

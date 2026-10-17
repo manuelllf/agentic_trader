@@ -5,7 +5,7 @@ import { Marca } from "../_ui/Marca";
 
 export async function generateMetadata() {
   const [t, idioma] = await Promise.all([getTranslations(), getLocale()]);
-  return metadataCompartir({ titulo: `${t("help_title")} — Vennett`, descripcion: t("meta_como_funciona_descripcion"), idioma, ruta: "/como-funciona" });
+  return metadataCompartir({ titulo: `${t("help_title")} · Vennett`, descripcion: t("meta_como_funciona_descripcion"), idioma, ruta: "/como-funciona" });
 }
 
 // Página pública de método: cómo entra cada empresa en una estrategia y qué pone la IA. Los números

@@ -3,7 +3,7 @@ import { NUMS, T } from './tokens';
 
 /* Barra ± de P&L por posición: baseline central, verde derecha / rojo izquierda, a escala común. */
 export function PnlBar({ value, maxAbs, pct }: { value: number | null; maxAbs: number; pct: number | null }) {
-  if (value == null) return <span style={{ color: T.muted }}>—</span>;
+  if (value == null) return <span style={{ color: T.muted }}>-</span>;
   const w = Math.min(100, (Math.abs(value) / maxAbs) * 100);
   const pos = value >= 0;
   return (

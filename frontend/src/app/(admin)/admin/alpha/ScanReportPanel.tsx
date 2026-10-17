@@ -65,7 +65,7 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
            right={<ScanFullButton />}>
       <div className="px-4 py-3 text-[12px]">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span style={{ color: T.ink2 }}>{t("alpha_mode_label")} <b style={{ color: T.ink }}>{r.mode ?? "—"}</b></span>
+          <span style={{ color: T.ink2 }}>{t("alpha_mode_label")} <b style={{ color: T.ink }}>{r.mode ?? "-"}</b></span>
           {universo && (
             <span className={NUMS} style={{ color: universo.tone === "ok" ? T.ink2 : T.warn }}>
               {t("alpha_universe_label")} <b>{universo.texto}</b>
@@ -194,7 +194,7 @@ export function ScanReportPanel({ r, scan }: { r: ScanReport; scan: FunnelScan |
                     </td>
                     <td className="py-0.5 text-right">{p.score.toFixed(1)}</td>
                     <td className="py-0.5 text-right">
-                      {p.confidence == null ? "—" : `${Math.round(p.confidence * 100)}%`}
+                      {p.confidence == null ? "-" : `${Math.round(p.confidence * 100)}%`}
                     </td>
                     <td className="py-0.5 text-right">{Math.round(p.weight_pct)}%</td>
                   </tr>

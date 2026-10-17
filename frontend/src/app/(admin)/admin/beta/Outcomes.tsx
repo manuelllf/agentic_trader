@@ -16,7 +16,7 @@ const outAccessor = (s: OutcomeScan, key: OutSortKey): string | number | null =>
 
 /** Un retorno medio de grupo, coloreado por signo y con el tamaño del grupo al lado. */
 export function OutPct({ s }: { s: OutcomeStats }) {
-  if (!s.n || s.avg == null) return <span className="text-[#565654]">—</span>;
+  if (!s.n || s.avg == null) return <span className="text-[#565654]">-</span>;
   return (
     <>
       <span className={s.avg >= 0 ? "font-semibold text-[#6BBE8A]" : "font-semibold text-[#E0776C]"}>
@@ -48,18 +48,18 @@ export function OutRow({ s, pct }: { s: OutcomeScan; pct: (v: number | null) => 
         {tieneJev ? (
           <button onClick={() => setAbierta(!abierta)}
                   className="inline-flex items-center gap-1 hover:opacity-80">
-            {s.groups.jev ? <OutPct s={s.groups.jev} /> : <span className="text-[#565654]">—</span>}
+            {s.groups.jev ? <OutPct s={s.groups.jev} /> : <span className="text-[#565654]">-</span>}
             <span className="text-[#6E6E6B]">{abierta ? "▴" : "▾"}</span>
           </button>
         ) : (
-          s.groups.jev ? <OutPct s={s.groups.jev} /> : <span className="text-[#565654]">—</span>
+          s.groups.jev ? <OutPct s={s.groups.jev} /> : <span className="text-[#565654]">-</span>
         )}
       </td>
       <td className="px-3 py-1.5 text-right">
-        {s.groups.spy == null ? "—" : `${sign(s.groups.spy)}${s.groups.spy.toFixed(1)}%`}
+        {s.groups.spy == null ? "-" : `${sign(s.groups.spy)}${s.groups.spy.toFixed(1)}%`}
       </td>
       <td className="px-3 py-1.5 text-right text-[#6E6E6B]">
-        {s.corte.fuera.n ? `${pct(s.corte.fuera.avg)} / ${pct(s.corte.dentro.avg)}` : "—"}
+        {s.corte.fuera.n ? `${pct(s.corte.fuera.avg)} / ${pct(s.corte.dentro.avg)}` : "-"}
       </td>
     </tr>
     {abierta && tieneJev && (
@@ -102,7 +102,7 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
     useOrden<OutcomeScan, OutSortKey>(decisiones, outAccessor);
   const observatorios = sortRows(observatoriosBase, outAccessor, sortKey, sortDir);
   if (!scans.length && !book) return null;
-  const pct = (v: number | null) => (v == null ? "—" : `${sign(v)}${v.toFixed(1)}%`);
+  const pct = (v: number | null) => (v == null ? "-" : `${sign(v)}${v.toFixed(1)}%`);
   const mostrarObs = verObs || (!book && decisiones.length === 0);
   const masVieja = scans.length ? Math.max(...scans.map((s) => s.days)) : 0;
   const diasLibro = book?.since
@@ -195,7 +195,7 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
                     {diasLibro != null && <span className="text-[#6E6E6B]"> · {diasLibro} d</span>}
                   </td>
                   <td className="px-3 py-1.5 text-right">
-                    {book.ret == null ? "—" : (
+                    {book.ret == null ? "-" : (
                       <>
                         <span className={book.ret >= 0 ? "font-semibold text-[#6BBE8A]" : "font-semibold text-[#E0776C]"}>
                           {sign(book.ret)}{book.ret.toFixed(1)}%
@@ -204,13 +204,13 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
                       </>
                     )}
                   </td>
-                  <td className="px-3 py-1.5 text-right text-[#565654]">—</td>
-                  <td className="px-3 py-1.5 text-right text-[#565654]">—</td>
-                  <td className="px-3 py-1.5 text-right text-[#565654]">—</td>
+                  <td className="px-3 py-1.5 text-right text-[#565654]">-</td>
+                  <td className="px-3 py-1.5 text-right text-[#565654]">-</td>
+                  <td className="px-3 py-1.5 text-right text-[#565654]">-</td>
                   <td className="px-3 py-1.5 text-right">
-                    {book.spy == null ? "—" : `${sign(book.spy)}${book.spy.toFixed(1)}%`}
+                    {book.spy == null ? "-" : `${sign(book.spy)}${book.spy.toFixed(1)}%`}
                   </td>
-                  <td className="px-3 py-1.5 text-right text-[#565654]">—</td>
+                  <td className="px-3 py-1.5 text-right text-[#565654]">-</td>
                 </tr>
               )}
               {decisionesOrdenadas.map((s) => <OutRow key={s.at} s={s} pct={pct} />)}
@@ -220,7 +220,7 @@ export function OutcomesRead({ scans, book, onExportGrupos, msgGrupos, onExportS
                     <button onClick={() => setVerObs(!verObs)}
                             className="text-[11px] text-[#6E6E6B] hover:text-[#A3A3A0]">
                       {mostrarObs ? t("beta_hide") : t("beta_show")} {t("beta_observatories")} ({observatorios.length})
-                      {mostrarObs ? "" : ` — ${t("beta_observatory_hypothetical")}`}
+                      {mostrarObs ? "" : `: ${t("beta_observatory_hypothetical")}`}
                     </button>
                   </td>
                 </tr>

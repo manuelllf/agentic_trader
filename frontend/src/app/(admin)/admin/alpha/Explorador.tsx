@@ -85,7 +85,7 @@ function RangoNumerico({ label, min, max, onMin, onMax, prefijo = "" }: {
                onChange={(e) => onMin(e.target.value)}
                className={`w-full min-w-0 rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS} ${NUM_INPUT}`}
                style={{ borderColor: T.ring, color: T.ink }} />
-        <span style={{ color: T.muted }}>–</span>
+        <span style={{ color: T.muted }}>-</span>
         <input type="number" inputMode="decimal" placeholder={t("alpha_maximum_short")} value={max}
                onChange={(e) => onMax(e.target.value)}
                className={`w-full min-w-0 rounded border bg-transparent px-2 py-1 text-[11.5px] ${NUMS} ${NUM_INPUT}`}
@@ -105,7 +105,7 @@ function DistCard({ label, dist, fmt }: {
       <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: T.muted }}>{label}</p>
       <p className={`mt-0.5 text-[15px] font-bold ${NUMS}`} style={{ color: T.ink }}>{fmt(dist.p50)}</p>
       <p className={`text-[10.5px] ${NUMS}`} style={{ color: T.muted }}>
-        {fmt(dist.p25)} – {fmt(dist.p75)} <span style={{ color: T.ink2 }}>(p25–p75)</span>
+        {fmt(dist.p25)} a {fmt(dist.p75)} <span style={{ color: T.ink2 }}>(p25 a p75)</span>
       </p>
     </div>
   );
@@ -301,7 +301,7 @@ export function Explorador() {
             <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)}
                    className={`rounded border bg-transparent px-1.5 py-1 text-[11px] ${NUMS}`}
                    style={{ borderColor: T.ring, color: T.ink }} />
-            <span style={{ color: T.muted }}>–</span>
+            <span style={{ color: T.muted }}>-</span>
             <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)}
                    className={`rounded border bg-transparent px-1.5 py-1 text-[11px] ${NUMS}`}
                    style={{ borderColor: T.ring, color: T.ink }} />
@@ -320,7 +320,7 @@ export function Explorador() {
         ) : (
           <div className="flex flex-col gap-2">
             <p className={`text-[13px] font-bold ${NUMS}`} style={{ color: T.ink }}>
-              {contando ? t("alpha_counting") : resultado ? t("alpha_name_count", { count: fmtNumLocal(resultado.total) }) : "—"}
+              {contando ? t("alpha_counting") : resultado ? t("alpha_name_count", { count: fmtNumLocal(resultado.total) }) : "-"}
             </p>
             {resultado && resultado.total > 0 && (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -361,17 +361,17 @@ export function Explorador() {
                 ) : sortedItems.map((r) => (
                   <tr key={r.ticker} className="border-t" style={{ borderColor: T.grid }}>
                     <td className="px-2 py-1 font-semibold" style={{ color: T.ink }}>{r.ticker}</td>
-                    <td className="max-w-[160px] truncate px-2 py-1" style={{ color: T.ink2 }}>{r.name ?? "—"}</td>
-                    <td className="px-2 py-1" style={{ color: T.ink2 }}>{r.sector ?? "—"}</td>
-                    <td className="px-2 py-1" style={{ color: T.ink2 }}>{r.country ?? "—"}</td>
+                    <td className="max-w-[160px] truncate px-2 py-1" style={{ color: T.ink2 }}>{r.name ?? "-"}</td>
+                    <td className="px-2 py-1" style={{ color: T.ink2 }}>{r.sector ?? "-"}</td>
+                    <td className="px-2 py-1" style={{ color: T.ink2 }}>{r.country ?? "-"}</td>
                     <td className="px-2 py-1" style={{ color: T.ink2 }}>
-                      {r.market_cap_usd != null ? fmtCapB(r.market_cap_usd) : "—"}
+                      {r.market_cap_usd != null ? fmtCapB(r.market_cap_usd) : "-"}
                     </td>
                     <td className="px-2 py-1" style={{ color: T.ink2 }}>
-                      {r.price != null ? fmtMoney(r.price) : "—"}
+                      {r.price != null ? fmtMoney(r.price) : "-"}
                     </td>
                     <td className="px-2 py-1" style={{ color: T.ink2 }}>
-                      {r.pe_trailing != null ? fmtRatio(r.pe_trailing) : "—"}
+                      {r.pe_trailing != null ? fmtRatio(r.pe_trailing) : "-"}
                     </td>
                     {mostrarFecha && (
                       <td className="px-2 py-1" style={{ color: T.muted }}>

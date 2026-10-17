@@ -787,7 +787,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
       <CarteraHoja abierta={hojaAbierta} onCerrar={cerrarHoja}><CarteraViva {...carteraProps} />{ACTUALIZACION_VISIBLE && usarFrescas && <p className="fine">{t("builder_actualizar_hecha")}</p>}</CarteraHoja>
       <div className="constructor-avanzar">
         <button type="button" className="constructor-ver-cartera num" aria-expanded={hojaAbierta} aria-controls={hojaAbierta ? "cartera-hoja" : undefined} onClick={() => setHojaAbierta(true)}>
-          {t("builder_live_count", { selected: miles(cartera.length, locale), passed: carteraProps.pasan === null ? "—" : miles(carteraProps.pasan, locale) })}
+          {t("builder_live_count", { selected: miles(cartera.length, locale), passed: carteraProps.pasan === null ? "-" : miles(carteraProps.pasan, locale) })}
         </button>
         {etapa > 0 && <Boton disabled={ocupado || convOcupado} onClick={() => void irEtapa(etapa - 1)}>{t("builder_previous")}</Boton>}
         {etapa < 4 && <Boton variante="principal" disabled={ocupado || convOcupado}

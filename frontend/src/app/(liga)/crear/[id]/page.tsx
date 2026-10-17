@@ -5,7 +5,7 @@ import { EditorOVentana } from "../../_crear/EditorOVentana";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations();
-  return { title: `${t("builder_metadata_edit")} — Vennett` };
+  return { title: `${t("builder_metadata_edit")} · Vennett` };
 }
 
 export default async function EditarEstrategia({

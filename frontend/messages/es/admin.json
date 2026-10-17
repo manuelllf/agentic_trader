@@ -46,7 +46,7 @@
   "admin_liga_auto_off": "Automático: apagado",
   "admin_liga_run_now": "Ejecutar ahora",
   "admin_liga_no_seasons": "Aún no hay temporadas",
-  "admin_liga_create_seasons_note": "Crea la pretemporada (hasta diciembre, no cuenta) y la temporada 1 (enero–diciembre de 2027) con sus jornadas.",
+  "admin_liga_create_seasons_note": "Crea la pretemporada (hasta diciembre, no cuenta) y la temporada 1 (de enero a diciembre de 2027) con sus jornadas.",
   "admin_liga_preview_create": "Ver qué se crearía",
   "admin_liga_counts": "cuenta",
   "admin_liga_does_not_count": "no cuenta",

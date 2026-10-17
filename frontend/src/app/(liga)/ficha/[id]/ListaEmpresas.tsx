@@ -33,9 +33,9 @@ export function ListaEmpresas({ filas, conPrecio, columnaRetorno, alAbrir }: {
         <button type="button" className="cartera-fila" key={f.ticker} onClick={() => alAbrir(f.ticker)}>
           <b>{f.ticker}</b>
           <span className="num">{peso.format(f.peso)} %</span>
-          {conPrecio && <span className="num">{f.precio == null ? "—" : f.precio.toLocaleString(locale, { maximumFractionDigits: 4 })}</span>}
+          {conPrecio && <span className="num">{f.precio == null ? "-" : f.precio.toLocaleString(locale, { maximumFractionDigits: 4 })}</span>}
           <span className={`num ret ${f.retorno == null ? "fl" : claseSigno(f.retorno)}`}>
-            {f.retorno == null ? "—" : porcentaje(f.retorno, 1, locale)}
+            {f.retorno == null ? "-" : porcentaje(f.retorno, 1, locale)}
           </span>
         </button>
       ))}

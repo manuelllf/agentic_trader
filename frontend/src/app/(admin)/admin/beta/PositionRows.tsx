@@ -32,10 +32,10 @@ export function PositionRows({ anon, color, label, sector, pos, weightPct, up, p
           <b className="font-semibold text-white">{label}</b>
           {sector && <span className="ml-2 text-[10px] text-[#6E6E6B]">{sector}</span>}
         </td>
-        {!anon && <td className="px-3 py-2 text-right">{weightPct != null ? `${weightPct.toFixed(1)}%` : "—"}</td>}
-        {!anon && <td className="px-3 py-2 text-right text-[#6E6E6B]">{pos.avg_cost ? `$${money(pos.avg_cost, 2, locale)}` : "—"}</td>}
-        {!anon && <td className="px-3 py-2 text-right">{pos.price ? `$${money(pos.price, 2, locale)}` : "—"}</td>}
-        {!anon && <td className="px-3 py-2 text-right text-white">{pos.value ? `$${money(pos.value, 2, locale)}` : "—"}</td>}
+        {!anon && <td className="px-3 py-2 text-right">{weightPct != null ? `${weightPct.toFixed(1)}%` : "-"}</td>}
+        {!anon && <td className="px-3 py-2 text-right text-[#6E6E6B]">{pos.avg_cost ? `$${money(pos.avg_cost, 2, locale)}` : "-"}</td>}
+        {!anon && <td className="px-3 py-2 text-right">{pos.price ? `$${money(pos.price, 2, locale)}` : "-"}</td>}
+        {!anon && <td className="px-3 py-2 text-right text-white">{pos.value ? `$${money(pos.value, 2, locale)}` : "-"}</td>}
         <td className="px-3 py-2 text-right">
           <span className={`text-[11px] ${up >= 0 ? "text-[#6BBE8A]/80" : "text-[#E0776C]/80"}`}>
             {up >= 0 ? "+" : "−"}${money(Math.abs(up), 2, locale)}

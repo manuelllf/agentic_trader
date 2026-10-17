@@ -559,7 +559,7 @@ function SalaMomentumRoom() {
                       {fmtRet(ret, locale)}
                     </div>
                     <div className="text-[9.5px]" style={{ color: enCurso ? T.warn : T.muted }}>
-                      {enCurso ? t("omega_live_days", { days: s.dias ?? "—" })
+                      {enCurso ? t("omega_live_days", { days: s.dias ?? "-" })
                         : cerradaAMano
                           ? soloSistema != null ? t("omega_manual_return", { value: fmtRet(soloSistema, locale) }) : t("omega_manually_closed")
                           : s.motivo}

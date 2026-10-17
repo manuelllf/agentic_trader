@@ -16,7 +16,7 @@ type Props = {
   alCambiarIdea: (idea: string) => void; alCambiarOcupado: (ocupado: boolean) => void;
   actualizarB: (cambios: Cambios) => void; irReglas: () => void;
 };
-const MARCAS = { exacta: "✓", aproximada: "≈", no_disponible: "–" };
+const MARCAS = { exacta: "✓", aproximada: "≈", no_disponible: "-" };
 
 /** Lo que el conversor entendió, línea a línea, y el botón para quedarse con sus reglas. */
 export function Propuesta({ propuesta, alUsar }: { propuesta: ConvertirResultado; alUsar: () => void }) {

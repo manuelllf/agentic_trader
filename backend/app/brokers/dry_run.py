@@ -27,7 +27,7 @@ class DryRunBroker:
         if ticker not in prices:
             return BrokerResult(
                 ok=False, fill_price=None, simulated=True,
-                message=f"Sin precio vivo para {ticker} — orden simulada no ejecutada.",
+                message=f"Sin precio vivo para {ticker}. Orden simulada no ejecutada.",
             )
         px = to_cents(D(prices[ticker]))
         limit = marketable_limit(px, side, settings.limit_buffer_pct)
@@ -54,7 +54,7 @@ class DryRunBroker:
         rate = tracking.live_prices(["EURUSD=X"]).get("EURUSD=X")
         if not rate:
             return BrokerResult(ok=False, fill_price=None, simulated=True, status="rejected",
-                                message="Sin cambio EUR/USD ahora mismo — conversión no ejecutada.")
+                                message="Sin cambio EUR/USD ahora mismo. Conversión no ejecutada.")
         # el cambio conserva sus decimales (no céntimos)
         px = D(str(rate))
         usd = to_cents(D(str(eur)) * px)

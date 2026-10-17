@@ -5,7 +5,7 @@ import { metadataCompartir } from "@/lib/sitio";
 
 export async function generateMetadata() {
   const [t, idioma] = await Promise.all([getTranslations(), getLocale()]);
-  return metadataCompartir({ titulo: `${t("legal_cookies_title")} — Vennett`, descripcion: t("meta_legal_cookies_descripcion"), idioma, ruta: "/legal/cookies" });
+  return metadataCompartir({ titulo: `${t("legal_cookies_title")} · Vennett`, descripcion: t("meta_legal_cookies_descripcion"), idioma, ruta: "/legal/cookies" });
 }
 
 // La sesión en `localStorage` (`lib/liga/supabase.ts`) es lo único que guarda la web pública.
