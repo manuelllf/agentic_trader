@@ -3,10 +3,11 @@
 .blog-publico main{max-width:680px;margin:0 auto;padding-bottom:40px}
 .blog-publico a{color:inherit;text-underline-offset:4px}
 .blog-publico a:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
-.blog-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px 0 40px}
-.blog-header svg{width:150px;max-width:100%;height:auto}
+.blog-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0}
+.blog-publico .blog-header .wordmark::before{display:none}
+.blog-publico .blog-header .wordmark svg{height:18px;width:auto}
 .blog-header nav,.blog-pie nav{display:flex;flex-wrap:wrap;gap:8px 16px}
-.blog-header a,.blog-pie a,.blog-vecinos a{display:inline-flex;align-items:center;min-height:44px}
+.blog-header nav a,.blog-pie a,.blog-vecinos a{display:inline-flex;align-items:center;min-height:44px}
 .blog-publico h1{font-size:clamp(2rem,6vw,3rem);line-height:1.15;margin:16px 0 24px;letter-spacing:-.025em}
 .blog-publico h2{font-size:1.5rem;line-height:1.3}
 .blog-entradilla{font-size:1.2rem;color:var(--ink2);margin-bottom:36px}
