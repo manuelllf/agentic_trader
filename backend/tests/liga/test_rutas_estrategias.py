@@ -504,7 +504,8 @@ def test_avisos_por_la_api_son_de_la_cuenta(api, monkeypatch) -> None:  # noqa: 
     uid, otro = usuario(), usuario()
     assert cliente.get("/liga/avisos").status_code == 401
     assert cliente.get("/liga/avisos/clave", headers=cab(uid)).json() == {"key": "clave-publica"}
-    assert cliente.get("/liga/avisos", headers=cab(uid)).json() == {"dispositivos": [], "maximo": 5}
+    assert cliente.get("/liga/avisos", headers=cab(uid)).json() == {
+        "dispositivos": [], "maximo": 5, "resumen_correo": True}
 
     sub = {"endpoint": f"https://fcm.googleapis.com/fcm/send/{uuid.uuid4().hex}",
            "keys": {"p256dh": "p", "auth": "a"}}

@@ -52,7 +52,7 @@ it("tras el error de confirmacion ofrece reenviar al correo y reutiliza el aviso
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(mensajes.auth_correo_sin_confirmar);
   expect(reenviar()).toBeDefined();
   await act(async () => reenviar()!.click());
-  expect(mocks.solicitarCorreo).toHaveBeenCalledWith("/reenviar", { email: "persona@example.com" });
+  expect(mocks.solicitarCorreo).toHaveBeenCalledWith("/reenviar", { email: "persona@example.com", turnstile: "" });
   expect(host.querySelector('[role="status"]')?.textContent).toBe(mensajes.auth_correo_enviado_generico);
 });
 it("no ofrece reenviar con un alias aunque haya un error", async () => {
