@@ -167,7 +167,10 @@ def test_el_premio_solo_se_ve_si_se_enciende_y_no_nombra_a_nadie(liga) -> None: 
         cx.execute("insert into liga.ajustes (clave, valor) values ('premio.visible', 'true')")
         temporada()
         alias = f"opta_{uuid.uuid4().hex[:6]}"
-        eid, _ = estrategia(usuario(alias), "Opta al premio")
+        dueno = usuario(alias)
+        cx.execute("update liga.perfiles_privados set mayor_edad_confirmada_en = now() "
+                   "where id = %s", (dueno,))
+        eid, _ = estrategia(dueno, "Opta al premio")
         cx.execute("update liga.estrategias set opta_premio = true where id = %s", (eid,))
 
         respuesta = cliente.get("/liga/publico/premio")

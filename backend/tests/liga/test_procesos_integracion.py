@@ -144,6 +144,12 @@ def _usuario(db: Session) -> uuid.UUID:
     return uid
 
 
+def _confirmar_mayor_de_edad(db: Session, uid: uuid.UUID) -> None:
+    # Solo cuentan para el premio las cuentas que confirman los 18 años.
+    db.execute(text("update liga.perfiles_privados set mayor_edad_confirmada_en = now() "
+                    "where id = :u"), {"u": uid})
+
+
 def _estrategia(db: Session, uid: uuid.UUID, nombre: str, *, pregunta: str | None = None,
                 n: int = 5, reparto: str = "igual", max_sector: int = 2,
                 mantener: bool = False) -> uuid.UUID:
@@ -230,6 +236,7 @@ def mundo(fabrica, mercado) -> dict:  # noqa: ANN001
             "'suelo', :d, 50, 'max', 70, :c, 'nueva', :m)"),
             {"t": t, "d": momento[:10], "c": caida, "m": momento})
     uid = _usuario(db)
+    _confirmar_mayor_de_edad(db, uid)
     db.execute(text("insert into liga.planes_usuario (usuario_id, plan, origen) "
                     "values (:u, 'pro', 'admin')"), {"u": uid})
     ids["reglas"] = _estrategia(db, uid, "Solo notas")
@@ -706,12 +713,12 @@ def test_omega_llena_sus_huecos_con_las_alertas_y_repetir_no_duplica(fabrica, me
     _formar_mes(fabrica, mercado, ene, ENERO)
     mercado.hasta = date(2027, 1, 12)
     hecho = diario.ejecutar(fabrica)
-    assert hecho["omega"][0]["nuevas"] == 4
+    assert hecho["omega"][0]["nuevas"] == 5
     huecos = _huecos(fabrica, ene)
-    # Mismo instante: primero la caída más fuerte (ZQB antes que ZQA); la quinta espera.
+    # Mismo instante y sin capitalización: manda el ticker (ZQA antes que ZQB). Las cinco entran.
     assert [(h[0], h[1], h[2]) for h in huecos] == [
-        (1, "ZQB", date(2027, 1, 5)), (2, "ZQA", date(2027, 1, 5)),
-        (3, "ZQC", date(2027, 1, 6)), (4, "ZQD", date(2027, 1, 7))]
+        (1, "ZQA", date(2027, 1, 5)), (2, "ZQB", date(2027, 1, 5)),
+        (3, "ZQC", date(2027, 1, 6)), (4, "ZQD", date(2027, 1, 7)), (5, "ZQF", date(2027, 1, 8))]
     assert all(h[3] is None for h in huecos)
     sql_aud = "select count(*) from liga.auditoria where accion = 'proceso.diario.omega'"
     n_aud = _cuenta(fabrica, sql_aud)
@@ -724,31 +731,37 @@ def test_omega_llena_sus_huecos_con_las_alertas_y_repetir_no_duplica(fabrica, me
 def test_omega_libera_el_hueco_al_salir_y_lo_rellena_compuesto(fabrica, mercado,
                                                               mundo) -> None:  # noqa: ANN001
     ene = mundo["enero"]
+    with comun.sesion(fabrica) as db:                         # una sexta alerta, para rellenar
+        db.execute(text(
+            "insert into momentum_senales (ticker, sector, tipo, entry_date, entry_price, "
+            "ref_label, ref_price, caida_pct, estado, created_at) values ('ZQE', 'Energy', "
+            "'suelo', '2027-01-14', 50, 'max', 70, 10, 'nueva', '2027-01-14 15:00+00')"))
+        db.commit()
     _formar_mes(fabrica, mercado, ene, ENERO)
     mercado.saltos = {"ZQA": (date(2027, 1, 14), 1.5)}         # +50 %: pasa el objetivo
     mercado.hasta = date(2027, 1, 12)
     diario.ejecutar(fabrica)
-    assert len(_huecos(fabrica, ene)) == 4
+    assert len(_huecos(fabrica, ene)) == 5
     mercado.hasta = date(2027, 1, 20)
     diario.ejecutar(fabrica)
     huecos = _huecos(fabrica, ene)
-    assert (2, "ZQA", date(2027, 1, 5), date(2027, 1, 14), "objetivo") in huecos
-    assert (2, "ZQF", date(2027, 1, 14), None, None) in huecos   # el hueco libre, con la quinta
+    assert (1, "ZQA", date(2027, 1, 5), date(2027, 1, 14), "objetivo") in huecos
+    assert (1, "ZQE", date(2027, 1, 14), None, None) in huecos   # el hueco libre, con la sexta
     diario.ejecutar(fabrica)                                  # repetir no cambia lo escrito
     assert _huecos(fabrica, ene) == huecos
-    # El hueco 2 compuso el +50 % sobre 500 $ de un total de 2.000 $: más de un 10 % en total.
-    assert Decimal(_omega_fila(fabrica, ene)["rentabilidad"]) > Decimal("10")
+    # El hueco 1 compuso el +50 %: pesa un 10 % en la media de los cinco huecos.
+    assert Decimal(_omega_fila(fabrica, ene)["rentabilidad"]) > Decimal("5")
 
 
 def test_omega_pasa_lo_abierto_a_la_jornada_siguiente(fabrica, mercado, mundo) -> None:  # noqa: ANN001
     ene = mundo["enero"]
     _formar_mes(fabrica, mercado, ene, ENERO)
     _cerrar_mes(fabrica, mercado, ene)
-    assert len(_huecos(fabrica, ene)) == 4
+    assert len(_huecos(fabrica, ene)) == 5
     _formar_mes(fabrica, mercado, mundo["febrero"], FEBRERO)
     with comun.sesion(fabrica) as db:
         ops = omega.operaciones(db, db.get(Jornada, mundo["febrero"]))
-    assert sorted(o.ticker for o in ops) == ["ZQA", "ZQB", "ZQC", "ZQD"]   # siguen abiertas
+    assert sorted(o.ticker for o in ops) == ["ZQA", "ZQB", "ZQC", "ZQD", "ZQF"]   # siguen abiertas
     assert _huecos(fabrica, mundo["febrero"]) == []
 
 
@@ -1469,7 +1482,9 @@ def _cerrar_la_temporada_con(fabrica, resultados: dict[str, list[str | None]]) -
         jornadas = dict(db.execute(text("select numero, id from liga.jornadas "
                                         "where temporada_id = :t"), {"t": tid}).all())
         for nombre, mensuales in resultados.items():
-            eid = _estrategia(db, _usuario(db), nombre)
+            uid = _usuario(db)
+            _confirmar_mayor_de_edad(db, uid)
+            eid = _estrategia(db, uid, nombre)
             receta = db.execute(text("select receta_id from liga.estrategias where id = :e"),
                                 {"e": eid}).scalar()
             for numero, rentabilidad in enumerate(mensuales, start=1):

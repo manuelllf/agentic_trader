@@ -550,7 +550,7 @@ def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     propia = cliente.get(f"/liga/fichas/{eid}", headers=cab(duena)).json()
     assert propia["es_dueno"] is True
     assert propia["receta"]["id"] == receta["id"]
-    assert propia["posiciones"] == [{"ticker": "ZPA", "peso": "50.0000"}]
+    assert propia["posiciones"] == [{"ticker": "ZPA", "peso": "50.0000", "entrada_dia": None}]
 
     libre = usuario()
     ajena = cliente.get(f"/liga/fichas/{eid}", headers=cab(libre)).json()
@@ -567,7 +567,7 @@ def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     pro = usuario(pro=True)
     con_pro = cliente.get(f"/liga/fichas/{eid}", headers=cab(pro)).json()
     assert con_pro["receta"]["id"] == receta["id"]
-    assert con_pro["posiciones"] == [{"ticker": "ZPA", "peso": "50.0000"}]
+    assert con_pro["posiciones"] == [{"ticker": "ZPA", "peso": "50.0000", "entrada_dia": None}]
     assert con_pro["rendimiento"]["estado"] == "sin_datos"
 
     sin_pro = cliente.get(f"/liga/fichas/{eid}", headers=cab(libre)).json()
@@ -622,7 +622,7 @@ def test_la_casa_la_ve_pro_en_directo_y_gratis_al_cerrar_la_jornada(api) -> None
         "insert into liga.estrategias (tipo, casa_clave, nombre, forma, dibujo, color1, color2, "
         "estado) values ('casa', 'lambda', 'Lambda', 'circulo', 'liso', '#D8D4CB', '#D8D4CB', "
         "'jugando') returning id").fetchone()[0]
-    zpa = [{"ticker": "ZPA", "peso": "100.0000"}]
+    zpa = [{"ticker": "ZPA", "peso": "100.0000", "entrada_dia": None}]
     try:
         jornada_con_posicion(str(casa), None, "ZPA", "100.0000")
         admin, pro, gratis = usuario(), usuario(pro=True), usuario()
