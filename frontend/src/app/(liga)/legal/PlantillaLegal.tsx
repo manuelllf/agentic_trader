@@ -34,6 +34,7 @@ export async function PlantillaLegal({
           <Link href="/legal/privacidad">{t("legal_privacy_title")}</Link>
           <Link href="/legal/terminos">{t("legal_terms_short")}</Link>
           <Link href="/legal/cookies">{t("legal_cookies_title")}</Link>
+          <Link href="/legal/bases-premio">{t("legal_bases_title")}</Link>
         </nav>
       </div>
     </main>

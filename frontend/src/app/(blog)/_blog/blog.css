@@ -1,4 +1,4 @@
-.blog-publico{background:var(--bg);color:var(--ink);min-height:100vh;font-family:var(--font-lg),sans-serif;font-size:18px;line-height:1.65;padding:0 20px;overflow-wrap:anywhere}
+.blog-publico{background:var(--bg);color:var(--ink);min-height:100vh;font-family:var(--font-lg),sans-serif;font-size:16px;line-height:1.6;padding:0 20px;overflow-wrap:anywhere}
 .blog-publico *{box-sizing:border-box;min-width:0}
 .blog-publico main{max-width:680px;margin:0 auto;padding-bottom:40px}
 .blog-publico a{color:inherit;text-underline-offset:4px}
@@ -8,9 +8,9 @@
 .blog-publico .blog-header .wordmark svg{height:18px;width:auto}
 .blog-header nav,.blog-pie nav{display:flex;flex-wrap:wrap;gap:8px 16px}
 .blog-header nav a,.blog-pie a,.blog-vecinos a{display:inline-flex;align-items:center;min-height:44px}
-.blog-publico h1{font-size:clamp(2rem,6vw,3rem);line-height:1.15;margin:16px 0 24px;letter-spacing:-.025em}
-.blog-publico h2{font-size:1.5rem;line-height:1.3}
-.blog-entradilla{font-size:1.2rem;color:var(--ink2);margin-bottom:36px}
+.blog-publico h1{font-size:26px;line-height:1.15;margin:12px 0 16px;letter-spacing:-.02em}
+.blog-publico h2{font-size:20px;line-height:1.3}
+.blog-entradilla{font-size:17px;color:var(--ink2);margin-bottom:28px}
 .blog-meta{font-family:var(--font-data),monospace;font-size:.8rem;color:var(--muted)}
 .blog-lista{list-style:none;padding:0}
 .blog-fila{border-top:1px solid var(--line);padding:24px 0}

@@ -14,6 +14,7 @@ export default function LegalCuenta() {
       <FilaCuenta href="/legal/privacidad" nombre={t("account_privacidad")} />
       <FilaCuenta href="/legal/terminos" nombre={t("account_terminos")} />
       <FilaCuenta href="/legal/cookies" nombre={t("account_cookies")} />
+      <FilaCuenta href="/legal/bases-premio" nombre={t("legal_bases_title")} />
     </ul>
   </MarcoCuenta>;
 }
