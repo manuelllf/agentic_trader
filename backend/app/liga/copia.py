@@ -31,12 +31,14 @@ TABLAS = (
 
 # El número más alto de `sql/liga/NNN_*.sql` aplicado (plan §6.3): se guarda en el manifiesto
 # para saber, al restaurar, qué migraciones hacen falta antes de cargar los datos.
-VERSION_ESQUEMA = 46
+VERSION_ESQUEMA = 48
+
+TABLAS_BLOG = ("articulos", "articulo_textos", "suscriptores", "envios", "entregas")
 
 
-def _copiar_tabla(cursor, tabla: str) -> bytes:  # noqa: ANN001 — cursor de psycopg (DBAPI)
+def _copiar_tabla(cursor, tabla: str, esquema: str = "liga") -> bytes:
     buf = io.BytesIO()
-    with cursor.copy(f"COPY liga.{tabla} TO STDOUT (FORMAT csv, HEADER true)") as copy:  # noqa: S608
+    with cursor.copy(f"COPY {esquema}.{tabla} TO STDOUT (FORMAT csv, HEADER true)") as copy:  # noqa: S608
         for trozo in copy:
             buf.write(bytes(trozo))
     return buf.getvalue()
@@ -66,10 +68,17 @@ def generar(actor: str | None) -> bytes:
                 filas = max(0, datos.count(b"\n") - 1)  # sin contar la cabecera del CSV
                 manifiesto["tablas"].append({"tabla": tabla, "filas": filas, "bytes": len(datos)})
                 _anadir(tar, f"{tabla}.csv", datos)
+            for tabla in TABLAS_BLOG:
+                with crudo.cursor() as cursor:
+                    datos = _copiar_tabla(cursor, tabla, "blog")
+                nombre = f"blog.{tabla}"
+                manifiesto["tablas"].append({"tabla": nombre,
+                    "filas": max(0, datos.count(b"\n") - 1), "bytes": len(datos)})
+                _anadir(tar, f"{nombre}.csv", datos)
             crudo_manifiesto = json.dumps(manifiesto, ensure_ascii=False, indent=2).encode("utf-8")
             _anadir(tar, "manifiesto.json", crudo_manifiesto)
         auditar(db, "copia.descargar", None,
-               {"tablas": len(TABLAS), "bytes": salida.tell()}, actor)
+               {"tablas": len(TABLAS) + len(TABLAS_BLOG), "bytes": salida.tell()}, actor)
         db.commit()
         return salida.getvalue()
     finally:

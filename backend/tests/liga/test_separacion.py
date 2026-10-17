@@ -59,7 +59,7 @@ def test_solo_llm_call_se_escribe_en_tablas_de_las_salas() -> None:
             sql = next(g for g in bloque.groups() if g is not None)
             for escritura in _ESCRITURA.finditer(sql):
                 tabla = next(g for g in escritura.groups() if g is not None).lower()
-                if tabla.startswith("liga") or tabla in _TABLAS_PERMITIDAS:
+                if tabla.startswith("liga") or tabla == "blog" or tabla in _TABLAS_PERMITIDAS:
                     continue
                 raise AssertionError(
                     f"{f} escribe en public.{tabla} (fuera de {_TABLAS_PERMITIDAS}): {sql[:200]!r}")

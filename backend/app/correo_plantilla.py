@@ -66,11 +66,12 @@ def _logo(base: str) -> str:
 
 def render(*, idioma: str, asunto: str, intro: str, enlace_texto: str, ruta: str, pie: str,
            ajustes_texto: str, legal_texto: str, meta: str = "", filas: Sequence[Fila] = (),
-           columnas: tuple[str, str] = ("", "")) -> tuple[str, str]:
+           columnas: tuple[str, str] = ("", ""),
+           ajustes_ruta: str = "/cuenta/avisos") -> tuple[str, str]:
     """Devuelve (texto, html) del correo. `meta` y `filas` son opcionales: sin ellas no hay fecha
     ni tabla."""
     base = settings.url_publica
-    enlace, ajustes, legal = base + ruta, base + "/cuenta/avisos", base + "/legal/aviso"
+    enlace, ajustes, legal = base + ruta, base + ajustes_ruta, base + "/legal/aviso"
     lista = ", ".join(f"{t} ({d})" if d else t for t, d in filas)
     dominio = base.removeprefix("https://")
     texto = "\n\n".join(p for p in (

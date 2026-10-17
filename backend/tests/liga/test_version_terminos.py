@@ -24,7 +24,7 @@ def cx():  # noqa: ANN201
 
 
 def test_version_y_permisos(cx):  # noqa: ANN001
-    assert VERSION_TERMINOS == "2"
+    assert VERSION_TERMINOS == "3"
     assert cx.execute("select liga.version_terminos()").fetchone() == (VERSION_TERMINOS,)
     for rol, permitido in [("anon", False), ("authenticated", True)]:
         assert cx.execute("select has_function_privilege(%s, 'liga.version_terminos()', "
@@ -50,10 +50,10 @@ def test_aceptar_version_vigente_conserva_historial(cx):  # noqa: ANN001
     cx.execute("select liga.aceptar_terminos()")
     assert cx.execute("select documento, version from liga.consentimientos "
                       "where usuario_id = %s order by documento, version", (uid,)).fetchall() == [
-        ("privacidad", "2"), ("terminos", "1"), ("terminos", "2")]
+        ("privacidad", "3"), ("terminos", "1"), ("terminos", "3")]
 
 
-@pytest.mark.parametrize("version", ["1", "2"])
+@pytest.mark.parametrize("version", ["1", "2", "3"])
 def test_alta_exige_version_vigente(cx, version):  # noqa: ANN001
     cx.execute("insert into liga.ajustes (clave, valor) values ('liga.registro.abierto', 'true') "
                "on conflict (clave) do update set valor = excluded.valor")
@@ -61,12 +61,30 @@ def test_alta_exige_version_vigente(cx, version):  # noqa: ANN001
     sql = "insert into auth.users (id, email, raw_user_meta_data) values (%s, %s, %s)"
     params = (uid, f"{uid.hex}@prueba.local",
               json.dumps({"alias": "u_" + uid.hex[:12], "terminos_version": version}))
-    if version == "1":
-        with pytest.raises(psycopg.errors.CheckViolation, match="Acepta los"), cx.transaction():
+    if version != "3":
+        rechazo = pytest.raises(psycopg.errors.CheckViolation, match="Acepta los términos")
+        with rechazo, cx.transaction():
             cx.execute(sql, params)
         assert cx.execute("select id from auth.users where id = %s", (uid,)).fetchall() == []
     else:
         cx.execute(sql, params)
         assert cx.execute("select documento, version from liga.consentimientos "
                           "where usuario_id = %s order by documento", (uid,)).fetchall() == [
-            ("privacidad", "2"), ("terminos", "2")]
+            ("privacidad", "3"), ("terminos", "3")]
+
+
+def test_cuenta_con_version_2_pendiente_hasta_aceptar_3(cx):  # noqa: ANN001
+    uid = uuid.uuid4()
+    cx.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now())",
+               (uid, f"{uid.hex}@prueba.local"))
+    cx.execute("insert into liga.consentimientos (usuario_id, documento, version) "
+               "values (%s, 'terminos', '2')", (uid,))
+    cx.execute("select set_config('request.jwt.claims', %s, true)",
+               (json.dumps({"sub": str(uid), "role": "authenticated", "aal": "aal1"}),))
+    cx.execute("set local role authenticated")
+    assert cx.execute("select liga.cuenta_pendiente()").fetchone() == (True,)
+    cx.execute("select liga.aceptar_terminos()")
+    assert cx.execute("select liga.cuenta_pendiente()").fetchone() == (False,)
+    assert cx.execute("select version from liga.consentimientos "
+                      "where usuario_id = %s and documento = 'terminos' order by version",
+                      (uid,)).fetchall() == [("2",), ("3",)]

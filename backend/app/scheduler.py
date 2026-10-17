@@ -501,7 +501,15 @@ def start_scheduler() -> None:
     # Liga: avisos a las cuentas una hora antes de cerrar los cambios y al empezar la jornada.
     scheduler.add_job(_liga_avisos_job, "interval", minutes=5, id="liga_avisos",
                       replace_existing=True, coalesce=True)
-    from app.liga import resumenes
+    from app.liga import blog_procesos, resumenes
+
+    scheduler.add_job(blog_procesos.job_publicar, "interval", minutes=1,
+                      id="blog_publicar", replace_existing=True, coalesce=True)
+    scheduler.add_job(blog_procesos.job_enviar_lote, "interval", minutes=15,
+                      id="blog_boletin", replace_existing=True, coalesce=True)
+    scheduler.add_job(blog_procesos.job_limpiar,
+                      CronTrigger(hour=4, minute=30, timezone="Europe/Madrid"),
+                      id="blog_limpieza", replace_existing=True, coalesce=True)
 
     scheduler.add_job(resumenes.job_semanal,
                       CronTrigger(day_of_week="mon", hour=9, minute=0, timezone="Europe/Madrid"),

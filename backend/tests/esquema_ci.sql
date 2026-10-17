@@ -1,4 +1,4 @@
--- migraciones-liga: 046
+-- migraciones-liga: 048
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -25,6 +25,20 @@ SET row_security = off;
 --
 
 CREATE SCHEMA auth;
+
+
+--
+-- Name: blog; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA blog;
+
+
+--
+-- Name: SCHEMA blog; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON SCHEMA blog IS 'Lecciones públicas en español e inglés y boletín con doble confirmación.';
 
 
 --
@@ -272,6 +286,60 @@ $$;
 --
 
 COMMENT ON FUNCTION auth.uid() IS 'Deprecated. Use auth.jwt() -> ''sub'' instead.';
+
+
+--
+-- Name: confirmar(text); Type: FUNCTION; Schema: blog; Owner: -
+--
+
+CREATE FUNCTION blog.confirmar(p_hash text) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+begin
+  update blog.suscriptores
+    set estado = 'confirmado', confirmado_en = now(), hash_alta = null, alta_expira = null
+    where hash_alta = p_hash and estado = 'pendiente' and alta_expira > now();
+  return found;
+end;
+$$;
+
+
+--
+-- Name: dar_de_baja(text); Type: FUNCTION; Schema: blog; Owner: -
+--
+
+CREATE FUNCTION blog.dar_de_baja(p_token text) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+begin
+  update blog.suscriptores set estado = 'baja', baja_en = now()
+    where token_baja = p_token and estado <> 'baja';
+  return exists (select 1 from blog.suscriptores where token_baja = p_token);
+end;
+$$;
+
+
+--
+-- Name: suscribir(text, text, text, text); Type: FUNCTION; Schema: blog; Owner: -
+--
+
+CREATE FUNCTION blog.suscribir(p_correo text, p_idioma text, p_hash_alta text, p_token_baja text) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+begin
+  insert into blog.suscriptores (correo, idioma, hash_alta, alta_expira, token_baja)
+  values (p_correo, p_idioma, p_hash_alta, now() + interval '7 days', p_token_baja)
+  on conflict (correo) do update
+    set estado = 'pendiente', hash_alta = excluded.hash_alta,
+        alta_expira = excluded.alta_expira, token_baja = excluded.token_baja,
+        baja_en = null, idioma = excluded.idioma
+    where blog.suscriptores.estado <> 'confirmado';
+  return found;
+end;
+$$;
 
 
 --
@@ -1083,7 +1151,7 @@ CREATE FUNCTION liga.version_terminos() RETURNS text
     LANGUAGE sql IMMUTABLE
     SET search_path TO ''
     AS $$
-  select '2'::text;
+  select '3'::text;
 $$;
 
 
@@ -1868,6 +1936,156 @@ CREATE TABLE auth.webauthn_credentials (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     last_used_at timestamp with time zone
+);
+
+
+--
+-- Name: articulo_textos; Type: TABLE; Schema: blog; Owner: -
+--
+
+CREATE TABLE blog.articulo_textos (
+    articulo_id bigint NOT NULL,
+    idioma text NOT NULL,
+    titulo text DEFAULT ''::text NOT NULL,
+    resumen text DEFAULT ''::text NOT NULL,
+    cuerpo text DEFAULT ''::text NOT NULL,
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado_en timestamp with time zone,
+    actualizado_por uuid,
+    CONSTRAINT articulo_textos_cuerpo_check CHECK ((length(cuerpo) <= 40000)),
+    CONSTRAINT articulo_textos_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
+    CONSTRAINT articulo_textos_resumen_check CHECK ((length(resumen) <= 160)),
+    CONSTRAINT articulo_textos_titulo_check CHECK ((length(titulo) <= 160))
+);
+
+
+--
+-- Name: articulos; Type: TABLE; Schema: blog; Owner: -
+--
+
+CREATE TABLE blog.articulos (
+    id bigint NOT NULL,
+    slug text NOT NULL,
+    estado text DEFAULT 'borrador'::text NOT NULL,
+    programado_para timestamp with time zone,
+    publicado_en timestamp with time zone,
+    avisar_boletin boolean DEFAULT false NOT NULL,
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado_en timestamp with time zone,
+    actualizado_por uuid,
+    CONSTRAINT articulos_check CHECK (((estado <> 'programado'::text) OR (programado_para IS NOT NULL))),
+    CONSTRAINT articulos_check1 CHECK (((estado <> 'publicado'::text) OR (publicado_en IS NOT NULL))),
+    CONSTRAINT articulos_estado_check CHECK ((estado = ANY (ARRAY['borrador'::text, 'programado'::text, 'publicado'::text]))),
+    CONSTRAINT articulos_slug_check CHECK (((slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'::text) AND ((length(slug) >= 3) AND (length(slug) <= 120))))
+);
+
+
+--
+-- Name: articulos_id_seq; Type: SEQUENCE; Schema: blog; Owner: -
+--
+
+ALTER TABLE blog.articulos ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME blog.articulos_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: entregas; Type: TABLE; Schema: blog; Owner: -
+--
+
+CREATE TABLE blog.entregas (
+    envio_id bigint NOT NULL,
+    suscriptor_id bigint NOT NULL,
+    estado text DEFAULT 'pendiente'::text NOT NULL,
+    intentada_en timestamp with time zone,
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado_en timestamp with time zone,
+    actualizado_por uuid,
+    CONSTRAINT entregas_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aceptada'::text, 'fallida'::text])))
+);
+
+
+--
+-- Name: envios; Type: TABLE; Schema: blog; Owner: -
+--
+
+CREATE TABLE blog.envios (
+    id bigint NOT NULL,
+    articulo_id bigint NOT NULL,
+    idioma text NOT NULL,
+    estado text DEFAULT 'pendiente'::text NOT NULL,
+    terminado_en timestamp with time zone,
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado_en timestamp with time zone,
+    actualizado_por uuid,
+    CONSTRAINT envios_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text, 'terminado'::text]))),
+    CONSTRAINT envios_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text])))
+);
+
+
+--
+-- Name: envios_id_seq; Type: SEQUENCE; Schema: blog; Owner: -
+--
+
+ALTER TABLE blog.envios ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME blog.envios_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: suscriptores; Type: TABLE; Schema: blog; Owner: -
+--
+
+CREATE TABLE blog.suscriptores (
+    id bigint NOT NULL,
+    correo text NOT NULL,
+    idioma text NOT NULL,
+    estado text DEFAULT 'pendiente'::text NOT NULL,
+    hash_alta text,
+    alta_expira timestamp with time zone,
+    token_baja text NOT NULL,
+    confirmado_en timestamp with time zone,
+    baja_en timestamp with time zone,
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado_en timestamp with time zone,
+    actualizado_por uuid,
+    CONSTRAINT suscriptores_check CHECK (((estado <> 'pendiente'::text) OR ((hash_alta IS NOT NULL) AND (alta_expira IS NOT NULL)))),
+    CONSTRAINT suscriptores_check1 CHECK (((estado <> 'confirmado'::text) OR (confirmado_en IS NOT NULL))),
+    CONSTRAINT suscriptores_check2 CHECK (((estado <> 'baja'::text) OR (baja_en IS NOT NULL))),
+    CONSTRAINT suscriptores_correo_check CHECK (((correo = lower(correo)) AND ((length(correo) >= 6) AND (length(correo) <= 254)) AND (correo ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'::text))),
+    CONSTRAINT suscriptores_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'confirmado'::text, 'baja'::text]))),
+    CONSTRAINT suscriptores_hash_alta_check CHECK (((hash_alta IS NULL) OR (length(hash_alta) = 64))),
+    CONSTRAINT suscriptores_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
+    CONSTRAINT suscriptores_token_baja_check CHECK (((length(token_baja) >= 32) AND (length(token_baja) <= 100)))
+);
+
+
+--
+-- Name: suscriptores_id_seq; Type: SEQUENCE; Schema: blog; Owner: -
+--
+
+ALTER TABLE blog.suscriptores ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME blog.suscriptores_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
 );
 
 
@@ -4859,6 +5077,70 @@ ALTER TABLE ONLY auth.webauthn_credentials
 
 
 --
+-- Name: articulo_textos articulo_textos_pkey; Type: CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.articulo_textos
+    ADD CONSTRAINT articulo_textos_pkey PRIMARY KEY (articulo_id, idioma);
+
+
+--
+-- Name: articulos articulos_pkey; Type: CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.articulos
+    ADD CONSTRAINT articulos_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: articulos articulos_slug_key; Type: CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.articulos
+    ADD CONSTRAINT articulos_slug_key UNIQUE (slug);
+
+
+--
+-- Name: entregas entregas_pkey; Type: CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.entregas
+    ADD CONSTRAINT entregas_pkey PRIMARY KEY (envio_id, suscriptor_id);
+
+
+--
+-- Name: envios envios_articulo_id_idioma_key; Type: CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.envios
+    ADD CONSTRAINT envios_articulo_id_idioma_key UNIQUE (articulo_id, idioma);
+
+
+--
+-- Name: envios envios_pkey; Type: CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.envios
+    ADD CONSTRAINT envios_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: suscriptores suscriptores_correo_key; Type: CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.suscriptores
+    ADD CONSTRAINT suscriptores_correo_key UNIQUE (correo);
+
+
+--
+-- Name: suscriptores suscriptores_pkey; Type: CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.suscriptores
+    ADD CONSTRAINT suscriptores_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: actualizaciones actualizaciones_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -6201,6 +6483,125 @@ CREATE INDEX webauthn_credentials_user_id_idx ON auth.webauthn_credentials USING
 
 
 --
+-- Name: ix_articulo_textos_actualizado_por; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_articulo_textos_actualizado_por ON blog.articulo_textos USING btree (actualizado_por) WHERE (actualizado_por IS NOT NULL);
+
+
+--
+-- Name: ix_articulo_textos_creado_por; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_articulo_textos_creado_por ON blog.articulo_textos USING btree (creado_por) WHERE (creado_por IS NOT NULL);
+
+
+--
+-- Name: ix_articulos_actualizado_por; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_articulos_actualizado_por ON blog.articulos USING btree (actualizado_por) WHERE (actualizado_por IS NOT NULL);
+
+
+--
+-- Name: ix_articulos_creado_por; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_articulos_creado_por ON blog.articulos USING btree (creado_por) WHERE (creado_por IS NOT NULL);
+
+
+--
+-- Name: ix_articulos_programados; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_articulos_programados ON blog.articulos USING btree (programado_para) WHERE (estado = 'programado'::text);
+
+
+--
+-- Name: ix_articulos_publicados; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_articulos_publicados ON blog.articulos USING btree (publicado_en DESC) WHERE (estado = 'publicado'::text);
+
+
+--
+-- Name: ix_entregas_actualizado_por; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_entregas_actualizado_por ON blog.entregas USING btree (actualizado_por) WHERE (actualizado_por IS NOT NULL);
+
+
+--
+-- Name: ix_entregas_creado_por; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_entregas_creado_por ON blog.entregas USING btree (creado_por) WHERE (creado_por IS NOT NULL);
+
+
+--
+-- Name: ix_entregas_pendientes; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_entregas_pendientes ON blog.entregas USING btree (envio_id) WHERE (estado = 'pendiente'::text);
+
+
+--
+-- Name: ix_entregas_suscriptor; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_entregas_suscriptor ON blog.entregas USING btree (suscriptor_id);
+
+
+--
+-- Name: ix_envios_actualizado_por; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_envios_actualizado_por ON blog.envios USING btree (actualizado_por) WHERE (actualizado_por IS NOT NULL);
+
+
+--
+-- Name: ix_envios_creado_por; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_envios_creado_por ON blog.envios USING btree (creado_por) WHERE (creado_por IS NOT NULL);
+
+
+--
+-- Name: ix_suscriptores_actualizado_por; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_suscriptores_actualizado_por ON blog.suscriptores USING btree (actualizado_por) WHERE (actualizado_por IS NOT NULL);
+
+
+--
+-- Name: ix_suscriptores_confirmados; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_suscriptores_confirmados ON blog.suscriptores USING btree (idioma) WHERE (estado = 'confirmado'::text);
+
+
+--
+-- Name: ix_suscriptores_creado_por; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE INDEX ix_suscriptores_creado_por ON blog.suscriptores USING btree (creado_por) WHERE (creado_por IS NOT NULL);
+
+
+--
+-- Name: ix_suscriptores_hash_alta; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_suscriptores_hash_alta ON blog.suscriptores USING btree (hash_alta) WHERE (hash_alta IS NOT NULL);
+
+
+--
+-- Name: ix_suscriptores_token_baja; Type: INDEX; Schema: blog; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_suscriptores_token_baja ON blog.suscriptores USING btree (token_baja);
+
+
+--
 -- Name: ix_actualizaciones_usuario; Type: INDEX; Schema: liga; Owner: -
 --
 
@@ -6859,6 +7260,41 @@ CREATE TRIGGER liga_confirmar_bienvenida AFTER UPDATE OF email_confirmed_at ON a
 
 
 --
+-- Name: articulo_textos traza; Type: TRIGGER; Schema: blog; Owner: -
+--
+
+CREATE TRIGGER traza BEFORE UPDATE ON blog.articulo_textos FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
+
+
+--
+-- Name: articulos traza; Type: TRIGGER; Schema: blog; Owner: -
+--
+
+CREATE TRIGGER traza BEFORE UPDATE ON blog.articulos FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
+
+
+--
+-- Name: entregas traza; Type: TRIGGER; Schema: blog; Owner: -
+--
+
+CREATE TRIGGER traza BEFORE UPDATE ON blog.entregas FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
+
+
+--
+-- Name: envios traza; Type: TRIGGER; Schema: blog; Owner: -
+--
+
+CREATE TRIGGER traza BEFORE UPDATE ON blog.envios FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
+
+
+--
+-- Name: suscriptores traza; Type: TRIGGER; Schema: blog; Owner: -
+--
+
+CREATE TRIGGER traza BEFORE UPDATE ON blog.suscriptores FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
+
+
+--
 -- Name: estrategias a_candado; Type: TRIGGER; Schema: liga; Owner: -
 --
 
@@ -7370,6 +7806,118 @@ ALTER TABLE ONLY auth.webauthn_challenges
 
 ALTER TABLE ONLY auth.webauthn_credentials
     ADD CONSTRAINT webauthn_credentials_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: articulo_textos articulo_textos_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.articulo_textos
+    ADD CONSTRAINT articulo_textos_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: articulo_textos articulo_textos_articulo_id_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.articulo_textos
+    ADD CONSTRAINT articulo_textos_articulo_id_fkey FOREIGN KEY (articulo_id) REFERENCES blog.articulos(id) ON DELETE CASCADE;
+
+
+--
+-- Name: articulo_textos articulo_textos_creado_por_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.articulo_textos
+    ADD CONSTRAINT articulo_textos_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: articulos articulos_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.articulos
+    ADD CONSTRAINT articulos_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: articulos articulos_creado_por_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.articulos
+    ADD CONSTRAINT articulos_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: entregas entregas_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.entregas
+    ADD CONSTRAINT entregas_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: entregas entregas_creado_por_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.entregas
+    ADD CONSTRAINT entregas_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: entregas entregas_envio_id_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.entregas
+    ADD CONSTRAINT entregas_envio_id_fkey FOREIGN KEY (envio_id) REFERENCES blog.envios(id) ON DELETE CASCADE;
+
+
+--
+-- Name: entregas entregas_suscriptor_id_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.entregas
+    ADD CONSTRAINT entregas_suscriptor_id_fkey FOREIGN KEY (suscriptor_id) REFERENCES blog.suscriptores(id) ON DELETE CASCADE;
+
+
+--
+-- Name: envios envios_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.envios
+    ADD CONSTRAINT envios_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: envios envios_articulo_id_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.envios
+    ADD CONSTRAINT envios_articulo_id_fkey FOREIGN KEY (articulo_id) REFERENCES blog.articulos(id) ON DELETE CASCADE;
+
+
+--
+-- Name: envios envios_creado_por_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.envios
+    ADD CONSTRAINT envios_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: suscriptores suscriptores_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.suscriptores
+    ADD CONSTRAINT suscriptores_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: suscriptores suscriptores_creado_por_fkey; Type: FK CONSTRAINT; Schema: blog; Owner: -
+--
+
+ALTER TABLE ONLY blog.suscriptores
+    ADD CONSTRAINT suscriptores_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
 
 
 --
@@ -8163,6 +8711,87 @@ ALTER TABLE auth.sso_providers ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE auth.users ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: articulo_textos admin; Type: POLICY; Schema: blog; Owner: -
+--
+
+CREATE POLICY admin ON blog.articulo_textos TO authenticated USING (liga.es_admin()) WITH CHECK (liga.es_admin());
+
+
+--
+-- Name: articulos admin; Type: POLICY; Schema: blog; Owner: -
+--
+
+CREATE POLICY admin ON blog.articulos TO authenticated USING (liga.es_admin()) WITH CHECK (liga.es_admin());
+
+
+--
+-- Name: entregas admin; Type: POLICY; Schema: blog; Owner: -
+--
+
+CREATE POLICY admin ON blog.entregas TO authenticated USING (liga.es_admin()) WITH CHECK (liga.es_admin());
+
+
+--
+-- Name: envios admin; Type: POLICY; Schema: blog; Owner: -
+--
+
+CREATE POLICY admin ON blog.envios TO authenticated USING (liga.es_admin()) WITH CHECK (liga.es_admin());
+
+
+--
+-- Name: suscriptores admin; Type: POLICY; Schema: blog; Owner: -
+--
+
+CREATE POLICY admin ON blog.suscriptores TO authenticated USING (liga.es_admin()) WITH CHECK (liga.es_admin());
+
+
+--
+-- Name: articulo_textos; Type: ROW SECURITY; Schema: blog; Owner: -
+--
+
+ALTER TABLE blog.articulo_textos ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: articulos; Type: ROW SECURITY; Schema: blog; Owner: -
+--
+
+ALTER TABLE blog.articulos ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: entregas; Type: ROW SECURITY; Schema: blog; Owner: -
+--
+
+ALTER TABLE blog.entregas ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: envios; Type: ROW SECURITY; Schema: blog; Owner: -
+--
+
+ALTER TABLE blog.envios ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: articulo_textos publicado; Type: POLICY; Schema: blog; Owner: -
+--
+
+CREATE POLICY publicado ON blog.articulo_textos FOR SELECT TO anon, authenticated USING ((EXISTS ( SELECT 1
+   FROM blog.articulos a
+  WHERE ((a.id = articulo_textos.articulo_id) AND (a.estado = 'publicado'::text)))));
+
+
+--
+-- Name: articulos publicado; Type: POLICY; Schema: blog; Owner: -
+--
+
+CREATE POLICY publicado ON blog.articulos FOR SELECT TO anon, authenticated USING ((estado = 'publicado'::text));
+
+
+--
+-- Name: suscriptores; Type: ROW SECURITY; Schema: blog; Owner: -
+--
+
+ALTER TABLE blog.suscriptores ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: actualizaciones; Type: ROW SECURITY; Schema: liga; Owner: -
@@ -9661,6 +10290,14 @@ GRANT ALL ON SCHEMA auth TO dashboard_user;
 
 
 --
+-- Name: SCHEMA blog; Type: ACL; Schema: -; Owner: -
+--
+
+GRANT USAGE ON SCHEMA blog TO anon;
+GRANT USAGE ON SCHEMA blog TO authenticated;
+
+
+--
 -- Name: SCHEMA liga; Type: ACL; Schema: -; Owner: -
 --
 
@@ -9705,6 +10342,33 @@ GRANT ALL ON FUNCTION auth.role() TO dashboard_user;
 --
 
 GRANT ALL ON FUNCTION auth.uid() TO dashboard_user;
+
+
+--
+-- Name: FUNCTION confirmar(p_hash text); Type: ACL; Schema: blog; Owner: -
+--
+
+REVOKE ALL ON FUNCTION blog.confirmar(p_hash text) FROM PUBLIC;
+GRANT ALL ON FUNCTION blog.confirmar(p_hash text) TO anon;
+GRANT ALL ON FUNCTION blog.confirmar(p_hash text) TO authenticated;
+
+
+--
+-- Name: FUNCTION dar_de_baja(p_token text); Type: ACL; Schema: blog; Owner: -
+--
+
+REVOKE ALL ON FUNCTION blog.dar_de_baja(p_token text) FROM PUBLIC;
+GRANT ALL ON FUNCTION blog.dar_de_baja(p_token text) TO anon;
+GRANT ALL ON FUNCTION blog.dar_de_baja(p_token text) TO authenticated;
+
+
+--
+-- Name: FUNCTION suscribir(p_correo text, p_idioma text, p_hash_alta text, p_token_baja text); Type: ACL; Schema: blog; Owner: -
+--
+
+REVOKE ALL ON FUNCTION blog.suscribir(p_correo text, p_idioma text, p_hash_alta text, p_token_baja text) FROM PUBLIC;
+GRANT ALL ON FUNCTION blog.suscribir(p_correo text, p_idioma text, p_hash_alta text, p_token_baja text) TO anon;
+GRANT ALL ON FUNCTION blog.suscribir(p_correo text, p_idioma text, p_hash_alta text, p_token_baja text) TO authenticated;
 
 
 --
@@ -10226,6 +10890,43 @@ GRANT ALL ON TABLE auth.webauthn_challenges TO dashboard_user;
 --
 
 GRANT ALL ON TABLE auth.webauthn_credentials TO dashboard_user;
+
+
+--
+-- Name: TABLE articulo_textos; Type: ACL; Schema: blog; Owner: -
+--
+
+GRANT SELECT ON TABLE blog.articulo_textos TO anon;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE blog.articulo_textos TO authenticated;
+
+
+--
+-- Name: TABLE articulos; Type: ACL; Schema: blog; Owner: -
+--
+
+GRANT SELECT ON TABLE blog.articulos TO anon;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE blog.articulos TO authenticated;
+
+
+--
+-- Name: TABLE entregas; Type: ACL; Schema: blog; Owner: -
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE blog.entregas TO authenticated;
+
+
+--
+-- Name: TABLE envios; Type: ACL; Schema: blog; Owner: -
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE blog.envios TO authenticated;
+
+
+--
+-- Name: TABLE suscriptores; Type: ACL; Schema: blog; Owner: -
+--
+
+GRANT SELECT,DELETE,UPDATE ON TABLE blog.suscriptores TO authenticated;
 
 
 --
