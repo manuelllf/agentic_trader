@@ -7,7 +7,7 @@ describe("robots", () => {
   it("permite rastrear producción y anuncia el sitemap", () => {
     vi.stubEnv("VERCEL_ENV", "production");
     expect(robots()).toEqual({
-      rules: { userAgent: "*", allow: "/", disallow: ["/api/", "/admin/", "/cuenta/"] },
+      rules: { userAgent: "*", allow: "/", disallow: ["/api/", "/admin/", "/cuenta/", "/blog/boletin/", "/en/blog/boletin/"] },
       sitemap: "https://vennett.app/sitemap.xml",
     });
   });

@@ -172,6 +172,7 @@ export function Pelicula() {
               <button type="button" className="pel-legal-boton" aria-expanded={legalAbierto} aria-controls="pel-legales"
                 onClick={() => setLegalAbierto((a) => !a)}>{t("landing_legal")}</button>
               <nav id="pel-legales" className={`pel-legales${legalAbierto ? " abierto" : ""}`} aria-label={t("landing_legal")}>
+                <Link href={locale === "en" ? "/en/blog" : "/blog"}>{t("blog_title")}</Link>
                 <Link href="/legal/aviso">{t("landing_aviso_legal")}</Link>
                 <Link href="/legal/privacidad">{t("landing_privacidad")}</Link>
                 <Link href="/legal/terminos">{t("landing_terminos")}</Link>
