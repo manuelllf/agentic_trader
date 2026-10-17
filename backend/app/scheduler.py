@@ -360,6 +360,24 @@ def _liga_cerrar_job() -> None:
     cerrar.job()
 
 
+def _liga_omega_captura_job() -> None:
+    """Foto de alertas y sincronizado de las jornadas en juego."""
+    from sqlalchemy import select
+
+    from app.liga.models import Jornada
+    from app.liga.procesos import omega
+    from app.liga.procesos.comun import candado, fabrica_sistema, hoy_bolsa, sesion
+
+    try:
+        with candado("omega_captura", fabrica_sistema), sesion(fabrica_sistema) as db:
+            omega.capturar_alertas(db)
+            for j in db.scalars(select(Jornada).where(Jornada.estado == "formada")):
+                omega.sincronizar(db, j, hoy_bolsa())
+            db.commit()
+    except Exception:
+        logger.exception("Fallo de la captura de Omega")
+
+
 @recursos.medido("premio de la temporada")
 def _liga_premio_job() -> None:
     from app.liga.procesos import premio
@@ -493,6 +511,8 @@ def start_scheduler() -> None:
         id="liga_diario", replace_existing=True, misfire_grace_time=3600, coalesce=True,
     )
     # Liga: cerrar sola la jornada que acaba hoy, desde las 17:30 ET (el propio proceso lo decide).
+    scheduler.add_job(_liga_omega_captura_job, "interval", minutes=15, id="liga_omega_captura",
+                      replace_existing=True, misfire_grace_time=600, coalesce=True)
     scheduler.add_job(_liga_cerrar_job, "interval", minutes=5, id="liga_cerrar",
                       replace_existing=True, coalesce=True)
     # Liga: el premio anual, una sola vez, cuando se cierra la última jornada de la temporada.

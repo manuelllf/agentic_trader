@@ -36,6 +36,7 @@ RASTRO = {
     "lecturas": ("creada", "creado_por", None, None),  # de solo añadir, caché de IA
     "ligas_privadas": ("creada", "creado_por", "actualizado_en", "actualizado_por"),
     "miembros_liga": ("unido", "creado_por", None, None),  # solo insert/delete, nunca update
+    "omega_alertas": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "omega_operaciones": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "perfiles": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "perfiles_privados": ("creado", "creado_por", "actualizado_en", "actualizado_por"),

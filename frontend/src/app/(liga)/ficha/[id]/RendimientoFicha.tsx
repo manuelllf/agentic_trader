@@ -13,13 +13,13 @@ const AYUDAS: Record<string, string> = {
 };
 
 function ratio(valor: number | null, locale: Locale): string {
-  if (valor === null || !Number.isFinite(valor)) return "—";
+  if (valor === null || !Number.isFinite(valor)) return "-";
   return new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(valor);
 }
 
 export function RendimientoFicha({ datos, posiciones = [] }: {
   datos: DatosRendimiento | null | undefined;
-  posiciones?: { ticker: string; peso: number }[];
+  posiciones?: { ticker: string; peso: number | null }[];
 }) {
   const t = useTranslations();
   const locale = normalizeLocale(useLocale()) ?? "es";

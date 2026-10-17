@@ -40,7 +40,7 @@ from app.liga.motor.catalogo import RecetaNoValida
 from app.liga.motor.mensajes import presentar, presentar_lista
 from app.liga.motor.seleccion import explicar, seleccionar
 from app.liga.preview_seleccion import PreviewSeleccionIn
-from app.liga.procesos import datos, diario
+from app.liga.procesos import datos, diario, omega
 from app.liga.rutas_publicas import EscudoOut
 
 router = APIRouter(tags=["liga-estrategias"])
@@ -235,7 +235,8 @@ class JornadaFichaOut(BaseModel):
 
 class PosicionOut(BaseModel):
     ticker: str
-    peso: Decimal
+    peso: Decimal | None = None
+    entrada_dia: date | None = None
 
 
 class NotasEmpresaOut(BaseModel):
@@ -735,23 +736,26 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
     ins = db.execute(text("""
         select i.id, j.id as jornada_id, j.estado as jornada_estado, j.dia_base
         from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
-        where i.estrategia_id = :i and i.estado in ('formada', 'cerrada')
+        where i.estrategia_id = :i and i.estado in ('formada', 'cerrada', 'sin_empresas')
           and j.estado = any(:estados)
         order by j.dia_base desc, j.id desc, i.id desc limit 1
     """), {"i": id, "estados": ["cerrada"] if con_retraso else ["formada", "cerrada"]}
     ).one_or_none()
     posiciones = []
-    if ins is not None:
+    if ins is not None and f.casa_clave != "omega":
         posiciones = db.execute(text(
             "select ticker, peso from liga.posiciones where inscripcion_id = :i order by peso desc"
         ), {"i": ins.id}).all()
     retorno = (rendimiento.datos_ficha(db, f.eid, usuario_id=ident.uid, solo_cerradas=con_retraso)
-               if en_directo or con_retraso else {
+               if (en_directo or con_retraso) and f.casa_clave != "omega" else {
         "estado": "privado",
         "metodologia": translate("liga_rend_privado"),
         "oficial_hasta": None, "provisional_hasta": None, "incompleta": False,
         "serie": [], "metricas": None, "evidencia": None,
     })
+    if f.casa_clave == "omega" and (en_directo or con_retraso):
+        cartera, retorno = omega.datos_ficha(f.eid, con_retraso)
+        posiciones = [PosicionOut(**p) for p in cartera]
     mercado = None
     if ins is not None and ins.jornada_estado == "formada":
         vivo = diario.vivo(ins.jornada_id)
@@ -773,7 +777,8 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         jornadas=[JornadaFichaOut(numero=j.numero, rentabilidad=j.rentabilidad, puntos=j.puntos)
                  for j in jornadas],
         receta=receta_out,
-        posiciones=[PosicionOut(ticker=p.ticker, peso=p.peso) for p in posiciones],
+        posiciones=[PosicionOut(ticker=p.ticker, peso=p.peso,
+                                 entrada_dia=getattr(p, "entrada_dia", None)) for p in posiciones],
         rendimiento=retorno, mercado=mercado,
         casa_metodologia=(casas_metodologia.metodologia(f.casa_clave, completa=en_directo)
                           if f.tipo == "casa" else None))

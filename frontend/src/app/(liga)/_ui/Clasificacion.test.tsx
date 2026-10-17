@@ -18,15 +18,14 @@ it("conserva filas y huecos y oculta la cabecera en m?vil", () => {
   expect(salida).toContain("common_ranking_puntos_balance");
 });
 
-it("muestra la insignia y la nota de la jornada provisional", () => {
-  const respuesta = { jornada_provisional: 7, filas: [{ provisional: true }] };
+it("muestra la nota de la jornada provisional sin etiquetar cada fila", () => {
   const salida = renderToStaticMarkup(
-    <Clasificacion jornada_provisional={respuesta.jornada_provisional}>
-      <FilaEquipo puesto={1} nombre="Equipo" provisional={respuesta.filas[0].provisional}
+    <Clasificacion jornada_provisional={7}>
+      <FilaEquipo puesto={1} nombre="Equipo"
         escudo={{ forma: "circulo", dibujo: "liso", color1: "#123456", color2: null, iniciales: null }}
         etiqueta="Alias" vsIndice={0} puntos={3} acumulado={null} />
     </Clasificacion>,
   );
-  expect(salida).toContain(">Provisional</span>");
+  expect(salida).not.toContain(">Provisional</span>");
   expect(salida).toContain("La jornada 7 sigue en juego: los puestos son provisionales.");
 });

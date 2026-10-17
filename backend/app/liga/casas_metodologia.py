@@ -6,7 +6,7 @@ from __future__ import annotations
 from app.i18n import translate
 
 # Pasos de cada equipo; sus textos viven en `app/messages` como `liga_casa_<clave>_paso_<n>_*`.
-PASOS = {"alpha": 5, "lambda": 3, "omega": 4}
+PASOS = {"alpha": 5, "lambda": 3, "omega": 5}
 
 
 def metodologia(clave: str, completa: bool) -> dict:

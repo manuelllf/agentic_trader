@@ -21,6 +21,7 @@ export type Yo = {
   admin: boolean;
   aal2: boolean;
   idioma?: Locale | null;
+  mayor_edad_confirmada?: boolean;
   avisos_correo?: boolean;
   correo_avisos?: string | null;
 };
@@ -278,7 +279,8 @@ export type PorQue = { ticker: string; motivo: string };
 export type EmpresaBusqueda = { ticker: string; nombre: string | null; sector: string | null };
 
 export type JornadaFicha = { numero: number; rentabilidad: number | null; puntos: number | null };
-export type Posicion = { ticker: string; peso: number };
+// Omega no tiene pesos: sus huecos abiertos llegan con la fecha de entrada.
+export type Posicion = { ticker: string; peso: number | null; entrada_dia?: string | null };
 export type MercadoFicha = {
   desde: string; dia: string; consultado: string | null; en_vivo: boolean;
   rentabilidad: number | null; sp500: number | null; diferencia: number | null;
@@ -717,6 +719,25 @@ export type Clasificacion = {
   temporada: TemporadaPublica; total: number; filas: FilaClasificacion[]; mias: FilaClasificacion[];
   jornada_provisional?: number | null;
 };
+
+export type PremioPublico = {
+  visible: boolean;
+  temporada?: { id: number; nombre: string } | null;
+  calculado?: boolean;
+  cuentas?: number;
+  escalon?: number | null;
+  umbral_basico?: number;
+  umbral_completo?: number;
+  importes?: Record<string, number[]>;
+};
+
+export async function getPremio(): Promise<PremioPublico | string> {
+  return llamar<PremioPublico>("/liga/publico/premio", {}, "opcional");
+}
+
+export const confirmarMayorEdad = (confirmada: boolean) =>
+  llamar<{ confirmada: boolean }>("/liga/yo/mayor-edad",
+    { method: "PUT", body: JSON.stringify({ confirmada }) });
 
 export async function getPortada(): Promise<Portada | string> {
   return llamar<Portada>("/liga/publico/portada", {}, "opcional");

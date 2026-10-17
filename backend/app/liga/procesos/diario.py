@@ -296,6 +296,7 @@ def vista_previa(fabrica: Fabrica = fabrica_sistema) -> dict:
 def ejecutar(fabrica: Fabrica = fabrica_sistema, actor: str | None = None) -> dict:
     try:
         with candado("diario", fabrica), sesion(fabrica) as db:
+            omega.capturar_alertas(db)
             inicio = _inicios(db)
             filas = precios.al_dia(db, inicio) if inicio else 0
             huecos = [omega.sincronizar(db, j, ultimo, actor) for j in _formadas(db)

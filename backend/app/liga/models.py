@@ -67,6 +67,7 @@ class PerfilPrivado(LigaBase):
     avisos_correo: Mapped[bool] = mapped_column(Boolean, server_default=DB)
     correo_avisos: Mapped[str | None] = mapped_column(Text)  # vacío: el correo de la cuenta
     baja_solicitada: Mapped[datetime | None] = mapped_column(TSTZ)
+    mayor_edad_confirmada_en: Mapped[datetime | None] = mapped_column(TSTZ)
     creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
     actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
@@ -541,3 +542,20 @@ class RespuestaFresca(LigaBase):
     llm_call_id: Mapped[int | None] = mapped_column(BigInteger)
     creado_en: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+
+
+class OmegaAlerta(LigaBase):
+    """Foto de alertas de Omega para la liga, copiada de la sala en solo lectura."""
+
+    __tablename__ = "omega_alertas"
+
+    senal_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ticker: Mapped[str] = mapped_column(Text)
+    nace_en: Mapped[datetime] = mapped_column(TSTZ)
+    estado_origen: Mapped[str | None] = mapped_column(Text)
+    market_cap_usd: Mapped[Decimal | None] = mapped_column(Numeric)
+    capturada_en: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
+    creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    actualizado_por: Mapped[uuid.UUID | None] = mapped_column(UUID)

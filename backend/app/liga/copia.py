@@ -22,7 +22,8 @@ from app.liga.procesos.comun import auditar, fabrica_sistema
 TABLAS = (
     "perfiles", "perfiles_privados", "roles_usuario", "planes_usuario", "pases_liga",
     "consentimientos", "temporadas", "jornadas", "estrategias", "recetas", "inscripciones",
-    "posiciones", "resultados", "omega_operaciones", "ligas_privadas", "miembros_liga", "pruebas",
+    "posiciones", "resultados", "omega_operaciones", "omega_alertas", "ligas_privadas",
+    "miembros_liga", "pruebas",
     "respuestas_ia", "lecturas", "creditos_movimientos", "ajustes", "auditoria", "reportes",
     "avisos_error", "borradores", "visitas", "estrategias_revisadas", "formaciones_degradadas",
     "suscripciones_push", "premios_temporada", "premios", "compras_pago", "eventos_pago",
@@ -31,7 +32,7 @@ TABLAS = (
 
 # El número más alto de `sql/liga/NNN_*.sql` aplicado (plan §6.3): se guarda en el manifiesto
 # para saber, al restaurar, qué migraciones hacen falta antes de cargar los datos.
-VERSION_ESQUEMA = 48
+VERSION_ESQUEMA = 50
 
 TABLAS_BLOG = ("articulos", "articulo_textos", "suscriptores", "envios", "entregas")
 

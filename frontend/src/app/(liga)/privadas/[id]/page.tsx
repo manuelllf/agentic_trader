@@ -76,8 +76,8 @@ export default function PrivadaDetalle() {
             {liga.jornada_numero ? ` · ${t("private_leagues_round", { round: liga.jornada_numero })}` : ""}
           </p>
           <dl className="priv-resumen">
-            <div><dt>{t("private_leagues_sp_month")}</dt><dd className={sp == null ? "" : claseSigno(sp)}>{sp == null ? "—" : percent(sp)}</dd></div>
-            <div><dt>{t("private_leagues_best_group")}</dt><dd className={mejor == null ? "" : claseSigno(mejor)}>{mejor == null ? "—" : percent(mejor)}</dd></div>
+            <div><dt>{t("private_leagues_sp_month")}</dt><dd className={sp == null ? "" : claseSigno(sp)}>{sp == null ? "-" : percent(sp)}</dd></div>
+            <div><dt>{t("private_leagues_best_group")}</dt><dd className={mejor == null ? "" : claseSigno(mejor)}>{mejor == null ? "-" : percent(mejor)}</dd></div>
           </dl>
         </header>
         <div className="priv-contenido">
@@ -104,7 +104,7 @@ export default function PrivadaDetalle() {
               <TablaClasificacion>
                 {clasificados.map((m, i) => m.estrategia && (
                   <FilaEquipo key={m.alias} puesto={i + 1} nombre={m.estrategia.nombre} escudo={m.estrategia.escudo}
-                    provisional={m.provisional} etiqueta={etiqueta(m, abrir(m))} vsIndice={Number(m.dif_sp ?? 0)} puntos={m.puntos ?? 0}
+                    etiqueta={etiqueta(m, abrir(m))} vsIndice={Number(m.dif_sp ?? 0)} puntos={m.puntos ?? 0}
                     acumulado={m.acumulado} movimiento={m.movimiento} tipo={m.es_yo ? "mia" : "normal"}
                     abrible={abrir(m)} onClick={ir(m)}
                     alAcercar={() => { if (m.estrategia) precargarFicha(m.estrategia.id); }} />

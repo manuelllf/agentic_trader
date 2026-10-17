@@ -41,8 +41,6 @@
   "league_sin_clasificacion": "No standings yet",
   "league_crear_mia": "Create mine",
   "league_mas_filas": "and {count} more",
-  "league_leyenda_casa": "α Alpha, Ω Omega, and λ Lambda are house teams and play by the same rules.",
-  "league_leyenda_vs_sp": "vs S&P: the season's gain or loss against the index.",
   "league_jornada_sin_cierres": "The table fills in with the first market close.",
   "league_escudo_de": "{name} team crest",
   "league_abriendo": "Opening {name}",
@@ -53,5 +51,13 @@
   "league_ganando_mes": "Ahead this month",
   "league_empatando": "Tied",
   "league_empate_ayuda": "within 0.2 points of the S&P",
-  "league_perdiendo": "Behind"
+  "league_perdiendo": "Behind",
+  "premio_titulo": "Annual prize",
+  "premio_cuentas": "{count, plural, one {# eligible account} other {# eligible accounts}}",
+  "premio_umbrales": "It is paid with {basico} eligible accounts; the full tier with {completo}.",
+  "premio_importes": "First tier: {a} €, {b} € and {c} €. Full tier: {d} €, {e} € and {f} €.",
+  "premio_calculado": "Calculated: tier {escalon}.",
+  "premio_bases": "Read the rules",
+  "premio_edad_casilla": "I am 18 or over",
+  "premio_edad_error": "Could not save. Please try again."
 }

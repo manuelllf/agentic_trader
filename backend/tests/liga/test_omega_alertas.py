@@ -1,46 +1,64 @@
-"""Qué señales de la sala cuentan como alerta de llegada para Omega de la casa (solo lectura de
-`momentum_senales`). Contra el Postgres de pruebas: todo se deshace al final."""
-
-from __future__ import annotations
-
-import os
-from datetime import date
-
-import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
+"""Captura aislada, sin red."""
+from datetime import date, datetime
+from decimal import Decimal
+from types import SimpleNamespace
 
 from app.liga.procesos import omega
 
-URL = os.environ.get("LIGA_TEST_DATABASE_URL")
-pytestmark = pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DATABASE_URL)")
 
-_INSERT = text("""
-    insert into momentum_senales (ticker, sector, tipo, entry_date, entry_price, ref_label,
-        ref_price, caida_pct, estado, resuelta, exit_date, created_at)
-    values (:t, 'Industrials', 'suelo', :e, 50, 'max', 70, 30, :estado, :res, :x, :c)""")
+class FotoDB:
+    def __init__(self):
+        self.foto = {}
+        self.origen = [SimpleNamespace(id=1, ticker="AAA", created_at=None,
+                                      entry_date=date(2026, 10, 1), estado="descartada")]
+
+    def execute(self, sql, params):
+        sql = str(sql)
+        if "from momentum_senales" in sql:
+            assert "estado <>" not in sql
+            assert "not (coalesce(s.resuelta" in sql
+            filas = [f for f in self.origen if f.id not in self.foto and f.id > params["ultimo"]]
+            return SimpleNamespace(all=lambda: filas)
+        if "insert into liga.omega_alertas" in sql:
+            for f in params:
+                self.foto.setdefault(f["s"], f)
+            return None
+        assert "from liga.omega_alertas" in sql
+        filas = [SimpleNamespace(senal_id=f["s"], ticker=f["t"], nace_en=f["n"],
+                                 market_cap_usd=f["c"]) for f in self.foto.values()]
+        return SimpleNamespace(all=lambda: filas)
 
 
-def test_solo_cuentan_las_alertas_que_de_verdad_llegan_ese_dia() -> None:
-    motor = create_engine(URL.replace("postgresql://", "postgresql+psycopg://", 1))
-    with Session(motor) as db:
-        try:
-            filas = [
-                # Llega hoy y sigue viva: cuenta.
-                ("ZQVIVA", "2026-10-06", "nueva", False, None, "2026-10-06 15:00+00"),
-                # Llega hoy y se resuelve después: fue una alerta ese día, cuenta.
-                ("ZQRAPI", "2026-10-06", "nueva", True, "2026-10-09", "2026-10-06 15:00+00"),
-                # Histórica insertada hoy ya resuelta (ticker incorporado tarde): no cuenta.
-                ("ZQVIEJA", "2026-07-01", "nueva", True, "2026-08-12", "2026-10-06 15:00+00"),
-                # Descartada por el filtro manual: no cuenta.
-                ("ZQDESC", "2026-10-06", "descartada", False, None, "2026-10-06 15:00+00"),
-            ]
-            for t, e, estado, res, x, c in filas:
-                db.execute(_INSERT, {"t": t, "e": e, "estado": estado, "res": res, "x": x,
-                                     "c": c})
-            alertas = omega.alertas(db, date(2026, 10, 6), date(2026, 10, 6),
-                                    capitalizacion=lambda _t: None)
-            assert sorted(a.ticker for a in alertas) == ["ZQRAPI", "ZQVIVA"]
-        finally:
-            db.rollback()
-    motor.dispose()
+def test_captura_idempotente_incluye_descartadas():
+    db = FotoDB()
+    llamadas = []
+
+    def pedir(ticker):
+        llamadas.append(ticker)
+        return Decimal(100)
+    assert omega.capturar_alertas(db, pedir) == 1
+    assert omega.capturar_alertas(db, pedir) == 0
+    assert llamadas == ["AAA"]
+    assert db.foto[1]["e"] == "descartada"
+    assert db.foto[1]["n"].hour == 16
+    assert db.foto[1]["n"].utcoffset().total_seconds() == -14400
+    alertas = omega.alertas(db, date(2026, 10, 1), date(2026, 10, 1))
+    assert alertas[0].market_cap == 100
+
+
+def test_yfinance_caido_guarda_null(monkeypatch, caplog):
+    def caido(ticker):
+        raise RuntimeError("offline")
+    monkeypatch.setattr(omega, "capitalizacion_yfinance", caido)
+    db = FotoDB()
+    assert omega.capturar_alertas(db) == 1
+    assert db.foto[1]["c"] is None
+    assert "Sin capitalización de AAA" in caplog.text
+
+
+def test_created_at_se_conserva():
+    db = FotoDB()
+    instante = datetime(2026, 10, 1, 14, tzinfo=omega.TZ_BOLSA)
+    db.origen[0].created_at = instante
+    omega.capturar_alertas(db, lambda _: None)
+    assert db.foto[1]["n"] == instante

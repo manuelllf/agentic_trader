@@ -59,8 +59,8 @@ function CarteraSinEvidencia({ fichaId, posiciones, mercado }: { fichaId: string
       }))} />
     <dialog ref={dialogo} className="lecturas-modal empresa-modal" aria-label={t("strategies_company_dialog", { ticker: ticker ?? "" })} onCancel={() => setTicker(null)}>
       <header className="lecturas-cab"><h2>{ticker}</h2><button type="button" className="lecturas-cerrar" autoFocus aria-label={t("strategies_close_company")} onClick={() => setTicker(null)}>×</button></header>
-      <div className="lecturas-cuerpo">{ticker && <NotasEmpresa fichaId={fichaId} ticker={ticker} />}<p>{t("strategies_price_label")}: {cotizacion?.precio == null ? "—" : Number(cotizacion.precio).toLocaleString(locale)}</p>
-        <p>{t("strategies_month_return")}: {cotizacion?.rentabilidad == null ? "—" : porcentaje(cotizacion.rentabilidad, 1, locale)}</p>
+      <div className="lecturas-cuerpo">{ticker && <NotasEmpresa fichaId={fichaId} ticker={ticker} />}<p>{t("strategies_price_label")}: {cotizacion?.precio == null ? "-" : Number(cotizacion.precio).toLocaleString(locale)}</p>
+        <p>{t("strategies_month_return")}: {cotizacion?.rentabilidad == null ? "-" : porcentaje(cotizacion.rentabilidad, 1, locale)}</p>
         <p className="fine">{cotizacion?.dia ? t("strategies_data_provisional", { date: fecha(cotizacion.dia, new Date(), locale) }) : t("strategies_no_current_quote")}</p>
         <p className="fine">{t("strategies_no_historical_evidence")}</p></div>
     </dialog>
@@ -173,14 +173,14 @@ export function FichaContenido({ id }: { id: string }) {
           <div className="ficha-cuerpo">
           <div className="ficha-principal">
           {ficha.mercado && <section className="ficha-marcador" aria-label={t("strategies_portfolio_provisional_result")}>
-            <div><small>{t("strategies_portfolio_month")}</small><b className={ficha.mercado.rentabilidad == null ? "" : claseSigno(ficha.mercado.rentabilidad)}>{ficha.mercado.rentabilidad == null ? "—" : percent(ficha.mercado.rentabilidad)}</b></div>
-            <div><small>{t("strategies_sp_same_period")}</small><b>{ficha.mercado.sp500 == null ? "—" : percent(ficha.mercado.sp500)}</b></div>
+            <div><small>{t("strategies_portfolio_month")}</small><b className={ficha.mercado.rentabilidad == null ? "" : claseSigno(ficha.mercado.rentabilidad)}>{ficha.mercado.rentabilidad == null ? "-" : percent(ficha.mercado.rentabilidad)}</b></div>
+            <div><small>{t("strategies_sp_same_period")}</small><b>{ficha.mercado.sp500 == null ? "-" : percent(ficha.mercado.sp500)}</b></div>
             <p className="fine">{t("strategies_market_freshness", { checked: ficha.mercado.consultado ? t("strategies_checked_at", { time: new Date(ficha.mercado.consultado).toLocaleTimeString(locale, {hour:"2-digit",minute:"2-digit"}) }) : t("strategies_waiting_market") })}</p>
           </section>}
           <Segmentado className="ficha-nav" etiquetaGrupo={t("strategies_detail_tabs")} valor={vista} onChange={setVista}
             opciones={[{ valor: "cartera", etiqueta: t("strategies_portfolio") }, { valor: "metodo", etiqueta: t("strategies_methodology") }, { valor: "resultados", etiqueta: t("strategies_results") }]} />
           {vista === "resultados" && <div className={ficha.es_dueno && seguimiento ? "ficha-distribucion" : undefined}>
-            <RendimientoFicha datos={ficha.rendimiento} posiciones={ficha.posiciones} />
+            <RendimientoFicha datos={ficha.rendimiento} posiciones={ficha.casa === "omega" ? [] : ficha.posiciones} />
             {ficha.es_dueno && seguimiento && (
               <aside><CambiosEstrategia key={`${id}:${seguimiento.ultima_inscripcion_id}:${seguimiento.ultimo_resultado_inscripcion_id}`} resumen={seguimiento} alMostrar={alMostrarSeguimiento} /></aside>
             )}
@@ -239,7 +239,7 @@ export function FichaContenido({ id }: { id: string }) {
           )}
 
           {vista === "cartera" && ficha.rendimiento?.evidencia && <EvidenciaCartera fichaId={id} datos={ficha.rendimiento.evidencia} mercado={ficha.mercado} />}
-          {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.posiciones.length > 0 && (
+          {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.casa !== "omega" && ficha.posiciones.length > 0 && (
             <CarteraSinEvidencia fichaId={id} posiciones={ficha.posiciones} mercado={ficha.mercado} />
           )}
           {vista === "cartera" && !ficha.rendimiento?.evidencia && ficha.posiciones.length === 0 && <p className="meta">{ficha.rendimiento?.estado === "privado" ? t("strategies_private_portfolio_note")
@@ -250,6 +250,13 @@ export function FichaContenido({ id }: { id: string }) {
             <div className="sec">
               <div className="sec-t">{t("strategies_its_portfolio")}</div>
               <p className="fine">{t("strategies_changes_during_month")}</p>
+              {ficha.posiciones.length > 0 && (
+                <ul className="meta" style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
+                  {ficha.posiciones.map((p) => (
+                    <li key={p.ticker}><b>{p.ticker}</b>{p.entrada_dia && <> · {fecha(p.entrada_dia, undefined, locale)}</>}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
@@ -261,8 +268,8 @@ export function FichaContenido({ id }: { id: string }) {
             ) : ficha.jornadas.map((j) => (
               <div className="month" key={j.numero}>
                 <span>{t("strategies_round", { round: j.numero })}</span>
-                {j.rentabilidad !== null ? <Cifra valor={j.rentabilidad} /> : <span className="fl">—</span>}
-                <span className="num">{j.puntos !== null ? t("strategies_points", { count: j.puntos }) : "—"}</span>
+                {j.rentabilidad !== null ? <Cifra valor={j.rentabilidad} /> : <span className="fl">-</span>}
+                <span className="num">{j.puntos !== null ? t("strategies_points", { count: j.puntos }) : "-"}</span>
               </div>
             ))}
             <p className="fine"><Link href="/liga">{t("strategies_compare_others")} →</Link></p>

@@ -1,16 +1,9 @@
-"""Omega de la casa en la liga: los 4 huecos virtuales, con la base de datos por encima del motor
-puro (`motor.omega_huecos`). Las alertas se leen de `momentum_senales` (solo lectura) y cada
-operación de un hueco vive en `liga.omega_operaciones`.
-
-Repetir el proceso el mismo día no duplica nada: se recalcula el mes entero con el motor (que es
-determinista) y solo se añade lo que falte o se cierra lo que toque; lo ya escrito no se toca.
-"""
+"""Foto de alertas y huecos de Omega en la liga, separada de la sala personal."""
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
@@ -29,52 +22,70 @@ Capitalizacion = Callable[[str], Decimal | None]
 
 
 def capitalizacion_yfinance(ticker: str) -> Decimal | None:
-    """Solo se pide para desempatar dos alertas idénticas en instante y caída; sin dato, pierde."""
+    """Capitalización de Yahoo Finance en el momento de la captura."""
     try:
         import yfinance as yf
 
         valor = yf.Ticker(ticker).info.get("marketCap")
         return Decimal(str(valor)) if valor else None
     except Exception:
-        logger.warning("Sin capitalización de %s para el desempate", ticker, exc_info=True)
+        logger.warning("Sin capitalización de %s", ticker, exc_info=True)
         return None
 
 
 # --- Lectura -------------------------------------------------------------------------------------
 
 
-def alertas(db: Session, desde: date, hasta: date,
-            capitalizacion: Capitalizacion | None = None) -> list[Alerta]:
-    """Filas de `momentum_senales` llegadas entre esos días de bolsa (hora de Nueva York). Llegada:
-    `created_at`; sin él, el cierre de `entry_date`. Las descartadas no cuentan, ni las señales
-    históricas que el escáner inserta ya resueltas al incorporar un ticker (salieron antes de
-    "llegar"): no son alertas de hoy."""
+def capturar_alertas(db: Session, capitalizacion: Capitalizacion | None = None) -> int:
+    """Copia a la foto, por lotes y sin commit, las señales que aún no estén."""
+    pedir = capitalizacion or capitalizacion_yfinance
+    ultimo = -1
+    total = 0
+    while True:
+        filas = db.execute(text("""
+            select s.id, s.ticker, s.created_at, s.entry_date, s.estado
+            from momentum_senales s
+            where s.id > :ultimo
+              and not exists (select 1 from liga.omega_alertas a where a.senal_id = s.id)
+              and not (coalesce(s.resuelta, false) and s.exit_date is not null
+                and s.exit_date < (coalesce(s.created_at,
+                  (s.entry_date + time '16:00') at time zone 'America/New_York')
+                  at time zone 'America/New_York')::date)
+            order by s.id limit 200
+        """), {"ultimo": ultimo}).all()
+        if not filas:
+            break
+        lote = []
+        for f in filas:
+            try:
+                cap = pedir(f.ticker)
+            except Exception:
+                logger.warning("Sin capitalización de %s", f.ticker, exc_info=True)
+                cap = None
+            if cap is None:
+                logger.warning("Capitalización nula de %s", f.ticker)
+            nace = (f.created_at if f.created_at is not None else
+                    datetime.combine(f.entry_date, time(16), tzinfo=TZ_BOLSA))
+            lote.append({"s": f.id, "t": f.ticker, "n": nace, "e": f.estado, "c": cap})
+        db.execute(text("""
+            insert into liga.omega_alertas
+                (senal_id, ticker, nace_en, estado_origen, market_cap_usd)
+            values (:s, :t, :n, :e, :c) on conflict (senal_id) do nothing
+        """), lote)
+        total += len(lote)
+        ultimo = filas[-1].id
+    return total
+
+
+def alertas(db: Session, desde: date, hasta: date) -> list[Alerta]:
+    """Lee solo la foto de Omega, nunca la sala personal."""
     filas = db.execute(text("""
-        select id, ticker, created_at, entry_date, caida_pct from momentum_senales
-        where estado <> 'descartada'
-          and not (resuelta and exit_date is not null and exit_date <
-                   (coalesce(created_at, entry_date::timestamptz)
-                    at time zone 'America/New_York')::date)
-          and coalesce(created_at, entry_date::timestamptz) >= :d
-          and coalesce(created_at, entry_date::timestamptz) < :h
-    """), {"d": datetime.combine(desde - timedelta(days=1), time(0), tzinfo=TZ_BOLSA),
-           "h": datetime.combine(hasta + timedelta(days=2), time(0), tzinfo=TZ_BOLSA)}).all()
-    out = []
-    for f in filas:
-        momento = (f.created_at.astimezone(TZ_BOLSA) if f.created_at is not None
-                   else datetime.combine(f.entry_date, time(16), tzinfo=TZ_BOLSA))
-        if desde <= momento.date() <= hasta:
-            out.append(Alerta(f.ticker, momento, Decimal(f.caida_pct or 0), None, f.id))
-    return _con_capitalizacion(out, capitalizacion or capitalizacion_yfinance)
-
-
-def _con_capitalizacion(lista: list[Alerta], pedir: Capitalizacion) -> list[Alerta]:
-    """La capitalización solo para las alertas empatadas en instante y caída."""
-    grupos: dict[tuple, list[Alerta]] = {}
-    for a in lista:
-        grupos.setdefault((a.momento, a.caida_pct), []).append(a)
-    empatadas = {id(a) for g in grupos.values() if len(g) > 1 for a in g}
-    return [replace(a, market_cap=pedir(a.ticker)) if id(a) in empatadas else a for a in lista]
+        select senal_id, ticker, nace_en, market_cap_usd from liga.omega_alertas
+        where nace_en >= :d and nace_en < :h
+    """), {"d": datetime.combine(desde, time(0), tzinfo=TZ_BOLSA),
+           "h": datetime.combine(hasta + timedelta(days=1), time(0), tzinfo=TZ_BOLSA)}).all()
+    return [Alerta(f.ticker, f.nace_en.astimezone(TZ_BOLSA), Decimal(0),
+                   f.market_cap_usd, f.senal_id) for f in filas]
 
 
 def _operacion(f) -> Operacion:
@@ -137,8 +148,7 @@ def inicios(db: Session, jornadas: list[Jornada]) -> dict[str, date]:
     for j in jornadas:
         for f in _arrastre(db, j) + _propias(db, j.id):
             out[f.ticker] = min(out.get(f.ticker, f.entrada_dia), f.entrada_dia)
-        for a in alertas(db, j.dia_base + timedelta(days=1), j.dia_fin,
-                         capitalizacion=lambda _t: None):
+        for a in alertas(db, j.dia_base - timedelta(days=motor.ALERTA_MAX_DIAS), j.dia_fin):
             out[a.ticker] = min(out.get(a.ticker, a.momento.date()), a.momento.date())
     return out
 
@@ -150,27 +160,36 @@ def sincronizar(db: Session, j: Jornada, hasta: date, actor: str | None = None,
                 capitalizacion: Capitalizacion | None = None) -> dict:
     """Asigna las alertas a los huecos libres y cierra lo que toque salir, día a día hasta
     `hasta` (con los cierres ya guardados). No hace commit."""
+    capturar_alertas(db, capitalizacion)
+    db.execute(text("select id from liga.jornadas where id = :j for update"), {"j": j.id})
     comienzo = j.dia_base + timedelta(days=1)
     hoy = min(hasta, j.dia_fin)
     if hoy < comienzo:
         return {"jornada_id": j.id, "nuevas": 0, "cerradas": 0}
-    arrastre = {(f.numero, f.entrada_dia): f for f in _arrastre(db, j)}
-    propias = {(f.numero, f.entrada_dia): f for f in _propias(db, j.id)}
+    arrastre = {f.senal_id: f for f in _arrastre(db, j)}
+    propias = {f.senal_id: f for f in _propias(db, j.id)}
     ya_propios = {f.ticker for f in propias.values()}
-    llegadas = alertas(db, comienzo, hoy, capitalizacion)
-    # Las de arrastre se recalculan como abiertas: su salida, si la hubo, la decide el motor.
-    abiertas = [replace(_operacion(f), salida_dia=None, salida_precio=None, motivo=None)
-                for f in arrastre.values()]
+    llegadas = alertas(db, comienzo - timedelta(days=motor.ALERTA_MAX_DIAS), hoy)
+    # Las entradas ya guardadas no se recalculan.
+    abiertas = [_operacion(f) for f in arrastre.values()]
+    abiertas += [_operacion(f) for f in propias.values()]
     tickers = sorted({o.ticker for o in abiertas} | {a.ticker for a in llegadas})
     desde = min([comienzo] + [o.entrada_dia for o in abiertas])
     cierres = precios.series(db, tickers, desde, hoy)
-    nuevas = cerradas = 0
+    nuevas = cerradas = discrepancias = 0
+    ocupados = {f.numero for f in [*arrastre.values(), *propias.values()]
+                if f.salida_dia is None}
     for op in motor.simular(abiertas, llegadas, cierres, comienzo, hoy):
-        clave = (op.numero, op.entrada_dia)
-        previa = arrastre.get(clave) if op.entrada_dia <= j.dia_base else propias.get(clave)
+        previa = arrastre.get(op.senal_id) or propias.get(op.senal_id)
+        if previa is not None and (previa.entrada_dia != op.entrada_dia
+                                   or float(previa.entrada_precio) != op.entrada_precio):
+            discrepancias += 1
+            logger.error("Entrada discrepante en la señal %s", op.senal_id)
         if previa is None:
-            if op.ticker in ya_propios:
-                continue  # el precio de otro día llegó tarde: no se duplica el ticker
+            if op.ticker in ya_propios or (op.abierta and op.numero in ocupados):
+                discrepancias += 1
+                logger.error("Conflicto de hueco en la señal %s", op.senal_id)
+                continue
             db.execute(text("""
                 insert into liga.omega_operaciones
                   (jornada_id, numero, senal_id, ticker, entrada_dia, entrada_precio,
@@ -182,6 +201,8 @@ def sincronizar(db: Session, j: Jornada, hasta: date, actor: str | None = None,
                    "sp": None if op.salida_precio is None else round(op.salida_precio, 4),
                    "m": op.motivo})
             ya_propios.add(op.ticker)
+            if op.abierta:
+                ocupados.add(op.numero)
             nuevas += 1
             cerradas += op.salida_dia is not None
         elif previa.salida_dia is None and op.salida_dia is not None:
@@ -192,7 +213,51 @@ def sincronizar(db: Session, j: Jornada, hasta: date, actor: str | None = None,
             """), {"sd": op.salida_dia, "sp": round(op.salida_precio, 4), "m": op.motivo,
                    "i": previa.id})
             cerradas += 1
-    if nuevas or cerradas:
+            ocupados.discard(previa.numero)
+    if nuevas or cerradas or discrepancias:
         auditar(db, "proceso.diario.omega", f"jornada:{j.id}",
-                {"nuevas": nuevas, "cerradas": cerradas, "hasta": hoy}, actor)
-    return {"jornada_id": j.id, "nuevas": nuevas, "cerradas": cerradas}
+                {"nuevas": nuevas, "cerradas": cerradas, "discrepancias": discrepancias,
+                 "hasta": hoy}, actor)
+    return {"jornada_id": j.id, "nuevas": nuevas, "cerradas": cerradas,
+            "discrepancias": discrepancias}
+
+
+def datos_ficha(estrategia_id: str, solo_cerradas: bool) -> tuple[list[dict], dict]:
+    """Huecos abiertos y serie diaria de Omega para la ficha de la casa."""
+    from sqlalchemy import select
+
+    from app.liga import rendimiento
+    from app.liga.motor.calendario import dias_de_bolsa
+    from app.liga.procesos.comun import fabrica_sistema, hoy_bolsa, sesion
+
+    with sesion(fabrica_sistema) as db:
+        jornadas = list(db.scalars(select(Jornada).where(
+            Jornada.id.in_(text("select jornada_id from liga.inscripciones "
+                               "where estrategia_id = :e")),
+            Jornada.estado.in_(["cerrada"] if solo_cerradas else ["formada", "cerrada"]),
+        ).order_by(Jornada.dia_base, Jornada.id), {"e": estrategia_id}))
+        if not jornadas:
+            return [], rendimiento._sin_datos()
+        hoy = hoy_bolsa()
+        ultima = jornadas[-1]
+        hasta = ultima.dia_fin if ultima.estado == "cerrada" else min(hoy, ultima.dia_fin)
+        cartera = [{"ticker": op.ticker, "entrada_dia": op.entrada_dia}
+                   for op in operaciones(db, ultima)
+                   if op.entrada_dia <= hasta and (op.salida_dia is None or op.salida_dia > hasta)]
+        series = precios.series(db, [precios.REFERENCIA], jornadas[0].dia_base, hasta)
+        rondas = []
+        for j in jornadas:
+            ticker = f"OMEGA_{j.id}"
+            dias = dias_de_bolsa(j.dia_base, min(j.dia_fin, hasta))
+            series[ticker] = []
+            for dia in dias:
+                r, sin = rentabilidad(db, j, dia)
+                if not sin:
+                    series[ticker].append(precios.Cierre(dia, 1 + float(r) / 100))
+            rondas.append((j.dia_base, j.dia_fin, j.estado == "cerrada",
+                           [(ticker, Decimal(100))]))
+        salida = rendimiento._serie_guardada(
+            rondas, series, hoy, dias_de_bolsa(jornadas[0].dia_base, hasta),
+            numeros=[j.numero for j in jornadas])
+        salida["evidencia"] = None
+        return cartera, salida

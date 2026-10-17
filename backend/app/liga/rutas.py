@@ -65,6 +65,7 @@ class Yo(BaseModel):
     admin: bool   # enseña el «Panel de control»; entrar en las salas pide además el 2FA
     aal2: bool
     idioma: Literal["es", "en"] | None = None
+    mayor_edad_confirmada: bool = False
     avisos_correo: bool = False
     correo_avisos: str | None = None   # vacío: los avisos van al correo de la cuenta
     # Cuenta creada con Google o con un enlace que aún no ha aceptado los términos.
@@ -159,6 +160,7 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
                liga.authorize('admin.salas') as admin,
                liga.aal2() as aal2, privado.idioma,
                coalesce(privado.avisos_correo, false) as avisos_correo, privado.correo_avisos,
+               privado.mayor_edad_confirmada_en is not null as mayor_edad_confirmada,
                liga.cuenta_pendiente() as pendiente,
                array(select r.rol::text from liga.roles_usuario r
                      where r.usuario_id = p.id order by r.rol) as roles
@@ -172,6 +174,7 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
               puede_crear_liga=fila.puede_crear_liga, pase_liga=fila.pase_liga,
               plan_pago=fila.plan_pago, plan_pago_hasta=fila.plan_pago_hasta,
               roles=list(fila.roles), admin=fila.admin, aal2=fila.aal2,
+              mayor_edad_confirmada=fila.mayor_edad_confirmada,
               idioma=fila.idioma, avisos_correo=fila.avisos_correo,
               correo_avisos=fila.correo_avisos, pendiente=fila.pendiente)
 
@@ -224,6 +227,25 @@ def cambiar_avisos_correo(body: AvisosCorreo, db: Session = Depends(db_usuario))
     if resultado is None:
         raise HTTPException(404, "No encontramos tu perfil.")
     return AvisosCorreo(activo=body.activo, correo=correo)
+
+
+class MayorEdad(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmada: bool
+
+
+@router.put("/yo/mayor-edad", response_model=MayorEdad)
+def confirmar_mayor_edad(body: MayorEdad, db: Session = Depends(db_usuario)) -> MayorEdad:
+    """Casilla de 18 años del premio anual: sin ella, la cuenta no cuenta para el premio."""
+    resultado = db.execute(text("""
+        update liga.perfiles_privados
+        set mayor_edad_confirmada_en =
+            case when :c then coalesce(mayor_edad_confirmada_en, now()) end
+        where id = (select auth.uid()) returning id
+    """), {"c": body.confirmada}).one_or_none()
+    if resultado is None:
+        raise HTTPException(404, "No encontramos tu perfil.")
+    return body
 
 
 # ---- Exportar y baja (plan §15, D17) --------------------------------------------------------

@@ -19,7 +19,7 @@ import {
   FilaEquipo, HuecoClasificacion, OrdenLista, Segmentado, Vacio,
 } from "../_ui";
 import {
-  getClasificacion, getJornadaPublica, getPortada,
+  getClasificacion, getJornadaPublica, getPortada, getPremio, type PremioPublico,
   type Clasificacion, type FilaClasificacion, type JornadaDetalle,
   type OrdenClasificacion, type Portada,
 } from "@/lib/liga/api";
@@ -29,6 +29,8 @@ import { useCache } from "@/lib/liga/cache";
 import { precargarFicha } from "@/lib/liga/ficha";
 import { anioDeLiga } from "@/lib/liga/anio";
 import { etiquetaEquipo, VistaJornada } from "./VistaJornada";
+
+import { TarjetaPremio } from "../_ui/TarjetaPremio";
 
 type Vista = "tabla" | "jornada";
 
@@ -112,6 +114,7 @@ function LigaContenido() {
   // instante y se revalida en segundo plano, en vez de repetir el esqueleto (H1/M6 del informe).
   const { datos: portada, cargando: cargandoPortada, refrescar: refrescarPortada } =
     useCache<Portada | string>("portada", getPortada, 120000);
+  const { datos: premio } = useCache<PremioPublico | string>("premio", getPremio, 120000);
   const anio = anioDeLiga(typeof portada === "object" ? portada : null);
   const hayTemporada = typeof portada === "object" && !!portada && portada.temporada !== null;
   const { datos: clasificacion, refrescar: refrescarClasificacion } =
@@ -131,7 +134,6 @@ function LigaContenido() {
   const filaDe = (f: FilaClasificacion) => (
     <FilaEquipo
       key={f.equipo.id ?? `p${f.posicion}`}
-      provisional={f.provisional}
       puesto={f.posicion}
       nombre={f.equipo.nombre}
       escudo={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo}
@@ -250,11 +252,10 @@ function LigaContenido() {
                     )}
                     {clasificacion.mias.map(filaDe)}
                   </TablaClasificacion>
-                  <div className="legend">
-                    <p>{t("league_leyenda_casa")}</p>
-                    {orden === "puntos" && <p>{t("league_leyenda_orden_puntos")}</p>}
-                    {orden === "rentabilidad" && <p>{t("league_leyenda_vs_sp")}</p>}
-                  </div>
+                  {orden === "puntos" && <div className="legend">
+                    <p>{t("league_leyenda_orden_puntos")}</p>
+                  </div>}
+                  {premio && typeof premio !== "string" && premio.visible && <TarjetaPremio premio={premio} sesion={!!yo} confirmada={!!yo?.mayor_edad_confirmada} />}
                 </div>
               )}
             </>

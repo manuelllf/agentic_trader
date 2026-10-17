@@ -1,4 +1,4 @@
--- migraciones-liga: 048
+-- migraciones-liga: 050
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -2625,7 +2625,7 @@ CREATE TABLE liga.omega_operaciones (
     actualizado_en timestamp with time zone,
     actualizado_por uuid,
     CONSTRAINT omega_operaciones_motivo_check CHECK ((motivo = ANY (ARRAY['objetivo'::text, 'tiempo'::text]))),
-    CONSTRAINT omega_operaciones_numero_check CHECK (((numero >= 1) AND (numero <= 4))),
+    CONSTRAINT omega_operaciones_numero_check CHECK (((numero >= 1) AND (numero <= 5))),
     CONSTRAINT omega_operaciones_salida_coherente CHECK ((((salida_dia IS NULL) = (salida_precio IS NULL)) AND ((salida_dia IS NULL) = (motivo IS NULL))))
 );
 
@@ -2634,7 +2634,7 @@ CREATE TABLE liga.omega_operaciones (
 -- Name: TABLE omega_operaciones; Type: COMMENT; Schema: liga; Owner: -
 --
 
-COMMENT ON TABLE liga.omega_operaciones IS 'Huecos virtuales de Omega en la liga (500 $ cada uno): una fila por operación. Solo admin (D4, igual que liga.posiciones de la casa): el nombre que eligió el método no es público.';
+COMMENT ON TABLE liga.omega_operaciones IS 'Cinco huecos independientes, sin capital.';
 
 
 --
@@ -2707,6 +2707,7 @@ CREATE TABLE liga.perfiles_privados (
     id uuid NOT NULL,
     tema text DEFAULT 'auto'::text NOT NULL,
     baja_solicitada timestamp with time zone,
+    mayor_edad_confirmada_en timestamp with time zone,
     creado timestamp with time zone DEFAULT now() NOT NULL,
     creado_por uuid DEFAULT auth.uid(),
     actualizado_en timestamp with time zone,
@@ -11281,6 +11282,7 @@ GRANT UPDATE(idioma) ON TABLE liga.perfiles_privados TO authenticated;
 --
 
 GRANT UPDATE(avisos_correo) ON TABLE liga.perfiles_privados TO authenticated;
+GRANT SELECT(mayor_edad_confirmada_en), UPDATE(mayor_edad_confirmada_en) ON TABLE liga.perfiles_privados TO authenticated;
 
 
 --
@@ -12407,3 +12409,26 @@ INSERT INTO liga.permisos_rol VALUES ('admin', 'admin.salas');
 --
 
 
+
+-- liga_050 · Foto de alertas y cinco huecos de Omega en la liga.
+CREATE TABLE liga.omega_alertas (
+  senal_id bigint primary key,
+  ticker text not null,
+  nace_en timestamptz not null,
+  estado_origen text,
+  market_cap_usd numeric,
+  capturada_en timestamptz not null default now(),
+  creado timestamptz not null default now(),
+  creado_por uuid default auth.uid(),
+  actualizado_en timestamptz,
+  actualizado_por uuid
+);
+alter table liga.omega_alertas enable row level security;
+create policy admin on liga.omega_alertas for select
+  to authenticated using (liga.es_admin());
+grant select on liga.omega_alertas to authenticated;
+create trigger traza before update on liga.omega_alertas
+  for each row execute function liga.tocar_auditoria();
+
+create unique index omega_operaciones_una_abierta
+  on liga.omega_operaciones (jornada_id, numero) where salida_dia is null;

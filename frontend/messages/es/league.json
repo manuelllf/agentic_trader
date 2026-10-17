@@ -41,8 +41,6 @@
   "league_sin_clasificacion": "Todavía no hay clasificación",
   "league_crear_mia": "Crear la mía",
   "league_mas_filas": "y {count} más",
-  "league_leyenda_casa": "α Alpha, Ω Omega y λ Lambda son de la casa y juegan con las mismas reglas.",
-  "league_leyenda_vs_sp": "vs S&P: ventaja o desventaja frente al índice en la temporada.",
   "league_jornada_sin_cierres": "La tabla se rellena con el primer cierre de bolsa.",
   "league_escudo_de": "Escudo de {name}",
   "league_abriendo": "Abriendo {name}",
@@ -53,5 +51,13 @@
   "league_ganando_mes": "Ganando el mes",
   "league_empatando": "Empatando",
   "league_empate_ayuda": "a 0,2 puntos o menos del S&P",
-  "league_perdiendo": "Perdiendo"
+  "league_perdiendo": "Perdiendo",
+  "premio_titulo": "Premio anual",
+  "premio_cuentas": "{count, plural, one {# cuenta elegible} other {# cuentas elegibles}}",
+  "premio_umbrales": "Se reparte con {basico} cuentas elegibles; el escalón completo, con {completo}.",
+  "premio_importes": "Primer escalón: {a} €, {b} € y {c} €. Escalón completo: {d} €, {e} € y {f} €.",
+  "premio_calculado": "Cálculo cerrado: escalón {escalon}.",
+  "premio_bases": "Ver las bases",
+  "premio_edad_casilla": "Tengo 18 años o más",
+  "premio_edad_error": "No se pudo guardar. Prueba otra vez."
 }

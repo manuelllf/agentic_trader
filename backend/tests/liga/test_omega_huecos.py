@@ -1,5 +1,5 @@
 """Huecos virtuales de Omega: asignación por orden de llegada, salida objetivo/90 días, huecos
-que se liberan y vuelven a llenarse, capital compuesto y persistencia entre jornadas (carry-over).
+que se liberan y vuelven a llenarse, factores compuestos y persistencia entre jornadas (carry-over).
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from decimal import Decimal
 import pytest
 
 from app.liga.motor.omega_huecos import (
-    CAPITAL_TOTAL_USD,
     N_HUECOS,
     Alerta,
     Operacion,
@@ -36,9 +35,8 @@ def _serie_plana(desde: date, n: int, precio: float) -> list[Cierre]:
     return [Cierre(d, precio) for d in _dias(desde, n)]
 
 
-def test_constantes_2000_dolares_en_4_huecos_de_500():
-    assert N_HUECOS == 4
-    assert CAPITAL_TOTAL_USD == 2000
+def test_cinco_huecos_sin_capital():
+    assert N_HUECOS == 5
 
 
 # ---- asignación de huecos (simular sin ninguna salida) ---------------------------------------
@@ -58,13 +56,13 @@ def test_asigna_por_orden_de_llegada_y_deja_huecos_vacios():
     assert 4 not in abiertas
 
 
-def test_quinta_alerta_del_mes_se_queda_fuera():
-    alertas = [Alerta(f"T{i}", _t(D0, 8 + i), 10) for i in range(5)]
-    cierres = {f"T{i}": _serie_plana(D0, 30, 10 + i) for i in range(5)}
+def test_sexta_alerta_del_mes_se_queda_fuera():
+    alertas = [Alerta(f"T{i}", _t(D0, 8 + i), 10) for i in range(6)]
+    cierres = {f"T{i}": _serie_plana(D0, 30, 10 + i) for i in range(6)}
     ops = simular((), alertas, cierres, D0, D0)
     tickers = {o.ticker for o in ops}
-    assert len(tickers) == 4
-    assert "T4" not in tickers
+    assert len(tickers) == 5
+    assert "T0" not in tickers
 
 
 def test_una_alerta_repetida_del_mismo_ticker_no_ocupa_dos_huecos():
@@ -81,7 +79,7 @@ def test_una_alerta_repetida_del_mismo_ticker_no_ocupa_dos_huecos():
 
 
 @pytest.mark.parametrize(("alertas", "primero"), [
-    ([Alerta("AAA", _t(D0), 10), Alerta("BBB", _t(D0), 25)], "BBB"),
+    ([Alerta("AAA", _t(D0), 10), Alerta("BBB", _t(D0), 25)], "AAA"),
     ([Alerta("AAA", _t(D0), 10, 1000), Alerta("BBB", _t(D0), 10, 5000)], "BBB"),
     ([Alerta("BBB", _t(D0), 10), Alerta("AAA", _t(D0), 10)], "AAA"),
     ([Alerta("AAA", _t(D0), 10), Alerta("BBB", _t(D0), 10, 1)], "BBB"),
@@ -149,9 +147,9 @@ def test_un_hueco_que_sale_se_libera_y_lo_ocupa_la_siguiente_alerta():
     assert any(o.numero == 1 and o.ticker == "BBB" for o in abiertas)
 
 
-# ---- capital compuesto -------------------------------------------------------------------------
+# ---- factores compuestos -------------------------------------------------------------------------
 
-def test_el_hueco_reinvierte_su_capital_no_vuelve_a_500():
+def test_el_hueco_multiplica_retornos_sucesivos():
     # Una operación cerrada con +10% seguida de otra abierta: el factor debe multiplicar, no sumar.
     cerrada = Operacion(1, "AAA", D0, 100, D0 + timedelta(days=10), 110, "objetivo")
     abierta = Operacion(1, "BBB", D0 + timedelta(days=11), 50)
@@ -172,7 +170,7 @@ def test_hueco_vacio_todo_el_periodo_cuenta_como_caja_0():
     assert r == Decimal("0.0000")
 
 
-def test_rentabilidad_del_mes_con_los_cuatro_huecos():
+def test_rentabilidad_del_mes_con_los_cinco_huecos():
     ops = [
         Operacion(1, "AAA", D0, 100),
         Operacion(2, "BBB", D0, 50),
@@ -185,8 +183,8 @@ def test_rentabilidad_del_mes_con_los_cuatro_huecos():
         "CCC": [Cierre(D0, 20), Cierre(dia_fin, 20.2, dividendo=0.0)],  # +1%
     }
     r = rentabilidad_mes(ops, cierres, D0, dia_fin)
-    # (1.10 + 0.90 + 1.01 + 1) / 4 - 1 = 0.0025 -> 0.25%.
-    assert r == Decimal("0.2500")
+    # (1.10 + 0.90 + 1.01 + 1 + 1) / 5 - 1 = 0.002 -> 0.20%.
+    assert r == Decimal("0.2000")
 
 
 def test_falta_el_cierre_de_entrada_es_un_error():
@@ -231,3 +229,24 @@ def test_una_alerta_sin_cierre_ese_dia_no_entra_con_el_precio_de_otro_dia():
     assert [(o.ticker, o.entrada_dia, o.entrada_precio) for o in ops] == \
         [("BBB", D0 + timedelta(days=2), 50)]
     assert rentabilidad_mes(ops, cierres, D0, D0 + timedelta(days=4)) == Decimal("0.0000")
+
+
+def test_valor_rechaza_operaciones_solapadas():
+    ops = [Operacion(1, "AAA", D0, 100), Operacion(1, "BBB", D0, 100)]
+    with pytest.raises(ValueError, match="solapadas"):
+        valor_hueco(1, ops, {}, D0)
+
+
+def test_alertas_viejas_dejan_caja():
+    ops = simular([], [Alerta("AAA", _t(D0 - timedelta(days=6)), 10)],
+                  {"AAA": [Cierre(D0, 100)]}, D0, D0)
+    assert ops == []
+    assert rentabilidad_mes(ops, {}, D0, D0) == 0
+
+
+def test_valor_salido_no_reentra_en_el_mes():
+    cerrada = Operacion(1, "AAA", D0, 100, D0 + timedelta(days=1), 112, "objetivo")
+    dia = D0 + timedelta(days=2)
+    ops = simular([cerrada], [Alerta("AAA", _t(dia), 20)],
+                  {"AAA": [Cierre(dia, 100)]}, D0, dia)
+    assert ops == [cerrada]

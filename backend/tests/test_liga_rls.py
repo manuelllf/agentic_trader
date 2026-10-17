@@ -849,6 +849,7 @@ def test_intenciones_solo_admin_lee_y_sistema_escribe(cx):
 @pytest.mark.parametrize("tabla, politicas", [
     ("actualizaciones", {("propias", "SELECT"), ("crear", "INSERT"), ("admin", "SELECT")}),
     ("notas_frescas", {("admin", "SELECT")}),
+    ("omega_alertas", {("admin", "SELECT")}),
     ("respuestas_frescas", {("admin", "SELECT")}),
 ])
 def test_politicas_datos_de_hoy(cx, tabla, politicas):
@@ -885,3 +886,17 @@ def test_actualizacion_propia_y_caches_solo_admin(cx):
     _como(cx, None)
     for tabla in ("actualizaciones", "notas_frescas", "respuestas_frescas"):
         _falla(cx, f"select 1 from liga.{tabla}")
+
+
+def test_omega_alertas_solo_admin_lee(cx):
+    usuario = _usuario(cx)
+    admin = _usuario(cx, rol="admin")
+    _sistema(cx)
+    cx.execute("insert into liga.omega_alertas (senal_id, ticker, nace_en) "
+               "values (-501, 'TEST', now())")
+    _como(cx, usuario)
+    assert _filas(cx, "select senal_id from liga.omega_alertas where senal_id = -501") == []
+    _como(cx, admin, aal="aal2")
+    assert _filas(cx, "select senal_id from liga.omega_alertas where senal_id = -501") == [(-501,)]
+    _falla(cx, "insert into liga.omega_alertas (senal_id, ticker, nace_en) "
+               "values (-502, 'TEST', now())")
