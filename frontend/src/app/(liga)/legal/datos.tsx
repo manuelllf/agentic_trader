@@ -7,8 +7,8 @@ export const TITULAR: { nombre: string; nif: string | null; domicilio: string | 
   nombre: "Manuel Llao Freire", nif: "32735627A", domicilio: "Calle Luis de Requesens, 4",
 };
 
-export const VERSION_LEGAL = "3";
-export const FECHA_LEGAL = "2026-10-17";
+export const VERSION_LEGAL = "6";
+export const FECHA_LEGAL = "2026-10-18";
 export function fechaLegal(locale: Locale): string {
   return new Intl.DateTimeFormat(localeTag(locale), { dateStyle: "long", timeZone: "UTC" })
     .format(new Date(`${FECHA_LEGAL}T00:00:00Z`));

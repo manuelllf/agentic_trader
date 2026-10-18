@@ -1,4 +1,4 @@
--- migraciones-liga: 052
+-- migraciones-liga: 053
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -1182,7 +1182,7 @@ CREATE FUNCTION liga.version_terminos() RETURNS text
     LANGUAGE sql IMMUTABLE
     SET search_path TO ''
     AS $$
-  select '5'::text;
+  select '6'::text;
 $$;
 
 

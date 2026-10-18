@@ -40,6 +40,7 @@ export default async function Privacidad() {
         <li><b>{t("legal_privacy_newsletter")}</b>: {t("legal_privacy_newsletter_data")}</li>
         <li><b>{t("legal_privacy_summaries")}</b>: {t("legal_privacy_summaries_data")}</li>
         <li><b>{t("legal_privacy_antibot")}</b>: {t("legal_privacy_antibot_data")}</li>
+        <li><b>{t("legal_privacy_web_measure")}</b>: {t("legal_privacy_web_measure_data")}</li>
       </ul>
       <p>
         {t("legal_privacy_not_collected")}
@@ -52,6 +53,7 @@ export default async function Privacidad() {
         <li><b>{t("legal_privacy_newsletter")}</b> ({t("legal_gdpr_art_6_1_a")}): {t("legal_privacy_newsletter_basis")}</li>
         <li><b>{t("legal_privacy_summaries")}</b> ({t("legal_gdpr_art_6_1_b")}): {t("legal_privacy_summaries_basis")}</li>
         <li><b>{t("legal_privacy_security")}</b> ({t("legal_gdpr_art_6_1_f")}): {t("legal_privacy_security_basis")} <Link href="#derechos">{t("legal_privacy_rights_ref")}</Link>).</li>
+        <li><b>{t("legal_privacy_web_measure")}</b> ({t("legal_gdpr_art_6_1_f")}): {t("legal_privacy_web_measure_basis")}</li>
         <li><b>{t("legal_privacy_ai_features")}</b> ({t("legal_gdpr_art_6_1_a")}): {t("legal_privacy_ai_basis")}</li>
         <li><b>{t("legal_privacy_legal_obligation")}</b> ({t("legal_gdpr_art_6_1_c")}): {t("legal_privacy_legal_basis")}</li>
       </ul>

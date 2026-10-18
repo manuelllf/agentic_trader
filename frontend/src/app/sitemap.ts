@@ -6,7 +6,7 @@ import { listarPublicados } from "@/lib/blog/publico";
 export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const fijas = ["/", "/como-funciona", "/legal/aviso", "/legal/privacidad", "/legal/terminos", "/legal/cookies"]
+  const fijas = ["/", "/como-funciona", "/legal/aviso", "/legal/privacidad", "/legal/terminos", "/legal/cookies", "/liga", "/premio", "/legal/bases-premio"]
     .map(ruta => ({ url: `${URL_PUBLICA}${ruta}` }));
   const [es, en] = await Promise.all([listarPublicados("es"), listarPublicados("en")]);
   const entrada = (idioma: "es" | "en", slug?: string): MetadataRoute.Sitemap[number] => {
