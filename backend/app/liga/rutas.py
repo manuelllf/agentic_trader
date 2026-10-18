@@ -35,6 +35,7 @@ from app.liga import (
 from app.liga.auth import Identidad, identidad_opcional, require_usuario
 from app.liga.db import db_usuario
 from app.liga.ia import moderacion
+from app.liga.procesos import premio
 
 router = APIRouter(prefix="/liga", tags=["liga"])
 router.include_router(rutas_publicas.router)
@@ -70,6 +71,22 @@ class Yo(BaseModel):
     correo_avisos: str | None = None   # vacío: los avisos van al correo de la cuenta
     # Cuenta creada con Google o con un enlace que aún no ha aceptado los términos.
     pendiente: bool = False
+
+
+class EstrategiaPremio(BaseModel):
+    id: str
+    nombre: str
+
+
+class PremioYo(BaseModel):
+    """El premio desde la propia cuenta: qué le falta para optar. Solo lo ve su dueño."""
+
+    temporada_id: int | None
+    edad: Literal["sin_declarar", "menor", "mayor"]
+    estrategia: EstrategiaPremio | None
+    jornadas_jugadas: int
+    minimo_jornadas: int
+    optas: bool
 
 
 class EntrarIn(BaseModel):
@@ -177,6 +194,11 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
               edad_declarada=fila.edad_declarada,
               idioma=fila.idioma, avisos_correo=fila.avisos_correo,
               correo_avisos=fila.correo_avisos, pendiente=fila.pendiente)
+
+
+@router.get("/yo/premio", response_model=PremioYo, dependencies=[Depends(require_usuario)])
+def premio_yo(db: Session = Depends(db_usuario)) -> PremioYo:
+    return PremioYo(**premio.estado_yo(db))
 
 
 @router.post("/yo/terminos", response_model=Yo)

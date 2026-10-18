@@ -68,17 +68,54 @@ def visible(db: Session) -> bool:
                       {"c": AJUSTE_VISIBLE}).scalar() is True
 
 
+def temporada_del_premio(db: Session):
+    """La temporada del premio: la que no ha cerrado o, si no, la última que cuenta."""
+    temporadas = db.execute(text("select id, nombre, estado from liga.temporadas "
+                                 "where cuenta order by id")).all()
+    if not temporadas:
+        return None
+    return next((t for t in temporadas if t.estado != "cerrada"), temporadas[-1])
+
+
+def estado_yo(db: Session) -> dict:
+    """Lo que la cuenta ve de su premio: edad, estrategia designada y jornadas en las que optó.
+    Corre con la sesión del usuario, así que solo lee lo suyo."""
+    t = temporada_del_premio(db)
+    edad = db.execute(text("select edad from liga.perfiles_privados "
+                           "where id = (select auth.uid())")).scalar()
+    estrategia = db.execute(text("select id::text as id, nombre from liga.estrategias "
+                                 "where dueno_id = (select auth.uid()) and tipo = 'usuario' "
+                                 "and opta_premio limit 1")).one_or_none()
+    jornadas = 0
+    if t is not None:
+        jornadas = db.execute(text("""
+            select count(distinct j.numero) from liga.inscripciones i
+            join liga.estrategias e on e.id = i.estrategia_id
+            join liga.jornadas j on j.id = i.jornada_id
+            join liga.resultados r on r.inscripcion_id = i.id
+            where j.temporada_id = :t and i.optaba_premio and e.dueno_id = (select auth.uid())
+        """), {"t": t.id}).scalar_one()
+    estado_edad = "sin_declarar" if edad is None else "menor" if edad < 18 else "mayor"
+    optas = estado_edad == "mayor" and estrategia is not None and jornadas >= motor.MIN_JORNADAS
+    return {
+        "temporada_id": t.id if t is not None else None,
+        "edad": estado_edad,
+        "estrategia": {"id": estrategia.id, "nombre": estrategia.nombre} if estrategia else None,
+        "jornadas_jugadas": jornadas,
+        "minimo_jornadas": motor.MIN_JORNADAS,
+        "optas": optas,
+    }
+
+
 def estado_publico(fabrica: Fabrica = fabrica_sistema) -> dict:
     """Lo que ve cualquiera, sin nombres: cuántas cuentas optan, los umbrales y los escalones.
     Con la temporada cerrada, el escalón con el que se calculó y las cuentas elegibles."""
     with sesion(fabrica) as db:
         if not visible(db):
             return {"visible": False}
-        temporadas = db.execute(text("select id, nombre, estado from liga.temporadas "
-                                     "where cuenta order by id")).all()
-        if not temporadas:
+        t = temporada_del_premio(db)
+        if t is None:
             return {"visible": False}
-        t = next((t for t in temporadas if t.estado != "cerrada"), temporadas[-1])
         basico, completo = umbrales(db)
         cerrada = db.get(PremioTemporada, t.id)
         if cerrada is not None:

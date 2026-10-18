@@ -1797,3 +1797,69 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
   }
   .lg .sencilla:has(> .sencilla-cuerpo > a[href="/liga"].wide) .btn.wide { width: auto; }
 }
+
+/* ---- Premio anual (/premio) ---- */
+.lg .premio-volver { width: 44px; min-height: 44px; display: grid; place-items: center; }
+.lg .premio-cab-hueco { width: 44px; }
+.lg .premio-eyebrow {
+  font-family: var(--font-data); text-transform: uppercase; color: var(--muted); font-size: 12px;
+}
+.lg .premio-titular {
+  font-family: var(--font-display); font-weight: 800; font-size: 30px; line-height: 1.1;
+  text-wrap: balance; margin: 12px 0;
+}
+.lg .premio-intro { color: var(--ink2); }
+.lg .premio-tarjeta { padding: 20px; }
+.lg .premio-cuentas-cab { display: flex; justify-content: space-between; gap: 12px; }
+.lg .premio-cuentas-dato { display: flex; align-items: baseline; gap: 12px; margin-top: 12px; }
+.lg .premio-cifra {
+  font-family: var(--font-display); font-size: 56px; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.lg .premio-escala { margin: 16px 0 24px; padding-bottom: 24px; position: relative; }
+.lg .premio-barra {
+  height: 12px; background: var(--surface2); border-radius: 3px; overflow: hidden;
+}
+.lg .premio-barra-relleno { height: 100%; background: var(--accent); }
+.lg .premio-escala-marca {
+  position: absolute; top: 14px; height: 4px; border-left: 1px solid var(--line2);
+}
+.lg .premio-marca {
+  position: absolute; top: -4px; height: 20px; border-left: 2px solid var(--ink);
+}
+.lg .premio-escala-etiqueta { position: absolute; top: 22px; }
+.lg .premio-tabla {
+  width: 100%; border-collapse: collapse; margin-top: 16px; text-align: left;
+}
+.lg .premio-celda { padding: 10px; background: var(--surface); }
+.lg .premio-celda.activa { background: var(--accent-bg); }
+.lg .premio-columna { font-weight: 600; }
+.lg .premio-en-juego { display: block; color: var(--accent); }
+.lg .premio-puesto, .lg .premio-importe { padding: 10px; border-bottom: 1px solid var(--line); }
+.lg .premio-sin-premio { margin-top: 12px; }
+.lg .premio-cuenta-cab {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.lg .premio-pill {
+  border-radius: 20px; padding: 4px 10px; font-size: 12px;
+  background: var(--flat-bg); color: var(--ink2);
+}
+.lg .premio-pill.optas { background: var(--good-bg); color: var(--good); }
+.lg .premio-entrar { margin-top: 16px; }
+.lg .premio-edad { align-items: flex-start; }
+.lg .premio-check {
+  width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%;
+  border: 1px dashed var(--line2); color: var(--good); display: grid; place-items: center;
+}
+.lg .premio-check.cumple { border: 1px solid var(--good); }
+.lg .premio-declarar {
+  min-height: 44px; display: inline-flex; align-items: center; color: var(--accent);
+}
+.lg .premio-jornadas { width: 100%; }
+.lg .premio-casillas { display: flex; gap: 4px; margin: 12px 0; }
+.lg .premio-casilla {
+  flex: 1; height: 18px; border-radius: 3px; background: var(--surface);
+  border: 1px solid var(--line2);
+}
+.lg .premio-casilla.jugada { background: var(--accent); border-color: var(--accent); }
+.lg .premio-bases { margin-top: 24px; }

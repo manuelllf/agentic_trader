@@ -735,6 +735,19 @@ export type PremioPublico = {
   importes?: Record<string, number[]>;
 };
 
+export type PremioYo = {
+  temporada_id: number | null;
+  edad: "sin_declarar" | "menor" | "mayor";
+  estrategia: { id: string; nombre: string } | null;
+  jornadas_jugadas: number;
+  minimo_jornadas: number;
+  optas: boolean;
+};
+
+export async function getPremioYo(): Promise<PremioYo | string> {
+  return llamar<PremioYo>("/liga/yo/premio");
+}
+
 export async function getPremio(): Promise<PremioPublico | string> {
   return llamar<PremioPublico>("/liga/publico/premio", {}, "opcional");
 }

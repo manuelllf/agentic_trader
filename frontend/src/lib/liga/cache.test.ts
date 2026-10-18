@@ -11,6 +11,12 @@ describe("caché de la liga", () => {
       .toEqual({ usuario: "actual" });
   });
 
+  it("cambiar de cuenta olvida el premio propio", async () => {
+    fijar("premio-yo", { optas: true });
+    limpiarPrivado();
+    expect(await obtener("premio-yo", async () => ({ optas: false }))).toEqual({ optas: false });
+  });
+
   it("un fallo no se guarda como dato y se puede reintentar", async () => {
     await expect(obtener("k", () => Promise.reject(new Error("red")))).rejects.toThrow("red");
     expect(haFallado("k")).toBe(true);

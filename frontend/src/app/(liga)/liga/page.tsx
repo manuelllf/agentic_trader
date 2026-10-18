@@ -10,6 +10,7 @@
 // etiqueta neutra («de la comunidad») para las que no son de la casa ni la propia.
 
 import { Suspense } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
@@ -29,8 +30,6 @@ import { useCache } from "@/lib/liga/cache";
 import { precargarFicha } from "@/lib/liga/ficha";
 import { anioDeLiga } from "@/lib/liga/anio";
 import { etiquetaEquipo, VistaJornada } from "./VistaJornada";
-
-import { TarjetaPremio } from "../_ui/TarjetaPremio";
 
 type Vista = "tabla" | "jornada";
 
@@ -255,7 +254,12 @@ function LigaContenido() {
                   {orden === "puntos" && <div className="legend">
                     <p>{t("league_leyenda_orden_puntos")}</p>
                   </div>}
-                  {premio && typeof premio !== "string" && premio.visible && <TarjetaPremio premio={premio} />}
+                  {premio && typeof premio !== "string" && premio.visible && <Link href="/premio" className="li">
+                    <div className="t"><b>{t("premio_titulo")}</b><small>{premio.calculado
+                      ? t("premio_calculado", { escalon: premio.escalon ?? 0 })
+                      : t("premio_fila_resumen", { cuentas: premio.cuentas ?? 0, basico: premio.umbral_basico ?? 0 })}</small></div>
+                    <svg className="chev" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+                  </Link>}
                 </div>
               )}
             </>

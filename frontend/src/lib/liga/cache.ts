@@ -109,7 +109,7 @@ export function refrescarPresentacion(): void {
 export function limpiarPrivado(): void {
   const claves = new Set([...cache.keys(), ...enVuelo.keys(), ...suscriptores.keys()]);
   for (const clave of claves) {
-    if (["yo", "creditos", "mis-estrategias", "mis-ligas", "seguimiento"].includes(clave)
+    if (["yo", "creditos", "mis-estrategias", "mis-ligas", "seguimiento", "premio-yo"].includes(clave)
       || /^(ficha:|liga:|lecturas:|seguimiento:)/.test(clave)) {
       versiones.set(clave, (versiones.get(clave) ?? 0) + 1);
       enVuelo.delete(clave);
