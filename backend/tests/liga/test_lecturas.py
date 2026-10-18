@@ -243,17 +243,17 @@ def test_comprar_la_misma_lectura_a_la_vez_no_duplica_el_cobro(api) -> None:  # 
     servidor de (usuario, lectura), no de una clave que manda el cliente distinta en cada click."""
     import threading
 
+    from app.liga import estrategias
+
     cliente, cab, usuario, foto_con_escaneo, _finalista, cx = api
     foto_con_escaneo()
     uid = usuario(creditos=100)
-    _eid, prueba = _crear_y_probar(cliente, cab, uid)
-    # La prueba se engancha a la foto más reciente de la base, que con otros tests corriendo a la
-    # vez no tiene por qué ser la de este escaneo. El informe se deja escrito para la foto que el
-    # servidor usa de verdad: así las peticiones leen de la caché y solo se mide el cobro. La
-    # creación concurrente de una lectura nueva es otra carrera, y no es lo que se prueba aquí.
+    _eid, _prueba = _crear_y_probar(cliente, cab, uid)
+    # El informe se cachea para la foto que resuelve la misma función que usa la ruta.
+    foto_del_servidor, _scan = estrategias.contexto_lectura(uid, "ZSA")
     cx.execute("insert into liga.lecturas (ticker, foto_id, texto, fuentes) "
                "values ('ZSA', %s, 'Informe de ZSA.', '[]'::jsonb) "
-               "on conflict (ticker, foto_id) do nothing", (prueba["foto_id"],))
+               "on conflict (ticker, foto_id) do nothing", (foto_del_servidor,))
     saldo_inicial = cx.execute("select saldo from liga.v_saldo where usuario_id = %s",
                                (uuid.UUID(uid),)).fetchone()[0]
 
