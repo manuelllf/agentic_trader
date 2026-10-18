@@ -15,7 +15,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializeAsAny
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
@@ -239,6 +239,16 @@ class PosicionOut(BaseModel):
     entrada_dia: date | None = None
 
 
+class PosicionHuecoOut(PosicionOut):
+    """Un hueco de Omega: precio y rentabilidad desde su entrada."""
+    numero: int | None = None
+    entrada_precio: float | None = None
+    salida_dia: date | None = None
+    salida_precio: float | None = None
+    precio: float | None = None
+    retorno: float | None = None
+
+
 class NotasEmpresaOut(BaseModel):
     """Las 4 notas de Jev (0 a 9) de una empresa, con su jornada y el día de la foto."""
     ticker: str
@@ -258,7 +268,7 @@ class FichaOut(BaseModel):
     es_dueno: bool
     jornadas: list[JornadaFichaOut]
     receta: RecetaOut | None
-    posiciones: list[PosicionOut]
+    posiciones: list[SerializeAsAny[PosicionOut]]
     rendimiento: dict | None = None
     mercado: dict | None = None
     casa_metodologia: dict | None = None   # solo equipos de la casa; sin pasos si no es en directo
@@ -755,7 +765,7 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
     })
     if f.casa_clave == "omega" and (en_directo or con_retraso):
         cartera, retorno = omega.datos_ficha(f.eid, con_retraso)
-        posiciones = [PosicionOut(**p) for p in cartera]
+        posiciones = [PosicionHuecoOut(**p) for p in cartera]
     mercado = None
     if ins is not None and ins.jornada_estado == "formada":
         vivo = diario.vivo(ins.jornada_id)
@@ -768,6 +778,12 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
                        "diferencia": fila_viva.get("dif"),
                        "empresas": {p.ticker: vivo.get("por_ticker", {}).get(p.ticker)
                                     for p in posiciones}}
+    if f.casa_clave == "omega":
+        empresas = mercado["empresas"] if mercado else {}
+        for p in posiciones:
+            empresa = empresas.get(p.ticker) or {}
+            p.precio = empresa.get("precio") if p.salida_dia is None else p.salida_precio
+            p.retorno = omega.retorno_desde_entrada(p.entrada_precio, p.precio)
     return FichaOut(
         id=f.eid, nombre=f.nombre,
         escudo=EscudoOut(forma=f.forma, dibujo=f.dibujo, color1=f.color1, color2=f.color2,
@@ -777,8 +793,9 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         jornadas=[JornadaFichaOut(numero=j.numero, rentabilidad=j.rentabilidad, puntos=j.puntos)
                  for j in jornadas],
         receta=receta_out,
-        posiciones=[PosicionOut(ticker=p.ticker, peso=p.peso,
-                                 entrada_dia=getattr(p, "entrada_dia", None)) for p in posiciones],
+        posiciones=(posiciones if f.casa_clave == "omega" else [
+            PosicionOut(ticker=p.ticker, peso=p.peso,
+                        entrada_dia=getattr(p, "entrada_dia", None)) for p in posiciones]),
         rendimiento=retorno, mercado=mercado,
         casa_metodologia=(casas_metodologia.metodologia(f.casa_clave, completa=en_directo)
                           if f.tipo == "casa" else None))

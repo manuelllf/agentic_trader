@@ -279,8 +279,12 @@ export type PorQue = { ticker: string; motivo: string };
 export type EmpresaBusqueda = { ticker: string; nombre: string | null; sector: string | null };
 
 export type JornadaFicha = { numero: number; rentabilidad: number | null; puntos: number | null };
-// Omega no tiene pesos: sus huecos abiertos llegan con la fecha de entrada.
-export type Posicion = { ticker: string; peso: number | null; entrada_dia?: string | null };
+// Omega: sus cinco huecos pesan igual y llevan precio y rentabilidad desde la entrada.
+export type Posicion = {
+  ticker: string; peso: number | null; entrada_dia?: string | null;
+  numero?: number | null; entrada_precio?: number | null; salida_dia?: string | null;
+  salida_precio?: number | null; precio?: number | null; retorno?: number | null;
+};
 export type MercadoFicha = {
   desde: string; dia: string; consultado: string | null; en_vivo: boolean;
   rentabilidad: number | null; sp500: number | null; diferencia: number | null;

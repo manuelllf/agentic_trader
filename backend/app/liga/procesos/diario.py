@@ -63,6 +63,8 @@ def calcular(db: Session, j: Jornada, dia: date,
     """), {"j": j.id}).all()
     pos = datos.posiciones(db, [f.id for f in filas])
     tickers = {t for ps in pos.values() for t, _ in ps} | {SPY}
+    # Los huecos de Omega no están en liga.posiciones, pero también necesitan precio en la ficha.
+    tickers.update(o.ticker for o in omega.operaciones(db, j))
     cierres = precios.series(db, sorted(tickers), j.dia_base, dia)
     if cotizaciones:
         cierres = superponer(cierres, cotizaciones, j.dia_base, dia)

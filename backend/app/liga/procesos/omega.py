@@ -222,8 +222,15 @@ def sincronizar(db: Session, j: Jornada, hasta: date, actor: str | None = None,
             "discrepancias": discrepancias}
 
 
+def retorno_desde_entrada(entrada: float | None, precio: float | None) -> float | None:
+    """Rentabilidad en % desde el precio de entrada del hueco; `None` si falta alguno de los dos."""
+    if not entrada or precio is None:
+        return None
+    return round((precio / entrada - 1) * 100, 2)
+
+
 def datos_ficha(estrategia_id: str, solo_cerradas: bool) -> tuple[list[dict], dict]:
-    """Huecos abiertos y serie diaria de Omega para la ficha de la casa."""
+    """Huecos de la jornada en curso, abiertos o cerrados hasta `hasta`, y serie diaria."""
     from sqlalchemy import select
 
     from app.liga import rendimiento
@@ -241,9 +248,24 @@ def datos_ficha(estrategia_id: str, solo_cerradas: bool) -> tuple[list[dict], di
         hoy = hoy_bolsa()
         ultima = jornadas[-1]
         hasta = ultima.dia_fin if ultima.estado == "cerrada" else min(hoy, ultima.dia_fin)
-        cartera = [{"ticker": op.ticker, "entrada_dia": op.entrada_dia}
-                   for op in operaciones(db, ultima)
-                   if op.entrada_dia <= hasta and (op.salida_dia is None or op.salida_dia > hasta)]
+        por_numero = {}
+        for op in operaciones(db, ultima):
+            if op.entrada_dia <= hasta and (
+                op.numero not in por_numero
+                or op.entrada_dia > por_numero[op.numero].entrada_dia
+            ):
+                por_numero[op.numero] = op
+        cartera = []
+        for numero in sorted(por_numero):
+            op = por_numero[numero]
+            cerrada = op.salida_dia is not None and op.salida_dia <= hasta
+            cartera.append({
+                "numero": op.numero, "ticker": op.ticker,
+                "entrada_dia": op.entrada_dia, "entrada_precio": op.entrada_precio,
+                "salida_dia": op.salida_dia if cerrada else None,
+                "salida_precio": op.salida_precio if cerrada else None,
+                "peso": 100 / motor.N_HUECOS,
+            })
         series = precios.series(db, [precios.REFERENCIA], jornadas[0].dia_base, hasta)
         rondas = []
         for j in jornadas:

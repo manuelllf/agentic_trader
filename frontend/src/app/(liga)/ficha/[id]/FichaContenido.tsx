@@ -18,6 +18,7 @@ import { useSesionRequerida } from "../../_sesion/SesionContext";
 import { RendimientoFicha } from "./RendimientoFicha";
 import { EvidenciaCartera } from "./EvidenciaCartera";
 import { ListaEmpresas } from "./ListaEmpresas";
+import { CarteraOmega } from "./CarteraOmega";
 import { NotasEmpresa } from "./NotasEmpresa";
 import { CambiosEstrategia } from "../../_ui/CambiosEstrategia";
 import { getSeguimiento, marcarSeguimientos, type SeguimientoEstrategia } from "@/lib/liga/seguimiento";
@@ -250,11 +251,7 @@ export function FichaContenido({ id }: { id: string }) {
               <div className="sec-t">{t("strategies_its_portfolio")}</div>
               <p className="fine">{t("strategies_changes_during_month")}</p>
               {ficha.posiciones.length > 0 && (
-                <ul className="meta" style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
-                  {ficha.posiciones.map((p) => (
-                    <li key={p.ticker}><b>{p.ticker}</b>{p.entrada_dia && <> · {fecha(p.entrada_dia, undefined, locale)}</>}</li>
-                  ))}
-                </ul>
+                <CarteraOmega posiciones={ficha.posiciones} />
               )}
             </div>
           )}

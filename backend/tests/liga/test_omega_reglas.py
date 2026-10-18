@@ -119,7 +119,12 @@ def test_ficha_cartera_abierta_y_serie_de_huecos(monkeypatch):
     monkeypatch.setattr(omega, "rentabilidad", lambda db, j, dia: (
         Decimal(0) if dia == DIA else Decimal(4), []))
     cartera, serie = omega.datos_ficha("00000000-0000-0000-0000-000000000001", False)
-    assert cartera == [{"ticker": "AAA", "entrada_dia": DIA}]
+    assert cartera == [
+        {"numero": 1, "ticker": "AAA", "entrada_dia": DIA, "entrada_precio": 100,
+         "salida_dia": None, "salida_precio": None, "peso": 20.0},
+        {"numero": 2, "ticker": "BBB", "entrada_dia": DIA, "entrada_precio": 100,
+         "salida_dia": fin, "salida_precio": 110, "peso": 20.0},
+    ]
     assert serie["serie"][-1]["estrategia"] == pytest.approx(4)
     assert serie["serie"][-1]["provisional"] is True
 
@@ -140,6 +145,14 @@ def test_calculo_omega_sin_empresas_usa_media_real(monkeypatch):
     calculo = diario.calcular(db, j, fin)
     assert calculo["filas"][0]["rentabilidad"] == Decimal("2.0000")
     assert calculo["filas"][0]["inscripcion_id"] == 7
+    assert calculo["por_ticker"]["AAA"]["precio"] == 110
+
+
+def test_retorno_desde_entrada():
+    assert omega.retorno_desde_entrada(100, 110) == 10.0
+    assert omega.retorno_desde_entrada(100, None) is None
+    assert omega.retorno_desde_entrada(None, 110) is None
+    assert omega.retorno_desde_entrada(10, 9) == -10.0
 
 
 def test_historial_guardado_no_se_solapa_con_alerta_capturada_tarde():
