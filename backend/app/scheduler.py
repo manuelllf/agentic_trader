@@ -371,6 +371,8 @@ def _liga_omega_captura_job() -> None:
     try:
         with candado("omega_captura", fabrica_sistema), sesion(fabrica_sistema) as db:
             omega.capturar_alertas(db)
+            # La foto se guarda aunque el sincronizado falle.
+            db.commit()
             for j in db.scalars(select(Jornada).where(Jornada.estado == "formada")):
                 omega.sincronizar(db, j, hoy_bolsa())
             db.commit()

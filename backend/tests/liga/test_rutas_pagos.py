@@ -274,7 +274,7 @@ def test_limite_de_lectura(lectura: TestClient, monkeypatch: pytest.MonkeyPatch)
     assert len(llamadas) == 10
 
 
-@pytest.mark.parametrize(("version", "estado"), [("1", 403), ("2", 403), ("3", 200)])
+@pytest.mark.parametrize(("version", "estado"), [("1", 403), ("2", 403), ("3", 403), ("4", 200)])
 def test_checkout_exige_version_vigente(monkeypatch, version, estado):  # noqa: ANN001
     from app.liga.registro import VERSION_TERMINOS
 

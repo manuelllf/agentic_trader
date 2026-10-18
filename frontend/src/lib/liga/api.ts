@@ -21,7 +21,7 @@ export type Yo = {
   admin: boolean;
   aal2: boolean;
   idioma?: Locale | null;
-  mayor_edad_confirmada?: boolean;
+  edad_declarada?: boolean;
   avisos_correo?: boolean;
   correo_avisos?: string | null;
 };
@@ -735,9 +735,8 @@ export async function getPremio(): Promise<PremioPublico | string> {
   return llamar<PremioPublico>("/liga/publico/premio", {}, "opcional");
 }
 
-export const confirmarMayorEdad = (confirmada: boolean) =>
-  llamar<{ confirmada: boolean }>("/liga/yo/mayor-edad",
-    { method: "PUT", body: JSON.stringify({ confirmada }) });
+export const declararEdad = (edad: number) =>
+  llamar<{ edad: number }>("/liga/yo/edad", { method: "PUT", body: JSON.stringify({ edad }) });
 
 export async function getPortada(): Promise<Portada | string> {
   return llamar<Portada>("/liga/publico/portada", {}, "opcional");

@@ -48,7 +48,7 @@ def test_registro_mvp_confirmado_conserva_alias_consentimientos_y_bienvenida(cx)
     alias = "mvp_" + uid.hex[:10]
     cx.execute("insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data) "
                "values (%s, %s, now(), %s)",
-               (uid, f"{uid.hex}@prueba.local", json.dumps({"alias": alias, "terminos_version": "3"})))
+               (uid, f"{uid.hex}@prueba.local", json.dumps({"alias": alias, "terminos_version": "4", "edad": 30})))
     assert _filas(cx, "select alias from liga.perfiles where id = %s", (uid,)) == [(alias,)]
     assert _filas(cx, "select count(*) from liga.consentimientos where usuario_id = %s", (uid,)) == [(2,)]
     assert _filas(cx, "select rol::text from liga.roles_usuario where usuario_id = %s", (uid,)) == [("usuario",)]

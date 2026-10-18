@@ -44,7 +44,7 @@ _JUGADAS = text("""
     join liga.jornadas j on j.id = i.jornada_id
     join liga.resultados r on r.inscripcion_id = i.id
     where j.temporada_id = :t and i.optaba_premio and e.dueno_id is not null
-      and pp.mayor_edad_confirmada_en is not null
+      and pp.edad >= 18
 """)
 
 
@@ -89,7 +89,7 @@ def estado_publico(fabrica: Fabrica = fabrica_sistema) -> dict:
             cuentas = db.execute(text("select count(distinct e.dueno_id) from liga.estrategias e "
                                       "join liga.perfiles_privados pp on pp.id = e.dueno_id "
                                       "where e.tipo = 'usuario' and e.opta_premio "
-                                      "and pp.mayor_edad_confirmada_en is not null")).scalar_one()
+                                      "and pp.edad >= 18")).scalar_one()
             escalon = motor.escalon(cuentas, basico, completo)
         return {
             "visible": True, "temporada": {"id": t.id, "nombre": t.nombre},

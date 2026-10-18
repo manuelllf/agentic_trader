@@ -1,4 +1,4 @@
-"""Confirmación de edad y elegibilidad del premio anual."""
+"""Declaración de edad y elegibilidad del premio anual."""
 import os
 import time
 import uuid
@@ -27,8 +27,8 @@ class _Resultado:
 
 
 class _Db:
-    def __init__(self, confirmada):
-        self.confirmada = confirmada
+    def __init__(self, mayor_de_edad):
+        self.mayor_de_edad = mayor_de_edad
 
     def execute(self, sql, params=None):
         q = str(sql)
@@ -37,13 +37,13 @@ class _Db:
         if "from liga.temporadas" in q:
             return _Resultado([SimpleNamespace(id=1, nombre="Temporada", estado="abierta")])
         assert "join liga.perfiles_privados pp on pp.id = e.dueno_id" in q
-        assert "pp.mayor_edad_confirmada_en is not null" in q
+        assert "pp.edad >= 18" in q
         if "count(distinct" in q:
             assert "e.opta_premio" in q
-            return _Resultado([int(self.confirmada)])
+            return _Resultado([int(self.mayor_de_edad)])
         assert "i.optaba_premio" in q
         return _Resultado([SimpleNamespace(cuenta="cuenta", numero=n, rentabilidad=Decimal(1))
-                           for n in range(1, 11)] if self.confirmada else [])
+                           for n in range(1, 11)] if self.mayor_de_edad else [])
 
     def get(self, modelo, clave):
         return None
@@ -52,11 +52,11 @@ class _Db:
         pass
 
 
-@pytest.mark.parametrize("confirmada", [False, True])
-def test_cuenta_solo_con_edad_confirmada(confirmada):
-    db = _Db(confirmada)
-    assert len(premio.cuentas_elegibles(db, 1, 12)) == int(confirmada)
-    assert premio.estado_publico(lambda: db)["cuentas"] == int(confirmada)
+@pytest.mark.parametrize("mayor_de_edad", [False, True])
+def test_cuenta_solo_si_declara_18_o_mas(mayor_de_edad):
+    db = _Db(mayor_de_edad)
+    assert len(premio.cuentas_elegibles(db, 1, 12)) == int(mayor_de_edad)
+    assert premio.estado_publico(lambda: db)["cuentas"] == int(mayor_de_edad)
 
 
 @pytest.fixture
@@ -127,18 +127,27 @@ def api(monkeypatch):
 
 
 @pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DATABASE_URL)")
-def test_confirmar_y_retirar_edad(api):
+def test_declarar_edad_una_sola_vez(api):
     cliente, cab, usuario, cx, _ = api
     uid = usuario()
-    def fecha():
-        sql = "select mayor_edad_confirmada_en from liga.perfiles_privados where id = %s"
-        return cx.execute(sql, (uid,)).fetchone()[0]
-    assert fecha() is None
-    for valor in (True, True, False):
-        anterior = fecha()
-        respuesta = cliente.put("/liga/yo/mayor-edad", headers=cab(uid), json={"confirmada": valor})
-        assert respuesta.status_code == 200
-        assert respuesta.json() == {"confirmada": valor}
-        assert (fecha() is not None) == valor
-        if valor and anterior is not None:
-            assert fecha() == anterior
+
+    def leer_edad():
+        sql = "select edad, edad_declarada_en from liga.perfiles_privados where id = %s"
+        return cx.execute(sql, (uid,)).fetchone()
+
+    assert leer_edad() == (None, None)
+    respuesta = cliente.put("/liga/yo/edad", headers=cab(uid), json={"edad": 13})
+    assert respuesta.status_code == 422
+    assert leer_edad() == (None, None)
+    respuesta = cliente.put("/liga/yo/edad", headers=cab(uid), json={"edad": 17})
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {"edad": 17}
+    edad, fecha = leer_edad()
+    assert edad == 17
+    assert fecha is not None
+    respuesta = cliente.put("/liga/yo/edad", headers=cab(uid), json={"edad": 30})
+    assert respuesta.status_code == 409
+    assert leer_edad() == (17, fecha)
+    respuesta = cliente.get("/liga/yo", headers=cab(uid))
+    assert respuesta.status_code == 200
+    assert respuesta.json()["edad_declarada"] is True

@@ -144,9 +144,9 @@ def _usuario(db: Session) -> uuid.UUID:
     return uid
 
 
-def _confirmar_mayor_de_edad(db: Session, uid: uuid.UUID) -> None:
-    # Solo cuentan para el premio las cuentas que confirman los 18 años.
-    db.execute(text("update liga.perfiles_privados set mayor_edad_confirmada_en = now() "
+def _declarar_edad_mayor(db: Session, uid: uuid.UUID) -> None:
+    # Solo cuentan para el premio las cuentas que declaran 18 años o más.
+    db.execute(text("update liga.perfiles_privados set edad = 30 "
                     "where id = :u"), {"u": uid})
 
 
@@ -236,7 +236,7 @@ def mundo(fabrica, mercado) -> dict:  # noqa: ANN001
             "'suelo', :d, 50, 'max', 70, :c, 'nueva', :m)"),
             {"t": t, "d": momento[:10], "c": caida, "m": momento})
     uid = _usuario(db)
-    _confirmar_mayor_de_edad(db, uid)
+    _declarar_edad_mayor(db, uid)
     db.execute(text("insert into liga.planes_usuario (usuario_id, plan, origen) "
                     "values (:u, 'pro', 'admin')"), {"u": uid})
     ids["reglas"] = _estrategia(db, uid, "Solo notas")
@@ -1483,7 +1483,7 @@ def _cerrar_la_temporada_con(fabrica, resultados: dict[str, list[str | None]]) -
                                         "where temporada_id = :t"), {"t": tid}).all())
         for nombre, mensuales in resultados.items():
             uid = _usuario(db)
-            _confirmar_mayor_de_edad(db, uid)
+            _declarar_edad_mayor(db, uid)
             eid = _estrategia(db, uid, nombre)
             receta = db.execute(text("select receta_id from liga.estrategias where id = :e"),
                                 {"e": eid}).scalar()

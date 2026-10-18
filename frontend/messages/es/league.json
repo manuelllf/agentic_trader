@@ -56,7 +56,5 @@
   "premio_umbrales": "Se reparte con {basico} cuentas elegibles; el escalón completo, con {completo}.",
   "premio_importes": "Primer escalón: {a} €, {b} € y {c} €. Escalón completo: {d} €, {e} € y {f} €.",
   "premio_calculado": "Cálculo cerrado: escalón {escalon}.",
-  "premio_bases": "Ver las bases",
-  "premio_edad_casilla": "Tengo 18 años o más",
-  "premio_edad_error": "No se pudo guardar. Prueba otra vez."
+  "premio_bases": "Ver las bases"
 }

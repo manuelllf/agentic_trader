@@ -168,7 +168,7 @@ def test_el_premio_solo_se_ve_si_se_enciende_y_no_nombra_a_nadie(liga) -> None: 
         temporada()
         alias = f"opta_{uuid.uuid4().hex[:6]}"
         dueno = usuario(alias)
-        cx.execute("update liga.perfiles_privados set mayor_edad_confirmada_en = now() "
+        cx.execute("update liga.perfiles_privados set edad = 30 "
                    "where id = %s", (dueno,))
         eid, _ = estrategia(dueno, "Opta al premio")
         cx.execute("update liga.estrategias set opta_premio = true where id = %s", (eid,))

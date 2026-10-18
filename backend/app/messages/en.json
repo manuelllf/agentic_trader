@@ -1,4 +1,9 @@
 {
+  "api_error_edad_minima": "Vennett is for people aged 14 and over.",
+  "api_error_edad_no_valida": "Enter your age in years.",
+  "api_error_edad_ya_declarada": "You have already declared your age.",
+  "api_error_db_edad_no_valida": "Invalid age",
+  "api_error_db_la_edad_ya_esta_declarada": "Your age has already been declared",
   "api_error_db_solo_una_en_juego": "You can have one strategy in play at a time.",
   "api_error_acepta_terminos_nuevos": "Accept the updated terms to continue.",
   "liga_catalogo_regla_grandes": "Large companies",

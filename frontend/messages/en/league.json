@@ -56,7 +56,5 @@
   "premio_umbrales": "It is paid with {basico} eligible accounts; the full tier with {completo}.",
   "premio_importes": "First tier: {a} €, {b} € and {c} €. Full tier: {d} €, {e} € and {f} €.",
   "premio_calculado": "Calculated: tier {escalon}.",
-  "premio_bases": "Read the rules",
-  "premio_edad_casilla": "I am 18 or over",
-  "premio_edad_error": "Could not save. Please try again."
+  "premio_bases": "Read the rules"
 }

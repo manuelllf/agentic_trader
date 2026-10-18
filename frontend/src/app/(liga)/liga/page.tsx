@@ -255,7 +255,7 @@ function LigaContenido() {
                   {orden === "puntos" && <div className="legend">
                     <p>{t("league_leyenda_orden_puntos")}</p>
                   </div>}
-                  {premio && typeof premio !== "string" && premio.visible && <TarjetaPremio premio={premio} sesion={!!yo} confirmada={!!yo?.mayor_edad_confirmada} />}
+                  {premio && typeof premio !== "string" && premio.visible && <TarjetaPremio premio={premio} />}
                 </div>
               )}
             </>

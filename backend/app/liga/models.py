@@ -67,7 +67,8 @@ class PerfilPrivado(LigaBase):
     avisos_correo: Mapped[bool] = mapped_column(Boolean, server_default=DB)
     correo_avisos: Mapped[str | None] = mapped_column(Text)  # vacío: el correo de la cuenta
     baja_solicitada: Mapped[datetime | None] = mapped_column(TSTZ)
-    mayor_edad_confirmada_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    edad: Mapped[int | None] = mapped_column(SmallInteger)
+    edad_declarada_en: Mapped[datetime | None] = mapped_column(TSTZ)
     creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
     actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)

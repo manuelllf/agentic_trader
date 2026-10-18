@@ -1,4 +1,4 @@
--- migraciones-liga: 050
+-- migraciones-liga: 051
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -386,6 +386,8 @@ declare
   abierto boolean;
   registro_publico boolean;
   con_proveedor boolean;
+  edad_texto text;
+  edad_alta integer;
 begin
   con_proveedor := coalesce(new.raw_app_meta_data ->> 'provider', 'email') <> 'email';
   registro_publico := new.raw_user_meta_data ? 'alias'
@@ -403,11 +405,17 @@ begin
     if (new.raw_user_meta_data ->> 'terminos_version') is distinct from liga.version_terminos() then
       raise exception 'Acepta los términos' using errcode = '23514';
     end if;
+    edad_texto := new.raw_user_meta_data ->> 'edad';
+    edad_alta := case when edad_texto ~ '^[0-9]{1,3}$' then edad_texto::integer end;
+    if edad_alta is null or edad_alta not between 14 and 120 then
+      raise exception 'Edad no válida' using errcode = '23514';
+    end if;
   else
     nombre := 'jugador_' || left(replace(new.id::text, '-', ''), 12);
   end if;
   insert into liga.perfiles (id, alias) values (new.id, nombre);
-  insert into liga.perfiles_privados (id) values (new.id);
+  insert into liga.perfiles_privados (id, edad, edad_declarada_en)
+    values (new.id, edad_alta, case when edad_alta is not null then now() end);
   insert into liga.roles_usuario (usuario_id, rol) values (new.id, 'usuario');
   if registro_publico then
     insert into liga.consentimientos (usuario_id, documento, version)
@@ -619,6 +627,27 @@ CREATE FUNCTION liga.dueno_se_une() RETURNS trigger
 begin
   insert into liga.miembros_liga (liga_id, usuario_id) values (new.id, new.dueno_id)
     on conflict do nothing;
+  return new;
+end $$;
+
+
+--
+-- Name: edad_una_vez(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.edad_una_vez() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO ''
+    AS $$
+begin
+  if new.edad is distinct from old.edad then
+    if old.edad is not null and not liga.es_admin() then
+      raise exception 'La edad ya está declarada' using errcode = '42501';
+    end if;
+    if old.edad is null then
+      new.edad_declarada_en := now();
+    end if;
+  end if;
   return new;
 end $$;
 
@@ -1151,7 +1180,7 @@ CREATE FUNCTION liga.version_terminos() RETURNS text
     LANGUAGE sql IMMUTABLE
     SET search_path TO ''
     AS $$
-  select '3'::text;
+  select '4'::text;
 $$;
 
 
@@ -2605,6 +2634,24 @@ CREATE TABLE liga.notas_frescas (
 
 
 --
+-- Name: omega_alertas; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.omega_alertas (
+    senal_id bigint NOT NULL,
+    ticker text NOT NULL,
+    nace_en timestamp with time zone NOT NULL,
+    estado_origen text,
+    market_cap_usd numeric,
+    capturada_en timestamp with time zone DEFAULT now() NOT NULL,
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado_en timestamp with time zone,
+    actualizado_por uuid
+);
+
+
+--
 -- Name: omega_operaciones; Type: TABLE; Schema: liga; Owner: -
 --
 
@@ -2707,7 +2754,6 @@ CREATE TABLE liga.perfiles_privados (
     id uuid NOT NULL,
     tema text DEFAULT 'auto'::text NOT NULL,
     baja_solicitada timestamp with time zone,
-    mayor_edad_confirmada_en timestamp with time zone,
     creado timestamp with time zone DEFAULT now() NOT NULL,
     creado_por uuid DEFAULT auth.uid(),
     actualizado_en timestamp with time zone,
@@ -2716,10 +2762,27 @@ CREATE TABLE liga.perfiles_privados (
     avisos_correo boolean DEFAULT false NOT NULL,
     correo_avisos text,
     resumen_correo boolean DEFAULT true NOT NULL,
+    edad smallint,
+    edad_declarada_en timestamp with time zone,
     CONSTRAINT perfiles_privados_correo_avisos_check CHECK (((correo_avisos IS NULL) OR ((length(correo_avisos) <= 254) AND (correo_avisos ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'::text)))),
+    CONSTRAINT perfiles_privados_edad_rango CHECK (((edad IS NULL) OR ((edad >= 14) AND (edad <= 120)))),
     CONSTRAINT perfiles_privados_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
     CONSTRAINT perfiles_privados_tema_check CHECK ((tema = ANY (ARRAY['auto'::text, 'claro'::text, 'oscuro'::text])))
 );
+
+
+--
+-- Name: COLUMN perfiles_privados.edad; Type: COMMENT; Schema: liga; Owner: -
+--
+
+COMMENT ON COLUMN liga.perfiles_privados.edad IS 'Edad en años que declara la cuenta. Nula hasta que la declara; solo una vez.';
+
+
+--
+-- Name: COLUMN perfiles_privados.edad_declarada_en; Type: COMMENT; Schema: liga; Owner: -
+--
+
+COMMENT ON COLUMN liga.perfiles_privados.edad_declarada_en IS 'Cuándo declaró la cuenta su edad por primera vez.';
 
 
 --
@@ -5350,6 +5413,14 @@ ALTER TABLE ONLY liga.notas_frescas
 
 
 --
+-- Name: omega_alertas omega_alertas_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.omega_alertas
+    ADD CONSTRAINT omega_alertas_pkey PRIMARY KEY (senal_id);
+
+
+--
 -- Name: omega_operaciones omega_operaciones_jornada_id_numero_entrada_dia_key; Type: CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -6827,6 +6898,13 @@ CREATE INDEX ix_visitas_usuario_inicio ON liga.visitas USING btree (usuario_id, 
 
 
 --
+-- Name: omega_operaciones_una_abierta; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE UNIQUE INDEX omega_operaciones_una_abierta ON liga.omega_operaciones USING btree (jornada_id, numero) WHERE (salida_dia IS NULL);
+
+
+--
 -- Name: suscripciones_push_usuario; Type: INDEX; Schema: liga; Owner: -
 --
 
@@ -7310,6 +7388,13 @@ CREATE TRIGGER dueno_se_une AFTER INSERT ON liga.ligas_privadas FOR EACH ROW EXE
 
 
 --
+-- Name: perfiles_privados edad_una_vez; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER edad_una_vez BEFORE UPDATE ON liga.perfiles_privados FOR EACH ROW EXECUTE FUNCTION liga.edad_una_vez();
+
+
+--
 -- Name: jornadas foto_y_escaneo; Type: TRIGGER; Schema: liga; Owner: -
 --
 
@@ -7468,6 +7553,13 @@ CREATE TRIGGER traza BEFORE UPDATE ON liga.jornadas FOR EACH ROW EXECUTE FUNCTIO
 --
 
 CREATE TRIGGER traza BEFORE UPDATE ON liga.ligas_privadas FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
+
+
+--
+-- Name: omega_alertas traza; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER traza BEFORE UPDATE ON liga.omega_alertas FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
 
 
 --
@@ -8871,6 +8963,13 @@ CREATE POLICY admin ON liga.notas_frescas FOR SELECT TO authenticated USING (( S
 
 
 --
+-- Name: omega_alertas admin; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY admin ON liga.omega_alertas FOR SELECT TO authenticated USING (liga.es_admin());
+
+
+--
 -- Name: omega_operaciones admin; Type: POLICY; Schema: liga; Owner: -
 --
 
@@ -9464,6 +9563,12 @@ CREATE POLICY moderar ON liga.estrategias FOR UPDATE TO authenticated USING ((( 
 --
 
 ALTER TABLE liga.notas_frescas ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: omega_alertas; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.omega_alertas ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: omega_operaciones; Type: ROW SECURITY; Schema: liga; Owner: -
@@ -11221,6 +11326,13 @@ GRANT SELECT ON TABLE liga.notas_frescas TO authenticated;
 
 
 --
+-- Name: TABLE omega_alertas; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.omega_alertas TO authenticated;
+
+
+--
 -- Name: TABLE omega_operaciones; Type: ACL; Schema: liga; Owner: -
 --
 
@@ -11282,7 +11394,6 @@ GRANT UPDATE(idioma) ON TABLE liga.perfiles_privados TO authenticated;
 --
 
 GRANT UPDATE(avisos_correo) ON TABLE liga.perfiles_privados TO authenticated;
-GRANT SELECT(mayor_edad_confirmada_en), UPDATE(mayor_edad_confirmada_en) ON TABLE liga.perfiles_privados TO authenticated;
 
 
 --
@@ -11297,6 +11408,20 @@ GRANT UPDATE(correo_avisos) ON TABLE liga.perfiles_privados TO authenticated;
 --
 
 GRANT SELECT(resumen_correo),UPDATE(resumen_correo) ON TABLE liga.perfiles_privados TO authenticated;
+
+
+--
+-- Name: COLUMN perfiles_privados.edad; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT(edad),UPDATE(edad) ON TABLE liga.perfiles_privados TO authenticated;
+
+
+--
+-- Name: COLUMN perfiles_privados.edad_declarada_en; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT(edad_declarada_en) ON TABLE liga.perfiles_privados TO authenticated;
 
 
 --
@@ -12409,26 +12534,3 @@ INSERT INTO liga.permisos_rol VALUES ('admin', 'admin.salas');
 --
 
 
-
--- liga_050 · Foto de alertas y cinco huecos de Omega en la liga.
-CREATE TABLE liga.omega_alertas (
-  senal_id bigint primary key,
-  ticker text not null,
-  nace_en timestamptz not null,
-  estado_origen text,
-  market_cap_usd numeric,
-  capturada_en timestamptz not null default now(),
-  creado timestamptz not null default now(),
-  creado_por uuid default auth.uid(),
-  actualizado_en timestamptz,
-  actualizado_por uuid
-);
-alter table liga.omega_alertas enable row level security;
-create policy admin on liga.omega_alertas for select
-  to authenticated using (liga.es_admin());
-grant select on liga.omega_alertas to authenticated;
-create trigger traza before update on liga.omega_alertas
-  for each row execute function liga.tocar_auditoria();
-
-create unique index omega_operaciones_una_abierta
-  on liga.omega_operaciones (jornada_id, numero) where salida_dia is null;

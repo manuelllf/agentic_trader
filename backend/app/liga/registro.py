@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, SecretStr
 
 from app.config import settings
+from app.i18n import translate
 from app.liga import acceso, gestion, turnstile
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ _alias = re.compile(r"^[a-z0-9_.]{3,20}$")
 RESERVADOS = {"admin", "administrador", "alpha", "beta", "omega", "lambda", "jev",
               "liguilla", "liga", "vennett", "soporte", "ayuda", "moderador",
               "moderacion", "casa", "sistema", "root", "staff"}
-VERSION_TERMINOS = "3"
+VERSION_TERMINOS = "4"
 ENLACE_CLAVE = "/auth/callback?next=%2Fcambiar-clave"
 ENLACE_ENTRADA = "/auth/callback?next=%2Fliga"
 ENLACE_CONFIRMAR = "/confirmar"
@@ -50,6 +51,7 @@ class RegistroIn(CorreoIn):
     alias: str = Field(min_length=3, max_length=20)
     clave: SecretStr
     acepta_terminos: bool
+    edad: int
 
 
 def validar_clave(clave: str) -> bool:
@@ -138,12 +140,16 @@ def registrar(body: RegistroIn, request: Request) -> dict:
         raise HTTPException(422, "Usa 3 a 20 letras minúsculas, números, puntos o guiones bajos.")
     if not body.acepta_terminos:
         raise HTTPException(422, "Acepta los términos para crear la cuenta.")
+    if body.edad < 14:
+        raise HTTPException(422, translate("api_error_edad_minima"))
+    if body.edad > 120:
+        raise HTTPException(422, translate("api_error_edad_no_valida"))
     clave = body.clave.get_secret_value()
     if not validar_clave(clave):
         raise HTTPException(422, "Usa al menos 8 caracteres, una mayúscula y un símbolo.")
     _enviar("signup", {"email": email, "password": clave,
                       "data": {"alias": alias, "terminos_version": VERSION_TERMINOS,
-                               "idioma": _idioma(request)}},
+                               "idioma": _idioma(request), "edad": body.edad}},
             origen + ENLACE_CONFIRMAR)
     _vigilar_pico()
     return {"ok": True}

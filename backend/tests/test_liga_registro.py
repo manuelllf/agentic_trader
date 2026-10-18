@@ -34,7 +34,8 @@ def cliente(monkeypatch):
 
 def datos(**cambios):
     return {"email": "Usuario@correo.es", "origen": "http://localhost:3000",
-            "alias": "usuario", "clave": "Segura!123", "acepta_terminos": True, **cambios}
+            "alias": "usuario", "clave": "Segura!123", "acepta_terminos": True,
+            "edad": 30, **cambios}
 
 
 def test_alta_no_devuelve_tokens_y_envia_solo_metadata_de_perfil(cliente):
@@ -44,8 +45,22 @@ def test_alta_no_devuelve_tokens_y_envia_solo_metadata_de_perfil(cliente):
     assert url.endswith("/signup")
     assert llamada["json"]["email"] == "usuario@correo.es"
     assert llamada["json"]["data"] == {
-        "alias": "usuario", "terminos_version": registro.VERSION_TERMINOS, "idioma": "es"}
+        "alias": "usuario", "terminos_version": registro.VERSION_TERMINOS, "idioma": "es",
+        "edad": 30}
     assert "Authorization" not in llamada["headers"]
+
+
+def test_alta_menor_de_14_no_llama_al_proveedor(cliente, monkeypatch):
+    client, pedidos = cliente
+
+    def impedir_envio(*args, **kwargs):
+        pytest.fail("Una edad menor de 14 no debe llegar al proveedor")
+
+    monkeypatch.setattr(httpx, "post", impedir_envio)
+    respuesta = client.post("/registro", json=datos(edad=13))
+    assert respuesta.status_code == 422
+    assert respuesta.json() == {"detail": "Vennett es para mayores de 14 años."}
+    assert not pedidos
 
 
 @pytest.mark.parametrize("cambios", [
@@ -89,7 +104,8 @@ def test_alta_guarda_idioma_ingles(cliente, idioma):
     respuesta = client.post("/registro", json=datos(), headers={"Accept-Language": idioma})
     assert respuesta.status_code == 200
     assert pedidos[0][1]["json"]["data"] == {
-        "alias": "usuario", "terminos_version": registro.VERSION_TERMINOS, "idioma": "en"}
+        "alias": "usuario", "terminos_version": registro.VERSION_TERMINOS, "idioma": "en",
+        "edad": 30}
 
 
 @pytest.mark.parametrize("ruta", ["/recuperar", "/reenviar"])

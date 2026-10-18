@@ -83,7 +83,7 @@ def test_ruta_sin_token_no_produce_efectos(monkeypatch, ruta):
     with TestClient(app) as cliente:
         respuesta = cliente.post("/registro" + ruta, json={
             "email": "usuario@correo.es", "origen": "http://localhost:3000",
-            "alias": "usuario", "clave": "Segura!123", "acepta_terminos": True,
+            "alias": "usuario", "clave": "Segura!123", "acepta_terminos": True, "edad": 30,
         })
     assert respuesta.status_code == 403
     assert respuesta.json()["detail"] == translate("api_error_captcha_invalido")

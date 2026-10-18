@@ -17,6 +17,7 @@ export default function Registrar() {
   const acceso = useAccesoCorreo();
   const [email, setEmail] = useState("");
   const [alias, setAlias] = useState("");
+  const [edad, setEdad] = useState("");
   const [clave, setClave] = useState("");
   const [acepta, setAcepta] = useState(false);
   const [ocupado, setOcupado] = useState(false);
@@ -47,8 +48,11 @@ export default function Registrar() {
     e.preventDefault();
     if (ocupado || captchaPendiente || !sb || !acceso?.registro_abierto) return;
     if (!claveValida(clave)) { setError(t("auth_clave_revisa")); return; }
+    const edadNumero = Number(edad);
+    if (!Number.isInteger(edadNumero) || edadNumero < 14) { setError(t("auth_edad_minima")); return; }
+    if (edadNumero > 120) { setError(t("auth_edad_no_valida")); return; }
     setOcupado(true); setError("");
-    const fallo = await solicitarCorreo("", { email, alias, clave, acepta_terminos: acepta, turnstile });
+    const fallo = await solicitarCorreo("", { email, alias, edad: edadNumero, clave, acepta_terminos: acepta, turnstile });
     setTurnstile(""); setCaptchaReset(value => value + 1);
     if (fallo) { setOcupado(false); setError(fallo); }
     else {
@@ -98,6 +102,10 @@ export default function Registrar() {
             pattern="[a-z0-9_.]{3,20}" minLength={3} maxLength={20} required value={alias}
             onChange={e => setAlias(e.target.value.toLowerCase())} aria-describedby="ayuda-alias" />
           <span className="nota" id="ayuda-alias">{t("auth_ayuda_alias")}</span></label>
+        <label className="campo"><span className="lbl">{t("auth_edad_etiqueta")}</span>
+          <input className="inp" type="number" inputMode="numeric" min={14} max={120} step={1} required
+            value={edad} onChange={e => setEdad(e.target.value)} aria-describedby="ayuda-edad" />
+          <span className="nota" id="ayuda-edad">{t("auth_edad_ayuda")}</span></label>
         <CampoClave autoComplete="new-password" minLength={8} maxLength={200} required value={clave}
           onChange={e => setClave(e.target.value)} aria-describedby="ayuda-clave" />
         <ul className="acc-req" id="ayuda-clave" aria-live="polite">

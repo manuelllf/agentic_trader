@@ -190,7 +190,7 @@ def test_yo_dice_quien_eres_y_si_ves_el_panel(bd) -> None:  # noqa: ANN001
                         "puede_crear_liga": True, "pase_liga": False, "plan_pago": None,
                         "plan_pago_hasta": None, "roles": ["usuario"],
                         "admin": False, "aal2": False, "idioma": None, "pendiente": True,
-                        "avisos_correo": False, "correo_avisos": None, "mayor_edad_confirmada": False}
+                        "avisos_correo": False, "correo_avisos": None, "edad_declarada": False}
     r = cliente.get("/liga/yo", headers={"Authorization": f"Bearer {_token(sub=admin)}"})
     assert (r.json()["admin"], r.json()["aal2"], r.json()["roles"]) == \
         (True, False, ["usuario", "admin"])

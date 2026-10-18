@@ -65,7 +65,7 @@ class Yo(BaseModel):
     admin: bool   # enseña el «Panel de control»; entrar en las salas pide además el 2FA
     aal2: bool
     idioma: Literal["es", "en"] | None = None
-    mayor_edad_confirmada: bool = False
+    edad_declarada: bool = False
     avisos_correo: bool = False
     correo_avisos: str | None = None   # vacío: los avisos van al correo de la cuenta
     # Cuenta creada con Google o con un enlace que aún no ha aceptado los términos.
@@ -160,7 +160,7 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
                liga.authorize('admin.salas') as admin,
                liga.aal2() as aal2, privado.idioma,
                coalesce(privado.avisos_correo, false) as avisos_correo, privado.correo_avisos,
-               privado.mayor_edad_confirmada_en is not null as mayor_edad_confirmada,
+               privado.edad is not null as edad_declarada,
                liga.cuenta_pendiente() as pendiente,
                array(select r.rol::text from liga.roles_usuario r
                      where r.usuario_id = p.id order by r.rol) as roles
@@ -174,7 +174,7 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
               puede_crear_liga=fila.puede_crear_liga, pase_liga=fila.pase_liga,
               plan_pago=fila.plan_pago, plan_pago_hasta=fila.plan_pago_hasta,
               roles=list(fila.roles), admin=fila.admin, aal2=fila.aal2,
-              mayor_edad_confirmada=fila.mayor_edad_confirmada,
+              edad_declarada=fila.edad_declarada,
               idioma=fila.idioma, avisos_correo=fila.avisos_correo,
               correo_avisos=fila.correo_avisos, pendiente=fila.pendiente)
 
@@ -229,23 +229,30 @@ def cambiar_avisos_correo(body: AvisosCorreo, db: Session = Depends(db_usuario))
     return AvisosCorreo(activo=body.activo, correo=correo)
 
 
-class MayorEdad(BaseModel):
+class EdadDeclarada(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    confirmada: bool
+    edad: int
 
 
-@router.put("/yo/mayor-edad", response_model=MayorEdad)
-def confirmar_mayor_edad(body: MayorEdad, db: Session = Depends(db_usuario)) -> MayorEdad:
-    """Casilla de 18 años del premio anual: sin ella, la cuenta no cuenta para el premio."""
-    resultado = db.execute(text("""
-        update liga.perfiles_privados
-        set mayor_edad_confirmada_en =
-            case when :c then coalesce(mayor_edad_confirmada_en, now()) end
-        where id = (select auth.uid()) returning id
-    """), {"c": body.confirmada}).one_or_none()
-    if resultado is None:
-        raise HTTPException(404, "No encontramos tu perfil.")
-    return body
+@router.put("/yo/edad", response_model=EdadDeclarada)
+def declarar_edad(body: EdadDeclarada, db: Session = Depends(db_usuario)) -> EdadDeclarada:
+    """Edad en años, una sola vez. Solo los 18 o más cuentan para el premio anual."""
+    if body.edad < 14:
+        raise HTTPException(422, translate("api_error_edad_minima"))
+    if body.edad > 120:
+        raise HTTPException(422, translate("api_error_edad_no_valida"))
+    declarada = db.execute(text("""
+        update liga.perfiles_privados set edad = :edad
+        where id = (select auth.uid()) and edad is null returning id
+    """), {"edad": body.edad}).one_or_none()
+    if declarada is not None:
+        return body
+    existe = db.execute(text(
+        "select edad from liga.perfiles_privados where id = (select auth.uid())"
+    )).one_or_none()
+    if existe is None:
+        raise HTTPException(404, translate("api_error_no_encontramos_tu_perfil"))
+    raise HTTPException(409, translate("api_error_edad_ya_declarada"))
 
 
 # ---- Exportar y baja (plan §15, D17) --------------------------------------------------------
