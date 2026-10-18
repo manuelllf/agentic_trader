@@ -180,6 +180,7 @@ def test_el_premio_solo_se_ve_si_se_enciende_y_no_nombra_a_nadie(liga) -> None: 
             True, False, 1, 0)
         assert (premio["umbral_basico"], premio["umbral_completo"]) == (100, 250)
         assert premio["importes"] == {"1": [150, 75, 25], "2": [300, 150, 50]}
+        assert premio["temporada"]["n_jornadas"] > 0
         assert alias not in respuesta.text and "Opta al premio" not in respuesta.text
     finally:
         cx.execute("delete from liga.ajustes where clave = 'premio.visible'")

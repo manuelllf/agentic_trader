@@ -144,6 +144,8 @@ class Portada(BaseModel):
 class TemporadaPremioOut(BaseModel):
     id: int
     nombre: str
+    clave: str | None = None
+    n_jornadas: int = 0
 
 
 class PremioOut(BaseModel):

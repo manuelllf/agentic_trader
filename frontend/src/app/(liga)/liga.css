@@ -1799,67 +1799,98 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 }
 
 /* ---- Premio anual (/premio) ---- */
-.lg .premio-volver { width: 44px; min-height: 44px; display: grid; place-items: center; }
+.lg .premio-volver {
+  display: grid; place-items: center; width: 44px; min-height: 44px; color: var(--ink2);
+  text-decoration: none;
+}
 .lg .premio-cab-hueco { width: 44px; }
 .lg .premio-eyebrow {
-  font-family: var(--font-data); text-transform: uppercase; color: var(--muted); font-size: 12px;
+  font-family: var(--font-data); font-size: 12px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
 }
 .lg .premio-titular {
-  font-family: var(--font-display); font-weight: 800; font-size: 30px; line-height: 1.1;
-  text-wrap: balance; margin: 12px 0;
+  margin-top: 10px; font-family: var(--font-display); font-size: 22px; font-weight: 800;
+  line-height: 1.15; letter-spacing: -.02em;
 }
-.lg .premio-intro { color: var(--ink2); }
-.lg .premio-tarjeta { padding: 20px; }
-.lg .premio-cuentas-cab { display: flex; justify-content: space-between; gap: 12px; }
-.lg .premio-cuentas-dato { display: flex; align-items: baseline; gap: 12px; margin-top: 12px; }
+.lg .premio-tarjeta {
+  margin-top: 20px; padding: 12px 14px; border-radius: var(--radius-card); background: var(--surface);
+}
+.lg .premio-cuentas-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.lg .premio-cuentas-cab b { font-size: 14px; font-weight: 600; color: var(--ink2); }
+.lg .premio-cuentas-cab span { font-family: var(--font-data); font-size: 12px; color: var(--muted); }
+.lg .premio-cuentas-dato { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
 .lg .premio-cifra {
-  font-family: var(--font-display); font-size: 56px; font-weight: 800;
+  font-family: var(--font-display); font-size: 36px; font-weight: 800; line-height: 1;
+  letter-spacing: -.04em; color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.lg .premio-meta { font-size: 14px; color: var(--muted); }
+.lg .premio-escala { position: relative; height: 30px; margin-top: 10px; }
+.lg .premio-barra {
+  position: absolute; top: 4px; left: 0; right: 0; height: 6px; border-radius: 999px;
+  background: var(--surface2); overflow: hidden;
+}
+.lg .premio-barra-relleno { height: 100%; min-width: 6px; border-radius: 999px; background: var(--accent); }
+.lg .premio-marca {
+  position: absolute; top: 0; width: 2px; height: 14px; margin-left: -1px; border-radius: 1px;
+  background: var(--ink);
+}
+.lg .premio-escala-marca { position: absolute; top: 12px; width: 1px; height: 4px; background: var(--line2); }
+.lg .premio-escala-etiqueta {
+  position: absolute; top: 18px; font-family: var(--font-data); font-size: 11px; color: var(--muted);
+}
+.lg .premio-escala-etiqueta.fuerte { font-weight: 600; color: var(--ink); }
+.lg .premio-mensaje { margin-top: 8px; font-size: 14px; line-height: 1.45; color: var(--ink); }
+.lg .premio-bloque { margin-top: 28px; }
+.lg .premio-importes { margin-top: 28px; }
+.lg .premio-importes-titulo { font-size: 14px; font-weight: 600; color: var(--ink2); }
+.lg .premio-importes-linea {
+  margin-top: 6px; font-size: 16px; line-height: 1.5; color: var(--ink2);
   font-variant-numeric: tabular-nums;
 }
-.lg .premio-escala { margin: 16px 0 24px; padding-bottom: 24px; position: relative; }
-.lg .premio-barra {
-  height: 12px; background: var(--surface2); border-radius: 3px; overflow: hidden;
-}
-.lg .premio-barra-relleno { height: 100%; background: var(--accent); }
-.lg .premio-escala-marca {
-  position: absolute; top: 14px; height: 4px; border-left: 1px solid var(--line2);
-}
-.lg .premio-marca {
-  position: absolute; top: -4px; height: 20px; border-left: 2px solid var(--ink);
-}
-.lg .premio-escala-etiqueta { position: absolute; top: 22px; }
-.lg .premio-tabla {
-  width: 100%; border-collapse: collapse; margin-top: 16px; text-align: left;
-}
-.lg .premio-celda { padding: 10px; background: var(--surface); }
-.lg .premio-celda.activa { background: var(--accent-bg); }
-.lg .premio-columna { font-weight: 600; }
-.lg .premio-en-juego { display: block; color: var(--accent); }
-.lg .premio-puesto, .lg .premio-importe { padding: 10px; border-bottom: 1px solid var(--line); }
-.lg .premio-sin-premio { margin-top: 12px; }
-.lg .premio-cuenta-cab {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
+.lg .premio-cuenta-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .lg .premio-pill {
-  border-radius: 20px; padding: 4px 10px; font-size: 12px;
-  background: var(--flat-bg); color: var(--ink2);
+  display: inline-flex; align-items: center; min-height: 28px; padding: 0 11px; border-radius: 999px;
+  background: var(--flat-bg); color: var(--ink2); font-size: 14px; font-weight: 600;
 }
 .lg .premio-pill.optas { background: var(--good-bg); color: var(--good); }
-.lg .premio-entrar { margin-top: 16px; }
-.lg .premio-edad { align-items: flex-start; }
+.lg .premio-tarjeta-cuenta {
+  margin-top: 8px; padding: 0 16px; border-radius: var(--radius-card); background: var(--surface);
+}
+.lg .premio-fila {
+  display: flex; align-items: flex-start; gap: 12px; padding: 14px 0;
+  border-bottom: 1px solid var(--line); color: inherit; text-decoration: none;
+}
+.lg .premio-fila:last-child { border-bottom: 0; }
+.lg .premio-fila-cuerpo { flex: 1; min-width: 0; }
+.lg .premio-fila b { display: block; font-size: 16px; color: var(--ink); }
+.lg .premio-fila small { display: block; margin-top: 2px; font-size: 14px; line-height: 1.4; color: var(--muted); }
 .lg .premio-check {
-  width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%;
-  border: 1px dashed var(--line2); color: var(--good); display: grid; place-items: center;
+  flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px;
+  border-radius: 50%; border: 1px dashed var(--line2); color: var(--good);
 }
 .lg .premio-check.cumple { border: 1px solid var(--good); }
+.lg .premio-nombre { display: block; font-size: 16px; font-weight: 600; color: var(--ink); }
 .lg .premio-declarar {
-  min-height: 44px; display: inline-flex; align-items: center; color: var(--accent);
+  display: inline-flex; align-items: center; min-height: 44px; color: var(--accent);
+  font-weight: 600; text-decoration: none;
 }
-.lg .premio-jornadas { width: 100%; }
-.lg .premio-casillas { display: flex; gap: 4px; margin: 12px 0; }
+.lg .premio-crear, .lg .premio-guardar { margin-top: 12px; }
+.lg .premio-casillas { display: flex; gap: 4px; margin-top: 12px; }
 .lg .premio-casilla {
-  flex: 1; height: 18px; border-radius: 3px; background: var(--surface);
-  border: 1px solid var(--line2);
+  flex: 1; height: 18px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line2);
 }
-.lg .premio-casilla.jugada { background: var(--accent); border-color: var(--accent); }
+.lg .premio-casilla.jugada { background: var(--accent); box-shadow: none; }
+.lg .premio-entrar { margin-top: 16px; }
 .lg .premio-bases { margin-top: 24px; }
+.lg .premio-enlace {
+  display: flex; align-items: center; gap: 12px; min-height: 72px; margin-top: 14px; padding: 12px 0;
+  border-top: 1px solid var(--line2); border-bottom: 1px solid var(--line2);
+  color: inherit; text-decoration: none;
+}
+.lg .premio-glifo { flex: none; }
+.lg .premio-glifo .base { fill: var(--surface2); }
+.lg .premio-glifo .tramo { fill: var(--accent); }
+.lg .premio-glifo .aguja { fill: var(--ink); }
+.lg .premio-enlace-texto { flex: 1; min-width: 0; }
+.lg .premio-enlace-texto b { display: block; font-size: 16px; font-weight: 600; color: var(--ink); }
+.lg .premio-enlace-texto small { display: block; margin-top: 2px; font-size: 14px; line-height: 1.4; color: var(--muted); }

@@ -35,7 +35,8 @@ class _Db:
         if "liga.ajustes" in q:
             return _Resultado([True if params["c"] == premio.AJUSTE_VISIBLE else None])
         if "from liga.temporadas" in q:
-            return _Resultado([SimpleNamespace(id=1, nombre="Temporada", estado="abierta")])
+            return _Resultado([SimpleNamespace(id=1, nombre="Temporada", estado="abierta",
+                                               n_jornadas=12)])
         assert "join liga.perfiles_privados pp on pp.id = e.dueno_id" in q
         assert "pp.edad >= 18" in q
         if "count(distinct" in q:

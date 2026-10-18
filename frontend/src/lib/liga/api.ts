@@ -465,6 +465,11 @@ export async function apuntar(id: string): Promise<Estrategia | string> {
   return llamar<Estrategia>(`/liga/estrategias/${id}/apuntar`, { method: "POST" });
 }
 
+/** La estrategia que compite por el premio; cuenta desde la próxima jornada que se forme. */
+export async function optarAlPremio(id: string): Promise<Estrategia[] | string> {
+  return llamar<Estrategia[]>(`/liga/estrategias/${id}/premio`, { method: "POST" });
+}
+
 export async function desapuntar(id: string): Promise<Estrategia | string> {
   return llamar<Estrategia>(`/liga/estrategias/${id}/desapuntar`, { method: "POST" });
 }
@@ -726,7 +731,7 @@ export type Clasificacion = {
 
 export type PremioPublico = {
   visible: boolean;
-  temporada?: { id: number; nombre: string } | null;
+  temporada?: { id: number; nombre: string; clave: string | null; n_jornadas: number } | null;
   calculado?: boolean;
   cuentas?: number;
   escalon?: number | null;

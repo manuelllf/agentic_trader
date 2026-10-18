@@ -29,6 +29,7 @@ from app.liga.procesos.comun import (
     para_json,
     sesion,
 )
+from app.liga.procesos.temporadas import CLAVES_TEMPORADA
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ def visible(db: Session) -> bool:
 
 def temporada_del_premio(db: Session):
     """La temporada del premio: la que no ha cerrado o, si no, la última que cuenta."""
-    temporadas = db.execute(text("select id, nombre, estado from liga.temporadas "
+    temporadas = db.execute(text("select id, nombre, estado, n_jornadas from liga.temporadas "
                                  "where cuenta order by id")).all()
     if not temporadas:
         return None
@@ -129,7 +130,9 @@ def estado_publico(fabrica: Fabrica = fabrica_sistema) -> dict:
                                       "and pp.edad >= 18")).scalar_one()
             escalon = motor.escalon(cuentas, basico, completo)
         return {
-            "visible": True, "temporada": {"id": t.id, "nombre": t.nombre},
+            "visible": True,
+            "temporada": {"id": t.id, "nombre": t.nombre, "n_jornadas": t.n_jornadas,
+                          "clave": CLAVES_TEMPORADA.get(t.nombre)},
             "calculado": cerrada is not None, "cuentas": cuentas, "escalon": escalon,
             "umbral_basico": basico, "umbral_completo": max(basico, completo),
             "importes": {str(e): [int(i) for i in premios]

@@ -254,10 +254,15 @@ function LigaContenido() {
                   {orden === "puntos" && <div className="legend">
                     <p>{t("league_leyenda_orden_puntos")}</p>
                   </div>}
-                  {premio && typeof premio !== "string" && premio.visible && <Link href="/premio" className="li">
-                    <div className="t"><b>{t("premio_titulo")}</b><small>{premio.calculado
+                  {premio && typeof premio !== "string" && premio.visible && <Link href="/premio" className="premio-enlace">
+                    <svg className="premio-glifo" width={34} height={34} viewBox="0 0 34 34" aria-hidden="true">
+                      <rect className="base" x={2} y={14} width={30} height={5} rx={2.5} />
+                      <rect className="tramo" x={2} y={14} width={5} height={5} rx={2.5} />
+                      <rect className="aguja" x={13.2} y={10} width={1.6} height={13} rx={0.8} />
+                    </svg>
+                    <span className="premio-enlace-texto"><b>{t("premio_titulo")}</b><small>{premio.calculado
                       ? t("premio_calculado", { escalon: premio.escalon ?? 0 })
-                      : t("premio_fila_resumen", { cuentas: premio.cuentas ?? 0, basico: premio.umbral_basico ?? 0 })}</small></div>
+                      : t("premio_fila_resumen", { cuentas: premio.cuentas ?? 0, basico: premio.umbral_basico ?? 0 })}</small></span>
                     <svg className="chev" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
                   </Link>}
                 </div>
