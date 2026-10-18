@@ -549,15 +549,17 @@ def test_cero_respuestas_devuelve_reserva_sin_cobrar(entorno, monkeypatch):
     assert [tipo for tipo, _ in entorno.cobros] == ["reserva", "devolucion"]
 
 
-def test_esquema_ci_refleja_053_y_copia_excluye_caches():
+def test_esquema_ci_refleja_054_y_copia_excluye_caches():
     from app.liga import copia
 
     raiz = Path(__file__).resolve().parents[2]
     esquema = (raiz / "tests/esquema_ci.sql").read_text(encoding="utf-8")
-    assert esquema.splitlines()[0] == "-- migraciones-liga: 053"
+    assert esquema.splitlines()[0] == "-- migraciones-liga: 054"
+    assert "CREATE VIEW liga.v_panel_usuarios" in esquema
+    assert "CREATE FUNCTION liga.email_de_usuario" in esquema
     for tabla in ("actualizaciones", "notas_frescas", "respuestas_frescas", "omega_alertas"):
         assert f"CREATE TABLE liga.{tabla} (" in esquema
-    assert "actualizaciones" in copia.TABLAS and copia.VERSION_ESQUEMA == 53
+    assert "actualizaciones" in copia.TABLAS and copia.VERSION_ESQUEMA == 54
     assert "omega_alertas" in copia.TABLAS
     assert not {"notas_frescas", "respuestas_frescas"}.intersection(copia.TABLAS)
 

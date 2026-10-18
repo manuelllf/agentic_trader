@@ -1,4 +1,4 @@
--- migraciones-liga: 053
+-- migraciones-liga: 054
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -652,6 +652,19 @@ begin
   end if;
   return new;
 end $$;
+
+
+--
+-- Name: email_de_usuario(uuid); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.email_de_usuario(p_id uuid) RETURNS text
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select u.email::text from auth.users u
+  where u.id = p_id and (select liga.es_admin());
+$$;
 
 
 --
@@ -3214,6 +3227,118 @@ COMMENT ON COLUMN liga.visitas.session_id IS 'Signed Supabase auth session UUID;
 --
 
 COMMENT ON COLUMN liga.visitas.ultima_actividad IS 'Server timestamp of the most recent qualifying interaction; updates are throttled.';
+
+
+--
+-- Name: v_panel_usuarios; Type: VIEW; Schema: liga; Owner: -
+--
+
+CREATE VIEW liga.v_panel_usuarios WITH (security_invoker='true') AS
+ SELECT p.id,
+    p.alias,
+    p.oculto,
+    p.creado,
+    ARRAY( SELECT (r.rol)::text AS rol
+           FROM liga.roles_usuario r
+          WHERE (r.usuario_id = p.id)
+          ORDER BY r.rol) AS roles,
+    (NOT (EXISTS ( SELECT 1
+           FROM liga.roles_usuario r
+          WHERE ((r.usuario_id = p.id) AND (r.rol = 'usuario'::liga.rol))))) AS suspendido,
+    (EXISTS ( SELECT 1
+           FROM liga.planes_usuario pl
+          WHERE ((pl.usuario_id = p.id) AND (pl.plan = 'pro'::liga.plan) AND (pl.desde <= clock_timestamp()) AND ((pl.hasta IS NULL) OR (pl.hasta > clock_timestamp()))))) AS pro,
+    ( SELECT pl.hasta
+           FROM liga.planes_usuario pl
+          WHERE ((pl.usuario_id = p.id) AND (pl.plan = 'pro'::liga.plan) AND (pl.desde <= clock_timestamp()) AND ((pl.hasta IS NULL) OR (pl.hasta > clock_timestamp())))
+          ORDER BY pl.desde DESC
+         LIMIT 1) AS plan_hasta,
+    (EXISTS ( SELECT 1
+           FROM liga.pases_liga pa
+          WHERE ((pa.usuario_id = p.id) AND (pa.desde <= clock_timestamp()) AND ((pa.hasta IS NULL) OR (pa.hasta > clock_timestamp()))))) AS pase_liga,
+    ( SELECT pa.hasta
+           FROM liga.pases_liga pa
+          WHERE ((pa.usuario_id = p.id) AND (pa.desde <= clock_timestamp()) AND ((pa.hasta IS NULL) OR (pa.hasta > clock_timestamp())))
+          ORDER BY pa.desde DESC
+         LIMIT 1) AS pase_hasta,
+    pp.edad,
+    pp.edad_declarada_en,
+    pp.baja_solicitada,
+    COALESCE(s.saldo, (0)::numeric) AS saldo,
+    vis.total AS visitas_total,
+    vis.ultimos_7 AS visitas_7d,
+    vis.ultima_visita,
+    vis.ultima_actividad,
+    (round(COALESCE(vis.segundos_30, (0)::numeric)))::bigint AS tiempo_30d_seg,
+    ia.total_usd AS ia_mes_usd,
+    ia.llamadas AS ia_mes_llamadas,
+    ia.cache AS ia_mes_cache,
+    ia.conversor_usd AS ia_mes_conversor_usd,
+    ia.conversor_llamadas AS ia_mes_conversor_llamadas,
+    ia.pregunta_usd AS ia_mes_pregunta_usd,
+    ia.pregunta_llamadas AS ia_mes_pregunta_llamadas,
+    ia.lectura_usd AS ia_mes_lectura_usd,
+    ia.lectura_llamadas AS ia_mes_lectura_llamadas,
+    ( SELECT COALESCE(sum(((a.detalle ->> 'coste_usd'::text))::numeric), (0)::numeric) AS "coalesce"
+           FROM liga.auditoria a
+          WHERE ((a.actor_id = p.id) AND (a.accion ~~ 'ia.%'::text))) AS ia_historico_usd,
+    cob.pregunta_usd AS cobrado_mes_pregunta_usd,
+    cob.lectura_usd AS cobrado_mes_lectura_usd,
+    (cob.pregunta_usd + cob.lectura_usd) AS cobrado_mes_usd,
+    ( SELECT count(*) AS count
+           FROM liga.estrategias e
+          WHERE (e.dueno_id = p.id)) AS estrategias,
+    ( SELECT count(*) AS count
+           FROM liga.estrategias e
+          WHERE ((e.dueno_id = p.id) AND (e.estado = 'jugando'::text))) AS estrategias_jugando,
+    ( SELECT count(*) AS count
+           FROM (liga.inscripciones i
+             JOIN liga.estrategias e ON ((e.id = i.estrategia_id)))
+          WHERE (e.dueno_id = p.id)) AS inscripciones,
+    ( SELECT count(*) AS count
+           FROM liga.ligas_privadas l
+          WHERE (l.dueno_id = p.id)) AS ligas_propias,
+    ( SELECT count(*) AS count
+           FROM liga.miembros_liga m
+          WHERE (m.usuario_id = p.id)) AS ligas_miembro,
+    ( SELECT count(*) AS count
+           FROM liga.reportes r
+          WHERE (r.autor_id = p.id)) AS reportes_hechos,
+    ( SELECT count(*) AS count
+           FROM liga.reportes r
+          WHERE ((r.tipo = 'alias'::text) AND (r.objeto_id = (p.id)::text))) AS reportes_recibidos,
+    (EXISTS ( SELECT 1
+           FROM liga.consentimientos c
+          WHERE ((c.usuario_id = p.id) AND (c.documento = 'terminos'::text) AND (c.version = liga.version_terminos())))) AS terminos_aceptado_vigente,
+    ( SELECT min(c.aceptado) AS min
+           FROM liga.consentimientos c
+          WHERE ((c.usuario_id = p.id) AND (c.documento = 'terminos'::text) AND (c.version = liga.version_terminos()))) AS terminos_aceptado_en
+   FROM (((((liga.perfiles p
+     LEFT JOIN liga.perfiles_privados pp ON ((pp.id = p.id)))
+     LEFT JOIN liga.v_saldo s ON ((s.usuario_id = p.id)))
+     LEFT JOIN LATERAL ( SELECT count(*) AS total,
+            count(*) FILTER (WHERE (v.inicio >= (now() - '7 days'::interval))) AS ultimos_7,
+            max(v.inicio) AS ultima_visita,
+            max(v.ultima_actividad) AS ultima_actividad,
+            sum(EXTRACT(epoch FROM (v.ultima_actividad - v.inicio))) FILTER (WHERE (v.inicio >= (now() - '30 days'::interval))) AS segundos_30
+           FROM liga.visitas v
+          WHERE (v.usuario_id = p.id)) vis ON (true))
+     LEFT JOIN LATERAL ( SELECT count(*) AS llamadas,
+            count(*) FILTER (WHERE ((a.detalle ->> 'cache'::text) = 'true'::text)) AS cache,
+            count(*) FILTER (WHERE (a.accion = 'ia.conversor'::text)) AS conversor_llamadas,
+            count(*) FILTER (WHERE (a.accion = 'ia.pregunta'::text)) AS pregunta_llamadas,
+            count(*) FILTER (WHERE (a.accion = 'ia.lectura'::text)) AS lectura_llamadas,
+            COALESCE(sum(((a.detalle ->> 'coste_usd'::text))::numeric), (0)::numeric) AS total_usd,
+            COALESCE(sum(((a.detalle ->> 'coste_usd'::text))::numeric) FILTER (WHERE (a.accion = 'ia.conversor'::text)), (0)::numeric) AS conversor_usd,
+            COALESCE(sum(((a.detalle ->> 'coste_usd'::text))::numeric) FILTER (WHERE (a.accion = 'ia.pregunta'::text)), (0)::numeric) AS pregunta_usd,
+            COALESCE(sum(((a.detalle ->> 'coste_usd'::text))::numeric) FILTER (WHERE (a.accion = 'ia.lectura'::text)), (0)::numeric) AS lectura_usd
+           FROM liga.auditoria a
+          WHERE ((a.actor_id = p.id) AND (a.accion ~~ 'ia.%'::text) AND (a.creada >= date_trunc('month'::text, now())))) ia ON (true))
+     LEFT JOIN LATERAL ( SELECT (COALESCE((- sum(m.importe) FILTER (WHERE (m.motivo = 'prueba'::text))), (0)::numeric) * 0.01) AS pregunta_usd,
+            (COALESCE((- sum(m.importe) FILTER (WHERE (m.motivo = 'lectura'::text))), (0)::numeric) * 0.01) AS lectura_usd
+           FROM liga.creditos_movimientos m
+          WHERE ((m.usuario_id = p.id) AND (m.importe < (0)::numeric) AND (m.creado >= date_trunc('month'::text, now())))) cob ON (true))
+  WHERE ( SELECT liga.es_admin() AS es_admin);
 
 
 --
@@ -10577,6 +10702,14 @@ REVOKE ALL ON FUNCTION liga.dueno_se_une() FROM PUBLIC;
 
 
 --
+-- Name: FUNCTION email_de_usuario(p_id uuid); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.email_de_usuario(p_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.email_de_usuario(p_id uuid) TO authenticated;
+
+
+--
 -- Name: FUNCTION es_admin(); Type: ACL; Schema: liga; Owner: -
 --
 
@@ -11689,6 +11822,13 @@ GRANT SELECT ON TABLE liga.v_saldo TO authenticated;
 --
 
 GRANT SELECT ON TABLE liga.visitas TO authenticated;
+
+
+--
+-- Name: TABLE v_panel_usuarios; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.v_panel_usuarios TO authenticated;
 
 
 --

@@ -822,7 +822,7 @@ def test_funciones_security_definer_solo_para_quien_toca(cx):
         ("unirse_liga", "authenticated"), ("registrar_visita", "authenticated"),
         ("exportar_visitas", "authenticated"),
         ("aceptar_terminos", "authenticated"), ("cuenta_pendiente", "authenticated"),
-        ("ligas_incluidas", "authenticated"),
+        ("ligas_incluidas", "authenticated"), ("email_de_usuario", "authenticated"),
     }
 
 
@@ -900,3 +900,24 @@ def test_omega_alertas_solo_admin_lee(cx):
     assert _filas(cx, "select senal_id from liga.omega_alertas where senal_id = -501") == [(-501,)]
     _falla(cx, "insert into liga.omega_alertas (senal_id, ticker, nace_en) "
                "values (-502, 'TEST', now())")
+
+
+def test_panel_usuarios_solo_admin_con_2fa(cx):
+    normal = _usuario(cx)
+    admin = _usuario(cx, rol="admin")
+    otra = _usuario(cx)
+    _sistema(cx)
+    email = _filas(cx, "select email from auth.users where id = %s", (otra,))[0][0]
+
+    _como(cx, normal)
+    assert _filas(cx, "select id from liga.v_panel_usuarios") == []
+    assert _filas(cx, "select liga.email_de_usuario(%s)", (otra,)) == [(None,)]
+
+    _como(cx, admin, aal="aal1")
+    assert _filas(cx, "select id from liga.v_panel_usuarios") == []
+    assert _filas(cx, "select liga.email_de_usuario(%s)", (otra,)) == [(None,)]
+
+    _como(cx, admin, aal="aal2")
+    assert {(normal,), (admin,), (otra,)} <= set(
+        _filas(cx, "select id from liga.v_panel_usuarios"))
+    assert _filas(cx, "select liga.email_de_usuario(%s)", (otra,)) == [(email,)]
