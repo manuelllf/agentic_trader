@@ -38,6 +38,13 @@ describe("PWA language isolation", () => {
     expect(sw.fetch).not.toHaveBeenCalled();
   });
 
+  it("handles public navigations without caching them", async () => {
+    const sw = worker();
+    sw.fetch.mockResolvedValueOnce(new Response("liga", { headers: { "Content-Language": "es" } }));
+    expect(await (await sw.request("/liga"))!.text()).toBe("liga");
+    expect(sw.entries.size).toBe(0);
+  });
+
   it("serves only the selected language from the public offline cache", async () => {
     const sw = worker();
     for (const locale of ["es", "en"]) {
