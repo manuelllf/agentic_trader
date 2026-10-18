@@ -12,7 +12,7 @@
     "check:i18n": "node scripts/check-i18n.mjs && node scripts/check-hardcoded.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.117.2",
+    "@supabase/supabase-js": "^2.118.0",
     "@vercel/analytics": "^2.0.1",
     "next": "^15.0.0",
     "next-intl": "^4.14.9",
