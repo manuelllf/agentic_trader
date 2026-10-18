@@ -2,29 +2,36 @@
 
 **Liga de estrategias de inversión en papel contra el S&P 500.** Escribe una estrategia con reglas claras, compítela cada mes frente al índice y frente a tus amigos. Sin dinero real y sin recomendaciones de compra o venta.
 
-**En producción:** <https://vennett.app> · Gratis · Español e inglés
+**Entra en <https://vennett.app>** · Gratis · Español e inglés
+
+Si quieres usarla, sigue la sección [Empezar](#empezar).
+
+## Empezar
+
+1. **Crea una cuenta.** Con contraseña, con Google o con un enlace al correo. Confirma el correo para activarla.
+2. **Escribe la idea de tu estrategia en una frase.** Vennett la convierte en reglas explícitas: sector, tamaño, valoración, pesos de cuatro criterios financieros y, si quieres, una pregunta propia sobre cada empresa. Revísalas y ajústalas antes de jugar.
+3. **Mira la cartera de hoy.** Ves qué empresas entrarían y cuánto pesaría cada una. El primer día de bolsa de cada mes, la jornada arranca con esa cartera.
+
+Después, invita a tus amigos: crea una liga privada y comparte el código. Veréis la clasificación de todos.
 
 ## Qué ofrece
 
-- **Crea tu estrategia en una frase.** Describes la idea y Vennett la convierte en reglas explícitas: sector, tamaño, valoración, pesos de cuatro criterios financieros y, si quieres, una pregunta propia sobre cada empresa. Puedes revisarlas y editarlas antes de jugar.
-- **Juega cada mes contra el S&P 500.** Cada jornada compara la rentabilidad con dividendos de tu cartera con la del índice en la misma ventana. Ganar por más de 0,2 puntos vale 3, empatar 1 y perder 0.
+- **Juega cada mes contra el S&P 500.** Cada jornada compara la rentabilidad con dividendos de tu cartera con la del índice en la misma ventana.
 - **Ligas privadas con tus amigos.** Creas una liga, compartes el código y veis la clasificación de todos. Cada participante muestra su estrategia, su rentabilidad mensual y la acumulada frente al índice.
 - **Ficha completa de cada estrategia.** Cartera, evidencia de cada posición, curva frente al S&P 500, caída máxima, volatilidad, Sharpe y Sortino.
 - **Clasificación en directo.** El mes en juego se ve como provisional. Los puntos oficiales se fijan al cerrar cada jornada y no cambian después.
 - **Lecciones y boletín.** Un blog con lecciones cortas sobre cómo funciona una empresa y cómo se construye una estrategia, en español e inglés, con boletín opcional de doble confirmación.
 - **Resúmenes por correo.** Un resumen semanal y otro al cerrar cada jornada, con baja en un clic.
 
-## Cómo se juega
+## Cómo se puntúa
 
-1. **Idea.** Describes en una frase la estrategia que quieres probar.
-2. **Reglas y criterios.** Vennett propone reglas que puedes ajustar: umbrales de crecimiento, margen, ROE o dividendo, tope de empresas por sector y el peso de cada criterio.
-3. **Cartera.** Ves qué empresas entrarían hoy y cuánto pesaría cada una. El primer día de bolsa de cada mes, la jornada arranca con esa cartera.
+Cada jornada se compara la rentabilidad de tu cartera con la del S&P 500 en la misma ventana. Ganas si tu ventaja, redondeada a una décima, supera los 0,2 puntos: vale 3. Si queda entre −0,2 y +0,2, empatas y vale 1. Si queda por debajo de −0,2, pierdes y vale 0.
 
 Alpha, Omega y Lambda, los tres métodos de la casa, juegan cada jornada contra el mismo índice y con los mismos puntos, para tener una referencia en la tabla.
 
 ## Por dentro
 
-Un motor de análisis puntúa unas **3.000 acciones cotizadas en EE. UU.** (ADRs incluidos) con cuatro notas cerradas: fundamentales, valoración, riesgo de financiación y catalizador próximo. Un modelo de lenguaje pone esas notas. La selección posterior es aritmética y reproducible: orden, filtros, tope por sector y pesos son código sobre una foto mensual del universo, igual para todas las estrategias.
+Un motor de análisis puntúa unas **2.850 acciones cotizadas en EE. UU.** (ADRs incluidos) en cada escaneo, con cuatro notas cerradas: fundamentales, valoración, riesgo de financiación y catalizador próximo. Un modelo de lenguaje pone esas notas. La selección posterior es aritmética y reproducible: orden, filtros, tope por sector y pesos son código sobre una foto mensual del universo, igual para todas las estrategias.
 
 Todo el dinero (tamaños, caja, rentabilidad) lo calcula el código con aritmética decimal exacta. El modelo nunca toca cifras de dinero.
 
@@ -53,26 +60,6 @@ Todo el dinero (tamaños, caja, rentabilidad) lo calcula el código con aritmét
 ## Quién lo programa
 
 Vennett lo diseña y programa **Manuel Llao Freire**: arquitectura, backend, frontend, datos, pipelines con modelos de lenguaje, base de datos y despliegue. El proyecto se publica en abierto mientras se desarrolla.
-
-## Puesta en marcha
-
-Requisitos: **Python 3.12+** y **Node 20+**.
-
-```bash
-# Backend
-cd backend
-uv sync
-uv run uvicorn app.main:app --reload
-```
-
-```bash
-# Frontend
-cd frontend
-npm install
-npm run dev
-```
-
-Las variables de entorno van en `backend/.env` (no versionado). Sin claves de modelo de lenguaje, el sistema arranca igualmente: el escaneo las necesita, y el bróker cae a simulación.
 
 ## Aviso
 
