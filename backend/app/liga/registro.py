@@ -28,7 +28,7 @@ _alias = re.compile(r"^[a-z0-9_.]{3,20}$")
 RESERVADOS = {"admin", "administrador", "alpha", "beta", "omega", "lambda", "jev",
               "liguilla", "liga", "vennett", "soporte", "ayuda", "moderador",
               "moderacion", "casa", "sistema", "root", "staff"}
-VERSION_TERMINOS = "4"
+VERSION_TERMINOS = "5"
 ENLACE_CLAVE = "/auth/callback?next=%2Fcambiar-clave"
 ENLACE_ENTRADA = "/auth/callback?next=%2Fliga"
 ENLACE_CONFIRMAR = "/confirmar"

@@ -448,7 +448,7 @@ def _saldo_de(fabrica, estrategia_id) -> Decimal:  # noqa: ANN001
     return ia_comun.saldo(_dueno(fabrica, estrategia_id), fabrica)
 
 
-def test_sin_pro_la_pregunta_se_paga_con_creditos_y_con_pro_va_incluida(  # noqa: ANN001
+def test_sin_pro_la_pregunta_va_incluida_y_no_cobra(  # noqa: ANN001
         fabrica, mercado, mundo) -> None:
     ene = mundo["enero"]
     _contestar_todas(fabrica, mundo)
@@ -456,13 +456,13 @@ def test_sin_pro_la_pregunta_se_paga_con_creditos_y_con_pro_va_incluida(  # noqa
     foto.ejecutar(ene, fabrica=fabrica)
     formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
     ins = _inscripciones(fabrica, ene)
-    assert _saldo_de(fabrica, de_pago) == Decimal(9)               # un crédito por 1.000 empresas
-    assert _saldo_de(fabrica, mundo["pregunta"]) == Decimal(0)     # con Pro no paga nada
+    assert _saldo_de(fabrica, de_pago) == Decimal(10)
+    assert _saldo_de(fabrica, mundo["pregunta"]) == Decimal(0)
     assert set(ins[de_pago]["pos"]) == set(ins[mundo["pregunta"]]["pos"]) == {"ZQA", "ZQF", "ZQB"}
     assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas") == 0
 
 
-def test_sin_saldo_juega_sin_su_pregunta_aunque_otra_cuenta_la_tenga_en_cache(  # noqa: ANN001
+def test_sin_saldo_tambien_juega_con_su_pregunta(  # noqa: ANN001
         fabrica, mercado, mundo) -> None:
     ene = mundo["enero"]
     _contestar_todas(fabrica, mundo)
@@ -470,12 +470,12 @@ def test_sin_saldo_juega_sin_su_pregunta_aunque_otra_cuenta_la_tenga_en_cache(  
     foto.ejecutar(ene, fabrica=fabrica)
     formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
     ins = _inscripciones(fabrica, ene)
-    assert set(ins[sin_saldo]["pos"]) != set(ins[mundo["pregunta"]]["pos"])
+    assert set(ins[sin_saldo]["pos"]) == set(ins[mundo["pregunta"]]["pos"])
     assert _saldo_de(fabrica, sin_saldo) == Decimal(0)
     assert _cuenta(fabrica, "select count(*) from liga.formaciones_degradadas d "
                             "join liga.inscripciones i on i.id = d.inscripcion_id "
                             "where i.estrategia_id = :e and d.motivo = 'sin_saldo'",
-                   e=sin_saldo) == 1
+                   e=sin_saldo) == 0
 
 
 def test_si_faltan_respuestas_no_se_cobra_la_pregunta(fabrica, mercado, mundo) -> None:  # noqa: ANN001
@@ -1269,7 +1269,7 @@ def test_los_recordatorios_salen_una_vez_por_jornada_y_en_su_hora(
     empujes.clear()
     cierra = datetime(2027, 1, 4, 14, 0, tzinfo=UTC)              # 09:00 NY del día 4
     assert avisos.job(fabrica, ahora=cierra - timedelta(hours=2)) == {
-        "sin_creditos": 0, "cambios_cierran": 0, "empieza": 0}
+        "cambios_cierran": 0, "empieza": 0}
     assert avisos.job(fabrica, ahora=cierra - timedelta(minutes=30))["cambios_cierran"] == 1
     assert [c["title"] for _, c in empujes] == ["Los cambios se cierran en una hora"]
     assert avisos.job(fabrica, ahora=cierra - timedelta(minutes=25))["cambios_cierran"] == 0
@@ -1280,29 +1280,6 @@ def test_los_recordatorios_salen_una_vez_por_jornada_y_en_su_hora(
     assert [c["title"] for _, c in empujes] == ["Empieza la jornada"]
     assert avisos.job(fabrica, ahora=abre + timedelta(minutes=5))["empieza"] == 0
     assert avisos.job(fabrica, ahora=abre + timedelta(hours=3))["empieza"] == 0
-
-
-def test_tres_dias_antes_del_corte_se_avisa_a_quien_no_le_alcanzan_los_creditos(
-        fabrica, mercado, mundo, empujes, monkeypatch) -> None:  # noqa: ANN001
-    from app.liga import avisos, estrategias
-    from app.liga.ia import comun as ia_comun
-
-    monkeypatch.setattr(ia_comun, "razon_no_disponible", lambda *a, **k: "apagada")
-
-    monkeypatch.setattr(estrategias, "fabrica_sistema", fabrica)
-    sin_saldo, con_saldo = _cuenta_con_pregunta(fabrica, 0), _cuenta_con_pregunta(fabrica, 10)
-    for e in (sin_saldo, con_saldo, mundo["pregunta"]):
-        _suscribir(fabrica, _dueno(fabrica, e))
-    corte = _cuenta(fabrica, "select cierre_inscripcion from liga.jornadas where id = :j",
-                    j=mundo["enero"])
-    assert avisos.job(fabrica, ahora=corte - timedelta(days=4))["sin_creditos"] == 0
-    # Sin pregunta no hay aviso de créditos.
-    assert avisos.job(fabrica, ahora=corte - timedelta(days=2))["sin_creditos"] == 0
-    monkeypatch.setattr(ia_comun, "razon_no_disponible", lambda *a, **k: None)
-    assert avisos.job(fabrica, ahora=corte - timedelta(days=2))["sin_creditos"] == 1
-    assert [c["title"] for _, c in empujes] == ["Tu pregunta no tiene créditos"]
-    assert avisos.job(fabrica, ahora=corte - timedelta(days=1))["sin_creditos"] == 0
-    assert avisos.job(fabrica, ahora=corte + timedelta(hours=1))["sin_creditos"] == 0
 
 
 # ---- la ventana de cambios: Cambiar y Recuperar hasta las 09:00 NY del día 1 -------------------

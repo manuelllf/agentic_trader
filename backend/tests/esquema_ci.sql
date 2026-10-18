@@ -1,4 +1,4 @@
--- migraciones-liga: 051
+-- migraciones-liga: 052
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -562,7 +562,9 @@ CREATE FUNCTION liga.cuenta_pendiente() RETURNS boolean
     AS $$
   select not exists (select 1 from liga.consentimientos c
                      where c.usuario_id = auth.uid() and c.documento = 'terminos'
-                       and c.version = liga.version_terminos());
+                       and c.version = liga.version_terminos())
+    or not exists (select 1 from liga.perfiles_privados p
+                    where p.id = auth.uid() and p.edad is not null);
 $$;
 
 
@@ -1180,7 +1182,7 @@ CREATE FUNCTION liga.version_terminos() RETURNS text
     LANGUAGE sql IMMUTABLE
     SET search_path TO ''
     AS $$
-  select '4'::text;
+  select '5'::text;
 $$;
 
 

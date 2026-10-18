@@ -143,8 +143,6 @@
   "api_analytics_failed": "Unable to query analytics: {error}",
   "api_broker_sync_failed": "Unable to sync with IBKR: {error}",
   "api_provider_not_configured": "Set ENABLE_LLM=true and the provider key ({provider}_API_KEY).",
-  "push_sin_creditos_title": "Your question has no credits",
-  "push_sin_creditos_body": "{name} will play without its question: your credits do not cover it before the {date} cutoff, at {time}.",
   "push_cartera_lista_title": "Your portfolio is ready",
   "push_cartera_lista_body": "You can swap companies until {date} at {time}.",
   "push_cambios_cierran_title": "Changes close in one hour",

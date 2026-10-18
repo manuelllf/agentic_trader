@@ -143,8 +143,6 @@
   "api_analytics_failed": "No se pudo consultar la analítica: {error}",
   "api_broker_sync_failed": "No se pudo sincronizar con IBKR: {error}",
   "api_provider_not_configured": "Configura ENABLE_LLM=true y la key del proveedor ({provider}_API_KEY).",
-  "push_sin_creditos_title": "Tu pregunta no tiene créditos",
-  "push_sin_creditos_body": "{name} jugará sin su pregunta: tus créditos no alcanzan para pagarla antes del corte del {date}, a las {time}.",
   "push_cartera_lista_title": "Tu cartera está lista",
   "push_cartera_lista_body": "Puedes cambiar empresas hasta el {date} a las {time}.",
   "push_cambios_cierran_title": "Los cambios se cierran en una hora",

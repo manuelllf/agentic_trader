@@ -38,6 +38,7 @@ export default async function Terminos() {
       <h2>{t("legal_terms_your_account")}</h2>
       <ul>
         <li>{t("legal_terms_account_age")} <Link href="/legal/privacidad">{t("legal_privacy_policy")}</Link>.</li>
+        <li>{t("legal_terms_prize_age")}</li>
         <li>{t("legal_terms_password")} <Link href="/cuenta">{t("legal_account_link")}</Link>.</li>
         <li>{t("legal_terms_delete_account")}</li>
       </ul>

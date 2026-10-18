@@ -14,7 +14,7 @@ from app.config import settings
 from app.liga import avisos
 
 CIERRA = datetime(2027, 1, 4, 14, 0, tzinfo=UTC)          # 15:00 en Madrid
-CON_CORREO = ("cartera_lista", "quitadas_vaciadas", "sin_pregunta", "sin_creditos", "empieza")
+CON_CORREO = ("cartera_lista", "quitadas_vaciadas", "sin_pregunta", "empieza")
 
 
 class _Resultado:
