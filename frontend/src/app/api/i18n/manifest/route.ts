@@ -11,7 +11,7 @@ const application = {
   "scope": "/",
   "lang": "es",
   "display": "standalone",
-  "background_color": "#FFFFFF",
+  "background_color": "#0E0F10",
   "theme_color": "#FFFFFF",
   "icons": [
     {
