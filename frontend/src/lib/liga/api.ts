@@ -882,3 +882,7 @@ export async function actualizarDatos(receta: RecetaEntrada, estrategiaId?: stri
 export async function getActualizacion(): Promise<ActualizacionDatos | null | string> {
   return llamar<ActualizacionDatos | null>("/liga/seleccion/actualizacion", {}, true, 15000);
 }
+
+export type PrimerosPasos = { estrategia: boolean; apuntada: boolean; jornada_cerrada: boolean };
+
+export const getPrimerosPasos = () => llamar<PrimerosPasos>("/liga/yo/primeros-pasos");

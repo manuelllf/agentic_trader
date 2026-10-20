@@ -1,0 +1,98 @@
+/* Aprender: misma escala que Cómo funciona. Listas con línea fina; tarjetas solo para «siguiente». */
+.lg .apr .apr-marco { padding: 8px 0 40px; }
+.lg .apr-lado { display: none; }
+.lg .apr-mi-liga { display: inline-flex; align-items: center; min-height: var(--control-height); font-size: 15px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.lg .apr-eyebrow { margin-top: 10px; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.lg .apr-h1 { margin-top: 6px; font-size: clamp(26px, 3vw, 34px); line-height: 1.08; font-weight: 700; letter-spacing: -.025em; text-wrap: balance; }
+.lg .apr-lead { margin-top: 12px; font-size: 16px; line-height: 1.5; color: var(--ink2); }
+.lg .apr-lead a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.lg .apr-sec { margin-top: 32px; }
+.lg .apr-sec > h2 { font-size: 18px; font-weight: 700; letter-spacing: -.015em; margin-bottom: 12px; }
+.lg .apr-txt { font-size: 16px; line-height: 1.55; color: var(--ink2); }
+.lg .apr-txt b { color: var(--ink); }
+.lg .apr-rot { margin-top: 8px; font-size: 14px; color: var(--muted); }
+.lg .apr-pasos, .lg .apr-indice, .lg .apr-reloj, .lg .apr-req { list-style: none; margin: 0; padding: 0; }
+.lg .apr-pasos { border-top: 1px solid var(--line); }
+.lg .apr-pasos li { display: grid; grid-template-columns: 22px 1fr auto; gap: 12px; align-items: center; min-height: 56px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.lg .apr-marca { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line2); }
+.lg .apr-pasos li.hecho .apr-marca { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 4px var(--bg); }
+.lg .apr-pasos li.hecho b { color: var(--muted); font-weight: 600; }
+.lg .apr-pasos b { display: block; font-size: 16px; }
+.lg .apr-pasos small { display: block; font-size: 14px; color: var(--muted); line-height: 1.35; }
+.lg .apr-btn { min-height: 40px; padding: 0 14px; font-size: 14px; }
+.lg .apr-indice { border-top: 1px solid var(--line); }
+.lg .apr-indice a { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+.lg .apr-n { font-family: var(--font-data), monospace; font-size: 14px; font-weight: 700; color: var(--accent); }
+.lg .apr-indice b { display: block; font-size: 16px; letter-spacing: -.01em; }
+.lg .apr-indice span:not(.apr-n) { display: block; margin-top: 2px; font-size: 14.5px; color: var(--ink2); line-height: 1.4; }
+.lg .apr-indice em { font-style: normal; font-family: var(--font-data), monospace; font-size: 12.5px; color: var(--muted); }
+.lg .apr-indice a[aria-current="page"] b { color: var(--accent); }
+.lg .apr-proximo { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 14px 16px; border-radius: var(--radius-card); background: var(--surface); }
+.lg .apr-proximo span { font-size: 14.5px; color: var(--ink2); }
+.lg .apr-proximo b { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.lg .apr-volver { display: inline-flex; align-items: center; min-height: var(--control-height); margin-top: 4px; font-size: 15px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.lg .apr-de { margin-top: 12px; font-family: var(--font-data), monospace; font-size: 13px; color: var(--muted); }
+.lg .apr-regla { padding: 16px; border: 1px solid var(--line2); border-radius: var(--radius-card); }
+.lg .apr-regla-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.lg .apr-valor { font-family: var(--font-data), monospace; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.lg .apr-regla input[type="range"] { width: 100%; margin-top: 14px; min-height: 28px; accent-color: var(--accent); }
+.lg .apr-escala { display: flex; justify-content: space-between; font-family: var(--font-data), monospace; font-size: 12px; color: var(--muted); }
+.lg .apr-recuento { display: flex; align-items: baseline; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.lg .apr-recuento b { font-family: var(--font-display); font-size: 34px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+.lg .apr-recuento span { font-size: 14.5px; color: var(--ink2); }
+.lg .apr-fuente { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.lg .apr-dia { padding: 16px 0 6px; font-family: var(--font-data), monospace; font-size: 12.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.lg .apr-dia:first-child { padding-top: 0; }
+.lg .apr-hito { display: grid; grid-template-columns: 76px 1fr; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+.lg .apr-h { font-family: var(--font-display); font-size: 24px; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
+.lg .apr-ny { display: block; margin-top: 4px; font-family: var(--font-data), monospace; font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--muted); }
+.lg .apr-hito b { display: block; font-size: 16px; }
+.lg .apr-hito p { margin-top: 2px; font-size: 15px; color: var(--ink2); }
+.lg .apr-hito.clave .apr-h { color: var(--accent); }
+.lg .apr-ventana { margin: 4px 0 0 90px; padding: 10px 12px; border-left: 2px solid var(--accent); font-size: 15px; color: var(--ink2); }
+.lg .apr-barra { display: grid; grid-template-columns: 1fr .8fr 1fr; height: 44px; margin-top: 12px; border-radius: var(--control-radius); overflow: hidden; font-weight: 700; }
+.lg .apr-barra div { display: grid; place-items: center; }
+.lg .apr-barra .p0 { background: var(--bad-bg); color: var(--bad); }
+.lg .apr-barra .p1 { background: var(--flat-bg); color: var(--ink2); }
+.lg .apr-barra .p3 { background: var(--good-bg); color: var(--good); }
+.lg .apr-marcas { display: grid; grid-template-columns: 1fr .8fr 1fr; margin: 6px 0 14px; font-family: var(--font-data), monospace; font-size: 12px; color: var(--muted); }
+.lg .apr-marcas span:nth-child(2) { display: flex; justify-content: space-between; }
+.lg .apr-marcas span:nth-child(2) i { font-style: normal; }
+.lg .apr-marcas span:nth-child(3) { text-align: right; }
+.lg .apr-casa { border-top: 1px solid var(--line); }
+.lg .apr-casa > div { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.lg .apr-escudo { display: block; width: 24px; height: 28px; }
+.lg .apr-casa b { display: block; font-size: 16px; }
+.lg .apr-casa span { font-size: 15px; color: var(--ink2); line-height: 1.4; }
+.lg .apr-escalones { border-top: 1px solid var(--line); }
+.lg .apr-esc { display: grid; grid-template-columns: 1fr repeat(3, 60px); gap: 8px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.lg .apr-esc .q { font-size: 15px; color: var(--ink2); }
+.lg .apr-esc .q b { display: block; color: var(--ink); font-size: 16px; }
+.lg .apr-esc .e { text-align: right; font-family: var(--font-display); font-weight: 800; font-size: 19px; letter-spacing: -.02em; }
+.lg .apr-esc.cab span { text-align: right; font-family: var(--font-data), monospace; font-size: 12px; color: var(--muted); }
+.lg .apr-esc.no .q { grid-column: 1 / -1; color: var(--muted); }
+.lg .apr-req { display: grid; gap: 10px; }
+.lg .apr-req li { position: relative; padding-left: 18px; font-size: 15.5px; color: var(--ink2); }
+.lg .apr-req li::before { content: ""; position: absolute; left: 4px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.lg .apr-enlace { margin-top: 14px; }
+.lg .apr-enlace a { display: inline-flex; align-items: center; min-height: var(--control-height); color: var(--accent); font-weight: 600; text-decoration: none; }
+.lg .apr-siguiente { display: block; margin-top: 44px; padding: 16px; border-radius: var(--radius-card); background: var(--surface); color: var(--ink); text-decoration: none; }
+.lg .apr-siguiente small { display: block; font-family: var(--font-data), monospace; font-size: 12.5px; color: var(--muted); }
+.lg .apr-siguiente b { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 4px; font-size: 17px; }
+.lg .apr-siguiente b::after { content: "›"; font-size: 22px; line-height: 1; color: var(--accent); }
+.lg .apr-ayuda { margin-top: 28px; font-size: 15px; color: var(--muted); }
+.lg .apr-ayuda a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.lg .apr-pie { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+@media (min-width: 880px) {
+  .lg main.sencilla.apr { margin: 0 auto; width: 100%; max-width: var(--ancho-app); }
+  .lg .apr .apr-marco { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 56px; align-items: start; }
+  .lg .apr-lado { display: block; position: sticky; top: 24px; padding-top: 28px; }
+  .lg .apr-lado .apr-eyebrow { margin-top: 0; }
+  .lg .apr-indice.corto { margin-top: 12px; }
+  .lg .apr-indice.corto a { grid-template-columns: 24px 1fr; padding: 11px 0; }
+  .lg .apr-indice.corto b { font-size: 15px; }
+  .lg .apr-lectura { max-width: var(--ancho-lectura); }
+  .lg .apr-lectura .apr-volver { display: none; }
+  .lg .apr-lectura .apr-eyebrow { margin-top: 28px; }
+  .lg .apr-lead { font-size: 18px; }
+}
