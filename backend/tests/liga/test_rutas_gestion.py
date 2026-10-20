@@ -346,6 +346,7 @@ def test_ajustes_trae_metadato_y_efectivo_por_defecto(api) -> None:  # noqa: ANN
         "procesos.cerrar.auto", "ia.formacion.activo", "ia.tope_formacion_usd",
         "procesos.formar.limite_preguntas_s", "premio.visible", "premio.umbral_basico",
         "premio.umbral_completo", "liga.clasificacion_viva",
+        "panel.dias_sin_estrategia", "panel.dias_inactiva", "panel.aviso_tope_ia_pct",
     }
     registro = filas["liga.registro.abierto"]
     assert registro["valor"] is None and registro["efectivo"] is False
@@ -357,6 +358,9 @@ def test_ajustes_trae_metadato_y_efectivo_por_defecto(api) -> None:  # noqa: ANN
 
     margen = filas["ia.margen_objetivo"]
     assert float(margen["defecto"]) == 3.0 and float(margen["efectivo"]) == 3.0
+
+    panel = filas["panel.dias_sin_estrategia"]
+    assert panel["grupo"] == "Panel" and panel["valor"] is None and panel["efectivo"] == 3
 
 
 def test_ajustes_valida_por_tipo(api) -> None:  # noqa: ANN001

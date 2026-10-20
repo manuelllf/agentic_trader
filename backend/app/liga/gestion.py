@@ -43,7 +43,7 @@ class AjusteMeta:
     la app cuando la clave no está en `liga.ajustes` -- tiene que coincidir con el código real
     (`gestion.py`/`ia/comun.py`), no es solo decorativo."""
 
-    grupo: Literal["Emergencia", "IA", "Créditos", "Procesos", "Premio"]
+    grupo: Literal["Emergencia", "IA", "Créditos", "Procesos", "Premio", "Liga", "Panel"]
     titulo: str
     ayuda: str
     tipo: Literal["interruptor", "entero", "dolares", "multiplicador"]
@@ -158,6 +158,22 @@ CATALOGO["procesos.cerrar.auto"] = AjusteMeta(
           "jornada que acaba si están los cierres del S&P y de todos sus valores. Si falta alguno "
           "no cierra y avisa. Apagado (emergencia): solo vale el botón de Admin.",
     tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True)
+# Umbrales del resumen del panel de admin: así ningún número del panel queda escrito en el código.
+CATALOGO["panel.dias_sin_estrategia"] = AjusteMeta(
+    grupo="Panel", titulo="Avisar de altas sin estrategia",
+    ayuda="Días desde el alta a partir de los cuales una cuenta sin estrategia sale en el resumen "
+          "del panel y en su consulta.",
+    tipo="entero", unidad="días", minimo=Decimal(1), maximo=Decimal(90), defecto=3)
+CATALOGO["panel.dias_inactiva"] = AjusteMeta(
+    grupo="Panel", titulo="Cuenta inactiva",
+    ayuda="Días sin visitas a partir de los cuales una cuenta que ya entró alguna vez cuenta como "
+          "inactiva en la consulta del panel.",
+    tipo="entero", unidad="días", minimo=Decimal(1), maximo=Decimal(365), defecto=14)
+CATALOGO["panel.aviso_tope_ia_pct"] = AjusteMeta(
+    grupo="Panel", titulo="Avisar del tope de IA",
+    ayuda="Porcentaje del tope mensual de IA de los usuarios a partir del cual el resumen del "
+          "panel avisa. No apaga nada.",
+    tipo="entero", unidad="%", minimo=Decimal(1), maximo=Decimal(100), defecto=80)
 AJUSTES_CONOCIDOS = frozenset(CATALOGO)
 CLAVE_REGISTRO_ABIERTO = "liga.registro.abierto"
 CLAVE_LIGA_VISIBLE = "liga.visible"

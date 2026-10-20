@@ -854,6 +854,7 @@ def test_funciones_security_definer_solo_para_quien_toca(cx):
         ("exportar_visitas", "authenticated"),
         ("aceptar_terminos", "authenticated"), ("cuenta_pendiente", "authenticated"),
         ("ligas_incluidas", "authenticated"), ("email_de_usuario", "authenticated"),
+        ("tiene_borrador", "authenticated"),
     }
 
 
@@ -952,3 +953,26 @@ def test_panel_usuarios_solo_admin_con_2fa(cx):
     assert {(normal,), (admin,), (otra,)} <= set(
         _filas(cx, "select id from liga.v_panel_usuarios"))
     assert _filas(cx, "select liga.email_de_usuario(%s)", (otra,)) == [(email,)]
+
+
+def test_vistas_del_panel_solo_las_ve_un_admin(cx):
+    a = _usuario(cx)
+    adm = _usuario(cx, rol="admin")
+    _sistema(cx)
+    cx.execute("insert into liga.visitas (usuario_id, session_id) values (%s, gen_random_uuid())",
+               (a,))
+    cx.execute("insert into liga.borradores (usuario_id, clave, contenido, revision) "
+               "values (%s, 'nueva', '{}'::jsonb, 1)", (a,))
+    vistas = ("v_admin_cohortes", "v_admin_visitas_dia", "v_admin_sin_estrategia",
+              "v_admin_inactivas", "v_admin_nunca_apuntadas", "v_admin_reglas_usadas")
+    _como(cx, a)
+    for vista in vistas:
+        assert _filas(cx, f"select count(*) from liga.{vista}") == [(0,)]  # noqa: S608
+    assert _filas(cx, "select liga.tiene_borrador(%s)", (a,)) == [(False,)]
+    _como(cx, adm, aal="aal2")
+    assert _filas(cx, "select borrador from liga.v_admin_sin_estrategia where id = %s",
+                  (a,)) == [(True,)]
+    assert _filas(cx, "select visitas from liga.v_admin_inactivas where id = %s", (a,)) == [(1,)]
+    _como(cx, None)
+    for vista in vistas:
+        _falla(cx, f"select 1 from liga.{vista}")  # noqa: S608

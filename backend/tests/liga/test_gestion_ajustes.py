@@ -11,6 +11,7 @@ from app.liga import gestion
 def test_catalogo_cubre_las_mismas_claves_que_antes() -> None:
     assert gestion.AJUSTES_CONOCIDOS == frozenset({
         "creditos.bienvenida",
+        "panel.dias_sin_estrategia", "panel.dias_inactiva", "panel.aviso_tope_ia_pct",
         "ia.conversor.activo", "ia.pregunta.activo", "ia.lectura.activo",
         "ia.tope_mensual_usd", "ia.margen_objetivo",
         "ia.formacion.activo", "ia.tope_formacion_usd", "procesos.formar.limite_preguntas_s",

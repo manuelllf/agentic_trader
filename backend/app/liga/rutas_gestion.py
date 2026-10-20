@@ -110,7 +110,7 @@ class AjusteIn(BaseModel):
 
 class AjusteOut(BaseModel):
     clave: str
-    grupo: Literal["Emergencia", "IA", "Créditos", "Procesos", "Premio", "Liga"]
+    grupo: Literal["Emergencia", "IA", "Créditos", "Procesos", "Premio", "Liga", "Panel"]
     titulo: str
     ayuda: str
     tipo: Literal["interruptor", "entero", "dolares", "multiplicador"]

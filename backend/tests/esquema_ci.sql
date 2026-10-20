@@ -1,4 +1,4 @@
--- migraciones-liga: 055
+-- migraciones-liga: 056
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -1093,6 +1093,19 @@ begin
   raise exception '%.% es de solo añadir', tg_table_schema, tg_table_name
     using errcode = 'P0001';
 end $_$;
+
+
+--
+-- Name: tiene_borrador(uuid); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.tiene_borrador(p_id uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select exists (select 1 from liga.borradores b where b.usuario_id = p_id)
+     and (select liga.es_admin());
+$$;
 
 
 --
@@ -3200,35 +3213,26 @@ ALTER TABLE liga.temporadas ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- Name: v_clasificacion; Type: VIEW; Schema: liga; Owner: -
+-- Name: v_admin_cohortes; Type: VIEW; Schema: liga; Owner: -
 --
 
-CREATE VIEW liga.v_clasificacion WITH (security_invoker='true') AS
- SELECT i.estrategia_id,
-    j.temporada_id,
-    (sum(r.puntos))::integer AS puntos,
-    (count(*))::integer AS jornadas,
-    (count(*) FILTER (WHERE (r.puntos = 3)))::integer AS ganadas,
-    (count(*) FILTER (WHERE (r.puntos = 1)))::integer AS empatadas,
-    (count(*) FILTER (WHERE (r.puntos = 0)))::integer AS perdidas,
-    round(((exp(sum(ln(GREATEST(((1)::numeric + (r.rentabilidad / (100)::numeric)), 0.000000001)))) - exp(sum(ln(GREATEST(((1)::numeric + (j.sp_rentabilidad / (100)::numeric)), 0.000000001))))) * (100)::numeric), 4) AS dif_sp
-   FROM (((liga.resultados r
-     JOIN liga.inscripciones i ON ((i.id = r.inscripcion_id)))
-     JOIN liga.jornadas j ON ((j.id = i.jornada_id)))
-     JOIN liga.temporadas t ON ((t.id = j.temporada_id)))
-  WHERE (t.cuenta AND (j.estado = 'cerrada'::text))
-  GROUP BY i.estrategia_id, j.temporada_id;
-
-
---
--- Name: v_saldo; Type: VIEW; Schema: liga; Owner: -
---
-
-CREATE VIEW liga.v_saldo WITH (security_invoker='true') AS
- SELECT usuario_id,
-    (sum(importe))::numeric(12,4) AS saldo
-   FROM liga.creditos_movimientos
-  GROUP BY usuario_id;
+CREATE VIEW liga.v_admin_cohortes WITH (security_invoker='true') AS
+ SELECT (date_trunc('week'::text, (creado AT TIME ZONE 'Europe/Madrid'::text)))::date AS semana,
+    count(*) AS altas,
+    count(*) FILTER (WHERE (EXISTS ( SELECT 1
+           FROM liga.estrategias e
+          WHERE ((e.dueno_id = p.id) AND (e.tipo = 'usuario'::text))))) AS con_estrategia,
+    count(*) FILTER (WHERE (EXISTS ( SELECT 1
+           FROM (liga.inscripciones i
+             JOIN liga.estrategias e ON ((e.id = i.estrategia_id)))
+          WHERE ((e.dueno_id = p.id) AND (e.tipo = 'usuario'::text))))) AS apuntadas,
+    count(*) FILTER (WHERE (EXISTS ( SELECT 1
+           FROM (liga.inscripciones i
+             JOIN liga.estrategias e ON ((e.id = i.estrategia_id)))
+          WHERE ((e.dueno_id = p.id) AND (e.tipo = 'usuario'::text) AND (i.estado = ANY (ARRAY['formada'::text, 'cerrada'::text])))))) AS jugaron
+   FROM liga.perfiles p
+  WHERE ( SELECT liga.es_admin() AS es_admin)
+  GROUP BY ((date_trunc('week'::text, (creado AT TIME ZONE 'Europe/Madrid'::text)))::date);
 
 
 --
@@ -3263,6 +3267,119 @@ COMMENT ON COLUMN liga.visitas.session_id IS 'Signed Supabase auth session UUID;
 --
 
 COMMENT ON COLUMN liga.visitas.ultima_actividad IS 'Server timestamp of the most recent qualifying interaction; updates are throttled.';
+
+
+--
+-- Name: v_admin_inactivas; Type: VIEW; Schema: liga; Owner: -
+--
+
+CREATE VIEW liga.v_admin_inactivas WITH (security_invoker='true') AS
+ SELECT p.id,
+    p.alias,
+    p.creado,
+    max(v.inicio) AS ultima_visita,
+    count(v.id) AS visitas
+   FROM (liga.perfiles p
+     JOIN liga.visitas v ON ((v.usuario_id = p.id)))
+  WHERE ( SELECT liga.es_admin() AS es_admin)
+  GROUP BY p.id, p.alias, p.creado;
+
+
+--
+-- Name: v_admin_nunca_apuntadas; Type: VIEW; Schema: liga; Owner: -
+--
+
+CREATE VIEW liga.v_admin_nunca_apuntadas WITH (security_invoker='true') AS
+ SELECT e.id,
+    e.nombre,
+    e.estado,
+    e.creada,
+    p.alias
+   FROM (liga.estrategias e
+     LEFT JOIN liga.perfiles p ON ((p.id = e.dueno_id)))
+  WHERE (( SELECT liga.es_admin() AS es_admin) AND (e.tipo = 'usuario'::text) AND (NOT (EXISTS ( SELECT 1
+           FROM liga.inscripciones i
+          WHERE (i.estrategia_id = e.id)))));
+
+
+--
+-- Name: v_admin_reglas_usadas; Type: VIEW; Schema: liga; Owner: -
+--
+
+CREATE VIEW liga.v_admin_reglas_usadas WITH (security_invoker='true') AS
+ SELECT (regla.value ->> 'clave'::text) AS clave,
+    count(DISTINCT e.id) AS estrategias
+   FROM ((liga.estrategias e
+     JOIN liga.recetas r ON ((r.id = e.receta_id)))
+     CROSS JOIN LATERAL jsonb_array_elements(r.reglas) regla(value))
+  WHERE (( SELECT liga.es_admin() AS es_admin) AND (e.tipo = 'usuario'::text) AND (e.estado = ANY (ARRAY['apuntada'::text, 'jugando'::text])))
+  GROUP BY (regla.value ->> 'clave'::text);
+
+
+--
+-- Name: v_admin_sin_estrategia; Type: VIEW; Schema: liga; Owner: -
+--
+
+CREATE VIEW liga.v_admin_sin_estrategia WITH (security_invoker='true') AS
+ SELECT id,
+    alias,
+    creado,
+    ( SELECT count(*) AS count
+           FROM liga.visitas v
+          WHERE (v.usuario_id = p.id)) AS visitas,
+    ( SELECT max(v.inicio) AS max
+           FROM liga.visitas v
+          WHERE (v.usuario_id = p.id)) AS ultima_visita,
+    liga.tiene_borrador(id) AS borrador
+   FROM liga.perfiles p
+  WHERE (( SELECT liga.es_admin() AS es_admin) AND (NOT (EXISTS ( SELECT 1
+           FROM liga.estrategias e
+          WHERE ((e.dueno_id = p.id) AND (e.tipo = 'usuario'::text))))));
+
+
+--
+-- Name: v_admin_visitas_dia; Type: VIEW; Schema: liga; Owner: -
+--
+
+CREATE VIEW liga.v_admin_visitas_dia WITH (security_invoker='true') AS
+ SELECT ((inicio AT TIME ZONE 'Europe/Madrid'::text))::date AS dia,
+    count(*) AS visitas,
+    count(DISTINCT usuario_id) AS cuentas
+   FROM liga.visitas v
+  WHERE ( SELECT liga.es_admin() AS es_admin)
+  GROUP BY (((inicio AT TIME ZONE 'Europe/Madrid'::text))::date);
+
+
+--
+-- Name: v_clasificacion; Type: VIEW; Schema: liga; Owner: -
+--
+
+CREATE VIEW liga.v_clasificacion WITH (security_invoker='true') AS
+ SELECT i.estrategia_id,
+    j.temporada_id,
+    (sum(r.puntos))::integer AS puntos,
+    (count(*))::integer AS jornadas,
+    (count(*) FILTER (WHERE (r.puntos = 3)))::integer AS ganadas,
+    (count(*) FILTER (WHERE (r.puntos = 1)))::integer AS empatadas,
+    (count(*) FILTER (WHERE (r.puntos = 0)))::integer AS perdidas,
+    round(((exp(sum(ln(GREATEST(((1)::numeric + (r.rentabilidad / (100)::numeric)), 0.000000001)))) - exp(sum(ln(GREATEST(((1)::numeric + (j.sp_rentabilidad / (100)::numeric)), 0.000000001))))) * (100)::numeric), 4) AS dif_sp
+   FROM (((liga.resultados r
+     JOIN liga.inscripciones i ON ((i.id = r.inscripcion_id)))
+     JOIN liga.jornadas j ON ((j.id = i.jornada_id)))
+     JOIN liga.temporadas t ON ((t.id = j.temporada_id)))
+  WHERE (t.cuenta AND (j.estado = 'cerrada'::text))
+  GROUP BY i.estrategia_id, j.temporada_id;
+
+
+--
+-- Name: v_saldo; Type: VIEW; Schema: liga; Owner: -
+--
+
+CREATE VIEW liga.v_saldo WITH (security_invoker='true') AS
+ SELECT usuario_id,
+    (sum(importe))::numeric(12,4) AS saldo
+   FROM liga.creditos_movimientos
+  GROUP BY usuario_id;
 
 
 --
@@ -10939,6 +11056,14 @@ REVOKE ALL ON FUNCTION liga.solo_anadir() FROM PUBLIC;
 
 
 --
+-- Name: FUNCTION tiene_borrador(p_id uuid); Type: ACL; Schema: liga; Owner: -
+--
+
+REVOKE ALL ON FUNCTION liga.tiene_borrador(p_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION liga.tiene_borrador(p_id uuid) TO authenticated;
+
+
+--
 -- Name: FUNCTION tiene_pase_liga(p_usuario uuid); Type: ACL; Schema: liga; Owner: -
 --
 
@@ -11926,6 +12051,55 @@ GRANT SELECT ON TABLE liga.temporadas TO authenticated;
 
 
 --
+-- Name: TABLE v_admin_cohortes; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.v_admin_cohortes TO authenticated;
+
+
+--
+-- Name: TABLE visitas; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.visitas TO authenticated;
+
+
+--
+-- Name: TABLE v_admin_inactivas; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.v_admin_inactivas TO authenticated;
+
+
+--
+-- Name: TABLE v_admin_nunca_apuntadas; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.v_admin_nunca_apuntadas TO authenticated;
+
+
+--
+-- Name: TABLE v_admin_reglas_usadas; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.v_admin_reglas_usadas TO authenticated;
+
+
+--
+-- Name: TABLE v_admin_sin_estrategia; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.v_admin_sin_estrategia TO authenticated;
+
+
+--
+-- Name: TABLE v_admin_visitas_dia; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.v_admin_visitas_dia TO authenticated;
+
+
+--
 -- Name: TABLE v_clasificacion; Type: ACL; Schema: liga; Owner: -
 --
 
@@ -11938,13 +12112,6 @@ GRANT SELECT ON TABLE liga.v_clasificacion TO authenticated;
 --
 
 GRANT SELECT ON TABLE liga.v_saldo TO authenticated;
-
-
---
--- Name: TABLE visitas; Type: ACL; Schema: liga; Owner: -
---
-
-GRANT SELECT ON TABLE liga.visitas TO authenticated;
 
 
 --
