@@ -471,7 +471,13 @@ class ParteCosteIA(BaseModel):
     llamadas: int
 
 
+class DiaCosteIA(BaseModel):
+    dia: date
+    pagado_usd: Decimal
+
+
 class CosteIAOut(BaseModel):
+    por_dia: list[DiaCosteIA] = []
     mes: str
     filas: list[FilaCosteIA]
     desglose: list[ParteCosteIA]

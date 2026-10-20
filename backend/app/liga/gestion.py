@@ -559,7 +559,13 @@ def coste_ia(mes: date) -> dict:
                 "llamadas": pagado.llamadas, "cache_hits": cache_hits, "ratio": ratio,
                 "bajo_objetivo": ratio is not None and ratio < margen_objetivo,
             })
+        por_dia = db.execute(text("""
+            select cast(at as date) as dia, coalesce(sum(cost_usd), 0)::numeric as pagado
+            from llm_call where at >= :desde and at < :hasta group by 1 order by 1
+        """), {"desde": mes, "hasta": siguiente}).all()
         return {
+            "por_dia": [{"dia": f.dia, "pagado_usd": Decimal(str(f.pagado))}
+                        for f in por_dia],
             "mes": mes.isoformat(), "filas": filas, "total_pagado_usd": total_pagado,
             "total_cobrado_usd": total_cobrado,
             "tope_mensual_usd": _tope_para_panel(tope_mensual),

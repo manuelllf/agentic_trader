@@ -3,8 +3,11 @@ el interruptor del diario y el último intento de cada proceso (`liga.auditoria`
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import text
 
+from app.liga.motor.calendario import TZ_NUEVA_YORK, dias_de_bolsa
 from app.liga.procesos import diario
 from app.liga.procesos.comun import PROCESOS, Fabrica, fabrica_sistema, para_json, sesion
 
@@ -40,6 +43,7 @@ def general(fabrica: Fabrica = fabrica_sistema) -> dict:
             select distinct on (objeto) objeto, detalle from liga.auditoria
             where accion = 'proceso.foto' order by objeto, creada desc, id desc
         """)).all()}
+        hoy = datetime.now(TZ_NUEVA_YORK).date()
         return para_json({
             "diario_activo": diario.activo(db),
             "temporadas": [{
@@ -53,6 +57,11 @@ def general(fabrica: Fabrica = fabrica_sistema) -> dict:
                     "plan_b": j.plan_b if j.scan_run_id is not None else None,
                     "inscripciones": j.inscripciones, "sp_rentabilidad": j.sp_rentabilidad,
                     "siguiente": _siguiente(j),
+                    "dias_bolsa": {
+                        "hechos": len(dias_de_bolsa(j.dia_inicio, min(hoy, j.dia_fin)))
+                            if hoy >= j.dia_inicio else 0,
+                        "total": len(dias_de_bolsa(j.dia_inicio, j.dia_fin)),
+                    } if j.estado == "formada" else None,
                     "foto_auto": foto_auto.get(f"jornada:{j.id}") if j.foto_id is not None
                         else None,
                 } for j in jornadas if j.temporada_id == t.id],
