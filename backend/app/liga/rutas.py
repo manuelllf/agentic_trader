@@ -24,6 +24,7 @@ from app.liga import (
     pagos,
     preview_seleccion,
     registro,
+    rutas_aprender,
     rutas_avisos,
     rutas_estrategias,
     rutas_ia,
@@ -39,6 +40,7 @@ from app.liga.procesos import premio
 
 router = APIRouter(prefix="/liga", tags=["liga"])
 router.include_router(rutas_publicas.router)
+router.include_router(rutas_aprender.router)
 router.include_router(rutas_estrategias.router)
 router.include_router(rutas_avisos.router)
 router.include_router(preview_seleccion.router)
@@ -199,6 +201,32 @@ def yo(db: Session = Depends(db_usuario)) -> Yo:
 @router.get("/yo/premio", response_model=PremioYo, dependencies=[Depends(require_usuario)])
 def premio_yo(db: Session = Depends(db_usuario)) -> PremioYo:
     return PremioYo(**premio.estado_yo(db))
+
+
+class PrimerosPasos(BaseModel):
+    estrategia: bool
+    apuntada: bool
+    jornada_cerrada: bool
+
+
+@router.get("/yo/primeros-pasos", response_model=PrimerosPasos)
+def primeros_pasos(db: Session = Depends(db_usuario)) -> PrimerosPasos:
+    """Qué pasos ha dado la cuenta para la lista de Aprender."""
+    fila = db.execute(text("""
+        select exists (select 1 from liga.estrategias e
+                       where e.dueno_id = (select auth.uid()) and e.tipo = 'usuario')
+                   as estrategia,
+               exists (select 1 from liga.inscripciones i
+                       join liga.estrategias e on e.id = i.estrategia_id
+                       where e.dueno_id = (select auth.uid()) and e.tipo = 'usuario')
+                   as apuntada,
+               exists (select 1 from liga.inscripciones i
+                       join liga.estrategias e on e.id = i.estrategia_id
+                       where e.dueno_id = (select auth.uid()) and e.tipo = 'usuario'
+                         and i.estado = 'cerrada') as jornada_cerrada
+    """)).one()
+    return PrimerosPasos(estrategia=fila.estrategia, apuntada=fila.apuntada,
+                         jornada_cerrada=fila.jornada_cerrada)
 
 
 @router.post("/yo/terminos", response_model=Yo)

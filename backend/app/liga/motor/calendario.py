@@ -32,6 +32,8 @@ HORA_CIERRE_INSCRIPCION = time(18, 0)
 HORA_CIERRE_JORNADA = time(17, 30)
 # Hasta cuándo se pueden cambiar empresas en una cartera ya formada: media hora antes de abrir.
 HORA_CIERRE_CAMBIOS = time(9, 0)
+# Abre la bolsa de Nueva York.
+HORA_APERTURA = time(9, 30)
 
 
 def cierre_de_cambios(dia_inicio: date) -> datetime:

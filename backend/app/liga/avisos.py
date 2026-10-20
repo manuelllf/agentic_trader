@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app import correo, correo_plantilla, push
 from app.i18n import Locale, translate
-from app.liga.motor.calendario import TZ_NUEVA_YORK
+from app.liga.motor.calendario import HORA_APERTURA, TZ_NUEVA_YORK
 from app.liga.procesos.comun import Fabrica, auditar, fabrica_sistema, sesion
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,6 @@ MAX_DISPOSITIVOS = 5
 TZ_MADRID = ZoneInfo("Europe/Madrid")
 _MESES_ES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
              "septiembre", "octubre", "noviembre", "diciembre")
-_APERTURA = time(9, 30)                   # abre la bolsa de Nueva York
 _AVISO_APERTURA_HASTA = timedelta(hours=2)   # pasado esto, ya no se avisa de que empezó
 _ANTELACION_CIERRE = timedelta(hours=1)
 # Los avisos que, además del push, salen por correo a quien lo activó.
@@ -238,7 +237,7 @@ def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None) -> di
                 if cierra - _ANTELACION_CIERRE <= ahora < cierra:
                     hecho["cambios_cierran"] += _enviar_una_vez(
                         db, "aviso.cambios_cierran", "cambios_cierran", j.id, cierra=cierra)
-                abre = datetime.combine(j.dia_inicio, _APERTURA, tzinfo=TZ_NUEVA_YORK)
+                abre = datetime.combine(j.dia_inicio, HORA_APERTURA, tzinfo=TZ_NUEVA_YORK)
                 if abre <= ahora < abre + _AVISO_APERTURA_HASTA:
                     hecho["empieza"] += _enviar_una_vez(db, "aviso.empieza", "empieza", j.id)
     except Exception:
