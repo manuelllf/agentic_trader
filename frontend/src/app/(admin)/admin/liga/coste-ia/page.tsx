@@ -3,11 +3,11 @@
 // Panel de coste de IA (plan §10.5 y §16, F6): por finalidad y mes, lo que pagamos (llm_call.cost_usd)
 // contra lo que cobramos (créditos liquidados a dólares) — cifras contadas, no estimadas.
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, get } from "@/lib/api";
+import { diasDelMes, maximoDia } from "./diasDelMes";
 
 type FilaCoste = {
   finalidad: "conversor" | "pregunta" | "lectura";
@@ -19,6 +19,7 @@ type ParteCoste = {
   detalle: string | null; pagado_usd: string; llamadas: number;
 };
 type CosteIA = {
+  por_dia: { dia: string; pagado_usd: string }[];
   mes: string; filas: FilaCoste[]; desglose: ParteCoste[]; total_pagado_usd: string;
   total_cobrado_usd: string; tope_mensual_usd: string | null; margen_objetivo: string;
 };
@@ -40,6 +41,19 @@ function CosteIAPanel() {
   const [mes, setMes] = useState(mesActual());
   const [datos, setDatos] = useState<CosteIA | null>(null);
   const [fallo, setFallo] = useState("");
+  const [avisoPct, setAvisoPct] = useState<number | null>(null);
+
+  useEffect(() => {
+    let vigente = true;
+    get<{ clave: string; efectivo: unknown }[]>("/liga/admin/ajustes")
+      .then((ajustes) => {
+        const efectivo = ajustes.find((a) => a.clave === "panel.aviso_tope_ia_pct")?.efectivo;
+        const porcentaje = efectivo == null ? null : Number(efectivo);
+        if (vigente) setAvisoPct(porcentaje != null && Number.isFinite(porcentaje) ? porcentaje : null);
+      })
+      .catch(() => { if (vigente) setAvisoPct(null); });
+    return () => { vigente = false; };
+  }, []);
 
   // Solo vale la última petición lanzada: una respuesta lenta de otro mes no pisa a la nueva.
   const ultima = useRef(0);
@@ -53,11 +67,14 @@ function CosteIAPanel() {
   useEffect(() => cargar(mes), [cargar, mes]);
 
   const gastoAlto = datos?.tope_mensual_usd != null
-    && Number(datos.total_pagado_usd) >= Number(datos.tope_mensual_usd) * 0.8;
+    && avisoPct != null
+    && Number(datos.total_pagado_usd) >= Number(datos.tope_mensual_usd) * avisoPct / 100;
+  const dias = datos ? diasDelMes(mes, datos.por_dia) : [];
+  const maximo = maximoDia(dias);
+  const diasConGasto = dias.filter((dia) => dia.pagado > 0).length;
 
   return (
-    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
-      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_vennett")}</Link>
+    <div className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
       <h1 className="mt-3 text-[19px] text-white"
           style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_cost_title")}</h1>
 
@@ -76,9 +93,26 @@ function CosteIAPanel() {
             </p>
             <p className="mt-1" style={{ color: gastoAlto ? "#e6a667" : "#898781" }}>
               {t("admin_cost_monthly_cap")} {datos.tope_mensual_usd != null ? currency(datos.tope_mensual_usd) : t("admin_cost_monthly_cap_unset")}
-              {gastoAlto && t("admin_cost_over_80")}
+              {" "}{gastoAlto && avisoPct != null && t("admin_cost_over_pct", { pct: avisoPct })}
             </p>
             <p className="mt-1" style={{ color: "#898781" }}>{t("admin_cost_target_margin", { value: datos.margen_objetivo })}</p>
+          </section>
+
+          <section className="mt-4">
+            <h2 className="font-bold text-white">{t("admin_cost_por_dia_titulo")}</h2>
+            <p className="mt-1 text-[11.5px]" style={{ color: "#898781" }}>{t("admin_cost_por_dia_ayuda")}</p>
+            <div role="img"
+                 aria-label={t("admin_cost_por_dia_resumen", { total: currency(datos.total_pagado_usd), dias: diasConGasto })}
+                 className="mt-3 flex items-end gap-[3px] h-[120px] border-b" style={{ borderColor: "#3a3a38" }}>
+              {dias.map(({ dia, pagado }) => (
+                <i key={dia} aria-hidden="true" className="flex-1"
+                   style={{ background: "#4FA39D", height: `${maximo === 0 ? 0 : pagado / maximo * 100}%`, minHeight: pagado > 0 ? 2 : 0 }} />
+              ))}
+            </div>
+            <div aria-hidden="true" className="mt-1 flex justify-between text-[11.5px]" style={{ color: "#898781" }}>
+              <span>{dias[0]?.dia}</span><span>{dias[dias.length - 1]?.dia}</span>
+            </div>
+            {diasConGasto === 0 && <p className="mt-2" style={{ color: "#898781" }}>{t("admin_cost_por_dia_vacio")}</p>}
           </section>
 
           <ul className="mt-4 border-t" style={{ borderColor: "#303030" }}>
@@ -115,7 +149,7 @@ function CosteIAPanel() {
           </ul>
         </>
       )}
-    </main>
+    </div>
   );
 }
 

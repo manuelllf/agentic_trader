@@ -18,9 +18,11 @@ it("limita los estilos de escritorio a 880 px y a las pantallas del encargo", ()
 });
 
 it("conserva el contenedor móvil en cada pantalla y amplía a 960 px", () => {
-  for (const ruta of ["page.tsx", "liga/page.tsx", ...[
-    "auditoria", "premio", "ajustes", "coste-ia", "errores", "moderacion",
-  ].map((ruta) => `liga/${ruta}/page.tsx`)]) {
+  for (const ruta of [
+    "liga/resumen/Resumen.tsx", "liga/jornadas/page.tsx", "liga/analitica/page.tsx",
+    "liga/consultas/page.tsx", "liga/revisar/page.tsx", "liga/auditoria/page.tsx",
+    "liga/premio/page.tsx", "liga/ajustes/page.tsx", "liga/coste-ia/page.tsx",
+  ]) {
     expect(leer(`./admin/${ruta}`)).toContain("admin-escritorio mx-auto max-w-md px-4");
   }
   expect(leer("./admin/liga/usuarios/PanelUsuarios.tsx")).toContain("admin-escritorio mx-auto max-w-md px-4");
@@ -28,8 +30,7 @@ it("conserva el contenedor móvil en cada pantalla y amplía a 960 px", () => {
 });
 
 it("distribuye salas, procesos y usuarios sin quitar la paginación", () => {
-  expect(leer("./admin/page.tsx")).toContain("admin-salas mt-4 border-t");
-  expect(leer("./admin/liga/page.tsx")).toContain('className="admin-procesos"');
+  expect(leer("./admin/liga/jornadas/page.tsx")).toContain('className="admin-procesos"');
   expect(leer("./admin.css")).toContain("repeat(2, minmax(0, 1fr))");
   expect(leer("./admin.css")).toContain("width: 480px");
   expect(leer("./admin.css")).toContain("minmax(0, 1fr) minmax(0, 1fr) 24px");
