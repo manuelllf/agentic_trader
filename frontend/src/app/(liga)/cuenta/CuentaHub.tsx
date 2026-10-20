@@ -71,6 +71,7 @@ export function CuentaHub({ yo, email }: { yo: Yo; email: string | null }) {
     <Grupo titulo={t("account_grupo_datos")}>
       <FilaCuenta href="/cuenta/datos" nombre={t("account_descargar_datos")} />
       <FilaCuenta href="/como-funciona" nombre={t("account_metodo")} />
+      <FilaCuenta href="/aprender" nombre={t("account_aprender")} />
       <FilaCuenta href="/cuenta/legal" nombre={t("account_legal")} />
     </Grupo>
     <ul className="ajustes-lista ajustes-baja">

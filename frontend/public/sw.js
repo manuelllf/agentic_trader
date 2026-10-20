@@ -1,7 +1,7 @@
 // Service worker: instalación PWA + notificaciones push (VAPID).
 // El caché solo toca GETs del MISMO origen (nunca la API del backend, que vive en otro puerto).
 // Solo recursos estáticos y páginas públicas; nunca sesión, HTML privado ni respuestas RSC.
-const CACHE = "vennett-v16-identidad";
+const CACHE = "vennett-v17-aprender";
 const INMUTABLE = /^\/_next\/static\//;
 const LOCALE_KEY = new URL("/__vennett_locale__", self.location.origin).href;
 const clientLocales = new Map();
@@ -53,10 +53,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   // Toda navegación pública pasa por el service worker: así Chrome ofrece instalar la app desde
-  // cualquier página. Solo se guarda en caché la portada, cómo funciona, los legales y los iconos.
+  // cualquier página. Solo se guarda en caché la portada, cómo funciona, aprender, los legales y los iconos.
   const navegacionPublica = event.request.mode === "navigate" && !PRIVADA.test(url.pathname);
   const publica = navegacionPublica
-    && (url.pathname === "/" || url.pathname === "/como-funciona" || url.pathname.startsWith("/legal/"));
+    && (url.pathname === "/" || url.pathname === "/como-funciona" || url.pathname === "/aprender" || url.pathname.startsWith("/aprender/") || url.pathname.startsWith("/legal/"));
   const marca = /^\/(?:favicon\.(?:svg|ico)|marca\.svg|icon-[\w-]+\.png|apple-touch-icon\.png|apple-splash-[\dx]+\.png|manifest\.webmanifest|admin\/manifest\.json)$/.test(url.pathname);
   if (!navegacionPublica && !marca) return;
   event.respondWith(

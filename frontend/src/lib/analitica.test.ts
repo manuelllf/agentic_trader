@@ -9,6 +9,8 @@ describe("dejarPasar", () => {
     "/liga/",
     "/premio",
     "/como-funciona",
+    "/aprender",
+    "/aprender/que-pasa-al-cierre",
     "/planes",
     "/entrar?next=%2Fliga",
     "/registrar",
@@ -45,6 +47,7 @@ describe("dejarPasar", () => {
     "/blog/boletin/confirmar?token=x",
     "/en/blog/boletin/baja?token=x",
     "/no-existe",
+    "/aprender/uno/dos",
   ])("descarta la ruta privada o desconocida %s", (url) => {
     expect(dejarPasar({ type: "pageview", url })).toBeNull();
   });

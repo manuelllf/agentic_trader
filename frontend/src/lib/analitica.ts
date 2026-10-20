@@ -4,6 +4,7 @@ const BASE = "http://localhost"; // Solo para resolver rutas relativas; nunca se
 const PUBLICAS = [
   /^\/$/,
   /^\/(liga|como-funciona|planes|premio|entrar|registrar|recuperar)$/,
+  /^\/aprender(?:\/[a-z-]+)?$/,
   /^\/legal\/[^/]+$/,
   /^\/blog$/,
   /^\/blog\/(?!boletin(?:\/|$))[^/]+$/,

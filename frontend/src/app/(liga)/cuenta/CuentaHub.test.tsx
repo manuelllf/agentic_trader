@@ -49,11 +49,11 @@ describe("CuentaHub", () => {
     ]);
     expect([...el.querySelectorAll(".ajustes-nombre")].map(n => n.textContent)).toEqual([
       "Tu nombre en la liga", "Correo", "Verificación en dos pasos", "Contraseña",
-      "Avisos", "Descargar mis datos", "Cómo funciona la liga", "Legal", "Borrar mi cuenta",
+      "Avisos", "Descargar mis datos", "Cómo funciona la liga", "Primeros pasos", "Legal", "Borrar mi cuenta",
     ]);
     expect([...el.querySelectorAll("a")].map(a => a.getAttribute("href"))).toEqual([
       "/cuenta/nombre", "/cuenta/verificacion?next=/cuenta", "/cuenta/clave",
-      "/cuenta/avisos", "/cuenta/datos", "/como-funciona", "/cuenta/legal", "/cuenta/borrar",
+      "/cuenta/avisos", "/cuenta/datos", "/como-funciona", "/aprender", "/cuenta/legal", "/cuenta/borrar",
     ]);
     const correo = el.querySelectorAll("li")[1];
     expect(correo.querySelector("a")).toBeNull();

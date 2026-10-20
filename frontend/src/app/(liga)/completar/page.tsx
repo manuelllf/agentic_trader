@@ -15,6 +15,7 @@ export default function Completar() {
   const t = useTranslations();
   const { estado, yo } = useSesionRequerida("/completar");
   const [destino, setDestino] = useState<string | null>(null);
+  const [conDestino, setConDestino] = useState(false);
   const [alias, setAlias] = useState("");
   const [edad, setEdad] = useState("");
   const pideEdad = yo?.edad_declarada === false;
@@ -23,7 +24,9 @@ export default function Completar() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setDestino(destinoSeguro(new URLSearchParams(window.location.search).get("next")));
+    const next = new URLSearchParams(window.location.search).get("next");
+    setConDestino(Boolean(next));
+    setDestino(destinoSeguro(next));
   }, []);
   useEffect(() => {
     if (estado === "dentro" && yo?.pendiente === false && destino) window.location.assign(destino);
@@ -51,7 +54,9 @@ export default function Completar() {
       }
       const aceptacion = await aceptarTerminos();
       if (typeof aceptacion === "string") { setError(aceptacion); return; }
-      window.location.assign(await destinoConAvisos("resto", destino));
+      // Una cuenta nueva sin destino propio empieza por los primeros pasos.
+      const final = pideAlias && !conDestino ? "/aprender" : destino;
+      window.location.assign(await destinoConAvisos("resto", final));
     } finally { setOcupado(false); }
   };
 
