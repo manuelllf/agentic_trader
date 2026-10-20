@@ -3,11 +3,12 @@
   "help_heading": "Cómo entran las empresas en tu estrategia",
   "help_intro": "Tú pones las reglas. Cada mes las aplicamos a las mismas empresas y con las mismas notas para todo el mundo.",
   "help_step_1_title": "Una foto igual para todos",
-  "help_step_1_text": "El último día de bolsa del mes fotografiamos unas 3.000 empresas de EE. UU. con sus datos. Todas las estrategias parten de esa misma foto.",
-  "help_step_1_stat": "≈ 3.000 empresas",
+  "help_step_1_text": "El último día de bolsa del mes fotografiamos {total} empresas de EE. UU. con sus datos. Todas las estrategias parten de esa misma foto.",
+  "help_step_1_text_sin_cifra": "El último día de bolsa del mes fotografiamos las empresas de EE. UU. con sus datos. Todas las estrategias parten de esa misma foto.",
+  "help_step_1_stat": "{total} empresas en la última foto",
   "help_step_2_title": "Tus reglas apartan empresas",
   "help_step_2_text": "Sector, tamaño, valoración, lo que pidas. Las que no cumplen alguna regla se quedan fuera, y sabemos decirte cuál: «vale 1.900 M$ y pides más de 2.000 M$».",
-  "help_step_2_stat": "pasan unas 400 (ejemplo)",
+  "help_step_2_stat": "Con ROE superior al {umbral} %, pasan {pasan}",
   "help_step_3_title": "Cada empresa tiene cuatro notas",
   "help_step_3_text": "Una IA (Jev) puntúa a todas una vez al mes, en cuatro notas. Tú decides cuánto pesa cada una.",
   "help_step_3_extra": "Si añades una pregunta propia, la IA la contesta solo para las empresas que pasan tus reglas: sí o no, y con qué seguridad.",
@@ -49,5 +50,6 @@
   "help_question_text": "En tu estrategia, «¿Por qué no sale X?» te dice si la empresa entraría y por qué. Y si sigue sin cuadrarte, escríbenos.",
   "help_create_strategy": "Crear mi estrategia",
   "help_view_standings": "Ver la clasificación",
+  "help_aprender": "Primeros pasos",
   "help_disclaimer": "Vennett compara estrategias en papel: no hay dinero real ni es asesoramiento financiero."
 }

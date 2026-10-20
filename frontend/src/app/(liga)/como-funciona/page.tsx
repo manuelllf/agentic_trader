@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
+import { cifrasDelMetodo, leerMercado } from "@/lib/aprender";
 import { metadataCompartir } from "@/lib/sitio";
 import { Marca } from "../_ui/Marca";
 
@@ -8,32 +9,26 @@ export async function generateMetadata() {
   return metadataCompartir({ titulo: `${t("help_title")} · Vennett`, descripcion: t("meta_como_funciona_descripcion"), idioma, ruta: "/como-funciona" });
 }
 
-// Página pública de método: cómo entra cada empresa en una estrategia y qué pone la IA. Los números
-// del ejemplo son inventados y se rotulan como tal; el resto describe lo que hace el código
-// (`backend/app/liga/motor`). Si cambia el motor (pesos, desempate, margen de empate), cambia aquí.
-type Paso = { titulo: string; texto: string; cifra?: string; extra?: string };
-
-const PASOS: Paso[] = [
-  {
-    titulo: "help_step_1_title", texto: "help_step_1_text", cifra: "help_step_1_stat",
-  },
-  {
-    titulo: "help_step_2_title", texto: "help_step_2_text", cifra: "help_step_2_stat",
-  },
-  {
-    titulo: "help_step_3_title", texto: "help_step_3_text",
-    extra: "help_step_3_extra",
-  },
-  {
-    titulo: "help_step_4_title", texto: "help_step_4_text",
-  },
-  {
-    titulo: "help_step_5_title", texto: "help_step_5_text",
-  },
-];
-
+// Los números del método salen de la última foto, /liga/aprender/mercado.
+// Sin datos, el texto va sin cifra.
 export default async function ComoFunciona() {
-  const t = await getTranslations();
+  const [t, idioma, mercado] = await Promise.all([getTranslations(), getLocale(), leerMercado()]);
+  const cifras = cifrasDelMetodo(mercado, idioma === "en" ? "en" : "es");
+  const pasos: { titulo: string; texto: string; cifra?: string | null; extra?: string }[] = [
+    {
+      titulo: t("help_step_1_title"),
+      texto: cifras ? t("help_step_1_text", { total: cifras.total }) : t("help_step_1_text_sin_cifra"),
+      cifra: cifras ? t("help_step_1_stat", { total: cifras.total }) : null,
+    },
+    {
+      titulo: t("help_step_2_title"),
+      texto: t("help_step_2_text"),
+      cifra: cifras?.pasan ? t("help_step_2_stat", { umbral: cifras.umbral, pasan: cifras.pasan }) : null,
+    },
+    { titulo: t("help_step_3_title"), texto: t("help_step_3_text"), extra: t("help_step_3_extra") },
+    { titulo: t("help_step_4_title"), texto: t("help_step_4_text") },
+    { titulo: t("help_step_5_title"), texto: t("help_step_5_text") },
+  ];
   return (
     <main className="sencilla cf">
       <header className="sencilla-top">
@@ -48,16 +43,16 @@ export default async function ComoFunciona() {
         </p>
 
         <ol className="cf-pasos">
-          {PASOS.map((p, i) => (
+          {pasos.map((p, i) => (
             <li className="cf-paso" key={p.titulo}>
               <span className="cf-n" aria-hidden="true">{i + 1}</span>
               <div>
-                <h2>{t(p.titulo)}</h2>
-                <p>{t(p.texto)}</p>
+                <h2>{p.titulo}</h2>
+                <p>{p.texto}</p>
                 <div className="cf-etiquetas">
-                  {p.cifra && <span className="cf-cifra">{t(p.cifra)}</span>}
+                  {p.cifra && <span className="cf-cifra">{p.cifra}</span>}
                 </div>
-                {p.extra && <p className="cf-extra">{t(p.extra)}</p>}
+                {p.extra && <p className="cf-extra">{p.extra}</p>}
               </div>
             </li>
           ))}
@@ -112,6 +107,7 @@ export default async function ComoFunciona() {
         <div className="cf-cta">
           <Link href="/entrar?next=/crear" className="btn pri">{t("help_create_strategy")}</Link>
           <Link href="/liga" className="btn">{t("help_view_standings")}</Link>
+          <Link href="/aprender" className="btn">{t("help_aprender")}</Link>
         </div>
         <p className="cf-pie">
           {t("help_disclaimer")} {" "}<Link href="/legal/terminos">{t("legal_terms_short")}</Link>

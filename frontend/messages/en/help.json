@@ -3,11 +3,12 @@
   "help_heading": "How companies make it into your strategy",
   "help_intro": "You set the rules. Each month, we apply them to the same companies and the same scores for everyone.",
   "help_step_1_title": "The same snapshot for everyone",
-  "help_step_1_text": "On the last trading day of each month, we take a snapshot of about 3,000 U.S. companies and their data. Every strategy starts from that same snapshot.",
-  "help_step_1_stat": "≈ 3,000 companies",
+  "help_step_1_text": "On the last trading day of each month, we take a snapshot of {total} U.S. companies and their data. Every strategy starts from that same snapshot.",
+  "help_step_1_text_sin_cifra": "On the last trading day of each month, we take a snapshot of U.S. companies and their data. Every strategy starts from that same snapshot.",
+  "help_step_1_stat": "{total} companies in the latest snapshot",
   "help_step_2_title": "Your rules filter companies out",
   "help_step_2_text": "Sector, size, valuation: whatever you ask for. Companies that fail any rule are excluded, and we can tell you why: “It is worth $1.9B, and you asked for more than $2B.”",
-  "help_step_2_stat": "about 400 pass (example)",
+  "help_step_2_stat": "{pasan} pass with ROE above {umbral}%",
   "help_step_3_title": "Each company gets four scores",
   "help_step_3_text": "AI (Jev) scores every company once a month, on four scores. You decide how much each one counts.",
   "help_step_3_extra": "If you add your own question, AI answers it only for companies that pass your rules: yes or no, and with what confidence.",
@@ -49,5 +50,6 @@
   "help_question_text": "In your strategy, “Why isn't X included?” tells you whether a company would be included and why. If it still does not add up, write to us.",
   "help_create_strategy": "Create my strategy",
   "help_view_standings": "View the standings",
+  "help_aprender": "First steps",
   "help_disclaimer": "Vennett compares paper strategies: no real money is involved, and this is not financial advice."
 }
