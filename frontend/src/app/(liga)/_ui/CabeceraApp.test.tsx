@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CabeceraApp } from "./CabeceraApp";
 
 vi.mock("../_sesion/Sesion", () => ({ Sesion: () => <button className="puntos" /> }));
+vi.mock("../_avisos/Campana", () => ({ Campana: () => null }));
 
 describe("CabeceraApp", () => {
   it("muestra el sello y año sin título en modo Liga", () => {

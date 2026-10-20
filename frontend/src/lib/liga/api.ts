@@ -886,3 +886,13 @@ export async function getActualizacion(): Promise<ActualizacionDatos | null | st
 export type PrimerosPasos = { estrategia: boolean; apuntada: boolean; jornada_cerrada: boolean };
 
 export const getPrimerosPasos = () => llamar<PrimerosPasos>("/liga/yo/primeros-pasos");
+
+export type TipoAviso = "cartera_lista" | "quitadas_vaciadas" | "sin_pregunta" | "cambios_cierran"
+  | "empieza" | "resumen_semanal" | "resumen_cierre";
+export type Aviso = { id: number; tipo: string; datos: Record<string, unknown>; creado: string; caduca: string; leido: boolean };
+export type ListaAvisos = { sin_leer: number; avisos: Aviso[] };
+
+export const getAvisos = () => llamar<ListaAvisos>("/liga/avisos/lista");
+export const marcarAvisosLeidos = () => llamar<ListaAvisos>("/liga/avisos/leidos", { method: "POST" });
+export const guardarZonaHoraria = (zona: string) =>
+  llamar<{ zona: string }>("/liga/yo/zona-horaria", { method: "PUT", body: JSON.stringify({ zona }) });

@@ -10,6 +10,7 @@ import { BarraPestanas } from "./BarraPestanas";
 
 const mensajes = { ...comunes, ...cuenta };
 
+vi.mock("../_avisos/Campana", () => ({ Campana: () => null }));
 vi.mock("@/i18n/LanguageSelector", () => ({ LanguageSelector: () => null }));
 vi.mock("@/lib/liga/cache", () => ({ precargar: vi.fn() }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
