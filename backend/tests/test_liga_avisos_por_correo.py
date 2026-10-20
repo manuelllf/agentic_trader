@@ -35,9 +35,13 @@ class _Db:
         self.perfil, self.subs = perfil, list(subs)
         self.borradas: list[int] = []
         self.commits = 0
+        self.guardados: list[dict] = []
 
     def execute(self, sql, params=None):  # noqa: ANN001, ANN201
         texto = str(sql)
+        if "insert into liga.avisos" in texto:
+            self.guardados.append(params)
+            return _Resultado([])
         if "perfiles_privados" in texto:
             return _Resultado([self.perfil] if self.perfil else [])
         if "delete from liga.suscripciones_push" in texto:
@@ -53,7 +57,7 @@ class _Db:
 
 def perfil(**campos) -> SimpleNamespace:  # noqa: ANN003
     base = {"idioma": "es", "avisos_correo": True, "correo_avisos": None,
-            "email": "ana@ejemplo.com"}
+            "email": "ana@ejemplo.com", "zona_horaria": None}
     return SimpleNamespace(**{**base, **campos})
 
 
@@ -158,3 +162,31 @@ def test_si_el_correo_falla_el_aviso_no_se_rompe(monkeypatch, empujes) -> None: 
     monkeypatch.setattr(correo, "enviar", rota)
     assert avisos.avisar(_Db(perfil(), [suscripcion(1)]), "u1", "empieza") == 1
     assert len(empujes) == 1
+
+
+def test_con_caducidad_el_aviso_se_guarda_antes_del_push(buzon, empujes) -> None:  # noqa: ANN001
+    db = _Db(perfil(avisos_correo=False), [suscripcion(1)])
+    avisos.avisar(db, "u1", "cartera_lista", cierra=CIERRA, caduca=CIERRA,
+                  datos={"jornada_id": 3})
+    assert len(db.guardados) == 1
+    assert db.guardados[0]["t"] == "cartera_lista"
+    assert json.loads(db.guardados[0]["d"]) == {"jornada_id": 3}
+    assert db.guardados[0]["c"] == CIERRA
+
+
+def test_sin_caducidad_no_se_guarda(buzon, empujes) -> None:  # noqa: ANN001
+    db = _Db(perfil(avisos_correo=False), [suscripcion(1)])
+    avisos.avisar(db, "u1", "empieza")
+    assert db.guardados == []
+
+
+def test_la_hora_del_aviso_va_en_la_zona_de_la_cuenta(buzon, empujes) -> None:  # noqa: ANN001
+    db = _Db(perfil(avisos_correo=False, zona_horaria="America/New_York"), [suscripcion(1)])
+    avisos.avisar(db, "u1", "cartera_lista", cierra=CIERRA)
+    assert "09:00" in json.dumps(empujes[0][1], ensure_ascii=False)
+
+
+def test_una_zona_que_no_existe_vuelve_a_madrid(buzon, empujes) -> None:  # noqa: ANN001
+    db = _Db(perfil(avisos_correo=False, zona_horaria="Marte/Base"), [suscripcion(1)])
+    avisos.avisar(db, "u1", "cartera_lista", cierra=CIERRA)
+    assert "15:00" in json.dumps(empujes[0][1], ensure_ascii=False)

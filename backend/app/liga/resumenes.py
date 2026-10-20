@@ -14,6 +14,7 @@ from app import correo, correo_plantilla
 from app.i18n import translate
 from app.liga import avisos, comparativa, gestion, rutas_ligas
 from app.liga.models import Jornada
+from app.liga.motor.calendario import HORA_CIERRE_JORNADA, TZ_NUEVA_YORK, jornada_del_mes
 from app.liga.procesos import diario
 from app.liga.procesos.comun import auditar, fabrica_sistema, sesion
 
@@ -141,6 +142,54 @@ def contenido(db, usuario_id, tipo, jornada_id) -> dict:
     return salida
 
 
+_TIPO_AVISO = {"semanal": "resumen_semanal", "mensual": "resumen_cierre"}
+
+
+def _caducidad(j, tipo):
+    """El semanal vale hasta el cierre de su jornada; el de cierre, hasta el de la siguiente."""
+    if tipo == "semanal":
+        return datetime.combine(j.dia_fin, HORA_CIERRE_JORNADA, tzinfo=TZ_NUEVA_YORK)
+    anio, mes = (j.dia_fin.year + 1, 1) if j.dia_fin.month == 12 else (
+        j.dia_fin.year, j.dia_fin.month + 1)
+    siguiente = jornada_del_mes(anio, mes)
+    return datetime.combine(siguiente.dia_fin, HORA_CIERRE_JORNADA, tzinfo=TZ_NUEVA_YORK)
+
+
+def guardar_avisos(db, tipo, jornada_id, semana=None) -> int:
+    """Guarda el resumen para cada cuenta participante, reciba correo o no.
+    Una sola vez por cuenta, jornada y semana. Nunca lanza."""
+    guardados = 0
+    try:
+        j = db.get(Jornada, jornada_id)
+        duenos = db.execute(text("""
+            select distinct e.dueno_id::text from liga.inscripciones i
+            join liga.estrategias e on e.id = i.estrategia_id
+            where i.jornada_id = :j and e.tipo = 'usuario' and e.dueno_id is not null
+              and i.estado in ('formada', 'cerrada')
+        """), {"j": jornada_id}).scalars().all()
+        caduca = _caducidad(j, tipo)
+        for uid in duenos:
+            ya = db.execute(text("""
+                select 1 from liga.avisos where usuario_id = cast(:u as uuid) and tipo = :t
+                  and datos->>'jornada_id' = :j and coalesce(datos->>'semana', '') = :s
+            """), {"u": uid, "t": _TIPO_AVISO[tipo], "j": str(jornada_id),
+                   "s": semana or ""}).first()
+            if ya:
+                continue
+            datos = contenido(db, uid, tipo, jornada_id)
+            resumen = {k: datos[k] for k in ("numero", "estrategia", "rentabilidad", "sp",
+                                           "puesto_general", "provisional")}
+            resumen["jornada_id"] = jornada_id
+            if semana:
+                resumen["semana"] = semana
+            avisos.guardar(db, uid, _TIPO_AVISO[tipo], resumen, caduca)
+            guardados += 1
+    except Exception:
+        logger.exception("No se pudieron guardar los avisos del resumen")
+        db.rollback()
+    return guardados
+
+
 def _correo(candidato, datos, tipo):
     idioma = candidato["idioma"]
     def t(clave, **valores):
@@ -235,6 +284,7 @@ def job_semanal(fabrica=fabrica_sistema):
                 auditar(db, "resumen.semanal.lanzado", f"jornada:{jid}",
                         {"semana": semana.isoformat(), "jornada_id": jid}, None)
                 db.commit()
+                guardar_avisos(db, "semanal", jid, semana.isoformat())
                 return enviar_lote(db, "semanal", jid)
     except Exception:
         logger.exception("Fallo en el resumen semanal")
@@ -274,6 +324,7 @@ def job_mensual(fabrica=fabrica_sistema):
             if jid is not None:
                 auditar(db, "resumen.mensual.lanzado", f"jornada:{jid}", {}, None)
                 db.commit()
+                guardar_avisos(db, "mensual", jid)
                 return enviar_lote(db, "mensual", jid)
     except Exception:
         logger.exception("Fallo en el resumen mensual")

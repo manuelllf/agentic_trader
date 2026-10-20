@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -249,6 +250,26 @@ def cambiar_idioma(body: CambioIdioma, db: Session = Depends(db_usuario)) -> Cam
         update liga.perfiles_privados set idioma = :idioma
         where id = (select auth.uid()) returning id
     """), {"idioma": body.idioma}).one_or_none()
+    if resultado is None:
+        raise HTTPException(404, "No encontramos tu perfil.")
+    return body
+
+
+class ZonaHoraria(BaseModel):
+    zona: str = Field(min_length=1, max_length=64)
+
+
+@router.put("/yo/zona-horaria", response_model=ZonaHoraria)
+def cambiar_zona_horaria(body: ZonaHoraria, db: Session = Depends(db_usuario)) -> ZonaHoraria:
+    """La zona del navegador, para escribir en su hora los avisos por push y correo."""
+    try:
+        ZoneInfo(body.zona)
+    except (ZoneInfoNotFoundError, ValueError) as e:
+        raise HTTPException(422, translate("api_error_zona_no_valida")) from e
+    resultado = db.execute(text("""
+        update liga.perfiles_privados set zona_horaria = :zona
+        where id = (select auth.uid()) returning id
+    """), {"zona": body.zona}).one_or_none()
     if resultado is None:
         raise HTTPException(404, "No encontramos tu perfil.")
     return body

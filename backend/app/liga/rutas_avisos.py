@@ -6,6 +6,7 @@ guarda como la cuenta que la pide, en `app.liga.avisos`, que abre su propia sesi
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -112,3 +113,54 @@ def cambiar_resumen(body: ResumenIn, ident: Identidad = Depends(require_usuario)
     db.execute(text("update liga.perfiles_privados set resumen_correo = :a "
                     "where id = (select auth.uid())"), {"a": body.activo})
     return estado(ident, db)
+
+
+class AvisoOut(BaseModel):
+    id: int
+    tipo: str
+    datos: dict
+    creado: datetime
+    caduca: datetime
+    leido: bool
+
+
+class ListaAvisosOut(BaseModel):
+    sin_leer: int
+    avisos: list[AvisoOut]
+
+
+def _lista(db: Session) -> ListaAvisosOut:
+    filas = db.execute(text("""
+        select id, tipo, datos, creado, caduca, leido_en is not null as leido
+        from liga.avisos where usuario_id = (select auth.uid()) and caduca > now()
+        order by creado desc, id desc limit 20
+    """)).all()
+    sin_leer = db.execute(text("""
+        select count(*) from liga.avisos
+        where usuario_id = (select auth.uid()) and caduca > now() and leido_en is null
+    """)).scalar_one()
+    salida = []
+    for fila in filas:
+        datos = dict(fila._mapping)
+        if isinstance(datos["datos"], str):
+            datos["datos"] = json.loads(datos["datos"])
+        salida.append(AvisoOut(**datos))
+    return ListaAvisosOut(sin_leer=sin_leer, avisos=salida)
+
+
+@router.get("/avisos/lista", response_model=ListaAvisosOut)
+def lista(_ident: Identidad = Depends(require_usuario),
+          db: Session = Depends(db_usuario)) -> ListaAvisosOut:
+    """Los avisos vigentes de la cuenta, los últimos primero."""
+    return _lista(db)
+
+
+@router.post("/avisos/leidos", response_model=ListaAvisosOut)
+def marcar_leidos(_ident: Identidad = Depends(require_usuario),
+                  db: Session = Depends(db_usuario)) -> ListaAvisosOut:
+    """Abrir el panel los marca como leídos."""
+    db.execute(text("""
+        update liga.avisos set leido_en = now()
+        where usuario_id = (select auth.uid()) and leido_en is null and caduca > now()
+    """))
+    return _lista(db)

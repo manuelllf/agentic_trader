@@ -17,14 +17,14 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import correo, correo_plantilla, push
 from app.i18n import Locale, translate
-from app.liga.motor.calendario import HORA_APERTURA, TZ_NUEVA_YORK
+from app.liga.motor.calendario import HORA_APERTURA, HORA_CIERRE_JORNADA, TZ_NUEVA_YORK
 from app.liga.procesos.comun import Fabrica, auditar, fabrica_sistema, sesion
 
 logger = logging.getLogger(__name__)
@@ -112,15 +112,26 @@ def _perfil(db: Session, usuario_id: str) -> tuple[Locale, str | None]:
     return idioma, fila.correo_avisos or fila.email or None
 
 
-def _fecha(momento: datetime, idioma: Locale) -> str:
-    local = momento.astimezone(TZ_MADRID)
+def _zona(db: Session, usuario_id: str) -> ZoneInfo:
+    """La zona horaria del navegador de la cuenta; Madrid si no hay o no es válida."""
+    fila = db.execute(text("select zona_horaria from liga.perfiles_privados "
+                           "where id = cast(:u as uuid)"), {"u": usuario_id}).one_or_none()
+    nombre = getattr(fila, "zona_horaria", None) if fila is not None else None
+    try:
+        return ZoneInfo(nombre) if nombre else TZ_MADRID
+    except (ZoneInfoNotFoundError, ValueError):
+        return TZ_MADRID
+
+
+def _fecha(momento: datetime, idioma: Locale, zona: ZoneInfo = TZ_MADRID) -> str:
+    local = momento.astimezone(zona)
     if idioma == "en":
         return f"{local:%B} {local.day}"
     return f"{local.day} de {_MESES_ES[local.month - 1]}"
 
 
-def _hora(momento: datetime) -> str:
-    return momento.astimezone(TZ_MADRID).strftime("%H:%M")
+def _hora(momento: datetime, zona: ZoneInfo = TZ_MADRID) -> str:
+    return momento.astimezone(zona).strftime("%H:%M")
 
 
 def _por_correo(destino: str, idioma: Locale, titulo: str, cuerpo: str, url: str) -> None:
@@ -136,15 +147,28 @@ def _por_correo(destino: str, idioma: Locale, titulo: str, cuerpo: str, url: str
         logger.exception("No se pudo mandar el aviso por correo")
 
 
+def guardar(db: Session, usuario_id: str, tipo: str, datos: dict, caduca: datetime) -> None:
+    """Guarda el aviso antes de mandarlo para que siga en el panel si falla el push."""
+    db.execute(text("""
+        insert into liga.avisos (usuario_id, tipo, datos, caduca)
+        values (cast(:u as uuid), :t, cast(:d as jsonb), :c)
+    """), {"u": usuario_id, "t": tipo, "d": json.dumps(datos, default=str), "c": caduca})
+    db.commit()
+
+
 def avisar(db: Session, usuario_id: str, tipo: str, url: str = "/mias",
-           cierra: datetime | None = None, **valores: str) -> int:
-    """Manda el aviso `tipo` por push a la cuenta, y por correo si lo activó. Devuelve a cuántos
-    dispositivos llegó el push; poda las suscripciones que el navegador dio de baja."""
+           cierra: datetime | None = None, caduca: datetime | None = None,
+           datos: dict | None = None, **valores: str) -> int:
+    """Manda push y correo opcional; devuelve el total de push y poda las suscripciones de baja.
+    Con `caduca`, primero lo guarda para el panel."""
+    if caduca is not None:
+        guardar(db, usuario_id, tipo, datos or {}, caduca)
     subs = db.execute(text("select id, endpoint, p256dh, auth from liga.suscripciones_push "
                            "where usuario_id = cast(:u as uuid)"), {"u": usuario_id}).all()
     idioma, destino = _perfil(db, usuario_id)
+    zona = _zona(db, usuario_id)
     if cierra is not None:
-        valores = {**valores, "date": _fecha(cierra, idioma), "time": _hora(cierra)}
+        valores = {**valores, "date": _fecha(cierra, idioma, zona), "time": _hora(cierra, zona)}
     titulo = translate(f"push_{tipo}_title", idioma, **valores)
     cuerpo = translate(f"push_{tipo}_body", idioma, **valores)
     enviados = 0
@@ -190,7 +214,9 @@ def avisar_formacion(jornada_id: int, fabrica: Fabrica = fabrica_sistema) -> int
                                     {"j": jornada_id}).scalar()
             cierra = _cierre_de_cambios(dia_inicio)
             for dueno in _duenos(db, jornada_id):
-                enviados += avisar(db, dueno, "cartera_lista", cierra=cierra)
+                enviados += avisar(
+                    db, dueno, "cartera_lista", cierra=cierra, caduca=cierra,
+                    datos={"jornada_id": jornada_id, "cierra": cierra.isoformat()})
             degradadas = db.execute(text("""
                 select e.dueno_id::text as dueno, e.nombre, d.motivo
                 from liga.formaciones_degradadas d
@@ -201,7 +227,8 @@ def avisar_formacion(jornada_id: int, fabrica: Fabrica = fabrica_sistema) -> int
             """), {"j": jornada_id}).all()
             for d in degradadas:
                 tipo = "quitadas_vaciadas" if d.motivo == "quitadas_vaciadas" else "sin_pregunta"
-                enviados += avisar(db, d.dueno, tipo, name=d.nombre)
+                enviados += avisar(db, d.dueno, tipo, name=d.nombre, caduca=cierra,
+                                   datos={"jornada_id": jornada_id, "nombre": d.nombre})
     except Exception:
         logger.exception("No se pudieron mandar los avisos de la formación")
     return enviados
@@ -236,10 +263,16 @@ def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None) -> di
                 cierra = _cierre_de_cambios(j.dia_inicio)
                 if cierra - _ANTELACION_CIERRE <= ahora < cierra:
                     hecho["cambios_cierran"] += _enviar_una_vez(
-                        db, "aviso.cambios_cierran", "cambios_cierran", j.id, cierra=cierra)
+                        db, "aviso.cambios_cierran", "cambios_cierran", j.id,
+                        cierra=cierra, caduca=cierra,
+                        datos={"jornada_id": j.id, "cierra": cierra.isoformat()})
                 abre = datetime.combine(j.dia_inicio, HORA_APERTURA, tzinfo=TZ_NUEVA_YORK)
                 if abre <= ahora < abre + _AVISO_APERTURA_HASTA:
-                    hecho["empieza"] += _enviar_una_vez(db, "aviso.empieza", "empieza", j.id)
+                    hecho["empieza"] += _enviar_una_vez(
+                        db, "aviso.empieza", "empieza", j.id,
+                        caduca=datetime.combine(
+                            j.dia_inicio, HORA_CIERRE_JORNADA, tzinfo=TZ_NUEVA_YORK),
+                        datos={"jornada_id": j.id})
     except Exception:
         logger.exception("Fallo en los avisos de la jornada")
     return hecho

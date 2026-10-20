@@ -1,6 +1,7 @@
 {
   "api_error_edad_minima": "Vennett es para mayores de 14 años.",
   "api_error_edad_no_valida": "Escribe tu edad en años.",
+  "api_error_zona_no_valida": "Esa zona horaria no existe.",
   "api_error_aun_no_hay_datos_del_mercado": "Aún no hay datos del mercado.",
   "api_error_edad_ya_declarada": "Ya declaraste tu edad.",
   "api_error_db_edad_no_valida": "Edad no válida",
