@@ -69,6 +69,7 @@ class PerfilPrivado(LigaBase):
     baja_solicitada: Mapped[datetime | None] = mapped_column(TSTZ)
     edad: Mapped[int | None] = mapped_column(SmallInteger)
     edad_declarada_en: Mapped[datetime | None] = mapped_column(TSTZ)
+    zona_horaria: Mapped[str | None] = mapped_column(Text)  # IANA del navegador; vacía: Madrid
     creado: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
     actualizado_en: Mapped[datetime | None] = mapped_column(TSTZ)

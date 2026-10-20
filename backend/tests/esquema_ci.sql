@@ -1,4 +1,4 @@
--- migraciones-liga: 054
+-- migraciones-liga: 055
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -2215,6 +2215,26 @@ ALTER TABLE liga.auditoria ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: avisos; Type: TABLE; Schema: liga; Owner: -
+--
+
+CREATE TABLE liga.avisos (
+    id bigint NOT NULL,
+    usuario_id uuid NOT NULL,
+    tipo text NOT NULL,
+    datos jsonb DEFAULT '{}'::jsonb NOT NULL,
+    caduca timestamp with time zone NOT NULL,
+    leido_en timestamp with time zone,
+    creado timestamp with time zone DEFAULT now() NOT NULL,
+    creado_por uuid DEFAULT auth.uid(),
+    actualizado_en timestamp with time zone,
+    actualizado_por uuid,
+    CONSTRAINT avisos_datos_check CHECK ((octet_length((datos)::text) <= 2000)),
+    CONSTRAINT avisos_tipo_check CHECK ((tipo = ANY (ARRAY['cartera_lista'::text, 'quitadas_vaciadas'::text, 'sin_pregunta'::text, 'cambios_cierran'::text, 'empieza'::text, 'resumen_semanal'::text, 'resumen_cierre'::text])))
+);
+
+
+--
 -- Name: avisos_error; Type: TABLE; Schema: liga; Owner: -
 --
 
@@ -2253,6 +2273,20 @@ COMMENT ON TABLE liga.avisos_error IS 'Errores que la gente reporta desde la web
 
 ALTER TABLE liga.avisos_error ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME liga.avisos_error_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: avisos_id_seq; Type: SEQUENCE; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.avisos ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME liga.avisos_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2779,10 +2813,12 @@ CREATE TABLE liga.perfiles_privados (
     resumen_correo boolean DEFAULT true NOT NULL,
     edad smallint,
     edad_declarada_en timestamp with time zone,
+    zona_horaria text,
     CONSTRAINT perfiles_privados_correo_avisos_check CHECK (((correo_avisos IS NULL) OR ((length(correo_avisos) <= 254) AND (correo_avisos ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'::text)))),
     CONSTRAINT perfiles_privados_edad_rango CHECK (((edad IS NULL) OR ((edad >= 14) AND (edad <= 120)))),
     CONSTRAINT perfiles_privados_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
-    CONSTRAINT perfiles_privados_tema_check CHECK ((tema = ANY (ARRAY['auto'::text, 'claro'::text, 'oscuro'::text])))
+    CONSTRAINT perfiles_privados_tema_check CHECK ((tema = ANY (ARRAY['auto'::text, 'claro'::text, 'oscuro'::text]))),
+    CONSTRAINT perfiles_privados_zona_horaria_check CHECK (((zona_horaria IS NULL) OR (((length(zona_horaria) >= 1) AND (length(zona_horaria) <= 64)) AND (zona_horaria ~ '^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$'::text))))
 );
 
 
@@ -5364,6 +5400,14 @@ ALTER TABLE ONLY liga.avisos_error
 
 
 --
+-- Name: avisos avisos_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.avisos
+    ADD CONSTRAINT avisos_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: borradores borradores_pkey; Type: CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -6801,6 +6845,13 @@ CREATE UNIQUE INDEX ix_suscriptores_token_baja ON blog.suscriptores USING btree 
 
 
 --
+-- Name: avisos_usuario_vigentes; Type: INDEX; Schema: liga; Owner: -
+--
+
+CREATE INDEX avisos_usuario_vigentes ON liga.avisos USING btree (usuario_id, caduca, creado DESC);
+
+
+--
 -- Name: ix_actualizaciones_usuario; Type: INDEX; Schema: liga; Owner: -
 --
 
@@ -7634,6 +7685,13 @@ CREATE TRIGGER traza BEFORE UPDATE ON liga.ajustes FOR EACH ROW EXECUTE FUNCTION
 
 
 --
+-- Name: avisos traza; Type: TRIGGER; Schema: liga; Owner: -
+--
+
+CREATE TRIGGER traza BEFORE UPDATE ON liga.avisos FOR EACH ROW EXECUTE FUNCTION liga.tocar_auditoria();
+
+
+--
 -- Name: avisos_error traza; Type: TRIGGER; Schema: liga; Owner: -
 --
 
@@ -8157,6 +8215,22 @@ ALTER TABLE ONLY liga.ajustes
 
 
 --
+-- Name: avisos avisos_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.avisos
+    ADD CONSTRAINT avisos_actualizado_por_fkey FOREIGN KEY (actualizado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: avisos avisos_creado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.avisos
+    ADD CONSTRAINT avisos_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
 -- Name: avisos_error avisos_error_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
 --
 
@@ -8178,6 +8252,14 @@ ALTER TABLE ONLY liga.avisos_error
 
 ALTER TABLE ONLY liga.avisos_error
     ADD CONSTRAINT avisos_error_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: avisos avisos_usuario_id_fkey; Type: FK CONSTRAINT; Schema: liga; Owner: -
+--
+
+ALTER TABLE ONLY liga.avisos
+    ADD CONSTRAINT avisos_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 
 --
@@ -9277,6 +9359,12 @@ CREATE POLICY autor_manda ON liga.reportes FOR INSERT TO authenticated WITH CHEC
 
 
 --
+-- Name: avisos; Type: ROW SECURITY; Schema: liga; Owner: -
+--
+
+ALTER TABLE liga.avisos ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: avisos_error; Type: ROW SECURITY; Schema: liga; Owner: -
 --
 
@@ -9793,6 +9881,13 @@ CREATE POLICY propia_edita ON liga.estrategias_revisadas FOR UPDATE TO authentic
 
 
 --
+-- Name: avisos propia_lee; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY propia_lee ON liga.avisos FOR SELECT TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
+
+
+--
 -- Name: estrategias_revisadas propia_lee; Type: POLICY; Schema: liga; Owner: -
 --
 
@@ -9806,6 +9901,13 @@ CREATE POLICY propia_lee ON liga.estrategias_revisadas FOR SELECT TO authenticat
 --
 
 CREATE POLICY propia_lee ON liga.suscripciones_push FOR SELECT TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid)));
+
+
+--
+-- Name: avisos propia_marca; Type: POLICY; Schema: liga; Owner: -
+--
+
+CREATE POLICY propia_marca ON liga.avisos FOR UPDATE TO authenticated USING ((usuario_id = ( SELECT auth.uid() AS uid))) WITH CHECK ((usuario_id = ( SELECT auth.uid() AS uid)));
 
 
 --
@@ -11192,6 +11294,20 @@ GRANT SELECT ON TABLE liga.auditoria TO authenticated;
 
 
 --
+-- Name: TABLE avisos; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT ON TABLE liga.avisos TO authenticated;
+
+
+--
+-- Name: COLUMN avisos.leido_en; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT UPDATE(leido_en) ON TABLE liga.avisos TO authenticated;
+
+
+--
 -- Name: TABLE avisos_error; Type: ACL; Schema: liga; Owner: -
 --
 
@@ -11557,6 +11673,13 @@ GRANT SELECT(edad),UPDATE(edad) ON TABLE liga.perfiles_privados TO authenticated
 --
 
 GRANT SELECT(edad_declarada_en) ON TABLE liga.perfiles_privados TO authenticated;
+
+
+--
+-- Name: COLUMN perfiles_privados.zona_horaria; Type: ACL; Schema: liga; Owner: -
+--
+
+GRANT SELECT(zona_horaria),UPDATE(zona_horaria) ON TABLE liga.perfiles_privados TO authenticated;
 
 
 --

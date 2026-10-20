@@ -26,13 +26,13 @@ TABLAS = (
     "miembros_liga", "pruebas",
     "respuestas_ia", "lecturas", "creditos_movimientos", "ajustes", "auditoria", "reportes",
     "avisos_error", "borradores", "visitas", "estrategias_revisadas", "formaciones_degradadas",
-    "suscripciones_push", "premios_temporada", "premios", "compras_pago", "eventos_pago",
+    "suscripciones_push", "avisos", "premios_temporada", "premios", "compras_pago", "eventos_pago",
     "intenciones_sin_regla", "actualizaciones",
 )
 
 # El número más alto de `sql/liga/NNN_*.sql` aplicado (plan §6.3): se guarda en el manifiesto
 # para saber, al restaurar, qué migraciones hacen falta antes de cargar los datos.
-VERSION_ESQUEMA = 54
+VERSION_ESQUEMA = 55
 
 TABLAS_BLOG = ("articulos", "articulo_textos", "suscriptores", "envios", "entregas")
 

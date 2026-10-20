@@ -553,6 +553,37 @@ def test_las_suscripciones_de_aviso_son_de_su_cuenta_y_solo_se_crean_y_borran(cx
     assert cx.execute("delete from liga.suscripciones_push").rowcount == 1
 
 
+def test_los_avisos_los_lee_y_marca_su_cuenta_y_solo_los_crea_el_sistema(cx):
+    a, b = _usuario(cx), _usuario(cx)
+    _sistema(cx)
+    cx.execute("insert into liga.avisos (usuario_id, tipo, datos, caduca) "
+               "values (%s, 'empieza', '{\"jornada_id\": 1}', now() + interval '1 day')", (a,))
+    nuevo = ("insert into liga.avisos (usuario_id, tipo, caduca) "
+             "values (%s, 'empieza', now() + interval '1 day')")
+    _como(cx, a)
+    assert _filas(cx, "select count(*) from liga.avisos") == [(1,)]
+    _falla(cx, nuevo, (a,))                                              # no los crea la cuenta
+    assert cx.execute("update liga.avisos set leido_en = now()").rowcount == 1
+    _falla(cx, "update liga.avisos set tipo = 'cartera_lista'")          # solo leido_en
+    _falla(cx, "delete from liga.avisos")                                 # no se borran
+    _como(cx, b)
+    assert _filas(cx, "select count(*) from liga.avisos") == [(0,)]
+    assert cx.execute("update liga.avisos set leido_en = now()").rowcount == 0
+    _como(cx, None)
+    _falla(cx, "select 1 from liga.avisos")
+
+
+def test_la_zona_horaria_la_cambia_su_cuenta(cx):
+    a = _usuario(cx)
+    _como(cx, a)
+    cx.execute("update liga.perfiles_privados set zona_horaria = 'America/Mexico_City' "
+               "where id = %s", (a,))
+    assert _filas(cx, "select zona_horaria from liga.perfiles_privados where id = %s",
+                  (a,)) == [("America/Mexico_City",)]
+    _falla(cx, "update liga.perfiles_privados set zona_horaria = 'no vale; drop' where id = %s",
+           (a,))
+
+
 def test_haber_jugado_sin_pregunta_lo_ve_su_dueno_y_el_admin_y_nadie_mas(cx):
     a, otro, adm = _usuario(cx), _usuario(cx), _usuario(cx, rol="admin")
     jid = _jornada(cx)

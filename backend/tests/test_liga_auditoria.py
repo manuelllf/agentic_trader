@@ -51,6 +51,7 @@ RASTRO = {
     "pruebas": ("creada", "usuario_id", "actualizado_en", "actualizado_por"),
     "recetas": ("creada", "creado_por", None, None),  # de solo añadir (nueva versión = nueva fila)
     "suscripciones_push": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
+    "avisos": ("creado", "creado_por", "actualizado_en", "actualizado_por"),
     "reportes": ("creado", "autor_id", "resuelto", "resuelto_por"),  # su única mutación real
     "respuestas_ia": ("creada", "creado_por", None, None),  # de solo añadir, caché de IA
     "resultados": (None, None, None, None),  # hija de inscripciones (solo_anadir)
