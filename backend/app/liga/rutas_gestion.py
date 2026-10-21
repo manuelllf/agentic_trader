@@ -498,17 +498,19 @@ def coste_ia(mes: str = Query(pattern=r"^\d{4}-\d{2}$")) -> CosteIAOut:
 
 @router_admin.get("/auditoria", response_model=ListaAuditoria)
 def listar_auditoria(accion_prefix: str = "", desde: int = Query(0, ge=0),
-                     cuantos: int = Query(50, ge=1, le=100),
+                     cuantos: int = Query(50, ge=1, le=100), sin_ia: bool = False,
                      db: Session = Depends(db_usuario)) -> ListaAuditoria:
     patron = f"{accion_prefix.strip()}%"
     total = db.execute(text(
-        "select count(*) from liga.auditoria where accion like :patron"), {"patron": patron}
+        "select count(*) from liga.auditoria where accion like :patron "
+        "and (not :sin_ia or accion not like 'ia.%')"),
+        {"sin_ia": sin_ia, "patron": patron}
                        ).scalar_one()
     filas = db.execute(text("""
         select id, actor_id::text as actor_id, accion, objeto, detalle, creada
-        from liga.auditoria where accion like :patron
+        from liga.auditoria where accion like :patron and (not :sin_ia or accion not like 'ia.%')
         order by creada desc offset :desde limit :cuantos
-    """), {"patron": patron, "desde": desde, "cuantos": cuantos}).all()
+    """), {"sin_ia": sin_ia, "patron": patron, "desde": desde, "cuantos": cuantos}).all()
     return ListaAuditoria(total=total, filas=[AuditoriaOut(**f._mapping) for f in filas])
 
 

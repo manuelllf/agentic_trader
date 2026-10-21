@@ -458,6 +458,33 @@ def test_ia_estado_da_razones(api, monkeypatch) -> None:  # noqa: ANN001
 # ---- auditoría: lo que hicieron las rutas de arriba queda apuntado -------------------------------
 
 
+def test_auditoria_sin_ia(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    a2 = cab(admin, aal="aal2")
+    base = cliente.get("/liga/admin/auditoria", params={"sin_ia": True}, headers=a2).json()
+    ids = []
+    for accion in ("ia.conversor", "ajustes.cambiar"):
+        ids.append(cx.execute(
+            "insert into liga.auditoria (actor_id, accion, objeto, detalle) "
+            "values (%s, %s, 'r6', '{}'::jsonb) returning id",
+            (admin, accion)).fetchone()[0])
+    # El prefijo vacío permite comprobar la exclusión de IA en filas y total.
+    todas = cliente.get("/liga/admin/auditoria", headers=cab(admin, aal="aal2")).json()
+    r = cliente.get("/liga/admin/auditoria", params={"sin_ia": True},
+                    headers=cab(admin, aal="aal2"))
+    assert r.status_code == 200
+    datos = r.json()
+    assert not any(f["accion"].startswith("ia.") for f in datos["filas"])
+    assert any(f["id"] == ids[1] for f in datos["filas"])
+    total = cx.execute("select count(*) from liga.auditoria "
+                       "where accion not like 'ia.%'").fetchone()[0]
+    assert datos["total"] == total
+    assert datos["total"] - base["total"] == 1
+    assert [f["accion"] for f in datos["filas"] if f["id"] in ids] == ["ajustes.cambiar"]
+    assert datos["total"] < todas["total"]
+
+
 def test_auditoria_registra_los_cambios_de_admin(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, _cx = api
     admin = usuario(rol="admin")
