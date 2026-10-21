@@ -129,7 +129,7 @@ class AuditoriaOut(BaseModel):
     actor_id: str | None
     accion: str
     objeto: str | None
-    detalle: dict
+    detalle: Any
     creada: datetime
 
 

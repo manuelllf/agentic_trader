@@ -485,6 +485,18 @@ def test_auditoria_sin_ia(api) -> None:  # noqa: ANN001
     assert datos["total"] < todas["total"]
 
 
+def test_auditoria_acepta_detalle_en_lista(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    cx.execute("insert into liga.auditoria (actor_id, accion, objeto, detalle) "
+               "values (%s, 'test.detalle_lista', null, '[1, 2]'::jsonb)", (admin,))
+    for params in ({"accion_prefix": "test.detalle"}, {"sin_ia": True}):
+        r = cliente.get("/liga/admin/auditoria", params=params, headers=cab(admin, aal="aal2"))
+        assert r.status_code == 200
+        assert any(f["accion"] == "test.detalle_lista" and f["detalle"] == [1, 2]
+                   for f in r.json()["filas"])
+
+
 def test_auditoria_registra_los_cambios_de_admin(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, _cx = api
     admin = usuario(rol="admin")
