@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { get } from "@/lib/api";
 import { Marca } from "@/app/(liga)/_ui/Marca";
@@ -11,6 +11,7 @@ import "./marco.css";
 
 export function MarcoAdmin({ children }: { children: React.ReactNode }) {
   const t = useTranslations();
+  const router = useRouter();
   const ruta = usePathname() ?? "";
   const sala = salaDe(ruta);
   const seccion = seccionDe(ruta);
@@ -54,7 +55,12 @@ export function MarcoAdmin({ children }: { children: React.ReactNode }) {
         <nav className="adm-salas-m" aria-label={t("admin_marco_salas")}>
           {SALAS.map(s => <Link key={s.clave} href={s.href} className={sala === s.clave ? "on" : undefined}>{s.nombre}</Link>)}
         </nav>
-        {sala === "vennett" && <nav className="adm-tabs" aria-label={t("admin_marco_secciones")}>{SECCIONES.map(enlace)}</nav>}
+        {sala === "vennett" && <label className="adm-selector">
+          <span className="adm-selector-etiqueta">{t("admin_ui_seccion")}</span>
+          <select value={SECCIONES.find(s => s.clave === seccion)?.href ?? ""} onChange={e => router.push(e.target.value)}>
+            {SECCIONES.map(s => <option key={s.clave} value={s.href}>{t(`admin_marco_${s.clave}`)}{cuentas[s.clave] ? ` (${cuentas[s.clave]})` : ""}</option>)}
+          </select>
+        </label>}
       </header>
       <div className="adm-cuerpo">{children}</div>
     </div>

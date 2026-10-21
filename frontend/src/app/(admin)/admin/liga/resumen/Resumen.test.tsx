@@ -50,12 +50,12 @@ describe("Resumen", () => {
     const vista = await pintar();
     expect(vista.querySelector("h1")?.textContent).toBe(titulo);
     expect(get).toHaveBeenCalledWith("/liga/admin/panel/resumen");
-    if (cuantos === 0) expect(vista.querySelector("ul")).toBeNull();
+    if (cuantos === 0) expect(vista.querySelector(".adm-lista")).toBeNull();
   });
   it("enlaza cada pendiente con su sección", async () => {
     vi.mocked(get).mockResolvedValue(respuesta(pendientes));
     const vista = await pintar();
-    const enlaces = vista.querySelectorAll("li a");
+    const enlaces = vista.querySelectorAll(".adm-fila");
     expect(enlaces.length).toBe(pendientes.length);
     pendientes.forEach((p, i) => expect(enlaces[i].getAttribute("href")).toBe(destinoDe(p.seccion)));
     expect(destinoDe("desconocida")).toBe("/admin/liga");
@@ -71,4 +71,22 @@ describe("Resumen", () => {
     expect(vista.querySelector('[role="alert"]')?.textContent).toBe(mensajes.admin_generic_error);
     expect(vista.querySelector("h1")).toBeNull();
   });
+});
+
+it("muestra Lo próximo en una sola línea con automático", async () => {
+  vi.mocked(get).mockResolvedValue({ ...respuesta([]), proximo: { paso: "foto", jornada: 3, cuando: "2026-11-16T16:15:00", automatico: true } });
+  const vista = await pintar();
+  const bloque = Array.from(vista.querySelectorAll("section")).find(s => s.querySelector("h2")?.textContent === "Lo próximo")!;
+  expect(bloque.querySelectorAll("p")).toHaveLength(1);
+  expect(bloque.querySelector("p")?.textContent).toMatch(/^Designar la foto de la jornada 3 · lun.*16.*nov.*16:15 · automático$/);
+});
+
+it.each([[60, true], [95, false]] as const)("el aviso de IA con %i depende del backend", async (porcentaje, aviso) => {
+  vi.mocked(get).mockResolvedValue({
+    ...respuesta(aviso ? [pendientes[3]] : []),
+    vistazo: { cuentas: 20, activas_7d: 8, en_juego: 3, tope_ia_pct: porcentaje },
+  });
+  const vista = await pintar();
+  const cifra = vista.querySelector('.adm-cifra[href="/admin/liga/coste-ia"]')!;
+  expect(cifra.querySelector(".adm-tono-aviso") !== null).toBe(aviso);
 });

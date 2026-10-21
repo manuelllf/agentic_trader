@@ -1,5 +1,5 @@
 // Tipos de la API del panel de usuarios y utilidades comunes. Dinero: la API lo manda como texto.
-export const FILTROS = ["todas", "activas", "pro", "suspendidas", "mayores18"] as const;
+export const FILTROS = ["todas", "activas", "suspendidas", "mayores18"] as const;
 export type Filtro = (typeof FILTROS)[number];
 
 export const ORDENES = ["ultima_actividad", "creado", "visitas_7d", "ia_mes_usd"] as const;

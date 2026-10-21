@@ -1,9 +1,11 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
+import { get } from "@/lib/api";
+import { Pagina, Segmentos } from "../../_marco/ui";
 import { Errores } from "./Errores";
 import { Moderacion } from "./Moderacion";
 
@@ -11,26 +13,29 @@ function Revisar() {
   const t = useTranslations();
   const router = useRouter();
   const parametros = useSearchParams();
-  const vista = parametros.get("vista") === "moderacion" ? "moderacion" : "errores";
-
-  return (
-    <div className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 min-w-0 text-[13px]" style={{ color: "#c3c2b7" }}>
-      <h1 className="text-[19px] text-white" style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_revisar_titulo")}</h1>
-      <p className="mt-1" style={{ color: "#898781" }}>{t("admin_revisar_sub")}</p>
-      <div role="tablist" aria-label={t("admin_revisar_titulo")} className="mt-4 flex flex-wrap gap-2">
-        {(["errores", "moderacion"] as const).map((v) => (
-          <button key={v} type="button" role="tab" aria-selected={vista === v}
-                  onClick={() => router.replace(`/admin/liga/revisar?vista=${v}`, { scroll: false })}
-                  className="min-h-[44px] rounded-lg px-4 font-bold"
-                  style={{ background: vista === v ? "#3987e5" : "#2c2c2a", color: vista === v ? "#fff" : "#c3c2b7" }}>
-            {t(v === "errores" ? "admin_revisar_errores" : "admin_revisar_moderacion")}
-          </button>
-        ))}
-      </div>
-      {vista === "errores" ? <Errores /> : <Moderacion />}
-    </div>
-  );
+  const original = parametros.get("vista");
+  const vista = original === "moderacion" || original === "reportes" ? "reportes" : original === "resueltos" ? "resueltos" : "errores";
+  const [errores, setErrores] = useState<number>();
+  const [reportes, setReportes] = useState<number>();
+  useEffect(() => {
+    let vigente = true;
+    get<{ total: number }>("/liga/admin/errores?estado=abierto&cuantos=50").then(r => { if (vigente) setErrores(r.total); }).catch(() => {});
+    get<{ total: number }>("/liga/moderacion/reportes?cuantos=50").then(r => { if (vigente) setReportes(r.total); }).catch(() => {});
+    return () => { vigente = false; };
+  }, []);
+  useEffect(() => {
+    if (original === "moderacion") router.replace("/admin/liga/revisar?vista=reportes", { scroll: false });
+  }, [original, router]);
+  return <Pagina titulo={t("admin_revisar_titulo")}>
+    <Segmentos etiqueta={t("admin_revisar_titulo")} valor={vista} alCambiar={v => router.replace(`/admin/liga/revisar?vista=${v}`, { scroll: false })} opciones={[
+      { valor: "errores", etiqueta: t("admin_revisar_errores"), cuenta: errores },
+      { valor: "reportes", etiqueta: t("admin_revisar_reportes"), cuenta: reportes },
+      { valor: "resueltos", etiqueta: t("admin_errors_resolved") },
+    ]} />
+    {vista === "reportes" ? <Moderacion alTotal={setReportes} /> : <Errores key={vista} estado={vista === "resueltos" ? "resuelto" : "abierto"} alTotal={vista === "errores" ? setErrores : ignorarTotal} />}
+  </Pagina>;
 }
+const ignorarTotal = () => {};
 
 export default function RevisarAdmin() {
   return <Suspense fallback={null}><AuthGate><Revisar /></AuthGate></Suspense>;

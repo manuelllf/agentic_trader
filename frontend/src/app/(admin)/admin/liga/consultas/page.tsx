@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { Pagina, Boton, Segmentos, Estado } from "../../_marco/ui";
+import { fechaCorta } from "../../_marco/formato";
+import { getCatalogo } from "@/lib/liga/api";
 import AuthGate from "@/components/AuthGate";
 import { get } from "@/lib/api";
 import { tokenSesion } from "@/lib/liga/supabase";
@@ -13,6 +16,8 @@ type ConsultaOut = { clave: string; columnas: string[]; filas: unknown[][]; umbr
 function Consultas() {
   const t = useTranslations();
   const locale = useLocale();
+  const [reglas, setReglas] = useState<Record<string, string>>({});
+  useEffect(() => { let vigente = true; void getCatalogo().then(c => { if (vigente && typeof c !== "string") setReglas(Object.fromEntries(c.reglas.map(r => [r.clave, r.titulo]))); }).catch(() => {}); return () => { vigente = false; }; }, []);
   const [clave, setClave] = useState<(typeof claves)[number]>("sin_estrategia");
   const [consulta, setConsulta] = useState<ConsultaOut | null>(null);
   const [fallo, setFallo] = useState(false);
@@ -48,58 +53,35 @@ function Consultas() {
     } catch { setFallo(true); } finally { setExportando(false); }
   };
 
-  const celda = (valor: unknown) => {
+  const celda = (valor: unknown, columna: string) => {
+    if (columna === "clave" && clave === "reglas_usadas" && typeof valor === "string") return reglas[valor] ?? valor;
+    if (columna === "estado" && typeof valor === "string" && ["borrador", "apuntada", "jugando", "retirada"].includes(valor)) return t(({ borrador: "strategies_state_draft", apuntada: "strategies_state_signed_up", jugando: "strategies_state_playing", retirada: "strategies_state_retired" } as Record<string, string>)[valor]);
     if (valor == null) return "·";
     if (typeof valor === "boolean") return t(valor ? "admin_consultas_si" : "admin_consultas_no");
     if (typeof valor === "string" && /^\d{4}-\d{2}-\d{2}/.test(valor)) {
       const fecha = new Date(valor);
-      if (!Number.isNaN(fecha.getTime())) return new Intl.DateTimeFormat(locale, { dateStyle: "short", timeZone: "UTC" }).format(fecha);
+      if (!Number.isNaN(fecha.getTime())) return fechaCorta(valor, locale);
     }
     return String(valor);
   };
+  const numericas = consulta?.columnas.map((_, i) => {
+    const valores = consulta.filas.map(f => f[i]).filter(v => v != null);
+    return valores.length > 0 && valores.every(v => typeof v === "number");
+  });
   const ayuda = consulta && ((clave === "sin_estrategia" || clave === "inactivas")
     ? consulta.umbral_dias == null ? null : t(`admin_consultas_${clave}_ayuda`, { dias: consulta.umbral_dias })
     : t(`admin_consultas_${clave}_ayuda`));
 
-  return (
-    <div className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 min-w-0 text-[13px]" style={{ color: "#c3c2b7" }}>
-      <h1 className="text-[19px] text-white" style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_consultas_titulo")}</h1>
-      <p className="mt-1" style={{ color: "#898781" }}>{t("admin_consultas_sub")}</p>
-      <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,3fr)]">
-        <div className="flex flex-col gap-2">
-          {claves.map((c) => (
-            <button key={c} type="button" aria-current={clave === c ? "true" : undefined} onClick={() => setClave(c)}
-                    className="min-h-[44px] rounded-lg px-3 py-2 text-left font-bold"
-                    style={{ background: clave === c ? "#3987e5" : "#2c2c2a", color: clave === c ? "#fff" : "#c3c2b7" }}>
-              {t(`admin_consultas_${c}`)}
-            </button>
-          ))}
-        </div>
-        <section className="min-w-0">
-          <h2 className="font-bold text-white">{t(`admin_consultas_${clave}`)}</h2>
-          {ayuda && <p className="mt-1" style={{ color: "#898781" }}>{ayuda}</p>}
-          <button type="button" onClick={exportar} disabled={exportando}
-                  className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40" style={{ background: "#2c2c2a" }}>
-            {t("admin_consultas_exportar")}
-          </button>
-          {fallo && <p role="alert" className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{t("admin_generic_error")}</p>}
-          {!consulta ? (!fallo && <p className="mt-4" style={{ color: "#898781" }}>{t("admin_loading")}</p>) : (
-            <>
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead><tr>{consulta.columnas.map((columna, i) => <th key={i} scope="col" className="border-b p-2 text-white" style={{ borderColor: "#303030" }}>{columna}</th>)}</tr></thead>
-                  <tbody>{consulta.filas.map((fila, i) => (
-                    <tr key={i}>{fila.map((valor, j) => <td key={j} className="border-b p-2" style={{ borderColor: "#303030" }}>{celda(valor)}</td>)}</tr>
-                  ))}</tbody>
-                </table>
-              </div>
-              {consulta.filas.length === 0 && <p className="mt-4" style={{ color: "#898781" }}>{t("admin_consultas_vacia")}</p>}
-            </>
-          )}
-        </section>
-      </div>
-    </div>
-  );
+  return <Pagina titulo={t("admin_consultas_titulo")} accion={<Boton variante="sec" onClick={exportar} disabled={exportando}>{t("admin_consultas_exportar")}</Boton>}>
+    <Segmentos opciones={claves.map(c => ({ valor: c, etiqueta: t(`admin_consultas_${c}`), cuenta: clave === c && consulta ? consulta.filas.length : undefined }))} valor={clave} alCambiar={setClave} etiqueta={t("admin_consultas_titulo")} />
+    {ayuda && <p className="adm-nota">{ayuda}</p>}
+    {fallo && <Estado tipo="error">{t("admin_generic_error")}</Estado>}
+    {!consulta ? !fallo && <Estado tipo="cargando" /> : <>
+      <div className="overflow-x-auto"><table className="adm-tabla"><thead><tr>{consulta.columnas.map(c => <th key={c} scope="col" className={numericas?.[consulta.columnas.indexOf(c)] ? "der" : undefined}>{t(`admin_consultas_col_${c}`)}</th>)}</tr></thead>
+      <tbody>{consulta.filas.map((fila, i) => <tr key={i}>{fila.map((valor, j) => <td key={j} className={numericas?.[j] ? "der" : undefined}>{celda(valor, consulta.columnas[j])}</td>)}</tr>)}</tbody></table></div>
+      {!consulta.filas.length && <Estado tipo="vacio">{t("admin_consultas_vacia")}</Estado>}
+    </>}
+  </Pagina>;
 }
 
 export default function ConsultasAdmin() {

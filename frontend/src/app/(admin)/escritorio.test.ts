@@ -1,42 +1,20 @@
-﻿import { readFileSync } from "node:fs";
-import { parse } from "postcss";
+import { readFileSync, readdirSync } from "node:fs";
 import { expect, it } from "vitest";
-
-const leer = (ruta: string) => readFileSync(new URL(ruta, import.meta.url), "utf8");
-const css = parse(leer("./admin.css"));
-
-it("limita los estilos de escritorio a 880 px y a las pantallas del encargo", () => {
-  let reglas = 0;
-  css.walkRules((regla) => {
-    if (!regla.selector.includes(".admin-")) return;
-    reglas++;
-    expect(regla.parent?.type).toBe("atrule");
-    expect(regla.parent && "params" in regla.parent && regla.parent.params).toBe("(min-width: 880px)");
-    regla.walkDecls((decl) => expect(decl.prop).not.toMatch(/color|background|font|shadow/));
+const raiz = new URL("./admin/liga/", import.meta.url);
+const leer = (p: URL) => readFileSync(p, "utf8");
+for (const ruta of ["resumen/Resumen.tsx", "analitica/page.tsx", "jornadas/page.tsx", "usuarios/PanelUsuarios.tsx", "consultas/page.tsx", "coste-ia/page.tsx", "revisar/page.tsx", "premio/page.tsx", "ajustes/page.tsx", "auditoria/page.tsx"]) {
+  it(`${ruta} usa Pagina`, () => expect(leer(new URL(ruta, raiz))).toContain("<Pagina"));
+}
+function recorrer(dir: URL): URL[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap(e => {
+    const ruta = new URL(e.name + (e.isDirectory() ? "/" : ""), dir);
+    return e.isDirectory() ? recorrer(ruta) : e.name.endsWith(".tsx") && !e.name.endsWith(".test.tsx") ? [ruta] : [];
   });
-  expect(reglas).toBeGreaterThan(10);
-});
-
-it("conserva el contenedor móvil en cada pantalla y amplía a 960 px", () => {
-  for (const ruta of [
-    "liga/resumen/Resumen.tsx", "liga/jornadas/page.tsx", "liga/analitica/page.tsx",
-    "liga/consultas/page.tsx", "liga/revisar/page.tsx", "liga/auditoria/page.tsx",
-    "liga/premio/page.tsx", "liga/ajustes/page.tsx", "liga/coste-ia/page.tsx",
-  ]) {
-    expect(leer(`./admin/${ruta}`)).toContain("admin-escritorio mx-auto max-w-md px-4");
-  }
-  expect(leer("./admin/liga/usuarios/PanelUsuarios.tsx")).toContain("admin-escritorio mx-auto max-w-md px-4");
-  expect(leer("./admin.css")).toContain("max-width: 960px");
-});
-
-it("distribuye salas, procesos y usuarios sin quitar la paginación", () => {
-  expect(leer("./admin/liga/jornadas/page.tsx")).toContain('className="admin-procesos"');
-  expect(leer("./admin.css")).toContain("repeat(2, minmax(0, 1fr))");
-  expect(leer("./admin.css")).toContain("width: 480px");
-  expect(leer("./admin.css")).toContain("minmax(0, 1fr) minmax(0, 1fr) 24px");
-  const usuarios = leer("./admin/liga/usuarios/PanelUsuarios.tsx");
-  expect(usuarios).toContain("admin-buscador mt-4 flex gap-2");
-  expect(usuarios).toContain("min-h-[56px]");
-  expect(usuarios).toContain('t("admin_previous")');
-  expect(usuarios).toContain('t("admin_next")');
-});
+}
+for (const ruta of recorrer(raiz)) {
+  it(`${ruta.pathname} no contiene estilo antiguo ni JSON visible`, () => {
+    const prohibido = /#c3c2b7|#898781|#303030|#3987e5|font-land-serif|admin_back_vennett|JSON\.stringify\(/;
+    const fallos = leer(ruta).split("\n").flatMap((linea, i) => prohibido.test(linea) ? [`${ruta.pathname}:${i + 1}`] : []);
+    expect(fallos).toEqual([]);
+  });
+}

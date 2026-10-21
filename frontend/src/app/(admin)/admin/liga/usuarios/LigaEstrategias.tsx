@@ -1,4 +1,5 @@
 "use client";
+import { Bloque } from "../../_marco/ui";
 
 import { useTranslations } from "next-intl";
 import type { FichaPanel } from "./panel";
@@ -12,14 +13,13 @@ export function LigaEstrategias({ liga }: { liga: FichaPanel["liga"] }) {
     [t("admin_panel_reports"), t("admin_panel_reports_value", { made: liga.reportes_hechos, received: liga.reportes_recibidos })],
   ];
   return (
-    <section className="mt-5" style={{ color: "#c3c2b7", overflowWrap: "anywhere" }}>
-      <h2 className="font-bold text-white">{t("admin_panel_section_league")}</h2>
-      {filas.map(([etiqueta, valor]) => (
-        <div key={etiqueta} className="admin-par border-b py-2 flex justify-between gap-2" style={{ borderColor: "#303030" }}>
-          <span style={{ color: "#898781" }}>{etiqueta}</span>
-          <span className="min-w-0 tabular-nums">{valor}</span>
+    <Bloque titulo={t("admin_panel_section_league")}>
+      <dl>{filas.map(([etiqueta, valor]) => (
+        <div key={etiqueta} className="admin-par adm-usuarios-par">
+          <dt className="adm-nota">{etiqueta}</dt>
+          <dd>{valor}</dd>
         </div>
-      ))}
-    </section>
+      ))}</dl>
+    </Bloque>
   );
 }

@@ -33,9 +33,9 @@ it("consulta 90 días y muestra intención, recuento, tipo y regla", async () =>
   const filas = div.querySelectorAll("tbody tr");
   expect(filas).toHaveLength(2);
   expect(Array.from(filas[0].querySelectorAll("td"), celda => celda.textContent))
-    .toEqual(["empresas sostenibles", "1.234", "No disponible", "Sin regla"]);
+    .toEqual(["empresas sostenibles", "1234", "Sin regla"]);
   expect(Array.from(filas[1].querySelectorAll("td"), celda => celda.textContent))
-    .toEqual(["vacas lecheras", "12", "Aproximada", "fcf"]);
+    .toEqual(["vacas lecheras", "12", "fcf aproximada"]);
   expect(filas[0].querySelectorAll("td")[1].classList.contains("tabular-nums")).toBe(true);
 });
 
@@ -50,4 +50,16 @@ it("muestra un error traducido si falla la consulta", async () => {
   const div = await montar([]);
   expect(div.querySelector('[role="alert"]')?.textContent).toBe(mensajes.admin_intenciones_error);
   expect(div.textContent).not.toContain(mensajes.admin_intenciones_vacio);
+});
+
+it("despliega las ocho intenciones y vuelve a cinco", async () => {
+  const div = await montar(Array.from({ length: 8 }, (_, i) => ({ intencion: `Intención ${i}`, recuento: i, tipo: "no_disponible", regla: null })));
+  expect(div.querySelectorAll("tbody tr")).toHaveLength(5);
+  const boton = div.querySelector("button")!;
+  expect(boton.textContent).toBe("Ver 3 más");
+  await act(async () => boton.click());
+  expect(div.querySelectorAll("tbody tr")).toHaveLength(8);
+  expect(boton.textContent).toBe("Ver menos");
+  await act(async () => boton.click());
+  expect(div.querySelectorAll("tbody tr")).toHaveLength(5);
 });

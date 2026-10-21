@@ -57,10 +57,11 @@ const dias: DiasPanel["dias"] = [0, 1, 0, 0, 2, 0, 0, 3, 1, 0, 0, 2, 4, 1].map((
   dia: `2025-02-${String(i + 1).padStart(2, "0")}`, visitas,
 }));
 
-it("muestra dolares con cuatro decimales y llamadas en singular y plural", async () => {
+it("muestra dólares con dos decimales y llamadas en singular y plural", async () => {
   const div = await montar(<CosteIA ia={cuenta().ia} />);
-  expect(div.textContent).toContain("0,0084");
+  expect(div.textContent).toContain("0,01");
   expect(div.textContent).toContain("3 llamadas");
+  expect(div.textContent).not.toContain("cobrado");
   expect(div.querySelector(".admin-par")?.textContent).toContain("1 llamada");
 });
 
@@ -77,7 +78,7 @@ it("mantiene las seis filas de IA cuando no hay llamadas", async () => {
   const div = await montar(<CosteIA ia={ia} />);
   expect(div.querySelectorAll(".admin-par")).toHaveLength(6);
   expect(div.textContent).toContain("0 llamadas");
-  expect(div.textContent).toContain("0,0000");
+  expect(div.textContent).toContain("0,00");
 });
 
 it("muestra el texto de email ausente", async () => {

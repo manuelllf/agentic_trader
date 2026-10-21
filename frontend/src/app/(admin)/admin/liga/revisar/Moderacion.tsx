@@ -8,6 +8,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { ApiError, get, post } from "@/lib/api";
 
+import { Boton, Estado, Fila, Lista } from "../../_marco/ui";
+import { hace, numero } from "../../_marco/formato";
+
 type Reporte = {
   id: number; autor_id: string | null; tipo: "alias" | "estrategia" | "liga" | "pregunta";
   objeto_id: string; motivo: string; estado: string; creado: string; contenido: string | null;
@@ -17,11 +20,10 @@ type ListaReportes = { total: number; filas: Reporte[] };
 const CUANTOS = 50;
 const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
-export function Moderacion() {
+export function Moderacion({ alTotal }: { alTotal: (total: number) => void }) {
   const t = useTranslations();
   const { confirmar, dialogo } = useConfirmar();
   const locale = useLocale();
-  const CUANDO = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const labels: Record<Reporte["tipo"], string> = { alias: t("admin_moderation_alias"), estrategia: t("admin_moderation_strategy"), liga: t("admin_moderation_league"), pregunta: t("admin_moderation_question") };
   const confirmations: Record<Reporte["tipo"], string> = { alias: t("admin_moderation_confirm_alias"), estrategia: t("admin_moderation_confirm_strategy"), liga: t("admin_moderation_confirm_league"), pregunta: t("admin_moderation_confirm_question") };
   const errorText = useCallback((e: unknown) => error(e, t("admin_generic_error")), [t]);
@@ -32,8 +34,8 @@ export function Moderacion() {
   const cargar = useCallback(() => {
     setFallo("");
     get<ListaReportes>(`/liga/moderacion/reportes?cuantos=${CUANTOS}`)
-      .then(setLista).catch((e) => setFallo(errorText(e)));
-  }, [errorText]);
+      .then(r => { setLista(r); alTotal(r.total); }).catch((e) => setFallo(errorText(e)));
+  }, [errorText, alTotal]);
   useEffect(cargar, [cargar]);
 
   const ocultar = async (r: Reporte) => {
@@ -45,43 +47,11 @@ export function Moderacion() {
     } catch (e) { setFallo(errorText(e)); } finally { setOcupado(null); }
   };
 
-  return (
-    <div>
-
-      {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
-      {!lista ? (
-        !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
-      ) : lista.filas.length === 0 ? (
-        <p className="mt-6" style={{ color: "#898781" }}>{t("admin_moderation_empty")}</p>
-      ) : (
-        <>
-        {lista.total > lista.filas.length && (
-          <p className="mt-4" style={{ color: "#e6a667" }}>
-            {t("admin_moderation_count", { total: new Intl.NumberFormat(locale).format(lista.total), shown: new Intl.NumberFormat(locale).format(lista.filas.length) })}
-          </p>
-        )}
-        <ul className="mt-4 border-t" style={{ borderColor: "#303030" }}>
-          {lista.filas.map((r) => (
-            <li key={r.id} className="admin-fila border-b py-3" style={{ borderColor: "#303030" }}>
-              <p style={{ color: "#898781" }}>{labels[r.tipo]}</p>
-              <p className="mt-1 break-words text-[15px] text-white">
-                {r.contenido ?? t("admin_moderation_missing")}
-              </p>
-              <p className="mt-1" style={{ color: "#898781" }}>{t("admin_moderation_reason", { reason: r.motivo })}</p>
-              <p className="mt-1 text-[11.5px]" style={{ color: "#67665f" }}>
-                {CUANDO.format(new Date(r.creado))}
-              </p>
-              <button type="button" disabled={ocupado === r.id} onClick={() => ocultar(r)}
-                      className="mt-2 min-h-[40px] rounded-lg px-3 font-bold text-white disabled:opacity-40"
-                      style={{ background: "#7a2020" }}>
-                {t("admin_moderation_hide")}
-              </button>
-            </li>
-          ))}
-        </ul>
-        </>
-      )}
-      {dialogo}
-    </div>
-  );
+  return <div>
+    {fallo && <Estado tipo="error">{fallo}</Estado>}
+    {!lista ? !fallo && <Estado tipo="cargando" /> : lista.filas.length === 0 ? <Estado tipo="vacio">{t("admin_moderation_empty")}</Estado> : <>
+      <Lista>{lista.filas.map(r => <Fila key={r.id}><div><p className="break-words">{r.contenido ?? t("admin_moderation_missing")}</p><p className="adm-nota">{[labels[r.tipo], r.motivo, hace(r.creado, locale)].join(" · ")}</p></div><Boton variante="sec" disabled={ocupado === r.id} onClick={() => ocultar(r)}>{t("admin_moderation_hide")}</Boton></Fila>)}</Lista>
+      {lista.total > lista.filas.length && <p className="adm-nota">{t("admin_moderation_count", { total: numero(lista.total, locale), shown: numero(lista.filas.length, locale) })}</p>}
+    </>}{dialogo}
+  </div>;
 }

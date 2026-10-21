@@ -1,4 +1,7 @@
 "use client";
+import { Bloque, Boton } from "../../_marco/ui";
+import { dolares, fechaCorta } from "../../_marco/formato";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useConfirmar } from "@/components/Confirmar";
@@ -23,9 +26,10 @@ const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.messa
 
 export function DetalleUsuario({ id, volver }: { id: string; volver: string }) {
   const t = useTranslations();
+  const router = useRouter();
   const { confirmar, dialogo } = useConfirmar();
   const locale = useLocale();
-  const FECHA = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" });
+  const FECHA = { format: (fecha: Date) => fechaCorta(fecha.toISOString(), locale) };
   const rolLabel = (rol: string) => ["usuario", "moderador", "admin"].includes(rol) ? t(`admin_user_role_${rol}`) : rol;
   const errorText = useCallback((e: unknown) => error(e, t("admin_generic_error")), [t]);
   const [u, setU] = useState<UsuarioDetalle | null>(null);
@@ -104,138 +108,122 @@ export function DetalleUsuario({ id, volver }: { id: string; volver: string }) {
 
   return (
     <div className="pb-16"><article>
-      <a href={volver} className="atras usuarios-solo-movil">{t("admin_user_back")}</a>
+      <Boton variante="texto" className="adm-usuarios-movil" onClick={() => { router.push(volver); }}>{t("admin_user_back")}</Boton>
       {!u || !ficha || !dias ? (
-        !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
+        !fallo && <p className="mt-6">{t("admin_loading")}</p>
       ) : (<>
-          <h1 className="mt-3 text-[22px] text-white"
-              style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{u.alias}</h1>
-          <p className="mt-1" style={{ color: "#898781" }}>
-            {t("admin_user_since", { date: FECHA.format(new Date(u.creado)), balance: new Intl.NumberFormat(locale).format(Number(u.saldo)), hidden: u.oculto ? t("admin_user_hidden") : "" })}
-          </p>
+          <h1 className="mt-3 text-[22px] text-white">{u.alias}</h1>
+          <dl>
+            <div className="adm-usuarios-par"><dt className="adm-nota">{t("admin_panel_col_joined")}</dt><dd>{fechaCorta(u.creado, locale)}</dd></div>
+            <div className="adm-usuarios-par"><dt className="adm-nota">{t("admin_user_balance")}</dt><dd>{dolares(u.saldo, locale)}</dd></div>
+          </dl>
 
           <div className="mt-2 flex flex-wrap gap-2">
-            {u.plan === "pro" && <span style={{ color: "#9be0b3" }}>{t("admin_users_pro")}</span>}
+            {u.plan === "pro" && <span>{t("admin_users_pro")}</span>}
             {u.roles.map((rol) => <span key={rol}>{rolLabel(rol)}</span>)}
-            {u.suspendido && <span style={{ color: "#e66767" }}>{t("admin_users_suspended")}</span>}
+            {u.suspendido && <span>{t("admin_users_suspended")}</span>}
           </div>
           <Actividad actividad={ficha.actividad} dias={dias.dias} historial={historial} desde={visitasDesde} onPagina={setVisitasDesde} />
           <CosteIA ia={ficha.ia} />
           <LigaEstrategias liga={ficha.liga} />
           <Ficha ficha={ficha} />
-          <section className="mt-4 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
-            <h2 className="font-bold text-white">{t("admin_user_plan")}</h2>
-            <p className="mt-1" style={{ color: "#898781" }}>
+          <Bloque titulo={t("admin_user_actions")}>
+          <section><h3 className="adm-h2">{t("admin_user_plan")}</h3>
+            <p className="mt-1">
               {u.plan === "pro" ? (u.plan_hasta ? t("admin_user_pro_until", { date: FECHA.format(new Date(u.plan_hasta)) }) : t("admin_user_pro_no_end")) : t("admin_user_free")}
             </p>
             {u.plan !== "pro" ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
-                       className="min-h-[44px] rounded-lg border px-3 text-white"
-                       style={{ background: "#141413", borderColor: "#303030" }} />
-                <button type="button" disabled={ocupado} onClick={darPro}
-                        className="min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
-                        style={{ background: "#3987e5" }}>
+                       className="min-h-[44px] rounded-lg border px-3 text-white" />
+                <Boton variante="sec" type="button" disabled={ocupado} onClick={darPro}
+                        className="min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40">
                   {t("admin_user_grant_pro")}
-                </button>
+                </Boton>
               </div>
             ) : (
-              <button type="button" disabled={ocupado} onClick={quitarPro}
-                      className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
-                      style={{ background: "#2c2c2a" }}>
+              <Boton variante="sec" type="button" disabled={ocupado} onClick={quitarPro}
+                      className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40">
                 {t("admin_user_back_to_free")}
-              </button>
+              </Boton>
             )}
           </section>
 
-          <section className="mt-4 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
-            <h2 className="font-bold text-white">{t("admin_user_pass")}</h2>
-            <p className="mt-1" style={{ color: "#898781" }}>
+          <section><h3 className="adm-h2">{t("admin_user_pass")}</h3>
+            <p className="mt-1">
               {u.pase_liga ? (u.pase_hasta ? t("admin_user_pass_until", { date: FECHA.format(new Date(u.pase_hasta)) }) : t("admin_user_pass_no_end")) : t("admin_user_pass_none")}
             </p>
             {!u.pase_liga ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <input type="date" value={hastaPase} onChange={(e) => setHastaPase(e.target.value)}
-                       className="min-h-[44px] rounded-lg border px-3 text-white"
-                       style={{ background: "#141413", borderColor: "#303030" }} />
-                <button type="button" disabled={ocupado} onClick={darPase}
-                        className="min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
-                        style={{ background: "#3987e5" }}>
+                       className="min-h-[44px] rounded-lg border px-3 text-white" />
+                <Boton variante="sec" type="button" disabled={ocupado} onClick={darPase}
+                        className="min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40">
                   {t("admin_user_grant_pass")}
-                </button>
+                </Boton>
               </div>
             ) : (
-              <button type="button" disabled={ocupado} onClick={quitarPase}
-                      className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
-                      style={{ background: "#2c2c2a" }}>
+              <Boton variante="sec" type="button" disabled={ocupado} onClick={quitarPase}
+                      className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40">
                 {t("admin_user_remove_pass")}
-              </button>
+              </Boton>
             )}
           </section>
 
-          <section className="mt-4 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
-            <h2 className="font-bold text-white">{t("admin_user_grant_credits")}</h2>
+          <section><h3 className="adm-h2">{t("admin_user_grant_credits")}</h3>
             <form onSubmit={darCreditos} className="mt-3 flex flex-wrap items-center gap-2">
               <input type="number" min="0.01" step="0.01" value={importe}
                      onChange={(e) => setImporte(e.target.value)} placeholder={t("admin_user_amount")}
-                     className="min-h-[44px] w-28 rounded-lg border px-3 text-white"
-                     style={{ background: "#141413", borderColor: "#303030" }} />
+                     className="min-h-[44px] w-28 rounded-lg border px-3 text-white" />
               <select value={motivo} onChange={(e) => setMotivo(e.target.value as "regalo" | "ajuste")}
-                      className="min-h-[44px] rounded-lg border px-3 text-white"
-                      style={{ background: "#141413", borderColor: "#303030" }}>
+                      className="min-h-[44px] rounded-lg border px-3 text-white">
                 <option value="regalo">{t("admin_user_gift")}</option>
                 <option value="ajuste">{t("admin_user_adjustment")}</option>
               </select>
-              <button type="submit" disabled={ocupado}
-                      className="min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
-                      style={{ background: "#3987e5" }}>
+              <Boton variante="sec" type="submit" disabled={ocupado}
+                      className="min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40">
                 {t("admin_user_give")}
-              </button>
+              </Boton>
             </form>
 
             {movs && (
-              <ul className="mt-4 border-t" style={{ borderColor: "#303030" }}>
+              <ul className="mt-4 border-t">
                 {movs.filas.map((m) => (
-                  <li key={m.id} className="admin-movimiento admin-par flex justify-between gap-2 border-b py-2"
-                      style={{ borderColor: "#303030" }}>
+                  <li key={m.id} className="admin-movimiento admin-par flex justify-between gap-2 border-b py-2">
                     <span>{m.motivo === "regalo" ? t("admin_user_gift") : m.motivo === "ajuste" ? t("admin_user_adjustment") : m.motivo}</span>
-                    <span className="text-white">{new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(Number(m.importe))}</span>
-                    <span style={{ color: "#898781" }}>{FECHA.format(new Date(m.creado))}</span>
+                    <span className="text-white">{dolares(m.importe, locale)}</span>
+                    <span>{FECHA.format(new Date(m.creado))}</span>
                   </li>
                 ))}
-                {movs.filas.length === 0 && <li className="py-2" style={{ color: "#898781" }}>{t("admin_user_movements_empty")}</li>}
+                {movs.filas.length === 0 && <li className="py-2">{t("admin_user_movements_empty")}</li>}
               </ul>
             )}
           </section>
-          <section className="mt-5 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
-            <h2 className="font-bold text-white">{t("admin_user_roles")}</h2>
+          <section><h3 className="adm-h2">{t("admin_user_roles")}</h3>
             <div className="mt-3 flex flex-wrap gap-2">
               {ROLES.map((rol) => {
                 const tiene = u.roles.includes(rol);
                 return (
-                  <button key={rol} type="button" disabled={ocupado}
+                  <Boton variante="sec" key={rol} type="button" disabled={ocupado}
                           onClick={() => cambiarRol(rol, !tiene)}
-                          className="min-h-[44px] rounded-lg px-3 font-bold disabled:opacity-40"
-                          style={{ background: tiene ? "#1f5f3a" : "#2c2c2a",
-                                   color: tiene ? "#9be0b3" : "#c3c2b7" }}>
+                          className="min-h-[44px] rounded-lg px-3 font-bold disabled:opacity-40">
                     {rolLabel(rol)}{tiene ? " ✓" : ""}
-                  </button>
+                  </Boton>
                 );
               })}
             </div>
           </section>
 
-          <section className="mt-4 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
-            <h2 className="font-bold text-white">{t("admin_user_account")}</h2>
-            <button type="button" disabled={ocupado} onClick={suspender}
-                    className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
-                    style={{ background: u.suspendido ? "#1f5f3a" : "#7a2020" }}>
+          <section><h3 className="adm-h2">{t("admin_user_account")}</h3>
+            <Boton variante="sec" type="button" disabled={ocupado} onClick={suspender}
+                    className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40">
               {u.suspendido ? t("admin_user_reactivate") : t("admin_user_suspend")}
-            </button>
+            </Boton>
           </section>
+          </Bloque>
 
       </>)}
-      {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
+      {fallo && <p className="mt-3 rounded-lg p-3">{fallo}</p>}
       {dialogo}
     </article></div>
   );

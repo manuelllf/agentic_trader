@@ -8,8 +8,8 @@ import { get } from "@/lib/api";
 import { MarcoAdmin } from "./MarcoAdmin";
 import { salaDe, seccionDe } from "./secciones";
 
-const estado = vi.hoisted(() => ({ ruta: "/admin/liga" }));
-vi.mock("next/navigation", () => ({ usePathname: () => estado.ruta }));
+const estado = vi.hoisted(() => ({ ruta: "/admin/liga", push: vi.fn() }));
+vi.mock("next/navigation", () => ({ usePathname: () => estado.ruta, useRouter: () => ({ push: estado.push }) }));
 vi.mock("@/lib/api", () => ({ get: vi.fn() }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -54,20 +54,26 @@ describe("MarcoAdmin", () => {
     ] });
     const vista = await pintar();
     expect(get).toHaveBeenCalledWith("/liga/admin/panel/resumen");
-    expect(vista.querySelector(".adm-tabs")).not.toBeNull();
-    for (const menu of [".adm-tabs", ".adm-rail .sub"]) {
-      const jornadas = vista.querySelector(`${menu} a[href="/admin/liga/jornadas"]`);
-      expect(jornadas?.getAttribute("aria-current")).toBe("page");
-      expect(jornadas?.querySelector(".cuenta")?.textContent).toBe("1");
-      expect(vista.querySelector(`${menu} a[href="/admin/liga/revisar"] .cuenta`)?.textContent).toBe("3");
-    }
+    const selector = vista.querySelector<HTMLSelectElement>(".adm-selector select")!;
+    expect(selector.value).toBe("/admin/liga/jornadas");
+    expect(selector.selectedOptions[0].textContent).toBe("Jornadas (1)");
+    expect(selector.querySelector('option[value="/admin/liga/revisar"]')?.textContent).toBe("Revisar (3)");
+    const jornadas = vista.querySelector('.adm-rail .sub a[href="/admin/liga/jornadas"]');
+    expect(jornadas?.getAttribute("aria-current")).toBe("page");
+    expect(jornadas?.querySelector(".cuenta")?.textContent).toBe("1");
+    expect(vista.querySelector('.adm-rail a[href="/admin/liga/revisar"] .cuenta')?.textContent).toBe("3");
+    act(() => {
+      selector.value = "/admin/liga/revisar";
+      selector.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(estado.push).toHaveBeenCalledWith("/admin/liga/revisar");
   });
 
   it("activa Alpha en el selector móvil sin pestañas de Vennett", async () => {
     estado.ruta = "/admin/alpha";
     vi.mocked(get).mockResolvedValue({ pendientes: [] });
     const vista = await pintar();
-    expect(vista.querySelector(".adm-tabs")).toBeNull();
+    expect(vista.querySelector(".adm-selector")).toBeNull();
     expect(vista.querySelector('.adm-salas-m a[href="/admin/alpha"]')?.classList.contains("on")).toBe(true);
   });
 

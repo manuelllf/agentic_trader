@@ -2,7 +2,9 @@
 
 // Auditoría: rastro paginado, filtrable por prefijo de acción (p. ej. «admin.» o «liga.»).
 
-import Link from "next/link";
+import { Boton, Estado, Fila, Lista, Pagina, Segmentos } from "../../_marco/ui";
+import { fechaHora } from "../../_marco/formato";
+import { describir, describirObjeto } from "./describir";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
@@ -20,7 +22,7 @@ const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.messa
 function Auditoria() {
   const t = useTranslations();
   const locale = useLocale();
-  const CUANDO = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const [segmento, setSegmento] = useState("acciones");
   const errorText = useCallback((e: unknown) => error(e, t("admin_generic_error")), [t]);
   const [prefijo, setPrefijo] = useState("");
   const [buscando, setBuscando] = useState("");
@@ -33,11 +35,11 @@ function Auditoria() {
   const cargar = useCallback((p: string, d: number) => {
     setFallo("");
     const n = ++ultima.current;
-    const q = new URLSearchParams({ accion_prefix: p, desde: String(d), cuantos: String(CUANTOS) });
+    const q = new URLSearchParams({ accion_prefix: segmento === "ia" ? `ia.${p.replace(/^ia\./, "")}` : p, sin_ia: String(segmento === "acciones"), desde: String(d), cuantos: String(CUANTOS) });
     get<ListaAuditoria>(`/liga/admin/auditoria?${q.toString()}`)
       .then((r) => { if (n === ultima.current) setLista(r); })
       .catch((e) => { if (n === ultima.current) setFallo(errorText(e)); });
-  }, [errorText]);
+  }, [errorText, segmento]);
   useEffect(() => { cargar(buscando, desde); }, [cargar, buscando, desde]);
 
   const buscar = (e: React.FormEvent) => {
@@ -45,66 +47,26 @@ function Auditoria() {
     setDesde(0); setBuscando(prefijo.trim());
   };
 
-  return (
-    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
-      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_back_vennett")}</Link>
-      <h1 className="mt-3 text-[19px] text-white"
-          style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>{t("admin_audit_title")}</h1>
-
-      <form onSubmit={buscar} className="mt-4 flex gap-2">
-        <input value={prefijo} onChange={(e) => setPrefijo(e.target.value)}
-               placeholder={t("admin_audit_prefix_placeholder")}
-               className="min-h-[44px] flex-1 rounded-lg border px-3 text-white"
-               style={{ background: "#141413", borderColor: "#303030" }} />
-        <button type="submit"
-                className="min-h-[44px] rounded-lg px-4 font-bold text-white"
-                style={{ background: "#3987e5" }}>
-          {t("admin_audit_filter")}
-        </button>
-      </form>
-
-      {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
-      {!lista ? (
-        !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
-      ) : (
-        <>
-          <p className="mt-4" style={{ color: "#898781" }}>{t("admin_audit_entries", { count: new Intl.NumberFormat(locale).format(lista.total) })}</p>
-          <ul className="mt-2 border-t" style={{ borderColor: "#303030" }}>
-            {lista.filas.map((e) => (
-              <li key={e.id} className="admin-fila border-b py-2" style={{ borderColor: "#303030" }}>
-                <div className="flex justify-between gap-2">
-                  <span className="text-white">{e.accion}</span>
-                  <span style={{ color: "#67665f" }}>{CUANDO.format(new Date(e.creada))}</span>
-                </div>
-                {e.objeto && <p style={{ color: "#898781" }}>{e.objeto}</p>}
-                {Object.keys(e.detalle ?? {}).length > 0 && (
-                  <pre className="mt-1 overflow-auto rounded p-2 text-[11px]"
-                       style={{ background: "#141413", color: "#898781" }}>
-                    {JSON.stringify(e.detalle, null, 2)}
-                  </pre>
-                )}
-              </li>
-            ))}
-            {lista.filas.length === 0 && <li className="py-4" style={{ color: "#898781" }}>{t("admin_audit_empty")}</li>}
-          </ul>
-          <div className="mt-4 flex justify-between gap-2">
-            <button type="button" disabled={desde === 0}
-                    onClick={() => setDesde(Math.max(0, desde - CUANTOS))}
-                    className="min-h-[44px] rounded-lg px-4 disabled:opacity-40"
-                    style={{ background: "#2c2c2a", color: "#c3c2b7" }}>
-              {t("admin_previous")}
-            </button>
-            <button type="button" disabled={desde + CUANTOS >= lista.total}
-                    onClick={() => setDesde(desde + CUANTOS)}
-                    className="min-h-[44px] rounded-lg px-4 disabled:opacity-40"
-                    style={{ background: "#2c2c2a", color: "#c3c2b7" }}>
-              {t("admin_next")}
-            </button>
-          </div>
-        </>
-      )}
-    </main>
-  );
+  return <Pagina titulo={t("admin_audit_title")}>
+    <Segmentos etiqueta={t("admin_audit_title")} valor={segmento} alCambiar={v => { setSegmento(v); setDesde(0); }} opciones={["acciones", "ia", "todo"].map(valor => ({ valor, etiqueta: t(`admin_audit_tab_${valor}`) }))} />
+    <form onSubmit={buscar} className="adm-audit-buscar">
+      <input aria-label={t("admin_audit_prefix_placeholder")} value={prefijo} onChange={e => setPrefijo(e.target.value)} placeholder={t("admin_audit_prefix_placeholder")} />
+      <Boton type="submit" variante="sec">{t("admin_audit_filter")}</Boton>
+    </form>
+    {fallo && <Estado tipo="error">{fallo}</Estado>}
+    {!lista ? !fallo && <Estado tipo="cargando" /> : <>
+      <Lista>{lista.filas.map(e => <Fila key={e.id}>
+        <div><p>{describir(e, t, locale)}</p>{describirObjeto(e.objeto, t) && !e.accion.startsWith("ajustes.") && <p className="adm-nota">{describirObjeto(e.objeto, t)}</p>}</div>
+        <span className="adm-nota">{fechaHora(e.creada, locale)}</span>
+      </Fila>)}</Lista>
+      {!lista.filas.length && <Estado tipo="vacio">{t("admin_audit_empty")}</Estado>}
+      <div className="adm-audit-paginacion">
+        {lista.total > CUANTOS && <Boton variante="sec" disabled={desde === 0} onClick={() => setDesde(Math.max(0, desde - CUANTOS))}>{t("admin_previous")}</Boton>}
+        <span className="adm-nota">{t("admin_audit_range", { desde: lista.total ? desde + 1 : 0, hasta: Math.min(desde + CUANTOS, lista.total), total: lista.total })}</span>
+        {lista.total > CUANTOS && <Boton variante="sec" disabled={desde + CUANTOS >= lista.total} onClick={() => setDesde(desde + CUANTOS)}>{t("admin_next")}</Boton>}
+      </div>
+    </>}
+  </Pagina>;
 }
 
 export default function AuditoriaAdmin() {

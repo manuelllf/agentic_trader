@@ -4,8 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { NextIntlClientProvider } from "next-intl";
 import mensajes from "../../../../../../messages/es/admin.json";
-import { get } from "@/lib/api";
+import { get, post } from "@/lib/api";
 
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/api", () => ({ get: vi.fn(), post: vi.fn(), ApiError: class ApiError extends Error {} }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -14,7 +15,8 @@ import { DetalleUsuario } from "./DetalleUsuario";
 import type { FichaPanel, DiasPanel } from "./panel";
 import type { Historial } from "./Actividad";
 
-vi.mock("@/components/Confirmar", () => ({ useConfirmar: () => ({ confirmar: vi.fn(), dialogo: null }) }));
+const confirmar = vi.hoisted(() => vi.fn());
+vi.mock("@/components/Confirmar", () => ({ useConfirmar: () => ({ confirmar, dialogo: null }) }));
 const usuario = {
   id: "uno", alias: "Cuenta Uno", roles: ["usuario"], plan: "gratis" as const,
   plan_hasta: null, pase_liga: false, pase_hasta: null, suspendido: false,
@@ -59,10 +61,26 @@ it("indica que no hay email", async () => {
 it("muestra el alias como encabezado", async () => {
   expect((await montar()).querySelector("h1")?.textContent).toBe("Cuenta Uno");
 });
-it("representa los catorce d?as de actividad", async () => {
+it("representa los catorce días de actividad", async () => {
   expect((await montar()).querySelectorAll("svg rect")).toHaveLength(14);
 });
 it("permite suspender una cuenta activa", async () => {
   const botones = (await montar()).querySelectorAll("button");
   expect(Array.from(botones, (b) => b.textContent)).toContain(mensajes.admin_user_suspend);
+});
+
+it("confirma la suspensión antes de enviarla", async () => {
+  confirmar.mockResolvedValue(true);
+  const div = await montar();
+  const boton = Array.from(div.querySelectorAll("button")).find(b => b.textContent === mensajes.admin_user_suspend)!;
+  await act(async () => boton.click());
+  expect(confirmar).toHaveBeenCalledWith(expect.objectContaining({ titulo: mensajes.admin_user_confirm_suspend, peligro: true }));
+  expect(post).toHaveBeenCalledWith("/liga/admin/usuarios/uno/suspender", { suspendido: true });
+});
+it("cancelar la confirmación conserva la cuenta", async () => {
+  confirmar.mockResolvedValue(false);
+  const div = await montar();
+  const boton = Array.from(div.querySelectorAll("button")).find(b => b.textContent === mensajes.admin_user_suspend)!;
+  await act(async () => boton.click());
+  expect(post).not.toHaveBeenCalled();
 });

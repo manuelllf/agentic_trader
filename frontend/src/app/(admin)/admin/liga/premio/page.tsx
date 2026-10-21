@@ -4,7 +4,8 @@
 // y verificar su identidad. El pago queda fuera del producto. Un botón de reserva por si el cálculo
 // automático falló; el normal corre solo al cerrar la última jornada.
 
-import Link from "next/link";
+import { Bloque, Boton, Chip, Cifra, Cifras, Estado as EstadoUI, Pagina, Segmentos } from "../../_marco/ui";
+import { euros, numero, porcentajeConSigno } from "../../_marco/formato";
 import { useConfirmar } from "@/components/Confirmar";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -24,8 +25,6 @@ function Premio() {
   const t = useTranslations();
   const { confirmar, dialogo } = useConfirmar();
   const locale = useLocale();
-  const euros = (v: string) => new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(Number(v));
-  const porcentaje = (v: string) => `${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v))} %`;
   const [estado, setEstado] = useState<Estado | null>(null);
   const [fallo, setFallo] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -50,74 +49,16 @@ function Premio() {
   const elegida = estado?.temporadas.find((x) => x.id === estado.temporada_id);
   const cierrePendiente = estado?.temporadas.filter((x) => x.estado === "cerrada" && !x.calculado) ?? [];
 
-  return (
-    <main className="admin-escritorio mx-auto max-w-md px-4 pb-16 pt-6 text-[13px]" style={{ color: "#c3c2b7" }}>
-      <Link href="/admin/liga" className="text-[12.5px]" style={{ color: "#898781" }}>{t("admin_prize_back")}</Link>
-      <h1 className="mt-3 text-[19px] text-white" style={{ fontFamily: "var(--font-land-serif)", fontStyle: "italic" }}>
-        {t("admin_prize_title")}
-      </h1>
-      {fallo && <p className="mt-3 rounded-lg p-3" style={{ background: "#2a1616", color: "#e66767" }}>{fallo}</p>}
-      {!estado ? (
-        !fallo && <p className="mt-6" style={{ color: "#898781" }}>{t("admin_loading")}</p>
-      ) : (
-        <>
-          <p className="mt-1" style={{ color: "#898781" }}>
-            {t("admin_prize_thresholds", { basic: estado.umbral_basico, full: estado.umbral_completo })}
-            {" "}{estado.visible ? t("admin_prize_visible_on") : t("admin_prize_visible_off")}
-          </p>
-
-          {cierrePendiente.map((x) => (
-            <section key={x.id} className="mt-4 rounded-xl border p-4" style={{ borderColor: "#303030" }}>
-              <p>{t("admin_prize_pending", { name: x.nombre })}</p>
-              <button type="button" disabled={ocupado} onClick={() => calcular(x.id)}
-                      className="mt-3 min-h-[44px] rounded-lg px-4 font-bold text-white disabled:opacity-40"
-                      style={{ background: "#3987e5" }}>
-                {t("admin_prize_calculate")}
-              </button>
-            </section>
-          ))}
-
-          {estado.temporadas.length > 1 && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {estado.temporadas.map((x) => (
-                <button key={x.id} type="button" onClick={() => cargar(x.id)}
-                        className="min-h-[40px] rounded-lg px-3 py-2 font-bold text-white"
-                        style={{ background: x.id === estado.temporada_id ? "#3987e5" : "#2c2c2a" }}>
-                  {x.nombre}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {!elegida || !elegida.calculado ? (
-            <p className="mt-6" style={{ color: "#898781" }}>{t("admin_prize_none")}</p>
-          ) : (
-            <section className="mt-4">
-              <h2 className="font-bold text-white">{elegida.nombre}</h2>
-              <p className="mt-1" style={{ color: "#898781" }}>
-                {t("admin_prize_summary", { eligible: elegida.elegibles, tier: elegida.escalon ?? 0 })}
-              </p>
-              <ul className="mt-3 border-t" style={{ borderColor: "#303030" }}>
-                {estado.filas.map((f) => (
-                  <li key={f.cuenta} className="admin-par border-b py-2" style={{ borderColor: "#303030" }}>
-                    <p className="text-white">
-                      {f.puesto ? `${f.puesto}.º · ` : ""}{f.alias}
-                      {f.importe && <span className="ml-2 font-bold" style={{ color: "#9be0b3" }}>{euros(f.importe)}</span>}
-                    </p>
-                    <p style={{ color: "#898781" }}>
-                      {porcentaje(f.rentabilidad)} · {t("admin_prize_rounds", { count: f.jornadas_jugadas })}
-                      {f.email && ` · ${f.email}`}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </>
-      )}
-      {dialogo}
-    </main>
-  );
+  return <Pagina titulo={t("admin_prize_title")}>
+    {fallo && <EstadoUI tipo="error">{fallo}</EstadoUI>}
+    {!estado ? !fallo && <EstadoUI tipo="cargando" /> : <>
+      {estado.visible ? <Chip tono="bien">{t("admin_prize_shown")}</Chip> : <Chip>{t("admin_prize_hidden")}</Chip>}
+      <Cifras><Cifra etiqueta={t("admin_prize_eligible")} valor={numero(elegida?.elegibles ?? 0, locale)} /><Cifra etiqueta={t("admin_prize_basic")} valor={numero(estado.umbral_basico, locale)} /><Cifra etiqueta={t("admin_prize_full")} valor={numero(estado.umbral_completo, locale)} /></Cifras>
+      {cierrePendiente.map(x => <Bloque key={x.id}><p>{t("admin_prize_pending", { name: x.nombre })}</p><Boton variante="pri" disabled={ocupado} onClick={() => calcular(x.id)}>{t("admin_prize_calculate")}</Boton></Bloque>)}
+      {estado.temporadas.length > 1 && <Segmentos etiqueta={t("admin_prize_seasons")} opciones={estado.temporadas.map(x => ({ valor: String(x.id), etiqueta: x.nombre }))} valor={String(estado.temporada_id)} alCambiar={id => cargar(Number(id))} />}
+      {!elegida?.calculado ? <EstadoUI tipo="vacio">{t("admin_prize_none")}</EstadoUI> : <table className="adm-tabla"><thead><tr>{["place", "alias", "return", "rounds_column", "amount", "email"].map(k => <th key={k} className={["place", "return", "rounds_column", "amount"].includes(k) ? "der" : undefined}>{t(`admin_prize_${k}`)}</th>)}</tr></thead><tbody>{estado.filas.map(f => <tr key={f.cuenta}><td className="der">{f.puesto ?? ""}</td><td>{f.alias}</td><td className="der">{porcentajeConSigno(f.rentabilidad, locale)}</td><td className="der">{numero(f.jornadas_jugadas, locale)}</td><td className="der">{f.importe != null ? euros(f.importe, locale) : ""}</td><td>{f.email}</td></tr>)}</tbody></table>}
+    </>}{dialogo}
+  </Pagina>;
 }
 
 export default function PremioAdmin() {
