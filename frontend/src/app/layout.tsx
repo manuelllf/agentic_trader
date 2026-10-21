@@ -6,7 +6,6 @@ import { normalizeLocale } from "@/i18n/locale";
 import { PANTALLAS_ARRANQUE } from "@/lib/pantallasArranque";
 import { URL_PUBLICA } from "@/lib/sitio";
 import AnaliticaPublica from "@/components/AnaliticaPublica";
-import RegistrarServiceWorker from "@/components/RegistrarServiceWorker";
 // Aquí y no en (liga)/layout: la 404 cuelga de este layout y, si no, sale sin estilos. Todo va
 // bajo .lg, así que las salas no se enteran.
 import "./(liga)/liga.css";
@@ -72,7 +71,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           href={`/apple-splash-${ancho}x${alto}.png`}
           media={`(device-width: ${ancho / dpr}px) and (device-height: ${alto / dpr}px) and (-webkit-device-pixel-ratio: ${dpr}) and (orientation: portrait)`} />)}
       </head>
-      <body><LanguageProvider locale={locale} messages={messages}>{children}</LanguageProvider><RegistrarServiceWorker /><AnaliticaPublica /></body>
+      <body><LanguageProvider locale={locale} messages={messages}>{children}</LanguageProvider><AnaliticaPublica /></body>
     </html>
   );
 }

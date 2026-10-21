@@ -34,9 +34,6 @@ self.addEventListener("activate", (event) =>
   )
 );
 
-// Rutas privadas: el service worker nunca las intercepta (ni páginas ni API).
-const PRIVADA = /^\/(?:api|mias|crear|privadas|cuenta|completar|admin|auth|confirmar|restablecer|cambiar-clave|avisos-alta)(?:\/|$)/;
-
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== self.location.origin) return;
@@ -52,20 +49,18 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
-  // Toda navegación pública pasa por el service worker: así Chrome ofrece instalar la app desde
-  // cualquier página. Solo se guarda en caché la portada, cómo funciona, aprender, los legales y los iconos.
-  const navegacionPublica = event.request.mode === "navigate" && !PRIVADA.test(url.pathname);
-  const publica = navegacionPublica
+  const publica = event.request.mode === "navigate"
     && (url.pathname === "/" || url.pathname === "/como-funciona" || url.pathname === "/aprender" || url.pathname.startsWith("/aprender/") || url.pathname.startsWith("/legal/"));
   const marca = /^\/(?:favicon\.(?:svg|ico)|marca\.svg|icon-[\w-]+\.png|apple-touch-icon\.png|apple-splash-[\dx]+\.png|manifest\.webmanifest|admin\/manifest\.json)$/.test(url.pathname);
-  if (!navegacionPublica && !marca) return;
+  if (!publica && !marca) return;
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        // Solo respuestas buenas, y solo las que se guardan: un 404 o una página que no es pública no entran.
-        if (res.ok && (publica || marca)) {
+        // Solo respuestas buenas: guardar un 404 o un 500 haría que sin conexión se sirviera
+        // el error en lugar de la última página que funcionó.
+        if (res.ok) {
           const copy = res.clone();
-          const locale = publica ? supportedLocale(res.headers.get("Content-Language")) : null;
+          const locale = supportedLocale(res.headers.get("Content-Language"));
           if (!publica || locale) {
             if (publica) clientLocales.set(event.resultingClientId || event.clientId, locale);
             caches.open(CACHE).then((c) => c.put(publica ? publicKey(event.request, locale) : event.request, copy)).catch(() => {});

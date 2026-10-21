@@ -18,7 +18,12 @@ export default function PwaInstall() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    // Si ya se enseñó una vez, no volver a mostrar el aviso (Chrome relanza el evento en cada navegación).
+    // Registrar el service worker.
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
+    // Si ya se enseñó una vez, no volver a registrarlo (Chrome relanza el evento en cada navegación).
     if (localStorage.getItem(SEEN_KEY)) return;
 
     // Capturar el evento de instalación, marcarlo como visto y mostrar el aviso unos segundos.
