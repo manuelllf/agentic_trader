@@ -7,8 +7,8 @@ import { useTranslations } from "next-intl";
 type Contenido = { children: ReactNode; className?: string };
 const clases = (base: string, extra?: string) => [base, extra].filter(Boolean).join(" ");
 
-export function Pagina({ titulo, accion, children, className }: Contenido & { titulo: ReactNode; accion?: ReactNode }) {
-  return <div className={clases("adm-pagina", className)}><header className="adm-cab"><h1 className="adm-h1">{titulo}</h1>{accion}</header>{children}</div>;
+export function Pagina({ titulo, accion, children, className, repetido = false }: Contenido & { titulo: ReactNode; accion?: ReactNode; repetido?: boolean }) {
+  return <div className={clases("adm-pagina", className)}><header className="adm-cab"><h1 className={clases("adm-h1", repetido ? "adm-h1-repetido" : undefined)}>{titulo}</h1>{accion}</header>{children}</div>;
 }
 export function Bloque({ titulo, extra, children, className }: Contenido & { titulo?: ReactNode; extra?: ReactNode }) {
   return <section className={clases("adm-bloque", className)}>{titulo != null && <div className="adm-bloque-cab"><h2 className="adm-h2">{titulo}</h2>{extra}</div>}{children}</section>;

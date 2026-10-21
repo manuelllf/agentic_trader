@@ -46,6 +46,10 @@
 .adm .adm-cab { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .adm .adm-h1, .adm .adm-h2 { margin: 0; font-family: inherit; font-style: normal; font-weight: 600; color: var(--ink); }
 .adm .adm-h1 { font-size: 22px; letter-spacing: -0.01em; }
+/* En móvil el selector ya dice en qué sección estás: el título repetido queda solo para lectores de pantalla. */
+@media (max-width: 999.98px) {
+  .adm .adm-h1-repetido { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+}
 .adm .adm-h2 { font-size: 15px; }
 .adm .adm-bloque { min-width: 0; }
 .adm .adm-bloque-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }

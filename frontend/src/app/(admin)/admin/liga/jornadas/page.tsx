@@ -104,7 +104,7 @@ function Jornadas() {
     j.inscripciones ? t("admin_liga_playing", { count: j.inscripciones }) : null,
     j.sp_rentabilidad != null ? t("admin_liga_sp", { value: porcentajeConSigno(j.sp_rentabilidad, locale) }) : null,
   ].filter(Boolean).join(" · ");
-  return <Pagina titulo={t("admin_jornadas_titulo")}>
+  return <Pagina repetido titulo={t("admin_jornadas_titulo")}>
     {fallo && <EstadoVista tipo="error">{fallo}</EstadoVista>}
     {!estado ? !fallo && <EstadoVista tipo="cargando" /> : <>
       {actual && <Bloque titulo={t("admin_jornadas_actual")}>

@@ -47,7 +47,7 @@ function Analitica() {
   const tope = c.tope_mensual_usd === null ? null : Number(c.tope_mensual_usd);
   const maximo = Math.max(0, ...datos.visitas_dia.map(d => Number(d.visitas)));
   const cohortes = [...datos.cohortes].filter(f => f.altas > 0).sort((a, b) => b.semana.localeCompare(a.semana)).slice(0, 8);
-  return <Pagina titulo={t("admin_analitica_titulo")}>
+  return <Pagina repetido titulo={t("admin_analitica_titulo")}>
     <Bloque titulo={t("admin_analitica_cifras")}><Cifras>
       <Cifra etiqueta={t("admin_analitica_cuentas")} valor={n(c.cuentas)} nota={t("admin_analitica_nuevas", { n: n(c.nuevas_7d) })} />
       <Cifra etiqueta={t("admin_analitica_activas")} valor={n(c.activas_7d)} nota={t("admin_analitica_sobre_cuentas", { pct: pct(porcentaje(Number(c.activas_7d), Number(c.cuentas))) })} />

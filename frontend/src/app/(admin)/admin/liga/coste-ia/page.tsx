@@ -65,7 +65,7 @@ function CosteIAPanel() {
   const dias = datos ? diasDelMes(mes, datos.por_dia) : [];
   const maximo = maximoDia(dias);
   const diasConGasto = dias.filter(d => d.pagado > 0).length;
-  return <Pagina titulo={t("admin_cost_title")} accion={<input aria-label={t("admin_cost_month")} type="month" value={mes} onChange={e => { if (e.target.value) setMes(e.target.value); }} className="h-9 rounded-[var(--control-radius)] border border-[var(--line)] bg-[var(--surface)] px-3" />}>
+  return <Pagina repetido titulo={t("admin_cost_title")} accion={<input aria-label={t("admin_cost_month")} type="month" value={mes} onChange={e => { if (e.target.value) setMes(e.target.value); }} className="h-9 rounded-[var(--control-radius)] border border-[var(--line)] bg-[var(--surface)] px-3" />}>
     {fallo && <Estado tipo="error">{fallo}</Estado>}
     {!datos ? !fallo && <Estado tipo="cargando" /> : <>
       <Bloque>

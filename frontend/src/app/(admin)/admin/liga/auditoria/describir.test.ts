@@ -20,6 +20,11 @@ it.each([
  expect(frase).toBe(esperado); expect(frase).not.toMatch(/[{"]/);
 });
 
+it("acepta un detalle en lista", () => {
+ const frase = describir({ accion: "omega.respaldo_recalculo", objeto: null, detalle: [{ a: 1 }] }, t, "es");
+ expect(frase).toBe("omega.respaldo_recalculo");
+});
+
 it.each([["jornada:2", "Jornada 2"], ["temporada:1", "Temporada 1"], ["liga", ""], ["123e4567-e89b-12d3-a456-426614174000", ""], [null, ""]])("objeto %s", (objeto, esperado) => {
  expect(describirObjeto(objeto, t)).toBe(esperado);
 });

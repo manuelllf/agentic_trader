@@ -23,8 +23,7 @@ export default function Lista() {
   }).format(new Date(value));
   const nuevo = <Link className="ba-button ba-primary" href="/admin/blog/nuevo">{t("ba_new")}</Link>;
   return <main className="blog-admin">
-    <Link href="/admin">{t("ba_panel")}</Link>
-    <h1>{t("ba_blog")}</h1><p>{t("ba_intro")}</p>
+    <h1 className="adm-h1-repetido">{t("ba_blog")}</h1><p>{t("ba_intro")}</p>
     {nuevo}
     <div className="ba-filters" role="group" aria-label={t("ba_filter")}>
       {(["todos", "borrador", "programado", "publicado"] as const).map(f => <button key={f} type="button"

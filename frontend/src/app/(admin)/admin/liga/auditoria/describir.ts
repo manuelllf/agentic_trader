@@ -1,11 +1,13 @@
 import { claveTituloAjuste } from "../ajustes/etiquetas";
 import { dolares } from "../../_marco/formato";
-export type Entrada = { accion: string; objeto: string | null; detalle: Record<string, unknown> };
+export type Entrada = { accion: string; objeto: string | null; detalle: unknown };
 type Traducir = (clave: string, valores?: Record<string, string | number>) => string;
 const simple = (v: unknown): v is string | number | boolean => ["string", "number", "boolean"].includes(typeof v);
 const limpio = (v: unknown) => simple(v) ? String(v).replace(/[{}"\[\]]/g, "").replace(/[–—]/g, "-") : "";
+// El detalle casi siempre es un objeto; si es otra cosa (una lista), no se lee como tal.
+const objetoPlano = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {});
 export function describir(e: Entrada, t: Traducir, locale: string): string {
-  const d = e.detalle ?? {};
+  const d = objetoPlano(e.detalle);
   const clave = claveTituloAjuste(e.objeto ?? "");
   const objeto = clave ? t(clave) : limpio(e.objeto);
   if (e.accion === "proceso.foto.auto.omitido") return t("admin_audit_photo_skipped", { razon: limpio(d.razon) });

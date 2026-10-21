@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, expect, it, vi } from "vitest";
 import mensajes from "../../../../../messages/es/admin.json";
-import { Segmentos, Interruptor, Cifra, Barra, Estado } from "./ui";
+import { Pagina, Segmentos, Interruptor, Cifra, Barra, Estado } from "./ui";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let raiz: Root;
@@ -15,6 +15,15 @@ function pintar(children: ReactNode) {
   return caja;
 }
 afterEach(() => { act(() => raiz.unmount()); caja.remove(); caja = undefined!; });
+
+it("Pagina marca el título repetido", () => {
+  const vista = pintar(<Pagina titulo="Auditoría" repetido>Contenido</Pagina>);
+  expect(vista.querySelector("h1")?.classList.contains("adm-h1-repetido")).toBe(true);
+});
+it("Pagina no marca el título por defecto", () => {
+  const vista = pintar(<Pagina titulo="Resumen">Contenido</Pagina>);
+  expect(vista.querySelector("h1")?.classList.contains("adm-h1-repetido")).toBe(false);
+});
 
 it("Segmentos comunica el cambio y marca el valor seleccionado", () => {
   const alCambiar = vi.fn();

@@ -26,7 +26,7 @@ function Revisar() {
   useEffect(() => {
     if (original === "moderacion") router.replace("/admin/liga/revisar?vista=reportes", { scroll: false });
   }, [original, router]);
-  return <Pagina titulo={t("admin_revisar_titulo")}>
+  return <Pagina repetido titulo={t("admin_revisar_titulo")}>
     <Segmentos etiqueta={t("admin_revisar_titulo")} valor={vista} alCambiar={v => router.replace(`/admin/liga/revisar?vista=${v}`, { scroll: false })} opciones={[
       { valor: "errores", etiqueta: t("admin_revisar_errores"), cuenta: errores },
       { valor: "reportes", etiqueta: t("admin_revisar_reportes"), cuenta: reportes },

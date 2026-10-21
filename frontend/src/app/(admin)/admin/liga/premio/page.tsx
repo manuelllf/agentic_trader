@@ -49,7 +49,7 @@ function Premio() {
   const elegida = estado?.temporadas.find((x) => x.id === estado.temporada_id);
   const cierrePendiente = estado?.temporadas.filter((x) => x.estado === "cerrada" && !x.calculado) ?? [];
 
-  return <Pagina titulo={t("admin_prize_title")}>
+  return <Pagina repetido titulo={t("admin_prize_title")}>
     {fallo && <EstadoUI tipo="error">{fallo}</EstadoUI>}
     {!estado ? !fallo && <EstadoUI tipo="cargando" /> : <>
       {estado.visible ? <Chip tono="bien">{t("admin_prize_shown")}</Chip> : <Chip>{t("admin_prize_hidden")}</Chip>}

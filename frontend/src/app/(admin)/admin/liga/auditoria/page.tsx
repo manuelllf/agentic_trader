@@ -12,7 +12,7 @@ import { ApiError, get } from "@/lib/api";
 
 type Entrada = {
   id: number; actor_id: string | null; accion: string; objeto: string | null;
-  detalle: Record<string, unknown>; creada: string;
+  detalle: unknown; creada: string;
 };
 type ListaAuditoria = { total: number; filas: Entrada[] };
 
@@ -47,7 +47,7 @@ function Auditoria() {
     setDesde(0); setBuscando(prefijo.trim());
   };
 
-  return <Pagina titulo={t("admin_audit_title")}>
+  return <Pagina repetido titulo={t("admin_audit_title")}>
     <Segmentos etiqueta={t("admin_audit_title")} valor={segmento} alCambiar={v => { setSegmento(v); setDesde(0); }} opciones={["acciones", "ia", "todo"].map(valor => ({ valor, etiqueta: t(`admin_audit_tab_${valor}`) }))} />
     <form onSubmit={buscar} className="adm-audit-buscar">
       <input aria-label={t("admin_audit_prefix_placeholder")} value={prefijo} onChange={e => setPrefijo(e.target.value)} placeholder={t("admin_audit_prefix_placeholder")} />

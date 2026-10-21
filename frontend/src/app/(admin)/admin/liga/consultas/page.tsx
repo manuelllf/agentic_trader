@@ -72,7 +72,7 @@ function Consultas() {
     ? consulta.umbral_dias == null ? null : t(`admin_consultas_${clave}_ayuda`, { dias: consulta.umbral_dias })
     : t(`admin_consultas_${clave}_ayuda`));
 
-  return <Pagina titulo={t("admin_consultas_titulo")} accion={<Boton variante="sec" onClick={exportar} disabled={exportando}>{t("admin_consultas_exportar")}</Boton>}>
+  return <Pagina repetido titulo={t("admin_consultas_titulo")} accion={<Boton variante="sec" onClick={exportar} disabled={exportando}>{t("admin_consultas_exportar")}</Boton>}>
     <Segmentos opciones={claves.map(c => ({ valor: c, etiqueta: t(`admin_consultas_${c}`), cuenta: clave === c && consulta ? consulta.filas.length : undefined }))} valor={clave} alCambiar={setClave} etiqueta={t("admin_consultas_titulo")} />
     {ayuda && <p className="adm-nota">{ayuda}</p>}
     {fallo && <Estado tipo="error">{t("admin_generic_error")}</Estado>}

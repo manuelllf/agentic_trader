@@ -175,7 +175,7 @@ function Ajustes() {
 
   const razones = estadoIA?.finalidades.filter(f => !f.funciona && f.razon).map(f => f.razon!) ?? [];
   const compartidas = [...new Set(razones.filter(r => razones.filter(x => x === r).length > 1))];
-  return <Pagina titulo={t("admin_settings_title")}>
+  return <Pagina repetido titulo={t("admin_settings_title")}>
     {fallo && <Estado tipo="error">{fallo}</Estado>}
     {!ajustes || !estadoIA ? !fallo && <Estado tipo="cargando" /> : ORDEN_GRUPOS.map(grupo => {
       const filas = ajustes.filter(a => a.grupo === grupo && a.clave !== "ia.margen_objetivo");

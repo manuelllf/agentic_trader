@@ -58,7 +58,7 @@ export function PanelUsuarios({ seleccionado }: { seleccionado?: string }) {
     {u.roles.filter(r => r === "admin" || r === "moderador").map(r => <Chip key={r}>{t(`admin_user_role_${r}`)}</Chip>)}
   </>;
   const actividad = (u: FilaPanel) => u.ultima_actividad ? hace(u.ultima_actividad, locale) : t("admin_panel_no_activity");
-  return <Pagina titulo={t("admin_users_title")} accion={<AltaUsuario onAlta={cargarLista} destino={destinoAlta} />} className={"adm-usuarios" + (seleccionado ? " con-ficha" : "")}>
+  return <Pagina repetido titulo={t("admin_users_title")} accion={<AltaUsuario onAlta={cargarLista} destino={destinoAlta} />} className={"adm-usuarios" + (seleccionado ? " con-ficha" : "")}>
     <div ref={setDestinoAlta} className="adm-usuarios-alta-destino" />
     <div className="adm-usuarios-columnas">
       <section className="adm-usuarios-lista">
