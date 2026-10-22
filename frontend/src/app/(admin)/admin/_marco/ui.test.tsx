@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, expect, it, vi } from "vitest";
 import mensajes from "../../../../../messages/es/admin.json";
-import { Pagina, Segmentos, Interruptor, Cifra, Barra, Estado } from "./ui";
+import { Pagina, Segmentos, Combo, Interruptor, Cifra, Barra, Estado } from "./ui";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let raiz: Root;
@@ -65,4 +65,72 @@ it.each([ ["cargando", "status", "Cargando…"], ["error", "alert", "No se ha po
   expect(vista.querySelector(`[role="${role}"]`)?.textContent).toBe(texto);
   pintar(<Estado tipo={tipo}>Personalizado</Estado>);
   expect(vista.querySelector("p")?.textContent).toBe("Personalizado");
+});
+
+const opcionesCombo = [{ valor: "a", etiqueta: "A", cuenta: 0 }, { valor: "b", etiqueta: "B", cuenta: 3 }];
+it("Combo abre con clic y expone la lista y la cuenta", () => {
+  const vista = pintar(<Combo opciones={opcionesCombo} valor="a" alCambiar={vi.fn()} etiqueta="Filtro" />);
+  const boton = vista.querySelector("button")!;
+  expect(boton.getAttribute("aria-expanded")).toBe("false");
+  expect(vista.querySelector('[role="listbox"]')).toBeNull();
+  act(() => boton.click());
+  expect(boton.getAttribute("aria-expanded")).toBe("true");
+  const lista = vista.querySelector('[role="listbox"]')!;
+  expect(boton.getAttribute("aria-controls")).toBe(lista.id);
+  const opciones = lista.querySelectorAll('[role="option"]');
+  expect(opciones[0].getAttribute("aria-selected")).toBe("true");
+  expect(opciones[0].querySelector(".cuenta.num")?.textContent).toBe("0");
+  expect(opciones[1].querySelector(".cuenta.num")?.textContent).toBe("3");
+  expect(boton.getAttribute("aria-activedescendant")).toBe(opciones[0].id);
+  act(() => boton.click());
+  expect(boton.getAttribute("aria-expanded")).toBe("false");
+});
+it("Combo abre con Espacio y permanece abierto al soltarlo", () => {
+  const vista = pintar(<Combo opciones={opcionesCombo} valor="a" alCambiar={vi.fn()} etiqueta="Filtro" />);
+  const boton = vista.querySelector("button")!;
+  expect(boton.getAttribute("role")).toBe("combobox");
+  boton.focus();
+  expect(document.activeElement).toBe(boton);
+  expect(boton.getAttribute("aria-expanded")).toBe("false");
+  act(() => boton.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true })));
+  expect(boton.getAttribute("aria-expanded")).toBe("true");
+  const soltar = new KeyboardEvent("keyup", { key: " ", bubbles: true, cancelable: true });
+  act(() => boton.dispatchEvent(soltar));
+  expect(soltar.defaultPrevented).toBe(true);
+  expect(boton.getAttribute("aria-expanded")).toBe("true");
+});
+it("Combo abre con teclado y elige la siguiente manteniendo el foco", () => {
+  const alCambiar = vi.fn();
+  const vista = pintar(<Combo opciones={opcionesCombo} valor="a" alCambiar={alCambiar} etiqueta="Filtro" />);
+  const boton = vista.querySelector("button")!;
+  boton.focus();
+  act(() => boton.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  expect(boton.getAttribute("aria-expanded")).toBe("true");
+  act(() => boton.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  expect(alCambiar).not.toHaveBeenCalled();
+  expect(boton.getAttribute("aria-activedescendant")).toBe(vista.querySelectorAll('[role="option"]')[1].id);
+  act(() => boton.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  expect(alCambiar).toHaveBeenCalledWith("b");
+  expect(vista.querySelector('[role="listbox"]')).toBeNull();
+  expect(document.activeElement).toBe(boton);
+});
+it("Combo cierra con Escape sin elegir", () => {
+  const alCambiar = vi.fn();
+  const vista = pintar(<Combo opciones={opcionesCombo} valor="a" alCambiar={alCambiar} etiqueta="Filtro" />);
+  const boton = vista.querySelector("button")!;
+  act(() => boton.click());
+  act(() => boton.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(vista.querySelector('[role="listbox"]')).toBeNull();
+  expect(alCambiar).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(boton);
+});
+it("Combo cierra con pointerdown fuera sin elegir", () => {
+  const alCambiar = vi.fn();
+  const vista = pintar(<Combo opciones={opcionesCombo} valor="a" alCambiar={alCambiar} etiqueta="Filtro" />);
+  const boton = vista.querySelector("button")!;
+  act(() => boton.click());
+  act(() => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+  expect(vista.querySelector('[role="listbox"]')).toBeNull();
+  expect(alCambiar).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(boton);
 });

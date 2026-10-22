@@ -40,8 +40,16 @@
 }
 
 .adm .adm-selector { display: block; margin: 8px 16px 12px; }
-.adm .adm-selector select { height: 44px; width: 100%; padding: 0 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--control-radius); font: inherit; }
-.adm .adm-selector-etiqueta { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.adm .adm-combo-etiqueta { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.adm .adm-combo { position: relative; }
+.adm .adm-combo-boton { box-sizing: border-box; height: 44px; width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--control-radius); font: inherit; text-align: left; cursor: pointer; }
+.adm .adm-combo-flecha { width: 16px; height: 16px; flex: none; color: var(--muted); transition: transform .15s; }
+.adm .adm-combo-boton[aria-expanded="true"] .adm-combo-flecha { transform: rotate(180deg); }
+.adm .adm-combo-lista { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 10; max-height: 60dvh; overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: var(--surface2); border: 1px solid var(--line2); border-radius: var(--control-radius); }
+.adm .adm-combo-opcion { min-height: 44px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ink2); border-radius: 8px; cursor: pointer; }
+.adm .adm-combo-opcion.resaltada { background: var(--surface); }
+.adm .adm-combo-opcion.on { color: var(--ink); font-weight: 500; }
+.adm .adm-combo-opcion svg { width: 16px; height: 16px; color: var(--accent); }
 .adm .adm-pagina { display: flex; flex-direction: column; gap: 28px; padding: 20px 16px 64px; max-width: 1080px; width: 100%; box-sizing: border-box; }
 .adm .adm-cab { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .adm .adm-h1, .adm .adm-h2 { margin: 0; font-family: inherit; font-style: normal; font-weight: 600; color: var(--ink); }
@@ -127,3 +135,11 @@
 
 .adm-usuarios-alta-destino:empty { display: none; }
 .adm-usuarios-ficha .adm-bloque > section { margin-top: 20px; }
+
+.adm-intenciones-movil { display: block; }
+.adm-intenciones-movil .adm-fila-extra { text-align: right; }
+.adm-intenciones-escritorio { display: none; }
+@media (min-width: 700px) {
+  .adm-intenciones-movil { display: none; }
+  .adm-intenciones-escritorio { display: block; }
+}

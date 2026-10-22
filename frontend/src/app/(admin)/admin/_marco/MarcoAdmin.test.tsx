@@ -54,18 +54,22 @@ describe("MarcoAdmin", () => {
     ] });
     const vista = await pintar();
     expect(get).toHaveBeenCalledWith("/liga/admin/panel/resumen");
-    const selector = vista.querySelector<HTMLSelectElement>(".adm-selector select")!;
-    expect(selector.value).toBe("/admin/liga/jornadas");
-    expect(selector.selectedOptions[0].textContent).toBe("Jornadas (1)");
-    expect(selector.querySelector('option[value="/admin/liga/revisar"]')?.textContent).toBe("Revisar (3)");
+    const selector = vista.querySelector<HTMLButtonElement>(".adm-selector button")!;
+    expect(selector.textContent).toBe("Jornadas1");
+    expect(selector.querySelector(".cuenta")?.textContent).toBe("1");
+    act(() => selector.click());
+    const opciones = vista.querySelectorAll<HTMLElement>('.adm-selector [role="option"]');
+    const activa = vista.querySelector('.adm-selector [role="option"][aria-selected="true"]');
+    expect(activa?.textContent).toBe("Jornadas1");
+    expect(activa?.querySelector(".cuenta")?.textContent).toBe("1");
+    const revisar = Array.from(opciones).find(o => o.textContent === "Revisar3")!;
+    expect(revisar.querySelector(".cuenta")?.textContent).toBe("3");
     const jornadas = vista.querySelector('.adm-rail .sub a[href="/admin/liga/jornadas"]');
     expect(jornadas?.getAttribute("aria-current")).toBe("page");
     expect(jornadas?.querySelector(".cuenta")?.textContent).toBe("1");
     expect(vista.querySelector('.adm-rail a[href="/admin/liga/revisar"] .cuenta')?.textContent).toBe("3");
-    act(() => {
-      selector.value = "/admin/liga/revisar";
-      selector.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    act(() => revisar.click());
+    expect(vista.querySelector('.adm-selector [role="listbox"]')).toBeNull();
     expect(estado.push).toHaveBeenCalledWith("/admin/liga/revisar");
   });
 
@@ -81,6 +85,10 @@ describe("MarcoAdmin", () => {
     vi.mocked(get).mockRejectedValue(new Error("fallo"));
     const vista = await pintar();
     expect(vista.querySelector(".adm")).not.toBeNull();
+    const selector = vista.querySelector<HTMLButtonElement>(".adm-selector button")!;
+    expect(selector.getAttribute("aria-expanded")).toBe("false");
+    act(() => selector.click());
+    expect(vista.querySelector('.adm-selector [role="listbox"]')).not.toBeNull();
     expect(vista.querySelector(".cuenta")).toBeNull();
   });
 });
