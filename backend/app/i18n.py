@@ -81,6 +81,10 @@ ORIGEN_PLANTILLAS: tuple[tuple[str, str], ...] = (
 
 ERROR_KEYS = {value: key for key, value in MESSAGES["es"].items() if key.startswith("api_error_")}
 ERROR_KEYS.update(ORIGEN_ERRORES)
+ERROR_KEYS.update({
+    "Ya has enviado varias peticiones hoy. Vuelve mañana.": "api_error_intenciones_limite",
+    "Escribe una frase de hasta 160 caracteres.": "api_error_intenciones_texto",
+})
 
 
 # Mensajes de la base de datos: con huecos (`{a}`, `{b}`) o escritos en inglés por el proveedor.

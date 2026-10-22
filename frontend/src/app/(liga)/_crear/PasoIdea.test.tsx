@@ -3,8 +3,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { PasoIdea } from "./PasoIdea";
-import { convertirFrase, getMercado, type Catalogo } from "@/lib/liga/api";
-vi.mock("@/lib/liga/api", () => ({ convertirFrase: vi.fn(), getMercado: vi.fn() }));
+import { convertirFrase, enviarIntencion, getMercado, type Catalogo } from "@/lib/liga/api";
+vi.mock("@/lib/liga/api", () => ({ convertirFrase: vi.fn(), enviarIntencion: vi.fn(), getMercado: vi.fn() }));
 vi.mock("next-intl", () => ({ useLocale: () => "es", useTranslations: () => (k: string, v?: { count: number }) => v ? `${k} ${v.count}` : k }));
 vi.mock("../_ui", () => ({ Boton: ({ children, variante: _variante, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variante?: string }) => { void _variante; return <button {...props}>{children}</button>; } }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -39,7 +39,7 @@ it("muestra las tres marcas y solo aplica la propuesta al aceptarla", async () =
   vi.mocked(convertirFrase).mockResolvedValue({ reglas: catalogo.estilos[0].reglas,
     interpretacion: ["exacta", "aproximada", "no_disponible"].map(tipo => ({ tipo, intencion: tipo, regla: null, motivo: "Detalle" })), quedan: 2, pesos: null, pregunta: null } as Awaited<ReturnType<typeof convertirFrase>>);
   const { div, actualizarB, alCambiarQuedan } = await montar();
-  await act(async () => (div.querySelector(".paso-bloque button") as HTMLButtonElement).click());
+  await act(async () => (div.querySelector(".paso-bloque > .paso-accion button") as HTMLButtonElement).click());
   expect(Array.from(div.querySelectorAll(".idea-propuesta li > span")).map(n => n.textContent)).toEqual(["✓", "≈", "-"]);
   expect(actualizarB).not.toHaveBeenCalled(); expect(alCambiarQuedan).toHaveBeenCalledWith(2);
   act(() => (div.querySelector(".propuesta button") as HTMLButtonElement).click());
@@ -59,7 +59,63 @@ it("el detalle del estilo enseña sus reglas como frases cortas", async () => {
 });
 it("empezar desde cero limpia las reglas y avanza", async () => {
   const { div, actualizarB, irReglas } = await montar();
-  act(() => (div.querySelector("button.link") as HTMLButtonElement).click());
+  act(() => (div.querySelector("section.paso-bloque > button.link") as HTMLButtonElement).click());
   expect(actualizarB).toHaveBeenCalledWith({ reglas: [], interpretacion: [] });
   expect(irReglas).toHaveBeenCalledOnce();
+});
+
+function abrirIntencion(div: HTMLDivElement) {
+  act(() => (div.querySelector('[aria-controls="idea-intencion"]') as HTMLButtonElement).click());
+}
+function escribirIntencion(div: HTMLDivElement, texto: string) {
+  const campo = div.querySelector("#idea-intencion-texto") as HTMLTextAreaElement;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(campo, texto);
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+it("el enlace despliega el canal de intenciones", async () => {
+  const { div } = await montar();
+  expect(div.querySelector("#idea-intencion")).toBeNull();
+  abrirIntencion(div);
+  expect(div.textContent).toContain("builder_intencion_ayuda");
+  expect((div.querySelector("#idea-intencion-texto") as HTMLTextAreaElement).maxLength).toBe(160);
+  expect((div.querySelector("#idea-intencion button") as HTMLButtonElement).disabled).toBe(true);
+});
+it("el contador cuenta los caracteres escritos", async () => {
+  const { div } = await montar(); abrirIntencion(div);
+  escribirIntencion(div, "Hola");
+  expect(div.querySelector('[aria-live="polite"]')?.textContent).toBe("4/160");
+});
+it("envía el texto recortado y al tener éxito limpia y pliega el bloque", async () => {
+  vi.mocked(enviarIntencion).mockResolvedValue(null);
+  const { div } = await montar(); abrirIntencion(div);
+  escribirIntencion(div, "  Dividendos  ");
+  await act(async () => (div.querySelector("#idea-intencion button") as HTMLButtonElement).click());
+  expect(enviarIntencion).toHaveBeenCalledWith("Dividendos");
+  expect(div.textContent).toContain("builder_intencion_ok");
+  expect(div.querySelector("#idea-intencion")).toBeNull();
+  abrirIntencion(div);
+  expect((div.querySelector("#idea-intencion-texto") as HTMLTextAreaElement).value).toBe("");
+});
+it.each([
+  "Ya has enviado varias peticiones hoy. Vuelve mañana.",
+  "Escribe una frase de hasta 160 caracteres.",
+  "You've already sent several requests today. Come back tomorrow.",
+])("muestra tal cual el aviso de la intención: %s", async texto => {
+    vi.mocked(enviarIntencion).mockResolvedValue(texto);
+    const { div } = await montar(); abrirIntencion(div);
+    escribirIntencion(div, "Dividendos");
+    await act(async () => (div.querySelector("#idea-intencion button") as HTMLButtonElement).click());
+    expect(div.querySelector('[role="status"]')?.textContent).toBe(texto);
+    expect(div.querySelector("#idea-intencion")).not.toBeNull();
+  });
+it("cancelar pliega el bloque y vacía el texto", async () => {
+  const { div } = await montar(); abrirIntencion(div);
+  escribirIntencion(div, "  ");
+  expect((div.querySelector("#idea-intencion button") as HTMLButtonElement).disabled).toBe(true);
+  act(() => (div.querySelectorAll("#idea-intencion button")[1] as HTMLButtonElement).click());
+  expect(div.querySelector("#idea-intencion")).toBeNull();
+  abrirIntencion(div);
+  expect((div.querySelector("#idea-intencion-texto") as HTMLTextAreaElement).value).toBe("");
 });

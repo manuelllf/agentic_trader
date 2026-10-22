@@ -1,4 +1,6 @@
 {
+  "api_error_intenciones_limite": "Ya has enviado varias peticiones hoy. Vuelve mañana.",
+  "api_error_intenciones_texto": "Escribe una frase de hasta 160 caracteres.",
   "api_error_edad_minima": "Vennett es para mayores de 14 años.",
   "api_error_edad_no_valida": "Escribe tu edad en años.",
   "api_error_zona_no_valida": "Esa zona horaria no existe.",

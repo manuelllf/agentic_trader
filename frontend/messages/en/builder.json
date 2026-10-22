@@ -367,5 +367,11 @@
   "builder_actualizar_progreso": "Requesting today's data… {count} of 300",
   "builder_actualizar_hecha": "Today's data and scores",
   "builder_actualizar_pregunta": "With your question: free for your strategy in play if your account is free; the rest cost credits.",
-  "builder_actualizar_fallida": "Could not refresh now. Try again later."
+  "builder_actualizar_fallida": "Could not refresh now. Try again later.",
+  "builder_intencion_abrir": "Is there anything you'd like us to measure?",
+  "builder_intencion_ayuda": "Only we read it. Don't include personal data.",
+  "builder_intencion_ejemplo": "For example: companies that pay a dividend every quarter",
+  "builder_intencion_enviar": "Send",
+  "builder_intencion_cancelar": "Cancel",
+  "builder_intencion_ok": "Noted, thanks."
 }

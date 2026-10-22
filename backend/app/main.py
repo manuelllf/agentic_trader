@@ -31,6 +31,7 @@ from app.errores import codigo_error, mensaje_interno
 from app.liga.filtro_logs import instalar as instalar_filtro_logs
 from app.liga.filtro_logs import instalar_en_uvicorn as instalar_filtro_logs_uvicorn
 from app.liga.rutas import router as liga_router
+from app.liga.rutas_intenciones import router as liga_intenciones_router
 from app.liga.rutas_blog import router as blog_router, router_admin as blog_admin_router
 from app.liga.rutas_admin import router as liga_admin_router
 from app.liga.rutas_pagos import router as liga_pagos_router
@@ -270,6 +271,7 @@ app.include_router(router, dependencies=[Depends(require_auth)])
 app.include_router(momentum_router, dependencies=[Depends(require_auth)])
 # La liga trae sus propias puertas por ruta (identidad de Supabase y RLS).
 app.include_router(liga_router)
+app.include_router(liga_intenciones_router)
 app.include_router(blog_router)
 app.include_router(blog_admin_router)
 app.include_router(liga_admin_router)

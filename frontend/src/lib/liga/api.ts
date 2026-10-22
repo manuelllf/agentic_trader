@@ -640,6 +640,13 @@ export async function convertirFrase(
   }, true, 60000);
 }
 
+export async function enviarIntencion(texto: string): Promise<string | null> {
+  const resultado = await llamar<void>("/liga/intenciones", {
+    method: "POST", body: JSON.stringify({ texto }),
+  });
+  return typeof resultado === "string" ? resultado : null;
+}
+
 // ---- Público: portada y clasificación (sin sesión, D3) ------------------------------------------
 
 export type CasaClave = "alpha" | "omega" | "lambda";

@@ -7,15 +7,45 @@ from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.liga.models import IntencionSinRegla
+from app.liga.procesos.comun import auditar
 
 if TYPE_CHECKING:
     from app.liga.ia.conversor import Interpretacion
 
 logger = logging.getLogger("app.liga.intenciones")
+
+# Limita el abuso sin vincular las intenciones anónimas al usuario.
+LIMITE_SOLICITUDES_DIA = 3
+
+
+def contar_solicitudes(db: Session, usuario_id: str) -> int:
+    return int(db.execute(text("""
+        select count(*) from liga.auditoria
+        where accion = :a and actor_id = cast(:u as uuid)
+            and creada >= now() - interval '1 day'
+    """), {"a": "intencion.solicitud", "u": usuario_id}).scalar_one())
+
+
+def registrar_solicitud(texto: str, idioma: str, usuario_id: str,
+                       fabrica: Callable[[], Session]) -> bool:
+    db = fabrica()
+    try:
+        if contar_solicitudes(db, usuario_id) >= LIMITE_SOLICITUDES_DIA:
+            return False
+        db.add(IntencionSinRegla(intencion=texto, tipo="no_disponible", regla=None,
+                                idioma=idioma, origen="usuario", creado_por=None))
+        auditar(db, "intencion.solicitud", None, {"largo": len(texto)}, usuario_id)
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def normalizar(intencion: str) -> str:

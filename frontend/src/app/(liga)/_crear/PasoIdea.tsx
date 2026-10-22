@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { convertirFrase, getMercado, type Catalogo, type ConvertirResultado,
+import { convertirFrase, enviarIntencion, getMercado, type Catalogo, type ConvertirResultado,
   type InterpretacionIdea, type Mercado, type ReglaElegida, type EstiloCatalogo } from "@/lib/liga/api";
 import { miles } from "@/lib/liga/format";
 import { normalizeLocale } from "@/i18n/locale";
@@ -40,6 +40,23 @@ export function PasoIdea({ catalogo, idea, reglas, estrategiaId, quedan, alCambi
   const [propuesta, setPropuesta] = useState<ConvertirResultado | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [intencionAbierta, setIntencionAbierta] = useState(false);
+  const [intencion, setIntencion] = useState("");
+  const [enviandoIntencion, setEnviandoIntencion] = useState(false);
+  const [avisoIntencion, setAvisoIntencion] = useState<string | null>(null);
+  async function enviar() {
+    if (!intencion.trim() || enviandoIntencion) return;
+    setEnviandoIntencion(true); setAvisoIntencion(null);
+    try {
+      const resultado = await enviarIntencion(intencion.trim());
+      if (resultado !== null) {
+        setAvisoIntencion(resultado);
+      } else {
+        setAvisoIntencion(t("builder_intencion_ok"));
+        setIntencion(""); setIntencionAbierta(false);
+      }
+    } finally { setEnviandoIntencion(false); }
+  }
   useEffect(() => {
     let vigente = true;
     // Sin recuento, los estilos se eligen igual: no hace falta avisar de ello.
@@ -69,6 +86,26 @@ export function PasoIdea({ catalogo, idea, reglas, estrategiaId, quedan, alCambi
       <textarea id="idea-frase" className="inp" rows={3} maxLength={300}
         placeholder={t("builder_idea_placeholder")} value={idea} disabled={ocupado}
         onChange={e => { alCambiarIdea(e.target.value); setPropuesta(null); setError(null); }} />
+      <button type="button" className="link" aria-expanded={intencionAbierta}
+        aria-controls="idea-intencion" disabled={enviandoIntencion} onClick={() => {
+          setIntencionAbierta(!intencionAbierta); setAvisoIntencion(null);
+        }}>{t("builder_intencion_abrir")}</button>
+      {intencionAbierta && <div id="idea-intencion">
+        <p id="idea-intencion-ayuda" className="fine">{t("builder_intencion_ayuda")}</p>
+        <textarea id="idea-intencion-texto" className="inp" rows={3} maxLength={160}
+          aria-label={t("builder_intencion_abrir")} aria-describedby="idea-intencion-ayuda"
+          placeholder={t("builder_intencion_ejemplo")} value={intencion} disabled={enviandoIntencion}
+          onChange={e => setIntencion(e.target.value)} />
+        <span className="fine" aria-live="polite">{intencion.length}/160</span>
+        <div className="paso-accion">
+          <Boton disabled={enviandoIntencion || !intencion.trim()} onClick={enviar}>
+            {t("builder_intencion_enviar")}</Boton>
+          <Boton disabled={enviandoIntencion} onClick={() => {
+            setIntencionAbierta(false); setIntencion(""); setAvisoIntencion(null);
+          }}>{t("builder_intencion_cancelar")}</Boton>
+        </div>
+      </div>}
+      {avisoIntencion && <p className="fine" role="status">{avisoIntencion}</p>}
       <div className="paso-accion">
         <Boton variante="principal" disabled={ocupado || !idea.trim() || quedan === 0} onClick={proponer}>
           {t(ocupado ? "builder_idea_proponiendo" : "builder_idea_proponer")}</Boton>

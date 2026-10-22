@@ -367,5 +367,11 @@
   "builder_actualizar_progreso": "Pidiendo datos de hoy… {count} de 300",
   "builder_actualizar_hecha": "Datos y notas de hoy",
   "builder_actualizar_pregunta": "Con tu pregunta: gratis en tu estrategia en juego si tu cuenta es gratuita; en las demás, con créditos.",
-  "builder_actualizar_fallida": "No se pudo actualizar ahora. Prueba en un rato."
+  "builder_actualizar_fallida": "No se pudo actualizar ahora. Prueba en un rato.",
+  "builder_intencion_abrir": "¿Te falta algo que quieras medir?",
+  "builder_intencion_ayuda": "Solo lo leemos nosotros. No escribas datos personales.",
+  "builder_intencion_ejemplo": "Por ejemplo: empresas que paguen dividendo cada trimestre",
+  "builder_intencion_enviar": "Enviar",
+  "builder_intencion_cancelar": "Cancelar",
+  "builder_intencion_ok": "Lo hemos anotado."
 }

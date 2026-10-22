@@ -1,4 +1,6 @@
 {
+  "api_error_intenciones_limite": "You've already sent several requests today. Come back tomorrow.",
+  "api_error_intenciones_texto": "Write a phrase of up to 160 characters.",
   "api_error_edad_minima": "Vennett is for people aged 14 and over.",
   "api_error_edad_no_valida": "Enter your age in years.",
   "api_error_zona_no_valida": "That time zone does not exist.",
