@@ -502,6 +502,7 @@ class IntencionSinRegla(LigaBase):
     idioma: Mapped[str] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(TSTZ, server_default=DB)
     creado_por: Mapped[uuid.UUID | None] = mapped_column(UUID, server_default=DB)
+    origen: Mapped[str] = mapped_column(Text, server_default="conversor")
 
 
 class Actualizacion(LigaBase):

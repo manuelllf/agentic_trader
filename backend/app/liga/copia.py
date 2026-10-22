@@ -32,7 +32,7 @@ TABLAS = (
 
 # El número más alto de `sql/liga/NNN_*.sql` aplicado (plan §6.3): se guarda en el manifiesto
 # para saber, al restaurar, qué migraciones hacen falta antes de cargar los datos.
-VERSION_ESQUEMA = 56
+VERSION_ESQUEMA = 57
 
 TABLAS_BLOG = ("articulos", "articulo_textos", "suscriptores", "envios", "entregas")
 

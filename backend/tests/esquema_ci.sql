@@ -1,4 +1,4 @@
--- migraciones-liga: 056
+-- migraciones-liga: 057
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -2553,8 +2553,10 @@ CREATE TABLE liga.intenciones_sin_regla (
     idioma text NOT NULL,
     creado_en timestamp with time zone DEFAULT now() NOT NULL,
     creado_por uuid DEFAULT auth.uid(),
+    origen text DEFAULT 'conversor'::text NOT NULL,
     CONSTRAINT intenciones_sin_regla_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
     CONSTRAINT intenciones_sin_regla_intencion_check CHECK (((length(intencion) >= 1) AND (length(intencion) <= 160))),
+    CONSTRAINT intenciones_sin_regla_origen_check CHECK ((origen = ANY (ARRAY['conversor'::text, 'usuario'::text]))),
     CONSTRAINT intenciones_sin_regla_tipo_check CHECK ((tipo = ANY (ARRAY['aproximada'::text, 'no_disponible'::text])))
 );
 
