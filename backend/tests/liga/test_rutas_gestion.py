@@ -83,8 +83,6 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
     finally:
         cx.execute("set session_replication_role = replica")
         for uid in creados:
-            cx.execute("delete from liga.auditoria where actor_id = %s or "
-                      "detalle::text like %s", (uid, f"%{uid}%"))
             cx.execute("delete from liga.reportes where autor_id = %s", (uid,))
             cx.execute("delete from liga.creditos_movimientos where usuario_id = %s", (uid,))
             cx.execute("delete from liga.estrategias where dueno_id = %s", (uid,))
@@ -328,6 +326,38 @@ def test_ajustes_solo_claves_conocidas(api) -> None:  # noqa: ANN001
     assert r.status_code == 422
 
     cx.execute("delete from liga.ajustes where clave = 'creditos.bienvenida'")
+
+
+def test_ajustes_registra_antes_despues_y_actor(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, cx = api
+    admin = usuario(rol="admin")
+    clave = "liga.visible"
+    anterior = cx.execute("select valor from liga.ajustes where clave = %s",
+                          (clave,)).fetchone()
+    antes = anterior[0] if anterior else None
+    valor = not antes if isinstance(antes, bool) else False
+    consulta = ("select accion, objeto, detalle, actor_id::text from liga.auditoria "
+                "where accion = 'ajustes.cambiar' and objeto = %s and actor_id = %s")
+    assert cx.execute(consulta, (clave, admin)).fetchall() == []
+
+    try:
+        r = cliente.put(f"/liga/admin/ajustes/{clave}", json={"valor": valor},
+                        headers=cab(admin, aal="aal2"))
+        assert r.status_code == 200, r.text
+        assert r.json()["valor"] is valor
+        filas = cx.execute(consulta, (clave, admin)).fetchall()
+        assert filas == [("ajustes.cambiar", clave, {"antes": antes, "despues": valor}, admin)]
+        actualizado_por = cx.execute(
+            "select actualizado_por::text from liga.ajustes where clave = %s",
+            (clave,),
+        ).fetchone()
+        assert actualizado_por == (admin,)
+    finally:
+        if anterior is None:
+            cx.execute("delete from liga.ajustes where clave = %s", (clave,))
+        else:
+            cx.execute("update liga.ajustes set valor = %s::jsonb where clave = %s",
+                       ("true" if antes else "false", clave))
 
 
 def test_ajustes_trae_metadato_y_efectivo_por_defecto(api) -> None:  # noqa: ANN001

@@ -179,6 +179,28 @@ CLAVE_LIGA_VISIBLE = "liga.visible"
 CLAVE_FOTO_AUTO = "procesos.foto.auto"
 
 
+def fijar_ajuste(clave: str, valor: object, actor: str) -> dict:
+    db = fabrica_sistema()
+    try:
+        # El disparador de auditoría de liga.ajustes lee app.actor en sesiones de sistema.
+        db.execute(text("select set_config('app.actor', :a, true)"), {"a": actor})
+        antes = db.execute(text("select valor from liga.ajustes where clave = :c"),
+                           {"c": clave}).scalar_one_or_none()
+        fila = db.execute(text("""
+            insert into liga.ajustes (clave, valor, actualizado_por)
+            values (:c, cast(:v as jsonb), cast(:a as uuid))
+            on conflict (clave) do update
+              set valor = excluded.valor, actualizado = now(),
+                  actualizado_por = excluded.actualizado_por
+            returning clave, valor, actualizado, actualizado_por::text as actualizado_por
+        """), {"c": clave, "v": json.dumps(valor), "a": actor}).mappings().one()
+        auditar(db, "ajustes.cambiar", clave, {"antes": antes, "despues": valor}, actor)
+        db.commit()
+        return dict(fila)
+    finally:
+        db.close()
+
+
 def restablecer_ajuste(clave: str, actor: str) -> None:
     """Vuelve una clave a su valor por defecto borrando la fila. `liga.ajustes` no tiene GRANT
     de `delete` para `authenticated` (solo `insert`/`update`, plan §7.3 no lo previó) -- como
@@ -640,4 +662,3 @@ def estado_ia() -> dict:
         }
     finally:
         db.close()
-

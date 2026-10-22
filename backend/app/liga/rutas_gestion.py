@@ -7,7 +7,6 @@ aquí (lo vigila `test_liga_puertas`)."""
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -392,8 +391,8 @@ def listar_ajustes(db: Session = Depends(db_usuario)) -> list[AjusteOut]:
 
 
 @router_admin.put("/ajustes/{clave}", response_model=AjusteOut)
-def actualizar_ajuste(clave: str, body: AjusteIn, ident: Identidad = Depends(require_admin),
-                     db: Session = Depends(db_usuario)) -> AjusteOut:
+def actualizar_ajuste(clave: str, body: AjusteIn,
+                     ident: Identidad = Depends(require_admin)) -> AjusteOut:
     if clave not in gestion.AJUSTES_CONOCIDOS:
         raise HTTPException(422, "Esa clave no se gestiona desde aquí.")
     try:
@@ -401,19 +400,11 @@ def actualizar_ajuste(clave: str, body: AjusteIn, ident: Identidad = Depends(req
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
     try:
-        with db.begin_nested():
-            fila = db.execute(text("""
-                insert into liga.ajustes (clave, valor, actualizado_por)
-                values (:c, cast(:v as jsonb), cast(:a as uuid))
-                on conflict (clave) do update
-                  set valor = excluded.valor, actualizado = now(),
-                      actualizado_por = excluded.actualizado_por
-                returning clave, valor, actualizado, actualizado_por::text as actualizado_por
-            """), {"c": clave, "v": json.dumps(valor), "a": ident.uid}).one()
+        fila = gestion.fijar_ajuste(clave, valor, ident.uid)
     except DBAPIError as e:
         raise estrategias.mapear_error(e) from e
     gestion.invalidar_cache_ajustes(clave)
-    return _ajuste_out(fila.clave, fila.valor, fila.actualizado, fila.actualizado_por)
+    return _ajuste_out(fila["clave"], fila["valor"], fila["actualizado"], fila["actualizado_por"])
 
 
 @router_admin.delete("/ajustes/{clave}", response_model=AjusteOut)
