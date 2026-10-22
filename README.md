@@ -49,6 +49,7 @@ Todo el dinero (tamaños, caja, rentabilidad) lo calcula el código con aritmét
 |---|---|
 | Backend | Python 3.12 · FastAPI · SQLAlchemy 2 · Pydantic v2 · APScheduler |
 | Base de datos | Postgres (Supabase) con seguridad a nivel de fila · pgvector |
+| Base de datos analítica | DuckDB, copia columnar de solo lectura sincronizada desde Postgres |
 | Frontend | Next.js 15 · React 19 · TypeScript · next-intl · Tailwind v4 |
 | Cuentas | Supabase Auth (JWT verificado por JWKS, TOTP) |
 | Correo | Resend |
@@ -56,10 +57,6 @@ Todo el dinero (tamaños, caja, rentabilidad) lo calcula el código con aritmét
 | Modelos de lenguaje | DeepSeek y Jev (TypeSafe AI), con capa de proveedor intercambiable |
 | Bróker (sala Alpha) | Interactive Brokers, Web API (OAuth 1.0a, `ibind`); simulación por defecto |
 | Despliegue | Railway (backend) · Vercel (frontend) |
-
-## Quién lo programa
-
-Vennett lo diseña y programa **Manuel Llao Freire**: arquitectura, backend, frontend, datos, pipelines con modelos de lenguaje, base de datos y despliegue. El proyecto se publica en abierto mientras se desarrolla.
 
 ## Aviso
 
