@@ -496,5 +496,17 @@
   "blog_correo_baja_enlace": "Dar de baja la suscripción",
   "blog_correo_articulo_enlace": "Leer el artículo",
   "blog_correo_articulo_pie": "Recibes esto porque te apuntaste al boletín de Vennett.",
-  "api_error_db_jornadas_programadas_con_datos": "Hay jornadas programadas con datos: no se rehacen."
+  "api_error_db_jornadas_programadas_con_datos": "Hay jornadas programadas con datos: no se rehacen.",
+  "criptico_asunto": "Críptico nº {numero}: {pista}",
+  "criptico_titulo": "Críptico nº {numero}",
+  "criptico_meta": "{fecha} · {nivel}",
+  "criptico_formato_fecha": "%d/%m/%Y",
+  "criptico_nivel_facil": "Fácil",
+  "criptico_nivel_media": "Medio",
+  "criptico_preheader_ayer": "Ayer era {respuesta}. Así se resolvía.",
+  "criptico_resolver": "Resolverlo en Vennett",
+  "criptico_baja": "Darse de baja",
+  "criptico_de_ayer": "La de ayer",
+  "criptico_media_ayer": "Lo resolvieron {count} personas, con {media} ayudas de media.",
+  "criptico_no_recomendacion": "No constituye recomendación de inversión."
 }

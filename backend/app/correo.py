@@ -20,7 +20,8 @@ def _post(payload: dict, clave: str) -> httpx.Response:
                       timeout=10)
 
 
-def enviar(destino: str, asunto: str, texto: str, html: str | None = None) -> bool:
+def enviar(destino: str, asunto: str, texto: str, html: str | None = None,
+           cabeceras: dict[str, str] | None = None) -> bool:
     """Manda un correo a `destino`: el texto siempre y el HTML si lo hay."""
     clave = settings.resend_api_key
     if not clave:
@@ -29,6 +30,8 @@ def enviar(destino: str, asunto: str, texto: str, html: str | None = None) -> bo
     payload = {"from": settings.correo_remitente, "to": [destino], "subject": asunto, "text": texto}
     if html:
         payload["html"] = html
+    if cabeceras is not None:
+        payload["headers"] = cabeceras
     try:
         respuesta = _post(payload, clave)
     except Exception:

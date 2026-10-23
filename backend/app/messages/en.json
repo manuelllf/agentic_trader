@@ -496,5 +496,17 @@
   "blog_correo_baja_enlace": "Unsubscribe",
   "blog_correo_articulo_enlace": "Read the article",
   "blog_correo_articulo_pie": "You receive this because you signed up for the Vennett newsletter.",
-  "api_error_db_jornadas_programadas_con_datos": "There are scheduled rounds with data: they are not rebuilt."
+  "api_error_db_jornadas_programadas_con_datos": "There are scheduled rounds with data: they are not rebuilt.",
+  "criptico_asunto": "Cryptic No. {numero}: {pista}",
+  "criptico_titulo": "Cryptic No. {numero}",
+  "criptico_meta": "{fecha} · {nivel}",
+  "criptico_formato_fecha": "%m/%d/%Y",
+  "criptico_nivel_facil": "Easy",
+  "criptico_nivel_media": "Medium",
+  "criptico_preheader_ayer": "Yesterday was {respuesta}. Here is how it worked.",
+  "criptico_resolver": "Solve it on Vennett",
+  "criptico_baja": "Unsubscribe",
+  "criptico_de_ayer": "Yesterday's",
+  "criptico_media_ayer": "Solved by {count} people, with {media} helps on average.",
+  "criptico_no_recomendacion": "Educational content, not investment advice."
 }

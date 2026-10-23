@@ -513,7 +513,17 @@ def start_scheduler() -> None:
     # Liga: el premio anual, una sola vez, cuando se cierra la última jornada de la temporada.
     scheduler.add_job(_liga_premio_job, "interval", minutes=30, id="liga_premio",
                       replace_existing=True, coalesce=True)
+    from app.criptico import envio
     from app.liga import blog_procesos, resumenes
+
+    scheduler.add_job(envio.job_enviar,
+                      CronTrigger(hour=7, minute=0, timezone="Europe/Madrid"), args=["es"],
+                      id="criptico_envio_es", replace_existing=True,
+                      misfire_grace_time=3600, coalesce=True)
+    scheduler.add_job(envio.job_enviar,
+                      CronTrigger(hour=7, minute=0, timezone="America/New_York"), args=["en"],
+                      id="criptico_envio_en", replace_existing=True,
+                      misfire_grace_time=3600, coalesce=True)
 
     scheduler.add_job(blog_procesos.job_publicar, "interval", minutes=1,
                       id="blog_publicar", replace_existing=True, coalesce=True)
