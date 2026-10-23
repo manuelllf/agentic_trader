@@ -1,4 +1,5 @@
 {
+  "api_error_copia_no_juega": "Only strategies that play the matchday can be copied.",
   "api_error_intenciones_limite": "You've already sent several requests today. Come back tomorrow.",
   "api_error_intenciones_texto": "Write a phrase of up to 160 characters.",
   "api_error_edad_minima": "Vennett is for people aged 14 and over.",
@@ -463,8 +464,7 @@
   "push_omega_prueba_body": "If you see this, Omega notifications reach you.",
   "push_liga_prueba_title": "Vennett: test notification",
   "push_liga_prueba_body": "If you see this, notifications reach you.",
-  "correo_resumen_semanal_asunto": "Your week at Vennett",
-  "correo_resumen_mensual_asunto": "Round {numero} closed at Vennett",
+  "correo_resumen_mensual_asunto": "Round {numero} of {total} closed at Vennett",
   "correo_resumen_intro": "These are your strategy's numbers. They describe, they are not a recommendation.",
   "correo_resumen_baja": "To stop receiving these, go to Account › Alerts and turn off the email summary.",
   "correo_resumen_rentabilidad": "Round return",
@@ -495,5 +495,6 @@
   "blog_correo_confirmar_pie": "This link expires in seven days. If you did not request this subscription, you can ignore this email.",
   "blog_correo_baja_enlace": "Unsubscribe",
   "blog_correo_articulo_enlace": "Read the article",
-  "blog_correo_articulo_pie": "You receive this because you signed up for the Vennett newsletter."
+  "blog_correo_articulo_pie": "You receive this because you signed up for the Vennett newsletter.",
+  "api_error_db_jornadas_programadas_con_datos": "There are scheduled rounds with data: they are not rebuilt."
 }

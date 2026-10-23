@@ -126,9 +126,11 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
         event.remove(engine, "before_cursor_execute", count_summary_queries)
         cx.execute("set session_replication_role = replica")
         for season_id in created_seasons:
-            cx.execute("delete from liga.formaciones_degradadas where inscripcion_id in "
-                       "(select i.id from liga.inscripciones i join liga.jornadas j "
-                       "on j.id = i.jornada_id where j.temporada_id = %s)", (season_id,))
+            # Con `replica` no hay borrados en cascada: resultados y posiciones se borran a mano.
+            for tabla in ("resultados", "posiciones", "formaciones_degradadas"):
+                cx.execute(f"delete from liga.{tabla} where inscripcion_id in "
+                           "(select i.id from liga.inscripciones i join liga.jornadas j "
+                           "on j.id = i.jornada_id where j.temporada_id = %s)", (season_id,))
             cx.execute("delete from liga.inscripciones where jornada_id in "
                        "(select id from liga.jornadas where temporada_id = %s)", (season_id,))
             cx.execute("delete from liga.jornadas where temporada_id = %s", (season_id,))

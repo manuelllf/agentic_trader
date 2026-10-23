@@ -63,6 +63,15 @@ class CohorteOut(BaseModel):
     jugaron: int
 
 
+class VueltaOut(BaseModel):
+    semana: date
+    jugaron: int
+    base_2: int
+    vuelven_2: int
+    base_3: int
+    vuelven_3: int
+
+
 class EmbudoOut(BaseModel):
     altas: int
     con_estrategia: int
@@ -83,6 +92,7 @@ class AnaliticaOut(BaseModel):
     en_juego_casa: int
     embudo: EmbudoOut
     cohortes: list[CohorteOut]
+    vuelta: list[VueltaOut]
     visitas_dia: list[DiaVisitasOut]
 
 
@@ -189,8 +199,13 @@ def analitica(dias: int = Query(30, ge=1, le=365),
         from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
         join liga.estrategias e on e.id = i.estrategia_id where j.estado = 'formada'
     """)).one()
-    cohortes = [CohorteOut(**f) for f in db.execute(text(
-        "select * from liga.v_admin_cohortes order by semana desc")).mappings().all()]
+    filas = db.execute(text("""
+        select c.*, v.base_2, v.vuelven_2, v.base_3, v.vuelven_3
+        from liga.v_admin_cohortes c join liga.v_admin_vuelta v using (semana)
+        order by c.semana desc
+    """)).mappings().all()
+    cohortes = [CohorteOut(**f) for f in filas]
+    vuelta = [VueltaOut(**f) for f in filas]
     embudo = EmbudoOut(**{c: sum(getattr(f, c) for f in cohortes)
                          for c in EmbudoOut.model_fields})
     visitas = db.execute(text("""
@@ -204,7 +219,7 @@ def analitica(dias: int = Query(30, ge=1, le=365),
     """), {"n": dias}).mappings().all()
     return AnaliticaOut(
         cifras=cifras, visitas_7d_anterior=anterior, en_juego_usuarios=en_juego.usuarios,
-        en_juego_casa=en_juego.casa, embudo=embudo, cohortes=cohortes,
+        en_juego_casa=en_juego.casa, embudo=embudo, cohortes=cohortes, vuelta=vuelta,
         visitas_dia=[DiaVisitasOut(**f) for f in visitas])
 
 

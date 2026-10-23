@@ -1,5 +1,5 @@
-"""Temporadas y jornadas (D13): la temporada 1 es 2027 entero, 12 jornadas que cuentan; antes, una
-pretemporada que se juega y no cuenta, con los meses que aún no han empezado hasta diciembre de
+"""Temporadas y jornadas (D13): la temporada 1 es 2027 entero, 52 semanas que cuentan; antes, una
+pretemporada que se juega y no cuenta, con las semanas que aún no han empezado hasta el final de
 2026. Las fechas de cada jornada salen del calendario de la NYSE (`motor.calendario`).
 
 Idempotente: una temporada que ya existe (por nombre) no se toca, y sus jornadas son únicas por
@@ -50,24 +50,23 @@ class TemporadaPlan:
     jornadas: tuple[JornadaPlan, ...]
 
 
-def _jornadas(meses: list[tuple[int, int]]) -> tuple[JornadaPlan, ...]:
-    return tuple(JornadaPlan(i, a, m, calendario.jornada_del_mes(a, m))
-                 for i, (a, m) in enumerate(meses, 1))
+def _jornadas(fechas: list[calendario.FechasJornada]) -> tuple[JornadaPlan, ...]:
+    return tuple(JornadaPlan(i, f.dia_inicio.year, f.dia_inicio.month, f)
+                 for i, f in enumerate(fechas, 1))
 
 
 def planificar(hoy: date) -> list[TemporadaPlan]:
-    """Lo que debería existir visto desde `hoy` (fecha de bolsa). Sin meses libres antes de 2027,
+    """Lo que debería existir visto desde `hoy` (fecha de bolsa). Sin semanas libres antes de 2027,
     no hay pretemporada."""
-    meses_pre: list[tuple[int, int]] = []
-    a, m = (hoy.year + 1, 1) if hoy.month == 12 else (hoy.year, hoy.month + 1)
-    while a < ANIO_TEMPORADA_1:
-        meses_pre.append((a, m))
-        a, m = (a + 1, 1) if m == 12 else (a, m + 1)
+    pre = [j for j in calendario.jornadas_semanales(hoy, date(ANIO_TEMPORADA_1 - 1, 12, 31))
+           if j.dia_inicio.year < ANIO_TEMPORADA_1]
+    t1 = [j for j in calendario.jornadas_semanales(
+        date(ANIO_TEMPORADA_1 - 1, 12, 1), date(ANIO_TEMPORADA_1, 12, 31))
+        if j.dia_inicio.year == ANIO_TEMPORADA_1]
     planes = []
-    if meses_pre:
-        planes.append(TemporadaPlan(PRETEMPORADA, False, _jornadas(meses_pre)))
-    planes.append(TemporadaPlan(TEMPORADA_1, True,
-                                _jornadas([(ANIO_TEMPORADA_1, mes) for mes in range(1, 13)])))
+    if pre:
+        planes.append(TemporadaPlan(PRETEMPORADA, False, _jornadas(pre)))
+    planes.append(TemporadaPlan(TEMPORADA_1, True, _jornadas(t1)))
     return planes
 
 

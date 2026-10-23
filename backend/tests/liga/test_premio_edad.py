@@ -2,6 +2,7 @@
 import os
 import time
 import uuid
+from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -36,14 +37,18 @@ class _Db:
             return _Resultado([True if params["c"] == premio.AJUSTE_VISIBLE else None])
         if "from liga.temporadas" in q:
             return _Resultado([SimpleNamespace(id=1, nombre="Temporada", estado="abierta",
-                                               n_jornadas=12)])
+                                               n_jornadas=52)])
+        if "count(distinct date_trunc('month', dia_inicio))" in q:
+            assert params == {"t": 1}
+            return _Resultado([12])
         assert "join liga.perfiles_privados pp on pp.id = e.dueno_id" in q
         assert "pp.edad >= 18" in q
         if "count(distinct" in q:
             assert "e.opta_premio" in q
             return _Resultado([int(self.mayor_de_edad)])
         assert "i.optaba_premio" in q
-        return _Resultado([SimpleNamespace(cuenta="cuenta", numero=n, rentabilidad=Decimal(1))
+        return _Resultado([SimpleNamespace(cuenta="cuenta", numero=n, dia_inicio=date(2030, n, 1),
+                                          rentabilidad=Decimal(1))
                            for n in range(1, 11)] if self.mayor_de_edad else [])
 
     def get(self, modelo, clave):
@@ -57,7 +62,28 @@ class _Db:
 def test_cuenta_solo_si_declara_18_o_mas(mayor_de_edad):
     db = _Db(mayor_de_edad)
     assert len(premio.cuentas_elegibles(db, 1, 12)) == int(mayor_de_edad)
-    assert premio.estado_publico(lambda: db)["cuentas"] == int(mayor_de_edad)
+    publico = premio.estado_publico(lambda: db)
+    assert publico["cuentas"] == int(mayor_de_edad)
+    assert publico["temporada"]["n_jornadas"] == 52
+    assert publico["temporada"]["n_meses"] == 12
+
+
+@pytest.mark.parametrize("mensuales", [False, True])
+def test_diez_jornadas_exigen_diez_meses_distintos(mensuales):
+    class Db:
+        def execute(self, sql, params=None):
+            return _Resultado([
+                SimpleNamespace(cuenta="cuenta", numero=n + 1, rentabilidad=Decimal(1),
+                                dia_inicio=date(2030, n + 1, 1) if mensuales
+                                else date(2030, 1, 1) + timedelta(weeks=n))
+                for n in range(premio.motor.MIN_MESES)])
+
+    cuentas = premio.cuentas_elegibles(Db(), 1, 12)
+    assert len(cuentas) == int(mensuales)
+    if mensuales:
+        assert cuentas[0].jornadas == premio.motor.MIN_MESES
+        assert cuentas[0].rentabilidad == premio.motor.acumulada(
+            [Decimal(1)] * premio.motor.MIN_MESES + [None, None])
 
 
 @pytest.fixture

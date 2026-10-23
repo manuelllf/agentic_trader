@@ -30,6 +30,12 @@ class _Resultado:
     def one_or_none(self):
         return self.first()
 
+    def one(self):
+        return self.filas[0]
+
+    def scalar(self):
+        return self.first()
+
     def scalar_one(self):
         return self.filas[0]
 
@@ -42,6 +48,8 @@ class _Db:
 
     def execute(self, sql, params=None):
         consulta = str(sql)
+        if "select id from liga.jornadas where estado = 'cerrada'" in consulta:
+            return _Resultado([1])
         if 'pg_advisory' in consulta:
             return _Resultado()
         if 'select count(*) from liga.auditoria' in consulta:
@@ -97,44 +105,46 @@ def buzon(monkeypatch):
 
 @pytest.fixture
 def datos(monkeypatch):
-    valor = {'numero': 1, 'estrategia': 'Ejemplo', 'rentabilidad': 2, 'sp': 1,
+    valor = {'numero': 1, 'total': 52, 'estrategia': 'Ejemplo', 'rentabilidad': 2, 'sp': 1,
              'puesto_general': 3, 'ligas': [{'nombre': 'Amigos', 'puesto': 1}],
-             'entran': ['AAPL'], 'salen': ['MSFT'], 'provisional': True}
+             'entran': ['AAPL'], 'salen': ['MSFT'], 'provisional': False}
     monkeypatch.setattr(resumenes, 'contenido', lambda *a: valor)
     return valor
 
 
-def test_preferencia_y_un_envio_por_tipo_y_jornada(buzon, datos):
+def test_preferencia_y_un_envio_por_jornada(buzon, datos):
     db = _Db([cuenta(1, False), cuenta(2)])
-    assert resumenes.enviar_lote(db, 'semanal', 1)['enviados'] == 1
-    assert resumenes.enviar_lote(db, 'semanal', 1) == {
-        'enviados': 0, 'pendientes': 0, 'omitidos': 1}
     assert resumenes.enviar_lote(db, 'mensual', 1)['enviados'] == 1
-    assert resumenes.enviar_lote(db, 'semanal', 2)['enviados'] == 1
+    assert resumenes.enviar_lote(db, 'mensual', 1) == {
+        'enviados': 0, 'pendientes': 0, 'omitidos': 1}
+    assert resumenes.enviar_lote(db, 'mensual', 2)['enviados'] == 1
     assert {c[0] for c in buzon} == {'cuenta2@ejemplo.com'}
+    assert all(c[1] == 'Cierre de la jornada 1 de 52 en Vennett' for c in buzon)
 
 
 def test_lote_deja_pendientes(buzon, datos):
     db = _Db([cuenta(n) for n in range(3)])
-    assert resumenes.enviar_lote(db, 'semanal', 1, limite=2) == {
+    assert resumenes.enviar_lote(db, 'mensual', 1, limite=2) == {
         'enviados': 2, 'pendientes': 1, 'omitidos': 0}
-    assert resumenes.enviar_lote(db, 'semanal', 1, limite=2) == {
+    assert resumenes.enviar_lote(db, 'mensual', 1, limite=2) == {
         'enviados': 1, 'pendientes': 0, 'omitidos': 2}
     assert len(buzon) == 3
 
 
-def test_cupo_compartido_entre_tipos(buzon, datos):
+def test_cupo_compartido_entre_jornadas(buzon, datos):
     db = _Db([cuenta(n) for n in range(81)])
-    assert resumenes.enviar_lote(db, 'semanal', 1)['enviados'] == 80
-    assert resumenes.enviar_lote(db, 'mensual', 1)['enviados'] == 0
+    assert resumenes.enviar_lote(db, 'mensual', 1)['enviados'] == 80
+    assert resumenes.enviar_lote(db, 'mensual', 2)['enviados'] == 0
     assert len(buzon) == 80
 
 
 @pytest.mark.parametrize('idioma', ['es', 'en'])
-@pytest.mark.parametrize('tipo', ['semanal', 'mensual'])
+@pytest.mark.parametrize('tipo', ['mensual'])
 def test_texto_descriptivo(buzon, datos, idioma, tipo):
     resumenes.enviar_lote(_Db([cuenta(1, idioma=idioma)]), tipo, 1)
     assert len(buzon) == 1
+    assert buzon[0][1] == translate(
+        'correo_resumen_mensual_asunto', idioma, numero=1, total=52)
     for palabra in ('compra', 'vende', 'comprar', 'vender', 'buy', 'sell'):
         assert palabra not in (buzon[0][1] + buzon[0][2] + buzon[0][3]).lower()
 
@@ -146,7 +156,7 @@ def test_fallo_no_impide_siguiente(monkeypatch, buzon, datos):
             raise RuntimeError('sin red')
         return real(destino, *args)
     monkeypatch.setattr(correo, 'enviar', enviar)
-    assert resumenes.enviar_lote(_Db([cuenta(1), cuenta(2)]), 'semanal', 1) == {
+    assert resumenes.enviar_lote(_Db([cuenta(1), cuenta(2)]), 'mensual', 1) == {
         'enviados': 1, 'pendientes': 1, 'omitidos': 0}
 
 
@@ -172,12 +182,11 @@ def test_prueba_exige_admin_y_envia_solo_a_quien_llama(monkeypatch, buzon, datos
         raise HTTPException(403)
     app.dependency_overrides[require_admin] = denegar
     cliente = TestClient(app)
-    assert cliente.post('/liga/admin/resumenes/prueba', json={'tipo': 'semanal'}).status_code == 403
+    assert cliente.post('/liga/admin/resumenes/prueba', json={'tipo': 'mensual'}).status_code == 403
     db = _Db([cuenta(1), cuenta(2)])
     app.dependency_overrides[require_admin] = lambda: SimpleNamespace(uid=cuenta(1)['usuario_id'])
-    monkeypatch.setattr(resumenes, '_jornada_actual', lambda db: 1)
     monkeypatch.setattr(resumenes, 'sesion', lambda fabrica: nullcontext(db))
-    respuesta = cliente.post('/liga/admin/resumenes/prueba', json={'tipo': 'semanal'})
+    respuesta = cliente.post('/liga/admin/resumenes/prueba', json={'tipo': 'mensual'})
     assert respuesta.status_code == 200
     assert respuesta.json() == {'enviados': 1}
     assert [c[0] for c in buzon] == ['cuenta1@ejemplo.com']
@@ -185,27 +194,26 @@ def test_prueba_exige_admin_y_envia_solo_a_quien_llama(monkeypatch, buzon, datos
 
 @pytest.mark.parametrize('idioma', ['es', 'en'])
 def test_traducciones(idioma):
-    for sufijo in ('semanal_asunto', 'mensual_asunto', 'intro', 'baja', 'rentabilidad',
+    for sufijo in ('mensual_asunto', 'intro', 'baja', 'rentabilidad',
                    'sp', 'puesto_general', 'puesto_liga', 'entran', 'salen', 'ninguna',
                    'estrategia', 'provisional'):
         clave = f'correo_resumen_{sufijo}'
-        assert translate(clave, idioma, numero=1, nombre='Amigos') != clave
+        assert translate(clave, idioma, numero=1, total=52, nombre='Amigos') != clave
 
 @pytest.mark.parametrize('dos_jornadas', [False, True])
-def test_contenido_usa_vivo_y_compara_posiciones(monkeypatch, dos_jornadas):
+def test_contenido_de_cierre_compara_posiciones(monkeypatch, dos_jornadas):
     from datetime import date
 
-    jornada = SimpleNamespace(id=2, numero=2, temporada_id=1, estado='formada',
-                              dia_base=date(2027, 2, 1), sp_rentabilidad=None)
+    jornada = SimpleNamespace(id=2, numero=2, total=52, temporada_id=1, estado='cerrada',
+                              dia_base=date(2027, 2, 1), sp_rentabilidad=2)
     class DbContenido:
-        def get(self, modelo, jid):
-            return jornada
-
         def execute(self, sql, params=None):
             consulta = str(sql)
+            if 'select j.*, t.n_jornadas as total' in consulta:
+                return _Resultado([jornada])
             if 'e.nombre, i.id as iid' in consulta:
                 return _Resultado([SimpleNamespace(eid='e1', nombre='Ejemplo', iid=20,
-                                                   rentabilidad=None)])
+                                                   rentabilidad=5)])
             if 'from liga.v_clasificacion' in consulta:
                 return _Resultado([SimpleNamespace(eid='e1', creada=1, puntos=3, dif_sp=1,
                                                    _mapping={'eid': 'e1', 'creada': 1,
@@ -219,31 +227,24 @@ def test_contenido_usa_vivo_y_compara_posiciones(monkeypatch, dos_jornadas):
                 return _Resultado([SimpleNamespace(id='l1', nombre='Amigos')])
             raise AssertionError(consulta)
 
-    monkeypatch.setattr(resumenes.diario, 'vivo', lambda jid: {
-        'por_inscripcion': {20: {'rentabilidad': 5}}, 'sp': 2})
-    monkeypatch.setattr(resumenes.gestion, '_ajuste_booleano', lambda *a: True)
-    llamadas = []
-    def viva(*args):
-        llamadas.append(args)
-        return {'e1': SimpleNamespace(puntos=6, dif_sp=3, jornadas=2)}
-    monkeypatch.setattr(resumenes.comparativa, 'clasificacion_viva', viva)
     monkeypatch.setattr(resumenes.rutas_ligas, '_miembros', lambda *a: [SimpleNamespace(
+        usuario_id='u1', estrategia_id='e1',
         _mapping={'liga_id': 'l1', 'usuario_id': 'u1', 'estrategia_id': 'e1',
                   'puntos': 3, 'dif_sp': 1, 'alias': 'ana', 'jornadas': 1})])
-    resultado = resumenes.contenido(DbContenido(), 'u1', 'semanal', 2)
+    resultado = resumenes.contenido(DbContenido(), 'u1', 'mensual', 2)
+    assert resultado['total'] == 52
     assert resultado['rentabilidad'] == 5
     assert resultado['sp'] == 2
-    assert resultado['provisional'] is True
+    assert resultado['provisional'] is False
     assert resultado['puesto_general'] == 1
     assert resultado['ligas'] == [{'nombre': 'Amigos', 'puesto': 1}]
     assert resultado['entran'] == (['AAA', 'ZZZ'] if dos_jornadas else [])
     assert resultado['salen'] == (['OLD'] if dos_jornadas else [])
-    assert len(llamadas) == 1
 
 
 def test_correo_rechazado_queda_pendiente(monkeypatch, datos):
     db = _Db([cuenta(1)])
     monkeypatch.setattr(correo, 'enviar', lambda *a: False)
-    assert resumenes.enviar_lote(db, 'semanal', 1) == {
+    assert resumenes.enviar_lote(db, 'mensual', 1) == {
         'enviados': 0, 'pendientes': 1, 'omitidos': 0}
     assert db.auditoria == []

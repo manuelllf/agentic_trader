@@ -578,7 +578,7 @@ def ocultar(body: OcultarIn, ident: Identidad = Depends(require_moderador),
 
 
 class ResumenPruebaIn(BaseModel):
-    tipo: Literal["semanal", "mensual"]
+    tipo: Literal["mensual"]
 
 
 @router_admin.post("/resumenes/prueba")

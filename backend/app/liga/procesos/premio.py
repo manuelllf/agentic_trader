@@ -38,7 +38,7 @@ AJUSTE_UMBRAL_COMPLETO = "premio.umbral_completo"
 AJUSTE_VISIBLE = "premio.visible"
 
 _JUGADAS = text("""
-    select e.dueno_id::text as cuenta, j.numero, r.rentabilidad
+    select e.dueno_id::text as cuenta, j.numero, j.dia_inicio, r.rentabilidad
     from liga.inscripciones i
     join liga.estrategias e on e.id = i.estrategia_id
     join liga.perfiles_privados pp on pp.id = e.dueno_id
@@ -90,20 +90,20 @@ def estado_yo(db: Session) -> dict:
     jornadas = 0
     if t is not None:
         jornadas = db.execute(text("""
-            select count(distinct j.numero) from liga.inscripciones i
+            select count(distinct date_trunc('month', j.dia_inicio)) from liga.inscripciones i
             join liga.estrategias e on e.id = i.estrategia_id
             join liga.jornadas j on j.id = i.jornada_id
             join liga.resultados r on r.inscripcion_id = i.id
             where j.temporada_id = :t and i.optaba_premio and e.dueno_id = (select auth.uid())
         """), {"t": t.id}).scalar_one()
     estado_edad = "sin_declarar" if edad is None else "menor" if edad < 18 else "mayor"
-    optas = estado_edad == "mayor" and estrategia is not None and jornadas >= motor.MIN_JORNADAS
+    optas = estado_edad == "mayor" and estrategia is not None and jornadas >= motor.MIN_MESES
     return {
         "temporada_id": t.id if t is not None else None,
         "edad": estado_edad,
         "estrategia": {"id": estrategia.id, "nombre": estrategia.nombre} if estrategia else None,
         "jornadas_jugadas": jornadas,
-        "minimo_jornadas": motor.MIN_JORNADAS,
+        "minimo_jornadas": motor.MIN_MESES,
         "optas": optas,
     }
 
@@ -129,9 +129,14 @@ def estado_publico(fabrica: Fabrica = fabrica_sistema) -> dict:
                                       "where e.tipo = 'usuario' and e.opta_premio "
                                       "and pp.edad >= 18")).scalar_one()
             escalon = motor.escalon(cuentas, basico, completo)
+        n_meses = db.execute(text("""
+            select count(distinct date_trunc('month', dia_inicio))
+            from liga.jornadas where temporada_id = :t
+        """), {"t": t.id}).scalar_one()
         return {
             "visible": True,
             "temporada": {"id": t.id, "nombre": t.nombre, "n_jornadas": t.n_jornadas,
+                          "n_meses": n_meses,
                           "clave": CLAVES_TEMPORADA.get(t.nombre)},
             "calculado": cerrada is not None, "cuentas": cuentas, "escalon": escalon,
             "umbral_basico": basico, "umbral_completo": max(basico, completo),
@@ -182,12 +187,14 @@ def estado_admin(temporada_id: int | None = None, fabrica: Fabrica = fabrica_sis
 
 def cuentas_elegibles(db: Session, temporada_id: int, n_jornadas: int) -> list[motor.Cuenta]:
     jugadas: dict[str, dict[int, Decimal]] = defaultdict(dict)
+    meses: dict[str, set[tuple[int, int]]] = defaultdict(set)
     for f in db.execute(_JUGADAS, {"t": temporada_id}).all():
         jugadas[f.cuenta][f.numero] = f.rentabilidad
+        meses[f.cuenta].add((f.dia_inicio.year, f.dia_inicio.month))
     return [motor.Cuenta(cuenta, len(por_jornada), motor.acumulada(
                 por_jornada.get(n) for n in range(1, n_jornadas + 1)))
             for cuenta, por_jornada in sorted(jugadas.items())
-            if len(por_jornada) >= motor.MIN_JORNADAS]
+            if len(meses[cuenta]) >= motor.MIN_MESES]
 
 
 def calcular(temporada_id: int, fabrica: Fabrica = fabrica_sistema,

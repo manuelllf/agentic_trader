@@ -1,22 +1,14 @@
-"""Avisos a las cuentas por Web Push (opt-in, uno por dispositivo) y, a quien lo activa en Cuenta ›
-Avisos, también por correo.
-
-Cinco avisos, todos best-effort: si el push o el correo fallan, la liga sigue y todo está en la web.
-- Tu cartera está formada (puedes cambiar empresas hasta tal hora).
-- Los cambios se cierran en una hora.
-- Empieza la jornada.
-- Una estrategia jugó el mes sin su pregunta.
-- La configuración cambió y no se aplicaron las quitadas.
-
-Va con sesión de sistema: la suscripción se guarda como la cuenta que la pide, y el envío mira las
-de cada dueño. El texto sale en el idioma privado de la cuenta (por defecto, español). El correo
-lleva el mismo título y texto, a la dirección propia de los avisos o, si no, a la de la cuenta."""
+"""Avisos por Web Push y correo opcional, en el idioma de la cuenta.
+La hoja semanal se envía desde resumenes.py.
+Aquí se avisan dos incidencias: quitadas no aplicadas y estrategia que juega sin su pregunta.
+Los envíos son best-effort: si fallan, la liga sigue y el aviso queda en el panel.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import text
@@ -24,8 +16,7 @@ from sqlalchemy.orm import Session
 
 from app import correo, correo_plantilla, push
 from app.i18n import Locale, translate
-from app.liga.motor.calendario import HORA_APERTURA, HORA_CIERRE_JORNADA, TZ_NUEVA_YORK
-from app.liga.procesos.comun import Fabrica, auditar, fabrica_sistema, sesion
+from app.liga.procesos.comun import Fabrica, fabrica_sistema, sesion
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +24,8 @@ MAX_DISPOSITIVOS = 5
 TZ_MADRID = ZoneInfo("Europe/Madrid")
 _MESES_ES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
              "septiembre", "octubre", "noviembre", "diciembre")
-_AVISO_APERTURA_HASTA = timedelta(hours=2)   # pasado esto, ya no se avisa de que empezó
-_ANTELACION_CIERRE = timedelta(hours=1)
 # Los avisos que, además del push, salen por correo a quien lo activó.
-_CON_CORREO = frozenset({"cartera_lista", "quitadas_vaciadas", "sin_pregunta",
-                         "empieza"})
+_CON_CORREO = frozenset({"quitadas_vaciadas", "sin_pregunta"})
 
 
 class DemasiadosDispositivos(ValueError):
@@ -195,28 +183,15 @@ def _cierre_de_cambios(dia_inicio) -> datetime:  # noqa: ANN001 — date
     return cierre_de_cambios(dia_inicio).astimezone(UTC)
 
 
-def _duenos(db: Session, jornada_id: int) -> list[str]:
-    return list(db.execute(text("""
-        select distinct e.dueno_id::text from liga.inscripciones i
-        join liga.estrategias e on e.id = i.estrategia_id
-        where i.jornada_id = :j and e.tipo = 'usuario' and e.dueno_id is not null
-          and i.estado in ('formada', 'sin_empresas')
-    """), {"j": jornada_id}).scalars())
-
-
 def avisar_formacion(jornada_id: int, fabrica: Fabrica = fabrica_sistema) -> int:
-    """Tras formar la jornada: «tu cartera está lista» a cada dueño y, aparte, lo que no salió
-    como esperaba (sin su pregunta, sin sus quitadas). Nunca lanza."""
+    """Tras formar la jornada, avisa de las incidencias: sin su pregunta o sin sus quitadas.
+    Nunca lanza."""
     enviados = 0
     try:
         with sesion(fabrica) as db:
             dia_inicio = db.execute(text("select dia_inicio from liga.jornadas where id = :j"),
                                     {"j": jornada_id}).scalar()
             cierra = _cierre_de_cambios(dia_inicio)
-            for dueno in _duenos(db, jornada_id):
-                enviados += avisar(
-                    db, dueno, "cartera_lista", cierra=cierra, caduca=cierra,
-                    datos={"jornada_id": jornada_id, "cierra": cierra.isoformat()})
             degradadas = db.execute(text("""
                 select e.dueno_id::text as dueno, e.nombre, d.motivo
                 from liga.formaciones_degradadas d
@@ -232,47 +207,3 @@ def avisar_formacion(jornada_id: int, fabrica: Fabrica = fabrica_sistema) -> int
     except Exception:
         logger.exception("No se pudieron mandar los avisos de la formación")
     return enviados
-
-
-def _ya_avisado(db: Session, accion: str, jornada_id: int) -> bool:
-    return db.execute(text("select 1 from liga.auditoria where accion = :a and objeto = :o"),
-                      {"a": accion, "o": f"jornada:{jornada_id}"}).first() is not None
-
-
-def _enviar_una_vez(db: Session, accion: str, tipo: str, jornada_id: int, **extra) -> int:  # noqa: ANN003
-    if _ya_avisado(db, accion, jornada_id):
-        return 0
-    enviados = sum(avisar(db, dueno, tipo, **extra) for dueno in _duenos(db, jornada_id))
-    auditar(db, accion, f"jornada:{jornada_id}", {"enviados": enviados}, None)
-    db.commit()
-    return enviados
-
-
-def job(fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None) -> dict:
-    """El del scheduler (cada 5 minutos): una hora antes del cierre de cambios y al abrir el
-    mercado del primer día. Cada aviso sale una sola vez por jornada. Nunca lanza."""
-    hecho = {"cambios_cierran": 0, "empieza": 0}
-    try:
-        ahora = (ahora or datetime.now(UTC)).astimezone(UTC)
-        with sesion(fabrica) as db:
-            jornadas = db.execute(text("""
-                select id, dia_inicio from liga.jornadas where estado = 'formada'
-                  and dia_inicio >= :hoy order by dia_inicio limit 2
-            """), {"hoy": (ahora - timedelta(days=1)).date()}).all()
-            for j in jornadas:
-                cierra = _cierre_de_cambios(j.dia_inicio)
-                if cierra - _ANTELACION_CIERRE <= ahora < cierra:
-                    hecho["cambios_cierran"] += _enviar_una_vez(
-                        db, "aviso.cambios_cierran", "cambios_cierran", j.id,
-                        cierra=cierra, caduca=cierra,
-                        datos={"jornada_id": j.id, "cierra": cierra.isoformat()})
-                abre = datetime.combine(j.dia_inicio, HORA_APERTURA, tzinfo=TZ_NUEVA_YORK)
-                if abre <= ahora < abre + _AVISO_APERTURA_HASTA:
-                    hecho["empieza"] += _enviar_una_vez(
-                        db, "aviso.empieza", "empieza", j.id,
-                        caduca=datetime.combine(
-                            j.dia_inicio, HORA_CIERRE_JORNADA, tzinfo=TZ_NUEVA_YORK),
-                        datos={"jornada_id": j.id})
-    except Exception:
-        logger.exception("Fallo en los avisos de la jornada")
-    return hecho

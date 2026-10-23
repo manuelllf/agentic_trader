@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.liga import estrategias, gestion
+from app.liga.actividad import ActividadOut, actividad
 from app.liga.auth import Identidad, identidad_opcional
 from app.liga.comparativa import (
     RentabilidadAcumulada,
@@ -146,6 +147,7 @@ class TemporadaPremioOut(BaseModel):
     nombre: str
     clave: str | None = None
     n_jornadas: int = 0
+    n_meses: int = 0
 
 
 class PremioOut(BaseModel):
@@ -431,3 +433,12 @@ def portada(db: Session = Depends(db_anon),
         apuntadas=estrategias.contar_apuntadas(),
         inscritas_en_juego=inscritas,
     )
+
+
+@router.get("/actividad", response_model=ActividadOut)
+def actividad_de_la_liga(temporada: int | None = None,
+                        limite: int = Query(10, ge=1, le=50),
+                        db: Session = Depends(db_anon)) -> ActividadOut:
+    """Lo último que ha cambiado en la liga: cambios de cartera publicados y saltos de puesto."""
+    t = _temporada(db, temporada)
+    return actividad(db, t.id if t else None, limite)

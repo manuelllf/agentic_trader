@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import precios
-from app.liga.models import Jornada
+from app.liga.models import Jornada, Temporada
 from app.liga.motor import omega_huecos as motor
 from app.liga.motor.omega_huecos import Alerta, Operacion
 from app.liga.procesos.comun import TZ_BOLSA, auditar
@@ -238,11 +238,13 @@ def datos_ficha(estrategia_id: str, solo_cerradas: bool) -> tuple[list[dict], di
     from app.liga.procesos.comun import fabrica_sistema, hoy_bolsa, sesion
 
     with sesion(fabrica_sistema) as db:
-        jornadas = list(db.scalars(select(Jornada).where(
+        filas = db.execute(select(Jornada, Temporada.n_jornadas).join(
+            Temporada, Temporada.id == Jornada.temporada_id).where(
             Jornada.id.in_(text("select jornada_id from liga.inscripciones "
                                "where estrategia_id = :e")),
             Jornada.estado.in_(["cerrada"] if solo_cerradas else ["formada", "cerrada"]),
-        ).order_by(Jornada.dia_base, Jornada.id), {"e": estrategia_id}))
+        ).order_by(Jornada.dia_base, Jornada.id), {"e": estrategia_id}).all()
+        jornadas = [j for j, _ in filas]
         if not jornadas:
             return [], rendimiento._sin_datos()
         hoy = hoy_bolsa()
@@ -280,6 +282,6 @@ def datos_ficha(estrategia_id: str, solo_cerradas: bool) -> tuple[list[dict], di
                            [(ticker, Decimal(100))]))
         salida = rendimiento._serie_guardada(
             rondas, series, hoy, dias_de_bolsa(jornadas[0].dia_base, hasta),
-            numeros=[j.numero for j in jornadas])
+            numeros=[j.numero for j in jornadas], totales=[total for _, total in filas])
         salida["evidencia"] = None
         return cartera, salida

@@ -16,21 +16,24 @@ from app.liga.procesos.estado import _siguiente
 # ---- temporadas ---------------------------------------------------------------------------------
 
 
-def test_pretemporada_con_los_meses_que_aun_no_han_empezado() -> None:
+def test_pretemporada_con_las_semanas_que_aun_no_han_empezado() -> None:
     planes = temporadas.planificar(date(2026, 9, 27))
     pre, t1 = planes
     assert (pre.nombre, pre.cuenta) == (temporadas.PRETEMPORADA, False)
-    assert [(j.anio, j.mes) for j in pre.jornadas] == [(2026, 10), (2026, 11), (2026, 12)]
-    assert (t1.nombre, t1.cuenta, len(t1.jornadas)) == (temporadas.TEMPORADA_1, True, 12)
+    assert len(pre.jornadas) == 13
+    assert pre.jornadas[0].fechas.dia_inicio == date(2026, 10, 5)
+    assert pre.jornadas[-1].fechas.dia_fin == date(2026, 12, 31)
+    assert (t1.nombre, t1.cuenta, len(t1.jornadas)) == (temporadas.TEMPORADA_1, True, 52)
     enero = t1.jornadas[0].fechas
     assert (enero.dia_base, enero.dia_inicio, enero.dia_fin) == \
-        (date(2026, 12, 31), date(2027, 1, 4), date(2027, 1, 29))
+        (date(2026, 12, 31), date(2027, 1, 4), date(2027, 1, 8))
 
 
-def test_sin_meses_libres_no_hay_pretemporada() -> None:
-    assert [p.nombre for p in temporadas.planificar(date(2026, 12, 3))] == [temporadas.TEMPORADA_1]
-    assert [p.nombre for p in temporadas.planificar(date(2026, 11, 30))] == \
-        [temporadas.PRETEMPORADA, temporadas.TEMPORADA_1]
+def test_sin_semanas_libres_no_hay_pretemporada() -> None:
+    assert [p.nombre for p in temporadas.planificar(date(2026, 12, 29))] == [temporadas.TEMPORADA_1]
+    planes = temporadas.planificar(date(2026, 12, 3))
+    assert [p.nombre for p in planes] == [temporadas.PRETEMPORADA, temporadas.TEMPORADA_1]
+    assert len(planes[0].jornadas) == 4
 
 
 def test_cada_nombre_del_planificador_tiene_clave_para_traducir() -> None:
@@ -39,9 +42,10 @@ def test_cada_nombre_del_planificador_tiene_clave_para_traducir() -> None:
 
 
 def test_jornadas_de_la_temporada_encadenadas() -> None:
-    t1 = temporadas.planificar(date(2026, 12, 3))[0]
+    t1 = temporadas.planificar(date(2026, 12, 29))[0]
     for a, b in zip(t1.jornadas, t1.jornadas[1:], strict=False):
-        assert b.fechas.dia_base == a.fechas.dia_fin   # el día base es el último del mes anterior
+        # el día base es el corte de la semana anterior
+        assert b.fechas.dia_base == a.fechas.dia_fin
 
 
 # ---- pesos de la casa ---------------------------------------------------------------------------

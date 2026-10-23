@@ -85,8 +85,10 @@ def datos_ficha(db: Session, estrategia_id: str, usuario_id: str | None = None,
     jornadas = db.execute(text("""
         select j.id as jornada_id, j.numero as jornada_numero, j.dia_base, j.dia_fin,
                j.estado as estado_jornada, j.foto_id, j.scan_run_id,
+               t.n_jornadas as jornada_total,
                i.id as inscripcion_id, i.receta_id, i.n_pasan
         from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
+        join liga.temporadas t on t.id = j.temporada_id
         where i.estrategia_id = :e and j.estado = any(:estados)
         order by j.dia_base, j.id
     """), {"e": estrategia_id,
@@ -111,7 +113,8 @@ def datos_ficha(db: Session, estrategia_id: str, usuario_id: str | None = None,
 
     sessions = dias_de_bolsa(min(base for base, _, _, _ in by_round), market_end)
     out = _serie_guardada(by_round, series, as_of, sessions,
-                          numeros=[j["jornada_numero"] for j in jornadas])
+                          numeros=[j["jornada_numero"] for j in jornadas],
+                          totales=[j["jornada_total"] for j in jornadas])
     out["evidencia"] = None
     if usuario_id is not None:
         from app.liga import estrategias
@@ -251,7 +254,8 @@ def _evidencia_formacion(contexto: dict, series: dict, as_of: date,
     salida = {
         "formacion": {
             "inscripcion_id": actual["inscripcion_id"], "jornada_id": actual["jornada_id"],
-            "jornada_numero": actual["numero"], "desde": actual["dia_base"].isoformat(),
+            "jornada_numero": actual["numero"], "jornada_total": actual["jornada_total"],
+            "desde": actual["dia_base"].isoformat(),
             "hasta": actual["dia_fin"].isoformat(),
             "metodo": "mantenida" if actual["n_pasan"] is None else "seleccion",
             "receta_id": actual["receta_id"],
@@ -314,7 +318,8 @@ def _pesos_receta(receta) -> dict | None:  # noqa: ANN001
 
 def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, Decimal]]]],
                     series: dict, as_of: date, market_sessions: Sequence[date],
-                    numeros: Sequence[int] | None = None) -> dict:
+                    numeros: Sequence[int] | None = None,
+                    totales: Sequence[int] | None = None) -> dict:
     """Curva pura a partir de posiciones y cierres precargados; no accede a la BD.
     Con `numeros` (uno por jornada), cada punto lleva su jornada; el día base, la que abre."""
     def cierres_unicos(ticker: str) -> dict[date, object]:
@@ -345,6 +350,7 @@ def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, D
 
     for orden, (base, fin, oficial, holdings) in enumerate(by_round):
         numero = numeros[orden] if numeros is not None else None
+        total = totales[orden] if totales is not None else None
         # Only chain a round at the exact close where the preceding round ended. A missing base
         # or a skipped month has no defensible portfolio level to inherit.
         if puntos and (not previous_round_complete or previous_round_end != base):
@@ -378,12 +384,13 @@ def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, D
         if puntos:
             round_factor = puntos[-1]["_estrategia_nivel"]
             puntos[-1]["_jornada"] = numero
+            puntos[-1]["_jornada_total"] = total
         else:
             # La base de la primera jornada fija el 0 % de ambas curvas y permite medir el
             # retorno de la primera sesión como una observación diaria real.
             puntos.append({"_dia": base, "_estrategia_nivel": round_factor,
                            "_sp_nivel": 1.0, "provisional": not round_complete,
-                           "salto": False, "_jornada": numero})
+                           "salto": False, "_jornada": numero, "_jornada_total": total})
             niveles_estrategia.append(round_factor)
             base_global = base
         assert base_global is not None
@@ -414,7 +421,8 @@ def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, D
             # gap visible in the chart and excluding the multi-session move from daily ratios.
             puntos.append({"_dia": d, "_estrategia_nivel": strategy_level,
                            "_sp_nivel": benchmark_level, "provisional": not round_complete,
-                           "salto": not contiguous, "_jornada": numero})
+                           "salto": not contiguous, "_jornada": numero,
+                           "_jornada_total": total})
             if contiguous:
                 daily = strategy_level / puntos[-2]["_estrategia_nivel"] - 1
                 retornos_validos.append(daily)
@@ -442,7 +450,8 @@ def _serie_guardada(by_round: Sequence[tuple[date, date, bool, list[tuple[str, D
               "estrategia": (p["_estrategia_nivel"] / first_e - 1) * 100,
               "sp500": (p["_sp_nivel"] / first_sp - 1) * 100,
               "provisional": p["provisional"], "salto": p["salto"],
-              **({"jornada": p["_jornada"]} if numeros is not None else {})}
+              **({"jornada": p["_jornada"]} if numeros is not None else {}),
+              **({"jornada_total": p["_jornada_total"]} if totales is not None else {})}
              for p in puntos]
     metrics = metricas_diarias(retornos_validos, niveles_estrategia)
     return {

@@ -847,6 +847,7 @@ def test_funciones_security_definer_solo_para_quien_toca(cx):
         where n.nspname = 'liga' and p.prosecdef
           and has_function_privilege(r.rolname, p.oid, 'EXECUTE')""")}
     assert ejecutables == {
+        ("actividad_publica", "anon"), ("actividad_publica", "authenticated"),
         ("authorize", "authenticated"), ("es_pro", "authenticated"),
         ("designar_premio", "authenticated"), ("puede_crear_liga", "authenticated"),
         ("puede_ver_posiciones", "authenticated"), ("es_miembro", "authenticated"),
@@ -855,6 +856,9 @@ def test_funciones_security_definer_solo_para_quien_toca(cx):
         ("aceptar_terminos", "authenticated"), ("cuenta_pendiente", "authenticated"),
         ("ligas_incluidas", "authenticated"), ("email_de_usuario", "authenticated"),
         ("tiene_borrador", "authenticated"),
+        ("visita_anterior", "authenticated"), ("novedades_desde", "authenticated"),
+        ("marcar_novedades_vistas", "authenticated"), ("mis_cambios_desde", "authenticated"),
+        ("cierres_de_mis_posiciones", "authenticated"),
     }
 
 
@@ -964,7 +968,8 @@ def test_vistas_del_panel_solo_las_ve_un_admin(cx):
     cx.execute("insert into liga.borradores (usuario_id, clave, contenido, revision) "
                "values (%s, 'nueva', '{}'::jsonb, 1)", (a,))
     vistas = ("v_admin_cohortes", "v_admin_visitas_dia", "v_admin_sin_estrategia",
-              "v_admin_inactivas", "v_admin_nunca_apuntadas", "v_admin_reglas_usadas")
+              "v_admin_inactivas", "v_admin_nunca_apuntadas", "v_admin_reglas_usadas",
+              "v_admin_vuelta")
     _como(cx, a)
     for vista in vistas:
         assert _filas(cx, f"select count(*) from liga.{vista}") == [(0,)]  # noqa: S608

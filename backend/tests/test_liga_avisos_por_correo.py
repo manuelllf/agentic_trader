@@ -14,7 +14,7 @@ from app.config import settings
 from app.liga import avisos
 
 CIERRA = datetime(2027, 1, 4, 14, 0, tzinfo=UTC)          # 15:00 en Madrid
-CON_CORREO = ("cartera_lista", "quitadas_vaciadas", "sin_pregunta", "empieza")
+CON_CORREO = ("quitadas_vaciadas", "sin_pregunta")
 
 
 class _Resultado:
@@ -89,42 +89,43 @@ def empujes(monkeypatch) -> list:  # noqa: ANN001
 
 
 def test_con_el_correo_activado_el_aviso_sale_tambien_por_correo(buzon) -> None:  # noqa: ANN001
-    assert avisos.avisar(_Db(perfil()), "u1", "cartera_lista", cierra=CIERRA) == 0
+    assert avisos.avisar(_Db(perfil()), "u1", "sin_pregunta", name="Mi estrategia") == 0
     ((destino, asunto, texto, html),) = buzon
     assert destino == "ana@ejemplo.com"
-    assert asunto == "Tu cartera está lista"
-    assert "Puedes cambiar empresas hasta el 4 de enero a las 15:00." in texto
+    assert asunto == "Jugó sin su pregunta"
+    assert "Mi estrategia juega este mes sin su pregunta. Tienes el motivo en Mías." in texto
     assert f"Ver en Vennett: {settings.url_publica}/mias" in texto
     assert f'href="{settings.url_publica}/mias"' in html
 
 
 def test_el_correo_sale_en_el_idioma_de_la_cuenta(buzon) -> None:  # noqa: ANN001
-    avisos.avisar(_Db(perfil(idioma="en")), "u1", "cartera_lista", cierra=CIERRA)
+    avisos.avisar(_Db(perfil(idioma="en")), "u1", "sin_pregunta", name="Mi estrategia")
     ((_, asunto, texto, _),) = buzon
-    assert asunto == "Your portfolio is ready"
-    assert "You can swap companies until January 4 at 15:00." in texto
+    assert asunto == "Played without its question"
+    assert "Mi estrategia plays this month without its question. The reason is in My strategies." in texto
     assert f"See it in Vennett: {settings.url_publica}/mias" in texto
 
 
 def test_con_el_correo_apagado_no_sale_correo(buzon, empujes) -> None:  # noqa: ANN001
     db = _Db(perfil(avisos_correo=False), [suscripcion(1)])
-    assert avisos.avisar(db, "u1", "empieza") == 1
+    assert avisos.avisar(db, "u1", "sin_pregunta", name="Mi estrategia") == 1
     assert buzon == []
 
 
 def test_la_direccion_propia_gana_a_la_de_la_cuenta(buzon) -> None:  # noqa: ANN001
-    avisos.avisar(_Db(perfil(correo_avisos="otra@ejemplo.com")), "u1", "empieza")
+    avisos.avisar(_Db(perfil(correo_avisos="otra@ejemplo.com")), "u1", "sin_pregunta",
+                  name="Mi estrategia")
     assert [destino for destino, *_ in buzon] == ["otra@ejemplo.com"]
 
 
 @pytest.mark.parametrize("campos", [{"email": None}, {"email": ""}])
 def test_sin_destinatario_no_sale_correo(buzon, campos) -> None:  # noqa: ANN001
-    avisos.avisar(_Db(perfil(**campos)), "u1", "empieza")
+    avisos.avisar(_Db(perfil(**campos)), "u1", "sin_pregunta", name="Mi estrategia")
     assert buzon == []
 
 
 def test_una_cuenta_sin_perfil_no_recibe_correo(buzon) -> None:  # noqa: ANN001
-    assert avisos.avisar(_Db(None), "u1", "empieza") == 0
+    assert avisos.avisar(_Db(None), "u1", "sin_pregunta", name="Mi estrategia") == 0
     assert buzon == []
 
 
@@ -142,7 +143,7 @@ def test_el_recordatorio_de_cierre_de_cambios_sigue_solo_por_push(buzon, empujes
 
 def test_el_recuento_es_el_del_push_y_el_correo_sale_una_vez(buzon, empujes) -> None:  # noqa: ANN001
     db = _Db(perfil(), [suscripcion(1), suscripcion(2)])
-    assert avisos.avisar(db, "u1", "empieza") == 2
+    assert avisos.avisar(db, "u1", "sin_pregunta", name="Mi estrategia") == 2
     assert len(empujes) == 2
     assert len(buzon) == 1
 
@@ -160,7 +161,7 @@ def test_si_el_correo_falla_el_aviso_no_se_rompe(monkeypatch, empujes) -> None: 
         raise RuntimeError("sin red")
 
     monkeypatch.setattr(correo, "enviar", rota)
-    assert avisos.avisar(_Db(perfil(), [suscripcion(1)]), "u1", "empieza") == 1
+    assert avisos.avisar(_Db(perfil(), [suscripcion(1)]), "u1", "sin_pregunta", name="Mi estrategia") == 1
     assert len(empujes) == 1
 
 

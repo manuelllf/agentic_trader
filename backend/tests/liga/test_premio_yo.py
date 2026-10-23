@@ -26,7 +26,8 @@ def escenario(request):
             jornadas.append(db.execute(text("""
                 insert into liga.jornadas (temporada_id, numero, dia_base, dia_inicio, dia_fin,
                                            cierre_inscripcion)
-                values (:t, :n, '2030-01-01', '2030-01-02', '2030-01-31', '2030-01-01')
+                values (:t, :n, '2030-01-01', make_date(2030, :n, 2),
+                        make_date(2030, :n, 28), '2030-01-01')
                 returning id
             """), {"t": temporada, "n": numero}).scalar_one())
 
@@ -72,7 +73,7 @@ def test_requisitos_del_premio_propio(escenario, edad, designada, jugadas, estad
     resultado = leer()
     assert resultado["edad"] == estado
     assert resultado["jornadas_jugadas"] == jugadas
-    assert resultado["minimo_jornadas"] == 10
+    assert resultado["minimo_jornadas"] == premio.motor.MIN_MESES
     assert resultado["optas"] is optas
     assert resultado["estrategia"] == (
         {"id": eid, "nombre": "Mi estrategia"} if designada else None)

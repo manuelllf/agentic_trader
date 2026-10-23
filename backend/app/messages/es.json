@@ -1,4 +1,5 @@
 {
+  "api_error_copia_no_juega": "Solo se copian estrategias que juegan la jornada.",
   "api_error_intenciones_limite": "Ya has enviado varias peticiones hoy. Vuelve mañana.",
   "api_error_intenciones_texto": "Escribe una frase de hasta 160 caracteres.",
   "api_error_edad_minima": "Vennett es para mayores de 14 años.",
@@ -463,8 +464,7 @@
   "push_omega_prueba_body": "Si lo ves, el aviso de Omega llega.",
   "push_liga_prueba_title": "Vennett: aviso de prueba",
   "push_liga_prueba_body": "Si lo ves, los avisos te llegan.",
-  "correo_resumen_semanal_asunto": "Tu semana en Vennett",
-  "correo_resumen_mensual_asunto": "Cierre de la jornada {numero} en Vennett",
+  "correo_resumen_mensual_asunto": "Cierre de la jornada {numero} de {total} en Vennett",
   "correo_resumen_intro": "Estos son los datos de tu estrategia. Son descriptivos: no son una recomendación.",
   "correo_resumen_baja": "Para dejar de recibirlos, ve a Cuenta › Avisos y apaga el resumen por correo.",
   "correo_resumen_rentabilidad": "Rentabilidad de la jornada",
@@ -495,5 +495,6 @@
   "blog_correo_confirmar_pie": "El enlace caduca en siete días. Si no has pedido esta suscripción, puedes ignorar este correo.",
   "blog_correo_baja_enlace": "Dar de baja la suscripción",
   "blog_correo_articulo_enlace": "Leer el artículo",
-  "blog_correo_articulo_pie": "Recibes esto porque te apuntaste al boletín de Vennett."
+  "blog_correo_articulo_pie": "Recibes esto porque te apuntaste al boletín de Vennett.",
+  "api_error_db_jornadas_programadas_con_datos": "Hay jornadas programadas con datos: no se rehacen."
 }

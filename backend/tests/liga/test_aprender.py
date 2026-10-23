@@ -43,11 +43,30 @@ def test_horas_del_ciclo_en_la_semana_del_cambio_de_hora(monkeypatch):
     assert horas["cierre_cambios"].astimezone(madrid).strftime("%H:%M") == "15:00"
 
 
+def test_sin_escaneo_mensual_en_la_semana_no_hay_hora_de_escaneo():
+    assert horas_del_ciclo(date(2026, 11, 6), date(2026, 11, 9))["escaneo"] is None
+
+
+def test_el_escaneo_cae_el_dia_del_fin_de_mes(monkeypatch):
+    monkeypatch.setattr(settings, "scan_cron_hour", 16)
+    monkeypatch.setattr(settings, "scan_cron_minute", 45)
+    monkeypatch.setattr(settings, "scan_timezone", "America/New_York")
+    horas = horas_del_ciclo(date(2026, 12, 4), date(2026, 12, 7))
+    assert horas["escaneo"] == datetime(2026, 11, 30, 21, 45, tzinfo=UTC)
+
+
 def test_jornada_de_calendario_cambia_de_anio():
-    jornada = _jornada_de_calendario(date(2026, 12, 15))
+    jornada = _jornada_de_calendario(date(2026, 12, 29))
     assert jornada["dia_inicio"] == date(2027, 1, 4)
     assert jornada["dia_base"] == date(2026, 12, 31)
     assert jornada["numero"] is None
+
+
+def test_jornada_de_calendario_es_la_semana_siguiente():
+    jornada = _jornada_de_calendario(date(2026, 12, 15))
+    assert jornada["dia_base"] == date(2026, 12, 18)
+    assert jornada["dia_inicio"] == date(2026, 12, 21)
+    assert jornada["dia_fin"] == date(2026, 12, 24)
 
 
 def test_recuento_roe_con_la_regla_del_motor():

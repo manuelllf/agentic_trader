@@ -82,6 +82,7 @@ ORIGEN_PLANTILLAS: tuple[tuple[str, str], ...] = (
 ERROR_KEYS = {value: key for key, value in MESSAGES["es"].items() if key.startswith("api_error_")}
 ERROR_KEYS.update(ORIGEN_ERRORES)
 ERROR_KEYS.update({
+    "Solo se copian estrategias que juegan la jornada.": "api_error_copia_no_juega",
     "Ya has enviado varias peticiones hoy. Vuelve mañana.": "api_error_intenciones_limite",
     "Escribe una frase de hasta 160 caracteres.": "api_error_intenciones_texto",
 })

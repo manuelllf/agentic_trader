@@ -83,6 +83,7 @@ class MiembroLigaOut(BaseModel):
 class LigaDetalleOut(LigaResumenOut):
     miembros: list[MiembroLigaOut]
     jornada_numero: int | None = None
+    jornada_total: int | None = None
     datos_hasta: date | None = None
     sp500_mes: Decimal | None = None
     en_vivo: bool = False
@@ -162,8 +163,10 @@ def _temporada_actual(db: Session) -> int | None:
 
 def _jornada_formada(db: Session, temporada: int | None):  # noqa: ANN202
     return db.execute(text("""
-        select id, numero, dia_base from liga.jornadas
-        where temporada_id = :t and estado = 'formada' order by dia_base desc limit 1
+        select j.id, j.numero, j.dia_base, t.n_jornadas as jornada_total
+        from liga.jornadas j join liga.temporadas t on t.id = j.temporada_id
+        where j.temporada_id = :t and j.estado = 'formada'
+        order by j.dia_base desc limit 1
     """), {"t": temporada}).one_or_none()
 
 
@@ -282,6 +285,7 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
     return LigaDetalleOut(
         **_resumen(fila, ident.uid, n_miembros).model_dump(),
         jornada_numero=jornada.numero if jornada else None,
+        jornada_total=jornada.jornada_total if jornada else None,
         datos_hasta=vivo["dia"] if vivo else None,
         sp500_mes=vivo["sp"] if vivo else None,
         en_vivo=vivo.get("en_vivo", False) if vivo else False,

@@ -1,4 +1,4 @@
--- migraciones-liga: 057
+-- migraciones-liga: 062
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -947,6 +947,119 @@ $$;
 
 
 --
+-- Name: actividad_publica(bigint, integer); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.actividad_publica(p_temporada bigint, p_limite integer)
+  returns table (estrategia_id uuid, dia date, entradas text[], salidas text[])
+  language sql stable security definer set search_path to ''
+as $$
+  with cortes as (
+    select i.id as inscripcion_id, i.estrategia_id, j.dia_fin,
+           lag(i.id) over (partition by i.estrategia_id order by j.dia_fin, j.id) as anterior_id
+    from liga.inscripciones as i
+    join liga.jornadas as j on j.id = i.jornada_id
+    join liga.estrategias as e on e.id = i.estrategia_id
+    where j.temporada_id = p_temporada and j.estado = 'cerrada'
+      and e.tipo = 'usuario' and e.visibilidad = 'publicada' and not e.oculta
+  ), carteras as (
+    select inscripcion_id, array_agg(ticker order by ticker) as valores
+    from liga.posiciones group by inscripcion_id
+  )
+  select c.estrategia_id, c.dia_fin,
+         array(select t from unnest(actual.valores) as t
+               where not (t = any(coalesce(anterior.valores, '{}')))) as entradas,
+         array(select t from unnest(anterior.valores) as t
+               where not (t = any(actual.valores))) as salidas
+  from cortes as c
+  join carteras as actual on actual.inscripcion_id = c.inscripcion_id
+  join carteras as anterior on anterior.inscripcion_id = c.anterior_id
+  where array_length(array(select t from unnest(actual.valores) as t
+                           where not (t = any(anterior.valores))), 1) is not null
+     or array_length(array(select t from unnest(anterior.valores) as t
+                           where not (t = any(actual.valores))), 1) is not null
+  order by c.dia_fin desc, c.estrategia_id
+  limit p_limite
+$$;
+
+
+--
+-- Name: marcar_novedades_vistas(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.marcar_novedades_vistas() RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+begin
+  if (select auth.uid()) is null then
+    raise exception 'authenticated identity required' using errcode = '28000';
+  end if;
+  update liga.perfiles_privados
+     set novedades_vistas_en = now(),
+         actualizado_en = now(),
+         actualizado_por = (select auth.uid())
+   where id = (select auth.uid());
+end;
+$$;
+
+
+--
+-- Name: mis_cambios_desde(timestamp with time zone); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.mis_cambios_desde(p_desde timestamptz)
+  RETURNS table (estrategia_id uuid, accion text, ticker text, jornada_id bigint, creada timestamptz)
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select e.id, a.accion, a.detalle ->> 'ticker', (a.detalle ->> 'jornada_id')::bigint, a.creada
+  from liga.auditoria as a
+  join liga.estrategias as e on a.objeto = 'estrategia:' || e.id::text
+  where e.dueno_id = (select auth.uid())
+    and a.accion in ('cambios.quitar', 'cambios.recuperar', 'cambios.volver')
+    and a.creada > p_desde
+  order by a.creada, a.id
+$$;
+
+
+--
+-- Name: cierres_de_mis_posiciones(date, date); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.cierres_de_mis_posiciones(p_desde date, p_hasta date)
+    RETURNS TABLE (ticker text, dia date, cierre numeric, dividendo numeric, split numeric)
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select c.ticker, c.dia, c.cierre, c.dividendo, c.split
+  from public.precio_cierre as c
+  where c.dia between p_desde and p_hasta
+    and (c.ticker = 'SPY' or c.ticker in (
+      select p.ticker from liga.posiciones as p
+      join liga.inscripciones as i on i.id = p.inscripcion_id
+      join liga.estrategias as e on e.id = i.estrategia_id
+      where e.dueno_id = (select auth.uid())))
+  order by c.ticker, c.dia
+$$;
+
+
+--
+-- Name: novedades_desde(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.novedades_desde() RETURNS timestamptz
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select coalesce(
+    (select p.novedades_vistas_en from liga.perfiles_privados as p
+     where p.id = (select auth.uid())),
+    liga.visita_anterior())
+$$;
+
+
+--
 -- Name: perfiles_guarda(); Type: FUNCTION; Schema: liga; Owner: -
 --
 
@@ -1209,6 +1322,22 @@ CREATE FUNCTION liga.version_terminos() RETURNS text
     SET search_path TO ''
     AS $$
   select '6'::text;
+$$;
+
+
+--
+-- Name: visita_anterior(); Type: FUNCTION; Schema: liga; Owner: -
+--
+
+CREATE FUNCTION liga.visita_anterior() RETURNS timestamptz
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select v.inicio from liga.visitas as v
+  where v.usuario_id = (select auth.uid())
+    and v.ultima_actividad < clock_timestamp() - interval '30 minutes'
+  order by v.inicio desc
+  limit 1
 $$;
 
 
@@ -2598,7 +2727,7 @@ CREATE TABLE liga.jornadas (
     CONSTRAINT jornada_cerrada_con_sp CHECK (((estado <> 'cerrada'::text) OR (sp_rentabilidad IS NOT NULL))),
     CONSTRAINT jornada_fechas CHECK (((dia_base < dia_inicio) AND (dia_inicio <= dia_fin))),
     CONSTRAINT jornadas_estado_check CHECK ((estado = ANY (ARRAY['programada'::text, 'formada'::text, 'cerrada'::text]))),
-    CONSTRAINT jornadas_numero_check CHECK (((numero >= 1) AND (numero <= 24)))
+    CONSTRAINT jornadas_numero_check CHECK (((numero >= 1) AND (numero <= 60)))
 );
 
 
@@ -2829,6 +2958,7 @@ CREATE TABLE liga.perfiles_privados (
     edad smallint,
     edad_declarada_en timestamp with time zone,
     zona_horaria text,
+    novedades_vistas_en timestamp with time zone,
     CONSTRAINT perfiles_privados_correo_avisos_check CHECK (((correo_avisos IS NULL) OR ((length(correo_avisos) <= 254) AND (correo_avisos ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'::text)))),
     CONSTRAINT perfiles_privados_edad_rango CHECK (((edad IS NULL) OR ((edad >= 14) AND (edad <= 120)))),
     CONSTRAINT perfiles_privados_idioma_check CHECK ((idioma = ANY (ARRAY['es'::text, 'en'::text]))),
@@ -2850,6 +2980,8 @@ COMMENT ON COLUMN liga.perfiles_privados.edad IS 'Edad en años que declara la c
 
 COMMENT ON COLUMN liga.perfiles_privados.edad_declarada_en IS 'Cuándo declaró la cuenta su edad por primera vez.';
 
+
+COMMENT ON COLUMN liga.perfiles_privados.novedades_vistas_en IS 'Cuándo cerró la cuenta la hoja de novedades por última vez; null si nunca.';
 
 --
 -- Name: permisos_rol; Type: TABLE; Schema: liga; Owner: -
@@ -2921,7 +3053,7 @@ CREATE TABLE liga.premios (
     creado_por uuid DEFAULT auth.uid(),
     CONSTRAINT premio_puesto_e_importe CHECK (((puesto IS NULL) = (importe IS NULL))),
     CONSTRAINT premios_importe_check CHECK ((importe > (0)::numeric)),
-    CONSTRAINT premios_jornadas_jugadas_check CHECK (((jornadas_jugadas >= 1) AND (jornadas_jugadas <= 24))),
+    CONSTRAINT premios_jornadas_jugadas_check CHECK (((jornadas_jugadas >= 1) AND (jornadas_jugadas <= 60))),
     CONSTRAINT premios_puesto_check CHECK (((puesto >= 1) AND (puesto <= 3)))
 );
 
@@ -3195,7 +3327,7 @@ CREATE TABLE liga.temporadas (
     actualizado_en timestamp with time zone,
     actualizado_por uuid,
     CONSTRAINT temporadas_estado_check CHECK ((estado = ANY (ARRAY['programada'::text, 'en_juego'::text, 'cerrada'::text]))),
-    CONSTRAINT temporadas_n_jornadas_check CHECK (((n_jornadas >= 1) AND (n_jornadas <= 24))),
+    CONSTRAINT temporadas_n_jornadas_check CHECK (((n_jornadas >= 1) AND (n_jornadas <= 60))),
     CONSTRAINT temporadas_nombre_check CHECK (((length(nombre) >= 1) AND (length(nombre) <= 60)))
 );
 
@@ -3351,6 +3483,42 @@ CREATE VIEW liga.v_admin_visitas_dia WITH (security_invoker='true') AS
   WHERE ( SELECT liga.es_admin() AS es_admin)
   GROUP BY (((inicio AT TIME ZONE 'Europe/Madrid'::text))::date);
 
+
+-- Name: v_admin_vuelta; Type: VIEW; Schema: liga; Owner: -
+
+CREATE VIEW liga.v_admin_vuelta WITH (security_invoker='true') AS
+with primeras as (
+  select e.dueno_id as usuario_id,
+         min(j.dia_inicio)::timestamp as primera
+  from liga.estrategias e
+  join liga.inscripciones i on i.estrategia_id = e.id
+  join liga.jornadas j on j.id = i.jornada_id
+  where e.tipo = 'usuario' and i.estado in ('formada', 'cerrada')
+  group by e.dueno_id
+), cuentas as (
+  select p.creado, f.primera,
+         ((f.primera + interval '14 days') at time zone 'Europe/Madrid') <= now() as madura_2,
+         ((f.primera + interval '21 days') at time zone 'Europe/Madrid') <= now() as madura_3,
+         exists (select 1 from liga.visitas v where v.usuario_id = p.id
+                 and v.inicio >= ((f.primera + interval '7 days') at time zone 'Europe/Madrid')
+                 and v.inicio < ((f.primera + interval '14 days') at time zone 'Europe/Madrid')) as visita_2,
+         exists (select 1 from liga.visitas v where v.usuario_id = p.id
+                 and v.inicio >= ((f.primera + interval '14 days') at time zone 'Europe/Madrid')
+                 and v.inicio < ((f.primera + interval '21 days') at time zone 'Europe/Madrid')) as visita_3
+  from liga.perfiles p left join primeras f on f.usuario_id = p.id
+  where (select liga.es_admin())
+)
+select date_trunc('week', creado at time zone 'Europe/Madrid')::date as semana,
+       count(primera)::integer as jugaron,
+       (count(*) filter (where madura_2))::integer as base_2,
+       (count(*) filter (where madura_2 and visita_2))::integer as vuelven_2,
+       (count(*) filter (where madura_3))::integer as base_3,
+       (count(*) filter (where madura_3 and visita_3))::integer as vuelven_3
+from cuentas
+group by 1;
+
+revoke all on liga.v_admin_vuelta from public, anon;
+grant select on liga.v_admin_vuelta to authenticated;
 
 --
 -- Name: v_clasificacion; Type: VIEW; Schema: liga; Owner: -
@@ -11040,6 +11208,17 @@ GRANT ALL ON FUNCTION liga.puede_ver_posiciones(p_inscripcion bigint) TO authent
 --
 
 REVOKE ALL ON FUNCTION liga.recetas_guarda() FROM PUBLIC;
+
+
+revoke all on function liga.actividad_publica(bigint, integer) from public;
+grant execute on function liga.actividad_publica(bigint, integer) to anon, authenticated;
+
+revoke all on function liga.visita_anterior(), liga.novedades_desde(),
+  liga.marcar_novedades_vistas(), liga.mis_cambios_desde(timestamptz),
+  liga.cierres_de_mis_posiciones(date, date) from public, anon;
+grant execute on function liga.visita_anterior(), liga.novedades_desde(),
+  liga.marcar_novedades_vistas(), liga.mis_cambios_desde(timestamptz),
+  liga.cierres_de_mis_posiciones(date, date) to authenticated;
 
 
 --

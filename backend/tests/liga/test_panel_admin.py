@@ -215,3 +215,62 @@ def test_estado_con_dias_de_bolsa(request) -> None:  # noqa: ANN001
 
 
 
+
+@pytest.mark.parametrize(("dias", "visitas", "esperado"), [
+    (15, [9, 9], (1, 1, 1, 0, 0)),
+    (3, [], (1, 0, 0, 0, 0)),
+    (22, [7, 14, 20, 21], (1, 1, 1, 1, 1)),
+    (22, [6, 21], (1, 1, 0, 1, 0)),
+])
+def test_vuelta_bases_y_visitas(api, dias, visitas, esperado) -> None:  # noqa: ANN001
+    from test_liga_rls import _como, _lista, _sistema
+
+    _cliente, _cab, usuario, cx = api
+    jugador, admin = usuario(pro=True), usuario(rol="admin")
+    with cx.transaction(force_rollback=True):
+        cx.execute("update liga.perfiles set creado = '2001-01-01' where id = %s", (jugador,))
+        _como(cx, uuid.UUID(admin), aal="aal2")
+        sql = ("select jugaron, base_2, vuelven_2, base_3, vuelven_3 "
+               "from liga.v_admin_vuelta where semana = '2001-01-01'")
+        antes = cx.execute(sql).fetchone()
+        eid, rid = _lista(cx, uuid.UUID(jugador))
+        _sistema(cx)
+        tid = cx.execute("insert into liga.temporadas (nombre, n_jornadas, cuenta) "
+                         "values ('Vuelta', 2, false) returning id").fetchone()[0]
+        for numero, antiguedad in ((1, dias), (2, 1)):
+            jid = cx.execute(
+                "insert into liga.jornadas (temporada_id, numero, dia_base, dia_inicio, "
+                "dia_fin, cierre_inscripcion) values (%s, %s, current_date - %s - 1, "
+                "current_date - %s, current_date, now()) returning id",
+                (tid, numero, antiguedad, antiguedad)).fetchone()[0]
+            cx.execute("insert into liga.inscripciones "
+                       "(jornada_id, estrategia_id, receta_id, estado) "
+                       "values (%s, %s, %s, 'formada')", (jid, eid, rid))
+        for dia in visitas:
+            cx.execute("insert into liga.visitas (usuario_id, session_id, inicio) "
+                       "values (%s, gen_random_uuid(), "
+                       "(current_date - %s)::timestamp at time zone 'Europe/Madrid')",
+                       (jugador, dias - dia))
+        _como(cx, uuid.UUID(admin), aal="aal2")
+        despues = cx.execute(sql).fetchone()
+        assert tuple(b - a for a, b in zip(antes, despues, strict=True)) == esperado
+
+
+def test_vuelta_no_admin_no_lee_filas(api) -> None:  # noqa: ANN001
+    from test_liga_rls import _como
+
+    _cliente, _cab, usuario, cx = api
+    normal = usuario()
+    with cx.transaction(force_rollback=True):
+        _como(cx, uuid.UUID(normal))
+        assert cx.execute("select * from liga.v_admin_vuelta").fetchall() == []
+
+
+def test_analitica_vuelta_comparte_cohortes(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, _cx = api
+    respuesta = cliente.get("/liga/admin/panel/analitica",
+                            headers=cab(usuario(rol="admin"), aal="aal2"))
+    assert respuesta.status_code == 200, respuesta.text
+    datos = respuesta.json()
+    assert [f["semana"] for f in datos["vuelta"]] == [f["semana"] for f in datos["cohortes"]]
+    assert [f["jugaron"] for f in datos["vuelta"]] == [f["jugaron"] for f in datos["cohortes"]]

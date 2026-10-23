@@ -10,7 +10,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
-MIN_JORNADAS = 10          # jornadas jugadas para ser elegible
+MIN_MESES = 10             # Meses de bolsa con la cartera en juego: 10 de 12 para el premio.
 UMBRAL_BASICO = 100        # cuentas elegibles que activan el primer escalón
 UMBRAL_COMPLETO = 250      # y el segundo
 IMPORTES = {

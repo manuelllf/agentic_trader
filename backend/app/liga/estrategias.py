@@ -337,10 +337,12 @@ def evidencia_formacion_ficha(usuario_id: str, estrategia_id: str) -> dict | Non
     try:
         forms = db.execute(text("""
             select i.id as inscripcion_id, i.jornada_id, i.receta_id, i.n_pasan, i.estado,
-                   j.numero, j.dia_base, j.dia_fin, j.estado as estado_jornada,
+                   j.numero, t.n_jornadas as jornada_total,
+                   j.dia_base, j.dia_fin, j.estado as estado_jornada,
                    j.foto_id, j.scan_run_id, e.receta_id as receta_vigente_id
             from liga.inscripciones i
             join liga.jornadas j on j.id = i.jornada_id
+            join liga.temporadas t on t.id = j.temporada_id
             join liga.estrategias e on e.id = i.estrategia_id
             where e.id = cast(:e as uuid) and e.tipo = 'usuario'
               and i.estado in ('formada', 'cerrada')
@@ -633,18 +635,23 @@ def copiar_estrategia(db: Session, origen_id: uuid.UUID) -> RecetaModelo:
     decide: la suya o una publicada visible). Las de la casa no se copian nunca, y sin
     receta visible no hay qué copiar."""
     origen = db.execute(text("""
-        select tipo, nombre, forma, dibujo, color1, color2, iniciales, receta_id
+        select tipo, nombre, forma, dibujo, color1, color2, iniciales, receta_id, estado
         from liga.estrategias where id = :i
     """), {"i": origen_id}).one_or_none()
     if origen is None:
         raise HTTPException(404, "No existe esa estrategia.")
     if origen.tipo == "casa":
         raise HTTPException(403, "Las estrategias de la casa no se copian.")
+    if origen.estado not in ("apuntada", "jugando"):
+        raise HTTPException(409, "Solo se copian estrategias que juegan la jornada.")
     if origen.receta_id is None:
         raise HTTPException(409, "Esa estrategia todavía no tiene ninguna receta.")
     receta = db.get(RecetaModelo, origen.receta_id)
     if receta is None:
         raise HTTPException(404, "No puedes ver la receta de esa estrategia.")
+    pesos = [receta.peso_negocio, receta.peso_precio, receta.peso_deuda, receta.peso_pronto]
+    # Si solo pesaba la pregunta, usamos el mínimo válido como el motor.
+    pesos = pesos if any(pesos) else [PASO_PESO] * 4
     nueva_estrategia = db.execute(text("""
         insert into liga.estrategias (nombre, forma, dibujo, color1, color2, iniciales)
         values (:nombre, :forma, :dibujo, :color1, :color2, :iniciales)
@@ -656,9 +663,9 @@ def copiar_estrategia(db: Session, origen_id: uuid.UUID) -> RecetaModelo:
     nueva_receta = RecetaModelo(
         estrategia_id=nueva_estrategia.id, idea=receta.idea, reglas=receta.reglas,
         excluidas=list(receta.excluidas or []), catalogo_version=receta.catalogo_version,
-        pregunta=receta.pregunta, peso_negocio=receta.peso_negocio,
-        peso_precio=receta.peso_precio, peso_deuda=receta.peso_deuda,
-        peso_pronto=receta.peso_pronto, peso_pregunta=receta.peso_pregunta,
+        pregunta=None, peso_negocio=pesos[0],
+        peso_precio=pesos[1], peso_deuda=pesos[2],
+        peso_pronto=pesos[3], peso_pregunta=0,
         n_empresas=receta.n_empresas, reparto=receta.reparto,
         max_por_sector=receta.max_por_sector)
     db.add(nueva_receta)

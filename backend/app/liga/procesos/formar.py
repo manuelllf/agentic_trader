@@ -7,8 +7,10 @@
   el freno son el tope mensual de IA y el límite de tiempo (`limite_preguntas_s`).
   La estrategia a la que le falte alguna respuesta juega sin la pregunta y queda apuntada
   en `liga.formaciones_degradadas`.
-- Las «mantener» conservan sus valores con los pesos a los que llegaron al cierre del mes
-  anterior (`rentabilidad.pesos_mantenidos`); si no jugaron la jornada anterior, se seleccionan.
+- Sin escaneo nuevo (la jornada anterior jugó con el mismo), todas mantienen sus valores con los
+  pesos a los que llegaron al cierre de la semana anterior (`rentabilidad.pesos_mantenidos`), la
+  casa incluida salvo Omega. Con escaneo nuevo, las «mantener» siguen igual y el resto se
+  selecciona; si no jugaron la anterior, se seleccionan.
 - Los equipos de la casa, con `casa`.
 - El precio de compra es el cierre del día base en `public.precio_cierre` (`precios.al_dia`, la
   única red). Una empresa sin ese cierre no se puede comprar: sale de la foto y se vuelve a
@@ -102,6 +104,7 @@ class Contexto:
     dia_base: date
     empresas: tuple[EmpresaFoto, ...]
     notas: dict[str, NotasJev]
+    cambio_de_mes: bool
 
 
 @dataclass
@@ -146,10 +149,19 @@ def _anterior_sin_cerrar(db: Session, j: Jornada) -> bool:
         {"d": j.dia_base, "j": j.id}).first() is not None
 
 
+def _cambio_de_mes(db: Session, j: Jornada) -> bool:
+    """La jornada estrena escaneo si la anterior no existe o jugó con otro.
+    Sin escaneo nuevo, la cartera se mantiene."""
+    anterior = db.execute(text(
+        "select scan_run_id from liga.jornadas where dia_fin = :d and id <> :j "
+        "order by id desc limit 1"), {"d": j.dia_base, "j": j.id}).one_or_none()
+    return anterior is None or anterior.scan_run_id != j.scan_run_id
+
+
 def contexto(db: Session, j: Jornada) -> Contexto:
     return Contexto(j.id, j.foto_id, j.scan_run_id, bool(es_plan_b(db, j)), j.cierre_inscripcion,
                     j.dia_base, tuple(datos.cargar_empresas(db, j.foto_id)),
-                    datos.cargar_notas(db, j.scan_run_id))
+                    datos.cargar_notas(db, j.scan_run_id), _cambio_de_mes(db, j))
 
 
 _ESTRATEGIAS = text("""
@@ -182,6 +194,8 @@ class PreguntaDeEstrategia:
 
 def _preguntas_por_estrategia(db: Session, ctx: Contexto) -> list[PreguntaDeEstrategia]:
     """Las «mantener» no vuelven a preguntar: conservan lo del mes pasado, sin selección nueva."""
+    if not ctx.cambio_de_mes:
+        return []
     preguntas = []
     for fila in db.execute(_ESTRATEGIAS, {"corte": ctx.corte}).all():
         if fila.receta_id is None or fila.cada_dia_1 == "mantener":
@@ -300,6 +314,22 @@ def _mantenidas(db: Session, estrategia_id: uuid.UUID,
     return pesos_mantenidos(pos, cierres, prev.dia_base, prev.dia_fin)
 
 
+def _casa_mantenida(db: Session, clave: str, ctx: Contexto, plan: Plan) -> casa.CarteraCasa | None:
+    """La cartera con que la casa acabó la semana anterior; None si no jugó o no hay precios,
+    y entonces sale del escaneo."""
+    eid = db.execute(text("select id from liga.estrategias where casa_clave = :c"),
+                     {"c": clave}).scalar()
+    if eid is None:
+        return None
+    try:
+        pos = _mantenidas(db, eid, ctx)
+    except ValueError as e:
+        plan.avisos.append(f"{clave}: no se pudieron mantener sus valores ({e}); "
+                           "sale del escaneo.")
+        return None
+    return None if pos is None else casa.CarteraCasa(clave, tuple(pos))
+
+
 _CONFIGURACION = ("reglas", "peso_negocio", "peso_precio", "peso_deuda", "peso_pronto",
                   "peso_pregunta", "pregunta", "n_empresas", "reparto", "max_por_sector")
 
@@ -319,7 +349,8 @@ def _receta_anterior(db: Session, estrategia_id: uuid.UUID, ctx: Contexto) -> Re
     return db.get(Receta, receta_id) if receta_id is not None else None
 
 
-def _con_cambios(base: list[tuple[str, Decimal]], empresas: list[EmpresaFoto], receta,  # noqa: ANN001
+def _con_cambios(base: list[tuple[str, Decimal]], empresas: list[EmpresaFoto],
+                 receta,  # noqa: ANN001
                  notas: dict[str, NotasJev], respuestas: dict) -> list[tuple[str, Decimal]]:
     """La cartera que se mantiene con las quitadas sustituidas: cada una cede su peso a la
     siguiente de la selección que no esté ya en cartera; si no quedan alternativas, va a caja."""
@@ -359,7 +390,9 @@ def entrada_de(db: Session, ctx: Contexto, empresas: list[EmpresaFoto], excluir:
             motor, vaciar = replace(motor, excluidas=()), True
     respuestas = datos.cargar_respuestas(db, receta.pregunta, ctx.foto_id)
     aviso = None
-    if fila.cada_dia_1 == "mantener":
+    # Sin escaneo nuevo la cartera se mantiene; solo la semana que estrena escaneo
+    # vuelve a seleccionar.
+    if fila.cada_dia_1 == "mantener" or not ctx.cambio_de_mes:
         try:
             mantenidas = _mantenidas(db, fila.id, ctx)
         except ValueError as e:
@@ -405,8 +438,9 @@ def planificar(db: Session, ctx: Contexto, excluir: set[str], motivo_ia: str | N
         if entrada:
             plan.entradas.append(entrada)
 
-    plan.casa["lambda"] = casa.cartera_lambda(db, ctx.scan_run_id, ctx.plan_b)
-    plan.casa["alpha"] = casa.cartera_alpha(db, ctx.scan_run_id, ctx.plan_b)
+    for clave, cartera in (("lambda", casa.cartera_lambda), ("alpha", casa.cartera_alpha)):
+        mantenida = None if ctx.cambio_de_mes else _casa_mantenida(db, clave, ctx, plan)
+        plan.casa[clave] = mantenida or cartera(db, ctx.scan_run_id, ctx.plan_b)
     # Omega ya no es sus posiciones reales del corte (omega_huecos.md): nace con los 4 huecos
     # vacíos (juega en caja) y `diario` los va llenando con sus alertas según llegan durante el
     # mes -- así juega aunque nada se ejecute de verdad en la sala.

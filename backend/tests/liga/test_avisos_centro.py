@@ -10,7 +10,6 @@ from test_procesos_integracion import _estrategia, fabrica  # noqa: F401
 
 from app import push
 from app.liga import avisos, resumenes
-from app.liga.motor.calendario import HORA_CIERRE_JORNADA, TZ_NUEVA_YORK, jornada_del_mes
 
 
 @pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DATABASE_URL)")
@@ -59,7 +58,7 @@ def test_zona_horaria(request):
 
 
 @pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DATABASE_URL)")
-def test_el_resumen_se_guarda_una_vez_por_cuenta_y_semana(request, monkeypatch):
+def test_el_resumen_de_cierre_se_guarda_una_vez_por_cuenta_y_jornada(request, monkeypatch):
     _, _, usuario, _, _ = request.getfixturevalue("api")
     uid = usuario()
     crear_fabrica = request.getfixturevalue("fabrica")
@@ -80,29 +79,21 @@ def test_el_resumen_se_guarda_una_vez_por_cuenta_y_semana(request, monkeypatch):
             values (:j, :e, :r, 'formada')
         """), {"j": jornada, "e": estrategia, "r": receta})
         monkeypatch.setattr(resumenes, "contenido", lambda db, u, tipo, j: {
-            "numero": 1, "estrategia": "Resumen", "rentabilidad": Decimal("1.5"),
-            "sp": Decimal("0.9"), "puesto_general": 2, "provisional": True})
-        assert resumenes.guardar_avisos(db, "semanal", jornada, "2030-02-04") == 1
-        assert resumenes.guardar_avisos(db, "semanal", jornada, "2030-02-04") == 0
+            "numero": 1, "total": 52, "estrategia": "Resumen", "rentabilidad": Decimal("1.5"),
+            "sp": Decimal("0.9"), "puesto_general": 2, "provisional": False})
+        assert resumenes.guardar_avisos(db, "mensual", jornada) == 1
+        assert resumenes.guardar_avisos(db, "mensual", jornada) == 0
         filas = db.execute(text("""
-            select tipo, datos->>'puesto_general' as puesto, datos->>'semana' as semana,
+            select tipo, datos->>'puesto_general' as puesto, datos->>'total' as total,
                    caduca from liga.avisos where usuario_id = cast(:u as uuid)
         """), {"u": uid}).all()
         assert len(filas) == 1
         fila = filas[0]
-        assert fila.tipo == "resumen_semanal"
+        assert fila.tipo == "resumen_cierre"
         assert fila.puesto == "2"
-        assert fila.semana == "2030-02-04"
-        assert fila.caduca == datetime(2030, 2, 28, 17, 30,
+        assert fila.total == "52"
+        assert fila.caduca == datetime(2030, 3, 1, 17, 30,
                                       tzinfo=ZoneInfo("America/New_York"))
-        assert resumenes.guardar_avisos(db, "mensual", jornada) == 1
-        filas = db.execute(text("""
-            select caduca from liga.avisos
-            where usuario_id = cast(:u as uuid) and tipo = 'resumen_cierre'
-        """), {"u": uid}).all()
-        assert len(filas) == 1
-        assert filas[0].caduca == datetime.combine(
-            jornada_del_mes(2030, 3).dia_fin, HORA_CIERRE_JORNADA, tzinfo=TZ_NUEVA_YORK)
 
 
 @pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DATABASE_URL)")

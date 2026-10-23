@@ -28,7 +28,7 @@ def escenario(monkeypatch):
     liga_id = UUID("00000000-0000-0000-0000-000000000001")
     liga = SimpleNamespace(id=liga_id, dueno_id="a", nombre="Liga", codigo="ABC",
                            cupo=50, oculta=False, creada=datetime(2026, 1, 1))
-    jornada = SimpleNamespace(id=2, numero=2, dia_base=date(2026, 9, 30))
+    jornada = SimpleNamespace(id=2, numero=2, dia_base=date(2026, 9, 30), jornada_total=52)
     miembros = [_miembro("a", 6, "2"), _miembro("b", 3, "1"), _miembro("c", 0, "-1")]
     cerrado = _acumulado("2")
     acumulado_vivo = _acumulado("12")

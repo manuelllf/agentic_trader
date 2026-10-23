@@ -98,6 +98,9 @@ def test_cada_punto_dice_a_que_jornada_pertenece_y_el_dia_base_a_la_que_empieza(
     ]
     con_numeros = _serie_guardada(rondas, cierres, dias[4], dias, numeros=[3, 4])
     assert [p["jornada"] for p in con_numeros["serie"]] == [3, 3, 4, 4, 4]
+    cambio_temporada = _serie_guardada(
+        rondas, cierres, dias[4], dias, numeros=[1, 1], totales=[10, 52])
+    assert [p["jornada_total"] for p in cambio_temporada["serie"]] == [10, 10, 52, 52, 52]
     sin_numeros = _serie_guardada(rondas, cierres, dias[4], dias)
     assert all("jornada" not in p for p in sin_numeros["serie"])
 
@@ -225,7 +228,7 @@ def test_evidencia_usa_receta_foto_y_pesos_fijados_en_la_formacion() -> None:
     )
     anterior = {"inscripcion_id": 22, "jornada_id": 2}
     contexto = {
-        "actual": {"inscripcion_id": 23, "jornada_id": 3, "numero": 3,
+        "actual": {"inscripcion_id": 23, "jornada_id": 3, "numero": 3, "jornada_total": 52,
                    "dia_base": base, "dia_fin": fin, "estado_jornada": "cerrada",
                    "receta_id": 17, "receta_vigente_id": 17, "n_pasan": 1},
         "anterior": anterior, "tickers_actuales": ["AAA"],
@@ -245,6 +248,7 @@ def test_evidencia_usa_receta_foto_y_pesos_fijados_en_la_formacion() -> None:
     evidence = _evidencia_formacion(contexto, series, fin, [base, fin])
 
     assert evidence["formacion"]["receta_id"] == 17
+    assert evidence["formacion"]["jornada_total"] == 52
     assert evidence["formacion"]["pesos"]["precio"] == 30
     assert evidence["formacion"]["idea"] == "empresas grandes"
     assert evidence["posiciones"][0]["peso"] == Decimal("80")
@@ -272,7 +276,7 @@ def _contexto_evidencia(*, foto_disponible: bool = True, mantenida: bool = False
     if not foto_disponible:
         empresas = {}
     return {
-        "actual": {"inscripcion_id": 23, "jornada_id": 3, "numero": 3,
+        "actual": {"inscripcion_id": 23, "jornada_id": 3, "numero": 3, "jornada_total": 52,
                    "dia_base": date(2026, 8, 3), "dia_fin": date(2026, 8, 4),
                    "estado_jornada": "cerrada", "receta_id": receta_actual_id,
                    "receta_vigente_id": receta_actual_id,

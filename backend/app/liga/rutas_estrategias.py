@@ -157,16 +157,17 @@ class QuitadaOut(BaseModel):
 
 
 class VentanaOut(BaseModel):
-    """Una estrategia en la ventana de cambios: formándose o ya formada y cambiable hasta `cierra`.
-    `quitadas_formacion`: las quitadas con las que salió la cartera de la formación."""
+    """Formándose, formada y cambiable hasta `cierra` (la apertura), o preparando ese corte.
+    `proxima`: la cartera de la semana que viene cuando estrena escaneo."""
 
     estrategia_id: uuid.UUID
-    fase: Literal["formando", "cambios"]
+    fase: Literal["formando", "cambios", "siguiente"]
     jornada_id: int
     cierra: datetime
     cartera: list[EmpresaVentanaOut] = Field(default_factory=list)
     quitadas: list[QuitadaOut] = Field(default_factory=list)
     quitadas_formacion: list[str] = Field(default_factory=list)
+    proxima: list[EmpresaVentanaOut] | None = None
 
 
 class EmpresaElegidaOut(BaseModel):
@@ -229,6 +230,7 @@ class EmpresaBusquedaOut(BaseModel):
 
 class JornadaFichaOut(BaseModel):
     numero: int
+    jornada_total: int
     rentabilidad: Decimal | None
     puntos: int | None
 
@@ -253,6 +255,7 @@ class NotasEmpresaOut(BaseModel):
     """Las 4 notas de Jev (0 a 9) de una empresa, con su jornada y el día de la foto."""
     ticker: str
     jornada: int
+    jornada_total: int
     dia: date
     notas: dict[str, Decimal] | None
 
@@ -322,8 +325,8 @@ def mis_estrategias(db: Session = Depends(db_usuario)) -> list[EstrategiaOut]:
 
 @router.get("/estrategias/ventana", response_model=list[VentanaOut])
 def mi_ventana(db: Session = Depends(db_usuario)) -> list[VentanaOut]:
-    """Qué estrategias mías están ahora en la ventana de cambios: pasó el corte y aún no abre la
-    jornada. Antes de esa ventana, o pasada, no devuelve ninguna."""
+    """Las estrategias mías con su ventana: formándose, cambiables hasta que abre la semana
+    o preparando el siguiente corte."""
     ids = db.execute(text("""
         select id from liga.estrategias
         where dueno_id = (select auth.uid()) and tipo = 'usuario'
@@ -335,7 +338,7 @@ def mi_ventana(db: Session = Depends(db_usuario)) -> list[VentanaOut]:
         v = cambios.ventana_de(db, estrategia_id)
         if v is None:
             continue
-        extra = cambios.detalle(v) if v.fase == cambios.FASE_CAMBIOS else {}
+        extra = cambios.detalle(v) if v.fase != cambios.FASE_FORMANDO else {}
         salida.append(VentanaOut(estrategia_id=estrategia_id, fase=v.fase, jornada_id=v.jornada_id,
                                  cierra=v.cierra, **extra))
     return salida
@@ -509,8 +512,8 @@ def _ticker(t: str) -> str:
 
 def _cambio_en_ventana(db: Session, ident: Identidad, id: uuid.UUID, ticker: str,
                        quitar: bool) -> RecetaOut | None:
-    """Si la estrategia está en la ventana de cambios, el cambio va a su cartera ya formada y
-    devuelve la receta nueva; si no, None y sigue como siempre (prepara la jornada siguiente)."""
+    """Si la estrategia tiene ventana, el cambio va por ella: rehace la cartera formada hasta
+    que abre la semana o prepara el siguiente corte. Si no, None."""
     v = cambios.ventana_de(db, id)
     if v is None:
         return None
@@ -725,8 +728,9 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
     if f is None:
         raise HTTPException(404, "No existe esa estrategia.")
     jornadas = db.execute(text("""
-        select j.numero, r.rentabilidad, r.puntos
+        select j.numero, r.rentabilidad, r.puntos, t.n_jornadas as jornada_total
         from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
+        join liga.temporadas t on t.id = j.temporada_id
         left join liga.resultados r on r.inscripcion_id = i.id
         where i.estrategia_id = :i order by j.numero
     """), {"i": id}).all()
@@ -790,7 +794,8 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
                          iniciales=f.iniciales),
         casa=f.casa_clave, autor=f.alias, estado=f.estado, visibilidad=f.visibilidad,
         es_dueno=(f.dueno == ident.uid),
-        jornadas=[JornadaFichaOut(numero=j.numero, rentabilidad=j.rentabilidad, puntos=j.puntos)
+        jornadas=[JornadaFichaOut(numero=j.numero, jornada_total=j.jornada_total,
+                                  rentabilidad=j.rentabilidad, puntos=j.puntos)
                  for j in jornadas],
         receta=receta_out,
         posiciones=(posiciones if f.casa_clave == "omega" else [
@@ -808,8 +813,9 @@ def notas_empresa(id: uuid.UUID, ticker: Ticker, ident: Identidad = Depends(requ
     ya filtra por RLS, así que aquí no se repiten las reglas de plan."""
     t = _ticker(ticker)
     fila = db.execute(text("""
-        select j.numero, j.dia_base, j.scan_run_id
+        select j.numero, j.dia_base, j.scan_run_id, t.n_jornadas as jornada_total
         from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
+        join liga.temporadas t on t.id = j.temporada_id
         where i.estrategia_id = :e and i.estado in ('formada', 'cerrada')
           and j.estado in ('formada', 'cerrada')
           and exists (select 1 from liga.posiciones p
@@ -821,7 +827,7 @@ def notas_empresa(id: uuid.UUID, ticker: Ticker, ident: Identidad = Depends(requ
     notas = (estrategias.notas_de_empresa(fila.scan_run_id, t)
              if fila.scan_run_id is not None else None)
     return NotasEmpresaOut(
-        ticker=t, jornada=fila.numero, dia=fila.dia_base,
+        ticker=t, jornada=fila.numero, jornada_total=fila.jornada_total, dia=fila.dia_base,
         notas=None if notas is None else {
             "negocio": notas.fundamentals, "precio": notas.valuation,
             "deuda": notas.financing, "pronto": notas.catalyst})

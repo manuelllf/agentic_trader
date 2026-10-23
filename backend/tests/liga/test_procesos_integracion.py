@@ -1,5 +1,5 @@
-"""Procesos de la liga contra la copia local de producción (Docker `liga-pg`): un mes entero
-simulado (foto → formar → cierres diarios → cerrar), dos veces para ver que nada se duplica.
+"""Procesos de la liga contra la copia local de producción (Docker `liga-pg`): una semana entera
+simulada (foto → formar → cierres diarios → cerrar), dos veces para ver que nada se duplica.
 
 Todo corre dentro de una transacción de la conexión del test que se deshace al final: los procesos
 abren sus sesiones con savepoints sobre ella, así que no queda nada. Los datos de las salas que
@@ -298,14 +298,14 @@ def test_temporadas_idempotentes(fabrica) -> None:  # noqa: ANN001
     assert set(primera["casa"]["creadas"]) == {"alpha", "omega", "lambda"}
     segunda = temporadas.ejecutar(fabrica, ahora=datetime(2026, 11, 2, tzinfo=UTC))
     assert segunda["creadas"] == [] and segunda["casa"]["creadas"] == []
-    assert _cuenta(fabrica, "select count(*) from liga.jornadas") == 3 + 12
+    assert _cuenta(fabrica, "select count(*) from liga.jornadas") == 13 + 52
     assert _cuenta(fabrica, "select count(*) from liga.estrategias where tipo = 'casa'") == 3
     ene = _cuenta(fabrica, "select dia_base from liga.jornadas j join liga.temporadas t on "
                            "t.id = j.temporada_id where t.cuenta and j.numero = 1")
     assert ene == date(2026, 12, 31)
 
 
-def test_un_mes_entero_dos_veces_sin_duplicar(fabrica, mercado, mundo) -> None:  # noqa: ANN001
+def test_una_semana_entera_dos_veces_sin_duplicar(fabrica, mercado, mundo) -> None:  # noqa: ANN001
     ene = mundo["enero"]
     prev = formar.vista_previa(ene, fabrica=fabrica, ahora=ENERO)
     assert prev["listo"] is False and "foto" in prev["motivos"][0]
@@ -366,16 +366,16 @@ def test_un_mes_entero_dos_veces_sin_duplicar(fabrica, mercado, mundo) -> None: 
     # Cierres diarios y tabla provisional, calculada.
     with pytest.raises(comun.ErrorProceso):
         cerrar.ejecutar(ene, fabrica=fabrica)                # aún no hay cierre del último día
-    mercado.hasta = date(2027, 1, 12)
+    mercado.hasta = date(2027, 1, 6)
     assert diario.ejecutar(fabrica)["filas"] > 0
     tabla = diario.tabla_provisional(ene, fabrica=fabrica)
-    assert tabla["dia"] == "2027-01-12" and len(tabla["filas"]) == 6
+    assert tabla["dia"] == "2027-01-06" and len(tabla["filas"]) == 6
     assert cerrar.vista_previa(ene, fabrica=fabrica)["listo"] is False
 
-    mercado.hasta = date(2027, 1, 29)
+    mercado.hasta = date(2027, 1, 8)
     diario.ejecutar(fabrica)
     prev = cerrar.vista_previa(ene, fabrica=fabrica)
-    assert prev["listo"] is True and prev["dia"] == "2027-01-29"
+    assert prev["listo"] is True and prev["dia"] == "2027-01-08"
     cerrado = cerrar.ejecutar(ene, fabrica=fabrica)
     assert cerrado["estado"] == "cerrada"
     assert cerrado["sp_rentabilidad"] == prev["sp_rentabilidad"]
@@ -489,7 +489,8 @@ def test_si_faltan_respuestas_no_se_cobra_la_pregunta(fabrica, mercado, mundo) -
                             "where i.estrategia_id = :e", e=de_pago) == 1
 
 
-FIN_ENERO = datetime(2027, 1, 29, 22, 35, tzinfo=UTC)       # 17:35 NY del último día de enero
+# 17:35 NY del último día de la semana de enero
+FIN_ENERO = datetime(2027, 1, 8, 22, 35, tzinfo=UTC)
 
 
 def _estado_jornada(fabrica, jornada_id: int) -> str:  # noqa: ANN001
@@ -502,7 +503,7 @@ def test_cerrar_solo_cierra_la_jornada_que_acaba_hoy_desde_las_1730(
         fabrica, mercado, mundo) -> None:  # noqa: ANN001
     ene = mundo["enero"]
     _formar_mes(fabrica, mercado, ene, ENERO)
-    mercado.hasta = date(2027, 1, 29)
+    mercado.hasta = date(2027, 1, 8)
     assert cerrar.job(fabrica, ahora=FIN_ENERO - timedelta(minutes=10)) is None    # 17:25
     assert cerrar.job(fabrica, ahora=FIN_ENERO - timedelta(days=1)) is None        # otro día
     assert _estado_jornada(fabrica, ene) == "formada"
@@ -515,7 +516,7 @@ def test_cerrar_solo_cierra_la_jornada_que_acaba_hoy_desde_las_1730(
 def test_cerrar_solo_apagado_a_proposito_no_cierra(fabrica, mercado, mundo) -> None:  # noqa: ANN001
     ene = mundo["enero"]
     _formar_mes(fabrica, mercado, ene, ENERO)
-    mercado.hasta = date(2027, 1, 29)
+    mercado.hasta = date(2027, 1, 8)
     with comun.sesion(fabrica) as db:
         db.execute(text("insert into liga.ajustes (clave, valor) "
                         "values ('procesos.cerrar.auto', 'false')"))
@@ -534,13 +535,13 @@ def test_cerrar_solo_con_un_cierre_que_falta_no_escribe_y_avisa_pasado_el_corte(
     ene = mundo["enero"]
     _formar_mes(fabrica, mercado, ene, ENERO)
     avisos.clear()                                     # el de la formación no es de este test
-    mercado.hasta = date(2027, 1, 29)
+    mercado.hasta = date(2027, 1, 8)
     entregar = mercado.descargar
 
     def sin_el_ultimo_de_zqb(tickers, desde):  # noqa: ANN001, ANN202
         salida = entregar(tickers, desde)
         if "ZQB" in salida:
-            salida["ZQB"] = [c for c in salida["ZQB"] if c.dia < date(2027, 1, 29)]
+            salida["ZQB"] = [c for c in salida["ZQB"] if c.dia < date(2027, 1, 8)]
         return salida
 
     monkeypatch.setattr(precios, "descargar", sin_el_ultimo_de_zqb)
@@ -590,7 +591,7 @@ def test_no_se_cierra_con_un_cierre_que_falta_salvo_que_se_acepte(fabrica, merca
                             "and detalle->'sin_cierre_aceptado' = cast('[\"ZQB\"]' as jsonb)") == 1
 
 
-def test_mantener_conserva_sus_valores_con_los_pesos_de_fin_de_mes(fabrica, mercado,
+def test_mantener_conserva_sus_valores_con_los_pesos_de_fin_de_semana(fabrica, mercado,
                                                                   mundo) -> None:  # noqa: ANN001
     _formar_mes(fabrica, mercado, mundo["enero"], ENERO)
     _cerrar_mes(fabrica, mercado, mundo["enero"])
@@ -598,7 +599,7 @@ def test_mantener_conserva_sus_valores_con_los_pesos_de_fin_de_mes(fabrica, merc
     with comun.sesion(fabrica) as db:
         pos = list(enero[mundo["mantener"]]["pos"].items())
         esperado = pesos_mantenidos(pos, precios.series(db, [t for t, _ in pos]),
-                                    date(2026, 12, 31), date(2027, 1, 29))
+                                    date(2026, 12, 31), date(2027, 1, 8))
     hecho = _formar_mes(fabrica, mercado, mundo["febrero"], FEBRERO)
     origen = {e["estrategia_id"]: e["origen"] for e in hecho["estrategias"]}
     assert origen[str(mundo["mantener"])] == "mantener"
@@ -645,11 +646,19 @@ def test_la_jornada_no_vale_con_una_foto_que_el_escaneo_no_uso(
     assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] is None
 
 
-def test_la_foto_tiene_que_ser_del_dia_base_de_la_jornada(
+def test_la_foto_no_es_posterior_al_dia_base_ni_vuelve_atras(
         fabrica, mercado, mundo) -> None:  # noqa: ANN001
-    foto_vieja, escaneo_viejo = _foto_con_escaneo_propio(fabrica, FOTO_FIN - timedelta(days=3))
-    with pytest.raises(comun.ErrorProceso, match="día base"):
-        foto.ejecutar(mundo["enero"], foto_vieja, escaneo_viejo, fabrica=fabrica)
+    posterior, escaneo_posterior = _foto_con_escaneo_propio(fabrica, FOTO_FIN + timedelta(days=1))
+    with pytest.raises(comun.ErrorProceso, match="posterior"):
+        foto.ejecutar(mundo["enero"], posterior, escaneo_posterior, fabrica=fabrica)
+    vieja, escaneo_viejo = _foto_con_escaneo_propio(fabrica, FOTO_FIN - timedelta(days=3))
+    with comun.sesion(fabrica) as db:  # La semana previa ya juega con la foto del fin de mes.
+        db.execute(text("update liga.jornadas set foto_id = :f, scan_run_id = :s "
+                        "where dia_fin = :d"),
+                   {"f": mundo["foto"], "s": mundo["scan"], "d": date(2026, 12, 31)})
+        db.commit()
+    with pytest.raises(comun.ErrorProceso, match="anterior"):
+        foto.ejecutar(mundo["enero"], vieja, escaneo_viejo, fabrica=fabrica)
     assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] is None
 
 
@@ -735,21 +744,23 @@ def test_omega_libera_el_hueco_al_salir_y_lo_rellena_compuesto(fabrica, mercado,
         db.execute(text(
             "insert into momentum_senales (ticker, sector, tipo, entry_date, entry_price, "
             "ref_label, ref_price, caida_pct, estado, created_at) values ('ZQE', 'Energy', "
-            "'suelo', '2027-01-14', 50, 'max', 70, 10, 'nueva', '2027-01-14 15:00+00')"))
+            "'suelo', '2027-01-07', 50, 'max', 70, 10, 'nueva', '2027-01-07 15:00+00')"))
         db.commit()
     _formar_mes(fabrica, mercado, ene, ENERO)
-    mercado.saltos = {"ZQA": (date(2027, 1, 14), 1.5)}         # +50 %: pasa el objetivo
-    mercado.hasta = date(2027, 1, 12)
+    # El objetivo solo cuenta desde la cuarta sesión, así que ZQA sale el 8.
+    mercado.saltos = {"ZQA": (date(2027, 1, 6), 1.5)}         # +50 %: pasa el objetivo
+    mercado.hasta = date(2027, 1, 5)
     diario.ejecutar(fabrica)
-    assert len(_huecos(fabrica, ene)) == 5
-    mercado.hasta = date(2027, 1, 20)
+    assert len(_huecos(fabrica, ene)) == 2
+    mercado.hasta = date(2027, 1, 8)
     diario.ejecutar(fabrica)
     huecos = _huecos(fabrica, ene)
-    assert (1, "ZQA", date(2027, 1, 5), date(2027, 1, 14), "objetivo") in huecos
-    assert (1, "ZQE", date(2027, 1, 14), None, None) in huecos   # el hueco libre, con la sexta
+    assert (1, "ZQA", date(2027, 1, 5), date(2027, 1, 8), "objetivo") in huecos
+    assert (1, "ZQF", date(2027, 1, 8), None, None) in huecos  # la que esperaba entra en su hueco
+    assert any(h[1:] == ("ZQE", date(2027, 1, 7), None, None) for h in huecos)
     diario.ejecutar(fabrica)                                  # repetir no cambia lo escrito
     assert _huecos(fabrica, ene) == huecos
-    # El hueco 1 compuso el +50 %: pesa un 10 % en la media de los cinco huecos.
+    # La salida por objetivo conserva la ganancia al reinvertir el capital del hueco.
     assert Decimal(_omega_fila(fabrica, ene)["rentabilidad"]) > Decimal("5")
 
 
@@ -804,11 +815,14 @@ def _saltar_pretemporada(fabrica, mundo: dict) -> None:  # noqa: ANN001
         db.commit()
 
 
-def test_foto_auto_designa_la_jornada_siguiente_sin_foto(fabrica, mundo) -> None:  # noqa: ANN001
+def test_foto_auto_designa_todas_las_semanas_que_vienen(
+        fabrica, mundo) -> None:  # noqa: ANN001
     _saltar_pretemporada(fabrica, mundo)
     d = foto.auto_desde_escaneo(mundo["scan"], fabrica=fabrica)
     assert (d["foto_id"], d["scan_run_id"], d["plan_b"]) == (mundo["foto"], mundo["scan"], False)
     assert d["cambiada"] is True
+    assert d["jornadas"][0] == mundo["enero"] and mundo["febrero"] in d["jornadas"]
+    assert foto.estado(mundo["febrero"], fabrica=fabrica)["foto_id"] == mundo["foto"]
     assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] == mundo["foto"]
     with comun.sesion(fabrica) as db:
         fila = db.execute(text(
@@ -818,21 +832,58 @@ def test_foto_auto_designa_la_jornada_siguiente_sin_foto(fabrica, mundo) -> None
     assert fila.detalle["auto"] is True
 
 
-def test_si_no_puede_designar_el_dia_base_avisa_al_admin_y_otro_dia_no(
+def test_si_no_puede_designar_avisa_solo_el_ultimo_dia_de_bolsa(
         fabrica, mundo, monkeypatch) -> None:  # noqa: ANN001
     from app import push
 
     avisos: list[str] = []
     monkeypatch.setattr(push, "send_to_all", lambda db, **kw: avisos.append(kw["title"]))
     _saltar_pretemporada(fabrica, mundo)
-    vieja, escaneo_viejo = _foto_con_escaneo_propio(fabrica, FOTO_FIN - timedelta(days=3))
+    with comun.sesion(fabrica) as db:
+        otro = ScanRun(scan_at=FOTO_FIN, cadence="observatorio/full", decide=False,
+                      foto_id=mundo["foto"])
+        db.add(otro)
+        db.commit()
+        otro_id = otro.id
     monkeypatch.setattr(foto, "hoy_bolsa", lambda: date(2026, 12, 15))
-    assert foto.auto_desde_escaneo(escaneo_viejo, fabrica=fabrica) is None
-    assert avisos == []                                    # un escaneo suelto a mitad de mes
-    monkeypatch.setattr(foto, "hoy_bolsa", lambda: date(2026, 12, 31))   # día base de enero
-    assert foto.auto_desde_escaneo(escaneo_viejo, fabrica=fabrica) is None
+    assert foto.auto_desde_escaneo(otro_id, fabrica=fabrica) is None
+    assert avisos == []
+    monkeypatch.setattr(foto, "hoy_bolsa", lambda: date(2026, 12, 31))
+    assert foto.auto_desde_escaneo(otro_id, fabrica=fabrica) is None
     assert avisos == ["Vennett: no se designó la foto de la jornada"]
     assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] is None
+
+
+def test_un_escaneo_a_mitad_de_mes_no_cambia_la_liga(
+        fabrica, mundo, monkeypatch) -> None:  # noqa: ANN001
+    from app import push
+
+    _saltar_pretemporada(fabrica, mundo)
+    foto.auto_desde_escaneo(mundo["scan"], fabrica=fabrica)
+    vieja, escaneo_viejo = _foto_con_escaneo_propio(fabrica, FOTO_FIN - timedelta(days=3))
+    avisos: list[str] = []
+    monkeypatch.setattr(push, "send_to_all", lambda db, **kw: avisos.append(kw["title"]))
+    monkeypatch.setattr(foto, "hoy_bolsa", lambda: date(2026, 12, 28))
+    assert foto.auto_desde_escaneo(escaneo_viejo, fabrica=fabrica) is None
+    assert avisos == []
+    assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] == mundo["foto"]
+    with comun.sesion(fabrica) as db:
+        fila = db.execute(text(
+            "select detalle from liga.auditoria where accion = 'proceso.foto.auto.omitido' "
+            "order by id desc limit 1")).one()
+    assert "último día de bolsa" in fila.detalle["razon"]
+
+
+def test_tras_un_escaneo_fallido_el_repetido_entra_en_las_semanas_siguientes(
+        fabrica, mundo) -> None:  # noqa: ANN001
+    _saltar_pretemporada(fabrica, mundo)
+    repetido, escaneo_repetido = _foto_con_escaneo_propio(
+        fabrica, datetime(2027, 1, 5, 21, 30, tzinfo=UTC))
+    d = foto.auto_desde_escaneo(escaneo_repetido, fabrica=fabrica)
+    assert d is not None and mundo["enero"] not in d["jornadas"]
+    assert mundo["febrero"] in d["jornadas"]
+    assert foto.estado(mundo["enero"], fabrica=fabrica)["foto_id"] is None
+    assert foto.estado(mundo["febrero"], fabrica=fabrica)["foto_id"] == repetido
 
 
 def test_foto_auto_apagada_no_toca_nada(fabrica, mundo) -> None:  # noqa: ANN001
@@ -1231,62 +1282,41 @@ def test_el_aviso_sale_tambien_por_correo_a_la_direccion_propia_o_a_la_de_la_cue
     with comun.sesion(fabrica) as db:
         cuenta = db.execute(text("select email from auth.users where id = cast(:u as uuid)"),
                             {"u": uid}).scalar()
-        avisos.avisar(db, uid, "empieza")
+        avisos.avisar(db, uid, "sin_pregunta", name="Con pregunta")
         assert enviados == []                                    # el correo viene apagado
 
         db.execute(text("insert into liga.perfiles_privados (id, avisos_correo) "
                         "values (:u, true) on conflict (id) do update set avisos_correo = true"),
                    {"u": uid})
-        avisos.avisar(db, uid, "empieza")
-        assert enviados == [(cuenta, "Empieza la jornada")]
+        avisos.avisar(db, uid, "sin_pregunta", name="Con pregunta")
+        assert enviados == [(cuenta, "Jugó sin su pregunta")]
 
         db.execute(text("update liga.perfiles_privados set correo_avisos = 'otra@ejemplo.com' "
                         "where id = cast(:u as uuid)"), {"u": uid})
-        avisos.avisar(db, uid, "empieza")
-        assert enviados[1:] == [("otra@ejemplo.com", "Empieza la jornada")]
+        avisos.avisar(db, uid, "sin_pregunta", name="Con pregunta")
+        assert enviados[1:] == [("otra@ejemplo.com", "Jugó sin su pregunta")]
 
 
-def test_al_formar_se_avisa_de_la_cartera_y_de_lo_que_jugo_sin_su_pregunta(
+def test_al_formar_solo_se_avisa_de_lo_que_jugo_sin_su_pregunta(
         fabrica, mercado, mundo, empujes) -> None:  # noqa: ANN001
     uid = _dueno(fabrica, mundo["reglas"])
     suya = _suscribir(fabrica, uid)
     _formar_mes(fabrica, mercado, mundo["enero"], ENERO)
 
     titulos = [c["title"] for e, c in empujes if e == suya]
-    assert titulos.count("Tu cartera está lista") == 1         # una por cuenta, no por estrategia
+    assert "Tu cartera está lista" not in titulos              # ya no se avisa al formar
     assert "Jugó sin su pregunta" in titulos
     sin = next(c for _, c in empujes if c["title"] == "Jugó sin su pregunta")
     assert "Con pregunta" in sin["body"]
 
 
-def test_los_recordatorios_salen_una_vez_por_jornada_y_en_su_hora(
-        fabrica, mercado, mundo, empujes) -> None:  # noqa: ANN001
-    from app.liga import avisos
-
-    ene, uid = mundo["enero"], _dueno(fabrica, mundo["reglas"])
-    _suscribir(fabrica, uid)
-    _formar_mes(fabrica, mercado, ene, ENERO)
-    empujes.clear()
-    cierra = datetime(2027, 1, 4, 14, 0, tzinfo=UTC)              # 09:00 NY del día 4
-    assert avisos.job(fabrica, ahora=cierra - timedelta(hours=2)) == {
-        "cambios_cierran": 0, "empieza": 0}
-    assert avisos.job(fabrica, ahora=cierra - timedelta(minutes=30))["cambios_cierran"] == 1
-    assert [c["title"] for _, c in empujes] == ["Los cambios se cierran en una hora"]
-    assert avisos.job(fabrica, ahora=cierra - timedelta(minutes=25))["cambios_cierran"] == 0
-
-    empujes.clear()
-    abre = datetime(2027, 1, 4, 14, 35, tzinfo=UTC)               # 09:35 NY
-    assert avisos.job(fabrica, ahora=abre)["empieza"] == 1
-    assert [c["title"] for _, c in empujes] == ["Empieza la jornada"]
-    assert avisos.job(fabrica, ahora=abre + timedelta(minutes=5))["empieza"] == 0
-    assert avisos.job(fabrica, ahora=abre + timedelta(hours=3))["empieza"] == 0
-
-
-# ---- la ventana de cambios: Cambiar y Recuperar hasta las 09:00 NY del día 1 -------------------
+# ---- la ventana de cambios: Cambiar rehace la cartera hasta las 09:00 NY del lunes;
+# después, prepara el corte ----
 
 VENTANA_ENERO = datetime(2027, 1, 3, 12, tzinfo=UTC)          # tras el corte, antes del día 4 09:00
 JORNADA_ABIERTA = datetime(2027, 1, 4, 14, 5, tzinfo=UTC)     # 09:05 NY del día 4
-VENTANA_FEBRERO = datetime(2027, 1, 31, 12, tzinfo=UTC)
+# domingo: tras el corte del 8, antes del lunes 11 a las 09:00
+VENTANA_FEBRERO = datetime(2027, 1, 10, 12, tzinfo=UTC)
 
 
 def _dueno(fabrica, estrategia_id) -> str:  # noqa: ANN001
@@ -1301,6 +1331,113 @@ def _cartera_de(fabrica, jornada_id: int, estrategia_id) -> dict:  # noqa: ANN00
 
 def _receta_de_la_inscripcion(fabrica, jornada_id: int, estrategia_id) -> int:  # noqa: ANN001
     return _inscripciones(fabrica, jornada_id)[estrategia_id]["fila"].receta_id
+
+
+def test_cambiar_entre_semana_prepara_el_corte_y_conserva_la_cartera(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene, eid = mundo["enero"], mundo["reglas"]
+    _dar_por_jugadas_las_anteriores(fabrica, ene)
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    uid, formada = _dueno(fabrica, eid), _cartera_de(fabrica, ene, eid)
+    original = _receta_de_la_inscripcion(fabrica, ene, eid)
+    sale = sorted(formada)[0]
+
+    receta = cambios.aplicar(uid, eid, sale, True, fabrica=fabrica, ahora=JORNADA_ABIERTA)
+
+    assert sale in receta["excluidas"] and receta["id"] != original
+    assert _cartera_de(fabrica, ene, eid) == formada
+    assert _receta_de_la_inscripcion(fabrica, ene, eid) == original
+    assert _cuenta(fabrica, "select count(*) from liga.estrategias "
+                            "where id = :e and receta_id = :r", e=eid, r=receta["id"]) == 1
+    recuperada = cambios.aplicar(uid, eid, sale, False, fabrica=fabrica, ahora=JORNADA_ABIERTA)
+    assert recuperada["excluidas"] == []
+    assert _cuenta(fabrica, "select count(*) from liga.estrategias "
+                            "where id = :e and receta_id = :r", e=eid, r=recuperada["id"]) == 1
+    assert _receta_de_la_inscripcion(fabrica, ene, eid) == original
+    assert _cartera_de(fabrica, ene, eid) == formada
+
+
+def test_volver_entre_semana_deshace_los_cambios_pendientes(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene, eid = mundo["enero"], mundo["reglas"]
+    _dar_por_jugadas_las_anteriores(fabrica, ene)
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    uid, formada = _dueno(fabrica, eid), _cartera_de(fabrica, ene, eid)
+    original = _receta_de_la_inscripcion(fabrica, ene, eid)
+    for ticker in sorted(formada)[:2]:
+        cambios.aplicar(uid, eid, ticker, True, fabrica=fabrica, ahora=JORNADA_ABIERTA)
+        assert _cartera_de(fabrica, ene, eid) == formada
+    with comun.sesion(fabrica) as db:
+        v = cambios.ventana_de(db, eid, JORNADA_ABIERTA)
+    assert {q["ticker"] for q in cambios.detalle(v, fabrica)["quitadas"]} == set(
+        sorted(formada)[:2]
+    )
+
+    receta = cambios.volver_a_la_formacion(uid, eid, fabrica=fabrica, ahora=JORNADA_ABIERTA)
+
+    assert receta["id"] == original and _receta_de_la_inscripcion(fabrica, ene, eid) == original
+    assert _cuenta(fabrica, "select count(*) from liga.estrategias "
+                            "where id = :e and receta_id = :r", e=eid, r=original) == 1
+    assert _cartera_de(fabrica, ene, eid) == formada
+    detalle = cambios.detalle(v, fabrica)
+    assert detalle["quitadas"] == [] and detalle["quitadas_formacion"] == []
+    assert {p["ticker"]: p["peso"] for p in detalle["cartera"]} == formada
+
+
+def test_la_ventana_rehace_hasta_la_apertura_y_luego_prepara_el_corte(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    from fastapi import HTTPException
+
+    ene, eid = mundo["enero"], mundo["reglas"]
+    _dar_por_jugadas_las_anteriores(fabrica, ene)
+    foto.ejecutar(ene, fabrica=fabrica)
+    uid = _dueno(fabrica, eid)
+    with comun.sesion(fabrica) as db:
+        v = cambios.ventana_de(db, eid, CORTE_ENERO - timedelta(hours=1))
+        assert v.fase == "siguiente" and v.jornada_id == ene
+        assert cambios.ventana_de(db, eid, CORTE_ENERO + timedelta(minutes=5)).fase == "formando"
+    with pytest.raises(HTTPException) as e:
+        cambios.aplicar(uid, eid, "ZQA", True, fabrica=fabrica,
+                        ahora=CORTE_ENERO + timedelta(minutes=5))
+    assert e.value.status_code == 409                      # aún se está formando
+
+    formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    with comun.sesion(fabrica) as db:
+        v = cambios.ventana_de(db, eid, VENTANA_ENERO)
+        assert v.fase == "cambios" and v.cierra == datetime(2027, 1, 4, 14, 0, tzinfo=UTC)
+        with pytest.raises(HTTPException) as bloqueo:
+            cambios.exigir_fuera_de_la_ventana(db, eid, VENTANA_ENERO)
+        assert bloqueo.value.status_code == 409
+    with comun.sesion(fabrica) as db:
+        v = cambios.ventana_de(db, eid, JORNADA_ABIERTA)
+        assert v.fase == "siguiente" and v.jornada_id == mundo["febrero"]
+        cambios.exigir_fuera_de_la_ventana(db, eid, JORNADA_ABIERTA)
+    formada = _cartera_de(fabrica, ene, eid)
+    cambios.aplicar(uid, eid, "ZQA", True, fabrica=fabrica, ahora=JORNADA_ABIERTA)
+    assert _cartera_de(fabrica, ene, eid) == formada
+    with pytest.raises(HTTPException) as e:
+        cambios.aplicar(str(uuid.uuid4()), eid, "ZQA", True, fabrica=fabrica, ahora=VENTANA_ENERO)
+    assert e.value.status_code == 404                      # no es suya
+
+
+def test_cambiar_en_una_que_se_mantiene_pone_la_siguiente_con_el_mismo_peso(
+        fabrica, mercado, mundo) -> None:  # noqa: ANN001
+    ene, feb, eid = mundo["enero"], mundo["febrero"], mundo["mantener"]
+    _formar_mes(fabrica, mercado, ene, ENERO)
+    _cerrar_mes(fabrica, mercado, ene)
+    _dar_por_jugadas_las_anteriores(fabrica, feb)
+    _formar_mes(fabrica, mercado, feb, FEBRERO)
+    uid, formada = _dueno(fabrica, eid), _cartera_de(fabrica, feb, eid)
+    sale = sorted(formada)[0]
+
+    cambios.aplicar(uid, eid, sale, True, fabrica=fabrica, ahora=VENTANA_FEBRERO)
+
+    cambiada = _cartera_de(fabrica, feb, eid)
+    entra = set(cambiada) - set(formada)
+    assert sale not in cambiada and len(entra) == 1
+    assert cambiada[entra.pop()] == formada[sale]
+    cambios.aplicar(uid, eid, sale, False, fabrica=fabrica, ahora=VENTANA_FEBRERO)
+    assert _cartera_de(fabrica, feb, eid) == formada
 
 
 def test_cambiar_en_la_ventana_sustituye_la_empresa_y_recuperar_la_devuelve(
@@ -1342,55 +1479,23 @@ def test_volver_a_la_formacion_deshace_lo_cambiado_en_la_ventana(
     assert cambios.detalle(v, fabrica)["quitadas_formacion"] == []
 
 
-def test_la_ventana_solo_existe_entre_el_corte_y_la_apertura_y_solo_para_su_dueno(
+
+def test_entre_semana_con_escaneo_nuevo_se_ve_la_cartera_de_la_semana_que_viene(
         fabrica, mercado, mundo) -> None:  # noqa: ANN001
-    from fastapi import HTTPException
-
-    ene, eid = mundo["enero"], mundo["reglas"]
-    foto.ejecutar(ene, fabrica=fabrica)
-    uid = _dueno(fabrica, eid)
-    with comun.sesion(fabrica) as db:
-        assert cambios.ventana_de(db, eid, CORTE_ENERO - timedelta(hours=1)) is None
-        assert cambios.ventana_de(db, eid, CORTE_ENERO + timedelta(minutes=5)).fase == "formando"
-    with pytest.raises(HTTPException) as e:
-        cambios.aplicar(uid, eid, "ZQA", True, fabrica=fabrica,
-                        ahora=CORTE_ENERO + timedelta(minutes=5))
-    assert e.value.status_code == 409                      # aún se está formando
-
-    formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
-    with comun.sesion(fabrica) as db:
-        v = cambios.ventana_de(db, eid, VENTANA_ENERO)
-        assert v.fase == "cambios" and v.cierra == datetime(2027, 1, 4, 14, 0, tzinfo=UTC)
-        with pytest.raises(HTTPException) as bloqueo:
-            cambios.exigir_fuera_de_la_ventana(db, eid, VENTANA_ENERO)
-        assert bloqueo.value.status_code == 409
-    with comun.sesion(fabrica) as db:
-        assert cambios.ventana_de(db, eid, JORNADA_ABIERTA) is None
-    with pytest.raises(HTTPException) as e:
-        cambios.aplicar(uid, eid, "ZQA", True, fabrica=fabrica, ahora=JORNADA_ABIERTA)
-    assert e.value.status_code == 409                      # ya empezó
-    with pytest.raises(HTTPException) as e:
-        cambios.aplicar(str(uuid.uuid4()), eid, "ZQA", True, fabrica=fabrica, ahora=VENTANA_ENERO)
-    assert e.value.status_code == 404                      # no es suya
-
-
-def test_cambiar_en_una_que_se_mantiene_pone_la_siguiente_con_el_mismo_peso(
-        fabrica, mercado, mundo) -> None:  # noqa: ANN001
-    ene, feb, eid = mundo["enero"], mundo["febrero"], mundo["mantener"]
+    ene, feb = mundo["enero"], mundo["febrero"]
+    _dar_por_jugadas_las_anteriores(fabrica, ene)
     _formar_mes(fabrica, mercado, ene, ENERO)
-    _cerrar_mes(fabrica, mercado, ene)
-    _formar_mes(fabrica, mercado, feb, FEBRERO)
-    uid, formada = _dueno(fabrica, eid), _cartera_de(fabrica, feb, eid)
-    sale = sorted(formada)[0]
-
-    cambios.aplicar(uid, eid, sale, True, fabrica=fabrica, ahora=VENTANA_FEBRERO)
-
-    cambiada = _cartera_de(fabrica, feb, eid)
-    entra = set(cambiada) - set(formada)
-    assert sale not in cambiada and len(entra) == 1
-    assert cambiada[entra.pop()] == formada[sale]
-    cambios.aplicar(uid, eid, sale, False, fabrica=fabrica, ahora=VENTANA_FEBRERO)
-    assert _cartera_de(fabrica, feb, eid) == formada
+    with comun.sesion(fabrica) as db:
+        v = cambios.ventana_de(db, mundo["reglas"], JORNADA_ABIERTA)
+    assert cambios.detalle(v, fabrica)["proxima"] is None
+    _asegurar_foto_del_dia_base(fabrica, feb)
+    foto.ejecutar(feb, fabrica=fabrica)
+    proxima = cambios.detalle(v, fabrica)["proxima"]
+    assert proxima and all({"ticker", "peso", "nombre", "sector"} <= set(p) for p in proxima)
+    with comun.sesion(fabrica) as db:
+        vm = cambios.ventana_de(db, mundo["mantener"], JORNADA_ABIERTA)
+    assert {p["ticker"] for p in cambios.detalle(vm, fabrica)["proxima"]} == set(
+        _cartera_de(fabrica, ene, mundo["mantener"]))
 
 
 def _receta_con(fabrica, estrategia_id, *, quitadas: list[str], n_empresas: int) -> int:  # noqa: ANN001
@@ -1451,13 +1556,16 @@ def test_si_la_configuracion_sigue_igual_las_quitadas_se_aplican(
 
 
 def _cerrar_la_temporada_con(fabrica, resultados: dict[str, list[str | None]]) -> int:  # noqa: ANN001
-    """Cierra a mano la temporada que cuenta: cada cuenta con la rentabilidad (en %) de sus 12
-    jornadas, `None` donde no jugó. Todas optan al premio con su única estrategia."""
+    """Cierra a mano la temporada que cuenta: cada cuenta con la rentabilidad (en %) de un mes,
+    en la primera semana de cada mes; `None` donde no jugó.
+    Todas optan al premio con su única estrategia."""
     with comun.sesion(fabrica) as db:
         tid = db.execute(text("select id from liga.temporadas where cuenta order by id "
                               "limit 1")).scalar()
-        jornadas = dict(db.execute(text("select numero, id from liga.jornadas "
-                                        "where temporada_id = :t"), {"t": tid}).all())
+        jornadas = [f.id for f in db.execute(text(
+            "select distinct on (date_trunc('month', dia_inicio)) id from liga.jornadas "
+            "where temporada_id = :t order by date_trunc('month', dia_inicio), dia_inicio"),
+            {"t": tid}).all()]
         for nombre, mensuales in resultados.items():
             uid = _usuario(db)
             _declarar_edad_mayor(db, uid)
@@ -1470,7 +1578,7 @@ def _cerrar_la_temporada_con(fabrica, resultados: dict[str, list[str | None]]) -
                 iid = db.execute(text(
                     "insert into liga.inscripciones (jornada_id, estrategia_id, receta_id, "
                     "estado, optaba_premio) values (:j, :e, :r, 'cerrada', true) returning id"),
-                    {"j": jornadas[numero], "e": eid, "r": receta}).scalar()
+                    {"j": jornadas[numero - 1], "e": eid, "r": receta}).scalar()
                 db.execute(text("insert into liga.resultados (inscripcion_id, rentabilidad, "
                                 "puntos) values (:i, :r, 1)"),
                            {"i": iid, "r": Decimal(rentabilidad)})

@@ -237,6 +237,7 @@ def test_detalle_muestra_equipo_formado_y_mes_sin_abrir_datos_privados(api, monk
             detalle = response.json()
             assert detalle["codigo"] is None
             assert detalle["jornada_numero"] == 1 and detalle["en_vivo"] is True
+            assert detalle["jornada_total"] == 12
             assert detalle["datos_hasta"] == hoy.isoformat()
             equipo = next(m for m in detalle["miembros"] if not m["es_yo"])
             assert equipo["estrategia"]["id"] == eid
@@ -421,6 +422,70 @@ def test_copiar_es_gratis_y_no_copia_lo_de_otro_sin_publicar(api) -> None:  # no
     # La copia es del que copia, no de la autora: la autora no la ve entre las suyas.
     ids_autora = {e["id"] for e in cliente.get("/liga/estrategias", headers=cab(autora)).json()}
     assert copia["id"] not in ids_autora
+
+
+@pytest.mark.parametrize("estado_origen", ["retirada", "apuntada"])
+def test_copiar_solo_publicas_que_juegan(api, estado_origen: str) -> None:  # noqa: ANN001
+    import psycopg
+
+    cliente, cab, usuario = api
+    autora = usuario(pro=True)
+    eid = _crear_estrategia(cliente, cab, autora, "Publicada")
+    _receta(cliente, cab, autora, eid)
+    r = cliente.patch(f"/liga/estrategias/{eid}",
+                      json={"visibilidad": "publicada", "declara_posiciones": "no"},
+                      headers=cab(autora))
+    assert r.status_code == 200, r.text
+    assert cliente.post(f"/liga/estrategias/{eid}/apuntar",
+                        headers=cab(autora)).status_code == 200
+    if estado_origen == "retirada":
+        with psycopg.connect(URL) as cx:
+            cx.execute("update liga.estrategias set estado = 'retirada' where id = %s", (eid,))
+    r = cliente.post(f"/liga/estrategias/{eid}/copiar", headers=cab(usuario()))
+    if estado_origen == "retirada":
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"] == "Solo se copian estrategias que juegan la jornada."
+    else:
+        assert r.status_code == 201, r.text
+
+
+@pytest.mark.parametrize("pesos, esperados", [
+    ([25, 15, 10, 5, 20], [25, 15, 10, 5]),
+    ([50, 0, 0, 0, 20], [50, 0, 0, 0]),
+    ([0, 0, 0, 0, 20], [5, 5, 5, 5]),
+])
+def test_copiar_sin_pregunta_conserva_pesos(api, pesos, esperados) -> None:  # noqa: ANN001
+    import psycopg
+
+    cliente, cab, usuario = api
+    autora = usuario(pro=True)
+    eid = _crear_estrategia(cliente, cab, autora, "Con pregunta")
+    _receta(cliente, cab, autora, eid)
+    # Representa una receta existente con pregunta, aunque la función esté apagada.
+    with psycopg.connect(URL) as cx:
+        nueva = cx.execute(
+            "insert into liga.recetas (estrategia_id, idea, reglas, excluidas, catalogo_version, "
+            "pregunta, peso_negocio, peso_precio, peso_deuda, peso_pronto, peso_pregunta, "
+            "n_empresas, reparto, max_por_sector) "
+            "select estrategia_id, idea, reglas, excluidas, catalogo_version, "
+            "%s, %s, %s, %s, %s, %s, "
+            "n_empresas, reparto, max_por_sector from liga.recetas where estrategia_id = %s "
+            "returning id", ("¿Tiene ventajas duraderas?", *pesos, eid)).fetchone()
+        cx.execute("update liga.estrategias set receta_id = %s where id = %s", (nueva[0], eid))
+    r = cliente.patch(f"/liga/estrategias/{eid}",
+                      json={"visibilidad": "publicada", "declara_posiciones": "no"},
+                      headers=cab(autora))
+    assert r.status_code == 200, r.text
+    assert cliente.post(f"/liga/estrategias/{eid}/apuntar",
+                        headers=cab(autora)).status_code == 200
+    otra = usuario()
+    r = cliente.post(f"/liga/estrategias/{eid}/copiar", headers=cab(otra))
+    assert r.status_code == 201, r.text
+    ficha = cliente.get(f"/liga/fichas/{r.json()['id']}", headers=cab(otra)).json()
+    receta = ficha["receta"]
+    assert receta["pregunta"] is None
+    assert receta["pesos"]["pregunta"] == 0
+    assert [receta["pesos"][k] for k in ("negocio", "precio", "deuda", "pronto")] == esperados
 
 
 # ---- créditos: solo los propios -----------------------------------------------------------------

@@ -1,9 +1,8 @@
-"""La ventana de cambios: desde el corte del último día hasta las 09:00 de Nueva York del primero,
-la estrategia ya tiene su cartera formada y su dueño solo puede Cambiar y Recuperar empresas.
-
-Cada cambio crea una versión de la receta (solo cambian las quitadas) y recalcula la cartera con la
-misma foto, las mismas notas y las respuestas guardadas: no usa IA. Pasadas las 09:00, quitar o
-recuperar solo prepara la jornada siguiente, como siempre.
+"""La ventana de cambios. Del corte a las 09:00 de Nueva York del primer día de la semana,
+la cartera ya está formada y «Cambiar» la rehace con la misma foto, las mismas notas y las
+respuestas guardadas, al precio del día base: no usa IA. El resto de la semana, «Cambiar» prepara
+la receta del siguiente corte; si ya hay escaneo nuevo del mes, se ve la cartera de la semana
+que viene.
 
 Va con una sesión de sistema (las inscripciones y sus posiciones no se escriben como usuario), así
 que la propiedad de la estrategia se comprueba aquí, no con RLS."""
@@ -28,6 +27,7 @@ from app.liga.procesos.comun import Fabrica, auditar, fabrica_sistema, sesion
 
 FASE_FORMANDO = "formando"
 FASE_CAMBIOS = "cambios"
+FASE_SIGUIENTE = "siguiente"
 _VUELTAS_PRECIOS = 4
 
 _VENTANA = text("""
@@ -46,6 +46,23 @@ _VENTANA = text("""
 """)
 
 
+_SIGUIENTE = text("""
+    select j.id as jornada_id, j.cierre_inscripcion as cierra,
+           actual.id as inscripcion_id, actual.receta_id as receta_inscripcion
+    from liga.jornadas j
+    join liga.estrategias e on e.id = cast(:e as uuid)
+    left join lateral (
+        select i.id, i.receta_id from liga.inscripciones i
+        join liga.jornadas formada on formada.id = i.jornada_id
+        where i.estrategia_id = e.id and formada.estado = 'formada'
+        order by formada.dia_base desc limit 1
+    ) actual on true
+    where j.estado = 'programada' and e.estado in ('apuntada', 'jugando')
+      and j.cierre_inscripcion > :ahora
+    order by j.dia_base limit 1
+""")
+
+
 @dataclass(frozen=True)
 class Ventana:
     fase: str
@@ -53,30 +70,37 @@ class Ventana:
     cierra: datetime
     inscripcion_id: int | None = None
     receta_inscripcion: int | None = None
+    estrategia_id: uuid.UUID | str | None = None
 
 
 def ventana_de(db: Session, estrategia_id: uuid.UUID | str,
                ahora: datetime | None = None) -> Ventana | None:
-    """En qué punto de la ventana está la estrategia: `formando` (pasó el corte y su cartera aún
-    se está formando), `cambios` (ya formada, se puede cambiar) o None (nada lo impide). Vale con
-    la sesión de usuario: jornadas, inscripciones y la propia estrategia se leen."""
-    fila = db.execute(_VENTANA, {"e": estrategia_id, "ahora": ahora or datetime.now(UTC)}
-                      ).one_or_none()
+    """Formando bloquea; cambios rehace la cartera hasta la apertura;
+    siguiente prepara la receta del próximo corte."""
+    ahora = ahora or datetime.now(UTC)
+    parametros = {"e": estrategia_id, "ahora": ahora}
+    fila = db.execute(_VENTANA, parametros).one_or_none()
+    if fila is not None:
+        base = {"jornada_id": fila.jornada_id, "cierra": fila.cierra,
+                "estrategia_id": estrategia_id}
+        if fila.estado == "formada" and fila.inscripcion_id is not None:
+            return Ventana(FASE_CAMBIOS, inscripcion_id=fila.inscripcion_id,
+                           receta_inscripcion=fila.receta_inscripcion, **base)
+        if fila.estado == "programada" and fila.estado_estrategia in ("apuntada", "jugando"):
+            return Ventana(FASE_FORMANDO, **base)
+    fila = db.execute(_SIGUIENTE, parametros).one_or_none()
     if fila is None:
         return None
-    base = {"jornada_id": fila.jornada_id, "cierra": fila.cierra}
-    if fila.estado == "formada" and fila.inscripcion_id is not None:
-        return Ventana(FASE_CAMBIOS, inscripcion_id=fila.inscripcion_id,
-                       receta_inscripcion=fila.receta_inscripcion, **base)
-    if fila.estado == "programada" and fila.estado_estrategia in ("apuntada", "jugando"):
-        return Ventana(FASE_FORMANDO, **base)
-    return None
+    return Ventana(FASE_SIGUIENTE, fila.jornada_id, fila.cierra, fila.inscripcion_id,
+                   fila.receta_inscripcion, estrategia_id)
 
 
 def exigir_fuera_de_la_ventana(db: Session, estrategia_id: uuid.UUID | str,
                                ahora: datetime | None = None) -> None:
-    """Hasta que abra la jornada, esta estrategia solo admite Cambiar y Recuperar."""
-    if ventana_de(db, estrategia_id, ahora) is not None:
+    """Mientras se forma y hasta que abre la semana, la estrategia solo admite
+    Cambiar y Recuperar."""
+    v = ventana_de(db, estrategia_id, ahora)
+    if v is not None and v.fase in (FASE_FORMANDO, FASE_CAMBIOS):
         raise HTTPException(409, translate("liga_changes_locked"))
 
 
@@ -157,18 +181,25 @@ def _ventana_de_cambios(db: Session, estrategia_id: uuid.UUID, ahora: datetime |
 
 def aplicar(usuario_id: str, estrategia_id: uuid.UUID, ticker: str, quitar: bool,
             fabrica: Fabrica = fabrica_sistema, ahora: datetime | None = None) -> dict:
-    """Quita (`quitar`) o recupera una empresa de la cartera formada. Devuelve la receta nueva."""
+    """Quita o recupera una empresa: rehace la cartera hasta la apertura;
+    entre semana prepara la receta del siguiente corte. Devuelve la receta nueva."""
     with sesion(fabrica) as db:
         fila = _la_suya(db, usuario_id, estrategia_id)
         v = _ventana_de_cambios(db, estrategia_id, ahora)
-        if fila.receta_id != v.receta_inscripcion:
+        if v.fase == FASE_CAMBIOS and fila.receta_id != v.receta_inscripcion:
             raise HTTPException(409, translate("liga_changes_locked"))
         # Allí `quitar` es quitarla de la lista de quitadas, o sea recuperarla.
         nueva = estrategias.nueva_version_excluidas(db, estrategia_id, ticker, quitar=not quitar)
         if nueva.id != fila.receta_id:
-            _fijar_cartera(db, v, fila, nueva.id)
+            if v.fase == FASE_CAMBIOS:
+                _fijar_cartera(db, v, fila, nueva.id)
+            else:
+                db.execute(text("update liga.estrategias set receta_id = :r where id = :e"),
+                           {"r": nueva.id, "e": estrategia_id})
             _apuntar(db, "cambios.quitar" if quitar else "cambios.recuperar", usuario_id,
-                     estrategia_id, v, nueva.id, ticker)
+                     estrategia_id, v,
+                     v.receta_inscripcion if v.fase == FASE_CAMBIOS else fila.receta_id,
+                     nueva.id, ticker)
         salida = estrategias.receta_salida(nueva)
         db.commit()
         return salida
@@ -177,26 +208,33 @@ def aplicar(usuario_id: str, estrategia_id: uuid.UUID, ticker: str, quitar: bool
 def volver_a_la_formacion(usuario_id: str, estrategia_id: uuid.UUID,
                           fabrica: Fabrica = fabrica_sistema,
                           ahora: datetime | None = None) -> dict:
-    """Deja la cartera como salió de la formación: las quitadas de entonces y ninguna más."""
+    """Restaura la receta de la formación y deshace los cambios pendientes."""
     with sesion(fabrica) as db:
         fila = _la_suya(db, usuario_id, estrategia_id)
         v = _ventana_de_cambios(db, estrategia_id, ahora)
-        original = receta_de_la_formacion(db, v)
-        if original != v.receta_inscripcion:
-            _fijar_cartera(db, v, fila, original)
-            _apuntar(db, "cambios.volver", usuario_id, estrategia_id, v, original)
+        original = (receta_de_la_formacion(db, v) if v.fase == FASE_CAMBIOS
+                    else v.receta_inscripcion)
+        if original is None:
+            raise HTTPException(409, translate("liga_changes_closed"))
+        anterior = v.receta_inscripcion if v.fase == FASE_CAMBIOS else fila.receta_id
+        if original != anterior:
+            if v.fase == FASE_CAMBIOS:
+                _fijar_cartera(db, v, fila, original)
+            else:
+                db.execute(text("update liga.estrategias set receta_id = :r where id = :e"),
+                           {"r": original, "e": estrategia_id})
+            _apuntar(db, "cambios.volver", usuario_id, estrategia_id, v, anterior, original)
         salida = estrategias.receta_salida(db.get(Receta, original))
         db.commit()
         return salida
 
 
 def _apuntar(db: Session, accion: str, usuario_id: str, estrategia_id: uuid.UUID, v: Ventana,
-             receta_despues: int, ticker: str | None = None) -> None:
-    """Cada cambio queda en la auditoría con la receta que había antes: la primera de la ventana
-    es la de la formación, a la que vuelve «Volver»."""
+             receta_antes: int, receta_despues: int, ticker: str | None = None) -> None:
+    """Registra la receta vigente anterior y la nueva receta pendiente."""
     auditar(db, accion, f"estrategia:{estrategia_id}",
             {"ticker": ticker, "jornada_id": v.jornada_id, "inscripcion_id": v.inscripcion_id,
-             "receta_antes": v.receta_inscripcion, "receta_despues": receta_despues}, usuario_id)
+             "receta_antes": receta_antes, "receta_despues": receta_despues}, usuario_id)
 
 
 def receta_de_la_formacion(db: Session, v: Ventana) -> int:
@@ -212,11 +250,15 @@ def receta_de_la_formacion(db: Session, v: Ventana) -> int:
 
 
 def detalle(v: Ventana, fabrica: Fabrica = fabrica_sistema) -> dict:
-    """Lo que enseña la pantalla de cambios: la cartera formada, las quitadas con su nombre y las
-    quitadas con las que salió de la formación. Sesión de sistema: `liga.auditoria` le está vetada
-    a `authenticated`."""
+    """Muestra la cartera en curso y las exclusiones vigentes y de la formación."""
     with sesion(fabrica) as db:
-        foto_id = db.get(Jornada, v.jornada_id).foto_id
+        if v.fase == FASE_CAMBIOS:
+            foto_id = db.get(Jornada, v.jornada_id).foto_id
+        else:
+            foto_id = db.execute(text("""
+                select j.foto_id from liga.jornadas j
+                join liga.inscripciones i on i.jornada_id = j.id where i.id = :i
+            """), {"i": v.inscripcion_id}).scalar()
         cartera = [dict(f._mapping) for f in db.execute(text("""
             select p.ticker, p.peso, s.name as nombre, s.sector
             from liga.posiciones p
@@ -225,12 +267,53 @@ def detalle(v: Ventana, fabrica: Fabrica = fabrica_sistema) -> dict:
               where f.foto_id = :f and f.ticker = p.ticker order by f.id desc limit 1) s on true
             where p.inscripcion_id = :i order by p.peso desc, p.ticker
         """), {"f": foto_id, "i": v.inscripcion_id})]
-        quitadas = list(db.get(Receta, v.receta_inscripcion).excluidas or [])
+        vigente = db.execute(text("select receta_id from liga.estrategias where id = :e"),
+                             {"e": v.estrategia_id}).scalar()
+        receta_id = v.receta_inscripcion if v.fase == FASE_CAMBIOS else vigente
+        quitadas = list(db.get(Receta, receta_id).excluidas or []) if receta_id else []
         nombres = dict(db.execute(text("""
             select distinct on (ticker) ticker, name from fundamentals_snapshot
             where foto_id = :f and ticker = any(:t) order by ticker, id desc
         """), {"f": foto_id, "t": quitadas}).all()) if quitadas else {}
-        de_la_formacion = list(db.get(Receta, receta_de_la_formacion(db, v)).excluidas or [])
+        original = (receta_de_la_formacion(db, v) if v.fase == FASE_CAMBIOS
+                    else v.receta_inscripcion)
+        de_la_formacion = list(db.get(Receta, original).excluidas or []) if original else []
+        proxima = _proxima(db, v) if v.fase == FASE_SIGUIENTE else None
     return {"cartera": cartera,
             "quitadas": [{"ticker": t, "nombre": nombres.get(t)} for t in quitadas],
-            "quitadas_formacion": de_la_formacion}
+            "quitadas_formacion": de_la_formacion, "proxima": proxima}
+
+
+def _proxima(db: Session, v: Ventana) -> list[dict] | None:
+    """La cartera de la semana que viene con la receta vigente, solo si estrena escaneo;
+    sin pedir precios ni escribir nada."""
+    j = db.get(Jornada, v.jornada_id)
+    if j.foto_id is None or j.scan_run_id is None:
+        return None
+    ctx = formar.contexto(db, j)
+    if not ctx.cambio_de_mes:
+        return None
+    fila = db.execute(text("""
+        select id, nombre, cada_dia_1, receta_id from liga.estrategias where id = :e
+    """), {"e": v.estrategia_id}).one()
+    if fila.receta_id is None:
+        return None
+    if fila.cada_dia_1 == "mantener":
+        if v.inscripcion_id is None:
+            return None
+        posiciones = db.execute(text("""
+            select ticker, peso from liga.posiciones where inscripcion_id = :i
+        """), {"i": v.inscripcion_id}).all()
+    else:
+        entrada, _o, _a = formar.entrada_de(
+            db, ctx, list(ctx.empresas), set(), fila, vaciar_si_cambio=False)
+        if entrada is None:
+            return None
+        posiciones = entrada.posiciones
+    nombres = {f.ticker: (f.name, f.sector) for f in db.execute(text("""
+        select distinct on (ticker) ticker, name, sector from fundamentals_snapshot
+        where foto_id = :f and ticker = any(:t) order by ticker, id desc
+    """), {"f": j.foto_id, "t": [t for t, _ in posiciones]})}
+    return [{"ticker": t, "peso": p, "nombre": nombres.get(t, (None, None))[0],
+             "sector": nombres.get(t, (None, None))[1]}
+            for t, p in sorted(posiciones, key=lambda posicion: (-posicion[1], posicion[0]))]

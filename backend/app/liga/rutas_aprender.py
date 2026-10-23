@@ -4,7 +4,7 @@ Sin la puerta de la liga pública porque no enseñan datos de nadie."""
 from __future__ import annotations
 
 import threading
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -23,7 +23,10 @@ from app.liga.motor.calendario import (
     HORA_CIERRE_JORNADA,
     TZ_NUEVA_YORK,
     cierre_de_cambios,
-    jornada_del_mes,
+    cortes_entre,
+    es_corte,
+    escaneo_de_la_semana,
+    jornada_semanal,
 )
 from app.liga.motor.catalogo import CATALOGO
 from app.liga.motor.puntos import BANDA, PUNTOS
@@ -49,7 +52,7 @@ class PuntosOut(BaseModel):
 
 class CicloOut(BaseModel):
     jornada: JornadaCiclo
-    escaneo: datetime
+    escaneo: datetime | None
     cierre_jornada: datetime
     corte: datetime
     cierre_cambios: datetime
@@ -73,11 +76,12 @@ class MercadoAprenderOut(BaseModel):
 
 
 def horas_del_ciclo(dia_base: date, dia_inicio: date,
-                    corte: datetime | None = None) -> dict[str, datetime]:
+                    corte: datetime | None = None) -> dict[str, datetime | None]:
+    dia_escaneo = escaneo_de_la_semana(dia_base) if es_corte(dia_base) else None
     horas = {
         "escaneo": datetime.combine(
-            dia_base, time(settings.scan_cron_hour, settings.scan_cron_minute),
-            tzinfo=ZoneInfo(settings.scan_timezone)),
+            dia_escaneo, time(settings.scan_cron_hour, settings.scan_cron_minute),
+            tzinfo=ZoneInfo(settings.scan_timezone)) if dia_escaneo else None,
         "cierre_jornada": datetime.combine(
             dia_base, HORA_CIERRE_JORNADA, tzinfo=TZ_NUEVA_YORK),
         "corte": corte if corte is not None else datetime.combine(
@@ -85,7 +89,8 @@ def horas_del_ciclo(dia_base: date, dia_inicio: date,
         "cierre_cambios": cierre_de_cambios(dia_inicio),
         "apertura": datetime.combine(dia_inicio, HORA_APERTURA, tzinfo=TZ_NUEVA_YORK),
     }
-    return {clave: hora.astimezone(UTC) for clave, hora in horas.items()}
+    return {clave: hora.astimezone(UTC) if hora is not None else None
+            for clave, hora in horas.items()}
 
 
 def _proxima_jornada(db: Session) -> dict | None:
@@ -97,8 +102,8 @@ def _proxima_jornada(db: Session) -> dict | None:
 
 
 def _jornada_de_calendario(hoy: date) -> dict:
-    anio, mes = (hoy.year + 1, 1) if hoy.month == 12 else (hoy.year, hoy.month + 1)
-    f = jornada_del_mes(anio, mes)
+    corte = cortes_entre(hoy, hoy + timedelta(days=7))[0]
+    f = jornada_semanal(corte)
     return {"numero": None, "dia_base": f.dia_base, "dia_inicio": f.dia_inicio,
             "dia_fin": f.dia_fin, "cierre_inscripcion": f.cierre_inscripcion}
 

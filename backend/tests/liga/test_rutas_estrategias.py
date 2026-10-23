@@ -449,6 +449,11 @@ def test_ventana_de_cambios_por_la_api(api) -> None:  # noqa: ANN001
         "values (%s, 1, %s, %s, %s, %s, 'formada', %s, %s) returning id",
         (tid, hoy, hoy + timedelta(days=1), hoy + timedelta(days=28),
          datetime.now(UTC) - timedelta(hours=1), foto_id, scan_id)).fetchone()[0]
+    siguiente = cx.execute(
+        "insert into liga.jornadas (temporada_id, numero, dia_base, dia_inicio, dia_fin, "
+        "cierre_inscripcion, estado) values (%s, 2, %s, %s, %s, %s, 'programada') returning id",
+        (tid, hoy + timedelta(days=7), hoy + timedelta(days=8), hoy + timedelta(days=35),
+         datetime.now(UTC) + timedelta(days=7))).fetchone()[0]
     iid = cx.execute("insert into liga.inscripciones (jornada_id, estrategia_id, receta_id, "
                      "estado) values (%s, %s, %s, 'formada') returning id",
                      (jid, eid, receta["id"])).fetchone()[0]
@@ -493,6 +498,7 @@ def test_ventana_de_cambios_por_la_api(api) -> None:  # noqa: ANN001
         cx.execute("delete from precio_cierre where dia = %s and fuente = 'prueba'", (hoy,))
         cx.execute("delete from liga.inscripciones where jornada_id = %s", (jid,))
         cx.execute("delete from liga.jornadas where id = %s", (jid,))
+        cx.execute("delete from liga.jornadas where id = %s", (siguiente,))
         cx.execute("delete from liga.temporadas where id = %s", (tid,))
 
 
@@ -592,6 +598,7 @@ def test_las_notas_de_una_empresa_solo_las_da_una_cartera_visible(api) -> None: 
     assert propia.status_code == 200, propia.text
     datos = propia.json()
     assert datos["ticker"] == "ZPA" and datos["jornada"] == 1
+    assert datos["jornada_total"] == 12
     assert {k: Decimal(v) for k, v in datos["notas"].items()} == {
         "negocio": Decimal(9), "precio": Decimal(8), "deuda": Decimal(7), "pronto": Decimal(6)}
 

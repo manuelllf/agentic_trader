@@ -108,7 +108,7 @@ def test_ficha_cartera_abierta_y_serie_de_huecos(monkeypatch):
 
     fin = DIA + timedelta(days=1)
     j = SimpleNamespace(id=1, numero=1, dia_base=DIA, dia_fin=fin, estado="formada")
-    db = SimpleNamespace(scalars=lambda *args: [j])
+    db = SimpleNamespace(execute=lambda *args: SimpleNamespace(all=lambda: [(j, 52)]))
     monkeypatch.setattr(comun, "sesion", lambda *args: nullcontext(db))
     monkeypatch.setattr(comun, "hoy_bolsa", lambda: fin)
     ops = [Operacion(1, "AAA", DIA, 100),
@@ -127,6 +127,7 @@ def test_ficha_cartera_abierta_y_serie_de_huecos(monkeypatch):
     ]
     assert serie["serie"][-1]["estrategia"] == pytest.approx(4)
     assert serie["serie"][-1]["provisional"] is True
+    assert serie["serie"][-1]["jornada_total"] == 52
 
 
 def test_calculo_omega_sin_empresas_usa_media_real(monkeypatch):

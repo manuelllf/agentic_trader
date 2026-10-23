@@ -16,6 +16,13 @@ from app.i18n import (
 from app.liga.estrategias import catalogo_payload
 
 
+def test_jornadas_programadas_con_datos_se_traduce():
+    mensaje = "Hay jornadas programadas con datos: no se rehacen."
+    assert present_error_detail(mensaje, "es") == mensaje
+    assert present_error_detail(mensaje, "en") == (
+        "There are scheduled rounds with data: they are not rebuilt.")
+
+
 def test_locale_priority_and_validation():
     assert resolve_locale("en-US;q=0.4,es;q=0.9") == "es"
     assert resolve_locale("es;q=0,en-GB") == "en"

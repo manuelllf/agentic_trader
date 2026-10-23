@@ -1,6 +1,9 @@
 """Designar la foto de la jornada (plan §8): `jornadas.foto_id` (una `public.foto` completa) y
 `jornadas.scan_run_id` (el escaneo de decisión que puso las 4 notas de Jev sobre ella).
 
+Cada semana juega con el último escaneo mensual designado; el escaneo del fin de mes se
+designa en todas las semanas que vienen.
+
 Plan B: si esa foto no tiene escaneo de decisión con notas, la jornada usa la foto nueva y las
 notas del escaneo de decisión anterior. No hace falta guardarlo aparte: es plan B cuando el
 escaneo apunta a otra foto que la jornada (`es_plan_b`), y así lo puede decir la UI.
@@ -9,11 +12,13 @@ escaneo apunta a otra foto que la jornada (`es_plan_b`), y así lo puede decir l
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.liga.models import Jornada
+from app.liga.motor import calendario
 from app.liga.procesos import datos
 from app.liga.procesos.comun import (
     TZ_BOLSA,
@@ -95,6 +100,43 @@ def escaneo_para_probar(db: Session) -> tuple[int, str] | None:
     return (fila.id, fila.scan_at.strftime("%Y-%m-%d")) if fila else None
 
 
+def _dia(fin: datetime) -> date:
+    return fin.astimezone(TZ_BOLSA).date()
+
+
+def _ultimo_fin_de_mes(d: date) -> date:
+    if calendario.es_ultimo_dia_de_bolsa(d):
+        return d
+    primero = d.replace(day=1)
+    return calendario.dias_de_bolsa(
+        primero - timedelta(days=10), primero - timedelta(days=1))[-1]
+
+
+_PENDIENTES = text("""
+    select j.id from liga.jornadas j left join foto f on f.id = j.foto_id
+    where j.estado = 'programada' and j.dia_base >= :desde and j.id <> :excluir
+      and (j.foto_id is null or f.fin < :fin) order by j.dia_inicio
+""")
+
+
+def _pendientes(db: Session, desde: date, fin: datetime, excluir: int = 0) -> list[int]:
+    return list(db.execute(_PENDIENTES, {
+        "desde": desde, "fin": fin, "excluir": excluir}).scalars())
+
+
+def _cambio_de_mes_pendiente(db: Session, dia_foto: date) -> bool:
+    """El escaneo del fin de mes no llegó a las semanas que vienen: uno repetido después
+    ocupa su sitio."""
+    return db.execute(text("""
+        select exists (
+            select 1 from liga.jornadas j left join foto f on f.id = j.foto_id
+            where j.estado = 'programada' and j.dia_base >= :desde
+              and (j.foto_id is null
+                   or (f.fin at time zone 'America/New_York')::date < :ultimo)
+        )
+    """), {"desde": dia_foto, "ultimo": _ultimo_fin_de_mes(dia_foto)}).scalar()
+
+
 def _escaneo(db: Session, foto, scan_run_id: int | None) -> tuple[int, list[str]]:  # noqa: ANN001
     if scan_run_id is not None:
         fila = db.execute(text("select id, decide, error from scan_runs where id = :s"),
@@ -131,11 +173,17 @@ def _designar(db: Session, j: Jornada, foto_id: int | None,
         raise ErrorProceso(
             f"El escaneo {sid} no puntuó la foto {foto.id}: la jornada solo vale con la misma "
             "foto que usó el escaneo.")
-    dia_foto = foto.fin.astimezone(TZ_BOLSA).date()
-    if dia_foto != j.dia_base:
-        raise ErrorProceso(
-            f"La foto {foto.id} no es del día base de la jornada ({j.dia_base}): se terminó el "
-            f"{dia_foto}.")
+    dia_foto = _dia(foto.fin)
+    if dia_foto > j.dia_base:
+        raise ErrorProceso(f"La foto {foto.id} es del {dia_foto}, posterior al día base de la "
+                           f"jornada ({j.dia_base}).")
+    previa = db.execute(text(
+        "select f.fin from liga.jornadas a join foto f on f.id = a.foto_id "
+        "where a.dia_fin = :d and a.id <> :j order by a.id desc limit 1"),
+        {"d": j.dia_base, "j": j.id}).scalar()
+    if previa is not None and foto.fin < previa:
+        raise ErrorProceso(f"La foto {foto.id} es anterior a la de la jornada previa: la liga no "
+                           "vuelve a un escaneo viejo.")
     if foto.fin > j.cierre_inscripcion:
         avisos.append("La foto se terminó después del corte: la cartera usará datos posteriores "
                       "al día base.")
@@ -145,6 +193,14 @@ def _designar(db: Session, j: Jornada, foto_id: int | None,
     if n_empresas == 0:
         raise ErrorProceso(f"La foto {foto.id} no tiene empresas.")
     return Designacion(foto.id, sid, False, n_empresas, datos.n_notas(db, sid), tuple(avisos))
+
+
+def _fijar(db: Session, j: Jornada, d: Designacion, actor: str | None, auto: bool) -> None:
+    j.foto_id, j.scan_run_id = d.foto_id, d.scan_run_id
+    detalle = {"foto_id": d.foto_id, "scan_run_id": d.scan_run_id, "plan_b": d.plan_b}
+    if auto:
+        detalle["auto"] = True
+    auditar(db, "proceso.foto", f"jornada:{j.id}", detalle, actor)
 
 
 def _salida(j: Jornada, d: Designacion, **extra: object) -> dict:
@@ -164,7 +220,10 @@ def vista_previa(jornada_id: int, foto_id: int | None = None, scan_run_id: int |
                  fabrica: Fabrica = fabrica_sistema) -> dict:
     with sesion(fabrica) as db:
         j = jornada(db, jornada_id)
-        return _salida(j, _designar(db, j, foto_id, scan_run_id),
+        d = _designar(db, j, foto_id, scan_run_id)
+        fin = db.execute(text("select fin from foto where id = :f"), {"f": d.foto_id}).scalar()
+        siguientes = _pendientes(db, j.dia_base, fin, excluir=j.id)
+        return _salida(j, d, siguientes=siguientes,
                        actual={"foto_id": j.foto_id, "scan_run_id": j.scan_run_id})
 
 
@@ -175,38 +234,45 @@ def ejecutar(jornada_id: int, foto_id: int | None = None, scan_run_id: int | Non
             j = jornada_bloqueada(db, jornada_id)
             d = _designar(db, j, foto_id, scan_run_id)
             cambia = (j.foto_id, j.scan_run_id) != (d.foto_id, d.scan_run_id)
+            fin = db.execute(text("select fin from foto where id = :f"),
+                             {"f": d.foto_id}).scalar()
+            ids = _pendientes(db, j.dia_base, fin, excluir=j.id)
+            siguientes = []
+            for jid in ids:
+                siguiente = jornada_bloqueada(db, jid)
+                designacion = _designar(db, siguiente, d.foto_id, d.scan_run_id)
+                siguientes.append((siguiente, designacion))
             if cambia:
-                j.foto_id, j.scan_run_id = d.foto_id, d.scan_run_id
-                auditar(db, "proceso.foto", f"jornada:{j.id}",
-                        {"foto_id": d.foto_id, "scan_run_id": d.scan_run_id,
-                         "plan_b": d.plan_b}, actor)
+                _fijar(db, j, d, actor, auto=False)
+            for siguiente, designacion in siguientes:
+                _fijar(db, siguiente, designacion, actor, auto=False)
             db.commit()
-            return _salida(j, d, cambiada=cambia)
+            return _salida(j, d, cambiada=cambia, siguientes=ids)
     except Exception as e:
         auditar_fallo(fabrica, "foto", f"jornada:{jornada_id}", e, actor)
         raise
 
 
-def _omitir_auto(db: Session, objeto: str | None, razon: str, j: Jornada | None = None) -> None:
-    """Deja apuntado por qué no designó; solo avisa al admin si hoy es el día base de la jornada,
-    que es cuando de verdad hace falta: un escaneo suelto a mitad de mes no es una alarma."""
+def _omitir_auto(db: Session, objeto: str | None, razon: str, avisar: bool = True) -> None:
+    """Deja apuntado por qué no designó; avisa al admin solo el último día de bolsa del mes,
+    que es cuando hace falta el escaneo de la liga."""
     auditar(db, "proceso.foto.auto.omitido", objeto, {"razon": razon}, None)
     db.commit()
-    if j is not None and hoy_bolsa() == j.dia_base:
+    if avisar and calendario.es_ultimo_dia_de_bolsa(hoy_bolsa()):
         avisar_admin(db, "Vennett: no se designó la foto de la jornada", razon[:140])
 
 
 def auto_desde_escaneo(scan_run_id: int, fabrica: Fabrica = fabrica_sistema) -> dict | None:
-    """Al terminar un escaneo de decisión con éxito (llamado solo desde `scan_service`, nunca a
-    mano): designa foto+escaneo en la jornada `programada` más próxima sin foto, si el
-    interruptor `procesos.foto.auto` (gestion.CATALOGO) está encendido.
+    """Al terminar el escaneo mensual de decisión, todas las semanas programadas con día base
+    igual o posterior a su foto reciben el par si no tienen foto o la suya es más vieja.
+    El interruptor `procesos.foto.auto` permite desactivar esta designación automática.
 
-    Reusa `_designar` -- las mismas reglas que valida `vista_previa` -- pasando el `foto_id`
-    propio de ESTE escaneo (`scan_runs.foto_id`): así el resultado normal sale sin avisos (mismo
-    par foto/escaneo). Cualquier aviso (foto tardía sobre el corte) es motivo de NO designar
-    sola: mejor que el admin lo mire a mano con el botón manual. Si el escaneo no apunta a
-    ninguna foto no hay nada que designar. Nunca lanza -- un fallo queda en la auditoría,
-    jamás rompe el escaneo."""
+    Un escaneo fuera del último día de bolsa solo entra si queda un cambio de mes pendiente:
+    así un escaneo repetido puede suplir al mensual fallido en las semanas que vienen.
+    Todas las jornadas se validan antes de fijar ninguna para evitar designaciones parciales.
+    Los avisos de la primera requieren revisión manual; los rechazos quedan en auditoría.
+    El admin solo recibe aviso el último día de bolsa del mes, cuando hace falta el escaneo.
+    Nunca lanza: un fallo queda en la auditoría y jamás rompe el escaneo que lo llamó."""
     from app.liga import gestion
 
     try:
@@ -215,29 +281,42 @@ def auto_desde_escaneo(scan_run_id: int, fabrica: Fabrica = fabrica_sistema) -> 
                                 {"c": gestion.CLAVE_FOTO_AUTO}).scalar()
             if not gestion.valor_efectivo(gestion.CLAVE_FOTO_AUTO, activo):
                 return None
-            fila = db.execute(text(
-                "select id from liga.jornadas where estado = 'programada' and foto_id is null "
-                "order by dia_inicio limit 1")).one_or_none()
-            if fila is None:
-                _omitir_auto(db, f"escaneo:{scan_run_id}", "No hay jornada programada sin foto.")
-                return None
             foto_id_escaneo = db.execute(text("select foto_id from scan_runs where id = :s"),
                                          {"s": scan_run_id}).scalar()
-            j = jornada_bloqueada(db, fila.id)
-            try:
-                d = _designar(db, j, foto_id_escaneo, scan_run_id)
-            except ErrorProceso as e:
-                _omitir_auto(db, f"jornada:{j.id}", str(e), j)
+            if foto_id_escaneo is None:
+                _omitir_auto(db, f"escaneo:{scan_run_id}", "El escaneo no apunta a ninguna foto.")
                 return None
-            if d.avisos:
-                _omitir_auto(db, f"jornada:{j.id}", " · ".join(d.avisos), j)
+            fin = db.execute(text("select fin from foto where id = :f"),
+                             {"f": foto_id_escaneo}).scalar()
+            dia_foto = _dia(fin)
+            if (not calendario.es_ultimo_dia_de_bolsa(dia_foto)
+                    and not _cambio_de_mes_pendiente(db, dia_foto)):
+                _omitir_auto(db, f"escaneo:{scan_run_id}",
+                             "El escaneo no es del último día de bolsa del mes y no hay un "
+                             "cambio de mes pendiente.", avisar=False)
                 return None
-            j.foto_id, j.scan_run_id = d.foto_id, d.scan_run_id
-            auditar(db, "proceso.foto", f"jornada:{j.id}",
-                    {"foto_id": d.foto_id, "scan_run_id": d.scan_run_id, "plan_b": d.plan_b,
-                     "auto": True}, None)
+            ids = _pendientes(db, dia_foto, fin)
+            if not ids:
+                _omitir_auto(db, f"escaneo:{scan_run_id}", "No hay jornada programada sin foto.",
+                             avisar=False)
+                return None
+            designaciones = []
+            for jid in ids:
+                j = jornada_bloqueada(db, jid)
+                try:
+                    d = _designar(db, j, foto_id_escaneo, scan_run_id)
+                except ErrorProceso as e:
+                    _omitir_auto(db, f"jornada:{j.id}", str(e))
+                    return None
+                if not designaciones and d.avisos:
+                    _omitir_auto(db, f"jornada:{j.id}", " · ".join(d.avisos))
+                    return None
+                designaciones.append((j, d))
+            for j, d in designaciones:
+                _fijar(db, j, d, None, auto=True)
             db.commit()
-            return _salida(j, d, cambiada=True)
+            primera, d_primera = designaciones[0]
+            return _salida(primera, d_primera, cambiada=True, jornadas=ids)
     except Exception as e:
         auditar_fallo(fabrica, "foto.auto", f"escaneo:{scan_run_id}", e, None)
         return None

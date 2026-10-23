@@ -1,4 +1,4 @@
-"""Resúmenes descriptivos de la estrategia, con cola y cupo compartidos en auditoría."""
+"""Único resumen por correo, el sábado tras el cierre de la semana."""
 
 from __future__ import annotations
 
@@ -6,20 +6,17 @@ import logging
 from datetime import datetime, timedelta
 from html import escape
 from types import SimpleNamespace
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 
 from app import correo, correo_plantilla
 from app.i18n import translate
-from app.liga import avisos, comparativa, gestion, rutas_ligas
+from app.liga import avisos, rutas_ligas
 from app.liga.models import Jornada
-from app.liga.motor.calendario import HORA_CIERRE_JORNADA, TZ_NUEVA_YORK, jornada_del_mes
-from app.liga.procesos import diario
+from app.liga.motor.calendario import HORA_CIERRE_JORNADA, TZ_NUEVA_YORK, cortes_entre
 from app.liga.procesos.comun import auditar, fabrica_sistema, sesion
 
 logger = logging.getLogger(__name__)
-TZ_MADRID = ZoneInfo("Europe/Madrid")
 _BLOQUEO_MENSUAL = "select pg_advisory_xact_lock(hashtextextended('liga.resumen.mensual', 0))"
 
 
@@ -63,9 +60,13 @@ def candidatos(db) -> list[dict]:
 
 
 def contenido(db, usuario_id, tipo, jornada_id) -> dict:
-    if tipo not in ("semanal", "mensual"):
+    if tipo != "mensual":
         raise ValueError(tipo)
-    j = db.get(Jornada, jornada_id)
+    j = db.execute(text("""
+        select j.*, t.n_jornadas as total
+        from liga.jornadas j join liga.temporadas t on t.id = j.temporada_id
+        where j.id = :j
+    """), {"j": jornada_id}).one()
     fila = db.execute(text("""
         select e.id::text as eid, e.nombre, i.id as iid,
                r.rentabilidad, j.sp_rentabilidad as sp
@@ -76,43 +77,17 @@ def contenido(db, usuario_id, tipo, jornada_id) -> dict:
           and i.estado in ('formada', 'cerrada')
         order by e.creada, e.id limit 1
     """), {"u": usuario_id, "j": jornada_id}).one_or_none()
-    salida = {"numero": j.numero, "estrategia": fila.nombre if fila else None,
+    salida = {"numero": j.numero, "total": j.total,
+              "estrategia": fila.nombre if fila else None,
               "rentabilidad": fila.rentabilidad if fila else None,
               "sp": j.sp_rentabilidad, "puesto_general": None, "ligas": [],
-              "entran": [], "salen": [], "provisional": tipo == "semanal"}
-    vivo = diario.vivo(j.id) if tipo == "semanal" and j.estado == "formada" else None
-    if fila and vivo:
-        valor = vivo["por_inscripcion"].get(fila.iid, {}).get("rentabilidad")
-        if valor is None:
-            valor = vivo["por_inscripcion"].get(str(fila.iid), {}).get("rentabilidad")
-        if valor is not None:
-            salida.update(rentabilidad=valor, sp=vivo.get("sp"))
-    if fila and salida["rentabilidad"] is None and tipo == "semanal":
-        cerrado = db.execute(text("""
-            select r.rentabilidad, j.sp_rentabilidad as sp
-            from liga.resultados r join liga.inscripciones i on i.id = r.inscripcion_id
-            join liga.jornadas j on j.id = i.jornada_id
-            where i.estrategia_id = cast(:e as uuid) and j.estado = 'cerrada'
-              and j.dia_base <= :d order by j.dia_base desc limit 1
-        """), {"e": fila.eid, "d": j.dia_base}).one_or_none()
-        if cerrado:
-            salida.update(rentabilidad=cerrado.rentabilidad, sp=cerrado.sp)
-    vivas = (comparativa.clasificacion_viva(db, j.temporada_id, vivo, j)
-             if vivo and vivo.get("sp") is not None
-             and gestion._ajuste_booleano("liga.clasificacion_viva", True) else {})
+              "entran": [], "salen": [], "provisional": False}
     oficiales = db.execute(text("""
         select e.id::text as eid, e.creada, c.puntos, c.dif_sp
         from liga.v_clasificacion c join liga.estrategias e on e.id = c.estrategia_id
         where c.temporada_id = :t
     """), {"t": j.temporada_id}).all()
     ranking = {f.eid: SimpleNamespace(**f._mapping) for f in oficiales}
-    for eid, v in vivas.items():
-        if eid not in ranking:
-            creada = db.execute(
-                text("select creada from liga.estrategias where id = cast(:e as uuid)"),
-                {"e": eid}).scalar_one()
-            ranking[eid] = SimpleNamespace(eid=eid, creada=creada)
-        ranking[eid].puntos, ranking[eid].dif_sp = v.puntos, v.dif_sp
     orden = sorted(ranking.values(), key=lambda f: (-f.puntos, -f.dif_sp, f.creada, f.eid))
     if fila:
         salida["puesto_general"] = next((n for n, f in enumerate(orden, 1)
@@ -134,30 +109,22 @@ def contenido(db, usuario_id, tipo, jornada_id) -> dict:
         where m.usuario_id = cast(:u as uuid) order by l.id
     """), {"u": usuario_id}).all()
     for liga in ligas:
-        miembros = rutas_ligas._aplicar_clasificacion_viva(
-            rutas_ligas._miembros(db, [liga.id], j.temporada_id, j.id), vivas)
+        miembros = rutas_ligas._miembros(db, [liga.id], j.temporada_id, j.id)
         puesto = next((n for n, m in enumerate(miembros, 1)
                        if m.usuario_id == usuario_id and m.estrategia_id), None)
         salida["ligas"].append({"nombre": liga.nombre, "puesto": puesto})
     return salida
 
 
-_TIPO_AVISO = {"semanal": "resumen_semanal", "mensual": "resumen_cierre"}
+def _caducidad(j):
+    siguiente = cortes_entre(j.dia_fin + timedelta(days=1),
+                            j.dia_fin + timedelta(days=7))[0]
+    return datetime.combine(siguiente, HORA_CIERRE_JORNADA, tzinfo=TZ_NUEVA_YORK)
 
 
-def _caducidad(j, tipo):
-    """El semanal vale hasta el cierre de su jornada; el de cierre, hasta el de la siguiente."""
-    if tipo == "semanal":
-        return datetime.combine(j.dia_fin, HORA_CIERRE_JORNADA, tzinfo=TZ_NUEVA_YORK)
-    anio, mes = (j.dia_fin.year + 1, 1) if j.dia_fin.month == 12 else (
-        j.dia_fin.year, j.dia_fin.month + 1)
-    siguiente = jornada_del_mes(anio, mes)
-    return datetime.combine(siguiente.dia_fin, HORA_CIERRE_JORNADA, tzinfo=TZ_NUEVA_YORK)
-
-
-def guardar_avisos(db, tipo, jornada_id, semana=None) -> int:
+def guardar_avisos(db, tipo, jornada_id) -> int:
     """Guarda el resumen para cada cuenta participante, reciba correo o no.
-    Una sola vez por cuenta, jornada y semana. Nunca lanza."""
+    Una sola vez por cuenta y jornada. Nunca lanza."""
     guardados = 0
     try:
         j = db.get(Jornada, jornada_id)
@@ -167,22 +134,19 @@ def guardar_avisos(db, tipo, jornada_id, semana=None) -> int:
             where i.jornada_id = :j and e.tipo = 'usuario' and e.dueno_id is not null
               and i.estado in ('formada', 'cerrada')
         """), {"j": jornada_id}).scalars().all()
-        caduca = _caducidad(j, tipo)
+        caduca = _caducidad(j)
         for uid in duenos:
             ya = db.execute(text("""
                 select 1 from liga.avisos where usuario_id = cast(:u as uuid) and tipo = :t
-                  and datos->>'jornada_id' = :j and coalesce(datos->>'semana', '') = :s
-            """), {"u": uid, "t": _TIPO_AVISO[tipo], "j": str(jornada_id),
-                   "s": semana or ""}).first()
+                  and datos->>'jornada_id' = :j
+            """), {"u": uid, "t": "resumen_cierre", "j": str(jornada_id)}).first()
             if ya:
                 continue
             datos = contenido(db, uid, tipo, jornada_id)
-            resumen = {k: datos[k] for k in ("numero", "estrategia", "rentabilidad", "sp",
+            resumen = {k: datos[k] for k in ("numero", "total", "estrategia", "rentabilidad", "sp",
                                            "puesto_general", "provisional")}
             resumen["jornada_id"] = jornada_id
-            if semana:
-                resumen["semana"] = semana
-            avisos.guardar(db, uid, _TIPO_AVISO[tipo], resumen, caduca)
+            avisos.guardar(db, uid, "resumen_cierre", resumen, caduca)
             guardados += 1
     except Exception:
         logger.exception("No se pudieron guardar los avisos del resumen")
@@ -204,7 +168,7 @@ def _correo(candidato, datos, tipo):
     filas += [(t("puesto_liga", nombre=linea["nombre"]), str(linea["puesto"] or ninguna))
               for linea in datos["ligas"]]
     filas += [(t(k), ", ".join(datos[k]) or ninguna) for k in ("entran", "salen")]
-    asunto = t(f"{tipo}_asunto", numero=datos["numero"])
+    asunto = t(f"{tipo}_asunto", numero=datos["numero"], total=datos["total"])
     cuerpo = t("intro") + "\n\n" + "\n".join(f"{k}: {v}" for k, v in filas)
     texto, html = correo_plantilla.render(
         idioma=idioma, asunto=asunto, intro=cuerpo,
@@ -265,42 +229,9 @@ def enviar_lote(db, tipo, jornada_id, limite=80) -> dict:
         return {"enviados": 0, "pendientes": 0, "omitidos": 0}
 
 
-def _jornada_actual(db):
-    return db.execute(text("""
-        select j.id from liga.jornadas j join liga.temporadas t on t.id = j.temporada_id
-        where j.estado = 'formada' and t.estado = 'en_juego'
-          and j.dia_inicio <= (now() at time zone 'Europe/Madrid')::date
-        order by j.dia_base desc limit 1
-    """)).scalar()
-
-
-def job_semanal(fabrica=fabrica_sistema):
-    try:
-        with sesion(fabrica) as db:
-            jid = _jornada_actual(db)
-            if jid is not None:
-                semana = datetime.now(TZ_MADRID).date()
-                semana -= timedelta(days=semana.weekday())
-                auditar(db, "resumen.semanal.lanzado", f"jornada:{jid}",
-                        {"semana": semana.isoformat(), "jornada_id": jid}, None)
-                db.commit()
-                guardar_avisos(db, "semanal", jid, semana.isoformat())
-                return enviar_lote(db, "semanal", jid)
-    except Exception:
-        logger.exception("Fallo en el resumen semanal")
-
-
 def job_pendientes(fabrica=fabrica_sistema):
     try:
         with sesion(fabrica) as db:
-            semana = datetime.now(TZ_MADRID).date()
-            semana -= timedelta(days=semana.weekday())
-            ids = db.execute(text("""
-                select distinct detalle->>'jornada_id' from liga.auditoria
-                where accion = 'resumen.semanal.lanzado' and detalle->>'semana' = :s
-            """), {"s": semana.isoformat()}).scalars().all()
-            for jid in ids:
-                enviar_lote(db, "semanal", int(jid))
             mensuales = db.execute(text("""
                 select distinct objeto from liga.auditoria
                 where accion = 'resumen.mensual.lanzado'
@@ -333,9 +264,9 @@ def job_mensual(fabrica=fabrica_sistema):
 def probar(usuario_id, tipo, fabrica=fabrica_sistema):
     try:
         with sesion(fabrica) as db:
-            jid = (_jornada_actual(db) if tipo == "semanal" else db.execute(text(
+            jid = db.execute(text(
                 "select id from liga.jornadas where estado = 'cerrada' "
-                "order by dia_fin desc, id desc limit 1")).scalar())
+                "order by dia_fin desc, id desc limit 1")).scalar()
             if jid is None:
                 return {"enviados": 0}
             idioma, destino = avisos._perfil(_PerfilResumen(db, forzar=True), usuario_id)

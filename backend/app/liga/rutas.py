@@ -30,6 +30,7 @@ from app.liga import (
     rutas_estrategias,
     rutas_ia,
     rutas_ligas,
+    rutas_novedades,
     rutas_publicas,
     seguimiento,
     visitas,
@@ -46,6 +47,7 @@ router.include_router(rutas_estrategias.router)
 router.include_router(rutas_avisos.router)
 router.include_router(preview_seleccion.router)
 router.include_router(rutas_ligas.router)
+router.include_router(rutas_novedades.router)
 router.include_router(rutas_ia.router)
 router.include_router(borradores.router)
 router.include_router(visitas.router)

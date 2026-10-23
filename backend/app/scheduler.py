@@ -387,13 +387,6 @@ def _liga_premio_job() -> None:
     premio.job()
 
 
-@recursos.medido("avisos de la jornada")
-def _liga_avisos_job() -> None:
-    from app.liga import avisos
-
-    avisos.job()
-
-
 @recursos.medido("cierres de la liga")
 def _liga_diario_job() -> None:
     """Cierres diarios de la liga. El propio proceso comprueba que sea día de bolsa (calendario
@@ -520,9 +513,6 @@ def start_scheduler() -> None:
     # Liga: el premio anual, una sola vez, cuando se cierra la última jornada de la temporada.
     scheduler.add_job(_liga_premio_job, "interval", minutes=30, id="liga_premio",
                       replace_existing=True, coalesce=True)
-    # Liga: avisos a las cuentas una hora antes de cerrar los cambios y al empezar la jornada.
-    scheduler.add_job(_liga_avisos_job, "interval", minutes=5, id="liga_avisos",
-                      replace_existing=True, coalesce=True)
     from app.liga import blog_procesos, resumenes
 
     scheduler.add_job(blog_procesos.job_publicar, "interval", minutes=1,
@@ -533,13 +523,13 @@ def start_scheduler() -> None:
                       CronTrigger(hour=4, minute=30, timezone="Europe/Madrid"),
                       id="blog_limpieza", replace_existing=True, coalesce=True)
 
-    scheduler.add_job(resumenes.job_semanal,
-                      CronTrigger(day_of_week="mon", hour=9, minute=0, timezone="Europe/Madrid"),
-                      id="liga_resumen_semanal", replace_existing=True, coalesce=True)
     scheduler.add_job(resumenes.job_pendientes,
                       CronTrigger(hour=9, minute=5, timezone="Europe/Madrid"),
                       id="liga_resumen_pendientes", replace_existing=True, coalesce=True)
-    scheduler.add_job(resumenes.job_mensual, "interval", minutes=15,
+    # La semana cierra el viernes 17:30 Nueva York; el sábado a mediodía están todos los cierres.
+    scheduler.add_job(resumenes.job_mensual,
+                      CronTrigger(day_of_week="sat", hour=12, minute=0,
+                                  timezone="Europe/Madrid"),
                       id="liga_resumen_mensual", replace_existing=True, coalesce=True)
     scheduler.add_job(_reservas_huerfanas_job, "interval", minutes=10,
                       id="reservas_huerfanas", replace_existing=True, coalesce=True)

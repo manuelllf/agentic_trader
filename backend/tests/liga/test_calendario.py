@@ -8,10 +8,15 @@ import pytest
 
 from app.liga.motor.calendario import (
     TZ_NUEVA_YORK,
+    cortes_entre,
     dias_de_bolsa,
+    es_corte,
     es_dia_de_bolsa,
     es_ultimo_dia_de_bolsa,
+    escaneo_de_la_semana,
     jornada_del_mes,
+    jornada_semanal,
+    jornadas_semanales,
 )
 
 
@@ -115,3 +120,88 @@ def test_fechas_que_no_valen():
         es_dia_de_bolsa(date(1999, 12, 31))
     with pytest.raises(ValueError):
         jornada_del_mes(2000, 1)                      # no hay día base antes del calendario
+
+
+def test_corte_semanal_normal():
+    assert cortes_entre(date(2026, 1, 5), date(2026, 1, 9)) == [date(2026, 1, 9)]
+    jornada = jornada_semanal(date(2026, 1, 9))
+    assert jornada.dia_base == date(2026, 1, 9)
+    assert jornada.dia_inicio == date(2026, 1, 12)
+    assert jornada.dia_fin == date(2026, 1, 16)
+    assert jornada.cierre_inscripcion == datetime(2026, 1, 9, 18, tzinfo=TZ_NUEVA_YORK)
+
+
+def test_fin_de_mes_entre_semana_no_corta_la_semana():
+    assert cortes_entre(date(2026, 9, 28), date(2026, 10, 2)) == [date(2026, 10, 2)]
+    assert not es_corte(date(2026, 9, 30))
+    jornada = jornada_semanal(date(2026, 9, 25))
+    assert (jornada.dia_inicio, jornada.dia_fin) == (date(2026, 9, 28), date(2026, 10, 2))
+    assert escaneo_de_la_semana(date(2026, 10, 2)) == date(2026, 9, 30)
+    assert escaneo_de_la_semana(date(2026, 10, 9)) is None
+
+
+def test_viernes_santo_adelanta_el_corte_semanal():
+    assert not es_dia_de_bolsa(date(2026, 4, 3))
+    assert not es_corte(date(2026, 4, 3))
+    assert not es_corte(date(2026, 3, 31))
+    assert cortes_entre(date(2026, 3, 30), date(2026, 4, 5)) == [date(2026, 4, 2)]
+    assert jornada_semanal(date(2026, 3, 27)).dia_fin == date(2026, 4, 2)
+    assert escaneo_de_la_semana(date(2026, 4, 2)) == date(2026, 3, 31)
+
+
+@pytest.mark.parametrize("dia", [date(2026, 1, 8), date(2026, 1, 10), date(2026, 9, 30)])
+def test_jornada_y_escaneo_rechazan_fechas_sin_corte(dia):
+    with pytest.raises(ValueError):
+        jornada_semanal(dia)
+    with pytest.raises(ValueError):
+        escaneo_de_la_semana(dia)
+
+
+def test_cortes_incluyen_extremos():
+    corte = date(2026, 10, 30)
+    assert cortes_entre(corte, corte) == [corte]
+    assert cortes_entre(date(2026, 10, 31), corte) == []
+
+
+def test_jornadas_semanales_del_anio_sin_huecos():
+    desde, hasta = date(2027, 1, 1), date(2027, 12, 31)
+    cortes = cortes_entre(desde, hasta)
+    jornadas = jornadas_semanales(desde, hasta)
+    assert [j.dia_base for j in jornadas] == cortes[:-1]
+    assert [j.dia_fin for j in jornadas] == cortes[1:]
+    for jornada in jornadas:
+        assert desde <= jornada.dia_base < jornada.dia_inicio <= jornada.dia_fin <= hasta
+        assert jornada.dia_inicio == dias_de_bolsa(jornada.dia_base, jornada.dia_fin)[1]
+    for anterior, siguiente in zip(jornadas, jornadas[1:], strict=False):
+        assert anterior.dia_fin == siguiente.dia_base
+
+
+def test_jornadas_semanales_omite_la_ultima_si_no_cabe():
+    assert jornadas_semanales(date(2026, 1, 9), date(2026, 1, 15)) == []
+    jornadas = jornadas_semanales(date(2026, 1, 9), date(2026, 1, 16))
+    assert jornadas == [jornada_semanal(date(2026, 1, 9))]
+
+
+@pytest.mark.parametrize(("corte", "esperado"), [
+    (date(2026, 10, 30), date(2026, 10, 30)),
+    (date(2026, 12, 4), date(2026, 11, 30)),
+    (date(2027, 4, 2), date(2027, 3, 31)),
+    (date(2027, 5, 28), date(2027, 5, 28)),
+    (date(2027, 4, 9), None),
+])
+def test_escaneo_de_la_semana(corte, esperado):
+    assert escaneo_de_la_semana(corte) == esperado
+
+
+def test_semanas_de_la_pretemporada_y_de_2027():
+    pre = jornadas_semanales(date(2026, 10, 30), date(2026, 12, 31))
+    t1 = [j for j in jornadas_semanales(date(2026, 12, 1), date(2027, 12, 31))
+          if j.dia_inicio.year == 2027]
+    assert len(pre) == 9
+    assert len(t1) == 52
+    assert pre[0].dia_base == date(2026, 10, 30)
+    assert pre[-1].dia_fin == t1[0].dia_base == date(2026, 12, 31)
+    assert t1[-1].dia_fin == date(2027, 12, 31)
+    for j in pre + t1:
+        assert len(dias_de_bolsa(j.dia_inicio, j.dia_fin)) in (4, 5)
+        assert j.dia_inicio.isocalendar()[:2] == j.dia_fin.isocalendar()[:2]
