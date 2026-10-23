@@ -274,3 +274,14 @@ def test_analitica_vuelta_comparte_cohortes(api) -> None:  # noqa: ANN001
     datos = respuesta.json()
     assert [f["semana"] for f in datos["vuelta"]] == [f["semana"] for f in datos["cohortes"]]
     assert [f["jugaron"] for f in datos["vuelta"]] == [f["jugaron"] for f in datos["cohortes"]]
+
+
+def test_resumen_con_jornada_sin_escaneo_esa_semana(api, monkeypatch) -> None:  # noqa: ANN001
+    cliente, cab, usuario, _cx = api
+    jornada = {"numero": 2, "estado": "programada", "siguiente": "foto",
+               "dia_base": "2026-11-06", "dia_inicio": "2026-11-09",
+               "dia_fin": "2026-11-13", "cierre_inscripcion": "2026-11-06T18:00:00-05:00"}
+    falso = {"ultimo_intento": {}, "temporadas": [{"jornadas": [jornada]}]}
+    monkeypatch.setattr(estado, "general", lambda *a, **k: falso)
+    r = cliente.get("/liga/admin/panel/resumen", headers=cab(usuario(rol="admin"), aal="aal2"))
+    assert r.status_code == 200, r.text

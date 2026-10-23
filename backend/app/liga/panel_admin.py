@@ -3,21 +3,27 @@ Los umbrales salen de liga.ajustes."""
 
 import csv
 import io
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.liga import gestion, panel_usuarios
 from app.liga.db import db_usuario
-from app.liga.motor.calendario import HORA_CIERRE_JORNADA, TZ_NUEVA_YORK
+from app.liga.motor.calendario import (
+    HORA_CIERRE_JORNADA,
+    TZ_NUEVA_YORK,
+    cortes_entre,
+    escaneo_de_la_semana,
+)
 from app.liga.panel_usuarios import ResumenPanel
 from app.liga.procesos import estado, premio
-from app.liga.rutas_aprender import horas_del_ciclo
 
 router = APIRouter(prefix="/panel", tags=["liga-admin-panel"])
 
@@ -103,6 +109,20 @@ class ConsultaOut(BaseModel):
     umbral_dias: int | None
 
 
+def _proximo_escaneo(desde: date) -> datetime | None:
+    """Hora del próximo escaneo mensual, buscando desde el corte `desde`."""
+    ahora = datetime.now(UTC)
+    for corte in cortes_entre(desde, desde + timedelta(days=90)):
+        dia = escaneo_de_la_semana(corte)
+        if dia is None:
+            continue
+        cuando = datetime.combine(dia, time(settings.scan_cron_hour, settings.scan_cron_minute),
+                                  tzinfo=ZoneInfo(settings.scan_timezone)).astimezone(UTC)
+        if cuando >= ahora:
+            return cuando
+    return None
+
+
 @router.get("/resumen", response_model=ResumenAdminOut)
 def resumen(db: Session = Depends(db_usuario)) -> ResumenAdminOut:
     pendientes = []
@@ -158,8 +178,9 @@ def resumen(db: Session = Depends(db_usuario)) -> ResumenAdminOut:
             if not paso:
                 continue
             if paso == "foto":
-                cuando = horas_del_ciclo(date.fromisoformat(jornada["dia_base"]),
-                                         date.fromisoformat(jornada["dia_inicio"]))["escaneo"]
+                cuando = _proximo_escaneo(date.fromisoformat(jornada["dia_base"]))
+                if cuando is None:
+                    continue
             elif paso == "formar":
                 cuando = datetime.fromisoformat(jornada["cierre_inscripcion"])
             else:

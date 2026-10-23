@@ -43,7 +43,7 @@ export default function Lista() {
         </span>)}</div>
       </Link></li>;
     })}</ul>}
-    {articulos?.length === 0 && <section><p>{t("ba_empty")}</p>{nuevo}</section>}
+    {articulos?.length === 0 && <section><p>{t("ba_empty")}</p></section>}
     {articulos && articulos.length > 0 && !articulos.some(a => filtro === "todos" || a.estado === filtro) && <p>{t("ba_empty_filter")}</p>}
     <Link className="ba-newsletter" href="/admin/blog/boletin"><strong>{t("ba_newsletter")}</strong>
       {total !== null && <p>{t("ba_confirmed", { count: total })}</p>}</Link>
