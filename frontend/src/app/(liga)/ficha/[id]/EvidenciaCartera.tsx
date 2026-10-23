@@ -42,7 +42,7 @@ export function EvidenciaCartera({ fichaId, datos, mercado }: { fichaId: string;
     <section className="ficha-analisis" aria-label={t("strategies_evidence_portfolio")}>
       <h3 className="sec-t">{t("strategies_portfolio_count", { count: posiciones.length })}</h3>
       <p className="fine">{t("strategies_evidence_select_company")}</p>
-      <p className="fine">{t("strategies_evidence_round_context", { round: f.jornada_numero, date: f.desde, method: f.metodo === "mantenida" ? t("strategies_evidence_kept_positions") : t("strategies_evidence_fixed_photo") })}</p>
+      <p className="fine">{t("strategies_evidence_round_context", { round: f.jornada_numero, total: f.jornada_total, date: f.desde, method: f.metodo === "mantenida" ? t("strategies_evidence_kept_positions") : t("strategies_evidence_fixed_photo") })}</p>
       {!f.receta_vigente && <p className="fine">{t("strategies_evidence_method_changed_note")}</p>}
       {f.estado_foto === "sin_datos" && <p className="fine">{t("strategies_evidence_photo_missing")}</p>}
       {f.estado_reglas === "version_no_soportada" && <p className="fine">{t("strategies_evidence_rule_version_unsupported")}</p>}
@@ -56,7 +56,7 @@ export function EvidenciaCartera({ fichaId, datos, mercado }: { fichaId: string;
           retorno: (mercado ? mercado.empresas[p.ticker]?.rentabilidad : p.rendimiento.rentabilidad_pct) ?? null,
         }))} />
       <dialog ref={dialogo} className="lecturas-modal empresa-modal" aria-labelledby={titulo} onCancel={() => setTicker(null)}>
-        <header className="lecturas-cab"><div><p className="lecturas-kicker">{t("strategies_evidence_company_round", { round: f.jornada_numero })}</p><h2 id={titulo}>{ticker}</h2></div>
+        <header className="lecturas-cab"><div><p className="lecturas-kicker">{t("strategies_evidence_company_round", { round: f.jornada_numero, total: f.jornada_total })}</p><h2 id={titulo}>{ticker}</h2></div>
           <button type="button" className="lecturas-cerrar" aria-label={t("strategies_close_company")} autoFocus onClick={() => setTicker(null)}>×</button></header>
         <div className="lecturas-cuerpo">
       {posiciones.filter(p => p.ticker === ticker).map((p) => {

@@ -10,6 +10,7 @@ export type EvidenciaFormacion = {
     inscripcion_id: number;
     jornada_id: number;
     jornada_numero: number;
+    jornada_total: number;
     desde: string;
     hasta: string;
     metodo: "seleccion" | "mantenida";

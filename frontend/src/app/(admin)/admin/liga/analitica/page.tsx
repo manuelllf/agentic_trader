@@ -12,11 +12,13 @@ import { altura, porcentaje, ritmo } from "./analitica";
 
 type Decimal = number | string;
 type Pasos = { altas: number; con_estrategia: number; apuntadas: number; jugaron: number };
+type Vuelta = { semana: string; jugaron: number; base_2: number; vuelven_2: number; base_3: number; vuelven_3: number };
 export type AnaliticaOut = {
   cifras: Record<"cuentas" | "nuevas_7d" | "activas_7d" | "visitas_7d" | "ia_mes_usd", Decimal> & { tope_mensual_usd: Decimal | null };
   visitas_7d_anterior: number;
   embudo: Pasos;
   cohortes: (Pasos & { semana: string })[];
+  vuelta: Vuelta[];
   visitas_dia: { dia: string; visitas: number; cuentas: number }[];
 };
 
@@ -47,6 +49,13 @@ function Analitica() {
   const tope = c.tope_mensual_usd === null ? null : Number(c.tope_mensual_usd);
   const maximo = Math.max(0, ...datos.visitas_dia.map(d => Number(d.visitas)));
   const cohortes = [...datos.cohortes].filter(f => f.altas > 0).sort((a, b) => b.semana.localeCompare(a.semana)).slice(0, 8);
+  const vueltaPorSemana = new Map(datos.vuelta.map(f => [f.semana, f]));
+  const vuelta = datos.vuelta.reduce((total, f) => ({
+    base_2: total.base_2 + f.base_2, vuelven_2: total.vuelven_2 + f.vuelven_2,
+    base_3: total.base_3 + f.base_3, vuelven_3: total.vuelven_3 + f.vuelven_3,
+  }), { base_2: 0, vuelven_2: 0, base_3: 0, vuelven_3: 0 });
+  const pctVuelta = (cuantos: number, base: number) => base === 0
+    ? t("admin_panel_vacio") : pct(porcentaje(cuantos, base));
   return <Pagina repetido titulo={t("admin_analitica_titulo")}>
     <Bloque titulo={t("admin_analitica_cifras")}><Cifras>
       <Cifra etiqueta={t("admin_analitica_cuentas")} valor={n(c.cuentas)} nota={t("admin_analitica_nuevas", { n: n(c.nuevas_7d) })} />
@@ -60,12 +69,20 @@ function Analitica() {
         <Barra valor={datos.embudo[clave]} maximo={datos.embudo.altas} />
       </li>)}</ul>
     </Bloque>
+    <Bloque titulo={t("admin_analitica_vuelta_titulo")}><Cifras>
+      <Cifra className="tabular-nums" etiqueta={t("admin_analitica_vuelta_semana_2")} valor={pctVuelta(vuelta.vuelven_2, vuelta.base_2)} nota={t("admin_analitica_vuelta_nota_2", { n: n(vuelta.vuelven_2), m: n(vuelta.base_2) })} />
+      <Cifra className="tabular-nums" etiqueta={t("admin_analitica_vuelta_semana_3")} valor={pctVuelta(vuelta.vuelven_3, vuelta.base_3)} nota={t("admin_analitica_vuelta_nota_3", { n: n(vuelta.vuelven_3), m: n(vuelta.base_3) })} />
+    </Cifras></Bloque>
     <Bloque titulo={t("admin_analitica_cohortes")}>
       <div className="adm-tabla-caja"><table className="adm-tabla">
-        <thead><tr><th scope="col">{t("admin_analitica_semana")}</th>{pasos.map(([clave, etiqueta]) => <th key={clave} scope="col" className="der">{t(etiqueta)}</th>)}</tr></thead>
+        <thead><tr><th scope="col">{t("admin_analitica_semana")}</th>{pasos.map(([clave, etiqueta]) => <th key={clave} scope="col" className="der">{t(etiqueta)}</th>)}{([2, 3] as const).map(semana => <th key={semana} scope="col" className="der">{t(`admin_analitica_vuelta_columna_${semana}`)}</th>)}</tr></thead>
         <tbody>{cohortes.map(f => <tr key={f.semana}>
           <th scope="row">{fechaCorta(f.semana, locale)}</th><td className="der tabular-nums">{n(f.altas)}</td>
           {pasos.slice(1).map(([clave]) => <td key={clave} className="der tabular-nums">{pct(porcentaje(f[clave], f.altas))}</td>)}
+          {([2, 3] as const).map(semana => {
+            const v = vueltaPorSemana.get(f.semana);
+            return <td key={semana} className="der tabular-nums">{pctVuelta(v?.[`vuelven_${semana}`] ?? 0, v?.[`base_${semana}`] ?? 0)}</td>;
+          })}
         </tr>)}</tbody>
       </table></div>
     </Bloque>

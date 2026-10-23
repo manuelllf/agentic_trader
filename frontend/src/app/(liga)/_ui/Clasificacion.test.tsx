@@ -6,8 +6,10 @@ import mensajes from "../../../../messages/es/league.json";
 
 vi.mock("next-intl", () => ({
   useLocale: () => "es",
-  useTranslations: () => (key: string, values?: { numero?: number }) =>
-    (key.startsWith("liga_") ? mensajes[key as keyof typeof mensajes] ?? key : key).replace("{numero}", String(values?.numero ?? "")),
+  useTranslations: () => (key: string, values?: { numero?: number; total?: number }) =>
+    (key.startsWith("liga_") ? mensajes[key as keyof typeof mensajes] ?? key : key)
+      .replace("{numero}", String(values?.numero ?? ""))
+      .replace("{total}", String(values?.total ?? "")),
 }));
 
 it("conserva filas y huecos y oculta la cabecera en m?vil", () => {
@@ -20,12 +22,12 @@ it("conserva filas y huecos y oculta la cabecera en m?vil", () => {
 
 it("muestra la nota de la jornada provisional sin etiquetar cada fila", () => {
   const salida = renderToStaticMarkup(
-    <Clasificacion jornada_provisional={7}>
+    <Clasificacion jornada_provisional={7} temporada={{ n_jornadas: 52 }}>
       <FilaEquipo puesto={1} nombre="Equipo"
         escudo={{ forma: "circulo", dibujo: "liso", color1: "#123456", color2: null, iniciales: null }}
         etiqueta="Alias" vsIndice={0} puntos={3} acumulado={null} />
     </Clasificacion>,
   );
   expect(salida).not.toContain(">Provisional</span>");
-  expect(salida).toContain("La jornada 7 sigue en juego: los puestos son provisionales.");
+  expect(salida).toContain("La jornada 7 de 52 sigue en juego: los puestos son provisionales.");
 });

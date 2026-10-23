@@ -73,7 +73,7 @@ export default function PrivadaDetalle() {
           <h1 className="h1">{liga.nombre}</h1>
           <p className="meta">
             {t("private_leagues_people", { count: liga.n_miembros })}
-            {liga.jornada_numero ? ` · ${t("private_leagues_round", { round: liga.jornada_numero })}` : ""}
+            {liga.jornada_numero ? ` · ${t("private_leagues_round", { round: liga.jornada_numero, total: liga.jornada_total! })}` : ""}
           </p>
           <dl className="priv-resumen">
             <div><dt>{t("private_leagues_sp_month")}</dt><dd className={sp == null ? "" : claseSigno(sp)}>{sp == null ? "-" : percent(sp)}</dd></div>
@@ -85,11 +85,11 @@ export default function PrivadaDetalle() {
             <Segmentado etiquetaGrupo={t("private_leagues_group_results")} valor={vista} onChange={setVista}
               opciones={[{ valor: "mes", etiqueta: t("private_leagues_this_month") }, { valor: "oficial", etiqueta: t("private_leagues_standings") }]} />
             <p className="fine priv-contexto">{vista === "mes"
-              ? liga.jornada_numero ? t("private_leagues_round_context", { round: liga.jornada_numero, quotes: liga.en_vivo ? t("private_leagues_provisional_quotes") : t("private_leagues_last_closes"), date: liga.datos_hasta ? ` · ${date(liga.datos_hasta)}` : ` · ${t("private_leagues_waiting_prices")}` })
+              ? liga.jornada_numero ? t("private_leagues_round_context", { round: liga.jornada_numero, total: liga.jornada_total!, quotes: liga.en_vivo ? t("private_leagues_provisional_quotes") : t("private_leagues_last_closes"), date: liga.datos_hasta ? ` · ${date(liga.datos_hasta)}` : ` · ${t("private_leagues_waiting_prices")}` })
                 : t("private_leagues_no_round_context")
               : t("private_leagues_standings_context")}</p>
             {liga.jornada_numero != null && miembros.some((m) => m.provisional === true) && (
-              <p className="fine">{t("liga_clasificacion_provisional_nota", { numero: liga.jornada_numero })}</p>
+              <p className="fine">{t("liga_clasificacion_provisional_nota", { numero: liga.jornada_numero, total: liga.jornada_total! })}</p>
             )}
             {vista === "mes" ? (
               <div className="priv-filas">

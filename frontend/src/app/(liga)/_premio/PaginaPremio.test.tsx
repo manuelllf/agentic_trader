@@ -24,7 +24,7 @@ vi.mock("@/lib/liga/cache", () => ({
 }));
 vi.mock("../_ui", () => ({ BarraPestanas: () => null, Cargando: () => null, ErrorLiga: () => null }));
 
-const temporada = { id: 1, nombre: "Temporada 1", clave: "temporada_1", n_jornadas: 12 };
+const temporada = { id: 1, nombre: "Temporada 1", clave: "temporada_1", n_jornadas: 52, n_meses: 12 };
 
 let root: Root;
 let container: HTMLDivElement;
@@ -85,10 +85,11 @@ it("un premio no visible ofrece volver a la liga", () => {
   expect(container.textContent).toContain(messages.premio_no_visible);
   expect(Array.from(container.querySelectorAll('a[href="/liga"]')).some((e) => e.textContent === messages.premio_volver)).toBe(true);
 });
-it("las casillas de jornadas siguen la temporada del premio, no la de la portada", () => {
+it("usa los meses del premio aunque la temporada tenga 52 jornadas", () => {
   cuenta(false, "mayor", 3);
   render();
   expect(container.querySelectorAll(".premio-casilla").length).toBe(12);
+  expect(container.textContent).toContain("12 meses");
   expect(container.querySelectorAll(".premio-casilla.jugada").length).toBe(3);
 });
 it("la cuenta de jornadas dice cuántas faltan para el mínimo", () => {

@@ -33,7 +33,7 @@ export function textoAviso(aviso: Aviso, t: T, locale: Locale, zona?: string): T
     case "resumen_semanal":
       return { titulo: t("aviso_resumen_semanal_t", { numero }), texto: rent && sp ? t("aviso_resumen_semanal_d", { rent, sp, puesto }) : t("aviso_resumen_sin_datos"), destino: { ir: "resumen", href: null } };
     case "resumen_cierre":
-      return { titulo: t("aviso_resumen_cierre_t", { numero, puesto }), texto: rent && sp ? t("aviso_resumen_cierre_d", { rent, sp }) : t("aviso_resumen_sin_datos"), destino: { ir: "clasificacion", href: "/liga" } };
+      return { titulo: t(aviso.datos.total == null ? "aviso_resumen_cierre_t_sin_total" : "aviso_resumen_cierre_t", { numero, puesto, total: Number(aviso.datos.total) }), texto: rent && sp ? t("aviso_resumen_cierre_d", { rent, sp }) : t("aviso_resumen_sin_datos"), destino: { ir: "clasificacion", href: "/liga" } };
     default: return null;
   }
 }

@@ -4,7 +4,7 @@
 
 import { ACTUALIZACION_VISIBLE, LECTURA_VISIBLE, PREGUNTA_VISIBLE } from "@/lib/liga/funciones";
 import { PLANES_VISIBLES } from "@/lib/liga/planes";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -82,7 +82,7 @@ function escudoParaApi(cr: EscudoValor) {
   };
 }
 
-export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?: string }) {
+export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdInicial?: string; antes?: ReactNode }) {
   const t = useTranslations();
   const locale = normalizeLocale(useLocale()) ?? "es";
   const router = useRouter();
@@ -652,6 +652,7 @@ export function EditorEstrategia({ estrategiaIdInicial }: { estrategiaIdInicial?
   return (
     <main className="scroll constructor ancho-amplio">
       <CabeceraApp titulo={estrategiaIdInicial ? t("builder_edit_title") : t("builder_new_title")} />
+      {antes}
       <nav ref={pasosRef} className="constructor-etapas" aria-label={t("builder_steps_aria")}>
         {ETAPAS.map((titulo, i) => <button key={titulo} type="button" aria-current={etapa === i ? "step" : undefined}
           disabled={ocupado || convOcupado} onClick={() => void irEtapa(i)}>{t(titulo)}</button>)}

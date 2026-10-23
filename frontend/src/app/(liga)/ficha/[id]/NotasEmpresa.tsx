@@ -37,7 +37,7 @@ export function NotasEmpresa({ fichaId, ticker }: { fichaId: string; ticker: str
             </div>
           );
         })}
-        <p className="fine">{t("strategies_company_notes_source", { date: fecha(datos.dia, new Date(), locale), round: datos.jornada })}</p>
+        <p className="fine">{t("strategies_company_notes_source", { date: fecha(datos.dia, new Date(), locale), round: datos.jornada, total: datos.jornada_total })}</p>
       </> : <p className="fine">{t("strategies_company_notes_none")}</p>}
       <Link className="enlace-fila" href="/como-funciona">
         <span>{t("strategies_company_notes_how")}</span><span aria-hidden="true">›</span>

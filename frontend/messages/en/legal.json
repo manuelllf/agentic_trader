@@ -156,7 +156,7 @@
   "legal_bases_h_quien": "Who can take part",
   "legal_bases_quien_1": "People who declare they are 18 or over in their account before the season closes.",
   "legal_bases_quien_2": "Each account competes with one strategy, the one it designates for the prize. A change counts from the next round that is formed.",
-  "legal_bases_quien_3": "You need to have played at least 10 rounds in the season.",
+  "legal_bases_quien_3": "You need to have entered the strategy that competes in at least 10 months of the season.",
   "legal_bases_quien_4": "House strategies (Alpha, Omega and Lambda) do not compete for the prize.",
   "legal_bases_h_calculo": "How it is calculated",
   "legal_bases_calculo_1": "There is no draw: the result comes from the return of your paper strategy, compounded round by round. A round not played counts as 0%.",

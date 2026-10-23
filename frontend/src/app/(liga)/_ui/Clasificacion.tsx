@@ -9,14 +9,15 @@ import type { ReactNode } from "react";
 export interface ClasificacionProps {
   children: ReactNode;
   jornada_provisional?: number | null;
+  temporada?: { n_jornadas: number } | null;
 }
 
-export function Clasificacion({ children, jornada_provisional }: ClasificacionProps) {
+export function Clasificacion({ children, jornada_provisional, temporada }: ClasificacionProps) {
   const t = useTranslations();
   return (
     <div className="ranking-lista">
       {jornada_provisional != null && <p className="fine">
-        {t("liga_clasificacion_provisional_nota", { numero: jornada_provisional })}
+        {t("liga_clasificacion_provisional_nota", { numero: jornada_provisional, total: temporada!.n_jornadas })}
       </p>}
       <div className="ranking-cabecera" hidden aria-hidden="true">
         <span />

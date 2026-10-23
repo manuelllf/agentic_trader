@@ -72,4 +72,8 @@ it("permite copiar y oculta el aviso comercial en una cuenta gratis", () => {
   expect(salida).not.toContain('strategies_pro_copy_note');
   expect(salida).toContain('strategies_copy_adjust');
   expect(salida).toContain('strategies_report');
+
+  estado.ficha = { ...(estado.ficha as Ficha), estado: "retirada" };
+  const retirada = renderToStaticMarkup(<FichaContenido id="estrategia-1" />);
+  expect(retirada).not.toContain('strategies_copy_adjust');
 });

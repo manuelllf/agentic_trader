@@ -41,7 +41,7 @@
   "common_seguimiento_cartera_nueva": "La cartera más reciente se formó después de tu última revisión.",
   "common_seguimiento_sin_dos_carteras": "Aún no hay dos carteras formadas con las que comparar.",
   "common_seguimiento_nota": "Compara las carteras guardadas; no vuelve a pasar las reglas.",
-  "common_seguimiento_sin_pregunta": "Este mes jugó sin tu pregunta: {motivo, select, sin_ia {la IA no estaba disponible} tope {la IA no estaba disponible} incompleta {no llegaron todas las respuestas} tiempo {se agotó el tiempo para contestar} other {faltaron respuestas}}.",
+  "common_seguimiento_sin_pregunta": "Esta semana jugó sin tu pregunta: {motivo, select, sin_ia {la IA no estaba disponible} tope {la IA no estaba disponible} incompleta {no llegaron todas las respuestas} tiempo {se agotó el tiempo para contestar} other {faltaron respuestas}}.",
   "common_seguimiento_ninguna": "Ninguna",
   "common_ranking_sobre_sp": "{value} pp sobre el S&P",
   "common_ranking_bajo_sp": "{value} pp bajo el S&P",

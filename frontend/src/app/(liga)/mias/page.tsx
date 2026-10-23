@@ -3,15 +3,15 @@
 import { PREGUNTA_VISIBLE } from "@/lib/liga/funciones";
 import Link from "next/link";
 import { useConfirmar } from "@/components/Confirmar";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
-import { BarraPestanas, Boton, CabeceraApp, Cargando, ErrorLiga, Segmentado, TarjetaEstrategia, Vacio, cierreDeCambios }
+import { BarraPestanas, Boton, CabeceraApp, Cargando, ErrorLiga, HojaNovedades, Segmentado, TarjetaEstrategia, Vacio, cierreDeCambios }
   from "../_ui";
 import {
   borrarEstrategia, cadaDia1, desapuntar, apuntar as apuntarApi, getJornadaPublica,
-  getClasificacion, getPortada, miVentana, misEstrategias, type Clasificacion, type Estrategia,
-  type JornadaDetalle, type Portada, type Ventana,
+  getClasificacion, getPortada, marcarNovedadesVistas, novedades, miVentana, misEstrategias, type Clasificacion, type Estrategia,
+  type JornadaDetalle, type Novedades, type Portada, type Ventana,
 } from "@/lib/liga/api";
 import { mutar, useCache } from "@/lib/liga/cache";
 import { precargarFicha } from "@/lib/liga/ficha";
@@ -41,6 +41,22 @@ export default function Mias() {
   const points = (value: number) => signo(value, 1, locale);
   const { estado, yo } = useSesionRequerida("/mias");
   const sesionLista = estado !== "cargando";
+  const [resumenNovedades, setResumenNovedades] = useState<Novedades | null>(null);
+  useEffect(() => {
+    if (estado !== "dentro") return;
+    let activa = true;
+    void novedades().then((r) => {
+      if (activa && r && typeof r !== "string" && r.estrategias.some((e) =>
+        e.semana?.rentabilidad != null || e.movidas.some((m) => m.aportacion != null)
+        || e.desde_lunes?.rentabilidad != null || e.cambios.length > 0)) setResumenNovedades(r);
+    });
+    return () => { activa = false; };
+  }, [estado]);
+  const cerrarNovedades = useCallback(() => {
+    setResumenNovedades(null);
+    void marcarNovedadesVistas();
+  }, []);
+
 
   const { datos: estrategias, cargando, refrescar: cargar } = useCache<ListaEstrategias>(
     sesionLista && estado === "dentro" ? "mis-estrategias" : null, misEstrategias,
@@ -211,12 +227,15 @@ export default function Mias() {
                     {novedad.tipo === "primera" && <span>{t("common_seguimiento_primera_revision")}</span>}
                   </Link>
                 )}
-                {ventana && cierre && (
+                {ventana && cierre && (ventana.fase !== "siguiente" || !!ventana.proxima?.length) && (
                   <Link href={`/crear/${e.id}`} className="mias-linea viva">
                     {ventana.fase === "cambios" ? <>
                       <b>{t("window_mine_open")}</b>
                       <span>{t("window_mine_until", { date: cierre.dia, time: cierre.hora })}</span>
-                    </> : <span>{t("window_mine_forming")}</span>}
+                    </> : ventana.fase === "formando" ? <span>{t("window_mine_forming")}</span> : <>
+                      <b>{t("window_mine_proxima")}</b>
+                      <span>{t("window_mine_proxima_d")}</span>
+                    </>}
                   </Link>
                 )}
                 {PREGUNTA_VISIBLE && resumen?.sin_pregunta && (
@@ -266,6 +285,7 @@ export default function Mias() {
 
       <BarraPestanas />
       {dialogo}
+      {resumenNovedades && <HojaNovedades novedades={resumenNovedades} alCerrar={cerrarNovedades} />}
     </main>
   );
 }

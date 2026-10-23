@@ -237,7 +237,6 @@
   "admin_intenciones_vacio": "No intents recorded yet.",
   "admin_intenciones_cargando": "Loading intents…",
   "admin_intenciones_error": "Could not load intents.",
-  "admin_liga_resumen_probar_semanal": "Test weekly summary",
   "admin_liga_resumen_probar_mensual": "Test closing summary",
   "admin_liga_resumen_probar_resultado": "Email sent: {enviados}.",
   "admin_liga_resumen_probar_error": "The test could not be sent. Check the server logs.",
@@ -515,5 +514,12 @@
   "admin_audit_object_jornada": "Round {n}",
   "admin_audit_object_temporada": "Season {n}",
   "admin_setting_live_ranking_title": "Live overall standings",
-  "admin_setting_live_ranking_help": "Includes provisional results from the current round in the overall standings."
+  "admin_setting_live_ranking_help": "Includes provisional results from the current round in the overall standings.",
+  "admin_analitica_vuelta_titulo": "Return visits",
+  "admin_analitica_vuelta_semana_2": "2nd week",
+  "admin_analitica_vuelta_semana_3": "3rd week",
+  "admin_analitica_vuelta_nota_2": "{n} of {m}, those that have already reached that week",
+  "admin_analitica_vuelta_nota_3": "{n} of {m}, those that have already reached that week",
+  "admin_analitica_vuelta_columna_2": "Return in week 2",
+  "admin_analitica_vuelta_columna_3": "Return in week 3"
 }

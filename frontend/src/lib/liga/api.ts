@@ -278,7 +278,7 @@ export type PreviewSeleccion = {
 export type PorQue = { ticker: string; motivo: string };
 export type EmpresaBusqueda = { ticker: string; nombre: string | null; sector: string | null };
 
-export type JornadaFicha = { numero: number; rentabilidad: number | null; puntos: number | null };
+export type JornadaFicha = { numero: number; jornada_total: number; rentabilidad: number | null; puntos: number | null };
 // Omega: sus cinco huecos pesan igual y llevan precio y rentabilidad desde la entrada.
 export type Posicion = {
   ticker: string; peso: number | null; entrada_dia?: string | null;
@@ -316,7 +316,7 @@ export type RendimientoFicha = {
   incompleta?: boolean;
   evidencia?: EvidenciaFormacion | null;
   serie: { dia: string; estrategia: number; sp500: number; provisional: boolean; salto?: boolean;
-    jornada?: number | null }[];
+    jornada?: number | null; jornada_total?: number | null }[];
   metricas: { sharpe: number | null; sortino: number | null; volatilidad: number | null;
     max_drawdown: number | null; observaciones: number } | null;
 };
@@ -498,16 +498,55 @@ export async function quitarExclusion(id: string, ticker: string): Promise<Recet
 export interface EmpresaVentana { ticker: string; nombre: string | null; sector: string | null; peso: number | string }
 export interface Ventana {
   estrategia_id: string;
-  fase: "formando" | "cambios";
+  fase: "formando" | "cambios" | "siguiente";
   jornada_id: number;
   cierra: string;
   cartera: EmpresaVentana[];
+  proxima?: EmpresaVentana[] | null;
   quitadas: { ticker: string; nombre: string | null }[];
   quitadas_formacion: string[];
 }
 
 export async function miVentana(): Promise<Ventana[] | string> {
   return llamar<Ventana[]>("/liga/estrategias/ventana");
+}
+
+export type NovedadesRentabilidad = { rentabilidad: number | null; sp500: number | null };
+export type NovedadesSemana = NovedadesRentabilidad & {
+  dia_inicio: string; dia_fin: string; puntos: number | null;
+  puesto: number | null; de: number | null; movimiento: number | null;
+};
+export type NovedadesMovida = { ticker: string; nombre: string; aportacion: number | null };
+export type NovedadesCambio = {
+  accion: "quitar" | "recuperar" | "volver"; ticker: string | null;
+  fecha: string; cuenta_desde: string | null; entra: string | null;
+};
+export type NovedadesEstrategia = {
+  estrategia_id: string; nombre: string; semana: NovedadesSemana | null;
+  movidas: NovedadesMovida[]; desde_lunes: NovedadesRentabilidad | null; cambios: NovedadesCambio[];
+};
+export type Novedades = { desde: string; estrategias: NovedadesEstrategia[] };
+
+export async function novedades(): Promise<Novedades | null | string> {
+  const r = await llamar<Novedades | null>("/liga/novedades");
+  if (r === null || typeof r === "string") return r;
+  const cifra = (valor: number | null) => valor == null ? null : Number(valor);
+  return { ...r, estrategias: r.estrategias.map((e) => ({
+    ...e,
+    semana: e.semana === null ? null : {
+      ...e.semana, rentabilidad: cifra(e.semana.rentabilidad), sp500: cifra(e.semana.sp500),
+      puntos: cifra(e.semana.puntos), puesto: cifra(e.semana.puesto), de: cifra(e.semana.de),
+      movimiento: cifra(e.semana.movimiento),
+    },
+    movidas: e.movidas.map((m) => ({ ...m, aportacion: cifra(m.aportacion) })),
+    desde_lunes: e.desde_lunes === null ? null : {
+      rentabilidad: cifra(e.desde_lunes.rentabilidad), sp500: cifra(e.desde_lunes.sp500),
+    },
+  })) };
+}
+
+export async function marcarNovedadesVistas(): Promise<void> {
+  try { await llamar<void>("/liga/novedades/vistas", { method: "POST" }); } catch {}
 }
 
 export async function volverALaFormacion(id: string): Promise<Receta | string> {
@@ -566,6 +605,7 @@ export async function getFicha(id: string): Promise<Ficha | string> {
 export type NotasEmpresa = {
   ticker: string;
   jornada: number;
+  jornada_total: number;
   dia: string;
   /** De 0 a 9; null si esa jornada no guardó el escaneo. Llegan como texto decimal. */
   notas: Partial<Record<"negocio" | "precio" | "deuda" | "pronto", string>> | null;
@@ -738,7 +778,7 @@ export type Clasificacion = {
 
 export type PremioPublico = {
   visible: boolean;
-  temporada?: { id: number; nombre: string; clave: string | null; n_jornadas: number } | null;
+  temporada?: { id: number; nombre: string; clave: string | null; n_jornadas: number; n_meses: number } | null;
   calculado?: boolean;
   cuentas?: number;
   escalon?: number | null;
@@ -758,6 +798,27 @@ export type PremioYo = {
 
 export async function getPremioYo(): Promise<PremioYo | string> {
   return llamar<PremioYo>("/liga/yo/premio");
+}
+
+export type ActividadItem = {
+  tipo: "cambio" | "puesto";
+  dia: string;
+  equipo: string;
+  autor: string | null;
+  entradas: string[];
+  salidas: string[];
+  saltos: number | null;
+};
+
+export type Actividad = { temporada_id: number | null; items: ActividadItem[] };
+
+export async function getActividad(
+  opciones: { temporada?: number; limite?: number } = {},
+): Promise<Actividad | string> {
+  const query = new URLSearchParams();
+  if (opciones.temporada !== undefined) query.set("temporada", String(opciones.temporada));
+  if (opciones.limite !== undefined) query.set("limite", String(opciones.limite));
+  return llamar<Actividad>(`/liga/publico/actividad${query.size ? `?${query}` : ""}`, {}, "opcional");
 }
 
 export async function getPremio(): Promise<PremioPublico | string> {
@@ -819,7 +880,7 @@ export type MiembroLiga = {
   diferencia_mes: number | null;
 };
 
-export type LigaDetalle = LigaResumen & { miembros: MiembroLiga[]; jornada_numero: number | null;
+export type LigaDetalle = LigaResumen & { miembros: MiembroLiga[]; jornada_numero: number | null; jornada_total: number | null;
   datos_hasta: string | null; sp500_mes: number | null; en_vivo: boolean; consultado: string | null };
 
 export async function misLigas(): Promise<LigaResumen[] | string> {

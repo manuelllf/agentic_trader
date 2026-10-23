@@ -59,7 +59,7 @@ export function GraficaRendimiento({ serie, metricas, locale }: {
   const rondaAbierta = puntos[m - 1].provisional ? puntos[m - 1].jornada : null;
   const subtitulo = cursor !== null
     ? `${larga.format(aFecha(punto.dia)).replace(/\./g, "")} ·${t("strategies_chart_since", { from: dia(puntos[0].dia) })}`
-    : `${t("strategies_chart_range", { from: dia(puntos[0].dia), to: dia(puntos[m - 1].dia) })}${rondaAbierta != null ? ` · ${t("strategies_chart_round_open", { n: rondaAbierta })}` : ""}`;
+    : `${t("strategies_chart_range", { from: dia(puntos[0].dia), to: dia(puntos[m - 1].dia) })}${rondaAbierta != null ? ` · ${t("strategies_chart_round_open", { n: rondaAbierta, total: puntos[m - 1].jornada_total! })}` : ""}`;
 
   const valores = puntos.flatMap((p) => [p.estrategia, p.sp500]);
   const ticks = ticksLimpios(Math.min(...valores), Math.max(...valores));

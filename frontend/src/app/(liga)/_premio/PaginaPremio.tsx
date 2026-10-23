@@ -31,7 +31,7 @@ function Intro({ temporada }: { temporada: Temporada }) {
     : temporada?.clave === "temporada_1" ? t("league_temporada_1") : temporada?.nombre ?? "";
   return <section className="sec">
     {temporada && <p className="premio-eyebrow">
-      {t("premio_temporada", { nombre, n: temporada.n_jornadas })}
+      {t("premio_temporada", { nombre, n: temporada.n_meses })}
     </p>}
     <h2 className="premio-titular">{t("premio_intro_titulo")}</h2>
   </section>;
@@ -185,7 +185,7 @@ function EstrategiaFila({ cuenta, estrategias }: { cuenta: PremioYo; estrategias
 
 function JornadasFila({ cuenta, temporada }: { cuenta: PremioYo; temporada: Temporada }) {
   const t = useTranslations();
-  const n = temporada?.n_jornadas ?? 0;
+  const n = temporada?.n_meses ?? 0;
   if (n === 0) return null;
   const jugadas = cuenta.jornadas_jugadas;
   const minimo = cuenta.minimo_jornadas;

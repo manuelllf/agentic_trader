@@ -65,7 +65,7 @@ it("agrupa los hitos por día local y muestra la hora de Nueva York", async () =
   expect(container.querySelectorAll(".apr-hito")).toHaveLength(5);
   expect(container.textContent).toContain("23:00");
   expect(container.textContent).toContain("18:00 NY");
-  expect(container.textContent).toContain("Se cierra la jornada de octubre");
+  expect(container.textContent).toContain("Se cierra la jornada de la semana");
 });
 it("sin sesión no muestra primeros pasos ni los pide", async () => {
   await render(<PrimerosPasos ciclo={ciclo} />);

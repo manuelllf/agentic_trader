@@ -1,6 +1,6 @@
 # Vennett
 
-**Liga de estrategias de inversión en papel contra el S&P 500.** Escribe una estrategia con reglas claras, compítela cada mes frente al índice y frente a tus amigos. Sin dinero real y sin recomendaciones de compra o venta.
+**Liga de estrategias de inversión en papel contra el S&P 500.** Escribe una estrategia con reglas claras, compítela cada semana frente al índice y frente a tus amigos. Sin dinero real y sin recomendaciones de compra o venta.
 
 **Entra en <https://vennett.app>** · Gratis · Español e inglés
 
@@ -9,17 +9,17 @@ Si quieres usarla, sigue la sección [Empezar](#empezar).
 ## Empezar
 
 1. **Crea una cuenta.** Con contraseña, con Google o con un enlace al correo. Confirma el correo para activarla.
-2. **Escribe la idea de tu estrategia en una frase.** Vennett la convierte en reglas explícitas: sector, tamaño, valoración, pesos de cuatro criterios financieros y, si quieres, una pregunta propia sobre cada empresa. Revísalas y ajústalas antes de jugar.
-3. **Mira la cartera de hoy.** Ves qué empresas entrarían y cuánto pesaría cada una. El primer día de bolsa de cada mes, la jornada arranca con esa cartera.
+2. **Escribe la idea de tu estrategia en una frase.** Vennett la convierte en reglas explícitas: sector, tamaño, valoración y pesos de cuatro criterios financieros. Revísalas y ajústalas antes de jugar.
+3. **Mira la cartera de hoy.** Ves qué empresas entrarían y cuánto pesaría cada una. Cada semana es una jornada: tu cartera se fija el viernes al cierre y juega desde el lunes. La cartera nueva del mes sale del escaneo del último día de bolsa y entra el lunes siguiente.
 
 Después, invita a tus amigos: crea una liga privada y comparte el código. Veréis la clasificación de todos.
 
 ## Qué ofrece
 
-- **Juega cada mes contra el S&P 500.** Cada jornada compara la rentabilidad con dividendos de tu cartera con la del índice en la misma ventana.
-- **Ligas privadas con tus amigos.** Creas una liga, compartes el código y veis la clasificación de todos. Cada participante muestra su estrategia, su rentabilidad mensual y la acumulada frente al índice.
+- **Juega cada semana contra el S&P 500.** Cada jornada compara la rentabilidad con dividendos de tu cartera con la del índice en la misma ventana.
+- **Ligas privadas con tus amigos.** Creas una liga, compartes el código y veis la clasificación de todos. Cada participante muestra su estrategia, su rentabilidad de la semana y la acumulada frente al índice.
 - **Ficha completa de cada estrategia.** Cartera, evidencia de cada posición, curva frente al S&P 500, caída máxima, volatilidad, Sharpe y Sortino.
-- **Clasificación en directo.** El mes en juego se ve como provisional. Los puntos oficiales se fijan al cerrar cada jornada y no cambian después.
+- **Clasificación en directo.** La semana en juego se ve como provisional. Los puntos oficiales se fijan al cerrar cada jornada y no cambian después.
 - **Lecciones y boletín.** Un blog con lecciones cortas sobre cómo funciona una empresa y cómo se construye una estrategia, en español e inglés, con boletín opcional de doble confirmación.
 - **Resúmenes por correo.** Un resumen semanal y otro al cerrar cada jornada, con baja en un clic.
 

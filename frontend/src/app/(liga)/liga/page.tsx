@@ -16,11 +16,11 @@ import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
 import {
-  BarraPestanas, CabeceraApp, Cargando, Clasificacion as TablaClasificacion, escudoCasa, ErrorLiga,
+  Actividad, BarraPestanas, CabeceraApp, Cargando, Clasificacion as TablaClasificacion, escudoCasa, ErrorLiga,
   FilaEquipo, HuecoClasificacion, OrdenLista, Segmentado, Vacio,
 } from "../_ui";
 import {
-  getClasificacion, getJornadaPublica, getPortada, getPremio, type PremioPublico,
+  getActividad, type Actividad as DatosActividad, getClasificacion, getJornadaPublica, getPortada, getPremio, type PremioPublico,
   type Clasificacion, type FilaClasificacion, type JornadaDetalle,
   type OrdenClasificacion, type Portada,
 } from "@/lib/liga/api";
@@ -31,7 +31,7 @@ import { precargarFicha } from "@/lib/liga/ficha";
 import { anioDeLiga } from "@/lib/liga/anio";
 import { etiquetaEquipo, VistaJornada } from "./VistaJornada";
 
-type Vista = "tabla" | "jornada";
+type Vista = "tabla" | "jornada" | "actividad";
 
 const horaLocal = (iso: string, locale: Locale) =>
   new Date(iso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
@@ -44,7 +44,7 @@ function resumenJuego(p: Portada, t: (key: string, values?: Record<string, numbe
   if (p.en_juego) return t("league_resumen_jugando", { count: jugando });
   if (apuntadas > 0) {
     return p.proxima
-      ? t("league_resumen_apuntadas_con_jornada", { count: apuntadas, round: p.proxima.numero })
+      ? t("league_resumen_apuntadas_con_jornada", { count: apuntadas, round: p.proxima.numero, total: p.temporada!.n_jornadas })
       : t("league_resumen_apuntadas", { count: apuntadas });
   }
   return t("league_resumen_sin_apuntadas");
@@ -65,10 +65,10 @@ function SinJornada({ portada }: { portada: Portada }) {
   }
   const cerrada = new Date(p.cierre_inscripcion).getTime() < Date.now();
   return cerrada ? (
-    <Vacio titulo={t("league_jornada_fijada_titulo", { round: p.numero })}
+    <Vacio titulo={t("league_jornada_fijada_titulo", { round: p.numero, total: portada.temporada!.n_jornadas })}
            texto={t("league_jornada_fijada_texto")} />
   ) : (
-    <Vacio titulo={t("league_jornada_proxima_titulo", { round: p.numero, date: date(p.dia_inicio) })}
+    <Vacio titulo={t("league_jornada_proxima_titulo", { round: p.numero, total: portada.temporada!.n_jornadas, date: date(p.dia_inicio) })}
            texto={t("league_jornada_proxima_texto", { date: date(p.cierre_inscripcion), time: horaLocal(p.cierre_inscripcion, locale) })} />
   );
 }
@@ -95,11 +95,11 @@ function LigaContenido() {
   const router = useRouter();
   const parametros = useSearchParams();
   const { yo } = useSesion();
-  const vista: Vista = parametros.get("vista") === "tabla" ? "tabla" : "jornada";
+  const vista: Vista = parametros.get("vista") === "actividad" ? "actividad" : parametros.get("vista") === "tabla" ? "tabla" : "jornada";
   const orden: OrdenClasificacion = parametros.get("orden") === "puntos" ? "puntos" : "rentabilidad";
   const setVista = (valor: Vista) => {
     const query = new URLSearchParams(parametros.toString());
-    if (valor === "tabla") query.set("vista", valor); else query.delete("vista");
+    if (valor !== "jornada") query.set("vista", valor); else query.delete("vista");
     router.replace(`/liga${query.size ? `?${query}` : ""}`, { scroll: false });
   };
   const setOrden = (valor: OrdenClasificacion) => {
@@ -121,6 +121,11 @@ function LigaContenido() {
       vista === "tabla" && hayTemporada ? `clasificacion:${orden}:${yo?.alias ?? ""}` : null,
       () => getClasificacion({ alias: yo?.alias, orden }),
     );
+  const temporadaId = typeof portada === "object" && portada ? portada.temporada?.id : undefined;
+  const { datos: actividad, refrescar: refrescarActividad } = useCache<DatosActividad | string>(
+    vista === "actividad" && temporadaId !== undefined ? `actividad:${temporadaId}` : null,
+    () => getActividad({ temporada: temporadaId }),
+  );
   const idEnJuego = typeof portada === "object" && portada ? portada.en_juego?.id ?? null : null;
   const { datos: jornada, refrescar: refrescarJornada } = useCache<JornadaDetalle | string>(
     vista === "jornada" && idEnJuego != null ? `jornada:${idEnJuego}` : null,
@@ -221,7 +226,8 @@ function LigaContenido() {
           <div style={{ marginTop: 16 }}>
             <Segmentado etiquetaGrupo={t("league_vista_aria")} valor={vista} onChange={setVista}
                         opciones={[{ valor: "jornada", etiqueta: t("league_este_mes") },
-                                   { valor: "tabla", etiqueta: t("league_clasificacion") }]} />
+                                   { valor: "tabla", etiqueta: t("league_clasificacion") },
+                                   { valor: "actividad", etiqueta: t("actividad_pestana") }]} />
           </div>
 
           {vista === "tabla" ? (
@@ -242,7 +248,7 @@ function LigaContenido() {
                          : { texto: t("league_entrar"), onClick: () => { window.location.href = "/entrar"; } }} />
               ) : (
                 <div className="sec" style={{ marginTop: 0 }}>
-                  <TablaClasificacion jornada_provisional={clasificacion.jornada_provisional}>
+                  <TablaClasificacion jornada_provisional={clasificacion.jornada_provisional} temporada={clasificacion.temporada}>
                     {clasificacion.filas.map(filaDe)}
                     {clasificacion.total > clasificacion.filas.length && (
                       <HuecoClasificacion>
@@ -268,6 +274,12 @@ function LigaContenido() {
                 </div>
               )}
             </>
+          ) : vista === "actividad" ? (
+            actividad === undefined ? <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
+              : typeof actividad === "string" ? (
+                <ErrorLiga titulo={t("actividad_error")} mensaje={actividad}
+                           accion={{ texto: t("league_reintentar"), onClick: refrescarActividad }} />
+              ) : <Actividad items={actividad.items} />
           ) : jornada === undefined ? (
             portada.en_juego ? <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
               : (

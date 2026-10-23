@@ -43,7 +43,7 @@ function Jornadas() {
   const [previa, setPrevia] = useState<unknown>(null);
   const [hecho, setHecho] = useState<unknown>(null);
   const [ocupado, setOcupado] = useState(false);
-  const [resumenOcupado, setResumenOcupado] = useState<"semanal" | "mensual" | null>(null);
+  const [resumenOcupado, setResumenOcupado] = useState<"mensual" | null>(null);
   const [resumenMensaje, setResumenMensaje] = useState("");
   const [resumenError, setResumenError] = useState(false);
   const [aceptarSinCierre, setAceptarSinCierre] = useState(false);
@@ -75,7 +75,7 @@ function Jornadas() {
     } catch (e) { setFallo(errorText(e)); } finally { setOcupado(false); }
   };
 
-  const probarResumen = async (tipo: "semanal" | "mensual") => {
+  const probarResumen = async (tipo: "mensual") => {
     if (resumenOcupado) return;
     setResumenOcupado(tipo); setResumenMensaje(""); setResumenError(false);
     try {
@@ -141,7 +141,12 @@ function Jornadas() {
           <Fila><span>{t("admin_jornadas_automatico")}</span><Interruptor etiqueta={t("admin_jornadas_automatico")} encendido={estado.diario_activo} alCambiar={() => void interruptor()} deshabilitado={ocupado} /></Fila>
           <p className="adm-nota">{t("admin_liga_daily_note")}</p>
           <Boton variante="sec" disabled={ocupado} onClick={() => void abrir({ proceso: "diario", titulo: t("admin_liga_process_title_daily"), cuerpo: {} })}>{t("admin_liga_run_now")}…</Boton>
-          <div className="flex flex-wrap gap-2">{(["semanal", "mensual"] as const).map(tipo => <Boton variante="texto" key={tipo} disabled={resumenOcupado !== null} onClick={() => void probarResumen(tipo)}>{t(tipo === "semanal" ? "admin_liga_resumen_probar_semanal" : "admin_liga_resumen_probar_mensual")}</Boton>)}</div>
+          <div className="flex flex-wrap gap-2">
+            <Boton variante="texto" disabled={resumenOcupado !== null}
+              onClick={() => void probarResumen("mensual")}>
+              {t("admin_liga_resumen_probar_mensual")}
+            </Boton>
+          </div>
           <p className="adm-nota">{t("admin_jornadas_pruebas")}</p>
           {resumenMensaje && <p role={resumenError ? "alert" : "status"}>{resumenMensaje}</p>}
         </Bloque>

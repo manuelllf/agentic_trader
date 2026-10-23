@@ -32,8 +32,17 @@ export function cierreDeCambios(iso: string, locale: "es" | "en") {
   };
 }
 
-/** Cartera ya formada de una estrategia: del corte hasta que abre la jornada solo se puede cambiar y
- *  recuperar empresas. Cada cambio recalcula la cartera en el servidor, sin IA. */
+async function aplicarCambio(estrategiaId: string, accion: () => Promise<unknown>): Promise<Ventana | string | null> {
+  const resultado = await accion();
+  if (typeof resultado === "string") return resultado;
+  const lista = await miVentana();
+  if (typeof lista === "string") return lista;
+  fijar("ventana", lista);
+  return lista.find((v) => v.estrategia_id === estrategiaId) ?? null;
+}
+
+/** Cartera ya formada de una estrategia: del corte hasta que abre la semana solo se puede cambiar y recuperar empresas.
+ * Cada cambio recalcula la cartera en el servidor, sin IA. */
 export function VentanaCambios({ ventana, nombre, alCerrarse }: {
   ventana: Ventana;
   nombre: string;
@@ -65,13 +74,10 @@ export function VentanaCambios({ ventana, nombre, alCerrarse }: {
     setOcupado(clave);
     setError(null);
     setMensaje(null);
-    const r = await accion();
-    if (typeof r === "string") { setError(r); setOcupado(null); return null; }
-    const lista = await miVentana();
+    const resultado = await aplicarCambio(ventana.estrategia_id, accion);
     setOcupado(null);
-    if (typeof lista === "string") { setError(lista); return null; }
-    fijar("ventana", lista);
-    return lista.find((v) => v.estrategia_id === ventana.estrategia_id) ?? null;
+    if (typeof resultado === "string") { setError(resultado); return null; }
+    return resultado;
   }
 
   async function cambiar(emp: EmpresaVentana) {
@@ -157,6 +163,58 @@ export function VentanaCambios({ ventana, nombre, alCerrarse }: {
           {t("window_back_to_formation")}
         </Boton>
       )}
+    </section>
+  );
+}
+
+export function ProximaCartera({ ventana }: { ventana: Ventana }) {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
+  const [ocupado, setOcupado] = useState<string | null>(null);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const nombreDe = (e: EmpresaVentana) => e.nombre ?? e.ticker;
+
+  async function cambiar(emp: EmpresaVentana) {
+    const antes = new Set(ventana.proxima?.map((e) => e.ticker));
+    setOcupado(emp.ticker);
+    setError(null);
+    setMensaje(null);
+    const nueva = await aplicarCambio(ventana.estrategia_id, () => excluirEmpresa(ventana.estrategia_id, emp.ticker));
+    setOcupado(null);
+    if (typeof nueva === "string") { setError(nueva); return; }
+    if (!nueva) return;
+    const entra = nueva.proxima?.find((e) => !antes.has(e.ticker));
+    setMensaje(entra
+      ? t("window_swapped", { out: nombreDe(emp), in: nombreDe(entra) })
+      : t("window_proxima_removed", { name: nombreDe(emp) }));
+  }
+
+  if (!ventana.proxima?.length) return null;
+  const { dia, hora } = cierreDeCambios(ventana.cierra, locale);
+  return (
+    <section className="sec" aria-label={t("window_proxima_title")}>
+      <h2 className="sec-t">{t("window_proxima_title")}</h2>
+      <p className="meta">{t("window_proxima_text", { date: dia, time: hora })}</p>
+      <p className="meta" role="status" aria-live="polite">{mensaje ?? " "}</p>
+      {error && <p className="aviso" role="alert">{error}</p>}
+      <div>
+        {ventana.proxima.map((e) => (
+          <div className="pick" key={e.ticker} aria-busy={ocupado === e.ticker || undefined}>
+            <div>
+              <b>{nombreDe(e)}</b>
+              <span>{e.ticker} · {e.sector ?? t("builder_no_sector")}</span>
+            </div>
+            <div className="pick-r">
+              <span className="num">{Math.round(Number(e.peso))}&nbsp;%</span>
+              <button type="button" disabled={ocupado !== null} onClick={() => void cambiar(e)}
+                      aria-label={t("window_change_aria", { name: nombreDe(e) })}>
+                {t("builder_change_company")}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

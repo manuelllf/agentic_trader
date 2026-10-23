@@ -86,7 +86,7 @@
   "avisos_probar_resultado": "Sent to {ok} of {total} devices.",
   "avisos_probar_error": "The test could not be sent. Try again.",
   "avisos_resumen_titulo": "Email summary",
-  "avisos_resumen_ayuda": "Every Monday, and when each round closes, you get an email with how your strategy is doing against the S&P. You can opt out at any time.",
+  "avisos_resumen_ayuda": "Every Saturday you get an email with how your strategy did against the S&P in the week that just closed. You can opt out at any time.",
   "avisos_resumen_activo": "Get the summary",
   "avisos_resumen_error": "The summary could not be changed. Try again."
 }

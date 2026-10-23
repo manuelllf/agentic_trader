@@ -17,4 +17,6 @@ export * from "./Segmentado";
 export * from "./Tarjeta";
 export * from "./TarjetaEstrategia";
 export * from "./Vacio";
-export * from "./VentanaCambios";
+export { VentanaCambios, ProximaCartera, cierreDeCambios } from "./VentanaCambios";
+export * from "./HojaNovedades";
+export { Actividad } from "./Actividad";

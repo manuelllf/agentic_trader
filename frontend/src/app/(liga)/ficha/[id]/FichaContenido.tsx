@@ -263,7 +263,7 @@ export function FichaContenido({ id }: { id: string }) {
               <p className="meta">{t("strategies_no_round_results")}</p>
             ) : ficha.jornadas.map((j) => (
               <div className="month" key={j.numero}>
-                <span>{t("strategies_round", { round: j.numero })}</span>
+                <span>{t("strategies_round", { round: j.numero, total: j.jornada_total })}</span>
                 {j.rentabilidad !== null ? <Cifra valor={j.rentabilidad} /> : <span className="fl">-</span>}
                 <span className="num">{j.puntos !== null ? t("strategies_points", { count: j.puntos }) : "-"}</span>
               </div>
@@ -290,7 +290,7 @@ export function FichaContenido({ id }: { id: string }) {
               <Link href={`/crear/${ficha.id}`} className="btn pri wide">{t("strategies_edit")}</Link>
             ) : (
               <>
-                {!ficha.casa && ficha.receta && (
+                {!ficha.casa && ficha.receta && ["apuntada", "jugando"].includes(ficha.estado) && (
                   <Boton variante="principal" ancho="completo" disabled={ocupado} onClick={alCopiar}>
                     {t("strategies_copy_adjust")}
                   </Boton>

@@ -41,7 +41,7 @@
   "common_seguimiento_cartera_nueva": "The latest portfolio was formed after your last review.",
   "common_seguimiento_sin_dos_carteras": "There are not two formed portfolios to compare yet.",
   "common_seguimiento_nota": "It compares the saved portfolios; it doesn't run the rules again.",
-  "common_seguimiento_sin_pregunta": "This month it played without your question: {motivo, select, sin_ia {the AI was not available} tope {the AI was not available} incompleta {not all the answers arrived} tiempo {time ran out to answer} other {answers were missing}}.",
+  "common_seguimiento_sin_pregunta": "This week it played without your question: {motivo, select, sin_ia {the AI was not available} tope {the AI was not available} incompleta {not all the answers arrived} tiempo {time ran out to answer} other {answers were missing}}.",
   "common_seguimiento_ninguna": "None",
   "common_ranking_sobre_sp": "{value} pp above the S&P",
   "common_ranking_bajo_sp": "{value} pp below the S&P",

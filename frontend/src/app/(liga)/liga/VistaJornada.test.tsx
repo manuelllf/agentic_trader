@@ -33,25 +33,25 @@ describe("VistaJornada", () => {
 
   it("pinta las tres cabeceras, en orden, cuando cada grupo tiene filas", () => {
     const salida = html([fila("a", 1.5), fila("b", 0), fila("c", -1)]);
-    const posicion = ["Ganando el mes", "Empatando", "Perdiendo"].map((c) => salida.indexOf(c));
+    const posicion = ["Ganando la semana", "Empatando", "Perdiendo"].map((c) => salida.indexOf(c));
     expect(posicion.every((p) => p >= 0)).toBe(true);
     expect(posicion).toEqual([...posicion].sort((x, y) => x - y));
   });
 
   it("no pinta la cabecera de un grupo sin filas", () => {
     const sinEmpate = html([fila("a", 1.5), fila("c", -1)]);
-    expect(sinEmpate).toContain("Ganando el mes");
+    expect(sinEmpate).toContain("Ganando la semana");
     expect(sinEmpate).toContain("Perdiendo");
     expect(sinEmpate).not.toContain("Empatando");
     expect(sinEmpate).not.toContain("a 0,2 puntos o menos del S&amp;P");
 
     const soloEmpate = html([fila("b", 0.1), fila("d", -0.1)]);
     expect(soloEmpate).toContain("Empatando");
-    expect(soloEmpate).not.toContain("Ganando el mes");
+    expect(soloEmpate).not.toContain("Ganando la semana");
     expect(soloEmpate).not.toContain("Perdiendo");
 
     const soloGanando = html([fila("a", 2)]);
-    expect(soloGanando).toContain("Ganando el mes");
+    expect(soloGanando).toContain("Ganando la semana");
     expect(soloGanando).not.toContain("Empatando");
     expect(soloGanando).not.toContain("Perdiendo");
   });
@@ -60,7 +60,7 @@ describe("VistaJornada", () => {
     const salida = html([fila("g", 0.21), fila("e1", 0.2), fila("e2", -0.2), fila("p", -0.21)]);
     const entre = (desde: string, hasta: string) =>
       salida.slice(salida.indexOf(desde), hasta ? salida.indexOf(hasta) : undefined);
-    expect(entre("Ganando el mes", "Empatando")).toContain("Estrategia g");
+    expect(entre("Ganando la semana", "Empatando")).toContain("Estrategia g");
     const empate = entre("Empatando", "Perdiendo");
     expect(empate).toContain("Estrategia e1");
     expect(empate).toContain("Estrategia e2");
@@ -70,7 +70,7 @@ describe("VistaJornada", () => {
   it("sin ninguna rentabilidad enseña el aviso y ninguna cabecera", () => {
     const salida = html([fila("a", null, null)]);
     expect(salida).toContain("La tabla se rellena con el primer cierre de bolsa.");
-    expect(salida).not.toContain("Ganando el mes");
+    expect(salida).not.toContain("Ganando la semana");
     expect(salida).not.toContain("Empatando");
     expect(salida).not.toContain("Perdiendo");
   });

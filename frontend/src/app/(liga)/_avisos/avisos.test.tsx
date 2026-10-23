@@ -8,6 +8,7 @@ import type { Aviso } from "@/lib/liga/api";
 import { cuando, textoAviso } from "./textoAviso";
 import { PanelAvisos } from "./PanelAvisos";
 import { Campana } from "./Campana";
+import { HojaResumen } from "./HojaResumen";
 
 vi.mock("../_sesion/SesionContext", () => ({ useSesion: () => ({ estado: "fuera", yo: null }) }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -17,6 +18,12 @@ const aviso = (tipo: string, datos: Record<string, unknown> = {}): Aviso => ({
 });
 
 describe("textoAviso", () => {
+  it("muestra el total del cierre y conserva los avisos antiguos", () => {
+    const a = aviso("resumen_cierre", { numero: 2, total: 52, puesto_general: 5 });
+    expect(textoAviso(a, t, "es")?.titulo).toBe("Jornada 2 de 52 cerrada: puesto 5");
+    delete a.datos.total;
+    expect(textoAviso(a, t, "es")?.titulo).toBe("Jornada 2 cerrada: puesto 5");
+  });
   it("traduce la cartera y el cierre en la zona indicada", () => {
     const a = aviso("cartera_lista", { cierra: "2026-11-02T14:00:00Z" });
     const madrid = textoAviso(a, t, "es", "Europe/Madrid");
@@ -77,6 +84,15 @@ it("muestra tres avisos y despliega los cinco conservando los nuevos", () => {
   expect(container.querySelectorAll(".aviso")).toHaveLength(5);
   expect(container.querySelector("section")?.classList.contains("abierto")).toBe(true);
   expect(Array.from(container.querySelectorAll(".aviso"), a => a.classList.contains("nuevo"))).toEqual([true, true, false, false, false]);
+});
+
+it.each([52, undefined])("la hoja muestra el total disponible: %s", (total) => {
+  act(() => root.render(<NextIntlClientProvider locale="es" messages={messages}>
+    <HojaResumen aviso={aviso("resumen_cierre", { numero: 2, total })} onCerrar={vi.fn()} />
+  </NextIntlClientProvider>));
+  const titulo = total == null ? "Jornada 2" : "Jornada 2 de 52";
+  expect(container.querySelector("h2")?.textContent).toBe(titulo);
+  expect(container.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe(titulo);
 });
 
 it("la campana no pinta nada sin sesión", () => {

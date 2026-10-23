@@ -37,10 +37,10 @@ export function HojaResumen({ aviso, onCerrar }: { aviso: Aviso; onCerrar: () =>
     return () => { document.removeEventListener("keydown", tecla); document.body.style.overflow = overflow; anterior?.focus(); };
   }, [onCerrar]);
   return <div className="cartera-hoja-velo" onClick={onCerrar}>
-    <div ref={hoja} className="sheet cartera-hoja" role="dialog" aria-modal="true" aria-label={t("avisos_hoja_titulo", { numero })} onClick={e => e.stopPropagation()}>
+    <div ref={hoja} className="sheet cartera-hoja" role="dialog" aria-modal="true" aria-label={t(aviso.datos.total == null ? "avisos_hoja_titulo_sin_total" : "avisos_hoja_titulo", { numero, total: Number(aviso.datos.total) })} onClick={e => e.stopPropagation()}>
       <div className="sheet-h"><button ref={cerrarRef} type="button" className="back" onClick={onCerrar}>{t("avisos_hoja_cerrar")}</button></div>
       <div className="sheet-b">
-        <h2 className="hoja-res-t">{t("avisos_hoja_titulo", { numero })}</h2>
+        <h2 className="hoja-res-t">{t(aviso.datos.total == null ? "avisos_hoja_titulo_sin_total" : "avisos_hoja_titulo", { numero, total: Number(aviso.datos.total) })}</h2>
         <dl className="hoja-res">
           <div><dt>{t("avisos_hoja_estrategia")}</dt><dd>{estrategia || "-"}</dd></div>
           <div><dt>{t("avisos_hoja_rentabilidad")}</dt><dd className="num">{rent ?? "-"}</dd></div>

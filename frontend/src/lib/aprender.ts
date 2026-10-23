@@ -17,7 +17,7 @@ export type PremioPublico = {
 
 export type CicloAprender = {
   jornada: { numero: number | null; dia_base: string; dia_inicio: string; dia_fin: string };
-  escaneo: string;
+  escaneo: string | null;
   cierre_jornada: string;
   corte: string;
   cierre_cambios: string;
