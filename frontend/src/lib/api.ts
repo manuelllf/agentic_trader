@@ -96,7 +96,8 @@ export async function post<T>(path: string, body?: unknown, timeoutMs?: number):
       "http", res.status,
     );
   }
-  return res.json() as Promise<T>;
+  const contenido = await res.text();
+  return (contenido ? JSON.parse(contenido) : undefined) as T;
 }
 
 /** Como `post()` pero PUT — mismo manejo de 401 y de `detail` de error. */

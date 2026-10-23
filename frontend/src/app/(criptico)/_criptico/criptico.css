@@ -1,0 +1,114 @@
+.lg.criptico-publico { --cr-ind-bg: color-mix(in srgb, var(--warn) 18%, var(--bg)); --cr-mat-line: var(--muted); }
+.criptico-publico button, .criptico-publico input, .criptico-publico textarea { font: inherit; }
+.criptico-publico button { cursor: pointer; color: inherit; }
+.criptico-publico button:disabled { cursor: default; }
+.criptico-publico a { text-underline-offset: 3px; }
+.criptico-publico .cr-app { max-width: 1100px; margin: auto; }
+.criptico-publico .cr-scroll { padding: max(14px, env(safe-area-inset-top)) 16px calc(255px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 18px; }
+.criptico-publico .cr-terminado .cr-scroll { padding-bottom: 28px; }
+.criptico-publico .cr-cab, .criptico-publico .cr-cab nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.criptico-publico .sello { text-decoration: none; }
+.criptico-publico .cr-icono { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); text-decoration: none; font-size: 14px; font-weight: 700; }
+.criptico-publico .cr-icono::after { content: ""; position: absolute; inset: -4px; }
+.criptico-publico .cr-cuerpo, .criptico-publico .cr-principal, .criptico-publico .cr-lateral, .criptico-publico .cr-contexto { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.criptico-publico .cr-dias { display: flex; border-bottom: 1px solid var(--line); }
+.criptico-publico .cr-dia { position: relative; flex: 1; min-width: 0; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; }
+.criptico-publico .cr-dia span { font-size: 12px; color: var(--muted); }
+.criptico-publico .cr-dia b { font-family: var(--font-data), monospace; font-size: 17px; line-height: 1.2; color: var(--ink); }
+.criptico-publico .cr-dia i { width: 5px; height: 5px; border-radius: 50%; margin-top: 3px; }
+.criptico-publico .cr-dia.hecho i { background: var(--accent); }
+.criptico-publico .cr-dia[aria-current] b { color: var(--accent); }
+.criptico-publico .cr-dia[aria-current]::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: -1px; height: 2px; background: var(--accent); }
+.criptico-publico .cr-archivo summary { cursor: pointer; font-size: 14px; color: var(--muted); min-height: 44px; padding-top: 10px; }
+.criptico-publico .cr-lista-archivo { list-style: none; padding: 0; }
+.criptico-publico .cr-lista-archivo li { border-bottom: 1px solid var(--line); }
+.criptico-publico .cr-lista-archivo a { min-height: 48px; display: flex; gap: 14px; align-items: center; justify-content: space-between; text-decoration: none; font-size: 14px; }
+.criptico-publico .cr-lista-archivo a span:last-child { color: var(--muted); }
+.criptico-publico .cr-encabezado { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.criptico-publico .cr-meta, .criptico-publico .cr-nivel { font-size: 14px; color: var(--muted); }
+.criptico-publico .cr-nivel { font-weight: 600; white-space: nowrap; color: var(--ink2); }
+.criptico-publico .cr-pista { font-family: var(--font-display), var(--font-lg), sans-serif; font-size: 24px; line-height: 1.32; font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.criptico-publico .cr-enum { font-family: var(--font-data), monospace; font-size: .7em; color: var(--muted); font-weight: 400; white-space: nowrap; }
+.criptico-publico :is(.cr-s-def, .cr-s-ind, .cr-s-mat) { box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 4px; transition: background-color .2s, box-shadow .2s, text-decoration-color .2s; }
+.criptico-publico .cr-s-def { text-decoration: underline transparent; text-decoration-thickness: 3px; text-underline-offset: 6px; }
+.criptico-publico .cr-s-def.on { text-decoration-color: var(--accent); }
+.criptico-publico .cr-s-ind.on { background: var(--cr-ind-bg); padding: 0 3px; }
+.criptico-publico .cr-s-mat.on { box-shadow: inset 0 0 0 1.5px var(--cr-mat-line); padding: 0 3px; }
+.criptico-publico .cr-casillas { display: grid; grid-template-columns: repeat(var(--casillas), minmax(0, 1fr)); gap: 5px; width: min(100%, calc(var(--casillas) * 63px)); }
+.criptico-publico .cr-casilla { aspect-ratio: 1 / 1.18; min-width: 0; padding: 0; display: grid; place-items: center; border: 1.5px solid var(--line2); border-radius: 8px; background: var(--bg); font-family: var(--font-data), monospace; font-size: 20px; font-weight: 700; color: var(--ink); }
+.criptico-publico .cr-casilla.activa { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.criptico-publico .cr-casilla.fija { background: var(--accent-bg); border-color: transparent; color: var(--accent); }
+.criptico-publico .cr-casilla.bien { background: var(--btn); border-color: transparent; color: var(--btn-ink); }
+.criptico-publico .cr-mal { animation: cr-temblor .32s; }
+@keyframes cr-temblor { 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-3px); } }
+.criptico-publico .cr-mensaje { min-height: 20px; color: var(--bad); font-size: 14px; }
+.criptico-publico .cr-mensaje:empty { display: none; }
+.criptico-publico .cr-bloque { display: flex; flex-direction: column; gap: 10px; }
+.criptico-publico .cr-bloque h2 { font-size: 15px; font-weight: 700; }
+.criptico-publico .cr-bloque p { line-height: 1.55; }
+.criptico-publico .cr-media { font-size: 13px; color: var(--muted); text-align: right; }
+.criptico-publico .cr-ayudas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line2); border-radius: var(--control-radius); overflow: hidden; }
+.criptico-publico .cr-ayudas button { min-height: 52px; padding: 6px 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 0; border-left: 1px solid var(--line2); border-radius: 0; background: transparent; color: var(--ink); font-size: 13px; font-weight: 600; }
+.criptico-publico .cr-ayudas button:first-child { border-left: 0; }
+.criptico-publico .cr-ayudas button[aria-pressed=true] { background: var(--surface); color: var(--muted); }
+.criptico-publico .cr-ayudas button:focus-visible { outline-offset: -3px; }
+.criptico-publico .cr-muestra { display: inline-block; width: 22px; height: 12px; border-radius: 3px; }
+.criptico-publico .cr-m-def { border-bottom: 3px solid var(--accent); border-radius: 0; height: 10px; }
+.criptico-publico .cr-m-ind { background: var(--cr-ind-bg); }
+.criptico-publico .cr-m-mat { box-shadow: inset 0 0 0 1.5px var(--cr-mat-line); }
+.criptico-publico .cr-m-letra { font-family: var(--font-data), monospace; font-size: 12px; font-weight: 700; color: var(--accent); height: auto; line-height: 1; }
+.criptico-publico .cr-explicaciones { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.criptico-publico .cr-explicaciones li { padding-left: 12px; border-left: 2px solid var(--line2); font-size: 15px; }
+.criptico-publico .cr-explicaciones b { color: var(--ink); }
+.criptico-publico .cr-enlace { align-self: flex-start; min-height: 44px; display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: var(--accent); font-size: 15px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.criptico-publico .cr-enlace.cr-suave { color: var(--muted); font-weight: 400; }
+.criptico-publico .cr-acciones-esc, .criptico-publico .cr-contexto { display: none; }
+.criptico-publico .cr-pie-teclado { position: fixed; z-index: 20; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 8px; padding: 10px 6px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); }
+.criptico-publico .cr-teclado { display: flex; flex-direction: column; gap: 6px; }
+.criptico-publico .cr-fila { display: flex; gap: 5px; justify-content: center; }
+.criptico-publico .cr-fila button { flex: 1; min-width: 0; height: 46px; padding: 0; border: 0; border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 16px; font-weight: 600; touch-action: manipulation; }
+.criptico-publico .cr-fila button.cr-borrar { flex: 1.5; }
+.criptico-publico .cr-resultado { color: var(--accent); font-weight: 700; font-size: 18px; }
+.criptico-publico .cr-resultado small { display: block; color: var(--muted); font-size: 14px; font-weight: 400; }
+.criptico-publico .cr-desmontada { font-family: var(--font-display), sans-serif; font-size: 19px; line-height: 1.5; font-weight: 700; color: var(--ink); }
+.criptico-publico .cr-leyenda { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 15px; }
+.criptico-publico .cr-leyenda li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: baseline; }
+.criptico-publico .cr-dato { white-space: pre-wrap; padding: 2px 0 2px 12px; border-left: 2px solid var(--line2); font-family: var(--font-data), monospace; font-size: 14px; line-height: 1.6; color: var(--ink); }
+.criptico-publico .cr-nota, .criptico-publico .cr-aviso { font-size: 13px; color: var(--muted); }
+.criptico-publico .cr-aviso { border-top: 1px solid var(--line); padding-top: 14px; }
+.criptico-publico .cr-gancho { border-top: 1px solid var(--line); padding-top: 18px; gap: 12px; }
+.criptico-publico .cr-gancho h2 { font-family: var(--font-display), sans-serif; font-size: 21px; line-height: 1.2; letter-spacing: -.02em; }
+.criptico-publico .cr-gancho p { font-size: 15px; }
+.criptico-publico .cr-regla { padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--ink); }
+.criptico-publico .cr-proximo { font-size: 14px; color: var(--muted); }
+.criptico-publico .cr-cuenta { font-family: var(--font-data), monospace; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.criptico-publico .cr-suscripcion form { display: flex; flex-direction: column; gap: 8px; }
+.criptico-publico input, .criptico-publico textarea { width: 100%; min-height: 44px; padding: 10px; border: 1px solid var(--line2); border-radius: var(--control-radius); background: var(--bg); color: var(--ink); }
+.criptico-publico textarea { min-height: 120px; resize: vertical; }
+.criptico-publico .cr-bienvenida { position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: center; background: color-mix(in srgb, var(--ink) 38%, transparent); }
+.criptico-publico .cr-hoja { width: 100%; max-width: 640px; max-height: 95dvh; overflow-y: auto; background: var(--bg); border-radius: 22px 22px 0 0; padding: 22px 18px max(22px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; }
+.criptico-publico .cr-hoja h2 { font-family: var(--font-display), sans-serif; font-size: 22px; line-height: 1.2; }
+.criptico-publico .cr-hoja ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; }
+.criptico-publico .cr-estado { max-width: 680px; margin: auto; padding: 24px 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 24px; }
+.criptico-publico .cr-estado h1 { font-family: var(--font-display), sans-serif; font-size: 28px; }
+.criptico-publico .cr-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
+  .criptico-publico .cr-scroll { padding: 20px 32px 32px; gap: 26px; }
+  .criptico-publico .cr-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 30%); gap: 40px; align-items: start; }
+  .criptico-publico .cr-principal { gap: 20px; }
+  .criptico-publico .cr-lateral { gap: 24px; border-left: 1px solid var(--line); padding-left: 28px; }
+  .criptico-publico .cr-contexto { display: flex; gap: 24px; }
+  .criptico-publico .cr-contexto p { font-size: 15px; }
+  .criptico-publico .cr-pista { font-size: 32px; line-height: 1.28; }
+  .criptico-publico .cr-casillas { gap: 7px; }
+  .criptico-publico .cr-casilla { font-size: 24px; }
+  .criptico-publico .cr-pie-teclado { display: none; }
+  .criptico-publico .cr-acciones-esc { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .criptico-publico .cr-acciones-esc .btn { min-width: 180px; }
+  .criptico-publico .cr-acciones-esc p { font-size: 14px; color: var(--muted); }
+  .criptico-publico .cr-gancho { border: 0; padding: 0; }
+  .criptico-publico .cr-hoja { border-radius: var(--radius-card); margin: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .criptico-publico *, .criptico-publico *::before, .criptico-publico *::after { animation: none !important; transition: none !important; }
+}
