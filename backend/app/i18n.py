@@ -86,6 +86,13 @@ ERROR_KEYS.update({
     "Ya has enviado varias peticiones hoy. Vuelve mañana.": "api_error_intenciones_limite",
     "Escribe una frase de hasta 160 caracteres.": "api_error_intenciones_texto",
 })
+# Códigos del acertijo diario: la API los devuelve tal cual y aquí se traducen a su catálogo.
+ERROR_KEYS.update({
+    "criptico_sin_publicar": "criptico_sin_publicar",
+    "criptico_no_encontrado": "criptico_no_encontrado",
+    "criptico_ayudas_invalidas": "criptico_ayudas_invalidas",
+    "criptico_letras_invalidas": "criptico_letras_invalidas",
+})
 
 
 # Mensajes de la base de datos: con huecos (`{a}`, `{b}`) o escritos en inglés por el proveedor.

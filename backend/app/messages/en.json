@@ -508,5 +508,9 @@
   "criptico_baja": "Unsubscribe",
   "criptico_de_ayer": "Yesterday's",
   "criptico_media_ayer": "Solved by {count} people, with {media} helps on average.",
-  "criptico_no_recomendacion": "Educational content, not investment advice."
+  "criptico_no_recomendacion": "Educational content, not investment advice.",
+  "criptico_sin_publicar": "There is no published puzzle for today yet.",
+  "criptico_no_encontrado": "That puzzle does not exist or is not published yet.",
+  "criptico_ayudas_invalidas": "The number of hints is not valid.",
+  "criptico_letras_invalidas": "The letters are not valid."
 }

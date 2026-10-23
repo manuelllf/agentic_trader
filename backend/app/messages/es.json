@@ -508,5 +508,9 @@
   "criptico_baja": "Darse de baja",
   "criptico_de_ayer": "La de ayer",
   "criptico_media_ayer": "Lo resolvieron {count} personas, con {media} ayudas de media.",
-  "criptico_no_recomendacion": "No constituye recomendación de inversión."
+  "criptico_no_recomendacion": "No constituye recomendación de inversión.",
+  "criptico_sin_publicar": "Todavía no hay acertijo publicado para hoy.",
+  "criptico_no_encontrado": "Ese acertijo no existe o todavía no se ha publicado.",
+  "criptico_ayudas_invalidas": "El número de ayudas no es válido.",
+  "criptico_letras_invalidas": "Las letras no son válidas."
 }

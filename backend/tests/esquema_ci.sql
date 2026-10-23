@@ -1,4 +1,5 @@
--- migraciones-liga: 062
+-- migraciones-liga: 064
+-- 064 son datos de contenido del criptico: el esquema de CI no los necesita.
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
