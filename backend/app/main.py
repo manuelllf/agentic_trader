@@ -33,6 +33,7 @@ from app.liga.filtro_logs import instalar_en_uvicorn as instalar_filtro_logs_uvi
 from app.liga.rutas import router as liga_router
 from app.liga.rutas_intenciones import router as liga_intenciones_router
 from app.liga.rutas_blog import router as blog_router, router_admin as blog_admin_router
+from app.criptico.rutas import router as criptico_router
 from app.liga.rutas_admin import router as liga_admin_router
 from app.liga.rutas_pagos import router as liga_pagos_router
 from app.liga.rutas_gestion import router_moderacion as liga_moderacion_router
@@ -273,6 +274,7 @@ app.include_router(momentum_router, dependencies=[Depends(require_auth)])
 app.include_router(liga_router)
 app.include_router(liga_intenciones_router)
 app.include_router(blog_router)
+app.include_router(criptico_router)
 app.include_router(blog_admin_router)
 app.include_router(liga_admin_router)
 app.include_router(liga_moderacion_router)
