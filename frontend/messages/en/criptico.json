@@ -16,6 +16,7 @@
   "cr_numero": "No. {n}",
   "cr_facil": "Easy",
   "cr_media": "Medium",
+  "cr_dificil": "Hard",
   "cr_cargando": "Loading the cryptic…",
   "cr_vacio": "There is no published cryptic for this day yet.",
   "cr_error": "We could not connect. Please try again.",

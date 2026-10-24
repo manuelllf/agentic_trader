@@ -7,7 +7,7 @@ export type Acertijo = {
   idioma: Idioma;
   numero: number;
   fecha: string;
-  nivel: "facil" | "media";
+  nivel: "facil" | "media" | "dificil";
   pista: Segmento[];
   longitud: number;
   ayudas: Record<Papel, string>;

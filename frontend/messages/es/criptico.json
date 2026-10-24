@@ -16,6 +16,7 @@
   "cr_numero": "Nº {n}",
   "cr_facil": "Fácil",
   "cr_media": "Media",
+  "cr_dificil": "Difícil",
   "cr_cargando": "Cargando el críptico…",
   "cr_vacio": "Todavía no hay un críptico publicado para este día.",
   "cr_error": "No hemos podido conectar. Vuelve a intentarlo.",

@@ -503,6 +503,7 @@
   "criptico_formato_fecha": "%m/%d/%Y",
   "criptico_nivel_facil": "Easy",
   "criptico_nivel_media": "Medium",
+  "criptico_nivel_dificil": "Hard",
   "criptico_preheader_ayer": "Yesterday was {respuesta}. Here is how it worked.",
   "criptico_resolver": "Solve it on Vennett",
   "criptico_baja": "Unsubscribe",

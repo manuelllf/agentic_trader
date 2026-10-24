@@ -37,7 +37,7 @@ class Acertijo(BaseModel):
     idioma: Idioma
     numero: int
     fecha: date
-    nivel: Literal["facil", "media"]
+    nivel: Literal["facil", "media", "dificil"]
     pista: list[Segmento]
     longitud: int
     ayudas: Ayudas

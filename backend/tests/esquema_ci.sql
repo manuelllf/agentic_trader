@@ -1,5 +1,5 @@
--- migraciones-liga: 064
--- 064 son datos de contenido del criptico: el esquema de CI no los necesita.
+-- migraciones-liga: 066
+-- 064 y 066 son datos de contenido del criptico: el esquema de CI no los necesita.
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -13166,7 +13166,7 @@ create table criptico.acertijos (
   longitud smallint not null check (longitud between 2 and 30),
   respuesta text not null check (respuesta ~ '^[A-Z]+$'),
   palabra text not null,
-  nivel text not null check (nivel in ('facil', 'media')),
+  nivel text not null check (nivel in ('facil', 'media', 'dificil')), -- 065 amplia la lista.
   ayudas jsonb not null check (jsonb_typeof(ayudas) = 'object'), -- Claves: def, ind, mat.
   resolucion text not null,
   concepto text not null,

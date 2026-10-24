@@ -554,8 +554,8 @@ def test_esquema_ci_refleja_la_ultima_migracion_y_copia_excluye_caches():
 
     raiz = Path(__file__).resolve().parents[2]
     esquema = (raiz / "tests/esquema_ci.sql").read_text(encoding="utf-8")
-    # El marcador sigue al último script de sql/liga (063 y 064 son del criptico).
-    assert esquema.splitlines()[0] == "-- migraciones-liga: 064"
+    # El marcador sigue al último script de sql/liga (063 a 066 son del criptico).
+    assert esquema.splitlines()[0] == "-- migraciones-liga: 066"
     assert "(numero <= 60)" in esquema
     assert "CREATE TABLE liga.avisos (" in esquema
     assert "zona_horaria text" in esquema
