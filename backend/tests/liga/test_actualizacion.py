@@ -549,12 +549,13 @@ def test_cero_respuestas_devuelve_reserva_sin_cobrar(entorno, monkeypatch):
     assert [tipo for tipo, _ in entorno.cobros] == ["reserva", "devolucion"]
 
 
-def test_esquema_ci_refleja_062_y_copia_excluye_caches():
+def test_esquema_ci_refleja_la_ultima_migracion_y_copia_excluye_caches():
     from app.liga import copia
 
     raiz = Path(__file__).resolve().parents[2]
     esquema = (raiz / "tests/esquema_ci.sql").read_text(encoding="utf-8")
-    assert esquema.splitlines()[0] == "-- migraciones-liga: 062"
+    # El marcador sigue al último script de sql/liga (063 y 064 son del criptico).
+    assert esquema.splitlines()[0] == "-- migraciones-liga: 064"
     assert "(numero <= 60)" in esquema
     assert "CREATE TABLE liga.avisos (" in esquema
     assert "zona_horaria text" in esquema
