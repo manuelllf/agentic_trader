@@ -1,6 +1,8 @@
 import type { Viewport } from "next";
 import { Portada } from "./_portada/Portada";
 import { getLocale, getTranslations } from "next-intl/server";
+import { listarPublicados } from "@/lib/criptico/publico";
+import type { Idioma } from "@/lib/criptico/tipos";
 import { metadataCompartir } from "@/lib/sitio";
 
 export async function generateMetadata() {
@@ -17,6 +19,12 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function Page() {
-  return <Portada />;
+// El enlace al críptico sale solo cuando hay alguno publicado de hoy o anterior; si la API falla, no sale.
+async function hayCriptico(idioma: Idioma): Promise<boolean> {
+  return listarPublicados(idioma).then(lista => lista.length > 0, () => false);
+}
+
+export default async function Page() {
+  const idioma: Idioma = (await getLocale()) === "en" ? "en" : "es";
+  return <Portada criptico={await hayCriptico(idioma)} />;
 }

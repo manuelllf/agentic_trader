@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 const sesion = vi.hoisted(() => ({ valor: "fuera" as "cargando" | "fuera" | "dentro" }));
+const idioma = vi.hoisted(() => ({ valor: "es" }));
 vi.mock("../_sesion/SesionContext", () => ({ useRedirigirSiHaySesion: () => sesion.valor }));
 vi.mock("@/i18n/LanguageSelector", () => ({ LanguageSelector: () => null }));
 vi.mock("next/link", async () => {
@@ -15,13 +16,13 @@ vi.mock("next-intl", async () => {
   const catalogo = (await import("../../../../messages/es/landing.json")).default as Record<string, string>;
   const t = (clave: string, valores?: Record<string, string | number>) =>
     (catalogo[clave] ?? clave).replace(/\{(\w+)\}/g, (_, n: string) => String(valores?.[n] ?? `{${n}}`));
-  return { useTranslations: () => t, useLocale: () => "es" };
+  return { useTranslations: () => t, useLocale: () => idioma.valor };
 });
 import { Portada } from "./Portada";
 
-const pintar = () => {
+const pintar = (criptico = false) => {
   const host = document.createElement("div");
-  host.innerHTML = renderToStaticMarkup(createElement(Portada));
+  host.innerHTML = renderToStaticMarkup(createElement(Portada, { criptico }));
   return host;
 };
 
@@ -44,8 +45,17 @@ describe("Portada", () => {
     expect(pie).toBeNull();
   });
 
+  it.each(["es", "en"])("el enlace al críptico en %s solo sale si hay alguno publicado", (valor) => {
+    sesion.valor = "fuera";
+    idioma.valor = valor;
+    expect(pintar(false).querySelector('a[href$="/criptico"]')).toBeNull();
+    const enlace = pintar(true).querySelector<HTMLAnchorElement>('header.pel-cabecera a[href$="/criptico"]')!;
+    expect(enlace.getAttribute("href")).toBe(valor === "en" ? "/en/criptico" : "/criptico");
+    idioma.valor = "es";
+  });
+
   it("con sesión no pinta nada: la portada solo es del visitante", () => {
     sesion.valor = "dentro";
-    expect(pintar().innerHTML).toBe("");
+    expect(pintar(true).innerHTML).toBe("");
   });
 });
