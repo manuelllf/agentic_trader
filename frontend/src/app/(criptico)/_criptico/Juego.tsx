@@ -174,12 +174,12 @@ export default function Juego({ acertijo: a, textos, ultimoNumero = a.numero }: 
           </>}
         </div>
         <aside className="cr-lateral">
+          <Suscripcion idioma={a.idioma} t={t} />
           {terminado && partida.detalle ? <Gancho detalle={partida.detalle} t={t} /> : <div className="cr-contexto">
             <section className="cr-bloque"><h2>{t("cr_leer")}</h2><p>{t("cr_leer_texto")}</p><Leyenda t={t} /></section>
             <section className="cr-bloque"><h2>{t("cr_vennett")}</h2><p>{t("cr_gancho_texto")}</p><a className="cr-enlace" href="/liga">{t("cr_liga")}</a></section>
           </div>}
           <p className="cr-proximo">{t("cr_proximo")} <span className="cr-cuenta">{cuenta}</span></p>
-          <Suscripcion idioma={a.idioma} t={t} />
         </aside>
       </div>
       <footer className="cr-aviso">{t("cr_aviso")}</footer>

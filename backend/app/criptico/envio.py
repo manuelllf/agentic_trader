@@ -48,14 +48,17 @@ def enviar_del_dia(idioma: str, fabrica=fabrica_sistema, ahora: datetime | None 
         ruta = settings.url_publica + ("/en" if idioma == "en" else "") + "/criptico"
         enviados = 0
         for suscriptor in suscriptores:
-            url_baja = ruta + "/baja?token=" + quote(suscriptor["token_baja"], safe="")
+            token = quote(suscriptor["token_baja"], safe="")
+            url_baja = ruta + "/baja?token=" + token
+            # La baja en un clic de Gmail y Outlook es un POST: va a una ruta sin página.
+            url_un_clic = settings.url_publica + "/api/criptico/baja?token=" + token
             aceptado = False
             try:
                 asunto, texto, html = correo_criptico.render(
                     idioma=idioma, acertijo=acertijo, ayer=ayer, url_baja=url_baja,
                     url_resolver=ruta, n_media_ayer=ayer["n_media"] if ayer else None)
                 aceptado = correo.enviar(suscriptor["correo"], asunto, texto, html,
-                    cabeceras={"List-Unsubscribe": f"<{url_baja}>",
+                    cabeceras={"List-Unsubscribe": f"<{url_un_clic}>",
                                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"})
             except Exception:
                 logger.error("Fallo de un envío del críptico (%s)", idioma)

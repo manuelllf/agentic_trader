@@ -174,6 +174,9 @@ def test_suscripcion_confirmacion_baja(api):
     urls = re.findall(r"https?://[^\s]+", mensajes[-1][2])
     tokens = {"baja" if "/baja?" in url else "alta": parse_qs(urlsplit(url).query)["token"][0]
               for url in urls if "token=" in url}
+    # Los enlaces del correo llevan a las páginas de la web, no a la API.
+    assert {urlsplit(url).path for url in urls if "token=" in url} == {
+        "/criptico/confirmar", "/criptico/baja"}
     fila = cx.execute("select hash_alta, token_baja, alta_expira > now(), estado "
                       "from criptico.suscriptores where correo = %s", (body["email"],)).fetchone()
     assert fila == (blog.hash_token(tokens["alta"]), tokens["baja"], True, "pendiente")
@@ -187,6 +190,10 @@ def test_suscripcion_confirmacion_baja(api):
     for _ in range(2):
         assert c.get("/criptico/suscripcion/baja", params={"token": tokens["baja"]}).json() == {
             "ok": True}
+    c.post("/criptico/suscripcion", json={"email": prefijo + "-en@prueba.local", "idioma": "en"})
+    urls = re.findall(r"https?://[^\s]+", mensajes[-1][2])
+    assert {urlsplit(url).path for url in urls if "token=" in url} == {
+        "/en/criptico/confirmar", "/en/criptico/baja"}
 
 
 def test_limite_y_correo_fallido(api, monkeypatch):

@@ -83,6 +83,11 @@
 .criptico-publico .cr-proximo { font-size: 14px; color: var(--muted); }
 .criptico-publico .cr-cuenta { font-family: var(--font-data), monospace; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); white-space: nowrap; }
 .criptico-publico .cr-suscripcion form { display: flex; flex-direction: column; gap: 8px; }
+.criptico-publico .cr-suscripcion .cr-fila { display: flex; flex-wrap: wrap; gap: 8px; }
+.criptico-publico .cr-suscripcion .cr-fila input { flex: 999 1 200px; min-width: 0; width: auto; }
+.criptico-publico .cr-suscripcion .cr-fila .btn { flex: 1 0 auto; min-height: 44px; padding: 0 18px; }
+.criptico-publico .cr-estado .cr-suscripcion, .criptico-publico .cr-estado .cr-bloque { width: 100%; max-width: 480px; }
+.criptico-publico .cr-pasos { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; }
 .criptico-publico input, .criptico-publico textarea { width: 100%; min-height: 44px; padding: 10px; border: 1px solid var(--line2); border-radius: var(--control-radius); background: var(--bg); color: var(--ink); }
 .criptico-publico textarea { min-height: 120px; resize: vertical; }
 .criptico-publico .cr-bienvenida { position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: center; background: color-mix(in srgb, var(--ink) 38%, transparent); }

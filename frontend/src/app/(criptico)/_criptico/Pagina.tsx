@@ -7,6 +7,7 @@ import { fechaMadrid } from "@/lib/criptico/reloj";
 import type { Entrega, Idioma, Textos } from "@/lib/criptico/tipos";
 import { Marca } from "../../(liga)/_ui/Marca";
 import Juego from "./Juego";
+import Suscripcion from "./Suscripcion";
 import { ruta, traductor } from "./textos";
 
 export default function Pagina({ idioma, textos, numero }: { idioma: Idioma; textos: Textos; numero?: number }) {
@@ -43,5 +44,11 @@ export default function Pagina({ idioma, textos, numero }: { idioma: Idioma; tex
     <a className="sello" href={ruta(idioma)}><Marca className="marca" /><i aria-hidden="true" /><b>{t("cr_nombre")}</b></a>
     <h1>{t("cr_titulo")}</h1><p role="status">{t(`cr_${estado}`)}</p>
     {estado === "error" && <button type="button" className="btn pri" onClick={() => setIntento(n => n + 1)}>{t("cr_reintentar")}</button>}
+    {estado === "vacio" && <>
+      <section className="cr-bloque"><h2>{t("cr_bienvenida")}</h2>
+        <ol className="cr-pasos"><li>{t("cr_paso_uno")}</li><li>{t("cr_paso_dos")}</li><li>{t("cr_paso_tres")}</li></ol>
+      </section>
+      <Suscripcion idioma={idioma} t={t} />
+    </>}
   </main>;
 }

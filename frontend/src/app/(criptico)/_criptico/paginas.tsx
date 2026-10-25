@@ -35,7 +35,8 @@ export async function pagina(idioma: Idioma, numero?: string) {
   let entrega;
   try { entrega = await leerPublicado(idioma, numero); }
   catch { /* El cliente conserva el estado de error y permite reintentar. */ }
-  if (entrega === null) notFound();
+  // Un número sin publicar es un 404; hoy sin acertijo es la página vacía, que deja suscribirse.
+  if (entrega === null && numero !== undefined) notFound();
   return <Pagina idioma={idioma} textos={await catalogo(idioma)} numero={numero === undefined ? undefined : Number(numero)} />;
 }
 

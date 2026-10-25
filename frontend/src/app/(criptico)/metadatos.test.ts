@@ -39,16 +39,16 @@ it.each([metadataArchivo, metadataArchivoEn])("el archivo tiene canonical propio
   expect(metadata.robots).toEqual({ index: true, follow: true });
 });
 
-it("un 404 no se indexa y las páginas de hoy y archivo devuelven notFound", async () => {
+it("sin acertijo no se indexa; el archivo da 404 y hoy muestra la página vacía con la suscripción", async () => {
   vi.mocked(fetch).mockResolvedValue({ ok: false, status: 404 } as Response);
   expect((await metadataHoy()).robots).toEqual({ index: false, follow: false });
   expect((await metadataArchivo({ params: Promise.resolve({ numero: "12" }) })).robots).toEqual({ index: false, follow: false });
-  await expect(Hoy()).rejects.toThrow(";404");
+  await expect(Hoy()).resolves.toBeTruthy();
   await expect(Archivo({ params: Promise.resolve({ numero: "12" }) })).rejects.toThrow(";404");
 });
 
-it("un acertijo futuro no se indexa ni se muestra", async () => {
+it("un acertijo futuro no se indexa y hoy queda vacío", async () => {
   vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ acertijo: { fecha: "9999-01-01" } }) } as Response);
   expect((await metadataHoy()).robots).toEqual({ index: false, follow: false });
-  await expect(Hoy()).rejects.toThrow(";404");
+  await expect(Hoy()).resolves.toBeTruthy();
 });

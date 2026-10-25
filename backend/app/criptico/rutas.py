@@ -111,15 +111,16 @@ class OkOut(BaseModel):
 
 
 def _correo_confirmacion(destino: str, idioma: str, alta: str, baja: str) -> None:
-    asunto = "Confirm your daily puzzle subscription" if idioma == "en" else (
-        "Confirma tu suscripción al acertijo diario")
+    # Los enlaces van a las páginas de la web, que llaman a la API con el token.
+    pagina = "/en/criptico" if idioma == "en" else "/criptico"
+    asunto = translate("criptico_confirmar_asunto", locale=idioma)
     texto, html = correo_plantilla.render(
-        idioma=idioma, asunto=asunto, intro=asunto,
-        enlace_texto="Confirm" if idioma == "en" else "Confirmar",
-        ruta="/criptico/suscripcion/confirmar?token=" + alta,
-        pie=translate("blog_correo_confirmar_pie", locale=idioma),
-        ajustes_texto=translate("blog_correo_baja_enlace", locale=idioma),
-        ajustes_ruta="/criptico/suscripcion/baja?token=" + baja,
+        idioma=idioma, asunto=asunto, intro=translate("criptico_confirmar_intro", locale=idioma),
+        enlace_texto=translate("criptico_confirmar_enlace", locale=idioma),
+        ruta=pagina + "/confirmar?token=" + alta,
+        pie=translate("criptico_confirmar_pie", locale=idioma),
+        ajustes_texto=translate("criptico_confirmar_baja", locale=idioma),
+        ajustes_ruta=pagina + "/baja?token=" + baja,
         legal_texto=translate("correo_legal", locale=idioma))
     if not correo.enviar(destino, asunto, texto, html):
         logger.warning("No se pudo enviar la confirmación del acertijo")

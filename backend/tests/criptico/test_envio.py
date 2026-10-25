@@ -119,8 +119,9 @@ def test_envio_unico_y_cabeceras(datos):
     ruta = "/en/criptico" if datos["idioma"] == "en" else "/criptico"
     for mensaje, (sid, token) in zip(datos["buzon"], datos["suscriptores"], strict=True):
         url = settings.url_publica + ruta + "/baja?token=" + token
+        un_clic = settings.url_publica + "/api/criptico/baja?token=" + token
         assert mensaje["cabeceras"] == {
-            "List-Unsubscribe": f"<{url}>",
+            "List-Unsubscribe": f"<{un_clic}>",
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
         assert mensaje["destino"] == token + "@prueba.local"
         assert url in mensaje["texto"] and url in mensaje["html"]
