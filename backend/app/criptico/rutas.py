@@ -79,7 +79,7 @@ class ResultadoIn(BaseModel):
     @field_validator("ayudas_usadas", mode="before")
     @classmethod
     def validar(cls, valor: Any) -> int:
-        if type(valor) is not int or not 0 <= valor <= 3:
+        if type(valor) is not int or not 0 <= valor <= logica.MAX_AYUDAS:
             raise HTTPException(422, "criptico_ayudas_invalidas")
         return valor
 

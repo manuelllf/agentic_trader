@@ -1,5 +1,5 @@
--- migraciones-liga: 066
--- 064 y 066 son datos de contenido del criptico: el esquema de CI no los necesita.
+-- migraciones-liga: 068
+-- 064, 066 y 067 son datos de contenido del criptico: el esquema de CI no los necesita.
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -13186,7 +13186,7 @@ create index ix_acertijos_publicados on criptico.acertijos (idioma, dia) where e
 create table criptico.resultados (
   id bigint generated always as identity primary key,
   acertijo_id bigint not null references criptico.acertijos (id) on delete cascade,
-  ayudas_usadas smallint not null check (ayudas_usadas between 0 and 3),
+  ayudas_usadas smallint not null check (ayudas_usadas between 0 and 4), -- 068 admite la cuarta ayuda.
   solucion_vista boolean not null default false,
   creado timestamptz not null default now()
 );

@@ -14,6 +14,8 @@ from app.liga import blog
 from app.liga.procesos.comun import fabrica_sistema, sesion
 
 TZ_MADRID = ZoneInfo("Europe/Madrid")
+# Definición, indicador, material y primera letra: las cuatro ayudas que ofrece la página.
+MAX_AYUDAS = 4
 
 
 def hoy_madrid(ahora: datetime | None = None) -> date:
@@ -65,7 +67,7 @@ def leer_detalle(id: int) -> dict[str, Any]:
 
 
 def registrar(db: Session, id: int, ayudas_usadas: int, solucion_vista: bool) -> None:
-    if type(ayudas_usadas) is not int or not 0 <= ayudas_usadas <= 3:
+    if type(ayudas_usadas) is not int or not 0 <= ayudas_usadas <= MAX_AYUDAS:
         raise HTTPException(422, "criptico_ayudas_invalidas")
     exigir_publicado(db, id)
     db.execute(text("insert into criptico.resultados "

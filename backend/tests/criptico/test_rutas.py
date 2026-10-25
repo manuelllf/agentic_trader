@@ -140,8 +140,13 @@ def test_resultados_y_validacion(api):
     assert r.status_code == 204 and r.content == b""
     r = c.post(f"/criptico/{id}/solucion", json={"ayudas_usadas": 3})
     assert r.status_code == 200 and r.json() == {"detalle": DETALLE}
+    # Con las cuatro ayudas (la última es la letra) se puede resolver y ver la solución.
+    r = c.post(f"/criptico/{id}/resuelto", json={"ayudas_usadas": 4})
+    assert r.status_code == 204
+    r = c.post(f"/criptico/{id}/solucion", json={"ayudas_usadas": 4})
+    assert r.status_code == 200 and r.json() == {"detalle": DETALLE}
     for accion in ("resuelto", "solucion"):
-        for ayudas in (-1, 4, True, 1.5, "2", None):
+        for ayudas in (-1, 5, True, 1.5, "2", None):
             r = c.post(f"/criptico/{id}/{accion}", json={"ayudas_usadas": ayudas})
             assert r.status_code == 422
             assert r.json() == {"detail": "criptico_ayudas_invalidas"}
@@ -150,7 +155,7 @@ def test_resultados_y_validacion(api):
     assert r.json() == {"detail": "criptico_letras_invalidas"}
     assert cx.execute("select ayudas_usadas, solucion_vista from criptico.resultados "
                       "where acertijo_id = %s order by id", (id,)).fetchall() == [
-                          (1, False), (3, True)]
+                          (1, False), (3, True), (4, False), (4, True)]
 
 
 def test_anon_no_lee_respuesta(api):
