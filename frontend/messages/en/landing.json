@@ -1,5 +1,11 @@
 {
-  "landing_criptico": "Daily cryptic",
+  "landing_regleta_aria": "Today at Vennett",
+  "landing_regleta_criptico_hoy": "Today's cryptic",
+  "landing_regleta_criptico_proximo": "Cryptic · {fecha}",
+  "landing_regleta_avisame": "Tell me about the first one",
+  "landing_regleta_letras": "{cuantas} letters",
+  "landing_regleta_boletin": "Investing lessons",
+  "landing_mas": "More",
   "landing_ver_liga": "View league",
   "landing_entrar": "Sign in",
   "landing_planes": "Plans",

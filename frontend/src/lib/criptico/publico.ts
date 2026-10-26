@@ -20,3 +20,11 @@ export async function leerPublicado(idioma: Idioma, numero?: string): Promise<En
   const entrega: Entrega = await respuesta.json();
   return entrega.acertijo.fecha <= fechaMadrid() ? entrega : null;
 }
+
+export async function proximaFecha(idioma: Idioma): Promise<string | null> {
+  const respuesta = await fetch(`${API_URL}/criptico/proximo?idioma=${idioma}`, { next: { revalidate: 300 } });
+  if (respuesta.status === 404) return null;
+  if (!respuesta.ok) throw new Error("Criptico API unavailable");
+  const { fecha }: { fecha: string } = await respuesta.json();
+  return fecha;
+}

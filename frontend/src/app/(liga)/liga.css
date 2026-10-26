@@ -890,7 +890,7 @@ html:has(body .lg .pel-portada), body:has(.lg .pel-portada) {
   --pel-data: var(--font-data, "Atkinson Hyperlegible Mono"), ui-monospace, Menlo, Consolas, monospace;
   --pel-ui: var(--font-lg, system-ui), system-ui, sans-serif;
   --pel-u: calc(100vw / 390); --pel-dpr: 1;
-  --pel-pie: calc(40 * var(--pel-u)); --pel-franja: calc(214 * var(--pel-u)); --pel-margen: calc(16 * var(--pel-u));
+  --pel-pie: calc(60 * var(--pel-u)); --pel-franja: calc(214 * var(--pel-u)); --pel-margen: calc(16 * var(--pel-u));
   font-size: calc(16 * var(--pel-u));
   /* El selector de idioma lee estos tokens. */
   --surface: var(--pel-panel); --ink: var(--pel-tinta); --line: var(--pel-linea);
@@ -981,7 +981,7 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 
 .lg .pel-franja {
   position: absolute; left: var(--pel-margen); right: var(--pel-margen); height: var(--pel-franja);
-  bottom: calc(var(--pel-pie) + env(safe-area-inset-bottom, 0px) + 4 * var(--pel-u));
+  bottom: calc(var(--pel-pie) + env(safe-area-inset-bottom, 0px) + 20 * var(--pel-u));
 }
 .lg .pel-it { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: calc(8 * var(--pel-u)); will-change: opacity, transform; }
 .lg .pel-ceja { font: 600 calc(10.5 * var(--pel-u))/1 var(--pel-data); letter-spacing: .12em; text-transform: uppercase; color: var(--pel-mudo); }
@@ -1054,26 +1054,29 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 .lg .pel-ficha li.no b { color: var(--pel-mal); }
 .lg .pel-ficha li.sd b { color: var(--pel-mudo); }
 
-.lg .pel-pie {
-  position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--pel-pie) + env(safe-area-inset-bottom, 0px));
-  padding: 0 var(--pel-margen) env(safe-area-inset-bottom, 0px); display: flex; align-items: center;
-  justify-content: space-between; gap: calc(12 * var(--pel-u));
-  font: 600 calc(10 * var(--pel-u))/1.2 var(--pel-data); letter-spacing: .08em; text-transform: uppercase; color: var(--pel-mudo);
-  background: linear-gradient(to top, rgba(var(--pel-fondo-rgb), .94) 55%, rgba(var(--pel-fondo-rgb), 0)); pointer-events: none;
+.lg .pel-regleta {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; height: calc(var(--pel-pie) + env(safe-area-inset-bottom, 0px));
+  padding: 0 var(--pel-margen) env(safe-area-inset-bottom, 0px); display: flex;
+  align-items: stretch; gap: calc(10 * var(--pel-u));
+  background: var(--pel-suelo); border-top: 1px solid var(--pel-linea); pointer-events: auto;
+  font: 600 calc(10 * var(--pel-u))/1.2 var(--pel-data); letter-spacing: .08em; text-transform: uppercase;
 }
-.lg .pel-ejemplo { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--pel-azul); white-space: nowrap; }
-
-/* Pie legal: en móvil, detrás de «Legal» en un panel que sube; en escritorio, en línea. */
-.lg .pel-legal { position: relative; flex: none; pointer-events: auto; }
-/* El pie no recibe clics; el enlace los necesita. */
-.lg .pel-pie-enlace {
-  display: inline-flex; align-items: center; min-height: calc(40 * var(--pel-u)); padding: 0 calc(2 * var(--pel-u));
-  font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--pel-azul); text-decoration: none; pointer-events: auto;
-}
-.lg .pel-legal-boton {
-  min-height: calc(40 * var(--pel-u)); padding: 0 calc(2 * var(--pel-u)); border: 0; background: none; cursor: pointer;
-  font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--pel-tinta2);
-}
+.lg .pel-celda { display: flex; flex-direction: column; justify-content: center; gap: calc(5 * var(--pel-u)); min-width: 0; color: var(--pel-tinta); text-decoration: none; }
+.lg .pel-criptico { flex: 0 1 auto; min-width: 0; }
+.lg .pel-boletin { flex: 1 1 0; min-width: 0; }
+.lg .pel-linea { display: flex; align-items: center; gap: 6px; font: 600 calc(13 * var(--pel-u))/1.2 var(--pel-ui); text-transform: none; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .pel-linea b { color: var(--pel-teal); }
+.lg .pel-pista-hoy { display: none; }
+.lg .pel-casillas { display: flex; gap: 3px; flex: none; }
+.lg .pel-casillas i { position: relative; width: calc(15 * var(--pel-u)); height: calc(19 * var(--pel-u)); border-radius: 3px; background: var(--pel-panel); box-shadow: inset 0 0 0 1px var(--pel-linea); }
+.lg .pel-casillas i.cursor::after { content: ""; position: absolute; left: 6px; top: 4px; width: 2px; height: 11px; background: var(--pel-teal); animation: pel-cursor 1.06s steps(1) infinite; }
+@keyframes pel-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .lg .pel-casillas i.cursor::after { animation: none; } }
+.lg .pel-separador { width: 1px; background: var(--pel-linea); margin: 12px 0; }
+.lg .pel-puntos { display: flex; gap: 3px; }
+.lg .pel-puntos i { width: 4px; height: 4px; border-radius: 50%; background: var(--pel-tinta2); }
+.lg .pel-legal { position: relative; flex: none; align-self: stretch; display: flex; align-items: center; }
+.lg .pel-legal-boton { min-height: calc(44 * var(--pel-u)); min-width: calc(44 * var(--pel-u)); border: 0; background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .lg .pel-legales {
   display: none; position: absolute; right: 0; bottom: calc(100% + 4 * var(--pel-u)); z-index: 25; flex-direction: column;
   width: max-content; max-width: calc(100vw - 2 * var(--pel-margen)); padding: calc(6 * var(--pel-u)); border-radius: calc(12 * var(--pel-u));
@@ -1086,7 +1089,7 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
 }
 
 @media (min-width: 900px) and (min-aspect-ratio: 11/10) {
-  .lg .pel-portada { --pel-u: 1px; --pel-margen: 40px; }
+  .lg .pel-portada { --pel-u: 1px; --pel-margen: 40px; --pel-pie: 64px; }
   .lg .pel-solo-escritorio { display: inline-flex; }
   .lg .pel-solo-movil { display: none; }
   .lg .pel-cabecera .wordmark svg { height: 25px; }
@@ -1100,30 +1103,28 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
   .lg .pel-fin { top: 0; }
   .lg .pel-fin::before { display: none; }
   .lg .pel-fin h1 { font-size: clamp(44px, 4.6vw, 72px); }
+  .lg .pel-regleta { gap: 0; padding: 0 var(--pel-margen) 0 56px; }
+  .lg .pel-criptico { flex: 0 1 446px; min-width: 0; }
+  .lg .pel-boletin { flex: 1 1 0; min-width: 160px; margin-left: 49px; }
+  .lg .pel-separador { display: none; }
+  .lg .pel-pista-hoy { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 400 13px var(--pel-ui); color: var(--pel-tinta2); text-transform: none; }
+  .lg .pel-casillas i { width: 14px; height: 18px; }
+  .lg .pel-casillas i.cursor::after { height: 10px; }
   .lg .pel-legal-boton { display: none; }
   .lg .pel-legales {
-    display: flex; position: static; flex-direction: row; gap: 0 18px; width: auto; max-width: none; padding: 0;
+    display: flex; position: static; flex-direction: row; gap: 0 14px; width: auto; max-width: none; padding: 0;
     border: 0; background: none; box-shadow: none;
   }
+  .lg .pel-legales a.pel-solo-movil { display: none; }
   .lg .pel-legales a { min-height: 40px; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--pel-tinta2); }
 }
 @media (min-width: 880px) {
-  /* Las celdas cambian de color: cada texto superpuesto necesita su propio fondo. */
-  .lg .pel-cabecera, .lg .pel-pie { background: none; }
   .lg .pel-cabecera .wordmark,
   .lg .pel-cabecera .language-control > button,
-  .lg .pel-cabecera .pel-enlace,
-  .lg .pel-pie-enlace,
-  .lg .pel-legal-boton,
-  .lg .pel-legales a,
-  .lg .pel-ejemplo {
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
-    border-radius: 999px; padding: 6px 12px;
-    color: var(--ink); box-shadow: none;
-  }
+  .lg .pel-cabecera .pel-enlace { background: none; border-radius: 0; box-shadow: none; padding: 0 8px; }
+  .lg .pel-cabecera .pel-enlace { color: var(--pel-tinta2); }
+  .lg .pel-cabecera .wordmark, .lg .pel-cabecera .language-control > button { color: var(--pel-tinta); }
   .lg .pel-cabecera .pel-btn.pri { box-shadow: none; }
-  .lg .pel-pie .pel-legales a { padding: 6px 12px; }
-  .lg .pel-legales { box-shadow: none; }
 
   .lg .muestrario > .sec { margin-top: 28px; }
   .lg .muestrario > .sec > :not(.sec-t) {

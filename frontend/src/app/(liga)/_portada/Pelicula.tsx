@@ -3,6 +3,8 @@
 // La escena de la portada: el lienzo y sus capas de texto. El movimiento lo lleva `montarPelicula`;
 // aquí solo está el esqueleto con los textos del catálogo.
 
+import { localeTag } from "@/i18n/locale";
+import type { EstadoCriptico } from "@/lib/criptico/estado";
 import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
@@ -30,7 +32,11 @@ function trocear(tesis: string, frases: string[]): { texto: string; k: number | 
 const letras = (texto: string, desde: number) =>
   [...texto].map((c, i) => <span key={desde + i} className="c">{c}</span>);
 
-export function Pelicula() {
+const fechaCorta = (fecha: string, locale: string) =>
+  new Intl.DateTimeFormat(localeTag(locale), { day: "numeric", month: "short", timeZone: "UTC" })
+    .format(new Date(`${fecha}T00:00:00Z`));
+
+export function Pelicula({ criptico }: { criptico: EstadoCriptico }) {
   const t = useTranslations();
   const locale = useLocale() === "en" ? "en" : "es";
   const raiz = useRef<HTMLDivElement>(null);
@@ -165,21 +171,42 @@ export function Pelicula() {
             <div data-p="ficha" className="pel-ficha" hidden />
           </div>
 
-          <div className="pel-pie">
-            <Link href="/como-funciona" className="pel-pie-enlace">{t("landing_como_funciona")}</Link>
-            <Link href={locale === "en" ? "/en/blog" : "/blog"} className="pel-pie-enlace">{t("blog_title")}</Link>
-            {PLANES_VISIBLES && (<Link href="/planes" className="pel-pie-enlace pel-solo-movil">{t("landing_planes")}</Link>)}
+          <nav className="pel-regleta" aria-label={t("landing_regleta_aria")}>
+            {criptico && (
+              <Link href={locale === "en" ? "/en/criptico" : "/criptico"} className="pel-celda pel-criptico">
+                <span className="pel-ceja">{criptico.tipo === "hoy" ? t("landing_regleta_criptico_hoy")
+                  : t("landing_regleta_criptico_proximo", { fecha: fechaCorta(criptico.fecha, locale) })}</span>
+                {criptico.tipo === "hoy" ? (
+                  <span className="pel-linea">
+                    <span className="pel-pista-hoy">{criptico.pista}</span>
+                    <span className="pel-casillas">
+                      <span className="sr-only">{t("landing_regleta_letras", { cuantas: criptico.longitud })}</span>
+                      {Array.from({ length: criptico.longitud }, (_, i) => <i key={i} className={i === 0 ? "cursor" : undefined} aria-hidden="true" />)}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="pel-linea">{t("landing_regleta_avisame")}<b aria-hidden="true">›</b></span>
+                )}
+              </Link>
+            )}
+            {criptico && <span className="pel-separador" aria-hidden="true" />}
+            <Link href={locale === "en" ? "/en/blog" : "/blog"} className="pel-celda pel-boletin">
+              <span className="pel-ceja">{t("blog_title")}</span>
+              <span className="pel-linea">{t("landing_regleta_boletin")}<b aria-hidden="true">›</b></span>
+            </Link>
             <div className="pel-legal" ref={legal}>
-              <button type="button" className="pel-legal-boton" aria-expanded={legalAbierto} aria-controls="pel-legales"
-                onClick={() => setLegalAbierto((a) => !a)}>{t("landing_legal")}</button>
+              <button type="button" className="pel-legal-boton" aria-label={t("landing_mas")} aria-expanded={legalAbierto} aria-controls="pel-legales"
+                onClick={() => setLegalAbierto((a) => !a)}><span className="pel-puntos" aria-hidden="true"><i /><i /><i /></span></button>
               <nav id="pel-legales" className={`pel-legales${legalAbierto ? " abierto" : ""}`} aria-label={t("landing_legal")}>
+                <Link href="/como-funciona">{t("landing_como_funciona")}</Link>
+                {PLANES_VISIBLES && (<Link href="/planes" className="pel-solo-movil">{t("landing_planes")}</Link>)}
                 <Link href="/legal/aviso">{t("landing_aviso_legal")}</Link>
                 <Link href="/legal/privacidad">{t("landing_privacidad")}</Link>
                 <Link href="/legal/terminos">{t("landing_terminos")}</Link>
                 <Link href="/legal/cookies">{t("landing_cookies")}</Link>
               </nav>
             </div>
-          </div>
+          </nav>
         </div>
       </section>
 
