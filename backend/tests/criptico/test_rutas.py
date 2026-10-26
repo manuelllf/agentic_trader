@@ -19,7 +19,7 @@ DETALLE = {"respuesta": "ACCION", "palabra": "acción", "resolucion": "Resoluci�
 
 
 @pytest.fixture
-def api(monkeypatch):
+def api(monkeypatch, request):
     psycopg = pytest.importorskip("psycopg")
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -45,17 +45,17 @@ def api(monkeypatch):
     ids = []
     prefijo = "criptico-test-" + uuid.uuid4().hex
 
-    def crear(dia, estado="publicado"):
+    def crear(dia, estado="publicado", idioma="es"):
         numero = cx.execute("select coalesce(max(numero), 0) + 1 "
-                            "from criptico.acertijos where idioma = 'es'").fetchone()[0]
+                            "from criptico.acertijos where idioma = %s", (idioma,)).fetchone()[0]
         id = cx.execute("""
             insert into criptico.acertijos
             (idioma, numero, dia, pista, longitud, respuesta, palabra, nivel, ayudas,
              resolucion, concepto, ejemplo, estado)
-            values ('es', %s, %s, '[{"texto":"Pista","papel":"def"}]', 6, 'ACCION',
+            values (%s, %s, %s, '[{"texto":"Pista","papel":"def"}]', 6, 'ACCION',
                     'acción', 'facil', '{"def":"Def","ind":"Ind","mat":"Mat"}',
                     'Resolución', 'Concepto', 'Ejemplo', %s) returning id
-        """, (numero, dia, estado)).fetchone()[0]
+        """, (idioma, numero, dia, estado)).fetchone()[0]
         ids.append(id)
         return id, numero
 
@@ -63,7 +63,10 @@ def api(monkeypatch):
         hoy = logica.hoy_madrid()
         actual = crear(hoy)
         anterior = crear(hoy - timedelta(days=1))
-        futuro = crear(hoy + timedelta(days=1))
+        futuros = [crear(hoy + timedelta(days=dias), estado, idioma)
+                   for dias, estado, idioma in getattr(
+                       request, "param", [(1, "publicado", "es")])]
+        futuro = futuros[0] if futuros else None
         borrador = crear(hoy - timedelta(days=2), "borrador")
         with TestClient(app) as cliente:
             yield cliente, cx, actual, anterior, futuro, borrador, prefijo, mensajes
@@ -116,6 +119,45 @@ def test_indice(api):
     r = c.get("/criptico/indice", params={"idioma": "en"})
     assert r.status_code == 200 and r.json() == []
     assert c.get("/criptico/indice", params={"idioma": "fr"}).status_code == 422
+
+
+@pytest.mark.parametrize("api", [[]], indirect=True)
+def test_proximo_sin_publicados_futuros(api):
+    c, *_ = api
+    r = c.get("/criptico/proximo", params={"idioma": "es"})
+    assert r.status_code == 404
+    assert r.json() == {"detail": "criptico_sin_publicar"}
+
+
+@pytest.mark.parametrize("api", [[(3, "publicado", "es"), (1, "publicado", "es")]],
+                         indirect=True)
+def test_proximo_publicado_mas_cercano(api):
+    c, *_ = api
+    r = c.get("/criptico/proximo", params={"idioma": "es"})
+    assert r.status_code == 200
+    assert r.json() == {"fecha": (logica.hoy_madrid() + timedelta(days=1)).isoformat()}
+
+
+@pytest.mark.parametrize("api", [[(1, "borrador", "es")]], indirect=True)
+def test_proximo_excluye_borrador(api):
+    c, *_ = api
+    assert c.get("/criptico/proximo", params={"idioma": "es"}).status_code == 404
+
+
+@pytest.mark.parametrize("api", [[]], indirect=True)
+def test_proximo_excluye_publicado_de_hoy(api):
+    c, _, (id, _), *_ = api
+    assert c.get("/criptico/hoy", params={"idioma": "es"}).json()["acertijo"]["id"] == id
+    assert c.get("/criptico/proximo", params={"idioma": "es"}).status_code == 404
+
+
+@pytest.mark.parametrize("api", [[(1, "publicado", "en")]], indirect=True)
+def test_proximo_filtra_idioma(api):
+    c, *_ = api
+    assert c.get("/criptico/proximo", params={"idioma": "es"}).status_code == 404
+    r = c.get("/criptico/proximo", params={"idioma": "en"})
+    assert r.status_code == 200
+    assert r.json() == {"fecha": (logica.hoy_madrid() + timedelta(days=1)).isoformat()}
 
 
 def test_no_publicados(api):

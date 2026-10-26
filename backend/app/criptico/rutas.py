@@ -136,6 +136,10 @@ class IndiceOut(BaseModel):
     fecha: date
 
 
+class ProximoOut(BaseModel):
+    fecha: date
+
+
 @router.get("/indice", response_model=list[IndiceOut])
 def indice(idioma: Idioma = "es", db: Session = Depends(db_anon)) -> list[dict]:
     filas = db.execute(text("""
@@ -144,6 +148,14 @@ def indice(idioma: Idioma = "es", db: Session = Depends(db_anon)) -> list[dict]:
         order by numero asc
     """), {"idioma": idioma, "hoy": logica.hoy_madrid()}).mappings().all()
     return [dict(fila) for fila in filas]
+
+
+@router.get("/proximo", response_model=ProximoOut)
+def proximo(idioma: Idioma = "es", db: Session = Depends(db_anon)) -> dict:
+    fecha = db.execute(text("select criptico.fecha_proximo(:idioma)"), {"idioma": idioma}).scalar()
+    if fecha is None:
+        raise HTTPException(404, "criptico_sin_publicar")
+    return {"fecha": fecha}
 
 
 @router.get("/numero/{numero}", response_model=NumeroOut, response_model_exclude_unset=True)

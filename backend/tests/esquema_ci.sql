@@ -1,4 +1,4 @@
--- migraciones-liga: 068
+-- migraciones-liga: 069
 -- 064, 066 y 067 son datos de contenido del criptico: el esquema de CI no los necesita.
 -- migraciones-saneamiento: 12
 --
@@ -13274,6 +13274,17 @@ grant insert on criptico.resultados to anon, authenticated;
 grant select on criptico.resultados to authenticated;
 grant select, update, delete on criptico.suscriptores to authenticated;
 grant select on criptico.entregas to authenticated;
+
+create or replace function criptico.fecha_proximo(p_idioma text)
+returns date
+language sql stable security definer set search_path = criptico, pg_temp
+as $$
+  select min(dia) from criptico.acertijos
+  where idioma = p_idioma and estado = 'publicado'
+    and dia > (now() at time zone 'Europe/Madrid')::date;
+$$;
+revoke all on function criptico.fecha_proximo(text) from public;
+grant execute on function criptico.fecha_proximo(text) to anon, authenticated;
 
 create function criptico.suscribir(p_correo text, p_idioma text, p_hash_alta text, p_token_baja text)
 returns boolean
