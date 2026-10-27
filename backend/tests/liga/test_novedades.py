@@ -98,7 +98,7 @@ def _semana(mundo, dueno=None):
         db.execute(text("""
             insert into liga.visitas (usuario_id, session_id, inicio, ultima_actividad)
             values (:u, :s, :d, :d)
-        """), {"u": uid, "s": uuid.uuid4(), "d": ahora - timedelta(days=2)})
+        """), {"u": uid, "s": uuid.uuid4(), "d": creada})
         eid, rid = _estrategia_con_receta(db, dueno, creada)
         tid = db.execute(text("""
             insert into liga.temporadas (nombre, n_jornadas, cuenta, creado)
