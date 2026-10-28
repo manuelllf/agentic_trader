@@ -10,7 +10,6 @@ const PUBLICAS = [
   /^\/blog\/(?!boletin(?:\/|$))[^/]+$/,
   /^\/en\/blog$/,
   /^\/en\/blog\/(?!boletin(?:\/|$))[^/]+$/,
-  /^\/ficha\/[^/]+$/,
 ];
 
 /** Deja pasar solo las páginas públicas, sin query ni fragmento (pueden llevar datos personales). */

@@ -21,7 +21,6 @@ describe("dejarPasar", () => {
     "/blog/un-articulo",
     "/en/blog",
     "/en/blog/an-article",
-    "/ficha/abc123",
   ])("permite la ruta pública %s", (url) => {
     expect(dejarPasar({ type: "pageview", url })).not.toBeNull();
   });
@@ -48,6 +47,7 @@ describe("dejarPasar", () => {
     "/en/blog/boletin/baja?token=x",
     "/no-existe",
     "/aprender/uno/dos",
+    "/ficha/abc123",
   ])("descarta la ruta privada o desconocida %s", (url) => {
     expect(dejarPasar({ type: "pageview", url })).toBeNull();
   });
