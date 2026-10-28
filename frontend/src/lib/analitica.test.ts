@@ -54,6 +54,11 @@ describe("dejarPasar", () => {
 
   it("elimina la query y el fragmento y conserva el tipo", () => {
     expect(dejarPasar({ type: "pageview", url: "https://vennett.app/liga?vista=tabla#x" }))
-      .toEqual({ type: "pageview", url: "/liga" });
+      .toEqual({ type: "pageview", url: "https://vennett.app/liga" });
+  });
+
+  it("conserva la URL absoluta de la portada", () => {
+    expect(dejarPasar({ type: "pageview", url: "https://vennett.app/" }))
+      .toEqual({ type: "pageview", url: "https://vennett.app/" });
   });
 });
