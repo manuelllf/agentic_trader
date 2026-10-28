@@ -20,11 +20,7 @@ export async function metadataCriptico(idioma: Idioma, numero?: string, accion?:
   const title = t(`seo_criptico_${tipo}_titulo`, { numero: numero ?? "" });
   const description = t(`seo_criptico_${tipo}_descripcion`, { numero: numero ?? "" });
   const url = `${URL_PUBLICA}${ruta(idioma)}${accion ? `/${accion}` : numero === undefined ? "" : `/${numero}`}`;
-  let indexar = false;
-  if (!accion) {
-    try { indexar = (await leerPublicado(idioma, numero)) !== null; }
-    catch { /* Si la API falla, no se indexa una página sin contenido. */ }
-  }
+  const indexar = !accion;
   // Sin hreflang: los juegos de palabras de ambos idiomas no son contenido equivalente.
   return { title, description, alternates: { canonical: url }, robots: { index: indexar, follow: indexar },
     openGraph: { title, description, url, locale: idioma === "es" ? "es_ES" : "en_GB" } };
