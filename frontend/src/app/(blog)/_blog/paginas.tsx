@@ -4,15 +4,16 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { loadMessages } from "@/i18n/messages";
 import type { Locale } from "@/i18n/locale";
-import { listarPublicados, leerPublicado, escaparJsonLd, type Articulo } from "@/lib/blog/publico";
-import { URL_PUBLICA } from "@/lib/sitio";
+import { listarPublicados, leerPublicado, datosArticulo, escaparJsonLd, type Articulo } from "@/lib/blog/publico";
+import FirmaAutor from "@/components/FirmaAutor";
+import { AUTOR_PUBLICO, URL_PUBLICA } from "@/lib/sitio";
 import { Cabecera, Fecha, Fila, Cuerpo, Pie, rutaBlog, type Textos } from "./componentes";
 
 async function textosBlog(idioma: Locale): Promise<Textos> {
   const messages = await loadMessages(idioma);
   const t = createTranslator({ locale: idioma, messages: { blog: messages }, namespace: "blog" }) as unknown as (clave: string, valores?: Record<string, string | number>) => string;
   const claves = ["title", "seo", "intro", "empty", "error", "terms", "privacy", "legal", "disclaimer", "practice", "cta", "previous", "next", "switch", "article_disclaimer"];
-  return { ...Object.fromEntries(claves.map(key => [key, t(`blog_${key}`)])), minutes: t("blog_minutes", { count: "{count}" }) };
+  return { ...Object.fromEntries(claves.map(key => [key, t(`blog_${key}`)])), minutes: t("blog_minutes", { count: "{count}" }), firma: t("firma_articulo", { autor: AUTOR_PUBLICO }) };
 }
 
 export async function metadataBlog(idioma: Locale, slug?: string): Promise<Metadata> {
@@ -56,11 +57,10 @@ export async function Leccion({ idioma, slug }: { idioma: Locale; slug: string }
   const indice = articulos?.findIndex(item => item.slug === slug) ?? -1;
   const anterior = indice >= 0 ? articulos?.[indice + 1] : undefined;
   const siguiente = indice > 0 ? articulos?.[indice - 1] : undefined;
-  const datos = { "@context": "https://schema.org", "@type": "BlogPosting", headline: articulo.titulo, description: articulo.resumen,
-    datePublished: articulo.publicado_en, inLanguage: idioma, mainEntityOfPage: `${URL_PUBLICA}${rutaBlog(idioma, slug)}`,
-    publisher: { "@type": "Organization", name: "Vennett" } };
+  const datos = datosArticulo({ articulo, idioma, url: `${URL_PUBLICA}${rutaBlog(idioma, slug)}` });
   return <main lang={idioma}><Cabecera idioma={idioma} hrefEs={hrefEs} hrefEn={hrefEn} /><article>
     <Fecha articulo={articulo} idioma={idioma} textos={textos} /><h1>{articulo.titulo}</h1><p className="blog-entradilla">{articulo.resumen}</p><Cuerpo cuerpo={articulo.cuerpo} />
+    <FirmaAutor texto={textos.firma} />
     <Link className="blog-boton" href="/liga">{textos.cta}</Link>
     {articulos === null && <p role="alert">{textos.error}</p>}
     <nav className="blog-vecinos">{anterior && <Link href={rutaBlog(idioma, anterior.slug)}>{textos.previous}: {anterior.titulo}</Link>}{siguiente && <Link href={rutaBlog(idioma, siguiente.slug)}>{textos.next}: {siguiente.titulo}</Link>}</nav>

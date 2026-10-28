@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { acceptLanguage, deviceLocale, idiomaAlEntrar, normalizeLocale, preferredLocale, readCookie } from "./locale";
+import { acceptLanguage, deviceLocale, idiomaAlEntrar, idiomaDeRuta, normalizeLocale, preferredLocale, readCookie } from "./locale";
 import { porcentaje, fecha, miles } from "../lib/liga/format";
 
 describe("language resolution", () => {
+  it.each(["/en", "/en/blog/x"])("resolves %s as English", (ruta) => {
+    expect(idiomaDeRuta(ruta)).toBe("en");
+  });
+  it.each(["/", "/blog", "/english", "/entrar"])("leaves %s to language preferences", (ruta) => {
+    expect(idiomaDeRuta(ruta)).toBeNull();
+  });
   it("uses device language when the ordered language list is unavailable", () => {
     expect(deviceLocale(undefined, "en-US")).toBe("en");
     expect(deviceLocale([], "en-GB")).toBe("en");

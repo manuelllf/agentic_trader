@@ -158,7 +158,7 @@ export function Pelicula({ criptico }: { criptico: EstadoCriptico }) {
                 <span className="pel-ceja">{t("landing_liga_ceja")}</span>
               </div>
               <div data-it="fin" className="pel-it pel-fin">
-                <h1>{t("landing_titular")}</h1>
+                <h2>{t("landing_titular")}</h2>
                 <p>{t("landing_fin_sub")}</p>
                 <div className="pel-ctas">
                   <Link href="/entrar?next=/crear" className="pel-btn pri">{t("landing_crea_tuya")}</Link>

@@ -3,7 +3,7 @@
 import { NextIntlClientProvider, type AbstractIntlMessages } from "next-intl";
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react";
-import { LOCALE_CHANGED, LOCALE_COOKIE, normalizeLocale, idiomaAlEntrar,
+import { LOCALE_CHANGED, LOCALE_COOKIE, normalizeLocale, idiomaAlEntrar, idiomaDeRuta,
   deviceLocale, readCookie, VISITOR_COOKIE, type Locale } from "./locale";
 
 type Account = { id: string; locale: Locale | null };
@@ -120,6 +120,7 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
   }, [applyLocale]);
 
   useEffect(() => {
+    if (idiomaDeRuta(window.location.pathname)) return;
     if (account.current || normalizeLocale(readCookie(LOCALE_COOKIE, document.cookie))) return;
     const detected = deviceLocale(navigator.languages, navigator.language);
     if (detected !== defaultLocale.current) void applyLocale(detected, { visitor: false, persist: false });

@@ -1034,7 +1034,7 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
   content: ""; position: absolute; z-index: -1; inset: calc(-56 * var(--pel-u)) calc(-1 * var(--pel-margen)) 0; pointer-events: none;
   background: linear-gradient(to bottom, rgba(var(--pel-fondo-rgb), 0), rgba(var(--pel-fondo-rgb), .94) calc(56 * var(--pel-u)));
 }
-.lg .pel-fin h1 { margin: 0; font: 800 calc(32 * var(--pel-u))/1.02 var(--pel-display); letter-spacing: -.035em; text-wrap: balance; }
+.lg .pel-fin h2 { margin: 0; font: 800 calc(32 * var(--pel-u))/1.02 var(--pel-display); letter-spacing: -.035em; text-wrap: balance; }
 .lg .pel-fin p { margin: 0; max-width: 34em; color: var(--pel-tinta2); }
 .lg .pel-fin small { font: 400 calc(11.5 * var(--pel-u))/1.3 var(--pel-data); color: var(--pel-mudo); }
 .lg .pel-ctas { display: flex; flex-wrap: wrap; gap: calc(10 * var(--pel-u)); margin-top: calc(4 * var(--pel-u)); }
@@ -1102,7 +1102,7 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
   .lg .pel-veredicto b { font-size: 64px; }
   .lg .pel-fin { top: 0; }
   .lg .pel-fin::before { display: none; }
-  .lg .pel-fin h1 { font-size: clamp(44px, 4.6vw, 72px); }
+  .lg .pel-fin h2 { font-size: clamp(44px, 4.6vw, 72px); }
   .lg .pel-regleta { gap: 0; padding: 0 var(--pel-margen) 0 56px; }
   .lg .pel-criptico { flex: 0 1 446px; min-width: 0; }
   .lg .pel-boletin { flex: 1 1 0; min-width: 160px; margin-left: 49px; }

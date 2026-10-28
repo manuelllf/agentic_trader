@@ -1,5 +1,11 @@
 export const LOCALES = ["es", "en"] as const;
 export type Locale = typeof LOCALES[number];
+export const CABECERA_IDIOMA_RUTA = "x-vennett-idioma";
+
+export function idiomaDeRuta(ruta: string): Locale | null {
+  return ruta === "/en" || ruta.startsWith("/en/") ? "en" : null;
+}
+
 export const LOCALE_COOKIE = "vennett_locale";
 export const VISITOR_COOKIE = "vennett_visitor_locale";
 export const LOCALE_CHANGED = "vennett-locale-changed";

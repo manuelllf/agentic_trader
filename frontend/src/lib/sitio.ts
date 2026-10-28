@@ -3,6 +3,7 @@ import { normalizeLocale } from "@/i18n/locale";
 import es from "../../messages/es/system.json";
 import en from "../../messages/en/system.json";
 
+export const AUTOR_PUBLICO = "Admin";
 export const URL_PUBLICA = "https://vennett.app";
 
 export function metadataCompartir({ titulo, descripcion, idioma, ruta, indexar = true }: {

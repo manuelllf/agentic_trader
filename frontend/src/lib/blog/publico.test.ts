@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { escaparJsonLd, leerPublicado, listarPublicados } from "./publico";
+import { datosArticulo, escaparJsonLd, leerPublicado, listarPublicados } from "./publico";
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -37,6 +37,15 @@ it("propaga errores de red y JSON inválido", async () => {
   vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(new Response("invalid"))));
   await expect(listarPublicados("es")).rejects.toThrow();
   await expect(leerPublicado("leccion", "en")).rejects.toThrow();
+});
+
+it("incluye al autor público y conserva los datos del artículo sin fecha de modificación", () => {
+  const articulo = { slug: "leccion", titulo: "Lesson", resumen: "Summary", palabras: 401, publicado_en: "2026-01-01T10:00:00Z" };
+  expect(datosArticulo({ articulo, idioma: "en", url: "https://vennett.app/en/blog/leccion" })).toEqual({
+    "@context": "https://schema.org", "@type": "BlogPosting", headline: "Lesson", description: "Summary",
+    datePublished: articulo.publicado_en, inLanguage: "en", mainEntityOfPage: "https://vennett.app/en/blog/leccion",
+    author: { "@type": "Person", name: "Admin" }, publisher: { "@type": "Organization", name: "Vennett" },
+  });
 });
 
 it("escapa todos los signos menor que sin alterar los datos del JSON-LD", () => {

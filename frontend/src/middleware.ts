@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { acceptLanguage, LOCALE_COOKIE, normalizeLocale } from "./i18n/locale";
+import { acceptLanguage, CABECERA_IDIOMA_RUTA, idiomaDeRuta, LOCALE_COOKIE, normalizeLocale } from "./i18n/locale";
 
 // CSP con nonce (plan §14/§15, tarea 8.1). Por ahora en modo "solo informe": el navegador no
 // bloquea nada, solo lo reportaría si hubiera un `report-uri`/`report-to` (no hay todavía, así que
@@ -67,12 +67,15 @@ export function middleware(request: NextRequest) {
   ].join("; ");
 
   const requestHeaders = new Headers(request.headers);
+  const idiomaRuta = idiomaDeRuta(request.nextUrl.pathname);
+  if (idiomaRuta) requestHeaders.set(CABECERA_IDIOMA_RUTA, "en");
+  else requestHeaders.delete(CABECERA_IDIOMA_RUTA);
   requestHeaders.set("x-nonce", nonce);
   // En petición: de aquí lo lee Next para firmar sus propios scripts inline con este nonce.
   requestHeaders.set("Content-Security-Policy-Report-Only", csp);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
-  const locale = normalizeLocale(request.cookies.get(LOCALE_COOKIE)?.value)
+  const locale = idiomaRuta ?? normalizeLocale(request.cookies.get(LOCALE_COOKIE)?.value)
     ?? acceptLanguage(request.headers.get("accept-language"));
   response.headers.set("Content-Language", locale);
   response.headers.append("Vary", "Accept-Language, Cookie");

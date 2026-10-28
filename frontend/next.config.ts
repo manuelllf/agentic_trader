@@ -40,7 +40,13 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         has: [{ type: "host", value: "agentic-trader-manuelllf.vercel.app" }],
         destination: "https://vennett.app/:path*",
-        permanent: false,
+        permanent: true,
+      },
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "agentic-trader-git-main-manuelllf.vercel.app" }],
+        destination: "https://vennett.app/:path*",
+        permanent: true,
       },
     ];
   },
