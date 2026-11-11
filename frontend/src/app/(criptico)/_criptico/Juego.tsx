@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import Link from "next/link";
 import * as api from "@/lib/criptico/api";
+import { SelectorIdioma } from "@/components/SelectorIdioma";
 import { normalizar } from "@/lib/criptico/letras";
 import { bienvenidaVista, borrar, cargarPartida, escribir, guardarBienvenida, guardarPartida, nuevaPartida } from "@/lib/criptico/partida";
 import type { Partida } from "@/lib/criptico/partida";
@@ -14,7 +16,8 @@ import Ayudas from "./Ayudas";
 import Teclado from "./Teclado";
 import Resultado from "./Resultado";
 import Gancho from "./Gancho";
-import Archivo from "./Archivo";
+import Archivo, { HojaArchivo, useIndice } from "./Archivo";
+import { useHojaAtras } from "./hoja-atras";
 import Suscripcion from "./Suscripcion";
 import { ruta, traductor } from "./textos";
 
@@ -33,6 +36,9 @@ export default function Juego({ acertijo: a, textos, ultimoNumero = a.numero }: 
   const [ocupado, setOcupado] = useState(false);
   const bloqueo = useRef(false);
   const [bienvenida, setBienvenida] = useState(false);
+  const [archivo, setArchivo] = useState(false);
+  const [teclado, setTeclado] = useState(false);
+  const { indice, error: errorIndice } = useIndice(a.idioma);
   const [cuenta, setCuenta] = useState("");
   const empezar = useRef<HTMLButtonElement>(null);
   const cabAyuda = useRef<HTMLButtonElement>(null);
@@ -65,6 +71,7 @@ export default function Juego({ acertijo: a, textos, ultimoNumero = a.numero }: 
   }, [bienvenida]);
 
   const cerrarBienvenida = useCallback(() => { guardarBienvenida(); setBienvenida(false); }, []);
+  useHojaAtras(bienvenida, cerrarBienvenida);
   const editar = useCallback((letra: string) => {
     if (!listo || bloqueo.current || bienvenida) return;
     const p = actual.current;
@@ -126,6 +133,7 @@ export default function Juego({ acertijo: a, textos, ultimoNumero = a.numero }: 
   useEffect(() => {
     function pulsar(e: KeyboardEvent) {
       if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      if (archivo) { if (e.key === "Escape") setArchivo(false); return; }
       if (bienvenida) {
         if (e.key === "Tab") { e.preventDefault(); empezar.current?.focus(); }
         if (e.key === "Escape") cerrarBienvenida();
@@ -141,30 +149,32 @@ export default function Juego({ acertijo: a, textos, ultimoNumero = a.numero }: 
     }
     document.addEventListener("keydown", pulsar);
     return () => document.removeEventListener("keydown", pulsar);
-  }, [bienvenida, cerrarBienvenida, comprobar, editar, retroceso]);
+  }, [archivo, bienvenida, cerrarBienvenida, comprobar, editar, retroceso]);
 
   const terminado = partida.resultado !== "jugando";
-  const fecha = new Intl.DateTimeFormat(a.idioma, { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Madrid" })
-    .format(new Date(`${a.fecha.slice(0, 10)}T12:00:00Z`));
-
-  return <main className={`cr-app${terminado ? " cr-terminado" : ""}`} lang={a.idioma}>
-    <div className="cr-scroll" inert={bienvenida}>
+  return <main className={`cr-app${terminado ? " cr-terminado" : ""}${teclado && !terminado ? " cr-con-teclado" : ""}`} lang={a.idioma}>
+    <div className="cr-scroll" inert={bienvenida || archivo}>
       <header className="cr-cab">
-        <a className="sello" href={ruta(a.idioma)}><Marca className="marca" /><i aria-hidden="true" /><b>{t("cr_nombre")}</b></a>
-        <nav><button type="button" ref={cabAyuda} className="cr-icono" onClick={() => setBienvenida(true)} aria-label={t("cr_leer")}>?</button>
-          <a className="cr-icono" aria-label={t("cr_idioma")} href={`${ruta(a.idioma === "es" ? "en" : "es")}${a.numero === ultimoNumero ? "" : `/${a.numero}`}`}>{t("cr_otro")}</a></nav>
+        <Link className="sello" href={ruta(a.idioma)}><Marca className="marca" /><i aria-hidden="true" /><b>{t("cr_nombre")}</b></Link>
+        <nav><SelectorIdioma actual={a.idioma} etiqueta={t("cr_idioma_selector")} enlaces={{
+          es: `${ruta("es")}${a.numero === ultimoNumero ? "" : `/${a.numero}`}`,
+          en: `${ruta("en")}${a.numero === ultimoNumero ? "" : `/${a.numero}`}`,
+        }} />
+          <button type="button" className="cr-icono" onClick={() => setArchivo(true)} aria-label={t("cr_archivo_titulo")}>▤</button>
+          <button type="button" ref={cabAyuda} className="cr-icono" onClick={() => setBienvenida(true)} aria-label={t("cr_leer")}>?</button>
+        </nav>
       </header>
       <h1 className="cr-sr">{t("cr_titulo")}</h1>
       <div className="cr-cuerpo">
         <div className="cr-principal">
-          <Archivo idioma={a.idioma} actual={a.numero} ultimo={ultimoNumero} t={t} revision={partida.resultado} />
-          <div className="cr-encabezado"><p className="cr-meta">{t("cr_numero", { n: a.numero })} · {fecha}</p><span className="cr-nivel">{t(`cr_${a.nivel}`)}</span></div>
+          <Archivo idioma={a.idioma} actual={a.numero} ultimo={ultimoNumero} fecha={a.fecha} indice={indice} t={t} />
+          <div className="cr-encabezado"><p className="cr-meta">{t("cr_numero", { n: a.numero })}</p><span className="cr-nivel">{t(`cr_${a.nivel}`)}</span></div>
           <p className="cr-pista"><Pista segmentos={a.pista} ayudas={partida.ayudas} completa={terminado} /> <span className="cr-enum">({a.longitud})</span></p>
           <div key={temblor} className={`cr-casillas${temblor ? " cr-mal" : ""}`} style={{ "--casillas": a.longitud } as CSSProperties}>
             {partida.letras.map((l, i) => <button type="button" key={i} data-casilla
               className={`cr-casilla${terminado ? " bien" : partida.ayudas.includes("letra") && i === 0 ? " fija" : i === cursor ? " activa" : ""}`}
               disabled={!listo || terminado || ocupado || (i === 0 && partida.ayudas.includes("letra"))}
-              onClick={() => setCursor(i)} aria-label={t("cr_casilla", { n: i + 1, total: a.longitud,
+              onClick={() => { setCursor(i); setTeclado(true); }} aria-label={t("cr_casilla", { n: i + 1, total: a.longitud,
                 fija: i === 0 && partida.ayudas.includes("letra") ? t("cr_fija") : "" })}>{l}</button>)}
           </div>
           <p role="status" className="cr-mensaje">{mensaje}</p>
@@ -175,20 +185,20 @@ export default function Juego({ acertijo: a, textos, ultimoNumero = a.numero }: 
         </div>
         <aside className="cr-lateral">
           <Suscripcion idioma={a.idioma} t={t} />
-          {terminado && partida.detalle ? <Gancho detalle={partida.detalle} t={t} /> : <div className="cr-contexto">
-            <section className="cr-bloque"><h2>{t("cr_leer")}</h2><p>{t("cr_leer_texto")}</p><Leyenda t={t} /></section>
-            <section className="cr-bloque"><h2>{t("cr_vennett")}</h2><p>{t("cr_gancho_texto")}</p><a className="cr-enlace" href="/liga">{t("cr_liga")}</a></section>
-          </div>}
+          {terminado && partida.detalle && <Gancho detalle={partida.detalle} t={t} />}
           <p className="cr-proximo">{t("cr_proximo")} <span className="cr-cuenta">{cuenta}</span></p>
         </aside>
       </div>
       <footer className="cr-aviso">{t("cr_aviso")}</footer>
     </div>
-    {!terminado && <div inert={bienvenida}><Teclado idioma={a.idioma} escribir={editar} borrar={retroceso} comprobar={() => void comprobar()} ocupado={!listo || ocupado} t={t} /></div>}
-    {bienvenida && <div className="cr-bienvenida"><section className="cr-hoja" role="dialog" aria-modal="true" aria-labelledby="cr-bienvenida-titulo">
+    {!terminado && teclado && <div inert={bienvenida || archivo}><Teclado idioma={a.idioma} escribir={editar} borrar={retroceso} comprobar={() => void comprobar()} ocultar={() => setTeclado(false)} ocupado={!listo || ocupado} t={t} /></div>}
+    {bienvenida && <div className="cr-bienvenida" onClick={evento => { if (evento.target === evento.currentTarget) cerrarBienvenida(); }}><section className="cr-hoja" role="dialog" aria-modal="true" aria-labelledby="cr-bienvenida-titulo">
+      <div className="cr-grabber" aria-hidden="true" />
       <h2 id="cr-bienvenida-titulo">{t("cr_bienvenida")}</h2>
       <ol><li>{t("cr_paso_uno")}</li><li>{t("cr_paso_dos")}</li><li>{t("cr_paso_tres")}</li></ol>
       <Leyenda t={t} /><button ref={empezar} type="button" className="btn pri wide" onClick={cerrarBienvenida}>{t("cr_empezar")}</button>
     </section></div>}
+    {archivo && <HojaArchivo idioma={a.idioma} actual={a.numero} ultimo={ultimoNumero} fecha={a.fecha} indice={indice} error={errorIndice}
+      cerrar={() => setArchivo(false)} t={t} />}
   </main>;
 }

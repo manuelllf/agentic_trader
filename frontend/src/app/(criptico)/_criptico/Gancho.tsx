@@ -7,6 +7,5 @@ export default function Gancho({ detalle, t }: { detalle: Detalle; t: Traducir }
     <p>{regla ? t("cr_regla_texto", { regla }) : t("cr_gancho_texto")}</p>
     {regla && <p className="cr-regla">{regla}</p>}
     <a className="btn pri wide" href="/registrar">{t("cr_crear")}</a>
-    <a className="cr-enlace" href="#suscripcion">{t("cr_correo")}</a>
   </section>;
 }

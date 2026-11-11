@@ -1,12 +1,15 @@
 import type { Idioma, Traducir } from "@/lib/criptico/tipos";
 
-export default function Teclado({ idioma, escribir, borrar, comprobar, ocupado, t }: {
+export default function Teclado({ idioma, escribir, borrar, comprobar, ocultar, ocupado, t }: {
   idioma: Idioma; escribir: (letra: string) => void; borrar: () => void;
-  comprobar: () => void; ocupado: boolean; t: Traducir;
+  comprobar: () => void; ocultar: () => void; ocupado: boolean; t: Traducir;
 }) {
   const filas = ["QWERTYUIOP", idioma === "es" ? "ASDFGHJKLÑ" : "ASDFGHJKL", "ZXCVBNM"];
   return <div className="cr-pie-teclado">
-    <button type="button" className="btn pri wide" disabled={ocupado} onClick={comprobar}>{t("cr_comprobar")}</button>
+    <div className="cr-pie-acciones">
+      <button type="button" className="cr-ocultar" onClick={ocultar} aria-label={t("cr_ocultar_teclado")}>⌄</button>
+      <button type="button" className="btn pri wide" disabled={ocupado} onClick={comprobar}>{t("cr_comprobar")}</button>
+    </div>
     <div className="cr-teclado" role="group" aria-label={t("cr_teclado")}>
       {filas.map((fila, i) => <div className="cr-fila" key={fila}>
         {[...fila].map(letra => <button type="button" key={letra} disabled={ocupado}

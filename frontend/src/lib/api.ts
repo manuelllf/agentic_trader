@@ -10,7 +10,7 @@ import type {
   ScoreRow, WatchItem,
 } from "./types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const TIMEOUT_MS = 15_000;
 // Para endpoints que hacen trabajo síncrono de verdad dentro del propio request (reconstruir
 // DuckDB entero, llamadas reales a un LLM de razonamiento, levantar el scraper de Yahoo) --

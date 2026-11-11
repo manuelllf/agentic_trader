@@ -28,12 +28,17 @@ export async function metadataCriptico(idioma: Idioma, numero?: string, accion?:
 
 export async function pagina(idioma: Idioma, numero?: string) {
   if (numero !== undefined && (!/^[1-9]\d*$/.test(numero) || !Number.isSafeInteger(Number(numero)))) notFound();
-  let entrega;
-  try { entrega = await leerPublicado(idioma, numero); }
-  catch { /* El cliente conserva el estado de error y permite reintentar. */ }
+  // El acertijo y el de hoy se piden a la vez: el navegador los recibe ya listos.
+  const [entrega, hoy] = await Promise.all([
+    leerPublicado(idioma, numero).catch(() => undefined),
+    numero === undefined ? undefined : leerPublicado(idioma).catch(() => undefined),
+  ]);
   // Un número sin publicar es un 404; hoy sin acertijo es la página vacía, que deja suscribirse.
   if (entrega === null && numero !== undefined) notFound();
-  return <Pagina idioma={idioma} textos={await catalogo(idioma)} numero={numero === undefined ? undefined : Number(numero)} />;
+  // Si la lectura falló, la página lo pide en el navegador y permite reintentar.
+  const inicial = entrega ? { entrega, ultimo: hoy?.acertijo.numero ?? entrega.acertijo.numero } : null;
+  return <Pagina key={`${idioma}:${numero ?? "hoy"}`} idioma={idioma} textos={await catalogo(idioma)}
+    numero={numero === undefined ? undefined : Number(numero)} inicial={inicial} />;
 }
 
 export async function paginaToken(idioma: Idioma, accion: "confirmar" | "baja", token: string | string[] | undefined) {

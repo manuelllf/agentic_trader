@@ -1,41 +1,58 @@
-.lg.criptico-publico { --cr-ind-bg: color-mix(in srgb, var(--warn) 18%, var(--bg)); --cr-mat-line: var(--muted); }
+/* Tipografía y color de la casa (DESIGN v2, aprobado el 11-nov): letra del sistema, superficies de iOS, tinte petróleo. */
+.lg.criptico-publico {
+  --font-sistema: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-lg: var(--font-sistema); --font-display: var(--font-sistema); --font-data: var(--font-sistema);
+  --bg: #F2F2F7; --surface: #FFFFFF; --surface2: #E9E9EF; --raised: #FFFFFF;
+  --line: #D8D8DC; --line2: #C7C7CC; --ink2: #3C3C43; --muted: #6E6E73;
+  --cr-ind-bg: color-mix(in srgb, var(--warn) 18%, var(--bg)); --cr-mat-line: var(--muted);
+}
 .criptico-publico button, .criptico-publico input, .criptico-publico textarea { font: inherit; }
 .criptico-publico button { cursor: pointer; color: inherit; }
 .criptico-publico button:disabled { cursor: default; }
 .criptico-publico a { text-underline-offset: 3px; }
-.criptico-publico .cr-app { max-width: 1100px; margin: auto; }
-.criptico-publico .cr-scroll { padding: max(14px, env(safe-area-inset-top)) 16px calc(255px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 18px; }
+.criptico-publico .cr-app { max-width: 640px; margin: auto; }
+.criptico-publico .cr-scroll { padding: max(14px, env(safe-area-inset-top)) 16px 28px; display: flex; flex-direction: column; gap: 18px; }
 .criptico-publico .cr-terminado .cr-scroll { padding-bottom: 28px; }
 .criptico-publico .cr-cab, .criptico-publico .cr-cab nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
 .criptico-publico .sello { text-decoration: none; }
-.criptico-publico .cr-icono { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); text-decoration: none; font-size: 14px; font-weight: 700; }
+/* Cabecera fija: el borde se difumina solo cuando el contenido pasa por debajo (efecto de borde de scroll). */
+.criptico-publico .cr-cab { position: sticky; top: 10px; z-index: 5; margin: 0 -4px; padding: 0; background: none; pointer-events: none; }
+.lg.criptico-publico .cr-cab > .sello, .criptico-publico .cr-cab nav { pointer-events: auto; border-radius: 999px; background: color-mix(in srgb, var(--surface) 78%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+.lg.criptico-publico .cr-cab > .sello { min-height: 44px; padding: 0 16px; }
+.criptico-publico .cr-cab nav { padding: 4px; }
+.criptico-publico .cr-cab a, .criptico-publico .cr-cab button { transition: transform .15s cubic-bezier(.32, .72, 0, 1), background-color .25s cubic-bezier(.32, .72, 0, 1); }
+.criptico-publico .cr-cab a:active, .criptico-publico .cr-cab button:active { transform: scale(.97); }
+@media (prefers-reduced-transparency: reduce) { .lg.criptico-publico .cr-cab > .sello, .criptico-publico .cr-cab nav { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .lg.criptico-publico .cr-cab > .sello, .criptico-publico .cr-cab nav { background: var(--surface); } }
+.criptico-publico .cr-icono { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--surface); color: var(--accent); text-decoration: none; font-size: 15px; font-weight: 700; }
 .criptico-publico .cr-icono::after { content: ""; position: absolute; inset: -4px; }
 .criptico-publico .cr-cuerpo, .criptico-publico .cr-principal, .criptico-publico .cr-lateral, .criptico-publico .cr-contexto { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-.criptico-publico .cr-dias { display: flex; border-bottom: 1px solid var(--line); }
-.criptico-publico .cr-dia { position: relative; flex: 1; min-width: 0; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; }
+.criptico-publico .cr-dias { display: flex; gap: 6px; }
+.criptico-publico .cr-dia { flex: 1; min-width: 0; min-height: 56px; padding: 6px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 14px; background: var(--surface); text-decoration: none; }
 .criptico-publico .cr-dia span { font-size: 12px; color: var(--muted); }
 .criptico-publico .cr-dia b { font-family: var(--font-data), monospace; font-size: 17px; line-height: 1.2; color: var(--ink); }
 .criptico-publico .cr-dia i { width: 5px; height: 5px; border-radius: 50%; margin-top: 3px; }
 .criptico-publico .cr-dia.hecho i { background: var(--accent); }
-.criptico-publico .cr-dia[aria-current] b { color: var(--accent); }
-.criptico-publico .cr-dia[aria-current]::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: -1px; height: 2px; background: var(--accent); }
+.criptico-publico .cr-dia[aria-current] { background: var(--accent); }
+.criptico-publico .cr-dia[aria-current] span, .criptico-publico .cr-dia[aria-current] b { color: var(--btn-ink); }
+.criptico-publico .cr-dia[aria-current] i { background: var(--btn-ink); }
 .criptico-publico .cr-archivo summary { cursor: pointer; font-size: 14px; color: var(--muted); min-height: 44px; padding-top: 10px; }
 .criptico-publico .cr-lista-archivo { list-style: none; padding: 0; }
 .criptico-publico .cr-lista-archivo li { border-bottom: 1px solid var(--line); }
-.criptico-publico .cr-lista-archivo a { min-height: 48px; display: flex; gap: 14px; align-items: center; justify-content: space-between; text-decoration: none; font-size: 14px; }
+.criptico-publico .cr-lista-archivo a { min-height: 48px; display: flex; gap: 14px; align-items: center; justify-content: space-between; text-decoration: none; font-size: 15px; }
 .criptico-publico .cr-lista-archivo a span:last-child { color: var(--muted); }
 .criptico-publico .cr-encabezado { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-.criptico-publico .cr-meta, .criptico-publico .cr-nivel { font-size: 14px; color: var(--muted); }
-.criptico-publico .cr-nivel { font-weight: 600; white-space: nowrap; color: var(--ink2); }
-.criptico-publico .cr-pista { font-family: var(--font-display), var(--font-lg), sans-serif; font-size: 24px; line-height: 1.32; font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.criptico-publico .cr-meta, .criptico-publico .cr-nivel { font-size: 15px; color: var(--muted); }
+.criptico-publico .cr-nivel { font-weight: 700; white-space: nowrap; color: var(--accent); background: var(--accent-bg); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+.criptico-publico .cr-pista { font-family: var(--font-display), var(--font-lg), sans-serif; font-size: 22px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
 .criptico-publico .cr-enum { font-family: var(--font-data), monospace; font-size: .7em; color: var(--muted); font-weight: 400; white-space: nowrap; }
 .criptico-publico :is(.cr-s-def, .cr-s-ind, .cr-s-mat) { box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 4px; transition: background-color .2s, box-shadow .2s, text-decoration-color .2s; }
 .criptico-publico .cr-s-def { text-decoration: underline transparent; text-decoration-thickness: 3px; text-underline-offset: 6px; }
 .criptico-publico .cr-s-def.on { text-decoration-color: var(--accent); }
 .criptico-publico .cr-s-ind.on { background: var(--cr-ind-bg); padding: 0 3px; }
 .criptico-publico .cr-s-mat.on { box-shadow: inset 0 0 0 1.5px var(--cr-mat-line); padding: 0 3px; }
-.criptico-publico .cr-casillas { display: grid; grid-template-columns: repeat(var(--casillas), minmax(0, 1fr)); gap: 5px; width: min(100%, calc(var(--casillas) * 63px)); }
-.criptico-publico .cr-casilla { aspect-ratio: 1 / 1.18; min-width: 0; padding: 0; display: grid; place-items: center; border: 1.5px solid var(--line2); border-radius: 8px; background: var(--bg); font-family: var(--font-data), monospace; font-size: 20px; font-weight: 700; color: var(--ink); }
+.criptico-publico .cr-casillas { display: flex; gap: 10px; }
+.criptico-publico .cr-casilla { width: 58px; height: 58px; min-width: 0; padding: 0; display: grid; place-items: center; border: 0; border-radius: 12px; background: var(--surface); font-family: var(--font-data), monospace; font-size: 20px; font-weight: 700; color: var(--ink); }
 .criptico-publico .cr-casilla.activa { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .criptico-publico .cr-casilla.fija { background: var(--accent-bg); border-color: transparent; color: var(--accent); }
 .criptico-publico .cr-casilla.bien { background: var(--btn); border-color: transparent; color: var(--btn-ink); }
@@ -44,12 +61,12 @@
 .criptico-publico .cr-mensaje { min-height: 20px; color: var(--bad); font-size: 14px; }
 .criptico-publico .cr-mensaje:empty { display: none; }
 .criptico-publico .cr-bloque { display: flex; flex-direction: column; gap: 10px; }
-.criptico-publico .cr-bloque h2 { font-size: 15px; font-weight: 700; }
+.criptico-publico .cr-bloque h2 { font-size: 17px; font-weight: 600; }
 .criptico-publico .cr-bloque p { line-height: 1.55; }
 .criptico-publico .cr-media { font-size: 13px; color: var(--muted); text-align: right; }
-.criptico-publico .cr-ayudas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line2); border-radius: var(--control-radius); overflow: hidden; }
-.criptico-publico .cr-ayudas button { min-height: 52px; padding: 6px 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 0; border-left: 1px solid var(--line2); border-radius: 0; background: transparent; color: var(--ink); font-size: 13px; font-weight: 600; }
-.criptico-publico .cr-ayudas button:first-child { border-left: 0; }
+.criptico-publico .cr-ayudas { display: flex; flex-direction: column; background: var(--surface); border-radius: 16px; overflow: hidden; }
+.criptico-publico .cr-ayudas button { min-height: 52px; padding: 10px 16px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--ink); font-size: 17px; font-weight: 600; text-align: left; }
+.criptico-publico .cr-ayudas button:first-child { border-top: 0; }
 .criptico-publico .cr-ayudas button[aria-pressed=true] { background: var(--surface); color: var(--muted); }
 .criptico-publico .cr-ayudas button:focus-visible { outline-offset: -3px; }
 .criptico-publico .cr-muestra { display: inline-block; width: 22px; height: 12px; border-radius: 3px; }
@@ -60,7 +77,7 @@
 .criptico-publico .cr-explicaciones { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .criptico-publico .cr-explicaciones li { padding-left: 12px; border-left: 2px solid var(--line2); font-size: 15px; }
 .criptico-publico .cr-explicaciones b { color: var(--ink); }
-.criptico-publico .cr-enlace { align-self: flex-start; min-height: 44px; display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: var(--accent); font-size: 15px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.criptico-publico .cr-enlace { align-self: flex-start; min-height: 44px; display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: var(--accent); font-size: 15px; font-weight: 600; text-decoration: none; }
 .criptico-publico .cr-enlace.cr-suave { color: var(--muted); font-weight: 400; }
 .criptico-publico .cr-acciones-esc, .criptico-publico .cr-contexto { display: none; }
 .criptico-publico .cr-pie-teclado { position: fixed; z-index: 20; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 8px; padding: 10px 6px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); }
@@ -68,6 +85,7 @@
 .criptico-publico .cr-fila { display: flex; gap: 5px; justify-content: center; }
 .criptico-publico .cr-fila button { flex: 1; min-width: 0; height: 46px; padding: 0; border: 0; border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 16px; font-weight: 600; touch-action: manipulation; }
 .criptico-publico .cr-fila button.cr-borrar { flex: 1.5; }
+.criptico-publico .cr-fila button:active { transform: scale(.96); }
 .criptico-publico .cr-resultado { color: var(--accent); font-weight: 700; font-size: 18px; }
 .criptico-publico .cr-resultado small { display: block; color: var(--muted); font-size: 14px; font-weight: 400; }
 .criptico-publico .cr-desmontada { font-family: var(--font-display), sans-serif; font-size: 19px; line-height: 1.5; font-weight: 700; color: var(--ink); }
@@ -75,9 +93,9 @@
 .criptico-publico .cr-leyenda li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: baseline; }
 .criptico-publico .cr-dato { white-space: pre-wrap; padding: 2px 0 2px 12px; border-left: 2px solid var(--line2); font-family: var(--font-data), monospace; font-size: 14px; line-height: 1.6; color: var(--ink); }
 .criptico-publico .cr-nota, .criptico-publico .cr-aviso { font-size: 13px; color: var(--muted); }
-.criptico-publico .cr-aviso { border-top: 1px solid var(--line); padding-top: 14px; }
+.criptico-publico .cr-aviso { padding: 8px 0 0; text-align: center; }
 .criptico-publico .cr-gancho { border-top: 1px solid var(--line); padding-top: 18px; gap: 12px; }
-.criptico-publico .cr-gancho h2 { font-family: var(--font-display), sans-serif; font-size: 21px; line-height: 1.2; letter-spacing: -.02em; }
+.criptico-publico .cr-gancho h2 { font-family: var(--font-display), sans-serif; font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -.01em; }
 .criptico-publico .cr-gancho p { font-size: 15px; }
 .criptico-publico .cr-regla { padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--ink); }
 .criptico-publico .cr-proximo { font-size: 14px; color: var(--muted); }
@@ -88,7 +106,7 @@
 .criptico-publico .cr-suscripcion .cr-fila .btn { flex: 1 0 auto; min-height: 44px; padding: 0 18px; }
 .criptico-publico .cr-estado .cr-suscripcion, .criptico-publico .cr-estado .cr-bloque { width: 100%; max-width: 480px; }
 .criptico-publico .cr-pasos { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; }
-.criptico-publico input, .criptico-publico textarea { width: 100%; min-height: 44px; padding: 10px; border: 1px solid var(--line2); border-radius: var(--control-radius); background: var(--bg); color: var(--ink); }
+.criptico-publico input, .criptico-publico textarea { width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--surface); color: var(--ink); font-size: 17px; }
 .criptico-publico textarea { min-height: 120px; resize: vertical; }
 .criptico-publico .cr-bienvenida { position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: center; background: color-mix(in srgb, var(--ink) 38%, transparent); }
 .criptico-publico .cr-hoja { width: 100%; max-width: 640px; max-height: 95dvh; overflow-y: auto; background: var(--bg); border-radius: 22px 22px 0 0; padding: 22px 18px max(22px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; }
@@ -99,9 +117,9 @@
 .criptico-publico .cr-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .criptico-publico .cr-scroll { padding: 20px 32px 32px; gap: 26px; }
-  .criptico-publico .cr-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 30%); gap: 40px; align-items: start; }
+  .criptico-publico .cr-cuerpo { display: flex; flex-direction: column; gap: 18px; }
   .criptico-publico .cr-principal { gap: 20px; }
-  .criptico-publico .cr-lateral { gap: 24px; border-left: 1px solid var(--line); padding-left: 28px; }
+  .criptico-publico .cr-lateral { gap: 24px; }
   .criptico-publico .cr-contexto { display: flex; gap: 24px; }
   .criptico-publico .cr-contexto p { font-size: 15px; }
   .criptico-publico .cr-pista { font-size: 32px; line-height: 1.28; }
@@ -114,6 +132,90 @@
   .criptico-publico .cr-gancho { border: 0; padding: 0; }
   .criptico-publico .cr-hoja { border-radius: var(--radius-card); margin: auto; }
 }
+.criptico-publico .cr-bloque .cr-titulo-seccion { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 0; }
+.criptico-publico .cr-grabber { width: 36px; height: 5px; border-radius: 3px; background: var(--line2); margin: 0 auto 4px; }
+.criptico-publico .cr-hoja-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.criptico-publico .cr-hoja-cab h2 { margin: 0; }
+.criptico-publico .cr-archivo-hoja { max-height: 88dvh; }
+.criptico-publico .cr-ir { display: flex; gap: 8px; }
+.criptico-publico .cr-ir input { flex: 1; min-width: 0; }
+.criptico-publico .cr-ir button { min-height: 44px; padding: 0 18px; }
+.criptico-publico .cr-segmentos { display: inline-flex; align-self: flex-start; gap: 2px; background: var(--surface2); border-radius: 999px; padding: 3px; }
+.criptico-publico .cr-segmentos button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ink2); font-weight: 600; }
+.criptico-publico .cr-segmentos button[aria-pressed="true"] { background: var(--raised); color: var(--ink); box-shadow: 0 3px 8px rgba(0, 0, 0, .12); }
+.criptico-publico .cr-mes { display: flex; flex-direction: column; gap: 6px; }
+.criptico-publico .cr-mes-cab { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font-size: 16px; }
+.criptico-publico .cr-mes-cab small { color: var(--muted); font-size: 15px; font-weight: 400; }
+.criptico-publico .cr-mes-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.criptico-publico .cr-mes-nav button { min-width: 44px; min-height: 44px; font-size: 22px; }
+.criptico-publico .cr-cuadricula { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; text-align: center; }
+.criptico-publico .cr-cab-dia { font-size: 12px; color: var(--muted); font-weight: 700; padding: 4px 0; }
+.criptico-publico .cr-celda { aspect-ratio: 1 / 1; display: grid; place-items: center; border-radius: 10px; font-family: var(--font-data), monospace; font-size: 15px; color: var(--ink); text-decoration: none; }
+.criptico-publico .cr-celda.vacia { visibility: hidden; }
+.criptico-publico .cr-celda.sin { color: var(--muted); }
+.criptico-publico .cr-celda.hecho { background: var(--accent-bg); color: var(--accent); font-weight: 700; }
+.criptico-publico .cr-celda.hoy { box-shadow: inset 0 0 0 2px var(--accent); }
+.criptico-publico .cr-celda[aria-current] { background: var(--accent); color: var(--btn-ink); }
+.lg.criptico-publico .sello { border: 0; background: none; padding: 0; box-shadow: none; }
+.criptico-publico .cr-pedir { margin-left: auto; color: var(--accent); font-size: 15px; font-weight: 700; }
+.criptico-publico .cr-ayudas button[aria-pressed="true"] .cr-pedir { color: var(--muted); font-weight: 400; }
+.criptico-publico .cr-pie-acciones { display: flex; gap: 8px; padding: 0 3px; }
+.criptico-publico .cr-pie-acciones .wide { flex: 1; }
+.criptico-publico .cr-ocultar { width: 56px; min-height: 46px; border: 0; border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 22px; line-height: 1; }
+.criptico-publico .cr-con-teclado .cr-scroll { padding-bottom: calc(255px + env(safe-area-inset-bottom)); }
+.criptico-publico .cr-bienvenida { background: rgba(0, 0, 0, .6); }
+.criptico-publico .cr-lista-archivo a[aria-current="page"] { color: var(--accent); font-weight: 700; }
+.criptico-publico .cr-hoja { background: var(--bg); border-top: 1px solid var(--line); }
+.criptico-publico .cr-grabber { background: var(--line2); }
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .lg.criptico-publico { --bg: #000000; --surface: #1C1C1E; --surface2: #2C2C2E; --raised: #3A3A3C; --line: #38383A; --line2: #48484A; }
+}
+html[data-theme="dark"] .lg.criptico-publico { --bg: #000000; --surface: #1C1C1E; --surface2: #2C2C2E; --raised: #3A3A3C; --line: #38383A; --line2: #48484A; }
+/* Esqueleto: formas grises con la forma del contenido final, sin brillo ni pulso (DESIGN §10). */
+.criptico-publico .cr-esq { width: 100%; display: flex; flex-direction: column; gap: 14px; }
+.criptico-publico .cr-esq i { display: block; height: 14px; border-radius: 7px; background: var(--surface2); }
+.criptico-publico .cr-esq .cr-esq-titular { height: 26px; width: 70%; }
+.criptico-publico .cr-esq .cr-esq-linea { width: 100%; }
+.criptico-publico .cr-esq .cr-esq-linea.corta { width: 45%; }
+.criptico-publico .cr-esq-fila { display: flex; gap: 6px; }
+.criptico-publico .cr-esq-fila i { flex: 1; height: 42px; border-radius: 14px; }
+.criptico-publico .cr-esq-casillas { display: flex; gap: 10px; }
+.criptico-publico .cr-esq .cr-esq-caja { width: 58px; height: 58px; border-radius: 12px; }
+.criptico-publico .cr-esq .cr-esq-boton { height: 50px; border-radius: 14px; margin-top: 8px; }
+
+/* Barras de desplazamiento propias: discretas, nunca las del navegador. */
+html:has(.criptico-publico) { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+html:has(.criptico-publico)::-webkit-scrollbar { width: 6px; height: 6px; }
+html:has(.criptico-publico)::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+html:has(.criptico-publico)::-webkit-scrollbar-track { background: transparent; }
+html:has(.criptico-publico)[data-desplazando] { scrollbar-color: rgba(128, 128, 128, .45) transparent; }
+html:has(.criptico-publico)[data-desplazando]::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, .45); }
+.criptico-publico * { scrollbar-width: thin; scrollbar-color: rgba(128, 128, 128, .45) transparent; }
+
+/* Cabecera sin cápsulas: transparente al inicio; el material aparece cuando el contenido pasa por debajo. */
+.criptico-publico .cr-cab{top:0;margin:0 -16px;padding:8px 16px;min-height:52px;background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;transition:background-color .25s cubic-bezier(.32,.72,0,1)}
+html[data-superado] .criptico-publico .cr-cab{background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6)}
+.lg.criptico-publico .cr-cab > .sello{padding:0;min-height:0;background:none;border-radius:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+.criptico-publico .cr-cab nav{padding:0;background:none;border-radius:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+@media (prefers-reduced-transparency: reduce) { html[data-superado] .criptico-publico .cr-cab { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+
+/* Escala tipográfica de Apple (tabla por defecto de iOS): tamaño e interlínea de cada texto. */
+.criptico-publico p { font-size: 17px; line-height: 22px; }
+.criptico-publico b { line-height: 22px; }
+.criptico-publico .cr-pista { font-size: 22px; line-height: 28px; }
+.criptico-publico .cr-pista span { line-height: 28px; }
+.criptico-publico .cr-hoja h2, .criptico-publico .cr-gancho h2 { font-size: 22px; line-height: 28px; }
+.criptico-publico .cr-bloque h2 { font-size: 17px; line-height: 22px; font-weight: 600; }
+.criptico-publico .cr-dia span, .criptico-publico .cr-cab-dia { font-size: 12px; line-height: 16px; }
+.criptico-publico .cr-aviso, .criptico-publico .cr-nivel { font-size: 13px; line-height: 18px; }
+.criptico-publico .cr-proximo, .criptico-publico .cr-cuenta { font-size: 15px; line-height: 20px; }
+.criptico-publico .cr-cuenta { font-weight: 600; }
+.criptico-publico .cr-meta, .criptico-publico .cr-enlace, .criptico-publico .cr-pedir, .criptico-publico .cr-icono { font-size: 15px; line-height: 20px; }
+.criptico-publico .cr-explicaciones li, .criptico-publico .cr-pasos li, .criptico-publico .cr-leyenda li { font-size: 17px; line-height: 22px; }
+.criptico-publico .btn { font-size: 17px; line-height: 22px; font-weight: 600; }
+.criptico-publico .cr-ayudas button { font-size: 17px; line-height: 22px; }
+.criptico-publico .cr-encabezado h2 { font-size: 20px; line-height: 25px; font-weight: 600; }
+
 @media (prefers-reduced-motion: reduce) {
   .criptico-publico *, .criptico-publico *::before, .criptico-publico *::after { animation: none !important; transition: none !important; }
 }

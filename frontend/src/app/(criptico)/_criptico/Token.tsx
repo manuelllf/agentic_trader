@@ -5,6 +5,7 @@ import * as api from "@/lib/criptico/api";
 import type { Idioma, Textos } from "@/lib/criptico/tipos";
 import { Marca } from "../../(liga)/_ui/Marca";
 import { ruta, traductor } from "./textos";
+import { Esqueleto } from "./Esqueleto";
 
 export default function Token({ idioma, textos, token, accion }: {
   idioma: Idioma; textos: Textos; token: string; accion: "confirmar" | "baja";
@@ -23,7 +24,7 @@ export default function Token({ idioma, textos, token, accion }: {
   }, [token, accion, intento]);
   return <main className="cr-estado" lang={idioma}>
     <a className="sello" href={ruta(idioma)}><Marca className="marca" /><i aria-hidden="true" /><b>{t("cr_nombre")}</b></a>
-    <h1>{t(`cr_${accion}_titulo`)}</h1><p role="status">{t(estado)}</p>
+    <h1>{t(`cr_${accion}_titulo`)}</h1>{estado === "cr_cargando" ? <Esqueleto variante="lista" etiqueta={t(estado)} /> : <p role="status">{t(estado)}</p>}
     {estado === "cr_error" && <button type="button" className="btn pri" onClick={() => setIntento(n => n + 1)}>{t("cr_reintentar")}</button>}
     <a className="cr-enlace" href={ruta(idioma)}>{t("cr_volver")}</a>
   </main>;

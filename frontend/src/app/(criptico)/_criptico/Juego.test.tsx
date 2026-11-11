@@ -9,7 +9,7 @@ import textos from "../../../../messages/es/criptico.json";
 import Juego from "./Juego";
 
 vi.mock("@/lib/criptico/api", () => ({
-  comprobar: vi.fn(), resuelto: vi.fn(), solucion: vi.fn(), letra: vi.fn(), numero: vi.fn(), suscribir: vi.fn(),
+  comprobar: vi.fn(), resuelto: vi.fn(), solucion: vi.fn(), letra: vi.fn(), numero: vi.fn(), suscribir: vi.fn(), indice: vi.fn(),
 }));
 vi.mock("@/lib/api", () => ({ ApiError: class extends Error { status = 404; } }));
 
@@ -44,6 +44,7 @@ beforeEach(() => {
   vi.mocked(api.resuelto).mockResolvedValue(undefined);
   vi.mocked(api.solucion).mockResolvedValue({ detalle });
   vi.mocked(api.letra).mockResolvedValue({ letra: "R" });
+  vi.mocked(api.indice).mockResolvedValue([]);
 });
 afterEach(async () => {
   await act(async () => { root.unmount(); }); nodo.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals();
@@ -97,6 +98,7 @@ describe("Juego", () => {
     expect(nodo.querySelectorAll(".cr-hoja ol li")).toHaveLength(3);
     await pulsar("A"); expect(letras()).toBe("");
     await click("Empezar"); expect(localStorage.getItem("criptico:bienvenida")).toBe("1");
+    await act(async () => { nodo.querySelector<HTMLButtonElement>("[data-casilla]")!.click(); });
     const tecla = nodo.querySelector<HTMLButtonElement>('[aria-label="Escribir Ñ"]')!;
     await act(async () => { tecla.click(); }); expect(letras()).toBe("Ñ");
     await act(async () => { root.unmount(); }); root = createRoot(nodo); await montar();
