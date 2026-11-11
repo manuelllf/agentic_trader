@@ -47,6 +47,8 @@ export default function Registrar() {
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     if (ocupado || captchaPendiente || !sb || !acceso?.registro_abierto) return;
+    // El formulario no usa los avisos del navegador: lo que falte se dice aquí.
+    if (!email || !alias || !edad || !clave || !acepta) { setError(t("auth_completa_campos")); return; }
     if (!claveValida(clave)) { setError(t("auth_clave_revisa")); return; }
     const edadNumero = Number(edad);
     if (!Number.isInteger(edadNumero) || edadNumero < 14) { setError(t("auth_edad_minima")); return; }
@@ -69,62 +71,93 @@ export default function Registrar() {
       else window.location.assign("/liga");
     }
   }
+
+  const cerrado = acceso?.registro_abierto === false;
   return <MarcoAcceso pestana="crear" sinCambio={enviado}>
-      {!enviado && <>
-        {GOOGLE_ACTIVO && <BotonGoogle texto={t("auth_continuar_google")} disabled={ocupado || !sb}
-          onClick={() => void entrarProveedor("google")} />}
-        {APPLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
-          onClick={() => void entrarProveedor("apple")}>{t("auth_continuar_apple")}</Boton>}
-        <Separador texto={t("auth_o")} />
-      </>}
-      {enviado ? <>
-        <h2>{t("auth_cuenta_creada")}</h2>
-        <p>{t("auth_cuenta_creada_entrada")}</p>
-        <TurnstileWidget onToken={setTurnstile} resetKey={captchaReset} />
-        {captchaPendiente && <p className="nota" role="status">{t("auth_captcha_pendiente")}</p>}
-        <Boton variante="secundario" ancho="completo" disabled={ocupado || captchaPendiente || !acceso?.correo_disponible}
-          onClick={async () => {
-            if (ocupado || captchaPendiente || !acceso?.correo_disponible) return;
-            setOcupado(true); setError(""); setReenviado(false);
-            const fallo = await solicitarCorreo("/reenviar", { email, turnstile });
-            setTurnstile(""); setCaptchaReset(value => value + 1);
-            setOcupado(false);
-            if (fallo) setError(fallo);
-            else setReenviado(true);
-          }}>{ocupado ? t("auth_enviando") : t("auth_reenviar_confirmacion")}</Boton>
-        {reenviado && <p role="status">{t("auth_correo_enviado_generico")}</p>}
-      </> : <form className="form" onSubmit={enviar}>
-        <label className="campo"><span className="lbl">{t("auth_email")}</span>
-          <input className="inp" type="email" autoComplete="email" autoCapitalize="none" maxLength={254}
-            required value={email} onChange={e => setEmail(e.target.value)} /></label>
-        <label className="campo"><span className="lbl">{t("auth_nombre_usuario")}</span>
-          <input className="inp" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
-            pattern="[a-z0-9_.]{3,20}" minLength={3} maxLength={20} required value={alias}
-            onChange={e => setAlias(e.target.value.toLowerCase())} aria-describedby="ayuda-alias" />
-          <span className="nota" id="ayuda-alias">{t("auth_ayuda_alias")}</span></label>
-        <label className="campo"><span className="lbl">{t("auth_edad_etiqueta")}</span>
-          <input className="inp" type="number" inputMode="numeric" min={14} max={120} step={1} required
-            value={edad} onChange={e => setEdad(e.target.value)} aria-describedby="ayuda-edad" />
-          <span className="nota" id="ayuda-edad">{t("auth_edad_ayuda")}</span></label>
-        <CampoClave autoComplete="new-password" minLength={8} maxLength={200} required value={clave}
-          onChange={e => setClave(e.target.value)} aria-describedby="ayuda-clave" />
-        <ul className="acc-req" id="ayuda-clave" aria-live="polite">
-          <li className={requisitos.longitud ? "hecho" : undefined}>
-            <span aria-hidden="true">{requisitos.longitud ? "✓" : "○"}</span>{t("auth_req_longitud")}</li>
-          <li className={requisitos.mayuscula ? "hecho" : undefined}>
-            <span aria-hidden="true">{requisitos.mayuscula ? "✓" : "○"}</span>{t("auth_req_mayuscula")}</li>
-          <li className={requisitos.simbolo ? "hecho" : undefined}>
-            <span aria-hidden="true">{requisitos.simbolo ? "✓" : "○"}</span>{t("auth_req_simbolo")}</li>
-        </ul>
-        <label className="acc-acepta"><input className="acc-chk" type="checkbox" required checked={acepta}
-          onChange={e => setAcepta(e.target.checked)} /><span>{t.rich("auth_aceptacion_legal", { terms: chunks => <Link href="/legal/terminos">{chunks}</Link>, privacy: chunks => <Link href="/legal/privacidad">{chunks}</Link> })}</span></label>
-        <TurnstileWidget onToken={setTurnstile} resetKey={captchaReset} />
-        {captchaPendiente && <p className="nota" role="status">{t("auth_captcha_pendiente")}</p>}
-        <Boton type="submit" variante="principal" ancho="completo" disabled={ocupado || captchaPendiente || !sb || !acceso?.registro_abierto}>
-          {ocupado ? t("auth_creando_cuenta") : t("auth_crear_cuenta")}</Boton>
-      </form>}
-      {error && <p className="aviso" role="alert">{error}</p>}
-      {sb === null && <p className="nota">{t("auth_registro_no_disponible")}</p>}
-      {acceso && !acceso.registro_abierto && <p className="nota">{t("auth_registro_cerrado")}</p>}
+      {enviado ? (
+        <div className="v3-estado">
+          <h2 className="v3-enviada">{t("auth_cuenta_creada")}</h2>
+          <p className="v3-texto">{t("auth_cuenta_creada_entrada")}</p>
+          <div className="v3-seguridad">{t("auth_comprobacion")}</div>
+          <TurnstileWidget onToken={setTurnstile} resetKey={captchaReset} />
+          {captchaPendiente && <p className="v3-nota" role="status">{t("auth_captcha_pendiente")}</p>}
+          <Boton variante="secundario" ancho="completo" className="v3-secundario v3-tinte"
+            disabled={ocupado || captchaPendiente || !acceso?.correo_disponible}
+            onClick={async () => {
+              if (ocupado || captchaPendiente || !acceso?.correo_disponible) return;
+              setOcupado(true); setError(""); setReenviado(false);
+              const fallo = await solicitarCorreo("/reenviar", { email, turnstile });
+              setTurnstile(""); setCaptchaReset(value => value + 1);
+              setOcupado(false);
+              if (fallo) setError(fallo);
+              else setReenviado(true);
+            }}>{ocupado ? t("auth_enviando") : t("auth_reenviar_confirmacion")}</Boton>
+          {reenviado && <p className="v3-nota" role="status">{t("auth_correo_enviado_generico")}</p>}
+          {error && <p className="v3-aviso" role="alert">{error}</p>}
+        </div>
+      ) : cerrado ? (
+        <div className="v3-estado">
+          <div className="v3-campos v3-apagado">
+            <label className="v3-caja"><input type="email" disabled aria-label={t("auth_campo_correo")} placeholder={t("auth_campo_correo")} /></label>
+            <label className="v3-caja"><input type="text" disabled aria-label={t("auth_campo_usuario")} placeholder={t("auth_campo_usuario")} /></label>
+          </div>
+          <p className="v3-aviso" role="status">{t("auth_registro_cerrado")}</p>
+          {sb === null && <p className="v3-nota">{t("auth_registro_no_disponible")}</p>}
+          <Link href="/entrar" className="v3-principal">{t("auth_entrar")}</Link>
+        </div>
+      ) : (
+        <div className="v3-estado">
+          {GOOGLE_ACTIVO && <BotonGoogle texto={t("auth_continuar_google")} disabled={ocupado || !sb}
+            onClick={() => void entrarProveedor("google")} />}
+          {APPLE_ACTIVO && <Boton variante="secundario" ancho="completo" className="v3-secundario"
+            disabled={ocupado || !sb} onClick={() => void entrarProveedor("apple")}>{t("auth_continuar_apple")}</Boton>}
+          <Separador texto={t("auth_o")} />
+          <form className="v3-form" noValidate onSubmit={enviar}>
+            <div className="v3-campos">
+              <label className="v3-caja">
+                <input type="email" autoComplete="email" autoCapitalize="none" maxLength={254} required
+                  aria-label={t("auth_campo_correo")} placeholder={t("auth_campo_correo")}
+                  value={email} onChange={e => setEmail(e.target.value)} />
+              </label>
+              <label className="v3-caja">
+                <input type="text" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                  pattern="[a-z0-9_.]{3,20}" minLength={3} maxLength={20} required value={alias}
+                  aria-label={t("auth_nombre_usuario")} placeholder={t("auth_campo_usuario")}
+                  onChange={e => setAlias(e.target.value.toLowerCase())} aria-describedby="ayuda-campos" />
+              </label>
+              <label className="v3-caja">
+                <input type="number" inputMode="numeric" min={14} max={120} step={1} required value={edad}
+                  aria-label={t("auth_edad_etiqueta")} placeholder={t("auth_campo_edad")}
+                  onChange={e => setEdad(e.target.value)} aria-describedby="ayuda-campos" />
+              </label>
+              <CampoClave caja autoComplete="new-password" minLength={8} maxLength={200} required value={clave}
+                onChange={e => setClave(e.target.value)} aria-describedby="ayuda-clave" />
+            </div>
+            <p className="v3-ayuda" id="ayuda-campos">{t("auth_ayuda_registro")}</p>
+            <p className="v3-ayuda" id="ayuda-clave" aria-live="polite">
+              <Requisito cumplido={requisitos.longitud} texto={t("auth_req_longitud")} /> · <Requisito cumplido={requisitos.mayuscula} texto={t("auth_req_mayuscula")} /> · <Requisito cumplido={requisitos.simbolo} texto={t("auth_req_simbolo")} />
+            </p>
+            <label className="v3-acepta">
+              <input type="checkbox" required checked={acepta} onChange={e => setAcepta(e.target.checked)} />
+              <span className="v3-marca-sel" aria-hidden="true">
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" focusable="false"><path d="M2.5 7.5l3 3 6-6.5" /></svg>
+              </span>
+              <span className="v3-txt">{t.rich("auth_aceptacion_legal", { terms: chunks => <Link href="/legal/terminos">{chunks}</Link>, privacy: chunks => <Link href="/legal/privacidad">{chunks}</Link> })}</span>
+            </label>
+            <div className="v3-seguridad">{t("auth_comprobacion")}</div>
+            <TurnstileWidget onToken={setTurnstile} resetKey={captchaReset} />
+            {captchaPendiente && <p className="v3-nota" role="status">{t("auth_captcha_pendiente")}</p>}
+            {error && <p className="v3-aviso" role="alert">{error}</p>}
+            <Boton type="submit" variante="principal" ancho="completo" className="v3-principal"
+              disabled={ocupado || captchaPendiente || !sb || !acceso?.registro_abierto}>
+              {ocupado ? t("auth_creando_cuenta") : t("auth_crear_cuenta")}</Boton>
+          </form>
+          {sb === null && <p className="v3-nota">{t("auth_registro_no_disponible")}</p>}
+        </div>
+      )}
   </MarcoAcceso>;
+}
+
+function Requisito({ cumplido, texto }: { cumplido: boolean; texto: string }) {
+  return <span className={cumplido ? "hecho" : undefined}><b aria-hidden="true">{cumplido ? "✓" : "○"}</b> {texto}</span>;
 }

@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import es from "../../../../messages/es/account.json";
 
 vi.mock("@/i18n/LanguageSelector", () => ({ LanguageSelector: () => null }));
+vi.mock("@/i18n/Provider", () => ({ useLanguage: () => ({ locale: "es", changing: false, selectLocale: () => {} }) }));
 vi.mock("next/link", () => ({ default: (props: ComponentProps<"a">) => createElement("a", props) }));
 vi.mock("next-intl", async () => {
   const textos = (await import("../../../../messages/es/account.json")).default as Record<string, string>;
@@ -34,7 +35,7 @@ afterEach(() => {
 it("pide el permiso con un solo botón y ejecuta la acción", () => {
   const onActivar = vi.fn(), onSeguir = vi.fn();
   const el = montar({ onActivar, onSeguir });
-  const botones = el.querySelectorAll<HTMLButtonElement>("button");
+  const botones = el.querySelectorAll<HTMLButtonElement>(".acc-formulario button");
   expect([...botones].map(b => b.textContent)).toEqual([es.account_avisos_alta_activar]);
   expect(el.querySelector("h1")?.textContent).toBe(es.account_avisos_alta_titulo);
   expect(el.textContent).toContain(es.account_avisos_alta_texto);
@@ -47,7 +48,7 @@ it("explica la instalación en iOS y permite continuar", () => {
   const onSeguir = vi.fn();
   const el = montar({ variante: "ios", onSeguir });
   expect(el.textContent).toContain(es.account_avisos_no_disponibles);
-  const botones = el.querySelectorAll<HTMLButtonElement>("button");
+  const botones = el.querySelectorAll<HTMLButtonElement>(".acc-formulario button");
   expect(botones.length).toBe(1);
   expect(botones[0].textContent).toBe(es.account_avisos_alta_continuar);
   act(() => botones[0].click());
@@ -61,7 +62,7 @@ it("muestra el error como alerta", () => {
 
 it.each(["avisos", "ios"] as const)("deshabilita los botones de %s mientras está ocupado", variante => {
   const onActivar = vi.fn(), onSeguir = vi.fn();
-  const botones = montar({ variante, ocupado: true, onActivar, onSeguir }).querySelectorAll<HTMLButtonElement>("button");
+  const botones = montar({ variante, ocupado: true, onActivar, onSeguir }).querySelectorAll<HTMLButtonElement>(".acc-formulario button");
   expect([...botones].every(b => b.disabled)).toBe(true);
   act(() => botones.forEach(b => b.click()));
   expect(onActivar).not.toHaveBeenCalled();

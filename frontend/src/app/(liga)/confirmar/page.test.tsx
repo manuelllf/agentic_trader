@@ -10,6 +10,7 @@ vi.mock("@/lib/liga/supabase", () => ({ useSupabase: () => supabase.cliente }));
 vi.mock("@/lib/liga/registro", () => registro);
 vi.mock("@/lib/liga/avisos", () => avisos);
 vi.mock("@/i18n/LanguageSelector", () => ({ LanguageSelector: () => null }));
+vi.mock("@/i18n/Provider", () => ({ useLanguage: () => ({ locale: "es", changing: false, selectLocale: () => {} }) }));
 vi.mock("next/link", () => ({ default: (props: ComponentProps<"a">) => createElement("a", props) }));
 vi.mock("next-intl", async () => {
   const es = (await import("../../../../messages/es/auth.json")).default as Record<string, string>;
@@ -30,7 +31,8 @@ async function montar() {
   await act(async () => root!.render(createElement(StrictMode, null, createElement(Confirmar))));
   return host;
 }
-const botones = (el: HTMLElement) => [...el.querySelectorAll("button")].map((b) => b.textContent);
+// Solo los botones de la pantalla: la cabecera trae el selector de idioma.
+const botones = (el: HTMLElement) => [...el.querySelectorAll(".acc-formulario button")].map((b) => b.textContent);
 
 beforeEach(() => {
   supabase.cliente = {};
@@ -93,7 +95,7 @@ describe("confirmar", () => {
     registro.confirmarAlta.mockResolvedValue("confirmada");
     avisos.destinoConAvisos.mockResolvedValue("/avisos-alta?next=%2Fliga");
     const el = await montar();
-    await act(async () => el.querySelector<HTMLButtonElement>("button")!.click());
+    await act(async () => el.querySelector<HTMLButtonElement>(".acc-formulario button")!.click());
     expect(avisos.destinoConAvisos).toHaveBeenCalledWith("confirmar", "/liga");
     expect(navegacion.assign).toHaveBeenCalledExactlyOnceWith("/avisos-alta?next=%2Fliga");
   });

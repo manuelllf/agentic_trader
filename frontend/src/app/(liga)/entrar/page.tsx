@@ -140,35 +140,32 @@ export default function Entrar() {
   return (
     <MarcoAcceso pestana="entrar" modo={paso === "codigo" ? "codigo" : "completo"}>
         {sb === null ? (
-          <>
-            <p className="nota">{t("auth_cuentas_cerradas")}</p>
-          </>
+          <p className="v3-nota">{t("auth_cuentas_cerradas")}</p>
         ) : paso === "credenciales" ? (
-          <>
+          <div key={paso} className="v3-estado">
             {GOOGLE_ACTIVO && <BotonGoogle texto={t("auth_continuar_google")} disabled={ocupado || !sb}
               onClick={() => void entrarProveedor("google")} />}
-            {APPLE_ACTIVO && <Boton variante="secundario" ancho="completo" disabled={ocupado || !sb}
-              onClick={() => void entrarProveedor("apple")}>{t("auth_continuar_apple")}</Boton>}
+            {APPLE_ACTIVO && <Boton variante="secundario" ancho="completo" className="v3-secundario"
+              disabled={ocupado || !sb} onClick={() => void entrarProveedor("apple")}>{t("auth_continuar_apple")}</Boton>}
             <Separador texto={t("auth_o")} />
-            <form className="form" onSubmit={entrar}>
-              <label className="campo">
-                <span className="lbl">{t("auth_usuario_email")}</span>
-                <input className="inp" type="text" autoComplete="username" required
-                       autoCapitalize="none" autoCorrect="off" spellCheck={false}
-                       value={email} onChange={(e) => {
-                         setEmail(e.target.value); setCorreoSinConfirmar(false); setReenviado(false);
-                       }}
-                       placeholder={t("auth_ejemplo_usuario")} />
-              </label>
-              <CampoClave autoComplete="current-password" required
-                value={clave} onChange={(e) => setClave(e.target.value)} />
-              <button type="button" className="acc-olvido" disabled={ocupado}
-                onClick={() => cambiarModo("recuperar")}>{t("auth_olvide_contrasena")}</button>
-              {error && <p className="aviso" role="alert">{error}</p>}
+            <form className="v3-form" noValidate onSubmit={entrar}>
+              <div className="v3-campos">
+                <label className="v3-caja">
+                  <input type="text" autoFocus autoComplete="username" autoCapitalize="none" autoCorrect="off"
+                    spellCheck={false} required aria-label={t("auth_usuario_email")}
+                    placeholder={t("auth_campo_usuario_correo")} value={email} onChange={(e) => {
+                      setEmail(e.target.value); setCorreoSinConfirmar(false); setReenviado(false);
+                    }} />
+                </label>
+                <CampoClave caja autoComplete="current-password" required
+                  value={clave} onChange={(e) => setClave(e.target.value)} />
+              </div>
+              {error && <p className="v3-aviso" role="alert">{error}</p>}
               {correoSinConfirmar && email.includes("@") && <>
+                <div className="v3-seguridad">{t("auth_comprobacion")}</div>
                 <TurnstileWidget onToken={setTurnstile} resetKey={captchaReset} />
-                {captchaPendiente && <p className="nota" role="status">{t("auth_captcha_pendiente")}</p>}
-                <Boton variante="secundario" ancho="completo"
+                {captchaPendiente && <p className="v3-nota" role="status">{t("auth_captcha_pendiente")}</p>}
+                <Boton variante="secundario" ancho="completo" className="v3-secundario v3-tinte"
                   disabled={ocupado || captchaPendiente} onClick={async () => {
                   if (ocupado || captchaPendiente) return;
                   setOcupado(true); setError(""); setReenviado(false);
@@ -178,38 +175,52 @@ export default function Entrar() {
                   if (fallo) setError(fallo);
                   else setReenviado(true);
                 }}>{t("auth_reenviar_confirmacion")}</Boton></>}
-              {reenviado && <p role="status">{t("auth_correo_enviado_generico")}</p>}
-              <Boton type="submit" variante="principal" ancho="completo"
-                     disabled={ocupado || !sb || !email || !clave}>
+              {reenviado && <p className="v3-nota" role="status">{t("auth_correo_enviado_generico")}</p>}
+              <Boton type="submit" variante="principal" ancho="completo" className="v3-principal"
+                     disabled={ocupado || !sb || !email || !clave || correoSinConfirmar}>
                 {ocupado ? t("auth_entrando") : t("auth_entrar")}
               </Boton>
-              <Boton variante="discreto" ancho="completo" disabled={ocupado}
-                onClick={() => cambiarModo("enlace")}>{t("auth_entrar_con_enlace")}</Boton>
+              <div className="v3-fila">
+                <button type="button" className="v3-enlace" disabled={ocupado}
+                  onClick={() => cambiarModo("recuperar")}>{t("auth_olvide_contrasena")}</button>
+                <button type="button" className="v3-enlace" disabled={ocupado}
+                  onClick={() => cambiarModo("enlace")}>{t("auth_enlace_correo")}</button>
+              </div>
             </form>
-          </>
+          </div>
         ) : paso !== "codigo" ? (
-          <form className="form" onSubmit={enviarCorreo}>
-            <label className="campo"><span className="lbl">{t("auth_email")}</span>
-              <input className="inp" type="email" autoComplete="email" autoCapitalize="none" required
-                value={email} onChange={e => setEmail(e.target.value)} /></label>
-            {enviado && <p className="nota" role="status">{t("auth_correo_enviado_generico")}</p>}
-            <Boton type="submit" variante="principal" ancho="completo" disabled={ocupado || !sb || !email.trim()}>
-              {ocupado ? t("auth_enviando") : t("auth_enviar_enlace")}</Boton>
-            <Boton variante="secundario" ancho="completo" disabled={ocupado}
-              onClick={() => cambiarModo("credenciales")}>{t("auth_volver_entrar")}</Boton>
-          </form>
+          <div key={paso} className="v3-estado">
+            <form className="v3-form" noValidate onSubmit={enviarCorreo}>
+              <div className="v3-campos">
+                <label className="v3-caja">
+                  <input type="email" autoFocus autoComplete="email" autoCapitalize="none" required
+                    aria-label={t("auth_campo_correo")} placeholder={t("auth_campo_correo")}
+                    value={email} onChange={e => setEmail(e.target.value)} />
+                </label>
+              </div>
+              {enviado && <p className="v3-nota" role="status">{t("auth_correo_enviado_generico")}</p>}
+              <Boton type="submit" variante="principal" ancho="completo" className="v3-principal"
+                disabled={ocupado || !sb || !email.trim()}>
+                {ocupado ? t("auth_enviando") : t("auth_enviar_enlace")}</Boton>
+              <div className="v3-fila">
+                <button type="button" className="v3-enlace" disabled={ocupado}
+                  onClick={() => cambiarModo("credenciales")}>{t("auth_volver_entrar")}</button>
+              </div>
+            </form>
+          </div>
         ) : (
-          <>
-            <p className="nota">{t("auth_codigo_instrucciones")}</p>
-            <form className="form" onSubmit={verificar}>
+          <div key={paso} className="v3-estado">
+            <p className="v3-nota">{t("auth_codigo_instrucciones")}</p>
+            <form className="v3-form" onSubmit={verificar}>
               <CampoCodigo value={codigo} onChange={setCodigo} autoFocus disabled={ocupado} />
-              {error && <p className="aviso" role="alert">{error}</p>}
-              <Boton type="submit" variante="principal" ancho="completo"
+              {error && <p className="v3-aviso" role="alert">{error}</p>}
+              <Boton type="submit" variante="principal" ancho="completo" className="v3-principal"
                      disabled={ocupado || codigo.length !== 6}>
                 {ocupado ? t("auth_comprobando") : t("auth_seguir")}
               </Boton>
             </form>
-          </>
+            <p className="v3-nota">{t("auth_codigo_cambia")}</p>
+          </div>
         )}
     </MarcoAcceso>
   );

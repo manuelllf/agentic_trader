@@ -1,0 +1,153 @@
+/* Entrar, crear cuenta y el código de verificación (maqueta v3). Todo cuelga de .acc.acc-v3 para que
+   los trámites, que comparten MarcoAcceso, conserven el acceso de liga.css. */
+
+.lg .acc.acc-v3 {
+  --bg: #F2F2F7; --surface: #FFFFFF; --surface2: #E9E9EF; --raised: #FFFFFF;
+  --line: #D8D8DC;
+  --ink: #000000; --ink2: #3C3C43; --muted: #6E6E73;
+  --btn: #0B6E68; --btn-ink: #FFFFFF;
+  position: relative; display: flex; flex-direction: column; justify-content: flex-start; align-content: start;
+  min-height: 100vh; min-height: 100dvh; max-width: none; padding: 0; background: var(--bg); color: var(--ink);
+  font-size: 17px; line-height: 22px; color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .lg .acc.acc-v3 {
+    --bg: #000000; --surface: #1C1C1E; --surface2: #2C2C2E; --raised: #3A3A3C;
+    --line: #38383A;
+    --ink: #FFFFFF; --ink2: #C7C7CC; --muted: #8E8E93;
+    --btn: #4FA39D; --btn-ink: #000000; color-scheme: dark;
+  }
+}
+html[data-theme="dark"] .lg .acc.acc-v3 {
+  --bg: #000000; --surface: #1C1C1E; --surface2: #2C2C2E; --raised: #3A3A3C;
+  --line: #38383A;
+  --ink: #FFFFFF; --ink2: #C7C7CC; --muted: #8E8E93;
+  --btn: #4FA39D; --btn-ink: #000000; color-scheme: dark;
+}
+
+.lg .acc.acc-v3 h1, .lg .acc.acc-v3 h2, .lg .acc.acc-v3 p { margin: 0; }
+.lg .acc.acc-v3 .v3-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.lg .acc.acc-v3 .v3-codigo-titulo { font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); }
+
+/* Cabecera: marca a la izquierda, idioma a la derecha. */
+.lg .acc.acc-v3 .v3-cabecera { display: flex; align-items: center; justify-content: space-between; width: 100%;
+  height: 60px; padding: 0 16px; max-width: 1120px; margin: 0 auto; }
+.lg .acc.acc-v3 .v3-cabecera .wordmark { display: flex; align-items: center; min-height: 0; color: var(--ink); }
+.lg .acc.acc-v3 .v3-cabecera .wordmark::before { display: none; }
+.lg .acc.acc-v3 .v3-cabecera .wordmark svg { height: 22px; width: 105px; display: block; }
+
+/* La columna ocupa todo el ancho: liga.css la centra con justify-content, y eso encoge las cajas al contenido. */
+.lg .acc.acc-v3 .acc-centro { width: 100%; flex: 1 0 auto; max-width: 400px; margin: 0 auto; padding: 8px 16px 0;
+  display: grid; grid-template-columns: minmax(0, 1fr); justify-content: normal; justify-items: stretch;
+  gap: 16px; align-content: start; }
+
+/* Segmentado Entrar | Crear cuenta. Las pestañas son enlaces a cada ruta. */
+.lg .acc.acc-v3 .v3-seg { position: relative; display: grid; grid-template-columns: 1fr 1fr; height: 36px; padding: 2px;
+  border-radius: 9px; background: var(--surface2); }
+.lg .acc.acc-v3 .v3-seg a { position: relative; z-index: 1; display: grid; place-items: center; border-radius: 7px;
+  color: var(--muted); font-size: 13px; line-height: 18px; font-weight: 600; text-decoration: none; }
+.lg .acc.acc-v3 .v3-seg a::before { content: ""; position: absolute; inset: -4px 0; }
+.lg .acc.acc-v3 .v3-seg a[aria-current="page"] { color: var(--ink); }
+.lg .acc.acc-v3 .v3-pulgar { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px);
+  border-radius: 7px; background: var(--raised); box-shadow: 0 3px 8px rgba(0, 0, 0, .12); transition: transform .3s cubic-bezier(.32, .72, 0, 1); }
+.lg .acc.acc-v3 .v3-seg[data-activo="crear"] .v3-pulgar { transform: translateX(100%); }
+
+.lg .acc.acc-v3 .v3-estado { display: grid; gap: 12px; align-content: start; }
+@media (prefers-reduced-motion: no-preference) {
+  .lg .acc.acc-v3 .v3-estado { animation: v3-entra .28s cubic-bezier(.32, .72, 0, 1) both; }
+}
+@keyframes v3-entra { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.lg .acc.acc-v3 .v3-form { display: grid; gap: 12px; margin: 0; }
+.lg .acc.acc-v3 .v3-campos { display: grid; gap: 8px; }
+.lg .acc.acc-v3 .v3-campos.v3-apagado { opacity: .6; }
+
+/* Campos: caja visible con el nombre dentro; el foco se marca con un anillo. */
+.lg .acc.acc-v3 .v3-caja { position: relative; display: flex; align-items: center; height: 52px; padding: 0 16px;
+  border-radius: 12px; background: var(--surface); transition: box-shadow .15s; cursor: text; }
+.lg .acc.acc-v3 .v3-caja:focus-within { box-shadow: 0 0 0 2px var(--accent); }
+.lg .acc.acc-v3 .v3-caja input { flex: 1; min-width: 0; width: 100%; height: 100%; padding: 0; border: 0; outline: 0;
+  background: transparent; color: var(--ink); font-size: 17px; line-height: 22px; }
+.lg .acc.acc-v3 .v3-caja input:focus { border: 0; outline: 0; box-shadow: none; }
+.lg .acc.acc-v3 .v3-caja input::placeholder { color: var(--muted); opacity: 1; }
+.lg .acc.acc-v3 .v3-caja input[disabled] { color: var(--muted); }
+.lg .acc.acc-v3 .v3-ojo { display: grid; place-items: center; flex: none; width: 36px; height: 36px; min-height: 36px;
+  margin-right: -8px; padding: 0; border: 0; background: transparent; color: var(--muted); }
+.lg .acc.acc-v3 .v3-ojo svg { width: 20px; height: 20px; }
+
+.lg .acc.acc-v3 .v3-ayuda { padding: 0 4px; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .acc.acc-v3 .v3-ayuda .hecho { color: var(--accent); }
+.lg .acc.acc-v3 .v3-ayuda b { font-weight: 400; }
+.lg .acc.acc-v3 .v3-nota { font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .acc.acc-v3 .v3-aviso { font-size: 15px; line-height: 20px; color: var(--bad); }
+.lg .acc.acc-v3 .v3-texto { font-size: 17px; line-height: 22px; color: var(--ink2); }
+.lg .acc.acc-v3 .v3-enviada { font-size: 20px; line-height: 25px; font-weight: 600; color: var(--ink); }
+
+/* Acepta los términos: fila entera con una marca redonda. */
+.lg .acc.acc-v3 .v3-acepta { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px;
+  align-items: center; min-height: 44px; padding: 10px 16px; border-radius: 12px; background: var(--surface); cursor: pointer; }
+.lg .acc.acc-v3 .v3-acepta input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
+.lg .acc.acc-v3 .v3-marca-sel { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--muted);
+  display: grid; place-items: center; }
+.lg .acc.acc-v3 .v3-marca-sel svg { width: 13px; height: 13px; opacity: 0; color: var(--btn-ink); }
+.lg .acc.acc-v3 .v3-acepta input:checked + .v3-marca-sel { background: var(--btn); border-color: var(--btn); }
+.lg .acc.acc-v3 .v3-acepta input:checked + .v3-marca-sel svg { opacity: 1; }
+.lg .acc.acc-v3 .v3-acepta input:focus-visible + .v3-marca-sel { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lg .acc.acc-v3 .v3-txt { font-size: 15px; line-height: 20px; color: var(--ink2); }
+.lg .acc.acc-v3 .v3-txt a { color: var(--accent); text-decoration: none; }
+
+.lg .acc.acc-v3 .v3-seguridad { display: flex; align-items: center; justify-content: center; min-height: 36px;
+  font-size: 13px; line-height: 18px; color: var(--muted); }
+
+/* Botones: 50 px, radio 14, principal en petróleo y secundario en gris. */
+.lg .acc.acc-v3 .v3-principal, .lg .acc.acc-v3 .v3-secundario { display: flex; align-items: center; justify-content: center;
+  gap: 10px; width: 100%; min-height: 50px; height: 50px; margin: 0; border: 0; border-radius: 14px; font-size: 17px;
+  line-height: 22px; font-weight: 600; text-decoration: none; transition: transform .2s cubic-bezier(.32, .72, 0, 1), opacity .2s; }
+.lg .acc.acc-v3 .v3-principal { background: var(--btn); color: var(--btn-ink); }
+.lg .acc.acc-v3 .v3-principal:active { transform: scale(.97); }
+.lg .acc.acc-v3 .v3-principal:disabled { opacity: .4; cursor: default; transform: none; background: var(--btn); color: var(--btn-ink); }
+.lg .acc.acc-v3 .v3-secundario { background: var(--surface); color: var(--ink); }
+.lg .acc.acc-v3 .v3-secundario.v3-tinte { color: var(--accent); }
+.lg .acc.acc-v3 .v3-secundario:disabled { opacity: .4; cursor: default; }
+
+/* Enlaces de texto: la zona de toque llega a 44 px sin cambiar lo que se ve. */
+.lg .acc.acc-v3 .v3-fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lg .acc.acc-v3 .v3-enlace { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; border: 0;
+  background: transparent; color: var(--accent); font-size: 15px; line-height: 20px; font-weight: 600; }
+.lg .acc.acc-v3 .v3-enlace:disabled { opacity: .5; cursor: default; }
+
+/* Google y separador: mismos componentes de siempre, con el aspecto de la maqueta. */
+.lg .acc.acc-v3 .acc-google { min-height: 50px; height: 50px; gap: 10px; border: 0; border-radius: 14px;
+  background: var(--surface); color: var(--ink); font-size: 17px; font-weight: 600; }
+.lg .acc.acc-v3 .acc-google svg { width: 18px; height: 18px; }
+.lg .acc.acc-v3 .acc-sep { margin: 0; gap: 12px; font-size: 13px; line-height: 18px; color: var(--muted); }
+
+/* Código de verificación: seis casillas. La etiqueta queda solo para lectores de pantalla. */
+.lg .acc.acc-v3 .acc-codigo-campo { border: 0; padding: 0; margin: 0; min-width: 0; }
+.lg .acc.acc-v3 .acc-codigo-campo legend { position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; }
+.lg .acc.acc-v3 .acc-seis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.lg .acc.acc-v3 .acc-seis input { width: 100%; min-width: 0; height: 54px; border: 0; border-radius: 12px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 24px; line-height: 28px; font-weight: 700;
+  font-variant-numeric: tabular-nums; text-align: center; outline: 0; }
+.lg .acc.acc-v3 .acc-seis input:focus { border: 0; outline: 0; box-shadow: 0 0 0 2px var(--accent); }
+
+/* Pie legal anclado abajo. Va como footer.v3-pie para ganar a las reglas de liga.css que lo
+   alinean a la izquierda en escritorio o que ocultan el párrafo en móvil. */
+.lg .acc.acc-v3 footer.v3-pie { display: block; width: 100%; max-width: none; margin: auto 0 0; padding: 24px 16px;
+  text-align: center; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .acc.acc-v3 footer.v3-pie nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 20px; }
+.lg .acc.acc-v3 footer.v3-pie nav a { position: relative; display: inline-flex; align-items: center; min-height: 24px;
+  color: var(--accent); text-decoration: none; }
+.lg .acc.acc-v3 footer.v3-pie nav a::before { content: ""; position: absolute; inset: -10px 0; }
+.lg .acc.acc-v3 footer.v3-pie > p { display: block; margin-top: 8px; }
+
+.lg .acc.acc-v3 a:focus-visible, .lg .acc.acc-v3 button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: none; }
+
+@media (min-width: 880px) {
+  .lg .acc.acc-v3 .v3-cabecera { height: 72px; padding: 0; max-width: 400px; }
+  .lg .acc.acc-v3 .acc-centro { padding-top: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg .acc.acc-v3 .v3-pulgar, .lg .acc.acc-v3 .v3-estado { transition: none; animation: none; }
+}
