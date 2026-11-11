@@ -270,11 +270,9 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .secreto { font-size: 15px; word-break: break-all; color: var(--ink2); }
 /* Cabecera común de las pestañas: el menú de la cuenta a la izquierda, y después el sello o el título centrado. */
 .lg .cab { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; height: 52px; }
-.lg .cab.centrada { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+.lg .cab.centrada { grid-template-columns: 44px minmax(0, 1fr) minmax(44px, auto); }
 .lg .cab-titulo { grid-column: 2; margin: 0; text-align: center; font-size: 17px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lg .cab .cuenta { position: relative; justify-self: start; }
-.lg .cuenta-hueco { display: inline-block; width: 36px; height: 36px; }
-.lg .cuenta-boton {
+.lg .cab .cuenta { position: relative; justify-self: start; }.lg .cuenta-boton {
   display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px 0 12px;
   min-width: 0; max-width: 100%; border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 16px;
   font-weight: 700; cursor: pointer;
@@ -297,7 +295,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .puntos[aria-expanded="true"] { border-color: var(--line2); background: var(--raised); color: var(--ink); }
 .lg .cuenta .cuenta-menu {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; display: block; width: min(232px, calc(100vw - 2 * var(--page-gutter))); min-width: 0;
-  padding: 6px; border: 1px solid var(--line2); border-radius: 12px; background: var(--raised);
+  padding: 6px; border: 1px solid var(--line2); border-radius: 12px; background: var(--surface);
   box-shadow: 0 18px 40px -12px var(--shadow);
 }
 .lg .cuenta .cuenta-menu .quien { padding: 8px 12px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 1.3; color: var(--muted); }
@@ -310,6 +308,14 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .cuenta .cuenta-item.salir { color: var(--ink2); font-weight: 500; }
 .lg .cuenta .cuenta-item:active { background: var(--surface); }
 .lg .cuenta .cuenta-menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--line); }
+.lg .cuenta-hueco { display: block; flex: none; width: 44px; height: 44px; margin-left: -12px; }
+.lg .entrar-cabecera {
+  order: 3; justify-self: end; display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px;
+  font-size: 17px; font-weight: 600; color: var(--accent); text-decoration: none;
+}
+/* Sin sesión no hay botón de los tres puntos que dejar sitio: el logo va al margen. */
+.lg .cab.cab-sello > .cuenta-hueco { display: none; }
+.lg .cab.cab-sello > .entrar-cabecera { grid-column: 3; }
 
 .lg .scroll {
   flex: 1; width: 100%; max-width: var(--app-width); margin: 0 auto;
@@ -441,6 +447,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
   .lg .sencilla.con-barra .sencilla-cuerpo.arriba > .ajustes { max-width: none; width: 100%; }
   :root[data-barra="contraida"] .lg { --rail-ancho: 64px; }
   .lg .cab .cuenta { display: none; }
+  .lg .cab .cuenta-hueco, .lg .cab .entrar-cabecera { display: none; }
   .lg .tabbar .barra-marca { align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 20px; }
   .lg .tabbar .barra-wordmark { flex: none; width: 110px; height: auto; }
   .lg .tabbar .barra-alternar { flex: none; width: 36px; height: 36px; min-height: 36px; padding: 6px; border-radius: var(--control-radius); }

@@ -74,11 +74,14 @@ describe("Sesion", () => {
     abrir(el); act(() => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
     expect(el.querySelector('[role="menu"]')).toBeNull();
   });
-  it("muestra solo entrar sin sesión", () => {
+  it("muestra entrar como botón directo sin sesión, sin menú", () => {
     sesion.estado = "fuera"; sesion.yo = null;
-    const el = montar(); abrir(el);
-    expect(el.querySelector('a[href="/entrar"]')?.textContent).toBe("Entrar");
-    expect(el.textContent).not.toContain("Salir"); expect(el.textContent).not.toContain("Sesión de");
+    const el = montar();
+    expect(el.querySelector("button.puntos")).toBeNull();
+    const entrar = el.querySelector<HTMLAnchorElement>("a.entrar-cabecera");
+    expect(entrar?.getAttribute("href")).toBe("/entrar");
+    expect(entrar?.textContent).toBe("Entrar");
+    expect(el.querySelector('[role="menu"]')).toBeNull();
     expect(el.querySelector('a[href^="/legal"]')).toBeNull();
   });
   it("pinta los tres puntos desde el primer pintado y no los abre hasta tener sesión", () => {

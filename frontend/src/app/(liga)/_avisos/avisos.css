@@ -1,41 +1,60 @@
-/* Campana y panel de avisos: el panel sale bajo la campana, sin velo; tres a la vista y scroll. */
-.lg .cab.cab-sello { grid-template-columns: auto minmax(0, 1fr) 44px; }
+/* Campana y hoja de avisos (DESIGN §6 y §7): la lista y el detalle van en la misma hoja. En escritorio, la
+   hoja es una tarjeta centrada (UIUX §12). Sin tipografía monoespaciada (DESIGN §4). */
+.lg .cab.cab-sello { grid-template-columns: auto minmax(0, 1fr) minmax(44px, auto); }
 .lg .campana-caja { position: relative; justify-self: end; }
 .lg .campana { position: relative; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; background: transparent; color: var(--ink2); cursor: pointer; }
 .lg .campana svg { width: 20px; height: 20px; }
-.lg .campana[aria-expanded="true"] { background: var(--surface); color: var(--ink); }
 .lg .campana:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .lg .campana-punto { position: absolute; top: 11px; right: 11px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
-.lg .campana[aria-expanded="true"] .campana-punto { box-shadow: 0 0 0 2px var(--surface); }
-.lg .panel-avisos { position: absolute; top: calc(100% + 6px); right: 0; z-index: 25; width: min(344px, calc(100vw - 16px)); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); box-shadow: 0 10px 28px var(--shadow); text-align: left; }
-.lg .panel-avisos-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 13px 16px 9px; border-bottom: 1px solid var(--line); }
-.lg .panel-avisos-h b { font-size: 15px; letter-spacing: -.01em; color: var(--ink); }
-.lg .panel-avisos-h span { font-family: var(--font-data), monospace; font-size: 12px; color: var(--accent); }
-.lg .panel-avisos-vacio { padding: 14px 16px; font-size: 14px; color: var(--muted); }
-.lg .panel-avisos-lista { overflow-y: auto; overscroll-behavior: contain; }
-.lg .panel-avisos.abierto .panel-avisos-lista { max-height: min(420px, 60vh); }
-.lg .panel-avisos .aviso { display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 10px; width: 100%; padding: 12px 16px 12px 14px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
-.lg .panel-avisos .aviso:last-child { border-bottom: 0; }
-.lg .panel-avisos .aviso time { padding-top: 2px; font-family: var(--font-data), monospace; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
-.lg .panel-avisos .aviso.nuevo time { color: var(--accent); font-weight: 600; }
-.lg .panel-avisos .aviso b { font-size: 14.5px; font-weight: 600; line-height: 1.3; letter-spacing: -.01em; color: var(--ink2); }
-.lg .panel-avisos .aviso.nuevo b { font-weight: 700; color: var(--ink); }
-.lg .panel-avisos .aviso p { grid-column: 2; margin-top: 1px; font-size: 13.5px; line-height: 1.4; color: var(--muted); }
-.lg .panel-avisos .aviso .ir { grid-column: 2; justify-self: start; margin-top: 5px; font-size: 13px; font-weight: 700; color: var(--accent); }
-.lg .panel-avisos .aviso .ir::after { content: " ›"; }
-.lg .panel-avisos .aviso:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.lg .panel-avisos-p { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 4px 8px 4px 6px; border-top: 1px solid var(--line); }
-.lg .panel-avisos-p .mas { min-height: 40px; padding: 0 10px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; }
-.lg .panel-avisos-p .como { display: inline-flex; align-items: center; min-height: 40px; padding: 0 8px; font-size: 12.5px; color: var(--muted); text-decoration: none; }
-.lg .hoja-res-t { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+
+.lg .avisos-velo { position: fixed; inset: 0; z-index: 20; background: var(--shadow); }
+.lg .sheet.avisos-hoja { top: auto; max-height: 85dvh; border-radius: var(--radius-card) var(--radius-card) 0 0; padding-bottom: env(safe-area-inset-bottom); }
+.lg .sheet.avisos-hoja > .avisos-cabecera { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; min-height: 52px; padding: 6px 16px; border-bottom: 1px solid var(--line); }
+.lg .avisos-cabecera button { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0; border: 0; background: none; font: inherit; font-size: 17px; color: var(--accent); cursor: pointer; }
+.lg .avisos-cabecera button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lg .avisos-cabecera .izq { justify-self: start; }
+.lg .avisos-cabecera .der { justify-self: end; font-weight: 600; }
+.lg .avisos-cabecera .titulo { font-size: 17px; font-weight: 600; color: var(--ink); text-align: center; }
+.lg .avisos-cabecera svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+.lg .avisos-sub { margin: 4px 0 10px; font-size: 13px; font-weight: 600; color: var(--accent); }
+.lg .avisos-celdas { overflow: hidden; margin-bottom: 8px; border-radius: var(--radius-card); background: var(--surface); }
+.lg .aviso { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; width: 100%; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.lg .aviso:last-child { border-bottom: 0; }
+.lg .aviso:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lg .aviso .pt { width: 8px; height: 8px; margin-top: 8px; border-radius: 50%; background: transparent; }
+.lg .aviso.nuevo .pt { background: var(--accent); }
+.lg .aviso .t { display: block; font-size: 17px; font-weight: 600; line-height: 22px; color: var(--ink2); }
+.lg .aviso.nuevo .t { color: var(--ink); }
+.lg .aviso .r { margin: 2px 0 0; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .aviso .ir { display: block; margin-top: 6px; font-size: 15px; font-weight: 600; color: var(--accent); }
+.lg .aviso .ir::after { content: " ›"; }
+.lg .aviso time { padding-top: 2px; font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lg .avisos-mas { display: flex; align-items: center; width: 100%; min-height: 44px; padding: 0 16px; border: 0; background: transparent; font: inherit; font-size: 17px; font-weight: 600; color: var(--accent); cursor: pointer; }
+.lg .avisos-como { display: flex; align-items: center; min-height: 44px; padding: 0 16px; font-size: 15px; color: var(--accent); text-decoration: none; }
+
+.lg .avisos-esqueletos { overflow: hidden; border-radius: var(--radius-card); background: var(--surface); }
+.lg .aviso-esqueleto { display: grid; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.lg .aviso-esqueleto span { display: block; height: 14px; border-radius: 7px; background: var(--surface2); }
+.lg .aviso-esqueleto span:first-child { width: 60%; }
+.lg .aviso-esqueleto span:last-child { width: 90%; }
+
+.lg .avisos-vacio { padding: 28px 8px 8px; text-align: center; }
+.lg .avisos-vacio svg { width: 48px; height: 48px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lg .avisos-vacio h3 { margin: 14px 0 6px; font-size: 20px; line-height: 25px; font-weight: 600; }
+.lg .avisos-vacio p { margin: 0 0 22px; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .avisos-ver { display: flex; align-items: center; justify-content: center; min-height: 50px; border-radius: 14px; background: var(--accent-bg); color: var(--accent); font-size: 17px; font-weight: 600; text-decoration: none; }
+
+.lg .avisos-detalle-titulo { margin: 4px 0 14px; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -.02em; }
 .lg .hoja-res { margin-top: 12px; border-top: 1px solid var(--line); }
 .lg .hoja-res div { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
 .lg .hoja-res dt { color: var(--ink2); }
 .lg .hoja-res dd { margin: 0; font-weight: 700; text-align: right; }
 .lg .hoja-res-nota { margin: 12px 0 16px; font-size: 14px; color: var(--muted); }
+
 @media (min-width: 880px) {
   .lg .cab .campana-caja { display: none; }
   .lg .campana-caja.en-barra { justify-self: stretch; }
   .lg .tabbar .campana { width: auto; height: auto; justify-items: start; display: flex; }
-  .lg .panel-avisos.en-barra { position: fixed; top: auto; right: auto; bottom: 16px; left: calc(var(--rail-ancho) + 8px); }
+  .lg .sheet.avisos-hoja { top: 50%; bottom: auto; left: 50%; right: auto; width: min(440px, calc(100vw - 48px)); max-height: 80dvh; transform: translate(-50%, -50%); border-radius: var(--radius-card); padding-bottom: 0; }
 }

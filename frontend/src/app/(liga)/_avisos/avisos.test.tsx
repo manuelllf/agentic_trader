@@ -6,9 +6,8 @@ import { createTranslator, NextIntlClientProvider } from "next-intl";
 import messages from "../../../../messages/es/league.json";
 import type { Aviso } from "@/lib/liga/api";
 import { cuando, textoAviso } from "./textoAviso";
-import { PanelAvisos } from "./PanelAvisos";
+import { HojaAvisos } from "./HojaAvisos";
 import { Campana } from "./Campana";
-import { HojaResumen } from "./HojaResumen";
 
 vi.mock("../_sesion/SesionContext", () => ({ useSesion: () => ({ estado: "fuera", yo: null }) }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -74,25 +73,58 @@ afterEach(() => { act(() => root.unmount()); container.remove(); });
 it("muestra tres avisos y despliega los cinco conservando los nuevos", () => {
   const avisos = Array.from({ length: 5 }, (_, i) => ({ ...aviso("empieza"), id: i + 1, leido: i >= 2 }));
   act(() => root.render(<NextIntlClientProvider locale="es" messages={messages}>
-    <PanelAvisos lista={{ sin_leer: 2, avisos }} enBarra={false} onIr={vi.fn()} onResumen={vi.fn()} />
+    <HojaAvisos lista={{ sin_leer: 2, avisos }} fallo={false} onCerrar={vi.fn()} />
   </NextIntlClientProvider>));
   expect(container.querySelectorAll(".aviso")).toHaveLength(3);
-  const mas = container.querySelector<HTMLButtonElement>(".mas")!;
+  const mas = container.querySelector<HTMLButtonElement>(".avisos-mas")!;
   expect(mas.textContent).toBe("Ver 2 más");
   expect(mas.getAttribute("aria-expanded")).toBe("false");
   act(() => mas.click());
   expect(container.querySelectorAll(".aviso")).toHaveLength(5);
-  expect(container.querySelector("section")?.classList.contains("abierto")).toBe(true);
   expect(Array.from(container.querySelectorAll(".aviso"), a => a.classList.contains("nuevo"))).toEqual([true, true, false, false, false]);
 });
 
-it.each([52, undefined])("la hoja muestra el total disponible: %s", (total) => {
+it("abre el detalle de un aviso sin enlace y vuelve a la lista sin apilar otra hoja", () => {
+  const avisos = [aviso("resumen_semanal", { numero: 2, rentabilidad: "1.2", sp: "0.9", puesto_general: 5 })];
   act(() => root.render(<NextIntlClientProvider locale="es" messages={messages}>
-    <HojaResumen aviso={aviso("resumen_cierre", { numero: 2, total })} onCerrar={vi.fn()} />
+    <HojaAvisos lista={{ sin_leer: 1, avisos }} fallo={false} onCerrar={vi.fn()} />
   </NextIntlClientProvider>));
-  const titulo = total == null ? "Jornada 2" : "Jornada 2 de 52";
-  expect(container.querySelector("h2")?.textContent).toBe(titulo);
-  expect(container.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe(titulo);
+  act(() => container.querySelector<HTMLButtonElement>("button.aviso")!.click());
+  expect(container.querySelector("h2")?.textContent).toBe("Jornada 2");
+  expect(container.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Jornada 2");
+  expect(container.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+  act(() => container.querySelector<HTMLButtonElement>(".izq")!.click());
+  expect(container.querySelector("h2")).toBeNull();
+  expect(container.querySelectorAll(".aviso")).toHaveLength(1);
+});
+
+it("cierra con Listo, con Cancelar, con Escape y tocando el velo", () => {
+  const onCerrar = vi.fn();
+  act(() => root.render(<NextIntlClientProvider locale="es" messages={messages}>
+    <HojaAvisos lista={{ sin_leer: 0, avisos: [aviso("empieza")] }} fallo={false} onCerrar={onCerrar} />
+  </NextIntlClientProvider>));
+  act(() => container.querySelector<HTMLButtonElement>(".der")!.click());
+  act(() => container.querySelector<HTMLButtonElement>(".izq")!.click());
+  act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  act(() => container.querySelector<HTMLDivElement>(".avisos-velo")!.click());
+  expect(onCerrar).toHaveBeenCalledTimes(4);
+});
+
+it("sin datos todavía pinta esqueletos y ningún texto de carga", () => {
+  act(() => root.render(<NextIntlClientProvider locale="es" messages={messages}>
+    <HojaAvisos lista={undefined} fallo={false} onCerrar={vi.fn()} />
+  </NextIntlClientProvider>));
+  expect(container.querySelectorAll(".aviso-esqueleto")).toHaveLength(3);
+  expect(container.querySelectorAll(".aviso")).toHaveLength(0);
+  expect(container.textContent).not.toMatch(/cargando/i);
+});
+
+it("sin avisos explica qué aparecerá y lleva a la clasificación", () => {
+  act(() => root.render(<NextIntlClientProvider locale="es" messages={messages}>
+    <HojaAvisos lista={{ sin_leer: 0, avisos: [] }} fallo={false} onCerrar={vi.fn()} />
+  </NextIntlClientProvider>));
+  expect(container.querySelector(".avisos-vacio h3")?.textContent).toBe("Aún no hay avisos");
+  expect(container.querySelector<HTMLAnchorElement>(".avisos-ver")?.getAttribute("href")).toBe("/liga?vista=tabla");
 });
 
 it("la campana no pinta nada sin sesión", () => {

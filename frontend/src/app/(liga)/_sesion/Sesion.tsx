@@ -1,6 +1,7 @@
 "use client";
 
-// Sin foto de perfil, la cuenta vive detrás de los tres puntos.
+// Sin foto de perfil, la cuenta vive detrás de los tres puntos. Sin sesión no hay menú: con una sola
+// opción, «Entrar» va como botón directo (DESIGN §7).
 
 import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import Link from "next/link";
@@ -47,9 +48,15 @@ export function Sesion() {
   };
   // El botón está desde el primer pintado (maqueta v12); hasta que llega la sesión no se abre.
   const cargando = estado === "cargando";
-  const dentro = estado === "dentro";
   const panel = yo?.aal2 ? "/admin" : "/cuenta/verificacion?next=/admin";
   const cerrar = () => setAbierto(false);
+
+  // «Entrar» va a la derecha, donde con sesión está la campana. El hueco de la izquierda mantiene el logo
+  // en su sitio al entrar.
+  if (estado === "fuera") return <>
+    <span className="cuenta-hueco" aria-hidden="true" />
+    <Link href="/entrar" className="entrar-cabecera">{t("account_entrar")}</Link>
+  </>;
 
   return (
     <div className="cuenta" ref={caja}>
@@ -61,19 +68,18 @@ export function Sesion() {
       </button>
       {abierto && (
         <div className="cuenta-menu" role="menu">
-          {dentro && <div className="quien">{t("account_sesion_de", { alias: yo?.alias ?? t("account_tu_cuenta") })}</div>}
-          {PLANES_VISIBLES && dentro && (yo?.plan === "pro" || yo?.pase_liga) && (
+          <div className="quien">{t("account_sesion_de", { alias: yo?.alias ?? t("account_tu_cuenta") })}</div>
+          {PLANES_VISIBLES && (yo?.plan === "pro" || yo?.pase_liga) && (
             <div className="insignias">
               {yo?.plan === "pro" && <Chip>{t("account_badge_pro")}</Chip>}
               {yo?.pase_liga && <Chip>{t("account_badge_pase")}</Chip>}
             </div>
           )}
-          {dentro ? <>
-            <Link href="/cuenta" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_tu_cuenta")}</Link>
-            {PLANES_VISIBLES && (<Link href="/cuenta/plan" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="l" />{t("planes_titulo")}</Link>)}
-            {yo?.admin && <Link href={panel} role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="p" />{t("account_panel_control")}</Link>}
-          </> : <Link href="/entrar" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_entrar")}</Link>}
-          {dentro && <><hr /><button type="button" role="menuitem" className="cuenta-item salir" onClick={salir}><Icono tipo="s" />{t("account_salir")}</button></>}
+          <Link href="/cuenta" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_tu_cuenta")}</Link>
+          {PLANES_VISIBLES && (<Link href="/cuenta/plan" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="l" />{t("planes_titulo")}</Link>)}
+          {yo?.admin && <Link href={panel} role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="p" />{t("account_panel_control")}</Link>}
+          <hr />
+          <button type="button" role="menuitem" className="cuenta-item salir" onClick={salir}><Icono tipo="s" />{t("account_salir")}</button>
         </div>
       )}
     </div>
