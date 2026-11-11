@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -15,6 +16,12 @@ from app.liga.pagos_lemon import interpretar
 URL = os.environ.get("LIGA_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="Sin BD de pruebas (LIGA_TEST_DATABASE_URL)")
 MAPA = {"111": "mensual", "222": "temporada", "444": "pack_liga"}
+AHORA = datetime.now(UTC)
+
+
+def _cuando(dias: int = 0, horas: int = 0) -> str:
+    """Instante relativo a hoy: los eventos son recientes y las renovaciones, futuras."""
+    return (AHORA + timedelta(days=dias, hours=horas)).strftime("%Y-%m-%dT%H:%M:%S.000000Z")
 
 
 def _evento(uid: str, nombre: str, actualizado: str, variante: int = 111,
@@ -62,8 +69,7 @@ def _cuenta(uid: str, sql: str) -> int:
 
 
 def test_alta_da_pro_de_pago_y_guarda_la_compra(usuario):  # noqa: ANN001
-    cuerpo = _evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
-                     renews_at="2026-11-10T00:00:00.000000Z")
+    cuerpo = _evento(usuario, "subscription_created", _cuando(-3), renews_at=_cuando(30))
     assert _aplicar(cuerpo) == "aplicado"
     assert _cuenta(usuario, "select count(*) from liga.planes_usuario "
                             "where usuario_id = %s and origen = 'pago'") == 1
@@ -76,11 +82,11 @@ def test_evento_de_usuario_borrado_se_ignora(usuario, caplog) -> None:  # noqa: 
 
     compra = f"borrado-{uuid.uuid4()}"
     assert _aplicar(_evento(
-        usuario, "subscription_created", "2026-10-10T10:00:00.000000Z", compra=compra,
-        renews_at="2026-11-10T00:00:00.000000Z")) == "aplicado"
+        usuario, "subscription_created", _cuando(-3), compra=compra,
+        renews_at=_cuando(30))) == "aplicado"
     with psycopg.connect(URL, autocommit=True) as cx:
         cx.execute("delete from auth.users where id = %s", (usuario,))
-    cuerpo = _evento(usuario, "subscription_cancelled", "2026-10-11T10:00:00.000000Z",
+    cuerpo = _evento(usuario, "subscription_cancelled", _cuando(-2),
                      compra=compra, status="cancelled")
     with caplog.at_level("INFO", logger=pagos.__name__):
         assert _aplicar(cuerpo) == "ignorado"
@@ -93,8 +99,7 @@ def test_evento_de_usuario_borrado_se_ignora(usuario, caplog) -> None:  # noqa: 
 
 
 def test_reenvio_del_mismo_evento_no_se_aplica_dos_veces(usuario):  # noqa: ANN001
-    cuerpo = _evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
-                     renews_at="2026-11-10T00:00:00.000000Z")
+    cuerpo = _evento(usuario, "subscription_created", _cuando(-3), renews_at=_cuando(30))
     assert _aplicar(cuerpo) == "aplicado"
     assert _aplicar(cuerpo) == "duplicado"
     assert _cuenta(usuario, "select count(*) from liga.planes_usuario "
@@ -102,20 +107,17 @@ def test_reenvio_del_mismo_evento_no_se_aplica_dos_veces(usuario):  # noqa: ANN0
 
 
 def test_evento_mas_viejo_que_el_guardado_no_pisa_nada(usuario):  # noqa: ANN001
-    nuevo = _evento(usuario, "subscription_updated", "2026-10-12T10:00:00.000000Z",
-                    renews_at="2026-11-12T00:00:00.000000Z")
-    viejo = _evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
-                    renews_at="2026-11-10T00:00:00.000000Z")
+    nuevo = _evento(usuario, "subscription_updated", _cuando(-1), renews_at=_cuando(32))
+    viejo = _evento(usuario, "subscription_created", _cuando(-3), renews_at=_cuando(30))
     assert _aplicar(nuevo) == "aplicado"
     assert _aplicar(viejo) == "obsoleto"
     assert _cuenta(usuario, "select count(*) from liga.compras_pago "
-                            "where usuario_id = %s and actualizado_lemon < "
-                            "'2026-10-11T00:00:00Z'") == 0
+                            f"where usuario_id = %s and actualizado_lemon < '{_cuando(-2)}'") == 0
 
 
 def test_pack_liga_da_pase_de_pago(usuario):  # noqa: ANN001
-    cuerpo = _evento(usuario, "order_created", "2026-10-10T10:00:00.000000Z", variante=444,
-                     created_at="2026-10-10T10:00:00.000000Z")
+    cuerpo = _evento(usuario, "order_created", _cuando(-3), variante=444,
+                     created_at=_cuando(-3))
     assert _aplicar(cuerpo) == "aplicado"
     assert _cuenta(usuario, "select count(*) from liga.pases_liga "
                             "where usuario_id = %s and origen = 'pago'") == 1
@@ -123,8 +125,8 @@ def test_pack_liga_da_pase_de_pago(usuario):  # noqa: ANN001
 
 def test_dos_packs_dan_dos_pases_de_pago(usuario):  # noqa: ANN001
     for pedido in ("pedido-1", "pedido-2"):
-        cuerpo = _evento(usuario, "order_created", "2026-10-10T10:00:00.000000Z", variante=444,
-                         compra=pedido, created_at="2026-10-10T10:00:00.000000Z")
+        cuerpo = _evento(usuario, "order_created", _cuando(-3), variante=444,
+                         compra=pedido, created_at=_cuando(-3))
         assert _aplicar(cuerpo) == "aplicado"
     assert _cuenta(usuario, "select count(*) from liga.pases_liga "
                             "where usuario_id = %s and origen = 'pago'") == 2
@@ -133,10 +135,9 @@ def test_dos_packs_dan_dos_pases_de_pago(usuario):  # noqa: ANN001
 def test_cambio_de_variante_actualiza_el_producto_y_sigue_siendo_un_solo_pro(usuario):  # noqa: ANN001
     import psycopg
 
-    alta = _evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
-                   renews_at="2026-11-10T00:00:00.000000Z")
-    cambio = _evento(usuario, "subscription_updated", "2026-10-11T10:00:00.000000Z", variante=222,
-                     renews_at="2027-04-10T00:00:00.000000Z")
+    alta = _evento(usuario, "subscription_created", _cuando(-3), renews_at=_cuando(30))
+    cambio = _evento(usuario, "subscription_updated", _cuando(-2), variante=222,
+                     renews_at=_cuando(180))
     assert _aplicar(alta) == "aplicado"
     assert _aplicar(cambio) == "aplicado"
     with psycopg.connect(URL, autocommit=True) as cx:
@@ -148,10 +149,8 @@ def test_cambio_de_variante_actualiza_el_producto_y_sigue_siendo_un_solo_pro(usu
 
 
 def test_baja_corta_el_pro_de_pago(usuario):  # noqa: ANN001
-    alta = _evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
-                   renews_at="2026-11-10T00:00:00.000000Z")
-    baja = _evento(usuario, "subscription_cancelled", "2026-10-11T10:00:00.000000Z",
-                   status="cancelled")
+    alta = _evento(usuario, "subscription_created", _cuando(-3), renews_at=_cuando(30))
+    baja = _evento(usuario, "subscription_cancelled", _cuando(-2), status="cancelled")
     _aplicar(alta)
     assert _aplicar(baja) == "aplicado"
     assert _cuenta(usuario, "select count(*) from liga.planes_usuario "
@@ -160,14 +159,13 @@ def test_baja_corta_el_pro_de_pago(usuario):  # noqa: ANN001
 
 
 def test_baja_de_una_suscripcion_no_toca_la_otra(usuario):  # noqa: ANN001
-    primera = _evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
-                      renews_at="2026-11-10T00:00:00.000000Z")
-    segunda = json.loads(_evento(usuario, "subscription_created", "2026-10-10T11:00:00.000000Z",
-                                 renews_at="2026-12-10T00:00:00.000000Z"))
+    primera = _evento(usuario, "subscription_created", _cuando(-3), renews_at=_cuando(30))
+    segunda = json.loads(_evento(usuario, "subscription_created", _cuando(-3, 1),
+                                 renews_at=_cuando(60)))
     segunda["data"]["id"] = "5002"
     _aplicar(primera)
     _aplicar(json.dumps(segunda).encode())
-    baja = _evento(usuario, "subscription_expired", "2026-10-12T10:00:00.000000Z", estado="expired")
+    baja = _evento(usuario, "subscription_expired", _cuando(-1), estado="expired")
     _aplicar(baja)
     assert _cuenta(usuario, "select count(*) from liga.planes_usuario where usuario_id = %s "
                             "and compra_lemon_id = '5002' "
@@ -175,28 +173,24 @@ def test_baja_de_una_suscripcion_no_toca_la_otra(usuario):  # noqa: ANN001
 
 
 def test_renovacion_extiende_la_misma_fila(usuario):  # noqa: ANN001
-    _aplicar(_evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
-                     renews_at="2026-11-10T00:00:00.000000Z"))
-    _aplicar(_evento(usuario, "subscription_updated", "2026-11-10T10:00:00.000000Z",
-                     renews_at="2026-12-10T00:00:00.000000Z"))
+    _aplicar(_evento(usuario, "subscription_created", _cuando(-3), renews_at=_cuando(30)))
+    _aplicar(_evento(usuario, "subscription_updated", _cuando(-1), renews_at=_cuando(60)))
     assert _cuenta(usuario, "select count(*) from liga.planes_usuario "
                             "where usuario_id = %s and origen = 'pago'") == 1
 
 
 def test_cancelacion_conserva_el_acceso_hasta_ends_at(usuario):  # noqa: ANN001
-    _aplicar(_evento(usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
-                     renews_at="2026-11-10T00:00:00.000000Z"))
-    _aplicar(_evento(usuario, "subscription_cancelled", "2026-10-11T10:00:00.000000Z",
-                     status="cancelled", ends_at="2026-11-10T00:00:00.000000Z"))
+    _aplicar(_evento(usuario, "subscription_created", _cuando(-3), renews_at=_cuando(30)))
+    _aplicar(_evento(usuario, "subscription_cancelled", _cuando(-2),
+                     status="cancelled", ends_at=_cuando(30)))
     assert _cuenta(usuario, "select count(*) from liga.planes_usuario where usuario_id = %s "
                             "and origen = 'pago' and hasta > now()") == 1
 
 
 def test_reembolso_de_pack_quita_el_pase(usuario):  # noqa: ANN001
-    _aplicar(_evento(usuario, "order_created", "2026-10-10T10:00:00.000000Z", variante=444,
-                     created_at="2026-10-10T10:00:00.000000Z"))
-    reembolso = json.loads(_evento(usuario, "order_refunded", "2026-10-12T10:00:00.000000Z",
-                                   variante=444))
+    _aplicar(_evento(usuario, "order_created", _cuando(-3), variante=444,
+                     created_at=_cuando(-3)))
+    reembolso = json.loads(_evento(usuario, "order_refunded", _cuando(-1), variante=444))
     reembolso["data"]["id"] = "5001"
     assert _aplicar(json.dumps(reembolso).encode()) == "aplicado"
     assert _cuenta(usuario, "select count(*) from liga.pases_liga where usuario_id = %s "
@@ -204,24 +198,22 @@ def test_reembolso_de_pack_quita_el_pase(usuario):  # noqa: ANN001
 
 
 def test_evento_de_la_misma_compra_no_se_pisa_con_uno_mas_viejo(usuario):  # noqa: ANN001
-    _aplicar(_evento(usuario, "subscription_updated", "2026-10-12T10:00:00.000000Z",
-                     renews_at="2026-12-12T00:00:00.000000Z"))
-    viejo = _evento(usuario, "subscription_updated", "2026-10-10T10:00:00.000000Z",
-                    renews_at="2026-11-10T00:00:00.000000Z")
+    _aplicar(_evento(usuario, "subscription_updated", _cuando(-1), renews_at=_cuando(90)))
+    viejo = _evento(usuario, "subscription_updated", _cuando(-3), renews_at=_cuando(30))
     assert _aplicar(viejo) == "obsoleto"
     assert _cuenta(usuario, "select count(*) from liga.planes_usuario where usuario_id = %s "
-                            "and hasta > '2026-12-01T00:00:00Z'") == 1
+                            f"and hasta > '{_cuando(60)}'") == 1
 
 
 def test_disputa_se_registra_sin_cambiar_derechos(usuario, caplog):  # noqa: ANN001
     import psycopg
 
     assert _aplicar(_evento(
-        usuario, "subscription_created", "2026-10-10T10:00:00.000000Z",
-        renews_at="2026-11-10T00:00:00.000000Z")) == "aplicado"
+        usuario, "subscription_created", _cuando(-3),
+        renews_at=_cuando(30))) == "aplicado"
     assert _aplicar(_evento(
-        usuario, "order_created", "2026-10-10T10:00:00.000000Z", variante=444,
-        compra="pack-disputa", created_at="2026-10-10T10:00:00.000000Z")) == "aplicado"
+        usuario, "order_created", _cuando(-3), variante=444,
+        compra="pack-disputa", created_at=_cuando(-3))) == "aplicado"
     tablas = ("liga.planes_usuario", "liga.pases_liga")
     antes = {tabla: _cuenta(usuario, f"select count(*) from {tabla} where usuario_id = %s")
              for tabla in tablas}
@@ -229,7 +221,7 @@ def test_disputa_se_registra_sin_cambiar_derechos(usuario, caplog):  # noqa: ANN
         derechos = {tabla: cx.execute(
             f"select * from {tabla} where usuario_id = %s order by id", (usuario,)).fetchall()
             for tabla in tablas}
-    cuerpo = _evento(usuario, "dispute_created", "2026-10-12T10:00:00.000000Z")
+    cuerpo = _evento(usuario, "dispute_created", _cuando(-1))
     with caplog.at_level("WARNING", logger=pagos.__name__):
         assert _aplicar(cuerpo) == "ignorado"
     for tabla in tablas:

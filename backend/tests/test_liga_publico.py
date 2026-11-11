@@ -218,7 +218,8 @@ def test_la_clasificacion_se_ordena_por_rentabilidad_o_por_puntos(liga) -> None:
         assert [f["posicion"] for f in c["filas"]] == [1, 2, 3]
         assert [Decimal(f["acumulado"]["rentabilidad"]) for f in c["filas"]] == [
             Decimal("9.0"), Decimal("1.5"), Decimal("1.0")]
-        assert all(f["movimiento"] is None for f in c["filas"])
+        # Puestos ganados o perdidos desde el corte anterior, también con el orden por rentabilidad.
+        assert [f["movimiento"] for f in c["filas"]] == [2, -1, -1]
 
     puntos = cliente.get(f"{url}&orden=puntos").json()
     assert puntos["total"] == 3
@@ -233,13 +234,13 @@ def test_la_clasificacion_se_ordena_por_rentabilidad_o_por_puntos(liga) -> None:
     assert [f["equipo"]["nombre"] for f in pagina["filas"]] == ["Golpe"]
     assert [(f["posicion"], f["equipo"]["nombre"]) for f in pagina["mias"]] == [
         (2, "Constante")]
-    assert all(f["movimiento"] is None for f in pagina["filas"] + pagina["mias"])
+    assert [f["movimiento"] for f in pagina["filas"] + pagina["mias"]] == [2, -1]
 
     desplazada = cliente.get(f"{url}&orden=rentabilidad&desde=1&cuantos=1").json()
     assert desplazada["total"] == 3
     assert [(f["posicion"], f["equipo"]["nombre"]) for f in desplazada["filas"]] == [
         (2, "Constante")]
-    assert all(f["movimiento"] is None for f in desplazada["filas"])
+    assert [f["movimiento"] for f in desplazada["filas"]] == [-1]
 
     pagina_puntos = cliente.get(
         f"{url}&orden=puntos&cuantos=1&alias=beto_{sufijo}").json()
