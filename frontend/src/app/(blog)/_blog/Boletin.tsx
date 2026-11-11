@@ -4,12 +4,12 @@ import { useId, useRef, useState, type FormEvent } from "react";
 import TurnstileWidget from "@/components/TurnstileWidget";
 
 export type TextosBoletin = {
-  titulo: string; intro: string; nota: string; correo: string; boton: string;
-  revisaTitulo: string; revisaTexto: string; error: string;
+  titulo: string; nota: string; correo: string; boton: string;
+  revisaTitulo: string; revisaTexto: string; error: string; correoInvalido: string;
 };
 
-export default function Boletin({ idioma, variante, textos }: {
-  idioma: "es" | "en"; variante: "pagina" | "articulo"; textos: TextosBoletin;
+export default function Boletin({ idioma, textos }: {
+  idioma: "es" | "en"; textos: TextosBoletin;
 }) {
   const id = useId();
   const [correo, setCorreo] = useState("");
@@ -23,6 +23,8 @@ export default function Boletin({ idioma, variante, textos }: {
 
   async function enviar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // La validación es de la app: el globo del navegador no sale nunca.
+    if (!event.currentTarget.checkValidity()) { setError(textos.correoInvalido); return; }
     if (!token || ocupado.current) return;
     ocupado.current = true;
     setEsperando(true); setError("");
@@ -41,16 +43,16 @@ export default function Boletin({ idioma, variante, textos }: {
     }
   }
 
-  return <section aria-labelledby={`${id}-titulo`} style={{ marginBlock: "2rem", padding: variante === "articulo" ? "1rem" : "1.5rem", border: "1px solid currentColor", borderRadius: 12, minWidth: 0 }}>
-    {enviado ? <div role="status"><h2 id={`${id}-titulo`}>{textos.revisaTitulo}</h2><p>{textos.revisaTexto}</p><p style={{ overflowWrap: "anywhere" }}>{correo}</p></div> : <>
-      <h2 id={`${id}-titulo`} style={variante === "articulo" ? { fontSize: "1.25rem" } : undefined}>{textos.titulo}</h2>
-      <p>{textos.intro}</p><p id={`${id}-nota`}>{textos.nota}</p>
-      <form onSubmit={enviar} aria-describedby={`${id}-nota`} style={{ display: "grid", gap: 12, minWidth: 0 }}>
-        <label htmlFor={`${id}-correo`}>{textos.correo}</label>
-        <input id={`${id}-correo`} name="correo" type="email" autoComplete="email" required value={correo} disabled={esperando}
-          onChange={event => setCorreo(event.target.value)} style={{ minHeight: 44, width: "100%", minWidth: 0, boxSizing: "border-box" }} />
+  return <section className="blog-suscribir" aria-labelledby={`${id}-titulo`}>
+    {enviado ? <div role="status"><h2 id={`${id}-titulo`}>{textos.revisaTitulo}</h2><p>{textos.revisaTexto}</p><p>{correo}</p></div> : <>
+      <h2 id={`${id}-titulo`}>{textos.titulo}</h2>
+      <form className="blog-suscribir-form" onSubmit={enviar} noValidate aria-describedby={`${id}-nota`}>
+        <label className="blog-sr" htmlFor={`${id}-correo`}>{textos.correo}</label>
+        <input id={`${id}-correo`} name="correo" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
+          placeholder={textos.correo} required value={correo} disabled={esperando} onChange={event => setCorreo(event.target.value)} />
+        <p id={`${id}-nota`} className="blog-sr">{textos.nota}</p>
         <TurnstileWidget onToken={setToken} resetKey={resetKey} />
-        <button className="blog-boton" type="submit" disabled={!token || esperando} aria-busy={esperando} style={{ minHeight: 44 }}>{textos.boton}</button>
+        <button className="blog-boton" type="submit" disabled={!token || esperando} aria-busy={esperando}>{textos.boton}</button>
         {error && <p role="alert">{error}</p>}
       </form>
     </>}

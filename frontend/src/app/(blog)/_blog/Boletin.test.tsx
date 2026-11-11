@@ -15,7 +15,7 @@ const fetchMock = vi.fn();
 const textos = {
   titulo: es.blog_newsletter_title, intro: es.blog_newsletter_intro, nota: es.blog_newsletter_note,
   correo: es.blog_newsletter_email, boton: es.blog_newsletter_button, revisaTitulo: es.blog_newsletter_check_title,
-  revisaTexto: es.blog_newsletter_check_text, error: es.blog_newsletter_error,
+  revisaTexto: es.blog_newsletter_check_text, error: es.blog_newsletter_error, correoInvalido: es.blog_newsletter_invalid,
 };
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "site-key");
@@ -24,7 +24,7 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
-function montar() { act(() => root.render(<Boletin idioma="es" variante="pagina" textos={textos} />)); }
+function montar() { act(() => root.render(<Boletin idioma="es" textos={textos} />)); }
 function rellenar() {
   const input = host.querySelector("input")!;
   act(() => {

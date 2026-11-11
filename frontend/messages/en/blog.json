@@ -6,6 +6,7 @@
   "blog_empty": "The first lesson is coming soon.",
   "blog_error": "We could not load the newsletter. Please try again later.",
   "blog_minutes": "{count} min read",
+  "blog_newsletter_invalid": "Enter a valid email address.",
   "blog_terms": "Terms",
   "blog_privacy": "Privacy",
   "blog_legal": "Legal notice",

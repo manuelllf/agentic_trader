@@ -6,6 +6,7 @@
   "blog_empty": "Pronto publicamos la primera lección.",
   "blog_error": "No hemos podido cargar el boletín. Vuelve a intentarlo más tarde.",
   "blog_minutes": "{count} min de lectura",
+  "blog_newsletter_invalid": "Escribe un correo válido.",
   "blog_terms": "Términos",
   "blog_privacy": "Privacidad",
   "blog_legal": "Aviso legal",
