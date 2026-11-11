@@ -1,0 +1,14 @@
+/* Segmentado de idioma (DESIGN v2 §7): pista gris en píldora y el activo en blanco con sombra.
+   Usa los tokens del ámbito donde se pinte (.lg, .blog-publico, .criptico-publico, .hoy). */
+.selector-idioma { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--surface2, #E9E9EF); }
+.selector-idioma.selector-idioma > a,
+.selector-idioma.selector-idioma > button {
+  min-height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ink2, #3C3C43); font: inherit; font-size: 13px; line-height: 18px; font-weight: 700;
+  text-decoration: none; cursor: pointer; pointer-events: auto;
+  transition: background-color .25s cubic-bezier(.32, .72, 0, 1), transform .15s cubic-bezier(.32, .72, 0, 1);
+}
+.selector-idioma.selector-idioma > [aria-current="true"],
+.selector-idioma.selector-idioma > [aria-pressed="true"] { background: var(--raised, #FFFFFF); color: var(--ink, #000000); box-shadow: 0 3px 8px rgba(0, 0, 0, .12); }
+.selector-idioma.selector-idioma > :active { transform: scale(.97); }
+.selector-idioma.selector-idioma > button:disabled { cursor: default; }

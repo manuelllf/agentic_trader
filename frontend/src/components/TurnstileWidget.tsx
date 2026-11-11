@@ -6,6 +6,7 @@ type Turnstile = {
   render: (element: HTMLElement, options: {
     sitekey: string;
     size: "flexible";
+    appearance: "interaction-only";
     callback: (token: string) => void;
     "expired-callback": () => void;
     "error-callback": () => void;
@@ -34,7 +35,7 @@ export default function TurnstileWidget({ onToken, resetKey = 0 }: {
     const render = () => {
       if (!active || typeof window === "undefined" || !window.turnstile || !container.current || widget.current !== undefined) return;
       widget.current = window.turnstile.render(container.current, {
-        sitekey, size: "flexible",
+        sitekey, size: "flexible", appearance: "interaction-only",
         callback: token => { if (active) callback.current(token); },
         "expired-callback": () => { if (active) callback.current(""); },
         "error-callback": () => { if (active) callback.current(""); },
