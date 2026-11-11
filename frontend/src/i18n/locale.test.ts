@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptLanguage, deviceLocale, idiomaAlEntrar, idiomaDeRuta, normalizeLocale, preferredLocale, readCookie } from "./locale";
+import { acceptLanguage, deviceLocale, idiomaAlEntrar, idiomaDeRuta, normalizeLocale, preferredLocale, readCookie, rutaDeIdioma } from "./locale";
 import { porcentaje, fecha, miles } from "../lib/liga/format";
 
 describe("language resolution", () => {
@@ -59,5 +59,25 @@ describe("idioma al entrar en la cuenta", () => {
   });
   it("sin idioma en la cuenta, se queda el que ya se ve", () => {
     expect(idiomaAlEntrar({ elegido: null, perfil: null, actual: "en" })).toEqual({ idioma: "en", guardar: false, limpiar: false });
+  });
+});
+
+describe("idioma del dispositivo en el boletín y el críptico", () => {
+  it("un dispositivo en inglés abre la versión en inglés sin elección guardada", () => {
+    expect(rutaDeIdioma("/blog", null, "en-US,en;q=0.9")).toBe("/en/blog");
+    expect(rutaDeIdioma("/blog/nuestra-historia", null, "en")).toBe("/en/blog/nuestra-historia");
+    expect(rutaDeIdioma("/criptico/12", undefined, "en-GB")).toBe("/en/criptico/12");
+  });
+  it("la elección guardada gana al dispositivo", () => {
+    expect(rutaDeIdioma("/blog", "es", "en-US")).toBeNull();
+    expect(rutaDeIdioma("/criptico", "en", "es-ES")).toBeNull();
+  });
+  it("un dispositivo en español o sin cabecera se queda en español", () => {
+    expect(rutaDeIdioma("/blog", null, "es-ES,en;q=0.5")).toBeNull();
+    expect(rutaDeIdioma("/blog", null, null)).toBeNull();
+  });
+  it("las rutas en inglés y las demás no cambian", () => {
+    expect(rutaDeIdioma("/en/blog", null, "en")).toBeNull();
+    expect(rutaDeIdioma("/liga", null, "en")).toBeNull();
   });
 });

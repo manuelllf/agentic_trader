@@ -62,3 +62,18 @@ export function idiomaAlEntrar({ elegido, perfil, actual }: {
   if (elegido) return { idioma: elegido, guardar: elegido !== perfil, limpiar: true };
   return { idioma: perfil ?? actual, guardar: false, limpiar: false };
 }
+
+// Lo que elige el visitante en el boletín o el críptico gana al idioma del dispositivo.
+export function recordarIdioma(idioma: Locale): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${LOCALE_COOKIE}=${idioma}; path=/; max-age=31536000; samesite=lax`;
+}
+
+// Sin elección guardada y con el dispositivo en inglés, el boletín y el críptico abren su versión en inglés.
+// Sin cabecera de idioma (buscadores, por ejemplo) no se redirige: se queda en español.
+const RUTAS_CON_IDIOMA = ["/blog", "/criptico"];
+export function rutaDeIdioma(ruta: string, cookie: string | null | undefined, cabecera: string | null | undefined): string | null {
+  if (idiomaDeRuta(ruta) || normalizeLocale(cookie)) return null;
+  if (acceptLanguage(cabecera) !== "en") return null;
+  return RUTAS_CON_IDIOMA.some(base => ruta === base || ruta.startsWith(`${base}/`)) ? `/en${ruta}` : null;
+}

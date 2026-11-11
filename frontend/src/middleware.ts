@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { acceptLanguage, CABECERA_IDIOMA_RUTA, idiomaDeRuta, LOCALE_COOKIE, normalizeLocale } from "./i18n/locale";
+import { acceptLanguage, CABECERA_IDIOMA_RUTA, idiomaDeRuta, LOCALE_COOKIE, normalizeLocale, rutaDeIdioma } from "./i18n/locale";
 
 // CSP con nonce (plan §14/§15, tarea 8.1). Por ahora en modo "solo informe": el navegador no
 // bloquea nada, solo lo reportaría si hubiera un `report-uri`/`report-to` (no hay todavía, así que
@@ -36,6 +36,14 @@ function comoWebSocket(httpsUrl: string): string | null {
 }
 
 export function middleware(request: NextRequest) {
+  const destino = rutaDeIdioma(request.nextUrl.pathname, request.cookies.get(LOCALE_COOKIE)?.value, request.headers.get("accept-language"));
+  if (destino) {
+    const url = request.nextUrl.clone();
+    url.pathname = destino;
+    const redireccion = NextResponse.redirect(url, 307);
+    redireccion.headers.append("Vary", "Accept-Language, Cookie");
+    return redireccion;
+  }
   const nonce = generarNonce();
 
   // Orígenes propios de este despliegue (no se puede fijar un solo dominio: local, PRE y PROD
