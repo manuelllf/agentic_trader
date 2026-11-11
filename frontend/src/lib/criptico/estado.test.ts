@@ -22,9 +22,9 @@ describe("estadoCriptico", () => {
   it("compone la pista de hoy", async () => {
     vi.mocked(listarPublicados).mockResolvedValue([{ numero: 1, fecha: "2026-10-26" }]);
     vi.mocked(leerPublicado).mockResolvedValue({
-      acertijo: { longitud: 5, pista: [{ texto: "Un árbol ", papel: null }, { texto: "sagrado", papel: "def" }] },
+      acertijo: { numero: 10, nivel: "media", longitud: 5, pista: [{ texto: "Un árbol ", papel: null }, { texto: "sagrado", papel: "def" }] },
     } as NonNullable<Awaited<ReturnType<typeof leerPublicado>>>);
-    expect(await estadoCriptico("es")).toEqual({ tipo: "hoy", longitud: 5, pista: "Un árbol sagrado" });
+    expect(await estadoCriptico("es")).toEqual({ tipo: "hoy", longitud: 5, pista: "Un árbol sagrado", numero: 10, nivel: "media" });
     expect(proximaFecha).not.toHaveBeenCalled();
   });
 

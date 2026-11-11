@@ -1,8 +1,8 @@
 import { leerPublicado, listarPublicados, proximaFecha } from "./publico";
-import type { Idioma } from "./tipos";
+import type { Acertijo, Idioma } from "./tipos";
 
 export type EstadoCriptico =
-  | { tipo: "hoy"; longitud: number; pista: string }
+  | { tipo: "hoy"; longitud: number; pista: string; numero: number; nivel: Acertijo["nivel"] }
   | { tipo: "proximo"; fecha: string }
   | null;
 
@@ -12,7 +12,8 @@ export async function estadoCriptico(idioma: Idioma): Promise<EstadoCriptico> {
     if ((await listarPublicados(idioma)).length > 0) {
       const entrega = await leerPublicado(idioma);
       if (!entrega) return null;
-      return { tipo: "hoy", longitud: entrega.acertijo.longitud, pista: entrega.acertijo.pista.map((s) => s.texto).join("") };
+      const { acertijo } = entrega;
+      return { tipo: "hoy", longitud: acertijo.longitud, pista: acertijo.pista.map((s) => s.texto).join(""), numero: acertijo.numero, nivel: acertijo.nivel };
     }
     const fecha = await proximaFecha(idioma);
     return fecha ? { tipo: "proximo", fecha } : null;
