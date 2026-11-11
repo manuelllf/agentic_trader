@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 
@@ -58,6 +58,7 @@ class FilaViva:
     dif_sp: Decimal
     acumulado: dict | None
     provisional: bool = True
+    serie: list[Decimal] = field(default_factory=list)
 
 
 def periodos_cerrados(db: Session, ids: list[str]) -> dict[str, list[dict]]:
@@ -96,6 +97,11 @@ def retornos_acumulados(db: Session, estrategia_ids: list[str]) -> dict[str, dic
     return salida
 
 
+def series_acumuladas(db: Session, estrategia_ids: list[str]) -> dict[str, list[Decimal]]:
+    return {eid: serie_acumulada(periodos)
+            for eid, periodos in periodos_cerrados(db, estrategia_ids).items()}
+
+
 def clasificacion_viva(db: Session, temporada_id: int, vivo: dict,
                        jornada) -> dict[str, FilaViva]:
     valores = {str(iid): f for iid, f in vivo["por_inscripcion"].items()
@@ -131,15 +137,13 @@ def clasificacion_viva(db: Session, temporada_id: int, vivo: dict,
             estrategia_id=eid, puntos=sum(puntos), jornadas=len(puntos),
             ganadas=puntos.count(3), empatadas=puntos.count(1), perdidas=puntos.count(0),
             dif_sp=diferencia, acumulado=acumular_periodos(
-                cerrados.get(eid, []) + [provisional]))
+                cerrados.get(eid, []) + [provisional]),
+            serie=serie_acumulada(cerrados.get(eid, []) + [provisional]))
     return salida
 
 
-def acumular_periodos(periodos: list[dict]) -> dict | None:
-    """Pure form shared by the public batch query and the owner's tracking projection."""
-    if not periodos:
-        return None
-    normalizados = [{
+def _normalizados(periodos: list[dict]) -> list[dict]:
+    return [{
         "dia_base": (date.fromisoformat(p["dia_base"]) if isinstance(p["dia_base"], str)
                      else p["dia_base"]),
         "dia_fin": (date.fromisoformat(p["dia_fin"]) if isinstance(p["dia_fin"], str)
@@ -147,6 +151,12 @@ def acumular_periodos(periodos: list[dict]) -> dict | None:
         "rentabilidad": Decimal(str(p["rentabilidad"])),
         "sp500": Decimal(str(p["sp500"])),
     } for p in periodos]
+
+
+def _ventana(periodos: list[dict]) -> list[dict] | None:
+    """Los periodos seguidos que cuentan para el acumulado, del último hacia atrás. `None` si algún
+    retorno no tiene sentido: ni el acumulado ni su serie se publican."""
+    normalizados = _normalizados(periodos)
     ventana = [normalizados[-1]]
     for periodo in reversed(normalizados[:-1]):
         if periodo["dia_fin"] != ventana[0]["dia_base"]:
@@ -156,6 +166,16 @@ def acumular_periodos(periodos: list[dict]) -> dict | None:
     # repaired by clamping its growth factor. Refuse to publish a misleading total.
     if any(not periodo[campo].is_finite() or periodo[campo] < -100
            for periodo in ventana for campo in ("rentabilidad", "sp500")):
+        return None
+    return ventana
+
+
+def acumular_periodos(periodos: list[dict]) -> dict | None:
+    """Pure form shared by the public batch query and the owner's tracking projection."""
+    if not periodos:
+        return None
+    ventana = _ventana(periodos)
+    if ventana is None:
         return None
     with localcontext() as ctx:
         ctx.prec = 32
@@ -170,8 +190,67 @@ def acumular_periodos(periodos: list[dict]) -> dict | None:
         "rentabilidad": retorno, "sp500": sp500,
         "diferencia_pp": (retorno - sp500).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
         "desde": ventana[0]["dia_base"], "hasta": ventana[-1]["dia_fin"],
-        "periodos": len(ventana), "incompleta": len(ventana) < len(normalizados),
+        "periodos": len(ventana), "incompleta": len(ventana) < len(periodos),
     }
+
+
+def serie_acumulada(periodos: list[dict]) -> list[Decimal]:
+    """Rentabilidad acumulada (%) al cierre de cada periodo de la ventana, desde 0: la última es
+    la de `acumular_periodos`, así que la gráfica acaba en la cifra que se enseña."""
+    ventana = _ventana(periodos) if periodos else None
+    if not ventana:
+        return []
+    salida = [Decimal(0)]
+    with localcontext() as ctx:
+        ctx.prec = 32
+        factor = Decimal(1)
+        for periodo in ventana:
+            factor *= Decimal(1) + periodo["rentabilidad"] / 100
+            salida.append(((factor - 1) * 100).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+    return salida
+
+
+def movimientos_rentabilidad(db: Session, temporada_id: int) -> dict[str, int]:
+    """Como `movimientos_clasificacion`, con el orden por rentabilidad acumulada."""
+    ids = db.execute(text("""
+        select distinct i.estrategia_id::text
+        from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
+        where j.temporada_id = :temporada and j.estado = 'cerrada'
+    """), {"temporada": temporada_id}).scalars().all()
+    periodos = {eid: [p for p in lista if p["temporada_id"] == temporada_id]
+                for eid, lista in periodos_cerrados(db, ids).items()}
+    cortes = sorted({p["dia_fin"] for lista in periodos.values() for p in lista})
+    if len(cortes) < 2:
+        return {}
+
+    def posiciones(corte: date) -> dict[str, int]:
+        acumulados = {eid: acumular_periodos([p for p in lista if p["dia_fin"] <= corte])
+                      for eid, lista in periodos.items()}
+        ordenadas = sorted((eid for eid, a in acumulados.items() if a is not None),
+                           key=lambda eid: (-acumulados[eid]["rentabilidad"], eid))
+        return {eid: indice + 1 for indice, eid in enumerate(ordenadas)}
+
+    antes, ahora = posiciones(cortes[-2]), posiciones(cortes[-1])
+    return {eid: antes[eid] - puesto for eid, puesto in ahora.items() if eid in antes}
+
+
+def rentabilidad_sp_temporada(db: Session, temporada_id: int,
+                              sp_vivo: Decimal | float | None) -> Decimal | None:
+    """El S&P de la temporada: los cierres de sus jornadas y, si hay una en juego, su cifra viva."""
+    cierres = db.execute(text("""
+        select sp_rentabilidad from liga.jornadas
+        where temporada_id = :temporada and estado = 'cerrada' and sp_rentabilidad is not null
+        order by dia_base, id
+    """), {"temporada": temporada_id}).scalars().all()
+    valores = [*cierres, *([sp_vivo] if sp_vivo is not None else [])]
+    if not valores:
+        return None
+    with localcontext() as ctx:
+        ctx.prec = 32
+        factor = Decimal(1)
+        for valor in valores:
+            factor *= Decimal(1) + Decimal(str(valor)) / 100
+    return ((factor - 1) * 100).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
 def movimientos_clasificacion(db: Session, temporada_id: int) -> dict[str, int]:

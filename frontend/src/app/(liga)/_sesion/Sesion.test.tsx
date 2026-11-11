@@ -81,9 +81,12 @@ describe("Sesion", () => {
     expect(el.textContent).not.toContain("Salir"); expect(el.textContent).not.toContain("Sesión de");
     expect(el.querySelector('a[href^="/legal"]')).toBeNull();
   });
-  it("deja solo un hueco mientras carga", () => {
+  it("pinta los tres puntos desde el primer pintado y no los abre hasta tener sesión", () => {
     sesion.estado = "cargando";
-    const el = montar(); expect(el.querySelector("button")).toBeNull();
-    expect(el.querySelector(".cuenta-hueco")).not.toBeNull();
+    const el = montar();
+    const boton = el.querySelector("button.puntos") as HTMLButtonElement | null;
+    expect(boton).not.toBeNull();
+    expect(boton?.disabled).toBe(true);
+    expect(el.querySelector(".cuenta-hueco")).toBeNull();
   });
 });

@@ -21,7 +21,10 @@ from app.liga.comparativa import (
     RentabilidadAcumulada,
     clasificacion_viva,
     movimientos_clasificacion,
+    movimientos_rentabilidad,
+    rentabilidad_sp_temporada,
     retornos_acumulados,
+    series_acumuladas,
 )
 from app.liga.db import db_anon
 from app.liga.procesos import diario, premio, temporadas
@@ -95,6 +98,7 @@ class FilaClasificacion(BaseModel):
     acumulado: RentabilidadAcumulada | None = None
     movimiento: int | None = None
     provisional: bool = False
+    serie: list[Decimal] = []    # rentabilidad acumulada al cierre de cada periodo, desde 0
 
 
 class Clasificacion(BaseModel):
@@ -105,6 +109,7 @@ class Clasificacion(BaseModel):
     # se ve aunque esté más abajo de la fila 50. Todo esto ya es público.
     mias: list[FilaClasificacion] = []
     jornada_provisional: int | None = None
+    sp_temporada: Decimal | None = None   # S&P de la temporada, con la jornada en juego si la hay
 
 
 class FilaJornada(BaseModel):
@@ -112,6 +117,7 @@ class FilaJornada(BaseModel):
     rentabilidad: Decimal | None   # solo con la jornada cerrada
     dif_sp: Decimal | None
     puntos: int | None
+    serie: list[Decimal] = []      # rentabilidad en cada sesión de la jornada en juego, desde 0
 
 
 class JornadaDetalle(BaseModel):
@@ -183,12 +189,13 @@ def _equipo(f, con_id: bool) -> EquipoOut:  # noqa: ANN001
 
 def _fila(posicion: int, f, con_id: bool, acumulado: dict | None = None,
           movimiento: int | None = None,
-          provisional: bool = False) -> FilaClasificacion:  # noqa: ANN001
+          provisional: bool = False,
+          serie: list[Decimal] | None = None) -> FilaClasificacion:  # noqa: ANN001
     return FilaClasificacion(
         posicion=posicion, equipo=_equipo(f, con_id), puntos=f.puntos, jornadas=f.jornadas,
         ganadas=f.ganadas, empatadas=f.empatadas, perdidas=f.perdidas, dif_sp=f.dif_sp,
         acumulado=RentabilidadAcumulada.model_validate(acumulado) if acumulado else None,
-        movimiento=movimiento, provisional=provisional)
+        movimiento=movimiento, provisional=provisional, serie=serie or [])
 
 
 def _temporada(db: Session, temporada_id: int | None) -> TemporadaOut | None:
@@ -232,7 +239,8 @@ def _filas_vivas(filas: list[FilaJornada], vivo: dict, ids: list) -> list[FilaJo
             salida.append(fila)
             continue
         salida.append(fila.model_copy(update={
-            "rentabilidad": f["rentabilidad"], "dif_sp": f["dif"], "puntos": f["puntos"]}))
+            "rentabilidad": f["rentabilidad"], "dif_sp": f["dif"], "puntos": f["puntos"],
+            "serie": f.get("serie", [])}))
     salida.sort(key=lambda f: (f.rentabilidad is None, -(f.rentabilidad or 0)))
     return salida
 
@@ -292,6 +300,7 @@ def _general_viva(db: Session, t: TemporadaOut, jornada, vivo: dict,
         """), {"ids": nuevas}).all()
         filas.update({f.eid: SimpleNamespace(**f._mapping) for f in equipos})
     acumulados = retornos_acumulados(db, list(filas))
+    series = series_acumuladas(db, list(filas))
     for eid, v in vivas.items():
         if eid not in filas:
             continue
@@ -299,20 +308,25 @@ def _general_viva(db: Session, t: TemporadaOut, jornada, vivo: dict,
         for campo in ("puntos", "jornadas", "ganadas", "empatadas", "perdidas", "dif_sp"):
             setattr(f, campo, getattr(v, campo))
         acumulados.pop(eid, None)
+        series.pop(eid, None)
         if v.acumulado is not None:
             acumulados[eid] = v.acumulado
+            series[eid] = v.serie
     ordenadas = sorted(filas.values(), key=lambda f: (
         -f.puntos, -f.dif_sp, f.creada, f.eid))
     if orden == "rentabilidad":
         ordenadas = ordenar_por_rentabilidad(ordenadas, acumulados)
-    movimientos = movimientos_clasificacion(db, t.id) if orden == "puntos" else {}
+    movimientos = (movimientos_clasificacion(db, t.id) if orden == "puntos"
+                   else movimientos_rentabilidad(db, t.id))
 
     def fila(i: int, f) -> FilaClasificacion:
         return _fila(i + 1, f, con_id, acumulados.get(f.eid),
-                     movimientos.get(f.eid), provisional=f.eid in vivas)
+                     movimientos.get(f.eid), provisional=f.eid in vivas,
+                     serie=series.get(f.eid))
 
     return Clasificacion(
         temporada=t, total=len(ordenadas), jornada_provisional=jornada.numero,
+        sp_temporada=rentabilidad_sp_temporada(db, t.id, vivo["sp"]),
         filas=[fila(i, f) for i, f in enumerate(ordenadas) if desde <= i < desde + cuantos],
         mias=[fila(i, f) for i, f in enumerate(ordenadas)
               if (i < desde or i >= desde + cuantos)
@@ -354,18 +368,22 @@ def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
     if orden == "rentabilidad":
         todas = db.execute(text(consulta), {"t": t.id}).all()
         acumulados = retornos_acumulados(db, [f.eid for f in todas])
+        series = series_acumuladas(db, [f.eid for f in todas])
+        movimientos = movimientos_rentabilidad(db, t.id)
         ordenadas = ordenar_por_rentabilidad(todas, acumulados)
         filas = ordenadas[desde:desde + cuantos]
         mias = []
         if alias:
             mias = [
-                _fila(i + 1, f, con_id, acumulados.get(f.eid))
+                _fila(i + 1, f, con_id, acumulados.get(f.eid), movimientos.get(f.eid),
+                      serie=series.get(f.eid))
                 for i, f in enumerate(ordenadas)
                 if i >= desde + cuantos and f.alias == alias.strip().lower()
             ][:10]
         return Clasificacion(
-            temporada=t, total=total,
-            filas=[_fila(desde + i + 1, f, con_id, acumulados.get(f.eid))
+            temporada=t, total=total, sp_temporada=rentabilidad_sp_temporada(db, t.id, None),
+            filas=[_fila(desde + i + 1, f, con_id, acumulados.get(f.eid), movimientos.get(f.eid),
+                         serie=series.get(f.eid))
                    for i, f in enumerate(filas)],
             mias=mias)
     filas = db.execute(text(f"""
@@ -386,12 +404,15 @@ def clasificacion(temporada: int | None = None, desde: int = Query(0, ge=0),
         """), {"t": t.id, "alias": alias.strip().lower(), "ultima": desde + cuantos}).all()
     visibles = [f.eid for f in filas] + [f.eid for f in fuera]
     acumulados = retornos_acumulados(db, visibles)
+    series = series_acumuladas(db, visibles)
     movimientos = movimientos_clasificacion(db, t.id)
     return Clasificacion(
-        temporada=t, total=total,
-        filas=[_fila(desde + i + 1, f, con_id, acumulados.get(f.eid), movimientos.get(f.eid))
+        temporada=t, total=total, sp_temporada=rentabilidad_sp_temporada(db, t.id, None),
+        filas=[_fila(desde + i + 1, f, con_id, acumulados.get(f.eid), movimientos.get(f.eid),
+                     serie=series.get(f.eid))
                for i, f in enumerate(filas)],
-        mias=[_fila(f.pos, f, con_id, acumulados.get(f.eid), movimientos.get(f.eid))
+        mias=[_fila(f.pos, f, con_id, acumulados.get(f.eid), movimientos.get(f.eid),
+                    serie=series.get(f.eid))
               for f in fuera])
 
 

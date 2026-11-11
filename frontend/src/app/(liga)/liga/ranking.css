@@ -1,0 +1,118 @@
+/* Liga y clasificación (maqueta v12): lista a sangre al estilo de la app Bolsa de iOS. Los colores
+   salen de los tokens de .lg (liga.css); las píldoras, de --pill-good, --pill-bad y --pill-ink. */
+
+/* Tokens y letra de la maqueta v12 (DESIGN v2 §3 y §4) solo para esta pantalla: negro puro de fondo en
+   oscuro, celdas de iOS y la pila del sistema. El resto de la liguilla sigue con sus tokens hasta rediseñarse. */
+.lg .lv-pagina {
+  --bg: #F2F2F7; --surface: #FFFFFF; --surface2: #E9E9EF; --raised: #FFFFFF;
+  --line: #D8D8DC; --line2: #C7C7CC; --ink: #000000; --ink2: #3C3C43; --muted: #6E6E73;
+  --good: #12804A; --bad: #C0392B; --accent: #0B6E68; --accent-bg: rgba(11, 110, 104, .12);
+  --pill-good: #12804A; --pill-bad: #C0392B; --pill-ink: #FFFFFF;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .lg .lv-pagina {
+    --bg: #000000; --surface: #1C1C1E; --surface2: #2C2C2E; --raised: #3A3A3C;
+    --line: #38383A; --line2: #48484A; --ink: #FFFFFF; --ink2: #C7C7CC; --muted: #8E8E93;
+    --good: #5CC98A; --bad: #F08A7E; --accent: #4FA39D; --accent-bg: rgba(79, 163, 157, .16);
+    --pill-good: #1F9D45; --pill-bad: #E5372C;
+  }
+}
+html[data-theme="dark"] .lg .lv-pagina {
+  --bg: #000000; --surface: #1C1C1E; --surface2: #2C2C2E; --raised: #3A3A3C;
+  --line: #38383A; --line2: #48484A; --ink: #FFFFFF; --ink2: #C7C7CC; --muted: #8E8E93;
+  --good: #5CC98A; --bad: #F08A7E; --accent: #4FA39D; --accent-bg: rgba(79, 163, 157, .16);
+  --pill-good: #1F9D45; --pill-bad: #E5372C;
+}
+.lg .lv-pagina .crest text { font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif; }
+/* El fondo lo pinta la raíz .lg, que no hereda los tokens de la página: se fija aquí, solo con esta pantalla. */
+.lg:has(.lv-pagina) { --bg: #F2F2F7; background: var(--bg); }
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .lg:has(.lv-pagina) { --bg: #000000; }
+}
+html[data-theme="dark"] .lg:has(.lv-pagina) { --bg: #000000; }
+
+.lg .lv-titulo { margin: 4px 0 0; font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); }
+.lg .lv-sub { margin-top: 2px; font-size: 15px; line-height: 20px; color: var(--muted); }
+
+/* Segmentado de DESIGN §7: pulgar blanco sobre pista gris que se desliza a la opción activa. */
+.lg .lv-seg {
+  position: relative; display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr));
+  height: 44px; margin-top: 16px; padding: 2px; border-radius: 12px; background: var(--surface2);
+}
+/* Los botones llevan el reset de la maqueta: sin bisel del navegador, sin fondo ni sombra propios. */
+.lg .lv-seg button { position: relative; z-index: 1; appearance: none; border: 0; border-radius: 10px; background: none; box-shadow: none;
+  padding: 0; font-family: inherit; color: var(--muted); font-size: 15px; font-weight: 600; cursor: pointer; }
+.lg .lv-seg button[aria-pressed="true"] { color: var(--ink); }
+.lg .lv-pulgar {
+  position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / var(--n, 3));
+  border-radius: 10px; background: var(--raised); box-shadow: 0 3px 8px rgba(0, 0, 0, .12);
+  transition: transform .3s cubic-bezier(.32, .72, 0, 1);
+}
+.lg .lv-seg[data-activo="1"] .lv-pulgar { transform: translateX(100%); }
+.lg .lv-seg[data-activo="2"] .lv-pulgar { transform: translateX(200%); }
+@media (prefers-reduced-motion: reduce) { .lg .lv-pulgar { transition: none; } }
+
+/* Cabecera de la lista: qué mide la columna de píldoras ahora. */
+.lg .lv-lista-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 24px 0 6px; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .lv-lista-cab b { font-weight: 600; color: var(--ink2); }
+.lg .lv-lista-cab > span:last-child { width: 74px; text-align: center; }
+
+/* Filas sin cajas, con separador que arranca tras el escudo; la de la estrategia propia va enmarcada. */
+/* El margen de página ya da 16 px: la lista lo cancela para ir a sangre, como en la maqueta. */
+.lg .lv-lista { list-style: none; margin: 0 calc(-1 * var(--page-gutter)); padding: 0; }
+.lg .lv-fila {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 74px; align-items: center; gap: 10px;
+  min-height: 64px; padding: 8px 16px;
+}
+.lg .lv-fila + .lv-fila::before { content: ""; position: absolute; top: 0; left: 80px; right: 0; height: 1px; background: var(--line); }
+.lg .lv-fila:active { background: var(--surface2); }
+.lg .lv-fila-abre {
+  display: grid; grid-template-columns: 22px 32px minmax(0, 1fr) 52px; align-items: center; gap: 10px;
+  min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer;
+  appearance: none; box-shadow: none; font-family: inherit;
+}
+.lg .lv-pos { text-align: right; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .lv-pos small { display: block; font-size: 12px; line-height: 14px; }
+.lg .lv-pos .lv-sube { color: var(--good); }
+.lg .lv-pos .lv-baja { color: var(--bad); }
+.lg .lv-nombre { min-width: 0; }
+.lg .lv-nombre b { display: block; font-size: 17px; line-height: 22px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .lv-nombre small { display: block; font-size: 15px; line-height: 20px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .lv-grafica { display: block; width: 58px; height: 28px; overflow: visible; }
+
+/* Píldora: verde si bate al S&P, roja si no; gris en puntos. Tocarla cambia el dato de toda la lista. */
+.lg .lv-pildora {
+  justify-self: end; min-width: 70px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px;
+  appearance: none; box-shadow: none; font-family: inherit;
+  background: var(--surface2); color: var(--ink); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums;
+  text-align: center; transition: transform .15s;
+}
+.lg .lv-pildora:active { transform: scale(.97); }
+.lg .lv-pildora.bien { background: var(--pill-good); color: var(--pill-ink); }
+.lg .lv-pildora.mal { background: var(--pill-bad); color: var(--pill-ink); }
+
+/* Tu estrategia: borde petróleo y fondo suave, en su puesto. */
+.lg .lv-fila.tuya { margin: 4px 8px; padding: 8px; border: 1px solid var(--accent); border-radius: 12px; background: var(--accent-bg); }
+.lg .lv-fila.tuya::before, .lg .lv-fila.tuya + .lv-fila::before { display: none; }
+.lg .lv-fila.tuya .lv-nombre b { color: var(--accent); }
+
+.lg .lv-hueco { padding: 10px 16px; font-size: 15px; color: var(--muted); text-align: center; }
+.lg .lv-pie { margin: 14px 0 0; font-size: 13px; line-height: 18px; color: var(--muted); text-align: center; }
+.lg .lv-nota { margin: 16px 0 0; font-size: 13px; line-height: 18px; color: var(--muted); }
+
+/* Actividad (solo admin): filas con la fecha a la derecha, separador que arranca en el texto. */
+.lg .lv-actividad { list-style: none; margin: 16px calc(-1 * var(--page-gutter)) 0; padding: 0; }
+.lg .lv-actividad li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 14px 16px; }
+.lg .lv-actividad li + li::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
+.lg .lv-actividad b { font-weight: 600; }
+.lg .lv-actividad time { font-size: 15px; color: var(--muted); white-space: nowrap; }
+
+/* En móvil la cabecera ya trae su propio aire arriba: la página no añade el suyo, como en la maqueta. */
+@media (max-width: 879px) {
+  .lg main.scroll.lv-pagina { padding-top: 0; }
+}
+
+@media (min-width: 880px) {
+  .lg .lv-titulo { margin-top: 8px; font-size: 26px; line-height: normal; }
+}

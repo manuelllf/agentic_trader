@@ -66,7 +66,7 @@ export function Campana({ variante, contraida = false }: { variante: "cabecera" 
   return <div className={`campana-caja${variante === "barra" ? " en-barra" : ""}`} ref={caja}>
     <button type="button" className={variante === "barra" ? "barra-accion campana" : "campana"} aria-haspopup="dialog" aria-expanded={abierto}
       aria-label={t("avisos_aria", { n: datos?.sin_leer ?? 0 })} onClick={() => (abierto ? cerrar() : abrir())}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6.5 9a5.5 5.5 0 0 1 11 0c0 6 2.5 7 2.5 8H4c0-1 2.5-2 2.5-8" /><path d="M10 20.5h4" /></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true"><path d="M6 9.5a6 6 0 1 1 12 0c0 4.6 1.8 6 1.8 6H4.2S6 14.1 6 9.5Z" /><path d="M10 19.5a2 2 0 0 0 4 0" /></svg>
       {variante === "barra" && <span className={contraida ? "sr-only-escritorio" : undefined}>{t("avisos_titulo")}</span>}
       {(datos?.sin_leer ?? 0) > 0 && <span className="campana-punto" aria-hidden="true" />}
     </button>

@@ -45,7 +45,8 @@ export function Sesion() {
     setAbierto(false);
     await cerrarSesion();
   };
-  if (estado === "cargando") return <span className="cuenta-hueco" aria-hidden="true" />;
+  // El botón está desde el primer pintado (maqueta v12); hasta que llega la sesión no se abre.
+  const cargando = estado === "cargando";
   const dentro = estado === "dentro";
   const panel = yo?.aal2 ? "/admin" : "/cuenta/verificacion?next=/admin";
   const cerrar = () => setAbierto(false);
@@ -53,7 +54,7 @@ export function Sesion() {
   return (
     <div className="cuenta" ref={caja}>
       <button type="button" className="puntos" aria-haspopup="menu" aria-expanded={abierto}
-        aria-label={t("account_menu_aria")} onClick={() => setAbierto((a) => !a)}>
+        aria-label={t("account_menu_aria")} disabled={cargando} onClick={() => setAbierto((a) => !a)}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
         </svg>

@@ -1,37 +1,30 @@
 "use client";
 
-// Pantalla «Liga» (DESIGN.md §7 «Liga»/«Clasificación»/«Este mes»): el marcador, la clasificación
-// de la temporada y «Este mes», con datos reales y públicos (`/liga/publico/*`, D3: se ve sin
-// cuenta). Sin temporada todavía (hoy: todos los campos de `/liga/publico/portada` son `null`) se
+// Pantalla «Liga» (maqueta v12): cabecera de la app, título grande, la semana en curso, la clasificación
+// de la temporada y, solo para admin, la actividad. Datos reales y públicos (`/liga/publico/*`, D3: se
+// ve sin cuenta). Sin temporada todavía (hoy: todos los campos de `/liga/publico/portada` son `null`) se
 // enseña un estado vacío honesto en vez de inventar filas.
-//
-// Gap de backend (ver el informe de F7): `EquipoOut` no manda `visibilidad`, así que no se puede
-// distinguir aquí «publicada» de «privada» como pide la leyenda de la maqueta; se usa una
-// etiqueta neutra («de la comunidad») para las que no son de la casa ni la propia.
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useRef, type RefObject } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
+import { Actividad, BarraPestanas, CabeceraApp, Cargando, ErrorLiga, Vacio } from "../_ui";
 import {
-  Actividad, BarraPestanas, CabeceraApp, Cargando, Clasificacion as TablaClasificacion, escudoCasa, ErrorLiga,
-  FilaEquipo, HuecoClasificacion, OrdenLista, Segmentado, Vacio,
-} from "../_ui";
-import {
-  getActividad, type Actividad as DatosActividad, getClasificacion, getJornadaPublica, getPortada, getPremio, type PremioPublico,
-  type Clasificacion, type FilaClasificacion, type JornadaDetalle,
-  type OrdenClasificacion, type Portada,
+  getActividad, type Actividad as DatosActividad, getClasificacion, getJornadaPublica, getPortada, getPremio,
+  type Clasificacion, type JornadaDetalle, type Portada, type PremioPublico,
 } from "@/lib/liga/api";
-import { claseSigno, fecha, porcentaje } from "@/lib/liga/format";
+import { fecha } from "@/lib/liga/format";
 import { useSesion } from "../_sesion/SesionContext";
 import { useCache } from "@/lib/liga/cache";
-import { precargarFicha } from "@/lib/liga/ficha";
 import { anioDeLiga } from "@/lib/liga/anio";
-import { etiquetaEquipo, VistaJornada } from "./VistaJornada";
+import { SegmentoLiga, type OpcionSegmentoLiga } from "./SegmentoLiga";
+import { ListaClasificacion } from "./ListaClasificacion";
+import { VistaJornada } from "./VistaJornada";
 
-type Vista = "tabla" | "jornada" | "actividad";
+type Vista = "semana" | "tabla" | "actividad";
 
 const horaLocal = (iso: string, locale: Locale) =>
   new Date(iso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
@@ -50,7 +43,7 @@ function resumenJuego(p: Portada, t: (key: string, values?: Record<string, numbe
   return t("league_resumen_sin_apuntadas");
 }
 
-/** Lo que se enseña en «Este mes» mientras no hay jornada formada: que ya viene, o que ya cerró la
+/** Lo que se enseña en «Esta semana» mientras no hay jornada formada: que ya viene, o que ya cerró la
  *  inscripción y solo falta formarla (se forma sola el primer día de bolsa, tras el corte y antes de abrir el mercado). */
 function SinJornada({ portada }: { portada: Portada }) {
   const t = useTranslations();
@@ -85,6 +78,25 @@ function textoSinClasificacion(p: Portada, t: (key: string, values?: Record<stri
   return t("league_clasificacion_vacia_sin_apuntadas");
 }
 
+/** Como en la maqueta: al subir, el título grande sale de la cabecera y esta enseña «Liga». */
+function useTituloEnCabecera(titulo: RefObject<HTMLHeadingElement | null>) {
+  useEffect(() => {
+    const raiz = document.documentElement;
+    const marcar = () => {
+      const cab = document.querySelector(".lg .cab");
+      if (titulo.current && cab) {
+        raiz.toggleAttribute("data-titulo", titulo.current.getBoundingClientRect().bottom < cab.getBoundingClientRect().bottom);
+      }
+    };
+    marcar();
+    addEventListener("scroll", marcar, { passive: true });
+    return () => {
+      removeEventListener("scroll", marcar);
+      raiz.removeAttribute("data-titulo");
+    };
+  }, [titulo]);
+}
+
 export default function Liga() {
   return <Suspense fallback={<Cargando />}><LigaContenido /></Suspense>;
 }
@@ -95,17 +107,15 @@ function LigaContenido() {
   const router = useRouter();
   const parametros = useSearchParams();
   const { yo } = useSesion();
-  const vista: Vista = parametros.get("vista") === "actividad" ? "actividad" : parametros.get("vista") === "tabla" ? "tabla" : "jornada";
-  const orden: OrdenClasificacion = parametros.get("orden") === "puntos" ? "puntos" : "rentabilidad";
+  const titulo = useRef<HTMLHeadingElement>(null);
+  useTituloEnCabecera(titulo);
+  // La actividad es solo para el admin: a los demás, la pestaña no existe y la vista cae a «Esta semana».
+  const admin = yo?.admin === true;
+  const pedida = parametros.get("vista");
+  const vista: Vista = pedida === "tabla" ? "tabla" : pedida === "actividad" && admin ? "actividad" : "semana";
   const setVista = (valor: Vista) => {
     const query = new URLSearchParams(parametros.toString());
-    if (valor !== "jornada") query.set("vista", valor); else query.delete("vista");
-    router.replace(`/liga${query.size ? `?${query}` : ""}`, { scroll: false });
-  };
-  const setOrden = (valor: OrdenClasificacion) => {
-    if (valor === orden) return;
-    const query = new URLSearchParams(parametros.toString());
-    if (valor === "puntos") query.set("orden", valor); else query.delete("orden");
+    if (valor !== "semana") query.set("vista", valor); else query.delete("vista");
     router.replace(`/liga${query.size ? `?${query}` : ""}`, { scroll: false });
   };
 
@@ -118,8 +128,8 @@ function LigaContenido() {
   const hayTemporada = typeof portada === "object" && !!portada && portada.temporada !== null;
   const { datos: clasificacion, refrescar: refrescarClasificacion } =
     useCache<Clasificacion | string>(
-      vista === "tabla" && hayTemporada ? `clasificacion:${orden}:${yo?.alias ?? ""}` : null,
-      () => getClasificacion({ alias: yo?.alias, orden }),
+      vista === "tabla" && hayTemporada ? `clasificacion:${yo?.alias ?? ""}` : null,
+      () => getClasificacion({ alias: yo?.alias }),
     );
   const temporadaId = typeof portada === "object" && portada ? portada.temporada?.id : undefined;
   const { datos: actividad, refrescar: refrescarActividad } = useCache<DatosActividad | string>(
@@ -128,41 +138,18 @@ function LigaContenido() {
   );
   const idEnJuego = typeof portada === "object" && portada ? portada.en_juego?.id ?? null : null;
   const { datos: jornada, refrescar: refrescarJornada } = useCache<JornadaDetalle | string>(
-    vista === "jornada" && idEnJuego != null ? `jornada:${idEnJuego}` : null,
+    vista === "semana" && idEnJuego != null ? `jornada:${idEnJuego}` : null,
     () => getJornadaPublica(idEnJuego as number),
     120000,
   );
 
   const abrir = (id: string | null) => router.push(id ? `/ficha/${id}` : `/entrar?next=${encodeURIComponent("/liga")}`);
 
-  const filaDe = (f: FilaClasificacion) => (
-    <FilaEquipo
-      key={f.equipo.id ?? `p${f.posicion}`}
-      puesto={f.posicion}
-      nombre={f.equipo.nombre}
-      escudo={f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo}
-      casa={f.equipo.casa}
-      etiqueta={etiquetaEquipo(f.equipo, yo?.alias ?? null, (key) => t(key))}
-      vsIndice={f.dif_sp}
-      puntos={f.puntos}
-      orden={orden}
-      ganadas={f.ganadas}
-      empatadas={f.empatadas}
-      perdidas={f.perdidas}
-      acumulado={f.acumulado}
-      movimiento={f.movimiento}
-      tipo={f.equipo.casa ? "casa" : (yo && f.equipo.autor === yo.alias) ? "mia" : "normal"}
-      onClick={() => abrir(f.equipo.id)}
-      alAcercar={f.equipo.id ? () => { if (f.equipo.id) precargarFicha(f.equipo.id); } : undefined}
-    />
-  );
-  const mostrarOrden = clasificacion === undefined || (typeof clasificacion === "object" && clasificacion !== null && clasificacion.filas.length > 0);
-
   if (cargandoPortada) {
     return (
-      <main className="scroll liga-escritorio">
-        <CabeceraApp anio={anio} />
-        <h1 className="h1">{t("league_titulo")}</h1>
+      <main className="scroll liga-escritorio lv-pagina">
+        <CabeceraApp anio={anio} tituloBarra={t("league_titulo")} />
+        <h1 ref={titulo} className="lv-titulo">{t("league_titulo")}</h1>
         <p className="meta anio-escritorio">{anio}</p>
         <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
         <BarraPestanas />
@@ -172,9 +159,9 @@ function LigaContenido() {
 
   if (typeof portada === "string") {
     return (
-      <main className="scroll liga-escritorio">
-        <CabeceraApp anio={anio} />
-        <h1 className="h1">{t("league_titulo")}</h1>
+      <main className="scroll liga-escritorio lv-pagina">
+        <CabeceraApp anio={anio} tituloBarra={t("league_titulo")} />
+        <h1 ref={titulo} className="lv-titulo">{t("league_titulo")}</h1>
         <p className="meta anio-escritorio">{anio}</p>
         <ErrorLiga titulo={t("league_error_portada")} mensaje={portada}
                    accion={{ texto: t("league_reintentar"), onClick: refrescarPortada }} />
@@ -185,12 +172,33 @@ function LigaContenido() {
   if (!portada) return null;
 
   const { temporada } = portada;
+  const nombreTemporada = temporada === null ? ""
+    : temporada.clave === "pretemporada" ? t("league_pretemporada")
+      : temporada.clave === "temporada_1" ? t("league_temporada_1") : temporada.nombre;
+  const opciones: OpcionSegmentoLiga<Vista>[] = [
+    { valor: "semana", etiqueta: t("league_este_mes") },
+    { valor: "tabla", etiqueta: t("league_clasificacion") },
+    ...(admin ? [{ valor: "actividad" as const, etiqueta: t("actividad_pestana") }] : []),
+  ];
+  const premioEnlace = premio && typeof premio !== "string" && premio.visible ? (
+    <Link href="/premio" className="premio-enlace">
+      <svg className="premio-glifo" width={34} height={34} viewBox="0 0 34 34" aria-hidden="true">
+        <rect className="base" x={2} y={14} width={30} height={5} rx={2.5} />
+        <rect className="tramo" x={2} y={14} width={5} height={5} rx={2.5} />
+        <rect className="aguja" x={13.2} y={10} width={1.6} height={13} rx={0.8} />
+      </svg>
+      <span className="premio-enlace-texto"><b>{t("premio_titulo")}</b><small>{premio.calculado
+        ? t("premio_calculado", { escalon: premio.escalon ?? 0 })
+        : t("premio_fila_resumen", { cuentas: premio.cuentas ?? 0, basico: premio.umbral_basico ?? 0 })}</small></span>
+      <svg className="chev" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+    </Link>
+  ) : null;
 
   return (
-    <main className="scroll liga-escritorio">
-        <CabeceraApp anio={anio} />
-        <h1 className="h1">{t("league_titulo")}</h1>
-        <p className="meta anio-escritorio">{anio}</p>
+    <main className="scroll liga-escritorio lv-pagina">
+      <CabeceraApp anio={anio} tituloBarra={t("league_titulo")} />
+      <h1 ref={titulo} className="lv-titulo">{t("league_titulo")}</h1>
+      <p className="meta anio-escritorio">{anio}</p>
 
       {temporada === null ? (
         <Vacio
@@ -204,76 +212,28 @@ function LigaContenido() {
         />
       ) : (
         <>
-          {portada.en_juego && (
-            <div className="board">
-              <div>
-                <b>{t("league_jornada_de", { round: portada.en_juego.numero, total: temporada.n_jornadas })}</b>
-                <span>{temporada.clave === "pretemporada" ? t("league_pretemporada") : temporada.clave === "temporada_1" ? t("league_temporada_1") : temporada.nombre}</span>
-              </div>
-              {portada.en_juego.sp_rentabilidad != null && (
-                <div className="r">
-                  <span>{t("league_sp_mes")}</span>
-                  <b className={`num ${claseSigno(portada.en_juego.sp_rentabilidad)}`}>
-                    {porcentaje(portada.en_juego.sp_rentabilidad, 1, locale)}
-                  </b>
-                </div>
-              )}
-            </div>
-          )}
-          <p className="meta" style={{ marginTop: 10 }}>
-            {resumenJuego(portada, (key, values) => t(key, values))}
+          <p className="lv-sub">
+            {portada.en_juego
+              ? `${t("league_jornada_de", { round: portada.en_juego.numero, total: temporada.n_jornadas })} · ${nombreTemporada}`
+              : resumenJuego(portada, (key, values) => t(key, values))}
           </p>
-          <div style={{ marginTop: 16 }}>
-            <Segmentado etiquetaGrupo={t("league_vista_aria")} valor={vista} onChange={setVista}
-                        opciones={[{ valor: "jornada", etiqueta: t("league_este_mes") },
-                                   { valor: "tabla", etiqueta: t("league_clasificacion") },
-                                   { valor: "actividad", etiqueta: t("actividad_pestana") }]} />
-          </div>
+          <SegmentoLiga etiquetaGrupo={t("league_vista_aria")} valor={vista} onChange={setVista} opciones={opciones} />
 
           {vista === "tabla" ? (
-            <>
-              {mostrarOrden && <div style={{ marginTop: 16 }}><OrdenLista etiquetaGrupo={t("league_orden_aria")} valor={orden}
-                  opciones={[{ valor: "rentabilidad", etiqueta: t("league_orden_rentabilidad") }, { valor: "puntos", etiqueta: t("league_orden_puntos") }]}
-                  onChange={setOrden} /></div>}
-              {clasificacion === undefined ? (
-                <div style={{ marginTop: 8 }}><Cargando filas={5} /></div>
-              ) : typeof clasificacion === "string" ? (
-                <ErrorLiga titulo={t("league_error_clasificacion")} mensaje={clasificacion}
-                           accion={{ texto: t("league_reintentar"), onClick: refrescarClasificacion }} />
-              ) : clasificacion.filas.length === 0 ? (
-                <Vacio titulo={t("league_sin_clasificacion")}
-                       texto={textoSinClasificacion(portada, (key, values) => t(key, values), locale)}
-                       accion={yo
-                         ? { texto: t("league_crear_mia"), onClick: () => { window.location.href = "/crear"; } }
-                         : { texto: t("league_entrar"), onClick: () => { window.location.href = "/entrar"; } }} />
-              ) : (
-                <div className="sec" style={{ marginTop: 0 }}>
-                  <TablaClasificacion jornada_provisional={clasificacion.jornada_provisional} temporada={clasificacion.temporada}>
-                    {clasificacion.filas.map(filaDe)}
-                    {clasificacion.total > clasificacion.filas.length && (
-                      <HuecoClasificacion>
-                        {t("league_mas_filas", { count: clasificacion.total - clasificacion.filas.length - clasificacion.mias.length })}
-                      </HuecoClasificacion>
-                    )}
-                    {clasificacion.mias.map(filaDe)}
-                  </TablaClasificacion>
-                  {orden === "puntos" && <div className="legend">
-                    <p>{t("league_leyenda_orden_puntos")}</p>
-                  </div>}
-                  {premio && typeof premio !== "string" && premio.visible && <Link href="/premio" className="premio-enlace">
-                    <svg className="premio-glifo" width={34} height={34} viewBox="0 0 34 34" aria-hidden="true">
-                      <rect className="base" x={2} y={14} width={30} height={5} rx={2.5} />
-                      <rect className="tramo" x={2} y={14} width={5} height={5} rx={2.5} />
-                      <rect className="aguja" x={13.2} y={10} width={1.6} height={13} rx={0.8} />
-                    </svg>
-                    <span className="premio-enlace-texto"><b>{t("premio_titulo")}</b><small>{premio.calculado
-                      ? t("premio_calculado", { escalon: premio.escalon ?? 0 })
-                      : t("premio_fila_resumen", { cuentas: premio.cuentas ?? 0, basico: premio.umbral_basico ?? 0 })}</small></span>
-                    <svg className="chev" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
-                  </Link>}
-                </div>
-              )}
-            </>
+            clasificacion === undefined ? (
+              <div style={{ marginTop: 8 }}><Cargando filas={5} /></div>
+            ) : typeof clasificacion === "string" ? (
+              <ErrorLiga titulo={t("league_error_clasificacion")} mensaje={clasificacion}
+                         accion={{ texto: t("league_reintentar"), onClick: refrescarClasificacion }} />
+            ) : clasificacion.filas.length === 0 ? (
+              <Vacio titulo={t("league_sin_clasificacion")}
+                     texto={textoSinClasificacion(portada, (key, values) => t(key, values), locale)}
+                     accion={yo
+                       ? { texto: t("league_crear_mia"), onClick: () => { window.location.href = "/crear"; } }
+                       : { texto: t("league_entrar"), onClick: () => { window.location.href = "/entrar"; } }} />
+            ) : (
+              <ListaClasificacion clasificacion={clasificacion} miAlias={yo?.alias ?? null} onAbrir={abrir} premio={premioEnlace} />
+            )
           ) : vista === "actividad" ? (
             actividad === undefined ? <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
               : typeof actividad === "string" ? (

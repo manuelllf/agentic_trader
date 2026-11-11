@@ -1,5 +1,6 @@
 import { SesionProvider } from "./_sesion/SesionContext";
 import { AvisoErrores } from "./_ui/AvisoErrores";
+import IndicadorDeDesplazamiento from "@/components/IndicadorDeDesplazamiento";
 import PwaInstall from "@/components/PwaInstall";
 import type { Metadata } from "next";
 
@@ -15,6 +16,8 @@ export function generateMetadata(): Metadata {
 export default function LigaLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="lg">
+      {/* La cabecera recibe su material al bajar (DESIGN §6) en todas las pantallas de la liga. */}
+      <IndicadorDeDesplazamiento />
       <SesionProvider>
         {children}
         <AvisoErrores />

@@ -72,6 +72,7 @@ def calcular(db: Session, j: Jornada, dia: date,
         sp = rentabilidad_sp(cierres.get(SPY, []), j.dia_base, dia)
     except ValueError as e:
         raise ErrorProceso(f"Sin cierre del S&P del día base ({j.dia_base}).") from e
+    sesiones = calendario.dias_de_bolsa(j.dia_base, dia)
     salida = []
     for f in filas:
         fila = {"inscripcion_id": f.id, "estrategia_id": f.estrategia_id, "nombre": f.nombre,
@@ -90,10 +91,29 @@ def calcular(db: Session, j: Jornada, dia: date,
             continue
         res = resultado_jornada(r, sp)
         salida.append({**fila, "rentabilidad": r, "dif": res.dif, "letra": res.letra,
-                       "puntos": res.puntos, "sin_cierre": sin_cierre})
+                       "puntos": res.puntos, "sin_cierre": sin_cierre,
+                       "serie": _serie(db, j, f, pos[f.id], cierres, sesiones, cotizaciones)})
     salida.sort(key=lambda x: (x["rentabilidad"] is None, -(x["rentabilidad"] or 0)))
     return {"dia": dia, "sp_rentabilidad": sp, "filas": salida,
             "por_ticker": cotizaciones_posiciones(cierres, j.dia_base, dia)}
+
+
+def _serie(db: Session, j: Jornada, f, posiciones: list, cierres: dict[str, list[precios.Cierre]],
+           sesiones: list[date], cotizaciones: dict | None) -> list[Decimal]:
+    """Rentabilidad de la inscripción en cada sesión desde el día base: la serie de la tabla viva.
+    Se saca de los mismos precios que el cálculo del día, sin releerlos."""
+    salida = []
+    for dia_sesion in sesiones:
+        try:
+            if f.casa_clave == "omega":
+                salida.append((omega.rentabilidad(db, j, dia_sesion, cotizaciones=cotizaciones)
+                               if cotizaciones else omega.rentabilidad(db, j, dia_sesion))[0])
+            else:
+                salida.append(rentabilidad_cartera(posiciones, cierres, j.dia_base, dia_sesion)
+                              if posiciones else Decimal("0.0000"))
+        except ValueError:
+            continue
+    return salida
 
 
 def cotizaciones_posiciones(cierres: dict[str, list[precios.Cierre]],
@@ -186,7 +206,7 @@ def _actualizar_cotizaciones(jornada_id: int, fabrica: Fabrica, generacion: int)
             if j.estado != "formada" or dia < j.dia_base:
                 return
             r = calcular(db, j, dia, cotizaciones=cotizaciones)
-        pendientes = sum(not any(c.dia == dia for c in cotizaciones.get(t, [])) for t in tickers)
+        pendientes =sum(not any(c.dia == dia for c in cotizaciones.get(t, [])) for t in tickers)
         valor = {"dia": dia, "sp": r["sp_rentabilidad"], "actualizado": datetime.now(UTC),
                  "en_vivo": dia == hoy, "precios_pendientes": pendientes,
                  "por_inscripcion": {f["inscripcion_id"]: f for f in r["filas"]},

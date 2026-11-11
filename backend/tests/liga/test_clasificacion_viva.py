@@ -82,6 +82,8 @@ def _preparar(monkeypatch, formada=True, sp=Decimal("1")):
     monkeypatch.setattr(cp, "periodos_cerrados", lambda _db, ids: {
         eid: cerrados[eid] for eid in ids if eid in cerrados})
     monkeypatch.setattr(rp, "movimientos_clasificacion", lambda *_a: {"a": 2})
+    monkeypatch.setattr(rp, "movimientos_rentabilidad", lambda *_a: {"a": 2})
+    monkeypatch.setattr(rp, "rentabilidad_sp_temporada", lambda *_a: Decimal("4.1"))
     return Db(), jornada, vivo, cerrados
 
 
@@ -89,6 +91,16 @@ def _clasificacion(db, orden="rentabilidad", desde=0, cuantos=50, alias=None):
     return rp.clasificacion(
         temporada=1, desde=desde, cuantos=cuantos, alias=alias,
         orden=orden, db=db, ident=None)
+
+
+def test_la_serie_acaba_en_el_acumulado_y_la_temporada_lleva_su_sp(monkeypatch):
+    db, _jornada, _vivo, _cerrados = _preparar(monkeypatch)
+    resultado = _clasificacion(db, orden="rentabilidad")
+    fila = next(f for f in resultado.filas if f.equipo.nombre == "a")
+    assert fila.serie == [Decimal(0), Decimal("10.0000"), Decimal("4.5000")]
+    assert fila.serie[-1] == fila.acumulado.rentabilidad
+    assert fila.movimiento == 2
+    assert resultado.sp_temporada == Decimal("4.1")
 
 
 def test_periodo_provisional_compone_y_un_hueco_reinicia():

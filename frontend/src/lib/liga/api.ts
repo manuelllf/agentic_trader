@@ -734,6 +734,8 @@ export type FilaJornadaPublica = {
   rentabilidad: number | null;
   dif_sp: number | null;
   puntos: number | null;
+  /** Rentabilidad en cada sesión de la jornada en juego, desde 0 (vacía si está cerrada). */
+  serie: number[];
 };
 
 export type JornadaDetalle = {
@@ -766,6 +768,8 @@ export type FilaClasificacion = {
   acumulado: RentabilidadAcumulada | null;
   /** Places moved up since the immediately preceding completed period. */
   movimiento: number | null;
+  /** Rentabilidad acumulada al cierre de cada periodo, desde 0; la última es la de `acumulado`. */
+  serie: number[];
 };
 
 export type OrdenClasificacion = "rentabilidad" | "puntos";
@@ -774,6 +778,8 @@ export type OrdenClasificacion = "rentabilidad" | "puntos";
 export type Clasificacion = {
   temporada: TemporadaPublica; total: number; filas: FilaClasificacion[]; mias: FilaClasificacion[];
   jornada_provisional?: number | null;
+  /** El S&P de la temporada: sus jornadas cerradas y, si hay una en juego, su cifra viva. */
+  sp_temporada?: number | null;
 };
 
 export type PremioPublico = {

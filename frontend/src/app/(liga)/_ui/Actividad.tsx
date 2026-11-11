@@ -15,7 +15,7 @@ export function Actividad({ items }: { items: ActividadItem[] }) {
   }
 
   return (
-    <ul className="sec" style={{ listStyle: "none", padding: 0 }}>
+    <ul className="lv-actividad">
       {items.map((item, indice) => {
         const texto = item.tipo === "puesto"
           ? t((item.saltos ?? 0) > 0 ? "actividad_sube" : "actividad_baja", {
@@ -30,13 +30,11 @@ export function Actividad({ items }: { items: ActividadItem[] }) {
               : t("actividad_cambio_salen", { equipo: item.equipo, salidas: lista.format(item.salidas) });
         const inicioEquipo = texto.indexOf(item.equipo);
         return (
-          <li key={`${item.dia}:${item.tipo}:${indice}`} className="jr"
-              style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 7.5rem)", alignItems: "start",
-                       padding: "12px", cursor: "default", background: "var(--surface)", transition: "none" }}>
+          <li key={`${item.dia}:${item.tipo}:${indice}`}>
             <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
               {texto.slice(0, inicioEquipo)}<b>{item.equipo}</b>{texto.slice(inicioEquipo + item.equipo.length)}
             </span>
-            <time className="meta num" dateTime={item.dia} style={{ textAlign: "right" }}>
+            <time className="num" dateTime={item.dia}>
               {fecha(item.dia, new Date(), locale)}
             </time>
           </li>
