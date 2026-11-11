@@ -4,7 +4,7 @@ import { Campana } from "../_avisos/Campana";
 import { CREDITOS_VISIBLES } from "@/lib/liga/funciones";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSesion } from "../_sesion/SesionContext";
 import { getCatalogo, getCreditos, getPortada, misEstrategias, misLigas } from "@/lib/liga/api";
@@ -49,6 +49,60 @@ const PESTANAS = [
   },
 ] as const;
 
+/** Qué pestaña enseña que la sección está abierta. Liga cubre también la ficha de una estrategia. */
+function activaEn(clave: string, ruta: string | null | undefined): boolean {
+  return clave === "crear" ? !!ruta?.startsWith("/crear")
+    : clave === "mias" ? !!ruta?.startsWith("/mias")
+    : clave === "privadas" ? !!ruta?.startsWith("/privadas")
+    : clave === "cuenta" ? !!ruta?.startsWith("/cuenta")
+    : clave === "liga" ? (ruta === "/liga" || !!ruta?.startsWith("/ficha"))
+    : false;
+}
+
+// Orden de las cuatro pestañas visibles en móvil: la pastilla viaja de una a otra (maqueta v1).
+const ORDEN_BARRA = ["liga", "privadas", "crear", "mias"];
+
+/** Posición de la pastilla. Cuenta vive en el menú de móvil: sin pestaña visible, no hay pastilla. */
+export function indiceDePestana(clave: string | null): number | null {
+  const i = clave === null ? -1 : ORDEN_BARRA.indexOf(clave);
+  return i >= 0 ? i : null;
+}
+
+type DocumentoConTransicion = Document & { startViewTransition?: (cambio: () => Promise<void>) => unknown };
+let terminarCambio: (() => void) | null = null;
+
+/** Cambia de pestaña con transición de vista (maqueta v1): la pastilla viaja y el contenido se funde.
+ *  Sin soporte, cambia sin animar. La transición termina cuando la ruta nueva ya está pintada. */
+export function navegarConTransicion(href: string, router: { push: (href: string) => void },
+  doc: DocumentoConTransicion = document): void {
+  if (!doc.startViewTransition) {
+    router.push(href);
+    return;
+  }
+  doc.startViewTransition(() => new Promise<void>((resolver) => {
+    terminarCambio = resolver;
+    router.push(href);
+    // Si la ruta nueva no llega (error, o no hay barra que avise), la pantalla no se queda congelada.
+    window.setTimeout(() => {
+      if (terminarCambio === resolver) { terminarCambio = null; resolver(); }
+    }, 1200);
+  }));
+}
+
+/** Pone fin a la transición en curso. */
+export function terminarTransicion(): void {
+  const fin = terminarCambio;
+  terminarCambio = null;
+  fin?.();
+}
+
+/** Va en el layout de la liga: cierra la transición en cada cambio de ruta, tenga o no barra. */
+export function CierreDeTransicion() {
+  const ruta = usePathname();
+  useLayoutEffect(() => { terminarTransicion(); }, [ruta]);
+  return null;
+}
+
 export function BarraPestanas() {
   const t = useTranslations();
   const ruta = usePathname();
@@ -56,6 +110,7 @@ export function BarraPestanas() {
   const { estado, yo, cerrarSesion } = useSesion();
   const panel = yo?.aal2 ? "/admin" : "/cuenta/verificacion?next=/admin";
   const [contraida, setContraida] = useState(false);
+  const indice = indiceDePestana(PESTANAS.find((p) => activaEn(p.clave, ruta))?.clave ?? null);
 
   useEffect(() => {
     let guardada = false;
@@ -99,7 +154,9 @@ export function BarraPestanas() {
   }, [estado, router]);
 
   return (
-    <nav className="tabbar" aria-label={t("common_secciones")}>
+    <nav className={`tabbar${indice === null ? " sin-activa" : ""}`} aria-label={t("common_secciones")}
+      style={indice === null ? undefined : ({ "--indice": indice } as CSSProperties)}>
+      <span className="barra-pastilla" aria-hidden="true" />
       <div className="barra-marca solo-escritorio">
         {contraida ? <img src="/icon-192.png?v=vennett-10" alt="" width={32} height={32} />
           : <Marca className="barra-wordmark" />}
@@ -113,19 +170,20 @@ export function BarraPestanas() {
         </button>
       </div>
       {PESTANAS.map((p) => {
-        const activa = p.clave === "crear" ? ruta?.startsWith("/crear")
-          : p.clave === "mias" ? ruta?.startsWith("/mias")
-          : p.clave === "privadas" ? ruta?.startsWith("/privadas")
-          : p.clave === "cuenta" ? ruta?.startsWith("/cuenta")
-          : p.clave === "liga" ? (ruta === "/liga" || ruta?.startsWith("/ficha"))
-          : false;
+        const activa = activaEn(p.clave, ruta);
         return (
           <Link key={p.clave} href={p.href} prefetch aria-current={activa ? "page" : undefined}
             className={p.clave === "cuenta" ? "solo-escritorio" : undefined}
             onClick={(event) => {
-              if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey
-                && !event.altKey && event.currentTarget.querySelector('[aria-busy="true"]')) {
+              const plano = event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+              if (plano && event.currentTarget.querySelector('[aria-busy="true"]')) {
                 event.preventDefault();
+                return;
+              }
+              // Tocar la pestaña activa no anima nada: sigue el enlace normal.
+              if (plano && !activa) {
+                event.preventDefault();
+                navegarConTransicion(p.href, router);
               }
             }}>
             <EstadoEnlace claseEtiqueta={contraida ? "etiqueta sr-only-escritorio" : "etiqueta"} texto={t(`common_${p.clave}`)} icono={p.icono} />

@@ -1,6 +1,7 @@
 import { SesionProvider } from "./_sesion/SesionContext";
 import { AvisoErrores } from "./_ui/AvisoErrores";
 import IndicadorDeDesplazamiento from "@/components/IndicadorDeDesplazamiento";
+import { CierreDeTransicion } from "./_ui/BarraPestanas";
 import PwaInstall from "@/components/PwaInstall";
 import type { Metadata } from "next";
 
@@ -18,6 +19,7 @@ export default function LigaLayout({ children }: Readonly<{ children: React.Reac
     <div className="lg">
       {/* La cabecera recibe su material al bajar (DESIGN §6) en todas las pantallas de la liga. */}
       <IndicadorDeDesplazamiento />
+      <CierreDeTransicion />
       <SesionProvider>
         {children}
         <AvisoErrores />
