@@ -8,10 +8,9 @@ import type { Clasificacion, FilaClasificacion } from "@/lib/liga/api";
 import { porcentaje } from "@/lib/liga/format";
 import { escudoCasa } from "../_ui/Escudo";
 import { ListaRanking, type EntradaRanking, type FilaRanking } from "./ListaRanking";
-import { etiquetaEquipo } from "./VistaJornada";
 
 // La clasificación de la temporada (maqueta v12): las mismas filas que la semana, con el S&P de la
-// temporada en la cabecera, los puestos movidos, los puntos bajo la etiqueta y los huecos hasta la tuya.
+// temporada en la cabecera, los puestos movidos y los huecos hasta la tuya. Los puntos van en la píldora.
 export function ListaClasificacion({ clasificacion, miAlias, onAbrir, premio }: {
   clasificacion: Clasificacion;
   miAlias: string | null;
@@ -33,7 +32,7 @@ export function ListaClasificacion({ clasificacion, miAlias, onAbrir, premio }: 
       puesto: f.posicion,
       movimiento: f.movimiento,
       nombre: f.equipo.nombre,
-      sub: `${etiquetaEquipo(f.equipo, miAlias, (clave) => t(clave))} · ${t("strategies_points", { count: f.puntos })}`,
+      sub: "",
       escudo: f.equipo.casa ? escudoCasa(f.equipo.casa) : f.equipo.escudo,
       casa: f.equipo.casa,
       serie: f.serie,

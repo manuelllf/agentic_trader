@@ -6,8 +6,8 @@ import { useLocale, useTranslations } from "next-intl";
 import { useParams, useRouter } from "next/navigation";
 import { normalizeLocale } from "@/i18n/locale";
 import { useConfirmar } from "@/components/Confirmar";
-import { BarraPestanas, CabeceraApp, Cargando, ErrorLiga } from "../../_ui";
-import { ListaRanking, type EntradaRanking, type FilaRanking, type ModoRanking } from "../../liga/ListaRanking";
+import { BarraPestanas, CabeceraApp, ErrorLiga } from "../../_ui";
+import { EsqueletoRanking, ListaRanking, type EntradaRanking, type FilaRanking, type ModoRanking } from "../../liga/ListaRanking";
 import { SegmentoLiga } from "../../liga/SegmentoLiga";
 import { expulsarDeLiga, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle, type MiembroLiga } from "@/lib/liga/api";
 import { invalidar, useCache } from "@/lib/liga/cache";
@@ -95,7 +95,7 @@ export default function PrivadaDetalle() {
 
   const puedeVerse = (m: MiembroLiga) => !!m.estrategia && (m.es_yo || m.estrategia.visibilidad === "publicada");
   const etiquetaMiembro = (m: MiembroLiga) => [
-    m.es_yo ? t("league_equipo_tuya") : m.alias,
+    m.alias,
     !puedeVerse(m) ? t("private_leagues_private_strategy") : null,
   ].filter(Boolean).join(" · ");
   const abrir = (m: MiembroLiga) => { if (puedeVerse(m) && m.estrategia) router.push(`/ficha/${m.estrategia.id}`); };
@@ -109,7 +109,7 @@ export default function PrivadaDetalle() {
 
   const entradasTabla: EntradaRanking[] = conTabla.map((m, i) => ({
     clave: m.alias, puesto: i + 1, movimiento: m.movimiento, nombre: m.estrategia.nombre,
-    sub: [etiquetaMiembro(m), m.puntos == null ? null : t("strategies_points", { count: m.puntos })].filter(Boolean).join(" · "),
+    sub: etiquetaMiembro(m),
     escudo: m.estrategia.escudo, serie: m.serie_temporada.map(Number),
     vs: m.acumulado ? Number(m.acumulado.diferencia_pp) : m.dif_sp == null ? null : Number(m.dif_sp),
     rentabilidad: m.acumulado ? Number(m.acumulado.rentabilidad) : null, puntos: m.puntos, tuya: m.es_yo,
@@ -144,7 +144,7 @@ export default function PrivadaDetalle() {
           </button>
         } />
 
-      {estado === "cargando" || cargando ? <Cargando filas={4} />
+      {estado === "cargando" || cargando ? <div style={{ marginTop: 8 }}><EsqueletoRanking filas={4} /></div>
         : fallo || typeof liga === "string" ? <ErrorLiga titulo={t("private_leagues_detail_error")} mensaje={typeof liga === "string" ? liga : t("private_leagues_retry_later")} accion={{ texto: t("private_leagues_retry"), onClick: cargar }} />
         : detalle && <>
           <SegmentoLiga etiquetaGrupo={t("private_leagues_group_results")} valor={panel} onChange={setPanel}

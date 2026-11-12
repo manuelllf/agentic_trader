@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
-import { CabeceraApp, BarraPestanas, Cargando, ErrorLiga } from "../_ui";
+import { CabeceraApp, BarraPestanas, ErrorLiga } from "../_ui";
 import { misLigas, type LigaResumen } from "@/lib/liga/api";
 import { useCache } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
@@ -74,6 +74,29 @@ function MenuMas({ puedeCrear, alUnirse, alCrear }: { puedeCrear: boolean; alUni
   );
 }
 
+/** Esqueleto con la forma del grupo de ligas: baldosa, nombre, personas y puesto. */
+function EsqueletoLigas({ filas = 3 }: { filas?: number }) {
+  const t = useTranslations();
+  return (
+    <div role="status" aria-live="polite">
+      <span className="sr-only">{t("common_cargando")}</span>
+      <div className="pv-grupo-lista" aria-hidden="true">
+        {Array.from({ length: filas }, (_, i) => (
+          <div key={i} className="pv-fila">
+            <span className="esqueleto-bloque" style={{ width: 40, height: 40, borderRadius: 10 }} />
+            <span className="pv-fila-t" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span className="esqueleto-bloque" style={{ width: `${58 - i * 10}%`, height: 14 }} />
+              <span className="esqueleto-bloque" style={{ width: "30%", height: 12 }} />
+            </span>
+            <span className="esqueleto-bloque" style={{ width: 26, height: 18 }} />
+            <span />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Una liga: su inicial, nombre, personas y tu puesto de la semana. Tocarla abre el detalle empujando la pantalla. */
 function FilaLiga({ liga, alEntrar }: { liga: LigaResumen; alEntrar: (href: string, e: MouseEvent) => void }) {
   const t = useTranslations();
@@ -113,7 +136,7 @@ export default function Privadas() {
 
   let contenido;
   if (!sesionLista || (estado === "dentro" && !yo) || cargando) {
-    contenido = <Cargando filas={3} />;
+    contenido = <EsqueletoLigas />;
   } else if (fallo || typeof ligas === "string") {
     contenido = <ErrorLiga titulo={t("private_leagues_load_error")}
       mensaje={typeof ligas === "string" ? ligas : t("private_leagues_retry_later")}

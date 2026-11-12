@@ -22,6 +22,7 @@ import { useCache } from "@/lib/liga/cache";
 import { anioDeLiga } from "@/lib/liga/anio";
 import { SegmentoLiga, type OpcionSegmentoLiga } from "./SegmentoLiga";
 import { ListaClasificacion } from "./ListaClasificacion";
+import { EsqueletoRanking } from "./ListaRanking";
 import { VistaJornada } from "./VistaJornada";
 
 type Vista = "semana" | "tabla" | "actividad";
@@ -151,7 +152,7 @@ function LigaContenido() {
         <CabeceraApp anio={anio} tituloBarra={t("league_titulo")} />
         <h1 ref={titulo} className="lv-titulo">{t("league_titulo")}</h1>
         <p className="meta anio-escritorio">{anio}</p>
-        <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
+        <div style={{ marginTop: 20 }}><EsqueletoRanking filas={6} /></div>
         <BarraPestanas />
       </main>
     );
@@ -221,7 +222,7 @@ function LigaContenido() {
 
           {vista === "tabla" ? (
             clasificacion === undefined ? (
-              <div style={{ marginTop: 8 }}><Cargando filas={5} /></div>
+              <div style={{ marginTop: 8 }}><EsqueletoRanking filas={6} /></div>
             ) : typeof clasificacion === "string" ? (
               <ErrorLiga titulo={t("league_error_clasificacion")} mensaje={clasificacion}
                          accion={{ texto: t("league_reintentar"), onClick: refrescarClasificacion }} />
@@ -241,7 +242,7 @@ function LigaContenido() {
                            accion={{ texto: t("league_reintentar"), onClick: refrescarActividad }} />
               ) : <Actividad items={actividad.items} />
           ) : jornada === undefined ? (
-            portada.en_juego ? <div style={{ marginTop: 20 }}><Cargando filas={4} /></div>
+            portada.en_juego ? <div style={{ marginTop: 20 }}><EsqueletoRanking filas={6} /></div>
               : (
                 <SinJornada portada={portada} />
               )

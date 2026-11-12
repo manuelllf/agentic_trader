@@ -93,7 +93,7 @@ function FilaRankingItem({ fila, modo, onCiclar }: { fila: FilaRanking; modo: Mo
         </span>
         <Escudo valor={fila.escudo} casa={fila.casa} baldosa tamano={32}
           etiqueta={t("common_ranking_escudo", { name: fila.nombre })} />
-        <span className="lv-nombre"><b>{fila.nombre}</b><small>{fila.sub}</small></span>
+        <span className="lv-nombre"><b>{fila.nombre}</b>{fila.sub && <small>{fila.sub}</small>}</span>
         <GraficaSerie valores={fila.serie} vs={fila.vs} />
       </button>
       <button type="button" className={`lv-pildora${clase ? ` ${clase}` : ""}`} onClick={onCiclar}
@@ -101,6 +101,29 @@ function FilaRankingItem({ fila, modo, onCiclar }: { fila: FilaRanking; modo: Mo
         {texto}
       </button>
     </li>
+  );
+}
+
+/** Esqueleto con la forma de la fila: puesto, baldosa, una línea de nombre, gráfica y píldora. */
+export function EsqueletoRanking({ filas = 5 }: { filas?: number }) {
+  const t = useTranslations();
+  return (
+    <div className="lv-esqueleto" role="status" aria-live="polite">
+      <span className="sr-only">{t("common_cargando")}</span>
+      <ul className="lv-lista" aria-hidden="true">
+        {Array.from({ length: filas }, (_, i) => (
+          <li key={i} className="lv-fila">
+            <span className="lv-fila-abre">
+              <span />
+              <span className="esqueleto-bloque" style={{ width: 32, height: 32, borderRadius: 9 }} />
+              <span className="esqueleto-bloque" style={{ width: `${62 - (i % 3) * 12}%`, height: 14 }} />
+              <span />
+            </span>
+            <span className="esqueleto-bloque" style={{ justifySelf: "end", width: 70, height: 32, borderRadius: 8 }} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
