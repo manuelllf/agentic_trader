@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-// Comprueba contra la maqueta v5 lo que ve la persona: la lista de ligas con su píldora y su «+», el
+// Comprueba contra la maqueta v6 lo que ve la persona: la lista con su puesto y el «+» de la cabecera, el
 // estado vacío, el detalle con el ranking, los pendientes y la hoja de invitar. Datos de ejemplo.
+import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,16 +36,21 @@ vi.mock("@/lib/liga/api", () => ({
 vi.mock("@/lib/liga/cache", () => ({ invalidar: vi.fn(), useCache: (clave: string | null) => ({
   datos: clave === "mis-ligas" ? datosCache : detalleRuta, cargando: false, fallo: false, refrescar: vi.fn(),
 }) }));
-// La cabecera y la barra de pestañas dependen de la sesión; aquí no las probamos.
-vi.mock("../_ui", async (orig) => ({ ...(await orig<Record<string, unknown>>()), CabeceraApp: () => null, BarraPestanas: () => null }));
+// La cabecera depende de la sesión; aquí solo importa el «+» que le pasa cada pantalla.
+vi.mock("../_ui", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  CabeceraApp: ({ titulo, izquierda, derecha }: { titulo?: string; izquierda?: ReactNode; derecha?: ReactNode }) =>
+    <>{izquierda}<h1>{titulo}</h1>{derecha}</>,
+  BarraPestanas: () => null,
+}));
 
 import PrivadasLista from "./page";
 import PrivadaDetalle from "./[id]/page";
 
 const escudo = { forma: "circulo" as const, dibujo: "liso" as const, color1: "#0B6E68", color2: null, iniciales: null };
-const liga = (nombre: string, mio: number | null, sp: number | null, n: number, lider: string | null): LigaResumen =>
+const liga = (nombre: string, puesto: number | null, n: number): LigaResumen =>
   ({ id: nombre, nombre, cupo: 50, oculta: false, creada: "2026-11-01", es_dueno: true, codigo: "K7M2QXP4",
-    n_miembros: n, mio, sp500_mes: sp, lider } as unknown as LigaResumen);
+    n_miembros: n, mio: null, puesto, sp500_mes: null, lider: null } as unknown as LigaResumen);
 
 let root: Root;
 let container: HTMLDivElement;
@@ -69,14 +75,14 @@ afterEach(() => {
 const texto = () => container.textContent ?? "";
 const boton = (nombre: string) => [...container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === nombre || b.textContent === nombre) as HTMLButtonElement | undefined;
 
-describe("lista de Privadas (maqueta v5)", () => {
-  it("muestra cada liga con su diferencia frente al S&P y quién va primero", () => {
-    datosCache = [liga("Los del martes", 2.4, 1.6, 6, "Marta"), liga("Pádel y bolsa", -0.8, -1.6, 3, "Javi")];
+describe("lista de Privadas (maqueta v6)", () => {
+  it("muestra cada liga con su número de personas y tu puesto de la semana", () => {
+    datosCache = [liga("Los del martes", 3, 6), liga("Pádel y bolsa", 2, 3)];
     act(() => root.render(<PrivadasLista />));
     expect(texto()).toContain("Los del martes");
-    expect(texto()).toContain("Va primero: Marta");
-    expect(texto()).toContain("+0,8");
+    expect(texto()).toContain("3.º");
     expect(texto()).toContain("Pádel y bolsa");
+    expect(texto()).toContain("Tu puesto");
   });
 
   it("ofrece unirse y crear desde el «+» de la cabecera", () => {
@@ -97,7 +103,7 @@ describe("lista de Privadas (maqueta v5)", () => {
   });
 });
 
-describe("detalle de una liga (maqueta v5)", () => {
+describe("detalle de una liga (maqueta v6)", () => {
   const miembro = (alias: string, est: string, mes: number | null, yo = false, sinEstrategia = false) => ({
     alias, es_yo: yo, unido: "2026-11-01T10:00:00Z", puntos: 3, jornadas: 1, dif_sp: 0.5, provisional: false,
     acumulado: null, movimiento: null,
@@ -117,7 +123,7 @@ describe("detalle de una liga (maqueta v5)", () => {
     ],
   } as unknown as LigaDetalle;
 
-  it("pinta el ranking de la semana y los pendientes, con Invitar en la cabecera", () => {
+  it("pinta el ranking de la semana, los pendientes y el grupo de celdas", () => {
     detalleRuta = detalle;
     act(() => root.render(<PrivadaDetalle />));
     expect(texto()).toContain("Los del martes");

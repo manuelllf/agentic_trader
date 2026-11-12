@@ -1,5 +1,6 @@
-/* Ligas privadas: las mismas piezas que la Liga (lv-pagina, lv-lista, lv-fila, lv-pildora; ver ../liga/ranking.css).
-   Lo que es propio de esta pantalla va aquí. Todo acotado a .lg. */
+/* Ligas privadas (maqueta v6): la cabecera, la lista y las hojas usan las piezas de la Liga (lv-pagina,
+   lv-lista, lv-fila, lv-seg, lv-pildora; ver ../liga.css y ../liga/ranking.css). Lo propio de esta pantalla va aquí.
+   Todo acotado a .lg. */
 
 .lg .pv { min-width: 0; }
 
@@ -9,62 +10,127 @@
 :where(.lg .pv) a {
   appearance: none; background: none; border: 0; border-radius: 0; box-shadow: none;
   padding: 0; margin: 0; font: inherit; color: inherit; text-decoration: none; cursor: pointer; text-align: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Título de la pantalla, con su acción a la derecha (el «+» o «Invitar»). */
-.lg .pv-titulo-fila { display: flex; align-items: center; gap: 12px; min-height: 44px; margin: 8px 16px 0; }
-.lg .pv-titulo { flex: 1; min-width: 0; margin: 0; font-size: 22px; line-height: 28px; font-weight: 700; overflow-wrap: anywhere; }
-.lg .pv-accion { flex: none; min-height: 44px; display: flex; align-items: center; color: var(--accent); font-size: 17px; font-weight: 600; }
-.lg .pv-mas { display: grid; place-items: center; flex: none; width: 44px; height: 44px; margin-right: -10px; color: var(--accent); }
-.lg .pv-sub { margin: 2px 16px 0; font-size: 15px; line-height: 20px; color: var(--muted); }
+/* Cabecera: «‹» a la izquierda y «+» a la izquierda de la campana. En escritorio, el título queda a la izquierda. */
+.lg .pv .pv-volver { display: grid; place-items: center; width: 44px; height: 44px; margin-left: -12px; color: var(--accent); }
+.lg .pv .pv-volver:active, .lg .pv .pv-mas:active { opacity: 0.45; }
+.lg .pv .pv-mas { display: grid; place-items: center; width: 44px; height: 44px; color: var(--accent); }
+.lg .pv .pv-menu-raiz { position: relative; }
+.lg .pv .cab-der .pv-menu-raiz + .campana-caja { margin-left: 0; }
+@media (min-width: 880px) {
+  .lg .pv .cab.centrada { display: flex; align-items: center; gap: 12px; }
+  .lg .pv .cab-titulo { flex: 1; min-width: 0; text-align: left; }
+}
 
-/* «‹ Ligas privadas»: chevron en tinte, sin subrayado. */
-.lg .pv-atras { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin: 0 0 0 8px; padding: 0 8px; color: var(--accent); font-size: 17px; }
+/* Menú del «+»: el mismo menú anclado que el de los tres puntos. */
+.lg .pv .pv-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: min(232px, calc(100vw - 32px));
+  padding: 6px; border: 1px solid var(--line2); border-radius: 12px; background: var(--surface);
+  box-shadow: 0 18px 40px -12px var(--shadow); transform-origin: top right;
+  animation: pv-menu 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes pv-menu { from { opacity: 0; transform: scale(0.96); } }
+.lg .pv .pv-menu button {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 8px;
+  color: var(--ink); font-size: 15px; font-weight: 600; text-align: left;
+}
+.lg .pv .pv-menu button:active { background: var(--surface2); }
+.lg .pv .pv-menu button svg { flex: none; color: var(--muted); }
 
-/* «+» con su menú anclado. */
-.lg .pv-menu-raiz { position: relative; }
-.lg .pv-menu { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; width: 230px; overflow: hidden; border-radius: 14px; background: var(--surface); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); }
-.lg .pv-menu button { display: block; width: 100%; min-height: 48px; padding: 0 16px; text-align: left; font-size: 17px; line-height: 48px; color: var(--ink); }
-.lg .pv-menu button + button { border-top: 1px solid var(--line); }
+/* Lista de ligas: fila de la Liga sin escudo ni píldora. Puesto y chevron a la derecha. */
+.lg .pv .pv-cab-lista > span:last-child { width: auto; padding-right: 24px; text-align: right; }
+.lg .pv .pv-liga { grid-template-columns: minmax(0, 1fr); padding: 0; }
+.lg .pv .pv-liga + .pv-liga::before { left: 16px; }
+.lg .pv .pv-liga-abre {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 8px; align-items: center; gap: 12px;
+  width: 100%; min-height: 64px; padding: 8px 16px;
+}
+.lg .pv .pv-liga-abre:active { background: var(--surface2); }
+.lg .pv .pv-puesto { font-size: 17px; line-height: 22px; font-weight: 600; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.lg .pv .pv-chev { display: block; width: 8px; height: 14px; color: var(--muted); opacity: 0.7; }
 
-/* Lista de ligas: filas de la Liga; la fila entera es el enlace y la píldora va a la derecha. */
-.lg .pv-abre { grid-template-columns: minmax(0, 1fr) 16px; }
-.lg .pv-chev { flex: none; color: var(--line2); justify-self: end; }
-.lg .pv-liga .lv-nombre small { white-space: nowrap; }
+/* Estado vacío (DESIGN §7): icono de trazo, título 20/600, texto 15 y botones de tinte a lo ancho. */
+.lg .pv .pv-vacio { display: flex; flex-direction: column; align-items: center; min-height: calc(100dvh - 260px);
+  padding: 32px 8px 0; text-align: center; }
+.lg .pv .pv-vacio > svg { width: 48px; height: 48px; color: var(--muted); }
+.lg .pv .pv-vacio h2 { margin-top: 16px; font-size: 20px; line-height: 25px; font-weight: 600; }
+.lg .pv .pv-vacio p { margin-top: 6px; max-width: 30ch; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pv .pv-vacio .pv-boton { margin-top: 24px; }
+.lg .pv .pv-vacio .pv-enlace { margin-top: 8px; }
 
-/* Pendientes: filas de la Liga sin pildora. */
-.lg .pv-pendiente { grid-template-columns: minmax(0, 1fr); }
-.lg .pv-pendiente .lv-nombre small { white-space: normal; }
+/* Pendientes: filas de la Liga sin píldora. */
+.lg .pv .pv-pendiente { grid-template-columns: minmax(0, 1fr); }
+.lg .pv .pv-pendiente .lv-nombre small { white-space: normal; }
+.lg .pv .pv-pendiente + .pv-pendiente::before { left: 16px; }
+.lg .pv .pv-enlace-fila { display: inline-block; margin-top: 4px; color: var(--accent); font-size: 15px; font-weight: 600; }
 
-/* Notas, pies y enlaces. */
-.lg .pv-contexto { margin: 12px 16px 0; font-size: 13px; line-height: 18px; color: var(--muted); }
-.lg .pv-pie { margin: 12px 32px 0; font-size: 13px; line-height: 18px; color: var(--muted); text-align: center; }
-.lg .pv-enlace { color: var(--accent); font-size: 15px; line-height: 20px; }
-.lg .pv-error { margin: 10px 32px 0; font-size: 15px; line-height: 20px; color: var(--bad); text-align: center; }
-.lg .pv-seg { margin: 20px 16px 0; }
-.lg .pv-cab-grupo { display: flex; justify-content: space-between; margin: 24px 32px 6px; font-size: 13px; line-height: 18px; color: var(--muted); }
+/* Grupo de celdas (DESIGN §7, lista agrupada): fondo de celda, radio 10, separador con sangría. */
+.lg .pv .pv-grupo { margin-top: 24px; border-radius: 10px; background: var(--surface); overflow: hidden; }
+.lg .pv .pv-grupo + .pv-grupo { margin-top: 12px; }
+.lg .pv .pv-celda {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px;
+  width: 100%; min-height: 50px; padding: 0 16px; color: var(--ink); font-size: 17px; line-height: 22px; text-align: left;
+}
+.lg .pv .pv-celda + .pv-celda::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
+.lg .pv button.pv-celda:active { background: var(--surface2); }
+.lg .pv .pv-celda .valor { color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .pv .pv-celda .pv-chev { width: 8px; height: 14px; }
+.lg .pv .pv-celda.accion { color: var(--accent); }
+.lg .pv .pv-celda.peligro { color: var(--bad); }
 
-/* Textos de las hojas y campos. */
-.lg .pv-texto { padding: 8px 20px 4px; font-size: 15px; line-height: 21px; color: var(--ink2); }
-.lg .pv-texto p + p { margin-top: 12px; }
-.lg .pv-campo { display: flex; align-items: center; height: 52px; margin: 16px 16px 0; padding: 0 16px; border-radius: 12px; background: var(--surface2); }
-.lg .pv-campo.error { box-shadow: inset 0 0 0 2px var(--bad); }
-.lg .pv-campo input { flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: none; color: var(--ink); font-size: 17px; }
-.lg .pv-campo input::placeholder { color: var(--muted); }
-.lg .pv-codigo { font-size: 22px; font-weight: 600; letter-spacing: 0.14em; text-align: center; text-transform: uppercase; }
-.lg .pv-codigo-gr { margin: 20px 16px 0; text-align: center; font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: 0.1em; font-variant-numeric: tabular-nums; }
-.lg .pv-acciones { margin: 16px 16px 0; }
-.lg .pv-boton { display: flex; align-items: center; justify-content: center; width: 100%; height: 50px; border-radius: 14px; background: var(--accent-bg); color: var(--accent); font-size: 17px; font-weight: 600; }
+/* Pie centrado de 13 (DESIGN §6): sin subrayado, enlace en tinte. */
+.lg .pv .lv-pie { margin: 16px 16px 0; }
+.lg .pv .pv-pie-enlace { display: inline-block; padding: 6px 0; color: var(--accent); font-size: 13px; line-height: 18px; }
 
-/* Grupos dentro de la hoja de miembros: celdas de iOS sobre la hoja. */
-.lg .pv-grupo { margin: 0 16px; border-radius: 12px; background: var(--surface2); overflow: hidden; }
-.lg .pv-separado { margin-top: 16px; }
-.lg .pv-gfila { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 6px 16px; text-align: left; color: var(--ink); font-size: 17px; }
-.lg .pv-gfila + .pv-gfila::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
-.lg .pv-gfila:active { background: var(--raised); }
-.lg .pv-gfila .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.lg .pv-gfila b { font-weight: 400; }
-.lg .pv-gfila small { font-size: 15px; line-height: 20px; color: var(--muted); }
-.lg .pv-gfila.pv-accion { color: var(--accent); }
-.lg .pv-gfila.pv-peligro { color: var(--bad); }
-.lg .pv-expulsar { flex: none; color: var(--bad); font-size: 17px; }
+/* Botones (DESIGN §7): principal de 50 de alto y radio 14; de tinte y enlace. */
+.lg .pv .pv-boton {
+  display: flex; align-items: center; justify-content: center; width: 100%; min-height: 50px; padding: 0 16px;
+  border-radius: 14px; background: var(--accent); color: var(--btn-ink); font-size: 17px; font-weight: 600;
+  transition: transform 0.15s;
+}
+.lg .pv .pv-boton:active { transform: scale(0.98); }
+.lg .pv .pv-boton:disabled { opacity: 0.4; }
+.lg .pv .pv-enlace { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--accent); font-size: 17px; }
+
+/* Hojas: el contenido va con su margen; los campos, de fondo de celda. */
+.lg .pv .pv-hoja-pad { padding: 16px 16px 8px; }
+.lg .pv .pv-campo {
+  display: block; width: 100%; height: 52px; padding: 0 16px; border: 0; border-radius: 12px; outline: none;
+  background: var(--surface2); color: var(--ink); font: inherit; font-size: 17px;
+}
+.lg .pv .pv-campo::placeholder { color: var(--muted); opacity: 1; }
+.lg .pv .pv-campo:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.lg .pv .pv-campo.codigo { height: 58px; text-align: center; font-size: 26px; font-weight: 600; letter-spacing: 0.2em;
+  font-variant-numeric: tabular-nums; text-transform: uppercase; }
+.lg .pv .pv-campo.codigo::placeholder { font-size: 17px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.lg .pv .pv-campo.error { box-shadow: inset 0 0 0 2px var(--bad); }
+.lg .pv .pv-error { margin: 8px 4px 0; font-size: 15px; line-height: 20px; color: var(--bad); }
+.lg .pv .pv-nota { margin: 8px 4px 0; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pv .pv-nota.centrada { text-align: center; }
+.lg .pv .pv-codigo-gr { margin: 8px 0 20px; text-align: center; font-size: 34px; line-height: 41px; font-weight: 700;
+  letter-spacing: 0.1em; font-variant-numeric: tabular-nums; color: var(--ink); -webkit-user-select: all; user-select: all; }
+.lg .pv .pv-texto p { font-size: 15px; line-height: 20px; color: var(--ink2); }
+.lg .pv .pv-texto p + p { margin-top: 12px; }
+.lg .pv .pv-hoja-pad .pv-boton + .pv-nota { margin-top: 12px; }
+.lg .pv .pv-miembro { grid-template-columns: minmax(0, 1fr) auto; }
+.lg .pv .pv-miembro .lv-nombre small { white-space: normal; }
+.lg .pv .pv-quitar { min-height: 44px; padding: 0 0 0 12px; color: var(--bad); font-size: 15px; font-weight: 600; }
+
+/* Pantallas: la pila sale y entra deslizando, como en iOS. Se activa desde el atributo de <html>. La barra
+   de abajo se queda quieta. Con movimiento reducido, solo fundidos. */
+html[data-vt="empuja"]::view-transition-old(root) { animation: pv-sale-izq 0.35s cubic-bezier(0.32, 0.72, 0, 1) both; }
+html[data-vt="empuja"]::view-transition-new(root) { animation: pv-entra-der 0.35s cubic-bezier(0.32, 0.72, 0, 1) both; }
+html[data-vt="vuelve"]::view-transition-old(root) { z-index: 1; animation: pv-sale-der 0.3s cubic-bezier(0.32, 0.72, 0, 1) both; }
+html[data-vt="vuelve"]::view-transition-new(root) { animation: pv-entra-izq 0.3s cubic-bezier(0.32, 0.72, 0, 1) both; }
+html[data-vt] .lg .tabbar { view-transition-name: pv-barra; }
+::view-transition-group(pv-barra) { animation: none; }
+@keyframes pv-entra-der { from { transform: translateX(100%); } }
+@keyframes pv-sale-izq { to { transform: translateX(-28%); opacity: 0.5; } }
+@keyframes pv-entra-izq { from { transform: translateX(-28%); opacity: 0.5; } }
+@keyframes pv-sale-der { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  html[data-vt]::view-transition-old(root), html[data-vt]::view-transition-new(root) { animation: none; }
+  .lg .pv .pv-menu { animation: none; }
+}

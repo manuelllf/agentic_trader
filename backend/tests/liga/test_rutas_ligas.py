@@ -257,6 +257,11 @@ def test_detalle_muestra_equipo_formado_y_mes_sin_abrir_datos_privados(api, monk
             assert lista["lider"] == "Foso ancho"
             # El espectador no tiene estrategia formada este mes: no debe ver el resultado de otra.
             assert lista["mio"] is None
+            assert lista["puesto"] is None
+            propia = next(x for x in cliente.get("/liga/ligas", headers=cab(duena)).json()
+                          if x["id"] == liga["id"])
+            assert Decimal(propia["mio"]) == Decimal("2.5")
+            assert propia["puesto"] == 1
             assert Decimal(lista["sp500_mes"]) == Decimal("1.2")
             assert cliente.get(f"/liga/ligas/{liga['id']}", headers=cab(ajeno)).status_code == 404
             assert set(llamadas) == {jornada}

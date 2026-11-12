@@ -60,8 +60,9 @@ class LigaResumenOut(BaseModel):
 
 
 class LigaListaOut(LigaResumenOut):
-    """Resumen para la lista: tu resultado del mes, el S&P 500 y la estrategia que va primera."""
+    """Resumen para la lista: tu resultado y puesto del mes, el S&P 500 y la estrategia primera."""
     mio: Decimal | None = None
+    puesto: int | None = None
     sp500_mes: Decimal | None = None
     lider: str | None = None
 
@@ -121,7 +122,8 @@ def mis_ligas(ident: Identidad = Depends(require_usuario),
     resultados, sp = _resultados_del_mes(db, [f.id for f in filas], ident.uid)
     return [
         LigaListaOut(**_resumen(f, ident.uid, f.n_miembros).model_dump(),
-                     mio=resultados.get(str(f.id), {}).get("mio"), sp500_mes=sp,
+                     mio=resultados.get(str(f.id), {}).get("mio"),
+                     puesto=resultados.get(str(f.id), {}).get("puesto"), sp500_mes=sp,
                      lider=resultados.get(str(f.id), {}).get("lider"))
         for f in filas
     ]
@@ -250,10 +252,16 @@ def _resultados_del_mes(db: Session, liga_ids: list,
         if rentabilidad is None:
             continue
         fila = resultados.setdefault(m.liga_id, {})
+        fila.setdefault("todas", []).append(rentabilidad)
         if "lider" not in fila or rentabilidad > fila["mes_lider"]:
             fila.update(mes_lider=rentabilidad, lider=m.nombre)
         if m.usuario_id == uid:
             fila["mio"] = rentabilidad
+    # Tu puesto: uno más que las estrategias con más rentabilidad (en empate, comparten puesto).
+    for fila in resultados.values():
+        todas = fila.pop("todas")
+        if "mio" in fila:
+            fila["puesto"] = 1 + sum(1 for r in todas if r > fila["mio"])
     return resultados, vivo["sp"]
 
 

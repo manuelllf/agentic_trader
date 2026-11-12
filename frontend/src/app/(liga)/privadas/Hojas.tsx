@@ -41,14 +41,15 @@ export function HojaUnirse({ abierta, onCerrar, onUnida }: {
     <Hoja abierta={abierta} titulo={t("private_leagues_join_title")} cancelar={t("common_cancelar")}
       accion={t("private_leagues_join_short")} accionDesactivada={ocupada || codigo.length !== LONGITUD_CODIGO}
       onAccion={enviar} onCerrar={cerrar}>
-      <label className={`pv-campo${error ? " error" : ""}`}>
-        <input className="pv-codigo" value={codigo} maxLength={LONGITUD_CODIGO} inputMode="text"
-          autoCapitalize="characters" autoComplete="off" spellCheck={false}
+      <div className="pv-hoja-pad">
+        <input className={`pv-campo codigo${error ? " error" : ""}`} value={codigo} maxLength={LONGITUD_CODIGO}
+          inputMode="text" autoCapitalize="characters" autoComplete="off" spellCheck={false}
           placeholder={t("private_leagues_invite_code")} aria-label={t("private_leagues_invite_code")}
           aria-invalid={error ? true : undefined}
           onChange={(e) => { setCodigo(codigoLimpio(e.target.value)); setError(null); }} />
-      </label>
-      {error && <p className="pv-error" role="alert">{error}</p>}
+        {error && <p className="pv-error" role="alert">{error}</p>}
+        <p className="pv-nota">{t("private_leagues_join_note")}</p>
+      </div>
     </Hoja>
   );
 }
@@ -79,12 +80,13 @@ export function HojaCrear({ abierta, onCerrar, onCreada }: {
     <Hoja abierta={abierta} titulo={t("private_leagues_create_button")} cancelar={t("common_cancelar")}
       accion={t("private_leagues_create_short")} accionDesactivada={ocupada || !nombre.trim()}
       onAccion={enviar} onCerrar={cerrar}>
-      <label className="pv-campo">
-        <input value={nombre} maxLength={40} autoComplete="off" placeholder={t("private_leagues_name_placeholder")}
-          aria-label={t("private_leagues_name")} onChange={(e) => setNombre(e.target.value)} />
-      </label>
-      {error && <p className="pv-error" role="alert">{error}</p>}
-      <p className="pv-pie">{t("private_leagues_create_note")}</p>
+      <div className="pv-hoja-pad">
+        <input className={`pv-campo${error ? " error" : ""}`} value={nombre} maxLength={40} autoComplete="off"
+          placeholder={t("private_leagues_name_placeholder")} aria-label={t("private_leagues_name")}
+          onChange={(e) => setNombre(e.target.value)} />
+        {error && <p className="pv-error" role="alert">{error}</p>}
+        <p className="pv-nota">{t("private_leagues_create_note")}</p>
+      </div>
     </Hoja>
   );
 }
@@ -96,7 +98,7 @@ export function HojaMetodo({ abierta, onCerrar, consultado }: {
   const locale = normalizeLocale(useLocale()) ?? "es";
   return (
     <Hoja abierta={abierta} titulo={t("private_leagues_method_title")} accion={t("private_leagues_done")} onCerrar={onCerrar}>
-      <div className="pv-texto">
+      <div className="pv-hoja-pad pv-texto">
         <p>{t("private_leagues_rep_strategy_answer")}</p>
         <p>{t("private_leagues_cumulative_note")}</p>
         {consultado && <p>{t("private_leagues_market_checked", {
@@ -108,59 +110,64 @@ export function HojaMetodo({ abierta, onCerrar, consultado }: {
   );
 }
 
-export function HojaMiembros({ abierta, onCerrar, liga, copiado, onCopiar, onRotar, onExpulsar, onSalir }: {
+/** Invitar (solo quien organiza): el código, copiarlo y cambiarlo. */
+export function HojaInvitar({ abierta, onCerrar, liga, copiado, aviso, onCopiar, onRotar }: {
   abierta: boolean;
   onCerrar: () => void;
   liga: LigaDetalle;
   copiado: boolean;
+  aviso: string | null;
   onCopiar: () => void;
   onRotar: () => void;
+}) {
+  const t = useTranslations();
+  return (
+    <Hoja abierta={abierta} titulo={t("private_leagues_invite_button")} accion={t("private_leagues_done")} onCerrar={onCerrar}>
+      <div className="pv-hoja-pad">
+        {liga.codigo && <p className="pv-codigo-gr" aria-label={t("private_leagues_invite_code")}>{liga.codigo}</p>}
+        <button type="button" className="pv-boton" onClick={onCopiar}>
+          {copiado ? t("private_leagues_code_copied") : t("private_leagues_copy_code")}
+        </button>
+        <p className="pv-nota centrada">{t("private_leagues_share_code_note")}</p>
+        {aviso && <p className="pv-error" role="alert">{aviso}</p>}
+        <div className="pv-grupo">
+          <button type="button" className="pv-celda accion" onClick={onRotar}>{t("private_leagues_change_code")}</button>
+        </div>
+      </div>
+    </Hoja>
+  );
+}
+
+/** Miembros: quién está en la liga y, para quien organiza, expulsar. */
+export function HojaMiembros({ abierta, onCerrar, liga, aviso, onExpulsar }: {
+  abierta: boolean;
+  onCerrar: () => void;
+  liga: LigaDetalle;
+  aviso: string | null;
   onExpulsar: (alias: string) => void;
-  onSalir: () => void;
 }) {
   const t = useTranslations();
   const locale = normalizeLocale(useLocale()) ?? "es";
-  const titulo = liga.es_dueno ? t("private_leagues_invite_button") : t("private_leagues_members_button");
   return (
-    <Hoja abierta={abierta} titulo={titulo} accion={t("private_leagues_done")} onCerrar={onCerrar}>
-      {liga.es_dueno && liga.codigo && (
-        <>
-          <p className="pv-codigo-gr" aria-label={t("private_leagues_invite_code")}>{liga.codigo}</p>
-          <div className="pv-acciones">
-            <button type="button" className="pv-boton" onClick={onCopiar}>
-              {copiado ? t("private_leagues_code_copied") : t("private_leagues_copy_code")}
-            </button>
-          </div>
-          <p className="pv-pie">{t("private_leagues_share_code_note")}</p>
-        </>
-      )}
-
-      <p className="pv-cab-grupo"><span>{t("private_leagues_members_head")}</span><span className="num">{liga.n_miembros}</span></p>
-      <div className="pv-grupo">
-        {liga.miembros.map((m) => (
-          <div className="pv-gfila" key={m.alias}>
-            <span className="t">
-              <b>{m.alias}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}</b>
-              <small>{m.es_yo && liga.es_dueno
-                ? t("private_leagues_owner")
-                : t("private_leagues_member_since", { date: fecha(m.unido.slice(0, 10), new Date(), locale) })}</small>
-            </span>
-            {liga.es_dueno && !m.es_yo && (
-              <button type="button" className="pv-expulsar" onClick={() => onExpulsar(m.alias)}>{t("private_leagues_remove")}</button>
-            )}
-          </div>
-        ))}
+    <Hoja abierta={abierta} titulo={t("private_leagues_members_button")} accion={t("private_leagues_done")} onCerrar={onCerrar}>
+      <div className="pv-hoja-pad">
+        <div className="pv-grupo">
+          {liga.miembros.map((m) => (
+            <div className="pv-celda pv-miembro" key={m.alias}>
+              <span className="lv-nombre">
+                <b>{m.alias}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}</b>
+                <small>{m.es_yo && liga.es_dueno
+                  ? t("private_leagues_owner")
+                  : t("private_leagues_member_since", { date: fecha(m.unido.slice(0, 10), new Date(), locale) })}</small>
+              </span>
+              {liga.es_dueno && !m.es_yo && (
+                <button type="button" className="pv-quitar" onClick={() => onExpulsar(m.alias)}>{t("private_leagues_remove")}</button>
+              )}
+            </div>
+          ))}
+        </div>
+        {aviso && <p className="pv-error" role="alert">{aviso}</p>}
       </div>
-
-      {liga.es_dueno ? (
-        <div className="pv-grupo pv-separado">
-          <button type="button" className="pv-gfila pv-accion" onClick={onRotar}>{t("private_leagues_change_code")}</button>
-        </div>
-      ) : (
-        <div className="pv-grupo pv-separado">
-          <button type="button" className="pv-gfila pv-peligro" onClick={onSalir}>{t("private_leagues_leave")}</button>
-        </div>
-      )}
     </Hoja>
   );
 }

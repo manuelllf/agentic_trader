@@ -1,35 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
-import { normalizeLocale } from "@/i18n/locale";
-import { CabeceraApp, BarraPestanas, Cargando, ErrorLiga, Vacio } from "../_ui";
+import { CabeceraApp, BarraPestanas, Cargando, ErrorLiga } from "../_ui";
 import { misLigas, type LigaResumen } from "@/lib/liga/api";
 import { useCache } from "@/lib/liga/cache";
-import { signo } from "@/lib/liga/format";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { HojaCrear, HojaUnirse } from "./Hojas";
+import { irConTransicion } from "./transicion";
 import "../liga/ranking.css";
 import "./privadas.css";
 
-/** Umbral de empate de la liga: a ±0,2 pp del S&P no hay ni ganancia ni pérdida (motor/puntos.py). */
-const BANDA_EMPATE = 0.2;
-
-function claseVs(vs: number): "bien" | "mal" | "" {
-  return vs > BANDA_EMPATE ? "bien" : vs < -BANDA_EMPATE ? "mal" : "";
-}
-
 function Chevron() {
   return (
-    <svg className="pv-chev" width="8" height="13" viewBox="0 0 8 13" aria-hidden="true">
-      <path d="M1.5 1.5 6.5 6.5l-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg className="pv-chev" viewBox="0 0 8 14" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m1.5 1.5 5 5.5-5 5.5" />
     </svg>
   );
 }
 
-/** «+» de la cabecera: unirse siempre; crear, si la cuenta puede (hoy, cualquiera). */
+/** «+» de la cabecera: unirse siempre; crear, si la cuenta puede. Se ancla al botón. */
 function MenuMas({ puedeCrear, alUnirse, alCrear }: { puedeCrear: boolean; alUnirse: () => void; alCrear: () => void }) {
   const t = useTranslations();
   const [abierto, setAbierto] = useState(false);
@@ -51,17 +44,27 @@ function MenuMas({ puedeCrear, alUnirse, alCrear }: { puedeCrear: boolean; alUni
     <div className="pv-menu-raiz" ref={raiz}>
       <button type="button" className="pv-mas" aria-label={t("private_leagues_add_menu")}
         aria-haspopup="menu" aria-expanded={abierto} onClick={() => setAbierto((a) => !a)}>
-        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"
+          strokeLinecap="round" aria-hidden="true">
+          <path d="M12 4.5v15M4.5 12h15" />
         </svg>
       </button>
       {abierto && (
         <div className="pv-menu" role="menu">
           <button type="button" role="menuitem" onClick={() => { setAbierto(false); alUnirse(); }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14" />
+              <path d="M9 8l4 4-4 4M13 12H3" />
+            </svg>
             {t("private_leagues_join_button")}
           </button>
           {puedeCrear && (
             <button type="button" role="menuitem" onClick={() => { setAbierto(false); alCrear(); }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
               {t("private_leagues_create_button")}
             </button>
           )}
@@ -71,24 +74,20 @@ function MenuMas({ puedeCrear, alUnirse, alCrear }: { puedeCrear: boolean; alUni
   );
 }
 
-/** Una liga: nombre, personas, quién va primero y tu diferencia con el S&P de la semana. */
-function FilaLiga({ liga }: { liga: LigaResumen }) {
+/** Una liga: nombre, personas y tu puesto de la semana. Tocarla abre el detalle empujando la pantalla. */
+function FilaLiga({ liga, alEntrar }: { liga: LigaResumen; alEntrar: (href: string, e: MouseEvent) => void }) {
   const t = useTranslations();
-  const locale = normalizeLocale(useLocale()) ?? "es";
-  const mio = liga.mio == null ? null : Number(liga.mio);
-  const sp = liga.sp500_mes == null ? null : Number(liga.sp500_mes);
-  const vs = mio != null && sp != null ? mio - sp : null;
-  const personas = t("private_leagues_people", { count: liga.n_miembros });
-  // Sin resultado de la semana no se añade nada más: la línea cabe entera en el móvil.
-  const sub = [personas, mio != null && liga.lider ? `${t("private_leagues_leads")} ${liga.lider}` : null]
-    .filter(Boolean).join(" · ");
+  const href = `/privadas/${liga.id}`;
   return (
     <li className="lv-fila pv-liga">
-      <Link href={`/privadas/${liga.id}`} className="lv-fila-abre pv-abre">
-        <span className="lv-nombre"><b>{liga.nombre}</b><small>{sub}</small></span>
+      <Link href={href} className="pv-liga-abre" onClick={(e) => alEntrar(href, e)}>
+        <span className="lv-nombre">
+          <b>{liga.nombre}</b>
+          <small>{t("private_leagues_people", { count: liga.n_miembros })}</small>
+        </span>
+        <span className="pv-puesto num">{liga.puesto ? t("private_leagues_place", { place: liga.puesto }) : ""}</span>
         <Chevron />
       </Link>
-      {vs != null && <span className={`lv-pildora ${claseVs(vs)}`}>{signo(vs, 1, locale)}</span>}
     </li>
   );
 }
@@ -105,7 +104,13 @@ export default function Privadas() {
   );
   const [hoja, setHoja] = useState<"unirse" | "crear" | null>(null);
 
-  const irA = (id: string) => { setHoja(null); router.push(`/privadas/${id}`); };
+  const irA = (id: string) => { setHoja(null); irConTransicion(`/privadas/${id}`, "empuja", router); };
+  // Un toque sin tecla ni botón central entra con la transición; lo demás sigue el enlace normal.
+  const alEntrar = (href: string, e: MouseEvent) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    irConTransicion(href, "empuja", router);
+  };
 
   let contenido;
   if (!sesionLista || (estado === "dentro" && !yo) || cargando) {
@@ -116,27 +121,39 @@ export default function Privadas() {
       accion={{ texto: t("private_leagues_retry"), onClick: cargar }} />;
   } else if (ligas && ligas.length === 0) {
     contenido = (
-      <>
-        <Vacio titulo={t("private_leagues_empty_title")} texto={t("private_leagues_empty_text")}
-          accion={{ texto: t("private_leagues_join_button"), onClick: () => setHoja("unirse") }} />
-        <p className="pv-pie">{t("private_leagues_create_needs_pro")}</p>
-      </>
+      <div className="pv-vacio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+          strokeLinejoin="round" aria-hidden="true">
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3 19.5c0-3.2 2.7-5.5 6-5.5s6 2.3 6 5.5" />
+          <path d="M16 5a3.2 3.2 0 0 1 0 6.2M17.5 14.3c2 .7 3.5 2.6 3.5 5.2" />
+        </svg>
+        <h2>{t("private_leagues_empty_title")}</h2>
+        <p>{t("private_leagues_empty_text")}</p>
+        <button type="button" className="pv-boton" onClick={() => setHoja("unirse")}>{t("private_leagues_join_button")}</button>
+        {puedeCrear && (
+          <button type="button" className="pv-enlace" onClick={() => setHoja("crear")}>{t("private_leagues_create_button")}</button>
+        )}
+      </div>
     );
   } else {
     contenido = (
-      <ul className="lv-lista">
-        {ligas?.map((l) => <FilaLiga key={l.id} liga={l} />)}
-      </ul>
+      <>
+        <p className="lv-lista-cab pv-cab-lista">
+          <span>{t("private_leagues_this_month")}</span>
+          <span>{t("private_leagues_your_place")}</span>
+        </p>
+        <ul className="lv-lista">
+          {ligas?.map((l) => <FilaLiga key={l.id} liga={l} alEntrar={alEntrar} />)}
+        </ul>
+      </>
     );
   }
 
   return (
     <main className="scroll lv-pagina pv">
-      <CabeceraApp anio={2026} />
-      <div className="pv-titulo-fila">
-        <h1 className="pv-titulo">{t("private_leagues_title")}</h1>
-        <MenuMas puedeCrear={puedeCrear} alUnirse={() => setHoja("unirse")} alCrear={() => setHoja("crear")} />
-      </div>
+      <CabeceraApp titulo={t("private_leagues_title")}
+        derecha={<MenuMas puedeCrear={puedeCrear} alUnirse={() => setHoja("unirse")} alCrear={() => setHoja("crear")} />} />
       {contenido}
 
       <HojaUnirse abierta={hoja === "unirse"} onCerrar={() => setHoja(null)} onUnida={irA} />

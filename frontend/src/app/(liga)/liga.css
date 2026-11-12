@@ -270,8 +270,10 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .secreto { font-size: 15px; word-break: break-all; color: var(--ink2); }
 /* Cabecera común de las pestañas: el menú de la cuenta a la izquierda, y después el sello o el título centrado. */
 .lg .cab { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; height: 52px; }
-.lg .cab.centrada { grid-template-columns: 44px minmax(0, 1fr) minmax(44px, auto); }
-.lg .cab-titulo { grid-column: 2; margin: 0; text-align: center; font-size: 17px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Columnas iguales a cada lado para que el título quede centrado aunque la derecha lleve dos botones. */
+.lg .cab.centrada { grid-template-columns: 88px minmax(0, 1fr) 88px; }
+.lg .cab-titulo { grid-column: 2; margin: 0; text-align: center; font-size: 17px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .cab-der { position: relative; display: flex; align-items: center; justify-self: end; }
 .lg .cab .cuenta { position: relative; justify-self: start; }.lg .cuenta-boton {
   display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px 0 12px;
   min-width: 0; max-width: 100%; border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 16px;
@@ -326,10 +328,10 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
    tres puntos y la campana van en petróleo sin cápsula; al subir, el título grande cede su sitio al
    sello. El escritorio conserva su cabecera. */
 @media (max-width: 879px) {
-  .lg .cab.cab-sello { position: sticky; top: 0; z-index: 10; gap: 10px; height: auto; min-height: 52px;
+  .lg .cab.cab-sello, .lg .cab.centrada { position: sticky; top: 0; z-index: 10; gap: 10px; height: auto; min-height: 52px;
     margin: 0 calc(-1 * var(--page-gutter)); padding: calc(8px + env(safe-area-inset-top)) var(--page-gutter) 8px;
     transition: background-color .25s cubic-bezier(.32, .72, 0, 1); }
-  html[data-superado] .lg .cab.cab-sello { background: color-mix(in srgb, var(--bg) 88%, transparent);
+  html[data-superado] .lg .cab.cab-sello, html[data-superado] .lg .cab.centrada { background: color-mix(in srgb, var(--bg) 88%, transparent);
     -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); }
   .lg .cab .puntos { width: 44px; height: 44px; margin-left: -12px; border: 0; border-radius: 0; background: none; color: var(--accent); }
   .lg .cab .puntos svg { width: 22px; height: 22px; }

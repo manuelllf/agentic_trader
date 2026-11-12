@@ -6,17 +6,28 @@ import { useLocale, useTranslations } from "next-intl";
 import { useParams, useRouter } from "next/navigation";
 import { normalizeLocale } from "@/i18n/locale";
 import { useConfirmar } from "@/components/Confirmar";
-import { BarraPestanas, CabeceraApp, Cargando, ErrorLiga, Segmentado } from "../../_ui";
+import { BarraPestanas, CabeceraApp, Cargando, ErrorLiga } from "../../_ui";
 import { ListaRanking, type EntradaRanking, type FilaRanking, type ModoRanking } from "../../liga/ListaRanking";
+import { SegmentoLiga } from "../../liga/SegmentoLiga";
 import { expulsarDeLiga, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle, type MiembroLiga } from "@/lib/liga/api";
 import { invalidar, useCache } from "@/lib/liga/cache";
 import { precargarFicha } from "@/lib/liga/ficha";
 import { fecha, porcentaje } from "@/lib/liga/format";
 import { useSesionRequerida } from "../../_sesion/SesionContext";
-import { HojaMetodo, HojaMiembros } from "../Hojas";
+import { HojaInvitar, HojaMetodo, HojaMiembros } from "../Hojas";
+import { irConTransicion } from "../transicion";
 import "../privadas.css";
 
 type Panel = "semana" | "tabla";
+
+function Chevron() {
+  return (
+    <svg className="pv-chev" viewBox="0 0 8 14" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m1.5 1.5 5 5.5-5 5.5" />
+    </svg>
+  );
+}
 
 export default function PrivadaDetalle() {
   const t = useTranslations();
@@ -33,6 +44,7 @@ export default function PrivadaDetalle() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
   const [hojaMetodo, setHojaMetodo] = useState(false);
+  const [hojaInvitar, setHojaInvitar] = useState(false);
   const [hojaMiembros, setHojaMiembros] = useState(false);
 
   const detalle = typeof liga === "object" && liga ? liga : null;
@@ -42,7 +54,7 @@ export default function PrivadaDetalle() {
     const r = await accion();
     if (typeof r === "string") { setAviso(r); return; }
     invalidar("mis-ligas");
-    if (salir) { invalidar(`liga:${id}`); router.push("/privadas"); }
+    if (salir) { invalidar(`liga:${id}`); irConTransicion("/privadas", "vuelve", router); }
     else { setCopiado(false); cargar(); }
   }
 
@@ -107,46 +119,43 @@ export default function PrivadaDetalle() {
   const sp = detalle?.sp500_mes != null ? Number(detalle.sp500_mes) : null;
   const hayProvisionales = miembros.some((m) => m.provisional === true);
 
+  // Pie: qué cifras son provisionales y cuándo se cerró la última.
+  let pie: string | null = null;
+  if (detalle) {
+    if (panel === "semana") {
+      pie = detalle.jornada_numero
+        ? `${detalle.en_vivo ? t("private_leagues_provisional_quotes") : t("private_leagues_last_closes")} · ${detalle.datos_hasta ? formatDate(detalle.datos_hasta) : t("private_leagues_waiting_prices")}`
+        : t("private_leagues_no_round_context");
+    } else if (detalle.jornada_numero != null && hayProvisionales) {
+      pie = t("liga_clasificacion_provisional_nota", { numero: detalle.jornada_numero, total: detalle.jornada_total! });
+    }
+  }
+
   return (
     <main className="scroll lv-pagina pv pv-detalle">
-      <CabeceraApp anio={2026} />
+      <CabeceraApp titulo={detalle?.nombre ?? t("private_leagues_title")}
+        izquierda={
+          <button type="button" className="pv-volver" aria-label={t("private_leagues_back")}
+            onClick={() => irConTransicion("/privadas", "vuelve", router)}>
+            <svg width="13" height="22" viewBox="0 0 13 22" fill="none" stroke="currentColor" strokeWidth="2.6"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M11 2 2 11l9 9" />
+            </svg>
+          </button>
+        } />
 
       {estado === "cargando" || cargando ? <Cargando filas={4} />
         : fallo || typeof liga === "string" ? <ErrorLiga titulo={t("private_leagues_detail_error")} mensaje={typeof liga === "string" ? liga : t("private_leagues_retry_later")} accion={{ texto: t("private_leagues_retry"), onClick: cargar }} />
         : detalle && <>
-          <Link href="/privadas" className="pv-atras">
-            <svg width="11" height="19" viewBox="0 0 11 19" aria-hidden="true"><path d="M9.5 1.5 2 9.5l7.5 8" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            {t("private_leagues_back")}
-          </Link>
-          <div className="pv-titulo-fila">
-            <h1 className="pv-titulo">{detalle.nombre}</h1>
-            <button type="button" className="pv-accion" onClick={() => setHojaMiembros(true)}>
-              {detalle.es_dueno ? t("private_leagues_invite_button") : t("private_leagues_members_button")}
-            </button>
-          </div>
-          <p className="pv-sub">
-            {t("private_leagues_people", { count: detalle.n_miembros })}
-            {detalle.jornada_numero ? ` · ${t("private_leagues_round", { round: detalle.jornada_numero, total: detalle.jornada_total! })}` : ""}
-          </p>
-
-          <div className="pv-seg">
-            <Segmentado etiquetaGrupo={t("private_leagues_group_results")} valor={panel} onChange={setPanel}
-              opciones={[{ valor: "semana", etiqueta: t("private_leagues_this_month") }, { valor: "tabla", etiqueta: t("private_leagues_standings") }]} />
-          </div>
-
-          {panel === "semana" && (
-            <p className="pv-contexto">{detalle.jornada_numero
-              ? t("private_leagues_round_context", { round: detalle.jornada_numero, total: detalle.jornada_total!, quotes: detalle.en_vivo ? t("private_leagues_provisional_quotes") : t("private_leagues_last_closes"), date: detalle.datos_hasta ? ` · ${formatDate(detalle.datos_hasta)}` : ` · ${t("private_leagues_waiting_prices")}` })
-              : t("private_leagues_no_round_context")}</p>
-          )}
-          {panel === "tabla" && detalle.jornada_numero != null && hayProvisionales && (
-            <p className="pv-contexto">{t("liga_clasificacion_provisional_nota", { numero: detalle.jornada_numero, total: detalle.jornada_total! })}</p>
-          )}
+          <SegmentoLiga etiquetaGrupo={t("private_leagues_group_results")} valor={panel} onChange={setPanel}
+            opciones={[{ valor: "semana", etiqueta: t("private_leagues_this_month") }, { valor: "tabla", etiqueta: t("private_leagues_standings") }]} />
 
           {(panel === "semana" ? entradasSemana.length > 0 : entradasTabla.length > 0) && (
             <ListaRanking key={panel}
               cabecera={panel === "semana"
-                ? <>{t("private_leagues_this_month")} · S&amp;P <b className="num">{sp == null ? "-" : porcentaje(sp, 1, locale)}</b></>
+                ? (detalle.jornada_numero
+                  ? <>{t("private_leagues_round", { round: detalle.jornada_numero, total: detalle.jornada_total! })} · S&amp;P <b className="num">{sp == null ? "-" : porcentaje(sp, 1, locale)}</b></>
+                  : t("private_leagues_this_month"))
                 : t("league_lista_temporada")}
               modos={panel === "semana" ? ["vs", "rent"] : ["vs", "rent", "pts"]}
               etiquetas={{ vs: t("league_modo_vs"), rent: t("league_orden_rentabilidad"), pts: t("league_modo_puntos") } satisfies Record<ModoRanking, string>}
@@ -162,7 +171,7 @@ export default function PrivadaDetalle() {
                     <span className="lv-nombre">
                       <b>{m.alias}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}</b>
                       <small>{m.es_yo && !m.estrategia ? t("private_leagues_join_create_note") : m.estrategia ? t("private_leagues_waiting_close") : t("private_leagues_member_create_note")}</small>
-                      {m.es_yo && !m.estrategia && <Link className="pv-enlace" href="/crear">{t("private_leagues_create_strategy")} →</Link>}
+                      {m.es_yo && !m.estrategia && <Link className="pv-enlace-fila" href="/crear">{t("private_leagues_create_strategy")}</Link>}
                     </span>
                   </li>
                 ))}
@@ -170,16 +179,38 @@ export default function PrivadaDetalle() {
             </>
           )}
 
-          <p className="pv-pie">
-            {panel === "tabla" && <>{t("private_leagues_standings_context")}<br /></>}
-            <button type="button" className="pv-enlace" onClick={() => setHojaMetodo(true)}>{t("private_leagues_rep_strategy_question")}</button>
+          <div className="pv-grupo">
+            {detalle.es_dueno && (
+              <button type="button" className="pv-celda accion" onClick={() => setHojaInvitar(true)}>
+                <span>{t("private_leagues_invite_button")}</span>
+              </button>
+            )}
+            <button type="button" className="pv-celda" onClick={() => setHojaMiembros(true)}>
+              <span>{t("private_leagues_members_button")}</span>
+              <span className="valor num">{detalle.n_miembros}</span>
+              <Chevron />
+            </button>
+            {!detalle.es_dueno && (
+              <button type="button" className="pv-celda peligro" onClick={salir}>
+                <span>{t("private_leagues_leave")}</span>
+              </button>
+            )}
+          </div>
+
+          <p className="lv-pie">
+            {pie && <>{pie}<br /></>}
+            <button type="button" className="pv-pie-enlace" onClick={() => setHojaMetodo(true)}>{t("private_leagues_rep_strategy_question")}</button>
           </p>
 
           {aviso && <p className="pv-error" role="alert">{aviso}</p>}
 
           <HojaMetodo abierta={hojaMetodo} onCerrar={() => setHojaMetodo(false)} consultado={detalle.consultado} />
-          <HojaMiembros abierta={hojaMiembros} onCerrar={() => setHojaMiembros(false)} liga={detalle}
-            copiado={copiado} onCopiar={copiar} onRotar={rotar} onExpulsar={expulsar} onSalir={salir} />
+          {detalle.es_dueno && (
+            <HojaInvitar abierta={hojaInvitar} onCerrar={() => { setHojaInvitar(false); setAviso(null); }} liga={detalle}
+              copiado={copiado} aviso={aviso} onCopiar={copiar} onRotar={rotar} />
+          )}
+          <HojaMiembros abierta={hojaMiembros} onCerrar={() => { setHojaMiembros(false); setAviso(null); }} liga={detalle}
+            aviso={aviso} onExpulsar={expulsar} />
         </>}
 
       <BarraPestanas />
