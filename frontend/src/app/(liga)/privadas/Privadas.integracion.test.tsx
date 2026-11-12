@@ -26,7 +26,8 @@ vi.mock("next/link", async () => {
   return { default: ({ children, href, className }: { children: React.ReactNode; href: string; className?: string }) =>
     react.createElement("a", { href, className }, children) };
 });
-vi.mock("../_sesion/SesionContext", () => ({ useSesionRequerida: () => ({ estado: "dentro", yo: { puede_crear_liga: true } }) }));
+let puedeCrear = true;
+vi.mock("../_sesion/SesionContext", () => ({ useSesionRequerida: () => ({ estado: "dentro", yo: { puede_crear_liga: puedeCrear } }) }));
 vi.mock("@/components/Confirmar", () => ({ useConfirmar: () => ({ confirmar: async () => false, dialogo: null }) }));
 vi.mock("@/lib/liga/ficha", () => ({ precargarFicha: vi.fn() }));
 vi.mock("@/lib/liga/api", () => ({
@@ -102,10 +103,31 @@ describe("lista de Privadas (maqueta v6)", () => {
     expect(texto()).toContain("Crear liga");
   });
 
-  it("explica el estado vacío y ofrece el botón para unirse", () => {
+  it("pone encima de la lista el bloque con crear y unirse", () => {
+    datosCache = [liga("Oficina", 2, 3)];
+    act(() => root.render(<PrivadasLista />));
+    const bloque = container.querySelector(".pv-bloque");
+    expect(bloque?.querySelector("h2")?.textContent).toBe("Juega con tu grupo");
+    expect(boton("Crear liga")?.parentElement).toBe(bloque?.querySelector(".pv-bloque-acciones"));
+    expect(boton("Unirme con código")?.classList.contains("tinte")).toBe(true);
+    expect(bloque?.nextElementSibling?.classList.contains("pv-grupo-lista")).toBe(true);
+  });
+
+  it("sin permiso para crear, unirse ocupa el ancho entero", () => {
+    puedeCrear = false;
+    datosCache = [liga("Oficina", 2, 3)];
+    act(() => root.render(<PrivadasLista />));
+    expect(boton("Crear liga")).toBeUndefined();
+    expect(boton("Unirme con código")?.classList.contains("solo")).toBe(true);
+    puedeCrear = true;
+  });
+
+  it("con la lista vacía muestra solo el bloque, sin el texto de «no estás en ninguna liga»", () => {
     datosCache = [];
     act(() => root.render(<PrivadasLista />));
-    expect(texto()).toContain("Todavía no estás en ninguna liga");
+    expect(container.querySelector(".pv-bloque")).not.toBeNull();
+    expect(container.querySelector(".pv-grupo-lista")).toBeNull();
+    expect(texto()).not.toContain("Todavía no estás en ninguna liga");
     expect(boton("Unirme con código")).toBeDefined();
   });
 });

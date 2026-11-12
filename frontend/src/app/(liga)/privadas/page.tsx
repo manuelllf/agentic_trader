@@ -134,6 +134,22 @@ export default function Privadas() {
     irConTransicion(href, "empuja", router);
   };
 
+  // Bloque de acciones encima de la lista (maqueta v8): dos acciones y una frase, sin público.
+  const bloque = (
+    <section className="pv-bloque" aria-labelledby="pv-bloque-titulo">
+      <h2 id="pv-bloque-titulo" className="pv-bloque-titulo">{t("private_leagues_hero_title")}</h2>
+      <p className="pv-bloque-texto">{t("private_leagues_hero_text")}</p>
+      <div className="pv-bloque-acciones">
+        {puedeCrear && (
+          <button type="button" className="pv-boton" onClick={() => setHoja("crear")}>{t("private_leagues_create_button")}</button>
+        )}
+        <button type="button" className={`pv-boton tinte${puedeCrear ? "" : " solo"}`} onClick={() => setHoja("unirse")}>
+          {t("private_leagues_join_button")}
+        </button>
+      </div>
+    </section>
+  );
+
   let contenido;
   if (!sesionLista || (estado === "dentro" && !yo) || cargando) {
     contenido = <EsqueletoLigas />;
@@ -142,25 +158,11 @@ export default function Privadas() {
       mensaje={typeof ligas === "string" ? ligas : t("private_leagues_retry_later")}
       accion={{ texto: t("private_leagues_retry"), onClick: cargar }} />;
   } else if (ligas && ligas.length === 0) {
-    contenido = (
-      <div className="pv-vacio">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
-          strokeLinejoin="round" aria-hidden="true">
-          <circle cx="9" cy="8" r="3.2" />
-          <path d="M3 19.5c0-3.2 2.7-5.5 6-5.5s6 2.3 6 5.5" />
-          <path d="M16 5a3.2 3.2 0 0 1 0 6.2M17.5 14.3c2 .7 3.5 2.6 3.5 5.2" />
-        </svg>
-        <h2>{t("private_leagues_empty_title")}</h2>
-        <p>{t("private_leagues_empty_text")}</p>
-        <button type="button" className="pv-boton" onClick={() => setHoja("unirse")}>{t("private_leagues_join_button")}</button>
-        {puedeCrear && (
-          <button type="button" className="pv-enlace" onClick={() => setHoja("crear")}>{t("private_leagues_create_button")}</button>
-        )}
-      </div>
-    );
+    contenido = bloque;
   } else {
     contenido = (
       <>
+        {bloque}
         <div className="pv-grupo-lista">
           {ligas?.map((l) => <FilaLiga key={l.id} liga={l} alEntrar={alEntrar} />)}
         </div>
