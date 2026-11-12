@@ -3,16 +3,11 @@
 // La selección puede probarse sin crear estrategia; guardar o inscribir requiere identidad.
 
 import { ACTUALIZACION_VISIBLE, LECTURA_VISIBLE, PREGUNTA_VISIBLE } from "@/lib/liga/funciones";
-import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
-import {
-  BarraPestanas, Boton, CabeceraApp, Cargando, Escudo, ErrorLiga, OpcionRadio, Segmentado,
-  escudoAleatorio, luminancia, PALETA, type EscudoValor,
-} from "../_ui";
+import { BarraPestanas, CabeceraApp, ErrorLiga, escudoAleatorio, type EscudoValor } from "../_ui";
 import {
   actualizarEstrategia, apuntar, buscarUniverso, costeProbarConPregunta,
   crearEstrategia, crearReceta, excluirEmpresa, getCatalogo, getFicha,
@@ -26,6 +21,7 @@ import { invalidar, obtener } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { miles } from "@/lib/liga/format";
 import { pesosCoherentes } from "@/lib/liga/receta";
+import { SegmentoLiga } from "../liga/SegmentoLiga";
 import { PasoRevisar } from "./PasoRevisar";
 import { LecturasModal } from "./LecturasModal";
 import { useAutoguardado } from "./useAutoguardado";
@@ -37,17 +33,14 @@ import { PasoCriterios } from "./PasoCriterios";
 import { CarteraHoja } from "./CarteraHoja";
 import { diferenciaCartera } from "./diferencias";
 import { useDeshacer } from "./useDeshacer";
+import { AvisoCrear, IconoAtras } from "./piezas";
+import "../liga/ranking.css";
 import "./constructor.css";
 const RUTA_ACTUAL = (id?: string) => (id ? `/crear/${id}` : "/crear");
 const ETAPAS = ["builder_step_idea", "builder_step_rules", "builder_step_criteria", "builder_step_portfolio", "builder_step_review"];
-const PREGUNTAS = ["builder_question_idea", "builder_question_rules", "builder_question_criteria", "builder_question_portfolio", "builder_question_review"];
+const PREGUNTAS = ["builder_idea_titulo", "builder_question_rules", "builder_question_criteria", "builder_question_portfolio", "builder_question_review"];
+const ESTADOS_SIN_AVISO = ["Guardado", "Guardando…", "Cambios pendientes"];
 type PruebaVista = Omit<Prueba, "id" | "foto_id" | "scan_run_id"> & { id: string | null; foto_id: number | null; scan_run_id: number | null };
-const VALORACIONES: Record<string, { titulo: string; ayuda: string }> = {
-  negocio: { titulo: "builder_fundamentals", ayuda: "builder_fundamentals_help" },
-  precio: { titulo: "builder_valuation", ayuda: "builder_valuation_help" },
-  deuda: { titulo: "builder_financial_strength", ayuda: "builder_financial_strength_help" },
-  pronto: { titulo: "builder_near_term_catalyst", ayuda: "builder_near_term_catalyst_help" },
-};
 
 type Borrador = {
   reglas: ReglaElegida[];
@@ -82,6 +75,24 @@ function escudoParaApi(cr: EscudoValor) {
   };
 }
 
+/** Esqueleto de un paso: título, el campo y una lista con dos líneas y una cifra por fila. */
+function EsqueletoPaso() {
+  const t = useTranslations();
+  return <div role="status" aria-live="polite">
+    <span className="sr-only">{t("common_cargando")}</span>
+    <div aria-hidden="true">
+      <span className="cr-esq" style={{ width: "62%", height: 24, marginTop: 26, borderRadius: 7 }} />
+      <div className="cr-grupo" style={{ marginTop: 16, height: 96 }} />
+      <span className="cr-esq" style={{ width: "38%", height: 13, margin: "30px 16px 8px" }} />
+      <div className="cr-grupo">{[56, 44, 60, 40].map(w => <div className="cr-celda" key={w}>
+        <span className="t"><span className="cr-esq" style={{ width: `${w}%`, height: 16 }} />
+          <span className="cr-esq" style={{ width: `${w + 18}%`, height: 13, marginTop: 6 }} /></span>
+        <span className="cr-esq" style={{ width: 34, height: 16 }} />
+      </div>)}</div>
+    </div>
+  </div>;
+}
+
 export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdInicial?: string; antes?: ReactNode }) {
   const t = useTranslations();
   const locale = normalizeLocale(useLocale()) ?? "es";
@@ -97,6 +108,7 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
   const [nombre, setNombre] = useState("");
+  const [errorNombre, setErrorNombre] = useState(false);
   const [cr, setCr] = useState<EscudoValor>(() => escudoAleatorio());
   const [b, setB] = useState<Borrador | null>(null);
   const deshacer = useDeshacer();
@@ -104,15 +116,14 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
   const cerrarHoja = useCallback(() => setHojaAbierta(false), []);
   const ultimaCartera = useRef<EmpresaViva[] | null>(null);
   const [movimientos, setMovimientos] = useState<{ entran: string[]; salen: EmpresaViva[] }>({ entran: [], salen: [] });
+  const [avisoCartera, setAvisoCartera] = useState<string | null>(null);
   const [visibilidad, setVisibilidad] = useState<"privada" | "publicada">("privada");
   const [declaraPosiciones, setDeclaraPosiciones] = useState<"si" | "no" | null>(null);
   const [cadaDia1Opcion, setCadaDia1Opcion] = useState<"revisar" | "mantener">("revisar");
   const [etapa, setEtapa] = useState(0);
   const [revisionInicial, setRevisionInicial] = useState<number | null>(null);
   const etapaRef = useRef<HTMLHeadingElement>(null);
-  const pasosRef = useRef<HTMLElement>(null);
 
-  const [editorEscudoAbierto, setEditorEscudoAbierto] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -168,6 +179,19 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
     }
     ultimaCartera.current = siguientes;
   }, [previewSeleccion]);
+
+  // El aviso de deshacer solo sale cuando la cartera cambia de verdad, y dice qué entra y qué sale.
+  const deshacerDisponible = deshacer.disponible;
+  useEffect(() => {
+    if (!deshacerDisponible || (!movimientos.entran.length && !movimientos.salen.length)) return;
+    const lista = (tickers: string[]) => tickers.slice(0, 2).join(", ") + (tickers.length > 2 ? "…" : "");
+    const partes = [
+      movimientos.entran.length ? t("builder_aviso_entra", { count: movimientos.entran.length, tickers: lista(movimientos.entran) }) : "",
+      movimientos.salen.length ? t("builder_aviso_sale", { count: movimientos.salen.length, tickers: lista(movimientos.salen.map(e => e.ticker)) }) : "",
+    ].filter(Boolean);
+    setAvisoCartera(t("builder_aviso_cartera", { cambios: partes.join(", ") }));
+  }, [movimientos, deshacerDisponible, t]);
+  const cerrarAviso = useCallback(() => setAvisoCartera(null), []);
 
   const contenido: ContenidoBorrador | null = b ? {
     nombre, idea: convFrase, etapa, escudo: escudoParaApi(cr),
@@ -310,22 +334,23 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
   }, [etapa, cargandoInicial]);
 
   const pro = yo?.plan === "pro";
+  const titulo = estrategiaIdInicial ? t("builder_edit_title") : t("builder_new_title");
+  const opcionesEtapas = ETAPAS.map((clave, i) => ({ valor: i, etiqueta: t(clave) }));
 
   if (!sesionLista || cargandoInicial) {
     return (
-      <main className="scroll constructor ancho-amplio" aria-busy="true">
-        <CabeceraApp titulo={estrategiaIdInicial ? t("builder_edit_title") : t("builder_new_title")} />
-        <nav className="constructor-etapas" aria-label={t("builder_steps_aria")}>
-          {ETAPAS.map((titulo, i) => <button key={titulo} type="button" disabled aria-current={etapa === i ? "step" : undefined}>{t(titulo)}</button>)}
-        </nav>
-        <div style={{ marginTop: 12 }}><Cargando filas={3} /></div>
+      <main className="scroll lv-pagina cr constructor" aria-busy="true">
+        <CabeceraApp titulo={titulo} />
+        <SegmentoLiga className="cr-etapas" etiquetaGrupo={t("builder_steps_aria")} valor={etapa} opciones={opcionesEtapas}
+          onChange={() => undefined} desactivado />
+        <EsqueletoPaso />
         <BarraPestanas />
       </main>
     );
   }
   if (typeof catalogo === "string") {
     return (
-      <main className="scroll ancho-amplio">
+      <main className="scroll lv-pagina cr">
         <ErrorLiga titulo={t("builder_catalog_error")} mensaje={catalogo}
                    accion={{ texto: t("builder_retry"), onClick: () => window.location.reload() }} />
       </main>
@@ -333,7 +358,7 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
   }
   if (errorCarga) {
     return (
-      <main className="scroll ancho-amplio">
+      <main className="scroll lv-pagina cr">
         <ErrorLiga titulo={t("builder_open_error")} mensaje={errorCarga}
                    accion={{ texto: t("builder_back_to_mine"), onClick: () => router.push("/mias") }} />
       </main>
@@ -368,7 +393,7 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
   async function guardar(): Promise<string | null> {
     if (!(await autoguardado.guardar())) { setError(t("builder_draft_save_error")); return null; }
     if (!nombre.trim()) {
-      setError(t("builder_name_required"));
+      setErrorNombre(true);
       irEtapa(4);
       requestAnimationFrame(() => requestAnimationFrame(() => {
         nombreRef.current?.scrollIntoView({ block: "center" });
@@ -642,230 +667,119 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
 
   const cartera = previewDato?.valor.elegidas ?? [];
   const carteraProps = { elegidas: cartera, pasan: previewDato?.valor.cumplen_reglas ?? null,
-    huecos: previewDato ? Math.max(0, b.n_empresas - cartera.length) : 0, ...movimientos };
-  // La cartera ya se ve en vivo (barra inferior y panel): aquí solo se avisa de lo que falla.
+    huecos: previewDato ? Math.max(0, b.n_empresas - cartera.length) : 0, cajaPct: previewDato?.valor.caja_pct ?? null,
+    sectores: catalogo.sectores, ...movimientos };
+  // La cartera ya se ve en vivo (barra de abajo y su hoja): aquí solo se avisa de lo que falla.
   const avisoPreview = previewSeleccionCargando ? null
-    : previewSeleccionError ? <p className="aviso" role="alert">{previewSeleccionError}</p>
+    : previewSeleccionError ? <p className="cr-pie mal" role="alert">{previewSeleccionError}</p>
     : previewSeleccion && previewSeleccion.estado !== "disponible" && previewSeleccion.mensaje
-      ? <p className="callout" role="status">{previewSeleccion.mensaje}</p> : null;
+      ? <p className="cr-pie" role="status">{previewSeleccion.mensaje}</p> : null;
+  const errorGuardado = !ESTADOS_SIN_AVISO.includes(autoguardado.estado);
+  const bloqueado = ocupado || convOcupado;
+  // «Ver qué empresas entrarían hoy» solo hace falta para la pregunta o la lectura a fondo: la cartera ya es en vivo.
+  const pruebasCartera = (PREGUNTA_VISIBLE || LECTURA_VISIBLE) ? <div className="cartera-pruebas">
+    <button type="button" className="cr-boton tinte" disabled={ocupado} onClick={() => void verQueEntrarian()}>
+      {ocupado ? t("builder_testing") : t("builder_preview_today")}</button>
+    {PREGUNTA_VISIBLE && typeof prueba === "object" && prueba && b.pregunta && !costePregunta && <button type="button" className="cr-boton tinte" disabled={ocupado}
+      onClick={async () => { setOcupado(true); try { await guardarPrueba(); } finally { setOcupado(false); } }}>
+      {t("builder_save_check_question_cost")}</button>}
+    {typeof prueba === "string" && <p className="cr-pie" role="status">{prueba}</p>}
+    {PREGUNTA_VISIBLE && typeof prueba === "object" && prueba && b.pregunta && costePregunta && costePregunta.faltan > 0 && (
+      <button type="button" className="cr-boton tinte" disabled={ocupado} onClick={probarConPregunta}>
+        {ocupado ? t("builder_asking") : t("builder_test_question_cost", { count: costePregunta.creditos, companies: costePregunta.evaluadas })}</button>)}
+    {typeof prueba === "object" && prueba && (prueba.sin_notas > 0 || prueba.sin_respuesta > 0) && <p className="cr-pie">
+      {t("builder_partial_selection", { withoutScores: prueba.sin_notas, withoutAnswer: prueba.sin_respuesta })}</p>}
+    {LECTURA_VISIBLE && typeof prueba === "object" && prueba && prueba.elegidas.length > 0 && (
+      <button type="button" className="cr-boton tinte" onClick={leerCarteraCompleta}>
+        {prueba.elegidas.every((e) => lecturas.some((l) => l.ticker === e.ticker)) ? t("builder_view_portfolio_reports")
+          : t(prueba.id ? "builder_read_portfolio" : "builder_save_read_portfolio", { count: prueba.elegidas.length * 5 })}</button>)}
+  </div> : null;
 
   return (
-    <main className="scroll constructor ancho-amplio">
-      <CabeceraApp titulo={estrategiaIdInicial ? t("builder_edit_title") : t("builder_new_title")} />
+    <main className="scroll lv-pagina cr constructor">
+      <CabeceraApp titulo={titulo} />
+      <SegmentoLiga className="cr-etapas" etiquetaGrupo={t("builder_steps_aria")} valor={etapa} opciones={opcionesEtapas}
+        onChange={i => irEtapa(i)} desactivado={bloqueado} />
       {antes}
-      <nav ref={pasosRef} className="constructor-etapas" aria-label={t("builder_steps_aria")}>
-        {ETAPAS.map((titulo, i) => <button key={titulo} type="button" aria-current={etapa === i ? "step" : undefined}
-          disabled={ocupado || convOcupado} onClick={() => void irEtapa(i)}>{t(titulo)}</button>)}
-      </nav>
-      {/* Guardar es automático: solo se dice algo si falla. */}
-      <div role="status" className="constructor-guardado">
-        {!["Guardado", "Guardando…", "Cambios pendientes"].includes(autoguardado.estado) && <>
-          <span>{autoguardado.estado}</span>
-          <button type="button" className="link" onClick={autoguardado.reintentar}>{t("builder_retry")}</button>
-        </>}
-      </div>
-      <div className={`constructor-distribucion${etapa >= 3 ? " constructor-ancho" : ""}`}>
-      <fieldset className="constructor-tarea" disabled={ocupado || convOcupado}
+      {errorGuardado && <div className="cr-grupo constructor-guardado" role="alert" style={{ marginTop: 12 }}>
+        <div className="cr-celda"><span className="t"><b className="normal mal">{t("builder_draft_save_title")}</b>
+          <small>{autoguardado.estado}</small></span>
+          <button type="button" className="cr-enlace pequeno" onClick={autoguardado.reintentar}>{t("builder_retry")}</button><span /></div>
+      </div>}
+      <fieldset className="constructor-tarea" disabled={bloqueado}
         onFocusCapture={e => { if (e.target instanceof HTMLInputElement && e.target.type === "number") deshacer.iniciar(b); }}
         onPointerDownCapture={e => { if (e.target instanceof HTMLInputElement && e.target.type === "range") { e.target.setPointerCapture(e.pointerId); deshacer.iniciar(b); } }}
         onKeyDownCapture={e => { if (e.target instanceof HTMLInputElement && e.target.type === "range" && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(e.key)) deshacer.iniciar(b); }}
         onPointerUpCapture={() => deshacer.terminar(b)} onPointerCancelCapture={() => deshacer.terminar(b)}
         onKeyUpCapture={() => deshacer.terminar(b)} onBlurCapture={() => deshacer.terminar(b)}>
-      <h2 ref={etapaRef} tabIndex={-1} className="h1 constructor-pregunta">{t(etapa === 0 ? "builder_idea_titulo" : PREGUNTAS[etapa])}</h2>
-      {etapa === 1 && <PasoReglas catalogo={catalogo} reglas={b.reglas} preview={previewSeleccion}
-        estrategiaId={id} quedan={convQuedan} alCambiarQuedan={setConvQuedan}
-        alCambiarOcupado={setConvOcupado} actualizarB={actualizarB} />}
+        <h2 ref={etapaRef} tabIndex={-1} className="cr-pregunta constructor-pregunta">{t(PREGUNTAS[etapa])}</h2>
+        <div key={etapa} className="cr-fundido">
+          {etapa === 0 && <PasoIdea catalogo={catalogo} idea={convFrase} reglas={b.reglas}
+            estrategiaId={id} quedan={convQuedan} alCambiarQuedan={setConvQuedan}
+            alCambiarOcupado={setConvOcupado} alCambiarIdea={setConvFrase}
+            actualizarB={actualizarB} irReglas={() => irEtapa(1)} />}
 
-      {etapa === 0 && <PasoIdea catalogo={catalogo} idea={convFrase} reglas={b.reglas}
-        estrategiaId={id} quedan={convQuedan} alCambiarQuedan={setConvQuedan}
-        alCambiarOcupado={setConvOcupado} alCambiarIdea={setConvFrase}
-        actualizarB={actualizarB} irReglas={() => irEtapa(1)} />}
+          {etapa === 1 && <>
+            <PasoReglas catalogo={catalogo} reglas={b.reglas} preview={previewSeleccion}
+              estrategiaId={id} quedan={convQuedan} alCambiarQuedan={setConvQuedan}
+              alCambiarOcupado={setConvOcupado} actualizarB={actualizarB} />
+            {avisoPreview}
+          </>}
 
-      {etapa === 2 && <PasoCriterios catalogo={catalogo} pregunta={b.pregunta} pesos={b.pesos}
-        pro={pro} actualizarB={actualizarB}>{avisoPreview}</PasoCriterios>}
+          {etapa === 2 && <PasoCriterios catalogo={catalogo} pregunta={b.pregunta} pesos={b.pesos}
+            pro={pro} actualizarB={actualizarB}>{avisoPreview}</PasoCriterios>}
 
-      {etapa === 3 && <PasoCartera receta={recetaPreview ?? undefined} estrategiaId={id} alActualizar={alActualizarDatos} preview={previewSeleccion} nEmpresas={b.n_empresas}
-        reparto={b.reparto} maxPorSector={b.max_por_sector} sectores={catalogo.sectores}
-        criterios={Object.fromEntries(catalogo.pesos.claves.map(k => [k, VALORACIONES[k] ? t(VALORACIONES[k].titulo) : catalogo.pesos.etiquetas[k]]))}
-        excluidas={b.excluidas} cambio={cambio ?? (movimientos.entran.length === 1 && movimientos.salen.length === 1
-          ? { entra: movimientos.entran[0], sale: movimientos.salen[0].ticker } : null)}
-        actualizarB={actualizarB} cambiar={ticker => {
-          if (typeof prueba === "object" && prueba?.id) void cambiarEmpresa(ticker);
-          else actualizarB({ excluidas: [...new Set([...b.excluidas, ticker])] });
-        }} recuperar={ticker => {
-          if (typeof prueba === "object" && prueba?.id) void deshacerCambio(ticker);
-          else actualizarB({ excluidas: b.excluidas.filter(t => t !== ticker) });
-        }} leer={leerFicha} lecturas={lecturas.map(l => l.ticker)} busca={buscaQ} buscar={buscar}
-        sugerencias={sugerencias} preguntar={preguntarPorQue} porque={porque}
-        cadaDia1={cadaDia1Opcion} cambiarCadaDia1={setCadaDia1Opcion}>
-        {avisoPreview}
-        <div className="cartera-pruebas">
-        <Boton variante="secundario" ancho="completo"
-          disabled={ocupado} onClick={() => void verQueEntrarian()}>
-          {ocupado ? t("builder_testing") : t("builder_preview_today")}
-        </Boton>
-        {PREGUNTA_VISIBLE && typeof prueba === "object" && prueba && b.pregunta && !costePregunta && <Boton variante="secundario" disabled={ocupado}
-          onClick={async () => { setOcupado(true); try { await guardarPrueba(); } finally { setOcupado(false); } }}>
-          {t("builder_save_check_question_cost")}
-        </Boton>}
-        {typeof prueba === "string" && <p className="fine" role="status">{prueba}</p>}
-        {PREGUNTA_VISIBLE && typeof prueba === "object" && prueba && b.pregunta && costePregunta && costePregunta.faltan > 0 && (
-          <Boton variante="secundario" ancho="completo" disabled={ocupado} onClick={probarConPregunta}>
-            {ocupado ? t("builder_asking") : t("builder_test_question_cost", { count: costePregunta.creditos, companies: costePregunta.evaluadas })}
-          </Boton>
-        )}
-        {typeof prueba === "object" && prueba && (prueba.sin_notas > 0 || prueba.sin_respuesta > 0) && <p className="fine">
-          {t("builder_partial_selection", { withoutScores: prueba.sin_notas, withoutAnswer: prueba.sin_respuesta })}
-        </p>}
-        {LECTURA_VISIBLE && typeof prueba === "object" && prueba && prueba.elegidas.length > 0 && (
-          <Boton variante="secundario" ancho="completo" onClick={leerCarteraCompleta}>
-            {prueba.elegidas.every((e) => lecturas.some((l) => l.ticker === e.ticker)) ? t("builder_view_portfolio_reports")
-              : t(prueba.id ? "builder_read_portfolio" : "builder_save_read_portfolio", { count: prueba.elegidas.length * 5 })}
-          </Boton>
-        )}
+          {etapa === 3 && <PasoCartera receta={recetaPreview ?? undefined} estrategiaId={id} alActualizar={alActualizarDatos}
+            preview={previewSeleccion} nEmpresas={b.n_empresas} reparto={b.reparto} maxPorSector={b.max_por_sector}
+            sectores={catalogo.sectores} excluidas={b.excluidas} irReglas={() => irEtapa(1)}
+            cambio={cambio ?? (movimientos.entran.length === 1 && movimientos.salen.length === 1
+              ? { entra: movimientos.entran[0], sale: movimientos.salen[0].ticker } : null)}
+            actualizarB={actualizarB} cambiar={ticker => {
+              if (typeof prueba === "object" && prueba?.id) void cambiarEmpresa(ticker);
+              else actualizarB({ excluidas: [...new Set([...b.excluidas, ticker])] });
+            }} recuperar={ticker => {
+              if (typeof prueba === "object" && prueba?.id) void deshacerCambio(ticker);
+              else actualizarB({ excluidas: b.excluidas.filter(t => t !== ticker) });
+            }} leer={leerFicha} lecturas={lecturas.map(l => l.ticker)} busca={buscaQ} buscar={buscar}
+            sugerencias={sugerencias} preguntar={preguntarPorQue} porque={porque}
+            cadaDia1={cadaDia1Opcion} cambiarCadaDia1={setCadaDia1Opcion}>
+            {avisoPreview}{pruebasCartera}
+          </PasoCartera>}
+
+          {etapa === 4 && <PasoRevisar preview={previewSeleccion} pesos={b.pesos}
+            nEmpresas={b.n_empresas} reparto={b.reparto} maxPorSector={b.max_por_sector}
+            nombre={nombre} cambiarNombre={v => { setNombre(v); if (v.trim()) setErrorNombre(false); }}
+            nombreRef={nombreRef} errorNombre={errorNombre}
+            escudo={cr} cambiarEscudo={setCr}
+            visibilidad={visibilidad} cambiarVisibilidad={v => { setVisibilidad(v); if (v === "privada") setDeclaraPosiciones(null); }}
+            declara={declaraPosiciones} cambiarDeclara={setDeclaraPosiciones}
+            faltanReglas={faltanReglas} pro={pro} />}
         </div>
-      </PasoCartera>}
-
-      {etapa === 4 && <PasoRevisar preview={previewSeleccion} pesos={b.pesos}
-        nEmpresas={b.n_empresas} reparto={b.reparto} maxPorSector={b.max_por_sector}
-        nombre={nombre} cambiarNombre={setNombre} nombreRef={nombreRef}>
-      <div className="paso-bloque">
-        <div className="crest-ed">
-          <button type="button" className="crest-btn" aria-label={t("builder_edit_crest")}
-                  onClick={() => setEditorEscudoAbierto((v) => !v)}>
-            <Escudo valor={cr} etiqueta={t("builder_crest_preview")} tamano={72} />
-          </button>
-          <div className="crest-acts">
-            <Boton tamano="pequeno" onClick={() => setEditorEscudoAbierto((v) => !v)}>
-              {editorEscudoAbierto ? t("builder_close_editor") : t("builder_edit_crest")}
-            </Boton>
-            <Boton tamano="pequeno" onClick={() => setCr(escudoAleatorio())}>{t("builder_random_crest")}</Boton>
-          </div>
-        </div>
-        {editorEscudoAbierto && (
-          <EditorEscudo valor={cr} onChange={setCr} />
-        )}
-      </div>
-
-      <section className="paso-bloque" aria-labelledby="revisar-quien">
-        <h2 id="revisar-quien" className="sec-t">{t("builder_who_can_see")}</h2>
-        <div role="radiogroup" aria-labelledby="revisar-quien">
-          <OpcionRadio marcada={visibilidad === "privada"}
-                       titulo={t("builder_result_only")}
-                       ayuda={t("builder_result_only_help")}
-                       onClick={() => { setVisibilidad("privada"); setDeclaraPosiciones(null); }} />
-          <OpcionRadio marcada={visibilidad === "publicada"}
-                       titulo={t("builder_revisar_publicada")}
-                       ayuda={t("builder_published_help")}
-                       onClick={() => setVisibilidad("publicada")} />
-        </div>
-        <p className="fine">{t("builder_revisar_sin_pruebas")}</p>
-        {PLANES_VISIBLES && !pro && <Link href="/cuenta/plan" className="link">{t("planes_ver")}</Link>}
-        {visibilidad === "publicada" && (
-          <div className="revisar-declara">
-            <span className="lbl">{t("builder_position_declaration")}</span>
-            <Segmentado etiquetaGrupo={t("builder_position_declaration")}
-                        opciones={[{ valor: "si", etiqueta: t("builder_yes") }, { valor: "no", etiqueta: t("builder_no") }]}
-                        valor={declaraPosiciones ?? ""}
-                        onChange={(v) => setDeclaraPosiciones(v as "si" | "no")} />
-            {!declaraPosiciones && <p className="fine">{t("builder_declaration_required")}</p>}
-          </div>
-        )}
-      </section>
-      {faltanReglas && <p className="callout" role="status">{t("builder_rules_required")}</p>}
-      </PasoRevisar>}
-      {etapa === 1 && avisoPreview}
-      {error && <p className="aviso" role="alert">{error}</p>}
+        {error && <p className="cr-pie mal" role="alert">{error}</p>}
       </fieldset>
-      {etapa < 3 && <aside className="constructor-cartera"><CarteraViva {...carteraProps} />{ACTUALIZACION_VISIBLE && usarFrescas && <p className="fine">{t("builder_actualizar_hecha")}</p>}</aside>}
-      </div>
-      <div className="constructor-deshacer" aria-live="polite">
-        {deshacer.disponible && <><span>{t("builder_live_changed")}</span> <button type="button" className="link" disabled={ocupado || convOcupado} onClick={() => {
-          const copia = deshacer.recuperar();
-          if (copia) actualizarB(copia, false);
-        }}>{t("builder_undo")}</button></>}
-      </div>
-      <CarteraHoja abierta={hojaAbierta} onCerrar={cerrarHoja}><CarteraViva {...carteraProps} />{ACTUALIZACION_VISIBLE && usarFrescas && <p className="fine">{t("builder_actualizar_hecha")}</p>}</CarteraHoja>
-      <div className="constructor-avanzar">
-        <button type="button" className="constructor-ver-cartera num" aria-expanded={hojaAbierta} aria-controls={hojaAbierta ? "cartera-hoja" : undefined} onClick={() => setHojaAbierta(true)}>
-          {t("builder_live_count", { selected: miles(cartera.length, locale), passed: carteraProps.pasan === null ? "-" : miles(carteraProps.pasan, locale) })}
+
+      <div className="cr-dock constructor-avanzar" role="group" aria-label={t("builder_dock_aria")}>
+        <button type="button" className="cr-dock-cartera constructor-ver-cartera" aria-haspopup="dialog" aria-expanded={hojaAbierta}
+          onClick={() => setHojaAbierta(true)}>
+          <small>{t("builder_live_title")}</small>
+          <b className="num">{t("builder_dock_empresas", { count: cartera.length })}{" "}
+            <span>{t("builder_dock_de", { total: carteraProps.pasan === null ? "–" : miles(carteraProps.pasan, locale) })}</span></b>
         </button>
-        {etapa > 0 && <Boton disabled={ocupado || convOcupado} onClick={() => void irEtapa(etapa - 1)}>{t("builder_previous")}</Boton>}
-        {etapa < 4 && <Boton variante="principal" disabled={ocupado || convOcupado}
-          onClick={() => void irEtapa(etapa + 1)}>{t("builder_live_continue")}</Boton>}
-        {etapa === 4 && <Boton variante="principal" disabled={ocupado || convOcupado || !puedeApuntarse} onClick={apuntarse}>
-          {ocupado ? t("builder_saving") : t("builder_save_signup")}
-        </Boton>}
+        {etapa > 0 ? <button type="button" className="cr-dock-atras" disabled={bloqueado}
+          aria-label={t("builder_previous_step", { step: t(ETAPAS[etapa - 1]) })} onClick={() => irEtapa(etapa - 1)}><IconoAtras /></button> : <span />}
+        {etapa < 4
+          ? <button type="button" className="cr-boton" disabled={bloqueado} onClick={() => irEtapa(etapa + 1)}>{t("builder_live_continue")}</button>
+          : <button type="button" className="cr-boton" disabled={bloqueado || !puedeApuntarse} onClick={apuntarse}>
+            {ocupado ? t("builder_saving") : t("builder_save_signup")}</button>}
       </div>
+      {avisoCartera && <AvisoCrear texto={avisoCartera} etiquetaDeshacer={t("builder_undo")} onFin={cerrarAviso}
+        onDeshacer={() => { const copia = deshacer.recuperar(); if (copia) actualizarB(copia, false); setAvisoCartera(null); }} />}
+      <CarteraHoja abierta={hojaAbierta} onCerrar={cerrarHoja}><CarteraViva {...carteraProps} />
+        {ACTUALIZACION_VISIBLE && usarFrescas && <p className="cr-pie">{t("builder_actualizar_hecha")}</p>}</CarteraHoja>
       <BarraPestanas />
       {LECTURA_VISIBLE && <LecturasModal abierto={modalLecturas} tickers={tickersLecturas} activo={tickerLectura}
         lecturas={lecturas} leyendo={leyendo} error={errorLectura}
         onSeleccionar={setTickerLectura} onCerrar={() => setModalLecturas(false)} />}
     </main>
-  );
-}
-
-// ---- Editor de escudo (inline) --------------------------------------------------------------
-
-const FORMAS: { valor: EscudoValor["forma"]; etiqueta: string }[] = [
-  { valor: "circulo", etiqueta: "builder_shape_circle" }, { valor: "escudo", etiqueta: "builder_shape_shield" },
-  { valor: "hexagono", etiqueta: "builder_shape_hexagon" },
-];
-const DIBUJOS: { valor: EscudoValor["dibujo"]; etiqueta: string }[] = [
-  { valor: "liso", etiqueta: "builder_pattern_solid" }, { valor: "mitades", etiqueta: "builder_pattern_halves" },
-  { valor: "diagonal", etiqueta: "builder_pattern_diagonal" }, { valor: "franja", etiqueta: "builder_pattern_stripe" },
-];
-
-function EditorEscudo({ valor, onChange }: { valor: EscudoValor; onChange: (v: EscudoValor) => void }) {
-  const t = useTranslations();
-  const dosColores = valor.dibujo !== "liso";
-  return (
-    <div className="tarjeta" style={{ marginTop: 14 }}>
-      <div className="ce-top"><Escudo valor={valor} etiqueta={t("builder_crest_preview")} tamano={112} /></div>
-      <p className="mini">{t("builder_shape")}</p>
-      <div className="tiles t3">
-        {FORMAS.map((f) => (
-          <button key={f.valor} type="button" className="tile" aria-pressed={valor.forma === f.valor}
-                  onClick={() => onChange({ ...valor, forma: f.valor })}>
-            {t(f.etiqueta)}
-          </button>
-        ))}
-      </div>
-      <p className="mini">{t("builder_pattern")}</p>
-      <div className="tiles t4">
-        {DIBUJOS.map((d) => (
-          <button key={d.valor} type="button" className="tile" aria-pressed={valor.dibujo === d.valor}
-                  onClick={() => onChange({ ...valor, dibujo: d.valor })}>
-            {t(d.etiqueta)}
-          </button>
-        ))}
-      </div>
-      <p className="mini">{t("builder_primary_color")}</p>
-      <div className="swg">
-        {PALETA.map((c) => (
-          <button key={c} type="button" className="swb" style={{ background: c }}
-                  aria-pressed={valor.color1 === c} aria-label={t("builder_color", { color: c })}
-                  onClick={() => onChange({ ...valor, color1: c })} />
-        ))}
-      </div>
-      {dosColores && (
-        <>
-          <p className="mini">{t("builder_secondary_color")}</p>
-          <div className="swg">
-            {PALETA.map((c) => (
-              <button key={c} type="button" className="swb" style={{ background: c }}
-                      aria-pressed={valor.color2 === c} aria-label={t("builder_color", { color: c })}
-                      onClick={() => onChange({ ...valor, color2: c })} />
-            ))}
-          </div>
-        </>
-      )}
-      <p className="mini">{t("builder_initials_optional")}</p>
-      <input className="inp ini" maxLength={2} value={valor.iniciales ?? ""}
-             onChange={(e) => onChange({ ...valor, iniciales: e.target.value.toUpperCase().replace(/[^A-ZÑ0-9]/g, "") })} />
-      <p className="fine">
-        {luminancia(valor.color1) > 0.4 ? t("builder_initials_dark_ink") : t("builder_initials_light_ink")}
-      </p>
-    </div>
   );
 }

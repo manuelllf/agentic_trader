@@ -11,7 +11,7 @@ it("marca el intervalo lineal y conserva 36 barras", () => {
   const div = barras(posicion(25, 0, 100), posicion(75, 0, 100));
   expect(div.querySelectorAll("rect")).toHaveLength(36);
   expect(div.querySelectorAll(".si")).toHaveLength(18);
-  expect(div.querySelector("rect")?.getAttribute("fill")).toBe("var(--surface2)");
+  expect(div.querySelector("rect")?.getAttribute("fill")).toBe("var(--line2)");
 });
 it("marca el intervalo logarítmico usando la posición del valor", () => {
   expect(posicion(10, 1, 100, true)).toBeCloseTo(0.5);

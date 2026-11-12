@@ -23,20 +23,20 @@ function montar(cambios: Partial<PropsRevisar> = {}) {
 it("sin reglas mira todo el mercado", () => {
   const { div } = montar(); expect(div.textContent).toContain("Mira todo el mercado.");
 });
-it("pone el tamano primero y une dos reglas con coma e y", () => {
+it("pone el tamaño primero, une con coma e «y» y pone «con» una vez por tramo", () => {
   const { div } = montar({ preview: { evaluadas: 5700, cumplen_reglas: 40, seleccionadas: 5,
-    por_regla: [{ clave: "dividendo", detalle: "con dividendo" }, { clave: "tamano", detalle: "grandes" },
-      { clave: "deuda", detalle: "con poca deuda" }] } as PropsRevisar["preview"] });
-  expect(div.textContent).toContain("Busca empresas grandes, con dividendo y con poca deuda.");
-  expect(div.querySelectorAll(".embudo li")).toHaveLength(3);
-  expect(div.querySelector(".embudo li:last-child")?.classList.contains("final")).toBe(true);
-  expect(div.querySelector(".embudo")?.textContent).toContain("5.700");
+    por_regla: [{ clave: "rentables", detalle: "ROE superior al 15 %" }, { clave: "tamano", detalle: "capitalización de al menos 10.000 M$" },
+      { clave: "sin_bancos", detalle: "fuera la banca" }, { clave: "barata", detalle: "PER por debajo de 25" }] } as PropsRevisar["preview"] });
+  expect(div.textContent).toContain("Busca empresas con capitalización de al menos 10.000 M$, ROE superior al 15 %, fuera la banca y con PER por debajo de 25.");
+  expect(div.querySelectorAll(".cr-embudo li")).toHaveLength(3);
+  expect(div.querySelector(".cr-embudo li:last-child")?.classList.contains("final")).toBe(true);
+  expect(div.querySelector(".cr-embudo")?.textContent).toContain("5.700");
 });
 it("el nombre empieza vacio y no hay chips ni sugerencias", () => {
   const { div, props } = montar(); const input = div.querySelector("input")!;
   expect(input.value).toBe(""); expect(input.placeholder).toBe(es.builder_revisar_placeholder);
   expect(input.maxLength).toBe(28);
-  expect(div.querySelectorAll("button, .sugg, .chip")).toHaveLength(0);
+  expect(div.querySelectorAll("button, .sugg, .chip, .cr-reglas-estilo")).toHaveLength(0);
   act(() => { const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     setter.call(input, "Mi estrategia"); input.dispatchEvent(new Event("input", { bubbles: true })); });
   expect(props.cambiarNombre).toHaveBeenCalledWith("Mi estrategia");

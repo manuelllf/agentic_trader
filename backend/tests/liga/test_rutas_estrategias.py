@@ -396,6 +396,17 @@ _EMPRESAS = [
 ]
 
 
+def test_preview_da_las_cuatro_notas_de_cada_elegida(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, foto_con_escaneo, _jornada, _cx = api
+    foto_con_escaneo(_EMPRESAS)
+    r = cliente.post("/liga/seleccion/preview", json=RECETA_BASICA, headers=cab(usuario()))
+    assert r.status_code == 200, r.text
+    primera = r.json()["elegidas"][0]
+    # Jev puntúa de 0 a 9; la vista las da en la escala de la nota final, de 0 a 100.
+    assert primera["ticker"] == "ZPA"
+    assert primera["notas"] == {"negocio": 100, "precio": 89, "deuda": 78, "pronto": 67}
+
+
 def test_prueba_por_que_y_buscador(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, foto_con_escaneo, _jornada, _cx = api
     foto_id, scan_id = foto_con_escaneo(_EMPRESAS)

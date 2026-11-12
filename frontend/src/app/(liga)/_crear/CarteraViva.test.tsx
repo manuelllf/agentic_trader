@@ -17,6 +17,12 @@ it("resalta entradas y tacha salidas durante seis segundos", () => {
     expect(div.querySelector(".sale")).not.toBeNull();
     act(() => vi.advanceTimersByTime(1));
     expect(div.querySelector(".sale")).toBeNull();
-    expect(div.querySelector(".entra")).toBeNull();
+    expect(div.querySelector("li.entra")).toBeNull();
   } finally { act(() => root.unmount()); vi.useRealTimers(); }
+});
+it("sin empresas ni huecos explica cuándo aparece", () => {
+  const div = document.createElement("div"), root = createRoot(div);
+  act(() => root.render(<CarteraViva elegidas={[]} pasan={null} huecos={0} entran={[]} salen={[]} />));
+  expect(div.textContent).toContain("builder_cartera_viva_vacia");
+  act(() => root.unmount());
 });

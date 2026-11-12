@@ -9,7 +9,7 @@ export const PORCENTAJES = new Set(["fcf", "rentables", "roa", "margen", "margen
 
 type Traducir = (clave: string, valores?: Record<string, string>) => string;
 
-function cifra(valor: number, locale: Locale): string {
+export function cifra(valor: number, locale: Locale): string {
   const decimales = Number.isInteger(valor) ? 0 : Number.isInteger(valor * 10) ? 1 : 2;
   return signo(valor, decimales, locale).replace(/^\+/, "");
 }

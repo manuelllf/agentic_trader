@@ -359,6 +359,12 @@ def _fila(empresa: EmpresaFoto, reglas: tuple[ReglaPreparada, ...], pesos: Mappi
                          _mejor_nota(notas, pesos), usada, exacta)
 
 
+def notas_en_cien(notas: NotasJev) -> dict[str, int]:
+    """Las 4 notas en la escala de la nota final (0-100), con las claves de peso."""
+    return {clave: round(Fraction(getattr(notas, campo)) * _ESCALA_JEV * 10)
+            for clave, campo in _NOTA_DE_PESO.items()}
+
+
 def _mejor_nota(notas: NotasJev, pesos: Mapping[str, int]) -> str | None:
     """La nota que más aporta (peso × nota); a igualdad, la primera en el orden de `PESOS`."""
     mejor, aporte = None, None

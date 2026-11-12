@@ -26,7 +26,7 @@ it("oculta el campo de pregunta propia", () => {
 it("detecta el preset y aplica los pesos del catálogo", () => {
   const { div, actualizarB } = montar(negocio);
   expect(div.querySelector('[aria-pressed="true"]')?.textContent).toBe("builder_preset_negocio");
-  act(() => (div.querySelector('.seg button') as HTMLButtonElement).click());
+  act(() => (div.querySelector('.lv-seg button') as HTMLButtonElement).click());
   expect(actualizarB).toHaveBeenCalledWith({ pesos: equilibrado });
 });
 it("deja todos sin pulsar si no coinciden", () => {
@@ -35,13 +35,13 @@ it("deja todos sin pulsar si no coinciden", () => {
 });
 it.each(["", "   ", "Pregunta"])("oculta el peso de pregunta con pregunta %s", pregunta => {
   const { div } = montar({ negocio: 15, precio: 20, deuda: 25, pronto: 10, pregunta: 20 }, pregunta);
-  expect(Array.from(div.querySelectorAll('.wrow .num'), e => parseInt(e.textContent!)).reduce((a, b) => a + b, 0)).toBe(pregunta.trim() ? 78 : 100);
+  expect(Array.from(div.querySelectorAll('.cr-peso .num'), e => parseInt(e.textContent!)).reduce((a, b) => a + b, 0)).toBe(pregunta.trim() ? 78 : 100);
   expect(div.querySelectorAll('input')).toHaveLength(4);
   expect(div.querySelector("#w-pregunta")).toBeNull();
   div.querySelectorAll('input').forEach(e => { expect(e.min).toBe("0"); expect(e.max).toBe("50"); expect(e.step).toBe("5"); });
 });
 it("mantiene el peso de pregunta coherente al aplicar preset", () => {
   const { div, actualizarB } = montar({ ...equilibrado, pregunta: 20 }, "Pregunta");
-  act(() => (div.querySelector('.seg button') as HTMLButtonElement).click());
+  act(() => (div.querySelector('.lv-seg button') as HTMLButtonElement).click());
   expect(actualizarB).toHaveBeenCalledWith({ pesos: { ...equilibrado, pregunta: 20 } });
 });

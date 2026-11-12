@@ -13,7 +13,7 @@ from app.liga.auth import Identidad, require_jugador
 from app.liga.mercado_stats import perfil_y_avisos, por_regla
 from app.liga.motor.catalogo import CATALOGO_VERSION
 from app.liga.motor.mensajes import presentar
-from app.liga.motor.seleccion import SIN_NOTAS, SIN_RESPUESTA, explicar, seleccionar
+from app.liga.motor.seleccion import SIN_NOTAS, SIN_RESPUESTA, explicar, notas_en_cien, seleccionar
 
 router = APIRouter(tags=["liga-seleccion"])
 _LIMITE_PREVIEW = acceso.LimiteFrecuencia(tope=30, ventana_s=60)
@@ -45,6 +45,8 @@ class EmpresaPreviewOut(BaseModel):
     porque: str
     mejor: str | None = None
     nota: int = Field(default=0, ge=0, le=100)
+    # Las cuatro notas de 0 a 100 que forman `nota`; la hoja de la empresa las enseña.
+    notas: dict[str, int] | None = None
 
 
 class PreviewSeleccionOut(BaseModel):
@@ -136,6 +138,7 @@ def previsualizar(body: PreviewSeleccionIn,
         elegidas=[EmpresaPreviewOut(
             ticker=e.ticker, nombre=e.fila.empresa.nombre, sector=e.fila.empresa.sector,
             mejor=e.fila.mejor_nota, nota=round(e.fila.nota * 10),
+            notas=notas_en_cien(notas[e.ticker]) if e.ticker in notas else None,
             peso=float(e.peso), porque=presentar(e.porque, current_locale.get()),
         ) for e in resultado.elegidas],
         explicacion=presentar(explicar(body.ticker.strip().upper(), resultado, receta),

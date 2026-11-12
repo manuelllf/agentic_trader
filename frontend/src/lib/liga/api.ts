@@ -221,6 +221,8 @@ export type EmpresaElegida = {
   porque: string;
   nota?: number;
   mejor?: string | null;
+  /** Las cuatro notas de 0 a 100 que forman `nota` (negocio, precio, deuda y pronto). */
+  notas?: Record<string, number> | null;
 };
 
 export type Prueba = {

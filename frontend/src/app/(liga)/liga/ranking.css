@@ -51,6 +51,8 @@ html[data-theme="dark"] .lg:has(.lv-pagina) { --bg: #000000; }
 }
 .lg .lv-seg[data-activo="1"] .lv-pulgar { transform: translateX(100%); }
 .lg .lv-seg[data-activo="2"] .lv-pulgar { transform: translateX(200%); }
+.lg .lv-seg[data-activo="3"] .lv-pulgar { transform: translateX(300%); }
+.lg .lv-seg[data-activo="4"] .lv-pulgar { transform: translateX(400%); }
 @media (prefers-reduced-motion: reduce) { .lg .lv-pulgar { transition: none; } }
 
 /* Cabecera de la lista: qué mide la columna de píldoras ahora. */

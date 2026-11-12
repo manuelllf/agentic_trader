@@ -1,18 +1,21 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { PasoIdea } from "./PasoIdea";
 import { convertirFrase, enviarIntencion, getMercado, type Catalogo } from "@/lib/liga/api";
 vi.mock("@/lib/liga/api", () => ({ convertirFrase: vi.fn(), enviarIntencion: vi.fn(), getMercado: vi.fn() }));
 vi.mock("next-intl", () => ({ useLocale: () => "es", useTranslations: () => (k: string, v?: { count: number }) => v ? `${k} ${v.count}` : k }));
-vi.mock("../_ui", () => ({ Boton: ({ children, variante: _variante, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variante?: string }) => { void _variante; return <button {...props}>{children}</button>; } }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) { this.open = true; };
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) { this.open = false; };
+});
 const claves = ["calidad", "maduros", "dividendo", "crecimiento", "balance", "castigadas", "pequenas"];
 const catalogo = { estilos: claves.map(clave => ({ clave, reglas: [{ clave: "margen", params: { margen_pct: 17 } }], pesos: { negocio: 40 }, n_empresas: 7, reparto: "nota", max_por_sector: 3 })), reglas: [{ clave: "margen", titulo: "Margen", parametros: [] }] } as unknown as Catalogo;
 let root: Root;
 afterEach(() => { if (root) act(() => root.unmount()); vi.clearAllMocks(); });
-async function montar(mercado: unknown = { estilos: Object.fromEntries(claves.map((k, i) => [k, { pasan: 1000 + i, entran: 5 }])) }) {
+async function montar(mercado: unknown = { n: 4873, estilos: Object.fromEntries(claves.map((k, i) => [k, { pasan: 1000 + i, entran: 5 }])) }) {
   vi.mocked(getMercado).mockResolvedValue(mercado as Awaited<ReturnType<typeof getMercado>>);
   const div = document.createElement("div"); root = createRoot(div);
   const actualizarB = vi.fn(), irReglas = vi.fn(), alCambiarQuedan = vi.fn();
@@ -21,15 +24,21 @@ async function montar(mercado: unknown = { estilos: Object.fromEntries(claves.ma
     alCambiarOcupado={vi.fn()} actualizarB={actualizarB} irReglas={irReglas} />));
   return { div, actualizarB, irReglas, alCambiarQuedan };
 }
-it("muestra los siete estilos con el recuento de pasan", async () => {
+const hojas = (div: HTMLElement) => Array.from(div.querySelectorAll("dialog.hoja-liga")) as HTMLDialogElement[];
+const hojaAbierta = (div: HTMLElement) => hojas(div).find(d => d.open);
+const pulsar = (el: Element | null | undefined) => act(() => (el as HTMLButtonElement).click());
+
+it("muestra los siete estilos en una lista, con el recuento de los que pasan hoy", async () => {
   const { div } = await montar();
   expect(div.querySelectorAll(".idea-estilo")).toHaveLength(7);
   claves.forEach((k, i) => { expect(div.textContent).toContain(`builder_style_${k}_titulo`); expect(div.textContent).toContain(`1.00${i}`); });
 });
-it("carga toda la receta del estilo y pasa a Reglas", async () => {
+it("el estilo abre su hoja y Empezar carga toda la receta y pasa a Reglas", async () => {
   const { div, actualizarB, irReglas } = await montar();
-  act(() => (div.querySelector(".idea-estilo-abrir") as HTMLButtonElement).click());
-  act(() => (div.querySelector(".idea-estilo-detalle button") as HTMLButtonElement).click());
+  pulsar(div.querySelector(".idea-estilo"));
+  const hoja = hojaAbierta(div)!;
+  expect(hoja.textContent).toContain("builder_style_calidad_mira");
+  pulsar(hoja.querySelector(".hoja-liga-acc.der"));
   const { clave: _clave, ...receta } = catalogo.estilos[0];
   void _clave;
   expect(actualizarB).toHaveBeenCalledWith({ ...receta, interpretacion: [] });
@@ -39,10 +48,10 @@ it("muestra las tres marcas y solo aplica la propuesta al aceptarla", async () =
   vi.mocked(convertirFrase).mockResolvedValue({ reglas: catalogo.estilos[0].reglas,
     interpretacion: ["exacta", "aproximada", "no_disponible"].map(tipo => ({ tipo, intencion: tipo, regla: null, motivo: "Detalle" })), quedan: 2, pesos: null, pregunta: null } as Awaited<ReturnType<typeof convertirFrase>>);
   const { div, actualizarB, alCambiarQuedan } = await montar();
-  await act(async () => (div.querySelector(".paso-bloque > .paso-accion button") as HTMLButtonElement).click());
-  expect(Array.from(div.querySelectorAll(".idea-propuesta li > span")).map(n => n.textContent)).toEqual(["✓", "≈", "-"]);
+  await act(async () => (div.querySelector(".cr-fila-accion button") as HTMLButtonElement).click());
+  expect(Array.from(div.querySelectorAll(".cr-marca"), n => n.textContent)).toEqual(["✓", "≈", "–"]);
   expect(actualizarB).not.toHaveBeenCalled(); expect(alCambiarQuedan).toHaveBeenCalledWith(2);
-  act(() => (div.querySelector(".propuesta button") as HTMLButtonElement).click());
+  pulsar(div.querySelector(".cr-bloque-boton button"));
   expect(actualizarB.mock.calls[0][0].reglas).toEqual(catalogo.estilos[0].reglas);
 });
 it.each([null, "Entra en tu cuenta para seguir."])("sin mercado (%s) los estilos se eligen igual, sin recuento ni avisos", async mercado => {
@@ -52,20 +61,20 @@ it.each([null, "Entra en tu cuenta para seguir."])("sin mercado (%s) los estilos
   expect(div.querySelectorAll(".idea-estilo")).toHaveLength(7);
   expect(div.querySelector(".idea-recuento")).toBeNull();
 });
-it("el detalle del estilo enseña sus reglas como frases cortas", async () => {
+it("la hoja del estilo enseña sus reglas, una por fila", async () => {
   const { div } = await montar();
-  act(() => (div.querySelector(".idea-estilo-abrir") as HTMLButtonElement).click());
-  expect(div.querySelector(".idea-chips .chip")?.textContent).toBe("Margen");
+  pulsar(div.querySelector(".idea-estilo"));
+  expect(hojaAbierta(div)!.querySelector(".cr-reglas-estilo .cr-celda .t")?.textContent).toBe("Margen");
 });
 it("empezar desde cero limpia las reglas y avanza", async () => {
   const { div, actualizarB, irReglas } = await montar();
-  act(() => (div.querySelector("section.paso-bloque > button.link") as HTMLButtonElement).click());
+  pulsar(Array.from(div.querySelectorAll("button.cr-celda")).find(b => b.textContent === "builder_idea_cero"));
   expect(actualizarB).toHaveBeenCalledWith({ reglas: [], interpretacion: [] });
   expect(irReglas).toHaveBeenCalledOnce();
 });
 
 function abrirIntencion(div: HTMLDivElement) {
-  act(() => (div.querySelector('[aria-controls="idea-intencion"]') as HTMLButtonElement).click());
+  pulsar(Array.from(div.querySelectorAll(".cr-pie button")).find(b => b.textContent === "builder_intencion_abrir"));
 }
 function escribirIntencion(div: HTMLDivElement, texto: string) {
   const campo = div.querySelector("#idea-intencion-texto") as HTMLTextAreaElement;
@@ -74,28 +83,29 @@ function escribirIntencion(div: HTMLDivElement, texto: string) {
     campo.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
-it("el enlace despliega el canal de intenciones", async () => {
+const hojaIntencion = (div: HTMLElement) => div.querySelector("#idea-intencion-texto")!.closest("dialog") as HTMLDialogElement;
+it("el enlace abre la hoja para sugerir una medida", async () => {
   const { div } = await montar();
-  expect(div.querySelector("#idea-intencion")).toBeNull();
+  expect(hojaIntencion(div).open).toBe(false);
   abrirIntencion(div);
-  expect(div.textContent).toContain("builder_intencion_ayuda");
+  expect(hojaIntencion(div).open).toBe(true);
+  expect(hojaIntencion(div).textContent).toContain("builder_intencion_ayuda");
   expect((div.querySelector("#idea-intencion-texto") as HTMLTextAreaElement).maxLength).toBe(160);
-  expect((div.querySelector("#idea-intencion button") as HTMLButtonElement).disabled).toBe(true);
+  expect((hojaIntencion(div).querySelector(".hoja-liga-acc.der") as HTMLButtonElement).disabled).toBe(true);
 });
 it("el contador cuenta los caracteres escritos", async () => {
   const { div } = await montar(); abrirIntencion(div);
   escribirIntencion(div, "Hola");
-  expect(div.querySelector('[aria-live="polite"]')?.textContent).toBe("4/160");
+  expect(hojaIntencion(div).querySelector('[aria-live="polite"]')?.textContent).toBe("4/160");
 });
-it("envía el texto recortado y al tener éxito limpia y pliega el bloque", async () => {
+it("envía el texto recortado y al tener éxito cierra la hoja, la vacía y lo confirma", async () => {
   vi.mocked(enviarIntencion).mockResolvedValue(null);
   const { div } = await montar(); abrirIntencion(div);
   escribirIntencion(div, "  Dividendos  ");
-  await act(async () => (div.querySelector("#idea-intencion button") as HTMLButtonElement).click());
+  await act(async () => (hojaIntencion(div).querySelector(".hoja-liga-acc.der") as HTMLButtonElement).click());
   expect(enviarIntencion).toHaveBeenCalledWith("Dividendos");
-  expect(div.textContent).toContain("builder_intencion_ok");
-  expect(div.querySelector("#idea-intencion")).toBeNull();
-  abrirIntencion(div);
+  expect(div.querySelector(".cr-toast")?.textContent).toContain("builder_intencion_ok");
+  expect(hojaIntencion(div).open).toBe(false);
   expect((div.querySelector("#idea-intencion-texto") as HTMLTextAreaElement).value).toBe("");
 });
 it.each([
@@ -106,16 +116,16 @@ it.each([
     vi.mocked(enviarIntencion).mockResolvedValue(texto);
     const { div } = await montar(); abrirIntencion(div);
     escribirIntencion(div, "Dividendos");
-    await act(async () => (div.querySelector("#idea-intencion button") as HTMLButtonElement).click());
-    expect(div.querySelector('[role="status"]')?.textContent).toBe(texto);
-    expect(div.querySelector("#idea-intencion")).not.toBeNull();
+    await act(async () => (hojaIntencion(div).querySelector(".hoja-liga-acc.der") as HTMLButtonElement).click());
+    expect(hojaIntencion(div).querySelector('[role="alert"]')?.textContent).toBe(texto);
+    expect(hojaIntencion(div).open).toBe(true);
   });
-it("cancelar pliega el bloque y vacía el texto", async () => {
+it("cancelar cierra la hoja y vacía el texto", async () => {
   const { div } = await montar(); abrirIntencion(div);
   escribirIntencion(div, "  ");
-  expect((div.querySelector("#idea-intencion button") as HTMLButtonElement).disabled).toBe(true);
-  act(() => (div.querySelectorAll("#idea-intencion button")[1] as HTMLButtonElement).click());
-  expect(div.querySelector("#idea-intencion")).toBeNull();
-  abrirIntencion(div);
+  expect((hojaIntencion(div).querySelector(".hoja-liga-acc.der") as HTMLButtonElement).disabled).toBe(true);
+  escribirIntencion(div, "Algo");
+  pulsar(hojaIntencion(div).querySelector(".hoja-liga-acc:not(.der)"));
+  expect(hojaIntencion(div).open).toBe(false);
   expect((div.querySelector("#idea-intencion-texto") as HTMLTextAreaElement).value).toBe("");
 });

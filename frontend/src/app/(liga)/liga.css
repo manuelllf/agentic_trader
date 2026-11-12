@@ -272,7 +272,7 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 .lg .cab { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; height: 52px; }
 /* Columnas iguales a cada lado para que el título quede centrado aunque la derecha lleve dos botones. */
 .lg .cab.centrada { grid-template-columns: 88px minmax(0, 1fr) 88px; }
-.lg .cab-titulo { grid-column: 2; margin: 0; text-align: center; font-size: 17px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .cab-titulo { grid-column: 2; margin: 0; text-align: center; font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lg .cab-der { position: relative; display: flex; align-items: center; justify-self: end; }
 .lg .cab .cuenta { position: relative; justify-self: start; }.lg .cuenta-boton {
   display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px 0 12px;
