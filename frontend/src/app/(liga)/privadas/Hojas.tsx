@@ -146,7 +146,7 @@ export function HojaMiembros({ abierta, onCerrar, liga, copiado, onCopiar, onRot
                 : t("private_leagues_member_since", { date: fecha(m.unido.slice(0, 10), new Date(), locale) })}</small>
             </span>
             {liga.es_dueno && !m.es_yo && (
-              <button type="button" className="pv-peligro" onClick={() => onExpulsar(m.alias)}>{t("private_leagues_remove")}</button>
+              <button type="button" className="pv-expulsar" onClick={() => onExpulsar(m.alias)}>{t("private_leagues_remove")}</button>
             )}
           </div>
         ))}

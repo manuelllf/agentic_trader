@@ -124,7 +124,7 @@ describe("detalle de una liga (maqueta v5)", () => {
     expect(texto()).toContain("Invitar");
     expect(texto()).toContain("Brújula verde");
     expect(texto()).toContain("Mi cartera");
-    expect(container.querySelectorAll("li.lv-fila")).toHaveLength(3);
+    expect(container.querySelectorAll("li.lv-fila:not(.pv-pendiente)")).toHaveLength(3);
     expect(texto()).toContain("Sin resultado todavía");
     expect(texto()).toContain("¿Qué estrategia representa a cada persona?");
   });

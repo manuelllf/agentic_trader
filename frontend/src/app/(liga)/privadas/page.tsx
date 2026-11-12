@@ -11,6 +11,7 @@ import { useCache } from "@/lib/liga/cache";
 import { signo } from "@/lib/liga/format";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { HojaCrear, HojaUnirse } from "./Hojas";
+import "../liga/ranking.css";
 import "./privadas.css";
 
 /** Umbral de empate de la liga: a ±0,2 pp del S&P no hay ni ganancia ni pérdida (motor/puntos.py). */
@@ -78,17 +79,16 @@ function FilaLiga({ liga }: { liga: LigaResumen }) {
   const sp = liga.sp500_mes == null ? null : Number(liga.sp500_mes);
   const vs = mio != null && sp != null ? mio - sp : null;
   const personas = t("private_leagues_people", { count: liga.n_miembros });
-  const sub = [personas, liga.lider ? `${t("private_leagues_leads")} ${liga.lider}` : null].filter(Boolean).join(" · ");
+  // Sin resultado de la semana no se añade nada más: la línea cabe entera en el móvil.
+  const sub = [personas, mio != null && liga.lider ? `${t("private_leagues_leads")} ${liga.lider}` : null]
+    .filter(Boolean).join(" · ");
   return (
-    <li>
-      <Link href={`/privadas/${liga.id}`} className="pv-fila">
-        <span className="pv-txt">
-          <b>{liga.nombre}</b>
-          <small>{mio == null ? `${sub} · ${t("private_leagues_no_month_result")}` : sub}</small>
-        </span>
-        {vs != null && <span className={`pv-pildora ${claseVs(vs)}`}>{signo(vs, 1, locale)}</span>}
+    <li className="lv-fila pv-liga">
+      <Link href={`/privadas/${liga.id}`} className="lv-fila-abre pv-abre">
+        <span className="lv-nombre"><b>{liga.nombre}</b><small>{sub}</small></span>
         <Chevron />
       </Link>
+      {vs != null && <span className={`lv-pildora ${claseVs(vs)}`}>{signo(vs, 1, locale)}</span>}
     </li>
   );
 }
@@ -124,14 +124,14 @@ export default function Privadas() {
     );
   } else {
     contenido = (
-      <ul className="pv-lista">
+      <ul className="lv-lista">
         {ligas?.map((l) => <FilaLiga key={l.id} liga={l} />)}
       </ul>
     );
   }
 
   return (
-    <main className="scroll pv">
+    <main className="scroll lv-pagina pv">
       <CabeceraApp anio={2026} />
       <div className="pv-titulo-fila">
         <h1 className="pv-titulo">{t("private_leagues_title")}</h1>

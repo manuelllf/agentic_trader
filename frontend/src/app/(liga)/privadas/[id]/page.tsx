@@ -108,7 +108,7 @@ export default function PrivadaDetalle() {
   const hayProvisionales = miembros.some((m) => m.provisional === true);
 
   return (
-    <main className="scroll pv pv-detalle">
+    <main className="scroll lv-pagina pv pv-detalle">
       <CabeceraApp anio={2026} />
 
       {estado === "cargando" || cargando ? <Cargando filas={4} />
@@ -155,18 +155,18 @@ export default function PrivadaDetalle() {
 
           {pendientes.length > 0 && (
             <>
-              <p className="pv-cab-grupo"><span>{t("private_leagues_no_result_yet")}</span><span className="num">{pendientes.length}</span></p>
-              <div className="pv-grupo-plano">
+              <p className="lv-lista-cab"><span>{t("private_leagues_no_result_yet")}</span><span className="num">{pendientes.length}</span></p>
+              <ul className="lv-lista">
                 {pendientes.map((m) => (
-                  <div className="pv-fila-plana" key={m.alias}>
-                    <span className="pv-txt">
+                  <li className="lv-fila pv-pendiente" key={m.alias}>
+                    <span className="lv-nombre">
                       <b>{m.alias}{m.es_yo ? ` · ${t("private_leagues_you")}` : ""}</b>
                       <small>{m.es_yo && !m.estrategia ? t("private_leagues_join_create_note") : m.estrategia ? t("private_leagues_waiting_close") : t("private_leagues_member_create_note")}</small>
+                      {m.es_yo && !m.estrategia && <Link className="pv-enlace" href="/crear">{t("private_leagues_create_strategy")} →</Link>}
                     </span>
-                    {m.es_yo && !m.estrategia && <Link className="pv-enlace" href="/crear">{t("private_leagues_create_strategy")} →</Link>}
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </>
           )}
 

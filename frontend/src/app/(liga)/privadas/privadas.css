@@ -1,50 +1,48 @@
-/* Ligas privadas (maqueta v5): mismas piezas que la Liga. Todo acotado a .lg. */
+/* Ligas privadas: las mismas piezas que la Liga (lv-pagina, lv-lista, lv-fila, lv-pildora; ver ../liga/ranking.css).
+   Lo que es propio de esta pantalla va aquí. Todo acotado a .lg. */
 
 .lg .pv { min-width: 0; }
 
-/* Título de sección con su acción a la derecha (el «+» o «Invitar»). */
+/* Botones y enlaces sin el aspecto del navegador (fondo gris, borde, subrayado). :where mantiene la
+   especificidad en cero: cualquier clase de abajo gana si necesita un color o un tamaño propio. */
+:where(.lg .pv) button,
+:where(.lg .pv) a {
+  appearance: none; background: none; border: 0; border-radius: 0; box-shadow: none;
+  padding: 0; margin: 0; font: inherit; color: inherit; text-decoration: none; cursor: pointer; text-align: inherit;
+}
+
+/* Título de la pantalla, con su acción a la derecha (el «+» o «Invitar»). */
 .lg .pv-titulo-fila { display: flex; align-items: center; gap: 12px; min-height: 44px; margin: 8px 16px 0; }
 .lg .pv-titulo { flex: 1; min-width: 0; margin: 0; font-size: 22px; line-height: 28px; font-weight: 700; overflow-wrap: anywhere; }
-.lg .pv-accion { flex: none; min-height: 44px; color: var(--accent); font-size: 17px; font-weight: 600; }
+.lg .pv-accion { flex: none; min-height: 44px; display: flex; align-items: center; color: var(--accent); font-size: 17px; font-weight: 600; }
 .lg .pv-mas { display: grid; place-items: center; flex: none; width: 44px; height: 44px; margin-right: -10px; color: var(--accent); }
 .lg .pv-sub { margin: 2px 16px 0; font-size: 15px; line-height: 20px; color: var(--muted); }
 
-/* «‹ Ligas privadas» con chevron en tinte. */
+/* «‹ Ligas privadas»: chevron en tinte, sin subrayado. */
 .lg .pv-atras { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin: 0 0 0 8px; padding: 0 8px; color: var(--accent); font-size: 17px; }
 
 /* «+» con su menú anclado. */
 .lg .pv-menu-raiz { position: relative; }
 .lg .pv-menu { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; width: 230px; overflow: hidden; border-radius: 14px; background: var(--surface); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); }
-.lg .pv-menu button { display: block; width: 100%; min-height: 48px; padding: 0 16px; text-align: left; font-size: 17px; color: var(--ink); background: none; border: 0; }
+.lg .pv-menu button { display: block; width: 100%; min-height: 48px; padding: 0 16px; text-align: left; font-size: 17px; line-height: 48px; color: var(--ink); }
 .lg .pv-menu button + button { border-top: 1px solid var(--line); }
 
-/* Lista de ligas: filas a sangre con separador con sangría. */
-.lg .pv-lista { list-style: none; margin: 16px 0 0; padding: 0; }
-.lg .pv-lista li { position: relative; }
-.lg .pv-lista li + li::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
-.lg .pv-fila { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 16px; color: var(--ink); text-decoration: none; }
-.lg .pv-fila:active { background: var(--surface2); }
-.lg .pv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.lg .pv-txt b { display: block; font-size: 17px; line-height: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lg .pv-txt small { display: block; font-size: 15px; line-height: 20px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lg .pv-pildora { flex: none; min-width: 70px; height: 32px; padding: 0 10px; border-radius: 8px; background: var(--surface2); color: var(--ink); font-size: 16px; line-height: 32px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
-.lg .pv-pildora.bien { background: var(--pill-good); color: var(--pill-ink); }
-.lg .pv-pildora.mal { background: var(--pill-bad); color: var(--pill-ink); }
-.lg .pv-chev { flex: none; color: var(--line2); }
+/* Lista de ligas: filas de la Liga; la fila entera es el enlace y la píldora va a la derecha. */
+.lg .pv-abre { grid-template-columns: minmax(0, 1fr) 16px; }
+.lg .pv-chev { flex: none; color: var(--line2); justify-self: end; }
+.lg .pv-liga .lv-nombre small { white-space: nowrap; }
+
+/* Pendientes: filas de la Liga sin pildora. */
+.lg .pv-pendiente { grid-template-columns: minmax(0, 1fr); }
+.lg .pv-pendiente .lv-nombre small { white-space: normal; }
 
 /* Notas, pies y enlaces. */
 .lg .pv-contexto { margin: 12px 16px 0; font-size: 13px; line-height: 18px; color: var(--muted); }
 .lg .pv-pie { margin: 12px 32px 0; font-size: 13px; line-height: 18px; color: var(--muted); text-align: center; }
-.lg .pv-enlace { color: var(--accent); font-size: 15px; line-height: 20px; background: none; border: 0; padding: 0; }
+.lg .pv-enlace { color: var(--accent); font-size: 15px; line-height: 20px; }
 .lg .pv-error { margin: 10px 32px 0; font-size: 15px; line-height: 20px; color: var(--bad); text-align: center; }
 .lg .pv-seg { margin: 20px 16px 0; }
 .lg .pv-cab-grupo { display: flex; justify-content: space-between; margin: 24px 32px 6px; font-size: 13px; line-height: 18px; color: var(--muted); }
-
-/* Pendientes: filas planas, sin cajas. */
-.lg .pv-grupo-plano { margin: 0 16px; }
-.lg .pv-fila-plana { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 0; border-top: 1px solid var(--line); }
-.lg .pv-fila-plana:first-child { border-top: 0; }
-.lg .pv-fila-plana .pv-txt small { white-space: normal; }
 
 /* Textos de las hojas y campos. */
 .lg .pv-texto { padding: 8px 20px 4px; font-size: 15px; line-height: 21px; color: var(--ink2); }
@@ -58,16 +56,15 @@
 .lg .pv-acciones { margin: 16px 16px 0; }
 .lg .pv-boton { display: flex; align-items: center; justify-content: center; width: 100%; height: 50px; border-radius: 14px; background: var(--accent-bg); color: var(--accent); font-size: 17px; font-weight: 600; }
 
-/* Grupos dentro de la hoja de miembros. */
+/* Grupos dentro de la hoja de miembros: celdas de iOS sobre la hoja. */
 .lg .pv-grupo { margin: 0 16px; border-radius: 12px; background: var(--surface2); overflow: hidden; }
 .lg .pv-separado { margin-top: 16px; }
-.lg .pv-gfila { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 6px 16px; text-align: left; background: none; border: 0; color: var(--ink); }
+.lg .pv-gfila { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 6px 16px; text-align: left; color: var(--ink); font-size: 17px; }
 .lg .pv-gfila + .pv-gfila::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
 .lg .pv-gfila:active { background: var(--raised); }
 .lg .pv-gfila .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .lg .pv-gfila b { font-weight: 400; }
 .lg .pv-gfila small { font-size: 15px; line-height: 20px; color: var(--muted); }
-.lg .pv-peligro { flex: none; min-height: 44px; color: var(--bad); font-size: 17px; background: none; border: 0; padding: 0; }
-.lg .pv-gfila.pv-peligro, .lg .pv-gfila.pv-accion { justify-content: flex-start; }
-.lg .pv-gfila.pv-peligro { color: var(--bad); }
 .lg .pv-gfila.pv-accion { color: var(--accent); }
+.lg .pv-gfila.pv-peligro { color: var(--bad); }
+.lg .pv-expulsar { flex: none; color: var(--bad); font-size: 17px; }
