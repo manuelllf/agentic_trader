@@ -884,6 +884,9 @@ export type MiembroLiga = {
   estrategia: { id: string; nombre: string; visibilidad: string; escudo: Escudo } | null;
   rentabilidad_mes: number | null;
   diferencia_mes: number | null;
+  /** Vacías si no las puede ver quien mira: solo la persona o una estrategia publicada. */
+  serie_semana: number[];
+  serie_temporada: number[];
 };
 
 export type LigaDetalle = LigaResumen & { miembros: MiembroLiga[]; jornada_numero: number | null; jornada_total: number | null;

@@ -10,11 +10,11 @@ it("mantiene las salidas del estado vac?o de Liga", () => {
   expect(pagina).toContain('t("league_entrar")');
 });
 
-it("conserva toda la gesti?n privada junto a la clasificaci?n", () => {
-  const pagina = leer("./privadas/[id]/page.tsx");
-  for (const accion of ["clipboard.writeText", "rotarCodigoLiga(id)", "expulsarDeLiga(id, m.alias)", "salirLiga(id)"]) {
+it("conserva toda la gesti?n privada: copiar, cambiar código, expulsar y salir", () => {
+  // La gestión vive en la hoja de miembros (Hojas.tsx) y las acciones en la página del detalle.
+  const pagina = leer("./privadas/[id]/page.tsx") + leer("./privadas/Hojas.tsx");
+  for (const accion of ["clipboard.writeText", "rotarCodigoLiga(id)", "expulsarDeLiga(id, alias)", "salirLiga(id)"]) {
     expect(pagina).toContain(accion);
   }
-  expect(pagina).toContain('miembros-escritorio meta" hidden');
-  expect(pagina).toContain('className="priv-clasificacion"');
+  expect(pagina).toContain("ListaRanking");
 });

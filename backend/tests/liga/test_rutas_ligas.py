@@ -154,6 +154,8 @@ def test_flujo_unirse_ver_y_salir(api) -> None:  # noqa: ANN001
 
     detalle = cliente.get(f"/liga/ligas/{liga['id']}", headers=cab(amigo)).json()
     assert detalle["n_miembros"] == 2 and detalle["codigo"] is None
+    # Sin jornada en juego no hay serie que enseñar; los campos existen y llegan vacíos.
+    assert all(m["serie_semana"] == [] and m["serie_temporada"] == [] for m in detalle["miembros"])
     alias_vistos = {m["alias"] for m in detalle["miembros"]}
     assert len(alias_vistos) == 2
     yo = next(m for m in detalle["miembros"] if m["es_yo"])

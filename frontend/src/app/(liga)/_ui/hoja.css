@@ -1,0 +1,64 @@
+/* Hoja de la liga (Hoja.tsx): un <dialog> abajo, con el velo del navegador como fondo. Acotado a .lg. */
+.lg .hoja-liga {
+  position: fixed;
+  inset: auto 0 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100dvh - 56px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+.lg .hoja-liga::backdrop { background: rgba(0, 0, 0, 0.4); }
+.lg .hoja-liga-cuerpo {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 56px);
+  border-radius: 20px 20px 0 0;
+  background: var(--surface);
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.lg .hoja-liga[open] .hoja-liga-cuerpo { animation: hoja-sube 0.35s cubic-bezier(0.32, 0.72, 0, 1); }
+@keyframes hoja-sube { from { transform: translateY(100%); } to { transform: none; } }
+.lg .hoja-liga-agarre { flex: none; padding: 8px 0 4px; touch-action: none; cursor: grab; }
+.lg .hoja-liga-asa { display: block; width: 36px; height: 5px; margin: 0 auto; border-radius: 3px; background: var(--line2); }
+.lg .hoja-liga-nav {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+}
+.lg .hoja-liga-nav h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lg .hoja-liga-nav .lado { display: flex; min-width: 0; }
+.lg .hoja-liga-nav .lado.der { justify-content: flex-end; }
+.lg .hoja-liga-acc {
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-size: 17px;
+  line-height: 22px;
+  cursor: pointer;
+}
+.lg .hoja-liga-acc.der { font-weight: 600; }
+.lg .hoja-liga-acc:disabled { opacity: 0.35; cursor: default; }
+.lg .hoja-liga-contenido { overflow-y: auto; overscroll-behavior: contain; }
+@media (prefers-reduced-motion: reduce) {
+  .lg .hoja-liga[open] .hoja-liga-cuerpo { animation: none; }
+  .lg .hoja-liga-cuerpo { transition: none; }
+}

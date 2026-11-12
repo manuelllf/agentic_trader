@@ -1,86 +1,73 @@
-.lg .privadas { min-width: 0; }
-.lg .privadas h1, .lg .privadas h2, .lg .privadas h3 { overflow-wrap: anywhere; }
-.lg .priv-eyebrow { font-size: 12px; color: var(--muted); letter-spacing: .035em; }
-.lg .priv-barra { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.lg .priv-barra .btn { flex: 1 1 10rem; }
-.lg .priv-lista { display: grid; gap: 10px; margin-top: 14px; }
-.lg .priv-liga { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); color: var(--ink); text-decoration: none; min-width: 0; transition: background 160ms ease, transform 160ms ease; }
-.lg .priv-liga-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
-.lg .priv-liga h3 { font-size: 17px; line-height: 1.2; letter-spacing: -.02em; }
-.lg .priv-liga-cifra { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.lg .priv-liga-cifra b { font-size: 22px; font-weight: 700; letter-spacing: -.03em; }
-.lg .priv-liga-cifra span, .lg .priv-liga-lider { font-size: 13px; color: var(--muted); }
-.lg .priv-liga-lider b { color: var(--ink); font-weight: 600; }
-.lg .priv-liga-vacio { font-size: 13px; color: var(--muted); }
-.lg .priv-cabecera .h1 { margin-top: 6px; }
-.lg .priv-resumen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 12px 0; margin: 12px 0; border-block: 1px solid var(--line); }
-.lg .priv-resumen div { min-width: 0; }
-.lg .priv-resumen dt { font-size: 12px; color: var(--muted); }
-.lg .priv-resumen dd { margin: 2px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
-.lg .priv-contenido { display: grid; gap: 20px; align-items: start; }
-.lg .priv-clasificacion { min-width: 0; }
-.lg .priv-contexto { margin: 12px 0; }
-.lg .priv-metodo { margin: 12px 0; font-size: 13px; color: var(--muted); }
-.lg .priv-metodo summary, .lg details.priv-panel > summary { cursor: pointer; min-height: 44px; padding-block: 10px; }
-.lg .priv-metodo p { margin: 8px 0; }
-.lg .priv-filas { margin-top: 4px; }
-.lg .priv-pendientes { margin-top: 8px; }
-.lg .priv-gestion { display: grid; gap: 14px; min-width: 0; }
-.lg .priv-panel { min-width: 0; padding: 4px 14px; border-radius: var(--radius-card); background: var(--surface); }
-.lg details.priv-panel > summary { color: var(--ink); font-size: 16px; font-weight: 700; }
-.lg .priv-panel p { color: var(--ink2); font-size: 14px; line-height: 1.5; margin: 8px 0 12px; }
-.lg .priv-panel .btn { white-space: normal; }
-.lg .priv-invitar { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-.lg .priv-codigo { display: block; margin: 12px 0; color: var(--ink); font-size: 24px; letter-spacing: .12em; overflow-wrap: anywhere; user-select: all; }
-.lg .priv-miembro { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); }
-.lg .priv-miembro:last-child { border-bottom: 0; }
-.lg .priv-miembro > span { min-width: 0; overflow-wrap: anywhere; }
-.lg .priv-miembro small { display: block; color: var(--muted); font-size: 12px; }
+/* Ligas privadas (maqueta v5): mismas piezas que la Liga. Todo acotado a .lg. */
 
-.lg .priv-hoja { padding: 18px 16px 20px; width: min(100%, 30rem); max-width: 100%; margin: auto auto 0; border: 1px solid var(--line2); border-bottom: 0; border-radius: var(--radius-card) var(--radius-card) 0 0; background: var(--bg); color: var(--ink2); }
-.lg .priv-hoja::backdrop { background: rgba(0, 0, 0, .55); }
-.lg .priv-hoja-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.lg .priv-hoja h2 { font-size: 18px; }
-.lg .priv-hoja .form { margin-top: 12px; gap: 12px; }
-.lg .priv-hoja .fine { margin-top: 12px; }
-.lg .priv-hoja-cerrar { min-width: 44px; min-height: 44px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 26px; cursor: pointer; }
+.lg .pv { min-width: 0; }
 
-@media (min-width: 40rem) {
-  .lg .priv-lista { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lg .priv-hoja { margin: auto; border-bottom: 1px solid var(--line2); border-radius: var(--radius-card); }
-  .lg .priv-barra .btn { flex: 0 0 auto; min-width: 12rem; }
-}
-@media (min-width: 64rem) { .lg .priv-contenido { grid-template-columns: minmax(0, 1fr) minmax(260px, .42fr); gap: 28px; } }
-@media (hover: hover) and (pointer: fine) { .lg .priv-liga:hover { background: var(--surface2); transform: translateY(-2px); } }
-@media (prefers-reduced-motion: reduce) { .lg .priv-liga { transition: none; } .lg .priv-liga:hover { transform: none; } }
+/* Título de sección con su acción a la derecha (el «+» o «Invitar»). */
+.lg .pv-titulo-fila { display: flex; align-items: center; gap: 12px; min-height: 44px; margin: 8px 16px 0; }
+.lg .pv-titulo { flex: 1; min-width: 0; margin: 0; font-size: 22px; line-height: 28px; font-weight: 700; overflow-wrap: anywhere; }
+.lg .pv-accion { flex: none; min-height: 44px; color: var(--accent); font-size: 17px; font-weight: 600; }
+.lg .pv-mas { display: grid; place-items: center; flex: none; width: 44px; height: 44px; margin-right: -10px; color: var(--accent); }
+.lg .pv-sub { margin: 2px 16px 0; font-size: 15px; line-height: 20px; color: var(--muted); }
 
-@media (min-width: 880px) {
-  .lg .scroll.privadas:not(.privada-detalle) {
-    display: grid; grid-template-columns: minmax(0, 600px) minmax(0, 400px);
-    justify-content: center; align-content: start; align-items: start;
-  }
-  .lg .scroll.privadas:not(.privada-detalle) > :not(.tabbar) { grid-column: 1 / -1; }
-  .lg .scroll.privadas:not(.privada-detalle) > .cab { grid-column: 1; grid-row: 1; align-self: center; }
-  .lg .scroll.privadas:not(.privada-detalle) > .priv-barra {
-    grid-column: 2; grid-row: 1; justify-content: flex-end; margin-top: 0;
-  }
-  .lg .scroll.privadas:not(.privada-detalle) > .meta { grid-row: 2; max-width: var(--ancho-lectura); margin-top: 12px; }
-  .lg .scroll.privadas:not(.privada-detalle) > .fine { grid-row: 3; max-width: var(--ancho-lectura); font-size: 14px; color: var(--muted); margin-top: 12px; }
-  .lg .priv-lista { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lg .priv-liga { position: relative; padding-right: 36px; }
-  .lg .priv-liga::after { content: "→"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); }
-  .lg .priv-barra .btn { min-width: 0; flex: 0 1 auto; }
-  .lg .scroll.privada-detalle .priv-contenido { grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; }
-  .lg .privada-detalle .priv-gestion > .miembros-escritorio[hidden] { display: block; }
-  .lg .privada-detalle .priv-panel::details-content { content-visibility: visible; display: block; }
-  .lg .privada-detalle .priv-panel { padding: 0; border-radius: 0; background: transparent; }
-  .lg .privada-detalle .priv-codigo { font-family: inherit; }
-  .lg .privada-detalle .priv-clasificacion .ranking-cabecera,
-  .lg .privada-detalle .priv-clasificacion .tr.financiero,
-  .lg .privada-detalle .priv-clasificacion .jr { grid-template-columns: 88px minmax(0, 1fr) 160px 80px 18px; gap: 6px; padding-inline: 0; }
-}
+/* «‹ Ligas privadas» con chevron en tinte. */
+.lg .pv-atras { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin: 0 0 0 8px; padding: 0 8px; color: var(--accent); font-size: 17px; }
 
-@media (min-width: 880px) and (max-width: 1199px) {
-  .lg .scroll.privada-detalle .priv-contenido { grid-template-columns: minmax(0, 1fr); }
-  .lg .privada-detalle .priv-gestion { width: 300px; max-width: 100%; }
-}
+/* «+» con su menú anclado. */
+.lg .pv-menu-raiz { position: relative; }
+.lg .pv-menu { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; width: 230px; overflow: hidden; border-radius: 14px; background: var(--surface); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); }
+.lg .pv-menu button { display: block; width: 100%; min-height: 48px; padding: 0 16px; text-align: left; font-size: 17px; color: var(--ink); background: none; border: 0; }
+.lg .pv-menu button + button { border-top: 1px solid var(--line); }
+
+/* Lista de ligas: filas a sangre con separador con sangría. */
+.lg .pv-lista { list-style: none; margin: 16px 0 0; padding: 0; }
+.lg .pv-lista li { position: relative; }
+.lg .pv-lista li + li::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
+.lg .pv-fila { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 16px; color: var(--ink); text-decoration: none; }
+.lg .pv-fila:active { background: var(--surface2); }
+.lg .pv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lg .pv-txt b { display: block; font-size: 17px; line-height: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .pv-txt small { display: block; font-size: 15px; line-height: 20px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .pv-pildora { flex: none; min-width: 70px; height: 32px; padding: 0 10px; border-radius: 8px; background: var(--surface2); color: var(--ink); font-size: 16px; line-height: 32px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
+.lg .pv-pildora.bien { background: var(--pill-good); color: var(--pill-ink); }
+.lg .pv-pildora.mal { background: var(--pill-bad); color: var(--pill-ink); }
+.lg .pv-chev { flex: none; color: var(--line2); }
+
+/* Notas, pies y enlaces. */
+.lg .pv-contexto { margin: 12px 16px 0; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pv-pie { margin: 12px 32px 0; font-size: 13px; line-height: 18px; color: var(--muted); text-align: center; }
+.lg .pv-enlace { color: var(--accent); font-size: 15px; line-height: 20px; background: none; border: 0; padding: 0; }
+.lg .pv-error { margin: 10px 32px 0; font-size: 15px; line-height: 20px; color: var(--bad); text-align: center; }
+.lg .pv-seg { margin: 20px 16px 0; }
+.lg .pv-cab-grupo { display: flex; justify-content: space-between; margin: 24px 32px 6px; font-size: 13px; line-height: 18px; color: var(--muted); }
+
+/* Pendientes: filas planas, sin cajas. */
+.lg .pv-grupo-plano { margin: 0 16px; }
+.lg .pv-fila-plana { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 0; border-top: 1px solid var(--line); }
+.lg .pv-fila-plana:first-child { border-top: 0; }
+.lg .pv-fila-plana .pv-txt small { white-space: normal; }
+
+/* Textos de las hojas y campos. */
+.lg .pv-texto { padding: 8px 20px 4px; font-size: 15px; line-height: 21px; color: var(--ink2); }
+.lg .pv-texto p + p { margin-top: 12px; }
+.lg .pv-campo { display: flex; align-items: center; height: 52px; margin: 16px 16px 0; padding: 0 16px; border-radius: 12px; background: var(--surface2); }
+.lg .pv-campo.error { box-shadow: inset 0 0 0 2px var(--bad); }
+.lg .pv-campo input { flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: none; color: var(--ink); font-size: 17px; }
+.lg .pv-campo input::placeholder { color: var(--muted); }
+.lg .pv-codigo { font-size: 22px; font-weight: 600; letter-spacing: 0.14em; text-align: center; text-transform: uppercase; }
+.lg .pv-codigo-gr { margin: 20px 16px 0; text-align: center; font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: 0.1em; font-variant-numeric: tabular-nums; }
+.lg .pv-acciones { margin: 16px 16px 0; }
+.lg .pv-boton { display: flex; align-items: center; justify-content: center; width: 100%; height: 50px; border-radius: 14px; background: var(--accent-bg); color: var(--accent); font-size: 17px; font-weight: 600; }
+
+/* Grupos dentro de la hoja de miembros. */
+.lg .pv-grupo { margin: 0 16px; border-radius: 12px; background: var(--surface2); overflow: hidden; }
+.lg .pv-separado { margin-top: 16px; }
+.lg .pv-gfila { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 6px 16px; text-align: left; background: none; border: 0; color: var(--ink); }
+.lg .pv-gfila + .pv-gfila::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
+.lg .pv-gfila:active { background: var(--raised); }
+.lg .pv-gfila .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lg .pv-gfila b { font-weight: 400; }
+.lg .pv-gfila small { font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pv-peligro { flex: none; min-height: 44px; color: var(--bad); font-size: 17px; background: none; border: 0; padding: 0; }
+.lg .pv-gfila.pv-peligro, .lg .pv-gfila.pv-accion { justify-content: flex-start; }
+.lg .pv-gfila.pv-peligro { color: var(--bad); }
+.lg .pv-gfila.pv-accion { color: var(--accent); }

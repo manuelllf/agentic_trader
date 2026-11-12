@@ -1,164 +1,146 @@
 "use client";
 
-// Una liga reúne personas; su estrategia representante se obtiene de la competición.
-
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { normalizeLocale } from "@/i18n/locale";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarraPestanas, Boton, CabeceraApp, Cargando, ErrorLiga, Vacio } from "../_ui";
-import { crearLiga, misLigas, unirseLiga, type LigaResumen } from "@/lib/liga/api";
-import { invalidar, useCache } from "@/lib/liga/cache";
+import { normalizeLocale } from "@/i18n/locale";
+import { CabeceraApp, BarraPestanas, Cargando, ErrorLiga, Vacio } from "../_ui";
+import { misLigas, type LigaResumen } from "@/lib/liga/api";
+import { useCache } from "@/lib/liga/cache";
+import { signo } from "@/lib/liga/format";
 import { useSesionRequerida } from "../_sesion/SesionContext";
-import { claseSigno, porcentaje } from "@/lib/liga/format";
+import { HojaCrear, HojaUnirse } from "./Hojas";
 import "./privadas.css";
 
-type Hoja = "unirse" | "crear" | null;
+/** Umbral de empate de la liga: a ±0,2 pp del S&P no hay ni ganancia ni pérdida (motor/puntos.py). */
+const BANDA_EMPATE = 0.2;
 
-function HojaPrivadas({ abierta, titulo, onCerrar, children }: {
-  abierta: boolean; titulo: string; onCerrar: () => void; children: ReactNode;
-}) {
-  const t = useTranslations();
-  const dialogo = useRef<HTMLDialogElement>(null);
-  const idTitulo = useId();
-  useEffect(() => {
-    const d = dialogo.current;
-    if (!abierta || !d) return;
-    d.showModal();
-    return () => d.close();
-  }, [abierta]);
+function claseVs(vs: number): "bien" | "mal" | "" {
+  return vs > BANDA_EMPATE ? "bien" : vs < -BANDA_EMPATE ? "mal" : "";
+}
+
+function Chevron() {
   return (
-    <dialog ref={dialogo} className="priv-hoja" aria-labelledby={idTitulo} onCancel={onCerrar}>
-      <div className="priv-hoja-cab">
-        <h2 id={idTitulo}>{titulo}</h2>
-        <button type="button" className="priv-hoja-cerrar" aria-label={t("private_leagues_close")} onClick={onCerrar}>×</button>
-      </div>
-      {children}
-    </dialog>
+    <svg className="pv-chev" width="8" height="13" viewBox="0 0 8 13" aria-hidden="true">
+      <path d="M1.5 1.5 6.5 6.5l-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** «+» de la cabecera: unirse siempre; crear, si la cuenta puede (hoy, cualquiera). */
+function MenuMas({ puedeCrear, alUnirse, alCrear }: { puedeCrear: boolean; alUnirse: () => void; alCrear: () => void }) {
+  const t = useTranslations();
+  const [abierto, setAbierto] = useState(false);
+  const raiz = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const fuera = (e: PointerEvent) => { if (!raiz.current?.contains(e.target as Node)) setAbierto(false); };
+    const tecla = (e: KeyboardEvent) => { if (e.key === "Escape") setAbierto(false); };
+    document.addEventListener("pointerdown", fuera);
+    document.addEventListener("keydown", tecla);
+    return () => {
+      document.removeEventListener("pointerdown", fuera);
+      document.removeEventListener("keydown", tecla);
+    };
+  }, [abierto]);
+
+  return (
+    <div className="pv-menu-raiz" ref={raiz}>
+      <button type="button" className="pv-mas" aria-label={t("private_leagues_add_menu")}
+        aria-haspopup="menu" aria-expanded={abierto} onClick={() => setAbierto((a) => !a)}>
+        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+        </svg>
+      </button>
+      {abierto && (
+        <div className="pv-menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => { setAbierto(false); alUnirse(); }}>
+            {t("private_leagues_join_button")}
+          </button>
+          {puedeCrear && (
+            <button type="button" role="menuitem" onClick={() => { setAbierto(false); alCrear(); }}>
+              {t("private_leagues_create_button")}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Una liga: nombre, personas, quién va primero y tu diferencia con el S&P de la semana. */
+function FilaLiga({ liga }: { liga: LigaResumen }) {
+  const t = useTranslations();
+  const locale = normalizeLocale(useLocale()) ?? "es";
+  const mio = liga.mio == null ? null : Number(liga.mio);
+  const sp = liga.sp500_mes == null ? null : Number(liga.sp500_mes);
+  const vs = mio != null && sp != null ? mio - sp : null;
+  const personas = t("private_leagues_people", { count: liga.n_miembros });
+  const sub = [personas, liga.lider ? `${t("private_leagues_leads")} ${liga.lider}` : null].filter(Boolean).join(" · ");
+  return (
+    <li>
+      <Link href={`/privadas/${liga.id}`} className="pv-fila">
+        <span className="pv-txt">
+          <b>{liga.nombre}</b>
+          <small>{mio == null ? `${sub} · ${t("private_leagues_no_month_result")}` : sub}</small>
+        </span>
+        {vs != null && <span className={`pv-pildora ${claseVs(vs)}`}>{signo(vs, 1, locale)}</span>}
+        <Chevron />
+      </Link>
+    </li>
   );
 }
 
 export default function Privadas() {
   const t = useTranslations();
-  const locale = normalizeLocale(useLocale()) ?? "es";
-  const percent = (value: number) => porcentaje(value, 1, locale);
-  const router = useRouter();
   const { estado, yo } = useSesionRequerida("/privadas");
+  const router = useRouter();
   const sesionLista = estado !== "cargando";
   const puedeCrear = !!yo?.puede_crear_liga;
 
   const { datos: ligas, cargando, fallo, refrescar: cargar } = useCache<LigaResumen[] | string>(
     sesionLista && estado === "dentro" ? "mis-ligas" : null, misLigas,
   );
-  const [hoja, setHoja] = useState<Hoja>(null);
-  const [nombre, setNombre] = useState("");
-  const [codigo, setCodigo] = useState("");
-  const [ocupada, setOcupada] = useState(false);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [hoja, setHoja] = useState<"unirse" | "crear" | null>(null);
 
-  const abrirHoja = (valor: Hoja) => { setAviso(null); setHoja(valor); };
+  const irA = (id: string) => { setHoja(null); router.push(`/privadas/${id}`); };
 
-  async function alCrear(e: React.FormEvent) {
-    e.preventDefault();
-    if (!nombre.trim()) return;
-    setOcupada(true);
-    setAviso(null);
-    const r = await crearLiga(nombre.trim());
-    setOcupada(false);
-    if (typeof r === "string") { setAviso(r); return; }
-    setNombre("");
-    invalidar("mis-ligas"); router.push(`/privadas/${r.id}`);
-  }
-
-  async function alUnirse(e: React.FormEvent) {
-    e.preventDefault();
-    if (!codigo.trim()) return;
-    setOcupada(true);
-    setAviso(null);
-    const r = await unirseLiga(codigo.trim());
-    setOcupada(false);
-    if (typeof r === "string") { setAviso(r); return; }
-    setCodigo("");
-    invalidar("mis-ligas"); router.push(`/privadas/${r.id}`);
+  let contenido;
+  if (!sesionLista || (estado === "dentro" && !yo) || cargando) {
+    contenido = <Cargando filas={3} />;
+  } else if (fallo || typeof ligas === "string") {
+    contenido = <ErrorLiga titulo={t("private_leagues_load_error")}
+      mensaje={typeof ligas === "string" ? ligas : t("private_leagues_retry_later")}
+      accion={{ texto: t("private_leagues_retry"), onClick: cargar }} />;
+  } else if (ligas && ligas.length === 0) {
+    contenido = (
+      <>
+        <Vacio titulo={t("private_leagues_empty_title")} texto={t("private_leagues_empty_text")}
+          accion={{ texto: t("private_leagues_join_button"), onClick: () => setHoja("unirse") }} />
+        <p className="pv-pie">{t("private_leagues_create_needs_pro")}</p>
+      </>
+    );
+  } else {
+    contenido = (
+      <ul className="pv-lista">
+        {ligas?.map((l) => <FilaLiga key={l.id} liga={l} />)}
+      </ul>
+    );
   }
 
   return (
-    <main className="scroll privadas">
-      <CabeceraApp titulo={t("private_leagues_title")} />
-      <p className="meta">{t("private_leagues_intro")}</p>
+    <main className="scroll pv">
+      <CabeceraApp anio={2026} />
+      <div className="pv-titulo-fila">
+        <h1 className="pv-titulo">{t("private_leagues_title")}</h1>
+        <MenuMas puedeCrear={puedeCrear} alUnirse={() => setHoja("unirse")} alCrear={() => setHoja("crear")} />
+      </div>
+      {contenido}
 
-      {!sesionLista || (estado === "dentro" && !yo) || cargando ? (
-        <div style={{ marginTop: 20 }}><Cargando filas={3} /></div>
-      ) : fallo || typeof ligas === "string" ? (
-        <ErrorLiga titulo={t("private_leagues_load_error")} mensaje={typeof ligas === "string" ? ligas : t("private_leagues_retry_later")}
-                   accion={{ texto: t("private_leagues_retry"), onClick: cargar }} />
-      ) : (
-        <>
-          <div className="priv-barra">
-            {puedeCrear && <Boton variante="principal" onClick={() => abrirHoja("crear")}>{t("private_leagues_create_button")}</Boton>}
-            <Boton variante={puedeCrear ? undefined : "principal"} onClick={() => abrirHoja("unirse")}>{t("private_leagues_join_button")}</Boton>
-          </div>
-          {!puedeCrear && <p className="fine">{t("private_leagues_create_needs_pro")}</p>}
-
-          {ligas && ligas.length === 0 ? (
-            <Vacio titulo={t("private_leagues_empty_title")}
-                   texto={t("private_leagues_empty_text")} />
-          ) : (
-            <div className="priv-lista">
-              {ligas?.map((l) => {
-                const mio = l.mio == null ? null : Number(l.mio);
-                const sp = l.sp500_mes == null ? null : Number(l.sp500_mes);
-                return (
-                  <Link key={l.id} href={`/privadas/${l.id}`} className="priv-liga">
-                    <span className="priv-liga-cab">
-                      <h3>{l.nombre}</h3>
-                      <span className="priv-eyebrow">{t("private_leagues_people", { count: l.n_miembros })}</span>
-                    </span>
-                    {mio !== null ? (
-                      <span className="priv-liga-cifra">
-                        <b className={`num ${claseSigno(mio)}`}>{percent(mio)}</b>
-                        <span className="num">{sp !== null ? t("private_leagues_month_vs", { sp: percent(sp) }) : t("private_leagues_this_month")}</span>
-                      </span>
-                    ) : (
-                      <span className="priv-liga-vacio">{t("private_leagues_no_month_result")}</span>
-                    )}
-                    {l.lider && <span className="priv-liga-lider">{t("private_leagues_leads")} <b>{l.lider}</b></span>}
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-
-          <HojaPrivadas abierta={hoja === "unirse"} titulo={t("private_leagues_invited_title")} onCerrar={() => setHoja(null)}>
-            <p className="meta">{t("private_leagues_invited_text")}</p>
-            <form className="form" onSubmit={alUnirse}>
-              <label htmlFor="liga-codigo">{t("private_leagues_invite_code")}</label>
-              <input id="liga-codigo" className="inp codigo" placeholder="ABC123" maxLength={16} value={codigo}
-                     onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-                     autoCapitalize="characters" />
-              <Boton type="submit" variante="principal" ancho="completo" disabled={ocupada || !codigo.trim()}>
-                {ocupada ? t("private_leagues_wait") : t("private_leagues_join")}
-              </Boton>
-            </form>
-            {aviso && hoja === "unirse" && <p className="aviso" role="alert">{aviso}</p>}
-          </HojaPrivadas>
-
-          {puedeCrear && <HojaPrivadas abierta={hoja === "crear"} titulo={t("private_leagues_create_group_title")} onCerrar={() => setHoja(null)}>
-            <p className="meta">{t("private_leagues_create_group_text")}</p>
-            <form className="form" onSubmit={alCrear}>
-              <label htmlFor="liga-nombre">{t("private_leagues_name")}</label>
-              <input id="liga-nombre" className="inp" placeholder={t("private_leagues_name_placeholder")} maxLength={40} value={nombre}
-                     onChange={(e) => setNombre(e.target.value)} />
-              <Boton type="submit" variante="principal" ancho="completo" disabled={ocupada || !nombre.trim()}>
-                {ocupada ? t("private_leagues_wait") : t("private_leagues_create")}
-              </Boton>
-            </form>
-            <p className="fine">{t("private_leagues_members_see")}</p>
-            {aviso && hoja === "crear" && <p className="aviso" role="alert">{aviso}</p>}
-          </HojaPrivadas>}
-        </>
-      )}
+      <HojaUnirse abierta={hoja === "unirse"} onCerrar={() => setHoja(null)} onUnida={irA} />
+      {puedeCrear && <HojaCrear abierta={hoja === "crear"} onCerrar={() => setHoja(null)} onCreada={irA} />}
 
       <BarraPestanas />
     </main>

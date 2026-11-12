@@ -22,6 +22,7 @@ from app.liga.comparativa import (
     RentabilidadAcumulada,
     movimientos_grupo,
     retornos_acumulados,
+    series_acumuladas,
 )
 from app.liga.db import db_usuario
 from app.liga.ia import moderacion
@@ -78,6 +79,11 @@ class MiembroLigaOut(BaseModel):
     estrategia: dict | None = None
     rentabilidad_mes: Decimal | None = None
     diferencia_mes: Decimal | None = None
+    # Gráficas: solo las ve quien lleva la estrategia o si está publicada (la regla de la ficha).
+    # serie_semana: rentabilidad en cada sesión de la jornada en juego, desde 0.
+    # serie_temporada: rentabilidad acumulada al cierre de cada periodo, desde 0.
+    serie_semana: list[Decimal] = []
+    serie_temporada: list[Decimal] = []
 
 
 class LigaDetalleOut(LigaResumenOut):
@@ -271,13 +277,16 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
     }
     ids_estrategias = list(estrategia_por_miembro.values())
     acumulados = retornos_acumulados(db, ids_estrategias)
+    series = series_acumuladas(db, ids_estrategias)
     for estrategia_id in ids_estrategias:
         viva = vivas.get(estrategia_id)
         if viva is not None:
+            series.pop(estrategia_id, None)
             if viva.acumulado is None:
                 acumulados.pop(estrategia_id, None)
             else:
                 acumulados[estrategia_id] = viva.acumulado
+                series[estrategia_id] = viva.serie
     movimientos = (movimientos_grupo(db, temporada, estrategia_por_miembro)
                    if temporada is not None else {})
     vivo = diario.vivo(jornada.id) if jornada else None
@@ -305,9 +314,18 @@ def ver_liga(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
                           if m.estrategia_id else None,
                           rentabilidad_mes=por_inscripcion.get(m.inscripcion_id, {}).get(
                               "rentabilidad"),
-                          diferencia_mes=por_inscripcion.get(m.inscripcion_id, {}).get("dif"))
+                          diferencia_mes=por_inscripcion.get(m.inscripcion_id, {}).get("dif"),
+                          serie_semana=(por_inscripcion.get(m.inscripcion_id, {}).get("serie", [])
+                                        if _ve_la_serie(m, ident) else []),
+                          serie_temporada=(series.get(m.estrategia_id, [])
+                                           if m.estrategia_id and _ve_la_serie(m, ident) else []))
             for m in miembros
         ])
+
+
+def _ve_la_serie(m, ident: Identidad) -> bool:  # noqa: ANN001
+    """La serie diaria de una estrategia es de quien la lleva; el resto, solo si está publicada."""
+    return m.usuario_id == ident.uid or m.visibilidad == "publicada"
 
 
 # ---- Salir y rotar el código -------------------------------------------------------------------
