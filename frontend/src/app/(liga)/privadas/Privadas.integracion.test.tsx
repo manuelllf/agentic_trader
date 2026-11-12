@@ -82,7 +82,14 @@ describe("lista de Privadas (maqueta v6)", () => {
     expect(texto()).toContain("Los del martes");
     expect(texto()).toContain("3.º");
     expect(texto()).toContain("Pádel y bolsa");
-    expect(texto()).toContain("Tu puesto");
+    expect(texto()).toContain("Tu puesto en cada liga, esta semana.");
+    expect(container.querySelectorAll(".pv-grupo-lista .pv-fila")).toHaveLength(2);
+  });
+
+  it("dice «Solo tú» en una liga sin más personas", () => {
+    datosCache = [liga("Oficina", 1, 1)];
+    act(() => root.render(<PrivadasLista />));
+    expect(texto()).toContain("Solo tú");
   });
 
   it("ofrece unirse y crear desde el «+» de la cabecera", () => {

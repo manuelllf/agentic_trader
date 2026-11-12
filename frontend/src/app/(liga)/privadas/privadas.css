@@ -39,17 +39,26 @@
 .lg .pv .pv-menu button:active { background: var(--surface2); }
 .lg .pv .pv-menu button svg { flex: none; color: var(--muted); }
 
-/* Lista de ligas: fila de la Liga sin escudo ni píldora. Puesto y chevron a la derecha. */
-.lg .pv .pv-cab-lista > span:last-child { width: auto; padding-right: 24px; text-align: right; }
-.lg .pv .pv-liga { grid-template-columns: minmax(0, 1fr); padding: 0; }
-.lg .pv .pv-liga + .pv-liga::before { left: 16px; }
-.lg .pv .pv-liga-abre {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto 8px; align-items: center; gap: 12px;
-  width: 100%; min-height: 64px; padding: 8px 16px;
+/* Lista de ligas (maqueta v7): un grupo de celdas con la inicial en petróleo, nombre, personas y tu puesto. */
+.lg .pv .pv-grupo-lista { margin-top: 12px; border-radius: 12px; background: var(--surface); overflow: hidden; }
+.lg .pv .pv-fila {
+  position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto 8px; align-items: center; gap: 12px;
+  width: 100%; min-height: 64px; padding: 10px 16px; color: var(--ink);
 }
-.lg .pv .pv-liga-abre:active { background: var(--surface2); }
-.lg .pv .pv-puesto { font-size: 17px; line-height: 22px; font-weight: 600; color: var(--ink2); font-variant-numeric: tabular-nums; }
-.lg .pv .pv-chev { display: block; width: 8px; height: 14px; color: var(--muted); opacity: 0.7; }
+.lg .pv .pv-fila + .pv-fila::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--line); }
+.lg .pv .pv-fila:active { background: var(--surface2); }
+.lg .pv .pv-inicial { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px;
+  background: var(--accent-bg); color: var(--accent); font-size: 18px; font-weight: 700; }
+.lg .pv .pv-fila-t { min-width: 0; }
+.lg .pv .pv-fila-t b { display: block; font-size: 17px; line-height: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .pv .pv-fila-t small { display: block; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pv .pv-fila-p { font-size: 20px; line-height: 25px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lg .pv .pv-pie-grupo { margin: 8px 16px 0; font-size: 13px; line-height: 18px; color: var(--muted); }
+
+/* El reset de arriba alinea a la izquierda los textos del segmentado: aquí van centrados, como en la Liga. */
+.lg .pv .lv-seg button { text-align: center; }
+
+.lg .pv .pv-chev { display: block; width: 8px; height: 14px; color: var(--muted); opacity: 0.6; }
 
 /* Estado vacío (DESIGN §7): icono de trazo, título 20/600, texto 15 y botones de tinte a lo ancho. */
 .lg .pv .pv-vacio { display: flex; flex-direction: column; align-items: center; min-height: calc(100dvh - 260px);

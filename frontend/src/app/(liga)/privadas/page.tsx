@@ -74,21 +74,20 @@ function MenuMas({ puedeCrear, alUnirse, alCrear }: { puedeCrear: boolean; alUni
   );
 }
 
-/** Una liga: nombre, personas y tu puesto de la semana. Tocarla abre el detalle empujando la pantalla. */
+/** Una liga: su inicial, nombre, personas y tu puesto de la semana. Tocarla abre el detalle empujando la pantalla. */
 function FilaLiga({ liga, alEntrar }: { liga: LigaResumen; alEntrar: (href: string, e: MouseEvent) => void }) {
   const t = useTranslations();
   const href = `/privadas/${liga.id}`;
   return (
-    <li className="lv-fila pv-liga">
-      <Link href={href} className="pv-liga-abre" onClick={(e) => alEntrar(href, e)}>
-        <span className="lv-nombre">
-          <b>{liga.nombre}</b>
-          <small>{t("private_leagues_people", { count: liga.n_miembros })}</small>
-        </span>
-        <span className="pv-puesto num">{liga.puesto ? t("private_leagues_place", { place: liga.puesto }) : ""}</span>
-        <Chevron />
-      </Link>
-    </li>
+    <Link href={href} className="pv-fila" onClick={(e) => alEntrar(href, e)}>
+      <span className="pv-inicial" aria-hidden="true">{liga.nombre.trim().charAt(0).toLocaleUpperCase()}</span>
+      <span className="pv-fila-t">
+        <b>{liga.nombre}</b>
+        <small>{liga.n_miembros === 1 ? t("private_leagues_only_you") : t("private_leagues_people", { count: liga.n_miembros })}</small>
+      </span>
+      <span className="pv-fila-p num">{liga.puesto ? t("private_leagues_place", { place: liga.puesto }) : ""}</span>
+      <Chevron />
+    </Link>
   );
 }
 
@@ -139,13 +138,10 @@ export default function Privadas() {
   } else {
     contenido = (
       <>
-        <p className="lv-lista-cab pv-cab-lista">
-          <span>{t("private_leagues_this_month")}</span>
-          <span>{t("private_leagues_your_place")}</span>
-        </p>
-        <ul className="lv-lista">
+        <div className="pv-grupo-lista">
           {ligas?.map((l) => <FilaLiga key={l.id} liga={l} alEntrar={alEntrar} />)}
-        </ul>
+        </div>
+        <p className="pv-pie-grupo">{t("private_leagues_place_note")}</p>
       </>
     );
   }
