@@ -98,6 +98,15 @@ export function FichaContenido({ id }: { id: string }) {
       if (typeof r !== "string") invalidar("seguimiento");
     });
   }, [seguimiento]);
+  // Abrir la ficha ya es revisarla: el aviso «N cambios en cartera» de Mías deja de salir al volver.
+  const revisada = useRef("");
+  useEffect(() => {
+    if (!seguimiento) return;
+    const clave = `${seguimiento.ultima_inscripcion_id}:${seguimiento.ultimo_resultado_inscripcion_id}`;
+    if (revisada.current === clave) return;
+    revisada.current = clave;
+    alMostrarSeguimiento();
+  }, [seguimiento, alMostrarSeguimiento]);
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [vista, setVista] = useState("cartera");
