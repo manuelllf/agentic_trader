@@ -59,6 +59,11 @@ function activaEn(clave: string, ruta: string | null | undefined): boolean {
     : false;
 }
 
+/** Editar una estrategia es la misma pantalla que crear: la pestaña lo dice. */
+function etiquetaDe(clave: string, ruta: string | null | undefined): string {
+  return clave === "crear" && !!ruta?.startsWith("/crear/") ? "common_editar" : `common_${clave}`;
+}
+
 // Orden de las cuatro pestañas visibles en móvil: la pastilla viaja de una a otra (maqueta v1).
 const ORDEN_BARRA = ["liga", "privadas", "crear", "mias"];
 
@@ -186,7 +191,7 @@ export function BarraPestanas() {
                 navegarConTransicion(p.href, router);
               }
             }}>
-            <EstadoEnlace claseEtiqueta={contraida ? "etiqueta sr-only-escritorio" : "etiqueta"} texto={t(`common_${p.clave}`)} icono={p.icono} />
+            <EstadoEnlace claseEtiqueta={contraida ? "etiqueta sr-only-escritorio" : "etiqueta"} texto={t(etiquetaDe(p.clave, ruta))} icono={p.icono} />
           </Link>
         );
       })}
