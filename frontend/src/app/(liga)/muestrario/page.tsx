@@ -11,7 +11,6 @@ import { PlanCuentaVista } from "../cuenta/PlanCuentaVista";
 import { AvisosAltaVista } from "../avisos-alta/AvisosAltaVista";
 import { CuentaHub } from "../cuenta/CuentaHub";
 import { GraficaRendimiento } from "../ficha/[id]/GraficaRendimiento";
-import { ListaEmpresas } from "../ficha/[id]/ListaEmpresas";
 import { Boton } from "../_ui/Boton";
 import { Cargando } from "../_ui/Cargando";
 import { Chip } from "../_ui/Chip";
@@ -275,14 +274,6 @@ export default function Muestrario() {
         <GraficaRendimiento serie={SERIE_CORTA} metricas={{ sharpe: null, sortino: null, volatilidad: null, max_drawdown: -0.028, observaciones: 3 }} locale={locale} />
         <div style={{ height: 28 }} />
         <GraficaRendimiento serie={SERIE_LARGA} metricas={{ sharpe: null, sortino: null, volatilidad: 0.14, max_drawdown: -0.061, observaciones: SERIE_LARGA.length - 1 }} locale={locale} />
-      </Seccion>
-
-      <Seccion titulo={t("strategies_showcase_portfolio")}>
-        <ListaEmpresas conPrecio columnaRetorno={t("strategies_col_month")} alAbrir={() => {}} filas={[
-          { ticker: "ASM", peso: 10.6, precio: 5.625, retorno: 1.4 }, { ticker: "CRMD", peso: 10.1, precio: 7.27, retorno: -5.6 },
-          { ticker: "EVER", peso: 10.1, precio: 19.01, retorno: -5.2 }, { ticker: "MAMA", peso: 10.1, precio: 12.955, retorno: 0.5 },
-          { ticker: "QNST", peso: 9.9, precio: null, retorno: null },
-        ]} />
       </Seccion>
 
       <Seccion titulo={t("strategies_showcase_error")}>

@@ -233,6 +233,7 @@ class JornadaFichaOut(BaseModel):
     jornada_total: int
     rentabilidad: Decimal | None
     puntos: int | None
+    sp500: Decimal | None = None
 
 
 class PosicionOut(BaseModel):
@@ -275,6 +276,7 @@ class FichaOut(BaseModel):
     rendimiento: dict | None = None
     mercado: dict | None = None
     casa_metodologia: dict | None = None   # solo equipos de la casa; sin pasos si no es en directo
+    cada_dia_1: str | None = None   # solo si la receta es visible para quien mira
 
 
 # ---- Ayudas de conversión ------------------------------------------------------------------------
@@ -721,14 +723,15 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
     f = db.execute(text("""
         select e.id::text as eid, e.nombre, e.forma, e.dibujo, e.color1, e.color2, e.iniciales,
                e.casa_clave, e.visibilidad, e.dueno_id::text as dueno, e.estado, e.receta_id,
-               e.tipo, p.alias
+               e.tipo, e.cada_dia_1, p.alias
         from liga.estrategias e left join liga.perfiles p on p.id = e.dueno_id
         where e.id = :i
     """), {"i": id}).one_or_none()
     if f is None:
         raise HTTPException(404, "No existe esa estrategia.")
     jornadas = db.execute(text("""
-        select j.numero, r.rentabilidad, r.puntos, t.n_jornadas as jornada_total
+        select j.numero, r.rentabilidad, r.puntos, t.n_jornadas as jornada_total,
+               j.sp_rentabilidad as sp500
         from liga.inscripciones i join liga.jornadas j on j.id = i.jornada_id
         join liga.temporadas t on t.id = j.temporada_id
         left join liga.resultados r on r.inscripcion_id = i.id
@@ -795,7 +798,8 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
         casa=f.casa_clave, autor=f.alias, estado=f.estado, visibilidad=f.visibilidad,
         es_dueno=(f.dueno == ident.uid),
         jornadas=[JornadaFichaOut(numero=j.numero, jornada_total=j.jornada_total,
-                                  rentabilidad=j.rentabilidad, puntos=j.puntos)
+                                  rentabilidad=j.rentabilidad, puntos=j.puntos,
+                                  sp500=j.sp500)
                  for j in jornadas],
         receta=receta_out,
         posiciones=(posiciones if f.casa_clave == "omega" else [
@@ -803,7 +807,8 @@ def ficha(id: uuid.UUID, ident: Identidad = Depends(require_usuario),
                         entrada_dia=getattr(p, "entrada_dia", None)) for p in posiciones]),
         rendimiento=retorno, mercado=mercado,
         casa_metodologia=(casas_metodologia.metodologia(f.casa_clave, completa=en_directo)
-                          if f.tipo == "casa" else None))
+                          if f.tipo == "casa" else None),
+        cada_dia_1=f.cada_dia_1 if receta_out is not None else None)
 
 
 @router.get("/fichas/{id}/empresas/{ticker}", response_model=NotasEmpresaOut)

@@ -1,0 +1,149 @@
+/* Ficha de estrategia (maqueta v1, estilo de la app Bolsa): cabeza con la cifra de la semana, un segmentado y
+   las piezas de la Liga (lv-pagina, lv-lista, lv-fila, lv-seg, lv-pildora; ver ../../liga/ranking.css). Acotado a .lg .fi. */
+
+.lg .fi { min-width: 0; }
+
+/* Botones y enlaces sin el aspecto del navegador; :where deja la especificidad en cero. */
+:where(.lg .fi) button,
+:where(.lg .fi) a {
+  appearance: none; background: none; border: 0; border-radius: 0; box-shadow: none;
+  padding: 0; margin: 0; font: inherit; color: inherit; text-decoration: none; cursor: pointer; text-align: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Barra: chevron en tinte con el título de donde vienes (Apple, Toolbars); a la derecha, «Editar» o «⋯». */
+.lg .fi .fi-atras { display: inline-flex; align-items: center; gap: 2px; justify-self: start; max-width: 100%; min-height: 44px;
+  margin-left: -8px; padding: 0 4px 0 0; color: var(--accent); font-size: 17px; line-height: 22px; }
+.lg .fi .fi-atras span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lg .fi .fi-atras svg { flex: none; width: 24px; height: 24px; }
+.lg .fi .fi-atras:active, .lg .fi .fi-accion:active, .lg .fi .fi-mas:active { opacity: .45; }
+.lg .fi .fi-accion { min-height: 44px; padding-left: 8px; color: var(--accent); font-size: 17px; font-weight: 600; }
+.lg .fi .fi-mas { display: grid; place-items: center; width: 44px; height: 44px; margin-right: -10px; color: var(--accent); }
+.lg .fi .fi-mas svg { width: 24px; height: 24px; }
+.lg .fi .fi-menu-raiz { position: relative; }
+/* El nombre aparece en la barra cuando el grande pasa por debajo. */
+.lg .fi .cab-titulo { opacity: 0; transition: opacity .2s; }
+html[data-titulo] .lg .fi .cab-titulo { opacity: 1; }
+
+/* Menú de «⋯»: el menú anclado de Privadas. */
+.lg .fi .fi-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: min(240px, calc(100vw - 32px));
+  padding: 6px; border: 1px solid var(--line2); border-radius: 12px; background: var(--surface);
+  box-shadow: 0 18px 40px -12px var(--shadow); transform-origin: top right; animation: fi-menu .2s cubic-bezier(.32, .72, 0, 1);
+}
+@keyframes fi-menu { from { opacity: 0; transform: scale(.96); } }
+.lg .fi .fi-menu button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px;
+  border-radius: 8px; color: var(--ink); font-size: 15px; font-weight: 600; text-align: left; }
+.lg .fi .fi-menu button:active { background: var(--surface2); }
+.lg .fi .fi-menu button svg { flex: none; color: var(--muted); }
+
+/* Cabeza: escudo y nombre; debajo, la cifra de la semana. */
+.lg .fi .fi-cabeza { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: 14px; margin-top: 8px; }
+.lg .fi .fi-cabeza h1 { margin: 0; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); overflow-wrap: anywhere; }
+.lg .fi .fi-cabeza p { margin-top: 2px; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .fi .fi-cifra { margin-top: 20px; }
+.lg .fi .fi-cifra small { display: block; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .fi .fi-cifra b { display: block; margin-top: 2px; font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; color: var(--ink); }
+.lg .fi .fi-cifra p { margin-top: 2px; font-size: 15px; line-height: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .fi .bien-t { color: var(--good); font-weight: 600; }
+.lg .fi .mal-t { color: var(--bad); font-weight: 600; }
+.lg .fi .igual-t { color: var(--ink2); font-weight: 600; }
+.lg .fi .lv-seg { margin-top: 20px; }
+.lg .fi .lv-seg button { text-align: center; }
+
+/* Grupos de celdas (Crear y Privadas): fondo surface, radio 10, separador desde el texto. */
+.lg .fi .fi-grupo { margin: 0; padding: 0; list-style: none; border-radius: 10px; background: var(--surface); overflow: hidden; }
+.lg .fi .fi-celda { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  min-height: 50px; padding: 10px 16px; font-size: 17px; line-height: 22px; color: var(--ink); }
+.lg .fi .fi-grupo > li { position: relative; }
+.lg .fi .fi-grupo > li + li::before, .lg .fi .fi-grupo > .fi-celda + .fi-celda::before {
+  content: ""; position: absolute; z-index: 1; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
+.lg .fi .fi-celda .valor { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lg .fi .fi-celda.apilada { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
+.lg .fi .fi-celda.apilada .valor { white-space: normal; font-size: 15px; line-height: 20px; }
+.lg .fi .fi-celda .t small { display: block; margin-top: 1px; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .fi .fi-celda.texto { display: block; font-size: 17px; line-height: 24px; color: var(--ink2); }
+.lg .fi button.fi-celda { width: 100%; text-align: left; }
+.lg .fi button.fi-celda:active { background: var(--surface2); }
+.lg .fi .fi-celda .chev { width: 8px; height: 14px; color: var(--muted); opacity: .6; }
+.lg .fi .fi-celda.enlace { color: var(--accent); }
+.lg .fi .fi-cab-grupo { margin: 28px 16px 6px; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .fi .fi-pie-grupo { margin: 8px 16px 0; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .hoja-liga .fi-grupo { background: var(--surface2); }
+.lg .hoja-liga .fi-grupo > li + li::before, .lg .hoja-liga .fi-grupo > .fi-celda + .fi-celda::before { background: var(--line2); }
+
+/* Cartera: la fila de la Liga con el ticker, su peso y precio, y la píldora del dato elegido. */
+.lg .fi .fi-emp .lv-fila-abre { grid-template-columns: minmax(0, 1fr); }
+.lg .fi .fi-emp + .fi-emp::before { left: 16px; }
+.lg .fi .lv-nombre small.nuevo { color: var(--accent); font-weight: 600; }
+
+/* Notas de la empresa (0 a 9): nueve marcas, petróleo hasta la nota. */
+.lg .fi .fi-nota { row-gap: 6px; }
+.lg .fi .fi-nota .esc { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; }
+.lg .fi .fi-nota .esc i { height: 4px; border-radius: 2px; background: var(--line2); }
+.lg .fi .fi-nota .esc i.on { background: var(--accent); }
+.lg .fi .fi-nota .valor b { color: var(--ink); font-weight: 600; }
+
+/* Qué pesa al elegir: nombre, porcentaje y una barra fina (Crear, paso Criterios). */
+.lg .fi .fi-peso { row-gap: 6px; }
+.lg .fi .fi-peso .barra { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--surface2); overflow: hidden; }
+.lg .fi .fi-peso .barra i { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+
+/* Pasos de la casa: es una secuencia real, por eso van numerados. */
+.lg .fi .fi-paso { grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; align-items: start; }
+.lg .fi .fi-paso > span:first-child { color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .fi .fi-paso small { grid-column: 2; font-size: 15px; line-height: 20px; color: var(--muted); }
+
+/* Gráfica: estrategia en tinta, S&P discontinuo, cursor al arrastrar (DESIGN §9). */
+.lg .fi .fi-graf-cab { margin-top: 20px; min-height: 42px; }
+.lg .fi .fi-graf-cab small { display: block; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .fi .fi-graf-cab p { font-size: 15px; line-height: 20px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.lg .fi .fi-graf-cab p b { color: var(--ink); font-weight: 600; }
+.lg .fi .fi-graf { position: relative; margin: 8px 0 0; touch-action: pan-y; }
+.lg .fi .fi-graf svg { display: block; width: 100%; height: 200px; overflow: visible; font-family: inherit; }
+.lg .fi .fi-seg-peq { height: 32px; margin-top: 12px; border-radius: 9px; }
+.lg .fi .fi-seg-peq button { font-size: 13px; }
+.lg .fi .fi-seg-peq .lv-pulgar { border-radius: 7px; }
+
+/* Datos clave en dos columnas, como debajo de la gráfica de Bolsa. */
+.lg .fi .fi-datos { display: grid; grid-template-columns: 1fr 1fr; margin-top: 20px; border-radius: 10px; background: var(--surface); }
+.lg .fi .fi-datos > div { position: relative; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-height: 44px; padding: 11px 16px; }
+.lg .fi .fi-datos > div:nth-child(n+3)::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
+.lg .fi .fi-datos > div:nth-child(odd) { padding-right: 12px; }
+.lg .fi .fi-datos > div:nth-child(even) { padding-left: 12px; }
+.lg .fi .fi-datos span { font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .fi .fi-datos b { font-size: 15px; line-height: 20px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* Estado vacío dentro de una pestaña o de toda la ficha. */
+.lg .fi .fi-vacio { display: flex; flex-direction: column; align-items: center; padding: 48px 16px 8px; text-align: center; }
+.lg .fi .fi-vacio svg { width: 48px; height: 48px; color: var(--muted); }
+.lg .fi .fi-vacio h2 { margin-top: 16px; font-size: 20px; line-height: 25px; font-weight: 600; color: var(--ink); }
+.lg .fi .fi-vacio p { margin-top: 6px; max-width: 32ch; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .fi .fi-boton { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 50px; margin-top: 24px;
+  border-radius: 14px; background: var(--accent); color: #fff; font-size: 17px; font-weight: 600; text-align: center; transition: transform .15s; }
+.lg .fi .fi-boton.tintado { background: var(--accent-bg); color: var(--accent); }
+.lg .fi .fi-boton:active { transform: scale(.98); }
+.lg .fi .fi-boton:disabled { opacity: .4; }
+
+/* Esqueleto con la forma de la ficha; el contenido llega entero y se funde. */
+.lg .fi .fi-esq { display: block; border-radius: 6px; background: var(--surface2); }
+.lg .fi .fi-llega { animation: fi-funde .2s ease-out; }
+@keyframes fi-funde { from { opacity: 0; } }
+.lg .fi .lv-pie { margin-top: 24px; }
+.lg .fi .fi-aviso { margin-top: 16px; font-size: 15px; line-height: 20px; color: var(--bad); text-align: center; }
+
+/* Hoja de empresa: misma letra y grupos, con la cifra centrada arriba. */
+.lg .hoja-liga .fi-hoja-pad { padding: 4px 16px 24px; }
+.lg .hoja-liga .fi-cifra { margin-top: 4px; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lg .fi .fi-llega, .lg .fi .fi-menu { animation: none; }
+  .lg .fi .cab-titulo { transition: none; }
+}
+
+/* Escritorio (D6): una columna centrada de 680 px; el main ya centra a sus hijos junto al riel. */
+@media (min-width: 880px) {
+  .lg main.fi > :not(.tabbar) { max-width: 680px; }
+  .lg .fi .cab.centrada { grid-template-columns: 160px minmax(0, 1fr) 160px; }
+}

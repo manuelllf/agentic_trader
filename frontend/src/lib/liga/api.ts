@@ -280,7 +280,7 @@ export type PreviewSeleccion = {
 export type PorQue = { ticker: string; motivo: string };
 export type EmpresaBusqueda = { ticker: string; nombre: string | null; sector: string | null };
 
-export type JornadaFicha = { numero: number; jornada_total: number; rentabilidad: number | null; puntos: number | null };
+export type JornadaFicha = { numero: number; jornada_total: number; rentabilidad: number | null; puntos: number | null; sp500: number | null };
 // Omega: sus cinco huecos pesan igual y llevan precio y rentabilidad desde la entrada.
 export type Posicion = {
   ticker: string; peso: number | null; entrada_dia?: string | null;
@@ -308,6 +308,7 @@ export type Ficha = {
   rendimiento?: RendimientoFicha | null;
   mercado?: MercadoFicha | null;
   casa_metodologia?: { resumen: string; pasos: { titulo: string; texto: string }[] } | null;
+  cada_dia_1?: "revisar" | "mantener" | null;
 };
 
 export type RendimientoFicha = {

@@ -9,6 +9,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSesion } from "../_sesion/SesionContext";
 import { getCatalogo, getCreditos, getPortada, misEstrategias, misLigas } from "@/lib/liga/api";
 import { precargar } from "@/lib/liga/cache";
+import { leerVolver } from "@/lib/liga/volver";
 import { EstadoEnlace } from "./EstadoEnlace";
 import { Marca } from "./Marca";
 import { LanguageSelector } from "@/i18n/LanguageSelector";
@@ -49,14 +50,22 @@ const PESTANAS = [
   },
 ] as const;
 
-/** Qué pestaña enseña que la sección está abierta. Liga cubre también la ficha de una estrategia. */
-function activaEn(clave: string, ruta: string | null | undefined): boolean {
+/** Qué pestaña enseña que la sección está abierta. La ficha queda en la pestaña desde la que se abrió
+ *  (Liga, Privadas o Mías), como en iOS; sin ese dato, en Liga. */
+function activaEn(clave: string, ruta: string | null | undefined, origenFicha: string = "liga"): boolean {
+  if (ruta?.startsWith("/ficha")) return clave === origenFicha;
   return clave === "crear" ? !!ruta?.startsWith("/crear")
     : clave === "mias" ? !!ruta?.startsWith("/mias")
     : clave === "privadas" ? !!ruta?.startsWith("/privadas")
     : clave === "cuenta" ? !!ruta?.startsWith("/cuenta")
-    : clave === "liga" ? (ruta === "/liga" || !!ruta?.startsWith("/ficha"))
+    : clave === "liga" ? ruta === "/liga"
     : false;
+}
+
+/** La pestaña de origen de la ficha, según la vuelta que guardó quien la abrió. */
+function origenDeFicha(ruta: string): string {
+  const r = leerVolver(ruta.split("/")[2] ?? "")?.ruta ?? "";
+  return r.startsWith("/mias") ? "mias" : r.startsWith("/privadas") ? "privadas" : "liga";
 }
 
 /** Editar una estrategia es la misma pantalla que crear: la pestaña lo dice. */
@@ -115,7 +124,10 @@ export function BarraPestanas() {
   const { estado, yo, cerrarSesion } = useSesion();
   const panel = yo?.aal2 ? "/admin" : "/cuenta/verificacion?next=/admin";
   const [contraida, setContraida] = useState(false);
-  const indice = indiceDePestana(PESTANAS.find((p) => activaEn(p.clave, ruta))?.clave ?? null);
+  // sessionStorage solo existe en el navegador: se lee tras hidratar.
+  const [origenFicha, setOrigenFicha] = useState("liga");
+  useEffect(() => { if (ruta?.startsWith("/ficha")) setOrigenFicha(origenDeFicha(ruta)); }, [ruta]);
+  const indice = indiceDePestana(PESTANAS.find((p) => activaEn(p.clave, ruta, origenFicha))?.clave ?? null);
 
   useEffect(() => {
     let guardada = false;
@@ -175,7 +187,7 @@ export function BarraPestanas() {
         </button>
       </div>
       {PESTANAS.map((p) => {
-        const activa = activaEn(p.clave, ruta);
+        const activa = activaEn(p.clave, ruta, origenFicha);
         return (
           <Link key={p.clave} href={p.href} prefetch aria-current={activa ? "page" : undefined}
             className={p.clave === "cuenta" ? "solo-escritorio" : undefined}

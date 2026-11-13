@@ -583,6 +583,27 @@ def test_ficha_segun_quien_mira(api) -> None:  # noqa: ANN001
     assert sin_pro["rendimiento"] == con_pro["rendimiento"]
 
 
+def test_la_ficha_trae_el_sp500_de_cada_jornada_y_cada_dia_1_si_hay_receta(api) -> None:  # noqa: ANN001
+    cliente, cab, usuario, _, jornada_con_posicion, cx = api
+    duena = usuario()
+    eid = _crear(cliente, cab, duena, "Con sp500")
+    receta = _receta(cliente, cab, duena, eid).json()
+    jornada_con_posicion(eid, receta["id"], "ZPA", "50.0000")
+    cx.execute("update liga.jornadas set sp_rentabilidad = 2.5 where id in "
+               "(select jornada_id from liga.inscripciones where estrategia_id = %s)", (eid,))
+    cx.execute("update liga.estrategias set cada_dia_1 = 'mantener' where id = %s", (eid,))
+
+    propia = cliente.get(f"/liga/fichas/{eid}", headers=cab(duena))
+    assert propia.status_code == 200, propia.text
+    assert [Decimal(j["sp500"]) for j in propia.json()["jornadas"]] == [Decimal("2.5")]
+    assert propia.json()["cada_dia_1"] == "mantener"
+
+    # Apuntada y privada, otra cuenta la ve sin receta: tampoco recibe la opción de cada mes.
+    assert cliente.post(f"/liga/estrategias/{eid}/apuntar", headers=cab(duena)).status_code == 200
+    ajena = cliente.get(f"/liga/fichas/{eid}", headers=cab(usuario())).json()
+    assert ajena["receta"] is None and ajena["cada_dia_1"] is None
+
+
 def test_las_notas_de_una_empresa_solo_las_da_una_cartera_visible(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, foto_con_escaneo, jornada_con_posicion, cx = api
     foto, escaneo = foto_con_escaneo(_EMPRESAS)

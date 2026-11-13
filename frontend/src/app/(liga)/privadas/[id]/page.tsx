@@ -12,6 +12,7 @@ import { SegmentoLiga } from "../../liga/SegmentoLiga";
 import { expulsarDeLiga, rotarCodigoLiga, salirLiga, verLiga, type LigaDetalle, type MiembroLiga } from "@/lib/liga/api";
 import { invalidar, useCache } from "@/lib/liga/cache";
 import { precargarFicha } from "@/lib/liga/ficha";
+import { guardarVolver } from "@/lib/liga/volver";
 import { fecha, porcentaje } from "@/lib/liga/format";
 import { useSesionRequerida } from "../../_sesion/SesionContext";
 import { HojaInvitar, HojaMetodo, HojaMiembros } from "../Hojas";
@@ -98,7 +99,11 @@ export default function PrivadaDetalle() {
     m.alias,
     !puedeVerse(m) ? t("private_leagues_private_strategy") : null,
   ].filter(Boolean).join(" · ");
-  const abrir = (m: MiembroLiga) => { if (puedeVerse(m) && m.estrategia) router.push(`/ficha/${m.estrategia.id}`); };
+  const abrir = (m: MiembroLiga) => {
+    if (!puedeVerse(m) || !m.estrategia) return;
+    guardarVolver(detalle?.nombre ?? t("ficha_volver_liga"), `/privadas/${id}`, m.estrategia.id);
+    router.push(`/ficha/${m.estrategia.id}`);
+  };
   const precargar = (m: MiembroLiga) => () => { if (puedeVerse(m) && m.estrategia) precargarFicha(m.estrategia.id); };
 
   const entradasSemana: EntradaRanking[] = conSemana.map((m, i) => ({

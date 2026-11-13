@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Estrategia } from "@/lib/liga/api";
 import { precargarFicha } from "@/lib/liga/ficha";
+import { guardarVolver } from "@/lib/liga/volver";
 import { Escudo } from "../_ui/Escudo";
 
 /** Lo que enseña la fila a la derecha: la píldora de resultado de quien juega. */
@@ -63,7 +64,7 @@ export function FilaEstrategia({ estrategia: e, sub, nuevo, pildora, ocupada, ac
   return (
     <li className="mi-fila" ref={raiz} aria-busy={ocupada || undefined}>
       <Link href={`/ficha/${e.id}`} className="mi-abre" onPointerEnter={() => precargarFicha(e.id)}
-        onPointerDown={() => precargarFicha(e.id)}>
+        onPointerDown={() => precargarFicha(e.id)} onClick={() => guardarVolver(t("common_mias"), "/mias", e.id)}>
         <Escudo valor={e.escudo} baldosa tamano={32} etiqueta={t("strategies_crest", { name: e.nombre })} />
         <span className="lv-nombre"><b>{e.nombre}</b><small className={nuevo ? "nuevo" : undefined}>{sub}</small></span>
       </Link>

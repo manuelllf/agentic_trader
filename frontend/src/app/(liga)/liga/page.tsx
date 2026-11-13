@@ -5,13 +5,15 @@
 // ve sin cuenta). Sin temporada todavía (hoy: todos los campos de `/liga/publico/portada` son `null`) se
 // enseña un estado vacío honesto en vez de inventar filas.
 
-import { Suspense, useEffect, useRef, type RefObject } from "react";
+import { Suspense, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
 import { Actividad, BarraPestanas, CabeceraApp, Cargando, ErrorLiga, Vacio } from "../_ui";
+import { useTituloEnCabecera } from "../_ui/useTituloEnCabecera";
+import { guardarVolver } from "@/lib/liga/volver";
 import {
   getActividad, type Actividad as DatosActividad, getClasificacion, getJornadaPublica, getPortada, getPremio,
   type Clasificacion, type JornadaDetalle, type Portada, type PremioPublico,
@@ -79,25 +81,6 @@ function textoSinClasificacion(p: Portada, t: (key: string, values?: Record<stri
   return t("league_clasificacion_vacia_sin_apuntadas");
 }
 
-/** Como en la maqueta: al subir, el título grande sale de la cabecera y esta enseña «Liga». */
-function useTituloEnCabecera(titulo: RefObject<HTMLHeadingElement | null>) {
-  useEffect(() => {
-    const raiz = document.documentElement;
-    const marcar = () => {
-      const cab = document.querySelector(".lg .cab");
-      if (titulo.current && cab) {
-        raiz.toggleAttribute("data-titulo", titulo.current.getBoundingClientRect().bottom < cab.getBoundingClientRect().bottom);
-      }
-    };
-    marcar();
-    addEventListener("scroll", marcar, { passive: true });
-    return () => {
-      removeEventListener("scroll", marcar);
-      raiz.removeAttribute("data-titulo");
-    };
-  }, [titulo]);
-}
-
 export default function Liga() {
   return <Suspense fallback={<Cargando />}><LigaContenido /></Suspense>;
 }
@@ -144,7 +127,10 @@ function LigaContenido() {
     120000,
   );
 
-  const abrir = (id: string | null) => router.push(id ? `/ficha/${id}` : `/entrar?next=${encodeURIComponent("/liga")}`);
+  const abrir = (id: string | null) => {
+    if (id) guardarVolver(t("ficha_volver_liga"), `/liga${vista !== "semana" ? `?vista=${vista}` : ""}`, id);
+    router.push(id ? `/ficha/${id}` : `/entrar?next=${encodeURIComponent("/liga")}`);
+  };
 
   if (cargandoPortada) {
     return (
