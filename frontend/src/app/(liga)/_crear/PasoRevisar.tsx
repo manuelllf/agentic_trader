@@ -12,8 +12,7 @@ import { SegmentoLiga } from "../liga/SegmentoLiga";
 import { CabGrupo, Marca } from "./piezas";
 
 export type PropsRevisar = {
-  preview: PreviewSeleccion | null; pesos: Record<string, number>;
-  nEmpresas: number; reparto: string; maxPorSector: number;
+  preview: PreviewSeleccion | null;
   nombre: string; cambiarNombre: (nombre: string) => void;
   nombreRef?: Ref<HTMLInputElement>; errorNombre?: boolean;
   escudo?: EscudoValor; cambiarEscudo?: (escudo: EscudoValor) => void;
@@ -22,33 +21,9 @@ export type PropsRevisar = {
   faltanReglas?: boolean; pro?: boolean;
 };
 
-// Condiciones que ya se leen solas tras «Busca empresas» («fuera la banca», «a un 30 % de su máximo»);
-// a las demás les va delante «con» una vez por tramo.
-const SIN_CONECTOR = { es: /^(fuera|a un|empresas|de |del |con )/i, en: /^(no |\d|semiconductor|companies|with |of |from )/i };
-
-function unirConConector(detalles: string[], idioma: "es" | "en") {
-  let anteriorCon = false;
-  return detalles.map(d => {
-    const necesita = !SIN_CONECTOR[idioma].test(d);
-    const texto = necesita && !anteriorCon ? `${idioma === "es" ? "con" : "with"} ${d}` : d;
-    anteriorCon = necesita;
-    return texto;
-  });
-}
-
 export function PasoRevisar(p: PropsRevisar) {
   const t = useTranslations(), idioma = useLocale() === "en" ? "en" : "es";
   const [escudoAbierto, setEscudoAbierto] = useState(false);
-  const reglas = [...(p.preview?.por_regla ?? [])].sort((a, b) =>
-    Number(["tamano", "grandes", "medianas", "pequenas"].includes(b.clave)) -
-    Number(["tamano", "grandes", "medianas", "pequenas"].includes(a.clave)));
-  const detalles = unirConConector(reglas.map(r => r.detalle).filter(Boolean), idioma);
-  const lista = detalles.reduce((texto, detalle, i) => i === 0 ? detalle :
-    t("builder_revisar_union", { left: texto, right: detalle, last: i === detalles.length - 1 ? "yes" : "no" }), "");
-  const notas = ["negocio", "precio", "deuda", "pronto"];
-  const equilibrado = notas.every(k => (p.pesos[k] ?? 0) === (p.pesos[notas[0]] ?? 0));
-  const preferencia = equilibrado ? "equilibrado" : notas.reduce((mejor, k) =>
-    (p.pesos[k] ?? 0) > (p.pesos[mejor] ?? 0) ? k : mejor, notas[0]);
   const evaluadas = p.preview?.evaluadas ?? null;
   const etapas = [
     { n: evaluadas, clave: "mercado" },
@@ -76,12 +51,6 @@ export function PasoRevisar(p: PropsRevisar) {
       <span className="t"><b className="normal">{t(`builder_revisar_${e.clave}`)}</b>
         <span className="barra" style={{ width: `${evaluadas && e.n != null ? Math.min(100, Math.max(4, Math.sqrt(e.n / evaluadas) * 100)) : 4}%` }} /></span>
     </li>)}</ol>
-    <p className="cr-frase revisar-frase">{detalles.length ? t("builder_revisar_busca", { rules: lista }) : t("builder_revisar_sin_reglas")}{" "}
-      {t(`builder_revisar_preferencia_${preferencia}`)}{" "}
-      {t("builder_revisar_cartera", { count: miles(p.nEmpresas, idioma), allocation: p.reparto === "igual" ? "equal" : "score",
-        limit: p.maxPorSector ? "yes" : "no", sector: p.maxPorSector })}
-    </p>
-
     {p.cambiarVisibilidad && <>
       <CabGrupo><span id="revisar-quien">{t("builder_who_can_see")}</span></CabGrupo>
       <div className="cr-grupo" role="radiogroup" aria-labelledby="revisar-quien">
@@ -97,7 +66,7 @@ export function PasoRevisar(p: PropsRevisar) {
             onChange={p.cambiarDeclara} />
         </div>}
       </div>
-      <p className={`cr-pie${faltaDeclarar ? " mal" : ""}`}>{t(faltaDeclarar ? "builder_declaration_required" : "builder_revisar_sin_pruebas")}</p>
+      {faltaDeclarar && <p className="cr-pie mal">{t("builder_declaration_required")}</p>}
       {PLANES_VISIBLES && !p.pro && <p className="cr-pie"><Link href="/cuenta/plan">{t("planes_ver")}</Link></p>}
     </>}
     {p.faltanReglas && <p className="cr-pie mal" role="status">{t("builder_rules_required")}</p>}

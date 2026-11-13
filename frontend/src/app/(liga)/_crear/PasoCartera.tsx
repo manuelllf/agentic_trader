@@ -74,8 +74,8 @@ export function PasoCartera(p: PropsCartera) {
     : <small>{e.nota != null && e.mejor ? t("builder_cartera_nota_destaca", { score: numero(e.nota, 0), criterion: corta(e.mejor) }) : e.porque}</small>;
   const abierta = elegidas.find(e => e.ticker === empresa);
   const cerrarMenu = () => setMenu(null);
-  // La caja ya es una fila de la lista: no se repite como aviso.
-  const avisos = (p.preview?.avisos ?? []).filter(a => a.codigo !== "caja");
+  // La caja ya es una fila de la lista, y un sector sin empresas no hace falta contarlo aquí.
+  const avisos = (p.preview?.avisos ?? []).filter(a => a.codigo !== "caja" && a.codigo !== "sin_sector");
 
   return <div className="paso-cartera">
     <div className="cr-grupo cartera-config" style={{ marginTop: 16 }}>
@@ -102,7 +102,6 @@ export function PasoCartera(p: PropsCartera) {
         <span className="valor num">{pct(p.preview?.caja_pct ?? 0, 0)}</span><span /></li>}
     </ul> : <div className="cr-grupo"><button type="button" className="cr-celda accion" onClick={p.irReglas}>
       <IconoMas /><span className="t"><b className="normal">{t("builder_revisar_reglas")}</b></span></button></div>}
-    <p className="cr-pie">{t("builder_cartera_pie")}</p>
     {p.children}
     {ACTUALIZACION_VISIBLE && p.receta && p.alActualizar && <ActualizarHoy receta={p.receta} estrategiaId={p.estrategiaId} alActualizar={p.alActualizar} />}
 
@@ -142,7 +141,6 @@ export function PasoCartera(p: PropsCartera) {
             <i style={{ left: `${Math.min(100, Math.max(0, s.cuota_mercado))}%` }} /></span>
           <span className="valor ink num">{pct(s.peso, 0)}</span></div>)}
       </div>
-      <p className="cr-pie">{t("builder_cartera_leyenda")}</p>
     </section>}
     <div aria-live="polite">{avisos.map((a, i) => <p className="cr-pie aviso-cartera" key={`${a.codigo}-${i}`}>
       {t(`builder_aviso_${a.codigo}`, { count: miles(a.huecos ?? a.n ?? 0, locale), percent: pct(a.pct ?? a.cuota ?? 0, 0), sector: sector(a.sector) })}</p>)}</div>

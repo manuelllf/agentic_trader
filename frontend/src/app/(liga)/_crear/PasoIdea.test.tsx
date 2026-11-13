@@ -3,8 +3,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { PasoIdea } from "./PasoIdea";
-import { convertirFrase, enviarIntencion, getMercado, type Catalogo } from "@/lib/liga/api";
-vi.mock("@/lib/liga/api", () => ({ convertirFrase: vi.fn(), enviarIntencion: vi.fn(), getMercado: vi.fn() }));
+import { convertirFrase, enviarIntencion, type Catalogo, type Mercado } from "@/lib/liga/api";
+vi.mock("@/lib/liga/api", () => ({ convertirFrase: vi.fn(), enviarIntencion: vi.fn() }));
 vi.mock("next-intl", () => ({ useLocale: () => "es", useTranslations: () => (k: string, v?: { count: number }) => v ? `${k} ${v.count}` : k }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 beforeAll(() => {
@@ -15,11 +15,10 @@ const claves = ["calidad", "maduros", "dividendo", "crecimiento", "balance", "ca
 const catalogo = { estilos: claves.map(clave => ({ clave, reglas: [{ clave: "margen", params: { margen_pct: 17 } }], pesos: { negocio: 40 }, n_empresas: 7, reparto: "nota", max_por_sector: 3 })), reglas: [{ clave: "margen", titulo: "Margen", parametros: [] }] } as unknown as Catalogo;
 let root: Root;
 afterEach(() => { if (root) act(() => root.unmount()); vi.clearAllMocks(); });
-async function montar(mercado: unknown = { n: 4873, estilos: Object.fromEntries(claves.map((k, i) => [k, { pasan: 1000 + i, entran: 5 }])) }) {
-  vi.mocked(getMercado).mockResolvedValue(mercado as Awaited<ReturnType<typeof getMercado>>);
+async function montar(mercado: Mercado | null = { foto_id: 1, notas_del: null, n: 4873, reglas: {}, bandas: {}, estilos: Object.fromEntries(claves.map((k, i) => [k, { pasan: 1000 + i, entran: 5 }])) }) {
   const div = document.createElement("div"); root = createRoot(div);
   const actualizarB = vi.fn(), irReglas = vi.fn(), alCambiarQuedan = vi.fn();
-  await act(async () => root.render(<PasoIdea catalogo={catalogo} idea="Mi idea" reglas={[]}
+  await act(async () => root.render(<PasoIdea catalogo={catalogo} mercado={mercado} idea="Mi idea" reglas={[]}
     quedan={null} alCambiarQuedan={alCambiarQuedan} alCambiarIdea={vi.fn()}
     alCambiarOcupado={vi.fn()} actualizarB={actualizarB} irReglas={irReglas} />));
   return { div, actualizarB, irReglas, alCambiarQuedan };
@@ -54,10 +53,9 @@ it("muestra las tres marcas y solo aplica la propuesta al aceptarla", async () =
   pulsar(div.querySelector(".cr-bloque-boton button"));
   expect(actualizarB.mock.calls[0][0].reglas).toEqual(catalogo.estilos[0].reglas);
 });
-it.each([null, "Entra en tu cuenta para seguir."])("sin mercado (%s) los estilos se eligen igual, sin recuento ni avisos", async mercado => {
-  const { div } = await montar(mercado);
+it("sin mercado los estilos se eligen igual, sin recuento ni avisos", async () => {
+  const { div } = await montar(null);
   expect(div.querySelector('[role="alert"]')).toBeNull();
-  expect(div.textContent).not.toContain("Entra en tu cuenta");
   expect(div.querySelectorAll(".idea-estilo")).toHaveLength(7);
   expect(div.querySelector(".idea-recuento")).toBeNull();
 });

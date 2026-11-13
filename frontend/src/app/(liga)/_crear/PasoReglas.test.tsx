@@ -3,8 +3,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { PasoReglas } from "./PasoReglas";
-import { getMercado, type Catalogo, type PreviewSeleccion } from "@/lib/liga/api";
-vi.mock("@/lib/liga/api", () => ({ getMercado: vi.fn(), convertirFrase: vi.fn() }));
+import { type Catalogo, type Mercado, type PreviewSeleccion } from "@/lib/liga/api";
+vi.mock("@/lib/liga/api", () => ({ convertirFrase: vi.fn() }));
 vi.mock("next-intl", () => ({ useLocale: () => "es", useTranslations: () => traducir, createTranslator: () => (k: string) => k }));
 const traducir = Object.assign((k: string, v?: Record<string, unknown>) => k + (v ? " " + Object.values(v).join(" ") : ""),
   { rich: (k: string, v?: Record<string, unknown>) => k + (v ? " " + Object.values(v).filter(x => typeof x !== "function").join(" ") : "") });
@@ -21,9 +21,9 @@ const catalogo = { sectores: {}, reglas: [
 let root: Root;
 afterEach(() => { if (root) act(() => root.unmount()); vi.clearAllMocks(); });
 async function montar() {
-  vi.mocked(getMercado).mockResolvedValue({ foto_id: 1, notas_del: null, estilos: {}, n: 100, reglas: { barata: { cobertura: 80, mediana: 18, histograma: Array(36).fill(5), sola: 50 } } } as Awaited<ReturnType<typeof getMercado>>);
+  const mercado = { foto_id: 1, notas_del: null, estilos: {}, n: 100, reglas: { barata: { cobertura: 80, mediana: 18, histograma: Array(36).fill(5), sola: 50 } } } as Mercado;
   const div = document.createElement("div"), actualizarB = vi.fn(); root = createRoot(div);
-  await act(async () => root.render(<PasoReglas catalogo={catalogo} reglas={[{ clave: "barata", params: { per: 22 } }]}
+  await act(async () => root.render(<PasoReglas catalogo={catalogo} mercado={mercado} reglas={[{ clave: "barata", params: { per: 22 } }]}
     preview={{ evaluadas: 100, cumplen_reglas: 40, por_regla: [{ clave: "barata", sola: 50, sin_ella: 100, detalle: "PER" }] } as PreviewSeleccion}
     quedan={null} alCambiarQuedan={vi.fn()} alCambiarOcupado={vi.fn()} actualizarB={actualizarB} />));
   return { div, actualizarB };

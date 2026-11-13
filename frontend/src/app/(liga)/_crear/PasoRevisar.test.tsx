@@ -2,9 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import { createTranslator } from "next-intl";
 import es from "../../../../messages/es/builder.json";
-import en from "../../../../messages/en/builder.json";
 import { PasoRevisar, type PropsRevisar } from "./PasoRevisar";
 
 vi.mock("next-intl", async importOriginal => {
@@ -15,19 +13,12 @@ vi.mock("next-intl", async importOriginal => {
 let root: Root;
 afterEach(() => { if (root) act(() => root.unmount()); });
 function montar(cambios: Partial<PropsRevisar> = {}) {
-  const props: PropsRevisar = { preview: null, pesos: { negocio: 25, precio: 25, deuda: 25, pronto: 25 },
-    nEmpresas: 5, reparto: "igual", maxPorSector: 0, nombre: "", cambiarNombre: vi.fn(), ...cambios };
+  const props: PropsRevisar = { preview: null, nombre: "", cambiarNombre: vi.fn(), ...cambios };
   const div = document.createElement("div"); root = createRoot(div);
   act(() => root.render(<PasoRevisar {...props} />)); return { div, props };
 }
-it("sin reglas mira todo el mercado", () => {
-  const { div } = montar(); expect(div.textContent).toContain("Mira todo el mercado.");
-});
-it("pone el tamaño primero, une con coma e «y» y pone «con» una vez por tramo", () => {
-  const { div } = montar({ preview: { evaluadas: 5700, cumplen_reglas: 40, seleccionadas: 5,
-    por_regla: [{ clave: "rentables", detalle: "ROE superior al 15 %" }, { clave: "tamano", detalle: "capitalización de al menos 10.000 M$" },
-      { clave: "sin_bancos", detalle: "fuera la banca" }, { clave: "barata", detalle: "PER por debajo de 25" }] } as PropsRevisar["preview"] });
-  expect(div.textContent).toContain("Busca empresas con capitalización de al menos 10.000 M$, ROE superior al 15 %, fuera la banca y con PER por debajo de 25.");
+it("el embudo cuenta el mercado, los que cumplen y los que entran", () => {
+  const { div } = montar({ preview: { evaluadas: 5700, cumplen_reglas: 40, seleccionadas: 5 } as PropsRevisar["preview"] });
   expect(div.querySelectorAll(".cr-embudo li")).toHaveLength(3);
   expect(div.querySelector(".cr-embudo li:last-child")?.classList.contains("final")).toBe(true);
   expect(div.querySelector(".cr-embudo")?.textContent).toContain("5.700");
@@ -40,14 +31,4 @@ it("el nombre empieza vacio y no hay chips ni sugerencias", () => {
   act(() => { const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     setter.call(input, "Mi estrategia"); input.dispatchEvent(new Event("input", { bubbles: true })); });
   expect(props.cambiarNombre).toHaveBeenCalledWith("Mi estrategia");
-});
-it("describe preferencia, reparto por nota y tope por sector", () => {
-  const { div } = montar({ pesos: { pronto: 50, negocio: 20, precio: 20, deuda: 10 }, reparto: "nota", maxPorSector: 2 });
-  expect(div.textContent).toContain(es.builder_revisar_preferencia_pronto);
-  expect(div.textContent).toContain("Invierte en 5 empresas seg\u00fan su nota, como mucho 2 por sector.");
-});
-it.each(["es", "en"])("las uniones ICU funcionan en %s", idioma => {
-  const t = createTranslator({ locale: idioma, messages: idioma === "es" ? es : en });
-  expect(t("builder_revisar_union", { left: "A", right: "B", last: "no" })).toBe("A, B");
-  expect(t("builder_revisar_union", { left: "A, B", right: "C", last: "yes" })).toBe(idioma === "es" ? "A, B y C" : "A, B and C");
 });

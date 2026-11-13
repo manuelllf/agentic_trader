@@ -60,8 +60,7 @@ export function PasoCriterios({ catalogo, pregunta, pesos, pro, actualizarB, chi
           onChange={e => actualizarB({ pesos: pesosCoherentes(pregunta, { ...pesos, [k]: Number(e.target.value) }).pesos })} />
       </div>)}
     </div>
-    {totalPesos ? <p className="cr-pie">{t("builder_criterios_pie")}</p>
-      : <p className="cr-pie mal" role="alert">{t("builder_weight_zero_help")}</p>}
+    {!totalPesos && <p className="cr-pie mal" role="alert">{t("builder_weight_zero_help")}</p>}
     {children}
     <Hoja abierta={!!ayuda} titulo={ayuda && NOTAS[ayuda] ? t(NOTAS[ayuda].titulo) : ""} accion={t("builder_listo")} onCerrar={() => setAyuda(null)}>
       {ayuda && NOTAS[ayuda] && <div className="cr-hoja-pad cr-texto" style={{ paddingBottom: 12 }}>

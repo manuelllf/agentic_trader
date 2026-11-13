@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { convertirFrase, getMercado, type Catalogo, type Mercado, type ParametroRegla, type PreviewSeleccion,
+import { convertirFrase, type Catalogo, type Mercado, type ParametroRegla, type PreviewSeleccion,
   type ReglaElegida, type ConvertirResultado, type InterpretacionIdea } from "@/lib/liga/api";
 import { miles } from "@/lib/liga/format";
 import { normalizeLocale } from "@/i18n/locale";
@@ -13,7 +13,7 @@ import { CabGrupo, Chevron, Deslizador, IconoLupa, IconoMas, Marca } from "./pie
 import { MAXIMOS, PORCENTAJES, cifra, valorRegla } from "./reglaTexto";
 
 type Props = {
-  catalogo: Catalogo; reglas: ReglaElegida[]; preview: PreviewSeleccion | null; estrategiaId?: string;
+  catalogo: Catalogo; mercado: Mercado | null; reglas: ReglaElegida[]; preview: PreviewSeleccion | null; estrategiaId?: string;
   quedan: number | null; alCambiarQuedan: (n: number) => void; alCambiarOcupado: (v: boolean) => void;
   actualizarB: (v: { reglas: ReglaElegida[]; interpretacion?: InterpretacionIdea[] }) => void;
 };
@@ -25,18 +25,11 @@ const normalizar = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toL
 // La API manda los decimales como texto («0.5»): todo se pasa a número antes de comparar.
 const extremos = (p: ParametroRegla) => ({ min: Number(p.valores?.[0] ?? p.minimo ?? 0), max: Number(p.valores?.at(-1) ?? p.maximo ?? 100) });
 
-export function PasoReglas({ catalogo, reglas, preview, estrategiaId, quedan,
+export function PasoReglas({ catalogo, mercado, reglas, preview, estrategiaId, quedan,
   alCambiarQuedan, alCambiarOcupado, actualizarB }: Props) {
   const t = useTranslations();
   const locale = normalizeLocale(useLocale()) ?? "es";
-  const [mercado, setMercado] = useState<Mercado | null>(null);
   const [hoja, setHoja] = useState<HojaAbierta>(null);
-  useEffect(() => {
-    let vigente = true;
-    // Sin datos de mercado las reglas se editan igual; solo faltan los recuentos.
-    void getMercado().then(r => { if (vigente && r && typeof r !== "string") setMercado(r); });
-    return () => { vigente = false; };
-  }, []);
   const total = preview?.evaluadas, cumplen = preview?.cumplen_reglas;
 
   return <div className="paso-reglas">
@@ -57,7 +50,7 @@ export function PasoReglas({ catalogo, reglas, preview, estrategiaId, quedan,
         <IconoMas /><span className="t"><b className="normal">{t("builder_add_rule_cell")}</b></span>
       </button>
     </div>
-    <p className="cr-pie">{t(reglas.length ? "builder_reglas_pie" : "builder_no_rules_all_pass")}</p>
+    {!reglas.length && <p className="cr-pie">{t("builder_no_rules_all_pass")}</p>}
 
     <HojaRegla catalogo={catalogo} reglas={reglas} preview={preview} mercado={mercado}
       clave={hoja?.tipo === "regla" ? hoja.clave : null} onCerrar={() => setHoja(null)} actualizarB={actualizarB} />

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { convertirFrase, enviarIntencion, getMercado, type Catalogo, type ConvertirResultado,
+import { convertirFrase, enviarIntencion, type Catalogo, type ConvertirResultado,
   type InterpretacionIdea, type Mercado, type ReglaElegida, type EstiloCatalogo } from "@/lib/liga/api";
 import { miles } from "@/lib/liga/format";
 import { normalizeLocale } from "@/i18n/locale";
@@ -12,7 +12,7 @@ import { valorRegla } from "./reglaTexto";
 
 type Cambios = Partial<Omit<EstiloCatalogo, "clave">> & { interpretacion?: InterpretacionIdea[] };
 type Props = {
-  catalogo: Catalogo; idea: string; reglas: ReglaElegida[]; estrategiaId?: string;
+  catalogo: Catalogo; mercado: Mercado | null; idea: string; reglas: ReglaElegida[]; estrategiaId?: string;
   quedan: number | null; alCambiarQuedan: (n: number) => void;
   alCambiarIdea: (idea: string) => void; alCambiarOcupado: (ocupado: boolean) => void;
   actualizarB: (cambios: Cambios) => void; irReglas: () => void;
@@ -43,11 +43,10 @@ function EsqueletoPropuesta() {
   </div>)}</div>;
 }
 
-export function PasoIdea({ catalogo, idea, reglas, estrategiaId, quedan, alCambiarQuedan,
+export function PasoIdea({ catalogo, mercado, idea, reglas, estrategiaId, quedan, alCambiarQuedan,
   alCambiarIdea, alCambiarOcupado, actualizarB, irReglas }: Props) {
   const t = useTranslations();
   const locale = normalizeLocale(useLocale()) ?? "es";
-  const [mercado, setMercado] = useState<Mercado | null>(null);
   const [estiloAbierto, setEstiloAbierto] = useState<string | null>(null);
   const [propuesta, setPropuesta] = useState<ConvertirResultado | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -67,12 +66,6 @@ export function PasoIdea({ catalogo, idea, reglas, estrategiaId, quedan, alCambi
       else { setIntencion(""); setIntencionAbierta(false); setAviso(t("builder_intencion_ok")); }
     } finally { setEnviandoIntencion(false); }
   }
-  useEffect(() => {
-    let vigente = true;
-    // Sin recuento, los estilos se eligen igual: no hace falta avisar de ello.
-    void getMercado().then(r => { if (vigente && r && typeof r !== "string") setMercado(r); });
-    return () => { vigente = false; };
-  }, []);
   async function proponer() {
     if (!idea.trim() || ocupado) return;
     setOcupado(true); alCambiarOcupado(true); setError(null); setPropuesta(null);

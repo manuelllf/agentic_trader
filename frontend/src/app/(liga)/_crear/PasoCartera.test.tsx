@@ -40,7 +40,7 @@ const abierta = (div: HTMLElement) => Array.from(div.querySelectorAll("dialog"))
 
 it.each(["es", "en"])("traduce todos los avisos desde su código en %s", idioma => {
   const t = createTranslator({ locale: idioma, messages: idioma === "es" ? es : en });
-  for (const codigo of ["caja", "concentracion", "sin_sector", "pocas"] as const) {
+  for (const codigo of ["caja", "concentracion", "pocas"] as const) {
     expect(t(`builder_aviso_${codigo}`, { count: "2", percent: "70 %", sector: "Tecnología" })).not.toContain("builder_aviso_");
   }
 });
@@ -62,7 +62,7 @@ it("deja la caja como una fila de la lista y no la repite en los avisos", () => 
 it("pinta los avisos traducidos con los datos de la vista previa", () => {
   const { div } = montar();
   expect(Array.from(div.querySelectorAll(".aviso-cartera"), e => e.textContent)).toEqual(["70 % de la cartera está en Tecnología.",
-    "No hay empresas de Salud, que representa 12 % del mercado.", "Solo 8 empresas cumplen tus reglas."]);
+    "Solo 8 empresas cumplen tus reglas."]);
 });
 it("pinta las cifras frente al mercado y la marca del mercado en cada sector", () => {
   const { div } = montar(); const perfil = div.querySelector(".cartera-perfil")!;

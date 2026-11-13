@@ -14,7 +14,7 @@ import {
   leerAFondo, lecturasCompradas, porQueNoSale, probarEstrategia, quitarExclusion, verEstrategia,
   leerBorrador, vincularBorrador, type ContenidoBorrador,
   type Catalogo, type CostePregunta, type EmpresaBusqueda, type Estrategia, type EstrategiaPatch,
-  previsualizarSeleccion, type InterpretacionIdea, type Lectura, type Prueba, type PreviewSeleccion,
+  previsualizarSeleccion, getMercado, type Mercado, type InterpretacionIdea, type Lectura, type Prueba, type PreviewSeleccion,
   type RecetaEntrada, type ReglaElegida,
 } from "@/lib/liga/api";
 import { invalidar, obtener } from "@/lib/liga/cache";
@@ -106,6 +106,9 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
   const [estrategia, setEstrategia] = useState<Estrategia | null>(null);
   const [cargandoInicial, setCargandoInicial] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  // Mercado y primera vista llegan con el catálogo: la pantalla no pinta nada hasta tener los tres.
+  const [mercado, setMercado] = useState<Mercado | null>(null);
+  const [mercadoListo, setMercadoListo] = useState(false);
 
   const [nombre, setNombre] = useState("");
   const [errorNombre, setErrorNombre] = useState(false);
@@ -167,7 +170,8 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
       n_empresas: b.n_empresas, reparto: b.reparto, max_por_sector: b.max_por_sector };
   }, [b, convFrase, usarFrescas]);
   const clavePreview = JSON.stringify(recetaPreview);
-  const previewSeleccion = previewDato?.clave === clavePreview ? previewDato.valor : null;
+  // Lo último que llegó: mientras llega lo nuevo se ve lo anterior, nunca un cero falso.
+  const previewSeleccion = previewDato?.valor ?? null;
 
   useEffect(() => {
     if (!previewSeleccion) return;
@@ -272,6 +276,11 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
   useEffect(() => {
     if (!sesionLista || estado !== "dentro") return;
     let vivo = true;
+    void getMercado().catch(() => null).then((r) => {
+      if (!vivo) return;
+      if (r && typeof r !== "string") setMercado(r);
+      setMercadoListo(true);
+    });
     (async () => {
       setCargandoInicial(true);
       const cat = await obtener("catalogo", getCatalogo);
@@ -365,6 +374,29 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
     );
   }
   if (!catalogo || !b) return null;
+
+  // Todo a la vez: mientras falte algo, esqueleto del cuerpo y sin barra, como en la maqueta. Nunca ceros ni guiones.
+  if (!mercadoListo || !previewSeleccion) {
+    if (previewSeleccionError) {
+      return (
+        <main className="scroll lv-pagina cr constructor">
+          <CabeceraApp titulo={titulo} />
+          <ErrorLiga titulo={t("builder_preview_refresh_error")} mensaje={previewSeleccionError}
+                     accion={{ texto: t("builder_retry"), onClick: () => setRevisionDatos(n => n + 1) }} />
+          <BarraPestanas />
+        </main>
+      );
+    }
+    return (
+      <main className="scroll lv-pagina cr constructor" aria-busy="true">
+        <CabeceraApp titulo={titulo} />
+        <SegmentoLiga className="cr-etapas" etiquetaGrupo={t("builder_steps_aria")} valor={etapa} opciones={opcionesEtapas}
+          onChange={() => undefined} desactivado />
+        <EsqueletoPaso />
+        <BarraPestanas />
+      </main>
+    );
+  }
 
   const faltanReglas = b.reglas.length === 0;
   const puedeApuntarse = !faltanReglas && !(visibilidad === "publicada" && !declaraPosiciones);
@@ -714,13 +746,13 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
         onKeyUpCapture={() => deshacer.terminar(b)} onBlurCapture={() => deshacer.terminar(b)}>
         <h2 ref={etapaRef} tabIndex={-1} className="cr-pregunta constructor-pregunta">{t(PREGUNTAS[etapa])}</h2>
         <div key={etapa} className="cr-fundido">
-          {etapa === 0 && <PasoIdea catalogo={catalogo} idea={convFrase} reglas={b.reglas}
+          {etapa === 0 && <PasoIdea catalogo={catalogo} mercado={mercado} idea={convFrase} reglas={b.reglas}
             estrategiaId={id} quedan={convQuedan} alCambiarQuedan={setConvQuedan}
             alCambiarOcupado={setConvOcupado} alCambiarIdea={setConvFrase}
             actualizarB={actualizarB} irReglas={() => irEtapa(1)} />}
 
           {etapa === 1 && <>
-            <PasoReglas catalogo={catalogo} reglas={b.reglas} preview={previewSeleccion}
+            <PasoReglas catalogo={catalogo} mercado={mercado} reglas={b.reglas} preview={previewSeleccion}
               estrategiaId={id} quedan={convQuedan} alCambiarQuedan={setConvQuedan}
               alCambiarOcupado={setConvOcupado} actualizarB={actualizarB} />
             {avisoPreview}
@@ -746,8 +778,7 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
             {avisoPreview}{pruebasCartera}
           </PasoCartera>}
 
-          {etapa === 4 && <PasoRevisar preview={previewSeleccion} pesos={b.pesos}
-            nEmpresas={b.n_empresas} reparto={b.reparto} maxPorSector={b.max_por_sector}
+          {etapa === 4 && <PasoRevisar preview={previewSeleccion}
             nombre={nombre} cambiarNombre={v => { setNombre(v); if (v.trim()) setErrorNombre(false); }}
             nombreRef={nombreRef} errorNombre={errorNombre}
             escudo={cr} cambiarEscudo={setCr}
