@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import { useSesion } from "./SesionContext";
 import { Chip } from "../_ui/Chip";
+import { cuentaEnHoja, useHojaCuenta } from "../cuenta/hojaContexto";
 
 const iconos = {
   u: <><circle cx="12" cy="8" r="3.6" /><path d="M5 20c.6-3.6 3.5-5.6 7-5.6s6.4 2 7 5.6" /></>,
@@ -25,6 +26,7 @@ function Icono({ tipo }: { tipo: keyof typeof iconos }) {
 export function Sesion() {
   const t = useTranslations();
   const { estado, yo, cerrarSesion } = useSesion();
+  const hojaCuenta = useHojaCuenta();
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
 
@@ -75,7 +77,10 @@ export function Sesion() {
               {yo?.pase_liga && <Chip>{t("account_badge_pase")}</Chip>}
             </div>
           )}
-          <Link href="/cuenta" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="u" />{t("account_tu_cuenta")}</Link>
+          <Link href="/cuenta" role="menuitem" className="cuenta-item" onClick={(e) => {
+            cerrar();
+            if (hojaCuenta && cuentaEnHoja()) { e.preventDefault(); hojaCuenta.abrir(); }
+          }}><Icono tipo="u" />{t("account_tu_cuenta")}</Link>
           {PLANES_VISIBLES && (<Link href="/cuenta/plan" role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="l" />{t("planes_titulo")}</Link>)}
           {yo?.admin && <Link href={panel} role="menuitem" className="cuenta-item" onClick={cerrar}><Icono tipo="p" />{t("account_panel_control")}</Link>}
           <hr />

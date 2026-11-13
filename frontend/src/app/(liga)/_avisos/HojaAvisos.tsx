@@ -7,6 +7,7 @@ import type { Aviso, ListaAvisos } from "@/lib/liga/api";
 import { porcentaje } from "@/lib/liga/format";
 import type { Locale } from "@/i18n/locale";
 import { cuando, textoAviso } from "./textoAviso";
+import { cuentaEnHoja, useHojaCuenta } from "../cuenta/hojaContexto";
 
 // Tres avisos antes de desplegar la lista.
 const VISIBLES = 3;
@@ -16,6 +17,7 @@ const VISIBLES = 3;
 export function HojaAvisos({ lista, fallo, onCerrar }: { lista: ListaAvisos | undefined; fallo: boolean; onCerrar: () => void }) {
   const t = useTranslations();
   const locale = useLocale() as Locale;
+  const hojaCuenta = useHojaCuenta();
   const [abierto, setAbierto] = useState(false);
   const [detalle, setDetalle] = useState<Aviso | null>(null);
   const cancelar = useRef<HTMLButtonElement>(null);
@@ -113,7 +115,11 @@ export function HojaAvisos({ lista, fallo, onCerrar }: { lista: ListaAvisos | un
     {filas.length > VISIBLES && <button type="button" className="avisos-mas" aria-expanded={abierto} onClick={() => setAbierto(!abierto)}>
       {abierto ? t("avisos_ver_menos") : t("avisos_ver_mas", { n: filas.length - VISIBLES })}
     </button>}
-    <Link href="/cuenta/avisos" className="avisos-como" onClick={() => cerrarRef.current()}>{t("avisos_como")}</Link>
+    <Link href="/cuenta/avisos" className="avisos-como" onClick={(e) => {
+      cerrarRef.current();
+      // En el móvil, la cuenta es una hoja: se cierra esta y se abre aquella, nunca una encima de otra.
+      if (hojaCuenta && cuentaEnHoja()) { e.preventDefault(); hojaCuenta.abrir("avisos"); }
+    }}>{t("avisos_como")}</Link>
   </>;
 
   return <>

@@ -1,4 +1,5 @@
 import { SesionProvider } from "./_sesion/SesionContext";
+import { ProveedorHojaCuenta } from "./cuenta/HojaCuenta";
 import { AvisoErrores } from "./_ui/AvisoErrores";
 import IndicadorDeDesplazamiento from "@/components/IndicadorDeDesplazamiento";
 import { CierreDeTransicion } from "./_ui/BarraPestanas";
@@ -21,9 +22,11 @@ export default function LigaLayout({ children }: Readonly<{ children: React.Reac
       <IndicadorDeDesplazamiento />
       <CierreDeTransicion />
       <SesionProvider>
-        {children}
-        <AvisoErrores />
-        <PwaInstall />
+        <ProveedorHojaCuenta>
+          {children}
+          <AvisoErrores />
+          <PwaInstall />
+        </ProveedorHojaCuenta>
       </SesionProvider>
     </div>
   );

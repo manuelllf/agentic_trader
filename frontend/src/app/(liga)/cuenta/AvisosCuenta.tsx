@@ -5,15 +5,16 @@ import { useTranslations } from "next-intl";
 import { cambiarResumenCorreo, estadoAvisos, guardarAvisosCorreo, probarAvisoCuenta } from "@/lib/liga/avisos";
 import { useSesion } from "../_sesion/SesionContext";
 import { Interruptor } from "./Interruptor";
+import { BarraCuenta, CabGrupo, CuerpoCuenta, Grupo, Pie } from "./marco";
 import { usePushDispositivo } from "./usePushDispositivo";
 
 const CORREO = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /** Avisos de la cuenta: push en este dispositivo, correo y a qué dirección. La dirección se guarda al
  *  salir del campo; vacía o igual a la de la cuenta, queda como «la de la cuenta». */
-export function AvisosCuenta({ email }: { email: string | null }) {
+export function AvisosCuenta() {
   const t = useTranslations();
-  const { yo, refrescarYo } = useSesion();
+  const { yo, email, refrescarYo } = useSesion();
   const push = usePushDispositivo();
   const cuenta = email ?? "";
   const [correoActivo, setCorreoActivo] = useState(Boolean(yo?.avisos_correo));
@@ -105,48 +106,54 @@ export function AvisosCuenta({ email }: { email: string | null }) {
 
   const pushFijo = push.ocupado || push.estado === "cargando" || push.estado === "no-disponible"
     || push.estado === "bloqueado";
-  return <section className="ajustes-grupo" aria-label={t("account_avisos")}>
-    <ul className="ajustes-lista">
-      <li><div className="ajustes-fila ajustes-con-sub">
-        <span className="ajustes-texto"><span className="ajustes-nombre">{t("account_avisos_push")}</span>
-          <span className="ajustes-sub">{t("account_avisos_push_sub")}</span></span>
-        <Interruptor activo={push.estado === "activo"} etiqueta={t("account_avisos_push")} desactivado={pushFijo}
-          onCambio={activo => void (activo ? push.activar() : push.desactivar())} />
-      </div></li>
-      {push.estado === "activo" && <li className="ajustes-campo">
-        <button type="button" className="btn small wide" disabled={probandoAviso || push.ocupado}
-          onClick={() => void probarAviso()}>{t("avisos_probar_boton")}</button>
-        {avisoMsg && <p className="ajustes-sub" role="status">{avisoMsg}</p>}
-      </li>}
-      <li><div className="ajustes-fila">
-        <span className="ajustes-texto"><span className="ajustes-nombre">{t("account_avisos_correo")}</span></span>
-        <Interruptor activo={correoActivo} etiqueta={t("account_avisos_correo")}
-          onCambio={activo => void cambiarCorreo(activo)} />
-      </div></li>
-      {correoActivo && <li className="ajustes-campo">
-        <label className="lbl" htmlFor="avisos-direccion">{t("account_avisos_enviar_a")}</label>
-        <input id="avisos-direccion" className="inp" type="email" inputMode="email" autoComplete="email"
-          autoCapitalize="none" maxLength={254} value={direccion}
-          onChange={e => { setDireccion(e.target.value); setGuardado(false); }}
-          onBlur={() => void salirDelCampo()} />
-        <span className="ajustes-sub" role="status">
-          {guardado ? t("account_avisos_guardado") : t("account_avisos_enviar_a_ayuda")}</span>
-      </li>}
-      <li className="ajustes-campo">
-        <span className="ajustes-nombre">{t("avisos_resumen_titulo")}</span>
-        <p id="avisos-resumen-ayuda" className="ajustes-sub">{t("avisos_resumen_ayuda")}</p>
-        <label className="ajustes-fila" htmlFor="avisos-resumen">
-          <span className="ajustes-texto">{t("avisos_resumen_activo")}</span>
-          <input id="avisos-resumen" type="checkbox" role="switch" checked={resumenActivo}
-            aria-describedby="avisos-resumen-ayuda" disabled={resumenOcupado}
-            className="h-5 w-5 shrink-0" onChange={e => void cambiarResumen(e.target.checked)} />
-        </label>
-        {resumenError && <p className="ajustes-nota aviso" role="alert">{t("avisos_resumen_error")}</p>}
-      </li>
-    </ul>
-    {push.estado === "no-disponible" && <p className="ajustes-nota">{t("account_avisos_no_disponibles")}</p>}
-    {push.estado === "bloqueado" && <p className="ajustes-nota">{t("account_avisos_bloqueados")}</p>}
-    {push.error && <p className="ajustes-nota aviso" role="alert">{push.error}</p>}
-    {error && <p className="ajustes-nota aviso" role="alert">{error}</p>}
-  </section>;
+  const notaPush = push.estado === "bloqueado" ? t("account_avisos_bloqueados")
+    : push.estado === "no-disponible" ? t("account_avisos_no_disponibles")
+    : avisoMsg || t("account_avisos_push_pie");
+
+  return <>
+    <BarraCuenta titulo={t("account_avisos")} />
+    <CuerpoCuenta>
+      <CabGrupo>{t("account_avisos_grupo_dispositivo")}</CabGrupo>
+      <Grupo>
+        <li><div className="cu-celda"><span>{t("account_avisos_push")}</span><span />
+          <Interruptor activo={push.estado === "activo"} etiqueta={t("account_avisos_push")} desactivado={pushFijo}
+            onCambio={activo => void (activo ? push.activar() : push.desactivar())} />
+        </div></li>
+        {push.estado === "activo" && <li>
+          <button type="button" className="cu-celda accion" disabled={probandoAviso || push.ocupado}
+            onClick={() => void probarAviso()}>
+            {probandoAviso ? t("account_enviando") : t("account_avisos_probar")}</button>
+        </li>}
+      </Grupo>
+      <Pie>{notaPush}</Pie>
+      {push.error && <Pie mal alerta>{push.error}</Pie>}
+
+      <CabGrupo>{t("account_avisos_grupo_correo")}</CabGrupo>
+      <Grupo>
+        <li><div className="cu-celda"><span>{t("account_avisos_por_correo")}</span><span />
+          <Interruptor activo={correoActivo} etiqueta={t("account_avisos_por_correo")}
+            onCambio={activo => void cambiarCorreo(activo)} />
+        </div></li>
+        {correoActivo && <li><label className="cu-celda cu-campo">
+          <span>{t("account_avisos_enviar_a")}</span>
+          <input id="avisos-direccion" type="email" inputMode="email" autoComplete="email" autoCapitalize="none"
+            maxLength={254} value={direccion}
+            onChange={e => { setDireccion(e.target.value); setGuardado(false); setError(null); }}
+            onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+            onBlur={() => void salirDelCampo()} />
+        </label></li>}
+      </Grupo>
+      {error ? <Pie mal alerta>{error}</Pie>
+        : correoActivo && <Pie>{guardado ? t("account_avisos_guardado") : t("account_avisos_enviar_a_ayuda")}</Pie>}
+
+      <Grupo>
+        <li><div className="cu-celda"><span>{t("account_avisos_resumen")}</span><span />
+          <Interruptor activo={resumenActivo} etiqueta={t("account_avisos_resumen")} desactivado={resumenOcupado}
+            onCambio={activo => void cambiarResumen(activo)} />
+        </div></li>
+      </Grupo>
+      <Pie>{t("account_avisos_resumen_pie")}</Pie>
+      {resumenError && <Pie mal alerta>{t("avisos_resumen_error")}</Pie>}
+    </CuerpoCuenta>
+  </>;
 }

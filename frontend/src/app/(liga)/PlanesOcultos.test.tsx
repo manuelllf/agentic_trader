@@ -8,8 +8,7 @@ vi.mock("next-intl/server", () => ({ getLocale: vi.fn(), getTranslations: vi.fn(
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("./_sesion/SesionContext", () => ({ useSesionRequerida: config.sesion }));
 vi.mock("./planes/PlanesPublicos", () => ({ PlanesPublicos: () => <div>Opciones públicas</div> }));
-vi.mock("./cuenta/PlanCuenta", () => ({ PlanCuenta: () => <div>Opciones de cuenta</div> }));
-vi.mock("./cuenta/MarcoCuenta", () => ({ MarcoCuenta: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
+vi.mock("./cuenta/PaginaCuenta", () => ({ PaginaCuenta: ({ pantalla }: { pantalla: string }) => <div>Opciones de cuenta {pantalla}</div> }));
 
 import Planes, { generateMetadata } from "./planes/page";
 import Plan from "./cuenta/plan/page";
@@ -22,12 +21,11 @@ beforeEach(() => {
 it("las páginas ocultas y sus metadatos responden como una ruta inexistente", async () => {
   expect(() => renderToStaticMarkup(<Planes />)).toThrow(";404");
   expect(() => renderToStaticMarkup(<Plan />)).toThrow(";404");
-  expect(config.sesion).toHaveBeenCalledWith("/cuenta/plan");
   await expect(generateMetadata()).rejects.toThrow(";404");
 });
 
 it("una sola flag vuelve a habilitar ambas páginas", () => {
   config.visible = true;
   expect(renderToStaticMarkup(<Planes />)).toContain("Opciones públicas");
-  expect(renderToStaticMarkup(<Plan />)).toContain("Opciones de cuenta");
+  expect(renderToStaticMarkup(<Plan />)).toContain("Opciones de cuenta plan");
 });
