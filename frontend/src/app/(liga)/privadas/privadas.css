@@ -53,7 +53,6 @@
 .lg .pv .pv-fila-t b { display: block; font-size: 17px; line-height: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lg .pv .pv-fila-t small { display: block; font-size: 15px; line-height: 20px; color: var(--muted); }
 .lg .pv .pv-fila-p { font-size: 20px; line-height: 25px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-.lg .pv .pv-pie-grupo { margin: 8px 16px 0; font-size: 13px; line-height: 18px; color: var(--muted); }
 
 /* El reset de arriba alinea a la izquierda los textos del segmentado: aquí van centrados, como en la Liga. */
 .lg .pv .lv-seg button { text-align: center; }

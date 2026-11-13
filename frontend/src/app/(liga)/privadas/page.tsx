@@ -166,7 +166,6 @@ export default function Privadas() {
         <div className="pv-grupo-lista">
           {ligas?.map((l) => <FilaLiga key={l.id} liga={l} alEntrar={alEntrar} />)}
         </div>
-        <p className="pv-pie-grupo">{t("private_leagues_place_note")}</p>
       </>
     );
   }

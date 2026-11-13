@@ -83,7 +83,7 @@ describe("lista de Privadas (maqueta v6)", () => {
     expect(texto()).toContain("Los del martes");
     expect(texto()).toContain("3.º");
     expect(texto()).toContain("Pádel y bolsa");
-    expect(texto()).toContain("Tu puesto en cada liga, esta semana.");
+    expect(texto()).not.toContain("Tu puesto en cada liga");
     expect(container.querySelectorAll(".pv-grupo-lista .pv-fila")).toHaveLength(2);
   });
 

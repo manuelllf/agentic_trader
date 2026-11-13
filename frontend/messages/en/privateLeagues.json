@@ -26,7 +26,6 @@
   "private_leagues_group_results": "Group results",
   "private_leagues_this_month": "This week",
   "private_leagues_place": "{place, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}",
-  "private_leagues_place_note": "Your place in each league this week.",
   "private_leagues_only_you": "Just you",
   "private_leagues_standings": "Standings",
   "private_leagues_provisional_quotes": "Provisional quotes",
