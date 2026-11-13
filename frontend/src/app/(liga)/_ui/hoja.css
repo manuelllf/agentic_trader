@@ -10,6 +10,8 @@
   border: 0;
   background: transparent;
   color: var(--ink);
+  /* El diálogo trae overflow: auto; sin esto, la hoja al entrar muestra una barra que encoge el contenido un instante. */
+  overflow: hidden;
 }
 .lg .hoja-liga::backdrop { background: rgba(0, 0, 0, 0.4); }
 .lg .hoja-liga-cuerpo {
