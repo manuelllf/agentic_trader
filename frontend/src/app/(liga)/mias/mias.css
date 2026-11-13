@@ -1,0 +1,106 @@
+/* Mías (maqueta v2): celdas de iOS con la fila de la Liga dentro (lv-nombre, lv-pildora, lv-lista-cab de
+   ../liga/ranking.css) y el menú anclado de Privadas. Todo acotado a .lg .mi. */
+
+.lg .mi { min-width: 0; }
+
+/* Botones y enlaces sin el aspecto del navegador; :where deja la especificidad en cero. */
+:where(.lg .mi) button,
+:where(.lg .mi) a {
+  appearance: none; background: none; border: 0; border-radius: 0; box-shadow: none;
+  padding: 0; margin: 0; font: inherit; color: inherit; text-decoration: none; cursor: pointer; text-align: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Cabecera: «+» en petróleo, sin cápsula, a la izquierda de la campana. En escritorio, el título a la izquierda. */
+.lg .mi .mi-crear { display: grid; place-items: center; width: 44px; height: 44px; color: var(--accent); }
+.lg .mi .mi-crear:active { opacity: 0.45; }
+@media (min-width: 880px) {
+  .lg .mi .cab.centrada { display: flex; align-items: center; gap: 12px; }
+  .lg .mi .cab-titulo { flex: 1; min-width: 0; text-align: left; }
+}
+
+.lg .mi .mi-cuenta { margin: 4px 0 0; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .mi .mi-cuenta b { font-weight: 600; color: var(--accent); }
+.lg .mi .mi-cuenta + section .lv-lista-cab { margin-top: 20px; }
+
+/* Grupo de estrategias (DESIGN §7): celdas con radio 12 y separador desde el texto. */
+.lg .mi .mi-grupo { list-style: none; margin: 0; padding: 0; border-radius: 12px; background: var(--surface); }
+.lg .mi .mi-fila {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto 36px; align-items: center; gap: 4px;
+  min-height: 64px; padding: 8px 0 8px 16px;
+}
+.lg .mi .mi-fila + .mi-fila::before { content: ""; position: absolute; top: 0; left: 58px; right: 0; height: 1px; background: var(--line); }
+.lg .mi .mi-fila:first-child { border-radius: 12px 12px 0 0; }
+.lg .mi .mi-fila:last-child { border-radius: 0 0 12px 12px; }
+.lg .mi .mi-fila:only-child { border-radius: 12px; }
+.lg .mi .mi-fila:has(.mi-abre:active) { background: var(--surface2); }
+.lg .mi .mi-fila[aria-busy="true"] { opacity: 0.6; }
+.lg .mi .mi-abre { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; color: var(--ink); }
+.lg .mi .mi-abre:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+.lg .mi .lv-nombre small.nuevo { color: var(--accent); font-weight: 600; }
+.lg .mi .mi-apuntar {
+  height: 32px; padding: 0 14px; border-radius: 8px; background: var(--accent-bg); color: var(--accent);
+  font-size: 15px; font-weight: 600; transition: transform 0.15s;
+}
+.lg .mi .mi-apuntar:active { transform: scale(0.97); }
+.lg .mi .mi-apuntar:disabled { opacity: 0.4; }
+.lg .mi .mi-mas { display: grid; place-items: center; width: 36px; height: 44px; color: var(--muted); }
+.lg .mi .mi-mas:active { opacity: 0.45; }
+.lg .mi .mi-mas svg { width: 20px; height: 20px; }
+
+/* Menú de «⋯»: el menú anclado de Privadas. Sobre celdas sube un nivel (surface2) para no fundirse con ellas. */
+.lg .mi .mi-menu {
+  position: absolute; top: calc(100% - 6px); right: 8px; z-index: 20; width: min(240px, calc(100vw - 32px));
+  padding: 6px; border: 1px solid var(--line2); border-radius: 12px; background: var(--surface2);
+  box-shadow: 0 18px 40px -12px var(--shadow); transform-origin: top right;
+  animation: mi-menu 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.lg .mi .mi-menu.arriba { top: auto; bottom: calc(100% - 6px); transform-origin: bottom right; }
+@keyframes mi-menu { from { opacity: 0; transform: scale(0.96); } }
+.lg .mi .mi-menu button {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 8px;
+  color: var(--ink); font-size: 15px; font-weight: 600; text-align: left;
+}
+.lg .mi .mi-menu button:active:not(:disabled) { background: var(--raised); }
+.lg .mi .mi-menu button:disabled { cursor: default; }
+.lg .mi .mi-menu button svg { flex: none; color: var(--muted); }
+.lg .mi .mi-menu .mi-marca { display: grid; place-items: center; width: 18px; }
+.lg .mi .mi-menu .mi-marca svg { color: var(--accent); }
+.lg .mi .mi-menu [aria-checked="false"] .mi-marca svg { visibility: hidden; }
+.lg .mi .mi-menu .peligro, .lg .mi .mi-menu .peligro svg { color: var(--bad); }
+.lg .mi .mi-menu hr { margin: 6px 4px; border: 0; height: 1px; background: var(--line); }
+.lg .mi .mi-menu-cab { margin: 0; padding: 8px 12px 4px; font-size: 13px; line-height: 18px; color: var(--muted); }
+
+/* Esqueleto: el recuento y la cabecera del grupo, con su forma. */
+.lg .mi .mi-esq-cuenta { display: block; width: 180px; height: 14px; margin-top: 7px; }
+.lg .mi .mi-esq-cab { display: block; width: 150px; height: 12px; margin: 26px 0 9px; }
+
+/* Estado vacío (DESIGN §7): icono de trazo, título 20/600, texto 15 y botón a lo ancho. */
+.lg .mi .mi-vacio {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: calc(100dvh - 240px); padding: 24px 8px; text-align: center;
+}
+.lg .mi .mi-vacio svg { width: 48px; height: 48px; color: var(--muted); }
+.lg .mi .mi-vacio h2 { margin: 16px 0 0; font-size: 20px; line-height: 25px; font-weight: 600; }
+.lg .mi .mi-vacio p { margin: 6px 0 0; max-width: 30ch; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .mi .mi-boton {
+  display: flex; align-items: center; justify-content: center; width: 100%; min-height: 50px; margin-top: 24px; padding: 0 16px;
+  border-radius: 14px; background: var(--accent); color: var(--btn-ink); font-size: 17px; font-weight: 600; transition: transform 0.15s;
+}
+.lg .mi .mi-boton:active { transform: scale(0.98); }
+
+/* Aviso breve (DESIGN §7): cápsula neutra sobre la barra, unos 3,5 s. */
+.lg .mi .mi-aviso {
+  position: fixed; left: 0; right: 0; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 40;
+  width: max-content; max-width: calc(100% - 48px); margin-inline: auto; padding: 11px 18px; border-radius: 999px;
+  background: var(--raised); color: var(--ink); font-size: 15px; line-height: 20px; text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); animation: mi-aviso 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes mi-aviso { from { opacity: 0; transform: translateY(8px); } }
+@media (min-width: 880px) { .lg .mi .mi-aviso { left: var(--rail-ancho); bottom: 32px; } }
+
+.lg .mi .lv-pie { margin: 16px 16px 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lg .mi .mi-menu, .lg .mi .mi-aviso { animation: none; }
+}

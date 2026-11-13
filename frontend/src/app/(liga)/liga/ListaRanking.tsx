@@ -41,7 +41,7 @@ type Traduce = (clave: string, valores?: Record<string, number | string>) => str
 const BANDA_EMPATE = 0.2;
 
 /** Color por resultado, no por signo: verde si gana, rojo si pierde y neutro dentro de la banda. */
-function claseDe(vs: number | null): "bien" | "mal" | "" {
+export function claseDe(vs: number | null): "bien" | "mal" | "" {
   if (vs == null) return "";
   return vs > BANDA_EMPATE ? "bien" : vs < -BANDA_EMPATE ? "mal" : "";
 }

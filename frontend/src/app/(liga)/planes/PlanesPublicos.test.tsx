@@ -56,7 +56,8 @@ describe("PlanesPublicos", () => {
   it("enseña los cuatro planes con sus precios", () => {
     const el = montar("fuera");
     expect(el.querySelector("h1")?.textContent).toBe("Planes");
-    expect(el.textContent).toContain("Pro te deja apuntar hasta tres estrategias");
+    expect(el.textContent).toContain("Pro te deja ver la cartera de la casa en directo");
+    expect(el.textContent).not.toContain("hasta tres estrategias");
     const filas = [...el.querySelectorAll("li.cuenta-plan-fila")].map((f) => [
       f.querySelector(".cuenta-plan-fila-nombre")?.textContent,
       f.querySelector(".cuenta-plan-fila-detalle")?.textContent,

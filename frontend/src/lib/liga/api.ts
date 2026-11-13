@@ -513,44 +513,6 @@ export async function miVentana(): Promise<Ventana[] | string> {
   return llamar<Ventana[]>("/liga/estrategias/ventana");
 }
 
-export type NovedadesRentabilidad = { rentabilidad: number | null; sp500: number | null };
-export type NovedadesSemana = NovedadesRentabilidad & {
-  dia_inicio: string; dia_fin: string; puntos: number | null;
-  puesto: number | null; de: number | null; movimiento: number | null;
-};
-export type NovedadesMovida = { ticker: string; nombre: string; aportacion: number | null };
-export type NovedadesCambio = {
-  accion: "quitar" | "recuperar" | "volver"; ticker: string | null;
-  fecha: string; cuenta_desde: string | null; entra: string | null;
-};
-export type NovedadesEstrategia = {
-  estrategia_id: string; nombre: string; semana: NovedadesSemana | null;
-  movidas: NovedadesMovida[]; desde_lunes: NovedadesRentabilidad | null; cambios: NovedadesCambio[];
-};
-export type Novedades = { desde: string; estrategias: NovedadesEstrategia[] };
-
-export async function novedades(): Promise<Novedades | null | string> {
-  const r = await llamar<Novedades | null>("/liga/novedades");
-  if (r === null || typeof r === "string") return r;
-  const cifra = (valor: number | null) => valor == null ? null : Number(valor);
-  return { ...r, estrategias: r.estrategias.map((e) => ({
-    ...e,
-    semana: e.semana === null ? null : {
-      ...e.semana, rentabilidad: cifra(e.semana.rentabilidad), sp500: cifra(e.semana.sp500),
-      puntos: cifra(e.semana.puntos), puesto: cifra(e.semana.puesto), de: cifra(e.semana.de),
-      movimiento: cifra(e.semana.movimiento),
-    },
-    movidas: e.movidas.map((m) => ({ ...m, aportacion: cifra(m.aportacion) })),
-    desde_lunes: e.desde_lunes === null ? null : {
-      rentabilidad: cifra(e.desde_lunes.rentabilidad), sp500: cifra(e.desde_lunes.sp500),
-    },
-  })) };
-}
-
-export async function marcarNovedadesVistas(): Promise<void> {
-  try { await llamar<void>("/liga/novedades/vistas", { method: "POST" }); } catch {}
-}
-
 export async function volverALaFormacion(id: string): Promise<Receta | string> {
   return llamar<Receta>(`/liga/estrategias/${id}/formacion/volver`, { method: "POST" });
 }

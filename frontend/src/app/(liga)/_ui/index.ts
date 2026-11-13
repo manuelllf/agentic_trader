@@ -15,8 +15,6 @@ export * from "./OpcionRadio";
 export * from "./OrdenLista";
 export * from "./Segmentado";
 export * from "./Tarjeta";
-export * from "./TarjetaEstrategia";
 export * from "./Vacio";
 export { VentanaCambios, ProximaCartera, cierreDeCambios } from "./VentanaCambios";
-export * from "./HojaNovedades";
 export { Actividad } from "./Actividad";
