@@ -14,6 +14,9 @@ export function cifra(valor: number, locale: Locale): string {
   return signo(valor, decimales, locale).replace(/^\+/, "");
 }
 
+/** Las reglas con lista de sectores llevan un valor largo: en la celda va debajo del título. */
+export const tieneLista = (def: ReglaCatalogo) => def.parametros.some(p => p.tipo === "sectores");
+
 /** El valor elegido en palabras cortas: «mín. 15 %», «máx. 25», «300–2.000 M$» o los sectores. */
 export function valorRegla(def: ReglaCatalogo, regla: ReglaElegida, sectores: Record<string, string>,
   t: Traducir, locale: Locale = "es"): string {

@@ -47,6 +47,9 @@
 .lg .cr .cr-celda .t small.tinte { color: var(--accent); }
 .lg .cr .cr-celda .valor { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .lg .cr .cr-celda .valor.ink { color: var(--ink); font-weight: 600; }
+/* Lista larga (sectores): el valor baja a su propia línea, a ancho completo, y puede saltar de línea. */
+.lg .cr .cr-celda.apilada { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+.lg .cr .cr-celda.apilada .valor { grid-column: 1 / -1; grid-row: 2; white-space: normal; text-align: left; font-size: 15px; line-height: 20px; overflow-wrap: anywhere; }
 .lg .cr .cr-celda.accion { color: var(--accent); grid-template-columns: auto minmax(0, 1fr); }
 .lg .cr .cr-celda.accion svg { width: 22px; height: 22px; }
 .lg .cr .cr-celda.accion:disabled { opacity: .4; }

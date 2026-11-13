@@ -10,7 +10,7 @@ import { SegmentoLiga } from "../liga/SegmentoLiga";
 import { Histograma, posicion } from "./Histograma";
 import { Propuesta } from "./PasoIdea";
 import { CabGrupo, Chevron, Deslizador, IconoLupa, IconoMas, Marca } from "./piezas";
-import { MAXIMOS, PORCENTAJES, cifra, valorRegla } from "./reglaTexto";
+import { MAXIMOS, PORCENTAJES, cifra, tieneLista, valorRegla } from "./reglaTexto";
 
 type Props = {
   catalogo: Catalogo; mercado: Mercado | null; reglas: ReglaElegida[]; preview: PreviewSeleccion | null; estrategiaId?: string;
@@ -40,7 +40,7 @@ export function PasoReglas({ catalogo, mercado, reglas, preview, estrategiaId, q
       {reglas.map(r => {
         const def = catalogo.reglas.find(c => c.clave === r.clave);
         if (!def) return null;
-        return <button type="button" className="cr-celda regla" key={r.clave} aria-haspopup="dialog"
+        return <button type="button" className={`cr-celda regla${tieneLista(def) ? " apilada" : ""}`} key={r.clave} aria-haspopup="dialog"
           onClick={() => setHoja({ tipo: "regla", clave: r.clave })}>
           <span className="t"><b className="normal">{def.titulo}</b></span>
           <span className="valor">{def.parametros.length ? valorRegla(def, r, catalogo.sectores, t, locale) : ""}</span><Chevron />

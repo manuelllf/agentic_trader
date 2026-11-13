@@ -8,7 +8,7 @@ import { miles } from "@/lib/liga/format";
 import { normalizeLocale } from "@/i18n/locale";
 import { Hoja } from "../_ui/Hoja";
 import { AvisoCrear, CabGrupo, Chevron } from "./piezas";
-import { valorRegla } from "./reglaTexto";
+import { tieneLista, valorRegla } from "./reglaTexto";
 
 type Cambios = Partial<Omit<EstiloCatalogo, "clave">> & { interpretacion?: InterpretacionIdea[] };
 type Props = {
@@ -133,7 +133,7 @@ export function PasoIdea({ catalogo, mercado, idea, reglas, estrategiaId, quedan
         <CabGrupo>{t("builder_estilo_reglas")}</CabGrupo>
         <div className="cr-grupo cr-reglas-estilo">{estilo.reglas.map(r => {
           const def = catalogo.reglas.find(c => c.clave === r.clave);
-          return <div className="cr-celda" key={r.clave}><span className="t"><b className="normal">{def?.titulo ?? r.clave}</b></span>
+          return <div className={`cr-celda${def && tieneLista(def) ? " apilada" : ""}`} key={r.clave}><span className="t"><b className="normal">{def?.titulo ?? r.clave}</b></span>
             <span className="valor">{def ? valorRegla(def, r, catalogo.sectores ?? {}, t, locale) : ""}</span></div>;
         })}</div>
         <div className="cr-texto" style={{ margin: "20px 4px 0" }}>
