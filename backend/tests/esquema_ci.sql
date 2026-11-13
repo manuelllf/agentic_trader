@@ -1,5 +1,5 @@
--- migraciones-liga: 069
--- 064, 066 y 067 son datos de contenido del criptico: el esquema de CI no los necesita.
+-- migraciones-liga: 071
+-- 064, 066, 067 y 070 son datos de contenido del criptico: el esquema de CI no los necesita.
 -- migraciones-saneamiento: 12
 --
 -- PostgreSQL database dump
@@ -788,8 +788,9 @@ begin
          count(*) filter (where e.estado = 'borrador' and e.id <> new.id)
     into en_juego, borradores
     from liga.estrategias e where e.dueno_id = uid;
-  if new.estado in ('apuntada', 'jugando') and en_juego >= 1 then
-    raise exception 'Solo puedes tener una estrategia en juego a la vez' using errcode = '23514';
+  -- El tope frena llenar la clasificación con copias: con muchas casi iguales, alguna sale arriba por azar.
+  if new.estado in ('apuntada', 'jugando') and en_juego >= 10 then
+    raise exception 'Como mucho 10 estrategias en juego' using errcode = '23514';
   end if;
   if new.estado = 'borrador' and borradores >= 10 then
     raise exception 'Como mucho 10 borradores' using errcode = '23514';

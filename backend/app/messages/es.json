@@ -209,6 +209,7 @@
   "api_error_baja_confirmacion": "Escribe ELIMINAR para confirmar la baja.",
   "api_error_db_sin_sesion": "Sin sesión",
   "api_error_db_como_mucho_10_borradores": "Como mucho 10 borradores",
+  "api_error_db_como_mucho_10_en_juego": "Como mucho 10 estrategias en juego",
   "api_error_db_crear_ligas_privadas_es_de_pro": "Crear ligas privadas no está disponible en tu cuenta.",
   "api_error_db_el_registro_esta_cerrado": "El registro está cerrado",
   "api_error_db_el_resultado_no_pertenece_a_tu_estrategia": "El resultado no pertenece a tu estrategia",

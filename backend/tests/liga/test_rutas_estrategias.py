@@ -234,29 +234,19 @@ def test_flujo_crear_receta_apuntar(api) -> None:  # noqa: ANN001
 # ---- límites de plan y lo que es de Pro ----------------------------------------------------------
 
 
-def test_limite_una_en_juego_para_todos(api) -> None:  # noqa: ANN001
+def test_hasta_diez_en_juego_para_todos(api) -> None:  # noqa: ANN001
     cliente, cab, usuario, *_ = api
-    gratis = usuario()
-    e1 = _crear(cliente, cab, gratis, "Uno")
-    _receta(cliente, cab, gratis, e1)
-    assert cliente.post(f"/liga/estrategias/{e1}/apuntar", headers=cab(gratis)).status_code == 200
+    uid = usuario()
+    for i in range(10):
+        eid = _crear(cliente, cab, uid, f"E{i}")
+        _receta(cliente, cab, uid, eid)
+        r = cliente.post(f"/liga/estrategias/{eid}/apuntar", headers=cab(uid))
+        assert r.status_code == 200, r.text
 
-    e2 = _crear(cliente, cab, gratis, "Dos")
-    _receta(cliente, cab, gratis, e2)
-    r = cliente.post(f"/liga/estrategias/{e2}/apuntar", headers=cab(gratis))
-    assert r.status_code == 422 and r.json()["detail"] == (
-        "Solo puedes tener una estrategia en juego a la vez.")
-
-    pro = usuario(pro=True)
-    ids = [_crear(cliente, cab, pro, f"Pro {i}") for i in range(3)]
-    for i, eid in enumerate(ids):
-        _receta(cliente, cab, pro, eid)
-        r = cliente.post(f"/liga/estrategias/{eid}/apuntar", headers=cab(pro))
-        if i == 0:
-            assert r.status_code == 200, r.text
-        else:
-            assert r.status_code == 422 and r.json()["detail"] == (
-                "Solo puedes tener una estrategia en juego a la vez.")
+    once = _crear(cliente, cab, uid, "Once")
+    _receta(cliente, cab, uid, once)
+    r = cliente.post(f"/liga/estrategias/{once}/apuntar", headers=cab(uid))
+    assert r.status_code == 422 and r.json()["detail"] == "Como mucho 10 estrategias en juego"
 
 
 def test_la_estrategia_que_opta_al_premio_se_elige_por_la_api(api) -> None:  # noqa: ANN001
@@ -272,11 +262,11 @@ def test_la_estrategia_que_opta_al_premio_se_elige_por_la_api(api) -> None:  # n
         return [e["id"] for e in mias if e["opta_premio"]]
 
     assert optan() == [primera]
-    assert cliente.post(f"/liga/estrategias/{primera}/desapuntar",
-                        headers=cab(pro)).status_code == 200
+    # Con las dos en juego, la segunda no opta sola: se elige.
     _receta(cliente, cab, pro, segunda)
     assert cliente.post(f"/liga/estrategias/{segunda}/apuntar",
                         headers=cab(pro)).status_code == 200
+    assert optan() == [primera]
     r = cliente.post(f"/liga/estrategias/{segunda}/premio", headers=cab(pro))
     assert r.status_code == 200 and optan() == [segunda]
     assert [e["id"] for e in r.json() if e["opta_premio"]] == [segunda]

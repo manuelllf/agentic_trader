@@ -270,18 +270,23 @@ def test_transiciones_de_estado_permitidas(cx):
     cx.execute("update liga.estrategias set estado = 'retirada' where id = %s", (eid,))
 
 
-def test_gratis_y_pro_juegan_una(cx):
+def test_cada_cuenta_juega_hasta_diez_a_la_vez(cx):
     a, p = _usuario(cx), _usuario(cx, pro=True)
-    primera, _ = _lista(cx, a, "Una")
-    segunda, _ = _lista(cx, a, "Dos")
+    apuntar = "update liga.estrategias set estado = 'apuntada' where id = %s"
+    ids = [_lista(cx, a, f"E{i}")[0] for i in range(10)]
     _como(cx, a)
-    cx.execute("update liga.estrategias set estado = 'apuntada' where id = %s", (primera,))
-    _falla(cx, "update liga.estrategias set estado = 'apuntada' where id = %s", (segunda,))
-    ids = [_lista(cx, p, f"P{i}")[0] for i in range(4)]
+    for eid in ids:
+        cx.execute(apuntar, (eid,))
+    once, _ = _lista(cx, a, "Once")
+    _como(cx, a)
+    assert _mensaje(cx, apuntar, (once,)) == "Como mucho 10 estrategias en juego"
+    # Solo una opta al premio aunque jueguen diez.
+    optan = "select count(*) from liga.estrategias where dueno_id = %s and opta_premio"
+    assert _filas(cx, optan, (a,)) == [(1,)]
+    dos = [_lista(cx, p, f"P{i}")[0] for i in range(2)]
     _como(cx, p)
-    cx.execute("update liga.estrategias set estado = 'apuntada' where id = %s", (ids[0],))
-    for eid in ids[1:]:
-        _falla(cx, "update liga.estrategias set estado = 'apuntada' where id = %s", (eid,))
+    for eid in dos:
+        cx.execute(apuntar, (eid,))
 
 
 def _mensaje(cx, sql: str, params: tuple | None = None) -> str:
@@ -289,21 +294,6 @@ def _mensaje(cx, sql: str, params: tuple | None = None) -> str:
     with pytest.raises(psycopg.Error) as e, cx.transaction():
         cx.execute(sql, params)
     return e.value.diag.message_primary
-
-
-def test_el_tope_es_el_mismo_para_gratis_y_pro(cx):
-    a, p = _usuario(cx), _usuario(cx, pro=True)
-    gratis = [_lista(cx, a, f"G{i}")[0] for i in range(2)]
-    pro = [_lista(cx, p, f"P{i}")[0] for i in range(4)]
-    apuntar = "update liga.estrategias set estado = 'apuntada' where id = %s"
-    _como(cx, a)
-    cx.execute(apuntar, (gratis[0],))
-    assert _mensaje(cx, apuntar, (gratis[1],)) == (
-        "Solo puedes tener una estrategia en juego a la vez")
-    _como(cx, p)
-    cx.execute(apuntar, (pro[0],))
-    assert _mensaje(cx, apuntar, (pro[1],)) == (
-        "Solo puedes tener una estrategia en juego a la vez")
 
 
 def _opta(cx, eid: uuid.UUID) -> bool:

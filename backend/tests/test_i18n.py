@@ -67,8 +67,8 @@ def test_error_catalog_preserves_unknown_original_content():
 
 @pytest.mark.parametrize("locale", ["es", "en"])
 def test_error_origin_uses_presentation_catalog(locale):
-    assert present_error_detail("Solo puedes tener una estrategia en juego a la vez", locale) == (
-        MESSAGES[locale]["api_error_db_solo_una_en_juego"])
+    assert present_error_detail("Como mucho 10 estrategias en juego", locale) == (
+        MESSAGES[locale]["api_error_db_como_mucho_10_en_juego"])
     assert present_error_detail("Tu plan permite 3 en juego a la vez", locale) == (
         MESSAGES[locale]["dberr_tpl_plan_en_juego"].format(a=3))
     assert present_error_detail("Error desconocido", locale) == "Error desconocido"

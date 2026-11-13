@@ -209,6 +209,7 @@
   "api_error_baja_confirmacion": "Type DELETE to confirm the deletion.",
   "api_error_db_sin_sesion": "No session",
   "api_error_db_como_mucho_10_borradores": "You can have up to 10 drafts",
+  "api_error_db_como_mucho_10_en_juego": "You can have up to 10 strategies in play",
   "api_error_db_crear_ligas_privadas_es_de_pro": "Creating private leagues isn't available on your account.",
   "api_error_db_el_registro_esta_cerrado": "Registration is closed",
   "api_error_db_el_resultado_no_pertenece_a_tu_estrategia": "This result does not belong to your strategy",
