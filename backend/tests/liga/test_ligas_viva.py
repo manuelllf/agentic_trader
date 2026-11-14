@@ -55,6 +55,8 @@ def escenario(monkeypatch):
     monkeypatch.setattr(rutas_ligas, "retornos_acumulados", lambda *_a: {
         eid: dict(cerrado) for eid in ("a", "b", "c")})
     monkeypatch.setattr(rutas_ligas, "movimientos_grupo", lambda *_a: {"b": 1})
+    # La gráfica pequeña de cada fila (Privadas v6) lee su propia consulta; aquí no importa.
+    monkeypatch.setattr(rutas_ligas, "series_acumuladas", lambda *_a: {})
 
     def clasificacion(db_recibida, temporada, vivo_recibido, jornada_recibida):
         assert db_recibida is db
