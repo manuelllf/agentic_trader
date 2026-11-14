@@ -71,7 +71,6 @@
   "premio_mensaje_completo": "Full tier in play: {a}, {b} and {c}.",
   "premio_importe": "€{n}",
   "premio_importes_titulo": "Amounts",
-  "premio_importes_linea": "{en, select, si {With {n} accounts (in play): {a}, {b} and {c}.} other {With {n} accounts: {a}, {b} and {c}.}}",
   "premio_tu_cuenta": "Your account",
   "premio_optas": "In the running",
   "premio_no_optas": "Not in the running yet",
@@ -92,7 +91,6 @@
   "premio_no_visible": "The prize is not active yet.",
   "premio_estrategia_ninguna": "You have no strategy yet.",
   "premio_estrategia_crear": "Create a strategy",
-  "premio_estrategia_guardar": "Save",
   "premio_jornadas_nota": "It counts the months in which your strategy was entered.",
   "premio_fila_resumen": "{cuentas} of {basico} accounts to activate it · no draw",
   "avisos_titulo": "Notifications",
@@ -141,5 +139,8 @@
   "actividad_vacia_texto": "Here you will see published portfolio changes and place moves at each closed cut.",
   "actividad_error": "Could not load activity",
   "aviso_resumen_cierre_t_sin_total": "Matchday {numero} closed: position {puesto}",
-  "avisos_hoja_titulo_sin_total": "Matchday {numero}"
+  "avisos_hoja_titulo_sin_total": "Matchday {numero}",
+  "premio_importes_con": "With {n} accounts",
+  "premio_en_juego": "In play",
+  "premio_sin_elegir": "Not chosen"
 }

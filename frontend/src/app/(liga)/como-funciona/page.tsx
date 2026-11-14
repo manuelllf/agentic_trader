@@ -1,12 +1,22 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { cifrasDelMetodo, leerMercado } from "@/lib/aprender";
 import { metadataCompartir } from "@/lib/sitio";
-import { Marca } from "../_ui/Marca";
+import { BarraPestanas } from "../_ui/BarraPestanas";
+import { CabeceraPagina } from "../_ui/CabeceraPagina";
+import "../liga/ranking.css";
+import "../_ui/grupos.css";
+import "../_ui/paginas.css";
 
 export async function generateMetadata() {
   const [t, idioma] = await Promise.all([getTranslations(), getLocale()]);
   return metadataCompartir({ titulo: `${t("help_title")} · Vennett`, descripcion: t("meta_como_funciona_descripcion"), idioma, ruta: "/como-funciona" });
+}
+
+function Chevron() {
+  return <svg className="chev" viewBox="0 0 8 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+    strokeLinejoin="round" aria-hidden="true"><path d="m1 1 6 6-6 6" /></svg>;
 }
 
 // Los números del método salen de la última foto, /liga/aprender/mercado.
@@ -29,90 +39,92 @@ export default async function ComoFunciona() {
     { titulo: t("help_step_4_title"), texto: t("help_step_4_text") },
     { titulo: t("help_step_5_title"), texto: t("help_step_5_text") },
   ];
+  const listas = [
+    { cab: t("help_model_title"), items: [1, 2, 3, 4].map((i) => t(`help_model_item_${i}`)) },
+    { cab: t("help_code_title"), items: [1, 2, 3, 4].map((i) => t(`help_code_item_${i}`)) },
+  ];
+  // Notas sobre 100, como la final: 70·30 % + 50·30 % + 80·20 % + 60·20 % = 64.
+  const notas = [
+    { clave: "help_score_fundamentals", nota: 70 },
+    { clave: "help_score_valuation", nota: 50 },
+    { clave: "help_score_financing", nota: 80 },
+    { clave: "help_score_catalyst", nota: 60 },
+  ].map(({ clave, nota }) => {
+    const [nombre, peso] = t(clave).split(" · ");
+    return { clave, nombre, peso, nota };
+  });
+  const negrita = (chunks: React.ReactNode) => <b>{chunks}</b>;
   return (
-    <main className="sencilla cf">
-      <header className="sencilla-top">
-        <Link href="/" className="wordmark"><Marca /></Link>
-      </header>
-
-      <div className="cf-cuerpo">
-        <p className="cf-eyebrow">{t("help_title")}</p>
+    <main className="scroll lv-pagina pg-pagina">
+      <CabeceraPagina titulo={t("help_title")} />
+      <div className="pg">
         <h1>{t("help_heading")}</h1>
-        <p className="cf-lead">
-          {t("help_intro")}
-        </p>
-
-        <ol className="cf-pasos">
+        <p className="pg-lead">{t("help_intro")}</p>
+        <ul className="cu-grupo numerado">
           {pasos.map((p, i) => (
-            <li className="cf-paso" key={p.titulo}>
-              <span className="cf-n" aria-hidden="true">{i + 1}</span>
-              <div>
-                <h2>{p.titulo}</h2>
+            <li key={p.titulo}>
+              <div className="pg-paso">
+                <span className="n">{i + 1}</span>
+                <b>{p.titulo}</b>
                 <p>{p.texto}</p>
-                <div className="cf-etiquetas">
-                  {p.cifra && <span className="cf-cifra">{p.cifra}</span>}
-                </div>
-                {p.extra && <p className="cf-extra">{p.extra}</p>}
+                {p.cifra && <small>{p.cifra}</small>}
+                {p.extra && <p className="extra">{p.extra}</p>}
               </div>
             </li>
           ))}
-        </ol>
+        </ul>
 
-        <section className="cf-sec" aria-labelledby="cf-quien-pone">
-          <h2 id="cf-quien-pone">{t("help_ai_or_code_heading")}</h2>
-          <div className="cf-dos">
-            <div className="cf-caja">
-              <h3><span className="cf-punto ia" aria-hidden="true" />{t("help_model_title")}</h3>
-              <ul>
-                <li>{t("help_model_item_1")}</li><li>{t("help_model_item_2")}</li><li>{t("help_model_item_3")}</li><li>{t("help_model_item_4")}</li>
-              </ul>
+        <h2 className="pg-sec">{t("help_ai_or_code_heading")}</h2>
+        {listas.map((l) => (
+          <Fragment key={l.cab}>
+            <p className="cu-cab">{l.cab}</p>
+            <ul className="cu-grupo">
+              {l.items.map((x) => <li key={x}><div className="cu-celda texto">{x}</div></li>)}
+            </ul>
+          </Fragment>
+        ))}
+
+        <h2 className="pg-sec">{t("help_example_title")}</h2>
+        <p className="pg-txt">{t("help_example_intro")}</p>
+        <ul className="cu-grupo">
+          <li>
+            <div className="cu-celda alta">
+              <span className="t"><b>{t("help_example_company")}</b><small>{t("help_example_ticker")} · {t("help_example_sector")}</small></span>
             </div>
-            <div className="cf-caja">
-              <h3><span className="cf-punto codigo" aria-hidden="true" />{t("help_code_title")}</h3>
-              <ul>
-                <li>{t("help_code_item_1")}</li><li>{t("help_code_item_2")}</li><li>{t("help_code_item_3")}</li><li>{t("help_code_item_4")}</li>
-              </ul>
+          </li>
+          {notas.map((n) => (
+            <li key={n.clave}>
+              <div className="cu-celda alta">
+                <span className="t"><b>{n.nombre}</b><small>{n.peso}</small></span>
+                <span className="valor fuerte">{n.nota}</span>
+              </div>
+            </li>
+          ))}
+          <li>
+            <div className="cu-celda">
+              <span>{t("help_example_total")}</span>
+              <span className="valor fuerte">64 {t("help_out_of_100")}</span>
             </div>
-          </div>
-        </section>
+          </li>
+        </ul>
+        <p className="cu-pie">{t("help_example_disclaimer")}. {t("help_example_reason")}</p>
 
-        <section className="cf-sec" aria-labelledby="cf-ejemplo">
-          <h2 id="cf-ejemplo">{t("help_example_title")}</h2>
-          <p className="cf-sub">{t("help_example_intro")}</p>
-          <div className="cf-ejemplo">
-            <p className="cf-rotulo">{t("help_example_disclaimer")}</p>
-            <div className="cf-emp"><b>{t("help_example_company")}</b><span>{t("help_example_ticker")} · {t("help_example_sector")}</span></div>
-            <div className="cf-notas">
-              <div><b>7</b><small>{t("help_score_fundamentals")}</small></div><div><b>5</b><small>{t("help_score_valuation")}</small></div><div><b>8</b><small>{t("help_score_financing")}</small></div><div><b>6</b><small>{t("help_score_catalyst")}</small></div>
-            </div>
-            <p className="cf-total">{t("help_example_total")} <b>64</b> {t("help_out_of_100")}</p>
-            <p className="cf-porque">{t("help_example_reason")}</p>
-          </div>
-        </section>
+        <h2 className="pg-sec">{t("help_fairness_title")}</h2>
+        <ul className="cu-grupo">
+          {["rules", "results", "scores", "house", "admin"].map((k) => (
+            <li key={k}><div className="cu-celda texto">{t.rich(`help_fairness_${k}`, { b: negrita })}</div></li>
+          ))}
+        </ul>
+        <p className="cu-pie"><b>{t("help_question_heading")}</b> {t("help_question_text")}</p>
 
-        <section className="cf-sec" aria-labelledby="cf-justo">
-          <h2 id="cf-justo">{t("help_fairness_title")}</h2>
-          <ul className="cf-lista">
-            <li>{t.rich("help_fairness_rules", { b: (chunks) => <b>{chunks}</b> })}</li>
-            <li>{t.rich("help_fairness_results", { b: (chunks) => <b>{chunks}</b> })}</li>
-            <li>{t.rich("help_fairness_scores", { b: (chunks) => <b>{chunks}</b> })}</li>
-            <li>{t.rich("help_fairness_house", { b: (chunks) => <b>{chunks}</b> })}</li>
-            <li>{t.rich("help_fairness_admin", { b: (chunks) => <b>{chunks}</b> })}</li>
-          </ul>
-          <p className="cf-callout">
-            <b>{t("help_question_heading")}</b> {t("help_question_text")}
-          </p>
-        </section>
-
-        <div className="cf-cta">
-          <Link href="/entrar?next=/crear" className="btn pri">{t("help_create_strategy")}</Link>
-          <Link href="/liga" className="btn">{t("help_view_standings")}</Link>
-          <Link href="/aprender" className="btn">{t("help_aprender")}</Link>
-        </div>
-        <p className="cf-pie">
-          {t("help_disclaimer")} {" "}<Link href="/legal/terminos">{t("legal_terms_short")}</Link>
-        </p>
+        <Link className="cu-boton" href="/entrar?next=/crear">{t("help_create_strategy")}</Link>
+        <ul className="cu-grupo">
+          <li><Link className="cu-celda" href="/liga"><span>{t("help_view_standings")}</span><span /><Chevron /></Link></li>
+          <li><Link className="cu-celda" href="/aprender"><span>{t("help_aprender")}</span><span /><Chevron /></Link></li>
+        </ul>
+        <p className="pg-pie">{t("help_disclaimer")} <Link className="pg-a" href="/legal/terminos">{t("legal_terms_short")}</Link></p>
       </div>
+      <BarraPestanas />
     </main>
   );
 }

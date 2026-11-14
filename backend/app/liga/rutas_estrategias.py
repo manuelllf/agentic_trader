@@ -38,7 +38,7 @@ from app.liga.ia import pregunta as ia_pregunta
 from app.liga.models import Receta as RecetaModelo
 from app.liga.motor.catalogo import RecetaNoValida
 from app.liga.motor.mensajes import presentar, presentar_lista
-from app.liga.motor.seleccion import explicar, seleccionar
+from app.liga.motor.seleccion import explicar, notas_en_cien, seleccionar
 from app.liga.preview_seleccion import PreviewSeleccionIn
 from app.liga.procesos import datos, diario, omega
 from app.liga.rutas_publicas import EscudoOut
@@ -253,12 +253,12 @@ class PosicionHuecoOut(PosicionOut):
 
 
 class NotasEmpresaOut(BaseModel):
-    """Las 4 notas de Jev (0 a 9) de una empresa, con su jornada y el día de la foto."""
+    """Las 4 notas de una empresa sobre 100 (como la nota final y Crear), con su jornada y el día de la foto."""
     ticker: str
     jornada: int
     jornada_total: int
     dia: date
-    notas: dict[str, Decimal] | None
+    notas: dict[str, int] | None
 
 
 class FichaOut(BaseModel):
@@ -833,9 +833,7 @@ def notas_empresa(id: uuid.UUID, ticker: Ticker, ident: Identidad = Depends(requ
              if fila.scan_run_id is not None else None)
     return NotasEmpresaOut(
         ticker=t, jornada=fila.numero, jornada_total=fila.jornada_total, dia=fila.dia_base,
-        notas=None if notas is None else {
-            "negocio": notas.fundamentals, "precio": notas.valuation,
-            "deuda": notas.financing, "pronto": notas.catalyst})
+        notas=None if notas is None else notas_en_cien(notas))
 
 
 # ---- Copiar (Pro) ---------------------------------------------------------------------------

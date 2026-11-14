@@ -3,8 +3,6 @@
   "learn_meta_descripcion": "Qué hacer después de entrar en Vennett: crear tu estrategia, cuándo se fija y cómo leer la clasificación.",
   "learn_heading": "Tu primer mes en Vennett",
   "learn_lead": "Qué hacer y cuándo. El cálculo completo está en <link>Cómo funciona</link>.",
-  "learn_mi_liga": "Mi liga",
-  "learn_volver": "‹ Aprender",
   "learn_pasos_titulo": "Tus primeros pasos",
   "learn_paso_cuenta": "Crear tu cuenta",
   "learn_paso_estrategia": "Crear tu primera estrategia",
@@ -16,7 +14,6 @@
   "learn_crear": "Crear",
   "learn_guias_titulo": "Guías",
   "learn_minutos": "{n} min",
-  "learn_guia_de": "Guía {n} de {total} · {minutos} min",
   "learn_proximo": "Próximo cierre para apuntarse",
   "learn_siguiente": "Siguiente",
   "learn_fin_t": "Has leído todas las guías",
@@ -87,7 +84,7 @@
   "learn_g4_mas": "+{banda}",
   "learn_g4_puntos_d": "Más de {banda} puntos por encima: <b>{gana}</b>. A {banda} o menos de distancia: <b>{empata}</b>. Por debajo: <b>{pierde}</b>.",
   "learn_g4_jornadas_t": "Jornadas ganadas",
-  "learn_g4_jornadas_d": "La otra vista ordena por puntos: quién gana más meses, aunque la temporada la decida la rentabilidad.",
+  "learn_g4_jornadas_d": "La otra vista ordena por puntos: quién gana más jornadas, aunque la temporada la decida la rentabilidad.",
   "learn_g4_provisional": "Mientras la jornada sigue en juego, los puestos son provisionales.",
   "learn_g5_t": "El premio",
   "learn_g5_desc": "Cuánto, para quién y con qué requisitos.",
@@ -99,5 +96,6 @@
   "learn_g5_elegibles": "elegibles",
   "learn_g5_sin": "Con menos de {n}, esa temporada no hay premio.",
   "learn_g5_optar_t": "Para optar",
-  "learn_g5_bases": "Leer las bases completas"
+  "learn_g5_bases": "Leer las bases completas",
+  "learn_guia_n": "Guía {n} de {total}"
 }

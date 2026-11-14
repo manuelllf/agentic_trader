@@ -8,7 +8,7 @@ export const TITULAR: { nombre: string; nif: string | null; domicilio: string | 
 };
 
 export const VERSION_LEGAL = "6";
-export const FECHA_LEGAL = "2026-10-18";
+export const FECHA_LEGAL = "2026-11-14";
 export function fechaLegal(locale: Locale): string {
   return new Intl.DateTimeFormat(localeTag(locale), { dateStyle: "long", timeZone: "UTC" })
     .format(new Date(`${FECHA_LEGAL}T00:00:00Z`));

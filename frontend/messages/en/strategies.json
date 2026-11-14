@@ -201,7 +201,7 @@
   "ficha_entro_en": "In round {round}",
   "ficha_entro_omega": "{date} at {price}",
   "ficha_notas": "Scores it entered with",
-  "ficha_nota_de": "<b>{n}</b> of 9",
+  "ficha_nota_de": "<b>{n}</b>",
   "ficha_como_notas": "How scores are set",
   "ficha_foto": "Snapshot of {date}, round {round} of {total}.",
   "ficha_reglas": "Rules",

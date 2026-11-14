@@ -14,6 +14,8 @@ export default async function Terminos() {
   return (
     <PlantillaLegal
       titulo={t("legal_terms_title")}
+      tituloCorto={t("legal_terms_short")}
+      actual="terminos"
       resumen={[
         t("legal_terms_summary_1"), t("legal_terms_summary_2"), t("legal_terms_summary_3"),
       ]}

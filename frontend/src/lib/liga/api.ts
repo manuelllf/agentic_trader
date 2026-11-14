@@ -572,8 +572,8 @@ export type NotasEmpresa = {
   jornada: number;
   jornada_total: number;
   dia: string;
-  /** De 0 a 9; null si esa jornada no guardó el escaneo. Llegan como texto decimal. */
-  notas: Partial<Record<"negocio" | "precio" | "deuda" | "pronto", string>> | null;
+  /** Sobre 100, como la nota final; null si esa jornada no guardó el escaneo. */
+  notas: Partial<Record<"negocio" | "precio" | "deuda" | "pronto", number>> | null;
 };
 
 export async function getNotasEmpresa(fichaId: string, ticker: string): Promise<NotasEmpresa | string> {

@@ -2,12 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { leerCiclo, leerMercado } from "@/lib/aprender";
-import FirmaAutor from "@/components/FirmaAutor";
 import { escaparJsonLd } from "@/lib/blog/publico";
 import { AUTOR_PUBLICO, URL_PUBLICA, metadataCompartir } from "@/lib/sitio";
+import { BarraPestanas } from "../../_ui/BarraPestanas";
+import { CabeceraPagina } from "../../_ui/CabeceraPagina";
 import { Contacto } from "../../legal/datos";
 import { GUIAS, guiasVisibles } from "../guias";
-import { CuerpoGuia } from "../_ui/Guias";
+import { Chevron, CuerpoGuia } from "../_ui/Guias";
+import "../../liga/ranking.css";
+import "../../_ui/grupos.css";
+import "../../_ui/paginas.css";
 
 type Props = { params: Promise<{ guia: string }> };
 
@@ -38,16 +42,25 @@ export default async function PaginaGuia({ params }: Props) {
     author: { "@type": "Person", name: AUTOR_PUBLICO },
     publisher: { "@type": "Organization", name: "Vennett" },
   };
-  return <>
-    <script type="application/ld+json">{escaparJsonLd(datos)}</script>
-    <Link href="/aprender" className="apr-volver">{t("learn_volver")}</Link>
-    <p className="apr-de">{t("learn_guia_de", { n: indice + 1, total: visibles.length, minutos: g.minutos })}</p>
-    <h1 className="apr-h1">{t(`learn_${g.clave}_t`)}</h1>
-    <p className="apr-lead">{t(`learn_${g.clave}_lead`)}</p>
-    <CuerpoGuia clave={g.clave} ciclo={ciclo} mercado={mercado} t={t} locale={locale} />
-    <FirmaAutor texto={t("firma_articulo", { autor: AUTOR_PUBLICO })} />
-    {siguiente ? <Link className="apr-siguiente" href={`/aprender/${siguiente.slug}`}><small>{t("learn_siguiente")}</small><b>{t(`learn_${siguiente.clave}_t`)}</b></Link>
-      : <Link className="apr-siguiente" href="/crear"><small>{t("learn_fin_t")}</small><b>{t("learn_fin_accion")}</b></Link>}
-    <p className="apr-ayuda">{t.rich("learn_ayuda", { correo: () => <Contacto uso="general" /> })}</p>
-  </>;
+  return <main className="scroll lv-pagina pg-pagina">
+    <CabeceraPagina titulo={t("learn_guia_n", { n: indice + 1, total: visibles.length })} />
+    <div className="pg con-indice">
+      <nav className="pg-indice" aria-label={t("learn_guias_titulo")}>
+        {visibles.map((x, j) => <Link key={x.slug} href={`/aprender/${x.slug}`} aria-current={j === indice ? "page" : undefined}><span>{j + 1}</span>{t(`learn_${x.clave}_t`)}</Link>)}
+      </nav>
+      <script type="application/ld+json">{escaparJsonLd(datos)}</script>
+      <p className="pg-de">{t("learn_minutos", { n: g.minutos })}</p>
+      <h1>{t(`learn_${g.clave}_t`)}</h1>
+      <p className="pg-lead">{t(`learn_${g.clave}_lead`)}</p>
+      <CuerpoGuia clave={g.clave} ciclo={ciclo} mercado={mercado} t={t} locale={locale} />
+      <p className="pg-firma">{t("firma_articulo", { autor: AUTOR_PUBLICO })}</p>
+      <ul className="cu-grupo"><li>
+        {siguiente
+          ? <Link className="cu-celda alta" href={`/aprender/${siguiente.slug}`}><span className="t"><small>{t("learn_siguiente")}</small><b>{t(`learn_${siguiente.clave}_t`)}</b></span><span /><Chevron /></Link>
+          : <Link className="cu-celda alta" href="/crear"><span className="t"><small>{t("learn_fin_t")}</small><b>{t("learn_fin_accion")}</b></span><span /><Chevron /></Link>}
+      </li></ul>
+      <p className="cu-pie">{t.rich("learn_ayuda", { correo: () => <Contacto uso="general" /> })}</p>
+    </div>
+    <BarraPestanas />
+  </main>;
 }

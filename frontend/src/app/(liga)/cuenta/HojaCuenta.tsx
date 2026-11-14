@@ -14,6 +14,7 @@ import { PANTALLAS } from "./pantallas";
 import { ContextoHojaCuenta } from "./hojaContexto";
 import "../_ui/hoja.css";
 import "../liga/ranking.css";
+import "../_ui/grupos.css";
 import "./cuenta.css";
 
 export { cuentaEnHoja, useHojaCuenta } from "./hojaContexto";

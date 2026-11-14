@@ -3,21 +3,33 @@ import type { ReactNode } from "react";
 import { VERSION_LEGAL, fechaLegal } from "./datos";
 import { getLocale, getTranslations } from "next-intl/server";
 import { normalizeLocale } from "@/i18n/locale";
-import { Marca } from "../_ui/Marca";
+import { BarraPestanas } from "../_ui/BarraPestanas";
+import { CabeceraPagina } from "../_ui/CabeceraPagina";
+import { Chevron } from "../cuenta/marco";
+import "../liga/ranking.css";
+import "../_ui/grupos.css";
+import "../_ui/paginas.css";
+
+export type DocumentoLegal = "aviso" | "privacidad" | "terminos" | "cookies" | "bases-premio";
+
+const DOCUMENTOS: [DocumentoLegal, string][] = [
+  ["aviso", "legal_notice_title"],
+  ["privacidad", "legal_privacy_title"],
+  ["terminos", "legal_terms_short"],
+  ["cookies", "legal_cookies_title"],
+  ["bases-premio", "legal_bases_title"],
+];
 
 // Envoltorio de las páginas legales. `resumen` es la primera capa: lo esencial en pocas líneas.
 export async function PlantillaLegal({
-  titulo, resumen, children,
-}: { titulo: string; resumen?: ReactNode[]; children: ReactNode }) {
+  titulo, tituloCorto, actual, resumen, children,
+}: { titulo: string; tituloCorto: string; actual: DocumentoLegal; resumen?: ReactNode[]; children: ReactNode }) {
   const t = await getTranslations();
   const locale = normalizeLocale(await getLocale()) ?? "es";
   return (
-    <main className="sencilla legal-page">
-      <header className="sencilla-top">
-        <Link href="/" className="wordmark"><Marca /></Link>
-      </header>
-
-      <div className="legal-cuerpo">
+    <main className="scroll lv-pagina pg-pagina">
+      <CabeceraPagina titulo={tituloCorto} />
+      <div className="pg pg-legal">
         <h1>{titulo}</h1>
         <p className="legal-fecha">{t("legal_last_updated", { date: fechaLegal(locale), version: VERSION_LEGAL })}</p>
         {resumen && (
@@ -29,14 +41,16 @@ export async function PlantillaLegal({
           </section>
         )}
         {children}
-        <nav className="legal-nav" aria-label={t("legal_other_documents_aria")}>
-          <Link href="/legal/aviso">{t("legal_notice_title")}</Link>
-          <Link href="/legal/privacidad">{t("legal_privacy_title")}</Link>
-          <Link href="/legal/terminos">{t("legal_terms_short")}</Link>
-          <Link href="/legal/cookies">{t("legal_cookies_title")}</Link>
-          <Link href="/legal/bases-premio">{t("legal_bases_title")}</Link>
-        </nav>
+        <p className="cu-cab">{t("legal_other_documents_aria")}</p>
+        <ul className="cu-grupo">
+          {DOCUMENTOS.filter(([doc]) => doc !== actual).map(([doc, clave]) => (
+            <li key={doc}>
+              <Link className="cu-celda" href={`/legal/${doc}`}><span>{t(clave)}</span><span /><Chevron /></Link>
+            </li>
+          ))}
+        </ul>
       </div>
+      <BarraPestanas />
     </main>
   );
 }

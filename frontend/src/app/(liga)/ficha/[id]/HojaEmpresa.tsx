@@ -99,14 +99,13 @@ export function HojaEmpresa({ ficha, ticker, onCerrar }: { ficha: Ficha; ticker:
           <p className="fi-cab-grupo">{t("ficha_notas")}</p>
           <ul className="fi-grupo">
             {NOTAS.map(([clave, texto]) => {
-              const n = Math.max(0, Math.min(9, Math.round(Number(nota.notas?.[clave] ?? 0))));
+              // Sobre 100, como la nota final y como en Crear.
+              const n = Math.max(0, Math.min(100, Math.round(Number(nota.notas?.[clave] ?? 0))));
               return (
                 <li className="fi-celda fi-nota" key={clave}>
                   <span>{t(texto)}</span>
                   <span className="valor">{t.rich("ficha_nota_de", { n, b: (c) => <b>{c}</b> })}</span>
-                  <span className="esc" aria-hidden="true">
-                    {Array.from({ length: 9 }, (_, i) => <i key={i} className={i < n ? "on" : undefined} />)}
-                  </span>
+                  <span className="barra" aria-hidden="true"><i style={{ width: `${n}%` }} /></span>
                 </li>
               );
             })}

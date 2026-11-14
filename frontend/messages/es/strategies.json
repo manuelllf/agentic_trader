@@ -201,7 +201,7 @@
   "ficha_entro_en": "En la jornada {round}",
   "ficha_entro_omega": "{date} a {price}",
   "ficha_notas": "Notas con las que entró",
-  "ficha_nota_de": "<b>{n}</b> de 9",
+  "ficha_nota_de": "<b>{n}</b>",
   "ficha_como_notas": "Cómo se ponen las notas",
   "ficha_foto": "Foto del {date}, jornada {round} de {total}.",
   "ficha_reglas": "Reglas",

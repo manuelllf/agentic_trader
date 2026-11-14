@@ -1,0 +1,158 @@
+/* Páginas de lectura y producto (maqueta Páginas v1): Cómo funciona, Aprender, Legal, Premio, 404 y error. Usan los grupos
+   de ./grupos.css y los tokens de .lv-pagina (../liga/ranking.css). Acotado a .pg (contenido) y .pg-pagina (la página). */
+
+/* Botones y enlaces sin el aspecto del navegador; :where deja la especificidad en cero. */
+:where(.lg .pg-pagina) button,
+:where(.lg .pg-pagina) a {
+  appearance: none; background: none; border: 0; border-radius: 0; box-shadow: none;
+  padding: 0; margin: 0; font: inherit; color: inherit; text-decoration: none; cursor: pointer; text-align: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lg .pg { min-width: 0; padding-bottom: 8px; }
+.lg .pg > :first-child { margin-top: 12px; }
+.lg .pg .cu-grupo { margin-top: 20px; }
+.lg .pg .cu-cab + .cu-grupo { margin-top: 0; }
+.lg .pg .cu-pie + .cu-grupo { margin-top: 28px; }
+.lg .pg .cu-celda.texto { font-size: 17px; line-height: 22px; color: var(--ink); }
+/* Encabezados de grupo en frase normal (las fechas de Intl llegan en minúscula). */
+.lg .pg .cu-cab::first-letter { text-transform: uppercase; }
+
+/* Lectura: título de artículo (Title 1), entradilla y cuerpo a 17/24 (DESIGN §4). Nada de títulos gigantes. */
+.lg .pg-de { margin-top: 8px; font-size: 13px; line-height: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .pg h1 { margin: 4px 0 0; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); text-wrap: balance; }
+.lg .pg-lead { margin-top: 8px; font-size: 17px; line-height: 24px; color: var(--ink2); }
+.lg .pg h2.pg-sec { margin: 32px 0 0; font-size: 20px; line-height: 25px; font-weight: 600; color: var(--ink); text-wrap: balance; }
+.lg .pg h2.pg-sec + .cu-grupo { margin-top: 12px; }
+.lg .pg-txt { margin-top: 8px; font-size: 17px; line-height: 24px; color: var(--ink2); }
+.lg .pg-txt b, .lg .pg-lead b { color: var(--ink); font-weight: 600; }
+.lg .pg .pg-a, .lg .pg-lead a, .lg .pg-txt a, .lg .pg-legal a, .lg .pg .cu-pie a { color: var(--accent); text-decoration: none; }
+.lg .pg-firma { margin-top: 28px; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pg-pie { margin-top: 28px; font-size: 13px; line-height: 18px; color: var(--muted); text-align: center; text-wrap: balance; }
+
+/* Pasos numerados: es una secuencia real; el dato de la última foto, debajo en gris. */
+.lg .pg-paso { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 10px; padding: 12px 16px; }
+.lg .pg-paso .n { grid-row: span 4; font-size: 17px; line-height: 22px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .pg-paso b { font-size: 17px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.lg .pg-paso p { font-size: 15px; line-height: 20px; color: var(--ink2); }
+.lg .pg-paso small { margin-top: 2px; font-size: 13px; line-height: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .pg-paso .extra { margin-top: 4px; color: var(--muted); }
+
+/* Casa: escudo real de cada una, nombre y qué hace. */
+.lg .pg .cu-celda.casa { grid-template-columns: 32px minmax(0, 1fr); gap: 12px; }
+.lg .pg .cu-grupo.casas > li + li::before { left: 60px; }
+
+/* Deslizador como el de iOS (guía 2): pista fina con el tramo en petróleo y bola blanca con sombra. Nada del navegador. */
+.lg .pg-regla { padding: 14px 16px; }
+.lg .pg-regla-cab { display: flex; justify-content: space-between; gap: 12px; font-size: 17px; line-height: 22px; }
+.lg .pg-regla-cab b { font-weight: 400; color: var(--ink); }
+.lg .pg-regla-cab span { flex: none; white-space: nowrap; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+.lg .pg-regla input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 44px; margin: 4px 0 0; background: transparent; cursor: pointer; }
+.lg .pg-regla input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--p), var(--line2) var(--p)); }
+.lg .pg-regla input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line2); }
+.lg .pg-regla input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--accent); }
+.lg .pg-regla input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -12px; border: 0; border-radius: 50%;
+  background: #fff; box-shadow: 0 .5px 4px rgba(0, 0, 0, .12), 0 6px 13px rgba(0, 0, 0, .12); }
+.lg .pg-regla input[type=range]::-moz-range-thumb { width: 28px; height: 28px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 .5px 4px rgba(0, 0, 0, .12), 0 6px 13px rgba(0, 0, 0, .12); }
+.lg .pg-regla input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+.lg .pg-regla .escala { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .pg-regla .recuento { margin-top: 10px; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pg-regla .recuento b { display: block; font-size: 28px; line-height: 34px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* Reloj del cierre (guía 3): por días, la hora en la tuya y en Nueva York; los hitos clave en petróleo. */
+.lg .pg .cu-celda.hito { grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: start; padding-block: 12px; }
+.lg .pg .hito .h { font-size: 17px; line-height: 22px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lg .pg .hito .h small { display: block; font-size: 13px; line-height: 18px; font-weight: 400; color: var(--muted); }
+.lg .pg .hito.clave .h { color: var(--accent); }
+.lg .pg .hito .t b { font-weight: 600; }
+.lg .pg .cu-grupo.reloj > li + li::before { left: 92px; }
+.lg .pg .cu-celda.ventana { display: block; padding: 10px 16px; background: var(--accent-bg); color: var(--accent); font-size: 15px; line-height: 20px; }
+
+/* Puntos de la jornada (guía 4): tres tramos con su color de resultado; la banda de empate en el centro. */
+.lg .pg-puntos { display: grid; grid-template-columns: 1fr .8fr 1fr; gap: 3px; margin-top: 12px; }
+.lg .pg-puntos span { display: grid; place-items: center; height: 36px; border-radius: 8px; color: #fff; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lg .pg-puntos .p0 { background: var(--pill-bad); }
+.lg .pg-puntos .p1 { background: var(--surface2); color: var(--ink); }
+.lg .pg-puntos .p3 { background: var(--pill-good); }
+.lg .pg-puntos-eje { display: grid; grid-template-columns: 1fr .8fr 1fr; gap: 3px; margin-top: 6px; font-size: 13px; line-height: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .pg-puntos-eje span:nth-child(2) { display: flex; justify-content: space-between; }
+.lg .pg-puntos-eje span:last-child { text-align: right; }
+.lg .pg-puntos-eje i { font-style: normal; }
+
+/* Premio: el dato de cuentas como en la Ficha (cifra de 34) y una barra de progreso con los dos umbrales. */
+.lg .pg-cifra { padding: 16px; }
+.lg .pg-cifra small { display: block; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pg-cifra b { display: inline-block; margin-top: 2px; font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lg .pg-cifra .meta { margin-left: 6px; font-size: 15px; color: var(--muted); }
+.lg .pg-barra { position: relative; height: 6px; margin-top: 12px; border-radius: 3px; background: var(--surface2); }
+.lg .pg-barra i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent); }
+.lg .pg-barra .umbral { position: absolute; top: -3px; width: 2px; height: 12px; border-radius: 1px; background: var(--muted); transform: translateX(-1px); }
+.lg .pg-ejes { position: relative; height: 18px; margin-top: 6px; font-size: 13px; line-height: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .pg-ejes span { position: absolute; top: 0; }
+.lg .pg-mensaje { padding: 0 16px 14px; font-size: 15px; line-height: 20px; color: var(--ink2); }
+.lg .pg .cu-celda .valor.en-juego { color: var(--accent); font-weight: 600; }
+.lg .pg-cab-pill { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.lg .pg-pill { padding: 2px 10px; border-radius: 999px; background: var(--surface2); color: var(--muted); font-size: 13px; line-height: 18px; font-weight: 600; }
+.lg .pg-pill.si { background: var(--accent-bg); color: var(--accent); }
+/* Requisitos como Recordatorios: círculo vacío o petróleo con la marca. */
+.lg .pg .cu-celda.req { grid-template-columns: 24px minmax(0, 1fr) auto auto; gap: 12px; align-items: start; padding-block: 12px; }
+.lg .pg-check { display: grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid var(--line2); border-radius: 50%; box-sizing: border-box; }
+.lg .pg-check.si { border: 0; background: var(--accent); color: #fff; }
+.lg .pg-check svg { width: 13px; height: 13px; }
+.lg .pg .cu-grupo.reqs > li + li::before { left: 52px; }
+.lg .pg-meses { display: grid; gap: 3px; margin-top: 8px; }
+.lg .pg-meses i { height: 6px; border-radius: 3px; background: var(--line2); }
+.lg .pg-meses i.on { background: var(--accent); }
+.lg .pg .cu-celda .t .pg-a { display: inline-block; margin-top: 4px; font-size: 15px; font-weight: 600; }
+.lg .pg .cu-celda .marca-sel { width: 18px; height: 18px; color: var(--accent); }
+.lg .pg-fila-premio { margin-top: 20px; }
+/* Botón pequeño tintado dentro de una fila (Crear, en tus primeros pasos). */
+.lg .pg-mini { align-self: center; min-height: 32px; padding: 0 14px; border-radius: 999px; background: var(--accent-bg); color: var(--accent);
+  font-size: 15px; font-weight: 600; }
+.lg .pg-mini:active { opacity: .6; }
+
+/* Legal: el cuerpo real de cada texto, con la jerarquía de lectura; el resumen como grupo. */
+.lg .pg-legal h1 { margin: 4px 0 0; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); }
+.lg .pg-legal .legal-fecha { margin-top: 6px; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pg-legal .legal-resumen { margin-top: 20px; padding: 4px 16px; border-radius: 10px; background: var(--surface); }
+.lg .pg-legal .legal-resumen h2 { margin: 10px 0 2px; font-size: 13px; line-height: 18px; font-weight: 400; color: var(--muted); }
+.lg .pg-legal .legal-resumen ul { margin: 0; padding: 0; list-style: none; }
+.lg .pg-legal .legal-resumen li { position: relative; list-style: none; padding: 11px 0; font-size: 17px; line-height: 22px; color: var(--ink); }
+.lg .pg-legal .legal-resumen li + li { border-top: 1px solid var(--line); }
+.lg .pg-legal > h2 { margin: 32px 0 0; font-size: 20px; line-height: 25px; font-weight: 600; color: var(--ink); text-wrap: balance; }
+.lg .pg-legal h3 { margin: 20px 0 0; font-size: 17px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.lg .pg-legal > p, .lg .pg-legal > ul, .lg .pg-legal > ol { margin-top: 8px; font-size: 17px; line-height: 24px; color: var(--ink2); }
+.lg .pg-legal > ul, .lg .pg-legal > ol { padding-left: 22px; }
+.lg .pg-legal > ul li + li, .lg .pg-legal > ol li + li { margin-top: 6px; }
+.lg .pg-legal b, .lg .pg-legal strong { color: var(--ink); font-weight: 600; }
+.lg .pg-legal .tabla { overflow-x: auto; }
+.lg .pg-legal table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 15px; line-height: 20px; color: var(--ink2); }
+.lg .pg-legal th, .lg .pg-legal td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+
+/* Contenido no disponible (404 y error): icono, título, una frase y las acciones, como ContentUnavailableView de iOS. */
+.lg .pg-vacio { display: flex; flex-direction: column; align-items: center; padding: 18vh 16px 24px; text-align: center; }
+.lg .pg-vacio svg.ico { width: 48px; height: 48px; color: var(--muted); }
+.lg .pg-vacio h1 { margin-top: 16px; font-size: 20px; line-height: 25px; font-weight: 600; letter-spacing: 0; }
+.lg .pg-vacio p { margin-top: 6px; max-width: 32ch; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pg-vacio .acciones { display: grid; gap: 12px; width: 100%; max-width: 340px; margin-top: 24px; }
+.lg .pg-vacio .acciones .cu-boton { margin-top: 0; }
+.lg .pg-enlace { min-height: 44px; color: var(--accent); font-size: 17px; }
+.lg .pg-enlace:disabled { color: var(--muted); cursor: default; }
+.lg .pg-vacio .estado { min-height: 44px; display: grid; place-items: center; font-size: 15px; color: var(--muted); }
+.lg .cab .pg-sello { justify-self: center; display: inline-flex; align-items: center; height: 44px; color: var(--ink); }
+.lg .cab .pg-sello .marca { height: 22px; width: auto; }
+
+/* Escritorio: una columna de 680; en las guías de Aprender, el índice a la izquierda. */
+@media (min-width: 880px) {
+  .lg main.pg-pagina > :not(.tabbar) { max-width: 680px; }
+  .lg .pg-pagina .cab.centrada { grid-template-columns: 160px minmax(0, 1fr) 160px; }
+}
+.lg .pg-indice { display: none; }
+@media (min-width: 1180px) {
+  .lg main.pg-pagina > .pg.con-indice { max-width: 920px; display: grid; grid-template-columns: 200px minmax(0, 680px); column-gap: 40px; align-items: start; }
+  .lg .pg.con-indice > .pg-indice { display: block; position: sticky; top: 72px; grid-row: 1 / span 40; margin-top: 12px; }
+  .lg .pg.con-indice > :not(.pg-indice) { grid-column: 2; }
+  .lg .pg-indice a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; padding: 8px 0; color: var(--ink2); font-size: 15px; line-height: 20px; }
+  .lg .pg-indice a[aria-current] { color: var(--accent); font-weight: 600; }
+  .lg .pg-indice a span { color: var(--muted); font-variant-numeric: tabular-nums; }
+}

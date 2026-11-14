@@ -71,7 +71,7 @@ function base(extra: Partial<Ficha> = {}): Ficha {
 }
 
 it("enseña la semana, la fila Entró, las notas y las reglas de la posición", () => {
-  estado.notas = { ticker: "AAA", jornada: 7, jornada_total: 12, dia: "2026-10-31", notas: { negocio: "8", precio: "5", deuda: "7", pronto: "4" } };
+  estado.notas = { ticker: "AAA", jornada: 7, jornada_total: 12, dia: "2026-10-31", notas: { negocio: 89, precio: 56, deuda: 78, pronto: 44 } };
   const c = pintar(base());
   expect(c.querySelector("h2")?.textContent).toBe("AAA");
   expect(c.querySelector(".fi-cifra b")?.textContent).toBe("+3,0 %");
@@ -80,9 +80,8 @@ it("enseña la semana, la fila Entró, las notas y las reglas de la posición", 
   expect(celdas).toEqual(["Precio498,12 $", "Peso22,0 %", "Desde la formación+4,0 % · S&P +2,0 %", "EntróAntes de la jornada 7"]);
   const nota = c.querySelector(".fi-nota")!;
   expect(nota.textContent).toContain("El negocio");
-  expect(nota.querySelector(".valor b")?.textContent).toBe("8");
-  expect(nota.querySelectorAll(".esc i.on")).toHaveLength(8);
-  expect(nota.querySelectorAll(".esc i")).toHaveLength(9);
+  expect(nota.querySelector(".valor")?.textContent).toBe("89");
+  expect((nota.querySelector(".barra i") as HTMLElement).style.width).toBe("89%");
   expect(c.querySelector("a.fi-celda.enlace")?.getAttribute("href")).toBe("/como-funciona");
   expect(c.textContent).toContain("Foto del 31 oct, jornada 7 de 12.");
   const textos = Array.from(c.querySelectorAll(".fi-grupo")).pop()!.textContent;

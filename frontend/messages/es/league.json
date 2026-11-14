@@ -71,7 +71,6 @@
   "premio_mensaje_completo": "Escalón completo en juego: {a}, {b} y {c}.",
   "premio_importe": "{n} €",
   "premio_importes_titulo": "Importes",
-  "premio_importes_linea": "{en, select, si {Con {n} cuentas (en juego): {a}, {b} y {c}.} other {Con {n} cuentas: {a}, {b} y {c}.}}",
   "premio_tu_cuenta": "Tu cuenta",
   "premio_optas": "Optas",
   "premio_no_optas": "Aún no optas",
@@ -92,7 +91,6 @@
   "premio_no_visible": "El premio todavía no está activo.",
   "premio_estrategia_ninguna": "Todavía no tienes ninguna estrategia.",
   "premio_estrategia_crear": "Crear una estrategia",
-  "premio_estrategia_guardar": "Guardar",
   "premio_jornadas_nota": "Cuenta los meses en los que tu estrategia estuvo apuntada.",
   "premio_fila_resumen": "{cuentas} de {basico} cuentas para activarlo · sin sorteo",
   "avisos_titulo": "Avisos",
@@ -141,5 +139,8 @@
   "actividad_vacia_texto": "Aquí aparecen los cambios de cartera publicados y los saltos de puesto de cada corte cerrado.",
   "actividad_error": "No se pudo cargar la actividad",
   "aviso_resumen_cierre_t_sin_total": "Jornada {numero} cerrada: puesto {puesto}",
-  "avisos_hoja_titulo_sin_total": "Jornada {numero}"
+  "avisos_hoja_titulo_sin_total": "Jornada {numero}",
+  "premio_importes_con": "Con {n} cuentas",
+  "premio_en_juego": "En juego",
+  "premio_sin_elegir": "Sin elegir"
 }

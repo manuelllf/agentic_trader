@@ -621,8 +621,8 @@ def test_las_notas_de_una_empresa_solo_las_da_una_cartera_visible(api) -> None: 
     datos = propia.json()
     assert datos["ticker"] == "ZPA" and datos["jornada"] == 1
     assert datos["jornada_total"] == 12
-    assert {k: Decimal(v) for k, v in datos["notas"].items()} == {
-        "negocio": Decimal(9), "precio": Decimal(8), "deuda": Decimal(7), "pronto": Decimal(6)}
+    # Sobre 100, como la nota final y como en Crear (9 de Jev = 100, 7 = 78).
+    assert datos["notas"] == {"negocio": 100, "precio": 89, "deuda": 78, "pronto": 67}
 
     # Una empresa que no está en la cartera, o una cuenta que no puede verla, no recibe nada.
     assert cliente.get(f"/liga/fichas/{eid}/empresas/ZPB", headers=cab(duena)).status_code == 404

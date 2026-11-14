@@ -8,6 +8,12 @@ import { getPrimerosPasos, type PrimerosPasos as EstadoPasos } from "@/lib/liga/
 import { useSesion } from "../../_sesion/SesionContext";
 import { Hora } from "./Hora";
 
+function Check({ si }: { si: boolean }) {
+  return <span className={`pg-check${si ? " si" : ""}`} aria-hidden="true">
+    {si && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>}
+  </span>;
+}
+
 export function PrimerosPasos({ ciclo }: { ciclo: CicloAprender | null }) {
   const { estado } = useSesion();
   const t = useTranslations();
@@ -19,13 +25,19 @@ export function PrimerosPasos({ ciclo }: { ciclo: CicloAprender | null }) {
     return () => { vivo = false; };
   }, [estado]);
   if (estado !== "dentro" || !pasos || (pasos.estrategia && pasos.apuntada && pasos.jornada_cerrada)) return null;
-  return <section className="apr-sec" aria-labelledby="apr-pasos">
-    <h2 id="apr-pasos">{t("learn_pasos_titulo")}</h2>
-    <ul className="apr-pasos">
-      <li className="hecho"><span className="apr-marca" aria-hidden="true" /><div><b>{t("learn_paso_cuenta")}</b></div><span /></li>
-      <li className={pasos.estrategia ? "hecho" : undefined}><span className="apr-marca" aria-hidden="true" /><div><b>{t("learn_paso_estrategia")}</b><small>{t("learn_paso_estrategia_nota")}</small></div>{pasos.estrategia ? <span /> : <Link href="/crear" className="btn pri apr-btn">{t("learn_crear")}</Link>}</li>
-      <li className={pasos.apuntada ? "hecho" : undefined}><span className="apr-marca" aria-hidden="true" /><div><b>{t("learn_paso_apuntar")}</b>{ciclo && <small>{t.rich("learn_paso_apuntar_nota", { fecha: () => <Hora iso={ciclo.corte} formato="fecha" />, hora: () => <Hora iso={ciclo.corte} formato="hora" /> })}</small>}</div><span /></li>
-      <li className={pasos.jornada_cerrada ? "hecho" : undefined}><span className="apr-marca" aria-hidden="true" /><div><b>{t("learn_paso_jornada")}</b>{ciclo && <small>{t.rich("learn_paso_jornada_nota", { fecha: () => <Hora iso={`${ciclo.jornada.dia_fin}T12:00:00Z`} formato="fecha" zona="UTC" /> })}</small>}</div><span /></li>
+  return <>
+    <p className="cu-cab">{t("learn_pasos_titulo")}</p>
+    <ul className="cu-grupo reqs">
+      <li><div className="cu-celda req"><Check si /><span className="t"><b>{t("learn_paso_cuenta")}</b></span><span /><span /></div></li>
+      <li><div className="cu-celda req"><Check si={pasos.estrategia} />
+        <span className="t"><b>{t("learn_paso_estrategia")}</b><small>{t("learn_paso_estrategia_nota")}</small></span>
+        {pasos.estrategia ? <span /> : <Link className="pg-mini" href="/crear">{t("learn_crear")}</Link>}<span /></div></li>
+      <li><div className="cu-celda req"><Check si={pasos.apuntada} />
+        <span className="t"><b>{t("learn_paso_apuntar")}</b>{ciclo && <small>{t.rich("learn_paso_apuntar_nota", { fecha: () => <Hora iso={ciclo.corte} formato="fecha" />, hora: () => <Hora iso={ciclo.corte} formato="hora" /> })}</small>}</span>
+        <span /><span /></div></li>
+      <li><div className="cu-celda req"><Check si={pasos.jornada_cerrada} />
+        <span className="t"><b>{t("learn_paso_jornada")}</b>{ciclo && <small>{t.rich("learn_paso_jornada_nota", { fecha: () => <Hora iso={`${ciclo.jornada.dia_fin}T12:00:00Z`} formato="fecha" zona="UTC" /> })}</small>}</span>
+        <span /><span /></div></li>
     </ul>
-  </section>;
+  </>;
 }

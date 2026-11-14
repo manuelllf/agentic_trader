@@ -15,12 +15,14 @@ export default async function Cookies() {
   return (
     <PlantillaLegal
       titulo={t("legal_cookies_policy")}
+      tituloCorto={t("legal_cookies_title")}
+      actual="cookies"
       resumen={[
         t("legal_cookies_summary_1"), t("legal_cookies_summary_2"), t("legal_cookies_summary_3"),
       ]}
     >
       <h2>{t("legal_cookies_browser_storage")}</h2>
-      <table className="legal-tabla">
+      <div className="tabla"><table className="legal-tabla">
         <thead>
           <tr><th>{t("legal_cookies_table_name")}</th><th>{t("legal_cookies_table_purpose")}</th><th>{t("legal_cookies_table_duration")}</th></tr>
         </thead>
@@ -33,7 +35,7 @@ export default async function Cookies() {
           <tr><td><code>vennett_locale</code></td><td>{t("legal_cookies_locale_purpose")}</td><td>{t("legal_cookies_locale_duration")}</td></tr>
           <tr><td><code>vennett_visitor_locale</code></td><td>{t("legal_cookies_visitor_purpose")}</td><td>{t("legal_cookies_locale_duration")}</td></tr>
         </tbody>
-      </table>
+      </table></div>
 
       <h2>{t("legal_cookies_if_changes")}</h2>
       <p>

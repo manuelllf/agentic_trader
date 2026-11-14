@@ -11,6 +11,7 @@ import { ErrorLiga } from "../_ui/ErrorLiga";
 import { AvisoCuenta, BarraCuenta, CuerpoCuenta, EsqueletoCuenta, ProveedorNavCuenta, RUTAS, TITULOS, type NavCuenta, type Pantalla } from "./marco";
 import { PANTALLAS } from "./pantallas";
 import "../liga/ranking.css";
+import "../_ui/grupos.css";
 import "./cuenta.css";
 
 export function PaginaCuenta({ pantalla }: { pantalla: Pantalla }) {

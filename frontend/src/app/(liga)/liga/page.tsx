@@ -26,6 +26,8 @@ import { SegmentoLiga, type OpcionSegmentoLiga } from "./SegmentoLiga";
 import { ListaClasificacion } from "./ListaClasificacion";
 import { EsqueletoRanking } from "./ListaRanking";
 import { VistaJornada } from "./VistaJornada";
+import "../_ui/grupos.css";
+import "../_ui/paginas.css";
 
 type Vista = "semana" | "tabla" | "actividad";
 
@@ -168,17 +170,21 @@ function LigaContenido() {
     ...(admin ? [{ valor: "actividad" as const, etiqueta: t("actividad_pestana") }] : []),
   ];
   const premioEnlace = premio && typeof premio !== "string" && premio.visible ? (
-    <Link href="/premio" className="premio-enlace">
-      <svg className="premio-glifo" width={34} height={34} viewBox="0 0 34 34" aria-hidden="true">
-        <rect className="base" x={2} y={14} width={30} height={5} rx={2.5} />
-        <rect className="tramo" x={2} y={14} width={5} height={5} rx={2.5} />
-        <rect className="aguja" x={13.2} y={10} width={1.6} height={13} rx={0.8} />
-      </svg>
-      <span className="premio-enlace-texto"><b>{t("premio_titulo")}</b><small>{premio.calculado
-        ? t("premio_calculado", { escalon: premio.escalon ?? 0 })
-        : t("premio_fila_resumen", { cuentas: premio.cuentas ?? 0, basico: premio.umbral_basico ?? 0 })}</small></span>
-      <svg className="chev" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
-    </Link>
+    <ul className="cu-grupo pg-fila-premio"><li>
+      <Link className="cu-celda alta con-ico" href="/premio">
+        <span className="cu-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round">
+            <path d="M4 13h16" /><path d="M4 13h5" strokeWidth={3.2} /><path d="M11 9v8" />
+          </svg>
+        </span>
+        <span className="t"><b>{t("premio_titulo")}</b><small>{premio.calculado
+          ? t("premio_calculado", { escalon: premio.escalon ?? 0 })
+          : t("premio_fila_resumen", { cuentas: premio.cuentas ?? 0, basico: premio.umbral_basico ?? 0 })}</small></span>
+        <span />
+        <svg className="chev" viewBox="0 0 8 14" fill="none" stroke="currentColor" strokeWidth={2}
+          strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m1 1 6 6-6 6" /></svg>
+      </Link>
+    </li></ul>
   ) : null;
 
   return (

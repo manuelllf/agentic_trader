@@ -27,14 +27,14 @@ export function RelojCierre({ ciclo, zona }: { ciclo: CicloAprender; zona?: stri
     grupo.push(h);
     grupos.set(dia, grupo);
   }
-  return <ol className="apr-reloj">{Array.from(grupos, ([dia, grupo]) => <Fragment key={dia}>
-    <li className="apr-dia"><Hora iso={grupo[0].iso} formato="dia" zona={zona} /></li>
-    {grupo.map(h => <Fragment key={h.iso}>
-      <li className={`apr-hito${h.clave ? " clave" : ""}`}>
-        <span className="apr-h num"><Hora iso={h.iso} formato="hora" zona={zona} /><span className="apr-ny">{t("learn_g3_ny", { hora: horaNY.format(new Date(h.iso)) })}</span></span>
-        <div><b>{h.titulo}</b><p>{h.texto}</p></div>
-      </li>
-      {h.iso === ciclo.corte && <li className="apr-ventana">{t("learn_g3_ventana")}</li>}
-    </Fragment>)}
-  </Fragment>)}</ol>;
+  return <>{Array.from(grupos, ([dia, grupo]) => <Fragment key={dia}>
+    <p className="cu-cab"><Hora iso={grupo[0].iso} formato="dia" zona={zona} /></p>
+    <ul className="cu-grupo reloj">{grupo.map(h => <Fragment key={h.iso}>
+      <li><div className={`cu-celda hito${h.clave ? " clave" : ""}`}>
+        <span className="h"><Hora iso={h.iso} formato="hora" zona={zona} /><small>{t("learn_g3_ny", { hora: horaNY.format(new Date(h.iso)) })}</small></span>
+        <span className="t"><b>{h.titulo}</b><small>{h.texto}</small></span>
+      </div></li>
+      {h.iso === ciclo.corte && <li><div className="cu-celda ventana">{t("learn_g3_ventana")}</div></li>}
+    </Fragment>)}</ul>
+  </Fragment>)}</>;
 }

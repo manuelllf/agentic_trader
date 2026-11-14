@@ -16,6 +16,8 @@ export default async function Privacidad() {
   return (
     <PlantillaLegal
       titulo={t("legal_privacy_policy")}
+      tituloCorto={t("legal_privacy_title")}
+      actual="privacidad"
       resumen={[
         t("legal_privacy_summary_1"), t("legal_privacy_summary_2"), t("legal_privacy_summary_3"), t("legal_privacy_summary_4"), t("legal_privacy_summary_5"),
       ]}

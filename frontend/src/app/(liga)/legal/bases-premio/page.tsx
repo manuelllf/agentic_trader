@@ -13,6 +13,8 @@ export default async function BasesPremio() {
   return (
     <PlantillaLegal
       titulo={t("legal_bases_title")}
+      tituloCorto={t("legal_bases_title")}
+      actual="bases-premio"
       resumen={[
         t("legal_bases_resumen_1"), t("legal_bases_resumen_2"), t("legal_bases_resumen_3"), t("legal_bases_resumen_4"),
       ]}

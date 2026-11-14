@@ -12,7 +12,7 @@ export async function generateMetadata() {
 export default async function Aviso() {
   const t = await getTranslations();
   return (
-    <PlantillaLegal titulo={t("legal_notice_title")}>
+    <PlantillaLegal titulo={t("legal_notice_title")} tituloCorto={t("legal_notice_title")} actual="aviso">
       <h2>{t("legal_notice_owner")}</h2>
       <ul>
         <li><b>{t("legal_notice_name")}</b>: {TITULAR.nombre}</li>

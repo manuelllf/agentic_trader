@@ -80,9 +80,8 @@ html[data-titulo] .lg .fi .cab-titulo { opacity: 1; }
 
 /* Notas de la empresa (0 a 9): nueve marcas, petróleo hasta la nota. */
 .lg .fi .fi-nota { row-gap: 6px; }
-.lg .fi .fi-nota .esc { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; }
-.lg .fi .fi-nota .esc i { height: 4px; border-radius: 2px; background: var(--line2); }
-.lg .fi .fi-nota .esc i.on { background: var(--accent); }
+.lg .fi .fi-nota .barra { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--surface2); overflow: hidden; }
+.lg .fi .fi-nota .barra i { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
 .lg .fi .fi-nota .valor b { color: var(--ink); font-weight: 600; }
 
 /* Qué pesa al elegir: nombre, porcentaje y una barra fina (Crear, paso Criterios). */

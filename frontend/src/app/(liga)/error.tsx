@@ -7,8 +7,12 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { reportarError } from "@/lib/liga/errores";
-import { Boton } from "./_ui";
-import { Marca } from "./_ui/Marca";
+import { BarraPestanas } from "./_ui/BarraPestanas";
+import { Campana } from "./_avisos/Campana";
+import { Sesion } from "./_sesion/Sesion";
+import "./liga/ranking.css";
+import "./_ui/grupos.css";
+import "./_ui/paginas.css";
 
 type Fase = "pendiente" | "enviando" | "enviado" | "fallo";
 
@@ -30,31 +34,37 @@ export default function ErrorDePantalla({ error, reset }: {
   };
 
   return (
-    <main className="sencilla">
-      <header className="sencilla-top">
-        <Link href="/" className="wordmark"><Marca /></Link>
-      </header>
-      <section className="sencilla-cuerpo" aria-labelledby="titular">
-        <h1 id="titular">{t("system_error_titulo")}</h1>
-        <p>
-          {t("system_error_pantalla")}
-        </p>
-        <Boton variante="principal" ancho="completo" onClick={reset}>{t("system_error_reintentar")}</Boton>
-        <Link href="/liga" className="btn wide">{t("system_error_ir_liga")}</Link>
-        {fase === "enviado" ? (
-          <p className="fine" role="status">{t("system_error_gracias")}</p>
-        ) : (
-          <>
-            <Boton variante="discreto" ancho="completo" disabled={fase === "enviando"}
-                   onClick={reportar}>
-              {fase === "enviando" ? t("system_error_enviando") : t("system_error_reportar")}
-            </Boton>
-            {fase === "fallo" && (
-              <p className="fine" role="status">{t("system_error_envio_fallo")}</p>
+    <main className="scroll lv-pagina pg-pagina">
+      {/* Sin título en la barra: el de la pantalla es el del aviso (un solo h1). */}
+      <header className="cab centrada"><Sesion /><span /><div className="cab-der"><Campana variante="cabecera" /></div></header>
+      <div className="pg">
+        <div className="pg-vacio">
+          <svg className="ico" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2"
+               strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21.4 7.6 4.6 37a3 3 0 0 0 2.6 4.5h33.6a3 3 0 0 0 2.6-4.5L26.6 7.6a3 3 0 0 0-5.2 0Z" />
+            <path d="M24 18v10M24 34v.4" />
+          </svg>
+          <h1>{t("system_error_titulo")}</h1>
+          <p>{t("system_error_pantalla")}</p>
+          <div className="acciones">
+            <button type="button" className="cu-boton" onClick={reset}>{t("system_error_reintentar")}</button>
+            <Link className="cu-boton tintado" href="/liga">{t("system_error_ir_liga")}</Link>
+            {fase === "enviado" ? (
+              <p className="estado" role="status">{t("system_error_gracias")}</p>
+            ) : (
+              <>
+                <button type="button" className="pg-enlace" disabled={fase === "enviando"} onClick={reportar}>
+                  {fase === "enviando" ? t("system_error_enviando") : t("system_error_reportar")}
+                </button>
+                {fase === "fallo" && (
+                  <p className="estado" role="status">{t("system_error_envio_fallo")}</p>
+                )}
+              </>
             )}
-          </>
-        )}
-      </section>
+          </div>
+        </div>
+      </div>
+      <BarraPestanas />
     </main>
   );
 }

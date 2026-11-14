@@ -3,8 +3,6 @@
   "learn_meta_descripcion": "What to do after joining Vennett: build your strategy, when it locks and how to read the standings.",
   "learn_heading": "Your first month on Vennett",
   "learn_lead": "What to do and when. The full method is in <link>How it works</link>.",
-  "learn_mi_liga": "My league",
-  "learn_volver": "‹ Learn",
   "learn_pasos_titulo": "Your first steps",
   "learn_paso_cuenta": "Create your account",
   "learn_paso_estrategia": "Create your first strategy",
@@ -16,7 +14,6 @@
   "learn_crear": "Create",
   "learn_guias_titulo": "Guides",
   "learn_minutos": "{n} min",
-  "learn_guia_de": "Guide {n} of {total} · {minutos} min",
   "learn_proximo": "Next deadline to enter",
   "learn_siguiente": "Next",
   "learn_fin_t": "You have read every guide",
@@ -87,7 +84,7 @@
   "learn_g4_mas": "+{banda}",
   "learn_g4_puntos_d": "More than {banda} points above: <b>{gana}</b>. Within {banda}: <b>{empata}</b>. Below: <b>{pierde}</b>.",
   "learn_g4_jornadas_t": "Matchdays won",
-  "learn_g4_jornadas_d": "The other view ranks by points: who wins the most months, even though the season is decided by return.",
+  "learn_g4_jornadas_d": "The other view ranks by points: who wins the most rounds, even though the season is decided by return.",
   "learn_g4_provisional": "While a matchday is still in play, positions are provisional.",
   "learn_g5_t": "The prize",
   "learn_g5_desc": "How much, for whom and with what requirements.",
@@ -99,5 +96,6 @@
   "learn_g5_elegibles": "eligible",
   "learn_g5_sin": "With fewer than {n}, there is no prize that season.",
   "learn_g5_optar_t": "To qualify",
-  "learn_g5_bases": "Read the full rules"
+  "learn_g5_bases": "Read the full rules",
+  "learn_guia_n": "Guide {n} of {total}"
 }
