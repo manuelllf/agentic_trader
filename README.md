@@ -17,11 +17,14 @@ Después, invita a tus amigos: crea una liga privada y comparte el código. Ver�
 ## Qué ofrece
 
 - **Juega cada semana contra el S&P 500.** Cada jornada compara la rentabilidad con dividendos de tu cartera con la del índice en la misma ventana.
+- **Hasta 10 estrategias en juego.** Prueba ideas distintas a la vez; una de ellas, la que elijas, opta al premio anual.
 - **Ligas privadas con tus amigos.** Creas una liga, compartes el código y veis la clasificación de todos. Cada participante muestra su estrategia, su rentabilidad de la semana y la acumulada frente al índice.
-- **Ficha completa de cada estrategia.** Cartera, evidencia de cada posición, curva frente al S&P 500, caída máxima, volatilidad, Sharpe y Sortino.
+- **Ficha completa de cada estrategia.** Cartera con el peso y la evolución de cada empresa, la metodología con sus reglas y unos resultados con la curva frente al S&P 500, caída máxima, volatilidad, Sharpe, Sortino y cada jornada jugada.
 - **Clasificación en directo.** La semana en juego se ve como provisional. Los puntos oficiales se fijan al cerrar cada jornada y no cambian después.
+- **Acertijo diario.** Un críptico de palabras cada mañana, en español e inglés, sin cuenta y con boletín propio.
 - **Lecciones y boletín.** Un blog con lecciones cortas sobre cómo funciona una empresa y cómo se construye una estrategia, en español e inglés, con boletín opcional de doble confirmación.
-- **Resúmenes por correo.** Un resumen semanal y otro al cerrar cada jornada, con baja en un clic.
+- **Avisos y resumen.** Notificaciones en el móvil cuando empieza la jornada y cuando se cierran los cambios, y un resumen por correo cada sábado, con baja en un clic.
+- **Se usa como una app.** Diseño al estilo de iOS, claro y oscuro según el sistema, e instalable en la pantalla de inicio.
 
 ## Cómo se puntúa
 
@@ -54,7 +57,7 @@ Todo el dinero (tamaños, caja, rentabilidad) lo calcula el código con aritmét
 | Cuentas | Supabase Auth (JWT verificado por JWKS, TOTP) |
 | Correo | Resend |
 | Datos | yfinance · screener público de NASDAQ · Wikipedia, Google News y GDELT |
-| Modelos de lenguaje | DeepSeek y Jev (TypeSafe AI), con capa de proveedor intercambiable |
+| Modelos de lenguaje | DeepSeek, Jev (TypeSafe AI) y Qwen, con capa de proveedor intercambiable |
 | Bróker (sala Alpha) | Interactive Brokers, Web API (OAuth 1.0a, `ibind`); simulación por defecto |
 | Despliegue | Railway (backend) · Vercel (frontend) |
 
