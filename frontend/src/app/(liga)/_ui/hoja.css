@@ -59,7 +59,9 @@
 }
 .lg .hoja-liga-acc.der { font-weight: 600; }
 .lg .hoja-liga-acc:disabled { opacity: 0.35; cursor: default; }
-.lg .hoja-liga-contenido { overflow-y: auto; overscroll-behavior: contain; }
+/* Sin barra visible: con ella el contenido pierde 15 px y se descuadra del encabezado. */
+.lg .hoja-liga-contenido { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.lg .hoja-liga-contenido::-webkit-scrollbar { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .lg .hoja-liga[open] .hoja-liga-cuerpo { animation: none; }
   .lg .hoja-liga-cuerpo { transition: none; }
