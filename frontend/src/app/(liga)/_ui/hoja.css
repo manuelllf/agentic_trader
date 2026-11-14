@@ -30,6 +30,8 @@
 .lg .hoja-liga-agarre { flex: none; padding: 8px 0 4px; touch-action: none; cursor: grab; }
 .lg .hoja-liga-asa { display: block; width: 36px; height: 5px; margin: 0 auto; border-radius: 3px; background: var(--line2); }
 .lg .hoja-liga-nav {
+  /* Sin esto, arrastrar el título dispara el gesto del navegador (recargar) en vez de bajar la hoja. */
+  touch-action: none;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;

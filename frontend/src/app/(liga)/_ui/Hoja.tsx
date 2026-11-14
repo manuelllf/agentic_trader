@@ -25,7 +25,7 @@ const UMBRAL_CIERRE = 90;
 export function Hoja({ abierta, titulo, cancelar, accion, accionDesactivada = false, onAccion, onCerrar, children }: HojaProps) {
   const dialogo = useRef<HTMLDialogElement>(null);
   const cuerpo = useRef<HTMLDivElement>(null);
-  const arrastre = useRef<{ y: number; dy: number } | null>(null);
+  const arrastre = useRef<{ y: number; dy: number; activo: boolean } | null>(null);
   const idTitulo = useId();
 
   useEffect(() => {
@@ -35,34 +35,42 @@ export function Hoja({ abierta, titulo, cancelar, accion, accionDesactivada = fa
     if (!abierta && d.open) d.close();
   }, [abierta]);
 
+  // El gesto se toma solo al empezar a moverse, para que los toques en Cancelar y Listo sigan siendo clics.
   const bajar = (e: PointerEvent<HTMLDivElement>) => {
-    arrastre.current = { y: e.clientY, dy: 0 };
-    e.currentTarget.setPointerCapture(e.pointerId);
+    arrastre.current = { y: e.clientY, dy: 0, activo: false };
   };
   const mover = (e: PointerEvent<HTMLDivElement>) => {
     const a = arrastre.current;
     if (!a || !cuerpo.current) return;
-    a.dy = Math.max(0, e.clientY - a.y);
+    const bajo = e.clientY - a.y;
+    if (!a.activo) {
+      if (bajo < 6) return;
+      a.activo = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      cuerpo.current.style.transition = "none";
+    }
+    a.dy = Math.max(0, bajo);
     cuerpo.current.style.transform = `translateY(${a.dy}px)`;
   };
   const soltar = () => {
     const a = arrastre.current;
     arrastre.current = null;
-    if (!a) return;
+    if (!a || !a.activo) return;
+    if (cuerpo.current) cuerpo.current.style.transition = "";
     if (a.dy > UMBRAL_CIERRE) onCerrar();
     else if (cuerpo.current) cuerpo.current.style.transform = "";
   };
+  const gesto = { onPointerDown: bajar, onPointerMove: mover, onPointerUp: soltar, onPointerCancel: soltar };
 
   return (
     <dialog ref={dialogo} className="hoja-liga" aria-labelledby={idTitulo}
       onCancel={(e) => { e.preventDefault(); onCerrar(); }}
       onClick={(e) => { if (e.target === dialogo.current) onCerrar(); }}>
       <div className="hoja-liga-cuerpo" ref={cuerpo}>
-        <div className="hoja-liga-agarre" onPointerDown={bajar} onPointerMove={mover}
-          onPointerUp={soltar} onPointerCancel={soltar}>
+        <div className="hoja-liga-agarre" {...gesto}>
           <span className="hoja-liga-asa" aria-hidden="true" />
         </div>
-        <div className="hoja-liga-nav">
+        <div className="hoja-liga-nav" {...gesto}>
           <span className="lado">
             {cancelar && <button type="button" className="hoja-liga-acc" onClick={onCerrar}>{cancelar}</button>}
           </span>
