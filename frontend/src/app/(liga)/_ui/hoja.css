@@ -24,7 +24,8 @@
   overflow: hidden;
   transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.lg .hoja-liga[open] .hoja-liga-cuerpo { animation: hoja-sube 0.35s cubic-bezier(0.32, 0.72, 0, 1); }
+/* La animación va en la caja, no en el contenido: así el fondo sube con la hoja y no se ve la página de detrás. */
+.lg .hoja-liga[open] { animation: hoja-sube 0.35s cubic-bezier(0.32, 0.72, 0, 1); }
 @keyframes hoja-sube { from { transform: translateY(100%); } to { transform: none; } }
 .lg .hoja-liga-agarre { flex: none; padding: 8px 0 4px; touch-action: none; cursor: grab; }
 .lg .hoja-liga-asa { display: block; width: 36px; height: 5px; margin: 0 auto; border-radius: 3px; background: var(--line2); }
@@ -63,6 +64,6 @@
 .lg .hoja-liga-contenido { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .lg .hoja-liga-contenido::-webkit-scrollbar { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  .lg .hoja-liga[open] .hoja-liga-cuerpo { animation: none; }
+  .lg .hoja-liga[open] { animation: none; }
   .lg .hoja-liga-cuerpo { transition: none; }
 }

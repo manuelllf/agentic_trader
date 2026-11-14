@@ -24,6 +24,7 @@
 .lg .cu-grupo > li:only-child > .cu-celda { border-radius: 10px; }
 .lg button.cu-celda:active:not(:disabled), .lg a.cu-celda:active { background: var(--surface2); }
 .lg .cu-celda:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lg a.cu-celda { text-decoration: none; }
 .lg .cu-celda .valor { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
 .lg .cu-celda .chev { width: 8px; height: 14px; color: var(--muted); opacity: .6; }
 .lg .cu-celda .selector { width: 10px; height: 16px; color: var(--muted); }
