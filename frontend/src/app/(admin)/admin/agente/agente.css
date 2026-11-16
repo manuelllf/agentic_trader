@@ -1,0 +1,63 @@
+/* Alphagentic: lo propio de la sala. Todo acotado a .lg .pnl .pa; el resto sale del kit del panel. */
+
+.lg .pnl .pa .pa-bien { color: var(--good); font-weight: 600; }
+.lg .pnl .pa .pa-mal { color: var(--bad); font-weight: 600; }
+
+.lg .pnl .pa-atras { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; margin-left: -4px; color: var(--accent); font-size: 17px; line-height: 22px; }
+.lg .pnl .pa-atras svg { flex: none; width: 24px; height: 24px; }
+.lg .pnl .pa-atras:active { opacity: .45; }
+
+.lg .pnl .pa-h1 { margin: 4px 0 0; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); overflow-wrap: anywhere; }
+.lg .pnl .pa-meta { margin-top: 8px; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pnl .pa-carta { margin-top: 20px; }
+.lg .pnl .pa-carta p, .lg .pnl .pa-carta li { font-size: 17px; line-height: 24px; color: var(--ink2); overflow-wrap: anywhere; }
+.lg .pnl .pa-carta > * { margin: 0; }
+.lg .pnl .pa-carta > * + * { margin-top: 12px; }
+.lg .pnl .pa-carta h3 { font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.lg .pnl .pa-carta h4 { font-size: 17px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.lg .pnl .pa-carta > * + h3, .lg .pnl .pa-carta > * + h4 { margin-top: 28px; }
+.lg .pnl .pa-carta h3 + *, .lg .pnl .pa-carta h4 + * { margin-top: 6px; }
+.lg .pnl .pa-carta ul { padding-left: 20px; list-style: disc; }
+.lg .pnl .pa-carta li::marker { color: var(--muted); }
+.lg .pnl .pa-carta li + li { margin-top: 8px; }
+.lg .pnl .pa-carta strong { font-weight: 600; color: var(--ink); }
+/* Dentro de una hoja, texto y grupos comparten el mismo margen lateral. */
+.lg .pnl .pa-hoja { padding: 4px 16px 8px; }
+.lg .pnl .pa-hoja .pa-carta { margin-top: 0; }
+
+.lg .pnl .pa-pasos { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 18px 0 0; padding: 0; }
+.lg .pnl .pa-pasos li { position: relative; padding-top: 12px; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pnl .pa-pasos li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; border-radius: 2px; background: var(--line2); }
+.lg .pnl .pa-pasos li.hecho { color: var(--ink); font-weight: 600; }
+.lg .pnl .pa-pasos li.hecho::before { background: var(--accent); }
+
+/* Hoy: una columna en el móvil, dos desde escritorio ancho. */
+.lg .pnl .pa-cifra { margin-top: 20px; }
+.lg .pnl .pa-cifra small { display: block; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pnl .pa-cifra b { display: block; margin-top: 2px; font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.lg .pnl .pa-cifra p { margin-top: 2px; font-size: 15px; line-height: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg .pnl .pa-estado { margin-top: 20px; }
+.lg .pnl .pa-estado .pnl-celda .t b { font-weight: 600; color: var(--ink); }
+.lg .pnl .pa-pie { grid-column: 1 / -1; }
+@media (min-width: 1180px) {
+  .lg .pnl .pa-hoy { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 0 40px; align-items: start; }
+  .lg .pnl .pa-hoy > div > :first-child { margin-top: 0; }
+}
+
+/* Gráfica de valor: línea con cursor. El dedo la maneja sin desplazar la página en horizontal. */
+.lg .pnl .pa-graf-caja { margin-top: 28px; }
+.lg .pnl .pa-graf-cab small { display: block; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pnl .pa-graf-cab p { margin-top: 2px; font-size: 17px; line-height: 22px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lg .pnl .pa-graf { margin-top: 8px; padding: 8px 0; border-radius: 10px; background: none; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.lg .pnl .pa-graf svg { display: block; width: 100%; height: auto; overflow: visible; font-family: inherit; }
+
+/* Presupuesto: nombre, uso y una barra fina debajo. */
+.lg .pnl .pa-presupuesto { grid-template-columns: minmax(0, 1fr) auto; }
+.lg .pnl .pa-barra { grid-column: 1 / -1; display: block; }
+.lg .pnl .pa-barra.cerca .pnl-progreso i { background: var(--bad); }
+
+.lg .pnl .pa-reintento { margin-top: 12px; }
+/* Tu cartera de IBKR: las cifras arriba y la lista separada, como en la maqueta. */
+.lg .pnl .pa-ibkr .pa-ibkr-lista { margin-top: 12px; }
+.lg .pnl .pa-resultados { margin-top: 16px; }
+.lg .pnl .pa-parada { margin-top: 28px; }
