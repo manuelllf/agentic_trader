@@ -38,8 +38,10 @@ EXPOSE 8000
 # HOME explícito: setpriv cambia el uid pero no el entorno (las cachés de yfinance y cía.
 # van a /home/app). Uvicorn arranca DIRECTO del venv del build — uv no pinta nada en runtime.
 # Detrás del proxy de Railway: se fía de X-Forwarded-Proto para redirigir en https.
+# APP_MODULE elige la aplicación: Vennett por defecto; el servicio del agente usa la misma imagen
+# con APP_MODULE=app.agente.servicio:app.
 CMD mkdir -p /data && chown -R app:app /data; \
     exec setpriv --reuid=app --regid=app --init-groups \
-    env HOME=/home/app /app/.venv/bin/python -m uvicorn app.main:app \
+    env HOME=/home/app /app/.venv/bin/python -m uvicorn ${APP_MODULE:-app.main:app} \
     --host 0.0.0.0 --port ${PORT:-8000} \
     --proxy-headers --forwarded-allow-ips "*"
