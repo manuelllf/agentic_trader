@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app import proceso_hijo, recursos, scan_config, scan_progress
+from app import proceso_hijo, procesos_datos, recursos, scan_config, scan_progress
 from app.config import settings
 from app.db import SessionLocal
 from app.scan_state import write_scan_failure
@@ -89,7 +89,8 @@ def _universe_job() -> None:
         hoy = datetime.now(ZoneInfo(settings.scan_timezone)).date()
         if universe_mod.snapshot_date(db) == hoy:
             return                                  # ya hay foto de esta sesión: nada que hacer
-        total = universe_mod.refresh_snapshot(db)
+        with procesos_datos.marcar("foto"):
+            total = universe_mod.refresh_snapshot(db)
         logger.info("Foto del universo actualizada: %s nombres elegibles.", total)
     except Exception:
         logger.exception("No se pudo fotografiar el universo (se reintenta en 2h)")
@@ -105,7 +106,8 @@ def _universo_global_job() -> None:
 
     db = SessionLocal()
     try:
-        info = universe_global.sincronizar(db)
+        with procesos_datos.marcar("global"):
+            info = universe_global.sincronizar(db)
         logger.info("Universo global sincronizado: %s tickers.", info["tickers"])
     except Exception:
         logger.exception("No se pudo sincronizar el universo global")
@@ -122,7 +124,8 @@ def _fx_job() -> None:
 
     db = SessionLocal()
     try:
-        info = fx_mod.sincronizar(db)
+        with procesos_datos.marcar("fx"):
+            info = fx_mod.sincronizar(db)
         logger.info("FX sincronizado: %s", info)
     except Exception:
         logger.exception("No se pudo sincronizar las tasas de cambio")
@@ -135,7 +138,8 @@ def _analytics_sync_job() -> None:
     horas de mercado, a propósito no atado a ningún escaneo — la analítica acepta estar hasta
     24h desatualizada (ver `app/analytics_sync.py`), así que basta con una pasada diaria."""
     try:
-        counts = proceso_hijo.ejecutar("app.tareas_hijo:analitica")
+        with procesos_datos.marcar("analitica"):
+            counts = proceso_hijo.ejecutar("app.tareas_hijo:analitica")
         logger.info("Analítica DuckDB sincronizada: %s", counts)
     except Exception:
         logger.exception("No se pudo sincronizar la analítica DuckDB")

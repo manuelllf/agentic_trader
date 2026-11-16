@@ -1,18 +1,52 @@
 """Mantenimiento: estado de frescura de datos, sync de FX/analitica, volcado de BD,
 fotos de fundamentales y universo global (HuggingFace). Todo detras de require_auth."""
 from __future__ import annotations
-from app.i18n import translate
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app import foto_service
+from app import foto_service, procesos_datos
 from app.db import get_db
+from app.i18n import translate
 from app.ledger import service as ledger
 from app.models import utc_iso
 
 router = APIRouter()          # exige require_auth (montado en app/api/routes.py)
+
+
+def _ocupado(exc: procesos_datos.Ocupado) -> HTTPException:
+    return HTTPException(409, translate("api_proceso_ocupado", proceso=exc.proceso))
+
+
+@router.get("/admin/procesos/horario")
+def admin_procesos_horario() -> dict:
+    """Cuándo se lanza solo cada proceso de datos: sale de los trabajos que el scheduler tiene
+    registrados, no de un texto escrito a mano."""
+    return procesos_datos.horario()
+
+
+@router.get("/admin/procesos/estado")
+def admin_procesos_estado() -> dict:
+    """Qué proceso de datos ocupa el sitio ahora (con su avance, si lo cuenta) y la última vez de
+    los que no la dejan en `/admin/estado-datos`. Solo lectura."""
+    import os
+    from datetime import UTC, datetime
+
+    from app import poda
+    from app.config import settings
+    from app.screener import universe_global
+
+    actual = procesos_datos.en_marcha()
+    if actual:
+        actual = {**actual, "progreso": procesos_datos.progreso(actual["id"])}
+    ruta = settings.duckdb_path
+    analitica = (datetime.fromtimestamp(os.path.getmtime(ruta), UTC).isoformat()
+                 if os.path.exists(ruta) else None)
+    return {"en_marcha": actual,
+            "ultima": {"analitica": analitica,
+                       "poda": poda.get_status()["finished_at"],
+                       "global": universe_global.get_status()["finished_at"]}}
 
 
 @router.get("/admin/estado-datos")
@@ -63,7 +97,10 @@ def admin_fx_sync(db: Session = Depends(get_db)) -> dict:
     from app.screener import fx as fx_mod
 
     try:
-        return {"ok": True, **fx_mod.sincronizar(db)}
+        with procesos_datos.exclusivo("fx"):
+            return {"ok": True, **fx_mod.sincronizar(db)}
+    except procesos_datos.Ocupado as exc:
+        raise _ocupado(exc) from exc
     except Exception as exc:  # noqa: BLE001 — scraper de Yahoo caído: mensaje legible, no 500
         return {"ok": False, "error": str(exc)}
 
@@ -76,7 +113,10 @@ def admin_sync_analytics() -> dict:
     from app import proceso_hijo
 
     try:
-        counts = proceso_hijo.ejecutar("app.tareas_hijo:analitica")
+        with procesos_datos.exclusivo("analitica"):
+            counts = proceso_hijo.ejecutar("app.tareas_hijo:analitica")
+    except procesos_datos.Ocupado as exc:
+        raise _ocupado(exc) from exc
     except proceso_hijo.ProcesoHijoError as exc:
         if exc.tipo in ("ImportError", "ModuleNotFoundError"):
             raise HTTPException(
@@ -134,8 +174,11 @@ def admin_universe_snapshot(db: Session = Depends(get_db)) -> dict:
     from app.screener import universe as universe_mod
 
     try:
-        info = universe_mod.refresh_snapshot_and_report(db)
+        with procesos_datos.exclusivo("foto"):
+            info = universe_mod.refresh_snapshot_and_report(db)
         return {"ok": True, **info}
+    except procesos_datos.Ocupado as exc:
+        raise _ocupado(exc) from exc
     except Exception as exc:  # noqa: BLE001 — el motivo legible es lo que necesita el panel
         return {"ok": False, "error": str(exc)}
 
@@ -153,9 +196,11 @@ def admin_foto(alcance: str = Query("nasdaq", pattern="^(nasdaq|global)$"),
     universo global no trae precio/cap/volumen (ver `universe_global.py`), así que país/mercado
     es el único filtro barato disponible antes de gastar peticiones reales a Yahoo.
     """
-    if not foto_service.start(alcance=alcance, limite=limite,
-                              countries=countries, exchanges=exchanges):
-        raise HTTPException(409, "Ya hay una foto o un escaneo en marcha.")
+    try:
+        procesos_datos.lanzar("fund", lambda: foto_service.start(
+            alcance=alcance, limite=limite, countries=countries, exchanges=exchanges))
+    except procesos_datos.Ocupado as exc:
+        raise _ocupado(exc) from exc
     return {"started": True, **foto_service.get_status()}
 
 
@@ -173,8 +218,10 @@ def admin_universo_global() -> dict:
     """
     from app.screener import universe_global
 
-    if not universe_global.start():
-        raise HTTPException(409, "Ya hay una sincronización en marcha.")
+    try:
+        procesos_datos.lanzar("global", universe_global.start)
+    except procesos_datos.Ocupado as exc:
+        raise _ocupado(exc) from exc
     return {"started": True, **universe_global.get_status()}
 
 
@@ -194,8 +241,10 @@ async def admin_universo_global_subir_csv(archivo: UploadFile = File(...)) -> di
     from app.screener import universe_global
 
     contenido = await archivo.read()
-    if not universe_global.start(contenido=contenido):
-        raise HTTPException(409, "Ya hay una sincronización en marcha.")
+    try:
+        procesos_datos.lanzar("global", lambda: universe_global.start(contenido=contenido))
+    except procesos_datos.Ocupado as exc:
+        raise _ocupado(exc) from exc
     return {"started": True, **universe_global.get_status()}
 
 
@@ -238,8 +287,10 @@ def admin_poda() -> dict:
     """Lanza la poda en segundo plano; el avance se consulta en `GET /admin/poda/estado`."""
     from app import poda
 
-    if not poda.start():
-        raise HTTPException(409, "Ya hay una poda, un escaneo o una foto en marcha.")
+    try:
+        procesos_datos.lanzar("poda", poda.start)
+    except procesos_datos.Ocupado as exc:
+        raise _ocupado(exc) from exc
     return poda.get_status()
 
 
