@@ -74,7 +74,8 @@ extend-immutable-calls = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["con_bienvenida: deja que las cuentas nuevas reciban el regalo de bienvenida"]
+markers = ["con_bienvenida: deja que las cuentas nuevas reciban el regalo de bienvenida",
+           "guarda_avisos: deja que `avisar` guarde en la campana del admin"]
 
 [tool.mypy]
 python_version = "3.12"

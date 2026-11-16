@@ -259,6 +259,8 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     correo_remitente: str = "Vennett <info@vennett.app>"
     url_publica: str = "https://vennett.app"
+    # Clave con la que el servicio del agente deja avisos del admin; vacía apaga la ruta.
+    agente_clave_servicio: str = ""
 
     @property
     def cors_origins_list(self) -> list[str]:

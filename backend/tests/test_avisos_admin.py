@@ -25,6 +25,7 @@ def buzon(monkeypatch) -> list:  # noqa: ANN001
 
 def test_omega_avisa_por_push_y_por_correo_en_el_idioma_de_cada_cuenta(monkeypatch, buzon) -> None:  # noqa: ANN001
     pushes = []
+    monkeypatch.setattr(avisos_admin, "guardar", lambda *a, **kw: None)
     resumen = {"total": 1, "ok": 1, "baja": 0, "error": 0, "endpoints": set()}
     monkeypatch.setattr("app.push.enviar_a_todos",
                         lambda db, **kw: pushes.append(kw) or resumen)
@@ -95,6 +96,7 @@ def test_si_falla_la_lectura_de_destinatarios_el_aviso_sigue(monkeypatch) -> Non
 
 
 def test_tipo_sin_canales_no_manda_nada(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(avisos_admin, "guardar", lambda *a, **kw: None)
     monkeypatch.setattr("app.push.send_to_all", lambda db, **kw: pytest.fail("push"))
     monkeypatch.setattr(avisos_admin, "por_correo", lambda *a, **k: pytest.fail("correo"))
     assert avisos_admin.avisar(None, "tipo_inventado", title="t", body="b", url="/x", tag="x") == 0

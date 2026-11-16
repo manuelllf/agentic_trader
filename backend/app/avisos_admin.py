@@ -1,10 +1,12 @@
 """Avisos del admin (Omega) por los canales de cada tipo: push a los dispositivos del panel de admin
 y correo a las cuentas admin que lo activaron en Cuenta › Avisos, en su idioma y a su dirección.
 
-El panel de avisos (backlog) pasará `CANALES` a base de datos; hoy van fijos aquí."""
+Cada aviso se guarda en `liga.avisos_admin` (la campana del panel) antes de salir; `CANALES` va
+fijo aquí."""
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -27,16 +29,52 @@ CANALES: dict[str, frozenset[str]] = {
     "omega_resueltas": frozenset({"push", "correo"}),
     "omega_candidatos": frozenset({"push", "correo"}),
 }
+_PREFIJO_SALA = (("omega_", "omega"), ("ia_", "vennett"), ("agente_", "alphagentic"))
+_MAX_DATOS = 2000
 _NUEVA_YORK = ZoneInfo("America/New_York")
 _MESES_ES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
              "septiembre", "octubre", "noviembre", "diciembre")
 
 
+def sala_de(tipo: str) -> str:
+    return next((sala for prefijo, sala in _PREFIJO_SALA if tipo.startswith(prefijo)), "vennett")
+
+
+def guardar(tipo: str, datos: dict, filas: Sequence[correo_plantilla.Fila] = ()) -> int | None:
+    """Guarda el aviso para la campana del panel; si falla lo registra y devuelve None."""
+    try:
+        from app.liga.procesos.comun import fabrica_sistema, sesion
+
+        completos = {**datos, **({"filas": [list(f) for f in filas]} if filas else {})}
+        for candidato in (completos, datos, {}):
+            cuerpo = json.dumps(candidato, default=str)
+            if len(cuerpo.encode()) <= _MAX_DATOS:
+                break
+        with sesion(fabrica_sistema) as db:
+            nuevo = db.execute(text(
+                "insert into liga.avisos_admin (tipo, sala, datos) "
+                "values (:t, :s, cast(:d as jsonb)) returning id"),
+                {"t": tipo, "s": sala_de(tipo), "d": cuerpo}).scalar_one()
+            db.commit()
+        return nuevo
+    except Exception:
+        logger.exception("No se pudo guardar el aviso del admin")
+        return None
+
+
 def avisar(db: Session | None, tipo: str, *, title: str, body: str, url: str, tag: str,
            filas: Sequence[correo_plantilla.Fila] = (), resumen: dict | None = None,
            **valores: object) -> int:
-    """Manda el aviso por los canales del tipo. Devuelve los dispositivos que recibieron el push.
-    El correo, como el push, nunca tira el proceso que avisa."""
+    """Guarda el aviso y lo manda por los canales del tipo. Devuelve los dispositivos que
+    recibieron el push. Guardar, el push y el correo nunca tiran el proceso que avisa."""
+    guardar(tipo, valores, filas)
+    return _enviar(db, tipo, title=title, body=body, url=url, tag=tag, filas=filas,
+                   resumen=resumen, **valores)
+
+
+def _enviar(db: Session | None, tipo: str, *, title: str, body: str, url: str, tag: str,
+            filas: Sequence[correo_plantilla.Fila] = (), resumen: dict | None = None,
+            **valores: object) -> int:
     canales = CANALES.get(tipo, frozenset())
     enviados = 0
     if "push" in canales:
@@ -44,7 +82,7 @@ def avisar(db: Session | None, tipo: str, *, title: str, body: str, url: str, ta
 
         if db is None:
             with sesion(fabrica_sistema) as abierta:
-                return avisar(abierta, tipo, title=title, body=body, url=url, tag=tag,
+                return _enviar(abierta, tipo, title=title, body=body, url=url, tag=tag,
                               filas=filas, resumen=resumen, **valores)
         panel = push.enviar_a_todos(db, title=title, body=body, url=url, tag=tag)
         liga = push.enviar_a_admins_liga(db, title, body, url, tag,

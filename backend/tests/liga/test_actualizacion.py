@@ -554,8 +554,9 @@ def test_esquema_ci_refleja_la_ultima_migracion_y_copia_excluye_caches():
 
     raiz = Path(__file__).resolve().parents[2]
     esquema = (raiz / "tests/esquema_ci.sql").read_text(encoding="utf-8")
-    # El marcador sigue al último script de sql/liga (063 a 070, criptico; 071, varias en juego).
-    assert esquema.splitlines()[0] == "-- migraciones-liga: 071"
+    # El marcador sigue al último script de sql/liga (071, varias en juego; 072, avisos del admin).
+    assert esquema.splitlines()[0] == "-- migraciones-liga: 072"
+    assert "create table liga.avisos_admin (" in esquema
     assert "Como mucho 10 estrategias en juego" in esquema
     assert "(numero <= 60)" in esquema
     assert "CREATE TABLE liga.avisos (" in esquema
@@ -566,8 +567,8 @@ def test_esquema_ci_refleja_la_ultima_migracion_y_copia_excluye_caches():
     assert "CREATE FUNCTION liga.tiene_borrador" in esquema
     for tabla in ("actualizaciones", "notas_frescas", "respuestas_frescas", "omega_alertas"):
         assert f"CREATE TABLE liga.{tabla} (" in esquema
-    assert "actualizaciones" in copia.TABLAS and copia.VERSION_ESQUEMA == 71
-    assert "avisos" in copia.TABLAS
+    assert "actualizaciones" in copia.TABLAS and copia.VERSION_ESQUEMA == 72
+    assert {"avisos", "avisos_admin"} <= set(copia.TABLAS)
     assert "omega_alertas" in copia.TABLAS
     assert not {"notas_frescas", "respuestas_frescas"}.intersection(copia.TABLAS)
 

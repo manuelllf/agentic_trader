@@ -31,6 +31,16 @@ def _sin_correo_real(monkeypatch) -> None:  # noqa: ANN001
 
 
 @pytest.fixture(autouse=True)
+def _sin_guardar_avisos_admin(request, monkeypatch) -> None:  # noqa: ANN001
+    """Ningún test escribe en la campana del admin, salvo los marcados `guarda_avisos`."""
+    if request.node.get_closest_marker("guarda_avisos"):
+        return
+    from app import avisos_admin
+
+    monkeypatch.setattr(avisos_admin, "guardar", lambda *a, **kw: None)
+
+
+@pytest.fixture(autouse=True)
 def _sin_regalo_de_bienvenida(request):  # noqa: ANN001, ANN201
     """Las cuentas nuevas reciben créditos de bienvenida (sql 015); casi todas las pruebas de
     créditos parten de saldo 0, así que el regalo se apaga en la BD de pruebas salvo en las

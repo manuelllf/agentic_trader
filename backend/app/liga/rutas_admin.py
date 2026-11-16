@@ -13,7 +13,15 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.liga import copia, intenciones, panel_admin, panel_usuarios, rutas_gestion, visitas
+from app.liga import (
+    copia,
+    intenciones,
+    panel_admin,
+    panel_usuarios,
+    rutas_avisos_admin,
+    rutas_gestion,
+    visitas,
+)
 from app.liga.auth import Identidad, require_admin
 from app.liga.db import db_usuario
 from app.liga.procesos import cerrar, diario, estado, formar, foto, premio, temporadas
@@ -186,6 +194,7 @@ router.include_router(rutas_gestion.router_admin, dependencies=ADMIN)
 router.include_router(panel_admin.router, dependencies=ADMIN)
 router.include_router(panel_usuarios.router, dependencies=ADMIN)
 router.include_router(visitas.router_admin, dependencies=ADMIN)
+router.include_router(rutas_avisos_admin.router, dependencies=ADMIN)
 
 
 @router.get("/intenciones", dependencies=ADMIN)
