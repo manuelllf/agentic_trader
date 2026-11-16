@@ -1,0 +1,82 @@
+/* Sala Omega del panel: lo que el kit no trae. Todo acotado a .lg .pnl .po-* (cada hoja queda cargada toda la sesión). */
+
+.lg .pnl .po-atras { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; margin: 4px 0 0 -8px; padding: 0 8px 0 0; color: var(--accent); font-size: 17px; line-height: 22px; }
+.lg .pnl .po-atras svg { flex: none; width: 24px; height: 24px; }
+.lg .pnl .po-atras:active { opacity: .45; }
+.lg .pnl .po-titulo { margin: 4px 0 0; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); overflow-wrap: anywhere; }
+.lg .pnl .po-meta { margin: 4px 0 0; font-size: 15px; line-height: 20px; color: var(--muted); }
+
+.lg .pnl .po-bien { color: var(--good); }
+.lg .pnl .po-mal { color: var(--bad); }
+.lg .pnl .pnl-celda .valor .po-bien { color: var(--good); }
+.lg .pnl .pnl-celda .valor .po-mal { color: var(--bad); }
+
+/* Cifra grande de una señal o de una hoja. */
+.lg .pnl .po-cifra { margin-top: 20px; text-align: center; }
+.lg .pnl .po-cifra small { display: block; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pnl .po-cifra b { display: block; margin-top: 2px; font-size: 40px; line-height: 46px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lg .pnl .po-cifra p { margin: 2px 0 0; font-size: 15px; line-height: 20px; color: var(--muted); }
+
+/* Estado: resultado de un proceso, guardado o error. */
+.lg .pnl .po-estado { margin: 12px 16px 0; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pnl .po-estado.error { color: var(--bad); }
+.lg .pnl .po-aviso { margin: 16px 0 0; padding: 12px 16px; border-radius: 10px; background: var(--accent-bg); color: var(--accent); font-size: 15px; line-height: 20px; font-weight: 600; }
+
+/* Botones de la pantalla y de las hojas. */
+.lg .pnl .po-botones { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+.lg .pnl .po-boton { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 50px; margin-top: 24px; padding: 0 16px; border-radius: 14px;
+  background: var(--accent); color: #fff; font-size: 17px; line-height: 22px; font-weight: 600; text-align: center; transition: transform .15s; }
+.lg .pnl .po-botones .po-boton { margin-top: 0; }
+.lg .pnl .po-boton.tinte { background: var(--accent-bg); color: var(--accent); }
+.lg .pnl .po-boton.peligro { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.lg .pnl .po-boton:active:not(:disabled) { transform: scale(.98); }
+.lg .pnl .po-boton:disabled { opacity: .4; cursor: default; }
+
+/* Campos de las hojas: etiqueta encima, caja visible, sin estilo del navegador. */
+.lg .pnl .po-etq { display: block; margin: 20px 16px 6px; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pnl .po-caja { border-radius: 10px; background: var(--surface); }
+.lg .pnl .hoja-liga .po-caja { background: var(--surface2); }
+.lg .pnl .po-caja:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lg .pnl .po-campo { display: block; width: 100%; box-sizing: border-box; min-height: 50px; padding: 13px 16px; border: 0; background: none; color: var(--ink);
+  font-size: 17px; line-height: 24px; outline: none; resize: none; font-family: inherit; font-variant-numeric: tabular-nums; }
+.lg .pnl .po-campo.mayus { text-transform: uppercase; }
+.lg .pnl .po-campo::placeholder { color: var(--muted); opacity: 1; }
+.lg .pnl textarea.po-campo { min-height: 96px; }
+.lg .pnl .po-campo:disabled { opacity: .5; }
+
+/* Filas de selección (casilla y opción). */
+.lg .pnl .po-check { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 10px 16px;
+  color: var(--ink); font-size: 17px; line-height: 22px; text-align: left; }
+.lg .pnl .po-check .t b { display: block; font-weight: 400; overflow-wrap: anywhere; }
+.lg .pnl .po-check .t small { display: block; margin-top: 1px; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pnl .po-check .marca { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line2); color: transparent; }
+.lg .pnl .po-check[aria-checked="true"] .marca { border-color: var(--accent); background: var(--accent); color: var(--bg); }
+.lg .pnl .po-check:active:not(:disabled) { background: var(--surface2); }
+.lg .pnl .po-check:disabled { opacity: .45; cursor: default; }
+.lg .pnl .hoja-liga .po-check:active:not(:disabled) { background: var(--line); }
+
+/* Fila de proceso con barra debajo. */
+.lg .pnl .po-fila-prog { grid-column: 1 / -1; }
+.lg .pnl button.pnl-celda:disabled .po-fila-prog { opacity: 1; }
+
+.lg .pnl .po-texto { padding: 12px 16px; font-size: 17px; line-height: 24px; color: var(--ink2); overflow-wrap: anywhere; }
+
+/* Tabla de señales del universo: se desliza de lado, sin barra visible. */
+.lg .pnl .po-desliza { overflow-x: auto; scrollbar-width: none; border-radius: 10px; background: var(--surface2); }
+.lg .pnl .po-desliza::-webkit-scrollbar { display: none; }
+.lg .pnl .po-tabla { width: 100%; min-width: 720px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.lg .pnl .po-tabla th { padding: 8px 12px 6px; font-size: 13px; line-height: 18px; font-weight: 400; color: var(--muted); text-align: right; white-space: nowrap; }
+.lg .pnl .po-tabla th button { min-height: 32px; color: inherit; }
+.lg .pnl .po-tabla th button[aria-pressed="true"] { color: var(--ink); font-weight: 600; }
+.lg .pnl .po-tabla th:first-child, .lg .pnl .po-tabla td:first-child, .lg .pnl .po-tabla th:nth-child(2), .lg .pnl .po-tabla td:nth-child(2) { text-align: left; }
+.lg .pnl .po-tabla td { padding: 10px 12px; border-top: 1px solid var(--line2); font-size: 15px; line-height: 20px; color: var(--ink); text-align: right; white-space: nowrap; }
+.lg .pnl .po-tabla td small { display: block; font-size: 13px; line-height: 16px; color: var(--muted); }
+
+/* Hoja: relleno común del contenido. */
+.lg .pnl .po-hoja { padding: 4px 16px 24px; }
+.lg .pnl .po-hoja > .pnl-cab-grupo:first-child { margin-top: 12px; }
+.lg .pnl .po-sep { margin-top: 20px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lg .pnl .po-boton { transition: none; }
+}

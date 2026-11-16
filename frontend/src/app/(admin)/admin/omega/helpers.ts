@@ -2,6 +2,7 @@
 // distancias contra ATH/pico local. Compartidos entre page.tsx y los componentes.
 import type { Regimen, Senal } from './types';
 import { localeTag } from "@/i18n/locale";
+import { porcentajeConSigno } from "../_marco/formato";
 
 export const TIPO_LABEL: Record<string, string> = {
   zigzag: "omega_pattern_zigzag", suelo: "omega_pattern_floor", ambos: "omega_pattern_both",
@@ -12,10 +13,10 @@ export function fmtFecha(iso: string, locale: "es" | "en" = "es"): string {
   return d.toLocaleDateString(localeTag(locale), { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
+/** Rentabilidad con el formato común del panel: «+12,4 %», «−3,1 %» y el cero sin signo. */
 export function fmtRet(v: number | string | null, locale: "es" | "en" = "es"): string {
   if (v == null) return "-";
-  const n = Number(v);
-  return `${n >= 0 ? "+" : ""}${n.toLocaleString(localeTag(locale), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+  return porcentajeConSigno(v, localeTag(locale), 1);
 }
 
 // `gate_regimen` viaja como boolean o 0/1 según el driver de BD -- normaliza a un booleano real.

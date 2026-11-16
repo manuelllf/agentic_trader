@@ -1,273 +1,167 @@
 "use client";
-import { useLocale, useTranslations } from "next-intl";
-// Tabla del Universo + el modal de historico completo por ticker (agregados, señales, el
-// toggle de apagar el ticker).
-import { useEffect, useMemo, useState } from 'react';
-import { money } from '@/lib/format';
-import { useOrden } from '@/lib/useOrden';
-import { setMantenerUniverso } from '../api';
-import { caidaVsAth, costeBase, fmtFecha, fmtRet, TIPO_LABEL } from '../helpers';
-import { MONO, NUMS, T } from '../tokens';
-import type { Senal, Validacion } from '../types';
-import { Toggle } from './ui';
 
-type UniversoSortKey = "ticker" | "sector" | "n" | "media" | "pct_positivas";
-type SenalSortKey = "entry_date" | "tipo" | "entry_price" | "caida_pct" | "caidaAth" | "ret" | "dias" | "caida_max_pct" | "dias_hasta_min";
-const UNIVERSO_COLS: { key: UniversoSortKey; label: string }[] = [
-  { key: "ticker", label: "Ticker" }, { key: "sector", label: "Sector" },
-  { key: "n", label: "n" }, { key: "media", label: "Media" }, { key: "pct_positivas", label: "% pos" },
-];
+// Universo: la lista de empresas vigiladas y la hoja de cada una con su histórico y el interruptor de mantenerla.
+import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
+import { dolares } from "../../_marco/formato";
+import { sortRows, useOrden, type OrdenDir } from "@/lib/useOrden";
+import { setMantenerUniverso } from "../api";
+import { caidaVsAth, costeBase, fmtFecha, fmtRet, TIPO_LABEL } from "../helpers";
+import type { Senal, Validacion } from "../types";
+import { Celda, CeldaInterruptor, ChipFiltro, Chips, Datos, Esqueleto, Grupo, Hoja } from "../../_panel/ui";
+import { Atras, Estado, tonoRet, useIdioma } from "./ui";
 
-/** Universo: fusiona lo que antes eran "Validación histórica" + "Universo vigilado" (mismos
- *  34 tickers repetidos en dos acordeones) en una sola tabla. Cada fila abre un modal (16-sep-2026,
- *  pedido explícito -- antes el histórico señal-por-señal solo se podía consultar por SQL) con
- *  la lista completa de señales de ese ticker + el toggle "mantener". */
-export function UniversoTabla({ validacion, onAbrir }: {
-  validacion: Validacion[]; onAbrir: (v: Validacion) => void;
-}) {
+type ClaveUniverso = "ticker" | "sector" | "n" | "media" | "pct_positivas";
+const CLAVES: ClaveUniverso[] = ["ticker", "sector", "n", "media", "pct_positivas"];
+const CLAVE_TEXTO: Record<ClaveUniverso, string> = {
+  ticker: "pnl_omega_ord_ticker", sector: "omega_ui_sector", n: "pnl_omega_ord_n", media: "omega_ui_media", pct_positivas: "pnl_omega_ord_pos",
+};
+
+export function PantallaUniverso({ validacion, cargando, resumen, alVolver, alAbrir }:
+  { validacion: Validacion[]; cargando: boolean; resumen: string; alVolver: () => void; alAbrir: (v: Validacion) => void }) {
   const t = useTranslations();
-  const { sorted, sortKey, sortDir, toggle, ariaSort } =
-    useOrden<Validacion, UniversoSortKey>(validacion, (row, key) => row[key]);
+  const locale = useIdioma();
+  const [orden, setOrden] = useState<{ clave: ClaveUniverso; dir: OrdenDir }>({ clave: "ticker", dir: "asc" });
+  const filas = useMemo(() => sortRows(validacion, (v, k: ClaveUniverso) => v[k], orden.clave, orden.dir), [validacion, orden]);
+  const elegir = (clave: ClaveUniverso) =>
+    setOrden((o) => (o.clave === clave ? { clave, dir: o.dir === "desc" ? "asc" : "desc" } : { clave, dir: clave === "ticker" || clave === "sector" ? "asc" : "desc" }));
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[11.5px]">
-        <thead>
-          <tr style={{ color: T.muted }}>
-            {UNIVERSO_COLS.map((c, i) => (
-              <th key={c.key} className={`whitespace-nowrap px-2.5 pb-2 text-[9px] font-bold uppercase tracking-wide ${i >= 2 ? "text-right" : "text-left"}`}
-                  aria-sort={ariaSort(c.key)}>
-                <button onClick={() => toggle(c.key)} aria-label={t("omega_sort_by", { label: c.label })}
-                        className="inline-flex items-center gap-0.5 hover:opacity-80"
-                        style={{ color: sortKey === c.key ? T.ink : T.muted }}>
-                  {c.label}
-                  {sortKey === c.key && <span className="text-[8px]">{sortDir === "desc" ? "↓" : "↑"}</span>}
-                </button>
-              </th>
+    <div className="pnl-llega">
+      <Atras texto={t("pnl_omega_sala")} onClick={alVolver} />
+      <h2 className="po-titulo">{t("omega_attr_universo")}</h2>
+      <p className="po-meta">{resumen}</p>
+      <Chips etiqueta={t("pnl_omega_ordenar")}>
+        {CLAVES.map((c) => (
+          <ChipFiltro key={c} activo={orden.clave === c} onClick={() => elegir(c)}>
+            {t(CLAVE_TEXTO[c])}{orden.clave === c ? (orden.dir === "desc" ? " ↓" : " ↑") : ""}
+          </ChipFiltro>
+        ))}
+      </Chips>
+      {cargando ? <div style={{ marginTop: 16 }}><Esqueleto filas={5} etiqueta={t("pnl_omega_cargando")} /></div> : (
+        <div className="po-sep">
+          <Grupo>
+            {filas.map((v) => (
+              <Celda key={v.ticker} titulo={v.mantener === false ? `${v.ticker} · ${t("omega_ui_apagado")}` : v.ticker} onClick={() => alAbrir(v)}
+                subtitulo={[v.sector, t("pnl_omega_senales_n", { count: v.n }), v.pct_positivas != null ? t("pnl_omega_positivas", { value: v.pct_positivas }) : ""].filter(Boolean).join(" · ")}
+                valor={v.media == null ? "-" : <span className={tonoRet(v.media)}>{fmtRet(v.media, locale)}</span>} />
             ))}
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((v, i) => <UniversoRow key={v.ticker} v={v} first={i === 0} onAbrir={onAbrir} />)}
-        </tbody>
-      </table>
+          </Grupo>
+        </div>
+      )}
+      <p className="pnl-pie-grupo">{t("omega_ui_cada_ticker_con_su_resultado_real_acumulado_apagar_uno_lo_saca_de_alertas_y_recuentos_pero_se_sigue_escaneando")}</p>
     </div>
   );
 }
 
-export function UniversoRow({ v, first, onAbrir }: {
-  v: Validacion; first: boolean; onAbrir: (v: Validacion) => void;
-}) {
-  const t = useTranslations();
-  const locale = useLocale() === "en" ? "en" : "es";
-  const apagado = v.mantener === false;
-  const celda = "px-2.5 py-2";
-  const borde = !first ? { borderTop: `1px solid ${T.grid}` } : undefined;
+type ClaveSenal = "entry_date" | "tipo" | "entry_price" | "caida_pct" | "caidaAth" | "ret" | "dias" | "caida_max_pct" | "dias_hasta_min";
 
-  return (
-    <>
-      <tr onClick={() => onAbrir(v)} className="cursor-pointer" style={{ ...borde, opacity: apagado ? 0.5 : 1 }}>
-        <td className={`${celda} ${MONO} font-semibold`} style={{ color: apagado ? T.warn : T.ink }}>
-          {v.ticker}{apagado && <span className="ml-1.5 text-[9px] font-normal">{t("omega_ui_apagado")}</span>}
-        </td>
-        <td className={celda} style={{ color: T.muted }}>{v.sector}</td>
-        <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{v.n}</td>
-        <td className={`${celda} ${NUMS} text-right`} style={{ color: v.media == null ? T.muted : v.media >= 0 ? T.good : T.bad }}>
-          {v.media != null ? fmtRet(v.media, locale) : "-"}
-        </td>
-        <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{v.pct_positivas ?? "-"}{v.pct_positivas != null && "%"}</td>
-        <td className={`${celda} text-right`} style={{ color: T.muted }}>›</td>
-      </tr>
-    </>
-  );
-}
-
-/** Modal del histórico de un ticker del Universo (16-sep-2026): antes esto solo se podía mirar
- *  a mano por SQL -- Manuel lo pidió explícitamente para no depender de pedírmelo cada vez.
- *  Tamaño FIJO (mismo alto/ancho tenga el ticker 1 señal o 12) con scroll interno propio de la
- *  tabla, no de la página -- así el modal nunca "salta" de tamaño entre tickers. */
-export function UniversoTickerModal({ v, alertas, historial, preciosVivos, onCambio, onClose }: {
-  v: Validacion; alertas: Senal[]; historial: Senal[]; preciosVivos: Record<string, number | null>;
-  onCambio: (ticker: string, patch: Partial<Validacion>) => void; onClose: () => void;
-}) {
+export function HojaUniverso({ v, alertas, historial, preciosVivos, alCambiar, alCerrar }:
+  { v: Validacion; alertas: Senal[]; historial: Senal[]; preciosVivos: Record<string, number | null>;
+    alCambiar: (ticker: string, patch: Partial<Validacion>) => void; alCerrar: () => void }) {
   const t = useTranslations();
-  const locale = useLocale() === "en" ? "en" : "es";
-  const [busy, setBusy] = useState(false);
-  const [errToggle, setErrToggle] = useState("");
+  const locale = useIdioma();
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState("");
   const apagado = v.mantener === false;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const toggleMantener = async () => {
-    setBusy(true);
-    setErrToggle("");
+  const alternar = async () => {
+    setOcupado(true); setError("");
     try {
-      const nuevo = apagado;
-      await setMantenerUniverso(v.ticker, nuevo);
-      onCambio(v.ticker, { mantener: nuevo });
+      await setMantenerUniverso(v.ticker, apagado);
+      alCambiar(v.ticker, { mantener: apagado });
     } catch (e) {
-      setErrToggle(e instanceof Error ? e.message : t("omega_change_failed"));
+      setError(e instanceof Error ? e.message : t("omega_change_failed"));
     } finally {
-      setBusy(false);
+      setOcupado(false);
     }
   };
 
-  // Alertas (sin resolver) + Historial (resueltas, o descartadas/vendidas en seguimiento) de
-  // ESTE ticker -- los dos endpoints son conjuntos disjuntos por construcción (ver routes.py),
-  // así que concatenar no duplica nada.
-  const señales = useMemo(() => {
-    const propias = [...alertas, ...historial].filter((s) => s.ticker === v.ticker);
-    return propias.sort((a, b) => b.entry_date.localeCompare(a.entry_date));
-  }, [alertas, historial, v.ticker]);
-
+  // Alertas y historial son conjuntos disjuntos por construcción: juntarlos no duplica señales.
+  const señales = useMemo(() => [...alertas, ...historial].filter((s) => s.ticker === v.ticker)
+    .sort((a, b) => b.entry_date.localeCompare(a.entry_date)), [alertas, historial, v.ticker]);
   const resueltas = señales.filter((s) => s.resuelta && s.dias != null);
-  const diasMedios = resueltas.length
-    ? resueltas.reduce((acc, s) => acc + Number(s.dias), 0) / resueltas.length
-    : null;
+  const diasMedios = resueltas.length ? resueltas.reduce((acc, s) => acc + Number(s.dias), 0) / resueltas.length : null;
 
-  // Filas con "resultado" ya resuelto (depende del precio en vivo, igual que en la fila): se
-  // ordena por ese mismo valor, no por el `ret` crudo guardado.
-  const señalesConRet = señales.map((s) => {
+  // El resultado de una señal en curso depende del precio en vivo: se ordena por ese valor, no por el guardado.
+  const filas = useMemo(() => señales.map((s) => {
     const cerradaAMano = s.estado === "vendida" && s.cierre_manual != null;
     const enCurso = !s.resuelta && !cerradaAMano;
-    const ret = cerradaAMano ? Number(s.cierre_manual!.ret)
-      : enCurso && preciosVivos[s.ticker] != null ? (preciosVivos[s.ticker]! / costeBase(s) - 1) * 100
-      : Number(s.ret);
-    return { ...s, ret, caidaAth: caidaVsAth(s) };
-  });
-  const { sorted: señalesOrdenadas, sortKey: senalSortKey, sortDir: senalSortDir, toggle: toggleSenal, ariaSort: senalAriaSort } =
-    useOrden<typeof señalesConRet[number], SenalSortKey>(señalesConRet, (row, key) => {
-      if (key === "entry_price" || key === "caida_pct" || key === "caida_max_pct") return Number(row[key]);
-      return row[key] as string | number | null;
-    });
-
-  const cols: { key: SenalSortKey; label: string }[] = [
-    { key: "entry_date", label: "Entrada" }, { key: "tipo", label: "Tipo" },
-    { key: "entry_price", label: "Precio" }, { key: "caida_pct", label: t("omega_reference_drop") },
-    { key: "caidaAth", label: t("omega_ath_drop") }, { key: "ret", label: t("omega_result") },
-    { key: "dias", label: t("omega_trade_days") }, { key: "caida_max_pct", label: t("omega_max_drop") },
-    { key: "dias_hasta_min", label: t("omega_days_to_bottom") },
+    const vivo = preciosVivos[s.ticker];
+    const ret = cerradaAMano ? Number(s.cierre_manual!.ret) : enCurso && vivo != null ? (vivo / costeBase(s) - 1) * 100 : Number(s.ret);
+    return { s, ret, caidaAth: caidaVsAth(s), cerradaAMano, enCurso };
+  }), [señales, preciosVivos]);
+  type Fila = (typeof filas)[number];
+  const acceso = (f: Fila, k: ClaveSenal): string | number | null => {
+    if (k === "ret") return f.ret;
+    if (k === "caidaAth") return f.caidaAth;
+    if (k === "entry_price" || k === "caida_pct" || k === "caida_max_pct") return f.s[k] == null ? null : Number(f.s[k]);
+    return f.s[k] as string | number | null;
+  };
+  const { sorted, sortKey, sortDir, toggle, ariaSort } = useOrden<Fila, ClaveSenal>(filas, acceso);
+  const cols: { clave: ClaveSenal; etiqueta: string }[] = [
+    { clave: "entry_date", etiqueta: t("pnl_omega_col_entrada") }, { clave: "tipo", etiqueta: t("pnl_omega_col_tipo") },
+    { clave: "entry_price", etiqueta: t("pnl_omega_col_precio") }, { clave: "caida_pct", etiqueta: t("omega_reference_drop") },
+    { clave: "caidaAth", etiqueta: t("omega_ath_drop") }, { clave: "ret", etiqueta: t("omega_result") },
+    { clave: "dias", etiqueta: t("omega_trade_days") }, { clave: "caida_max_pct", etiqueta: t("omega_max_drop") },
+    { clave: "dias_hasta_min", etiqueta: t("omega_days_to_bottom") },
   ];
+  const media = (n: number | null) => (n == null ? "-" : <span className={tonoRet(n)}>{fmtRet(n, locale)}</span>);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={t("omega_history_of", { ticker: v.ticker })}
-           className="flex w-full max-w-lg flex-col rounded-2xl border shadow-xl"
-           style={{ borderColor: T.ring, background: T.panel, height: "min(620px, 90vh)" }}
-           onClick={(e) => e.stopPropagation()}>
-        <div className="flex shrink-0 items-center justify-between border-b px-4 py-3" style={{ borderColor: T.grid }}>
-          <div className="flex items-baseline gap-1.5">
-            <span className={`text-[16px] font-bold ${MONO}`} style={{ color: T.ink }}>{v.ticker}</span>
-            <span className="text-[10.5px]" style={{ color: T.muted }}>{v.sector}</span>
-          </div>
-          <button onClick={onClose} aria-label={t("omega_attr_cerrar")} className="hover:opacity-70" style={{ color: T.muted }}>✕</button>
-        </div>
-
-        {/* Cuerpo con scroll interno propio -- el modal nunca crece ni encoge con el contenido. */}
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto px-4 py-3">
-          {señales.length === 0 ? (
-            <p className="py-6 text-center text-[12px]" style={{ color: T.muted }}>{t("omega_ui_sin_senales_todavia")}</p>
-          ) : (
-            <table className="w-full text-[10.5px]" style={{ minWidth: 720 }}>
+    <Hoja abierta titulo={v.ticker} accion={t("pnl_omega_listo")} onCerrar={alCerrar}>
+      <div className="po-hoja">
+        <p className="po-meta" style={{ textAlign: "center" }}>{v.sector}</p>
+        <Datos items={[
+          { etiqueta: "n", valor: v.n }, { etiqueta: t("omega_ui_media"), valor: media(v.media) },
+          { etiqueta: t("omega_ui_mediana"), valor: media(v.mediana) }, { etiqueta: t("omega_ui_dias_medios"), valor: diasMedios != null ? diasMedios.toFixed(0) : "-" },
+        ]} />
+        <h2 className="pnl-cab-grupo">{t("pnl_omega_senales")}</h2>
+        {sorted.length === 0 ? <Grupo><Celda titulo={t("omega_ui_sin_senales_todavia")} /></Grupo> : (
+          <div className="po-desliza">
+            <table className="po-tabla" aria-label={t("omega_history_of", { ticker: v.ticker })}>
               <thead>
-                <tr style={{ color: T.muted }}>
-                  {cols.map((c, i) => (
-                    <th key={c.key} className={`sticky top-0 whitespace-nowrap px-1.5 pb-1.5 text-[8.5px] font-bold uppercase tracking-wide ${i >= 2 ? "text-right" : "text-left"}`}
-                        style={{ background: T.panel }} aria-sort={senalAriaSort(c.key)}>
-                      <button onClick={() => toggleSenal(c.key)} aria-label={t("omega_sort_by", { label: c.label })}
-                              className="inline-flex items-center gap-0.5 hover:opacity-80"
-                              style={{ color: senalSortKey === c.key ? T.ink : T.muted }}>
-                        {c.label}
-                        {senalSortKey === c.key && <span className="text-[8px]">{senalSortDir === "desc" ? "↓" : "↑"}</span>}
+                <tr>
+                  {cols.map((c) => (
+                    <th key={c.clave} aria-sort={ariaSort(c.clave)}>
+                      <button type="button" aria-pressed={sortKey === c.clave} aria-label={t("omega_sort_by", { label: c.etiqueta })} onClick={() => toggle(c.clave)}>
+                        {c.etiqueta}{sortKey === c.clave ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
                       </button>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {señalesOrdenadas.map((s, i) => (
-                  <UniversoSenalRow key={s.id} s={s} first={i === 0} precioVivo={preciosVivos[s.ticker] ?? null} />
-                ))}
+                {sorted.map(({ s, ret, caidaAth, cerradaAMano, enCurso }) => {
+                  const solo = cerradaAMano && s.cierre_manual!.ret_sistema != null ? Number(s.cierre_manual!.ret_sistema) : null;
+                  const motivo = cerradaAMano ? (solo != null ? t("omega_manual_return", { value: fmtRet(solo, locale) }) : t("omega_manually_closed"))
+                    : enCurso ? (s.estado === "descartada" ? t("omega_discarded_live") : t("omega_in_progress"))
+                    : s.motivo === "objetivo" ? t("omega_target") : s.motivo === "tiempo" ? t("omega_days_90") : "-";
+                  return (
+                    <tr key={s.id}>
+                      <td>{fmtFecha(s.entry_date, locale)}</td>
+                      <td>{t(TIPO_LABEL[s.tipo] ?? "omega_pattern_zigzag")}</td>
+                      <td>{dolares(s.entry_price, locale)}</td>
+                      <td className="po-mal">{fmtRet(-Number(s.caida_pct), locale)}</td>
+                      <td className="po-mal">{caidaAth != null ? fmtRet(-caidaAth, locale) : "-"}</td>
+                      <td className={Number.isNaN(ret) ? undefined : tonoRet(ret)}>{Number.isNaN(ret) ? "-" : fmtRet(ret, locale)}<small>{motivo}</small></td>
+                      <td>{s.dias ?? "-"}</td>
+                      <td className="po-mal">{s.caida_max_pct != null ? fmtRet(Number(s.caida_max_pct), locale) : "-"}</td>
+                      <td>{s.dias_hasta_min ?? "-"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-          )}
-        </div>
-
-        {/* Agregados + apagar ticker -- siempre visibles, fuera del área con scroll. */}
-        <div className="shrink-0 border-t px-4 py-3" style={{ borderColor: T.grid }}>
-          <div className="grid grid-cols-4 gap-2">
-            <div>
-              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>n</div>
-              <b className={`${NUMS} text-[15px]`} style={{ color: T.ink }}>{v.n}</b>
-            </div>
-            <div>
-              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_media")}</div>
-              <b className={`${NUMS} text-[15px]`} style={{ color: v.media == null ? T.muted : v.media >= 0 ? T.good : T.bad }}>
-                {v.media != null ? fmtRet(v.media, locale) : "-"}
-              </b>
-            </div>
-            <div>
-              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_mediana")}</div>
-              <b className={`${NUMS} text-[15px]`} style={{ color: v.mediana == null ? T.muted : v.mediana >= 0 ? T.good : T.bad }}>
-                {v.mediana != null ? fmtRet(v.mediana, locale) : "-"}
-              </b>
-            </div>
-            <div>
-              <div className="text-[8.5px] uppercase tracking-wide" style={{ color: T.muted }}>{t("omega_ui_dias_medios")}</div>
-              <b className={`${NUMS} text-[15px]`} style={{ color: T.ink }}>{diasMedios != null ? diasMedios.toFixed(0) : "-"}</b>
-            </div>
           </div>
-          <div className="mt-3 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: T.base }}>
-            <span className="text-[12px] font-semibold" style={{ color: T.ink2 }}>{t("omega_ui_mantener_en_universo")}{apagado && <span className="ml-1.5 font-normal" style={{ color: T.warn }}>{t("omega_ui_apagado_sigue_en_seguimiento")}</span>}
-            </span>
-            <Toggle checked={!apagado} onChange={toggleMantener} disabled={busy} />
-          </div>
-          {errToggle && <p className="mt-1.5 text-[11px]" style={{ color: T.bad }}>{errToggle}</p>}
+        )}
+        <div className="po-sep">
+          <Grupo>
+            <CeldaInterruptor titulo={t("omega_ui_mantener_en_universo")} activo={!apagado} onCambio={alternar} deshabilitado={ocupado}
+              subtitulo={apagado ? t("pnl_omega_apagado_sigue") : undefined} />
+          </Grupo>
         </div>
+        {error && <Estado error>{error}</Estado>}
       </div>
-    </div>
-  );
-}
-
-export function UniversoSenalRow({ s, first, precioVivo }: { s: Senal; first: boolean; precioVivo: number | null }) {
-  const t = useTranslations();
-  const locale = useLocale() === "en" ? "en" : "es";
-  const celda = "px-1.5 py-1.5";
-  const borde = !first ? { borderTop: `1px solid ${T.grid}` } : undefined;
-
-  const cerradaAMano = s.estado === "vendida" && s.cierre_manual != null;
-  const enCurso = !s.resuelta && !cerradaAMano;
-  const ret = cerradaAMano ? Number(s.cierre_manual!.ret)
-    : enCurso && precioVivo != null ? (precioVivo / costeBase(s) - 1) * 100
-    : Number(s.ret);
-  const solo = cerradaAMano && s.cierre_manual!.ret_sistema != null
-    ? Number(s.cierre_manual!.ret_sistema) : null;
-  const motivoTxt = cerradaAMano ? (solo != null ? t("omega_manual_return", { value: fmtRet(solo, locale) }) : t("omega_manually_closed"))
-    : enCurso ? (s.estado === "descartada" ? t("omega_discarded_live") : t("omega_in_progress"))
-    : s.motivo === "objetivo" ? t("omega_target") : s.motivo === "tiempo" ? t("omega_days_90") : "-";
-
-  return (
-    <tr style={borde}>
-      <td className={`${celda} ${NUMS}`} style={{ color: T.ink2 }}>{fmtFecha(s.entry_date, locale)}</td>
-      <td className={celda} style={{ color: T.muted }}>{t(TIPO_LABEL[s.tipo] ?? "omega_pattern_zigzag")}</td>
-      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink }}>${money(s.entry_price, 2, locale)}</td>
-      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.bad }}>-{Number(s.caida_pct).toFixed(1)}%</td>
-      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.bad }}>
-        {caidaVsAth(s) != null ? `-${caidaVsAth(s)!.toFixed(1)}%` : "-"}
-      </td>
-      <td className={`${celda} ${NUMS} text-right`} style={{ color: enCurso ? T.warn : ret >= 0 ? T.good : T.bad }}>
-        {ret != null && !Number.isNaN(ret) ? fmtRet(ret, locale) : "-"}
-        <div className="text-[8.5px] font-normal" style={{ color: T.muted }}>{motivoTxt}</div>
-      </td>
-      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{s.dias ?? "-"}</td>
-      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.bad }}>
-        {s.caida_max_pct != null ? fmtRet(Number(s.caida_max_pct), locale) : "-"}
-      </td>
-      <td className={`${celda} ${NUMS} text-right`} style={{ color: T.ink2 }}>{s.dias_hasta_min ?? "-"}</td>
-    </tr>
+    </Hoja>
   );
 }

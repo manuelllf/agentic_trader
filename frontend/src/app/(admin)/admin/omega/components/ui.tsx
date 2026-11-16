@@ -1,159 +1,137 @@
-// Piezas de presentacion pura reutilizadas por varias tarjetas/modales de Omega: nada de
-// estado de negocio ni llamadas a la API aqui, solo layout.
 "use client";
-import { useEffect, useState } from 'react';
-import { useLocale, useTranslations } from 'next-intl';
-import { NUMS, T } from '../tokens';
-import type { Regimen } from '../types';
 
-/** Botón de acción, mismo patrón que los de las alertas ("Aumentar"): borde, sin relleno, 12 px
- *  en seminegrita. En el móvil solo texto (4 en una fila no caben con icono); icono desde sm. */
-export function ActionChip({ onClick, label, busy, stroke, children }: {
-  onClick: () => void; label: string; busy?: boolean; stroke?: boolean;
-  children: React.ReactNode;
-}) {
+// Piezas propias de la sala Omega que el kit del panel no trae: botones, campos de hoja, filas de selección y cifra.
+import { useId, type ReactNode } from "react";
+import { useLocale } from "next-intl";
+import { Progreso } from "../../_panel/ui";
+import "../omega.css";
+
+export function useIdioma(): "es" | "en" {
+  return useLocale() === "en" ? "en" : "es";
+}
+
+/** Color solo en cifras de ganar y perder; lo que se lee como cero, con los decimales que se
+ *  enseñan, queda neutro. */
+export const tonoRet = (n: number, decimales = 1): "po-bien" | "po-mal" | "" => {
+  const r = Number(Number(n).toFixed(decimales));
+  return r > 0 ? "po-bien" : r < 0 ? "po-mal" : "";
+};
+
+const ICO_ATRAS = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M15 5l-7 7 7 7" />
+  </svg>
+);
+const ICO_CHEV = (
+  <svg className="chev" viewBox="0 0 8 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m1 1 6 6-6 6" />
+  </svg>
+);
+const ICO_MARCA = (
+  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3.5 8.5l3 3 6-7" />
+  </svg>
+);
+
+/** Vuelta a la pantalla anterior dentro de la sala (el marco solo sabe volver a Vennett). */
+export function Atras({ texto, onClick }: { texto: string; onClick: () => void }) {
+  return <button type="button" className="po-atras" onClick={onClick}>{ICO_ATRAS}<span>{texto}</span></button>;
+}
+
+export type TonoBoton = "primario" | "tinte" | "peligro";
+
+export function Boton({ children, tono = "primario", onClick, deshabilitado = false, ocupado = false }:
+  { children: ReactNode; tono?: TonoBoton; onClick: () => void; deshabilitado?: boolean; ocupado?: boolean }) {
   return (
-    <button onClick={onClick} disabled={busy}
-            className="flex min-h-[40px] w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-1 text-[11px] font-semibold min-[360px]:text-[12px] transition active:opacity-60 disabled:opacity-50 sm:px-3"
-            style={{ borderColor: T.grid, background: "transparent", color: T.ink2 }}>
-      <svg viewBox="0 0 24 24" style={{ color: T.muted }}
-           className={`hidden h-3.5 w-3.5 shrink-0 sm:block ${busy ? (stroke ? "animate-spin" : "animate-pulse") : ""}`}
-           fill={stroke ? "none" : "currentColor"}
-           stroke={stroke ? "currentColor" : undefined}
-           strokeWidth={stroke ? 2.2 : undefined} strokeLinecap={stroke ? "round" : undefined} strokeLinejoin={stroke ? "round" : undefined}>
-        {children}
-      </svg>
-      {label}
+    <button type="button" className={`po-boton ${tono}`} disabled={deshabilitado || ocupado} aria-busy={ocupado || undefined} onClick={onClick}>
+      {children}
     </button>
   );
 }
 
-export function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
-  return (
-    <div className="mb-6">
-      <p className="mb-3 flex items-baseline gap-2 text-[16px] font-bold tracking-tight" style={{ color: T.ink }}>
-        {title}
-        {count != null && <span className="text-[12.5px] font-normal" style={{ color: T.muted }}>{count}</span>}
-      </p>
-      {children}
-    </div>
-  );
+export function Botones({ children }: { children: ReactNode }) {
+  return <div className="po-botones">{children}</div>;
 }
 
-/** Sección colapsada por defecto (Validación histórica / Candidatos / Universo en el mockup
- *  usan `<details>` sin `open`) — aquí con un botón para poder controlar el chevron a mano. */
-export function Collapsible({ title, count, children }: { title: string; count?: number | string; children: React.ReactNode }) {
-  const t = useTranslations();
-  const locale = useLocale() === "en" ? "en" : "es";
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="mb-6 border" style={{ borderColor: T.grid }}>
-      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={t(open ? "omega_collapse" : "omega_expand")}
-              className="flex w-full items-center justify-between px-4 py-3.5 text-left">
-        <span className="text-[16px] font-bold" style={{ color: T.ink }}>
-          {title}{" "}
-          {count != null && <span className="text-[13px] font-normal" style={{ color: T.muted }}>{count}</span>}
-        </span>
-        <span className="text-[13px] transition-transform" style={{ color: T.muted, transform: open ? "rotate(180deg)" : undefined }}>▾</span>
-      </button>
-      {open && <div className="border-t" style={{ borderColor: T.grid }}>{children}</div>}
-    </div>
-  );
+interface CampoProps {
+  etiqueta: string;
+  valor: string;
+  onCambio: (valor: string) => void;
+  decimal?: boolean;
+  multilinea?: boolean;
+  placeholder?: string;
+  mayusculas?: boolean;
+  deshabilitado?: boolean;
+  onEnter?: () => void;
 }
 
-/** Termómetro de régimen (10-sep-2026): cesta equiponderada del universo a 60 sesiones. Solo
- *  informativo -- nunca bloquea entradas, ver docs/momentum-sim/RESULTADOS.md para el porqué
- *  (un único episodio histórico real, sin base para automatizarlo todavía). */
-export function RegimenChip({ regimen }: { regimen: Regimen }) {
-  const t = useTranslations();
-  const locale = useLocale() === "en" ? "en" : "es";
-  if (regimen.cesta_60d == null) return null;
-  const feo = regimen.activo;
-  return (
-    <div className="mb-2.5 border-l-2 py-0.5 pl-3 text-[11px]"
-         style={{ borderColor: feo ? T.bad : T.grid }}>
-      <div className="flex items-center gap-2">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: feo ? T.bad : T.muted }} />
-        <span style={{ color: T.ink2 }}>
-          {t("omega_universe_health")} (60d):{" "}
-          <b className={NUMS} style={{ color: feo ? T.bad : T.ink }}>{regimen.cesta_60d.toFixed(1)}%</b>
-        </span>
-      </div>
-      {/* Leyenda SIEMPRE visible, no solo al pasar el ratón -- en móvil el title del tooltip
-          nunca se ve. */}
-      <p className="mt-1 pl-3.5 text-[9.5px] leading-snug" style={{ color: T.muted }}>
-        {t("omega_universe_health_help")}{" "}
-        {feo
-          ? t("omega_regime_below_help")
-          : t("omega_regime_reference_help")}
-      </p>
-    </div>
-  );
-}
-
-export function Empty({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="border-t py-5 text-center text-[12px]"
-         style={{ borderColor: T.grid, color: T.muted }}>
-      {children}
-    </div>
-  );
-}
-
-export function CargarMasBtn({ onClick, restantes }: { onClick: () => void; restantes: number }) {
-  const t = useTranslations();
-  const locale = useLocale() === "en" ? "en" : "es";
-  return (
-    <div className="mt-2 text-center">
-      <button onClick={onClick}
-              className="rounded-full border px-4 py-1.5 text-[11.5px] font-semibold transition-colors hover:bg-white/5"
-              style={{ borderColor: T.ring, color: T.ink2 }}>
-        {t("omega_load_more", { count: restantes })}
-      </button>
-    </div>
-  );
-}
-
-export function FormField({ label, value, onChange, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
-}) {
+/** Campo con la etiqueta encima y la caja visible; sin spinners ni estilo del navegador. */
+export function Campo({ etiqueta, valor, onCambio, decimal, multilinea, placeholder, mayusculas, deshabilitado, onEnter }: CampoProps) {
+  const id = useId();
   return (
     <div>
-      <label className="mb-1 block text-[9px] uppercase tracking-wide" style={{ color: T.muted }}>{label}</label>
-      <input type="number" value={value} placeholder={placeholder}
-             onChange={(e) => onChange(e.target.value)}
-             className="w-full rounded-lg px-2 py-1.5 text-[13px] font-bold outline-none"
-             style={{ background: T.base, border: `1px solid ${T.ring}`, color: T.ink }} />
+      <label className="po-etq" htmlFor={id}>{etiqueta}</label>
+      <div className="po-caja">
+        {multilinea ? (
+          <textarea id={id} className="po-campo" rows={3} value={valor} placeholder={placeholder} disabled={deshabilitado}
+            onChange={(e) => onCambio(e.target.value)} />
+        ) : (
+          <input id={id} className={`po-campo${mayusculas ? " mayus" : ""}`} type="text" value={valor} placeholder={placeholder} disabled={deshabilitado}
+            inputMode={decimal ? "decimal" : "text"} autoComplete="off" autoCorrect="off" autoCapitalize={mayusculas ? "characters" : "off"} spellCheck={false}
+            enterKeyHint={onEnter ? "search" : undefined}
+            onChange={(e) => onCambio(e.target.value)} onKeyDown={onEnter ? (e) => { if (e.key === "Enter") onEnter(); } : undefined} />
+        )}
+      </div>
     </div>
   );
 }
 
-export function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
+/** Fila de selección con círculo marcado (casilla o botón de opción) dentro de un `Grupo`. */
+export function FilaCheck({ rol, marcado, titulo, subtitulo, onClick, deshabilitada = false }:
+  { rol: "checkbox" | "radio"; marcado: boolean; titulo: ReactNode; subtitulo?: ReactNode; onClick: () => void; deshabilitada?: boolean }) {
   return (
-    <button onClick={onChange} disabled={disabled} aria-pressed={checked}
-            className="relative h-[21px] w-9 shrink-0 rounded-full transition-colors disabled:opacity-50"
-            style={{ background: checked ? T.entry : T.grid }}>
-      <span className="absolute left-[2px] top-[2px] h-[17px] w-[17px] rounded-full bg-white transition-transform"
-            style={{ transform: checked ? "translateX(15px)" : "translateX(0)" }} />
-    </button>
+    <li>
+      <button type="button" className="po-check" role={rol} aria-checked={marcado} disabled={deshabilitada} onClick={onClick}>
+        <span className="marca">{ICO_MARCA}</span>
+        <span className="t"><b>{titulo}</b>{subtitulo && <small>{subtitulo}</small>}</span>
+      </button>
+    </li>
   );
 }
 
-/** Mensaje de resultado bajo la cabecera (escaneo/detección manual): se borra solo a los 6s,
- *  o al momento con la X -- antes se quedaba pegado hasta el siguiente clic en ese botón. */
-export function AvisoTemporal({ texto, onCerrar }: { texto: string; onCerrar: () => void }) {
-  const t = useTranslations();
-  const locale = useLocale() === "en" ? "en" : "es";
-  useEffect(() => {
-    const t = setTimeout(onCerrar, 6000);
-    return () => clearTimeout(t);
-  }, [texto, onCerrar]);
-
+/** Fila de lista con barra de progreso debajo: procesos que tardan (buscar señales, evaluar el gate). */
+export function FilaProceso({ titulo, subtitulo, valor, onClick, deshabilitada = false, progreso, etiquetaProgreso, cuenta }:
+  { titulo: ReactNode; subtitulo?: ReactNode; valor?: ReactNode; onClick: () => void; deshabilitada?: boolean;
+    progreso?: number | null; etiquetaProgreso?: string; cuenta?: number }) {
+  const hayValor = Boolean(cuenta) || Boolean(valor);
   return (
-    <div className="mb-3 flex items-center justify-between gap-2 text-[11px]"
-         style={{ color: T.muted }}>
-      <span>{texto}</span>
-      <button onClick={onCerrar} aria-label={t("omega_close_notice")} className="shrink-0 hover:opacity-70">✕</button>
+    <li>
+      <button type="button" className={`pnl-celda alta${hayValor ? " con-valor" : ""}`} disabled={deshabilitada} onClick={onClick}>
+        <span className="t"><b>{titulo}</b>{subtitulo && <small>{subtitulo}</small>}</span>
+        {hayValor && <span className="valor">{cuenta ? <span className="pnl-cuenta">{cuenta}</span> : valor}</span>}
+        {ICO_CHEV}
+        {progreso != null && <span className="po-fila-prog"><Progreso valor={progreso} etiqueta={etiquetaProgreso ?? ""} /></span>}
+      </button>
+    </li>
+  );
+}
+
+/** Fila de texto corrido dentro de un `Grupo` (veredictos, detalles largos). */
+export function FilaTexto({ children }: { children: ReactNode }) {
+  return <li><div className="po-texto">{children}</div></li>;
+}
+
+export function Cifra({ etiqueta, valor, tono, pie }: { etiqueta: string; valor: string; tono?: string; pie?: ReactNode }) {
+  return (
+    <div className="po-cifra">
+      <small>{etiqueta}</small>
+      <b className={tono}>{valor}</b>
+      {pie && <p>{pie}</p>}
     </div>
   );
+}
+
+/** Mensaje de estado que aparece y se va: guardado, error o resultado de un proceso. */
+export function Estado({ children, error = false }: { children: ReactNode; error?: boolean }) {
+  return <p className={`po-estado${error ? " error" : ""}`} role={error ? "alert" : "status"}>{children}</p>;
 }
