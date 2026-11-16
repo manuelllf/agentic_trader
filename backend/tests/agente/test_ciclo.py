@@ -1,0 +1,338 @@
+"""Ciclo del agente con proveedor falso y herramientas falsas: sin red ni llamadas de pago."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import replace
+from datetime import date, datetime
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+import pytest
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.agente import ciclo, herramientas, libro, tareas
+from app.agente.config import ajustes
+from app.agente.datos import Barra
+from app.agente.interruptor import EstadoInterruptor, Interruptor
+from app.agente.models import Ejecucion, Leccion, PlaybookVersion, Seguimiento
+from app.agente.reloj import Tarea
+from app.config import settings
+
+HOY = date(2026, 11, 17)
+SIGUIENTE = date(2026, 11, 18)
+NY = ZoneInfo("America/New_York")
+FILOSOFIA = json.dumps({"philosophy": "# Filosofía v1\nElijo poco y con calma."})
+OPERAR = {"decision": {
+    "tipo": "operar", "razonamiento": "porque sí",
+    "operaciones": [{"ticker": "AAA", "lado": "compra", "importe": "1000", "tesis": "t",
+                     "supuestos": "s", "salidas": "si baja", "ruptura": "si miente",
+                     "prevision_12m": "sube", "proximo_evento": None}]}}
+NADA = {"decision": {"tipo": "nada", "razonamiento": "sin novedades"}}
+APRUEBA = {"verdict": "approve", "reason": "coherente"}
+
+
+class Falso:
+    """Proveedor con respuestas escritas en orden y coste acumulado creciente."""
+
+    def __init__(self, respuestas: list, coste: float = 0.01) -> None:
+        self.respuestas = [r if isinstance(r, str) else json.dumps(r) for r in respuestas]
+        self.coste = coste
+        self.llamadas: list[tuple[str, str]] = []
+        self._acumulado = 0.0
+
+    @property
+    def usage(self) -> dict:
+        return {"cost_usd": self._acumulado}
+
+    def chat(self, system: str, user: str, **_: object) -> str:
+        self.llamadas.append((system, user))
+        self._acumulado += self.coste
+        return self.respuestas.pop(0)
+
+
+@pytest.fixture(autouse=True)
+def _entorno(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "commission_per_share", 0.005)
+    monkeypatch.setattr(settings, "commission_min", 1)
+    monkeypatch.setattr(settings, "commission_max_pct", 1)
+    resultados = {"portfolio": {"caja": "5000", "posiciones": []}, "price": {"AAA": 100}}
+
+    def ejecutar(s, nombre, args, ctx):  # noqa: ANN001, ARG001
+        return resultados.get(nombre, {"error": "desconocida"})
+    monkeypatch.setattr(herramientas, "describir", lambda: "- price(ticker): last price")
+    monkeypatch.setattr(herramientas, "ejecutar", ejecutar)
+
+
+def _preparar(s: Session, precio: str = "100") -> herramientas.Contexto:
+    libro.abrir_libro(s, HOY)
+    libro.guardar_precios(s, "AAA", [(HOY, None, None, None, Decimal(precio), 1)])
+    ej = tareas.reclamar(s, Tarea.DESPERTAR, HOY)
+    assert ej is not None
+    return herramientas.Contexto(hoy=HOY, ejecucion_id=ej.id)
+
+
+def _una(s: Session, sql: str):
+    s.flush()
+    return s.execute(text(sql)).one()
+
+
+def _eventos(s: Session) -> list[str]:
+    s.flush()
+    return [r.tipo for r in s.execute(text("select tipo from agente.eventos order by id"))]
+
+
+def _despertar(s, ctx, agente, revisor, **kw):  # noqa: ANN001, ANN003, ANN202
+    return ciclo.despertar(s, HOY, llm=agente, revisor_llm=revisor, ctx=ctx, **kw)
+
+
+def test_nacer_guarda_la_filosofia_v1(sesion_agente: Session) -> None:
+    s = sesion_agente
+    assert ciclo.filosofia_vigente(s) is None
+    texto = ciclo.nacer(s, Falso([FILOSOFIA]))
+    assert texto.startswith("# Filosofía v1")
+    fila = _una(s, "select version, estado, motivo, contenido from agente.playbook_versiones")
+    assert (fila.version, fila.estado, fila.motivo) == (1, "vigente", "nacimiento")
+    assert ciclo.filosofia_vigente(s) == texto
+
+
+def test_nacer_recibe_los_limites_reales_y_las_herramientas(sesion_agente: Session) -> None:
+    falso = Falso([FILOSOFIA])
+    ciclo.nacer(sesion_agente, falso)
+    usuario = falso.llamadas[0][1]
+    assert "At most 5 positions" in usuario
+    assert "above 30% of the portfolio (15% in defensive mode)" in usuario
+    assert "- price(ticker): last price" in usuario
+
+
+def test_renacer_retira_la_vigente_y_crea_la_siguiente(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ciclo.nacer(s, Falso([FILOSOFIA]))
+    nueva = json.dumps({"philosophy": "# Filosofía nueva"})
+    assert ciclo.nacer(s, Falso([nueva]), motivo="renacimiento") == "# Filosofía nueva"
+    s.flush()
+    filas = s.execute(text("select version, estado, motivo from agente.playbook_versiones "
+                           "order by version")).all()
+    assert [tuple(f) for f in filas] == [(1, "retirada", "nacimiento"),
+                                         (2, "vigente", "renacimiento")]
+    assert ciclo.filosofia_vigente(s) == "# Filosofía nueva"
+
+
+def test_renacer_con_respuesta_invalida_no_toca_la_vigente(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ciclo.nacer(s, Falso([FILOSOFIA]))
+    with pytest.raises(ciclo.Fallo):
+        ciclo.nacer(s, Falso(["no es json"]), motivo="renacimiento")
+    assert ciclo.filosofia_vigente(s).startswith("# Filosofía v1")
+
+
+def test_herramienta_y_luego_nada_se_aprueba_sin_revisor(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    s.add(Seguimiento(ticker="AAA", motivo="vigilo"))
+    agente = Falso([FILOSOFIA, {"tool": "price", "args": {"ticker": "AAA"}}, NADA])
+    revisor = Falso([])
+    d = _despertar(s, ctx, agente, revisor)
+    assert d is not None and d.tipo == "nada" and d.id is not None
+    assert revisor.llamadas == []
+    fila = _una(s, "select tipo, sombra, revisor_veredicto, propuesta from agente.decisiones")
+    assert (fila.tipo, fila.sombra, fila.revisor_veredicto) == ("nada", True, "aprobada")
+    assert fila.propuesta["herramientas"] == [{"nombre": "price", "args": {"ticker": "AAA"}}]
+    # El segundo turno ya lleva el resultado de la herramienta.
+    assert '"AAA": 100' in agente.llamadas[2][1]
+    assert "decision" in _eventos(s)
+
+
+def test_operar_aprobado_en_sombra_no_crea_ordenes(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    d = _despertar(s, ctx, Falso([FILOSOFIA, OPERAR]), Falso([APRUEBA]), sombra=True)
+    assert d is not None
+    fila = _una(s, "select revisor_veredicto, sombra from agente.decisiones")
+    assert (fila.revisor_veredicto, fila.sombra) == ("aprobada", True)
+    assert _una(s, "select count(*) as n from agente.ordenes").n == 0
+
+
+def test_operar_aprobado_sin_sombra_crea_la_orden_del_siguiente_dia(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    d = _despertar(s, ctx, Falso([FILOSOFIA, OPERAR]), Falso([APRUEBA]), sombra=False)
+    assert d is not None
+    o = _una(s, "select ticker, lado, importe_objetivo, fecha_objetivo, decision_id, estado "
+                "from agente.ordenes")
+    assert (o.ticker, o.lado, o.importe_objetivo, o.fecha_objetivo, o.decision_id, o.estado) == (
+        "AAA", "compra", Decimal("1000"), SIGUIENTE, d.id, "pendiente")
+
+
+def test_violacion_de_limites_rechaza_sin_llamar_al_revisor(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    grande = json.loads(json.dumps(OPERAR))
+    grande["decision"]["operaciones"][0]["importe"] = "4000"  # pasa del 30 % de peso
+    revisor = Falso([])
+    d = _despertar(s, ctx, Falso([FILOSOFIA, grande]), revisor, sombra=False)
+    assert d is not None
+    assert revisor.llamadas == []
+    fila = _una(s, "select revisor_veredicto, propuesta from agente.decisiones")
+    assert fila.revisor_veredicto == "rechazada"
+    assert "peso_maximo" in {v["codigo"] for v in fila.propuesta["violaciones"]}
+    assert _una(s, "select count(*) as n from agente.ordenes").n == 0
+
+
+def test_revisor_pide_corregir_y_la_segunda_version_se_aprueba(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    chica = json.loads(json.dumps(OPERAR))
+    chica["decision"]["operaciones"][0]["importe"] = "500"
+    agente = Falso([FILOSOFIA, OPERAR, chica])
+    revisor = Falso([{"verdict": "revise", "reason": "menos tamaño"}, APRUEBA])
+    d = _despertar(s, ctx, agente, revisor, sombra=False)
+    assert d is not None and d.operaciones[0].importe == Decimal("500")
+    assert "menos tamaño" in agente.llamadas[2][1]
+    fila = _una(s, "select revisor_veredicto from agente.decisiones")
+    assert fila.revisor_veredicto == "aprobada"
+    assert _una(s, "select importe_objetivo from agente.ordenes").importe_objetivo == Decimal("500")
+
+
+def test_json_invalido_dos_veces_es_ciclo_fallido(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    agente = Falso([FILOSOFIA, "esto no es json", "{tampoco"])
+    assert _despertar(s, ctx, agente, Falso([])) is None
+    assert "ciclo_fallido" in _eventos(s)
+    assert _una(s, "select count(*) as n from agente.decisiones").n == 0
+    assert "invalid" in agente.llamadas[2][1]
+
+
+def test_presupuesto_agotado_no_llama_al_modelo(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    agente = Falso([])
+    assert _despertar(s, ctx, agente, Falso([]), gastado_mes=Decimal("9.995")) is None
+    assert agente.llamadas == []
+    assert _eventos(s) == ["presupuesto_agotado", "aviso"]
+
+
+def test_el_gasto_queda_apuntado(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    _despertar(s, ctx, Falso([FILOSOFIA, OPERAR], coste=0.02), Falso([APRUEBA], coste=0.05))
+    filas = s.execute(text(
+        "select tipo, proveedor, modelo, coste_usd from agente.gasto order by id")).all()
+    assert [(f.tipo, f.proveedor, f.modelo, f.coste_usd) for f in filas] == [
+        ("ia", "deepseek", ajustes.modelo, Decimal("0.02")),
+        ("ia", "deepseek", ajustes.modelo, Decimal("0.02")),
+        ("ia", "deepseek", ajustes.modelo_revisor, Decimal("0.05"))]
+
+
+def test_ia_apagada_no_llama_a_get_llm(sesion_agente: Session,
+                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    s = sesion_agente
+    import app.llm
+
+    def prohibido(*a: object, **k: object) -> None:
+        raise AssertionError("get_llm no debía llamarse")
+    monkeypatch.setattr(app.llm, "get_llm", prohibido)
+    monkeypatch.setattr(ajustes, "ia_activa", False)
+    libro.abrir_libro(s, date(2026, 11, 16))
+    # Una posición con nivel cruzado dispara el aviso de ciclo pendiente.
+    from app.agente.models import Decision as Fila
+    from app.agente.models import Ejecutada
+    f = Fila(fecha_ny=date(2026, 11, 16), tipo="operar", propuesta={}, razonamiento="r",
+             modelo="m")
+    s.add(f)
+    s.flush()
+    o = libro.crear_orden(s, f.id, "AAA", "compra", date(2026, 11, 16), acciones=Decimal("10"))
+    s.add(Ejecutada(orden_id=o.id, ejecutada_en=datetime(2026, 11, 16, 9, 35, tzinfo=NY),
+                    acciones=Decimal("10"), precio=Decimal("100"), comision=Decimal("1")))
+    o.estado = "ejecutada"
+    s.add(Seguimiento(ticker="AAA", motivo="m", niveles=[
+        {"precio": "105", "direccion": "arriba", "motivo": "ruptura"}]))
+    ej = tareas.reclamar(s, Tarea.DESPERTAR, HOY)
+    assert isinstance(ej, Ejecucion)
+    barras = {"AAA": [
+        Barra(date(2026, 11, 16), None, None, None, Decimal("100"), 1, Decimal("0"), Decimal("1")),
+        Barra(HOY, None, None, None, Decimal("106"), 1, Decimal("0"), Decimal("1"))]}
+    tareas.hacer_despertar(s, ej, HOY, lambda tickers, desde: barras)
+    assert _eventos(s)[-2:] == ["ciclo_pendiente", "ia_apagada"]
+
+
+def _candidata(s: Session) -> PlaybookVersion:
+    ciclo.nacer(s, Falso([FILOSOFIA]))
+    cand = PlaybookVersion(version=2, contenido="# Candidata\nEspero más.", motivo="m",
+                           estado="candidata")
+    s.add(cand)
+    s.flush()
+    return cand
+
+
+def test_la_candidata_decide_con_su_filosofia_y_nunca_crea_ordenes(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = replace(_preparar(s), solo_lectura=True)
+    cand = _candidata(s)
+    agente = Falso([OPERAR])
+    d = _despertar(s, ctx, agente, Falso([APRUEBA]), sombra=False, candidata=cand)
+    assert d is not None
+    assert "# Candidata" in agente.llamadas[0][1]
+    fila = _una(s, "select playbook_version_id, sombra from agente.decisiones")
+    assert (fila.playbook_version_id, fila.sombra) == (cand.id, True)
+    assert _una(s, "select count(*) as n from agente.ordenes").n == 0
+
+
+def test_la_candidata_exige_solo_lectura(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    with pytest.raises(ValueError):
+        _despertar(s, ctx, Falso([]), Falso([]), candidata=_candidata(s))
+
+
+def test_el_ciclo_recibe_lecciones_y_decisiones_recientes(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    ciclo.nacer(s, Falso([FILOSOFIA]))
+    _despertar(s, ctx, Falso([NADA]), Falso([]))
+    s.add(Leccion(texto="No compro antes de resultados.", decision_ids=[1], estado="aprobada"))
+    agente = Falso([NADA])
+    _despertar(s, ctx, agente, Falso([]))
+    usuario = agente.llamadas[0][1]
+    assert "No compro antes de resultados." in usuario
+    assert "sin novedades" in usuario.split("## Your recent decisions")[1]
+
+
+class Caido:
+    """Proveedor que nunca responde; cuenta cuántas veces se le llamó."""
+
+    usage = {"cost_usd": 0.0}
+
+    def __init__(self) -> None:
+        self.llamadas = 0
+
+    def chat(self, system: str, user: str, **_: object) -> str:
+        self.llamadas += 1
+        raise TimeoutError("sin respuesta")
+
+
+def _avisos(s: Session) -> list[str]:
+    s.flush()
+    return list(s.execute(text(
+        "select datos->>'tipo' from agente.eventos where tipo = 'aviso' order by id")).scalars())
+
+
+def test_tres_fallos_abren_el_interruptor_y_dejan_de_llamar(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    corte = Interruptor(fallos=3, pausa_s=60, reloj=lambda: 0.0)
+    caido = Caido()
+    for _ in range(3):
+        assert _despertar(s, ctx, caido, caido, corte=corte) is None
+    assert corte.estado is EstadoInterruptor.ABIERTO
+    # Abierto: el cuarto ciclo no llega al proveedor ni gasta.
+    assert _despertar(s, ctx, caido, caido, corte=corte) is None
+    assert caido.llamadas == 3
+    tipos = [t for t in _eventos(s) if t != "aviso"]
+    assert tipos == ["ciclo_fallido", "ciclo_fallido", "proveedor_pausado", "ciclo_fallido",
+                     "proveedor_en_pausa"]
+    assert _avisos(s) == ["agente_ciclo_fallido", "agente_ciclo_fallido",
+                          "agente_proveedor_pausado", "agente_ciclo_fallido"]
+    assert _una(s, "select count(*) as n from agente.gasto").n == 0
