@@ -26,7 +26,7 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
     from sqlalchemy.orm import sessionmaker
 
     import app.db as app_db
-    from app.liga import auth
+    from app import supabase_auth
     from app.liga import db as liga_db
     from app.liga.rutas import router as router_liga
     from app.liga.rutas_admin import router as router_admin
@@ -38,8 +38,8 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
         def get_signing_key_from_jwt(self, _token):  # noqa: ANN001, ANN202
             return type("Clave", (), {"key": clave.public_key()})()
 
-    monkeypatch.setattr(auth.settings, "supabase_url", EMISOR)
-    monkeypatch.setattr(auth, "_cliente_jwks", lambda: _JWKS())
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", EMISOR)
+    monkeypatch.setattr(supabase_auth, "_cliente_jwks", lambda: _JWKS())
 
     motor = create_engine(URL.replace("postgresql://", "postgresql+psycopg://", 1))
     fabrica_sesion = sessionmaker(bind=motor)

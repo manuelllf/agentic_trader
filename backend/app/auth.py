@@ -1,7 +1,7 @@
 """Candado de las salas: la sesión de Supabase de un admin con 2FA.
 
 - `require_auth` protege todo lo de las salas: exige `Authorization: Bearer <JWT>` verificado
-  (`app/liga/auth.py`), rol admin en la BD y `aal2`. A quien no es admin, 404; sin 2FA, 403.
+  (`app/supabase_auth.py`), rol admin en la BD y `aal2`. A quien no es admin, 404; sin 2FA, 403.
 - Sin `SUPABASE_URL` (dev local) la auth se desactiva; en Railway sin ella no se arranca.
 
 La seguridad real está en el backend. El candado del frontend es solo UX.
@@ -14,7 +14,8 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.db import set_actor
-from app.liga.auth import Identidad, comprobar_admin, verificar
+from app.liga.auth import comprobar_admin
+from app.supabase_auth import Identidad, verificar
 
 
 def auth_enabled() -> bool:

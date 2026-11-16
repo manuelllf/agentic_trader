@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app import supabase_auth
 from app.liga import auth
 from app.liga import rutas_publicas as rp
 from app.liga.auth import Identidad
@@ -95,7 +96,7 @@ def test_token_malo_responde_401(cliente, monkeypatch, ruta):
     def clave_invalida(_token):
         raise jwt.InvalidTokenError("token malo")
 
-    monkeypatch.setattr(auth, "_emisor", lambda: "https://ejemplo.invalid/auth/v1")
-    monkeypatch.setattr(auth, "_cliente_jwks", lambda: SimpleNamespace(
+    monkeypatch.setattr(supabase_auth, "_emisor", lambda: "https://ejemplo.invalid/auth/v1")
+    monkeypatch.setattr(supabase_auth, "_cliente_jwks", lambda: SimpleNamespace(
         get_signing_key_from_jwt=clave_invalida))
     assert client.get(ruta, headers={"Authorization": "Bearer malo"}).status_code == 401

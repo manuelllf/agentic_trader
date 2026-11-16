@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import HTTPException
 
 from app import auth as auth_salas
+from app import supabase_auth
 from app.liga import auth
 
 EMISOR = "https://proyecto.supabase.co"
@@ -30,8 +31,8 @@ class _JWKS:
 
 @pytest.fixture(autouse=True)
 def _proyecto(monkeypatch) -> None:  # noqa: ANN001
-    monkeypatch.setattr(auth.settings, "supabase_url", EMISOR)
-    monkeypatch.setattr(auth, "_cliente_jwks", lambda: _JWKS())
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", EMISOR)
+    monkeypatch.setattr(supabase_auth, "_cliente_jwks", lambda: _JWKS())
 
 
 def _token(clave=CLAVE, alg: str = "ES256", **cambios) -> str:  # noqa: ANN001
@@ -71,7 +72,7 @@ def test_la_firma_tiene_que_ser_la_del_proyecto() -> None:
 
 
 def test_sin_proyecto_configurado_no_hay_cuentas(monkeypatch) -> None:  # noqa: ANN001
-    monkeypatch.setattr(auth.settings, "supabase_url", "")
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", "")
     assert _codigo(_token()) == 503
 
 

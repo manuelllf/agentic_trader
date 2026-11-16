@@ -36,8 +36,9 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
     from sqlalchemy.orm import sessionmaker
 
     import app.db as app_db
-    from app.liga import auth, ligas
+    from app import supabase_auth
     from app.liga import db as liga_db
+    from app.liga import ligas
     from app.liga.rutas import router
 
     clave = ec.generate_private_key(ec.SECP256R1())
@@ -46,8 +47,8 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
         def get_signing_key_from_jwt(self, _token):  # noqa: ANN001, ANN202
             return type("Clave", (), {"key": clave.public_key()})()
 
-    monkeypatch.setattr(auth.settings, "supabase_url", EMISOR)
-    monkeypatch.setattr(auth, "_cliente_jwks", lambda: _JWKS())
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", EMISOR)
+    monkeypatch.setattr(supabase_auth, "_cliente_jwks", lambda: _JWKS())
     # El límite de intentos con código es un singleton en memoria: aislado entre pruebas.
     monkeypatch.setattr(ligas, "LIMITE_UNIRSE", type(ligas.LIMITE_UNIRSE)(
         por_ip=10, global_=200, ventana_s=60 * 60))

@@ -31,7 +31,7 @@ def api(monkeypatch):
     from sqlalchemy.orm import sessionmaker
 
     import app.db as app_db
-    from app.liga import auth
+    from app import supabase_auth
     from app.liga import db as liga_db
 
     clave = ec.generate_private_key(ec.SECP256R1())
@@ -40,8 +40,8 @@ def api(monkeypatch):
         def get_signing_key_from_jwt(self, _token):
             return type("Clave", (), {"key": clave.public_key()})()
 
-    monkeypatch.setattr(auth.settings, "supabase_url", EMISOR)
-    monkeypatch.setattr(auth, "_cliente_jwks", lambda: _JWKS())
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", EMISOR)
+    monkeypatch.setattr(supabase_auth, "_cliente_jwks", lambda: _JWKS())
     motor = create_engine(URL.replace("postgresql://", "postgresql+psycopg://", 1))
     fabrica = sessionmaker(bind=motor)
     monkeypatch.setattr(liga_db, "SessionLocal", fabrica)

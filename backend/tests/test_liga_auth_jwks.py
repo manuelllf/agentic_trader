@@ -12,7 +12,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import HTTPException
 
-from app.liga import auth
+from app import supabase_auth as auth
 
 EMISOR = "https://proyecto.supabase.co"
 CLAVE = ec.generate_private_key(ec.SECP256R1())

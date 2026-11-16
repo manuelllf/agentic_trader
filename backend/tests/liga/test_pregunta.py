@@ -59,8 +59,8 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
 
     import app.db as app_db
     import app.llm.jev as jev_mod
+    from app import supabase_auth
     from app.config import settings
-    from app.liga import auth
     from app.liga import db as liga_db
     from app.liga.rutas import router
 
@@ -70,8 +70,8 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
         def get_signing_key_from_jwt(self, _token):  # noqa: ANN001, ANN202
             return type("Clave", (), {"key": clave.public_key()})()
 
-    monkeypatch.setattr(auth.settings, "supabase_url", "https://proyecto.supabase.co")
-    monkeypatch.setattr(auth, "_cliente_jwks", lambda: _JWKS())
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", "https://proyecto.supabase.co")
+    monkeypatch.setattr(supabase_auth, "_cliente_jwks", lambda: _JWKS())
     monkeypatch.setattr(settings, "enable_llm", True)
     monkeypatch.setattr(settings, "typesafe_api_key", "clave-de-prueba")
 

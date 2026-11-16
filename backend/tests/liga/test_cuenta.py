@@ -36,7 +36,8 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
     from sqlalchemy.orm import sessionmaker
 
     import app.db as app_db
-    from app.liga import auth, cuenta
+    from app import supabase_auth
+    from app.liga import cuenta
     from app.liga import db as liga_db
     from app.liga.rutas import router
 
@@ -46,9 +47,9 @@ def api(monkeypatch):  # noqa: ANN001, ANN201
         def get_signing_key_from_jwt(self, _token):  # noqa: ANN001, ANN202
             return type("Clave", (), {"key": clave.public_key()})()
 
-    monkeypatch.setattr(auth.settings, "supabase_url", EMISOR)
-    monkeypatch.setattr(auth.settings, "supabase_secret_key", "sb_secret_prueba")
-    monkeypatch.setattr(auth, "_cliente_jwks", lambda: _JWKS())
+    monkeypatch.setattr(supabase_auth.settings, "supabase_url", EMISOR)
+    monkeypatch.setattr(supabase_auth.settings, "supabase_secret_key", "sb_secret_prueba")
+    monkeypatch.setattr(supabase_auth, "_cliente_jwks", lambda: _JWKS())
 
     llamadas_supabase: list[str] = []
 
@@ -321,9 +322,9 @@ def test_admin_no_puede_darse_de_baja_a_si_mismo(api) -> None:  # noqa: ANN001
 
 
 def test_baja_sin_clave_secreta_responde_503(api, monkeypatch) -> None:  # noqa: ANN001
-    from app.liga import auth
+    from app.config import settings
 
-    monkeypatch.setattr(auth.settings, "supabase_secret_key", "")
+    monkeypatch.setattr(settings, "supabase_secret_key", "")
     cliente, cab, usuario, existe, _borrar, llamadas, *_ = api
     uid = usuario("baja_sin_clave")
     r = _baja(cliente, cab, uid)
