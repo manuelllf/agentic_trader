@@ -3,11 +3,15 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { NextIntlClientProvider } from "next-intl";
-import mensajes from "../../../../../../messages/es/blogAdmin.json";
+import blog from "../../../../../../messages/es/blogAdmin.json";
+import panel from "../../../../../../messages/es/panelContenido.json";
+import admin from "../../../../../../messages/es/admin.json";
+import common from "../../../../../../messages/es/common.json";
 import { crearArticulo, guardarArticulo, leerArticulo, type Detalle } from "@/lib/blog/admin";
 import Editor from "./Editor";
-vi.mock("@/lib/blog/admin", () => ({ crearArticulo: vi.fn(), guardarArticulo: vi.fn(), leerArticulo: vi.fn() }));
+vi.mock("@/lib/blog/admin", () => ({ crearArticulo: vi.fn(), guardarArticulo: vi.fn(), leerArticulo: vi.fn(), despublicarArticulo: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
+const mensajes = { ...blog, ...panel, ...admin, ...common };
 const articulo: Detalle = { id: 7, slug: "mi-articulo", estado: "borrador", programado_para: null,
   publicado_en: null, creado: "2026-01-01", creado_por: null, actualizado_en: null, actualizado_por: null,
   textos: { es: { titulo: "Hola", resumen: "", cuerpo: "" }, en: { titulo: "Hello", resumen: "Summary", cuerpo: "Body" } } };
@@ -34,9 +38,9 @@ async function pulsar(texto: string) {
   await act(async () => boton.click());
 }
 it("marca español como falta si el borrador no tiene cuerpo", async () => {
-  await montar(); expect(div.querySelector('[role="tab"]')?.textContent).toContain("falta");
+  await montar(); expect(div.querySelector(".lv-seg button")?.textContent).toContain("falta");
 });
-it("conserva cambios entre pestañas y guarda el idioma editado", async () => {
+it("conserva cambios entre idiomas y guarda el idioma editado", async () => {
   await montar(); await escribir("#ba-titulo", "Título editado");
   expect(div.textContent).toContain("Hay cambios sin guardar");
   await pulsar("English");
@@ -50,8 +54,8 @@ it("limita el resumen a 160 caracteres y actualiza el contador", async () => {
   expect(campo.maxLength).toBe(160); expect(campo.value).toHaveLength(160);
   expect(div.textContent).toContain("160 / 160");
 });
-it("rechaza mayúsculas en el slug sin crear ni guardar", async () => {
+it("rechaza mayúsculas en la dirección sin crear ni guardar", async () => {
   await montar(true); await escribir("#ba-slug", "Mayusculas"); await pulsar("Guardar");
-  expect(div.querySelector("#ba-slug-error")?.textContent).toBe(mensajes.ba_slug_error);
+  expect(div.querySelector("#ba-slug-error")?.textContent).toBe(blog.ba_slug_error);
   expect(crearArticulo).not.toHaveBeenCalled(); expect(guardarArticulo).not.toHaveBeenCalled();
 });

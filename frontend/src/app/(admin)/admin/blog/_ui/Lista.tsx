@@ -1,8 +1,12 @@
 "use client";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { listarArticulos, resumenBoletin, type Articulo, type Estado } from "@/lib/blog/admin";
+import { Celda, ChipFiltro, Chips, Esqueleto, Grupo, Vacio } from "../../_panel/ui";
+import BotonPrueba from "./BotonPrueba";
+import { fechaHoraMadrid, totalSuscriptores } from "./logica";
+
+const FILTROS = ["todos", "borrador", "programado", "publicado"] as const;
 
 export default function Lista() {
   const t = useTranslations();
@@ -14,38 +18,31 @@ export default function Lista() {
   useEffect(() => {
     let vivo = true;
     listarArticulos().then(a => { if (vivo) setArticulos(a); }).catch(e => { if (vivo) setFallo(e.message); });
-    resumenBoletin().then(b => { if (vivo) setTotal(b.suscriptores.filter(s => s.estado === "confirmado").reduce((n, s) => n + s.total, 0)); })
+    resumenBoletin().then(b => { if (vivo) setTotal(totalSuscriptores(b, "confirmado")); })
       .catch(e => { if (vivo) setFallo(e.message); });
     return () => { vivo = false; };
   }, []);
-  const fecha = (value: string) => new Intl.DateTimeFormat(locale, {
-    timeZone: "Europe/Madrid", dateStyle: "short", timeStyle: "short",
-  }).format(new Date(value));
-  const nuevo = <Link className="ba-button ba-primary" href="/admin/blog/nuevo">{t("ba_new")}</Link>;
-  return <main className="blog-admin">
-    <h1 className="adm-h1-repetido">{t("ba_blog")}</h1><p>{t("ba_intro")}</p>
-    {nuevo}
-    <div className="ba-filters" role="group" aria-label={t("ba_filter")}>
-      {(["todos", "borrador", "programado", "publicado"] as const).map(f => <button key={f} type="button"
-        aria-pressed={filtro === f} onClick={() => setFiltro(f)}>
-        {t(`ba_filter_${f}`)} <span>{articulos?.filter(a => f === "todos" || a.estado === f).length ?? 0}</span>
-      </button>)}
-    </div>
-    {fallo && <p role="alert">{fallo}</p>}
-    {!articulos && !fallo && <p role="status">{t("ba_loading")}</p>}
-    {articulos && <ul className="ba-list">{articulos.filter(a => filtro === "todos" || a.estado === filtro).map(a => {
-      const cuando = a.estado === "programado" ? a.programado_para : a.estado === "publicado" ? a.publicado_en : null;
-      return <li key={a.id}><Link href={`/admin/blog/${a.id}`}>
-        <strong>{a.titulo_es || a.slug}</strong>
-        <p><span className={`ba-state ba-${a.estado}`}>{t(`ba_${a.estado}`)}</span>{cuando && <> ? <time dateTime={cuando}>{fecha(cuando)}</time></>}</p>
-        <div className="ba-languages">{(["es", "en"] as const).map(l => <span key={l}>
-          {l.toUpperCase()} <span className={a[`completo_${l}`] ? "" : "ba-missing"}>{t(a[`completo_${l}`] ? "ba_ready" : "ba_missing")}</span>
-        </span>)}</div>
-      </Link></li>;
-    })}</ul>}
-    {articulos?.length === 0 && <section><p>{t("ba_empty")}</p></section>}
-    {articulos && articulos.length > 0 && !articulos.some(a => filtro === "todos" || a.estado === filtro) && <p>{t("ba_empty_filter")}</p>}
-    <Link className="ba-newsletter" href="/admin/blog/boletin"><strong>{t("ba_newsletter")}</strong>
-      {total !== null && <p>{t("ba_confirmed", { count: total })}</p>}</Link>
-  </main>;
+  const visibles = articulos?.filter(a => filtro === "todos" || a.estado === filtro) ?? [];
+  return <div className="pnl-llega">
+    <Grupo><Celda titulo={t("ba_new")} href="/admin/blog/nuevo" tono="accion" /></Grupo>
+    {fallo && <p className="pc-aviso" role="alert">{fallo}</p>}
+    {!articulos && !fallo && <Esqueleto filas={3} etiqueta={t("admin_pnl_cargando")} />}
+    {articulos && <>
+      <Chips etiqueta={t("ba_filter")}>{FILTROS.map(f => <ChipFiltro key={f} activo={filtro === f} onClick={() => setFiltro(f)}>
+        {t(`ba_filter_${f}`)} {articulos.filter(a => f === "todos" || a.estado === f).length}
+      </ChipFiltro>)}</Chips>
+      {articulos.length === 0 ? <Vacio titulo={t("ba_empty")} />
+        : visibles.length === 0 ? <Vacio titulo={t("ba_empty_filter")} />
+        : <Grupo cabecera={t("pnl_contenido_articulos")} pie={t("ba_intro")}>{visibles.map(a => {
+          const cuando = a.estado === "programado" ? a.programado_para : a.estado === "publicado" ? a.publicado_en : null;
+          const idiomas = (["es", "en"] as const).map(l => `${l.toUpperCase()} ${t(a[`completo_${l}`] ? "ba_ready" : "ba_missing")}`).join(" · ");
+          return <Celda key={a.id} titulo={a.titulo_es || a.slug} href={`/admin/blog/${a.id}`}
+            subtitulo={[t(`ba_${a.estado}`), cuando ? fechaHoraMadrid(cuando, locale) : null, idiomas].filter(Boolean).join(" · ")} />;
+        })}</Grupo>}
+    </>}
+    <Grupo cabecera={t("pnl_contenido_suscriptores")} pie={t("pnl_contenido_doble")}>
+      <Celda titulo={t("ba_newsletter")} href="/admin/blog/boletin" valor={total === null ? undefined : t("ba_confirmed", { count: total })} />
+    </Grupo>
+    <BotonPrueba />
+  </div>;
 }

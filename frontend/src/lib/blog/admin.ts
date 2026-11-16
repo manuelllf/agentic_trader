@@ -58,3 +58,5 @@ export const resumenBoletin = () => llamar<Boletin>("/boletin");
 export const publicarArticulo = (id: number, avisarBoletin: boolean) => llamar<Detalle>(`/articulos/${id}/publicar`, "POST", { avisar_boletin: avisarBoletin });
 export const programarArticulo = (id: number, programadoPara: string, avisarBoletin: boolean) => llamar<Detalle>(`/articulos/${id}/programar`, "POST", { programado_para: programadoPara, avisar_boletin: avisarBoletin });
 export const enviarPruebaBoletin = () => llamar<{ ok: true }>("/boletin/prueba", "POST");
+
+export const despublicarArticulo = (id: number) => llamar<Detalle>(`/articulos/${id}/despublicar`, "POST");
