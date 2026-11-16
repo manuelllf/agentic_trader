@@ -162,7 +162,7 @@ def nacer(s: Session, llm: Any, motivo: str = "nacimiento") -> str:  # noqa: ANN
     si la hay, queda retirada. Sin JSON válido no se cambia nada."""
     texto = llm.chat(prompts.SYSTEM_FILOSOFIA, prompts.usuario_nacer(herramientas.describir()))
     try:
-        filosofia = str(json.loads(texto)["philosophy"]).strip()
+        filosofia = str(_json_de(texto)["philosophy"]).strip()  # type: ignore[index]
     except (ValueError, KeyError, TypeError) as exc:
         raise Fallo("filosofía inicial no válida") from exc
     if not filosofia:
@@ -203,12 +203,30 @@ def _seguimiento(s: Session) -> list[dict]:
     return [{"ticker": f.ticker, "motivo": f.motivo, "niveles": f.niveles} for f in filas]
 
 
+def _json_de(texto: str) -> object:
+    """El primer objeto JSON de la respuesta, aunque venga envuelto en texto o en un bloque de
+    código. El modelo a veces escribe varias peticiones con texto entre medias: se toma la primera,
+    que es la que se ejecuta en este turno."""
+    t = texto.strip()
+    try:
+        return json.loads(t)
+    except ValueError:
+        pass
+    decoder = json.JSONDecoder()
+    for i, c in enumerate(t):
+        if c != "{":
+            continue
+        try:
+            obj, _ = decoder.raw_decode(t, i)
+        except ValueError:
+            continue
+        return obj
+    raise ValueError("la respuesta no es JSON")
+
+
 def _interpretar(texto: str) -> dict | Decision:
     """Una petición de herramienta ({tool, args}) o una decisión validada; si no, ValueError."""
-    try:
-        obj = json.loads(texto)
-    except ValueError as exc:
-        raise ValueError("la respuesta no es JSON") from exc
+    obj = _json_de(texto)
     if not isinstance(obj, dict):
         raise ValueError("la respuesta debe ser un objeto JSON")
     if "decision" in obj:
@@ -236,17 +254,32 @@ def _usuario(base: str, rastro: list[dict], nota: str | None) -> str:
     return "\n".join(partes)
 
 
+_AVISO_ULTIMO = ("Last turn: no more tools are available. Give your final decision now, in the "
+                 "decision format.")
+
+
 def _bucle(s: Session, g: Presupuesto, llm: Any, ctx: herramientas.Contexto,  # noqa: ANN401
            base: str, rastro: list[dict], nota: str | None = None) -> Decision:
-    """Hasta `max_pasos` turnos; un único aviso de corrección ante JSON o decisión inválidos."""
-    avisos = 0
-    for _ in range(ajustes.max_pasos):
-        texto = g.llamar(llm, ajustes.modelo, prompts.SYSTEM_AGENTE, _usuario(base, rastro, nota))
+    """Hasta `max_pasos` turnos. Respuesta vacía: se repite la misma llamada (hasta dos veces,
+    sin gastar el aviso). JSON inválido: un aviso de corrección."""
+    avisos, vacias = 0, 0
+    for paso in range(ajustes.max_pasos):
+        # En el último turno ya no hay herramientas: el modelo debe decidir con lo que tiene.
+        ultimo = paso == ajustes.max_pasos - 1
+        nota_turno = " ".join(x for x in (nota, _AVISO_ULTIMO if ultimo else None) if x) or None
+        texto = g.llamar(llm, ajustes.modelo, prompts.SYSTEM_AGENTE,
+                         _usuario(base, rastro, nota_turno))
+        if not texto.strip():
+            vacias += 1
+            if vacias > 2:
+                raise Fallo("el modelo devolvió respuestas vacías tres veces seguidas")
+            continue
         try:
             r = _interpretar(texto)
         except ValueError as exc:
             if avisos:
-                raise Fallo(f"respuesta inválida dos veces: {exc}") from exc
+                raise Fallo(f"respuesta inválida dos veces: {exc}; empieza así: {texto[:200]!r}"
+                            ) from exc
             avisos = 1
             nota = (f"Your last reply was invalid ({exc}). Reply with exactly one valid JSON "
                     "object in one of the two formats.")
@@ -256,7 +289,8 @@ def _bucle(s: Session, g: Presupuesto, llm: Any, ctx: herramientas.Contexto,  # 
         resultado = herramientas.ejecutar(s, r["tool"], r["args"], ctx)
         rastro.append({"tool": r["tool"], "args": r["args"], "resultado": resultado})
         nota = None
-    raise Fallo("sin decisión tras agotar los pasos")
+    pedidas = ", ".join(r["tool"] for r in rastro) or "ninguna"
+    raise Fallo(f"sin decisión tras agotar los pasos; herramientas pedidas: {pedidas}")
 
 
 def _ultimo_cierre(s: Session, ticker: str, hoy: date) -> Decimal | None:

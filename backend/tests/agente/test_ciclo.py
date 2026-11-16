@@ -336,3 +336,45 @@ def test_tres_fallos_abren_el_interruptor_y_dejan_de_llamar(sesion_agente: Sessi
     assert _avisos(s) == ["agente_ciclo_fallido", "agente_ciclo_fallido",
                           "agente_proveedor_pausado", "agente_ciclo_fallido"]
     assert _una(s, "select count(*) as n from agente.gasto").n == 0
+
+
+def test_interpretar_acepta_json_envuelto_en_texto_o_bloque() -> None:
+    assert ciclo._interpretar('```json\n{"tool": "price", "args": {"ticker": "AAA"}}\n```') == {
+        "tool": "price", "args": {"ticker": "AAA"}}
+    assert ciclo._interpretar('Aquí va: {"tool": "price", "args": {}} fin') == {
+        "tool": "price", "args": {}}
+    with pytest.raises(ValueError, match="no es JSON"):
+        ciclo._interpretar("sin llaves por ningún lado")
+
+
+def test_respuesta_vacia_se_repite_sin_gastar_el_aviso(sesion_agente) -> None:
+    hoy = date(2026, 11, 16)
+    llm = Falso(["", "", '{"decision": {"tipo": "nada", "razonamiento": "espero"}}'])
+    g = ciclo.Presupuesto(sesion_agente, hoy, None, Decimal("0"))
+    d = ciclo._bucle(sesion_agente, g, llm, herramientas.Contexto(hoy=hoy), "base", [])
+    assert d.tipo == "nada" and len(llm.llamadas) == 3
+
+
+def test_tres_respuestas_vacias_fallan(sesion_agente) -> None:
+    hoy = date(2026, 11, 16)
+    llm = Falso(["", "", "", '{"decision": {"tipo": "nada", "razonamiento": "x"}}'])
+    g = ciclo.Presupuesto(sesion_agente, hoy, None, Decimal("0"))
+    with pytest.raises(ciclo.Fallo, match="respuestas vacías"):
+        ciclo._bucle(sesion_agente, g, llm, herramientas.Contexto(hoy=hoy), "base", [])
+
+
+def test_en_el_ultimo_turno_se_avisa_que_ya_no_hay_herramientas(sesion_agente, monkeypatch) -> None:
+    monkeypatch.setattr(ajustes, "max_pasos", 2)
+    hoy = HOY
+    llm = Falso(['{"tool": "portfolio", "args": {}}',
+                 '{"decision": {"tipo": "nada", "razonamiento": "decido ya"}}'])
+    g = ciclo.Presupuesto(sesion_agente, hoy, None, Decimal("0"))
+    d = ciclo._bucle(sesion_agente, g, llm, herramientas.Contexto(hoy=hoy), "base", [])
+    assert d.tipo == "nada"
+    assert "Last turn" not in llm.llamadas[0][1] and "Last turn" in llm.llamadas[1][1]
+
+
+def test_interpretar_toma_la_primera_peticion_si_hay_varias() -> None:
+    respuesta = ('Ahora miro META.\n{"tool": "price", "args": {"ticker": "META"}}\n'
+                 'Y luego {"tool": "fundamentals", "args": {"ticker": "META"}}')
+    assert ciclo._interpretar(respuesta) == {"tool": "price", "args": {"ticker": "META"}}
