@@ -34,6 +34,8 @@ from app.agente.config import ajustes
 from app.agente.models import Estado, Evento, Ficha, Noticia, Seguimiento
 
 MAX_SALIDA = 4000
+# El cribado devuelve toda la lista de seguimiento en una respuesta.
+_TOPES_SALIDA = {"screen": 6000}
 MAX_SEMANAS = 104
 DIAS_DESCARGA = 400
 SESIONES_MES = 21
@@ -408,7 +410,6 @@ def _screen(s: Session, a: dict, ctx: Contexto) -> dict:
     orden = str(a.get("sort") or "drawdown")
     if orden not in _ORDENES:
         raise ValueError(f"sort must be one of {', '.join(_ORDENES)}")
-    limite = _entero(a.get("limit"), 15, 1, 25)
     s.flush()
     tickers = [r[0] for r in s.execute(text(
         "select ticker from agente.seguimiento where hasta is null order by ticker")).all()]
@@ -433,9 +434,19 @@ def _screen(s: Session, a: dict, ctx: Contexto) -> dict:
         })
     clave, descendente = _ORDENES[orden]
     con_datos.sort(key=lambda x: (clave(x) is None, clave(x) or 0), reverse=descendente)
-    return {"universe": len(tickers), "sort": orden, "shown": min(limite, len(con_datos)),
-            "rows": con_datos[:limite], "without_price_history": sin_datos,
+    return {"universe": len(tickers), "sort": orden, "shown": len(con_datos),
+            "columns": "ticker last_close change_1m% rsi14 drawdown_from_1y_high%",
+            "rows": [_fila_screen(x) for x in con_datos], "without_price_history": sin_datos,
             "note": "Computed in code from stored closes of your watchlist (1-year window)."}
+
+
+def _fila_screen(x: dict) -> str:
+    """Una empresa por línea y en corto: así caben todas las de la lista en una sola respuesta."""
+    def pct(v: float | None) -> str:
+        return "n/a" if v is None else f"{v * 100:+.1f}"
+    rsi = "n/a" if x["rsi14"] is None else f"{x['rsi14']:.0f}"
+    caida = pct(x["drawdown_from_1y_high"])
+    return f"{x['ticker']} {x['last_close']} {pct(x['change_1m'])} {rsi} {caida}"
 
 
 def _h(nombre: str, descripcion: str, parametros: dict[str, str], funcion: Callable,
@@ -460,11 +471,10 @@ CATALOGO: dict[str, Herramienta] = {h.nombre: h for h in (
         "certainty": "string, confirmada or conjetura"}, _card_write, True),
     _h("screen", "Screen the companies you follow (your whole watchlist) using their stored "
        "prices: last close, 1-month change, RSI 14 and drawdown from the 1-year high, computed "
-       "in code. "
+       "in code. Returns every company of the list, one short line each. "
        "Use it to choose which companies deserve a closer look today.",
        {"sort": "string, drawdown (most fallen first) | change_1m (best month first) | rsi "
-                "(most oversold first), default drawdown",
-        "limit": "integer, optional, 1 to 25, default 15"}, _screen),
+                "(most oversold first), default drawdown"}, _screen),
     _h("watchlist", "List the companies you are following, with their price levels.",
        {}, _watchlist),
     _h("watch", "Follow a company with a reason and optional price levels. A ticker with no price "
@@ -552,11 +562,11 @@ def describir() -> str:
     return "\n".join(lineas)
 
 
-def _salida(res: dict) -> dict:
+def _salida(res: dict, tope: int = MAX_SALIDA) -> dict:
     cuerpo = json.dumps(res, default=str, ensure_ascii=False)
-    if len(cuerpo) <= MAX_SALIDA:
+    if len(cuerpo) <= tope:
         return json.loads(cuerpo)
-    return {"truncated": True, "data": cuerpo[:MAX_SALIDA]}
+    return {"truncated": True, "data": cuerpo[:tope]}
 
 
 def ejecutar(s: Session, nombre: str, args: dict, ctx: Contexto) -> dict:
@@ -580,6 +590,6 @@ def ejecutar(s: Session, nombre: str, args: dict, ctx: Contexto) -> dict:
             a["ticker"] = t
         with s.begin_nested():
             res = h.funcion(s, a, ctx)
-        return _salida(res)
+        return _salida(res, _TOPES_SALIDA.get(nombre, MAX_SALIDA))
     except Exception as e:  # noqa: BLE001 - el agente debe recibir el error, no un fallo
         return {"error": f"{type(e).__name__}: {str(e)[:200]}"}

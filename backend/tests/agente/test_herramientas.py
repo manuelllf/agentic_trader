@@ -219,8 +219,22 @@ def test_screen_mira_solo_la_lista_de_seguimiento(sesion_agente):
     _sembrar(sesion_agente, "BBB", _barras(260))
     _sembrar(sesion_agente, "ZZZ", _barras(260))  # precios guardados pero no seguida: no entra
     ctx = Contexto(hoy=HOY)
-    r = ejecutar(sesion_agente, "screen", {"sort": "rsi", "limit": 5}, ctx)
+    r = ejecutar(sesion_agente, "screen", {"sort": "rsi"}, ctx)
     assert r["universe"] == 2 and r["shown"] == 2
-    assert sorted(x["ticker"] for x in r["rows"]) == ["AAA", "BBB"]
-    assert all(x["rsi14"] is not None and x["drawdown_from_1y_high"] is not None for x in r["rows"])
+    assert sorted(x.split()[0] for x in r["rows"]) == ["AAA", "BBB"]
+    assert all("n/a" not in x for x in r["rows"])
     assert "error" in ejecutar(sesion_agente, "screen", {"sort": "precio"}, ctx)
+
+
+def test_screen_devuelve_las_102_en_una_sola_respuesta(sesion_agente):
+    from app.agente.models import Seguimiento
+
+    tickers = [f"T{i:03d}XY" for i in range(102)]
+    sesion_agente.add_all([Seguimiento(ticker=t, motivo="m") for t in tickers])
+    sesion_agente.flush()
+    for t in tickers:
+        _sembrar(sesion_agente, t, _barras(260))
+    r = ejecutar(sesion_agente, "screen", {}, Contexto(hoy=HOY))
+    assert "truncated" not in r
+    assert r["universe"] == 102 and r["shown"] == 102 and len(r["rows"]) == 102
+    assert r["without_price_history"] == []
