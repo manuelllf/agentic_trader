@@ -285,6 +285,9 @@ def _watch(s: Session, a: dict, ctx: Contexto) -> dict:
     s.flush()
     f = _activo(s, t)
     if f is None:
+        # Un ticker que no existe no se guarda: el modelo puede inventarlo o escribirlo mal.
+        if not _descargar([t], ctx.hoy - timedelta(days=10)).get(t):
+            raise ValueError(f"no price data for {t}: check the ticker, it is not listed")
         s.add(Seguimiento(ticker=t, motivo=motivo, desde=ctx.hoy, niveles=niveles))
     else:
         f.motivo = motivo
@@ -413,7 +416,8 @@ CATALOGO: dict[str, Herramienta] = {h.nombre: h for h in (
         "certainty": "string, confirmada or conjetura"}, _card_write, True),
     _h("watchlist", "List the companies you are following, with their price levels.",
        {}, _watchlist),
-    _h("watch", "Follow a company with a reason and optional price levels.",
+    _h("watch", "Follow a company with a reason and optional price levels. A ticker with no price "
+       "data is rejected, so use the exact listed ticker.",
        {"ticker": _T, "reason": "string, why you follow it",
         "levels": "list, optional, of {price: number, direction: up|down, reason: string}"},
        _watch, True),

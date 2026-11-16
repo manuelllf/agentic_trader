@@ -127,7 +127,24 @@ def test_card_write_dos_veces_sube_version_y_deja_evento(sesion_agente):
     assert ev[0].datos["version"] == 1 and ev[0].datos["contenido"] == {"tesis": "uno"}
 
 
-def test_watch_con_niveles_legibles_por_el_vigia(sesion_agente):
+def _con_precios(monkeypatch, tickers_con_datos):
+    """Yahoo falso: solo devuelve barras para los tickers indicados."""
+    def falso(tickers, desde):
+        return {t: [1] for t in tickers if t in tickers_con_datos}
+    monkeypatch.setattr(herramientas, "_descargar", falso)
+
+
+def test_watch_rechaza_un_ticker_sin_precios(sesion_agente, monkeypatch):
+    _con_precios(monkeypatch, {"EEE"})
+    ctx = Contexto(hoy=HOY)
+    r = ejecutar(sesion_agente, "watch", {"ticker": "ZZZQ", "reason": "inventado"}, ctx)
+    assert r["error"].startswith("ValueError") and "ZZZQ" in r["error"]
+    lista = ejecutar(sesion_agente, "watchlist", {}, ctx)["watching"]
+    assert all(x["ticker"] != "ZZZQ" for x in lista)
+
+
+def test_watch_con_niveles_legibles_por_el_vigia(sesion_agente, monkeypatch):
+    _con_precios(monkeypatch, {"EEE"})
     ctx = Contexto(hoy=HOY)
     niveles = [{"price": 95.5, "direction": "down", "reason": "rompe soporte"},
                {"price": 130, "direction": "up", "reason": "objetivo"}]
