@@ -1,0 +1,3 @@
+/* Auditoría: separación de la lista bajo el filtro. Acotado al panel. */
+.lg .pnl .ps-lista { margin-top: 16px; }
+.lg .pnl .ps-lista + .ps-lista { margin-top: 12px; }

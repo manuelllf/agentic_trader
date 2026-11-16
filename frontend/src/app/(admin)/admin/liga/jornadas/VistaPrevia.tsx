@@ -1,9 +1,8 @@
 "use client";
 
-import { Fragment } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Chip } from "../../_marco/ui";
 import { porcentajeConSigno } from "../../_marco/formato";
+import { Celda, Grupo } from "../../_panel/ui";
 
 type Datos = Record<string, unknown>;
 const campos: Record<string, [string, string][]> = {
@@ -13,7 +12,10 @@ const campos: Record<string, [string, string][]> = {
   diario: [["activo", "automatico"], ["n_tickers", "actualizar"], ["tickers", "actualizar"]],
   cerrar: [["filas", "cierran"], ["sp_rentabilidad", "sp"], ["faltan_cierres", "sin_cierre"]],
 };
+/** Un valor más largo que esto baja a la segunda línea de la celda en vez de apretar el título. */
+const LARGO = 24;
 
+/** Contenido de la hoja de vista previa: lo que haría el proceso, sin guardar nada. */
 export function VistaPrevia({ proceso, datos, hecho }: { proceso: string; datos: Datos; hecho: boolean }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -38,14 +40,30 @@ export function VistaPrevia({ proceso, datos, hecho }: { proceso: string; datos:
     else continue;
     pares.push([etiqueta, valor]);
   }
-  // Execution returns these collections instead of the preview counts.
+  // Al ejecutar, el proceso devuelve estas colecciones en lugar de los recuentos de la vista previa.
   if (proceso === "formar" && hecho) {
     for (const [campo, etiqueta] of [["estrategias", "estrategias"], ["omitidas", "omitidas"]]) {
       if (Array.isArray(datos[campo]) && !pares.some(([e]) => e === etiqueta)) pares.push([etiqueta, (datos[campo] as unknown[]).length]);
     }
   }
-  return <>
-    {hecho ? <Chip tono="bien">{t("admin_liga_done")}</Chip> : datos.listo === false && <><Chip tono="aviso">{t("admin_previa_no_listo")}</Chip><ul>{Array.isArray(datos.motivos) && datos.motivos.filter((m): m is string => typeof m === "string").map((m, i) => <li key={i}>{m}</li>)}</ul></>}
-    <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-4 gap-y-2">{pares.map(([etiqueta, valor]) => <Fragment key={etiqueta}><dt className="adm-nota">{t(`admin_previa_${etiqueta}`)}</dt><dd className="text-right tabular-nums break-words">{valor}</dd></Fragment>)}</dl>
-  </>;
+  const motivos = Array.isArray(datos.motivos) ? datos.motivos.filter((m): m is string => typeof m === "string") : [];
+  return (
+    <>
+      {hecho && <Grupo><Celda titulo={t("admin_liga_done")} /></Grupo>}
+      {!hecho && datos.listo === false && (
+        <Grupo>
+          <Celda titulo={t("admin_previa_no_listo")} />
+          {motivos.map((m, i) => <Celda key={i} titulo={m} />)}
+        </Grupo>
+      )}
+      {pares.length > 0 && (
+        <Grupo>
+          {pares.map(([etiqueta, valor]) => {
+            const largo = typeof valor === "string" && valor.length > LARGO;
+            return <Celda key={etiqueta} titulo={t(`admin_previa_${etiqueta}`)} valor={largo ? undefined : valor} subtitulo={largo ? valor : undefined} />;
+          })}
+        </Grupo>
+      )}
+    </>
+  );
 }

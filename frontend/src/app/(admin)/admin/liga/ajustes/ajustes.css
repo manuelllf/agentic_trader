@@ -1,0 +1,13 @@
+/* Ajustes: campo de la hoja de valor y avisos. Acotado al panel. */
+.lg .pnl .ps-razon { display: block; margin-top: 2px; color: var(--accent); font-weight: 600; }
+.lg .pnl .ps-aviso { margin: 12px 16px 0; font-size: 15px; line-height: 20px; color: var(--ink); font-weight: 600; }
+.lg .pnl .ps-aviso.fallo { color: var(--ink); }
+
+.lg .pnl .ps-hoja { padding: 4px 16px calc(24px + env(safe-area-inset-bottom)); }
+.lg .pnl .ps-campo { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; min-height: 50px; padding: 8px 16px; border-radius: 10px; background: var(--surface2); }
+.lg .pnl .ps-campo span { grid-column: 1 / -1; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pnl .ps-campo input { min-width: 0; height: 28px; color: var(--ink); font-size: 17px; line-height: 22px; font-variant-numeric: tabular-nums; outline: none; }
+.lg .pnl .ps-campo em { font-style: normal; font-size: 17px; color: var(--muted); }
+.lg .pnl .ps-campo:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lg .pnl .ps-hoja .pnl-pie-grupo { margin-inline: 0; }
+.lg .pnl .ps-hoja .pnl-grupo { margin-top: 16px; }

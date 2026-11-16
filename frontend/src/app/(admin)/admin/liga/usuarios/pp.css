@@ -1,0 +1,65 @@
+/* Personas (usuarios, consultas, analítica): piezas propias sobre el kit del panel. Todo acotado a .lg .pnl .pp. */
+
+/* Fila de herramientas bajo el buscador: alta a la izquierda, orden a la derecha. */
+.lg .pnl .pp-herramientas { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.lg .pnl .pp-accion { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px; color: var(--accent); font-size: 17px; line-height: 22px; }
+.lg .pnl .pp-accion svg { flex: none; width: 20px; height: 20px; }
+.lg .pnl .pp-accion:active { opacity: .45; }
+.lg .pnl .pp-accion:disabled { opacity: .4; cursor: default; }
+
+/* Menú anclado a su botón (como el de los tres puntos de la Liga). */
+.lg .pnl .pp-menu-caja { position: relative; }
+.lg .pnl .pp-menu { position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; width: 260px; max-width: calc(100vw - 32px); padding: 6px; border-radius: 14px;
+  background: var(--raised); box-shadow: 0 8px 28px rgba(0, 0, 0, .18); animation: pp-menu-entra .16s cubic-bezier(.32, .72, 0, 1); transform-origin: top right; }
+@keyframes pp-menu-entra { from { opacity: 0; transform: scale(.96); } }
+.lg .pnl .pp-menu-cab { margin: 6px 12px 4px; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pnl .pp-menu button { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; width: 100%; min-height: 44px; padding: 0 10px; border-radius: 10px;
+  color: var(--ink); font-size: 17px; line-height: 22px; text-align: left; }
+.lg .pnl .pp-menu button:active { background: var(--surface2); }
+.lg .pnl .pp-menu .marca { display: grid; place-items: center; color: var(--accent); }
+.lg .pnl .pp-menu .marca svg { width: 18px; height: 18px; }
+.lg .pnl .pp-menu button[aria-checked="false"] .marca svg { visibility: hidden; }
+
+/* Etiquetas junto al alias: neutras, sin rojo ni verde. */
+.lg .pnl .pp-etq { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; background: var(--surface2); color: var(--ink2);
+  font-size: 13px; line-height: 20px; vertical-align: 2px; }
+.lg .pnl .hoja-liga .pp-etq { background: var(--line2); }
+.lg .pnl .pp-sub > span { display: block; }
+.lg .pnl .pp-ficha .pnl-celda .t small { overflow-wrap: anywhere; }
+.lg .pnl .pp-lista.ocupada { opacity: .6; transition: opacity .15s; }
+
+/* Paginación. */
+.lg .pnl .pp-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; color: var(--muted); font-size: 15px; line-height: 20px; }
+.lg .pnl .pp-pager span { font-variant-numeric: tabular-nums; text-align: center; }
+.lg .pnl .pp-pager button { min-height: 44px; padding: 0 4px; color: var(--accent); font-size: 17px; }
+.lg .pnl .pp-pager button:disabled { opacity: .35; cursor: default; }
+
+/* Enlace de vuelta a la lista, en la ficha. */
+.lg .pnl .pp-volver { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; margin-left: -6px; color: var(--accent); font-size: 17px; }
+.lg .pnl .pp-volver svg { width: 22px; height: 22px; }
+.lg .pnl .pp-tira { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 4px; }
+.lg .pnl .pp-tira .pp-etq { margin: 0; }
+
+/* Campos de las hojas: caja dentro del grupo, sin etiqueta encima ni estilo del navegador. */
+.lg .pnl .pp-campo { display: block; box-sizing: border-box; width: 100%; height: 50px; padding: 0 16px; color: var(--ink); font-size: 17px; outline: none; }
+.lg .pnl .pp-campo::placeholder { color: var(--muted); opacity: 1; }
+.lg .pnl .pp-campo:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; }
+.lg .pnl .pp-hoja { padding: 0 16px 8px; color: var(--ink2); }
+.lg .pnl .pp-hoja .pnl-segmento, .lg .pnl .pp-hoja .pnl-chips { margin-top: 12px; }
+.lg .pnl .pp-aviso { margin: 8px 16px 0; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pnl .pp-resultado { margin-top: 16px; }
+.lg .pnl .pp-resultado p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.lg .pnl .pp-resultado b { color: var(--ink); font-weight: 600; }
+
+/* Casilla de las hojas de roles: la marca aparece solo al activarla. */
+.lg .pnl .pp-check .marca { display: grid; place-items: center; width: 22px; height: 22px; color: var(--accent); }
+.lg .pnl .pp-check[aria-checked="false"] .marca svg { visibility: hidden; }
+.lg .pnl .pnl-celda.pp-check { grid-template-columns: 30px minmax(0, 1fr); }
+
+/* Cifras de las consultas y de la hoja. */
+.lg .pnl .pp-cifra { margin: 4px 0 0; text-align: center; }
+.lg .pnl .pp-cifra b { display: block; font-size: 34px; line-height: 41px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lg .pnl .pp-cifra small { display: block; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pnl .pp-boton { display: block; width: 100%; min-height: 50px; margin-top: 16px; border-radius: 12px; background: var(--accent); color: var(--bg); font-size: 17px; font-weight: 600; }
+.lg .pnl .pp-boton:disabled { opacity: .4; cursor: default; }
+.lg .pnl .pp-boton:active:not(:disabled) { opacity: .8; }

@@ -15,9 +15,9 @@ it.each([
  ["rol.conceder", {"rol": "admin", "conceder": true}, "Rol concedido: admin"],
  ["rol.conceder", {"rol": "admin"}, "Rol quitado: admin"],
  ["copia.descargar", {}, "Copia de la liga descargada"],
- ["ia.conversor", { coste_usd: "1.24", cache: true }, "IA, conversor: 1,24 US$ (caché)"],
- ["ia.pregunta", { coste_usd: "1" }, "IA, pregunta: 1,00 US$"],
- ["ia.lectura", { coste_usd: "0" }, "IA, lectura: 0,00 US$"],
+ ["ia.conversor", { coste_usd: "1.24", cache: true }, "IA, conversor: 1,24 $ (caché)"],
+ ["ia.pregunta", { coste_usd: "1" }, "IA, pregunta: 1,00 $"],
+ ["ia.lectura", { coste_usd: "0" }, "IA, lectura: 0,00 $"],
  ["otra", { texto: 'Un "dato" {simple}', numero: 2, activo: true, lista: [1], objeto: { a: 1 } }, "otra · texto: Un dato simple · numero: 2 · activo: true"],
 ] as const)("describe %s", (accion, detalle, esperado) => {
  const frase = describir({ accion, objeto: "prueba", detalle }, t, "es");
@@ -61,7 +61,7 @@ it.each([
  ["admin.plan", {"plan": "gratis"}, "Plan gratis"],
  ["admin.pase", {"pase": "liga"}, "Pase de liga"],
  ["admin.pase", {"pase": null}, "Pase de liga quitado"],
- ["ia.formacion", {"coste_usd": 0}, "IA, formación: 0,00 US$"],
+ ["ia.formacion", {"coste_usd": 0}, "IA, formación: 0,00 $"],
  ["pago.lemon", {"tipo": "alta"}, "Pago de Lemon: alta"],
  ["pago.lemon", {"tipo": "cambio"}, "Pago de Lemon: cambio"],
  ["pago.lemon", {"tipo": "baja"}, "Pago de Lemon: baja"],

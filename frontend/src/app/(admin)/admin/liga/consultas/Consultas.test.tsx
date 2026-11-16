@@ -3,31 +3,45 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import mensajes from "../../../../../../messages/es/admin.json";
-import { getCatalogo } from "@/lib/liga/api";
+import admin from "../../../../../../messages/es/admin.json";
+import personas from "../../../../../../messages/es/panelPersonas.json";
 import estrategias from "../../../../../../messages/es/strategies.json";
 import { get } from "@/lib/api";
+import { getCatalogo } from "@/lib/liga/api";
 import ConsultasAdmin from "./page";
 
-vi.mock("@/lib/liga/api", () => ({ getCatalogo: vi.fn().mockResolvedValue("sin catálogo") }));
+vi.mock("@/lib/liga/api", () => ({ getCatalogo: vi.fn() }));
 vi.mock("@/lib/api", () => ({ get: vi.fn() }));
 vi.mock("@/lib/liga/supabase", () => ({ tokenSesion: vi.fn() }));
 vi.mock("@/components/AuthGate", () => ({ default: ({ children }: { children: ReactNode }) => children }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const proto = HTMLElement.prototype as unknown as { showModal?: () => void; close?: () => void };
+proto.showModal ??= function (this: HTMLElement) { this.setAttribute("open", ""); };
+proto.close ??= function (this: HTMLElement) { this.removeAttribute("open"); };
+
 let raiz: Root | undefined;
 let contenedor: HTMLDivElement;
 
-async function pintar() {
+async function pintar(respuestas: Record<string, unknown>) {
   vi.mocked(getCatalogo).mockResolvedValue({ reglas: [{ clave: "regla_prueba", titulo: "Regla visible" }] } as never);
+  vi.mocked(get).mockImplementation(async (url: string) => {
+    const r = respuestas[url.split("/").pop()!];
+    if (r instanceof Error) throw r;
+    return r as never;
+  });
   contenedor = document.createElement("div");
   document.body.append(contenedor);
   raiz = createRoot(contenedor);
   await act(async () => {
-    raiz!.render(<NextIntlClientProvider locale="es" messages={{ ...mensajes, ...estrategias }}><ConsultasAdmin /></NextIntlClientProvider>);
+    raiz!.render(<NextIntlClientProvider locale="es" messages={{ ...admin, ...personas, ...estrategias }}><ConsultasAdmin /></NextIntlClientProvider>);
   });
   return contenedor;
 }
+const abrir = async (vista: HTMLElement, titulo: string) => {
+  const b = Array.from(vista.querySelectorAll("button")).find(x => x.textContent?.startsWith(titulo))!;
+  await act(async () => b.click());
+};
 
 afterEach(() => {
   if (raiz) act(() => raiz!.unmount());
@@ -36,38 +50,49 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
+const vacias = {
+  sin_estrategia: { clave: "sin_estrategia", columnas: ["alias", "creado", "visitas", "ultima_visita", "borrador"], filas: [["Ana", "2026-01-02", 3, null, true], ["Luis", "2026-01-03", 0, null, false]], umbral_dias: 7 },
+  inactivas: { clave: "inactivas", columnas: ["alias"], filas: [], umbral_dias: 14 },
+  nunca_apuntadas: { clave: "nunca_apuntadas", columnas: ["nombre", "alias", "estado", "creada"], filas: [["Mi cartera", "ana", "jugando", "2026-01-02"]], umbral_dias: null },
+  reglas_usadas: { clave: "reglas_usadas", columnas: ["clave", "estrategias"], filas: [["regla_prueba", 2], ["desconocida", 1]], umbral_dias: null },
+};
+
 describe("Consultas", () => {
-  it("muestra las columnas y filas y marca la consulta inicial", async () => {
-    vi.mocked(get).mockResolvedValue({ clave: "sin_estrategia", columnas: ["alias", "borrador", "ultima_visita"], filas: [["Ana", true, null], ["Luis", false, null]], umbral_dias: 7 });
-    const vista = await pintar();
+  it("lista las cuatro consultas con su recuento", async () => {
+    const vista = await pintar(vacias);
     expect(get).toHaveBeenCalledWith("/liga/admin/panel/consultas/sin_estrategia");
-    expect(Array.from(vista.querySelectorAll("th"), (th) => th.textContent)).toEqual(["Alias", "Borrador", "Última visita"]);
-    expect(vista.textContent).not.toContain("ultima_visita");
-    expect(vista.querySelectorAll("tbody tr").length).toBe(2);
-    expect(vista.querySelector("tbody")?.textContent).toContain("sí");
-    expect(vista.querySelector("tbody")?.textContent).toContain("no");
-    const seleccionado = Array.from(vista.querySelectorAll("button")).find((b) => b.textContent?.startsWith(mensajes.admin_consultas_sin_estrategia));
-    expect(seleccionado?.getAttribute("aria-selected")).toBe("true");
+    const celdas = Array.from(vista.querySelectorAll(".pnl-celda"), c => c.textContent);
+    expect(celdas).toHaveLength(4);
+    expect(celdas[0]).toContain("7 días o más desde el alta");
+    expect(celdas[0]).toContain("2");
   });
 
-  it("muestra el error cuando falla la consulta", async () => {
-    vi.mocked(get).mockRejectedValue(new Error("fallo"));
-    const vista = await pintar();
-    expect(vista.querySelector('[role="alert"]')?.textContent).toBe(mensajes.admin_generic_error);
-    expect(vista.querySelector("h1")?.textContent).toBe(mensajes.admin_consultas_titulo);
+  it("abre la hoja con todas las columnas, con nombre y traducidas", async () => {
+    const vista = await pintar(vacias);
+    await abrir(vista, personas.pnl_personas_cons_sin_estrategia);
+    const hoja = vista.querySelector("dialog")!;
+    expect(hoja.textContent).toContain("Ana");
+    expect(hoja.textContent).toContain("Borrador: sí");
+    expect(hoja.textContent).toContain("Última visita: sin dato");
+    expect(hoja.textContent).toContain(personas.pnl_personas_cons_csv);
   });
-});
 
-it("traduce el estado de la estrategia", async () => {
-  vi.mocked(get).mockResolvedValue({ clave: "sin_estrategia", columnas: ["estado"], filas: [["jugando"]], umbral_dias: 3 });
-  const vista = await pintar();
-  expect(vista.querySelector("tbody")?.textContent).toBe(estrategias.strategies_state_playing);
-});
-it("usa el nombre de regla del catálogo y conserva claves desconocidas", async () => {
-  vi.mocked(get).mockResolvedValue({ clave: "reglas_usadas", columnas: ["clave", "estrategias"], filas: [["regla_prueba", 2], ["desconocida", 1]], umbral_dias: null });
-  const vista = await pintar();
-  const tab = Array.from(vista.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(b => b.textContent?.startsWith(mensajes.admin_consultas_reglas_usadas))!;
-  await act(async () => tab.click());
-  expect(vista.querySelector("tbody")?.textContent).toContain("Regla visible");
-  expect(vista.querySelector("tbody")?.textContent).toContain("desconocida");
+  it("traduce el estado y usa el nombre de la regla del catálogo", async () => {
+    const vista = await pintar(vacias);
+    await abrir(vista, personas.pnl_personas_cons_nunca_apuntadas);
+    expect(vista.querySelector("dialog")!.textContent).toContain(estrategias.strategies_state_playing);
+    act(() => vista.querySelector("dialog button")!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await abrir(vista, personas.pnl_personas_cons_reglas_usadas);
+    const texto = vista.querySelector("dialog")!.textContent!;
+    expect(texto).toContain("Regla visible");
+    expect(texto).toContain("desconocida");
+  });
+
+  it("indica el error de una consulta que falla y la reintenta al tocarla", async () => {
+    const vista = await pintar({ ...vacias, inactivas: new Error("fallo") });
+    const fila = Array.from(vista.querySelectorAll("button")).find(b => b.textContent?.startsWith(personas.pnl_personas_cons_inactivas))!;
+    expect(fila.textContent).toContain(admin.admin_generic_error);
+    await act(async () => fila.click());
+    expect(vi.mocked(get).mock.calls.filter(c => String(c[0]).endsWith("/inactivas"))).toHaveLength(2);
+  });
 });

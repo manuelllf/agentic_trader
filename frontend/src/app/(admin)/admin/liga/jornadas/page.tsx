@@ -5,13 +5,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import AuthGate from "@/components/AuthGate";
+import { useConfirmar } from "@/components/Confirmar";
 import { ApiError, get, post, probarResumenLiga } from "@/lib/api";
-import { Pagina, Bloque, Boton, Chip, Interruptor, Lista, Fila, Barra, Estado as EstadoVista } from "../../_marco/ui";
 import { fechaCorta, fechaHora, porcentajeConSigno } from "../../_marco/formato";
+import { Celda, CeldaInterruptor, Esqueleto, Grupo, Hoja, Progreso, Vacio } from "../../_panel/ui";
+import { nombreProceso } from "../resumen/logica";
 import { VistaPrevia } from "./VistaPrevia";
-
-
+import "../pl.css";
 
 type Intento = { cuando: string; ok: boolean; objeto: string | null; detalle: unknown } | null;
 type Jornada = {
@@ -21,7 +21,7 @@ type Jornada = {
   plan_b: boolean | null; inscripciones: number; sp_rentabilidad: string | null;
   siguiente: "foto" | "formar" | "cerrar" | null; foto_auto: boolean | null;
 };
-type Temporada = { id: number; nombre: string; cuenta: boolean; estado: string; jornadas: Jornada[] };
+type Temporada = { id: number; nombre: string; cuenta: boolean; estado: string; n_jornadas?: number; jornadas: Jornada[] };
 type Estado = {
   diario_activo: boolean; temporadas: Temporada[]; ultimo_intento: Record<string, Intento>;
 };
@@ -29,21 +29,27 @@ type Accion = { proceso: string; titulo: string; cuerpo: Record<string, unknown>
 
 const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
-function Jornadas() {
+export default function JornadasAdmin() {
   const t = useTranslations();
   const locale = useLocale();
+  const { confirmar, dialogo } = useConfirmar();
   const mes = (j: Jornada) => new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" }).format(new Date(j.dia_inicio));
   const rango = (j: Jornada) => t("admin_rango", { desde: fechaCorta(j.dia_inicio, locale), hasta: fechaCorta(j.dia_fin, locale) });
   const paso = (id: string) => t(id === "foto" ? "admin_liga_step_photo" : id === "formar" ? "admin_liga_step_form" : "admin_liga_step_close");
-  const nombreProceso = (id: string) => ({ temporadas: t("admin_liga_process_seasons"), foto: t("admin_liga_process_photo"), formar: t("admin_liga_process_form"), diario: t("admin_liga_process_daily"), cerrar: t("admin_liga_process_close") }[id] ?? id);
+  const nombre = (id: string) => {
+    const clave = nombreProceso(id);
+    const texto = clave === id ? id : t(clave);
+    return texto.replace(/^./, c => c.toLocaleUpperCase(locale));
+  };
   const errorText = useCallback((e: unknown) => error(e, t("admin_generic_error")), [t]);
   const [estado, setEstado] = useState<Estado | null>(null);
   const [fallo, setFallo] = useState("");
   const [accion, setAccion] = useState<Accion | null>(null);
   const [previa, setPrevia] = useState<unknown>(null);
   const [hecho, setHecho] = useState<unknown>(null);
+  const [falloHoja, setFalloHoja] = useState("");
   const [ocupado, setOcupado] = useState(false);
-  const [resumenOcupado, setResumenOcupado] = useState<"mensual" | null>(null);
+  const [resumenOcupado, setResumenOcupado] = useState(false);
   const [resumenMensaje, setResumenMensaje] = useState("");
   const [resumenError, setResumenError] = useState(false);
   const [aceptarSinCierre, setAceptarSinCierre] = useState(false);
@@ -57,34 +63,35 @@ function Jornadas() {
   useEffect(cargar, [cargar]);
 
   const abrir = async (a: Accion) => {
-    setAccion(a); setPrevia(null); setHecho(null); setFallo(""); setOcupado(true);
+    setAccion(a); setPrevia(null); setHecho(null); setFalloHoja(""); setOcupado(true);
     setAceptarSinCierre(false);
     try {
       setPrevia(await post(`/liga/admin/procesos/${a.proceso}/vista-previa`, a.cuerpo, 90_000));
-    } catch (e) { setFallo(errorText(e)); } finally { setOcupado(false); }
+    } catch (e) { setFalloHoja(errorText(e)); } finally { setOcupado(false); }
   };
 
   const ejecutar = async () => {
     if (!accion) return;
-    setOcupado(true); setFallo("");
+    setOcupado(true); setFalloHoja("");
     try {
       const cuerpo = accion.proceso === "cerrar" && aceptarSinCierre
         ? { ...accion.cuerpo, aceptar_sin_cierre: true } : accion.cuerpo;
       setHecho(await post(`/liga/admin/procesos/${accion.proceso}/ejecutar`, cuerpo, 90_000));
       cargar();
-    } catch (e) { setFallo(errorText(e)); } finally { setOcupado(false); }
+    } catch (e) { setFalloHoja(errorText(e)); } finally { setOcupado(false); }
   };
 
-  const probarResumen = async (tipo: "mensual") => {
+  const probarResumen = async () => {
     if (resumenOcupado) return;
-    setResumenOcupado(tipo); setResumenMensaje(""); setResumenError(false);
+    if (!(await confirmar({ titulo: t("pnl_liga_resumen_confirmar"), texto: t("admin_jornadas_pruebas"), aceptar: t("pnl_liga_enviar") }))) return;
+    setResumenOcupado(true); setResumenMensaje(""); setResumenError(false);
     try {
-      const r = await probarResumenLiga(tipo);
+      const r = await probarResumenLiga("mensual");
       setResumenMensaje(t("admin_liga_resumen_probar_resultado", { enviados: r.enviados }));
     } catch {
       setResumenError(true);
       setResumenMensaje(t("admin_liga_resumen_probar_error"));
-    } finally { setResumenOcupado(null); }
+    } finally { setResumenOcupado(false); }
   };
 
   const interruptor = async () => {
@@ -96,64 +103,113 @@ function Jornadas() {
     } catch (e) { setFallo(errorText(e)); } finally { setOcupado(false); }
   };
 
-  const actual = estado?.temporadas.flatMap(s => s.jornadas).find(j => j.estado === "formada");
-  const abrirJornada = (j: Jornada) => abrir({ proceso: j.siguiente!, titulo: `${paso(j.siguiente!)} ${j.numero}`, cuerpo: { jornada_id: j.id } });
+  const cerrarHoja = () => setAccion(null);
+  const todas = estado?.temporadas.flatMap(s => s.jornadas) ?? [];
+  const actual = todas.find(j => j.estado === "formada");
+  const temporadaActual = estado?.temporadas.find(s => s.jornadas.some(j => j.id === actual?.id));
+  // Pasos pendientes: el de la jornada en curso y el de la primera que aún falta por preparar.
+  const pendientes = [actual, todas.find(j => j.siguiente && j.id !== actual?.id)].filter((j): j is Jornada => Boolean(j?.siguiente));
+  const abrirJornada = (j: Jornada) => void abrir({ proceso: j.siguiente!, titulo: `${paso(j.siguiente!)} ${j.numero}`, cuerpo: { jornada_id: j.id } });
   const detalle = (j: Jornada) => [rango(j),
     j.foto_id != null ? t("admin_liga_photo", { id: j.foto_id, mode: j.foto_auto === true ? t("admin_liga_photo_auto") : j.foto_auto === false ? t("admin_liga_photo_manual") : "" }) : null,
     j.scan_run_id != null ? t("admin_liga_scan", { id: j.scan_run_id, planB: j.plan_b ? t("admin_liga_plan_b") : "" }) : null,
     j.inscripciones ? t("admin_liga_playing", { count: j.inscripciones }) : null,
     j.sp_rentabilidad != null ? t("admin_liga_sp", { value: porcentajeConSigno(j.sp_rentabilidad, locale) }) : null,
   ].filter(Boolean).join(" · ");
-  return <Pagina repetido titulo={t("admin_jornadas_titulo")}>
-    {fallo && <EstadoVista tipo="error">{fallo}</EstadoVista>}
-    {!estado ? !fallo && <EstadoVista tipo="cargando" /> : <>
-      {actual && <Bloque titulo={t("admin_jornadas_actual")}>
-        <Fila><span>{t("admin_jornadas_numero", { n: actual.numero })} · {mes(actual)}</span><Chip tono="bien">{t("admin_liga_season_status_in_game")}</Chip></Fila>
-        <Barra valor={actual.dias_bolsa?.hechos ?? 0} maximo={actual.dias_bolsa?.total ?? 0} />
-        <p className="adm-nota mt-2 mb-3">{actual.dias_bolsa && <>{t("admin_jornadas_dia", actual.dias_bolsa)} · </>}{t("admin_jornadas_estrategias", { n: actual.inscripciones })} · {rango(actual)}</p>
-        {actual.siguiente && <Boton variante="pri" disabled={ocupado} onClick={() => void abrirJornada(actual)}>{paso(actual.siguiente)}…</Boton>}
-      </Bloque>}
-      {accion && <Bloque titulo={accion.titulo} className="adm-previa">
-        {previa == null && <EstadoVista tipo="cargando" />}
-        {previa != null && <>
-          <VistaPrevia proceso={accion.proceso} datos={(hecho ?? previa) as Record<string, unknown>} hecho={hecho != null} />
-          {hecho == null ? <>
-            {faltanCierres.length > 0 && <label className="flex items-start gap-3 py-3"><input type="checkbox" checked={aceptarSinCierre} onChange={e => setAceptarSinCierre(e.target.checked)} /><span>{t("admin_liga_missing_close", { tickers: faltanCierres.join(", ") })}</span></label>}
-            <div className="flex gap-2">
-              {(previa as { listo?: boolean }).listo !== false && <Boton variante="pri" onClick={() => void ejecutar()} disabled={ocupado || (faltanCierres.length > 0 && !aceptarSinCierre)}>{t(ocupado ? "admin_liga_running" : "admin_liga_execute")}</Boton>}
-              <Boton variante="texto" disabled={ocupado} onClick={() => setAccion(null)}>{t("admin_liga_cancel")}</Boton>
-            </div>
-          </> : <Boton variante="texto" onClick={() => setAccion(null)}>{t("admin_liga_close")}</Boton>}
-        </>}
-        {previa == null && !ocupado && <Boton variante="texto" onClick={() => setAccion(null)}>{t("admin_liga_cancel")}</Boton>}
-      </Bloque>}
-      <div className="adm-dos"><div className="flex flex-col gap-8">
-        {estado.temporadas.length === 0 ? <Bloque titulo={t("admin_previa_temporadas")}>
-          <p className="adm-nota">{t("admin_liga_no_seasons")}</p><Boton variante="pri" disabled={ocupado} onClick={() => void abrir({ proceso: "temporadas", titulo: t("admin_liga_process_title_seasons"), cuerpo: {} })}>{t("admin_jornadas_crear")}…</Boton>
-        </Bloque> : estado.temporadas.map(s => <Bloque key={s.id} titulo={s.nombre} extra={<Chip>{t(s.cuenta ? "admin_liga_counts" : "admin_liga_does_not_count")}</Chip>}>
-          <Lista>{s.jornadas.map(j => <Fila key={j.id}><div><span>{j.numero} · {mes(j).replace(/^./, c => c.toLocaleUpperCase(locale))}</span><p className="adm-nota">{detalle(j)}</p></div>
-            <Chip tono={j.estado === "formada" ? "bien" : "neutro"}>{t(j.estado === "formada" ? "admin_liga_season_status_formed" : j.estado === "cerrada" ? "admin_liga_season_status_closed" : "admin_liga_season_status_programmed")}</Chip>
-            {j.siguiente && j.id !== actual?.id && <Boton variante="sec" className="text-xs" disabled={ocupado} onClick={() => void abrirJornada(j)}>{paso(j.siguiente)}…</Boton>}
-          </Fila>)}</Lista>
-        </Bloque>)}
-      </div><div className="flex flex-col gap-8">
-        <Bloque titulo={t("admin_liga_daily_close")}>
-          <Fila><span>{t("admin_jornadas_automatico")}</span><Interruptor etiqueta={t("admin_jornadas_automatico")} encendido={estado.diario_activo} alCambiar={() => void interruptor()} deshabilitado={ocupado} /></Fila>
-          <p className="adm-nota">{t("admin_liga_daily_note")}</p>
-          <Boton variante="sec" disabled={ocupado} onClick={() => void abrir({ proceso: "diario", titulo: t("admin_liga_process_title_daily"), cuerpo: {} })}>{t("admin_liga_run_now")}…</Boton>
-          <div className="flex flex-wrap gap-2">
-            <Boton variante="texto" disabled={resumenOcupado !== null}
-              onClick={() => void probarResumen("mensual")}>
-              {t("admin_liga_resumen_probar_mensual")}
-            </Boton>
-          </div>
-          <p className="adm-nota">{t("admin_jornadas_pruebas")}</p>
-          {resumenMensaje && <p role={resumenError ? "alert" : "status"}>{resumenMensaje}</p>}
-        </Bloque>
-        <Bloque titulo={t("admin_liga_last_attempts")}><Lista>{Object.entries(estado.ultimo_intento).map(([p, i]) => <Fila key={p}><span>{nombreProceso(p)}</span>{i ? <><Chip tono={i.ok ? "bien" : "mal"}>{t(i.ok ? "admin_liga_ok" : "admin_liga_failed")}</Chip><span className="adm-nota">{fechaHora(i.cuando, locale)}</span></> : <span className="adm-nota">{t("admin_liga_never")}</span>}</Fila>)}</Lista></Bloque>
-      </div></div>
-    </>}
-  </Pagina>;
-}
+  const hojaLista = (previa as { listo?: boolean } | null)?.listo !== false;
 
-export default function JornadasAdmin() { return <AuthGate><Jornadas /></AuthGate>; }
+  return (
+    <div className="pnl-llega">
+      {fallo && <p className="pnl-pie-grupo" role="alert">{fallo}</p>}
+      {!estado && !fallo && <Esqueleto filas={4} etiqueta={t("admin_pnl_cargando")} />}
+      {estado && (
+        <>
+          {actual && (
+            <div className="pl-cifra">
+              <small>{temporadaActual?.nombre}</small>
+              <b>{temporadaActual?.n_jornadas
+                ? t("pnl_liga_jornada_de", { n: actual.numero, total: temporadaActual.n_jornadas })
+                : t("admin_jornadas_numero", { n: actual.numero })} · {mes(actual)}</b>
+              <p>{t("admin_liga_season_status_in_game")} · {actual.dias_bolsa && <>{t("admin_jornadas_dia", actual.dias_bolsa)} · </>}{t("admin_jornadas_estrategias", { n: actual.inscripciones })} · {rango(actual)}</p>
+              {actual.dias_bolsa && <Progreso valor={actual.dias_bolsa.total ? (actual.dias_bolsa.hechos / actual.dias_bolsa.total) * 100 : 0} etiqueta={t("admin_jornadas_dia", actual.dias_bolsa)} />}
+            </div>
+          )}
+
+          {pendientes.length > 0 && (
+            <div className="pl-acciones">
+              <button type="button" className="pl-boton" onClick={() => abrirJornada(pendientes[0])}>{t("pnl_liga_vista_previa")}</button>
+              <button type="button" className="pl-boton pri" onClick={() => abrirJornada(pendientes[0])}>{t("pnl_liga_formar_ahora")}</button>
+            </div>
+          )}
+
+          {estado.temporadas.length === 0 && (
+            <>
+              <Vacio titulo={t("admin_liga_no_seasons")} />
+              <Grupo>
+                <Celda titulo={t("admin_jornadas_crear")} tono="accion" deshabilitada={ocupado}
+                  onClick={() => void abrir({ proceso: "temporadas", titulo: t("admin_liga_process_title_seasons"), cuerpo: {} })} />
+              </Grupo>
+            </>
+          )}
+
+          {pendientes.length > 0 && (
+            <Grupo cabecera={t("pnl_liga_siguiente")} pie={t("pnl_liga_vista_previa_pie")}>
+              {pendientes.map(j => (
+                <Celda key={j.id} titulo={`${paso(j.siguiente!)} ${j.numero}`} subtitulo={rango(j)} valor={t("pnl_liga_vista_previa")}
+                  deshabilitada={ocupado} onClick={() => abrirJornada(j)} />
+              ))}
+            </Grupo>
+          )}
+
+          {estado.temporadas.map(s => (
+            <Grupo key={s.id} cabecera={`${s.nombre} · ${t(s.cuenta ? "admin_liga_counts" : "admin_liga_does_not_count")}`}
+              pie={s.jornadas.some(j => j.siguiente) ? t("pnl_liga_toca_jornada") : undefined}>
+              {s.jornadas.map(j => (
+                <Celda key={j.id} titulo={`${j.numero} · ${mes(j).replace(/^./, c => c.toLocaleUpperCase(locale))}`} subtitulo={detalle(j)}
+                  valor={t(j.estado === "formada" ? "admin_liga_season_status_formed" : j.estado === "cerrada" ? "admin_liga_season_status_closed" : "admin_liga_season_status_programmed")}
+                  deshabilitada={ocupado && Boolean(j.siguiente)} onClick={j.siguiente ? () => abrirJornada(j) : undefined} />
+              ))}
+            </Grupo>
+          ))}
+
+          <Grupo cabecera={t("admin_liga_daily_close")} pie={resumenMensaje || t("admin_jornadas_pruebas")}>
+            <CeldaInterruptor titulo={t("admin_jornadas_automatico")} subtitulo={t("admin_liga_daily_note")} activo={estado.diario_activo}
+              onCambio={() => void interruptor()} deshabilitado={ocupado} />
+            <Celda titulo={t("admin_liga_run_now")} tono="accion" deshabilitada={ocupado}
+              onClick={() => void abrir({ proceso: "diario", titulo: t("admin_liga_process_title_daily"), cuerpo: {} })} />
+            <Celda titulo={t("admin_liga_resumen_probar_mensual")} tono="accion" deshabilitada={resumenOcupado} onClick={() => void probarResumen()} />
+          </Grupo>
+          {resumenError && <p className="pnl-solo-lector" role="alert">{resumenMensaje}</p>}
+
+          <Grupo cabecera={t("pnl_liga_procesos")}>
+            {Object.entries(estado.ultimo_intento).map(([p, i]) => (
+              <Celda key={p} titulo={nombre(p)} subtitulo={i ? fechaHora(i.cuando, locale) : undefined}
+                valor={i ? t(i.ok ? "admin_liga_ok" : "admin_liga_failed") : t("admin_liga_never")} />
+            ))}
+          </Grupo>
+        </>
+      )}
+
+      <Hoja abierta={accion !== null} titulo={accion?.titulo ?? ""} cancelar={hecho == null ? t("admin_liga_cancel") : undefined}
+        accion={hecho != null ? t("admin_pnl_listo") : t(ocupado && previa != null ? "admin_liga_running" : "admin_liga_execute")}
+        accionDesactivada={hecho == null && (previa == null || ocupado || !hojaLista || (faltanCierres.length > 0 && !aceptarSinCierre))}
+        onAccion={hecho != null ? cerrarHoja : () => void ejecutar()} onCerrar={cerrarHoja}>
+        <div className="pl-hoja">
+          {accion && previa == null && !falloHoja && <Esqueleto filas={4} etiqueta={t("admin_pnl_cargando")} />}
+          {falloHoja && <p className="pnl-pie-grupo" role="alert">{falloHoja}</p>}
+          {accion && previa != null && (
+            <>
+              <VistaPrevia proceso={accion.proceso} datos={(hecho ?? previa) as Record<string, unknown>} hecho={hecho != null} />
+              {hecho == null && faltanCierres.length > 0 && (
+                <Grupo pie={t("admin_liga_missing_close", { tickers: faltanCierres.join(", ") })}>
+                  <CeldaInterruptor titulo={t("admin_previa_sin_cierre")} activo={aceptarSinCierre} onCambio={setAceptarSinCierre} />
+                </Grupo>
+              )}
+            </>
+          )}
+        </div>
+      </Hoja>
+      {dialogo}
+    </div>
+  );
+}

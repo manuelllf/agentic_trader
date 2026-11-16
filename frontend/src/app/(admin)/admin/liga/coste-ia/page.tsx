@@ -4,9 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import AuthGate from "@/components/AuthGate";
 import { ApiError, get } from "@/lib/api";
-import { Barra, Bloque, Chip, Estado, Pagina } from "../../_marco/ui";
+import { Barras, Celda, Esqueleto, Grupo, Progreso } from "../../_panel/ui";
 import { dolares, fechaCorta, numero, porcentajeSimple } from "../../_marco/formato";
-import { diasDelMes, maximoDia } from "./diasDelMes";
+import { diasDelMes } from "./diasDelMes";
+import { mesActual, moverMes, nombreMes } from "./mes";
+import "./coste.css";
 
 type FilaCoste = {
   finalidad: "conversor" | "pregunta" | "lectura";
@@ -22,13 +24,15 @@ type CosteIA = {
   tope_mensual_usd: string | null;
 };
 
+const ICO_ATRAS = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>;
+const ICO_ADELANTE = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>;
+
 const error = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
-const mesActual = () => new Date().toISOString().slice(0, 7);
 
 function CosteIAPanel() {
   const t = useTranslations();
   const locale = useLocale();
-  const currency = (v: string) => dolares(v, locale);
+  const currency = (v: string | number) => dolares(v, locale);
   const errorText = useCallback((e: unknown) => error(e, t("admin_generic_error")), [t]);
   const etiquetas: Record<string, string> = { conversor: t("admin_cost_converter"), pregunta: t("admin_cost_question"), lectura: t("admin_cost_reading") };
   const partes: Record<ParteCoste["parte"], string> = {
@@ -41,6 +45,7 @@ function CosteIAPanel() {
   const [fallo, setFallo] = useState("");
   const [avisoPct, setAvisoPct] = useState<number | null>(null);
 
+  // Umbral de aviso configurado en Ajustes; si no llega, simplemente no hay aviso.
   useEffect(() => {
     let vigente = true;
     get<{ clave: string; efectivo: unknown }[]>("/liga/admin/ajustes")
@@ -60,31 +65,70 @@ function CosteIAPanel() {
       .catch(e => { if (vigente) setFallo(errorText(e)); });
     return () => { vigente = false; };
   }, [mes, errorText]);
-  const gastoAlto = datos?.tope_mensual_usd != null && avisoPct != null
-    && Number(datos.total_pagado_usd) >= Number(datos.tope_mensual_usd) * avisoPct / 100;
+
+  const total = datos ? Number(datos.total_pagado_usd) : 0;
+  const tope = datos?.tope_mensual_usd != null ? Number(datos.tope_mensual_usd) : null;
+  const pctUsado = tope != null && tope > 0 ? total / tope * 100 : 0;
+  const gastoAlto = tope != null && avisoPct != null && total >= tope * avisoPct / 100;
   const dias = datos ? diasDelMes(mes, datos.por_dia) : [];
-  const maximo = maximoDia(dias);
   const diasConGasto = dias.filter(d => d.pagado > 0).length;
-  return <Pagina repetido titulo={t("admin_cost_title")} accion={<input aria-label={t("admin_cost_month")} type="month" value={mes} onChange={e => { if (e.target.value) setMes(e.target.value); }} className="h-9 rounded-[var(--control-radius)] border border-[var(--line)] bg-[var(--surface)] px-3" />}>
-    {fallo && <Estado tipo="error">{fallo}</Estado>}
-    {!datos ? !fallo && <Estado tipo="cargando" /> : <>
-      <Bloque>
-        <div className="flex items-baseline gap-3"><strong className="adm-cifra-valor">{currency(datos.total_pagado_usd)}</strong><span className="adm-nota">{datos.tope_mensual_usd != null ? t("admin_cost_cap_summary", { cap: currency(datos.tope_mensual_usd), pct: porcentajeSimple(Number(datos.tope_mensual_usd) > 0 ? Number(datos.total_pagado_usd) / Number(datos.tope_mensual_usd) * 100 : 0, locale) }) : t("admin_cost_monthly_cap_unset")}</span></div>
-        {datos.tope_mensual_usd != null && <Barra valor={Number(datos.total_pagado_usd)} maximo={Number(datos.tope_mensual_usd)} tono={gastoAlto ? "aviso" : undefined} />}
-        {gastoAlto && <Chip tono="aviso">{t("admin_cost_over_pct", { pct: avisoPct! })}</Chip>}
-      </Bloque>
-      <Bloque titulo={t("admin_cost_por_dia_titulo")}>
-        {diasConGasto === 0 ? <Estado tipo="vacio">{t("admin_cost_por_dia_vacio")}</Estado> : <>
-          <div role="img" aria-label={t("admin_cost_por_dia_resumen", { total: currency(datos.total_pagado_usd), dias: diasConGasto })} className="flex h-[120px] items-end gap-[3px]">
-            {dias.map(({ dia, pagado }) => <i key={dia} aria-hidden="true" className="flex-1 bg-[var(--accent)]" style={{ height: `${pagado / maximo * 100}%`, minHeight: pagado > 0 ? 2 : 0 }} />)}
+
+  return (
+    <div className="pnl-llega">
+      <Grupo>
+        <li className="ps-mes">
+          <button type="button" aria-label={t("pnl_sistema_coste_mes_anterior")} onClick={() => setMes(moverMes(mes, -1))}>{ICO_ATRAS}</button>
+          <strong aria-live="polite">{nombreMes(mes, locale)}</strong>
+          <button type="button" aria-label={t("pnl_sistema_coste_mes_siguiente")} disabled={mes >= mesActual()} onClick={() => setMes(moverMes(mes, 1))}>{ICO_ADELANTE}</button>
+        </li>
+      </Grupo>
+      {fallo && <p className="pnl-pie-grupo" role="alert">{fallo}</p>}
+      {!datos && !fallo && <Esqueleto filas={4} etiqueta={t("pnl_sistema_cargando")} />}
+      {datos && (
+        <>
+          <div className="ps-cifra">
+            <small>{t("pnl_sistema_coste_etiqueta", { mes: nombreMes(mes, locale) })}</small>
+            <b>{currency(datos.total_pagado_usd)}</b>
+            <p>{tope != null
+              ? t("admin_cost_cap_summary", { cap: currency(datos.tope_mensual_usd!), pct: porcentajeSimple(pctUsado, locale) })
+              : t("admin_cost_monthly_cap_unset")}</p>
           </div>
-          <div className="adm-nota flex justify-between"><span>{fechaCorta(`${mes}-01`, locale)}</span><span>{fechaCorta(`${mes}-${dias.length}`, locale)}</span></div>
-        </>}
-      </Bloque>
-      <Bloque titulo={t("admin_cost_purpose")}><table className="adm-tabla"><thead><tr><th>{t("admin_cost_purpose_column")}</th><th className="der">{t("admin_cost_calls_column")}</th><th className="der">{t("admin_cost_cache")}</th><th className="der">{t("admin_cost_spend")}</th></tr></thead><tbody>{datos.filas.map(f => <tr key={f.finalidad}><td>{etiquetas[f.finalidad]}</td><td className="der">{numero(f.llamadas, locale)}</td><td className="der">{numero(f.cache_hits, locale)}</td><td className="der">{currency(f.pagado_usd)}</td></tr>)}</tbody></table></Bloque>
-      <Bloque titulo={t("admin_cost_breakdown_title")}><table className="adm-tabla"><thead><tr><th>{t("admin_cost_part")}</th><th className="der">{t("admin_cost_calls_column")}</th><th className="der">{t("admin_cost_spend")}</th></tr></thead><tbody>{datos.desglose.map(p => <tr key={`${p.parte}-${p.detalle}`}><td>{[partes[p.parte], ...(p.detalle?.split(" / ") ?? [])].join(" · ")}</td><td className="der">{numero(p.llamadas, locale)}</td><td className="der">{currency(p.pagado_usd)}</td></tr>)}</tbody></table></Bloque>
-    </>}
-  </Pagina>;
+          {tope != null && (
+            <ul className="pnl-grupo ps-sep">
+              <li className={`ps-uso${gastoAlto ? " alto" : ""}`}>
+                <div className="ps-uso-fila">
+                  <span>{t("pnl_sistema_coste_usado")}</span>
+                  <span>{gastoAlto ? t("admin_cost_over_pct", { pct: avisoPct! }) : porcentajeSimple(pctUsado, locale)}</span>
+                </div>
+                <Progreso valor={pctUsado} etiqueta={t("pnl_sistema_coste_usado")} />
+              </li>
+            </ul>
+          )}
+
+          <Grupo cabecera={t("admin_cost_purpose")}>
+            {datos.filas.map(f => (
+              <Celda key={f.finalidad} titulo={etiquetas[f.finalidad]} valor={currency(f.pagado_usd)}
+                subtitulo={t("pnl_sistema_coste_llamadas", { llamadas: numero(f.llamadas, locale), cache: numero(f.cache_hits, locale) })} />
+            ))}
+          </Grupo>
+
+          <Grupo cabecera={t("admin_cost_breakdown_title")}>
+            {datos.desglose.map(p => (
+              <Celda key={`${p.parte}-${p.detalle}`} titulo={[partes[p.parte], ...(p.detalle?.split(" / ") ?? [])].join(" · ")}
+                valor={currency(p.pagado_usd)} subtitulo={t("pnl_sistema_coste_solo_llamadas", { llamadas: numero(p.llamadas, locale) })} />
+            ))}
+          </Grupo>
+
+          <h2 className="pnl-cab-grupo">{t("admin_cost_por_dia_titulo")}</h2>
+          {diasConGasto === 0
+            ? <Grupo><Celda titulo={t("admin_cost_por_dia_vacio")} /></Grupo>
+            : <Barras valores={dias.map(d => d.pagado)} etiquetas={[fechaCorta(`${mes}-01`, locale), fechaCorta(`${mes}-${String(dias.length).padStart(2, "0")}`, locale)]}
+                etiquetaAria={t("pnl_sistema_coste_dia_aria", { resumen: t("admin_cost_por_dia_resumen", { total: currency(datos.total_pagado_usd), dias: diasConGasto }) })} />}
+          <p className="pnl-pie-grupo">{avisoPct != null ? t("pnl_sistema_coste_pie", { pct: avisoPct }) : t("pnl_sistema_coste_pie_sin_aviso")}</p>
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function CosteIAAdmin() {

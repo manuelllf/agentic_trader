@@ -1,0 +1,15 @@
+/* Liga del panel (jornadas y premio). Acotado a .lg .pnl .pl-*. */
+.lg .pnl .pl-cifra { margin-top: 16px; padding: 16px; border-radius: 10px; background: var(--surface); }
+.lg .pnl .pl-cifra small { display: block; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pnl .pl-cifra b { display: block; margin-top: 2px; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -.01em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lg .pnl .pl-cifra p { margin: 4px 0 0; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pnl .pl-cifra .pnl-progreso { margin-top: 12px; }
+/* Dos acciones bajo la jornada en curso, como la maqueta: la principal en color de botón. */
+.lg .pnl .pl-acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.lg .pnl .pl-boton { min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--surface); color: var(--accent); font: inherit; font-size: 17px; font-weight: 600; cursor: pointer; }
+.lg .pnl .pl-boton.pri { background: var(--btn); color: var(--btn-ink); }
+.lg .pnl .pl-prog { display: block; padding: 12px 16px 14px; color: var(--ink); font-size: 17px; line-height: 22px; }
+.lg .pnl .pl-prog-fila { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.lg .pnl .pl-prog-fila span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lg .pnl .pl-prog .pnl-progreso { margin-top: 8px; }
+.lg .pnl .pl-hoja { padding: 4px 16px 8px; }
