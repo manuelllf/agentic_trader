@@ -1,11 +1,20 @@
-const dinero = (valor: number | string, locale: string, currency: string) =>
-  new Intl.NumberFormat(locale, { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(valor));
+// «5.318,46 $» como la maqueta: miles siempre separados (el español no los pone en 4 cifras) y «$», no «US$».
+const dinero = (valor: number | string, locale: string, currency: string, decimales = 2) =>
+  new Intl.NumberFormat(locale, { style: "currency", currency, currencyDisplay: "narrowSymbol", useGrouping: "always",
+    minimumFractionDigits: decimales, maximumFractionDigits: decimales }).format(Number(valor));
 
-export function dolares(valor: number | string, locale: string) {
+export function dolares(valor: number | string, locale: string, decimales = 2) {
   const n = Number(valor);
-  return n > 0 && n < 0.005 ? `<${dinero(0.01, locale, "USD")}` : dinero(n, locale, "USD");
+  const minimo = 10 ** -decimales;
+  return n > 0 && n < minimo / 2 ? `<${dinero(minimo, locale, "USD", decimales)}` : dinero(n, locale, "USD", decimales);
 }
-export function euros(valor: number | string, locale: string) { return dinero(valor, locale, "EUR"); }
+/** Ganancia o pérdida en dólares: «+12,40 $», «−3,10 $» y el cero sin signo. */
+export function dolaresConSigno(valor: number | string, locale: string) {
+  const n = Number(valor);
+  const redondeado = Number(Math.abs(n).toFixed(2));
+  return `${redondeado === 0 ? "" : n < 0 ? "−" : "+"}${dinero(Math.abs(n), locale, "USD")}`;
+}
+export function euros(valor: number | string, locale: string, decimales = 2) { return dinero(valor, locale, "EUR", decimales); }
 export function numero(valor: number | string, locale: string) {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Number(valor));
 }

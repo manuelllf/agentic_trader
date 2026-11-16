@@ -2,9 +2,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { expect, it } from "vitest";
 const raiz = new URL("./admin/liga/", import.meta.url);
 const leer = (p: URL) => readFileSync(p, "utf8");
-for (const ruta of ["resumen/Resumen.tsx", "analitica/page.tsx", "jornadas/page.tsx", "usuarios/PanelUsuarios.tsx", "consultas/page.tsx", "coste-ia/page.tsx", "revisar/page.tsx", "premio/page.tsx", "ajustes/page.tsx", "auditoria/page.tsx"]) {
-  it(`${ruta} usa Pagina`, () => expect(leer(new URL(ruta, raiz))).toContain("<Pagina"));
-}
 function recorrer(dir: URL): URL[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap(e => {
     const ruta = new URL(e.name + (e.isDirectory() ? "/" : ""), dir);

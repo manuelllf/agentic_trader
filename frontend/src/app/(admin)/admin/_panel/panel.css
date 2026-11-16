@@ -1,0 +1,191 @@
+/* Panel de admin: marco (barra de salas, raíl, cabecera) y kit de celdas, de la maqueta aprobada.
+   Todo acotado a .lg .pnl. Los botones se reinician con :where para no pisar las hojas de la Liga. */
+
+:where(.lg .pnl) :is(button, input) { appearance: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+  color: inherit; font: inherit; -webkit-tap-highlight-color: transparent; }
+:where(.lg .pnl) button { cursor: pointer; }
+:where(.lg .pnl) a { text-decoration: none; }
+
+/* Tokens de la maqueta (iOS): fondo agrupado en claro y negro puro en oscuro. */
+.lg .pnl {
+  --bg: #F2F2F7; --surface: #FFFFFF; --surface2: #E9E9EF; --raised: #FFFFFF;
+  --line: #D8D8DC; --line2: #C7C7CC; --ink: #000000; --ink2: #3C3C43; --muted: #6E6E73;
+  --good: #12804A; --bad: #C0392B; --accent: #0B6E68; --accent-bg: rgba(11, 110, 104, .12);
+  --pnl-rail: 232px; --pnl-ancho: 720px;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .lg .pnl {
+    --bg: #000000; --surface: #1C1C1E; --surface2: #2C2C2E; --raised: #3A3A3C;
+    --line: #38383A; --line2: #48484A; --ink: #FFFFFF; --ink2: #C7C7CC; --muted: #8E8E93;
+    --good: #5CC98A; --bad: #F08A7E; --accent: #4FA39D; --accent-bg: rgba(79, 163, 157, .16);
+  }
+}
+html[data-theme="dark"] .lg .pnl {
+  --bg: #000000; --surface: #1C1C1E; --surface2: #2C2C2E; --raised: #3A3A3C;
+  --line: #38383A; --line2: #48484A; --ink: #FFFFFF; --ink2: #C7C7CC; --muted: #8E8E93;
+  --good: #5CC98A; --bad: #F08A7E; --accent: #4FA39D; --accent-bg: rgba(79, 163, 157, .16);
+}
+/* Las salas antiguas son oscuras siempre: la barra y la cabecera que las rodean también. */
+.lg .pnl.pnl-vieja, html[data-theme] .lg .pnl.pnl-vieja, html:not([data-theme="light"]) .lg .pnl.pnl-vieja {
+  --bg: #0A0A0A; --surface: #18191B; --surface2: #24272A; --raised: #2A2D31;
+  --line: #26292C; --line2: #3A3E43; --ink: #F3F4F4; --ink2: #C9CDD1; --muted: #9AA1A8;
+  --good: #5CC98A; --bad: #F08A7E; --accent: #4FA39D; --accent-bg: rgba(79, 163, 157, .16);
+  color-scheme: dark;
+}
+
+/* La raíz pinta el fondo; el marco no es .lg entero porque las salas antiguas no deben heredar sus reglas. */
+.pnl-raiz { --pnl-fondo: #F2F2F7; min-height: 100dvh; background: var(--pnl-fondo); }
+@media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .pnl-raiz { --pnl-fondo: #000000; } }
+html[data-theme="dark"] .pnl-raiz { --pnl-fondo: #000000; }
+.pnl-raiz.vieja { --pnl-fondo: #0A0A0A; }
+.lg.pnl-lg, .lg.pnl-lg > .pnl { display: contents; }
+.pnl-slot { min-width: 0; }
+
+/* ---- Barra de salas: cápsula flotante en móvil, raíl lateral desde 1024 px ---- */
+.lg .pnl .pnl-barra { position: fixed; z-index: 12; left: 16px; right: 16px; bottom: calc(10px + env(safe-area-inset-bottom)); max-width: 528px;
+  margin: 0 auto; height: 58px; padding: 4px; display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .14); }
+.lg .pnl .pnl-sala { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; border-radius: 999px;
+  color: var(--muted); font-size: 11px; line-height: 13px; font-weight: 600; text-align: center; transition: transform .15s; }
+.lg .pnl .pnl-sala:active { transform: scale(.97); }
+.lg .pnl .pnl-sala svg { flex: none; width: 24px; height: 24px; stroke-width: 1.8; }
+.lg .pnl .pnl-sala[aria-current="page"] { background: var(--accent-bg); color: var(--accent); }
+.lg .pnl .pnl-sala[aria-current="page"] svg { stroke-width: 2.2; }
+.lg .pnl .pnl-sala span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lg .pnl .pnl-marca, .lg .pnl .pnl-secciones { display: none; }
+
+/* ---- Cabecera: fija, sin fondo hasta que el contenido pasa por debajo, sin sombra ---- */
+.lg .pnl .pnl-cab { position: sticky; top: 0; z-index: 10; padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
+  transition: background-color .25s cubic-bezier(.32, .72, 0, 1); }
+.lg .pnl .pnl-cab.superado { background: color-mix(in srgb, var(--bg) 88%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6); }
+.lg .pnl .pnl-cab-in { display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; align-items: center; gap: 0; min-height: 44px; max-width: var(--pnl-ancho); margin: 0 auto; }
+.lg .pnl.pnl-vieja .pnl-cab-in { max-width: none; }
+.lg .pnl .pnl-cab-titulo { grid-column: 2; margin: 0; text-align: center; font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.01em;
+  color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .2s; }
+.lg .pnl .pnl-cab-titulo.visible { opacity: 1; }
+.lg .pnl .pnl-atras { grid-column: 1; display: inline-flex; align-items: center; gap: 2px; justify-self: start; max-width: 100%; min-height: 44px; margin-left: -8px;
+  padding: 0 4px 0 0; color: var(--accent); font-size: 17px; line-height: 22px; }
+.lg .pnl .pnl-atras span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lg .pnl .pnl-atras svg { flex: none; width: 24px; height: 24px; }
+.lg .pnl .pnl-atras:active, .lg .pnl .pnl-campana:active { opacity: .45; }
+.lg .pnl .pnl-cab-der { grid-column: 3; position: relative; display: flex; align-items: center; justify-self: end; }
+.lg .pnl .pnl-campana { position: relative; display: grid; place-items: center; width: 44px; height: 44px; margin-right: -10px; color: var(--accent); }
+.lg .pnl .pnl-campana svg { width: 24px; height: 24px; }
+.lg .pnl .pnl-campana-punto { position: absolute; top: 9px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
+
+/* ---- Página nueva: título grande, que cede su sitio a la cabecera al bajar ---- */
+.lg .pnl .pnl-pagina { max-width: var(--pnl-ancho); margin: 0 auto; padding: 0 16px calc(110px + env(safe-area-inset-bottom)); color: var(--ink2); }
+.lg .pnl .pnl-titulo-grande { margin: 4px 0 0; font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); overflow-wrap: anywhere; }
+/* Salas antiguas: su aspecto de siempre; el marco solo les quita el margen del raíl. */
+.adm.pnl-viejo { display: block; min-height: 0; padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+
+/* ---- Escritorio: raíl a la izquierda con las salas y, en Vennett, sus secciones ---- */
+@media (min-width: 1024px) {
+  .pnl-slot, .lg .pnl .pnl-cab { margin-left: var(--pnl-rail); }
+  .lg .pnl .pnl-cab { padding-inline: 40px; }
+  .lg .pnl .pnl-pagina { padding: 0 40px 56px; }
+  .adm.pnl-viejo { padding-bottom: 0; }
+  .lg .pnl.pnl-vieja .pnl-cab-titulo { display: none; }
+  .lg .pnl .pnl-barra { left: 0; right: auto; top: 0; bottom: 0; width: var(--pnl-rail); max-width: none; height: auto; margin: 0; padding: 20px 12px;
+    display: flex; flex-direction: column; gap: 2px; border-radius: 0; border-right: 1px solid var(--line); background: var(--surface);
+    -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; overflow-y: auto; }
+  .lg .pnl .pnl-marca { display: block; padding: 4px 10px 18px; color: var(--ink); }
+  .lg .pnl .pnl-marca svg { display: block; width: 110px; height: auto; }
+  .lg .pnl .pnl-sala { flex-direction: row; justify-content: flex-start; gap: 10px; min-height: 40px; padding: 0 10px; border-radius: 10px; font-size: 15px; line-height: 20px; }
+  .lg .pnl .pnl-sala span { flex: 1; text-align: left; }
+  .lg .pnl .pnl-sala:active { transform: none; }
+  .lg .pnl .pnl-secciones { display: flex; flex-direction: column; margin: 2px 0 8px; }
+  .lg .pnl .pnl-secciones p { margin: 10px 10px 2px; font-size: 12px; line-height: 16px; color: var(--muted); }
+  .lg .pnl .pnl-sec { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; padding: 0 10px 0 44px; border-radius: 8px;
+    color: var(--ink2); font-size: 14px; line-height: 20px; }
+  .lg .pnl .pnl-sec[aria-current="page"] { color: var(--accent); font-weight: 600; }
+  .lg .pnl .pnl-sec[aria-disabled="true"] { color: var(--muted); }
+  .lg .pnl .pnl-sec em { font-size: 12px; font-style: normal; color: var(--muted); }
+}
+
+/* ---- Kit: grupos de celdas ---- */
+.lg .pnl .pnl-cab-grupo { margin: 28px 16px 6px; font-size: 13px; line-height: 18px; font-weight: 400; color: var(--muted); }
+.lg .pnl .pnl-pie-grupo { margin: 8px 16px 0; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pnl .pnl-grupo { margin: 0; padding: 0; list-style: none; border-radius: 10px; background: var(--surface); overflow: hidden; }
+.lg .pnl .pnl-grupo > li { position: relative; }
+.lg .pnl .pnl-grupo > li + li::before { content: ""; position: absolute; z-index: 1; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
+.lg .pnl .pnl-celda { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; box-sizing: border-box;
+  width: 100%; min-height: 50px; padding: 10px 16px; color: var(--ink); font-size: 17px; line-height: 22px; text-align: left; }
+.lg .pnl .pnl-celda.con-valor { grid-template-columns: minmax(0, 1fr) auto auto; }
+.lg .pnl .pnl-celda.alta { min-height: 64px; }
+.lg .pnl .pnl-celda .t { min-width: 0; }
+.lg .pnl .pnl-celda .t b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.lg .pnl .pnl-celda .t small { display: block; margin-top: 1px; font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pnl .pnl-celda .valor { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lg .pnl .pnl-celda .chev { flex: none; width: 8px; height: 14px; color: var(--muted); opacity: .6; }
+.lg .pnl a.pnl-celda, .lg .pnl button.pnl-celda { cursor: pointer; }
+.lg .pnl a.pnl-celda:active, .lg .pnl button.pnl-celda:active:not(:disabled) { background: var(--surface2); }
+.lg .pnl .pnl-celda.accion { color: var(--accent); }
+.lg .pnl .pnl-celda.peligro { color: var(--bad); }
+.lg .pnl .pnl-celda.apagada { color: var(--muted); cursor: default; }
+.lg .pnl button.pnl-celda:disabled { opacity: .45; cursor: default; }
+.lg .pnl .pnl-celda:focus-visible { outline-offset: -2px; }
+.lg .pnl .pnl-cuenta { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; background: var(--accent);
+  color: var(--bg); font-size: 13px; line-height: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lg .hoja-liga .pnl-grupo, .lg .pnl .hoja-liga .pnl-grupo { background: var(--surface2); }
+.lg .pnl .hoja-liga .pnl-grupo > li + li::before { background: var(--line2); }
+
+/* Interruptor de iOS. Clase propia: «interruptor» a secas es de la Liga (liga.css) y dibuja otro. */
+.lg .pnl .pnl-celda.pnl-interruptor { grid-template-columns: minmax(0, 1fr) auto; }
+.lg .pnl .pnl-sw { position: relative; flex: none; width: 51px; height: 31px; border-radius: 999px; background: var(--line2); transition: background .2s; }
+.lg .pnl .pnl-sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #FFFFFF;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .15); transition: transform .25s cubic-bezier(.32, .72, 0, 1); }
+.lg .pnl .pnl-sw[aria-checked="true"] { background: var(--accent); }
+.lg .pnl .pnl-sw[aria-checked="true"]::after { transform: translateX(20px); }
+.lg .pnl .pnl-sw:disabled { opacity: .4; cursor: default; }
+
+/* Progreso, buscador y chips. */
+.lg .pnl .pnl-progreso { display: block; height: 4px; border-radius: 2px; background: var(--surface2); overflow: hidden; }
+.lg .pnl .hoja-liga .pnl-progreso { background: var(--line2); }
+.lg .pnl .pnl-progreso i { display: block; height: 100%; border-radius: 2px; background: var(--accent); transition: width .4s; }
+.lg .pnl .pnl-buscar { display: flex; align-items: center; gap: 8px; height: 40px; margin-top: 12px; padding: 0 10px; border-radius: 10px; background: var(--surface2); color: var(--muted); }
+.lg .pnl .pnl-buscar svg { flex: none; width: 18px; height: 18px; }
+.lg .pnl .pnl-buscar input { flex: 1; min-width: 0; height: 100%; color: var(--ink); font-size: 17px; outline: none; }
+.lg .pnl .pnl-buscar input::placeholder { color: var(--muted); opacity: 1; }
+.lg .pnl .pnl-buscar:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lg .pnl .pnl-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.lg .pnl .pnl-chip { min-height: 36px; padding: 0 14px; border-radius: 999px; background: var(--surface); color: var(--ink2); font-size: 15px; }
+.lg .pnl .hoja-liga .pnl-chip { background: var(--surface2); }
+.lg .pnl .pnl-chip[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+
+/* Datos en rejilla, barras y vacío. */
+.lg .pnl .pnl-datos { display: grid; grid-template-columns: 1fr 1fr; margin: 20px 0 0; border-radius: 10px; background: var(--surface); }
+.lg .pnl .pnl-datos > div { position: relative; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-height: 44px; padding: 11px 16px; }
+.lg .pnl .pnl-datos > div:nth-child(n+3)::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
+.lg .pnl .pnl-datos span { font-size: 15px; line-height: 20px; color: var(--muted); }
+.lg .pnl .pnl-datos span::first-letter { text-transform: uppercase; }
+/* Título de la página solo para lectores de pantalla: a la vista va el pequeño de la cabecera. */
+/* Acción de la cabecera (el «+» de Omega): un icono en petróleo, sin fondo ni borde. */
+.lg .pnl .pnl-cab-accion { display: grid; place-items: center; width: 44px; height: 44px; margin-right: -8px; padding: 0; border: 0; border-radius: 0; background: none; color: var(--accent); cursor: pointer; }
+.lg .pnl .pnl-cab-accion svg { width: 24px; height: 24px; }
+.lg .pnl .pnl-oculto { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.lg .pnl .pnl-datos b { font-size: 15px; line-height: 20px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lg .pnl .pnl-barras { padding: 14px 16px 10px; border-radius: 10px; background: var(--surface); }
+.lg .pnl .pnl-barras svg { display: block; width: 100%; height: 92px; overflow: visible; font-family: inherit; }
+.lg .pnl .pnl-vacio { display: flex; flex-direction: column; align-items: center; padding: 48px 16px 8px; text-align: center; }
+.lg .pnl .pnl-vacio svg { width: 48px; height: 48px; color: var(--muted); }
+.lg .pnl .pnl-vacio h2 { margin-top: 16px; font-size: 20px; line-height: 25px; font-weight: 600; color: var(--ink); }
+.lg .pnl .pnl-vacio p { margin-top: 6px; max-width: 32ch; font-size: 15px; line-height: 20px; color: var(--muted); }
+
+/* Esqueleto con la forma de los grupos; el contenido llega entero y se funde. */
+.lg .pnl .pnl-esq { display: block; height: 14px; border-radius: 6px; background: var(--surface2); }
+.lg .pnl .pnl-grupo .pnl-esq { background: var(--line); }
+.lg .pnl .pnl-celda.esqueleto { min-height: 50px; }
+.lg .pnl .pnl-llega { animation: pnl-funde .2s ease-out; }
+@keyframes pnl-funde { from { opacity: 0; } }
+.lg .pnl .pnl-solo-lector { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.lg .pnl .pnl-segmento { margin-top: 20px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lg .pnl .pnl-llega, .lg .pnl .pnl-sw, .lg .pnl .pnl-sw::after, .lg .pnl .pnl-sala, .lg .pnl .pnl-cab-titulo, .lg .pnl .pnl-cab { transition: none; animation: none; }
+}
+
+.lg .pnl .pnl-titular { margin: 12px 0 12px; font-size: 22px; line-height: 28px; font-weight: 700; color: var(--ink); }

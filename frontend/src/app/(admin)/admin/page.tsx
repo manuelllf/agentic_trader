@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
+import PortadaVennett from "./_panel/PortadaVennett";
 
-// La portada del admin es el Resumen de Vennett; las salas están en el menú.
+// Inicio de Vennett: los grupos de secciones con sus pendientes. El Resumen de antes sigue en /admin/liga.
 export default function Admin() {
-  redirect("/admin/liga");
+  return <PortadaVennett />;
 }

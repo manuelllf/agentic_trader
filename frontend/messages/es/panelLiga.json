@@ -1,0 +1,20 @@
+{
+  "pnl_liga_jornada_de": "Jornada {n} de {total}",
+  "pnl_liga_siguiente": "Siguiente paso",
+  "pnl_liga_vista_previa": "Vista previa",
+  "pnl_liga_vista_previa_pie": "Nada cambia hasta que lo ejecutes.",
+  "pnl_liga_formar_ahora": "Formar ahora",
+  "pnl_liga_toca_jornada": "Toca una jornada con un paso pendiente para ver su vista previa.",
+  "pnl_liga_procesos": "Último intento de cada proceso",
+  "pnl_liga_resumen_confirmar": "¿Enviar el resumen de prueba?",
+  "pnl_liga_enviar": "Enviar",
+  "pnl_liga_n_cuentas": "{n} cuentas",
+  "pnl_liga_premio_hacia_basico": "Cuentas elegibles para activar el primer escalón",
+  "pnl_liga_premio_hacia_completo": "Cuentas elegibles para activar el premio completo",
+  "pnl_liga_visibilidad": "En la liga",
+  "pnl_liga_reparto": "Reparto",
+  "pnl_liga_calcular_titulo": "Calcular el reparto",
+  "pnl_liga_calcular_cuando": "Disponible al cerrar la temporada",
+  "pnl_liga_premio_pie": "El cálculo no se puede deshacer.",
+  "pnl_liga_n_jornadas": "{n, plural, one {# jornada} other {# jornadas}}"
+}

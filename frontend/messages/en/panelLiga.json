@@ -1,0 +1,20 @@
+{
+  "pnl_liga_jornada_de": "Matchday {n} of {total}",
+  "pnl_liga_siguiente": "Next step",
+  "pnl_liga_vista_previa": "Preview",
+  "pnl_liga_vista_previa_pie": "Nothing changes until you run it.",
+  "pnl_liga_formar_ahora": "Run now",
+  "pnl_liga_toca_jornada": "Tap a matchday with a pending step to preview it.",
+  "pnl_liga_procesos": "Last attempt of each process",
+  "pnl_liga_resumen_confirmar": "Send the test summary?",
+  "pnl_liga_enviar": "Send",
+  "pnl_liga_n_cuentas": "{n} accounts",
+  "pnl_liga_premio_hacia_basico": "Eligible accounts to unlock the first tier",
+  "pnl_liga_premio_hacia_completo": "Eligible accounts to unlock the full prize",
+  "pnl_liga_visibilidad": "In the league",
+  "pnl_liga_reparto": "Payout",
+  "pnl_liga_calcular_titulo": "Calculate the payout",
+  "pnl_liga_calcular_cuando": "Available once the season closes",
+  "pnl_liga_premio_pie": "The calculation cannot be undone.",
+  "pnl_liga_n_jornadas": "{n, plural, one {# matchday} other {# matchdays}}"
+}

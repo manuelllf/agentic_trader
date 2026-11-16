@@ -4,13 +4,14 @@ import { dolares, euros, numero, porcentajeSimple, porcentajeConSigno, fechaCort
 afterEach(() => vi.useRealTimers());
 describe.each(["es", "en"])("formato %s", locale => {
   it("formatea importes con dos decimales y el mínimo en dólares", () => {
-    const usd = new Intl.NumberFormat(locale, { style: "currency", currency: "USD" });
+    const usd = new Intl.NumberFormat(locale, { style: "currency", currency: "USD", currencyDisplay: "narrowSymbol", useGrouping: "always" });
     expect(dolares("3.9", locale)).toBe(usd.format(3.9));
     expect(dolares(0.001, locale)).toBe(`<${usd.format(0.01)}`);
     expect(dolares(0, locale)).toBe(usd.format(0));
     expect(dolares(0.005, locale)).toBe(usd.format(0.005));
-    expect(euros("3.9", locale)).toBe(new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(3.9));
-    expect(euros(0.001, locale)).toBe(new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(0));
+    const eur = new Intl.NumberFormat(locale, { style: "currency", currency: "EUR", currencyDisplay: "narrowSymbol", useGrouping: "always" });
+    expect(euros("3.9", locale)).toBe(eur.format(3.9));
+    expect(euros(0.001, locale)).toBe(eur.format(0));
   });
   it("formatea enteros y porcentajes", () => {
     expect(numero("1234567.2", locale)).toBe(locale === "es" ? "1.234.567" : "1,234,567");
