@@ -272,6 +272,32 @@ class DeepSeekProvider:
         data = self._request(system, user, temperature=temperature, top_p=top_p)
         return data["choices"][0]["message"]["content"] or ""
 
+    def chat_con_herramientas(self, mensajes: list[dict], herramientas: list[dict] | None = None,
+                              *, temperature: float = 0.3) -> dict:
+        """Una vuelta del agente con llamadas NATIVAS a herramientas (el mecanismo de la API, no
+        JSON escrito en el texto). Devuelve {"content", "tool_calls", "mensaje"}. Sin `herramientas`
+        el modelo no puede pedir ninguna: así se fuerza la decisión en el último turno."""
+        payload: dict = {"model": self._model, "messages": mensajes, "temperature": temperature}
+        if herramientas:
+            payload["tools"] = herramientas
+        if self._reasoning_effort:
+            payload["reasoning_effort"] = self._reasoning_effort
+        t0 = time.monotonic()
+        try:
+            with httpx.Client(timeout=self._timeout) as client:
+                resp = client.post(f"{self._base_url}/chat/completions",
+                                   headers=self._headers, json=payload)
+                resp.raise_for_status()
+                data = json.loads(resp.content.decode("utf-8"))
+        except Exception as exc:
+            self._trazar(t0, None, error=f"{type(exc).__name__}: {exc}")
+            raise
+        hit, miss, ct, cost = self._account(data.get("usage"))
+        self._trazar(t0, data, uso=(hit, miss, ct, cost))
+        msg = ((data.get("choices") or [{}])[0]).get("message") or {}
+        return {"content": msg.get("content") or "",
+                "tool_calls": msg.get("tool_calls") or [], "mensaje": msg}
+
     def chat_logprobs(self, system: str, user: str, *, temperature: float = 0.3,
                       top_p: float | None = None) -> tuple[str, float | None]:
         """Como `chat()`, pero además devuelve la probabilidad del token MENOS seguro de la

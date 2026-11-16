@@ -97,6 +97,23 @@ def _llamar(llm: Any, system: str, user: str) -> tuple[str, Decimal | None]:  # 
     return texto, despues - antes
 
 
+def _llamar_herramientas(llm: Any, mensajes: list[dict],  # noqa: ANN401
+                         herr: list[dict] | None) -> tuple[dict, Decimal | None]:
+    """Como `_llamar`, con llamadas nativas a herramientas: devuelve la respuesta entera."""
+    def acumulado() -> Decimal | None:
+        try:
+            return D(str(llm.usage["cost_usd"]))
+        except (AttributeError, KeyError, TypeError, ValueError, ArithmeticError):
+            return None
+
+    antes = acumulado()
+    respuesta = llm.chat_con_herramientas(mensajes, herr)
+    despues = acumulado()
+    if antes is None or despues is None or despues < antes:
+        return respuesta, None
+    return respuesta, despues - antes
+
+
 class Presupuesto:
     """Lleva el gasto del mes durante un ciclo y lo apunta en `agente.gasto`."""
 
@@ -106,12 +123,20 @@ class Presupuesto:
         self.corte = corte or interruptor.deepseek
 
     def llamar(self, llm: Any, modelo: str, system: str, user: str) -> str:  # noqa: ANN401
+        return self._con_presupuesto(llm, modelo, lambda: _llamar(llm, system, user))
+
+    def llamar_herramientas(self, llm: Any, modelo: str, mensajes: list[dict],  # noqa: ANN401
+                            herr: list[dict] | None) -> dict:
+        return self._con_presupuesto(
+            llm, modelo, lambda: _llamar_herramientas(llm, mensajes, herr))
+
+    def _con_presupuesto(self, llm: Any, modelo: str, invocar: Any) -> Any:  # noqa: ANN401
         estimado = D(str(ajustes.coste_estimado_llamada_usd))
         if not limites.puede_gastar_ia(self.gastado, estimado):
             raise SinPresupuesto
         self.corte.antes()
         try:
-            texto, coste = _llamar(llm, system, user)
+            resultado, coste = invocar()
         except Exception as exc:
             logger.exception("Llamada al modelo fallida")
             if self.corte.fallo():
@@ -126,7 +151,7 @@ class Presupuesto:
                          coste_usd=coste, ejecucion_id=self.ejecucion_id))
         self.s.flush()
         self.gastado += coste
-        return texto
+        return resultado
 
 
 class Medido:
@@ -224,24 +249,6 @@ def _json_de(texto: str) -> object:
     raise ValueError("la respuesta no es JSON")
 
 
-def _interpretar(texto: str) -> dict | Decision:
-    """Una petición de herramienta ({tool, args}) o una decisión validada; si no, ValueError."""
-    obj = _json_de(texto)
-    if not isinstance(obj, dict):
-        raise ValueError("la respuesta debe ser un objeto JSON")
-    if "decision" in obj:
-        try:
-            return Decision.model_validate(obj["decision"])
-        except ValidationError as exc:
-            raise ValueError(f"decisión no válida: {exc.errors(include_url=False)}") from exc
-    if isinstance(obj.get("tool"), str):
-        args = obj.get("args") or {}
-        if not isinstance(args, dict):
-            raise ValueError("args debe ser un objeto")
-        return {"tool": obj["tool"], "args": args}
-    raise ValueError('usa {"tool", "args"} o {"decision"}')
-
-
 def _usuario(base: str, rastro: list[dict], nota: str | None) -> str:
     partes = [base]
     if rastro:
@@ -258,38 +265,69 @@ _AVISO_ULTIMO = ("Last turn: no more tools are available. Give your final decisi
                  "decision format.")
 
 
+def _decision_de(texto: str) -> Decision:
+    """La decisión final: {"decision": {...}} validada. Cualquier otra cosa es ValueError."""
+    obj = _json_de(texto)
+    if not isinstance(obj, dict) or "decision" not in obj:
+        raise ValueError('la respuesta final debe ser {"decision": {...}}')
+    try:
+        return Decision.model_validate(obj["decision"])
+    except ValidationError as exc:
+        raise ValueError(f"decisión no válida: {exc.errors(include_url=False)}") from exc
+
+
 def _bucle(s: Session, g: Presupuesto, llm: Any, ctx: herramientas.Contexto,  # noqa: ANN401
            base: str, rastro: list[dict], nota: str | None = None) -> Decision:
-    """Hasta `max_pasos` turnos. Respuesta vacía: se repite la misma llamada (hasta dos veces,
-    sin gastar el aviso). JSON inválido: un aviso de corrección."""
+    """Hasta `max_pasos` turnos con llamadas NATIVAS a herramientas: el modelo pide herramientas
+    por la API y el resultado vuelve como mensaje de herramienta. Su respuesta de texto solo se
+    acepta como decisión final. Respuesta vacía: se repite la misma llamada (hasta dos veces).
+    Decisión inválida: un aviso de corrección. En el último turno no hay herramientas."""
+    herr = herramientas.esquemas_nativos()
+    mensajes: list[dict] = [
+        {"role": "system", "content": prompts.SYSTEM_AGENTE},
+        {"role": "user", "content": _usuario(base, [], nota)},
+    ]
     avisos, vacias = 0, 0
     for paso in range(ajustes.max_pasos):
-        # En el último turno ya no hay herramientas: el modelo debe decidir con lo que tiene.
         ultimo = paso == ajustes.max_pasos - 1
-        nota_turno = " ".join(x for x in (nota, _AVISO_ULTIMO if ultimo else None) if x) or None
-        texto = g.llamar(llm, ajustes.modelo, prompts.SYSTEM_AGENTE,
-                         _usuario(base, rastro, nota_turno))
+        if ultimo:
+            mensajes.append({"role": "user", "content": _AVISO_ULTIMO})
+        r = g.llamar_herramientas(llm, ajustes.modelo, mensajes, None if ultimo else herr)
+        llamadas = [] if ultimo else r["tool_calls"]
+        if llamadas:
+            mensajes.append(r["mensaje"])
+            for c in llamadas:
+                nombre = c["function"]["name"]
+                try:
+                    args = json.loads(c["function"].get("arguments") or "{}")
+                    if not isinstance(args, dict):
+                        raise ValueError("los argumentos deben ser un objeto")
+                except ValueError as exc:
+                    args, resultado = {}, {"error": f"arguments no válidos: {exc}"}
+                else:
+                    resultado = herramientas.ejecutar(s, nombre, args, ctx)
+                rastro.append({"tool": nombre, "args": args, "resultado": resultado})
+                mensajes.append({"role": "tool", "tool_call_id": c["id"],
+                                 "content": json.dumps(resultado, ensure_ascii=False, default=str)})
+            continue
+        texto = r["content"]
         if not texto.strip():
             vacias += 1
             if vacias > 2:
                 raise Fallo("el modelo devolvió respuestas vacías tres veces seguidas")
             continue
         try:
-            r = _interpretar(texto)
+            return _decision_de(texto)
         except ValueError as exc:
             if avisos:
                 raise Fallo(f"respuesta inválida dos veces: {exc}; empieza así: {texto[:200]!r}"
                             ) from exc
             avisos = 1
-            nota = (f"Your last reply was invalid ({exc}). Reply with exactly one valid JSON "
-                    "object in one of the two formats.")
-            continue
-        if isinstance(r, Decision):
-            return r
-        resultado = herramientas.ejecutar(s, r["tool"], r["args"], ctx)
-        rastro.append({"tool": r["tool"], "args": r["args"], "resultado": resultado})
-        nota = None
-    pedidas = ", ".join(r["tool"] for r in rastro) or "ninguna"
+            mensajes.append({"role": "assistant", "content": texto})
+            mensajes.append({"role": "user", "content": (
+                f"Your last reply was invalid ({exc}). Reply with exactly one JSON object: "
+                '{"decision": {...}}. Use the tools if you still need data.')})
+    pedidas = ", ".join(x["tool"] for x in rastro) or "ninguna"
     raise Fallo(f"sin decisión tras agotar los pasos; herramientas pedidas: {pedidas}")
 
 

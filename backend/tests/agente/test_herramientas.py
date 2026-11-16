@@ -207,3 +207,20 @@ def test_salida_se_recorta_a_4000(sesion_agente):
     assert len(json.dumps(r)) < 4100
     assert "card_write" in herramientas.describir()
     assert "[WRITES]" in herramientas.describir()
+
+
+def test_screen_mira_solo_la_lista_de_seguimiento(sesion_agente):
+    from app.agente.models import Seguimiento
+
+    sesion_agente.add_all([Seguimiento(ticker="AAA", motivo="m"),
+                           Seguimiento(ticker="BBB", motivo="m")])
+    sesion_agente.flush()
+    _sembrar(sesion_agente, "AAA", _barras(260))
+    _sembrar(sesion_agente, "BBB", _barras(260))
+    _sembrar(sesion_agente, "ZZZ", _barras(260))  # precios guardados pero no seguida: no entra
+    ctx = Contexto(hoy=HOY)
+    r = ejecutar(sesion_agente, "screen", {"sort": "rsi", "limit": 5}, ctx)
+    assert r["universe"] == 2 and r["shown"] == 2
+    assert sorted(x["ticker"] for x in r["rows"]) == ["AAA", "BBB"]
+    assert all(x["rsi14"] is not None and x["drawdown_from_1y_high"] is not None for x in r["rows"])
+    assert "error" in ejecutar(sesion_agente, "screen", {"sort": "precio"}, ctx)

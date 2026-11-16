@@ -51,6 +51,25 @@ class Falso:
         self._acumulado += self.coste
         return self.respuestas.pop(0)
 
+    def chat_con_herramientas(self, mensajes: list, herramientas: list | None = None,
+                              **_: object) -> dict:
+        """Como la API: una petición de herramienta llega como `tool_calls`; el resto como texto."""
+        self.llamadas.append(("", json.dumps(mensajes, ensure_ascii=False)))
+        self._acumulado += self.coste
+        texto = self.respuestas.pop(0)
+        try:
+            obj = json.loads(texto)
+        except ValueError:
+            obj = None
+        if isinstance(obj, dict) and isinstance(obj.get("tool"), str):
+            llamada = {"id": f"call_{len(self.llamadas)}", "type": "function",
+                       "function": {"name": obj["tool"],
+                                    "arguments": json.dumps(obj.get("args") or {})}}
+            msg = {"role": "assistant", "content": None, "tool_calls": [llamada]}
+            return {"content": "", "tool_calls": [llamada], "mensaje": msg}
+        msg = {"role": "assistant", "content": texto}
+        return {"content": texto, "tool_calls": [], "mensaje": msg}
+
 
 @pytest.fixture(autouse=True)
 def _entorno(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -140,7 +159,7 @@ def test_herramienta_y_luego_nada_se_aprueba_sin_revisor(sesion_agente: Session)
     assert (fila.tipo, fila.sombra, fila.revisor_veredicto) == ("nada", True, "aprobada")
     assert fila.propuesta["herramientas"] == [{"nombre": "price", "args": {"ticker": "AAA"}}]
     # El segundo turno ya lleva el resultado de la herramienta.
-    assert '"AAA": 100' in agente.llamadas[2][1]
+    assert r'\"AAA\": 100' in agente.llamadas[2][1] and '"role": "tool"' in agente.llamadas[2][1]
     assert "decision" in _eventos(s)
 
 
@@ -338,13 +357,12 @@ def test_tres_fallos_abren_el_interruptor_y_dejan_de_llamar(sesion_agente: Sessi
     assert _una(s, "select count(*) as n from agente.gasto").n == 0
 
 
-def test_interpretar_acepta_json_envuelto_en_texto_o_bloque() -> None:
-    assert ciclo._interpretar('```json\n{"tool": "price", "args": {"ticker": "AAA"}}\n```') == {
-        "tool": "price", "args": {"ticker": "AAA"}}
-    assert ciclo._interpretar('Aquí va: {"tool": "price", "args": {}} fin') == {
-        "tool": "price", "args": {}}
+def test_json_de_saca_el_objeto_aunque_venga_envuelto() -> None:
+    assert ciclo._json_de('```json\n{"decision": {"tipo": "nada"}}\n```') == {
+        "decision": {"tipo": "nada"}}
+    assert ciclo._json_de('Aquí va: {"a": 1} fin') == {"a": 1}
     with pytest.raises(ValueError, match="no es JSON"):
-        ciclo._interpretar("sin llaves por ningún lado")
+        ciclo._json_de("sin llaves por ningún lado")
 
 
 def test_respuesta_vacia_se_repite_sin_gastar_el_aviso(sesion_agente) -> None:
@@ -374,7 +392,22 @@ def test_en_el_ultimo_turno_se_avisa_que_ya_no_hay_herramientas(sesion_agente, m
     assert "Last turn" not in llm.llamadas[0][1] and "Last turn" in llm.llamadas[1][1]
 
 
-def test_interpretar_toma_la_primera_peticion_si_hay_varias() -> None:
-    respuesta = ('Ahora miro META.\n{"tool": "price", "args": {"ticker": "META"}}\n'
-                 'Y luego {"tool": "fundamentals", "args": {"ticker": "META"}}')
-    assert ciclo._interpretar(respuesta) == {"tool": "price", "args": {"ticker": "META"}}
+def test_json_de_toma_el_primero_si_hay_varios() -> None:
+    respuesta = 'Ahora miro META.\n{"a": 1}\nY luego {"b": 2}'
+    assert ciclo._json_de(respuesta) == {"a": 1}
+
+
+def test_herramienta_nativa_vuelve_como_mensaje_de_herramienta(sesion_agente) -> None:
+    from decimal import Decimal
+
+    from app.agente import herramientas
+
+    hoy = date(2026, 11, 16)
+    llm = Falso(['{"tool": "portfolio", "args": {}}',
+                 '{"decision": {"tipo": "nada", "razonamiento": "espero"}}'])
+    g = ciclo.Presupuesto(sesion_agente, hoy, None, Decimal("0"))
+    rastro: list[dict] = []
+    d = ciclo._bucle(sesion_agente, g, llm, herramientas.Contexto(hoy=hoy), "base", rastro)
+    assert d.tipo == "nada"
+    assert [x["tool"] for x in rastro] == ["portfolio"]
+    assert '"role": "tool"' in llm.llamadas[1][1]

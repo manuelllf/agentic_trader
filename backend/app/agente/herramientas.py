@@ -44,7 +44,7 @@ RECORTE_RAZONAMIENTO = 600
 RECORTE_RESUMEN = 240
 _TICKER = re.compile(r"^[A-Z0-9.\-]{1,12}$")
 _OPCIONALES = {"weeks", "limit", "levels", "years", "discount_rate", "target_margin",
-               "dividend_per_share", "freshness"}
+               "dividend_per_share", "freshness", "sort"}
 _CERTEZAS = ("confirmada", "conjetura")
 
 # Descargador de barras; las pruebas lo sustituyen para no usar la red.
@@ -394,6 +394,50 @@ def _cancel_wakeup(s: Session, a: dict, ctx: Contexto) -> dict:  # noqa: ARG001
     return {"wakeup_id": d.id, "status": "cancelled", "pending": despertares.pendientes(s)}
 
 
+_ORDENES = {
+    # Primero las más castigadas, luego las que más subieron en el mes, luego las más sobrevendidas.
+    "drawdown": (lambda x: x["drawdown_from_1y_high"], False),
+    "change_1m": (lambda x: x["change_1m"], True),
+    "rsi": (lambda x: x["rsi14"], False),
+}
+
+
+def _screen(s: Session, a: dict, ctx: Contexto) -> dict:
+    """Cribado de su propio universo (la lista de seguimiento) con los precios que ya tiene
+    guardados. Las cifras las calcula el código; el modelo solo elige qué mirar."""
+    orden = str(a.get("sort") or "drawdown")
+    if orden not in _ORDENES:
+        raise ValueError(f"sort must be one of {', '.join(_ORDENES)}")
+    limite = _entero(a.get("limit"), 15, 1, 25)
+    s.flush()
+    tickers = [r[0] for r in s.execute(text(
+        "select ticker from agente.seguimiento where hasta is null order by ticker")).all()]
+    filas = s.execute(text(
+        "select ticker, cierre from agente.precios where ticker = any(:t) and fecha >= :d "
+        "order by ticker, fecha"), {"t": tickers, "d": ctx.hoy - timedelta(days=400)}).all()
+    por_ticker: dict[str, list[float]] = {}
+    for t, c in filas:
+        por_ticker.setdefault(t, []).append(float(c))
+    con_datos, sin_datos = [], []
+    for t in tickers:
+        c = por_ticker.get(t) or []
+        if len(c) < 15:
+            sin_datos.append(t)
+            continue
+        con_datos.append({
+            "ticker": t,
+            "last_close": _r(c[-1], 2),
+            "change_1m": _variacion(c, SESIONES_MES),
+            "rsi14": _r(calculos.rsi(c, 14), 2),
+            "drawdown_from_1y_high": _r(calculos.caida_desde_maximo(c[-SESIONES_ANIO:]), 4),
+        })
+    clave, descendente = _ORDENES[orden]
+    con_datos.sort(key=lambda x: (clave(x) is None, clave(x) or 0), reverse=descendente)
+    return {"universe": len(tickers), "sort": orden, "shown": min(limite, len(con_datos)),
+            "rows": con_datos[:limite], "without_price_history": sin_datos,
+            "note": "Computed in code from stored closes of your watchlist (1-year window)."}
+
+
 def _h(nombre: str, descripcion: str, parametros: dict[str, str], funcion: Callable,
        escritura: bool = False) -> Herramienta:
     return Herramienta(nombre, descripcion, parametros, escritura, funcion)
@@ -414,6 +458,13 @@ CATALOGO: dict[str, Herramienta] = {h.nombre: h for h in (
     _h("card_write", "Write or rewrite your research card; the old version is kept in the log.",
        {"ticker": _T, "content": "object, free keys (thesis, assumptions, exits, break, ...)",
         "certainty": "string, confirmada or conjetura"}, _card_write, True),
+    _h("screen", "Screen the companies you follow (your whole watchlist) using their stored "
+       "prices: last close, 1-month change, RSI 14 and drawdown from the 1-year high, computed "
+       "in code. "
+       "Use it to choose which companies deserve a closer look today.",
+       {"sort": "string, drawdown (most fallen first) | change_1m (best month first) | rsi "
+                "(most oversold first), default drawdown",
+        "limit": "integer, optional, 1 to 25, default 15"}, _screen),
     _h("watchlist", "List the companies you are following, with their price levels.",
        {}, _watchlist),
     _h("watch", "Follow a company with a reason and optional price levels. A ticker with no price "
@@ -467,6 +518,28 @@ CATALOGO: dict[str, Herramienta] = {h.nombre: h for h in (
     _h("cancel_wakeup", "Cancel one of your pending wake-ups. It still counts in the weekly "
        "limit.", {"wakeup_id": "integer", "reason": "string, why"}, _cancel_wakeup, True),
 )}
+
+
+_TIPOS = {"integer": "integer", "number": "number", "list": "array", "object": "object",
+          "string": "string"}
+
+
+def _tipo_de(descripcion: str) -> str:
+    """El tipo JSON sale de la primera palabra de la descripción ("integer, optional", "list…")."""
+    primera = descripcion.split(",")[0].split()[0].lower() if descripcion.strip() else "string"
+    return _TIPOS.get(primera, "string")
+
+
+def esquemas_nativos() -> list[dict]:
+    """El catálogo en el formato de llamadas a herramientas de la API (OpenAI-compatible)."""
+    out = []
+    for h in CATALOGO.values():
+        props = {k: {"type": _tipo_de(v), "description": v} for k, v in h.parametros.items()}
+        requeridos = [k for k in h.parametros if k not in _OPCIONALES]
+        out.append({"type": "function", "function": {
+            "name": h.nombre, "description": h.descripcion,
+            "parameters": {"type": "object", "properties": props, "required": requeridos}}})
+    return out
 
 
 def describir() -> str:
