@@ -229,7 +229,8 @@ def _juicios_de_la_noche(s: Session, ej: Ejecucion, hoy: date,
 
     if revisor_llm is None:
         revisor_llm = _modelos()[1]
-    medido = ciclo.Medido(ciclo.presupuesto(s, hoy, ej.id), revisor_llm, ajustes.modelo_revisor)
+    medido = ciclo.Medido(ciclo.presupuesto(s, hoy, ej.id), revisor_llm, ajustes.modelo_revisor,
+                          "juicios")
     try:
         return {"lecciones_aprobadas": memoria.revisar_lecciones(s, medido),
                 "propuestas_en_sombra": puerta.revisar_propuestas(s, hoy, medido),

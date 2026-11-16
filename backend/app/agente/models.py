@@ -347,3 +347,24 @@ class Gasto(Base):
     )
     creado: Mapped[datetime] = _creado()
     creado_por: Mapped[str] = _creado_por()
+
+
+class LlamadaModelo(Base):
+    __tablename__ = "llamadas_modelo"
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    ejecucion_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("agente.ejecuciones.id")
+    )
+    etapa: Mapped[str] = mapped_column(Text)
+    paso: Mapped[int] = mapped_column(Integer)
+    modelo: Mapped[str] = mapped_column(Text)
+    enviado: Mapped[Any] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    respuesta: Mapped[str | None] = mapped_column(Text)
+    razonamiento: Mapped[str | None] = mapped_column(Text)
+    herramientas_pedidas: Mapped[Any] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    coste_usd: Mapped[Decimal | None] = mapped_column(Numeric(asdecimal=True))
+    latencia_ms: Mapped[int | None] = mapped_column(Integer)
+    ok: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    error: Mapped[str | None] = mapped_column(Text)
+    creado: Mapped[datetime] = _creado()
+    creado_por: Mapped[str] = _creado_por()

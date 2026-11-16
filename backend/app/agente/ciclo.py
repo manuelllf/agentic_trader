@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import date, timedelta
 from decimal import ROUND_FLOOR, Decimal
 from typing import Any, Literal
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.agente import (
     avisos,
+    base,
     despertares,
     herramientas,
     interruptor,
@@ -27,7 +29,7 @@ from app.agente import (
 from app.agente.config import ajustes
 from app.agente.interruptor import EnPausa, Interruptor
 from app.agente.models import Decision as DecisionFila
-from app.agente.models import Estado, Evento, Gasto, PlaybookVersion, Seguimiento
+from app.agente.models import Estado, Evento, Gasto, LlamadaModelo, PlaybookVersion, Seguimiento
 from app.ledger.money import D
 from app.mercado.calendario import dias_de_bolsa
 
@@ -121,24 +123,56 @@ class Presupuesto:
                  corte: Interruptor | None = None) -> None:
         self.s, self.hoy, self.ejecucion_id, self.gastado = s, hoy, ejecucion_id, gastado
         self.corte = corte or interruptor.deepseek
+        self._pasos: dict[str, int] = {}
+        self._vistos: dict[str, int] = {}
 
-    def llamar(self, llm: Any, modelo: str, system: str, user: str) -> str:  # noqa: ANN401
-        return self._con_presupuesto(llm, modelo, lambda: _llamar(llm, system, user))
+    def llamar(self, llm: Any, modelo: str, system: str, user: str,  # noqa: ANN401
+               etapa: str = "revisor") -> str:
+        enviado = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        return self._con_presupuesto(
+            llm, modelo, lambda: _llamar(llm, system, user), etapa, enviado,
+            lambda texto: (texto, None, []))
 
     def llamar_herramientas(self, llm: Any, modelo: str, mensajes: list[dict],  # noqa: ANN401
-                            herr: list[dict] | None) -> dict:
+                            herr: list[dict] | None, etapa: str = "agente") -> dict:
+        # De cada vuelta solo se guarda lo nuevo; sus propias respuestas ya quedaron en su fila.
+        nuevos = [m for m in mensajes[self._vistos.get(etapa, 0):] if m.get("role") != "assistant"]
+        self._vistos[etapa] = len(mensajes)
         return self._con_presupuesto(
-            llm, modelo, lambda: _llamar_herramientas(llm, mensajes, herr))
+            llm, modelo, lambda: _llamar_herramientas(llm, mensajes, herr), etapa, nuevos,
+            lambda r: (r["content"], (r.get("mensaje") or {}).get("reasoning_content"),
+                       r["tool_calls"]))
 
-    def _con_presupuesto(self, llm: Any, modelo: str, invocar: Any) -> Any:  # noqa: ANN401
+    def _anotar(self, etapa: str, modelo: str, enviado: list[dict], salida: tuple | None,
+                coste: Decimal | None, inicio: float, error: str | None) -> None:
+        """Deja constancia de la llamada en su propia conexión: sobrevive aunque el ciclo falle y
+        deshaga lo suyo. Un fallo al anotar nunca tumba el ciclo."""
+        self._pasos[etapa] = paso = self._pasos.get(etapa, 0) + 1
+        respuesta, razonamiento, pedidas = salida or (None, None, [])
+        try:
+            with base.sesion() as t:
+                t.add(LlamadaModelo(
+                    ejecucion_id=self.ejecucion_id, etapa=etapa, paso=paso, modelo=modelo,
+                    enviado=enviado, respuesta=respuesta, razonamiento=razonamiento,
+                    herramientas_pedidas=pedidas, coste_usd=coste,
+                    latencia_ms=int((time.monotonic() - inicio) * 1000),
+                    ok=error is None, error=error))
+        except Exception:
+            logger.exception("No se pudo anotar la llamada al modelo")
+
+    def _con_presupuesto(self, llm: Any, modelo: str, invocar: Any,  # noqa: ANN401
+                         etapa: str, enviado: list[dict], extraer: Any) -> Any:  # noqa: ANN401
         estimado = D(str(ajustes.coste_estimado_llamada_usd))
         if not limites.puede_gastar_ia(self.gastado, estimado):
             raise SinPresupuesto
         self.corte.antes()
+        inicio = time.monotonic()
         try:
             resultado, coste = invocar()
         except Exception as exc:
             logger.exception("Llamada al modelo fallida")
+            self._anotar(etapa, modelo, enviado, None, None, inicio,
+                         f"{type(exc).__name__}: {exc}"[:500])
             if self.corte.fallo():
                 datos = {"motivo": f"{type(exc).__name__}"[:200],
                          "pausa_min": ajustes.interruptor_pausa_min}
@@ -147,6 +181,7 @@ class Presupuesto:
             raise Fallo(f"proveedor: {type(exc).__name__}: {exc}") from exc
         self.corte.exito()
         coste = estimado if coste is None else coste
+        self._anotar(etapa, modelo, enviado, extraer(resultado), coste, inicio, None)
         self.s.add(Gasto(fecha_ny=self.hoy, tipo="ia", proveedor=PROVEEDOR, modelo=modelo,
                          coste_usd=coste, ejecucion_id=self.ejecucion_id))
         self.s.flush()
@@ -158,11 +193,12 @@ class Medido:
     """Proveedor con `chat` que pasa por el presupuesto: así el revisor y el nacimiento
     cuentan igual que el agente."""
 
-    def __init__(self, g: Presupuesto, llm: Any, modelo: str) -> None:  # noqa: ANN401
-        self.g, self.llm, self.modelo = g, llm, modelo
+    def __init__(self, g: Presupuesto, llm: Any, modelo: str,  # noqa: ANN401
+                 etapa: str = "revisor") -> None:
+        self.g, self.llm, self.modelo, self.etapa = g, llm, modelo, etapa
 
     def chat(self, system: str, user: str) -> str:
-        return self.g.llamar(self.llm, self.modelo, system, user)
+        return self.g.llamar(self.llm, self.modelo, system, user, self.etapa)
 
 
 def _evento(s: Session, tipo: str, ejecucion_id: int | None,
@@ -415,7 +451,7 @@ def _ciclo(s: Session, hoy: date, g: Presupuesto, llm: Any, revisor_llm: Any,  #
     if candidata is not None:
         filosofia, playbook = candidata.contenido, candidata
     else:
-        filosofia = filosofia_vigente(s) or nacer(s, Medido(g, llm, ajustes.modelo))
+        filosofia = filosofia_vigente(s) or nacer(s, Medido(g, llm, ajustes.modelo, "nacimiento"))
         playbook = _playbook_vigente(s)
 
     cartera = herramientas.ejecutar(s, "portfolio", {}, ctx)

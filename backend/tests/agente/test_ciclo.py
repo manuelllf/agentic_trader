@@ -411,3 +411,89 @@ def test_herramienta_nativa_vuelve_como_mensaje_de_herramienta(sesion_agente) ->
     assert d.tipo == "nada"
     assert [x["tool"] for x in rastro] == ["portfolio"]
     assert '"role": "tool"' in llm.llamadas[1][1]
+
+
+# --- Registro de las llamadas al modelo ---------------------------------------------------------
+
+
+def _confirmada(s: Session, fecha: date) -> int:
+    """Ejecución ya confirmada: el registro escribe en otra conexión y necesita verla."""
+    ej = tareas.reclamar(s, Tarea.DESPERTAR, fecha)
+    assert ej is not None
+    s.commit()
+    return ej.id
+
+
+def _llamadas(s: Session, ej_id: int):  # noqa: ANN202
+    return s.execute(text(
+        "select etapa, paso, modelo, enviado, respuesta, razonamiento, herramientas_pedidas, "
+        "coste_usd, ok, error from agente.llamadas_modelo where ejecucion_id = :e order by id"),
+        {"e": ej_id}).all()
+
+
+class ConRazonamiento(Falso):
+    def chat_con_herramientas(self, mensajes, herramientas=None, **kw):  # noqa: ANN001, ANN003, ANN202
+        r = super().chat_con_herramientas(mensajes, herramientas, **kw)
+        r["mensaje"] = {**r["mensaje"], "reasoning_content": "pienso en voz alta"}
+        return r
+
+
+def test_cada_vuelta_del_agente_queda_registrada(sesion_agente: Session) -> None:
+    s = sesion_agente
+    hoy = date(2027, 1, 4)
+    ej_id = _confirmada(s, hoy)
+    llm = ConRazonamiento(['{"tool": "portfolio", "args": {}}',
+                           '{"decision": {"tipo": "nada", "razonamiento": "espero"}}'])
+    g = ciclo.Presupuesto(s, hoy, ej_id, Decimal("0"))
+    ciclo._bucle(s, g, llm, herramientas.Contexto(hoy=hoy), "base", [])
+    uno, dos = _llamadas(s, ej_id)
+    assert (uno.etapa, uno.paso, dos.paso, uno.modelo) == ("agente", 1, 2, ajustes.modelo)
+    assert [m["role"] for m in uno.enviado] == ["system", "user"]
+    assert uno.herramientas_pedidas[0]["function"]["name"] == "portfolio"
+    assert uno.razonamiento == "pienso en voz alta"
+    # De la segunda vuelta solo se guarda lo nuevo: el resultado de la herramienta.
+    assert [m["role"] for m in dos.enviado] == ["tool"]
+    assert '"tipo": "nada"' in dos.respuesta
+    assert (uno.coste_usd, uno.ok, uno.error) == (Decimal("0.01"), True, None)
+
+
+def test_la_llamada_fallida_queda_aunque_el_ciclo_deshaga_lo_suyo(sesion_agente: Session) -> None:
+    s = sesion_agente
+    hoy = date(2027, 1, 5)
+    ej_id = _confirmada(s, hoy)
+
+    class Roto(Falso):
+        def chat_con_herramientas(self, *a, **k):  # noqa: ANN002, ANN003, ANN202
+            raise TimeoutError("sin red")
+
+    g = ciclo.Presupuesto(s, hoy, ej_id, Decimal("0"))
+    with pytest.raises(ciclo.Fallo):
+        ciclo._bucle(s, g, Roto([]), herramientas.Contexto(hoy=hoy), "base", [])
+    s.rollback()
+    (fila,) = _llamadas(s, ej_id)
+    assert fila.ok is False
+    assert "TimeoutError: sin red" in fila.error
+
+
+def test_el_revisor_deja_lo_que_se_le_envio_y_lo_que_respondio(sesion_agente: Session) -> None:
+    s = sesion_agente
+    hoy = date(2027, 1, 6)
+    ej_id = _confirmada(s, hoy)
+    g = ciclo.Presupuesto(s, hoy, ej_id, Decimal("0"))
+    ciclo.Medido(g, Falso([APRUEBA]), ajustes.modelo_revisor).chat("sistema", "usuario")
+    (fila,) = _llamadas(s, ej_id)
+    assert fila.etapa == "revisor"
+    assert fila.enviado == [{"role": "system", "content": "sistema"},
+                            {"role": "user", "content": "usuario"}]
+    assert json.loads(fila.respuesta) == APRUEBA
+
+
+def test_las_llamadas_registradas_no_se_reescriben(sesion_agente: Session) -> None:
+    s = sesion_agente
+    hoy = date(2027, 1, 7)
+    ej_id = _confirmada(s, hoy)
+    g = ciclo.Presupuesto(s, hoy, ej_id, Decimal("0"))
+    g.llamar(Falso([APRUEBA]), "m", "a", "b")
+    with pytest.raises(Exception, match="solo se añaden filas"):
+        s.execute(text("update agente.llamadas_modelo set ok = false where ejecucion_id = :e"),
+                  {"e": ej_id})
