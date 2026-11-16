@@ -114,7 +114,15 @@ def hacer_despertar(s: Session, ej: Ejecucion, hoy: date,
         {"t": tickers}).all()}
     por_defecto = hoy - timedelta(days=DIAS_HISTORIA)
     desde = min(ultimos.get(t, por_defecto) for t in tickers)
-    _guardar_barras(s, descargar(tickers, desde), hoy)
+    barras = descargar(tickers, desde)
+    sin_datos = sorted(set(tickers) - set(barras))
+    # Con la mayoría sin precios no hay revisión fiable: la tarea falla y se reintenta, en vez de
+    # darse por hecha con la base vacía. Unos pocos (una empresa deslistada) solo se anotan.
+    if len(sin_datos) * 2 > len(tickers):
+        raise RuntimeError(f"Yahoo sin precios para {len(sin_datos)} de {len(tickers)} empresas")
+    if sin_datos:
+        evento(s, "sistema", "sin_datos", datos={"tickers": sin_datos}, ejecucion_id=ej.id)
+    _guardar_barras(s, barras, hoy)
 
     cierres, previos = _cierres(s, tickers, hoy)
     faltan = sorted(t for t in libro.estado_posiciones(s) if t not in cierres)

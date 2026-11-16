@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -18,6 +19,8 @@ from app.ledger.money import D
 logger = logging.getLogger(__name__)
 
 _SEIS = Decimal("0.000001")
+INTENTOS_YAHOO = 3
+_PAUSA_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -99,11 +102,22 @@ def descargar(tickers: list[str], desde: date) -> dict[str, list[Barra]]:
     tickers = list(dict.fromkeys(t for t in tickers if t))
     if not tickers:
         return {}
-    try:
-        df = yf.download(tickers, start=desde, interval="1d", auto_adjust=False, actions=True,
-                         group_by="ticker", threads=True, progress=False, timeout=10)
-    except Exception:
-        logger.exception("Yahoo no devolvió barras para %d tickers", len(tickers))
+    # Yahoo a veces responde vacío a un lote grande y a la siguiente vez sí: se reintenta.
+    df = None
+    for intento in range(1, INTENTOS_YAHOO + 1):
+        try:
+            df = yf.download(tickers, start=desde, interval="1d", auto_adjust=False, actions=True,
+                             group_by="ticker", threads=True, progress=False, timeout=10)
+        except Exception:
+            logger.exception("Yahoo falló (intento %d de %d)", intento, INTENTOS_YAHOO)
+            df = None
+        if df is not None and not df.empty:
+            break
+        if intento < INTENTOS_YAHOO:
+            time.sleep(_PAUSA_S)
+    if df is None or df.empty:
+        logger.error("Yahoo no devolvió barras para %d tickers tras %d intentos",
+                     len(tickers), INTENTOS_YAHOO)
         return {}
     multi = getattr(df.columns, "nlevels", 1) > 1
     nan = float("nan")

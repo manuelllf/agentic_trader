@@ -179,6 +179,29 @@ def test_despertar_con_nivel_cruzado_avisa(sesion_agente: Session) -> None:
     assert _cuenta(s, "valor_diario") == 1
 
 
+def test_despertar_sin_precios_de_la_mayoria_falla(sesion_agente: Session) -> None:
+    s = sesion_agente
+    for t in ("AAA", "BBB", "CCC"):
+        s.add(Seguimiento(ticker=t, motivo="m"))
+    s.flush()
+    with pytest.raises(RuntimeError, match="sin precios para 3 de 3"):
+        tareas.hacer_despertar(s, _ej(s, Tarea.DESPERTAR, D2), D2, _falso({}))
+
+
+def test_despertar_con_pocos_sin_precios_sigue_y_lo_anota(sesion_agente: Session) -> None:
+    s = sesion_agente
+    for t in ("AAA", "BBB", "CCC", "DDD"):
+        s.add(Seguimiento(ticker=t, motivo="m"))
+    s.flush()
+    barras = {"AAA": [_barra(D1, "100"), _barra(D2, "101")],
+              "BBB": [_barra(D1, "50"), _barra(D2, "51")],
+              "CCC": [_barra(D1, "20"), _barra(D2, "21")]}
+    tareas.hacer_despertar(s, _ej(s, Tarea.DESPERTAR, D2), D2, _falso(barras))
+    assert _cuenta(s, "precios") == 6
+    sin = [e for e in _eventos(s) if e.tipo == "sin_datos"]
+    assert len(sin) == 1 and sin[0].datos == {"tickers": ["DDD"]}
+
+
 def test_despertar_sin_cierre_de_hoy_no_guarda_valor(sesion_agente: Session) -> None:
     s = sesion_agente
     _con_posicion(s)

@@ -11,6 +11,42 @@ import pytest
 from app.agente import datos
 from app.agente.datos import Barra, FilaYahoo, barra_del_dia, deshacer_ajuste, ultimo_cierre_hasta
 
+
+def test_descargar_reintenta_si_yahoo_responde_vacio(monkeypatch: pytest.MonkeyPatch) -> None:
+    import yfinance as yf
+
+    llamadas: list[int] = []
+
+    def vacio(*args: object, **kwargs: object) -> pd.DataFrame:
+        llamadas.append(1)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(yf, "download", vacio)
+    monkeypatch.setattr(datos, "_PAUSA_S", 0.0)
+    assert datos.descargar(["AAA"], date(2026, 11, 1)) == {}
+    assert len(llamadas) == datos.INTENTOS_YAHOO
+
+
+def test_descargar_acepta_el_segundo_intento(monkeypatch: pytest.MonkeyPatch) -> None:
+    import yfinance as yf
+
+    llamadas: list[int] = []
+    fechas = pd.to_datetime(["2026-11-16"])
+    buena = pd.DataFrame({("AAA", "Open"): [100.0], ("AAA", "High"): [101.0],
+                          ("AAA", "Low"): [99.0], ("AAA", "Close"): [100.5],
+                          ("AAA", "Volume"): [1000], ("AAA", "Dividends"): [0.0],
+                          ("AAA", "Stock Splits"): [0.0]}, index=fechas)
+    buena.columns = pd.MultiIndex.from_tuples(buena.columns)
+
+    def primero_vacio_luego_datos(*args: object, **kwargs: object) -> pd.DataFrame:
+        llamadas.append(1)
+        return pd.DataFrame() if len(llamadas) == 1 else buena
+
+    monkeypatch.setattr(yf, "download", primero_vacio_luego_datos)
+    monkeypatch.setattr(datos, "_PAUSA_S", 0.0)
+    r = datos.descargar(["AAA"], date(2026, 11, 1))
+    assert len(llamadas) == 2 and r["AAA"][0].cierre == 100.5
+
 NAN = float("nan")
 
 
