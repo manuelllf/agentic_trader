@@ -31,6 +31,15 @@ def _sin_correo_real(monkeypatch) -> None:  # noqa: ANN001
 
 
 @pytest.fixture(autouse=True)
+def _sin_indexnow_real(monkeypatch) -> None:  # noqa: ANN001
+    """Ningún test avisa a IndexNow de verdad: sin clave no sale nada, ni se consulta la base.
+    Los tests del módulo la ponen."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "indexnow_clave", "")
+
+
+@pytest.fixture(autouse=True)
 def _sin_guardar_avisos_admin(request, monkeypatch) -> None:  # noqa: ANN001
     """Ningún test escribe en la campana del admin, salvo los marcados `guarda_avisos`."""
     if request.node.get_closest_marker("guarda_avisos"):

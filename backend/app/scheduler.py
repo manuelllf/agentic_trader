@@ -517,6 +517,7 @@ def start_scheduler() -> None:
     # Liga: el premio anual, una sola vez, cuando se cierra la última jornada de la temporada.
     scheduler.add_job(_liga_premio_job, "interval", minutes=30, id="liga_premio",
                       replace_existing=True, coalesce=True)
+    from app import indexnow
     from app.criptico import envio
     from app.liga import blog_procesos, resumenes
 
@@ -529,6 +530,11 @@ def start_scheduler() -> None:
                       id="criptico_envio_en", replace_existing=True,
                       misfire_grace_time=3600, coalesce=True)
 
+    # Pasada la medianoche de Madrid el acertijo del día ya se ve: se avisa a Bing y a los demás.
+    scheduler.add_job(indexnow.job_criptico,
+                      CronTrigger(hour=0, minute=15, timezone="Europe/Madrid"),
+                      id="indexnow_criptico", replace_existing=True,
+                      misfire_grace_time=3600, coalesce=True)
     scheduler.add_job(blog_procesos.job_publicar, "interval", minutes=1,
                       id="blog_publicar", replace_existing=True, coalesce=True)
     scheduler.add_job(blog_procesos.job_enviar_lote, "interval", minutes=15,

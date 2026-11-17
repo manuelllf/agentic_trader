@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import correo
+from app import correo, indexnow
 from app.liga import blog_procesos as procesos
 from app.liga import copia
 
@@ -64,7 +64,8 @@ class _Db:
             for a in self.articulos:
                 if a.estado == "programado" and a.fecha <= self.ahora and a.completo:
                     a.estado = "publicado"
-                    ids.append({"id": a.id, "avisar_boletin": getattr(a, "avisar_boletin", False)})
+                    ids.append({"id": a.id, "avisar_boletin": getattr(a, "avisar_boletin", False),
+                                "slug": getattr(a, "slug", f"articulo-{a.id}")})
             return _Resultado(ids)
         if "select * from blog.articulos" in q:
             a = next(a for a in self.articulos if a.id == params["id"])
@@ -243,6 +244,23 @@ def test_copia_y_restauracion_blog(monkeypatch, tmp_path):
         restaurar_liga.restaurar(destino, "simulada")
     assert [q.split()[1] for q in cargadas][-5:] == [f"blog.{t}" for t in copia.TABLAS_BLOG]
     assert sum("select setval" in q for q in consultas) == 3
+
+
+def test_publicar_avisa_a_indexnow_de_cada_articulo_nuevo_y_solo_de_ellos(monkeypatch):
+    avisos = []
+    monkeypatch.setattr(indexnow, "avisar", lambda urls: avisos.append(urls) or True)
+    db = _Db(0)
+    db.articulos.append(SimpleNamespace(id=1, slug="uno", estado="programado", completo=True,
+                                        fecha=db.ahora - timedelta(days=1)))
+    db.articulos.append(SimpleNamespace(id=2, slug="futuro", estado="programado", completo=True,
+                                        fecha=db.ahora + timedelta(days=1)))
+    assert procesos.publicar_programados(lambda: db) == 1
+    assert len(avisos) == 1
+    assert "https://vennett.app/blog/uno" in avisos[0]
+    assert "https://vennett.app/en/blog/uno" in avisos[0]
+    assert not any("futuro" in url for url in avisos[0])
+    assert procesos.publicar_programados(lambda: db) == 0
+    assert len(avisos) == 1  # sin artículos nuevos no se avisa
 
 
 @pytest.mark.parametrize("avisar_boletin", [True, False])

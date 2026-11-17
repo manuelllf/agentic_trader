@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 from sqlalchemy import text
 
-from app import correo, correo_plantilla
+from app import correo, correo_plantilla, indexnow
 from app.i18n import translate
 from app.liga.blog import _lanzar_si_no_enviado
 from app.liga.procesos.comun import auditar, auditar_fallo, fabrica_sistema, sesion
@@ -22,7 +22,7 @@ def publicar_programados(fabrica=fabrica_sistema):
               and 2 = (select count(*) from blog.articulo_textos t
                        where t.articulo_id = a.id and t.idioma in ('es', 'en')
                          and t.titulo ~ '\S' and t.cuerpo ~ '\S')
-            returning a.id, a.avisar_boletin
+            returning a.id, a.avisar_boletin, a.slug
         """)).mappings().all()
         for articulo in ids:
             id = articulo["id"]
@@ -31,7 +31,11 @@ def publicar_programados(fabrica=fabrica_sistema):
                     _lanzar_si_no_enviado(db, id, idioma)
             auditar(db, "blog.publicado", f"articulo:{id}", {"programado": True}, None)
         db.commit()
-        return len(ids)
+        slugs = [articulo["slug"] for articulo in ids]
+    # Ya confirmado y fuera de la sesión: el aviso a los buscadores no retiene la base ni la rompe.
+    if slugs:
+        indexnow.avisar(indexnow.urls_de_articulos(slugs))
+    return len(slugs)
 
 
 def enviar_lote(fabrica=fabrica_sistema):

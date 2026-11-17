@@ -157,6 +157,12 @@ CATALOGO["procesos.cerrar.auto"] = AjusteMeta(
           "jornada que acaba si están los cierres del S&P y de todos sus valores. Si falta alguno "
           "no cierra y avisa. Apagado (emergencia): solo vale el botón de Admin.",
     tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True)
+CATALOGO["procesos.indexnow.auto"] = AjusteMeta(
+    grupo="Procesos", titulo="Avisar a Bing de las páginas nuevas",
+    ayuda="Al publicarse un artículo del blog o un acertijo del críptico, avisa a Bing y a los "
+          "buscadores que usan IndexNow para que lo lean al momento. Google no lo usa. Apagado: "
+          "no avisa y se enteran solos, más despacio.",
+    tipo="interruptor", unidad=None, minimo=None, maximo=None, defecto=True)
 # Umbrales del resumen del panel de admin: así ningún número del panel queda escrito en el código.
 CATALOGO["panel.dias_sin_estrategia"] = AjusteMeta(
     grupo="Panel", titulo="Avisar de altas sin estrategia",

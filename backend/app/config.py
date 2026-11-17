@@ -259,6 +259,9 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     correo_remitente: str = "Vennett <info@vennett.app>"
     url_publica: str = "https://vennett.app"
+    # Clave de IndexNow, pública (se sirve como fichero en frontend/public).
+    # Vacía apaga los avisos.
+    indexnow_clave: str = "9a99ebf1dbda43628328bdb9e66d32bb"
     # Clave con la que el servicio del agente deja avisos del admin; vacía apaga la ruta.
     agente_clave_servicio: str = ""
 
