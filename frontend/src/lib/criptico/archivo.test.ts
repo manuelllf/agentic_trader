@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { agruparPorMes, ayudaLocal, buscar, cuadriculaDelMes, fechaDeNumero, resueltoLocal } from "./archivo";
 import { clavePartida } from "./partida";
 
+const pista = (texto: string) => [{ texto, papel: null }];
 const indice = [
-  { numero: 1, fecha: "2026-11-02" },
-  { numero: 2, fecha: "2026-11-03" },
-  { numero: 3, fecha: "2026-10-30" },
+  { numero: 1, fecha: "2026-11-02", nivel: "facil" as const, longitud: 5, pista: pista("Un árbol sagrado esconde el mercado de valores") },
+  { numero: 2, fecha: "2026-11-03", nivel: "facil" as const, longitud: 5, pista: pista("Traen en desorden lo que ingresas") },
+  { numero: 3, fecha: "2026-10-30", nivel: "media" as const, longitud: 7, pista: pista("Un club de Milán es lo que pagas por un préstamo") },
 ];
 
 describe("archivo del críptico", () => {
@@ -24,9 +25,16 @@ describe("archivo del críptico", () => {
   });
 
   it("busca por número exacto y por la fecha ya formateada", () => {
-    expect(buscar(indice, "2", () => "")).toEqual([{ numero: 2, fecha: "2026-11-03" }]);
-    expect(buscar(indice, "3 nov", fecha => (fecha === "2026-11-03" ? "3 nov" : ""))).toEqual([{ numero: 2, fecha: "2026-11-03" }]);
+    expect(buscar(indice, "2", () => "")).toEqual([indice[1]]);
+    expect(buscar(indice, "3 nov", fecha => (fecha === "2026-11-03" ? "3 nov" : ""))).toEqual([indice[1]]);
     expect(buscar(indice, "   ", () => "")).toEqual([]);
+  });
+
+  it("busca también en la pista, sin tildes ni mayúsculas", () => {
+    expect(buscar(indice, "ARBOL", () => "")).toEqual([indice[0]]);
+    expect(buscar(indice, "milan", () => "")).toEqual([indice[2]]);
+    expect(buscar(indice, "préstamo", () => "")).toEqual([indice[2]]);
+    expect(buscar(indice, "inexistente", () => "")).toEqual([]);
   });
 
   it("calcula la fecha de cada número a partir del actual, cruzando fin de mes", () => {

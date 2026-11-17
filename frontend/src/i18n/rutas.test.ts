@@ -14,7 +14,8 @@ describe("esRutaTraducible", () => {
   it.each([
     "/", "/en", "/liga", "/en/liga", "/liga/", "/como-funciona", "/planes", "/premio", "/entrar", "/registrar",
     "/recuperar", "/aprender", "/aprender/crear-tu-estrategia", "/en/aprender/el-premio", "/legal/aviso",
-    "/legal/bases-premio", "/en/legal/cookies",
+    "/legal/bases-premio", "/en/legal/cookies", "/quienes-somos", "/en/quienes-somos", "/politica-editorial",
+    "/en/politica-editorial",
   ])("%s tiene versión en cada idioma", (ruta) => {
     expect(esRutaTraducible(ruta)).toBe(true);
   });
@@ -22,7 +23,7 @@ describe("esRutaTraducible", () => {
   it.each([
     "/cuenta", "/en/cuenta", "/mias", "/crear", "/crear/1", "/privadas/2", "/ficha/abc", "/admin", "/en/admin",
     "/auth/callback", "/confirmar", "/restablecer", "/completar", "/muestrario", "/legal", "/aprender/uno/dos",
-    "/blog", "/en/blog", "/criptico", "/premio/estrategia", "/api/x", "/en/en/liga",
+    "/blog", "/en/blog", "/criptico", "/criptico/archivo", "/en/criptico/archivo", "/premio/estrategia", "/api/x", "/en/en/liga",
   ])("%s no la tiene", (ruta) => {
     expect(esRutaTraducible(ruta)).toBe(false);
   });

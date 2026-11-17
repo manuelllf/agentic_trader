@@ -79,7 +79,9 @@ def urls_de_articulos(slugs: list[str]) -> list[str]:
 def urls_del_criptico(db, dia) -> list[str]:  # noqa: ANN001
     """El acertijo publicado de ese día en cada idioma y las dos portadas del críptico."""
     base = _base()
-    urls = [f"{base}/criptico", f"{base}/en/criptico"]
+    # El archivo gana una fila cada día: su página también cambia.
+    urls = [f"{base}/criptico", f"{base}/en/criptico", f"{base}/criptico/archivo",
+            f"{base}/en/criptico/archivo"]
     filas = db.execute(text("select idioma, numero from criptico.acertijos "
                             "where dia = :dia and estado = 'publicado' order by idioma, numero"),
                        {"dia": dia}).all()

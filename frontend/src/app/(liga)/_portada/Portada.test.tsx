@@ -81,6 +81,18 @@ describe("Portada Hoy", () => {
     idioma.valor = "es";
   });
 
+  it.each(["es", "en"])("el pie lleva Quiénes somos y Política editorial antes de lo legal en %s", (valor) => {
+    idioma.valor = valor;
+    const lineas = [...pintar().querySelectorAll("footer.pie p")];
+    const enlaces = [...lineas[0].querySelectorAll("a")];
+    const prefijo = valor === "en" ? "/en" : "";
+    expect(enlaces.map((a) => a.getAttribute("href"))).toEqual([`${prefijo}/quienes-somos`, `${prefijo}/politica-editorial`]);
+    expect(enlaces.map((a) => a.textContent)).toEqual(valor === "en" ? ["About us", "Editorial policy"] : ["Quiénes somos", "Política editorial"]);
+    expect([...lineas[1].querySelectorAll("a")].map((a) => a.getAttribute("href")))
+      .toEqual([`${prefijo}/legal/aviso`, `${prefijo}/legal/privacidad`, `${prefijo}/legal/cookies`]);
+    idioma.valor = "es";
+  });
+
   it("sin críptico ni artículo, la liga ocupa todo el mosaico", () => {
     const el = pintar(null, null);
     expect(el.querySelectorAll(".mosaico .pieza")).toHaveLength(1);

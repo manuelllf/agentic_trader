@@ -29,7 +29,8 @@ describe("middleware: idioma en las páginas públicas", () => {
 
   it("/en/<página pública> sirve la página española con el idioma marcado como inglés", () => {
     for (const [ruta, destino] of [["/en", "/"], ["/en/liga", "/liga"], ["/en/legal/terminos", "/legal/terminos"],
-      ["/en/aprender/que-es-la-liga", "/aprender/que-es-la-liga"], ["/en/entrar", "/entrar"]]) {
+      ["/en/aprender/que-es-la-liga", "/aprender/que-es-la-liga"], ["/en/entrar", "/entrar"],
+      ["/en/quienes-somos", "/quienes-somos"], ["/en/politica-editorial", "/politica-editorial"]]) {
       const r = pedir(ruta);
       expect(r.headers.get("x-middleware-rewrite")).toBe(`https://vennett.app${destino}`);
       expect(r.headers.get("x-middleware-request-x-vennett-idioma")).toBe("en");
@@ -44,7 +45,7 @@ describe("middleware: idioma en las páginas públicas", () => {
   });
 
   it("en inglés lo que no es una página pública con versión no se reescribe: blog y críptico tienen sus ficheros", () => {
-    for (const ruta of ["/en/blog", "/en/blog/un-articulo", "/en/criptico", "/en/criptico/3", "/en/cuenta", "/en/admin"]) {
+    for (const ruta of ["/en/blog", "/en/blog/un-articulo", "/en/criptico", "/en/criptico/3", "/en/criptico/archivo", "/en/cuenta", "/en/admin"]) {
       const r = pedir(ruta);
       expect(r.headers.get("x-middleware-rewrite")).toBeNull();
       expect(r.headers.get("x-middleware-request-x-vennett-idioma")).toBe("en");

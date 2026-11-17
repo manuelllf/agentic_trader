@@ -5,7 +5,7 @@ import type { Locale } from "./locale";
 
 const TRADUCIBLES = [
   /^\/$/,
-  /^\/(liga|como-funciona|planes|premio|entrar|registrar|recuperar)$/,
+  /^\/(liga|como-funciona|planes|premio|entrar|registrar|recuperar|quienes-somos|politica-editorial)$/,
   /^\/aprender(?:\/[a-z-]+)?$/,
   /^\/legal\/[a-z-]+$/,
 ];

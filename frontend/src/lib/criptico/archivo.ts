@@ -1,5 +1,6 @@
 import type { EntradaIndice } from "./publico";
 import { clavePartida } from "./partida";
+import { textoDePista } from "./pista";
 import type { Idioma } from "./tipos";
 
 export type Mes = { clave: string; entradas: EntradaIndice[] };
@@ -30,12 +31,14 @@ export function cuadriculaDelMes(clave: string): (Dia | null)[] {
   return celdas;
 }
 
-// Un número busca ese número exacto; el resto busca dentro de la fecha ya formateada.
+const sinTildes = (texto: string) => texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+// Un número busca ese número exacto; el resto busca, sin tildes, en la fecha ya formateada y en la pista.
 export function buscar(indice: EntradaIndice[], consulta: string, formato: (fecha: string) => string): EntradaIndice[] {
-  const q = consulta.trim().toLowerCase();
+  const q = sinTildes(consulta.trim());
   if (!q) return [];
   if (/^\d+$/.test(q)) return indice.filter(entrada => String(entrada.numero) === q);
-  return indice.filter(entrada => formato(entrada.fecha).toLowerCase().includes(q));
+  return indice.filter(entrada => sinTildes(`${formato(entrada.fecha)} ${textoDePista(entrada.pista)}`).includes(q));
 }
 
 // Los acertijos salen cada día, también los fines de semana: el número n cae n - actual días después del actual.

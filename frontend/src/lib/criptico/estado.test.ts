@@ -4,6 +4,8 @@ import { leerPublicado, listarPublicados, proximaFecha } from "./publico";
 
 vi.mock("./publico", () => ({ listarPublicados: vi.fn(), leerPublicado: vi.fn(), proximaFecha: vi.fn() }));
 
+const ENTRADA = { numero: 1, fecha: "2026-10-26", nivel: "facil" as const, longitud: 5, pista: [{ texto: "Pista", papel: null }] };
+
 beforeEach(() => vi.resetAllMocks());
 
 describe("estadoCriptico", () => {
@@ -20,7 +22,7 @@ describe("estadoCriptico", () => {
   });
 
   it("compone la pista de hoy", async () => {
-    vi.mocked(listarPublicados).mockResolvedValue([{ numero: 1, fecha: "2026-10-26" }]);
+    vi.mocked(listarPublicados).mockResolvedValue([ENTRADA]);
     vi.mocked(leerPublicado).mockResolvedValue({
       acertijo: { numero: 10, nivel: "media", longitud: 5, pista: [{ texto: "Un árbol ", papel: null }, { texto: "sagrado", papel: "def" }] },
     } as NonNullable<Awaited<ReturnType<typeof leerPublicado>>>);
@@ -29,7 +31,7 @@ describe("estadoCriptico", () => {
   });
 
   it("no muestra nada si falta la entrega", async () => {
-    vi.mocked(listarPublicados).mockResolvedValue([{ numero: 1, fecha: "2026-10-26" }]);
+    vi.mocked(listarPublicados).mockResolvedValue([ENTRADA]);
     vi.mocked(leerPublicado).mockResolvedValue(null);
     expect(await estadoCriptico("es")).toBeNull();
   });

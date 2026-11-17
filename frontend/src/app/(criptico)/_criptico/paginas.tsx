@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { loadMessages } from "@/i18n/messages";
 import { URL_PUBLICA } from "@/lib/sitio";
-import { leerPublicado } from "@/lib/criptico/publico";
+import { leerPublicado, listarPublicados } from "@/lib/criptico/publico";
 import type { Idioma, Textos } from "@/lib/criptico/tipos";
+import ArchivoPagina from "./ArchivoPagina";
 import Pagina from "./Pagina";
 import Token from "./Token";
 import { ruta, traductor } from "./textos";
@@ -24,6 +25,22 @@ export async function metadataCriptico(idioma: Idioma, numero?: string, accion?:
   // Sin hreflang: los juegos de palabras de ambos idiomas no son contenido equivalente.
   return { title, description, alternates: { canonical: url }, robots: { index: indexar, follow: indexar },
     openGraph: { title, description, url, locale: idioma === "es" ? "es_ES" : "en_GB" } };
+}
+
+export async function metadataArchivoLista(idioma: Idioma): Promise<Metadata> {
+  const mensajes = await loadMessages(idioma);
+  const t = traductor(idioma, mensajes as Textos);
+  const title = t("seo_criptico_lista_titulo");
+  const description = t("seo_criptico_lista_descripcion");
+  const url = `${URL_PUBLICA}${ruta(idioma)}/archivo`;
+  return { title, description, alternates: { canonical: url }, robots: { index: true, follow: true },
+    openGraph: { title, description, url, locale: idioma === "es" ? "es_ES" : "en_GB" } };
+}
+
+// La lista llega del servidor con las pistas: así está en el HTML. Si la API falla, la página lo dice y deja reintentar.
+export async function paginaArchivo(idioma: Idioma) {
+  const indice = await listarPublicados(idioma).catch(() => null);
+  return <ArchivoPagina idioma={idioma} textos={await catalogo(idioma)} indice={indice} />;
 }
 
 export async function pagina(idioma: Idioma, numero?: string) {

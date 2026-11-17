@@ -36,11 +36,17 @@
 .criptico-publico .cr-dia[aria-current] { background: var(--accent); }
 .criptico-publico .cr-dia[aria-current] span, .criptico-publico .cr-dia[aria-current] b { color: var(--btn-ink); }
 .criptico-publico .cr-dia[aria-current] i { background: var(--btn-ink); }
-.criptico-publico .cr-archivo summary { cursor: pointer; font-size: 14px; color: var(--muted); min-height: 44px; padding-top: 10px; }
-.criptico-publico .cr-lista-archivo { list-style: none; padding: 0; }
+/* Archivo: una fila por acertijo, con su pista; el estado sale del dispositivo y llega al montar. */
+.criptico-publico .cr-lista-archivo { list-style: none; padding: 0; margin: 0; }
 .criptico-publico .cr-lista-archivo li { border-bottom: 1px solid var(--line); }
-.criptico-publico .cr-lista-archivo a { min-height: 48px; display: flex; gap: 14px; align-items: center; justify-content: space-between; text-decoration: none; font-size: 15px; }
-.criptico-publico .cr-lista-archivo a span:last-child { color: var(--muted); }
+.criptico-publico .cr-lista-archivo a { min-height: 64px; padding: 10px 0; display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; text-decoration: none; }
+.criptico-publico .cr-fa-texto { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.criptico-publico .cr-fa-texto small { color: var(--muted); font-size: 13px; line-height: 17px; }
+.criptico-publico .cr-fa-texto b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 17px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.criptico-publico .cr-fa-lado { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; min-width: 84px; font-size: 13px; line-height: 17px; color: var(--muted); white-space: nowrap; }
+.criptico-publico .cr-fa-lado em { min-height: 17px; font-style: normal; }
+.criptico-publico .cr-fa-lado em.hecho { color: var(--accent); font-weight: 600; }
+.criptico-publico .cr-sin-resultados { padding: 14px 0; }
 .criptico-publico .cr-encabezado { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .criptico-publico .cr-meta, .criptico-publico .cr-nivel { font-size: 15px; color: var(--muted); }
 .criptico-publico .cr-nivel { font-weight: 700; white-space: nowrap; color: var(--accent); background: var(--accent-bg); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
@@ -93,7 +99,10 @@
 .criptico-publico .cr-leyenda li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: baseline; }
 .criptico-publico .cr-dato { white-space: pre-wrap; padding: 2px 0 2px 12px; border-left: 2px solid var(--line2); font-family: var(--font-data), monospace; font-size: 14px; line-height: 1.6; color: var(--ink); }
 .criptico-publico .cr-nota, .criptico-publico .cr-aviso { font-size: 13px; color: var(--muted); }
-.criptico-publico .cr-aviso { padding: 8px 0 0; text-align: center; }
+/* Pie como el de la portada: centrado, 13 muted, una línea encima y los enlaces en petróleo. */
+.criptico-publico .cr-aviso { padding: 20px 0 8px; border-top: 1px solid var(--line); text-align: center; line-height: 18px; }
+.criptico-publico .cr-aviso p + p { margin-top: 6px; }
+.criptico-publico .cr-aviso a { display: inline-block; padding: 10px 3px; color: var(--accent); text-decoration: none; }
 .criptico-publico .cr-gancho { border-top: 1px solid var(--line); padding-top: 18px; gap: 12px; }
 .criptico-publico .cr-gancho h2 { font-family: var(--font-display), sans-serif; font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -.01em; }
 .criptico-publico .cr-gancho p { font-size: 15px; }
@@ -136,7 +145,6 @@
 .criptico-publico .cr-grabber { width: 36px; height: 5px; border-radius: 3px; background: var(--line2); margin: 0 auto 4px; }
 .criptico-publico .cr-hoja-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .criptico-publico .cr-hoja-cab h2 { margin: 0; }
-.criptico-publico .cr-archivo-hoja { max-height: 88dvh; }
 .criptico-publico .cr-ir { display: flex; gap: 8px; }
 .criptico-publico .cr-ir input { flex: 1; min-width: 0; }
 .criptico-publico .cr-ir button { min-height: 44px; padding: 0 18px; }
@@ -156,6 +164,22 @@
 .criptico-publico .cr-celda.hecho { background: var(--accent-bg); color: var(--accent); font-weight: 700; }
 .criptico-publico .cr-celda.hoy { box-shadow: inset 0 0 0 2px var(--accent); }
 .criptico-publico .cr-celda[aria-current] { background: var(--accent); color: var(--btn-ink); }
+.criptico-publico .cr-icono[aria-current] { background: var(--accent); color: var(--btn-ink); }
+.criptico-publico .cr-titulo-pagina { display: flex; flex-direction: column; gap: 6px; }
+.criptico-publico .cr-h1 { margin: 0; font-family: var(--font-display), sans-serif; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); text-wrap: balance; }
+.criptico-publico .cr-filtros { display: flex; flex-direction: column; gap: 10px; }
+.criptico-publico .cr-reintento { align-self: flex-start; }
+/* Meses y solución plegables con <details>: los enlaces y el texto están en el HTML aunque estén cerrados. */
+.criptico-publico details.cr-mes > summary, .criptico-publico .cr-solucion > summary { list-style: none; cursor: pointer; }
+.criptico-publico details.cr-mes > summary::-webkit-details-marker, .criptico-publico .cr-solucion > summary::-webkit-details-marker { display: none; }
+.criptico-publico details.cr-mes > summary::after, .criptico-publico .cr-solucion > summary::after { content: ""; flex: none; width: 8px; height: 8px; margin-left: 4px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .25s cubic-bezier(.32, .72, 0, 1); }
+.criptico-publico details.cr-mes[open] > summary::after, .criptico-publico .cr-solucion[open] > summary::after { transform: rotate(45deg); }
+.criptico-publico details.cr-mes > summary small { margin-left: auto; }
+.criptico-publico .cr-solucion { border-top: 1px solid var(--line); padding-top: 4px; }
+.criptico-publico .cr-solucion > summary { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 17px; font-weight: 600; color: var(--ink); }
+.criptico-publico .cr-solucion > summary small { margin-left: auto; font-size: 13px; font-weight: 400; color: var(--muted); }
+.criptico-publico .cr-solucion-cuerpo { display: flex; flex-direction: column; gap: 18px; padding: 6px 0 4px; }
+.criptico-publico .cr-respuesta { margin: 0; font-family: var(--font-data), monospace; font-size: 22px; font-weight: 700; letter-spacing: .08em; color: var(--ink); }
 .lg.criptico-publico .sello { border: 0; background: none; padding: 0; box-shadow: none; }
 .criptico-publico .cr-pedir { margin-left: auto; color: var(--accent); font-size: 15px; font-weight: 700; }
 .criptico-publico .cr-ayudas button[aria-pressed="true"] .cr-pedir { color: var(--muted); font-weight: 400; }
@@ -164,7 +188,6 @@
 .criptico-publico .cr-ocultar { width: 56px; min-height: 46px; border: 0; border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 22px; line-height: 1; }
 .criptico-publico .cr-con-teclado .cr-scroll { padding-bottom: calc(255px + env(safe-area-inset-bottom)); }
 .criptico-publico .cr-bienvenida { background: rgba(0, 0, 0, .6); }
-.criptico-publico .cr-lista-archivo a[aria-current="page"] { color: var(--accent); font-weight: 700; }
 .criptico-publico .cr-hoja { background: var(--bg); border-top: 1px solid var(--line); }
 .criptico-publico .cr-grabber { background: var(--line2); }
 @media (prefers-color-scheme: dark) {

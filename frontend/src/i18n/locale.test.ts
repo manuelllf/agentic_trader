@@ -98,6 +98,9 @@ describe("idioma del dispositivo en las páginas públicas", () => {
     ["/registrar", "/en/registrar"],
     ["/recuperar", "/en/recuperar"],
     ["/liga/", "/en/liga"],
+    ["/quienes-somos", "/en/quienes-somos"],
+    ["/politica-editorial", "/en/politica-editorial"],
+    ["/criptico/archivo", "/en/criptico/archivo"],
   ])("%s pasa a %s con el dispositivo en inglés y sin elección", (ruta, destino) => {
     expect(rutaDeIdioma(ruta, null, "en-US,en;q=0.9")).toBe(destino);
   });

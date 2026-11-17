@@ -155,6 +155,7 @@ export function Hoy({ criptico, boletin }: { criptico: EstadoCriptico; boletin: 
     </main>
 
     <footer className="dentro pie">
+      <p><Link href="/quienes-somos">{t("landing_quienes")}</Link> · <Link href="/politica-editorial">{t("landing_politica_editorial")}</Link></p>
       <p><Link href="/legal/aviso">{t("landing_legal")}</Link> · <Link href="/legal/privacidad">{t("landing_privacidad")}</Link> · <Link href="/legal/cookies">{t("landing_cookies")}</Link></p>
       <p>{t("hoy_aviso")}</p>
     </footer>

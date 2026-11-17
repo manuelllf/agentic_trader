@@ -12,16 +12,26 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const FIJAS = ["/", "/como-funciona", "/aprender", "/aprender/que-es-la-liga", "/aprender/crear-tu-estrategia", "/aprender/que-pasa-al-cierre", "/aprender/leer-la-clasificacion", "/legal/aviso", "/legal/privacidad", "/legal/terminos", "/legal/cookies", "/liga", "/premio", "/legal/bases-premio"];
+const FIJAS = ["/", "/como-funciona", "/aprender", "/aprender/que-es-la-liga", "/aprender/crear-tu-estrategia", "/aprender/que-pasa-al-cierre", "/aprender/leer-la-clasificacion", "/legal/aviso", "/legal/privacidad", "/legal/terminos", "/legal/cookies", "/liga", "/premio", "/legal/bases-premio", "/quienes-somos", "/politica-editorial"];
 const enIngles = (ruta: string) => `https://vennett.app${ruta === "/" ? "/en" : `/en${ruta}`}`;
 
-it("lista las catorce páginas públicas sin premio en español y en inglés, y no anuncia el críptico sin acertijos publicados", async () => {
+it("lista las dieciséis páginas públicas sin premio en español y en inglés, y no anuncia el críptico sin acertijos publicados", async () => {
   vi.mocked(listarPublicados).mockResolvedValue([]);
   const urls = await sitemap();
-  expect(urls).toHaveLength(30);
-  expect(urls.slice(0, 28).map(item => item.url)).toEqual(FIJAS.flatMap(ruta => [`https://vennett.app${ruta}`, enIngles(ruta)]));
-  expect(urls.slice(28).map(item => item.url)).toEqual(["https://vennett.app/blog", "https://vennett.app/en/blog"]);
-  expect(urls[28].alternates?.languages).toEqual({ es: "https://vennett.app/blog", en: "https://vennett.app/en/blog" });
+  expect(urls).toHaveLength(34);
+  expect(urls.slice(0, 32).map(item => item.url)).toEqual(FIJAS.flatMap(ruta => [`https://vennett.app${ruta}`, enIngles(ruta)]));
+  expect(urls.slice(32).map(item => item.url)).toEqual(["https://vennett.app/blog", "https://vennett.app/en/blog"]);
+  expect(urls[32].alternates?.languages).toEqual({ es: "https://vennett.app/blog", en: "https://vennett.app/en/blog" });
+});
+
+it("Quiénes somos y la política editorial salen en los dos idiomas, con sus alternativas", async () => {
+  vi.mocked(listarPublicados).mockResolvedValue([]);
+  const urls = await sitemap();
+  for (const ruta of ["/quienes-somos", "/politica-editorial"]) {
+    const entradas = urls.filter(item => item.url.endsWith(ruta));
+    expect(entradas.map(item => item.url)).toEqual([`https://vennett.app${ruta}`, enIngles(ruta)]);
+    expect(entradas[0].alternates?.languages).toEqual({ es: `https://vennett.app${ruta}`, en: enIngles(ruta), "x-default": `https://vennett.app${ruta}` });
+  }
 });
 
 it("cada página pública anuncia sus dos versiones en las dos entradas", async () => {
@@ -39,11 +49,11 @@ it("cada página pública anuncia sus dos versiones en las dos entradas", async 
 it("publica artículos por idioma con alternates y consulta ambos idiomas", async () => {
   vi.mocked(listarPublicados).mockImplementation(async idioma => [{ slug: idioma === "es" ? "uno" : "two", titulo: "Lesson", resumen: "Summary", palabras: 200, publicado_en: "2026-01-01T00:00:00Z" }]);
   const urls = await sitemap();
-  expect(urls).toHaveLength(32);
+  expect(urls).toHaveLength(36);
   expect(listarPublicados).toHaveBeenCalledWith("es");
   expect(listarPublicados).toHaveBeenCalledWith("en");
-  expect(urls[30]).toEqual({ url: "https://vennett.app/blog/uno", alternates: { languages: { es: "https://vennett.app/blog/uno", en: "https://vennett.app/en/blog/uno" } } });
-  expect(urls[31].url).toBe("https://vennett.app/en/blog/two");
+  expect(urls[34]).toEqual({ url: "https://vennett.app/blog/uno", alternates: { languages: { es: "https://vennett.app/blog/uno", en: "https://vennett.app/en/blog/uno" } } });
+  expect(urls[35].url).toBe("https://vennett.app/en/blog/two");
 });
 
 it("incluye la guía del premio cuando es visible", async () => {
@@ -57,7 +67,7 @@ it("conserva las páginas fijas aunque la API esté caída", async () => {
   vi.mocked(fetch).mockRejectedValue(new Error("offline"));
   vi.mocked(listarPublicados).mockImplementation(async idioma => { if (idioma === "es") throw new Error("offline"); return []; });
   const urls = await sitemap();
-  expect(urls).toHaveLength(30);
+  expect(urls).toHaveLength(34);
   expect(urls.map(item => item.url)).not.toContain("https://vennett.app/en/criptico");
 });
 
@@ -68,10 +78,15 @@ it("añade los archivos publicados por idioma con su fecha y excluye futuros y u
     { numero: 3, fecha: "9999-01-01" },
   ] }) as Response);
   const urls = await sitemap();
-  expect(urls).toHaveLength(34);
+  expect(urls).toHaveLength(40);
   expect(urls.slice(-2)).toEqual([
     { url: "https://vennett.app/criptico/1", lastModified: "2020-01-01" },
     { url: "https://vennett.app/en/criptico/2", lastModified: "2020-01-01" },
+  ]);
+  // El archivo se anuncia en cada idioma con la fecha de su último acertijo.
+  expect(urls.slice(-4, -2)).toEqual([
+    { url: "https://vennett.app/criptico/archivo", lastModified: "2020-01-01" },
+    { url: "https://vennett.app/en/criptico/archivo", lastModified: "2020-01-01" },
   ]);
   expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/criptico/indice?idioma=es"), expect.anything());
   expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/criptico/indice?idioma=en"), expect.anything());
@@ -81,5 +96,5 @@ it("añade los archivos publicados por idioma con su fecha y excluye futuros y u
 it("si el índice devuelve un error HTTP conserva solo las rutas fijas", async () => {
   vi.mocked(listarPublicados).mockResolvedValue([]);
   vi.mocked(fetch).mockResolvedValue({ ok: false, status: 503 } as Response);
-  await expect(sitemap()).resolves.toHaveLength(30);
+  await expect(sitemap()).resolves.toHaveLength(34);
 });

@@ -5,13 +5,14 @@ const BASE = "https://vennett.app"; // Solo para resolver rutas relativas; Verce
 
 const PUBLICAS = [
   /^\/$/,
-  /^\/(liga|como-funciona|planes|premio|entrar|registrar|recuperar)$/,
+  /^\/(liga|como-funciona|planes|premio|entrar|registrar|recuperar|quienes-somos|politica-editorial)$/,
   /^\/aprender(?:\/[a-z-]+)?$/,
   /^\/legal\/[^/]+$/,
   /^\/blog$/,
   /^\/blog\/(?!boletin(?:\/|$))[^/]+$/,
-  // El críptico y su archivo por número; la baja y la confirmación llevan token y quedan fuera.
+  // El críptico, su archivo y cada acertijo por número; la baja y la confirmación llevan token y quedan fuera.
   /^\/criptico$/,
+  /^\/criptico\/archivo$/,
   /^\/criptico\/\d+$/,
 ];
 

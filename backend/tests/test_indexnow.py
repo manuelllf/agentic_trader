@@ -143,10 +143,11 @@ class _Db:
         pass
 
 
-def test_urls_del_criptico_son_las_portadas_y_el_acertijo_de_cada_idioma():
+def test_urls_del_criptico_son_las_portadas_el_archivo_y_el_acertijo_de_cada_idioma():
     db = _Db([("en", 3), ("es", 7)])
     assert indexnow.urls_del_criptico(db, "2026-11-18") == [
         "https://vennett.app/criptico", "https://vennett.app/en/criptico",
+        "https://vennett.app/criptico/archivo", "https://vennett.app/en/criptico/archivo",
         "https://vennett.app/en/criptico/3", "https://vennett.app/criptico/7"]
     sql, params = db.consultas[0]
     assert "estado = 'publicado'" in sql and params == {"dia": "2026-11-18"}
@@ -164,7 +165,7 @@ def test_el_job_del_criptico_avisa_y_deja_constancia(monkeypatch):
                         lambda db, accion, objeto, datos, uid: auditoria.append((accion, datos)))
     assert indexnow.job_criptico() is True
     assert avisos[0][-2:] == ["https://vennett.app/criptico/7", "https://vennett.app/en/criptico/3"]
-    assert auditoria == [("indexnow.criptico", {"urls": 4, "aceptado": True})]
+    assert auditoria == [("indexnow.criptico", {"urls": 6, "aceptado": True})]
 
 
 def test_el_job_del_criptico_no_lanza_si_falla(monkeypatch):

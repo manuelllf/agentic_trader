@@ -15,7 +15,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     Promise.all([listarCripticos("es"), listarCripticos("en")]).catch(() => [[], []]),
   ]);
   const fijas = ["/", "/como-funciona", "/aprender", ...guiasVisibles(ciclo?.premio.visible === true).map(g => `/aprender/${g.slug}`),
-    "/legal/aviso", "/legal/privacidad", "/legal/terminos", "/legal/cookies", "/liga", "/premio", "/legal/bases-premio"]
+    "/legal/aviso", "/legal/privacidad", "/legal/terminos", "/legal/cookies", "/liga", "/premio", "/legal/bases-premio",
+    "/quienes-somos", "/politica-editorial"]
     .flatMap(ruta => {
       // Cada página se lista en sus dos idiomas, y las dos entradas se anuncian entre sí.
       const urls = urlsDeIdiomas(URL_PUBLICA, ruta);
@@ -33,6 +34,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // La portada de cada idioma solo se anuncia si ya tiene algún acertijo publicado.
   const portadas = [0, 1].filter(i => cripticos[i].length > 0)
     .map(i => ({ url: `${URL_PUBLICA}${i === 0 ? "" : "/en"}/criptico` }));
+  // El archivo se anuncia con la fecha del último acertijo, que es cuando cambia.
+  const listas = [0, 1].filter(i => cripticos[i].length > 0)
+    .map(i => ({ url: `${URL_PUBLICA}${i === 0 ? "" : "/en"}/criptico/archivo`, lastModified: cripticos[i].at(-1)?.fecha }));
   return [...fijas, entrada("es"), entrada("en"), ...es.map(a => entrada("es", a.slug)), ...en.map(a => entrada("en", a.slug)),
-    ...portadas, ...archivo];
+    ...portadas, ...listas, ...archivo];
 }

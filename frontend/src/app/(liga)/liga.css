@@ -298,6 +298,8 @@ html[data-theme="dark"] body:has(> .lg) { background: #0E0F10; }
 /* Sin sesión no hay botón de los tres puntos que dejar sitio: el logo va al margen. */
 .lg .cab.cab-sello > .cuenta-hueco { display: none; }
 .lg .cab.cab-sello > .entrar-cabecera { grid-column: 3; }
+/* Con título centrado, Entrar va en la columna derecha de la primera fila, no debajo del hueco. */
+.lg .cab.centrada > .entrar-cabecera { grid-column: 3; grid-row: 1; margin-left: auto; }
 
 .lg .scroll {
   flex: 1; width: 100%; max-width: var(--app-width); margin: 0 auto;

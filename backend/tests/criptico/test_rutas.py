@@ -108,9 +108,11 @@ def test_indice(api):
     assert r.status_code == 200
     filas = r.json()
     assert [fila["numero"] for fila in filas] == sorted(fila["numero"] for fila in filas)
+    # Cada fila trae lo que el archivo pinta en el servidor: nivel, longitud y la pista.
+    extra = {"nivel": "facil", "longitud": 6, "pista": [{"texto": "Pista", "papel": "def"}]}
     assert [fila for fila in filas if fila["numero"] in numeros] == [
-        {"numero": numero, "fecha": hoy.isoformat()},
-        {"numero": pasado, "fecha": (hoy - timedelta(days=1)).isoformat()},
+        {"numero": numero, "fecha": hoy.isoformat(), **extra},
+        {"numero": pasado, "fecha": (hoy - timedelta(days=1)).isoformat(), **extra},
     ]
     cx.execute("update criptico.acertijos set estado = 'borrador' where id = %s", (id,))
     r = c.get("/criptico/indice", params={"idioma": "es"})

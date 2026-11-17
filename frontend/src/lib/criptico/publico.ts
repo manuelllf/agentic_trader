@@ -1,8 +1,11 @@
-import type { Entrega, Idioma } from "./tipos";
+import type { Entrega, Idioma, Segmento } from "./tipos";
 import { fechaMadrid } from "./reloj";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-export type EntradaIndice = { numero: number; fecha: string };
+// Lo que el archivo pinta de cada acertijo sin pedirlo uno a uno: la pista nunca lleva la respuesta.
+export type EntradaIndice = {
+  numero: number; fecha: string; nivel: "facil" | "media" | "dificil"; longitud: number; pista: Segmento[];
+};
 
 export async function listarPublicados(idioma: Idioma): Promise<EntradaIndice[]> {
   const respuesta = await fetch(`${API_URL}/criptico/indice?idioma=${idioma}`, { next: { revalidate: 300 } });

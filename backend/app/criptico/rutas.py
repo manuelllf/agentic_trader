@@ -134,6 +134,9 @@ def hoy(idioma: Idioma = "es", db: Session = Depends(db_anon)) -> dict:
 class IndiceOut(BaseModel):
     numero: int
     fecha: date
+    nivel: Literal["facil", "media", "dificil"]
+    longitud: int
+    pista: list[Segmento]
 
 
 class ProximoOut(BaseModel):
@@ -143,7 +146,7 @@ class ProximoOut(BaseModel):
 @router.get("/indice", response_model=list[IndiceOut])
 def indice(idioma: Idioma = "es", db: Session = Depends(db_anon)) -> list[dict]:
     filas = db.execute(text("""
-        select numero, dia as fecha from criptico.acertijos
+        select numero, dia as fecha, nivel, longitud, pista from criptico.acertijos
         where idioma = :idioma and estado = 'publicado' and dia <= :hoy
         order by numero asc
     """), {"idioma": idioma, "hoy": logica.hoy_madrid()}).mappings().all()

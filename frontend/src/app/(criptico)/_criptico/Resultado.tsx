@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { Acertijo, Detalle, Papel, Traducir } from "@/lib/criptico/tipos";
+import type { Acertijo, Detalle, Traducir } from "@/lib/criptico/tipos";
 import type { Partida } from "@/lib/criptico/partida";
-import { Leyenda, Pista } from "./Pista";
+import Explicacion from "./Explicacion";
 import { ruta } from "./textos";
 
 export function textoResultado(p: Partida, t: Traducir) {
@@ -28,18 +28,10 @@ export default function Resultado({ acertijo, partida, detalle, t }: {
     } catch { /* Se ofrece el texto si el navegador deniega el portapapeles. */ }
     setManual(texto); setMensaje(t("cr_compartir_manual"));
   }
-  const papeles = (["def", "ind", "mat"] as Papel[]).filter(p => acertijo.pista.some(s => s.papel === p));
   return <>
     <div className="cr-resultado" role="status"><p>{textoResultado(partida, t)}</p>
       {acertijo.media !== null && <small>{t("cr_promedio", { n: acertijo.media })}</small>}</div>
-    <section className="cr-bloque"><h2>{t("cr_desmontada")}</h2>
-      <p className="cr-desmontada"><Pista segmentos={acertijo.pista} ayudas={[]} completa /></p>
-      <Leyenda t={t} papeles={papeles} />
-    </section>
-    <section className="cr-bloque"><h2>{t("cr_como")}</h2><p className="cr-dato">{detalle.resolucion}</p></section>
-    <section className="cr-bloque"><h2>{t("cr_que", { palabra: detalle.palabra })}</h2>
-      <p>{detalle.concepto}</p><p className="cr-dato">{detalle.ejemplo}</p>
-    </section>
+    <Explicacion acertijo={acertijo} detalle={detalle} t={t} />
     <section className="cr-bloque"><button type="button" className="btn wide" onClick={() => void compartir()}>{t("cr_compartir")}</button>
       <p className="cr-nota">{t("cr_compartir_nota")}</p><p role="status">{mensaje}</p>
       {manual && <textarea aria-label={t("cr_compartir")} readOnly value={manual} onFocus={e => e.currentTarget.select()} />}

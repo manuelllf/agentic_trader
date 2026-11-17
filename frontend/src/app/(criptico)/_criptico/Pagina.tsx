@@ -45,7 +45,7 @@ export default function Pagina({ idioma, textos, numero, inicial }: {
     })();
     return () => { activo = false; };
   }, [idioma, numero, intento, dia]);
-  if (estado === "listo" && entrega) return <Juego key={`${entrega.acertijo.id}:${dia}`} acertijo={entrega.acertijo} textos={textos} ultimoNumero={ultimo} />;
+  if (estado === "listo" && entrega) return <Juego key={`${entrega.acertijo.id}:${dia}`} acertijo={entrega.acertijo} detalle={entrega.detalle} textos={textos} ultimoNumero={ultimo} />;
   return <main className="cr-estado" lang={idioma}>
     <a className="sello" href={ruta(idioma)}><Marca className="marca" /><i aria-hidden="true" /><b>{t("cr_nombre")}</b></a>
     <h1>{t("cr_titulo")}</h1>{estado === "cargando" ? <Esqueleto variante="juego" etiqueta={t("cr_cargando")} /> : <p role="status">{t(`cr_${estado}`)}</p>}

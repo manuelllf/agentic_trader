@@ -22,6 +22,7 @@ export type Detalle = {
   ejemplo: string;
   regla_catalogo: string | null;
 };
-export type Entrega = { acertijo: Acertijo; solucion?: Detalle };
+// El servidor manda `detalle` solo de los días ya pasados.
+export type Entrega = { acertijo: Acertijo; detalle?: Detalle };
 export type Textos = Record<string, string>;
 export type Traducir = (clave: string, valores?: Record<string, string | number>) => string;
