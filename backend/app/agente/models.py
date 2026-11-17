@@ -363,6 +363,20 @@ class Fundamentales(Base):
     actualizado_por: Mapped[str | None] = _act_por()
 
 
+class Universo(Base):
+    __tablename__ = "universo"
+    ticker: Mapped[str] = mapped_column(Text, primary_key=True)
+    nombre: Mapped[str] = mapped_column(Text)
+    sector: Mapped[str | None] = mapped_column(Text)
+    industria: Mapped[str | None] = mapped_column(Text)
+    capitalizacion_usd: Mapped[Decimal | None] = mapped_column(Numeric(asdecimal=True))
+    fuente_fecha: Mapped[date] = mapped_column(Date)
+    creado: Mapped[datetime] = _creado()
+    creado_por: Mapped[str] = _creado_por()
+    actualizado_en: Mapped[datetime | None] = _act_en()
+    actualizado_por: Mapped[str | None] = _act_por()
+
+
 class LlamadaModelo(Base):
     __tablename__ = "llamadas_modelo"
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)

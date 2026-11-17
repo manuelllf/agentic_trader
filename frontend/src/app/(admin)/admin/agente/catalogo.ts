@@ -1,7 +1,7 @@
 // El catálogo de herramientas del agente (backend/app/agente/herramientas.py, CATALOGO), siempre con su
 // nombre real, agrupado por lo que toca cada una. Si cambia el catálogo, cambia aquí.
 export const FAMILIAS = [
-  { clave: "mercado", color: "#6FB5D9", herramientas: ["screen", "price", "history", "fundamentals", "valuation", "news"] },
+  { clave: "mercado", color: "#6FB5D9", herramientas: ["screen", "search_universe", "price", "history", "fundamentals", "valuation", "news"] },
   { clave: "cartera", color: "#E2B254", herramientas: ["portfolio", "watchlist", "watch", "unwatch", "card_read", "card_write", "journal"] },
   { clave: "memoria", color: "#B79CE8", herramientas: ["propose_lesson", "retire_lesson", "propose_philosophy_change", "schedule_wakeup", "cancel_wakeup"] },
 ] as const;

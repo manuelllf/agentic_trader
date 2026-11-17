@@ -192,7 +192,7 @@ export function disposicion(apaisado: boolean): Disposicion {
   const chips: Record<string, Rect> = {}, cables: Record<string, Pt[]> = {}, cabezas: Disposicion["cabezas"] = [];
   if (apaisado) {
     const y0 = 48;
-    const cols: [number, number][] = [[448, 130], [594, 138], [748, 188]], bus = 429, alto = y0 - 10, sale: Pt = [410, y0 + 31];
+    const cols: [number, number][] = [[448, 150], [606, 134], [750, 186]], bus = 429, alto = y0 - 10, sale: Pt = [410, y0 + 31];
     FAMILIAS.forEach((f, c) => {
       const [x, w] = cols[c];
       cabezas.push({ f, x, y: y0 + 9 });

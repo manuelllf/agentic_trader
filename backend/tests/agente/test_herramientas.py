@@ -249,6 +249,71 @@ def test_screen_mira_solo_la_lista_de_seguimiento(sesion_agente):
     assert "error" in ejecutar(sesion_agente, "screen", {"sort": "precio"}, ctx)
 
 
+def _universo(s) -> None:
+    from app.agente.models import Seguimiento, Universo
+
+    base = date(2026, 9, 28)
+    s.add_all([
+        Universo(ticker="NVDA", nombre="NVIDIA Corporation", sector="Technology",
+                 industria="Semiconductors", capitalizacion_usd=5_500_000_000_000,
+                 fuente_fecha=base),
+        Universo(ticker="TSM", nombre="Taiwan Semiconductor", sector="Technology",
+                 industria="Semiconductors", capitalizacion_usd=1_000_000_000_000,
+                 fuente_fecha=base),
+        Universo(ticker="MSFT", nombre="Microsoft Corporation", sector="Technology",
+                 industria="Software - Infrastructure", capitalizacion_usd=3_800_000_000_000,
+                 fuente_fecha=base),
+        Universo(ticker="META", nombre="Meta Platforms, Inc.", sector="Communication Services",
+                 industria="Internet Content & Information", capitalizacion_usd=1_800_000_000_000,
+                 fuente_fecha=base),
+        Universo(ticker="NOIND", nombre="Sin Industria", fuente_fecha=base),
+        Seguimiento(ticker="NVDA", motivo="m"),
+    ])
+    s.flush()
+
+
+def test_search_universe_busca_por_nombre_sector_e_industria(sesion_agente):
+    _universo(sesion_agente)
+    ctx = Contexto(hoy=HOY)
+
+    def buscar(**a):
+        return ejecutar(sesion_agente, "search_universe", a, ctx)
+
+    assert [x["ticker"] for x in buscar(query="nvid")["results"]] == ["NVDA"]
+    assert [x["ticker"] for x in buscar(query="MSF")["results"]] == ["MSFT"]  # por ticker
+    # La industria separa lo que el sector junta: NVDA y MSFT son Technology, no lo mismo.
+    assert [x["ticker"] for x in buscar(industry="semicond")["results"]] == ["NVDA", "TSM"]
+    assert [x["ticker"] for x in buscar(sector="technology")["results"]] == ["NVDA", "MSFT", "TSM"]
+    solo_software = buscar(sector="technology", industry="software")["results"]
+    assert [x["ticker"] for x in solo_software] == ["MSFT"]
+    r = buscar(industry="semicond", limit=1)
+    assert (r["matches"], r["shown"], r["as_of"]) == (2, 1, "2026-09-28")
+    nvda = r["results"][0]
+    assert (nvda["watching"], nvda["market_cap_usd_bn"]) == (True, 5500.0)
+    assert nvda["industry"] == "Semiconductors"
+    assert buscar(industry="semicond")["results"][1]["watching"] is False
+
+
+def test_search_universe_los_comodines_no_son_comodines(sesion_agente):
+    _universo(sesion_agente)
+    r = ejecutar(sesion_agente, "search_universe", {"query": "%"}, Contexto(hoy=HOY))
+    assert (r["matches"], r["results"]) == (0, [])
+
+
+def test_search_universe_sin_argumentos_lista_sectores_e_industrias(sesion_agente):
+    _universo(sesion_agente)
+    r = ejecutar(sesion_agente, "search_universe", {}, Contexto(hoy=HOY))
+    assert r["sectors"]["Technology"] == ["Semiconductors (2)", "Software - Infrastructure (1)"]
+    assert r["sectors"]["Communication Services"] == ["Internet Content & Information (1)"]
+
+
+def test_los_parametros_opcionales_los_dice_la_descripcion(sesion_agente):
+    ctx = Contexto(hoy=HOY)
+    # `query` es opcional en search_universe pero obligatoria en news.
+    assert "missing parameters: query" in ejecutar(sesion_agente, "news", {}, ctx)["error"]
+    assert "error" not in ejecutar(sesion_agente, "search_universe", {}, ctx)
+
+
 def test_screen_no_presenta_como_actual_un_cierre_viejo(sesion_agente):
     from app.agente.models import Seguimiento
 

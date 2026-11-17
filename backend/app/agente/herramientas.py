@@ -35,7 +35,7 @@ from app.agente.models import Estado, Evento, Ficha, Noticia, Seguimiento
 
 MAX_SALIDA = 4000
 # screen devuelve toda la watchlist en una respuesta; price y fundamentals, hasta MAX_LOTE empresas.
-_TOPES_SALIDA = {"screen": 14000, "price": 9000, "fundamentals": 18000}
+_TOPES_SALIDA = {"screen": 14000, "price": 9000, "fundamentals": 18000, "search_universe": 9000}
 MAX_LOTE = 20
 # Fundamentales guardados por la preparación: más viejos que esto se vuelven a pedir a Yahoo.
 DIAS_FUNDAMENTALES = 4
@@ -530,6 +530,50 @@ def _fila_screen(x: dict, f: dict) -> str:
         num(fcf_rend, 100)])
 
 
+def _como(texto: str) -> str:
+    """Patrón `ilike` que busca el texto tal cual: sus % y _ no son comodines."""
+    return "%" + texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def _search_universe(s: Session, a: dict, ctx: Contexto) -> dict:  # noqa: ARG001
+    """Encuentra empresas del universo por nombre o ticker, sector o industria. Solo las
+    identifica: sus cifras las dan `price` y `fundamentals`. Sin argumentos, enseña los sectores
+    y sus industrias."""
+    consulta, sector, industria = (
+        str(a.get(k) or "").strip() for k in ("query", "sector", "industry"))
+    s.flush()
+    if not (consulta or sector or industria):
+        filas = s.execute(text(
+            "select coalesce(sector, '(none)') as sector, industria, count(*) as n "
+            "from agente.universo where industria is not null "
+            "group by 1, 2 order by 1, 2")).all()
+        por_sector: dict[str, list[str]] = {}
+        for sec, ind, n in filas:
+            por_sector.setdefault(sec, []).append(f"{ind} ({n})")
+        return {"sectors": por_sector,
+                "note": "Pass query, sector or industry to search; each is a partial match."}
+    limite = _entero(a.get("limit"), 10, 1, MAX_LOTE)
+    filas = s.execute(text(
+        "select u.ticker, u.nombre, u.sector, u.industria, u.capitalizacion_usd, u.fuente_fecha, "
+        "count(*) over () as total, exists (select 1 from agente.seguimiento g "
+        "where g.ticker = u.ticker and g.hasta is null) as siguiendo "
+        "from agente.universo u "
+        "where (:q = '' or u.ticker ilike :tq or u.nombre ilike :nq) "
+        "and (:sec = '' or u.sector ilike :sq) and (:ind = '' or u.industria ilike :iq) "
+        "order by u.capitalizacion_usd desc nulls last, u.ticker limit :n"),
+        {"q": consulta, "tq": _como(consulta).lstrip("%"), "nq": _como(consulta), "sec": sector,
+         "sq": _como(sector), "ind": industria, "iq": _como(industria), "n": limite}).all()
+    return {
+        "as_of": max((f.fuente_fecha for f in filas), default=None),
+        "matches": filas[0].total if filas else 0, "shown": len(filas),
+        "results": [{"ticker": f.ticker, "name": f.nombre, "sector": f.sector,
+                     "industry": f.industria, "watching": f.siguiendo,
+                     "market_cap_usd_bn": None if f.capitalizacion_usd is None
+                     else round(float(f.capitalizacion_usd) / 1e9, 2)} for f in filas],
+        "note": "Identifies companies only, biggest first: no figures here. Use price and "
+                "fundamentals for those, and watch to follow one."}
+
+
 def _h(nombre: str, descripcion: str, parametros: dict[str, str], funcion: Callable,
        escritura: bool = False) -> Herramienta:
     return Herramienta(nombre, descripcion, parametros, escritura, funcion)
@@ -560,6 +604,14 @@ CATALOGO: dict[str, Herramienta] = {h.nombre: h for h in (
        "which companies deserve a closer look today.",
        {"sort": "string, drawdown (most fallen first) | change_1m (best month first) | rsi "
                 "(most oversold first), default drawdown"}, _screen),
+    _h("search_universe", "Find companies outside your list: the universe of listed companies, by "
+       "name or ticker (query), sector or industry (partial matches, biggest first). With no "
+       "arguments it lists the sectors and their industries. It only identifies companies: use "
+       "price and fundamentals for their figures, and watch to follow one.",
+       {"query": "string, optional, part of the name or the ticker",
+        "sector": "string, optional, e.g. Technology",
+        "industry": "string, optional, e.g. Semiconductors",
+        "limit": "integer, optional, default 10, max 20"}, _search_universe),
     _h("watchlist", "List the companies you are following, with their price levels.",
        {}, _watchlist),
     _h("watch", "Follow a company with a reason and optional price levels. A ticker with no price "
@@ -671,7 +723,9 @@ def ejecutar(s: Session, nombre: str, args: dict, ctx: Contexto) -> dict:
         if "tickers" in h.parametros and a.get("tickers") is None and a.get("ticker") is not None:
             # Una sola empresa con el nombre de antes también vale.
             a["tickers"] = [a.pop("ticker")]
-        faltan = [p for p in h.parametros if p not in _OPCIONALES and a.get(p) is None]
+        # Opcional es lo que su propia descripción dice ("optional") o está en la lista fija.
+        faltan = [p for p, d in h.parametros.items()
+                  if p not in _OPCIONALES and ", optional" not in d and a.get(p) is None]
         if faltan:
             return {"error": f"missing parameters: {', '.join(faltan)}"}
         if "ticker" in a:

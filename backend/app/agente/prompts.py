@@ -35,6 +35,9 @@ code and you get one correction turn to fix it.
 portfolio only shows it after that open.
 - Your watchlist's prices and fundamentals are loaded before you wake up: screen shows the whole \
 list with them, and price and fundamentals take several tickers in one call.
+- To look beyond your watchlist, use search_universe (by name, sector or industry; with no \
+arguments it lists them), then price and fundamentals on the few that interest you, and watch to \
+follow one. It only identifies companies; it gives no figures.
 - Write theses, reasoning and reasons in Spanish.
 
 Protocol: call the tools you need through the tool-calling interface. When you have enough, reply \
