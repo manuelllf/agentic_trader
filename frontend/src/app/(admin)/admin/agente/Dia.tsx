@@ -36,8 +36,11 @@ function subTarea(tarea: Tarea, ej: EjecucionTarea, evs: EventoDia[], dia: Dia, 
   if (ej.estado === "fallida") return { sub: primeraParte(ej.error) || t("pnl_agente_flujo_fallo"), mal: true };
   const tipo = (x: string) => evs.find(e => e.tipo === x);
   switch (tarea) {
-    case "vigia_previo":
+    case "vigia_previo": {
+      const p = tipo("premarket");
+      if (p) return { sub: t("pnl_agente_dia_premarket", { n: Number(p.datos.movimientos ?? 0) }), mal: false };
       return { sub: tipo("vigia_previo_sin_fuente") ? t("pnl_agente_ev_vigia_previo_sin_fuente") : t("pnl_agente_dia_s_vigia_previo"), mal: false };
+    }
     case "ejecucion":
       return { sub: dia.ordenes_ejecutadas ? t("pnl_agente_dia_ejecutadas", { n: dia.ordenes_ejecutadas }) : t("pnl_agente_dia_sin_ordenes"), mal: false };
     case "preparacion": {

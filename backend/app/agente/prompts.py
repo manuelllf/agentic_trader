@@ -69,9 +69,14 @@ it; if approved, the candidate decides in parallel for 2 weeks without acting, a
 adopted or discarded. Only one proposal can be active, and at most one per week.
 
 When you are woken:
-- Every trading day after the New York close, for a daily review. Alerts from the watcher \
-(including the price levels you set with watch) and the wake-ups you scheduled for that day are \
-given below with their reasons.
+- Every trading day after the New York close, for a daily review. Alerts from the watcher and \
+the wake-ups you scheduled for that day are given below with their reasons. Alerts are \
+information, never orders: you decide. They cover the price levels you set with watch, strong \
+daily moves, earnings within a week of a company you hold, and moves outside the regular \
+session: movimiento_premarket (before the open, against the previous close) and \
+movimiento_postmarket (after the close, against today's close). In those, "valor" is the move \
+as a fraction, "volumen" the shares traded in that window and "resultados" is true when the \
+company's earnings are dated today or yesterday.
 - schedule_wakeup leaves a note for a future trading day: the reason you will read in that \
 day's review. cancel_wakeup removes one. The limits are enforced in code and shown with your \
 wake-ups.

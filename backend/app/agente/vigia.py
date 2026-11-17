@@ -2,16 +2,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Literal
+from typing import Any, Literal
 
+from app.agente.datos import Extendido
 from app.agente.limites import LIMITES, Alerta, Cartera, alertas_de_cartera
 
 ZERO = Decimal("0")
 UNO = Decimal("1")
+CUATRO = Decimal("0.0001")
 # Variación diaria en valor absoluto que obliga a mirar la posición.
 UMBRAL_MOVIMIENTO = Decimal("0.08")
+# Con resultados de esa empresa de hoy o de ayer, lo que importa es la reacción: umbral menor.
+UMBRAL_RESULTADOS = Decimal("0.03")
+# Por debajo de este volumen en la franja, el último precio puede ser una sola operación suelta.
+VOLUMEN_MIN_EXTENDIDO = 10_000
 
 
 @dataclass(frozen=True)
@@ -119,3 +125,42 @@ def revisar(cartera: Cartera, cierres: dict[str, Decimal], cierres_previos: dict
 
 def hay_que_despertar(alertas: list[Alerta]) -> bool:
     return len(alertas) > 0
+
+
+@dataclass(frozen=True)
+class Movimiento:
+    """Un movimiento fuerte fuera de sesión, para que el agente lo lea y decida."""
+
+    ticker: str
+    franja: str
+    variacion: Decimal
+    precio: Decimal
+    referencia: Decimal
+    volumen: int
+    hasta: datetime
+    por_resultados: bool
+
+    def datos(self) -> dict[str, Any]:
+        return {"valor": str(self.variacion.quantize(CUATRO)), "precio": str(self.precio),
+                "referencia": str(self.referencia), "volumen": self.volumen,
+                "hasta": self.hasta.isoformat(), "resultados": self.por_resultados}
+
+
+def movimientos_extendidos(franja: str, referencias: dict[str, Decimal],
+                           extendidos: dict[str, Extendido], resultados: dict[str, date],
+                           hoy: date) -> list[Movimiento]:
+    """Empresas cuyo último precio de la franja se aleja de su referencia (el cierre previo en
+    el premarket, el cierre de hoy en el postmarket). Solo registra: no decide nada."""
+    out: list[Movimiento] = []
+    for ticker, e in sorted(extendidos.items()):
+        referencia = referencias.get(ticker)
+        if referencia is None or referencia <= ZERO or e.volumen < VOLUMEN_MIN_EXTENDIDO:
+            continue
+        fecha = resultados.get(ticker)
+        por_resultados = fecha is not None and 0 <= (hoy - fecha).days <= 1
+        variacion = e.ultimo / referencia - UNO
+        umbral = UMBRAL_RESULTADOS if por_resultados else UMBRAL_MOVIMIENTO
+        if abs(variacion) >= umbral:
+            out.append(Movimiento(ticker, franja, variacion, e.ultimo, referencia, e.volumen,
+                                  e.hasta, por_resultados))
+    return out

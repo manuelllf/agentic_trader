@@ -1,13 +1,18 @@
 """Pruebas del vigía (código puro, sin base ni red)."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
+from zoneinfo import ZoneInfo
 
+from app.agente.datos import Extendido
 from app.agente.limites import Alerta, Cartera, Posicion
 from app.agente.vigia import (
     Evento,
+    Movimiento,
     Nivel,
     hay_que_despertar,
+    movimientos_extendidos,
     niveles_desde_json,
     revisar,
 )
@@ -244,3 +249,56 @@ def test_lista_vacia_no_despierta() -> None:
 def test_alguna_alerta_despierta() -> None:
     alertas = revisar(_cartera_limpia(), {"AAA": D("108")}, {"AAA": D("100")}, [], [], HOY)
     assert hay_que_despertar(alertas) is True
+
+
+# Horario extendido
+
+_NY = ZoneInfo("America/New_York")
+
+
+def _ext(ticker: str, ultimo: str, volumen: int = 50_000) -> Extendido:
+    return Extendido(ticker, D(ultimo), volumen, datetime(2026, 11, 16, 8, 44, tzinfo=_NY))
+
+
+def _mov(extendidos: dict[str, Extendido], resultados: dict[str, date] | None = None,
+         referencias: dict[str, Decimal] | None = None) -> list[Movimiento]:
+    refs = referencias or {t: D("100") for t in extendidos}
+    return movimientos_extendidos("premarket", refs, extendidos, resultados or {}, HOY)
+
+
+def test_movimiento_extendido_sobre_el_umbral_se_registra() -> None:
+    movs = _mov({"AAA": _ext("AAA", "91"), "BBB": _ext("BBB", "103")})
+    assert [(m.ticker, m.franja, m.por_resultados) for m in movs] == [("AAA", "premarket", False)]
+    assert movs[0].datos() == {
+        "valor": "-0.0900", "precio": "91", "referencia": "100", "volumen": 50_000,
+        "hasta": "2026-11-16T08:44:00-05:00", "resultados": False}
+
+
+def test_el_umbral_es_justo_del_ocho_por_ciento() -> None:
+    assert [m.ticker for m in _mov({"AAA": _ext("AAA", "108"), "BBB": _ext("BBB", "107.99")})] == [
+        "AAA"]
+    assert [m.ticker for m in _mov({"AAA": _ext("AAA", "92")})] == ["AAA"]
+
+
+def test_con_resultados_de_hoy_o_ayer_el_umbral_baja_al_tres_por_ciento() -> None:
+    ext = {"AAA": _ext("AAA", "104"), "BBB": _ext("BBB", "104"), "CCC": _ext("CCC", "104"),
+           "DDD": _ext("DDD", "104")}
+    resultados = {"AAA": HOY, "BBB": date(2026, 11, 15), "CCC": date(2026, 11, 14),
+                  "DDD": date(2026, 11, 17)}
+    movs = _mov(ext, resultados)
+    assert [(m.ticker, m.por_resultados) for m in movs] == [("AAA", True), ("BBB", True)]
+
+
+def test_poco_volumen_no_cuenta() -> None:
+    assert _mov({"AAA": _ext("AAA", "80", volumen=9_999)}) == []
+    assert [m.ticker for m in _mov({"AAA": _ext("AAA", "80", volumen=10_000)})] == ["AAA"]
+
+
+def test_sin_referencia_o_referencia_cero_se_ignora() -> None:
+    ext = {"AAA": _ext("AAA", "80"), "BBB": _ext("BBB", "80")}
+    assert _mov(ext, referencias={"BBB": D("0")}) == []
+
+
+def test_movimientos_salen_ordenados_por_ticker() -> None:
+    ext = {"ZZZ": _ext("ZZZ", "80"), "AAA": _ext("AAA", "120")}
+    assert [m.ticker for m in _mov(ext)] == ["AAA", "ZZZ"]

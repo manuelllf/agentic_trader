@@ -14,8 +14,16 @@ from sqlalchemy.orm import Session
 
 from app.agente import avisos, base, libro, servicio, tareas
 from app.agente.config import ajustes
-from app.agente.datos import Barra
-from app.agente.models import Decision, Ejecucion, Ejecutada, Leccion, Noticia, Seguimiento
+from app.agente.datos import Barra, Extendido, Franja
+from app.agente.models import (
+    Decision,
+    Ejecucion,
+    Ejecutada,
+    Fundamentales,
+    Leccion,
+    Noticia,
+    Seguimiento,
+)
 from app.agente.reloj import Tarea
 from app.config import settings
 
@@ -338,10 +346,145 @@ def test_consolidacion_con_ia_juzga_las_lecciones_pendientes(sesion_agente: Sess
     assert (datos_ev["propuestas_en_sombra"], datos_ev["filosofias_adoptadas"]) == (0, 0)
 
 
-def test_vigia_previo_deja_constancia(sesion_agente: Session) -> None:
+def _extendido(ticker: str, ultimo: str, hora: int = 8, minuto: int = 44,
+               volumen: int = 50_000) -> Extendido:
+    return Extendido(ticker, Decimal(ultimo), volumen,
+                     datetime(D2.year, D2.month, D2.day, hora, minuto, tzinfo=NY))
+
+
+def _extendido_falso(por_franja: dict[Franja, dict[str, Extendido]],
+                     llamadas: list | None = None):
+    def pedir(tickers: list[str], franja: Franja, dia: date) -> dict[str, Extendido]:
+        if llamadas is not None:
+            llamadas.append((list(tickers), franja, dia))
+        return por_franja.get(franja, {})
+    return pedir
+
+
+def _cierre_previo(s: Session, ticker: str, cierre: str) -> None:
+    libro.guardar_precios(s, ticker, [(D1, None, None, None, Decimal(cierre), 1000)])
+
+
+def test_vigia_previo_sin_empresas_lo_anota(sesion_agente: Session) -> None:
     s = sesion_agente
-    tareas.hacer_vigia_previo(s, _ej(s, Tarea.VIGIA_PREVIO, D2), D2)
-    assert [e.tipo for e in _eventos(s)] == ["vigia_previo_sin_fuente"]
+    tareas.hacer_vigia_previo(s, _ej(s, Tarea.VIGIA_PREVIO, D2), D2, _no_debe_llamarse)
+    assert [(e.origen, e.tipo, e.datos) for e in _eventos(s)] == [
+        ("sistema", "premarket", {"empresas": 0})]
+
+
+def test_vigia_previo_registra_el_premarket_fuerte_sin_decidir(sesion_agente: Session) -> None:
+    s = sesion_agente
+    _con_posicion(s)
+    s.add(Seguimiento(ticker="BBB", motivo="m"))
+    _cierre_previo(s, "AAA", "100")
+    _cierre_previo(s, "BBB", "50")
+    llamadas: list = []
+    pedir = _extendido_falso({Franja.PREMARKET: {
+        "AAA": _extendido("AAA", "91"), "BBB": _extendido("BBB", "51")}}, llamadas)
+    antes = (_cuenta(s, "ordenes"), _cuenta(s, "decisiones"))
+    tareas.hacer_vigia_previo(s, _ej(s, Tarea.VIGIA_PREVIO, D2), D2, pedir)
+
+    assert llamadas == [(["AAA", "BBB"], Franja.PREMARKET, D2)]
+    ev = [e for e in _eventos(s) if e.tipo in ("movimiento_premarket", "premarket")]
+    assert [(e.origen, e.tipo, e.ticker) for e in ev] == [
+        ("vigia", "movimiento_premarket", "AAA"), ("sistema", "premarket", None)]
+    assert ev[0].datos["valor"] == "-0.0900" and ev[0].datos["referencia"] == "100"
+    assert ev[1].datos == {"empresas": 2, "con_precio": 2, "movimientos": 1}
+    # Solo se registra: ni órdenes ni decisiones.
+    assert (_cuenta(s, "ordenes"), _cuenta(s, "decisiones")) == antes
+
+
+def test_vigia_previo_usa_el_umbral_menor_con_resultados_de_hoy(sesion_agente: Session) -> None:
+    s = sesion_agente
+    s.add(Seguimiento(ticker="AAA", motivo="m"))
+    s.add(Fundamentales(ticker="AAA", fecha_ny=D1, datos={"next_earnings_date": "2026-11-18"}))
+    _cierre_previo(s, "AAA", "100")
+    pedir = _extendido_falso({Franja.PREMARKET: {"AAA": _extendido("AAA", "104")}})
+    tareas.hacer_vigia_previo(s, _ej(s, Tarea.VIGIA_PREVIO, D2), D2, pedir)
+    mov = next(e for e in _eventos(s) if e.tipo == "movimiento_premarket")
+    assert mov.datos["resultados"] is True
+
+
+def test_correr_vigia_previo_pasa_el_horario_extendido(base_real: None) -> None:
+    with base.sesion() as s:
+        s.add(Seguimiento(ticker="AAA", motivo="m"))
+        _cierre_previo(s, "AAA", "100")
+    pedir = _extendido_falso({Franja.PREMARKET: {"AAA": _extendido("AAA", "85")}})
+    assert tareas.correr(Tarea.VIGIA_PREVIO, D2, _ahora(D2, 8, 45), _no_debe_llamarse,
+                         pedir) is True
+    with base.sesion() as s:
+        tipos = s.execute(text("select tipo from agente.eventos order by id")).scalars().all()
+    assert tipos == ["movimiento_premarket", "premarket"]
+
+
+def test_despertar_registra_el_postmarket_y_lo_cuenta_como_alerta(
+        sesion_agente: Session) -> None:
+    s = sesion_agente
+    _con_posicion(s)
+    barras = {"AAA": [_barra(D1, "100"), _barra(D2, "100")]}
+    pedir = _extendido_falso({Franja.POSTMARKET: {"AAA": _extendido("AAA", "90", 17, 29)}})
+    tareas.hacer_despertar(s, _ej(s, Tarea.DESPERTAR, D2), D2, _falso(barras), pedir)
+
+    ev = _eventos(s)
+    post = next(e for e in ev if e.tipo == "movimiento_postmarket")
+    assert (post.origen, post.ticker, post.datos["valor"]) == ("vigia", "AAA", "-0.1000")
+    pendiente = next(e for e in ev if e.tipo == "ciclo_pendiente")
+    assert pendiente.datos["alerts"] is True
+
+
+def test_despertar_sin_movimiento_fuera_de_sesion_no_marca_alertas(
+        sesion_agente: Session) -> None:
+    s = sesion_agente
+    _con_posicion(s)
+    barras = {"AAA": [_barra(D1, "100"), _barra(D2, "100")]}
+    pedir = _extendido_falso({Franja.POSTMARKET: {"AAA": _extendido("AAA", "101", 17, 29)}})
+    tareas.hacer_despertar(s, _ej(s, Tarea.DESPERTAR, D2), D2, _falso(barras), pedir)
+    ev = _eventos(s)
+    assert not [e for e in ev if e.tipo == "movimiento_postmarket"]
+    assert next(e for e in ev if e.tipo == "postmarket").datos == {
+        "empresas": 1, "con_precio": 1, "movimientos": 0}
+    assert next(e for e in ev if e.tipo == "ciclo_pendiente").datos["alerts"] is False
+
+
+def test_despertar_sigue_aunque_falle_el_postmarket(sesion_agente: Session) -> None:
+    s = sesion_agente
+    _con_posicion(s)
+    barras = {"AAA": [_barra(D1, "100"), _barra(D2, "100")]}
+
+    def roto(tickers: list[str], franja: Franja, dia: date) -> dict[str, Extendido]:
+        raise RuntimeError("yahoo raro")
+
+    tareas.hacer_despertar(s, _ej(s, Tarea.DESPERTAR, D2), D2, _falso(barras), roto)
+    ev = _eventos(s)
+    assert "yahoo raro" in next(e for e in ev if e.tipo == "sin_postmarket").datos["error"]
+    assert any(e.tipo == "ciclo_pendiente" for e in ev)
+    assert _cuenta(s, "valor_diario") == 1
+
+
+def test_despertar_alerta_de_resultados_con_la_fecha_del_calendario(
+        sesion_agente: Session) -> None:
+    s = sesion_agente
+    _con_posicion(s)
+    s.add(Fundamentales(ticker="AAA", fecha_ny=D1, datos={"next_earnings_date": "2026-11-21"}))
+    barras = {"AAA": [_barra(D1, "100"), _barra(D2, "100")]}
+    tareas.hacer_despertar(s, _ej(s, Tarea.DESPERTAR, D2), D2, _falso(barras))
+    proximo = next(e for e in _eventos(s) if e.tipo == "evento_proximo")
+    assert (proximo.origen, proximo.ticker, proximo.datos) == ("vigia", "AAA", {"valor": "3"})
+
+
+def test_fechas_de_resultados_ignora_lo_que_no_es_fecha(sesion_agente: Session) -> None:
+    s = sesion_agente
+    s.add_all([
+        Fundamentales(ticker="AAA", fecha_ny=D1, datos={"next_earnings_date": "2026-11-21"}),
+        Fundamentales(ticker="BBB", fecha_ny=D1, datos={"next_earnings_date": None}),
+        Fundamentales(ticker="CCC", fecha_ny=D1, datos={"next_earnings_date": "n/a"}),
+        Fundamentales(ticker="DDD", fecha_ny=D1, datos={}),
+        Fundamentales(ticker="EEE", fecha_ny=D1,
+                      datos={"next_earnings_date": "2026-12-01 00:00:00"}),
+    ])
+    s.flush()
+    assert tareas._fechas_de_resultados(s, ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF"]) == {
+        "AAA": date(2026, 11, 21), "EEE": date(2026, 12, 1)}
 
 
 def test_correr_fallida_no_deja_nada_a_medias(base_real: None) -> None:

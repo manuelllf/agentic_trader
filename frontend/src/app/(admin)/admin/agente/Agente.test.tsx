@@ -313,13 +313,13 @@ describe("Alphagentic: el día", () => {
         { id: 2, tarea: "ejecucion", fecha_ny: "2026-11-16", estado: "fallida", empezada: "2026-11-16T14:35:00Z", terminada: "2026-11-16T14:36:00Z", error: "sin precio; detalle" },
         { id: 3, tarea: "despertar", fecha_ny: "2026-11-16", estado: "hecha", empezada: "2026-11-16T22:30:00Z", terminada: "2026-11-16T22:47:00Z", error: null }],
       eventos: [
-        { id: 9, ocurrido: "2026-11-16T13:46:00Z", origen: "vigia", tipo: "vigia_previo_sin_fuente", ticker: null, datos: {}, ejecucion_id: 1 },
+        { id: 9, ocurrido: "2026-11-16T13:46:00Z", origen: "sistema", tipo: "premarket", ticker: null, datos: { empresas: 30, con_precio: 22, movimientos: 2 }, ejecucion_id: 1 },
         { id: 10, ocurrido: "2026-11-16T22:47:00Z", origen: "ciclo", tipo: "decision", ticker: null, datos: { decision_id: 3 }, ejecucion_id: 3 }],
       decisiones: [{ id: 3, fecha: "2026-11-16", tipo: "operar", sombra: true, veredicto: "aprobada", razonamiento: "", creado: "2026-11-16T22:40:00Z", operaciones: [{ ticker: "RDDT", lado: "compra" }] }],
     };
     const v = await pintar(<TareasDelDia dia={dia as never} />);
     const t = textoDe(v);
-    expect(t).toContain("Sin noticias previas que revisar");
+    expect(t).toContain("2 movimientos fuertes en el premarket");
     expect(t).toContain("sin precio");
     expect(t).not.toContain("detalle");
     expect(t).toContain("Compra RDDT · en sombra");

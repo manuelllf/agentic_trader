@@ -9,7 +9,15 @@ import pandas as pd
 import pytest
 
 from app.agente import datos
-from app.agente.datos import Barra, FilaYahoo, barra_del_dia, deshacer_ajuste, ultimo_cierre_hasta
+from app.agente.datos import (
+    Barra,
+    FilaYahoo,
+    Franja,
+    barra_del_dia,
+    deshacer_ajuste,
+    ultimo_cierre_hasta,
+)
+from app.agente.datos import descargar_extendido as descargar_extendido_real
 
 
 def test_descargar_reintenta_si_yahoo_responde_vacio(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,6 +186,79 @@ def test_descargar_sin_tickers_no_llama_a_yahoo(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("yfinance.download", no_debe)
     assert datos.descargar([], date(2026, 3, 1)) == {}
     assert datos.descargar(["", ""], date(2026, 3, 1)) == {}
+
+
+DIA = date(2026, 11, 16)
+CAMPOS_MINUTO = ["Open", "High", "Low", "Close", "Volume"]
+
+
+def _minutos(horas: list[str], cierres: list[float], volumenes: list[float]) -> pd.DataFrame:
+    """Barras de un minuto con la hora de Nueva York, como las entrega Yahoo con prepost."""
+    idx = pd.DatetimeIndex(pd.to_datetime(horas)).tz_localize("America/New_York")
+    return pd.DataFrame({"Open": cierres, "High": cierres, "Low": cierres, "Close": cierres,
+                         "Volume": volumenes}, index=idx)
+
+
+def _multi(**por_ticker: pd.DataFrame) -> pd.DataFrame:
+    return pd.concat(por_ticker, axis=1)
+
+
+def _con_yahoo(monkeypatch: pytest.MonkeyPatch, df: pd.DataFrame,
+               pedidos: list[dict] | None = None) -> None:
+    def falso(tickers: list[str], **kw: object) -> pd.DataFrame:
+        if pedidos is not None:
+            pedidos.append({"tickers": list(tickers), **kw})
+        return df
+
+    monkeypatch.setattr("yfinance.download", falso)
+
+
+def test_extendido_premarket_toma_el_ultimo_precio_y_suma_el_volumen(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    df = _minutos(["2026-11-16 03:59", "2026-11-16 04:00", "2026-11-16 08:43", "2026-11-16 08:44",
+                   "2026-11-16 09:30"], [1.0, 90.0, 91.0, 92.5, 99.0], [500, 100, 200, 300, 900])
+    pedidos: list[dict] = []
+    _con_yahoo(monkeypatch, df, pedidos)
+    out = descargar_extendido_real(["AAA"], Franja.PREMARKET, DIA)
+    e = out["AAA"]
+    # Solo cuentan las barras de 4:00 a 9:30 de ese día: ni la de 3:59 ni la de la apertura.
+    assert (e.ultimo, e.volumen) == (Decimal("92.5"), 600)
+    assert e.hasta.hour == 8 and e.hasta.minute == 44
+    assert pedidos[0]["prepost"] is True and pedidos[0]["interval"] == "1m"
+    assert pedidos[0]["period"] == "1d"
+
+
+def test_extendido_postmarket_y_otro_dia_no_cuenta(monkeypatch: pytest.MonkeyPatch) -> None:
+    df = _minutos(["2026-11-13 16:30", "2026-11-16 15:59", "2026-11-16 16:00", "2026-11-16 17:29",
+                   "2026-11-16 20:00"], [50.0, 100.0, 101.0, 104.0, 9.0], [1, 1, 400, 600, 1])
+    _con_yahoo(monkeypatch, df)
+    e = descargar_extendido_real(["AAA"], Franja.POSTMARKET, DIA)["AAA"]
+    assert (e.ultimo, e.volumen) == (Decimal("104"), 1000)
+
+
+def test_extendido_varios_tickers_y_el_que_no_opera_no_aparece(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    con = _minutos(["2026-11-16 08:00"], [10.0], [100])
+    sin = _minutos(["2026-11-16 12:00"], [20.0], [100])  # solo sesión regular
+    vacio = _minutos(["2026-11-16 08:00"], [float("nan")], [float("nan")])
+    _con_yahoo(monkeypatch, _multi(AAA=con, BBB=sin, CCC=vacio))
+    out = descargar_extendido_real(["AAA", "BBB", "CCC", "XXXX"], Franja.PREMARKET, DIA)
+    assert set(out) == {"AAA"}
+
+
+def test_extendido_un_solo_ticker_con_columnas_simples(monkeypatch: pytest.MonkeyPatch) -> None:
+    _con_yahoo(monkeypatch, _minutos(["2026-11-16 08:00"], [10.0], [100]))
+    assert descargar_extendido_real(["SPY"], Franja.PREMARKET, DIA)["SPY"].ultimo == Decimal("10")
+
+
+def test_extendido_sin_red_o_sin_tickers_devuelve_vacio(monkeypatch: pytest.MonkeyPatch) -> None:
+    def roto(*_a: object, **_kw: object) -> pd.DataFrame:
+        raise RuntimeError("sin red")
+
+    monkeypatch.setattr(datos, "_PAUSA_S", 0.0)
+    monkeypatch.setattr("yfinance.download", roto)
+    assert descargar_extendido_real(["AAPL"], Franja.PREMARKET, DIA) == {}
+    assert descargar_extendido_real([], Franja.PREMARKET, DIA) == {}
 
 
 def test_barra_del_dia_y_ultimo_cierre_con_festivos() -> None:

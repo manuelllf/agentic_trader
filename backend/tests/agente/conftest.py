@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
-from app.agente import base, interruptor
+from app.agente import base, datos, interruptor
 from app.agente.config import ajustes
 
 # Todas las migraciones en orden, como se aplican en la base real.
@@ -31,6 +31,12 @@ def _interruptor_cerrado() -> Iterator[None]:
     interruptor.deepseek.exito()
     yield
     interruptor.deepseek.exito()
+
+
+@pytest.fixture(autouse=True)
+def _sin_horario_extendido(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ninguna prueba sale a Yahoo por el horario extendido; las que lo miran pasan su falso."""
+    monkeypatch.setattr(datos, "descargar_extendido", lambda tickers, franja, dia: {})
 
 
 @pytest.fixture(scope="session")

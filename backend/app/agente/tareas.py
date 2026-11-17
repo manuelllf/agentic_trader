@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.agente import avisos, base, datos, despertares, libro, vigia
 from app.agente.config import ajustes
-from app.agente.datos import Barra
+from app.agente.datos import Barra, Extendido, Franja
 from app.agente.models import Ejecucion, Estado, Evento, Fundamentales, Orden, Seguimiento
 from app.agente.reloj import Tarea
 from app.ledger.money import D
@@ -24,6 +24,7 @@ from app.ledger.money import D
 logger = logging.getLogger(__name__)
 
 Descargar = Callable[[list[str], date], dict[str, list[Barra]]]
+DescargarExtendido = Callable[[list[str], Franja, date], dict[str, Extendido]]
 
 PREFIJO_REINTENTO = "reintento: "
 MAX_ERROR = 2000
@@ -150,8 +151,38 @@ def hacer_preparacion(s: Session, ej: Ejecucion, hoy: date,
                   "sin_fundamentales": fallidos})
 
 
+def _fechas_de_resultados(s: Session, tickers: list[str]) -> dict[str, date]:
+    """La próxima fecha de resultados que trae Yahoo en los fundamentales; sin fecha, sin fila."""
+    filas = s.execute(text(
+        "select ticker, datos->>'next_earnings_date' from agente.fundamentales "
+        "where ticker = any(:t)"), {"t": tickers}).all()
+    fechas: dict[str, date] = {}
+    for ticker, bruto in filas:
+        try:
+            fechas[ticker] = date.fromisoformat(str(bruto)[:10])
+        except ValueError:
+            continue
+    return fechas
+
+
+def _mirar_extendido(s: Session, ej: Ejecucion, franja: Franja, tickers: list[str],
+                     referencias: dict[str, Decimal], resultados: dict[str, date], hoy: date,
+                     pedir: DescargarExtendido | None) -> list[vigia.Movimiento]:
+    """Mira la franja fuera de sesión y deja cada movimiento fuerte en el registro, sin decidir."""
+    precios = (pedir or datos.descargar_extendido)(tickers, franja, hoy)
+    movimientos = vigia.movimientos_extendidos(franja.value, referencias, precios, resultados, hoy)
+    for m in movimientos:
+        evento(s, "vigia", f"movimiento_{franja.value}", ticker=m.ticker, datos=m.datos(),
+               ejecucion_id=ej.id)
+    evento(s, "sistema", franja.value, ejecucion_id=ej.id,
+           datos={"empresas": len(tickers), "con_precio": len(precios),
+                  "movimientos": len(movimientos)})
+    return movimientos
+
+
 def hacer_despertar(s: Session, ej: Ejecucion, hoy: date,
-                    descargar: Descargar = datos.descargar) -> None:
+                    descargar: Descargar = datos.descargar,
+                    extendido: DescargarExtendido | None = None) -> None:
     libro.abrir_libro(s, hoy)
     tickers = tickers_vigilados(s)
     if not tickers:
@@ -171,12 +202,24 @@ def hacer_despertar(s: Session, ej: Ejecucion, hoy: date,
     niveles: list[vigia.Nivel] = []
     for seg in s.execute(select(Seguimiento).where(Seguimiento.hasta.is_(None))).scalars():
         niveles += vigia.niveles_desde_json(seg.ticker, seg.niveles)
-    # El calendario de resultados llega en otra fase: de momento sin eventos.
-    alertas = vigia.revisar(libro.cartera(s, hoy), cierres, previos, niveles, [], hoy)
+    resultados = _fechas_de_resultados(s, tickers)
+    eventos = [vigia.Evento(t, f, "resultados") for t, f in resultados.items()]
+    alertas = vigia.revisar(libro.cartera(s, hoy), cierres, previos, niveles, eventos, hoy)
     for a in alertas:
         evento(s, "vigia", a.codigo, ticker=a.ticker, datos={"valor": str(a.valor)},
                ejecucion_id=ej.id)
-    _ciclo_del_cierre(s, ej, hoy, hay_alertas=vigia.hay_que_despertar(alertas))
+    movimientos: list[vigia.Movimiento] = []
+    try:
+        with s.begin_nested():  # un fallo aquí no deja la transacción del cierre abortada
+            movimientos = _mirar_extendido(s, ej, Franja.POSTMARKET, tickers, cierres,
+                                           resultados, hoy, extendido)
+    except Exception as exc:
+        # El postmarket es un añadido: sin él el agente decide igual con el cierre.
+        logger.exception("Postmarket no disponible")
+        error = f"{type(exc).__name__}: {exc}"[:200]
+        evento(s, "sistema", "sin_postmarket", datos={"error": error}, ejecucion_id=ej.id)
+    _ciclo_del_cierre(s, ej, hoy,
+                      hay_alertas=vigia.hay_que_despertar(alertas) or bool(movimientos))
 
 
 def _ciclo_del_cierre(s: Session, ej: Ejecucion, hoy: date, hay_alertas: bool) -> None:
@@ -244,9 +287,16 @@ def hacer_ejecucion(s: Session, ej: Ejecucion, hoy: date, ahora: datetime,
                datos={"orden_id": orden_id}, ejecucion_id=ej.id)
 
 
-def hacer_vigia_previo(s: Session, ej: Ejecucion, hoy: date) -> None:  # noqa: ARG001
-    # No hay datos gratis previos a la apertura: se deja constancia de que no se vigiló.
-    evento(s, "vigia", "vigia_previo_sin_fuente", ejecucion_id=ej.id)
+def hacer_vigia_previo(s: Session, ej: Ejecucion, hoy: date,
+                       extendido: DescargarExtendido | None = None) -> None:
+    """Antes de abrir: el premarket de la watchlist frente al último cierre, solo registrado."""
+    tickers = tickers_vigilados(s)
+    if not tickers:
+        evento(s, "sistema", Franja.PREMARKET.value, datos={"empresas": 0}, ejecucion_id=ej.id)
+        return
+    _, previos = _cierres(s, tickers, hoy)
+    _mirar_extendido(s, ej, Franja.PREMARKET, tickers, previos,
+                     _fechas_de_resultados(s, tickers), hoy, extendido)
 
 
 def hacer_consolidacion(s: Session, ej: Ejecucion, hoy: date,
@@ -297,14 +347,16 @@ def _entregar_avisos() -> None:
 
 
 def correr(tarea: Tarea, fecha: date, ahora: datetime,
-           descargar: Descargar = datos.descargar) -> bool:
+           descargar: Descargar = datos.descargar,
+           extendido: DescargarExtendido | None = None) -> bool:
     """Hace la tarea y, ya confirmada, entrega los avisos pendientes."""
-    hecha = _hacer(tarea, fecha, ahora, descargar)
+    hecha = _hacer(tarea, fecha, ahora, descargar, extendido)
     _entregar_avisos()
     return hecha
 
 
-def _hacer(tarea: Tarea, fecha: date, ahora: datetime, descargar: Descargar) -> bool:
+def _hacer(tarea: Tarea, fecha: date, ahora: datetime, descargar: Descargar,
+           extendido: DescargarExtendido | None) -> bool:
     """Reclama y hace la tarea; si falla, deshace lo hecho y la deja `fallida`."""
     error = ""
     with base.con_actor("agente"):
@@ -318,13 +370,13 @@ def _hacer(tarea: Tarea, fecha: date, ahora: datetime, descargar: Descargar) -> 
             s.commit()
             try:
                 if tarea is Tarea.DESPERTAR:
-                    hacer_despertar(s, ej, fecha, descargar)
+                    hacer_despertar(s, ej, fecha, descargar, extendido)
                 elif tarea is Tarea.EJECUCION:
                     hacer_ejecucion(s, ej, fecha, ahora, descargar)
                 elif tarea is Tarea.PREPARACION:
                     hacer_preparacion(s, ej, fecha, descargar)
                 elif tarea is Tarea.VIGIA_PREVIO:
-                    hacer_vigia_previo(s, ej, fecha)
+                    hacer_vigia_previo(s, ej, fecha, extendido)
                 else:
                     hacer_consolidacion(s, ej, fecha)
                 terminar(s, ej, None)

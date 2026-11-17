@@ -49,6 +49,7 @@ export default function ComoTrabaja() {
       <Grupo cabecera={t("pnl_agente_cmt_vigia_cab")}>
         <Celda titulo={t("pnl_agente_cmt_vigia_diaria")} subtitulo={t("pnl_agente_cmt_vigia_diaria_sub")} />
         <Celda titulo={t("pnl_agente_cmt_vigia_alertas")} subtitulo={t("pnl_agente_cmt_vigia_alertas_sub")} />
+        <Celda titulo={t("pnl_agente_cmt_vigia_extendido")} subtitulo={t("pnl_agente_cmt_vigia_extendido_sub")} />
         <Celda titulo={t("pnl_agente_cmt_vigia_propios")} subtitulo={t("pnl_agente_cmt_vigia_propios_sub")} />
       </Grupo>
     ),
