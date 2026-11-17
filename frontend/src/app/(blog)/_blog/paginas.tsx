@@ -6,7 +6,8 @@ import { Marca } from "@/app/(liga)/_ui/Marca";
 import { loadMessages } from "@/i18n/messages";
 import type { Locale } from "@/i18n/locale";
 import { listarPublicados, leerPublicado, datosArticulo, escaparJsonLd, type Articulo } from "@/lib/blog/publico";
-import FirmaAutor from "@/components/FirmaAutor";
+import type { ReactNode } from "react";
+import FirmaAutor, { enlacesFirma } from "@/components/FirmaAutor";
 import { AUTOR_PUBLICO, URL_PUBLICA } from "@/lib/sitio";
 import Boletin from "./Boletin";
 import { CabeceraDeLista } from "./CabeceraDeLista";
@@ -23,7 +24,16 @@ async function traductor(idioma: Locale): Promise<Traductor> {
 async function textosBlog(idioma: Locale): Promise<Textos> {
   const t = await traductor(idioma);
   const claves = ["title", "seo", "intro", "empty", "error", "terms", "privacy", "legal", "disclaimer", "practice", "cta", "previous", "next", "switch", "article_disclaimer", "language_label"];
-  return { ...Object.fromEntries(claves.map(key => [key, t(`blog_${key}`)])), minutes: t("blog_minutes", { count: "{count}" }), firma: t("firma_articulo", { autor: AUTOR_PUBLICO }) };
+  return { ...Object.fromEntries(claves.map(key => [key, t(`blog_${key}`)])), minutes: t("blog_minutes", { count: "{count}" }) };
+}
+
+// Con sus dos enlaces, así que no es una cadena como el resto de textos del blog.
+async function firmaBlog(idioma: Locale) {
+  const messages = await loadMessages(idioma);
+  const t = createTranslator({ locale: idioma, messages: { blog: messages }, namespace: "blog" }) as unknown as {
+    rich: (clave: string, valores: Record<string, unknown>) => ReactNode;
+  };
+  return t.rich("firma_articulo", { autor: AUTOR_PUBLICO, ...enlacesFirma(idioma) });
 }
 
 async function Formulario({ idioma, titulo }: { idioma: Locale; titulo: "blog_newsletter_title" | "blog_newsletter_article_title" }) {
@@ -87,7 +97,7 @@ export async function Leccion({ idioma, slug }: { idioma: Locale; slug: string }
     <article className="blog-articulo">
       <h1>{articulo.titulo}</h1><Fecha articulo={articulo} idioma={idioma} textos={textos} />
       <p className="blog-entradilla">{articulo.resumen}</p><Cuerpo cuerpo={articulo.cuerpo} />
-      <FirmaAutor texto={textos.firma} />
+      <FirmaAutor>{await firmaBlog(idioma)}</FirmaAutor>
       <Formulario idioma={idioma} titulo="blog_newsletter_article_title" />
       <Link className="blog-boton blog-boton-cta" href="/liga">{textos.cta}</Link>
       {articulos === null && <p role="alert">{textos.error}</p>}

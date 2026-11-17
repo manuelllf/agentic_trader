@@ -1,5 +1,5 @@
 {
-  "firma_articulo": "Lo escribe {autor}. Usamos IA para ayudarnos a redactar y traducir, y una persona lo revisa antes de publicarlo. Más detalles en nuestros términos.",
+  "firma_articulo": "Lo escribe {autor}. Usamos IA para ayudarnos a redactar y traducir, y una persona lo revisa antes de publicarlo. Más detalles en <quienes>quiénes somos</quienes> y en nuestra <politica>política editorial</politica>.",
   "common_barra_contraer": "Contraer la barra",
   "common_barra_expandir": "Expandir la barra",
   "common_idioma": "Idioma",

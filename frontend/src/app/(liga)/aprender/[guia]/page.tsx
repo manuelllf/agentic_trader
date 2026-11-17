@@ -5,6 +5,7 @@ import { leerCiclo, leerMercado } from "@/lib/aprender";
 import { normalizeLocale } from "@/i18n/locale";
 import { urlsDeIdiomas } from "@/i18n/rutas";
 import { escaparJsonLd } from "@/lib/blog/publico";
+import { enlacesFirma } from "@/components/FirmaAutor";
 import { AUTOR_PUBLICO, URL_PUBLICA, metadataCompartir } from "@/lib/sitio";
 import { BarraPestanas } from "../../_ui/BarraPestanas";
 import { CabeceraPagina } from "../../_ui/CabeceraPagina";
@@ -55,7 +56,7 @@ export default async function PaginaGuia({ params }: Props) {
       <h1>{t(`learn_${g.clave}_t`)}</h1>
       <p className="pg-lead">{t(`learn_${g.clave}_lead`)}</p>
       <CuerpoGuia clave={g.clave} ciclo={ciclo} mercado={mercado} t={t} locale={locale} />
-      <p className="pg-firma">{t("firma_articulo", { autor: AUTOR_PUBLICO })}</p>
+      <p className="pg-firma">{t.rich("firma_articulo", { autor: AUTOR_PUBLICO, ...enlacesFirma(normalizeLocale(locale) ?? "es") })}</p>
       <ul className="cu-grupo"><li>
         {siguiente
           ? <Link className="cu-celda alta" href={`/aprender/${siguiente.slug}`}><span className="t"><small>{t("learn_siguiente")}</small><b>{t(`learn_${siguiente.clave}_t`)}</b></span><span /><Chevron /></Link>

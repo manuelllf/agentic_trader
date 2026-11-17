@@ -28,6 +28,7 @@
 .lg .pg-txt b, .lg .pg-lead b { color: var(--ink); font-weight: 600; }
 .lg .pg .pg-a, .lg .pg-lead a, .lg .pg-txt a, .lg .pg-legal a, .lg .pg .cu-pie a { color: var(--accent); text-decoration: none; }
 .lg .pg-firma { margin-top: 28px; font-size: 13px; line-height: 18px; color: var(--muted); }
+.lg .pg-firma a { color: var(--accent); text-decoration: none; }
 .lg .pg-pie { margin-top: 28px; font-size: 13px; line-height: 18px; color: var(--muted); text-align: center; text-wrap: balance; }
 
 /* Pasos numerados: es una secuencia real; el dato de la última foto, debajo en gris. */

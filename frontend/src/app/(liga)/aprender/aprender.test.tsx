@@ -34,7 +34,8 @@ vi.mock("next-intl/server", async () => {
   const ayuda = await import("../../../../messages/es/help.json");
   const legales = await import("../../../../messages/es/legal.json");
   const estr = await import("../../../../messages/es/strategies.json");
-  const m = { ...es.default, ...ayuda.default, ...legales.default, ...estr.default, firma_articulo: "Por {autor}" };
+  const comun = await import("../../../../messages/es/common.json");
+  const m = { ...es.default, ...ayuda.default, ...legales.default, ...estr.default, firma_articulo: comun.default.firma_articulo };
   return { getTranslations: async () => crear({ locale: "es", messages: m }), getLocale: async () => "es" };
 });
 vi.mock("../_ui/CabeceraPagina", () => ({ CabeceraPagina: ({ titulo }: { titulo: string }) => <header data-testid="cab">{titulo}</header> }));
@@ -162,7 +163,9 @@ it("la guía lleva barra, índice lateral, firma, siguiente y ayuda", async () =
   expect(container.querySelector("nav.pg-indice a[aria-current]")?.getAttribute("href")).toBe("/aprender/que-es-la-liga");
   expect(container.querySelector(".pg-de")?.textContent).toBe("2 min");
   expect(container.querySelector('script[type="application/ld+json"]')).not.toBeNull();
-  expect(container.querySelector(".pg-firma")?.textContent).toContain("Por");
+  expect(container.querySelector(".pg-firma")?.textContent).toContain("Lo escribe Manuel");
+  expect([...container.querySelectorAll(".pg-firma a")].map(a => [a.textContent, a.getAttribute("href")]))
+    .toEqual([["quiénes somos", "/quienes-somos"], ["política editorial", "/politica-editorial"]]);
   expect(container.querySelector('a.cu-celda.alta[href="/aprender/crear-tu-estrategia"]')).not.toBeNull();
   expect(container.querySelector(".cu-pie a")).not.toBeNull();
   expect(container.querySelectorAll(".casas svg[role=img]")).toHaveLength(3);

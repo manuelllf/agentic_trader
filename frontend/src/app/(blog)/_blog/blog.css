@@ -85,6 +85,7 @@
 .blog-publico .blog-markdown table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse}
 .blog-publico .blog-markdown th,.blog-publico .blog-markdown td{border:1px solid var(--line);padding:8px}
 .blog-publico .firma-autor{margin-top:20px;padding:12px 16px;border-radius:10px;background:var(--surface);font-size:15px;line-height:20px;color:var(--muted)}
+.blog-publico .firma-autor a{color:var(--accent);text-decoration:none}
 
 .blog-publico .blog-vecinos{display:flex;flex-direction:column;margin-top:24px;background:var(--surface);border-radius:10px;overflow:hidden}
 .blog-publico .blog-vecinos a{position:relative;display:flex;flex-direction:column;gap:2px;min-height:56px;padding:10px 40px 10px 16px;border-top:1px solid var(--line);text-decoration:none}
