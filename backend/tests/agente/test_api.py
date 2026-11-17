@@ -197,6 +197,92 @@ def test_llamadas_sin_ciclo_se_reparten_por_ejecucion_y_hora(
     assert [i["respuesta"] for i in dos] == ["r3"]
 
 
+def test_resumen_trae_operaciones_y_hoy_el_total(cliente: TestClient,
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    with base.sesion() as s:
+        libro.abrir_libro(s, date(2026, 11, 17))
+        s.add(Decision(fecha_ny=date(2026, 11, 17), tipo="operar", razonamiento="r", modelo="m",
+                       propuesta={"operaciones": [{"ticker": "RDDT", "lado": "compra",
+                                                   "importe": 300}]}))
+    cab = _como(monkeypatch, ADMIN)
+    hoy = cliente.get("/v1/hoy", headers=cab).json()
+    assert hoy["decisiones_total"] == 1
+    assert hoy["ultima_decision"]["operaciones"] == [{"ticker": "RDDT", "lado": "compra"}]
+    assert hoy["ultima_decision"]["creado"]
+    # La búsqueda también encuentra por empresa, aunque no salga en el razonamiento.
+    assert len(cliente.get("/v1/diario?q=rddt", headers=cab).json()["items"]) == 1
+
+
+def test_dia_junta_tareas_registro_y_decisiones(cliente: TestClient,
+                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    d = date(2026, 11, 16)
+    with base.sesion() as s:
+        ej = Ejecucion(tarea="despertar", fecha_ny=d, estado="hecha")
+        otra = Ejecucion(tarea="despertar", fecha_ny=date(2026, 11, 17))
+        s.add_all([ej, otra])
+        s.flush()
+        dec = Decision(ejecucion_id=ej.id, fecha_ny=d, tipo="nada", propuesta={},
+                       razonamiento="r", modelo="m")
+        s.add(dec)
+        s.flush()
+        s.execute(text(
+            "insert into agente.eventos (origen, tipo, datos, ejecucion_id, ocurrido) values "
+            "('ciclo', 'decision', cast(:a as jsonb), :e, '2026-11-17 03:00+00'), "
+            "('vigia', 'ciclo_pendiente', '{}', null, '2026-11-17 22:00+00')"),
+            {"a": f'{{"decision_id": {dec.id}}}', "e": ej.id})
+    cab = _como(monkeypatch, ADMIN)
+    r = cliente.get("/v1/dia/2026-11-16", headers=cab).json()
+    assert [e["id"] for e in r["ejecuciones"]] == [ej.id]
+    # El evento de las 22:00 NY del 16 queda en su ejecución aunque en UTC ya sea día 17.
+    assert [e["tipo"] for e in r["eventos"]] == ["decision"]
+    assert [x["id"] for x in r["decisiones"]] == [dec.id]
+    assert r["ordenes_ejecutadas"] == 0
+    assert [p["tarea"] for p in r["programa"]][0] == "vigia_previo"
+    assert cliente.get("/v1/dia/2026-11-15", headers=cab).json()["programa"] == []
+
+
+def test_ciclo_actual_en_curso_hasta_que_hay_decision(cliente: TestClient,
+                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    cab = _como(monkeypatch, ADMIN)
+    assert cliente.get("/v1/ciclo/actual", headers=cab).json()["ciclo"] is None
+    c = uuid.uuid4()
+    ahora = datetime.now(UTC)
+    with base.sesion() as s:
+        ej = Ejecucion(tarea="despertar", fecha_ny=date(2026, 11, 17))
+        s.add(ej)
+        s.flush()
+        s.add_all([_llamada(ej.id, c, ahora, 1), _llamada(ej.id, c, ahora, 2)])
+    vivo = cliente.get("/v1/ciclo/actual", headers=cab).json()
+    assert (vivo["ciclo"], vivo["en_curso"], len(vivo["items"])) == (str(c), True, 2)
+    with base.sesion() as s:
+        s.add(Decision(fecha_ny=date(2026, 11, 17), tipo="nada", propuesta={}, razonamiento="r",
+                       modelo="m", ciclo=c))
+    hecho = cliente.get("/v1/ciclo/actual", headers=cab).json()
+    assert (hecho["en_curso"], hecho["decision_id"]) == (False, 1)
+
+
+def test_seguimiento_da_las_cifras_de_screen(cliente: TestClient,
+                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    # Solo filas propias: la lista de seguimiento local no se vacía entre pruebas.
+    with base.sesion() as s:
+        s.execute(text("insert into agente.seguimiento (ticker, motivo) values ('ZZA', 'm'), "
+                       "('ZZB', 'm')"))
+        hoy = datetime.now(UTC).date()
+        for k in range(30):
+            s.execute(text("insert into agente.precios (ticker, fecha, cierre) "
+                           "values ('ZZA', :f, :c)"),
+                      {"f": hoy - timedelta(days=30 - k), "c": 10 + k})
+    try:
+        r = cliente.get("/v1/seguimiento", headers=_como(monkeypatch, ADMIN)).json()
+        assert {"ZZA", "ZZB"} <= {x["ticker"] for x in r["lista"]}
+        assert [f.split(" ")[:2] for f in r["filas"] if f.startswith("ZZA ")] == [["ZZA", "39.0"]]
+        assert "ZZB" in r["sin_precios"]
+        assert r["fecha_precios"] == (hoy - timedelta(days=1)).isoformat()
+    finally:
+        with base.sesion() as s:
+            s.execute(text("delete from agente.seguimiento where ticker in ('ZZA', 'ZZB')"))
+
+
 def test_informes_vacio_devuelve_lista_vacia(cliente: TestClient,
                                              monkeypatch: pytest.MonkeyPatch) -> None:
     cab = _como(monkeypatch, ADMIN)

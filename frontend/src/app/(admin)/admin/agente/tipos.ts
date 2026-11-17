@@ -12,8 +12,10 @@ export interface PosicionAgente {
 export interface CarteraAgente {
   caja: string; valor_total: string; valor_maximo: string; caida_desde_maximo: string; posiciones: PosicionAgente[];
 }
+export interface OperacionCorta { ticker: string; lado: "compra" | "venta" }
 export interface ResumenDecision {
   id: number; fecha: string; tipo: TipoDecision; sombra: boolean; veredicto: Veredicto | null; razonamiento: string;
+  creado: string; operaciones: OperacionCorta[];
 }
 export interface EventoAgente {
   id: number; ocurrido: string; origen: string; tipo: string; ticker: string | null; datos: Record<string, unknown>;
@@ -26,9 +28,31 @@ export interface Hoy {
   cartera: CarteraAgente | { error: string };
   serie: PuntoSerie[];
   ultima_decision: ResumenDecision | null;
+  decisiones_total: number;
+  /** Hoy en Nueva York y el último día anterior con tareas. */
+  dia: string;
+  dia_anterior: string | null;
   eventos: EventoAgente[];
   despertares: Despertar[];
 }
+
+export type Tarea = "vigia_previo" | "ejecucion" | "preparacion" | "despertar" | "consolidacion";
+export interface EjecucionTarea {
+  id: number; tarea: Tarea; fecha_ny: string; estado: "en_curso" | "hecha" | "fallida";
+  empezada: string; terminada: string | null; error: string | null;
+}
+export interface EventoDia extends EventoAgente { ejecucion_id: number | null }
+/** Un día del agente: lo previsto, lo que pasó y sus decisiones. */
+export interface Dia {
+  fecha: string; programa: { tarea: Tarea; hora: string }[]; ejecuciones: EjecucionTarea[];
+  eventos: EventoDia[]; decisiones: ResumenDecision[]; ordenes_ejecutadas: number;
+}
+/** La lista de seguimiento con las líneas de `screen` (columnas separadas por espacios). */
+export interface Seguimiento {
+  fecha_precios: string | null; columnas: string; filas: string[]; sin_precios: string[];
+  fecha_fundamentales: string | null; lista: { ticker: string; motivo: string; desde: string }[];
+}
+export interface CicloActual { ciclo: string | null; en_curso: boolean; decision_id: number | null; items: LlamadaModelo[] }
 
 export interface OperacionPropuesta {
   ticker: string; lado: "compra" | "venta"; importe?: string | number | null; acciones?: string | number | null;
@@ -48,6 +72,7 @@ export interface DecisionDetalle {
   propuesta: Propuesta; razonamiento: string; previsiones: { ticker?: string; texto?: string }[];
   revisor_veredicto: Veredicto | null; revisor_motivo: string | null; modelo: string; creado: string; ordenes: OrdenAgente[];
 }
+export interface ListaDecisiones { items: ResumenDecision[]; siguiente: number | null }
 
 /** Mensaje enviado al modelo, en el formato de la API de chat. */
 export interface MensajeModelo { role: string; content: string; tool_call_id?: string }

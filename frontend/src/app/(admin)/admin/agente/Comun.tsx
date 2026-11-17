@@ -2,26 +2,51 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
-import { Celda, Esqueleto, Grupo, Vacio } from "../_panel/ui";
+import { useState, type ReactNode } from "react";
+import { Celda, Esqueleto, Grupo, Hoja, Vacio } from "../_panel/ui";
 import type { AgenteError } from "./api";
 import { bloques, negritas } from "./formato";
 import type { EstadoCarga } from "./useCarga";
 import "./agente.css";
 
-/** Contenedor de toda pantalla de Alphagentic; con `atras`, enlace de vuelta a la vista de origen. */
-export function Pagina({ atras, children }: { atras?: string; children: ReactNode }) {
+/** Contenedor de toda pantalla de Alphagentic; con `atras`, enlace de vuelta a la vista de origen
+ *  (por defecto se llama Alphagentic; `atrasTexto` lo cambia, como «Decisiones»). */
+export function Pagina({ atras, atrasTexto, className, children }: { atras?: string; atrasTexto?: string; className?: string; children: ReactNode }) {
   const t = useTranslations();
+  const destino = atrasTexto ?? t("admin_pnl_sala_alphagentic");
   return (
-    <div className="pa">
+    <div className={["pa", className].filter(Boolean).join(" ")}>
       {atras && (
-        <Link href={atras} className="pa-atras" aria-label={t("admin_pnl_atras", { destino: t("admin_pnl_sala_alphagentic") })}>
+        <Link href={atras} className="pa-atras" aria-label={t("admin_pnl_atras", { destino })}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
-          <span>{t("admin_pnl_sala_alphagentic")}</span>
+          <span>{destino}</span>
         </Link>
       )}
       {children}
     </div>
+  );
+}
+
+/** Texto largo recortado a cinco líneas con «Leer todo», que lo abre entero en una hoja. */
+export function TextoRecortado({ texto, titulo }: { texto: string; titulo: string }) {
+  const t = useTranslations();
+  const [abierta, setAbierta] = useState(false);
+  return (
+    <>
+      <TextoAgente texto={texto} className="pa-carta pa-recorte" />
+      <button type="button" className="pa-mas" onClick={() => setAbierta(true)}>{t("pnl_agente_leer_todo")}</button>
+      <HojaTexto abierta={abierta} titulo={titulo} texto={texto} onCerrar={() => setAbierta(false)} />
+    </>
+  );
+}
+
+/** Hoja con un texto del agente entero. */
+export function HojaTexto({ abierta, titulo, texto, onCerrar }: { abierta: boolean; titulo: string; texto: string; onCerrar: () => void }) {
+  const t = useTranslations();
+  return (
+    <Hoja abierta={abierta} titulo={titulo} accion={t("admin_pnl_listo")} onCerrar={onCerrar}>
+      <div className="pa-hoja pa-vista"><TextoAgente texto={texto} /></div>
+    </Hoja>
   );
 }
 

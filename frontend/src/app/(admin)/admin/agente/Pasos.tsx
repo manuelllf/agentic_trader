@@ -1,13 +1,15 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dolares, porcentajeConSigno, porcentajeSimple } from "../_marco/formato";
-import { Celda, Datos, Esqueleto, Grupo, Hoja } from "../_panel/ui";
-import { NoDisponible, TextoAgente } from "./Comun";
+import { Celda, Datos, Grupo, Hoja } from "../_panel/ui";
+import { TextoAgente } from "./Comun";
+import { HojaCompartir, imagenPasos } from "./Compartir";
+import { CabeceraCompartir, Flujo, type Paso } from "./Flujo";
 import { fecha } from "./formato";
+import { lista as listaDe } from "./textos";
 import type { HerramientaPedida, LlamadaModelo, MensajeModelo } from "./tipos";
-import { useCarga } from "./useCarga";
 
 type Obj = Record<string, unknown>;
 
@@ -20,30 +22,36 @@ const VEREDICTO: Record<string, string> = {
 };
 const MAX_FILAS = 120;
 
-const leer = (s: string | null | undefined): unknown => { try { return JSON.parse(s ?? ""); } catch { return s; } };
-const esObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
-const args = (h: HerramientaPedida): Obj => { const a = leer(h.function.arguments || "{}"); return esObj(a) ? a : {}; };
+export const leer = (s: string | null | undefined): unknown => { try { return JSON.parse(s ?? ""); } catch { return s; } };
+export const esObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
+export const args = (h: HerramientaPedida): Obj => { const a = leer(h.function.arguments || "{}"); return esObj(a) ? a : {}; };
+/** Empresas que pidió una herramienta: `ticker` suelto o `tickers` en lote. */
+export const tickersDe = (a: Obj): string[] => [
+  ...(Array.isArray(a.tickers) ? a.tickers.filter((x): x is string => typeof x === "string") : []),
+  ...(typeof a.ticker === "string" && a.ticker ? [a.ticker] : []),
+];
+/** tool_call_id → lo que devolvió la herramienta, sacado de lo que se envió en la vuelta siguiente. */
+export function resultadosDe(llamadas: LlamadaModelo[]): Map<string, unknown> {
+  const res = new Map<string, unknown>();
+  llamadas.forEach(l => l.enviado.forEach(m => { if (m.role === "tool" && m.tool_call_id) res.set(m.tool_call_id, leer(m.content)); }));
+  return res;
+}
 
-/** Formatos y nombres traducidos de esta pantalla, con el idioma ya puesto. */
-function useFormato() {
+/** Formatos y nombres de esta pantalla, con el idioma ya puesto. Las herramientas van con su nombre real. */
+export function useFormato() {
   const t = useTranslations();
   const locale = useLocale();
   return useMemo(() => {
     const num = (v: number, dec: number) => new Intl.NumberFormat(locale, {
       minimumFractionDigits: dec, maximumFractionDigits: dec, useGrouping: "always",
     } as Intl.NumberFormatOptions).format(v).replace("-", "−");
-    const coste = (v: string | null) => (v === null ? "—" : dolares(Number(v), locale, Number(v) < 0.01 ? 4 : 3));
+    const coste = (v: string | number | null) => (v === null ? "—" : dolares(Number(v), locale, Number(v) < 0.01 ? 4 : 3));
     const segundos = (ms: number | null) => {
       if (ms === null) return "—";
       const s = ms / 1000;
-      return s < 60 ? `${num(s, 1)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
+      return s < 60 ? `${num(s, 1)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
     };
-    const lista = (xs: string[], max = 4) => {
-      if (xs.length <= 1) return xs.join("");
-      if (xs.length <= max) return new Intl.ListFormat(locale, { type: "conjunction" }).format(xs);
-      return t("pnl_agente_pasos_lista_mas", { lista: xs.slice(0, max).join(", "), n: xs.length - max });
-    };
-    const herramienta = (nombre: string, n = 1) => (t.has(`pnl_agente_herr_${nombre}`) ? t(`pnl_agente_herr_${nombre}`, { n }) : nombre);
+    const lista = (xs: string[], max = 4) => listaDe(xs, locale, t, max);
     const orden = (v: unknown) => (typeof v === "string" && t.has(`pnl_agente_pasos_orden_${v}`) ? t(`pnl_agente_pasos_orden_${v}`) : undefined);
     const clave = (k: string) => (t.has(`pnl_agente_clave_${k}`) ? t(`pnl_agente_clave_${k}`) : (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, " "));
     const veredicto = (v: unknown) => { const c = typeof v === "string" ? VEREDICTO[v] : undefined; return c ? t(`pnl_agente_ver_${c}`) : ""; };
@@ -58,7 +66,7 @@ function useFormato() {
       return typeof v === "object" ? JSON.stringify(v) : String(v);
     };
     const pct = (x: string) => (x === "n/a" ? "—" : porcentajeConSigno(Number(x), locale, 1));
-    return { t, locale, num, coste, segundos, lista, herramienta, orden, clave, veredicto, valor, pct };
+    return { t, locale, num, coste, segundos, lista, orden, clave, veredicto, valor, pct };
   }, [t, locale]);
 }
 type Formato = ReturnType<typeof useFormato>;
@@ -74,10 +82,8 @@ function resumenVuelta(l: LlamadaModelo, resultados: Map<string, unknown>, f: Fo
     const tipo = typeof d?.tipo === "string" && f.t.has(`pnl_agente_dec_tipo_${d.tipo}`) ? f.t(`pnl_agente_dec_tipo_${d.tipo}`) : "";
     return { titulo: f.t("pnl_agente_pasos_final"), sub: [tipo, f.lista(ops)].filter(Boolean).join(" · ") };
   }
-  const cuenta = new Map<string, number>();
-  hs.forEach(h => cuenta.set(h.function.name, (cuenta.get(h.function.name) ?? 0) + 1));
-  const nombres = [...cuenta].map(([n, c], i) => { const s = f.herramienta(n, c); return i ? s.toLocaleLowerCase(f.locale) : s; });
-  const tickers = [...new Set(hs.map(h => args(h).ticker).filter((x): x is string => typeof x === "string" && x !== ""))];
+  const nombres = [...new Set(hs.map(h => h.function.name))];
+  const tickers = [...new Set(hs.flatMap(h => tickersDe(args(h))))];
   const orden = hs.map(h => f.orden(args(h).sort)).find(Boolean);
   const cribado = hs.find(h => h.function.name === "screen");
   const r = cribado && resultados.get(cribado.id);
@@ -89,7 +95,7 @@ function resumenVuelta(l: LlamadaModelo, resultados: Map<string, unknown>, f: Fo
 
 /* ---------- Resultados de herramientas como grupos de iOS ---------- */
 
-// El cribado llega en líneas cortas con sus columnas: empresa, precio, mes, RSI y caída.
+// `screen` llega en líneas cortas con sus columnas: empresa, precio, mes, RSI y caída primero.
 function filasCribado(r: Obj, f: Formato): ReactNode[] {
   const filas = (r.rows as unknown[]).map(String);
   const sin = Array.isArray(r.without_price_history) ? r.without_price_history.map(String) : [];
@@ -147,42 +153,56 @@ type Vista =
 const texto = (m: MensajeModelo | undefined) => m?.content ?? "";
 const TextoEnviado = ({ t }: { t: string }) => <p className="pa-texto">{t}</p>;
 
-export default function Pasos({ decisionId }: { decisionId: number }) {
+/** Cómo llegó aquí: cada vuelta del agente y el revisor con su pista, su hoja de detalle,
+ *  la imagen para compartir y el enlace a verlo en vivo. */
+export default function Pasos({ decisionId, llamadas, titulo, subImagen }: {
+  decisionId: number; llamadas: LlamadaModelo[]; titulo: string; subImagen: string;
+}) {
   const f = useFormato();
   const { t } = f;
-  const carga = useCarga<{ items: LlamadaModelo[] }>(`/v1/decisiones/${decisionId}/llamadas`);
   const [pila, setPila] = useState<Vista[]>([]);
+  const [compartir, setCompartir] = useState(false);
   const vistaRef = useRef<HTMLDivElement>(null);
-  const llamadas = useMemo(() => carga.datos?.items ?? [], [carga.datos]);
 
-  const { agente, revisores, resultados } = useMemo(() => {
-    // tool_call_id -> resultado, de lo que se le envió en la vuelta siguiente.
-    const res = new Map<string, unknown>();
-    llamadas.forEach(l => l.enviado.forEach(m => { if (m.role === "tool" && m.tool_call_id) res.set(m.tool_call_id, leer(m.content)); }));
-    return { agente: llamadas.filter(l => l.etapa === "agente"), revisores: llamadas.filter(l => l.etapa === "revisor"), resultados: res };
-  }, [llamadas]);
+  const { agente, revisores, resultados } = useMemo(() => ({
+    agente: llamadas.filter(l => l.etapa === "agente"), revisores: llamadas.filter(l => l.etapa === "revisor"), resultados: resultadosDe(llamadas),
+  }), [llamadas]);
 
   useLayoutEffect(() => {
     const caja = vistaRef.current?.parentElement;
     if (caja) caja.scrollTop = 0;
   }, [pila]);
 
+  const pasos: Paso[] = useMemo(() => [
+    ...agente.map((l, i): Paso => {
+      const r = resumenVuelta(l, resultados, f);
+      return { clave: `a${l.id}`, titulo: r.titulo, estado: l.ok ? "hecho" : "fallo", subMal: !l.ok,
+        sub: l.ok ? r.sub || undefined : t("pnl_agente_pasos_fallo", { error: l.error ?? "" }), onClick: () => setPila([{ tipo: "vuelta", i }]) };
+    }),
+    ...revisores.map((l, i): Paso => ({
+      clave: `r${l.id}`, titulo: t("pnl_agente_pasos_revisor"), estado: l.ok ? "hecho" : "fallo", subMal: !l.ok,
+      sub: l.ok ? f.veredicto((leer(l.respuesta) as Obj | null)?.verdict) || undefined : t("pnl_agente_pasos_fallo", { error: l.error ?? "" }),
+      onClick: () => setPila([{ tipo: "revisor", i }]),
+    })),
+  ], [agente, revisores, resultados, f, t]);
+
+  const total = llamadas.reduce((a, l) => a + Number(l.coste_usd ?? 0), 0);
+  const crear = useCallback(() => imagenPasos(titulo, subImagen,
+    pasos.map(p => ({ titulo: p.titulo, sub: typeof p.sub === "string" ? p.sub : undefined, estado: p.estado, subMal: p.subMal })),
+    t("pnl_agente_imagen_pie")), [pasos, titulo, subImagen, t]);
+
   const cab = t("pnl_agente_pasos_cab");
-  if (carga.estado === "cargando") return <><h2 className="pnl-cab-grupo">{cab}</h2><Esqueleto filas={5} etiqueta={t("pnl_agente_cargando")} /></>;
-  if (carga.estado === "error") return <><h2 className="pnl-cab-grupo">{cab}</h2><NoDisponible error={carga.error} onReintentar={carga.recargar} /></>;
   if (!llamadas.length) {
     return <Grupo cabecera={cab}><Celda titulo={t("pnl_agente_pasos_sin_registro")} subtitulo={t("pnl_agente_pasos_sin_registro_sub")} /></Grupo>;
   }
 
-  const abrir = (v: Vista) => setPila([v]);
   const empujar = (v: Vista) => setPila(p => [...p, v]);
-  const titulo = (v: Vista): string => {
+  const tituloDe = (v: Vista): string => {
     if (v.tipo === "vuelta") return t("pnl_agente_pasos_vuelta", { n: v.i + 1 });
     if (v.tipo === "revisor") return t("pnl_agente_pasos_revisor");
     if (v.tipo === "contexto") return t("pnl_agente_pasos_al_despertar_titulo");
     if (v.tipo === "texto") return v.titulo;
-    const ticker = args(v.h).ticker;
-    return [f.herramienta(v.h.function.name), typeof ticker === "string" ? ticker : ""].filter(Boolean).join(" · ");
+    return [v.h.function.name, ...tickersDe(args(v.h)).slice(0, 2)].join(" · ");
   };
   const costeYTiempo = (l: LlamadaModelo) => (
     <Datos items={[{ etiqueta: t("pnl_agente_pasos_coste"), valor: f.coste(l.coste_usd) }, { etiqueta: t("pnl_agente_pasos_tiempo"), valor: f.segundos(l.latencia_ms) }]} />
@@ -217,7 +237,7 @@ export default function Pasos({ decisionId }: { decisionId: number }) {
               const error = esObj(r) && typeof r.error === "string" ? r.error : null;
               const sinFicha = esObj(r) && r.exists === false;
               const sub = error ?? (sinFicha ? t("pnl_agente_pasos_sin_ficha") : f.orden(a.sort));
-              return <Celda key={h.id} titulo={titulo({ tipo: "herramienta", h })}
+              return <Celda key={h.id} titulo={tituloDe({ tipo: "herramienta", h })}
                 subtitulo={sub && (error ? <span className="pa-fallo">{sub}</span> : sub)} onClick={() => empujar({ tipo: "herramienta", h })} />;
             })}
           </Grupo>
@@ -285,32 +305,26 @@ export default function Pasos({ decisionId }: { decisionId: number }) {
     return vistaHerramienta(v.h);
   };
 
-  const total = llamadas.reduce((a, l) => a + Number(l.coste_usd ?? 0), 0);
   const arriba = pila.at(-1);
   const previa = pila.at(-2);
 
   return (
     <>
       <div className="pnl-llega">
-        <Grupo cabecera={cab}
-          pie={t("pnl_agente_pasos_pie", { n: agente.length, revisor: revisores.length ? "si" : "no", coste: f.coste(String(total)) })}>
-          {agente.map((l, i) => {
-            const r = resumenVuelta(l, resultados, f);
-            return <Celda key={l.id} titulo={r.titulo}
-              subtitulo={l.ok ? r.sub || undefined : <span className="pa-fallo">{t("pnl_agente_pasos_fallo", { error: l.error ?? "" })}</span>}
-              onClick={() => abrir({ tipo: "vuelta", i })} />;
-          })}
-          {revisores.map((l, i) => (
-            <Celda key={l.id} titulo={t("pnl_agente_pasos_revisor")} onClick={() => abrir({ tipo: "revisor", i })}
-              subtitulo={l.ok ? f.veredicto((leer(l.respuesta) as Obj | null)?.verdict) || undefined
-                : <span className="pa-fallo">{t("pnl_agente_pasos_fallo", { error: l.error ?? "" })}</span>} />
-          ))}
-        </Grupo>
+        <CabeceraCompartir titulo={cab} onCompartir={() => setCompartir(true)} />
+        <Flujo pasos={pasos} />
+        <p className="pnl-pie-grupo">{t("pnl_agente_pasos_pie", { n: agente.length, revisor: revisores.length ? "si" : "no", coste: f.coste(total) })}</p>
+        <div className="pa-bloque">
+          <Grupo>
+            <Celda titulo={t("pnl_agente_envivo_ver")} subtitulo={t("pnl_agente_envivo_ver_sub")} href={`/admin/agente/en-vivo?decision=${decisionId}`} />
+          </Grupo>
+        </div>
       </div>
-      <Hoja abierta={Boolean(arriba)} titulo={arriba ? titulo(arriba) : ""} accion={t("admin_pnl_listo")} onCerrar={() => setPila([])}
-        atras={previa ? { texto: titulo(previa), onAtras: () => setPila(p => p.slice(0, -1)) } : undefined}>
+      <Hoja abierta={Boolean(arriba)} titulo={arriba ? tituloDe(arriba) : ""} accion={t("admin_pnl_listo")} onCerrar={() => setPila([])}
+        atras={previa ? { texto: tituloDe(previa), onAtras: () => setPila(p => p.slice(0, -1)) } : undefined}>
         {arriba && <div className="pa-hoja pa-vista" key={pila.length} ref={vistaRef}>{cuerpo(arriba)}</div>}
       </Hoja>
+      <HojaCompartir abierta={compartir} crear={crear} nombre={`alphagentic-decision-${decisionId}`} alt={titulo} onCerrar={() => setCompartir(false)} />
     </>
   );
 }

@@ -17,7 +17,10 @@ import AgenteRaiz from "./AgenteRaiz";
 import { Grafica, indiceCursor } from "./Grafica";
 import VistaControl, { usoDelTope } from "./VistaControl";
 import { estadoDelAgente } from "./VistaHoy";
-import Diario from "./Diario";
+import Decisiones from "./Decisiones";
+import { TareasDelDia } from "./Dia";
+import { eventosDe, type Textos } from "./lienzo";
+import { tituloDecision } from "./textos";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 if (!HTMLDialogElement.prototype.showModal) HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -47,8 +50,13 @@ const HOY_VACIO = {
   estado: { parada: false, parada_motivo: null, modo: "normal", ia_activa: false, sombra: true },
   cartera: { caja: "5000", valor_total: "5000", valor_maximo: "5000", caida_desde_maximo: "0", posiciones: [] },
   serie: [{ fecha: "2026-11-14", valor_total: "5000", valor_maximo: "5000" }],
-  ultima_decision: null, eventos: [], despertares: [],
+  ultima_decision: null, decisiones_total: 0, dia: "2026-11-15", dia_anterior: null, eventos: [], despertares: [],
 };
+const DIA_VACIO = { fecha: "2026-11-15", programa: [], ejecuciones: [], eventos: [], decisiones: [], ordenes_ejecutadas: 0 };
+const SIN_CICLO = { ciclo: null, en_curso: false, decision_id: null, items: [] };
+/** El servicio del agente para Hoy: cada ruta con su forma. */
+const rutasHoy = (url: string) => json(url.includes("/v1/dia/") ? DIA_VACIO : url.includes("/v1/ciclo/") ? SIN_CICLO
+  : url.includes("/v1/informes") ? { items: [] } : HOY_VACIO);
 const AGENTE_VACIO = {
   filosofia: null, versiones: [], lecciones: [], fichas: [], seguimiento: [],
   gasto_mes: { por_tipo: [{ tipo: "ia", coste_usd: "1.84" }], total_usd: "1.84", tope_usd: "10" },
@@ -68,25 +76,28 @@ afterEach(() => {
 
 describe("Alphagentic: Hoy", () => {
   it("el agente en sombra y sin IA enseña estados vacíos reales, sin datos de ejemplo", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(HOY_VACIO)));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => rutasHoy(url)));
     const v = await pintar(<AgenteRaiz />);
     const t = textoDe(v);
     expect(t).toContain("En sombra");
     expect(t).toContain("Decide pero no opera");
     expect(t).toContain("Sin posiciones todavía");
     expect(t).toContain("Sin decisiones todavía");
-    expect(t).toContain("Nada programado");
+    expect(t).toContain("Todas las decisiones");
+    expect(t).toContain("El día, en hora de Nueva York");
+    expect(t).toContain("Sin tareas este día");
+    expect(t).toContain("Ahora no está pensando; repite la última");
     expect(t).not.toMatch(/TSM|KNSL|HRMY/);
   });
 
   it("sin URL o con la API caída, muestra «El agente no está disponible» y reintenta", async () => {
-    const f = vi.fn().mockRejectedValueOnce(new TypeError("x")).mockResolvedValue(json(HOY_VACIO));
+    const f = vi.fn().mockRejectedValueOnce(new TypeError("x")).mockImplementation(async (url: string) => rutasHoy(url));
     vi.stubGlobal("fetch", f);
     const v = await pintar(<AgenteRaiz />);
     expect(textoDe(v)).toContain("El agente no está disponible");
     await act(async () => { boton("Reintentar").click(); });
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(f).toHaveBeenCalledTimes(2);
+    expect(String(f.mock.calls[1][0])).toBe("https://agente.test/v1/hoy");
     expect(textoDe(v)).toContain("En sombra");
   });
 
@@ -107,7 +118,7 @@ describe("Alphagentic: Hoy", () => {
   });
 
   it("cambiar de vista pide Informes y enseña «Sin informes todavía»", async () => {
-    const f = vi.fn().mockImplementation(async (url: string) => json(url.includes("/v1/informes") ? { items: [] } : HOY_VACIO));
+    const f = vi.fn().mockImplementation(async (url: string) => rutasHoy(url));
     vi.stubGlobal("fetch", f);
     const v = await pintar(<AgenteRaiz />);
     await act(async () => { boton("Informes").click(); });
@@ -119,7 +130,7 @@ describe("Alphagentic: Hoy", () => {
 
 describe("Alphagentic: tu cartera de IBKR en Hoy", () => {
   it("enseña valor, P&L y posiciones con el formato común y sincroniza a petición", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(HOY_VACIO)));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => rutasHoy(url)));
     vi.mocked(syncPersonal).mockResolvedValue({ ...CARTERA, total_value: "8100", synced: 1 } as never);
     const v = await pintar(<AgenteRaiz />);
     const t = textoDe(v);
@@ -136,7 +147,7 @@ describe("Alphagentic: tu cartera de IBKR en Hoy", () => {
 
   it("apagada en Control, Hoy no la pide ni la enseña", async () => {
     window.localStorage.setItem("vennett.alphagentic.ibkrEnHoy", "0");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(HOY_VACIO)));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => rutasHoy(url)));
     const v = await pintar(<AgenteRaiz />);
     expect(textoDe(v)).not.toContain("Tu cartera de IBKR");
     expect(getPersonal).not.toHaveBeenCalled();
@@ -257,24 +268,93 @@ describe("Alphagentic: Control", () => {
   });
 });
 
-describe("Alphagentic: Diario", () => {
-  it("no busca hasta que se escribe y muestra el vacío real si no hay resultados", async () => {
-    const f = vi.fn().mockResolvedValue(json({ items: [] }));
+describe("Alphagentic: todas las decisiones", () => {
+  const RESUMEN = { id: 7, fecha: "2026-11-16", tipo: "operar", sombra: true, veredicto: "aprobada", razonamiento: "r",
+    creado: "2026-11-16T23:46:30Z", operaciones: [{ ticker: "RDDT", lado: "compra" }, { ticker: "MSFT", lado: "compra" }] };
+
+  it("las agrupa por día con su título y busca al dejar de escribir", async () => {
+    const f = vi.fn().mockImplementation(async (url: string) => json(url.includes("/v1/diario") ? { items: [] } : { items: [RESUMEN], siguiente: null }));
     vi.stubGlobal("fetch", f);
     try {
-      const v = await pintar(<Diario />);
+      const v = await pintar(<Decisiones />);
+      expect(String(f.mock.calls[0][0])).toBe("https://agente.test/v1/decisiones?limite=100");
+      expect(textoDe(v)).toContain("Lunes, 16 nov");
+      expect(textoDe(v)).toContain("Compra RDDT y MSFT");
+      expect(textoDe(v)).toContain("Aprobada · En sombra");
+      expect(v.querySelector(".pnl-grupo a")?.getAttribute("href")).toBe("/admin/agente/decisiones/7?desde=decisiones");
       vi.useFakeTimers();
-      expect(textoDe(v)).toContain("Busca en sus decisiones");
-      expect(f).not.toHaveBeenCalled();
       const campo = v.querySelector("input")!;
       await act(async () => {
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(campo, "crudo");
         campo.dispatchEvent(new Event("input", { bubbles: true }));
       });
       await act(async () => { await vi.advanceTimersByTimeAsync(400); });
-      expect(String(f.mock.calls[0][0])).toBe("https://agente.test/v1/diario?q=crudo");
+      expect(f.mock.calls.some(c => String(c[0]) === "https://agente.test/v1/diario?q=crudo")).toBe(true);
       expect(textoDe(v)).toContain("Nada con «crudo»");
     } finally { vi.useRealTimers(); }
+  });
+
+  it("el título junta las empresas por lado y sin operaciones usa el tipo", () => {
+    const t = ((k: string) => ({ pnl_agente_lado_compra: "Compra", pnl_agente_lado_venta: "Venta", pnl_agente_dec_tipo_nada: "Sin operar" }[k] ?? k)) as never;
+    expect(tituloDecision([{ ticker: "A", lado: "compra" }, { ticker: "B", lado: "venta" }, { ticker: "C", lado: "compra" }], "operar", t, "es"))
+      .toBe("Compra A y C y Venta B");
+    expect(tituloDecision([], "nada", t, "es")).toBe("Sin operar");
+  });
+});
+
+describe("Alphagentic: el día", () => {
+  it("cada tarea sale con lo que hizo, lo que falló y lo pendiente a su hora", async () => {
+    const dia = {
+      fecha: "2026-11-16", ordenes_ejecutadas: 0,
+      programa: [{ tarea: "vigia_previo", hora: "2026-11-16T13:45:00Z" }, { tarea: "ejecucion", hora: "2026-11-16T14:35:00Z" },
+        { tarea: "despertar", hora: "2026-11-16T22:30:00Z" }, { tarea: "consolidacion", hora: "2099-11-17T00:30:00Z" }],
+      ejecuciones: [
+        { id: 1, tarea: "vigia_previo", fecha_ny: "2026-11-16", estado: "hecha", empezada: "2026-11-16T13:45:00Z", terminada: "2026-11-16T13:46:00Z", error: null },
+        { id: 2, tarea: "ejecucion", fecha_ny: "2026-11-16", estado: "fallida", empezada: "2026-11-16T14:35:00Z", terminada: "2026-11-16T14:36:00Z", error: "sin precio; detalle" },
+        { id: 3, tarea: "despertar", fecha_ny: "2026-11-16", estado: "hecha", empezada: "2026-11-16T22:30:00Z", terminada: "2026-11-16T22:47:00Z", error: null }],
+      eventos: [
+        { id: 9, ocurrido: "2026-11-16T13:46:00Z", origen: "vigia", tipo: "vigia_previo_sin_fuente", ticker: null, datos: {}, ejecucion_id: 1 },
+        { id: 10, ocurrido: "2026-11-16T22:47:00Z", origen: "ciclo", tipo: "decision", ticker: null, datos: { decision_id: 3 }, ejecucion_id: 3 }],
+      decisiones: [{ id: 3, fecha: "2026-11-16", tipo: "operar", sombra: true, veredicto: "aprobada", razonamiento: "", creado: "2026-11-16T22:40:00Z", operaciones: [{ ticker: "RDDT", lado: "compra" }] }],
+    };
+    const v = await pintar(<TareasDelDia dia={dia as never} />);
+    const t = textoDe(v);
+    expect(t).toContain("Sin noticias previas que revisar");
+    expect(t).toContain("sin precio");
+    expect(t).not.toContain("detalle");
+    expect(t).toContain("Compra RDDT · en sombra");
+    expect(t).toContain("Ordena lo aprendido");
+    expect(v.querySelectorAll("li.hecho")).toHaveLength(2);
+    expect(v.querySelectorAll("li.fallo")).toHaveLength(1);
+    expect(v.querySelectorAll("li.pendiente")).toHaveLength(1);
+  });
+});
+
+describe("Alphagentic: En vivo", () => {
+  const T = new Proxy({}, { get: (_, k: string) => (k === "pipe" ? { limites: ["", ""], revisor: ["", ""], ordenes: ["", ""], diario: ["", ""] }
+    : k === "lista" ? (xs: string[]) => xs.join(", ") : (...a: unknown[]) => `${k}${a.length ? `(${a.join(",")})` : ""}`) }) as unknown as Textos;
+  const llamada = (id: number, creado: string, latencia: number, extra: object) => ({ id, etapa: "agente", paso: id, modelo: "deepseek-flash", enviado: [],
+    respuesta: "", razonamiento: "Mira la cartera.", herramientas_pedidas: [], coste_usd: "0.001", latencia_ms: latencia, ok: true, error: null, creado, ...extra });
+
+  it("las herramientas de una vuelta salen juntas y duran el hueco real hasta la siguiente llamada", () => {
+    const ll = [
+      llamada(1, "2026-11-16T23:46:40Z", 2000, { herramientas_pedidas: [{ id: "a", function: { name: "price", arguments: "{\"tickers\":[\"AAA\",\"BBB\"]}" } },
+        { id: "b", function: { name: "portfolio", arguments: "{}" } }] }),
+      llamada(2, "2026-11-16T23:46:50Z", 4000, { enviado: [{ role: "tool", tool_call_id: "b", content: "{\"cash\": 5000}" }] }),
+    ];
+    const r = eventosDe(ll as never, null, T);
+    const herr = r.eventos.find(e => e.tipo === "herr")!;
+    expect(herr.tipo === "herr" && herr.grupos.map(g => [g.nombre, g.ida])).toEqual([["price", "AAA, BBB"], ["portfolio", ""]]);
+    // De que acaba la llamada 1 (40 s) a que empieza la 2 (50 − 4 = 46 s): 6 s reales.
+    expect(herr.real).toBe(6);
+    expect(r.eventos.map(e => e.tipo)).toEqual(["despertar", "piensa", "herr", "piensa"]);
+  });
+
+  it("un ciclo en curso acaba en la vuelta que está pensando, sin hora de fin", () => {
+    const r = eventosDe([llamada(1, "2026-11-16T23:46:40Z", 2000, {})] as never, null, T, true);
+    const ultimo = r.eventos.at(-1)!;
+    expect(ultimo.tipo === "piensa" && ultimo.abierta).toBe(true);
+    expect(ultimo.hasta).toBeNull();
   });
 });
 
@@ -313,19 +393,22 @@ describe("Alphagentic: cómo llegó aquí", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     const t = textoDe(v);
     expect(t).toContain("Cómo llegó aquí");
-    expect(t).toContain("Cribado y valoración");
+    // Las herramientas van con su nombre real, nunca traducidas.
+    expect(t).toContain("screen y valuation");
     expect(t).toContain("Decisión final");
     expect(t).toContain("Operar · compra RDDT");
     expect(t).toContain("2 vueltas del agente y el revisor");
-    await act(async () => { boton("Cribado y valoración").click(); });
-    const hoja = document.querySelector("dialog.hoja-liga")!;
+    expect(t).toContain("Verlo en vivo");
+    await act(async () => { boton("screen y valuation").click(); });
+    const hoja = document.querySelector("dialog.hoja-liga[open]")!;
     expect(textoDe(hoja)).toContain("Vuelta 1");
     expect(textoDe(hoja)).toContain("Lo que tenía al despertar");
     expect(textoDe(hoja)).toContain("Let me screen the watchlist first.");
     expect(textoDe(hoja)).toContain("sin datos");
     const enHoja = (texto: string) => [...hoja.querySelectorAll("button")].find(b => textoDe(b).startsWith(texto))!;
-    await act(async () => { enHoja("Cribado").click(); });
-    expect(textoDe(hoja.querySelector("h2")!)).toBe("Cribado");
+    expect(textoDe(hoja)).toContain("valuation · TSM");
+    await act(async () => { enHoja("screen").click(); });
+    expect(textoDe(hoja.querySelector("h2")!)).toBe("screen");
     expect(textoDe(hoja)).toContain("AAA");
     expect(textoDe(hoja)).toContain("−12,3 %");
     await act(async () => { hoja.querySelector<HTMLButtonElement>(".hoja-liga-acc.atras")!.click(); });

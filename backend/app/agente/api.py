@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.agente import base, libro, limites, puerta, reloj
+from app.agente import base, herramientas, libro, limites, puerta, reloj
 from app.agente.config import ajustes
 from app.agente.models import Estado, Evento
 from app.mercado.calendario import TZ_NUEVA_YORK, es_dia_de_bolsa
@@ -26,6 +26,8 @@ RECORTE = 280
 MAX_BUSQUEDA = 30
 MAX_PAGINA = 100
 EVENTOS_HOY = 50
+MAX_EVENTOS_DIA = 500
+MINUTOS_CICLO = 30  # un ciclo dura minutos; más allá ya no es «ahora»
 
 
 def admin_agente(authorization: str = Header(default="")) -> Identidad:
@@ -64,12 +66,16 @@ def _recortar(texto: str) -> str:
 
 
 def _resumen(fila: dict[str, Any]) -> dict[str, Any]:
+    """Con empresa y lado de cada operación: el panel titula la decisión con ellas."""
+    ops = (fila.get("propuesta") or {}).get("operaciones") or []
     return {"id": fila["id"], "fecha": fila["fecha_ny"], "tipo": fila["tipo"],
             "sombra": fila["sombra"], "veredicto": fila["revisor_veredicto"],
-            "razonamiento": _recortar(fila["razonamiento"])}
+            "razonamiento": _recortar(fila["razonamiento"]), "creado": fila["creado"],
+            "operaciones": [{"ticker": o.get("ticker"), "lado": o.get("lado")}
+                            for o in ops if isinstance(o, dict)]}
 
 
-_COLUMNAS_RESUMEN = "id, fecha_ny, tipo, sombra, revisor_veredicto, razonamiento"
+_COLUMNAS_RESUMEN = "id, fecha_ny, tipo, sombra, revisor_veredicto, razonamiento, creado, propuesta"
 
 
 def _cartera_json(c: limites.Cartera) -> dict[str, Any]:
@@ -121,12 +127,79 @@ def hoy(_: Identidad = Depends(admin_agente)) -> dict[str, Any]:
             s, "select id, ocurrido, origen, tipo, ticker, datos from agente.eventos "
                "where (ocurrido at time zone 'America/New_York')::date = :d "
                "order by id desc limit :n", d=dia, n=EVENTOS_HOY)
+        total = s.execute(text("select count(*) from agente.decisiones")).scalar_one()
+        anterior = s.execute(text("select max(fecha_ny) from agente.ejecuciones "
+                                  "where fecha_ny < :d"), {"d": dia}).scalar()
         return {
             "estado": {"parada": estado.parada, "parada_motivo": estado.parada_motivo,
                        "modo": modo, "ia_activa": ajustes.ia_activa, "sombra": ajustes.sombra},
             "cartera": cartera, "serie": serie,
             "ultima_decision": _resumen(ultima[0]) if ultima else None,
+            "decisiones_total": total, "dia": dia.isoformat(),
+            "dia_anterior": anterior.isoformat() if anterior else None,
             "eventos": eventos, "despertares": _despertares(dia)}
+
+
+@router.get("/dia/{fecha}")
+def dia_de(fecha: date, _: Identidad = Depends(admin_agente)) -> dict[str, Any]:
+    """Un día del agente: sus tareas (lo previsto y lo que pasó), el registro y sus decisiones."""
+    with base.sesion() as s:
+        ejecuciones = _filas(
+            s, "select id, tarea, fecha_ny, estado, empezada, terminada, error "
+               "from agente.ejecuciones where fecha_ny = :d order by id", d=fecha)
+        eventos = _filas(
+            s, "select id, ocurrido, origen, tipo, ticker, datos, ejecucion_id from agente.eventos "
+               "where (ocurrido at time zone 'America/New_York')::date = :d "
+               "or ejecucion_id in (select id from agente.ejecuciones where fecha_ny = :d) "
+               "order by id limit :n", d=fecha, n=MAX_EVENTOS_DIA)
+        ids = [int(e["datos"]["decision_id"]) for e in eventos
+               if e["tipo"] == "decision" and str(e["datos"].get("decision_id", "")).isdigit()]
+        decisiones = _filas(s, f"select {_COLUMNAS_RESUMEN} from agente.decisiones "
+                               "where id = any(:i) order by id", i=ids) if ids else []
+        ejecutadas = s.execute(text(
+            "select count(*) from agente.ejecutadas "
+            "where (ejecutada_en at time zone 'America/New_York')::date = :d"), {"d": fecha}
+        ).scalar_one()
+    programa = [{"tarea": t.value, "hora": h.isoformat()} for t, h in reloj.programa_del_dia(fecha)
+                ] if es_dia_de_bolsa(fecha) else []
+    return {"fecha": fecha.isoformat(), "programa": programa, "ejecuciones": ejecuciones,
+            "eventos": eventos, "decisiones": [_resumen(d) for d in decisiones],
+            "ordenes_ejecutadas": ejecutadas}
+
+
+@router.get("/seguimiento")
+def seguimiento(_: Identidad = Depends(admin_agente)) -> dict[str, Any]:
+    """La lista de seguimiento con las mismas cifras que ve el agente en `screen`."""
+    dia = datetime.now(TZ_NUEVA_YORK).date()
+    with base.sesion() as s:
+        cribado = herramientas.CATALOGO["screen"].funcion(s, {}, herramientas.Contexto(hoy=dia))
+        lista = _filas(s, "select ticker, motivo, desde from agente.seguimiento "
+                          "where hasta is null order by ticker")
+        cierre = s.execute(text("select max(fecha) from agente.precios")).scalar()
+    return {"fecha_precios": cierre.isoformat() if cierre else None,
+            "columnas": cribado["columns"], "filas": cribado["rows"],
+            "sin_precios": cribado["without_price_history"],
+            "fecha_fundamentales": cribado["fundamentals_date"], "lista": lista}
+
+
+@router.get("/ciclo/actual")
+def ciclo_actual(_: Identidad = Depends(admin_agente)) -> dict[str, Any]:
+    """El último ciclo con llamadas recientes. Cada llamada se guarda al terminar, así que mientras
+    su tarea sigue en curso y no hay decisión, esto es el agente pensando ahora mismo."""
+    with base.sesion() as s:
+        fila = s.execute(text(
+            "select l.ciclo, max(l.id) as ultimo, bool_or(e.estado = 'en_curso') as en_curso "
+            "from agente.llamadas_modelo l left join agente.ejecuciones e on e.id = l.ejecucion_id "
+            "where l.ciclo is not null and l.creado > now() - make_interval(mins => :m) "
+            "group by l.ciclo order by ultimo desc limit 1"), {"m": MINUTOS_CICLO}).first()
+        if fila is None:
+            return {"ciclo": None, "en_curso": False, "decision_id": None, "items": []}
+        decision_id = s.execute(text("select id from agente.decisiones where ciclo = :c"),
+                                {"c": fila.ciclo}).scalar()
+        items = _filas(s, f"select {_COLUMNAS_LLAMADA} from agente.llamadas_modelo "
+                          "where ciclo = :c order by id", c=fila.ciclo)
+    return {"ciclo": str(fila.ciclo), "en_curso": bool(fila.en_curso) and decision_id is None,
+            "decision_id": decision_id, "items": items}
 
 
 @router.get("/decisiones")
@@ -249,7 +322,8 @@ def diario(q: str = Query("", max_length=200),
     with base.sesion() as s:
         filas = _filas(
             s, f"select {_COLUMNAS_RESUMEN} from agente.decisiones "
-               "where razonamiento ilike :p order by id desc limit :n",
+               "where razonamiento ilike :p or propuesta::text ilike :p "
+               "order by id desc limit :n",
             p=f"%{patron}%", n=MAX_BUSQUEDA)
     return {"items": [_resumen(f) for f in filas]}
 
