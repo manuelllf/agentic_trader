@@ -5,9 +5,13 @@ import es from "../../messages/es/system.json";
 import en from "../../messages/en/system.json";
 
 export const AUTOR_PUBLICO = "Manuel";
+// Perfiles públicos del proyecto y de su autor (cuentas personales): van en los datos estructurados como `sameAs`.
+export const PERFILES_PUBLICOS = ["https://x.com/maanufr_", "https://www.linkedin.com/in/manuel-llao-freire-a10b69278"];
 export const URL_PUBLICA = "https://vennett.app";
 // Día de la última revisión de la política editorial: se cambia al tocar su contenido.
 export const FECHA_EDITORIAL = "2026-11-17";
+// Fecha de la última tanda de cambios en las páginas fijas: la que indica el sitemap.
+export const FECHA_SITIO = "2026-11-17";
 
 export function metadataCompartir({ titulo, descripcion, idioma, ruta, indexar = true }: {
   titulo: string; descripcion: string; idioma: string; ruta: string; indexar?: boolean;

@@ -1,19 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
-import { useTranslations } from "next-intl";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-// Flag en localStorage: el aviso de instalación se muestra UNA sola vez por navegador.
+// Flag en localStorage: el aviso de instalación se muestra UNA sola vez por navegador, en cualquier página pública.
 const SEEN_KEY = "pwa_install_seen";
 
-export default function PwaInstall() {
-  const t = useTranslations();
+export default function PwaInstall({ textos }: { textos: { titulo: string; texto: string; accion: string } }) {
   const [prompt, setPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [visible, setVisible] = useState(false);
 
@@ -48,16 +45,18 @@ export default function PwaInstall() {
   if (!visible) return null;
 
   return (
-    <aside className="pwa-install" aria-label={t("system_instalar_vennett")}>
-      <Image src="/favicon.svg?v=vennett-8" alt="" width={32} height={32} />
+    <aside className="pwa-install" aria-label={textos.titulo}>
+      {/* Icono de 32 px: sin next/image, que no está en el bundle de todas las rutas y rompía la página. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/favicon.svg?v=vennett-8" alt="" width={32} height={32} />
       <div>
-        <p><strong>{t("system_vennett_a_mano")}</strong></p>
+        <p><strong>{textos.texto}</strong></p>
       </div>
       <button
         onClick={install}
         className="pwa-install-action"
       >
-        {t("system_instalar")}
+        {textos.accion}
       </button>
     </aside>
   );

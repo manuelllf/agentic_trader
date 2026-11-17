@@ -52,7 +52,8 @@ it("publica artículos por idioma con alternates y consulta ambos idiomas", asyn
   expect(urls).toHaveLength(36);
   expect(listarPublicados).toHaveBeenCalledWith("es");
   expect(listarPublicados).toHaveBeenCalledWith("en");
-  expect(urls[34]).toEqual({ url: "https://vennett.app/blog/uno", alternates: { languages: { es: "https://vennett.app/blog/uno", en: "https://vennett.app/en/blog/uno" } } });
+  expect(urls[34]).toEqual({ url: "https://vennett.app/blog/uno", lastModified: "2026-01-01T00:00:00Z",
+    alternates: { languages: { es: "https://vennett.app/blog/uno", en: "https://vennett.app/en/blog/uno" } } });
   expect(urls[35].url).toBe("https://vennett.app/en/blog/two");
 });
 

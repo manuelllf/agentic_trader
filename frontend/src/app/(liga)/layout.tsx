@@ -5,6 +5,7 @@ import { AvisoErrores } from "./_ui/AvisoErrores";
 import IndicadorDeDesplazamiento from "@/components/IndicadorDeDesplazamiento";
 import { CierreDeTransicion } from "./_ui/BarraPestanas";
 import PwaInstall from "@/components/PwaInstall";
+import { textosInstalar } from "@/components/pwaTextos";
 import type { Metadata } from "next";
 
 // Todo lo de la liguilla vive dentro de .lg (liga.css, cargada en el layout raíz): sus tokens
@@ -16,7 +17,7 @@ export function generateMetadata(): Metadata {
   return { robots: { index: false, follow: false } };
 }
 
-export default function LigaLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function LigaLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="lg">
       {/* La cabecera recibe su material al bajar (DESIGN §6) en todas las pantallas de la liga. */}
@@ -27,7 +28,7 @@ export default function LigaLayout({ children }: Readonly<{ children: React.Reac
           <RecordarOrigen />
           {children}
           <AvisoErrores />
-          <PwaInstall />
+          <PwaInstall textos={await textosInstalar()} />
         </ProveedorHojaCuenta>
       </SesionProvider>
     </div>

@@ -44,6 +44,7 @@ it("incluye al autor público y conserva los datos del artículo sin fecha de mo
   expect(datosArticulo({ articulo, idioma: "en", url: "https://vennett.app/en/blog/leccion" })).toEqual({
     "@context": "https://schema.org", "@type": "BlogPosting", headline: "Lesson", description: "Summary",
     datePublished: articulo.publicado_en, inLanguage: "en", mainEntityOfPage: "https://vennett.app/en/blog/leccion",
+    image: "https://vennett.app/en/blog/leccion/imagen",
     author: { "@type": "Person", name: "Manuel" }, publisher: { "@type": "Organization", name: "Vennett" },
   });
 });

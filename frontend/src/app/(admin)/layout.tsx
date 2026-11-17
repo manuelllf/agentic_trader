@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Geist } from "next/font/google";
 import PwaInstall from "@/components/PwaInstall";
+import { textosInstalar } from "@/components/pwaTextos";
 import "./admin.css";
 
 // Las salas conservan su aspecto oscuro de siempre y su propia app instalable (/admin).
@@ -27,12 +28,12 @@ export const viewport: Viewport = {
 const FRAUNCES = "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;"
   + "0,9..144,500;0,9..144,600;1,9..144,500&display=swap";
 
-export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className={`${geistSans.variable} salas`}>
       <link rel="stylesheet" href={FRAUNCES} precedence="default" />
       {children}
-      <PwaInstall />
+      <PwaInstall textos={await textosInstalar()} />
     </div>
   );
 }

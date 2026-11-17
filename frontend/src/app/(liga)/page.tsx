@@ -5,7 +5,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { estadoCriptico } from "@/lib/criptico/estado";
 import type { Idioma } from "@/lib/criptico/tipos";
 import { escaparJsonLd, listarPublicados } from "@/lib/blog/publico";
-import { URL_PUBLICA, metadataCompartir } from "@/lib/sitio";
+import { PERFILES_PUBLICOS, URL_PUBLICA, metadataCompartir } from "@/lib/sitio";
 
 export async function generateMetadata() {
   const [t, idioma] = await Promise.all([getTranslations(), getLocale()]);
@@ -39,7 +39,7 @@ export default async function Page() {
   const [criptico, boletin] = await Promise.all([estadoCriptico(idioma), ultimoArticulo(idioma)]);
   const datos = [
     { "@context": "https://schema.org", "@type": "WebSite", name: "Vennett", url: URL_PUBLICA, inLanguage: locale },
-    { "@context": "https://schema.org", "@type": "Organization", name: "Vennett", url: URL_PUBLICA },
+    { "@context": "https://schema.org", "@type": "Organization", name: "Vennett", url: URL_PUBLICA, sameAs: PERFILES_PUBLICOS },
   ];
   return <>
     <script type="application/ld+json">{escaparJsonLd(datos)}</script>

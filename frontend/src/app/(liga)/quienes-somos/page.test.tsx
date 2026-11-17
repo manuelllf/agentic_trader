@@ -15,6 +15,7 @@ Object.assign(catalogos.en, { ...editorialEn, ...help, ...legal });
 
 vi.mock("@/lib/sitio", () => ({
   metadataCompartir: (p: object) => p, AUTOR_PUBLICO: "Manuel", URL_PUBLICA: "https://vennett.app",
+  PERFILES_PUBLICOS: ["https://x.com/maanufr_", "https://www.linkedin.com/in/manuel-llao-freire-a10b69278"],
 }));
 vi.mock("next-intl", async (importOriginal) => ({ ...(await importOriginal<object>()), useLocale: () => idioma.valor }));
 vi.mock("next-intl/server", () => ({
@@ -79,8 +80,10 @@ it("JSON-LD de AboutPage con el fundador por su nombre público", async () => {
   await pintar();
   const datos = JSON.parse(container.querySelector('script[type="application/ld+json"]')!.textContent!);
   expect(datos["@type"]).toBe("AboutPage");
-  expect(datos.about.founder).toEqual({ "@type": "Person", name: "Manuel" });
+  expect(datos.about.founder).toEqual({ "@type": "Person", name: "Manuel", sameAs: datos.about.sameAs });
   expect(datos.url).toBe("https://vennett.app/quienes-somos");
+  expect(datos.about.sameAs).toEqual(["https://x.com/maanufr_", "https://www.linkedin.com/in/manuel-llao-freire-a10b69278"]);
+  expect(datos.about.founder.sameAs).toEqual(datos.about.sameAs);
 });
 
 it("metadatos: ruta traducible y descripción propia", async () => {

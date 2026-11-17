@@ -25,6 +25,7 @@ export function datosArticulo({ articulo, idioma, url }: {
     "@context": "https://schema.org", "@type": "BlogPosting",
     headline: articulo.titulo, description: articulo.resumen,
     datePublished: articulo.publicado_en, inLanguage: idioma, mainEntityOfPage: url,
+    image: `${url}/imagen`,
     author: { "@type": "Person", name: AUTOR_PUBLICO },
     publisher: { "@type": "Organization", name: "Vennett" },
   };

@@ -17,7 +17,8 @@ export async function listarPublicados(idioma: Idioma): Promise<EntradaIndice[]>
 export async function leerPublicado(idioma: Idioma, numero?: string): Promise<Entrega | null> {
   if (numero !== undefined && (!/^[1-9]\d*$/.test(numero) || !Number.isSafeInteger(Number(numero)))) return null;
   const camino = numero === undefined ? "hoy" : `numero/${numero}`;
-  const respuesta = await fetch(`${API_URL}/criptico/${camino}?idioma=${idioma}`, { cache: "no-store" });
+  // Un acertijo publicado no cambia: cinco minutos de caché evitan una llamada a la API por visita.
+  const respuesta = await fetch(`${API_URL}/criptico/${camino}?idioma=${idioma}`, { next: { revalidate: 300 } });
   if (respuesta.status === 404) return null;
   if (!respuesta.ok) throw new Error("Criptico API unavailable");
   const entrega: Entrega = await respuesta.json();

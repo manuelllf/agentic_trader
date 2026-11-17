@@ -1,8 +1,8 @@
 {
   "seo_criptico_hoy_titulo": "Vennett daily cryptic",
-  "seo_criptico_hoy_descripcion": "A daily word puzzle to learn about finance through wordplay. No registration required.",
+  "seo_criptico_hoy_descripcion": "A finance word puzzle every day, played with words. Free, no registration, and the explanation after you solve it.",
   "seo_criptico_archivo_titulo": "Cryptic no. {numero} · Vennett",
-  "seo_criptico_archivo_descripcion": "Solve cryptic no. {numero} and discover a finance concept through wordplay.",
+  "seo_criptico_archivo_descripcion": "Cryptic no. {numero} from Vennett: a finance concept hidden in a word puzzle. With its explanation.",
   "seo_criptico_lista_titulo": "Cryptic archive · Vennett",
   "seo_criptico_lista_descripcion": "Every puzzle from Vennett’s daily cryptic, with its clue, level and explanation.",
   "seo_criptico_baja_titulo": "Unsubscribe from the cryptic · Vennett",
@@ -110,6 +110,7 @@
   "cr_usada": "Used",
   "cr_ocultar_teclado": "Hide keyboard",
   "cr_archivo_h1": "Cryptic archive",
+  "cr_imagen_numero": "Cryptic no. {numero}",
   "cr_archivo_meta": "{n, plural, one {# puzzle} other {# puzzles}} since {fecha}",
   "cr_sol_titulo": "Answer and explanation",
   "cr_sol_aviso": "Spoiler",

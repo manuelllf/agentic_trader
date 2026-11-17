@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { loadMessages } from "@/i18n/messages";
 import { URL_PUBLICA } from "@/lib/sitio";
+import { escaparJsonLd } from "@/lib/blog/publico";
 import { leerPublicado, listarPublicados } from "@/lib/criptico/publico";
 import type { Idioma, Textos } from "@/lib/criptico/tipos";
 import ArchivoPagina from "./ArchivoPagina";
@@ -22,9 +23,12 @@ export async function metadataCriptico(idioma: Idioma, numero?: string, accion?:
   const description = t(`seo_criptico_${tipo}_descripcion`, { numero: numero ?? "" });
   const url = `${URL_PUBLICA}${ruta(idioma)}${accion ? `/${accion}` : numero === undefined ? "" : `/${numero}`}`;
   const indexar = !accion;
+  // Cada acertijo tiene su imagen para compartir (número y pista); la de hoy usa la de la marca.
+  const imagen = numero !== undefined && !accion ? [{ url: `${url}/imagen`, width: 1200, height: 630 }] : undefined;
   // Sin hreflang: los juegos de palabras de ambos idiomas no son contenido equivalente.
   return { title, description, alternates: { canonical: url }, robots: { index: indexar, follow: indexar },
-    openGraph: { title, description, url, locale: idioma === "es" ? "es_ES" : "en_GB" } };
+    openGraph: { title, description, url, locale: idioma === "es" ? "es_ES" : "en_GB", images: imagen },
+    twitter: { card: "summary_large_image", title, description, images: imagen } };
 }
 
 export async function metadataArchivoLista(idioma: Idioma): Promise<Metadata> {
@@ -39,8 +43,14 @@ export async function metadataArchivoLista(idioma: Idioma): Promise<Metadata> {
 
 // La lista llega del servidor con las pistas: así está en el HTML. Si la API falla, la página lo dice y deja reintentar.
 export async function paginaArchivo(idioma: Idioma) {
-  const indice = await listarPublicados(idioma).catch(() => null);
-  return <ArchivoPagina idioma={idioma} textos={await catalogo(idioma)} indice={indice} />;
+  const [indice, textos] = await Promise.all([listarPublicados(idioma).catch(() => null), catalogo(idioma)]);
+  // La lista es la página entera: se declara como colección para que los buscadores la lean así.
+  const datos = { "@context": "https://schema.org", "@type": "CollectionPage", name: textos.cr_archivo_h1,
+    url: `${URL_PUBLICA}${ruta(idioma)}/archivo`, inLanguage: idioma, numberOfItems: indice?.length ?? 0 };
+  return <>
+    <script type="application/ld+json">{escaparJsonLd(datos)}</script>
+    <ArchivoPagina idioma={idioma} textos={textos} indice={indice} />
+  </>;
 }
 
 export async function pagina(idioma: Idioma, numero?: string) {

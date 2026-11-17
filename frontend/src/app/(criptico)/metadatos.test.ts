@@ -57,11 +57,15 @@ it.each([
 it("la lista del archivo se pinta con lo que da la API y, si falla, con el error", async () => {
   const entrada = { numero: 1, fecha: "2020-01-01", nivel: "facil", longitud: 5, pista: [{ texto: "Pista", papel: null }] };
   vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => [entrada] } as Response);
-  const bien = await Lista() as { props: { idioma: string; indice: unknown } };
-  expect(bien.props).toMatchObject({ idioma: "es", indice: [entrada] });
+  // La página es un fragmento: el JSON-LD de colección y, después, la lista.
+  type Fragmento = { props: { children: [{ props: { children: string } }, { props: unknown }] } };
+  const bien = await Lista() as Fragmento;
+  expect(bien.props.children[1].props).toMatchObject({ idioma: "es", indice: [entrada] });
+  expect(JSON.parse(bien.props.children[0].props.children)).toMatchObject({ "@type": "CollectionPage", numberOfItems: 1 });
   vi.mocked(fetch).mockResolvedValue({ ok: false, status: 503 } as Response);
-  const mal = await ListaEn() as { props: { idioma: string; indice: unknown } };
-  expect(mal.props).toMatchObject({ idioma: "en", indice: null });
+  const mal = await ListaEn() as Fragmento;
+  expect(mal.props.children[1].props).toMatchObject({ idioma: "en", indice: null });
+  expect(JSON.parse(mal.props.children[0].props.children)).toMatchObject({ numberOfItems: 0 });
 });
 
 it("sin acertijo también se indexa; el archivo sin publicar da 404", async () => {

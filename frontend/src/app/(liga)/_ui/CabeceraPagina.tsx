@@ -28,7 +28,7 @@ export function CabeceraPagina({ titulo, derecha }: { titulo: string; derecha?: 
   const [origen, setOrigen] = useState<Origen | null>(null);
   // sessionStorage solo existe en el navegador: se lee tras hidratar para no desajustar el marcado.
   useEffect(() => { setOrigen(pathname ? leerOrigen(pathname) : null); }, [pathname]);
-  if (!origen) return <CabeceraApp titulo={titulo} derecha={derecha} />;
+  if (!origen) return <CabeceraApp titulo={titulo} derecha={derecha} comoTitulo="p" />;
   return <header className="cab centrada">
     <button type="button" className="cu-atras" aria-label={t("account_volver_aria", { destino: origen.titulo })}
       onClick={() => router.back()}>
@@ -36,7 +36,7 @@ export function CabeceraPagina({ titulo, derecha }: { titulo: string; derecha?: 
         aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
       <span>{origen.titulo}</span>
     </button>
-    <h1 className="cab-titulo">{titulo}</h1>
+    <p className="cab-titulo">{titulo}</p>
     <div className="cab-der">{derecha}</div>
   </header>;
 }

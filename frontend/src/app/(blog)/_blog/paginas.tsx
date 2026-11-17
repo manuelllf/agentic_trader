@@ -59,7 +59,8 @@ export async function metadataBlog(idioma: Locale, slug?: string): Promise<Metad
   return { title, description, alternates: { canonical: url, languages: {
     es: `${URL_PUBLICA}${rutaBlog("es", slug)}`, en: `${URL_PUBLICA}${rutaBlog("en", slug)}`,
   } }, openGraph: { type: "article", title, description, url, locale: idioma === "es" ? "es_ES" : "en_GB",
-    ...(articulo ? { publishedTime: articulo.publicado_en } : {}) } };
+    ...(articulo ? { publishedTime: articulo.publicado_en, images: [{ url: `${url}/imagen`, width: 1200, height: 630 }] } : {}) },
+  twitter: { card: "summary_large_image", title, description, ...(articulo ? { images: [`${url}/imagen`] } : {}) } };
 }
 
 export async function Listado({ idioma }: { idioma: Locale }) {

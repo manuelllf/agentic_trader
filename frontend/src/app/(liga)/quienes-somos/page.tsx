@@ -3,7 +3,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { normalizeLocale } from "@/i18n/locale";
 import { urlsDeIdiomas } from "@/i18n/rutas";
 import { escaparJsonLd } from "@/lib/blog/publico";
-import { AUTOR_PUBLICO, URL_PUBLICA, metadataCompartir } from "@/lib/sitio";
+import { AUTOR_PUBLICO, PERFILES_PUBLICOS, URL_PUBLICA, metadataCompartir } from "@/lib/sitio";
 import { BarraPestanas } from "../_ui/BarraPestanas";
 import { CabeceraPagina } from "../_ui/CabeceraPagina";
 import { Chevron } from "../aprender/_ui/Guias";
@@ -28,7 +28,8 @@ export default async function QuienesSomos() {
   const datos = {
     "@context": "https://schema.org", "@type": "AboutPage", name: t("about_title"), inLanguage: locale,
     url: urlsDeIdiomas(URL_PUBLICA, "/quienes-somos")[locale],
-    about: { "@type": "Organization", name: "Vennett", url: URL_PUBLICA, founder: { "@type": "Person", name: AUTOR_PUBLICO } },
+    about: { "@type": "Organization", name: "Vennett", url: URL_PUBLICA, sameAs: PERFILES_PUBLICOS,
+      founder: { "@type": "Person", name: AUTOR_PUBLICO, sameAs: PERFILES_PUBLICOS } },
   };
   return (
     <main className="scroll lv-pagina pg-pagina">

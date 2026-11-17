@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next, Plus_Jakarta_Sans } from "next/font/google";
+import { headers } from "next/headers";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import { LanguageProvider } from "@/i18n/Provider";
-import { normalizeLocale } from "@/i18n/locale";
+import { CABECERA_CATALOGO, CATALOGO_MINIMO, normalizeLocale } from "@/i18n/locale";
 import { PANTALLAS_ARRANQUE } from "@/lib/pantallasArranque";
 import { URL_PUBLICA } from "@/lib/sitio";
 import AnaliticaPublica from "@/components/AnaliticaPublica";
@@ -62,8 +63,10 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [language, messages] = await Promise.all([getLocale(), getMessages()]);
+  const [language, cabeceras] = await Promise.all([getLocale(), headers()]);
   const locale = normalizeLocale(language) ?? "es";
+  // Sin esto, cada página del críptico y del blog llevaba el catálogo entero (también el del panel) en su HTML.
+  const messages = cabeceras.get(CABECERA_CATALOGO) === CATALOGO_MINIMO ? {} : await getMessages();
   return (
     <html lang={locale} className={`${atkinson.variable} ${jakarta.variable} ${mono.variable}`}>
       <head>
