@@ -96,5 +96,5 @@ it("enlaces, pie legal y barra de pestañas", async () => {
   const pie = container.querySelector(".pg-pie")!;
   expect(pie.textContent).toContain(help.help_disclaimer);
   expect(pie.querySelector("a.pg-a")?.getAttribute("href")).toBe("/legal/terminos");
-  expect(container.querySelector('[data-testid="barra"]')).not.toBeNull();
+  expect(container.querySelector('[data-testid="barra"]')).toBeNull();
 });

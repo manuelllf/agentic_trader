@@ -45,7 +45,7 @@ it("pinta barra, título, fecha y versión, resumen y cuerpo como hijos directos
   expect(pg.querySelector(".legal-fecha")?.textContent).toMatch(/\S/);
   expect(pg.querySelectorAll(".legal-resumen li")).toHaveLength(2);
   expect(pg.querySelector(".legal-resumen h2")?.textContent).toBe(legal.legal_summary_heading);
-  expect(container.querySelector('[data-testid="barra"]')).not.toBeNull();
+  expect(container.querySelector('[data-testid="barra"]')).toBeNull();
 });
 
 it("lista los otros cuatro documentos, sin el actual y en orden", async () => {

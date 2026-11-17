@@ -3,7 +3,6 @@ import { Fragment } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { cifrasDelMetodo, leerMercado } from "@/lib/aprender";
 import { metadataCompartir } from "@/lib/sitio";
-import { BarraPestanas } from "../_ui/BarraPestanas";
 import { CabeceraPagina } from "../_ui/CabeceraPagina";
 import "../liga/ranking.css";
 import "../_ui/grupos.css";
@@ -124,7 +123,6 @@ export default async function ComoFunciona() {
         </ul>
         <p className="pg-pie">{t("help_disclaimer")} <Link className="pg-a" href="/legal/terminos">{t("legal_terms_short")}</Link></p>
       </div>
-      <BarraPestanas />
     </main>
   );
 }

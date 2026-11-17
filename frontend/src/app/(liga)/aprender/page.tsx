@@ -2,7 +2,6 @@ import Link from "@/components/Enlace";
 import { getLocale, getTranslations } from "next-intl/server";
 import { leerCiclo } from "@/lib/aprender";
 import { metadataCompartir } from "@/lib/sitio";
-import { BarraPestanas } from "../_ui/BarraPestanas";
 import { CabeceraPagina } from "../_ui/CabeceraPagina";
 import { guiasVisibles } from "./guias";
 import { Hora } from "./_ui/Hora";
@@ -41,6 +40,5 @@ export default async function Aprender() {
       </div></li></ul>}
       <p className="pg-pie">{t("help_disclaimer")}</p>
     </div>
-    <BarraPestanas />
   </main>;
 }

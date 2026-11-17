@@ -3,9 +3,6 @@ import { esRutaTraducible, rutaEnIdioma } from "./rutas";
 export const LOCALES = ["es", "en"] as const;
 export type Locale = typeof LOCALES[number];
 export const CABECERA_IDIOMA_RUTA = "x-vennett-idioma";
-// Las páginas del críptico y del blog reciben sus textos por props: no necesitan el catálogo en el navegador.
-export const CABECERA_CATALOGO = "x-vennett-catalogo";
-export const CATALOGO_MINIMO = "minimo";
 
 export function idiomaDeRuta(ruta: string): Locale | null {
   return ruta === "/en" || ruta.startsWith("/en/") ? "en" : null;

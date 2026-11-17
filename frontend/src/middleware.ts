@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { acceptLanguage, CABECERA_CATALOGO, CABECERA_IDIOMA_RUTA, CATALOGO_MINIMO, idiomaDeRuta, LOCALE_COOKIE, normalizeLocale, rutaDeIdioma } from "./i18n/locale";
+import { acceptLanguage, CABECERA_IDIOMA_RUTA, idiomaDeRuta, LOCALE_COOKIE, normalizeLocale, rutaDeIdioma } from "./i18n/locale";
 import { esRutaTraducible, quitarIdioma } from "./i18n/rutas";
 
 // CSP con nonce (plan §14/§15, tarea 8.1). Por ahora en modo "solo informe": el navegador no
@@ -79,8 +79,6 @@ export function middleware(request: NextRequest) {
   const idiomaRuta = idiomaDeRuta(request.nextUrl.pathname);
   if (idiomaRuta) requestHeaders.set(CABECERA_IDIOMA_RUTA, "en");
   else requestHeaders.delete(CABECERA_IDIOMA_RUTA);
-  if (/^\/(criptico|blog)(\/|$)/.test(quitarIdioma(request.nextUrl.pathname))) requestHeaders.set(CABECERA_CATALOGO, CATALOGO_MINIMO);
-  else requestHeaders.delete(CABECERA_CATALOGO);
   requestHeaders.set("x-nonce", nonce);
   // En petición: de aquí lo lee Next para firmar sus propios scripts inline con este nonce.
   requestHeaders.set("Content-Security-Policy-Report-Only", csp);

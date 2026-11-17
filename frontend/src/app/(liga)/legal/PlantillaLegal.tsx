@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { VERSION_LEGAL, fechaLegal } from "./datos";
 import { getLocale, getTranslations } from "next-intl/server";
 import { normalizeLocale } from "@/i18n/locale";
-import { BarraPestanas } from "../_ui/BarraPestanas";
 import { CabeceraPagina } from "../_ui/CabeceraPagina";
 import { Chevron } from "../cuenta/marco";
 import "../liga/ranking.css";
@@ -50,7 +49,6 @@ export async function PlantillaLegal({
           ))}
         </ul>
       </div>
-      <BarraPestanas />
     </main>
   );
 }

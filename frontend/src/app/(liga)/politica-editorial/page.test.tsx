@@ -55,7 +55,7 @@ it("secciones en el orden de la maqueta y cinco tipos de contenido publicado", a
     editorial.editorial_independencia_titulo, editorial.editorial_no_titulo, editorial.editorial_errores_titulo,
   ]);
   expect(container.querySelectorAll(".cu-celda.alta b").length).toBeGreaterThanOrEqual(5);
-  expect(container.querySelector('[data-testid="barra"]')).not.toBeNull();
+  expect(container.querySelector('[data-testid="barra"]')).toBeNull();
 });
 
 it("dice que la IA es parte central y que una persona lee cada texto", async () => {

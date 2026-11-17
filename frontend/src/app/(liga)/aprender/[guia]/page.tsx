@@ -7,7 +7,6 @@ import { urlsDeIdiomas } from "@/i18n/rutas";
 import { escaparJsonLd } from "@/lib/blog/publico";
 import { enlacesFirma } from "@/components/FirmaAutor";
 import { AUTOR_PUBLICO, URL_PUBLICA, metadataCompartir } from "@/lib/sitio";
-import { BarraPestanas } from "../../_ui/BarraPestanas";
 import { CabeceraPagina } from "../../_ui/CabeceraPagina";
 import { Contacto } from "../../legal/datos";
 import { GUIAS, guiasVisibles } from "../guias";
@@ -64,6 +63,5 @@ export default async function PaginaGuia({ params }: Props) {
       </li></ul>
       <p className="cu-pie">{t.rich("learn_ayuda", { correo: () => <Contacto uso="general" /> })}</p>
     </div>
-    <BarraPestanas />
   </main>;
 }

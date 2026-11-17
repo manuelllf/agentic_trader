@@ -6,17 +6,6 @@ const pedir = (ruta: string, cabeceras: Record<string, string> = {}) =>
   middleware(new NextRequest(`https://vennett.app${ruta}`, { headers: cabeceras }));
 const EN = { "accept-language": "en-US,en;q=0.9" };
 
-describe("middleware: catálogo mínimo para el críptico y el blog", () => {
-  it("el críptico y el blog, en cualquier idioma, reciben la cabecera; el resto no", () => {
-    for (const ruta of ["/criptico", "/criptico/12", "/en/criptico/archivo", "/blog", "/en/blog/algo", "/blog/boletin/baja"]) {
-      expect(pedir(ruta).headers.get("x-middleware-request-x-vennett-catalogo")).toBe("minimo");
-    }
-    for (const ruta of ["/liga", "/como-funciona", "/aprender/que-es-la-liga", "/quienes-somos", "/criptico-no"]) {
-      expect(pedir(ruta).headers.get("x-middleware-request-x-vennett-catalogo")).toBeNull();
-    }
-  });
-});
-
 describe("middleware: idioma en las páginas públicas", () => {
   it("un dispositivo en inglés sin elección pasa a la versión /en, con su query", () => {
     const r = pedir("/liga?vista=tabla", EN);

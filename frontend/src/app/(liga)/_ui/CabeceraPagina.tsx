@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { anotarTitulo, cambioDeRuta, leerOrigen, type Origen } from "@/lib/liga/origen";
+import { Sesion } from "../_sesion/Sesion";
 import { CabeceraApp } from "./CabeceraApp";
 
 /** Anota cada cambio de ruta de la liga (y el título cuando ya está puesto) para saber de dónde se viene. */
@@ -37,6 +38,6 @@ export function CabeceraPagina({ titulo, derecha }: { titulo: string; derecha?: 
       <span>{origen.titulo}</span>
     </button>
     <p className="cab-titulo">{titulo}</p>
-    <div className="cab-der">{derecha}</div>
+    <div className="cab-der">{derecha ?? <Sesion />}</div>
   </header>;
 }

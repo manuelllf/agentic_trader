@@ -57,7 +57,7 @@ it("estructura: título, secciones en orden y barra de pestañas", async () => {
     editorial.about_quien_titulo, editorial.about_hacemos_titulo, editorial.about_ia_titulo,
     editorial.about_porque_titulo, editorial.about_pago_titulo, editorial.about_escribenos_titulo,
   ]);
-  expect(container.querySelector('[data-testid="barra"]')).not.toBeNull();
+  expect(container.querySelector('[data-testid="barra"]')).toBeNull();
 });
 
 it("la IA se presenta como el corazón del producto y enlaza a Cómo funciona", async () => {

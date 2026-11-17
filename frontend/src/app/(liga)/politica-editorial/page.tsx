@@ -4,7 +4,6 @@ import { localeTag, normalizeLocale } from "@/i18n/locale";
 import { urlsDeIdiomas } from "@/i18n/rutas";
 import { escaparJsonLd } from "@/lib/blog/publico";
 import { FECHA_EDITORIAL, URL_PUBLICA, metadataCompartir } from "@/lib/sitio";
-import { BarraPestanas } from "../_ui/BarraPestanas";
 import { CabeceraPagina } from "../_ui/CabeceraPagina";
 import { Chevron } from "../aprender/_ui/Guias";
 import { Contacto } from "../legal/datos";
@@ -93,7 +92,6 @@ export default async function PoliticaEditorial() {
 
         <p className="pg-pie">{t("editorial_pie", { fecha: revision })}</p>
       </div>
-      <BarraPestanas />
     </main>
   );
 }

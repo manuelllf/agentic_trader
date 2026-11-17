@@ -4,7 +4,6 @@ import { normalizeLocale } from "@/i18n/locale";
 import { urlsDeIdiomas } from "@/i18n/rutas";
 import { escaparJsonLd } from "@/lib/blog/publico";
 import { AUTOR_PUBLICO, PERFILES_PUBLICOS, URL_PUBLICA, metadataCompartir } from "@/lib/sitio";
-import { BarraPestanas } from "../_ui/BarraPestanas";
 import { CabeceraPagina } from "../_ui/CabeceraPagina";
 import { Chevron } from "../aprender/_ui/Guias";
 import { Contacto, TITULAR } from "../legal/datos";
@@ -74,7 +73,6 @@ export default async function QuienesSomos() {
 
         <p className="pg-pie">{t("help_disclaimer")}</p>
       </div>
-      <BarraPestanas />
     </main>
   );
 }
