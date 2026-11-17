@@ -4,7 +4,7 @@
 // opción, «Entrar» va como botón directo (DESIGN §7).
 
 import { PLANES_VISIBLES } from "@/lib/liga/planes";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import { useSesion } from "./SesionContext";

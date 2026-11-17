@@ -12,6 +12,7 @@ const cifras = vi.hoisted(() => ({ valor: null as unknown }));
 
 vi.mock("@/lib/aprender", () => ({ leerMercado: async () => mercado.valor, cifrasDelMetodo: () => cifras.valor }));
 vi.mock("@/lib/sitio", () => ({ metadataCompartir: () => ({}) }));
+vi.mock("next-intl", async (importOriginal) => ({ ...(await importOriginal<object>()), useLocale: () => "es" }));
 vi.mock("next-intl/server", () => ({
   getTranslations: async () => createTranslator({ locale: "es", messages }),
   getLocale: async () => "es",

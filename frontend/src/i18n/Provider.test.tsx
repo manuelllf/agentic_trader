@@ -6,7 +6,8 @@ import { guardarIdioma } from "@/lib/liga/api";
 import { LanguageProvider, useLanguage } from "./Provider";
 import type { Locale } from "./locale";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+const router = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
 vi.mock("@/lib/liga/cache", () => ({ refrescarPresentacion: vi.fn() }));
 vi.mock("@/lib/liga/api", () => ({
   guardarIdioma: vi.fn(async (idioma: Locale): Promise<{ idioma: Locale } | string> => ({ idioma })),
@@ -50,6 +51,49 @@ afterEach(async () => {
   for (const nombre of ["vennett_locale", "vennett_visitor_locale"]) document.cookie = `${nombre}=; Path=/; Max-Age=0`;
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  window.history.replaceState({}, "", "/");
+});
+
+describe("LanguageProvider en las páginas públicas con una URL por idioma", () => {
+  it("elegir inglés guarda la elección y va a la versión /en, con su query y sin recargar el catálogo", async () => {
+    const pedir = vi.fn();
+    vi.stubGlobal("fetch", pedir);
+    document.cookie = "vennett_locale=es; Path=/"; // con elección guardada no se detecta el dispositivo
+    window.history.replaceState({}, "", "/liga?vista=tabla");
+    await montar("es");
+    await act(async () => { await contexto?.selectLocale("en"); });
+    expect(router.push).toHaveBeenCalledWith("/en/liga?vista=tabla");
+    expect(cookie("vennett_locale")).toBe("en");
+    expect(pedir).not.toHaveBeenCalled();
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("elegir español desde la portada en inglés va a la raíz", async () => {
+    window.history.replaceState({}, "", "/en");
+    await montar("en");
+    await act(async () => { await contexto?.selectLocale("es"); });
+    expect(router.push).toHaveBeenCalledWith("/");
+    expect(cookie("vennett_locale")).toBe("es");
+  });
+
+  it("fuera de esas páginas cambia el idioma en el sitio, sin cambiar de URL", async () => {
+    catalogoEs();
+    window.history.replaceState({}, "", "/mias");
+    await montar("en");
+    await act(async () => { await contexto?.selectLocale("es"); });
+    expect(router.push).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(contexto?.locale).toBe("es"));
+    expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it("si el servidor entrega otro idioma, por ejemplo al pasar de /liga a /en/liga, el proveedor lo sigue", async () => {
+    await montar("es");
+    expect(contexto?.locale).toBe("es");
+    await act(async () => {
+      raiz?.render(<LanguageProvider locale="en" messages={{ common_idioma: "Language" }}><Captura /></LanguageProvider>);
+    });
+    expect(contexto?.locale).toBe("en");
+  });
 });
 
 describe("LanguageProvider al entrar en la cuenta", () => {

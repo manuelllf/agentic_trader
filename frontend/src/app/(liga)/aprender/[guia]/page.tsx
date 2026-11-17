@@ -1,7 +1,9 @@
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { leerCiclo, leerMercado } from "@/lib/aprender";
+import { normalizeLocale } from "@/i18n/locale";
+import { urlsDeIdiomas } from "@/i18n/rutas";
 import { escaparJsonLd } from "@/lib/blog/publico";
 import { AUTOR_PUBLICO, URL_PUBLICA, metadataCompartir } from "@/lib/sitio";
 import { BarraPestanas } from "../../_ui/BarraPestanas";
@@ -38,7 +40,7 @@ export default async function PaginaGuia({ params }: Props) {
   const datos = {
     "@context": "https://schema.org", "@type": "Article",
     headline: t(`learn_${g.clave}_t`), description: t(`learn_${g.clave}_lead`),
-    inLanguage: locale, mainEntityOfPage: `${URL_PUBLICA}/aprender/${g.slug}`,
+    inLanguage: locale, mainEntityOfPage: urlsDeIdiomas(URL_PUBLICA, `/aprender/${g.slug}`)[normalizeLocale(locale) ?? "es"],
     author: { "@type": "Person", name: AUTOR_PUBLICO },
     publisher: { "@type": "Organization", name: "Vennett" },
   };

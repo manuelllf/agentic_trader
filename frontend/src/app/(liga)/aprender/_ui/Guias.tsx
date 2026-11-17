@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import type { getTranslations } from "next-intl/server";
 import type { CicloAprender, MercadoAprender } from "@/lib/aprender";
 import { Escudo, escudoCasa } from "../../_ui/Escudo";

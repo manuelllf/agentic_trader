@@ -76,8 +76,35 @@ describe("idioma del dispositivo en el boletín y el críptico", () => {
     expect(rutaDeIdioma("/blog", null, "es-ES,en;q=0.5")).toBeNull();
     expect(rutaDeIdioma("/blog", null, null)).toBeNull();
   });
-  it("las rutas en inglés y las demás no cambian", () => {
+  it("las rutas en inglés y las privadas no cambian", () => {
     expect(rutaDeIdioma("/en/blog", null, "en")).toBeNull();
-    expect(rutaDeIdioma("/liga", null, "en")).toBeNull();
+    expect(rutaDeIdioma("/en/liga", null, "en")).toBeNull();
+    expect(rutaDeIdioma("/cuenta", null, "en")).toBeNull();
+    expect(rutaDeIdioma("/mias", null, "en")).toBeNull();
+    expect(rutaDeIdioma("/auth/callback", null, "en")).toBeNull();
+  });
+});
+
+describe("idioma del dispositivo en las páginas públicas", () => {
+  it.each([
+    ["/", "/en"],
+    ["/liga", "/en/liga"],
+    ["/como-funciona", "/en/como-funciona"],
+    ["/aprender", "/en/aprender"],
+    ["/aprender/que-pasa-al-cierre", "/en/aprender/que-pasa-al-cierre"],
+    ["/premio", "/en/premio"],
+    ["/legal/terminos", "/en/legal/terminos"],
+    ["/entrar", "/en/entrar"],
+    ["/registrar", "/en/registrar"],
+    ["/recuperar", "/en/recuperar"],
+    ["/liga/", "/en/liga"],
+  ])("%s pasa a %s con el dispositivo en inglés y sin elección", (ruta, destino) => {
+    expect(rutaDeIdioma(ruta, null, "en-US,en;q=0.9")).toBe(destino);
+  });
+  it("con elección guardada, con dispositivo en español o sin cabecera no se redirige", () => {
+    expect(rutaDeIdioma("/liga", "es", "en-US")).toBeNull();
+    expect(rutaDeIdioma("/", "en", "en-US")).toBeNull();
+    expect(rutaDeIdioma("/liga", null, "es-ES")).toBeNull();
+    expect(rutaDeIdioma("/", null, null)).toBeNull();
   });
 });

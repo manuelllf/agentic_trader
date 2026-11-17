@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import type { ReactNode } from "react";
 import { SelectorIdioma } from "@/components/SelectorIdioma";
 import { useLanguage } from "@/i18n/Provider";

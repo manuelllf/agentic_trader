@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { PlantillaLegal } from "../PlantillaLegal";
 import { getLocale, getTranslations } from "next-intl/server";
 import { metadataCompartir } from "@/lib/sitio";

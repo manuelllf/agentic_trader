@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { getLocale, getTranslations } from "next-intl/server";
 import { leerCiclo } from "@/lib/aprender";
 import { metadataCompartir } from "@/lib/sitio";

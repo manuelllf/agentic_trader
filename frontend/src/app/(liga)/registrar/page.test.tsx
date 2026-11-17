@@ -23,6 +23,7 @@ vi.mock("../_ui/MarcoAcceso", () => ({ MarcoAcceso: ({ children }: { children: R
 vi.mock("../_ui/AccesoProveedor", () => ({ BotonGoogle: () => null, Separador: () => null }));
 vi.mock("next-intl", async (importOriginal) => ({
   ...(await importOriginal<object>()),
+  useLocale: () => "es",
   useTranslations: () => Object.assign(
     (key: string) => mensajes[key as keyof typeof mensajes] ?? key,
     { rich: (key: string) => mensajes[key as keyof typeof mensajes] ?? key },

@@ -6,11 +6,12 @@
 // enseña un estado vacío honesto en vez de inventar filas.
 
 import { Suspense, useRef } from "react";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { normalizeLocale } from "@/i18n/locale";
 import type { Locale } from "@/i18n/locale";
+import { rutaEnIdioma } from "@/i18n/rutas";
 import { Actividad, BarraPestanas, CabeceraApp, Cargando, ErrorLiga, Vacio } from "../_ui";
 import { useTituloEnCabecera } from "../_ui/useTituloEnCabecera";
 import { guardarVolver } from "@/lib/liga/volver";
@@ -102,7 +103,7 @@ function LigaContenido() {
   const setVista = (valor: Vista) => {
     const query = new URLSearchParams(parametros.toString());
     if (valor !== "semana") query.set("vista", valor); else query.delete("vista");
-    router.replace(`/liga${query.size ? `?${query}` : ""}`, { scroll: false });
+    router.replace(rutaEnIdioma(`/liga${query.size ? `?${query}` : ""}`, locale), { scroll: false });
   };
 
   // Caché compartida (`lib/liga/cache.ts`): al volver a «Liga» se pinta lo último bueno al
@@ -131,7 +132,7 @@ function LigaContenido() {
 
   const abrir = (id: string | null) => {
     if (id) guardarVolver(t("ficha_volver_liga"), `/liga${vista !== "semana" ? `?vista=${vista}` : ""}`, id);
-    router.push(id ? `/ficha/${id}` : `/entrar?next=${encodeURIComponent("/liga")}`);
+    router.push(id ? `/ficha/${id}` : rutaEnIdioma(`/entrar?next=${encodeURIComponent("/liga")}`, locale));
   };
 
   if (cargandoPortada) {

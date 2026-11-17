@@ -15,6 +15,29 @@ describe("indexación", () => {
   });
 });
 
+describe("versiones por idioma", () => {
+  const base = { titulo: "T", descripcion: "D" };
+  it.each([
+    ["es", "/liga", "https://vennett.app/liga"],
+    ["en", "/liga", "https://vennett.app/en/liga"],
+    ["es", "/", "https://vennett.app/"],
+    ["en", "/", "https://vennett.app/en"],
+  ])("en %s, %s es su propia canónica y anuncia las dos versiones", (idioma, ruta, canonica) => {
+    const alternates = metadataCompartir({ ...base, idioma, ruta }).alternates;
+    expect(alternates?.canonical).toBe(canonica);
+    expect(alternates?.languages).toEqual({
+      es: ruta === "/" ? "https://vennett.app/" : `https://vennett.app${ruta}`,
+      en: ruta === "/" ? "https://vennett.app/en" : `https://vennett.app/en${ruta}`,
+      "x-default": ruta === "/" ? "https://vennett.app/" : `https://vennett.app${ruta}`,
+    });
+  });
+
+  it("sin versión propia o sin indexar no hay canonical ni hreflang", () => {
+    expect(metadataCompartir({ ...base, idioma: "en", ruta: "/ficha/1" }).alternates).toBeUndefined();
+    expect(metadataCompartir({ ...base, idioma: "en", ruta: "/liga", indexar: false }).alternates).toBeUndefined();
+  });
+});
+
 describe("metadataCompartir", () => {
   it.each([
     ["es", "es_ES", "Logotipo de Vennett"],
@@ -25,7 +48,7 @@ describe("metadataCompartir", () => {
       title: "Título", description: "Descripción",
       openGraph: {
         title: "Título", description: "Descripción", siteName: "Vennett", type: "website",
-        url: "https://vennett.app/legal/aviso", locale,
+        url: idioma === "en" ? "https://vennett.app/en/legal/aviso" : "https://vennett.app/legal/aviso", locale,
         images: [{ url: "https://vennett.app/og-vennett.png", width: 1200, height: 630, alt }],
       },
       twitter: {

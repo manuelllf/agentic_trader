@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { normalizeLocale } from "@/i18n/locale";
+import { esRutaTraducible, urlsDeIdiomas } from "@/i18n/rutas";
 import es from "../../messages/es/system.json";
 import en from "../../messages/en/system.json";
 
-export const AUTOR_PUBLICO = "Admin";
+export const AUTOR_PUBLICO = "Manuel";
 export const URL_PUBLICA = "https://vennett.app";
 
 export function metadataCompartir({ titulo, descripcion, idioma, ruta, indexar = true }: {
@@ -15,11 +16,16 @@ export function metadataCompartir({ titulo, descripcion, idioma, ruta, indexar =
     url: `${URL_PUBLICA}/og-vennett.png`, width: 1200, height: 630,
     alt: textos.system_imagen_compartir_alt,
   };
+  // Las páginas con versión en cada idioma se anuncian entre sí y cada una es su propia canónica.
+  const versiones = indexar && esRutaTraducible(ruta) ? urlsDeIdiomas(URL_PUBLICA, ruta) : null;
+  const url = versiones ? versiones[locale] : `${URL_PUBLICA}${ruta}`;
   return {
     title: titulo, description: descripcion, robots: { index: indexar, follow: indexar },
+    ...(versiones && { alternates: { canonical: url,
+      languages: { es: versiones.es, en: versiones.en, "x-default": versiones.es } } }),
     openGraph: {
       title: titulo, description: descripcion, siteName: "Vennett", type: "website",
-      url: `${URL_PUBLICA}${ruta}`, locale: locale === "en" ? "en_US" : "es_ES", images: [imagen],
+      url, locale: locale === "en" ? "en_US" : "es_ES", images: [imagen],
     },
     twitter: { card: "summary_large_image", title: titulo, description: descripcion, images: [imagen] },
   };

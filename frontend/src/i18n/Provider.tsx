@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react";
 import { LOCALE_CHANGED, LOCALE_COOKIE, normalizeLocale, idiomaAlEntrar, idiomaDeRuta,
   deviceLocale, readCookie, VISITOR_COOKIE, type Locale } from "./locale";
+import { esRutaTraducible, rutaEnIdioma } from "./rutas";
 
 type Account = { id: string; locale: Locale | null };
 type LanguageContext = {
@@ -50,6 +51,15 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
     if (initialLocale === locale) setMessages(initialMessages);
   }, [initialLocale, initialMessages, locale]);
 
+  // Pasar de `/liga` a `/en/liga` no remonta el proveedor: si el servidor cambia de idioma, se sigue su idioma.
+  useEffect(() => {
+    if (initialLocale === defaultLocale.current) return;
+    defaultLocale.current = initialLocale;
+    visibleLocale.current = initialLocale;
+    setLocale(initialLocale);
+    setMessages(initialMessages);
+  }, [initialLocale, initialMessages]);
+
   // Solo la elección del usuario se guarda en cookies; el idioma del dispositivo es un punto de partida.
   const applyLocale = useCallback(async (next: Locale, { visitor, persist }: { visitor: boolean; persist: boolean }) => {
     const ticket = ++revision.current;
@@ -81,7 +91,14 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
   }, [router]);
 
   const selectLocale = useCallback(async (next: Locale) => {
-    await applyLocale(next, { visitor: account.current === null, persist: true });
+    const { pathname, search, hash } = window.location;
+    if (esRutaTraducible(pathname)) {
+      // La página pública tiene una URL por idioma: se guarda la elección y se va a la otra versión.
+      writeLocale(next, account.current === null);
+      transition(() => router.push(`${rutaEnIdioma(pathname, next)}${search}${hash}`));
+    } else {
+      await applyLocale(next, { visitor: account.current === null, persist: true });
+    }
     // Con sesión, la elección va al perfil: una anterior de la portada ya no vale.
     if (account.current) clearVisitorLocale();
     if (!account.current || normalizeLocale(readCookie(LOCALE_COOKIE, document.cookie)) !== next) return;
@@ -91,7 +108,7 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
     if (account.current?.id !== owner) return;
     if (typeof result === "string") { setFailure(true); return; }
     account.current = { id: owner, locale: next };
-  }, [applyLocale]);
+  }, [applyLocale, router]);
 
   const setAccount = useCallback((next: Account | null) => {
     const previous = account.current;

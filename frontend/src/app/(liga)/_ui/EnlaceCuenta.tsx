@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { LanguageSelector } from "@/i18n/LanguageSelector";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useEffect, useRef, useState } from "react";
 import { Boton, CampoClave } from ".";
 import { useSupabase } from "@/lib/liga/supabase";

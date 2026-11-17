@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { acceptLanguage, CABECERA_IDIOMA_RUTA, idiomaDeRuta, LOCALE_COOKIE, normalizeLocale, rutaDeIdioma } from "./i18n/locale";
+import { esRutaTraducible, quitarIdioma } from "./i18n/rutas";
 
 // CSP con nonce (plan §14/§15, tarea 8.1). Por ahora en modo "solo informe": el navegador no
 // bloquea nada, solo lo reportaría si hubiera un `report-uri`/`report-to` (no hay todavía, así que
@@ -82,7 +83,18 @@ export function middleware(request: NextRequest) {
   // En petición: de aquí lo lee Next para firmar sus propios scripts inline con este nonce.
   requestHeaders.set("Content-Security-Policy-Report-Only", csp);
 
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  // Las páginas públicas con versión en inglés comparten fichero con la española: `/en/liga` sirve `/liga`
+  // con el idioma marcado en la cabecera. Lo que no está en la lista da 404 en inglés.
+  const pathname = request.nextUrl.pathname;
+  const reescrita = idiomaRuta && esRutaTraducible(pathname) ? quitarIdioma(pathname) : null;
+  let response: NextResponse;
+  if (reescrita) {
+    const url = request.nextUrl.clone();
+    url.pathname = reescrita;
+    response = NextResponse.rewrite(url, { request: { headers: requestHeaders } });
+  } else {
+    response = NextResponse.next({ request: { headers: requestHeaders } });
+  }
   const locale = idiomaRuta ?? normalizeLocale(request.cookies.get(LOCALE_COOKIE)?.value)
     ?? acceptLanguage(request.headers.get("accept-language"));
   response.headers.set("Content-Language", locale);

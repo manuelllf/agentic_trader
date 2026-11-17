@@ -1536,9 +1536,9 @@ html[data-theme="dark"] body:has(.lg .pel-portada) { background: #0E0F10; }
     font-size: 15px; color: var(--ink);
   }
 
-  .lg .sencilla:has(> .sencilla-cuerpo > a[href="/liga"].wide) > .sencilla-cuerpo {
+  .lg .sencilla:has(> .sencilla-cuerpo > a:is([href="/liga"], [href="/en/liga"]).wide) > .sencilla-cuerpo {
     width: 100%; max-width: var(--ancho-lectura); margin-inline: auto;
     justify-content: flex-start; align-items: flex-start; text-align: left;
   }
-  .lg .sencilla:has(> .sencilla-cuerpo > a[href="/liga"].wide) .btn.wide { width: auto; }
+  .lg .sencilla:has(> .sencilla-cuerpo > a:is([href="/liga"], [href="/en/liga"]).wide) .btn.wide { width: auto; }
 }

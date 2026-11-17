@@ -1,3 +1,5 @@
+import { esRutaTraducible, rutaEnIdioma } from "./rutas";
+
 export const LOCALES = ["es", "en"] as const;
 export type Locale = typeof LOCALES[number];
 export const CABECERA_IDIOMA_RUTA = "x-vennett-idioma";
@@ -69,11 +71,12 @@ export function recordarIdioma(idioma: Locale): void {
   document.cookie = `${LOCALE_COOKIE}=${idioma}; path=/; max-age=31536000; samesite=lax`;
 }
 
-// Sin elección guardada y con el dispositivo en inglés, el boletín y el críptico abren su versión en inglés.
+// Sin elección guardada y con el dispositivo en inglés, las páginas públicas abren su versión en inglés.
 // Sin cabecera de idioma (buscadores, por ejemplo) no se redirige: se queda en español.
 const RUTAS_CON_IDIOMA = ["/blog", "/criptico"];
 export function rutaDeIdioma(ruta: string, cookie: string | null | undefined, cabecera: string | null | undefined): string | null {
   if (idiomaDeRuta(ruta) || normalizeLocale(cookie)) return null;
   if (acceptLanguage(cabecera) !== "en") return null;
+  if (esRutaTraducible(ruta)) return rutaEnIdioma(ruta.length > 1 ? ruta.replace(/\/+$/, "") : ruta, "en");
   return RUTAS_CON_IDIOMA.some(base => ruta === base || ruta.startsWith(`${base}/`)) ? `/en${ruta}` : null;
 }

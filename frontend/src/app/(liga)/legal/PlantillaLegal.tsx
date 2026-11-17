@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import type { ReactNode } from "react";
 import { VERSION_LEGAL, fechaLegal } from "./datos";
 import { getLocale, getTranslations } from "next-intl/server";

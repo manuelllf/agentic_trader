@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import TurnstileWidget from "@/components/TurnstileWidget";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useEffect, useState } from "react";
 import { Boton, CampoClave } from "../_ui";
 import { BotonGoogle, Separador } from "../_ui/AccesoProveedor";

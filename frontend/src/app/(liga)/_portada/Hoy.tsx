@@ -4,7 +4,7 @@
 // La jornada de la liga es un ejemplo rotulado; el críptico y el artículo son los reales.
 
 import { useEffect, useState, type CSSProperties } from "react";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useLocale, useTranslations } from "next-intl";
 import { useLanguage } from "@/i18n/Provider";
 import { SelectorIdioma } from "@/components/SelectorIdioma";

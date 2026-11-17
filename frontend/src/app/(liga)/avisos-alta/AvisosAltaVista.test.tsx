@@ -9,7 +9,7 @@ vi.mock("@/i18n/Provider", () => ({ useLanguage: () => ({ locale: "es", changing
 vi.mock("next/link", () => ({ default: (props: ComponentProps<"a">) => createElement("a", props) }));
 vi.mock("next-intl", async () => {
   const textos = (await import("../../../../messages/es/account.json")).default as Record<string, string>;
-  return { useTranslations: () => (key: string) => textos[key] ?? key };
+  return { useTranslations: () => (key: string) => textos[key] ?? key, useLocale: () => "es" };
 });
 import { AvisosAltaVista } from "./AvisosAltaVista";
 

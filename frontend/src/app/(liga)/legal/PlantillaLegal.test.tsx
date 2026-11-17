@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createTranslator } from "next-intl";
 import legal from "../../../../messages/es/legal.json";
 
+vi.mock("next-intl", async (importOriginal) => ({ ...(await importOriginal<object>()), useLocale: () => "es" }));
 vi.mock("next-intl/server", () => ({
   getTranslations: async () => createTranslator({ locale: "es", messages: legal }),
   getLocale: async () => "es",

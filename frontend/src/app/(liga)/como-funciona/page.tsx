@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { Fragment } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { cifrasDelMetodo, leerMercado } from "@/lib/aprender";

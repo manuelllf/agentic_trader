@@ -16,7 +16,7 @@ vi.mock("next-intl", async () => {
   const es = { ...cuenta, ...planes };
   const t = (key: string, values?: Record<string, string | number>) =>
     (es[key] ?? key).replace(/\{(\w+)\}/g, (_, name: string) => String(values?.[name] ?? `{${name}}`));
-  return { useTranslations: () => t };
+  return { useTranslations: () => t, useLocale: () => "es" };
 });
 import { Sesion } from "./Sesion";
 

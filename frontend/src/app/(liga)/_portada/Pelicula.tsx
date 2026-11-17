@@ -7,7 +7,7 @@ import { localeTag } from "@/i18n/locale";
 import type { EstadoCriptico } from "@/lib/criptico/estado";
 import { PLANES_VISIBLES } from "@/lib/liga/planes";
 import { useLocale, useTranslations } from "next-intl";
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useEffect, useRef, useState } from "react";
 import { miles } from "@/lib/liga/format";
 import { montarPelicula } from "./pelicula/motor";

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/Enlace";
 import { useTranslations } from "next-intl";
 import { LanguageSelector } from "@/i18n/LanguageSelector";
 import { useSesion } from "../_sesion/SesionContext";

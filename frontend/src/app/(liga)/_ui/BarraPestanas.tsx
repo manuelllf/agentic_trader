@@ -2,9 +2,11 @@
 
 import { Campana } from "../_avisos/Campana";
 import { CREDITOS_VISIBLES } from "@/lib/liga/funciones";
-import { useTranslations } from "next-intl";
-import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
+import Link from "@/components/Enlace";
 import { useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
+import { normalizeLocale } from "@/i18n/locale";
+import { quitarIdioma, rutaEnIdioma } from "@/i18n/rutas";
 import { usePathname, useRouter } from "next/navigation";
 import { useSesion } from "../_sesion/SesionContext";
 import { getCatalogo, getCreditos, getPortada, misEstrategias, misLigas } from "@/lib/liga/api";
@@ -119,7 +121,10 @@ export function CierreDeTransicion() {
 
 export function BarraPestanas() {
   const t = useTranslations();
-  const ruta = usePathname();
+  const idioma = normalizeLocale(useLocale()) ?? "es";
+  const rutaActual = usePathname();
+  // Las pestañas se reconocen por la ruta sin el prefijo de idioma.
+  const ruta = rutaActual ? quitarIdioma(rutaActual) : rutaActual;
   const router = useRouter();
   const { estado, yo, cerrarSesion } = useSesion();
   const panel = yo?.aal2 ? "/admin" : "/cuenta/verificacion?next=/admin";
@@ -150,7 +155,7 @@ export function BarraPestanas() {
   // entrar en el viewport) como los datos de las otras pestañas, después del primer pintado: al
   // tocarlas ya están calientes en la caché de módulo (`lib/liga/cache.ts`) y pintan al instante.
   useEffect(() => {
-    for (const p of PESTANAS) router.prefetch(p.href);
+    for (const p of PESTANAS) router.prefetch(rutaEnIdioma(p.href, idioma));
     const calentar = () => {
       precargar("catalogo", getCatalogo);
       if (estado === "dentro") {
@@ -168,7 +173,7 @@ export function BarraPestanas() {
     }
     const timer = window.setTimeout(calentar, 200);
     return () => window.clearTimeout(timer);
-  }, [estado, router]);
+  }, [estado, router, idioma]);
 
   return (
     <nav className={`tabbar${indice === null ? " sin-activa" : ""}`} aria-label={t("common_secciones")}
@@ -200,7 +205,7 @@ export function BarraPestanas() {
               // Tocar la pestaña activa no anima nada: sigue el enlace normal.
               if (plano && !activa) {
                 event.preventDefault();
-                navegarConTransicion(p.href, router);
+                navegarConTransicion(rutaEnIdioma(p.href, idioma), router);
               }
             }}>
             <EstadoEnlace claseEtiqueta={contraida ? "etiqueta sr-only-escritorio" : "etiqueta"} texto={t(etiquetaDe(p.clave, ruta))} icono={p.icono} />
