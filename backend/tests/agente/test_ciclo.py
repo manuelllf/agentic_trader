@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -84,12 +84,19 @@ def _entorno(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(herramientas, "ejecutar", ejecutar)
 
 
-def _preparar(s: Session, precio: str = "100") -> herramientas.Contexto:
+def _preparar(s: Session, precio: str = "100", ficha: bool = True) -> herramientas.Contexto:
     libro.abrir_libro(s, HOY)
     libro.guardar_precios(s, "AAA", [(HOY, None, None, None, Decimal(precio), 1)])
+    if ficha:
+        _ficha(s, "AAA")
     ej = tareas.reclamar(s, Tarea.DESPERTAR, HOY)
     assert ej is not None
     return herramientas.Contexto(hoy=HOY, ejecucion_id=ej.id)
+
+
+def _ficha(s: Session, ticker: str) -> None:
+    s.execute(text("insert into agente.fichas (ticker, contenido) values (:t, cast(:c as jsonb))"),
+              {"t": ticker, "c": '{"tesis": "t"}'})
 
 
 def _una(s: Session, sql: str):
@@ -203,12 +210,43 @@ def test_violacion_de_limites_rechaza_sin_llamar_al_revisor(sesion_agente: Sessi
     grande = json.loads(json.dumps(OPERAR))
     grande["decision"]["operaciones"][0]["importe"] = "4000"  # pasa del 30 % de peso
     revisor = Falso([])
-    d = _despertar(s, ctx, Falso([FILOSOFIA, grande]), revisor, sombra=False)
+    agente = Falso([FILOSOFIA, grande, grande])  # la corrección repite lo mismo: se rechaza
+    d = _despertar(s, ctx, agente, revisor, sombra=False)
     assert d is not None
     assert revisor.llamadas == []
-    fila = _una(s, "select revisor_veredicto, propuesta from agente.decisiones")
+    assert "peso_maximo" in agente.llamadas[2][1]  # la corrección recibe el motivo exacto
+    fila = _una(s, "select revisor_veredicto, revisor_motivo, propuesta from agente.decisiones")
     assert fila.revisor_veredicto == "rechazada"
+    assert "peso_maximo" in fila.revisor_motivo
     assert "peso_maximo" in {v["codigo"] for v in fila.propuesta["violaciones"]}
+    assert _una(s, "select count(*) as n from agente.ordenes").n == 0
+
+
+def test_compra_sin_ficha_se_corrige_y_se_rechaza_con_su_motivo(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s, ficha=False)
+    agente = Falso([FILOSOFIA, OPERAR, OPERAR])
+    d = _despertar(s, ctx, agente, Falso([]), sombra=False)
+    assert d is not None
+    assert "sin_ficha" in agente.llamadas[2][1]
+    fila = _una(s, "select revisor_veredicto, revisor_motivo from agente.decisiones")
+    assert (fila.revisor_veredicto, "sin_ficha" in fila.revisor_motivo) == ("rechazada", True)
+    assert _una(s, "select count(*) as n from agente.ordenes").n == 0
+
+
+def test_compra_con_cierre_viejo_no_se_hace(sesion_agente: Session) -> None:
+    s = sesion_agente
+    libro.abrir_libro(s, HOY)
+    viejo = HOY - timedelta(days=10)
+    libro.guardar_precios(s, "AAA", [(viejo, None, None, None, Decimal("100"), 1)])
+    _ficha(s, "AAA")
+    ej = tareas.reclamar(s, Tarea.DESPERTAR, HOY)
+    assert ej is not None
+    ctx = herramientas.Contexto(hoy=HOY, ejecucion_id=ej.id)
+    agente = Falso([FILOSOFIA, OPERAR, OPERAR])
+    _despertar(s, ctx, agente, Falso([]), sombra=False)
+    fila = _una(s, "select revisor_veredicto, revisor_motivo from agente.decisiones")
+    assert (fila.revisor_veredicto, "cierre_antiguo" in fila.revisor_motivo) == ("rechazada", True)
     assert _una(s, "select count(*) as n from agente.ordenes").n == 0
 
 
@@ -341,6 +379,10 @@ class Caido:
         self.llamadas = 0
 
     def chat(self, system: str, user: str, **_: object) -> str:
+        self.llamadas += 1
+        raise TimeoutError("sin respuesta")
+
+    def chat_con_herramientas(self, *_a: object, **_k: object) -> dict:
         self.llamadas += 1
         raise TimeoutError("sin respuesta")
 
@@ -486,6 +528,32 @@ def test_la_llamada_fallida_queda_aunque_el_ciclo_deshaga_lo_suyo(sesion_agente:
     (fila,) = _llamadas(s, ej_id)
     assert fila.ok is False
     assert "TimeoutError: sin red" in fila.error
+
+
+def test_la_correccion_registra_su_conversacion_desde_el_principio(sesion_agente: Session) -> None:
+    # Una corrección empieza una conversación nueva: sus primeros mensajes también se guardan.
+    s = sesion_agente
+    hoy = date(2027, 2, 2)
+    ej_id = _confirmada(s, hoy)
+    llm = Falso(['{"tool": "portfolio", "args": {}}',
+                 '{"decision": {"tipo": "nada", "razonamiento": "primera"}}',
+                 '{"decision": {"tipo": "nada", "razonamiento": "corregida"}}'])
+    g = ciclo.Presupuesto(s, hoy, ej_id, Decimal("0"))
+    ciclo._bucle(s, g, llm, herramientas.Contexto(hoy=hoy), "base", [])
+    ciclo._bucle(s, g, llm, herramientas.Contexto(hoy=hoy), "base", [], "corrige")
+    *_, corregida = _llamadas(s, ej_id)
+    assert [m["role"] for m in corregida.enviado] == ["system", "user"]
+    assert "corregida" in corregida.respuesta
+
+
+def test_el_revisor_guarda_su_razonamiento(sesion_agente: Session) -> None:
+    s = sesion_agente
+    hoy = date(2027, 2, 3)
+    ej_id = _confirmada(s, hoy)
+    g = ciclo.Presupuesto(s, hoy, ej_id, Decimal("0"))
+    ciclo.Medido(g, ConRazonamiento([json.dumps(APRUEBA)]), ajustes.modelo_revisor).chat("s", "u")
+    (fila,) = _llamadas(s, ej_id)
+    assert (fila.etapa, fila.razonamiento, fila.ok) == ("revisor", "pienso en voz alta", True)
 
 
 def test_el_revisor_deja_lo_que_se_le_envio_y_lo_que_respondio(sesion_agente: Session) -> None:

@@ -60,7 +60,7 @@ export interface OperacionPropuesta {
 }
 export interface Propuesta {
   tipo?: TipoDecision; operaciones?: OperacionPropuesta[];
-  violaciones?: ({ codigo?: string; mensaje?: string } | string)[];
+  violaciones?: ({ codigo?: string; detalle?: string; mensaje?: string } | string)[];
 }
 export interface OrdenAgente {
   id: number; ticker: string; lado: "compra" | "venta"; acciones: string | null; importe_objetivo: string | null;

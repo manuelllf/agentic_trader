@@ -127,7 +127,9 @@ class Presupuesto:
         # Lo comparten la decisión y sus llamadas: así el panel enseña cómo se llegó a cada una.
         self.ciclo = uuid.uuid4()
         self._pasos: dict[str, int] = {}
-        self._vistos: dict[str, int] = {}
+        # Hasta dónde se ha registrado de la lista de mensajes que se está usando ahora.
+        self._lista: list[dict] | None = None
+        self._visto = 0
 
     def llamar(self, llm: Any, modelo: str, system: str, user: str,  # noqa: ANN401
                etapa: str = "revisor") -> str:
@@ -136,15 +138,28 @@ class Presupuesto:
             llm, modelo, lambda: _llamar(llm, system, user), etapa, enviado,
             lambda texto: (texto, None, []))
 
+    def _nuevos(self, mensajes: list[dict]) -> list[dict]:
+        """Lo que el modelo aún no había visto de esta lista. Una lista nueva empieza desde cero:
+        la corrección reinicia la conversación y no hereda el contador anterior."""
+        if mensajes is not self._lista:
+            self._lista, self._visto = mensajes, 0
+        nuevos = [m for m in mensajes[self._visto:] if m.get("role") != "assistant"]
+        self._visto = len(mensajes)
+        return nuevos
+
     def llamar_herramientas(self, llm: Any, modelo: str, mensajes: list[dict],  # noqa: ANN401
                             herr: list[dict] | None, etapa: str = "agente") -> dict:
         # De cada vuelta solo se guarda lo nuevo; sus propias respuestas ya quedaron en su fila.
-        nuevos = [m for m in mensajes[self._vistos.get(etapa, 0):] if m.get("role") != "assistant"]
-        self._vistos[etapa] = len(mensajes)
         return self._con_presupuesto(
-            llm, modelo, lambda: _llamar_herramientas(llm, mensajes, herr), etapa, nuevos,
+            llm, modelo, lambda: _llamar_herramientas(llm, mensajes, herr), etapa,
+            self._nuevos(mensajes),
             lambda r: (r["content"], (r.get("mensaje") or {}).get("reasoning_content"),
                        r["tool_calls"]))
+
+    def llamar_texto(self, llm: Any, modelo: str, mensajes: list[dict],  # noqa: ANN401
+                     etapa: str) -> str:
+        """Respuesta de texto por la misma vía que el agente: así se guarda su razonamiento."""
+        return self.llamar_herramientas(llm, modelo, mensajes, None, etapa)["content"]
 
     def _anotar(self, etapa: str, modelo: str, enviado: list[dict], salida: tuple | None,
                 coste: Decimal | None, inicio: float, error: str | None) -> None:
@@ -201,7 +216,8 @@ class Medido:
         self.g, self.llm, self.modelo, self.etapa = g, llm, modelo, etapa
 
     def chat(self, system: str, user: str) -> str:
-        return self.g.llamar(self.llm, self.modelo, system, user, self.etapa)
+        mensajes = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        return self.g.llamar_texto(self.llm, self.modelo, mensajes, self.etapa)
 
 
 def _evento(s: Session, tipo: str, ejecucion_id: int | None,
@@ -370,10 +386,17 @@ def _bucle(s: Session, g: Presupuesto, llm: Any, ctx: herramientas.Contexto,  # 
     raise Fallo(f"sin decisión tras agotar los pasos; herramientas pedidas: {pedidas}")
 
 
-def _ultimo_cierre(s: Session, ticker: str, hoy: date) -> Decimal | None:
-    v = s.execute(text("select cierre from agente.precios where ticker = :t and fecha <= :d "
-                       "order by fecha desc limit 1"), {"t": ticker, "d": hoy}).scalar()
-    return None if v is None else D(str(v))
+def _ultimo_cierre(s: Session, ticker: str, hoy: date) -> tuple[Decimal | None, date | None]:
+    fila = s.execute(text("select fecha, cierre from agente.precios "
+                          "where ticker = :t and fecha <= :d order by fecha desc limit 1"),
+                     {"t": ticker, "d": hoy}).first()
+    return (None, None) if fila is None else (D(str(fila.cierre)), fila.fecha)
+
+
+def _tiene_ficha(s: Session, ticker: str) -> bool:
+    s.flush()  # una ficha escrita en este mismo ciclo ya cuenta
+    return s.execute(text("select 1 from agente.fichas where ticker = :t"),
+                     {"t": ticker}).first() is not None
 
 
 def _violaciones(s: Session, d: Decision, hoy: date) -> list[dict]:
@@ -382,14 +405,16 @@ def _violaciones(s: Session, d: Decision, hoy: date) -> list[dict]:
     out: list[dict] = []
     for op in d.operaciones:
         ticker = op.ticker.upper()
-        precio = _ultimo_cierre(s, ticker, hoy)
+        precio, fecha_cierre = _ultimo_cierre(s, ticker, hoy)
         if precio is None or precio <= _CERO:
             vs = [limites.Violacion("sin_precio", f"No hay cierre guardado de {ticker}.")]
         elif op.lado == "compra":
             importe = op.importe if op.importe is not None else op.acciones * precio  # type: ignore[operator]
-            vs = limites.comprobar_compra(limites.PropuestaCompra(
-                ticker, importe, precio, op.salidas, op.ruptura, op.proximo_evento),
-                cartera, hoy, parada)
+            vs = (limites.comprobar_cierre_reciente(ticker, fecha_cierre, hoy)
+                  + limites.comprobar_ficha(ticker, _tiene_ficha(s, ticker))
+                  + limites.comprobar_compra(limites.PropuestaCompra(
+                      ticker, importe, precio, op.salidas, op.ruptura, op.proximo_evento),
+                      cartera, hoy, parada))
         else:
             acciones = (op.acciones if op.acciones is not None
                         else limites.acciones_por_importe(op.importe, precio))  # type: ignore[arg-type]
@@ -470,7 +495,7 @@ def _ciclo(s: Session, hoy: date, g: Presupuesto, llm: Any, revisor_llm: Any,  #
 
     if veredicto == "corregir":
         previa = json.dumps(d.model_dump(mode="json"), ensure_ascii=False)
-        nota = (f"The independent reviewer asked for a correction: {motivo}\n"
+        nota = (f"A correction is needed. Reason: {motivo}\n"
                 f"Your previous decision: {previa}\nGive a corrected final decision.")
         try:
             d = _bucle(s, g, llm, ctx, base, rastro, nota)
@@ -502,7 +527,9 @@ def _juzgar(g: Presupuesto, d: Decision, viol: list[dict], filosofia: str,
             rastro: list[dict], revisor_llm: Any) -> tuple[str, str]:  # noqa: ANN401
     """Límites primero (sin gastar en revisor), luego el revisor salvo que no se opere."""
     if viol:
-        return "rechazada", "Límites incumplidos: " + ", ".join(sorted({v["codigo"] for v in viol}))
+        # Una vuelta de corrección con el motivo exacto; si sigue igual, se rechaza con ese motivo.
+        return "corregir", "Límites incumplidos: " + "; ".join(
+            f"{v['codigo']}: {v['detalle']}" for v in viol)
     if d.tipo == "nada":
         return "aprobada", "Sin operaciones: no requiere revisión"
     datos = [{"tool": r["tool"], "args": r["args"], "resultado": r["resultado"]} for r in rastro]

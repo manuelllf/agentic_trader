@@ -150,7 +150,6 @@
   "pnl_agente_pasos_lo_que_vio": "What it saw",
   "pnl_agente_pasos_lo_que_vio_sub": "The decision, its philosophy and what it looked up",
   "pnl_agente_pasos_sus_instrucciones": "Its instructions",
-  "pnl_agente_pasos_revisor_pie": "Replies in a single turn, with no saved reasoning.",
   "pnl_agente_pasos_pidio": "Asked for",
   "pnl_agente_pasos_recibio": "Received",
   "pnl_agente_pasos_sin_respuesta": "No saved reply",

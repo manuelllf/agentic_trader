@@ -35,6 +35,7 @@ class Limites:
     presupuesto_ia_mes_usd: Decimal = D("10")
     apertura_max_sobre_cierre: Decimal = D("0.03")
     dias_sin_abrir_antes_de_evento: int = 7        # resultados o evento binario
+    dias_maximos_sin_cierre: int = 5               # un precio más viejo no sirve para decidir
 
 
 LIMITES = Limites()
@@ -189,6 +190,24 @@ def comprobar_compra(p: PropuestaCompra, cartera: Cartera, hoy: date, parada: bo
                     v.append(Violacion(
                         "peso_maximo", f"Peso tras la compra {peso:.4f} supera el máximo {tope}."))
     return v
+
+
+def comprobar_ficha(ticker: str, tiene_ficha: bool) -> list[Violacion]:
+    """Antes de comprar hay que haber escrito la ficha de la empresa: tesis, supuestos y salidas."""
+    if tiene_ficha:
+        return []
+    return [Violacion("sin_ficha", f"Antes de comprar {ticker} escribe su ficha con card_write: "
+                                   "tesis, supuestos de valoración y salidas.")]
+
+
+def comprobar_cierre_reciente(ticker: str, fecha_cierre: date | None, hoy: date,
+                              limites: Limites = LIMITES) -> list[Violacion]:
+    """Un cierre viejo no es el precio de hoy: no se compra con él."""
+    if fecha_cierre is not None and (hoy - fecha_cierre).days <= limites.dias_maximos_sin_cierre:
+        return []
+    cuando = fecha_cierre.isoformat() if fecha_cierre is not None else "ninguno"
+    return [Violacion("cierre_antiguo", f"El último cierre de {ticker} es del {cuando}; "
+                                        "no se compra con precios viejos.")]
 
 
 def comprobar_venta(p: PropuestaVenta, cartera: Cartera, parada: bool,

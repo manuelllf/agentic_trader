@@ -328,6 +328,10 @@ def test_consolidacion_con_ia_juzga_las_lecciones_pendientes(sesion_agente: Sess
 
         def chat(self, system: str, user: str, **_: object) -> str:
             return '{"verdict": "approve", "reason": "ok"}'
+
+        def chat_con_herramientas(self, mensajes: list, *_a: object, **_k: object) -> dict:
+            return {"content": '{"verdict": "approve", "reason": "ok"}', "tool_calls": [],
+                    "mensaje": {"role": "assistant", "content": None}}
     tareas.hacer_consolidacion(s, _ej(s, Tarea.CONSOLIDACION, D2), D2, revisor_llm=Revisor())
     datos_ev = [e.datos for e in _eventos(s) if e.tipo == "consolidacion"][0]
     assert datos_ev["lecciones_aprobadas"] == 1

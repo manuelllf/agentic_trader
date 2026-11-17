@@ -259,7 +259,13 @@ export default function Pasos({ decisionId, llamadas, titulo, subImagen }: {
         <Grupo cabecera={t("pnl_agente_pasos_veredicto")}>
           <Celda titulo={f.veredicto(o.verdict)} subtitulo={typeof o.reason === "string" ? o.reason : undefined} />
         </Grupo>
-        <Grupo pie={t("pnl_agente_pasos_revisor_pie")}>
+        {l.razonamiento && (
+          <>
+            <h2 className="pnl-cab-grupo">{t("pnl_agente_pasos_razonamiento")}</h2>
+            <TextoAgente texto={l.razonamiento} />
+          </>
+        )}
+        <Grupo>
           <Celda titulo={t("pnl_agente_pasos_lo_que_vio")} subtitulo={t("pnl_agente_pasos_lo_que_vio_sub")}
             onClick={() => empujar({ tipo: "texto", titulo: t("pnl_agente_pasos_lo_que_vio"), texto: texto(usuario) })} />
           <Celda titulo={t("pnl_agente_pasos_sus_instrucciones")}

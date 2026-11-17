@@ -249,6 +249,20 @@ def test_screen_mira_solo_la_lista_de_seguimiento(sesion_agente):
     assert "error" in ejecutar(sesion_agente, "screen", {"sort": "precio"}, ctx)
 
 
+def test_screen_no_presenta_como_actual_un_cierre_viejo(sesion_agente):
+    from app.agente.models import Seguimiento
+
+    sesion_agente.add_all([Seguimiento(ticker="AAA", motivo="m"),
+                           Seguimiento(ticker="OLD", motivo="m")])
+    sesion_agente.flush()
+    _sembrar(sesion_agente, "AAA", _barras(260))
+    # Sus cierres acaban hace 20 días: su precio ya no sirve para decidir.
+    _sembrar(sesion_agente, "OLD", [b for b in _barras(260) if b.dia <= HOY - timedelta(days=20)])
+    r = ejecutar(sesion_agente, "screen", {}, Contexto(hoy=HOY))
+    assert [x.split()[0] for x in r["rows"]] == ["AAA"]
+    assert r["stale_close"] == [f"OLD (último cierre {(HOY - timedelta(days=20)).isoformat()})"]
+
+
 def test_screen_devuelve_las_102_con_sus_fundamentales_en_una_sola_respuesta(sesion_agente):
     from app.agente.models import Fundamentales, Seguimiento
 

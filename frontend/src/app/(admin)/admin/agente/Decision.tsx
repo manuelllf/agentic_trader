@@ -43,7 +43,8 @@ function Contenido({ d, llamadas, fallo, t, locale }: {
   // Con varias operaciones, el detalle de cada una va en su grupo; arriba solo cuántas son.
   const cifras = ops.length > 1 ? [{ etiqueta: t("pnl_agente_dec_operaciones"), valor: String(ops.length) }]
     : ops.length ? [{ etiqueta: t("pnl_agente_dec_cantidad"), valor: cantidad }, { etiqueta: t("pnl_agente_dec_importe"), valor: importe }] : [];
-  const violaciones = (d.propuesta.violaciones ?? []).map(v => (typeof v === "string" ? v : v.mensaje ?? v.codigo ?? "")).filter(Boolean);
+  // El código dice qué límite, el detalle dice por qué: se enseña el detalle.
+  const violaciones = (d.propuesta.violaciones ?? []).map(v => (typeof v === "string" ? v : v.detalle ?? v.mensaje ?? v.codigo ?? "")).filter(Boolean);
   const abrir = (titulo: string, txt: string | undefined | null) => (txt ? () => setTexto({ titulo, texto: txt }) : undefined);
 
   return (
