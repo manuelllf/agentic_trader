@@ -16,13 +16,15 @@ export interface HojaProps {
   /** Sin esto, la acción solo cierra la hoja. */
   onAccion?: () => void;
   onCerrar: () => void;
+  /** Vista empujada dentro de la hoja: a la izquierda, volver a la anterior en vez de Cancelar. */
+  atras?: { texto: string; onAtras: () => void };
   children: ReactNode;
 }
 
 /** Arrastrar más de esto, en píxeles, cierra la hoja. */
 const UMBRAL_CIERRE = 90;
 
-export function Hoja({ abierta, titulo, cancelar, accion, accionDesactivada = false, onAccion, onCerrar, children }: HojaProps) {
+export function Hoja({ abierta, titulo, cancelar, accion, accionDesactivada = false, onAccion, onCerrar, atras, children }: HojaProps) {
   const dialogo = useRef<HTMLDialogElement>(null);
   const cuerpo = useRef<HTMLDivElement>(null);
   const arrastre = useRef<{ y: number; dy: number; activo: boolean } | null>(null);
@@ -72,7 +74,12 @@ export function Hoja({ abierta, titulo, cancelar, accion, accionDesactivada = fa
         </div>
         <div className="hoja-liga-nav" {...gesto}>
           <span className="lado">
-            {cancelar && <button type="button" className="hoja-liga-acc" onClick={onCerrar}>{cancelar}</button>}
+            {atras ? (
+              <button type="button" className="hoja-liga-acc atras" onClick={atras.onAtras}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+                <span>{atras.texto}</span>
+              </button>
+            ) : cancelar && <button type="button" className="hoja-liga-acc" onClick={onCerrar}>{cancelar}</button>}
           </span>
           <h2 id={idTitulo}>{titulo}</h2>
           <span className="lado der">

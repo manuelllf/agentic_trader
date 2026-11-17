@@ -277,3 +277,66 @@ describe("Alphagentic: Diario", () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+describe("Alphagentic: cómo llegó aquí", () => {
+  const vuelta = (paso: number, extra: object) => ({
+    id: paso, etapa: "agente", paso, modelo: "m", enviado: [], respuesta: "", razonamiento: null, herramientas_pedidas: [],
+    coste_usd: "0.0015", latencia_ms: 1200, ok: true, error: null, creado: "2026-11-17T23:46:39Z", ...extra,
+  });
+  const LLAMADAS = [
+    vuelta(1, {
+      enviado: [{ role: "system", content: "Eres el agente" }, { role: "user", content: "Contexto de hoy" }],
+      razonamiento: "Let me screen the watchlist first.",
+      herramientas_pedidas: [{ id: "c1", function: { name: "screen", arguments: "{\"sort\": \"drawdown\"}" } },
+        { id: "c2", function: { name: "valuation", arguments: "{\"ticker\": \"TSM\"}" } }],
+    }),
+    vuelta(2, {
+      enviado: [
+        { role: "tool", tool_call_id: "c1", content: JSON.stringify({ universe: 2, shown: 2, sort: "drawdown", columns: "ticker close", rows: ["AAA 10.5 -3.2 41 -12.3", "BBB 20 1 55 -2"] }) },
+        { role: "tool", tool_call_id: "c2", content: JSON.stringify({ error: "sin datos" }) },
+        { role: "user", content: "Last turn: no more tools are available." }],
+      respuesta: JSON.stringify({ decision: { tipo: "operar", operaciones: [{ lado: "compra", ticker: "RDDT" }] } }),
+    }),
+    { ...vuelta(3, { respuesta: JSON.stringify({ verdict: "approve", reason: "Encaja" }) }), id: 3, etapa: "revisor", paso: 1 },
+  ];
+  const conLlamadas = (items: unknown[]) => vi.fn((url: string) => Promise.resolve(json(
+    url.endsWith("/llamadas") ? { items } : {
+      id: 3, ejecucion_id: 5, fecha_ny: "2026-11-17", tipo: "operar", sombra: true, playbook_version_id: 1,
+      propuesta: { operaciones: [] }, razonamiento: "Compro RDDT", previsiones: [], revisor_veredicto: "aprobada",
+      revisor_motivo: null, modelo: "deepseek", creado: "2026-11-17T23:46:30Z", ordenes: [],
+    })));
+
+  it("lista cada vuelta y empuja el resultado de una herramienta dentro de la misma hoja", async () => {
+    vi.stubGlobal("fetch", conLlamadas(LLAMADAS));
+    const { default: Decision } = await import("./Decision");
+    const v = await pintar(<Decision id="3" />);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const t = textoDe(v);
+    expect(t).toContain("Cómo llegó aquí");
+    expect(t).toContain("Cribado y valoración");
+    expect(t).toContain("Decisión final");
+    expect(t).toContain("Operar · compra RDDT");
+    expect(t).toContain("2 vueltas del agente y el revisor");
+    await act(async () => { boton("Cribado y valoración").click(); });
+    const hoja = document.querySelector("dialog.hoja-liga")!;
+    expect(textoDe(hoja)).toContain("Vuelta 1");
+    expect(textoDe(hoja)).toContain("Lo que tenía al despertar");
+    expect(textoDe(hoja)).toContain("Let me screen the watchlist first.");
+    expect(textoDe(hoja)).toContain("sin datos");
+    const enHoja = (texto: string) => [...hoja.querySelectorAll("button")].find(b => textoDe(b).startsWith(texto))!;
+    await act(async () => { enHoja("Cribado").click(); });
+    expect(textoDe(hoja.querySelector("h2")!)).toBe("Cribado");
+    expect(textoDe(hoja)).toContain("AAA");
+    expect(textoDe(hoja)).toContain("−12,3 %");
+    await act(async () => { hoja.querySelector<HTMLButtonElement>(".hoja-liga-acc.atras")!.click(); });
+    expect(textoDe(hoja.querySelector("h2")!)).toBe("Vuelta 1");
+  });
+
+  it("una decisión anterior al registro lo dice en vez de quedarse en blanco", async () => {
+    vi.stubGlobal("fetch", conLlamadas([]));
+    const { default: Decision } = await import("./Decision");
+    const v = await pintar(<Decision id="2" />);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(textoDe(v)).toContain("Sin registro de pasos");
+  });
+});

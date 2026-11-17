@@ -4,6 +4,7 @@ Las vistas y `foto_cartera` no se mapean: se leen con SQL."""
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -24,7 +25,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import UserDefinedType
 
@@ -187,6 +188,7 @@ class Decision(Base):
     revisor_veredicto: Mapped[str | None] = mapped_column(Text)
     revisor_motivo: Mapped[str | None] = mapped_column(Text)
     modelo: Mapped[str] = mapped_column(Text)
+    ciclo: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     embedding: Mapped[Any | None] = mapped_column(Vector(384))
     creado: Mapped[datetime] = _creado()
     creado_por: Mapped[str] = _creado_por()
@@ -349,6 +351,18 @@ class Gasto(Base):
     creado_por: Mapped[str] = _creado_por()
 
 
+class Fundamentales(Base):
+    __tablename__ = "fundamentales"
+    ticker: Mapped[str] = mapped_column(Text, primary_key=True)
+    fecha_ny: Mapped[date] = mapped_column(Date)
+    datos: Mapped[Any] = mapped_column(JSONB)
+    fuente: Mapped[str] = mapped_column(Text, server_default=text("'yahoo'"))
+    creado: Mapped[datetime] = _creado()
+    creado_por: Mapped[str] = _creado_por()
+    actualizado_en: Mapped[datetime | None] = _act_en()
+    actualizado_por: Mapped[str | None] = _act_por()
+
+
 class LlamadaModelo(Base):
     __tablename__ = "llamadas_modelo"
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
@@ -366,5 +380,6 @@ class LlamadaModelo(Base):
     latencia_ms: Mapped[int | None] = mapped_column(Integer)
     ok: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     error: Mapped[str | None] = mapped_column(Text)
+    ciclo: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     creado: Mapped[datetime] = _creado()
     creado_por: Mapped[str] = _creado_por()

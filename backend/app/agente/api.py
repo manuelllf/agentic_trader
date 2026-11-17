@@ -160,6 +160,35 @@ def decision(decision_id: int, _: Identidad = Depends(admin_agente)) -> dict[str
     return {**filas[0], "ordenes": ordenes}
 
 
+_COLUMNAS_LLAMADA = ("id, etapa, paso, modelo, enviado, respuesta, razonamiento, "
+                     "herramientas_pedidas, coste_usd, latencia_ms, ok, error, creado")
+
+
+@router.get("/decisiones/{decision_id}/llamadas")
+def llamadas(decision_id: int, _: Identidad = Depends(admin_agente)) -> dict[str, Any]:
+    """Las llamadas al modelo que llevaron a la decisión, en orden. Las de antes de la columna
+    `ciclo` se toman de su ejecución: desde que empezó la decisión hasta la siguiente."""
+    with base.sesion() as s:
+        fila = s.execute(text("select ejecucion_id, ciclo, creado from agente.decisiones "
+                              "where id = :i"), {"i": decision_id}).first()
+        if fila is None:
+            raise HTTPException(404, "Not Found")
+        if fila.ciclo is not None:
+            items = _filas(s, f"select {_COLUMNAS_LLAMADA} from agente.llamadas_modelo "
+                              "where ciclo = :c order by id", c=fila.ciclo)
+        elif fila.ejecucion_id is None:
+            items = []
+        else:
+            items = _filas(
+                s, f"select {_COLUMNAS_LLAMADA} from agente.llamadas_modelo "
+                   "where ciclo is null and ejecucion_id = :e and creado >= :desde "
+                   "and etapa in ('agente', 'revisor', 'nacimiento') "
+                   "and creado < coalesce((select min(creado) from agente.decisiones "
+                   "  where ejecucion_id = :e and id > :i), 'infinity') order by id",
+                e=fila.ejecucion_id, desde=fila.creado, i=decision_id)
+    return {"items": items}
+
+
 @router.get("/informes")
 def informes(tipo: str | None = None, _: Identidad = Depends(admin_agente)) -> dict[str, Any]:
     with base.sesion() as s:

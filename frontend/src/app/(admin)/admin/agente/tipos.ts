@@ -49,6 +49,16 @@ export interface DecisionDetalle {
   revisor_veredicto: Veredicto | null; revisor_motivo: string | null; modelo: string; creado: string; ordenes: OrdenAgente[];
 }
 
+/** Mensaje enviado al modelo, en el formato de la API de chat. */
+export interface MensajeModelo { role: string; content: string; tool_call_id?: string }
+export interface HerramientaPedida { id: string; function: { name: string; arguments?: string } }
+/** Una llamada al modelo de `agente.llamadas_modelo`: de cada vuelta, solo lo nuevo que se envió. */
+export interface LlamadaModelo {
+  id: number; etapa: string; paso: number; modelo: string; enviado: MensajeModelo[]; respuesta: string | null;
+  razonamiento: string | null; herramientas_pedidas: HerramientaPedida[]; coste_usd: string | null;
+  latencia_ms: number | null; ok: boolean; error: string | null; creado: string;
+}
+
 export interface ResumenInforme {
   id: number; tipo: TipoInforme; fecha_ny: string; decision_id: number | null; estado: EstadoInforme; titulo: string; modelo: string | null; creado: string;
 }

@@ -73,8 +73,13 @@ def test_compra_por_importe_a_la_apertura(sesion_agente: Session) -> None:
     dec = _libro(s)
     res = _comprar(s, dec, "AAA", D1, "50", importe="1000")
     assert [e for _, e in res] == ["ejecutada"]
-    assert libro.estado_posiciones(s) == {"AAA": (Decimal("19"), Decimal("951") / 19)}
-    assert libro.caja(s) == Decimal("5000") - Decimal("950") - Decimal("1")
+    # 1.000 $ a 50 $: caben 19,98 acciones (fracción de 4 decimales) tras dejar sitio a la comisión.
+    # El coste medio incluye la comisión: 1.000 $ entre 19,98 acciones.
+    cantidad, coste = libro.estado_posiciones(s)["AAA"]
+    assert cantidad == Decimal("19.98")
+    assert coste.quantize(Decimal("0.0001")) == (Decimal("1000") / Decimal("19.98")).quantize(
+        Decimal("0.0001"))
+    assert libro.caja(s) == Decimal("5000") - Decimal("1000")
 
 
 def test_hueco_de_apertura_rechaza(sesion_agente: Session) -> None:
@@ -139,14 +144,15 @@ def test_la_venta_libera_caja_para_comprar_el_mismo_dia(sesion_agente: Session) 
     for t in ("A", "B", "C"):
         _comprar(s, dec, t, D1, "10", importe="1450")
         _cierre(s, t, D1, "10")
-    assert libro.caja(s) == Decimal("5000") - 3 * Decimal("1441")
+    # Con fracciones cada compra de 1.450 $ gasta el importe entero: 144,9 acciones a 10 $.
+    assert libro.caja(s) == Decimal("5000") - 3 * Decimal("1450")
     # La compra tiene id menor que la venta: solo la compra tras la venta alcanza el importe.
     ob = libro.crear_orden(s, dec, "D", "compra", D2, importe=Decimal("1400"))
-    libro.crear_orden(s, dec, "A", "venta", D2, acciones=Decimal("144"))
+    libro.crear_orden(s, dec, "A", "venta", D2, acciones=Decimal("144.9"))
     precios = {"A": _px("A", "10"), "D": _px("D", "10")}
     res = libro.ejecutar_pendientes(s, D2, precios, _ahora(D2), False)
     assert [e for _, e in res][-1] == "ejecutada" and ob.id == res[-1][0]
-    assert libro.estado_posiciones(s)["D"][0] == Decimal("139")
+    assert libro.estado_posiciones(s)["D"][0] == Decimal("139.9")
     assert "A" not in libro.estado_posiciones(s)
 
 

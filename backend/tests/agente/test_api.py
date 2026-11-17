@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,13 +12,14 @@ from sqlalchemy import text
 
 from app.agente import api, base, libro, servicio
 from app.agente.config import ajustes
-from app.agente.models import Decision, FichaMejora, PlaybookVersion
+from app.agente.models import Decision, Ejecucion, FichaMejora, LlamadaModelo, PlaybookVersion
 from app.supabase_auth import Identidad
 
 ADMIN = "11111111-1111-1111-1111-111111111111"
 AJENO = "22222222-2222-2222-2222-222222222222"
 _TABLAS = ("eventos, decisiones, ordenes, ejecutadas, movimientos_caja, precios, "
-           "valor_diario, informes, fichas_mejora, lecciones, playbook_versiones")
+           "valor_diario, informes, fichas_mejora, lecciones, playbook_versiones, "
+           "llamadas_modelo, ejecuciones")
 
 
 def _vaciar() -> None:
@@ -146,6 +148,53 @@ def test_decision_inexistente_404_y_existente_completa(cliente: TestClient,
     d = cliente.get("/v1/decisiones/1", headers=cab).json()
     assert len(d["razonamiento"]) == 400
     assert d["ordenes"] == []
+
+
+def _llamada(ej: int | None, ciclo: uuid.UUID | None, creado: datetime, paso: int,
+             etapa: str = "agente") -> LlamadaModelo:
+    return LlamadaModelo(ejecucion_id=ej, etapa=etapa, paso=paso, modelo="m", ciclo=ciclo,
+                         enviado=[{"role": "user", "content": "c"}], respuesta=f"r{paso}",
+                         creado=creado)
+
+
+def test_llamadas_de_una_decision_por_su_ciclo(cliente: TestClient,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    mio, otro = uuid.uuid4(), uuid.uuid4()
+    t = datetime(2026, 11, 17, 23, 46, tzinfo=UTC)
+    with base.sesion() as s:
+        s.add(Decision(fecha_ny=date(2026, 11, 17), tipo="nada", propuesta={}, razonamiento="r",
+                       modelo="m", ciclo=mio))
+        s.add_all([_llamada(None, mio, t, 1), _llamada(None, otro, t, 1),
+                   _llamada(None, mio, t, 1, "revisor"), _llamada(None, mio, t, 2)])
+    cab = _como(monkeypatch, ADMIN)
+    assert cliente.get("/v1/decisiones/9/llamadas", headers=cab).status_code == 404
+    items = cliente.get("/v1/decisiones/1/llamadas", headers=cab).json()["items"]
+    pares = [(i["etapa"], i["paso"]) for i in items]
+    assert pares == [("agente", 1), ("revisor", 1), ("agente", 2)]
+    assert items[0]["enviado"] == [{"role": "user", "content": "c"}]
+
+
+def test_llamadas_sin_ciclo_se_reparten_por_ejecucion_y_hora(
+        cliente: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    # `creado` de la decisión es el inicio de su transacción: sus llamadas llegan después.
+    t = datetime(2026, 11, 17, 23, 0, tzinfo=UTC)
+    m = timedelta(minutes=1)
+    with base.sesion() as s:
+        ej = Ejecucion(tarea="despertar", fecha_ny=date(2026, 11, 17))
+        s.add(ej)
+        s.flush()
+        s.add_all([Decision(ejecucion_id=ej.id, fecha_ny=date(2026, 11, 17), tipo="nada",
+                            propuesta={}, razonamiento="r", modelo="m", creado=t + k * m)
+                   for k in (0, 10)])
+        s.add_all([_llamada(ej.id, None, t - m, 1), _llamada(ej.id, None, t + 2 * m, 2),
+                   _llamada(ej.id, None, t + 3 * m, 1, "revisor"),
+                   _llamada(ej.id, None, t + 4 * m, 1, "juicios"),
+                   _llamada(ej.id, None, t + 11 * m, 3)])
+    cab = _como(monkeypatch, ADMIN)
+    uno = cliente.get("/v1/decisiones/1/llamadas", headers=cab).json()["items"]
+    dos = cliente.get("/v1/decisiones/2/llamadas", headers=cab).json()["items"]
+    assert [i["respuesta"] for i in uno] == ["r2", "r1"]
+    assert [i["respuesta"] for i in dos] == ["r3"]
 
 
 def test_informes_vacio_devuelve_lista_vacia(cliente: TestClient,

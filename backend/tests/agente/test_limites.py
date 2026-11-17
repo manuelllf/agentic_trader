@@ -145,10 +145,23 @@ def test_max_posiciones_ticker_nuevo():
     assert "max_posiciones" not in codigos(comprobar_compra(compra("A"), c, HOY, False))
 
 
-def test_importe_menor_que_una_accion():
+def test_importe_menor_que_una_accion_compra_una_fraccion():
     c = cartera("1000", [pos("A", "90", "10", "10")])
-    assert "importe_menor_que_una_accion" in codigos(
-        comprobar_compra(compra(importe="5", precio="10"), c, HOY, False))
+    assert codigos(comprobar_compra(compra(importe="5", precio="10"), c, HOY, False)) == set()
+
+
+def test_importe_por_debajo_de_la_fraccion_minima():
+    c = cartera("1000", [pos("A", "90", "10", "10")])
+    assert "importe_demasiado_pequeno" in codigos(
+        comprobar_compra(compra(importe="0.0001", precio="10"), c, HOY, False))
+
+
+def test_acciones_por_importe_redondea_a_cuatro_decimales():
+    from decimal import Decimal
+
+    from app.agente.limites import acciones_por_importe
+    assert acciones_por_importe(Decimal("300"), Decimal("517.99")) == Decimal("0.5791")
+    assert acciones_por_importe(Decimal("0"), Decimal("10")) == Decimal("0")
 
 
 def test_caja_insuficiente_simple():

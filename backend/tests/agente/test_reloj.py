@@ -35,18 +35,20 @@ def test_programa_vacio_en_festivo_de_la_nyse() -> None:
     assert programa_del_dia(DIA_DE_ACCION_DE_GRACIAS) == []
 
 
-def test_programa_de_un_dia_normal_tiene_cuatro_tareas_en_orden() -> None:
+def test_programa_de_un_dia_normal_tiene_cinco_tareas_en_orden() -> None:
     programa = programa_del_dia(LUNES)
 
     assert [tarea for tarea, _ in programa] == [
         Tarea.VIGIA_PREVIO,
         Tarea.EJECUCION,
+        Tarea.PREPARACION,
         Tarea.DESPERTAR,
         Tarea.CONSOLIDACION,
     ]
     assert [momento for _, momento in programa] == [
         ny(2026, 11, 16, 8, 45),
         ny(2026, 11, 16, 9, 35),
+        ny(2026, 11, 16, 16, 30),
         ny(2026, 11, 16, 17, 30),
         ny(2026, 11, 16, 19, 30),
     ]
@@ -106,6 +108,14 @@ def test_no_recupera_la_ejecucion_del_dia_anterior() -> None:
     pendientes = pendientes_al_arrancar(ny(2026, 11, 17, 8, 0), set())
 
     assert Tarea.EJECUCION not in [tarea for tarea, _ in pendientes]
+
+
+def test_recupera_la_preparacion_de_hoy_pero_no_la_de_ayer() -> None:
+    hoy = [t for t, d in pendientes_al_arrancar(ny(2026, 11, 16, 17, 0), set()) if d == LUNES]
+    manana = pendientes_al_arrancar(ny(2026, 11, 17, 8, 0), set())
+
+    assert Tarea.PREPARACION in hoy
+    assert Tarea.PREPARACION not in [tarea for tarea, _ in manana]
 
 
 def test_tras_un_festivo_recupera_el_ultimo_dia_de_bolsa() -> None:

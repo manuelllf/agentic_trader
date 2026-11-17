@@ -30,7 +30,7 @@ def _sembrar(s, ticker: str, barras: list[datos.Barra]) -> None:
 
 def test_price_con_precios_sembrados(sesion_agente):
     _sembrar(sesion_agente, "AAA", _barras(260))
-    r = ejecutar(sesion_agente, "price", {"ticker": " aaa "}, Contexto(hoy=HOY))
+    r = ejecutar(sesion_agente, "price", {"ticker": " aaa "}, Contexto(hoy=HOY))["companies"][0]
     assert r["ticker"] == "AAA"
     assert r["last_close"] == 120.0
     assert r["last_date"] == HOY.isoformat()
@@ -49,7 +49,7 @@ def test_price_sin_filas_usa_el_descargador(sesion_agente, monkeypatch):
     monkeypatch.setattr(herramientas, "_descargar", falso)
     r = ejecutar(sesion_agente, "price", {"ticker": "BBB"}, Contexto(hoy=HOY))
     assert llamadas == [(["BBB"], HOY - timedelta(days=400))]
-    assert r["last_close"] == 50.0
+    assert r["companies"][0]["last_close"] == 50.0
     n = sesion_agente.execute(
         text("select count(*) from agente.precios where ticker = 'BBB'")).scalar_one()
     assert n == 30
@@ -87,7 +87,8 @@ def test_fundamentals_corta_si_yahoo_no_contesta(sesion_agente, monkeypatch):
                      Contexto(hoy=HOY, fundamentales=colgado))
     finally:
         suelta.set()
-    assert r["error"].startswith("TimeoutError")
+    # En un lote, la empresa que no contesta lleva su error y no tumba a las demás.
+    assert r["companies"][0]["error"].startswith("TimeoutError")
 
 
 def test_solo_lectura_bloquea_las_que_escriben(sesion_agente):
@@ -108,7 +109,27 @@ def test_fundamentals_marca_dato_externo(sesion_agente):
     ctx = Contexto(hoy=HOY, fundamentales=lambda t: {"shortName": t, "trailingPE": 12.5})
     r = ejecutar(sesion_agente, "fundamentals", {"ticker": "CCC"}, ctx)
     assert r["external_data"] is True and r["source"] == "yahoo"
-    assert r["trailingPE"] == 12.5
+    assert r["companies"][0]["trailingPE"] == 12.5
+
+
+def test_price_y_fundamentals_por_lotes(sesion_agente):
+    from app.agente.models import Fundamentales
+
+    _sembrar(sesion_agente, "AAA", _barras(30, "50"))
+    _sembrar(sesion_agente, "BBB", _barras(30, "80"))
+    sesion_agente.add(Fundamentales(ticker="AAA", fecha_ny=HOY, datos={"forwardPE": 11.0}))
+    leidas: list[str] = []
+    ctx = Contexto(hoy=HOY, fundamentales=lambda t: leidas.append(t) or {"forwardPE": 30.0})
+    precios = ejecutar(sesion_agente, "price", {"tickers": ["aaa", "BBB", "AAA"]}, ctx)
+    assert [c["last_close"] for c in precios["companies"]] == [50.0, 80.0]
+    f = ejecutar(sesion_agente, "fundamentals", {"tickers": ["AAA", "BBB"]}, ctx)["companies"]
+    # AAA sale de la carga del día; BBB no estaba guardada y se pide a la fuente.
+    assert (f[0]["forwardPE"], f[0]["data_date"]) == (11.0, HOY.isoformat())
+    assert f[1]["forwardPE"] == 30.0 and leidas == ["BBB"]
+    demasiadas = {"tickers": [f"T{i}" for i in range(21)]}
+    assert ejecutar(sesion_agente, "price", demasiadas, ctx) == {
+        "error": "at most 20 tickers per call"}
+    assert "invalid tickers" in ejecutar(sesion_agente, "price", {"tickers": ["A;B"]}, ctx)["error"]
 
 
 def test_card_write_dos_veces_sube_version_y_deja_evento(sesion_agente):
@@ -222,19 +243,30 @@ def test_screen_mira_solo_la_lista_de_seguimiento(sesion_agente):
     r = ejecutar(sesion_agente, "screen", {"sort": "rsi"}, ctx)
     assert r["universe"] == 2 and r["shown"] == 2
     assert sorted(x.split()[0] for x in r["rows"]) == ["AAA", "BBB"]
-    assert all("n/a" not in x for x in r["rows"])
+    # Los precios salen siempre; sin carga del día, los fundamentales van como n/a.
+    assert all("n/a" not in " ".join(x.split()[:5]) for x in r["rows"])
+    assert r["fundamentals_date"] is None
     assert "error" in ejecutar(sesion_agente, "screen", {"sort": "precio"}, ctx)
 
 
-def test_screen_devuelve_las_102_en_una_sola_respuesta(sesion_agente):
-    from app.agente.models import Seguimiento
+def test_screen_devuelve_las_102_con_sus_fundamentales_en_una_sola_respuesta(sesion_agente):
+    from app.agente.models import Fundamentales, Seguimiento
 
     tickers = [f"T{i:03d}XY" for i in range(102)]
     sesion_agente.add_all([Seguimiento(ticker=t, motivo="m") for t in tickers])
+    # Valores largos a propósito: es el peor caso de tamaño de la respuesta.
+    completos = {"forwardPE": 123.456, "operatingMargins": -0.98765, "revenueGrowth": -0.98765,
+                 "debtToEquity": 1234.567, "next_earnings_date": "2027-01-27 00:00:00",
+                 "dividendYield_pct": 12.34, "marketCap": 1_000_000_000,
+                 "freeCashflow": -123_000_000}
+    sesion_agente.add_all([Fundamentales(ticker=t, fecha_ny=HOY, datos=completos) for t in tickers])
     sesion_agente.flush()
     for t in tickers:
         _sembrar(sesion_agente, t, _barras(260))
     r = ejecutar(sesion_agente, "screen", {}, Contexto(hoy=HOY))
     assert "truncated" not in r
     assert r["universe"] == 102 and r["shown"] == 102 and len(r["rows"]) == 102
-    assert r["without_price_history"] == []
+    assert r["without_price_history"] == [] and r["fundamentals_date"] == HOY.isoformat()
+    campos = r["rows"][0].split()
+    assert len(campos) == len(r["columns"].split())
+    assert campos[5:] == ["123.5", "-98.8", "-98.8", "1234.6", "2027-01-27", "12.3", "-12.3"]

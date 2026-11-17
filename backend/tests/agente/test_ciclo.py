@@ -163,6 +163,19 @@ def test_herramienta_y_luego_nada_se_aprueba_sin_revisor(sesion_agente: Session)
     assert "decision" in _eventos(s)
 
 
+def test_la_decision_y_sus_llamadas_comparten_ciclo(sesion_agente: Session) -> None:
+    s = sesion_agente
+    _preparar(s)
+    # Sin ejecución: el registro escribe en otra conexión y no vería una sin confirmar.
+    ctx = herramientas.Contexto(hoy=HOY)
+    _despertar(s, ctx, Falso([FILOSOFIA, OPERAR]), Falso([APRUEBA]))
+    c = _una(s, "select ciclo from agente.decisiones").ciclo
+    etapas = s.execute(text("select etapa from agente.llamadas_modelo where ciclo = :c "
+                            "order by id"), {"c": c}).scalars().all()
+    assert c is not None
+    assert etapas == ["nacimiento", "agente", "revisor"]
+
+
 def test_operar_aprobado_en_sombra_no_crea_ordenes(sesion_agente: Session) -> None:
     s = sesion_agente
     ctx = _preparar(s)

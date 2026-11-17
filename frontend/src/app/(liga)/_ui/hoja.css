@@ -62,6 +62,9 @@
 }
 .lg .hoja-liga-acc.der { font-weight: 600; }
 .lg .hoja-liga-acc:disabled { opacity: 0.35; cursor: default; }
+/* Volver a la vista anterior dentro de la misma hoja, como el atrás de una pila de iOS. */
+.lg .hoja-liga-acc.atras { display: inline-flex; align-items: center; gap: 0; margin-left: -6px; }
+.lg .hoja-liga-acc.atras svg { width: 22px; height: 22px; flex: none; }
 /* Sin barra visible: con ella el contenido pierde 15 px y se descuadra del encabezado. */
 .lg .hoja-liga-contenido { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .lg .hoja-liga-contenido::-webkit-scrollbar { display: none; }

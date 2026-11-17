@@ -25,6 +25,15 @@
 .lg .pnl .pa-hoja { padding: 4px 16px 8px; }
 .lg .pnl .pa-hoja .pa-carta { margin-top: 0; }
 
+/* Cómo llegó aquí: texto enviado al modelo tal cual, y cada vista de la hoja entra fundida. */
+.lg .pnl .pa-texto { margin: 0; font-size: 15px; line-height: 21px; color: var(--ink2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lg .pnl .pa-hoja .pa-texto { padding: 12px 16px; border-radius: 10px; background: var(--surface2); }
+.lg .pnl .pnl-celda .t small .pa-fallo { color: var(--bad); }
+.lg .pnl .pa-vista { animation: pnl-funde .2s ease-out; }
+.lg .pnl .hoja-liga .pnl-datos { background: var(--surface2); }
+.lg .pnl .hoja-liga .pnl-datos > div:nth-child(n+3)::before { background: var(--line2); }
+@media (prefers-reduced-motion: reduce) { .lg .pnl .pa-vista { animation: none; } }
+
 .lg .pnl .pa-pasos { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 18px 0 0; padding: 0; }
 .lg .pnl .pa-pasos li { position: relative; padding-top: 12px; font-size: 15px; line-height: 20px; color: var(--muted); }
 .lg .pnl .pa-pasos li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; border-radius: 2px; background: var(--line2); }

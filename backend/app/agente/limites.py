@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from decimal import ROUND_FLOOR, Decimal
+from decimal import ROUND_DOWN, Decimal
 from enum import StrEnum
 
 from app.commissions import commission
@@ -12,6 +12,15 @@ from app.ledger.money import D
 
 ZERO = D("0")
 UNO = D("1")
+# Se compran fracciones de acción, como en IBKR: cuatro decimales.
+PASO_ACCIONES = D("0.0001")
+
+
+def acciones_por_importe(importe: Decimal, precio: Decimal) -> Decimal:
+    """Las acciones que caben en un importe, redondeando hacia abajo a la fracción mínima."""
+    if importe <= ZERO or precio <= ZERO:
+        return ZERO
+    return (importe / precio).quantize(PASO_ACCIONES, rounding=ROUND_DOWN)
 
 
 @dataclass(frozen=True)
@@ -159,10 +168,10 @@ def comprobar_compra(p: PropuestaCompra, cartera: Cartera, hoy: date, parada: bo
             f"Ya hay {limites.max_posiciones} posiciones; hay que vender antes de abrir otra."))
 
     if p.importe > ZERO and p.precio > ZERO:
-        acciones = (p.importe / p.precio).to_integral_value(rounding=ROUND_FLOOR)
+        acciones = acciones_por_importe(p.importe, p.precio)
         if acciones <= ZERO:
-            v.append(Violacion("importe_menor_que_una_accion",
-                               "El importe no alcanza para una acción entera."))
+            v.append(Violacion("importe_demasiado_pequeno",
+                               "El importe no alcanza para la fracción mínima de una acción."))
         else:
             coste = p.importe + commission(acciones, p.precio)
             if coste > cartera.caja:

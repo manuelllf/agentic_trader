@@ -241,6 +241,55 @@ def test_ejecucion_ejecuta_la_orden_con_la_apertura(sesion_agente: Session) -> N
     assert [(e.origen, e.tipo, e.ticker) for e in ev] == [("ejecutor", "orden_ejecutada", "AAA")]
 
 
+def test_ejecucion_compra_fracciones_por_importe(sesion_agente: Session) -> None:
+    s = sesion_agente
+    libro.abrir_libro(s, D1)
+    libro.crear_orden(s, _decision(s), "MSFT", "compra", D2, importe=Decimal("300"))
+    barras = {"MSFT": [_barra(D1, "518"), _barra(D2, "520", apertura="517.99")]}
+    tareas.hacer_ejecucion(s, _ej(s, Tarea.EJECUCION, D2), D2, _ahora(D2, 9, 35), _falso(barras))
+    acciones = s.execute(text("select acciones from agente.ejecutadas")).scalar_one()
+    # 300 $ menos su comisión (1 $), a 517,99: una fracción con cuatro decimales.
+    assert acciones == Decimal("0.5772")
+
+
+def test_preparacion_guarda_precios_y_fundamentales(sesion_agente: Session) -> None:
+    s = sesion_agente
+    for t in ("AAA", "BBB", "CCC"):
+        s.add(Seguimiento(ticker=t, motivo="m"))
+    barras = {t: [_barra(D1, "10"), _barra(D2, "11")] for t in ("AAA", "BBB", "CCC")}
+
+    def leer(t: str) -> dict:
+        if t == "CCC":
+            raise TimeoutError("Yahoo no contesta")
+        return {"forwardPE": 12.0, "next_earnings_date": date(2027, 1, 27)}
+
+    tareas.hacer_preparacion(s, _ej(s, Tarea.PREPARACION, D2), D2, _falso(barras), leer)
+    assert _cuenta(s, "precios") == 6
+    filas = s.execute(text("select ticker, fecha_ny, datos from agente.fundamentales "
+                           "order by ticker")).all()
+    assert [(f.ticker, f.fecha_ny) for f in filas] == [("AAA", D2), ("BBB", D2)]
+    assert filas[0].datos == {"forwardPE": 12.0, "next_earnings_date": "2027-01-27"}
+    ev = [e for e in _eventos(s) if e.tipo == "preparacion"]
+    assert ev[0].datos == {"empresas": 3, "fundamentales": 2, "sin_fundamentales": ["CCC"]}
+    # Al día siguiente se sobrescribe: una fila por empresa, sin crecer.
+    tareas.hacer_preparacion(s, _ej(s, Tarea.PREPARACION, D2 + timedelta(days=1)),
+                             D2 + timedelta(days=1), _falso(barras), lambda t: {"forwardPE": 9.0})
+    assert _cuenta(s, "fundamentales") == 3
+
+
+def test_preparacion_sin_fundamentales_de_la_mayoria_falla(sesion_agente: Session) -> None:
+    s = sesion_agente
+    for t in ("AAA", "BBB"):
+        s.add(Seguimiento(ticker=t, motivo="m"))
+    barras = {t: [_barra(D2, "11")] for t in ("AAA", "BBB")}
+
+    def roto(t: str) -> dict:
+        raise TimeoutError("sin Yahoo")
+
+    with pytest.raises(RuntimeError, match="sin fundamentales"):
+        tareas.hacer_preparacion(s, _ej(s, Tarea.PREPARACION, D2), D2, _falso(barras), roto)
+
+
 def test_ejecucion_sin_apertura_de_hoy_deja_la_orden_pendiente(sesion_agente: Session) -> None:
     s = sesion_agente
     orden_id = _orden_pendiente(s)
@@ -351,7 +400,8 @@ def test_recuperar_perdidas_llama_solo_lo_que_falta(
     monkeypatch.setattr(servicio, "correr", lambda t, f, a: llamadas.append((t, f)) or True)
     with base.sesion() as s:
         s.add_all([Ejecucion(tarea=t.value, fecha_ny=D1, estado="hecha")
-                   for t in (Tarea.VIGIA_PREVIO, Tarea.EJECUCION, Tarea.DESPERTAR)])
+                   for t in (Tarea.VIGIA_PREVIO, Tarea.EJECUCION, Tarea.PREPARACION,
+                             Tarea.DESPERTAR)])
     ahora = _ahora(D1, 18, 0)
     servicio.recuperar_perdidas(ahora)
     assert llamadas == [(Tarea.CONSOLIDACION, date(2026, 11, 16))]

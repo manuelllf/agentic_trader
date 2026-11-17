@@ -5,6 +5,7 @@ import { Celda, Grupo, Vacio } from "../_panel/ui";
 import { AgenteError } from "./api";
 import { Carga, Pagina, TextoAgente } from "./Comun";
 import { dinero, fecha, legible } from "./formato";
+import Pasos from "./Pasos";
 import type { DecisionDetalle, OperacionPropuesta } from "./tipos";
 import { useCarga } from "./useCarga";
 
@@ -62,6 +63,7 @@ export default function Decision({ id }: { id: string }) {
                     {d.previsiones.map((p, i) => <Celda key={i} titulo={p.ticker ?? ""} subtitulo={p.texto} />)}
                   </Grupo>
                 )}
+                <Pasos decisionId={d.id} />
                 <p className="pnl-pie-grupo">{t("pnl_agente_dec_pie", { modelo: d.modelo })}</p>
               </>
             );

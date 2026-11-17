@@ -16,6 +16,8 @@ class AgenteSettings(BaseSettings):
     hora_vigia_previo: time = time(8, 45)
     # Unos minutos después de abrir la bolsa, con precios ya asentados.
     hora_ejecucion: time = time(9, 35)
+    # Una hora antes del despertar: deja cargados los precios y fundamentales de la watchlist.
+    hora_preparacion: time = time(16, 30)
     # Tras el cierre, cuando la fuente de precios ya tiene el día completo.
     hora_despertar: time = time(17, 30)
     # A las 23:30 de NY caería en hora punta de DeepSeek con el horario de verano.
@@ -37,8 +39,8 @@ class AgenteSettings(BaseSettings):
     razonamiento_revisor: str = "low"
     # Flash también para el revisor: el modelo Pro lo sirve Flash desde el 14-sep.
     modelo_revisor: str = "deepseek-flash"
-    # Decide pero no crea órdenes.
-    sombra: bool = True
+    # Con True decide pero no crea órdenes.
+    sombra: bool = False
     max_pasos: int = 8
     coste_estimado_llamada_usd: Decimal = Decimal("0.01")
     # Una respuesta con razonamiento alto tarda; más de esto es un proveedor colgado.

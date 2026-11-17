@@ -16,6 +16,7 @@ DIAS_ATRAS_MAXIMO = 10
 class Tarea(StrEnum):
     VIGIA_PREVIO = "vigia_previo"
     EJECUCION = "ejecucion"
+    PREPARACION = "preparacion"
     DESPERTAR = "despertar"
     CONSOLIDACION = "consolidacion"
 
@@ -23,6 +24,7 @@ class Tarea(StrEnum):
 _CAMPO_HORA: dict[Tarea, str] = {
     Tarea.VIGIA_PREVIO: "hora_vigia_previo",
     Tarea.EJECUCION: "hora_ejecucion",
+    Tarea.PREPARACION: "hora_preparacion",
     Tarea.DESPERTAR: "hora_despertar",
     Tarea.CONSOLIDACION: "hora_consolidacion",
 }
@@ -74,8 +76,8 @@ def pendientes_al_arrancar(
         d, momento = ocurrencia
         if clave(tarea, d) in hechas:
             continue
-        # Con precios de otro día ya no vale la ejecución: se espera a la siguiente.
-        if tarea is Tarea.EJECUCION and d != hoy:
+        # Con precios de otro día ya no valen la ejecución ni la preparación: se espera.
+        if tarea in (Tarea.EJECUCION, Tarea.PREPARACION) and d != hoy:
             continue
         pendientes.append((momento, tarea, d))
     pendientes.sort(key=lambda pendiente: pendiente[0])

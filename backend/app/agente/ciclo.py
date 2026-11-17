@@ -6,8 +6,9 @@ from __future__ import annotations
 import json
 import logging
 import time
+import uuid
 from datetime import date, timedelta
-from decimal import ROUND_FLOOR, Decimal
+from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel, ValidationError, model_validator
@@ -123,6 +124,8 @@ class Presupuesto:
                  corte: Interruptor | None = None) -> None:
         self.s, self.hoy, self.ejecucion_id, self.gastado = s, hoy, ejecucion_id, gastado
         self.corte = corte or interruptor.deepseek
+        # Lo comparten la decisión y sus llamadas: así el panel enseña cómo se llegó a cada una.
+        self.ciclo = uuid.uuid4()
         self._pasos: dict[str, int] = {}
         self._vistos: dict[str, int] = {}
 
@@ -156,7 +159,7 @@ class Presupuesto:
                     enviado=enviado, respuesta=respuesta, razonamiento=razonamiento,
                     herramientas_pedidas=pedidas, coste_usd=coste,
                     latencia_ms=int((time.monotonic() - inicio) * 1000),
-                    ok=error is None, error=error))
+                    ok=error is None, error=error, ciclo=self.ciclo))
         except Exception:
             logger.exception("No se pudo anotar la llamada al modelo")
 
@@ -389,7 +392,7 @@ def _violaciones(s: Session, d: Decision, hoy: date) -> list[dict]:
                 cartera, hoy, parada)
         else:
             acciones = (op.acciones if op.acciones is not None
-                        else (op.importe / precio).to_integral_value(rounding=ROUND_FLOOR))  # type: ignore[operator]
+                        else limites.acciones_por_importe(op.importe, precio))  # type: ignore[arg-type]
             vs = limites.comprobar_venta(limites.PropuestaVenta(ticker, acciones), cartera, parada)
         out += [{"ticker": ticker, "lado": op.lado, "codigo": v.codigo, "detalle": v.detalle}
                 for v in vs]
@@ -485,7 +488,7 @@ def _ciclo(s: Session, hoy: date, g: Presupuesto, llm: Any, revisor_llm: Any,  #
         ejecucion_id=ctx.ejecucion_id, fecha_ny=hoy, tipo=d.tipo, sombra=sombra,
         playbook_version_id=None if playbook is None else playbook.id, propuesta=propuesta,
         razonamiento=d.razonamiento, previsiones=d.previsiones, revisor_veredicto=veredicto,
-        revisor_motivo=motivo, modelo=ajustes.modelo)
+        revisor_motivo=motivo, modelo=ajustes.modelo, ciclo=g.ciclo)
     s.add(fila)
     s.flush()
     d.id = fila.id

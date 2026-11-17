@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from decimal import ROUND_FLOOR, Decimal
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, text
@@ -217,7 +217,7 @@ def _ejecutar_venta(s: Session, o: Orden, dia: date, p: PrecioApertura, ahora: d
     if o.acciones is not None:
         pedidas = D(o.acciones)
     else:
-        pedidas = (D(o.importe_objetivo) / p.apertura).to_integral_value(rounding=ROUND_FLOOR)
+        pedidas = limites.acciones_por_importe(D(o.importe_objetivo), p.apertura)
     acciones = min(pedidas, tengo)
     cart = _armar_cartera(s, dia, estado, aperturas)
     v = limites.comprobar_venta(limites.PropuestaVenta(o.ticker, acciones), cart, parada)
@@ -237,9 +237,9 @@ def _ejecutar_compra(s: Session, o: Orden, dia: date, p: PrecioApertura, ahora: 
         acciones = D(o.acciones)
     else:
         gastable = min(D(o.importe_objetivo), caja(s))
-        acciones = afford_quantity(gastable, p.apertura, _UNO)
+        acciones = afford_quantity(gastable, p.apertura, limites.PASO_ACCIONES)
     if acciones <= _CERO:
-        _rechazar(o, "rechazada_limites", "importe_menor_que_una_accion")
+        _rechazar(o, "rechazada_limites", "importe_demasiado_pequeno")
         return
     cart = _armar_cartera(s, dia, estado_posiciones(s), aperturas)
     propuesta = limites.PropuestaCompra(o.ticker, acciones * p.apertura, p.apertura,

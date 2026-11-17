@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.agente import avisos, base, datos, despertares, libro, vigia
 from app.agente.config import ajustes
 from app.agente.datos import Barra
-from app.agente.models import Ejecucion, Estado, Evento, Orden, Seguimiento
+from app.agente.models import Ejecucion, Estado, Evento, Fundamentales, Orden, Seguimiento
 from app.agente.reloj import Tarea
 from app.ledger.money import D
 
@@ -100,15 +100,10 @@ def _cierres(s: Session, tickers: list[str], hoy: date) -> tuple[dict[str, Decim
     return de_hoy, previos
 
 
-def hacer_despertar(s: Session, ej: Ejecucion, hoy: date,
-                    descargar: Descargar = datos.descargar) -> None:
-    libro.abrir_libro(s, hoy)
-    tickers = tickers_vigilados(s)
-    if not tickers:
-        libro.guardar_valor_diario(s, hoy)
-        _ciclo_del_cierre(s, ej, hoy, hay_alertas=False)
-        return
-
+def _cargar_precios(s: Session, ej: Ejecucion, hoy: date, tickers: list[str],
+                    descargar: Descargar) -> None:
+    """Descarga desde el último cierre guardado de cada empresa; si la preparación ya lo hizo,
+    el despertar solo trae lo que falte."""
     ultimos: dict[str, date] = {t: f for t, f in s.execute(text(
         "select ticker, max(fecha) from agente.precios where ticker = any(:t) group by ticker"),
         {"t": tickers}).all()}
@@ -123,6 +118,47 @@ def hacer_despertar(s: Session, ej: Ejecucion, hoy: date,
     if sin_datos:
         evento(s, "sistema", "sin_datos", datos={"tickers": sin_datos}, ejecucion_id=ej.id)
     _guardar_barras(s, barras, hoy)
+
+
+LeerFundamentales = Callable[[str], dict]
+
+
+def hacer_preparacion(s: Session, ej: Ejecucion, hoy: date,
+                      descargar: Descargar = datos.descargar,
+                      leer: LeerFundamentales | None = None) -> None:
+    """Una hora antes del despertar: precios y fundamentales de la watchlist, ya guardados, para
+    que `screen` enseñe las empresas enteras sin descargar nada en mitad del ciclo."""
+    from app.agente import herramientas
+
+    tickers = tickers_vigilados(s)
+    if not tickers:
+        evento(s, "sistema", "preparacion", datos={"empresas": 0}, ejecucion_id=ej.id)
+        return
+    _cargar_precios(s, ej, hoy, tickers, descargar)
+    leidos, fallidos = herramientas.leer_fundamentales_lote(
+        tickers, leer or herramientas.fundamentales_yahoo)
+    if len(fallidos) * 2 > len(tickers):
+        raise RuntimeError(
+            f"Yahoo sin fundamentales para {len(fallidos)} de {len(tickers)} empresas")
+    for ticker, datos_empresa in leidos.items():
+        s.execute(insert(Fundamentales).values(ticker=ticker, fecha_ny=hoy, datos=datos_empresa)
+                  .on_conflict_do_update(index_elements=["ticker"],
+                                         set_={"fecha_ny": hoy, "datos": datos_empresa}))
+    s.flush()
+    evento(s, "sistema", "preparacion", ejecucion_id=ej.id,
+           datos={"empresas": len(tickers), "fundamentales": len(leidos),
+                  "sin_fundamentales": fallidos})
+
+
+def hacer_despertar(s: Session, ej: Ejecucion, hoy: date,
+                    descargar: Descargar = datos.descargar) -> None:
+    libro.abrir_libro(s, hoy)
+    tickers = tickers_vigilados(s)
+    if not tickers:
+        libro.guardar_valor_diario(s, hoy)
+        _ciclo_del_cierre(s, ej, hoy, hay_alertas=False)
+        return
+    _cargar_precios(s, ej, hoy, tickers, descargar)
 
     cierres, previos = _cierres(s, tickers, hoy)
     faltan = sorted(t for t in libro.estado_posiciones(s) if t not in cierres)
@@ -285,6 +321,8 @@ def _hacer(tarea: Tarea, fecha: date, ahora: datetime, descargar: Descargar) -> 
                     hacer_despertar(s, ej, fecha, descargar)
                 elif tarea is Tarea.EJECUCION:
                     hacer_ejecucion(s, ej, fecha, ahora, descargar)
+                elif tarea is Tarea.PREPARACION:
+                    hacer_preparacion(s, ej, fecha, descargar)
                 elif tarea is Tarea.VIGIA_PREVIO:
                     hacer_vigia_previo(s, ej, fecha)
                 else:
