@@ -415,7 +415,7 @@
   "pnl_agente_cmt_vigia": "Watcher",
   "pnl_agente_cmt_vigia_sub": "Notes what is worth a look",
   "pnl_agente_cmt_agente": "Agent",
-  "pnl_agente_cmt_agente_sub": "Up to {vueltas} turns with {herramientas} tools",
+  "pnl_agente_cmt_agente_sub": "Up to {vueltas} turns per round with {herramientas} tools",
   "pnl_agente_cmt_limites": "Code limits",
   "pnl_agente_cmt_limites_sub": "Rules the model can't break",
   "pnl_agente_cmt_revisor": "Reviewer",

@@ -41,7 +41,8 @@ class AgenteSettings(BaseSettings):
     modelo_revisor: str = "deepseek-flash"
     # Con True decide pero no crea órdenes.
     sombra: bool = False
-    max_pasos: int = 8
+    # Por ronda de decisión: la ronda de corrección parte con los suyos. Una llamada cuesta ~0,001 $.
+    max_pasos: int = 20
     coste_estimado_llamada_usd: Decimal = Decimal("0.01")
     # Una respuesta con razonamiento alto tarda; más de esto es un proveedor colgado.
     timeout_llm_s: float = 120.0

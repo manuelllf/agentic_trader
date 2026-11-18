@@ -10,8 +10,8 @@ export type Familia = (typeof FAMILIAS)[number];
 export const HERRAMIENTAS: readonly string[] = FAMILIAS.flatMap(f => f.herramientas);
 export const familiaDe = (nombre: string): Familia => FAMILIAS.find(f => (f.herramientas as readonly string[]).includes(nombre)) ?? FAMILIAS[0];
 
-/** Vueltas que el código permite al agente (config.max_pasos). */
-export const MAX_VUELTAS = 8;
+/** Vueltas que el código permite al agente por ronda de decisión (config.max_pasos). */
+export const MAX_VUELTAS = 20;
 
 /** Límites del código (limites.Limites). */
 export const LIMITES = {

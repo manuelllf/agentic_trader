@@ -415,7 +415,7 @@
   "pnl_agente_cmt_vigia": "Vigía",
   "pnl_agente_cmt_vigia_sub": "Le anota lo que merece mirar",
   "pnl_agente_cmt_agente": "Agente",
-  "pnl_agente_cmt_agente_sub": "Hasta {vueltas} vueltas con {herramientas} herramientas",
+  "pnl_agente_cmt_agente_sub": "Hasta {vueltas} vueltas por ronda con {herramientas} herramientas",
   "pnl_agente_cmt_limites": "Límites del código",
   "pnl_agente_cmt_limites_sub": "Reglas que el modelo no puede saltarse",
   "pnl_agente_cmt_revisor": "Revisor",
