@@ -69,7 +69,6 @@
 /* Botones: el de acento es el petróleo de la casa (DESIGN §3). */
 .blog-publico a.blog-boton,.blog-publico button.blog-boton{display:flex;min-height:50px;align-items:center;justify-content:center;border:0;border-radius:14px;padding:12px 16px;background:var(--btn);color:var(--btn-ink);font-size:17px;font-weight:600;text-align:center;text-decoration:none;cursor:pointer}
 .blog-publico button.blog-boton:disabled{opacity:.4;cursor:default}
-.blog-publico a.blog-boton-cta{margin-top:24px}
 
 /* Artículo. */
 .blog-publico .blog-articulo h1{font-size:28px;line-height:34px;font-weight:700;letter-spacing:-.01em;margin:8px 0 8px}

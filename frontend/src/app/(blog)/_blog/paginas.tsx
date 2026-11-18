@@ -23,7 +23,7 @@ async function traductor(idioma: Locale): Promise<Traductor> {
 
 async function textosBlog(idioma: Locale): Promise<Textos> {
   const t = await traductor(idioma);
-  const claves = ["title", "seo", "intro", "empty", "error", "terms", "privacy", "legal", "disclaimer", "practice", "cta", "previous", "next", "switch", "article_disclaimer", "language_label"];
+  const claves = ["title", "seo", "intro", "empty", "error", "terms", "privacy", "legal", "disclaimer", "previous", "next", "switch", "article_disclaimer", "language_label"];
   return { ...Object.fromEntries(claves.map(key => [key, t(`blog_${key}`)])), minutes: t("blog_minutes", { count: "{count}" }) };
 }
 
@@ -100,7 +100,6 @@ export async function Leccion({ idioma, slug }: { idioma: Locale; slug: string }
       <p className="blog-entradilla">{articulo.resumen}</p><Cuerpo cuerpo={articulo.cuerpo} />
       <FirmaAutor>{await firmaBlog(idioma)}</FirmaAutor>
       <Formulario idioma={idioma} titulo="blog_newsletter_article_title" />
-      <Link className="blog-boton blog-boton-cta" href="/liga">{textos.cta}</Link>
       {articulos === null && <p role="alert">{textos.error}</p>}
       <nav className="blog-vecinos">
         {anterior && <Link href={rutaBlog(idioma, anterior.slug)}><span className="blog-etiqueta">{textos.previous}</span><span className="blog-vecino-titulo">{anterior.titulo}</span></Link>}
