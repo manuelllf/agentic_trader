@@ -66,13 +66,15 @@ describe("Marco", () => {
     act(() => raiz!.unmount());
     vista.remove();
 
-    estado.ruta = "/admin/beta";
-    vista = await pintar(<Marco><div>sala vieja</div></Marco>);
+    estado.ruta = "/admin/alpha/diario";
+    vista = await pintar(<Marco><div>sala de Alpha</div></Marco>);
     expect(vista.querySelector(".pnl-atras")).toBeNull();
-    expect(vista.querySelector('.pnl-barra .pnl-sala[aria-current="page"]')?.getAttribute("href")).toBe("/admin/beta");
+    expect(vista.querySelector('.pnl-barra .pnl-sala[aria-current="page"]')?.getAttribute("href")).toBe("/admin/alpha");
     expect(vista.querySelector(".pnl-secciones")).toBeNull();
-    // La sala antigua queda fuera de .lg para conservar su aspecto oscuro.
-    expect(vista.querySelector(".adm.pnl-viejo")?.closest(".lg")).toBeNull();
+    expect(vista.querySelector(".pnl-cab-titulo")?.textContent).toBe("Alpha");
+    // Todas las salas llevan el diseño nuevo: no queda ninguna con el aspecto antiguo.
+    expect(vista.querySelector(".pnl-viejo, .pnl-vieja")).toBeNull();
+    expect(vista.querySelectorAll(".pnl-barra .pnl-sala")).toHaveLength(3);
   });
 
   it("suma los pendientes por sección en el raíl y marca la sección activa", async () => {

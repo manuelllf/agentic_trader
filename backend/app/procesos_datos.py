@@ -120,8 +120,10 @@ def marcar(proceso: str) -> Iterator[None]:
 
 
 # Qué trabajo registrado del scheduler lanza cada proceso. Fundamentales y poda son solo a mano.
+# El escaneo de Jev (`escaneo`) es el único de pago: su trabajo es el mensual.
 _TRABAJOS = {"foto": "universe_snapshot", "global": "universo_global", "fund": None,
-             "fx": "fx_sync", "analitica": "analytics_sync", "poda": None}
+             "fx": "fx_sync", "analitica": "analytics_sync", "poda": None,
+             "escaneo": "monthly_scan"}
 
 
 def horario() -> dict:

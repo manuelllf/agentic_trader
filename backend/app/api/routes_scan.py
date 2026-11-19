@@ -1,20 +1,19 @@
 """Escaneo: lanzar/cancelar, progreso en vivo, informe persistido, embudo, outcomes, y las
 dos re-pasadas baratas (recheck/redeep) que no vuelven a escanear el universo."""
 from __future__ import annotations
-from app.i18n import translate
 
-import re
 from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app import pipeline, scan_audit, scan_config, scan_state
+from app import pipeline, scan_config, scan_state
 from app.auth import auth_optional
 from app.config import settings
 from app.db import get_db
 from app.models import utc_iso
+from app.i18n import translate
 
 public_router = APIRouter()   # sin token: lecturas y teaser de la portada
 router = APIRouter()          # exige require_auth (montado en app/api/routes.py)
@@ -40,6 +39,7 @@ class DemoRunOverrides(BaseModel):
 def demo_run(sample_size: int | None = None, decide: bool = True,
             reutilizar_ultima_foto: bool = False,
             modo_universo: Literal["nasdaq", "global_topcap"] = "nasdaq",
+            solo_jev: bool = True,
             overrides: DemoRunOverrides | None = Body(None, embed=True),
             db: Session = Depends(get_db)) -> dict:
     # decide=False: escaneo de universo completo en producción real, con el modelo/coste
@@ -58,13 +58,20 @@ def demo_run(sample_size: int | None = None, decide: bool = True,
     # `scan_service.run_scan_and_store`) — elección nueva del modal, solo aquí (nunca el cron).
     if not settings.enable_llm or not settings.llm_api_key_present:
         raise HTTPException(503, translate('api_provider_not_configured', provider=settings.llm_provider.upper()))
+    if not solo_jev:
+        # El único escaneo que queda es el de las notas de Jev: el de decisión se retiró.
+        raise HTTPException(400, "Solo existe el escaneo de las notas de Jev.")
+    if decide and modo_universo != "nasdaq":
+        # La foto que la liga designa sale siempre de NASDAQ: el universo global es para pruebas.
+        raise HTTPException(400, "El universo global solo vale para escaneos de prueba.")
     llm_overrides = (overrides.model_dump(exclude_none=True) if overrides else None) or None
     if decide and llm_overrides is None:
         llm_overrides = scan_config.get_decide_overrides(db)
+    # `solo_jev`: el escaneo de las notas de Jev (el de cada mes, lanzado a mano o de prueba).
     started = pipeline.start(sample_size=sample_size, decide=decide,
                              llm_overrides=llm_overrides,
                              reutilizar_ultima_foto=reutilizar_ultima_foto,
-                             modo_universo=modo_universo)
+                             modo_universo=modo_universo, solo_jev=solo_jev)
     return {"started": started, **pipeline.get_status()}
 
 
@@ -91,18 +98,6 @@ class InterruptorIn(BaseModel):
     enabled: bool
 
 
-@router.get("/scan/mid-layer")
-def get_scan_mid_layer(db: Session = Depends(get_db)) -> dict:
-    """Interruptor de la capa media: vale para cron, "Analizar y decidir" y observatorio."""
-    return {"enabled": scan_config.mid_layer_activa(db)}
-
-
-@router.put("/scan/mid-layer")
-def put_scan_mid_layer(body: InterruptorIn, db: Session = Depends(get_db)) -> dict:
-    """Persistido hasta que se vuelva a cambiar; solo afecta a escaneos FUTUROS."""
-    return {"enabled": scan_config.set_mid_layer(db, body.enabled)}
-
-
 @router.get("/scan/jev-macro")
 def get_scan_jev_macro(db: Session = Depends(get_db)) -> dict:
     """Interruptor "Macro en Jev": el prescore ve datos + eventos + titulares o solo datos."""
@@ -113,19 +108,6 @@ def get_scan_jev_macro(db: Session = Depends(get_db)) -> dict:
 def put_scan_jev_macro(body: InterruptorIn, db: Session = Depends(get_db)) -> dict:
     """Persistido hasta que se vuelva a cambiar; solo afecta a escaneos FUTUROS."""
     return {"enabled": scan_config.set_jev_macro(db, body.enabled)}
-
-
-@router.post("/demo/cancel-observatorio")
-def demo_cancel_observatorio() -> dict:
-    """Cancela SOLO si lo que corre ahora mismo es un observatorio, nunca uno con decisión.
-    Best-effort: para en el próximo punto de control; lo ya en vuelo termina solo."""
-    return {"cancelled": pipeline.cancel(decide=False), **pipeline.get_status()}
-
-
-@router.post("/demo/cancel-decision")
-def demo_cancel_decision() -> dict:
-    """Igual que `demo_cancel_observatorio` pero al revés: solo cancela uno con decisión."""
-    return {"cancelled": pipeline.cancel(decide=True), **pipeline.get_status()}
 
 
 @public_router.get("/demo/status")
@@ -167,17 +149,6 @@ def scan_report(db: Session = Depends(get_db), authed: bool = Depends(auth_optio
     return {"report": report}
 
 
-@public_router.get("/scan/funnel")
-def scan_funnel(limit: int = Query(8, ge=1, le=30), db: Session = Depends(get_db),
-                authed: bool = Depends(auth_optional)) -> dict:
-    """Embudo de los últimos escaneos desde la traza de auditoría: cuántos nombres sobreviven a
-    cada etapa (pre-score → profundo → seleccionado → en cartera) y su reparto por sector.
-
-    DOBLE NIVEL: los agregados describen el COMPORTAMIENTO del sistema y no identifican a nadie
-    → públicos. El detalle nombre a nombre es el ranking con sus scores → solo con sesión, y
-    solo del escaneo más reciente (ver `scan_audit.funnel`).
-    """
-    return {"scans": scan_audit.funnel(db, limit=limit, detail=authed)}
 
 
 @public_router.get("/scan/outcomes")
@@ -206,38 +177,28 @@ def scan_outcomes_view(limit: int = Query(8, ge=1, le=30), db: Session = Depends
     return {"scans": scans, "book": scan_outcomes.book_row(db)}
 
 
+
 @router.get("/scan/full")
 def scan_full(at: str | None = None, db: Session = Depends(get_db)) -> dict:
-    """Recuperación completa de UN escaneo (mensual decidido o semanal observatorio): tesis
-    macro, finalistas con su score/target, cartera formada con pesos y omitted. Vive entero en
-    `ScanRun` (una fila por escaneo, nunca se pisa) — protegido entero: revela tickers y tesis,
-    igual que `/scores` o `/proposal`.
-
-    `at` = `scan_at` ISO de un escaneo concreto (ver `/scan/funnel` para las fechas); sin él,
-    el más reciente.
-    """
+    """Detalle completo del escaneo de Jev: el bloque macro que vio la nota (calendario, eventos y
+    titulares) además del resumen. `at` = `scan_at` ISO de un escaneo concreto; sin él, el último.
+    Protegido: el titular de cada fuente va con el escaneo, igual que el resto del informe."""
     from datetime import datetime
 
-    from app.models import ScanAudit, ScanRun, ScanRunMacroHeadline
+    from app.models import ScanRun, ScanRunMacroHeadline
 
     q = db.query(ScanRun).filter(ScanRun.error.is_(None))   # uno reventado no tiene qué mostrar
     row = (q.filter(ScanRun.scan_at == datetime.fromisoformat(at)).first() if at
            else q.order_by(ScanRun.scan_at.desc()).first())
     if row is None:
         return {"scan": None}
-    filtros = dict(db.query(ScanAudit.ticker, ScanAudit.pasa_filtro_tecnico)
-                   .filter(ScanAudit.scan_run_id == row.id).all())
-    finalistas = [{**f, "pasa_filtro_tecnico": filtros.get(f["ticker"])} for f in row.finalists]
     titulares = (db.query(ScanRunMacroHeadline).filter_by(scan_run_id=row.id)
                  .order_by(ScanRunMacroHeadline.fuente, ScanRunMacroHeadline.posicion).all())
     return {"scan": {
         "at": utc_iso(row.scan_at), "cadence": row.cadence, "decide": row.decide,
         "regime": row.regime, "vix": row.vix, "outlook": row.outlook,
-        # El resto del bloque macro que vio el profundo/constructor (E), tal cual.
         "macro_calendario": row.macro_wiki_scheduled, "macro_eventos": row.macro_wiki_events,
         "macro_titulares": [{"fuente": t.fuente, "texto": t.texto} for t in titulares],
-        "universe": row.universe, "counters": row.counters, "cost": row.cost,
-        "issues": row.issues, "finalists": finalistas, "construction": row.construction,
     }}
 
 
@@ -250,74 +211,3 @@ def scan_ticker_history(ticker: str, db: Session = Depends(get_db)) -> dict:
     return {"ticker": ticker.upper(), "scans": scan_outcomes.ticker_history(db, ticker)}
 
 
-_TICKER_LIKE = re.compile(r"^[A-Za-z0-9]{1,6}$")
-
-
-def _memory_out(m) -> dict:  # noqa: ANN001 — `Memory` es un dataclass de app.memory.store
-    out = {"ticker": m.ticker, "kind": m.kind, "text": m.text, "created_at": m.created_at}
-    if m.distance is not None:
-        out["distance"] = m.distance
-    if m.n_tesis is not None:
-        out["n_tesis"] = m.n_tesis
-    return out
-
-
-@router.get("/memory/search")
-def memory_search(q: str = Query(..., min_length=1), limit: int = Query(20, ge=1, le=100)) -> dict:
-    """Buscador sobre la memoria semántica: ticker exacto (historia cronológica) o texto libre
-    (parecido semántico). Protegido entero, igual que `/scan/audit/{ticker}`: devuelve nombres
-    con su tesis, y la regla de esta API es que el COMPORTAMIENTO es público pero QUÉ nombres
-    elige el método no lo es. La memoria es telemetría que se lee — nunca vuelve a un prompt.
-    """
-    from app import memory
-
-    try:
-        store = memory.get_store()
-    except Exception:  # noqa: BLE001 — fastembed puede faltar, o DATABASE_URL no ser Postgres
-        store = None
-    if store is None:
-        return {"mode": "vacio", "items": [], "error": "memoria vectorial no disponible"}
-
-    q = q.strip()
-    if _TICKER_LIKE.match(q):
-        try:
-            hist = store.history_for(q.upper(), limit=limit)
-        except Exception as exc:  # noqa: BLE001 — BD caída/inalcanzable: se avisa, no se disfraza
-            # de búsqueda semántica. Bug real reproducido en producción con el store antiguo
-            # (SQLite): un fallo aquí se tragaba en silencio y caía al modo semántico sin avisar
-            # — parecía que la memoria "olvidaba" nombres.
-            return {"mode": "vacio", "items": [], "error": str(exc)}
-        if hist:
-            return {"mode": "ticker", "items": [_memory_out(m) for m in hist]}
-
-    try:
-        results = store.search(q, k=limit)
-    except Exception as exc:  # noqa: BLE001 — típicamente fastembed no instalado o BD inalcanzable
-        return {"mode": "vacio", "items": [], "error": str(exc)}
-    return {"mode": "semantic", "items": [_memory_out(m) for m in results]}
-
-
-@router.post("/recheck")
-def recheck(db: Session = Depends(get_db)) -> dict:
-    """Re-comprobación del top: re-construye la cartera sobre los ya analizados a fondo,
-    con el suelo actual, SIN re-escanear el universo (instantáneo)."""
-    if not settings.enable_llm or not settings.llm_api_key_present:
-        raise HTTPException(503, translate('api_provider_not_configured', provider=settings.llm_provider.upper()))
-    from app.scan_service import recheck as _recheck
-    try:
-        return _recheck(db)
-    except ValueError as exc:
-        raise HTTPException(409, str(exc)) from exc
-
-
-@router.post("/redeep")
-def redeep(db: Session = Depends(get_db)) -> dict:
-    """Re-analiza a fondo (V4-Pro) los nombres ya profundizados con el macro ACTUAL, sin
-    re-escanear el universo. Para refrescar tras corregir un dato macro. Barato (~$0.03-0.05)."""
-    if not settings.enable_llm or not settings.llm_api_key_present:
-        raise HTTPException(503, translate('api_provider_not_configured', provider=settings.llm_provider.upper()))
-    from app.scan_service import redeep as _redeep
-    try:
-        return _redeep(db)
-    except ValueError as exc:
-        raise HTTPException(409, str(exc)) from exc

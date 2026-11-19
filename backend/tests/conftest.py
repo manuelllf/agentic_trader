@@ -92,3 +92,13 @@ def token_admin(monkeypatch) -> str:  # noqa: ANN001
     monkeypatch.setattr(auth, "verificar", verificar)
     monkeypatch.setattr(auth, "comprobar_admin", lambda ident: ident)
     return TOKEN_ADMIN
+
+@pytest.fixture(autouse=True)
+def _sin_designacion_de_la_liga_en_el_escaneo(request, monkeypatch) -> None:  # noqa: ANN001
+    """La designación de foto es de Postgres (candado y `liga.ajustes`): fuera de tests/liga,
+    el escaneo no debe abrir esa conexión; esos tests la prueban por su cuenta."""
+    if "liga" in request.node.path.parts:
+        return
+    from app.liga.procesos import foto
+
+    monkeypatch.setattr(foto, "auto_desde_escaneo", lambda scan_run_id, **kw: None)

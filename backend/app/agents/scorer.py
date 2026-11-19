@@ -125,29 +125,6 @@ def _user_prompt(data: NameData, macro_block: str, prior_thesis: str | None) -> 
     )
 
 
-def _mid_prompt(data: NameData, macro_block: str) -> str:
-    # Todos los titulares, no solo los 3 primeros: la capa media decide quién llega al análisis
-    # caro viendo un tercio de las noticias. En un escaneo real dio 100/100 a un nombre —el
-    # único ≥90 de 2.594— y el profundo le puso 48 en cuanto vio la noticia que lo hundía (venta
-    # de acciones por directivos), fuera del top-3. La segunda opinión no es un profundo barato:
-    # es otro juez.
-    news = "; ".join(data.news) if data.news else "none"
-    name = f" ({data.name})" if data.name else ""
-    # Las noticias van ANTES de los ~50 fundamentales, no detrás: el propio SYSTEM dice que se
-    # pesen "TOGETHER", y quedaban enterradas tras cincuenta líneas de números.
-    return (
-        # Macro delante (mismo motivo que en `_user_prompt`): prefijo idéntico entre las ~200
-        # llamadas de la capa media de un escaneo, cache-friendly sin tocar el contenido.
-        f"Macro: {macro_block}\n"
-        f"{data.ticker}{name} — {data.sector}/{data.industry}\n"
-        f"News: {news}\n"
-        f"Fundamentals:\n{data.fundamentals_text}\n"
-        f"Technical: {data.technical_text or 'n/d'}\n"
-        # Igual que en el lote barato (ver `_prescore_batch_prompt`): dato del calendario, sin
-        # regla de qué hacer con él.
-        f"Earnings: {data.earnings_text or 'n/d'}\n"
-        "1-100 score (JSON)."
-    )
 
 
 # La respuesta cruda de un fallo va ENTERA a `ScanRun.failures` (antes se recortaba a 1500
@@ -155,31 +132,6 @@ def _mid_prompt(data: NameData, macro_block: str) -> str:
 # son unas decenas de casos por escaneo, no miles.
 
 
-def mid_prescore(
-    llm: LLMProvider, data: NameData, macro_block: str, temperature: float = 1.0,
-    top_p: float | None = 0.95,
-) -> PrescoreResult:
-    """Segunda opinión: best-effort 0 si falla, con error/raw para decidir reintento."""
-    raw = ""
-    try:
-        # `ticker_ctx`: el proveedor no sabe de qué nombre es la llamada; así la traza lo sabe
-        # sin meter un parámetro de telemetría en la interfaz del LLM (ver `app/llm/trace.py`).
-        with ticker_ctx(data.ticker):
-            raw = llm.chat(MID_SYSTEM, _mid_prompt(data, macro_block),
-                           temperature=temperature, top_p=top_p) or ""
-        obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-        sc = max(0.0, min(100.0, round(float(obj.get("score", 0)))))
-        # Score 0 en escala 1-100 = fallo de parseo. Sin esto, nombres caen sin rastro.
-        # Medido: 118/3.000 invisibles sin este guardarraíl.
-        if sc <= 0:
-            return PrescoreResult(data.ticker, 0.0,
-                                  error="SinNota: JSON válido sin score utilizable",
-                                  raw=raw)
-        return PrescoreResult(data.ticker, sc)
-    except Exception as exc:
-        logger.warning("Capa media no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
-        return PrescoreResult(data.ticker, 0.0, error=f"{type(exc).__name__}: {exc}",
-                              raw=raw)
 
 
 # Pre-score INDIVIDUAL — triaje rápido del universo, 1 llamada/ticker (fiel al paper).
@@ -386,37 +338,3 @@ def prescore_batch(
     return out
 
 
-def score(
-    llm: LLMProvider, data: NameData, macro_block: str, prior_thesis: str | None = None,
-    temperature: float = 1.0, top_p: float | None = 0.95,
-) -> ScoreResult:
-    """Puntúa un nombre. Best-effort: si el LLM falla/no parsea, score 0 (queda fuera), con
-    `error`/`raw` para que el caller sepa POR QUÉ y decida si reintenta."""
-    raw = ""
-    try:
-        with ticker_ctx(data.ticker):
-            raw = llm.chat(SYSTEM, _user_prompt(data, macro_block, prior_thesis),
-                           temperature=temperature, top_p=top_p) or ""
-        obj = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-        sc = max(0.0, min(100.0, round(float(obj.get("score", 0)))))
-        ua = obj.get("under_acquisition")
-        # Solo un booleano de verdad cuenta: un "true" en texto o un 1 son respuestas que no
-        # sabemos leer con seguridad, y aquí equivocarse cuesta una posición de la cartera.
-        ua = ua if isinstance(ua, bool) else None
-        # Score 0 = fallo de parseo. Sin esto, nombre cae sin rastro (pasó con empresas grandes).
-        # Se marca error Y se guarda crudo para diagnóstico posterior.
-        if sc <= 0:
-            return ScoreResult(ticker=data.ticker, score=0.0, headline="", report="",
-                               error="SinNota: JSON válido sin score utilizable",
-                               raw=raw)
-        return ScoreResult(
-            ticker=data.ticker,
-            score=sc,
-            headline=str(obj.get("headline", "")).strip(),
-            report=str(obj.get("report", "")).strip(),
-            under_acquisition=ua,
-        )
-    except Exception as exc:
-        logger.warning("Scorer no parseable para %s (%s): %r", data.ticker, exc, raw[:400])
-        return ScoreResult(ticker=data.ticker, score=0.0, headline="", report="",
-                           error=f"{type(exc).__name__}: {exc}", raw=raw)

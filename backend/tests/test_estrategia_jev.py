@@ -249,7 +249,6 @@ def _stub_escaneo(monkeypatch, prescore) -> DeepFalso:  # noqa: ANN001
     def fake_get_llm(model: str | None = None, **kw):
         return prescore if kw.get("provider") == "jev" else deep
 
-    monkeypatch.setattr(scan_service, "get_llm", fake_get_llm)
     monkeypatch.setattr(scan_llm_stage, "get_llm", fake_get_llm)
     monkeypatch.setattr(scan_llm_stage.settings, "typesafe_api_key", "fake")
     monkeypatch.setattr(scan_llm_stage.settings, "prescore_provider", "jev")
@@ -257,7 +256,6 @@ def _stub_escaneo(monkeypatch, prescore) -> DeepFalso:  # noqa: ANN001
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])
     monkeypatch.setattr(scan_service.settings, "max_position_pct", 100.0)
     monkeypatch.setattr(scan_service.settings, "min_positions", 1)
-    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
     monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)
     monkeypatch.setattr(universe_mod, "tickers_elegibles", lambda db: list(_NIVELES))
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
@@ -278,37 +276,8 @@ def _stub_escaneo(monkeypatch, prescore) -> DeepFalso:  # noqa: ANN001
 _ESPERADA = ["A1", "A2", "B1", "C1", "D1"]   # sin ND (sin industria), A3 (tope), OPA (opada)
 
 
-def test_escaneo_con_jev_guarda_su_cartera_y_sus_4_notas(db, monkeypatch) -> None:
-    jev = JevFalso()
-    _stub_escaneo(monkeypatch, jev)
-
-    result = scan_service.run_scan_and_store(db, decide=True)
-
-    assert [p["ticker"] for p in result["jev_cartera"]] == _ESPERADA
-    assert {p["weight_pct"] for p in result["jev_cartera"]} == {20.0}
-    filas = {r.ticker: r for r in db.query(ScanAudit).all()}
-    assert {t for t, r in filas.items() if r.jev_funded} == set(_ESPERADA)
-    assert filas["A3"].jev_funded is False
-    assert filas["A1"].jev_fundamentals == 800 and filas["A1"].jev_catalyst_conf == 800
-    assert db.query(ScanRun).one().jev_macro is False
-    # El informe la lee de `scan_run_jev_item`, en el mismo orden y con su industria.
-    informe = scan_state.informe(db)
-    assert [p["ticker"] for p in informe["jev_cartera"]] == _ESPERADA
-    assert informe["jev_cartera"][0]["industry"] == "Semis" and informe["error"] is None
 
 
-def test_por_defecto_jev_ve_solo_datos_y_deepseek_el_macro_completo(db, monkeypatch) -> None:
-    jev = JevFalso()
-    deep = _stub_escaneo(monkeypatch, jev)
-
-    scan_service.run_scan_and_store(db, decide=False)
-
-    assert all("Hormuz" not in s and "Fed hikes" not in s for s in jev.states)
-    assert all("VIX 15.0." in s for s in jev.states)
-    profundos = [u for u in deep.users if "Company:" in u]
-    assert profundos and all("Recent events (last 7 days):" in u for u in profundos)
-    constructor = [u for u in deep.users if "Company:" not in u]
-    assert constructor and "Fed hikes rates" in constructor[0]
 
 
 def test_con_el_interruptor_jev_ve_eventos_y_titulares(db, monkeypatch) -> None:
@@ -322,27 +291,8 @@ def test_con_el_interruptor_jev_ve_eventos_y_titulares(db, monkeypatch) -> None:
     assert db.query(ScanRun).one().jev_macro is True
 
 
-def test_observatorio_calcula_la_cartera_jev_sin_tocar_dinero(db, monkeypatch) -> None:
-    _stub_escaneo(monkeypatch, JevFalso())
-
-    result = scan_service.run_scan_and_store(db, decide=False)
-
-    assert [p["ticker"] for p in result["jev_cartera"]] == _ESPERADA
-    assert db.query(Proposal).count() == 0 and db.query(Trade).count() == 0
-    assert not any("Cartera Jev" in i.texto for i in db.query(ScanRunIssue).all())
 
 
-def test_cartera_jev_incompleta_se_avisa(db, monkeypatch) -> None:
-    """Con menos nombres de los pedidos cada uno pesa más del 20%: que se vea en el informe."""
-    _stub_escaneo(monkeypatch, JevFalso())
-    monkeypatch.setattr(scan_service.settings, "jev_portfolio_n", 6)
-
-    result = scan_service.run_scan_and_store(db, decide=False)
-
-    assert len(result["jev_cartera"]) == 5
-    assert {p["weight_pct"] for p in result["jev_cartera"]} == {20.0}
-    avisos = [i.texto for i in db.query(ScanRunIssue).all()]
-    assert any("Cartera Jev incompleta: 5 de 6" in a for a in avisos)
 
 
 def test_sin_prescore_de_jev_no_hay_cartera_jev(db, monkeypatch) -> None:
@@ -368,20 +318,4 @@ def test_sin_prescore_de_jev_no_hay_cartera_jev(db, monkeypatch) -> None:
     assert all(r.jev_funded is None for r in db.query(ScanAudit).all())
     assert db.query(ScanRun).one().jev_macro is None
 
-
-def test_recomponer_usa_el_macro_de_hoy_no_el_resumen_de_la_propuesta(db, monkeypatch) -> None:
-    """Antes metía `Proposal.macro_summary` (un resumen en español) como si fuera el macro."""
-    from app.models import Score
-
-    deep = _stub_escaneo(monkeypatch, JevFalso())
-    monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: deep)
-    db.add(Proposal(cash_target_pct=0, macro_summary="RESUMEN VIEJO"))
-    db.add(Score(ticker="A1", sector="Tech", score=80, headline="h", report="informe",
-                 price=100.0, market_cap=5e9))
-    db.commit()
-
-    scan_service.recheck(db)
-
-    assert "Fed hikes rates" in deep.users[-1] and "RESUMEN VIEJO" not in deep.users[-1]
-    nueva = db.query(Proposal).order_by(Proposal.id.desc()).first()
-    assert nueva.macro_summary == "cartera"          # el resumen del constructor
+

@@ -177,8 +177,8 @@ class _Filas:
 class _BdFalsa:
     """Responde por el texto de la consulta: lo justo para la cartera de la casa sin Postgres."""
 
-    def __init__(self, previos, jev, auditoria, alpha):
-        self.previos, self.jev, self.auditoria, self.alpha = previos, jev, auditoria, alpha
+    def __init__(self, previos, jev, auditoria):
+        self.previos, self.jev, self.auditoria = previos, jev, auditoria
 
     def execute(self, consulta, params=None):
         sql, s = str(consulta), (params or {}).get("s")
@@ -188,34 +188,25 @@ class _BdFalsa:
             return _Filas(self.jev.get(s, []))
         if "scan_audit" in sql:
             return _Filas(self.auditoria.get(s, []))
-        if "scan_run_construction_item" in sql:
-            return _Filas(self.alpha.get(s, []))
         raise AssertionError(sql)
 
 
-def test_lambda_y_alpha_usan_el_ultimo_escaneo_con_cartera_si_el_de_la_jornada_no_la_guardo():
-    db = _BdFalsa(previos=[10, 9], jev={9: [("AAA", 50.0), ("BBB", 50.0)]},
-                  auditoria={}, alpha={10: [("CCC", 100.0)]})
+def test_lambda_usa_el_ultimo_escaneo_con_cartera_si_el_de_la_jornada_no_la_guardo():
+    db = _BdFalsa(previos=[10, 9], jev={9: [("AAA", 50.0), ("BBB", 50.0)]}, auditoria={})
     lam = casa.cartera_lambda(db, 11, plan_b=False)
     assert dict(lam.posiciones) == {"AAA": Decimal("50.0000"), "BBB": Decimal("50.0000")}
     assert "escaneo 9" in lam.avisos[0]
-    alpha = casa.cartera_alpha(db, 11, plan_b=False)
-    assert dict(alpha.posiciones) == {"CCC": Decimal("100.0000")}
-    assert "escaneo 10" in alpha.avisos[0]
 
 
-def test_en_plan_b_la_casa_juega_y_lo_dice():
-    db = _BdFalsa(previos=[], jev={11: [("AAA", 100.0)]}, auditoria={},
-                  alpha={11: [("BBB", 100.0)]})
-    for cartera in (casa.cartera_lambda(db, 11, plan_b=True),
-                    casa.cartera_alpha(db, 11, plan_b=True)):
-        assert cartera.posiciones
-        assert cartera.avisos and cartera.avisos[0].startswith("Plan B")
+def test_en_plan_b_lambda_juega_y_lo_dice():
+    db = _BdFalsa(previos=[], jev={11: [("AAA", 100.0)]}, auditoria={})
+    cartera = casa.cartera_lambda(db, 11, plan_b=True)
+    assert cartera.posiciones
+    assert cartera.avisos and cartera.avisos[0].startswith("Plan B")
 
 
-def test_sin_ninguna_cartera_la_casa_juega_en_caja_y_no_se_queda_fuera():
-    db = _BdFalsa(previos=[10], jev={}, auditoria={}, alpha={})
-    for cartera in (casa.cartera_lambda(db, 11, plan_b=False),
-                    casa.cartera_alpha(db, 11, plan_b=False)):
-        assert cartera.posiciones == ()      # vacío, no None: entra la inscripción, en caja
-        assert "caja" in cartera.motivo
+def test_sin_ninguna_cartera_lambda_juega_en_caja_y_no_se_queda_fuera():
+    db = _BdFalsa(previos=[10], jev={}, auditoria={})
+    cartera = casa.cartera_lambda(db, 11, plan_b=False)
+    assert cartera.posiciones == ()      # vacío, no None: entra la inscripción, en caja
+    assert "caja" in cartera.motivo

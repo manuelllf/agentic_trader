@@ -253,7 +253,8 @@ class PosicionHuecoOut(PosicionOut):
 
 
 class NotasEmpresaOut(BaseModel):
-    """Las 4 notas de una empresa sobre 100 (como la nota final y Crear), con su jornada y el día de la foto."""
+    """Las 4 notas de una empresa sobre 100 (como la nota final y Crear),
+    con su jornada y el día de la foto."""
     ticker: str
     jornada: int
     jornada_total: int

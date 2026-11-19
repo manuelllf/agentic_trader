@@ -25,19 +25,18 @@ scheduler = BackgroundScheduler(timezone="UTC")
 
 
 def _scan_job() -> None:
-    """Único escaneo programado: mensual, universo entero, decide. El semanal (muestra
-    rotatoria, sin capa media, sin decisión) se retiró — no aportaba conocimiento nuevo: el
-    mercado no cambia lo bastante en una semana para justificar 750 llamadas de pago sin capa
-    media y sin tocar cartera (ver docs/plan-datos-observability.md)."""
+    """Único escaneo programado: mensual, universo entero, solo las notas de Jev (foto, macro,
+    prescore y la cartera de Lambda). Lo de Alpha ya no pasa por aquí: lo lleva el agente. El
+    semanal (muestra rotatoria) se retiró: el mercado no cambia lo bastante en una semana para
+    justificar miles de llamadas de pago (ver docs/plan-datos-observability.md)."""
     db = SessionLocal()
     try:
-        # Config por etapa guardada para el escaneo con decisión (misma que usa el botón
-        # "Analizar y decidir"); `None` = defaults de `settings`, comportamiento de siempre.
+        # Config por etapa guardada para el escaneo con decisión; `None` = defaults de `settings`.
         overrides = scan_config.get_decide_overrides(db)
         scan_progress.reset()
         result = proceso_hijo.ejecutar(
             "app.tareas_hijo:escaneo",
-            {"sample_size": None, "decide": True, "llm_overrides": overrides},
+            {"sample_size": None, "decide": True, "llm_overrides": overrides, "solo_jev": True},
             on_estado=scan_progress.aplicar)
         logger.info("Escaneo completado: %s", result)
     except Exception as exc:
@@ -143,25 +142,6 @@ def _analytics_sync_job() -> None:
         logger.info("Analítica DuckDB sincronizada: %s", counts)
     except Exception:
         logger.exception("No se pudo sincronizar la analítica DuckDB")
-
-
-def _reconcile_job() -> None:
-    """Reconcilia fills de órdenes límite 'working' SIN depender de que la web esté abierta.
-
-    Clave en producción: si una orden llena a los 15 min y nadie tiene Alpha abierta,
-    este job cuadra el libro igualmente. Barato: si no hay órdenes working, es solo una query
-    a la BD (ni toca IBKR)."""
-    from app import approvals as approvals_mod
-
-    db = SessionLocal()
-    try:
-        n = approvals_mod.reconcile_working(db)
-        if n:
-            logger.info("Reconcile: %s orden(es) actualizada(s) con su fill real.", n)
-    except Exception:
-        logger.exception("Fallo en el job de reconciliación")
-    finally:
-        db.close()
 
 
 def procesar_señales(db, todas: list[dict], universo: list[str] | None = None) -> dict:  # noqa: ANN001 — Session, evitar el circular
@@ -466,9 +446,6 @@ def start_scheduler() -> None:
         CronTrigger(day=1, hour=3, minute=0, timezone=settings.scan_timezone),
         id="universo_global", replace_existing=True, misfire_grace_time=86400, coalesce=True,
     )
-    # Reconciliación de órdenes working cada 2 min (no-op sin órdenes vivas; ver _reconcile_job).
-    scheduler.add_job(_reconcile_job, "interval", minutes=2, id="reconcile_working",
-                      replace_existing=True)
     # Tasas de cambio a USD: 5:00 Europa/Madrid, antes de la analítica -- ver _fx_job.
     scheduler.add_job(
         _fx_job,

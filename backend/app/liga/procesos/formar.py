@@ -49,6 +49,7 @@ from app.liga.motor.seleccion import (
 )
 from app.liga.procesos import casa, datos
 from app.liga.procesos.comun import (
+    TZ_BOLSA,
     ErrorProceso,
     Fabrica,
     ahora_utc,
@@ -105,6 +106,8 @@ class Contexto:
     empresas: tuple[EmpresaFoto, ...]
     notas: dict[str, NotasJev]
     cambio_de_mes: bool
+    # Día de Nueva York de la foto (el último día de bolsa del mes): el de la cartera de Alpha.
+    dia_foto: date | None = None
 
 
 @dataclass
@@ -158,10 +161,16 @@ def _cambio_de_mes(db: Session, j: Jornada) -> bool:
     return anterior is None or anterior.scan_run_id != j.scan_run_id
 
 
+def _dia_de_la_foto(db: Session, foto_id: int) -> date | None:
+    fin = db.execute(text("select fin from foto where id = :f"), {"f": foto_id}).scalar()
+    return None if fin is None else fin.astimezone(TZ_BOLSA).date()
+
+
 def contexto(db: Session, j: Jornada) -> Contexto:
     return Contexto(j.id, j.foto_id, j.scan_run_id, bool(es_plan_b(db, j)), j.cierre_inscripcion,
                     j.dia_base, tuple(datos.cargar_empresas(db, j.foto_id)),
-                    datos.cargar_notas(db, j.scan_run_id), _cambio_de_mes(db, j))
+                    datos.cargar_notas(db, j.scan_run_id), _cambio_de_mes(db, j),
+                    _dia_de_la_foto(db, j.foto_id))
 
 
 _ESTRATEGIAS = text("""
@@ -418,10 +427,13 @@ def entrada_de(db: Session, ctx: Contexto, empresas: list[EmpresaFoto], excluir:
                    motivo, vaciar), None, aviso
 
 
-def planificar(db: Session, ctx: Contexto, excluir: set[str], motivo_ia: str | None = None) -> Plan:
+def planificar(db: Session, ctx: Contexto, excluir: set[str], motivo_ia: str | None = None,
+               espera_agotada: bool = True) -> Plan:
     """Todas las carteras, sin escribir nada. `excluir`: tickers sin precio de compra.
     `motivo_ia`: por qué no se pudo contestar todo (`rellenar_preguntas`); sin él, el motivo de
-    una pregunta sin todas sus respuestas es `incompleta`."""
+    una pregunta sin todas sus respuestas es `incompleta`. `espera_agotada`: si Alpha no puede
+    leerse, con False se para la formación (se reintenta); con True juega con lo que haya o en caja
+    y lo dice (la vista previa nunca para)."""
     plan = Plan()
     empresas = [e for e in ctx.empresas if e.ticker not in excluir]
     for fila in db.execute(_ESTRATEGIAS, {"corte": ctx.corte}).all():
@@ -438,9 +450,14 @@ def planificar(db: Session, ctx: Contexto, excluir: set[str], motivo_ia: str | N
         if entrada:
             plan.entradas.append(entrada)
 
-    for clave, cartera in (("lambda", casa.cartera_lambda), ("alpha", casa.cartera_alpha)):
+    for clave in ("lambda", "alpha"):
         mantenida = None if ctx.cambio_de_mes else _casa_mantenida(db, clave, ctx, plan)
-        plan.casa[clave] = mantenida or cartera(db, ctx.scan_run_id, ctx.plan_b)
+        if mantenida:
+            plan.casa[clave] = mantenida
+        elif clave == "lambda":
+            plan.casa[clave] = casa.cartera_lambda(db, ctx.scan_run_id, ctx.plan_b)
+        else:
+            plan.casa[clave] = casa.cartera_alpha(ctx.dia_foto, espera_agotada)
     # Omega ya no es sus posiciones reales del corte (omega_huecos.md): nace con los 4 huecos
     # vacíos (juega en caja) y `diario` los va llenando con sus alertas según llegan durante el
     # mes -- así juega aunque nada se ejecute de verdad en la sala.
@@ -464,14 +481,14 @@ def entradas_casa(plan: Plan, ids: dict[str, uuid.UUID]) -> list[Entrada]:
             for clave, c in plan.casa.items() if c.posiciones is not None and clave in ids]
 
 
-def _precios_y_plan(fabrica: Fabrica, ctx: Contexto,
-                    motivo_ia: str | None = None) -> tuple[Plan, set[str]]:
+def _precios_y_plan(fabrica: Fabrica, ctx: Contexto, motivo_ia: str | None = None,
+                    espera_agotada: bool = True) -> tuple[Plan, set[str]]:
     """Trae los cierres del día base de lo que entraría y vuelve a seleccionar sin lo que no
     tenga precio, hasta que no cambie nada."""
     sin_precio: set[str] = set()
     pedidos: set[str] = set()
     with sesion(fabrica) as db:
-        plan = planificar(db, ctx, sin_precio, motivo_ia)
+        plan = planificar(db, ctx, sin_precio, motivo_ia, espera_agotada)
     for _ in range(_VUELTAS_PRECIOS):
         tickers = plan.tickers | {SPY}
         faltan = tickers - pedidos
@@ -499,7 +516,7 @@ def _precios_y_plan(fabrica: Fabrica, ctx: Contexto,
             return plan, sin_precio
         sin_precio |= nuevos
         with sesion(fabrica) as db:
-            plan = planificar(db, ctx, sin_precio, motivo_ia)
+            plan = planificar(db, ctx, sin_precio, motivo_ia, espera_agotada)
     raise ErrorProceso("Los precios del día base no terminan de cuadrar: revisa la fuente de "
                        f"precios (sin cierre: {', '.join(sorted(sin_precio))}).")
 
@@ -577,10 +594,14 @@ def ejecutar(jornada_id: int, fabrica: Fabrica = fabrica_sistema, actor: str | N
             preguntas = _agrupar(deseadas)
             # Sin la conexión abierta: Jev tarda y la jornada no debe retener una de la base.
             motivo_ia = contestar_preguntas(preguntas, ctx, fabrica, limite_s)
-            plan, sin_precio = _precios_y_plan(fabrica, ctx, motivo_ia)
+            # Alpha se espera si el agente no responde, solo mientras el trabajo automático
+            # reintenta; formada a mano o pasada la ventana, juega con lo que haya y lo dice.
+            espera_agotada = actor is not None or ahora_utc(ahora) >= ctx.corte + VENTANA_AUTO
+            plan, sin_precio = _precios_y_plan(fabrica, ctx, motivo_ia, espera_agotada)
             with sesion(fabrica) as db:
                 hecho = _escribir(db, jornada_id, ctx, plan, sin_precio, ahora, actor)
             _avisar_sin_pregunta(fabrica, plan)
+            _avisar_alpha(fabrica, plan)
             from app.liga import avisos
 
             avisos.avisar_formacion(jornada_id, fabrica)
@@ -681,6 +702,17 @@ def _avisar_sin_pregunta(fabrica: Fabrica, plan: Plan) -> None:
     with sesion(fabrica) as db:
         avisar_admin(db, "Vennett: jornada formada con estrategias sin su pregunta",
                      f"{len(sin)} de {len(plan.entradas)} jugaron sin su pregunta ({motivos}).")
+
+
+def _avisar_alpha(fabrica: Fabrica, plan: Plan) -> None:
+    """Aviso al administrador si Alpha jugó en caja o con pesos de un cierre viejo: el motivo
+    suele ser de infraestructura (la base del agente) y nadie lo ve si no se dice."""
+    alpha = plan.casa.get("alpha")
+    if alpha is None or not (alpha.motivo or any(casa.CIERRE_VIEJO in a for a in alpha.avisos)):
+        return
+    with sesion(fabrica) as db:
+        avisar_admin(db, "Vennett: Alpha no jugó con una cartera normal",
+                     " ".join(filter(None, (alpha.motivo, *alpha.avisos)))[:140])
 
 
 def _auto_activo(db: Session) -> bool:

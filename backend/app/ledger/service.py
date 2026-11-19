@@ -88,22 +88,6 @@ def cash_by_currency(db: Session, book: str = BOOK_SHADOW) -> dict[str, Decimal]
     return {"USD": usd, "EUR": to_cents(eur)}
 
 
-def reset_shadow_book(db: Session) -> dict:
-    """DESTRUCTIVO — vacía el libro SOMBRA: borra posiciones, trades, curva y el ancla del
-    benchmark SPY (se re-ancla en la próxima 1ª compra). CONSERVA el capital: las aportaciones
-    quedan → toda la caja disponible = lo aportado. NO toca el libro real ni otros datos. Sirve
-    para descartar la salida de un escaneo defectuoso; el próximo escaneo redespliega la caja.
-    """
-    from app.models import EquitySnapshot, Meta
-
-    pos = db.query(Position).filter(Position.book == BOOK_SHADOW).delete(synchronize_session=False)
-    trd = db.query(Trade).filter(Trade.book == BOOK_SHADOW).delete(synchronize_session=False)
-    snap = (db.query(EquitySnapshot).filter(EquitySnapshot.book == BOOK_SHADOW)
-            .delete(synchronize_session=False))
-    db.query(Meta).filter(Meta.key.like(f"spy_ref:{BOOK_SHADOW}:%")).delete(synchronize_session=False)
-    db.commit()
-    return {"ok": True, "deleted": {"positions": pos, "trades": trd, "snapshots": snap},
-            "cash_after": str(available_cash(db, BOOK_SHADOW))}
 
 
 def open_positions(db: Session, book: str = BOOK_SHADOW) -> list[Position]:

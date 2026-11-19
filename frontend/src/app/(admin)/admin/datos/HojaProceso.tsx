@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
-  contarUniversoGlobal, getPodaPrevia, snapshotUniverse, startFoto, startPoda, subirUniversoGlobalCsv,
-  syncAnalytics, syncFx, syncUniversoGlobal, type PodaPrevia, type UniversoGlobalOpciones,
+  contarUniversoGlobal, getPodaPrevia, getScanJevMacro, putScanJevMacro, runDemo, snapshotUniverse, startFoto,
+  startPoda, subirUniversoGlobalCsv, syncAnalytics, syncFx, syncUniversoGlobal, type PodaPrevia,
+  type UniversoGlobalOpciones,
 } from "@/lib/api";
 import { useConfirmar } from "@/components/Confirmar";
 import { numero } from "../_marco/formato";
-import { Celda, ChipFiltro, Chips, Grupo, Hoja, Segmentado } from "../_panel/ui";
+import { Celda, CeldaInterruptor, ChipFiltro, Chips, Grupo, Hoja, Segmentado } from "../_panel/ui";
 import { LIMITE_DEFECTO, minutosCaptura, textoHorario, type Horario, type ProcesoId } from "./procesos";
 import "./datos.css";
 
@@ -62,6 +63,24 @@ function Contenido({ id, onCerrar, horario, ultima, dato, ocupado, global, lanza
   const elegidos = cuenta === null ? null : Math.min(cuenta, tope);
   const alterna = (lista: string[], poner: (v: string[]) => void, v: string) => poner(lista.includes(v) ? lista.filter(x => x !== v) : [...lista, v]);
 
+  // Escaneo de Jev: oficial (deja elegida la foto de la Liga) o de prueba, y sobre qué universo.
+  // El global solo vale para pruebas: una foto de la Liga sale siempre de NASDAQ.
+  const [modo, setModo] = useState<"oficial" | "prueba">("oficial");
+  const [universo, setUniverso] = useState<"nasdaq" | "global_topcap">("nasdaq");
+  const [reutilizar, setReutilizar] = useState(false);
+  const [macro, setMacro] = useState<boolean | null>(null);
+  const [falloMacro, setFalloMacro] = useState(false);
+  useEffect(() => {
+    if (id !== "escaneo") return;
+    getScanJevMacro().then(r => setMacro(r.enabled)).catch(() => setMacro(null));
+  }, [id]);
+  const cambiarMacro = (activo: boolean) => {
+    setFalloMacro(false);
+    putScanJevMacro(activo).then(r => setMacro(r.enabled)).catch(() => setFalloMacro(true));
+  };
+  const cambiarModo = (m: "oficial" | "prueba") => { setModo(m); if (m === "oficial") setUniverso("nasdaq"); };
+  const cambiarUniverso = (u: "nasdaq" | "global_topcap") => { setUniverso(u); if (u === "global_topcap") setModo("prueba"); };
+
   // Poda: lo que borraría ahora, antes de poder lanzarla.
   const [previa, setPrevia] = useState<PodaPrevia | null | false>(null);
   useEffect(() => {
@@ -77,6 +96,15 @@ function Contenido({ id, onCerrar, horario, ultima, dato, ocupado, global, lanza
     lanza(async () => {
       await startFoto(alcance, alcance === "global" ? tope : undefined, paises, mercados);
       return t("pnl_datos_fund_lanzada", { minutos });
+    });
+  };
+  const lanzarEscaneo = async () => {
+    const texto = modo === "oficial" ? `${t("pnl_datos_esc_conf_texto")} ${t("pnl_datos_esc_conf_oficial")}` : t("pnl_datos_esc_conf_texto");
+    if (!await confirmar({ titulo: t("pnl_datos_esc_conf_titulo"), texto, aceptar: t("pnl_datos_lanzar") })) return;
+    lanza(async () => {
+      const r = await runDemo({ soloJev: true, decide: modo === "oficial", modoUniverso: universo, reutilizarUltimaFoto: reutilizar });
+      if (!r.started) throw new Error(t("pnl_datos_hay_otro"));
+      return t("pnl_datos_esc_lanzado");
     });
   };
   const lanzarPoda = async () => {
@@ -122,8 +150,10 @@ function Contenido({ id, onCerrar, horario, ultima, dato, ocupado, global, lanza
   const bloqueado = ocupado
     || (id === "poda" && (previa === null || previa === false || nadaQuePodar))
     || (id === "fund" && alcance === "global" && (globalVacio || !cuenta));
-  const textoBoton = ocupado ? t("pnl_datos_hay_otro_boton") : id === "poda" ? t("pnl_datos_podar") : t("pnl_datos_lanzar_ahora");
-  const alPulsar = id === "fund" ? lanzarFund : id === "poda" ? lanzarPoda : () => lanza(accionSimple[id]!);
+  const textoBoton = ocupado ? t("pnl_datos_hay_otro_boton") : id === "poda" ? t("pnl_datos_podar")
+    : id === "escaneo" ? t("pnl_datos_esc_lanzar") : t("pnl_datos_lanzar_ahora");
+  const alPulsar = id === "fund" ? lanzarFund : id === "poda" ? lanzarPoda : id === "escaneo" ? lanzarEscaneo
+    : () => lanza(accionSimple[id]!);
 
   return (
     <div className="pd-pad">
@@ -168,6 +198,27 @@ function Contenido({ id, onCerrar, horario, ultima, dato, ocupado, global, lanza
                 </p>
               </>
             ))}
+        </>
+      )}
+
+      {id === "escaneo" && (
+        <>
+          <h2 className="pnl-cab-grupo">{t("pnl_datos_esc_modo")}</h2>
+          <Segmentado etiquetaGrupo={t("pnl_datos_esc_modo")} valor={modo} onChange={cambiarModo}
+            opciones={[{ valor: "oficial", etiqueta: t("pnl_datos_esc_oficial") }, { valor: "prueba", etiqueta: t("pnl_datos_esc_prueba") }]} />
+          <p className="pnl-pie-grupo">{t("pnl_datos_esc_modo_pie")}</p>
+          <h2 className="pnl-cab-grupo">{t("pnl_datos_esc_universo")}</h2>
+          <Segmentado etiquetaGrupo={t("pnl_datos_esc_universo")} valor={universo} onChange={cambiarUniverso}
+            opciones={[{ valor: "nasdaq", etiqueta: "NASDAQ" }, { valor: "global_topcap", etiqueta: t("pnl_datos_esc_u_global") }]} />
+          <Grupo>
+            <CeldaInterruptor titulo={t("pnl_datos_esc_reutilizar")} subtitulo={t("pnl_datos_esc_reutilizar_sub")}
+              activo={reutilizar} onCambio={setReutilizar} />
+            {macro !== null && (
+              <CeldaInterruptor titulo={t("pnl_datos_esc_macro")} subtitulo={t("pnl_datos_esc_macro_sub")}
+                activo={macro} onCambio={cambiarMacro} />
+            )}
+          </Grupo>
+          {falloMacro && <p className="pnl-pie-grupo" role="alert">{t("pnl_datos_esc_macro_fallo")}</p>}
         </>
       )}
 

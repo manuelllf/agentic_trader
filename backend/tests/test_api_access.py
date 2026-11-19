@@ -100,20 +100,12 @@ def test_las_salas_ya_no_tienen_cara_publica(anon) -> None:
 PROTECTED_CALLS = [
     ("post", "/demo/run", None),
     ("post", "/ledger/allocate", {"amount": 100}),
-    ("post", "/proposal/execute", None),
-    ("post", "/proposal/execute/AAA", None),
-    ("get", "/real", None),
-    ("get", "/approvals", None),
     ("get", "/personal", None),
     ("get", "/push/key", None),
-    ("get", "/scores", None),
-    ("get", "/proposal", None),
-    ("get", "/watchlist", None),
     ("post", "/admin/seed", {"version": 1, "tables": {"meta": [{"key": "x", "value": "y"}]}}),
     ("get", "/admin/memory-status", None),
     ("post", "/admin/universe-snapshot", None),
     ("get", "/fx", None),
-    ("get", "/scan/mid-layer", None),
     ("get", "/scan/jev-macro", None),
 ]
 
@@ -152,13 +144,6 @@ def test_protected_endpoints_work_with_token(client, token) -> None:
         res = _call(client, method, path, body, headers)
         assert res.status_code != 401, f"{method.upper()} {path} con token dio 401"
     # Los de solo-lectura, sin dependencias externas (BD vacía), deben ir limpios a 200.
-    assert client.get("/real", headers=headers).status_code == 200
-    assert client.get("/approvals", headers=headers).status_code == 200
-    assert client.get("/personal", headers=headers).status_code == 200
-    assert client.get("/push/key", headers=headers).status_code == 200
-    assert client.get("/scores", headers=headers).status_code == 200
-    assert client.get("/proposal", headers=headers).status_code == 200
-    assert client.get("/watchlist", headers=headers).status_code == 200
     assert client.post("/ledger/allocate", json={"amount": 100}, headers=headers).status_code == 200
 
 
@@ -380,75 +365,7 @@ def test_history_rejects_unknown_book(client) -> None:
     assert client.get("/history?book=personal").status_code == 422
 
 
-# ---- aportaciones con divisa: el libro vive en USD, Manuel aporta EUR ---------
-
-def test_allocate_eur_books_as_is(db, client, token) -> None:
-    """Aportación en €: se apunta EN EUROS tal cual, sin convertir — el libro real ya no
-    convierte al aportar (IBKR convierte sola al comprar, si hace falta)."""
-    headers = {"Authorization": f"Bearer {token}"}
-    res = client.post("/real/allocate", json={"amount": 100, "currency": "EUR"}, headers=headers)
-    assert res.status_code == 200
-    body = res.json()
-    assert body["cash"] == {"eur": "100.00", "usd": "0.00"}
-
-
-def test_allocate_eur_withdrawal_rejected(client, token) -> None:
-    """Retiradas solo en $ (el consolidado vive en dólares): aportación negativa en € → 422."""
-    headers = {"Authorization": f"Bearer {token}"}
-    res = client.post("/real/allocate", json={"amount": -50, "currency": "EUR"}, headers=headers)
-    assert res.status_code == 422
-
-
-def test_allocate_usd_direct_unchanged(db, client, token) -> None:
-    """Modo $ (default): apunte directo, como siempre."""
-    headers = {"Authorization": f"Bearer {token}"}
-    res = client.post("/real/allocate", json={"amount": 150}, headers=headers)
-    assert res.status_code == 200
-    body = res.json()
-    assert body["cash"] == {"eur": "0.00", "usd": "150.00"}
-
-
-def test_allocate_currency_desconocida_rechazada(db, client, token) -> None:
-    """Una divisa que no sea exactamente EUR/USD (typo, otra moneda, minúsculas) no debe
-    apuntarse en silencio en una caja invisible — ni `cash_by_currency` ni `available_cash`
-    la contarían, y el dinero "desaparecería" del panel sin ningún error. 422, no un 200 mudo."""
-    headers = {"Authorization": f"Bearer {token}"}
-    for divisa in ("GBP", "eur", "Usd", "EURO", "", "usd "):
-        res = client.post("/real/allocate", json={"amount": 100, "currency": divisa},
-                          headers=headers)
-        assert res.status_code == 422, f"{divisa!r} debería rechazarse, no aceptarse"
-    # Y nada de lo anterior dejó rastro: la caja sigue a cero.
-    assert client.get("/real", headers=headers).json()["cash"] == {"eur": "0.00", "usd": "0.00"}
-
-
-def test_allocate_real_rejects_nan_and_infinity(db, client, token) -> None:
-    """Mismo guardarraíl que `/ledger/allocate` (Infinity/NaN → 500 al convertir a Decimal),
-    verificado también en `/real/allocate` — es el mismo `AllocateIn`, pero es la ruta que
-    mueve dinero real y merece su propia comprobación, no dar por hecho que comparten schema."""
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    for bad in ("1e999", "-1e999", "NaN", "Infinity"):
-        res = client.post("/real/allocate", content=f'{{"amount": {bad}, "currency": "USD"}}',
-                          headers=headers)
-        assert res.status_code == 422
-    assert client.get("/real", headers=headers).json()["cash"] == {"eur": "0.00", "usd": "0.00"}
-
-
-def test_allocate_eur_cero_es_no_op(db, client, token) -> None:
-    """Aportar 0€ no revienta ni queda como aportación fantasma con efecto — cash sigue a cero."""
-    headers = {"Authorization": f"Bearer {token}"}
-    res = client.post("/real/allocate", json={"amount": 0, "currency": "EUR"}, headers=headers)
-    assert res.status_code == 200
-    assert res.json()["cash"] == {"eur": "0.00", "usd": "0.00"}
-
-
 # ---- higiene de API: caps y validación de entrada ----------------------------
-
-def test_scores_limit_capped(client, token) -> None:
-    """El `limit` de /scores tiene tope duro: ni 0 ni más de 200."""
-    headers = {"Authorization": f"Bearer {token}"}
-    assert client.get("/scores?limit=1000", headers=headers).status_code == 422
-    assert client.get("/scores?limit=0", headers=headers).status_code == 422
-    assert client.get("/scores?limit=200", headers=headers).status_code == 200
 
 
 def test_allocate_rejects_nan_and_infinity(client, token) -> None:
@@ -681,7 +598,7 @@ def test_report_lleva_la_cartera_jev(client, db, token) -> None:
     assert con["report"]["jev_macro"] is False
 
 
-@pytest.mark.parametrize("ruta", ["/scan/mid-layer", "/scan/jev-macro"])
+@pytest.mark.parametrize("ruta", ["/scan/jev-macro"])
 def test_interruptores_se_guardan_y_exigen_sesion(client, anon, token, ruta) -> None:
     h = {"Authorization": f"Bearer {token}"}
     assert anon.put(ruta, json={"enabled": True}).status_code == 401

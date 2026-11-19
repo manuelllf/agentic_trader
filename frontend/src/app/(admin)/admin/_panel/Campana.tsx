@@ -12,7 +12,9 @@ interface ListaApi { sin_leer: number; avisos: AvisoApi[] }
 const TIPOS_CONOCIDOS = new Set(["ia_tope_80", "omega_prueba", "omega_nuevas", "omega_reactivadas",
   "omega_resueltas", "omega_candidatos", "agente_proveedor_pausado", "agente_presupuesto_agotado",
   "agente_ciclo_fallido", "agente_tarea_fallida"]);
-const DESTINO: Record<string, string> = { omega: "/admin/omega", alphagentic: "/admin/agente", vennett: "/admin" };
+const DESTINO: Record<string, string> = { omega: "/admin/omega", alpha: "/admin/alpha", vennett: "/admin" };
+// En la base, los avisos del agente siguen guardados con la sala `alphagentic`; en el panel es Alpha.
+const SALA_VISIBLE: Record<string, string> = { alphagentic: "alpha", beta: "alpha" };
 
 const ICO_CAMPANA = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
@@ -52,11 +54,14 @@ export function Campana() {
         {avisos.length === 0
           ? <Vacio titulo={t("admin_pnl_avisos_vacio_titulo")} texto={t("admin_pnl_avisos_vacio_texto")} />
           : <div style={{ padding: "4px 16px 8px" }}>
-            <Grupo>{avisos.map(a => (
-              <Celda key={a.id} href={DESTINO[a.sala] ?? "/admin"}
-                titulo={TIPOS_CONOCIDOS.has(a.tipo) ? t(`admin_pnl_aviso_${a.tipo}`) : t("admin_pnl_aviso_otro", { tipo: a.tipo })}
-                subtitulo={`${t(`admin_pnl_sala_${a.sala}`)} · ${fecha(a.creado)}${a.leido ? "" : ` · ${t("admin_pnl_aviso_nuevo")}`}`} />
-            ))}</Grupo>
+            <Grupo>{avisos.map(a => {
+              const sala = SALA_VISIBLE[a.sala] ?? a.sala;
+              return (
+                <Celda key={a.id} href={DESTINO[sala] ?? "/admin"}
+                  titulo={TIPOS_CONOCIDOS.has(a.tipo) ? t(`admin_pnl_aviso_${a.tipo}`) : t("admin_pnl_aviso_otro", { tipo: a.tipo })}
+                  subtitulo={`${t(`admin_pnl_sala_${sala}`)} · ${fecha(a.creado)}${a.leido ? "" : ` · ${t("admin_pnl_aviso_nuevo")}`}`} />
+              );
+            })}</Grupo>
           </div>}
       </Hoja>
     </>

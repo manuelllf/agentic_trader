@@ -3,16 +3,15 @@
 - Lambda: la cartera mecánica de Jev del escaneo de la jornada (`scan_run_jev_item`), con sus
   pesos tal como se guardaron; si ese detalle está vacío, la de `scan_audit` (`jev_funded`), a
   partes iguales.
-- Alpha: la propuesta automática de ese escaneo de decisión (`scan_run_construction_item`, los
-  pesos objetivo), sin los vetos del dueño: su cuenta real y sus aprobaciones son su panel
-  personal y la liga no depende de ellas.
+- Alpha: la cartera que tenía el agente al cierre del día de la foto de la jornada, leída de su
+  base con un rol de solo lectura (`alpha_agente`). El agente no sabe que la liga la usa.
 - Omega: no sale de las posiciones de la sala; nace en caja y `procesos.omega` va llenando sus
   4 huecos con las alertas durante el mes.
 
 Nunca se lee `personal_positions` ni se llama a IBKR. Los tres equipos entran SIEMPRE en la
-jornada: Lambda y Alpha con la cartera del escaneo de decisión de la jornada o, si ese no la
-guardó (o es plan B), con la del último escaneo de decisión que sí la tenga; y si no existe
-ninguna, juegan en caja. Nunca se inventan posiciones.
+jornada: Lambda con la cartera del escaneo de decisión de la jornada o, si ese no la guardó (o es
+plan B), con la del último escaneo de decisión que sí la tenga; Alpha con la del agente; y si no
+hay ninguna, juegan en caja. Nunca se inventan posiciones.
 """
 
 from __future__ import annotations
@@ -20,6 +19,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 from fractions import Fraction
 
@@ -27,6 +27,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.liga.motor.seleccion import redondear_pesos
+from app.liga.procesos import alpha_agente
+from app.liga.procesos.comun import ErrorProceso
 
 CASAS: dict[str, tuple[str, str]] = {
     "alpha": ("Alpha", "#1DE27A"),
@@ -34,6 +36,8 @@ CASAS: dict[str, tuple[str, str]] = {
     "lambda": ("Lambda", "#D8D4CB"),
 }
 _CIEN = Fraction(100)
+# Lo que dice el aviso de Alpha cuando el agente no guardó el cierre del día de la foto.
+CIERRE_VIEJO = "los pesos usan el último cierre que tenía"
 
 Pesos = tuple[tuple[str, Decimal], ...]
 
@@ -159,17 +163,29 @@ def cartera_lambda(db: Session, scan_run_id: int, plan_b: bool) -> CarteraCasa:
                               "en caja.")
 
 
-def _pesos_alpha(db: Session, s: int) -> list[tuple[str, Decimal]]:
-    return pesos_desde_porcentajes((t, float(w or 0)) for t, w in db.execute(text(
-        "select ticker, target_weight_pct from scan_run_construction_item "
-        "where scan_run_id = :s order by posicion"), {"s": s}).all())
+def cartera_alpha(dia_foto: date | None, espera_agotada: bool,
+                  leer: alpha_agente.Lector | None = None) -> CarteraCasa:
+    """La cartera del agente al cierre de `dia_foto` (el día de la foto de la jornada).
 
-
-def cartera_alpha(db: Session, scan_run_id: int, plan_b: bool) -> CarteraCasa:
-    for s in _escaneos_de_decision(db, scan_run_id):
-        pesos = _pesos_alpha(db, s)
-        if pesos:
-            return CarteraCasa("alpha", tuple(pesos), None,
-                               _avisos_de_origen("alpha", s, scan_run_id, plan_b))
-    return _en_caja("alpha", "Ningún escaneo de decisión guardó una propuesta: Alpha juega en "
-                             "caja.")
+    Si no se puede leer o el agente aún no guardó el cierre de ese día, mientras dure la espera se
+    para la formación con un `ErrorProceso` (se reintenta sola); agotada la espera, juega con lo
+    que haya y lo dice, o en caja si no hay nada que leer."""
+    if dia_foto is None:
+        return _en_caja("alpha", "La jornada no tiene día de foto: Alpha juega en caja.")
+    foto, problema = None, None
+    try:
+        foto = (leer or alpha_agente.leer)(dia_foto)
+        if not foto.cierre_guardado:
+            problema = f"El agente no tiene guardado el cierre del {dia_foto.isoformat()}"
+    except alpha_agente.SinLecturaAgente as e:
+        problema = str(e)
+    if problema and not espera_agotada:
+        raise ErrorProceso(f"Alpha: {problema}. Se reintenta en unos minutos.")
+    if foto is None:
+        return _en_caja("alpha", f"{problema}: Alpha juega en caja.")
+    pesos = pesos_desde_porcentajes((t, p * 100) for t, p in foto.posiciones)
+    if not pesos:
+        return _en_caja("alpha", f"El agente no tenía posiciones el {dia_foto.isoformat()}: "
+                                 "Alpha juega en caja.")
+    avisos = (f"{problema}: {CIERRE_VIEJO}.",) if problema else ()
+    return CarteraCasa("alpha", tuple(pesos), None, avisos)

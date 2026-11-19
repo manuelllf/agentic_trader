@@ -51,9 +51,7 @@ def _stub_universo(monkeypatch, symbols: list[str]) -> None:
 
 def _stub_comun(monkeypatch, symbols: list[str]) -> None:
     llm = _LLMNuncaLlamado()
-    monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: llm)
     monkeypatch.setattr(scan_llm_stage, "get_llm", lambda *a, **k: llm)
-    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])
     _stub_universo(monkeypatch, symbols)
 

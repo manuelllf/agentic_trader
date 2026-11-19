@@ -147,7 +147,7 @@ def test_el_horario_sale_de_los_trabajos_registrados(client, monkeypatch) -> Non
     cuerpo = r.json()
     assert cuerpo["scheduler_activo"] is True
     por_id = {p["proceso"]: p for p in cuerpo["procesos"]}
-    assert set(por_id) == {"foto", "global", "fund", "fx", "analitica", "poda"}
+    assert set(por_id) == {"foto", "global", "fund", "fx", "analitica", "poda", "escaneo"}
 
     foto = por_id["foto"]
     assert (foto["dias_semana"], foto["horas"], foto["minuto"]) == ("mon-fri", "16,18,20,22", "30")
@@ -156,6 +156,11 @@ def test_el_horario_sale_de_los_trabajos_registrados(client, monkeypatch) -> Non
     assert (por_id["fx"]["horas"], por_id["fx"]["zona"]) == ("5", "Europe/Madrid")
     assert (por_id["analitica"]["horas"], por_id["analitica"]["zona"]) == ("6", "Europe/Madrid")
     assert por_id["fund"]["automatico"] is False and por_id["poda"]["automatico"] is False
+    # El escaneo de Jev es el mensual: se lanza solo los días 24 a 31, y el trabajo deja pasar
+    # solo el último día de bolsa.
+    escaneo = por_id["escaneo"]
+    assert escaneo["automatico"] is True and escaneo["dia_mes"] == "24-31"
+    assert escaneo["zona"] == settings.scan_timezone
 
 
 def test_sin_scheduler_ningun_proceso_es_automatico(client, monkeypatch) -> None:  # noqa: ANN001

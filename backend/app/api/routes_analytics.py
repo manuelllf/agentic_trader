@@ -1,12 +1,12 @@
 """Analitica columnar (DuckDB leyendo Postgres sincronizado, solo lectura): coste/latencia
 por etapa, confianza del prescore, y el explorador de universo."""
 from __future__ import annotations
-from app.i18n import translate
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.i18n import translate
 from app.models import utc_iso
 
 router = APIRouter()          # exige require_auth (montado en app/api/routes.py)
@@ -81,22 +81,6 @@ def analytics_coste_etapa(scan_run_id: int | None = Query(None)) -> dict:
     la tabla (todos los escaneos históricos mezclados); con él, un único escaneo."""
     try:
         return {"items": _run_analytics_query("coste-etapa", scan_run_id)}
-    except ImportError as exc:
-        raise HTTPException(
-            503, "DuckDB no está instalado (extra `analytics` del backend).") from exc
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(503, translate('api_analytics_failed', error=str(exc))) from exc
-
-
-@router.get("/analytics/confianza-prescore")
-def analytics_confianza_prescore(scan_run_id: int | None = Query(None)) -> dict:
-    """Distribución de la confianza persistida del prescore (el ruido medido, ~5,5 puntos de sd,
-    visto desde lo que el propio LLM dice que sabe). Sin `scan_run_id`, agrega TODA la vida de
-    la tabla; con él, un único escaneo."""
-    try:
-        return {"items": _run_analytics_query("confianza-prescore", scan_run_id)}
     except ImportError as exc:
         raise HTTPException(
             503, "DuckDB no está instalado (extra `analytics` del backend).") from exc

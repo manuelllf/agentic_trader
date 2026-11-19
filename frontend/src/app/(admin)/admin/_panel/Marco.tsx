@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -8,7 +8,7 @@ import { Marca } from "@/app/(liga)/_ui/Marca";
 import { Campana } from "./Campana";
 import { ProveedorAccionCabecera, useAccionCabecera } from "./AccionCabecera";
 import { ResumenPanelProvider, cuentasPorSeccion, useResumenPanel } from "./resumen";
-import { GRUPOS_SECCIONES, SALAS, esPantallaNueva, salaDe, seccionDe, tienePadre, type Forma } from "./salas";
+import { GRUPOS_SECCIONES, SALAS, salaDe, seccionDe, tienePadre, type Forma } from "./salas";
 import "../_marco/marco.css";
 import "./panel.css";
 
@@ -29,7 +29,6 @@ function Estructura({ children }: { children: ReactNode }) {
   const ruta = usePathname() ?? "";
   const sala = salaDe(ruta);
   const seccion = seccionDe(ruta);
-  const nueva = esPantallaNueva(ruta);
   const { datos } = useResumenPanel();
   const accion = useAccionCabecera();
   const cuentas = datos ? cuentasPorSeccion(datos.pendientes) : {};
@@ -43,15 +42,14 @@ function Estructura({ children }: { children: ReactNode }) {
     marcar();
     window.addEventListener("scroll", marcar, { passive: true });
     return () => window.removeEventListener("scroll", marcar);
-  }, [ruta, nueva]);
+  }, [ruta]);
 
   const titulo = seccion ? t(`admin_pnl_sec_${seccion}`) : ruta.replace(/\/+$/, "") === "/admin/liga" ? t("admin_pnl_sec_resumen") : t(`admin_pnl_sala_${sala}`);
-  const clasePnl = nueva ? "pnl" : "pnl pnl-vieja";
 
   return (
-    <div className={`pnl-raiz${nueva ? "" : " vieja"}`}>
+    <div className="pnl-raiz">
       <div className="lg pnl-lg">
-        <div className={clasePnl}>
+        <div className="pnl">
           <nav className="pnl-barra" aria-label={t("admin_pnl_salas")} style={{ "--n": SALAS.length } as CSSProperties}>
             <Link href="/admin" className="pnl-marca" aria-label={t("admin_pnl_sala_vennett")}><Marca /></Link>
             {SALAS.map(s => (
@@ -96,21 +94,16 @@ function Estructura({ children }: { children: ReactNode }) {
           </header>
         </div>
       </div>
-      {nueva ? (
-        <div className="lg pnl-lg">
-          <div className="pnl">
-            <div className="pnl-slot">
-              <main className="pnl-pagina">
-                <h1 className="pnl-oculto">{titulo}</h1>
-                {children}
-              </main>
-            </div>
+      <div className="lg pnl-lg">
+        <div className="pnl">
+          <div className="pnl-slot">
+            <main className="pnl-pagina">
+              <h1 className="pnl-oculto">{titulo}</h1>
+              {children}
+            </main>
           </div>
         </div>
-      ) : (
-        // Las salas antiguas quedan fuera de .lg: sus reglas no deben tocar su aspecto oscuro de siempre.
-        <div className="pnl-slot"><div className="adm pnl-viejo">{children}</div></div>
-      )}
+      </div>
     </div>
   );
 }

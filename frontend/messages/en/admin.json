@@ -1,7 +1,7 @@
 {
   "admin_settings_group_league": "League",
   "admin_layout_title": "Rooms · Vennett",
-  "admin_layout_description": "Vennett rooms: Alpha, Beta, and Omega",
+  "admin_layout_description": "Vennett rooms: Alpha and Omega",
   "admin_layout_manifest_title": "Vennett · rooms",
   "admin_error_title": "Something went wrong",
   "admin_error_message": "There was a problem displaying this screen.",
@@ -314,9 +314,7 @@
   "admin_pnl_atras": "Back to {destino}",
   "admin_pnl_sala_vennett": "Vennett",
   "admin_pnl_sala_alpha": "Alpha",
-  "admin_pnl_sala_beta": "Beta",
   "admin_pnl_sala_omega": "Omega",
-  "admin_pnl_sala_alphagentic": "Alphagentic",
   "admin_pnl_grupo_liga": "League",
   "admin_pnl_grupo_personas": "People",
   "admin_pnl_grupo_contenido": "Content",

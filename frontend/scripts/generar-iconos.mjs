@@ -59,8 +59,6 @@ async function generar() {
   const publico = path.join(path.dirname(fileURLToPath(import.meta.url)), "../public");
   await fs.writeFile(path.join(publico, "logo.svg"), cuadrado);
   await fs.writeFile(path.join(publico, "favicon.svg"), tesela);
-  await fs.writeFile(path.join(publico, "../src/lib/brandIcon.ts"),
-    `// Fuente vectorial compartida con las tarjetas exportadas.\nexport const VENNETT_ICON = ${JSON.stringify(tesela.trim())};\n`);
   await fs.writeFile(path.join(publico, "../src/lib/pantallasArranque.ts"),
     `// Pantallas de arranque de iPhone: las genera scripts/generar-iconos.mjs.\nexport const PANTALLAS_ARRANQUE = ${JSON.stringify(PANTALLAS_ARRANQUE)};\n`);
   for (const { ancho, alto } of PANTALLAS_ARRANQUE) {

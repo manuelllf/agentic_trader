@@ -65,7 +65,6 @@ def _stub_universo(monkeypatch, prescore) -> None:
     def fake_get_llm(model: str | None = None, **kw):
         return prescore
 
-    monkeypatch.setattr(scan_service, "get_llm", fake_get_llm)
     monkeypatch.setattr(scan_llm_stage, "get_llm", fake_get_llm)
     monkeypatch.setattr(scan_service.settings, "llm_provider", "deepseek")  # camino _pre_uno
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])

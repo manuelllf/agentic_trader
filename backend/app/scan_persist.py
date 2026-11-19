@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models import ScanRunCostBreakdown, ScoreNews
+from app.models import ScanRunCostBreakdown
 
 
 def _llm_usage(**etapas) -> dict:
@@ -51,33 +51,8 @@ def _sector(data_by_t: dict, ticker: str) -> str:
     return d.sector if d else "UCITS"
 
 
-def _guardar_news_used(db: Session, score_id: int, news: list[str] | None) -> None:
-    """Congela `NameData.news` como filas de `ScoreNews` — nunca como JSON. `None` = el gather no
-    trajo noticias (no se distingue de "trajo cero"; ningún lector lo necesitaba).
-
-    Borra las filas previas de este `score_id` antes de insertar: en un observatorio la fila de
-    `Score` se REUTILIZA (no se recrea, ver `run_scan_and_store`), así que sin este borrado las
-    noticias de escaneos anteriores se irían acumulando debajo de las nuevas en vez de reflejar
-    solo lo que entró al prompt en ESTE escaneo."""
-    db.query(ScoreNews).filter(ScoreNews.score_id == score_id).delete()
-    for i, texto in enumerate(news or []):
-        db.add(ScoreNews(score_id=score_id, posicion=i, texto=texto))
 
 
-def _guardar_trade_items(db: Session, model_cls: type, fk_field: str, fk_id: int,
-                         items: list[dict]) -> None:
-    """Filas hermanas de `_TradeItemColumns` (`ProposalItem`/`ScanRunConstructionItem`), mismo
-    shape que la salida de `portfolio_service.build_trades` — `posicion` conserva su orden."""
-    for i, it in enumerate(items):
-        db.add(model_cls(**{fk_field: fk_id}, posicion=i, ticker=it["ticker"], action=it["action"],
-                          score=it.get("score"),
-                          target_weight_pct=it.get("target_weight_pct") or 0.0,
-                          price=it.get("price"), high_52w=it.get("high_52w"),
-                          target_value=it.get("target_value", "0"),
-                          target_shares=it.get("target_shares") or 0.0,
-                          delta_shares=it.get("delta_shares") or 0.0,
-                          thesis=it.get("thesis", ""), edge=it.get("edge", ""),
-                          risk=it.get("risk", "")))
 
 
 def _guardar_cost_breakdown(db: Session, scan_run_id: int, cost: dict) -> None:

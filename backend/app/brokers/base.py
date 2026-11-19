@@ -106,7 +106,7 @@ class Broker(Protocol):
         acción, no por `order_id` (la conversión lleva uno propio, generado por IBKR). Excluye
         el barrido diario de la casa de custodia (`order_type="OTHER"`, céntimos a las 21:00
         UTC, sin relación con ninguna orden). Vacío si no hubo auto-FX — y siempre vacío en
-        dry-run: no se simula (ver `approvals._eur_usd_rate`)."""
+        dry-run: no se simula."""
         ...
 
     def status(self) -> dict:

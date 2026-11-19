@@ -44,13 +44,15 @@ def cancel(decide: bool) -> bool:
 
 
 def _run(sample_size: int | None, decide: bool,
-        llm_overrides: dict | None, reutilizar_ultima_foto: bool, modo_universo: str) -> None:
+        llm_overrides: dict | None, reutilizar_ultima_foto: bool, modo_universo: str,
+        solo_jev: bool) -> None:
     try:
         scan_progress.reset()
         result = proceso_hijo.ejecutar(
             "app.tareas_hijo:escaneo",
             {"sample_size": sample_size, "decide": decide, "llm_overrides": llm_overrides,
-             "reutilizar_ultima_foto": reutilizar_ultima_foto, "modo_universo": modo_universo},
+             "reutilizar_ultima_foto": reutilizar_ultima_foto, "modo_universo": modo_universo,
+             "solo_jev": solo_jev},
             cancel_event=_cancel_event, on_estado=scan_progress.aplicar)
         with _lock:
             _state.update(status="done", result=result, error=None,
@@ -76,8 +78,12 @@ def _run(sample_size: int | None, decide: bool,
 
 def start(sample_size: int | None = None, decide: bool = True,
          llm_overrides: dict | None = None,
-         reutilizar_ultima_foto: bool = False, modo_universo: str = "nasdaq") -> bool:
+         reutilizar_ultima_foto: bool = False, modo_universo: str = "nasdaq",
+         solo_jev: bool = False) -> bool:
     """Arranca el escaneo si no hay uno en marcha. Devuelve True si lo lanzó.
+
+    `solo_jev`: el escaneo de las notas de Jev, sin profundo ni cartera de Alpha (ver
+    `run_scan_and_store`).
 
     `decide=False` (botón "simulación" de Alpha): universo completo, escanea y
     persiste ranking/watchlist/memoria/traza — TODO menos tocar la cartera. `llm_overrides`:
@@ -96,6 +102,6 @@ def start(sample_size: int | None = None, decide: bool = True,
         _state.update(status="running", started_at=datetime.now(UTC).isoformat(),
                       finished_at=None, result=None, error=None, decide=decide)
     threading.Thread(target=_run, args=(sample_size, decide, llm_overrides,
-                                        reutilizar_ultima_foto, modo_universo),
+                                        reutilizar_ultima_foto, modo_universo, solo_jev),
                      daemon=True).start()
     return True

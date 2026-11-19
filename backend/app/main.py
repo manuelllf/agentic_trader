@@ -100,7 +100,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _materialize_ibkr_pems()   # antes que nada: el reconcile de abajo ya puede tocar el broker
     init_db()
     _verify_db_writable()      # sin escritura en /data no se arranca (ver docstring)
-    _reconcile_on_startup()
     _backfill_curve_on_startup()
     start_scheduler()
     try:
@@ -141,24 +140,6 @@ def _backfill_curve_on_startup() -> None:
             db.close()
 
     threading.Thread(target=run, daemon=True, name="curve-backfill").start()
-
-
-def _reconcile_on_startup() -> None:
-    """Cuadra el libro real nada más despertar: si una orden límite llenó en IBKR mientras el
-    backend estaba apagado, se registra su fill ya (no espera a que alguien abra la web).
-    No-op sin órdenes working (solo una query local)."""
-    from app import approvals as approvals_mod
-    from app.db import SessionLocal
-
-    db = SessionLocal()
-    try:
-        n = approvals_mod.reconcile_working(db)
-        if n:
-            logging.getLogger(__name__).info("Reconcile al arrancar: %s orden(es) cuadrada(s).", n)
-    except Exception:
-        logging.getLogger(__name__).exception("Reconcile al arrancar falló (se reintentará)")
-    finally:
-        db.close()
 
 
 # Con auth (= prod), la superficie de exploración (docs/redoc/openapi) se apaga: el esquema entero

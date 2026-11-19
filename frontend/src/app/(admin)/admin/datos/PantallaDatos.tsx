@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
-  ApiError, get, getEstadoDatos, getFotoStatus, getPodaEstado, getUniversoGlobal, getUniversoGlobalSyncEstado,
-  type EstadoDatos, type UniversoGlobalOpciones,
+  ApiError, get, getDemoStatus, getEstadoDatos, getFotoStatus, getPodaEstado, getScanReport, getUniversoGlobal,
+  getUniversoGlobalSyncEstado, type EstadoDatos, type ScanReport, type UniversoGlobalOpciones,
 } from "@/lib/api";
-import { hace, numero } from "../_marco/formato";
+import { dolares, hace, numero } from "../_marco/formato";
 import { Celda, Esqueleto, Grupo, Progreso } from "../_panel/ui";
 import { HojaProceso, type Accion } from "./HojaProceso";
-import { PROCESOS, type EstadoProcesos, type Horario, type ProcesoId } from "./procesos";
+import { ESCANEO, PROCESOS, type EstadoProcesos, type Horario, type ProcesoId } from "./procesos";
 import "./datos.css";
 
 type Texto = (clave: string, valores?: Record<string, string | number>) => string;
@@ -33,6 +33,15 @@ async function resultadoDe(id: string, t: Texto, locale: string): Promise<Aviso 
     if (!s.result) return null;
     return { texto: t(s.result.sin_cambios ? "pnl_datos_global_sin_cambios" : "pnl_datos_global_hecha", { n: numero(s.result.tickers, locale) }) };
   }
+  if (id === "escaneo") {
+    const s = await getDemoStatus();
+    if (s.status === "cancelled") return { texto: t("pnl_datos_esc_cancelado") };
+    if (s.status === "error") return { texto: s.error ? `${t("pnl_datos_esc_fallo")} ${s.error}` : t("pnl_datos_esc_fallo"), malo: true };
+    const r = s.result;
+    if (!r) return null;
+    const n = numero(r.prescored, locale);
+    return { texto: r.cost ? t("pnl_datos_esc_hecho_coste", { n, coste: dolares(r.cost.cost_usd, locale, 2) }) : t("pnl_datos_esc_hecho", { n }) };
+  }
   if (id === "poda") {
     const s = await getPodaEstado();
     if (s.status === "error") return { texto: s.error ?? t("pnl_datos_poda_fallo"), malo: true };
@@ -48,6 +57,7 @@ export default function PantallaDatos() {
   const locale = useLocale();
   const [datos, setDatos] = useState<EstadoDatos | null | false>(null);
   const [global, setGlobal] = useState<UniversoGlobalOpciones | null>(null);
+  const [informe, setInforme] = useState<ScanReport | null>(null);
   const [horario, setHorario] = useState<Horario | null>(null);
   const [proc, setProc] = useState<EstadoProcesos | null>(null);
   const [lanzando, setLanzando] = useState<ProcesoId | null>(null);
@@ -58,6 +68,7 @@ export default function PantallaDatos() {
   const leerDatos = useCallback(() => {
     getEstadoDatos().then(setDatos).catch(() => setDatos(false));
     getUniversoGlobal().then(setGlobal).catch(() => setGlobal(null));
+    getScanReport().then(r => setInforme(r.report)).catch(() => setInforme(null));
   }, []);
   const sondear = useCallback(async () => {
     try { setProc(await get<EstadoProcesos>("/admin/procesos/estado")); } catch { /* el próximo sondeo lo reintenta */ }
@@ -102,6 +113,12 @@ export default function PantallaDatos() {
 
   const cuando = (iso: string | null | undefined) => (iso ? hace(iso, locale) : t("pnl_datos_nunca"));
   const fila = (id: ProcesoId): { ultima: string; dato: string } => {
+    if (id === "escaneo") {   // no depende del estado de las fuentes: sale del informe del último escaneo
+      return {
+        ultima: cuando(informe?.at),
+        dato: informe && !informe.error && informe.prescored != null ? t("pnl_datos_dato_escaneo", { n: numero(informe.prescored, locale) }) : "",
+      };
+    }
     if (!datos) return { ultima: "", dato: "" };
     switch (id) {
       case "foto": return { ultima: cuando(datos.universo.at), dato: t("pnl_datos_dato_foto", { n: numero(datos.universo.elegibles, locale) }) };
@@ -113,6 +130,7 @@ export default function PantallaDatos() {
       case "fx": return { ultima: cuando(datos.fx.at), dato: t("pnl_datos_dato_fx", { n: datos.fx.n }) };
       case "analitica": return { ultima: cuando(proc?.ultima.analitica), dato: "" };
       case "poda": return { ultima: proc?.ultima.poda ? cuando(proc.ultima.poda) : t("pnl_datos_sin_registro"), dato: "" };
+      default: return { ultima: "", dato: "" };
     }
   };
 
@@ -152,7 +170,13 @@ export default function PantallaDatos() {
       )}
       {datos === false && <p className="pnl-pie-grupo" role="alert">{t("pnl_datos_sin_estado")}</p>}
 
+      <Grupo cabecera={t("pnl_datos_de_pago")} pie={t("pnl_datos_de_pago_pie")}>
+        <Celda titulo={t(`pnl_datos_p_${ESCANEO}`)} subtitulo={[fila(ESCANEO).ultima, fila(ESCANEO).dato].filter(Boolean).join(" · ") || undefined}
+          valor={enMarcha?.id === ESCANEO ? t("pnl_datos_marcha") : undefined} onClick={() => setAbierto(ESCANEO)} />
+      </Grupo>
+
       <Grupo cabecera={t("pnl_datos_herramientas")}>
+        <Celda titulo={t("pnl_datos_esc_ver")} subtitulo={t("pnl_datos_esc_ver_sub")} href="/admin/datos/escaneo" />
         <Celda titulo={t("pnl_datos_explorar")} subtitulo={t("pnl_datos_explorar_sub")} href="/admin/datos/explorar" />
       </Grupo>
 

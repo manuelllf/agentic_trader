@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app import foto_service, procesos_datos
 from app.db import get_db
 from app.i18n import translate
-from app.ledger import service as ledger
 from app.models import utc_iso
 
 router = APIRouter()          # exige require_auth (montado en app/api/routes.py)
@@ -153,14 +152,6 @@ def admin_seed(body: SeedIn, db: Session = Depends(get_db)) -> dict:
         raise
 
 
-@router.post("/admin/reset-shadow")
-def admin_reset_shadow(db: Session = Depends(get_db)) -> dict:
-    """DESTRUCTIVO — SOLO libro SOMBRA (escaparate). Vacía holdings/operaciones/curva del sombra
-    conservando el capital (queda en caja); NO toca el libro real ni la cartera personal. Para
-    descartar la salida de un escaneo defectuoso. Protegido por token."""
-    return ledger.reset_shadow_book(db)
-
-
 @router.post("/admin/universe-snapshot")
 def admin_universe_snapshot(db: Session = Depends(get_db)) -> dict:
     """Relanza a mano la foto del universo (la misma toma de datos que corre el job de las
@@ -301,12 +292,4 @@ def admin_poda_estado() -> dict:
     return poda.get_status()
 
 
-@router.get("/admin/memory-status")
-def admin_memory_status() -> dict:
-    """Diagnóstico read-only de la memoria vectorial: ruta, nº de recuerdos y si las deps están
-    instaladas. NO carga el modelo de embeddings — solo abre el fichero y cuenta. Confirma que el
-    volcado llegó al volumen sin esperar a ver un `recall` en los logs del próximo escaneo."""
-    from app import memory
-
-    return memory.status()
 

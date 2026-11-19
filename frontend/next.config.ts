@@ -48,6 +48,9 @@ const nextConfig: NextConfig = {
         destination: "https://vennett.app/:path*",
         permanent: true,
       },
+      // La sala del agente se llamó /admin/agente: sus enlaces guardados y los avisos viejos siguen valiendo.
+      { source: "/admin/agente", destination: "/admin/alpha", permanent: true },
+      { source: "/admin/agente/:path*", destination: "/admin/alpha/:path*", permanent: true },
     ];
   },
 };

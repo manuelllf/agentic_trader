@@ -43,7 +43,7 @@ const application = {
 const rooms = {
   "name": "Vennett · salas",
   "short_name": "Vennett",
-  "description": "Las salas de Vennett: Alpha, Beta y Omega",
+  "description": "Las salas de Vennett: Alpha y Omega",
   "id": "/admin/",
   "start_url": "/admin/alpha",
   "scope": "/admin/",

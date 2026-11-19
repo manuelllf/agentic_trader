@@ -226,3 +226,42 @@ def test_foto_cartera_con_split_y_caja(sesion_agente: Session) -> None:
 
     caja = s.execute(text("select caja from agente.v_caja")).scalar_one()
     assert caja == Decimal("3437")
+
+
+def test_dia_cerrado_solo_con_el_valor_del_dia_guardado(sesion_agente: Session) -> None:
+    s = sesion_agente
+    pregunta = text("select agente.dia_cerrado(:f)")
+    assert s.execute(pregunta, {"f": date(2026, 11, 30)}).scalar_one() is False
+    s.execute(text("insert into agente.valor_diario (fecha, caja, valor_posiciones) "
+                   "values ('2026-11-30', 100, 900)"))
+    assert s.execute(pregunta, {"f": date(2026, 11, 30)}).scalar_one() is True
+    assert s.execute(pregunta, {"f": date(2026, 11, 27)}).scalar_one() is False
+
+
+def test_el_rol_de_lectura_pide_la_cartera_sin_ver_ninguna_tabla(sesion_agente: Session) -> None:
+    s = sesion_agente
+    d = _decision(s)
+    _fill(s, _orden(s, d, "AAA", "compra", "10", "k1"), date(2026, 11, 17), "10", "100")
+    _fill(s, _orden(s, d, "BBB", "compra", "5", "k2"), date(2026, 11, 17), "5", "200")
+    for t, c in (("AAA", "100"), ("BBB", "300")):
+        s.add(Precio(ticker=t, fecha=date(2026, 11, 18), cierre=Decimal(c)))
+    s.flush()
+    como_agente = s.execute(text("select ticker, peso from agente.foto_cartera('2026-11-18')")).all()
+
+    # Quien creó el rol puede administrarlo pero no usarlo sin permiso explícito (Postgres 16 o más).
+    s.execute(text("grant vennett_lectura to current_user with set true"))
+    s.execute(text("set local role vennett_lectura"))
+    desde_lectura = s.execute(text("select ticker, peso from agente.foto_cartera('2026-11-18')")).all()
+    assert desde_lectura == como_agente
+    assert {r.ticker: r.peso for r in desde_lectura} == {"BBB": Decimal("0.6"), "AAA": Decimal("0.4")}
+    assert s.execute(text("select agente.dia_cerrado('2026-11-18')")).scalar_one() is False
+    for consulta in ("select * from agente.ordenes", "select * from agente.ejecutadas",
+                     "select * from agente.valor_diario",
+                     "insert into agente.valor_diario (fecha, caja, valor_posiciones) values ('2026-11-18', 1, 1)"):
+        with pytest.raises(DBAPIError, match="permission denied"):
+            with s.begin_nested():
+                s.execute(text(consulta))
+    # SET ROLE no aplica los ajustes del rol: se comprueba que están guardados para cuando conecte.
+    s.execute(text("reset role"))
+    ajustes = s.execute(text("select rolconfig from pg_roles where rolname = 'vennett_lectura'")).scalar_one()
+    assert set(ajustes) == {"statement_timeout=10s", "default_transaction_read_only=on"}

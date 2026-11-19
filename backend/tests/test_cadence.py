@@ -75,9 +75,7 @@ def _stub_scan(monkeypatch) -> None:
     from app.screener import macro as macro_mod
     from app.screener.fundamentals import NameData
 
-    monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: FakeLLM(_FAKE_REPLY))
     monkeypatch.setattr(scan_llm_stage, "get_llm", lambda *a, **k: FakeLLM(_FAKE_REPLY))
-    monkeypatch.setattr(scan_service, "_memory_store", lambda: None)
     monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
     monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)  # sin la pausa del reintento
     _stub_universo(monkeypatch, ["AAA"])
@@ -142,7 +140,6 @@ def test_observatorio_actualiza_coincidencia_sin_borrar_el_resto(db, monkeypatch
 
     _stub_universo(monkeypatch, ["AAA"])
     otra_reply = _FAKE_REPLY.replace('"score": 90', '"score": 77')
-    monkeypatch.setattr(scan_service, "get_llm", lambda *a, **k: FakeLLM(otra_reply))
     monkeypatch.setattr(scan_llm_stage, "get_llm", lambda *a, **k: FakeLLM(otra_reply))
     result = scan_service.run_scan_and_store(db, sample_size=5, decide=False)
 
@@ -304,8 +301,6 @@ def test_profundo_no_parseable_no_puntua(db, monkeypatch) -> None:
 
     # Solo falla el PROFUNDO: get_llm() sin argumentos es el caro; con modelo, el del pre-score.
     cero = _FAKE_REPLY.replace('"score": 90', '"score": 0')
-    monkeypatch.setattr(scan_service, "get_llm",
-                        lambda *a, **k: FakeLLM(_FAKE_REPLY if a else cero))
     monkeypatch.setattr(scan_llm_stage, "get_llm",
                         lambda *a, **k: FakeLLM(_FAKE_REPLY if a else cero))
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)
@@ -342,36 +337,6 @@ def test_scan_failure_writes_report(db) -> None:
     # Sin cifras del embudo ni coste: a 0 parecerían medidas reales.
     assert rep["prescored"] is None and rep["cost"] is None and rep["universe"] is None
 
-
-def test_escaneo_reventado_no_se_cuela_en_el_detalle_ni_en_la_analitica(db) -> None:
-    """La fila del fallo es el informe, pero `/scan/full` y el navegador de analítica siguen en
-    el último escaneo completo."""
-    from app.api.routes_analytics import analytics_scans
-    from app.api.routes_scan import scan_full
-
-    db.add(models.ScanRun(cadence="decisión/full", decide=True, counter_deep=40))
-    db.commit()
-    scan_state.write_scan_failure(db, RuntimeError("boom"), decide=True)
-
-    assert scan_full(None, db)["scan"]["counters"]["deep"] == 40
-    assert [s["cadence"] for s in analytics_scans(db)["items"]] == ["decisión/full"]
-
-
-def test_detalle_del_escaneo_trae_el_macro_completo(db) -> None:
-    """El modal enseña lo que vio el profundo, no solo los datos: calendario, eventos, titulares."""
-    from app.api.routes_scan import scan_full
-
-    run = models.ScanRun(cadence="observatorio/full", outlook="VIX 15.3.",
-                         macro_wiki_scheduled="Oct 1: FOMC", macro_wiki_events="Sep 20: evento")
-    db.add(run)
-    db.flush()
-    db.add(models.ScanRunMacroHeadline(scan_run_id=run.id, fuente="gnews", posicion=0,
-                                       texto="Fed holds"))
-    db.commit()
-
-    s = scan_full(None, db)["scan"]
-    assert s["macro_calendario"] == "Oct 1: FOMC" and s["macro_eventos"] == "Sep 20: evento"
-    assert s["macro_titulares"] == [{"fuente": "gnews", "texto": "Fed holds"}]
 
 
 def test_informe_guarda_la_cartera_jev_y_las_novedades(db, monkeypatch) -> None:

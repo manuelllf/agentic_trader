@@ -30,6 +30,8 @@ from app.liga.motor import calendario  # noqa: E402
 from app.liga.motor.puntos import resultado_jornada  # noqa: E402
 from app.liga.motor.rentabilidad import pesos_mantenidos  # noqa: E402
 from app.liga.procesos import (  # noqa: E402
+    alpha_agente,
+    casa,
     cerrar,
     comun,
     datos,
@@ -40,12 +42,12 @@ from app.liga.procesos import (  # noqa: E402
     omega,
     temporadas,
 )
+from app.liga.procesos.alpha_agente import FotoAgente  # noqa: E402
 from app.models import (  # noqa: E402
     Foto,
     FundamentalsSnapshot,
     ScanAudit,
     ScanRun,
-    ScanRunConstructionItem,
     ScanRunJevItem,
 )
 
@@ -75,8 +77,9 @@ EMPRESAS = [
 ]
 SIN_PRECIO = {"ZQL"}          # la fuente no la devuelve: no se puede comprar
 LAMBDA = ["ZQL", "ZQA", "ZQD", "ZQF", "ZQH"]
-ALPHA = [("ZQB", "comprar", 30.0), ("ZQE", "comprar", 25.0), ("ZQG", "ampliar", 25.0),
-         ("ZQI", "recortar", 10.0), ("ZQJ", "vender", 0.0)]
+# La cartera del agente al cierre del día de la foto: peso de cada posición sobre lo invertido.
+ALPHA = [("ZQB", Decimal("0.30")), ("ZQE", Decimal("0.25")), ("ZQG", Decimal("0.25")),
+         ("ZQI", Decimal("0.10"))]
 # Alertas de Omega de enero: (ticker, instante UTC, caída). ZQA y ZQB llegan a la vez: gana la
 # caída más fuerte. La quinta espera a que un hueco quede libre.
 ALERTAS = [("ZQA", "2027-01-05 15:00+00", 30), ("ZQB", "2027-01-05 15:00+00", 40),
@@ -193,10 +196,6 @@ def _foto_y_escaneo(db: Session, fin: datetime) -> tuple[Foto, ScanRun]:
     for i, t in enumerate(LAMBDA):
         db.add(ScanRunJevItem(scan_run_id=run.id, posicion=i, ticker=t, industry="", score=8.0,
                               weight_pct=20.0))
-    for i, (t, accion, w) in enumerate(ALPHA):
-        db.add(ScanRunConstructionItem(scan_run_id=run.id, posicion=i, ticker=t, action=accion,
-                                       target_weight_pct=w, target_value="0", target_shares=0.0,
-                                       delta_shares=0.0))
     return f, run
 
 
@@ -221,9 +220,10 @@ def _asegurar_foto_del_dia_base(fabrica, jornada_id: int) -> None:  # noqa: ANN0
 
 
 @pytest.fixture
-def mundo(fabrica, mercado) -> dict:  # noqa: ANN001
-    """Temporadas, una foto con su escaneo de decisión, la propuesta de Alpha, la cartera de Jev,
-    Omega con una posición y tres estrategias de usuario."""
+def mundo(fabrica, mercado, monkeypatch) -> dict:  # noqa: ANN001
+    """Temporadas, una foto con su escaneo de decisión, la cartera del agente para Alpha, la
+    cartera de Jev, Omega con una posición y tres estrategias de usuario."""
+    monkeypatch.setattr(alpha_agente, "leer", lambda fecha: FotoAgente(tuple(ALPHA), True))
     temporadas.ejecutar(fabrica, ahora=HOY_ALTA)
     db = fabrica()
     ids: dict = {}
@@ -331,7 +331,7 @@ def test_una_semana_entera_dos_veces_sin_duplicar(fabrica, mercado, mundo) -> No
     assert all("ZQL" not in i["pos"] for i in ins.values())
     assert ins["lambda"]["pos"] == dict.fromkeys(["ZQA", "ZQD", "ZQF", "ZQH"], Decimal("20"))
     assert ins["lambda"]["fila"].receta_id is None
-    # Alpha: la propuesta tal cual, sin vetos; la venta (peso 0) no entra.
+    # Alpha: la cartera del agente tal cual, con sus pesos sobre lo invertido.
     assert ins["alpha"]["pos"] == {"ZQB": Decimal(30), "ZQE": Decimal(25), "ZQG": Decimal(25),
                                    "ZQI": Decimal(10)}
     # Omega nace en caja: sus huecos se llenan con las alertas durante el mes.
@@ -1182,6 +1182,79 @@ def test_no_hay_reintentos_infinitos_pasada_media_hora_avisa_una_vez_y_deja_de_i
     assert avisos == ["Vennett: la jornada no se formó sola"]          # una sola vez
     assert _cuenta(fabrica, "select count(*) from liga.inscripciones") == 0   # y no la formó
     formar._abandonadas_avisadas.clear()
+
+
+# ---- Alpha lee al agente ---------------------------------------------------------------------
+
+
+def _agente_caido(monkeypatch) -> None:  # noqa: ANN001
+    def caido(fecha: date) -> FotoAgente:
+        raise alpha_agente.SinLecturaAgente("No se pudo leer la base del agente (OperationalError)")
+
+    monkeypatch.setattr(alpha_agente, "leer", caido)
+
+
+def test_alpha_espera_al_agente_mientras_el_trabajo_automatico_reintenta(
+        fabrica, mercado, mundo, monkeypatch) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    foto.ejecutar(ene, fabrica=fabrica)
+    _agente_caido(monkeypatch)
+    with pytest.raises(comun.ErrorProceso, match="Alpha: No se pudo leer"):
+        formar.ejecutar(ene, fabrica=fabrica, ahora=CORTE_ENERO + timedelta(minutes=5))
+    assert _cuenta(fabrica, "select count(*) from liga.inscripciones") == 0   # no formó nada
+    # Vuelve el agente dentro de la ventana: el siguiente intento ya forma con su cartera.
+    monkeypatch.setattr(alpha_agente, "leer", lambda fecha: FotoAgente(tuple(ALPHA), True))
+    hecho = formar.ejecutar(ene, fabrica=fabrica, ahora=CORTE_ENERO + timedelta(minutes=10))
+    assert hecho["estado"] == "formada"
+    assert _inscripciones(fabrica, ene)["alpha"]["pos"]
+
+
+def test_alpha_pasada_la_ventana_juega_en_caja_y_avisa_al_admin(
+        fabrica, mercado, mundo, monkeypatch) -> None:  # noqa: ANN001
+    from app import push
+
+    ene = mundo["enero"]
+    foto.ejecutar(ene, fabrica=fabrica)
+    _agente_caido(monkeypatch)
+    avisos: list[tuple[str, str]] = []
+    monkeypatch.setattr(push, "send_to_all",
+                        lambda db, **kw: avisos.append((kw["title"], kw["body"])))
+    hecho = formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)          # días después del corte
+    assert hecho["estado"] == "formada"
+    assert _inscripciones(fabrica, ene)["alpha"]["pos"] == {}           # en caja, no inventa nada
+    assert "caja" in hecho["casa"]["alpha"]["motivo"]
+    assert ("Vennett: Alpha no jugó con una cartera normal" in [t for t, _ in avisos])
+
+
+def test_alpha_formada_a_mano_no_espera_al_agente(
+        fabrica, mercado, mundo, monkeypatch) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    foto.ejecutar(ene, fabrica=fabrica)
+    _agente_caido(monkeypatch)
+    hecho = formar.ejecutar(ene, fabrica=fabrica, actor=str(uuid.uuid4()),
+                            ahora=CORTE_ENERO + timedelta(minutes=5))
+    assert hecho["estado"] == "formada" and "caja" in hecho["casa"]["alpha"]["motivo"]
+
+
+def test_alpha_sin_el_cierre_del_agente_juega_con_lo_que_hay_y_lo_dice(
+        fabrica, mercado, mundo, monkeypatch) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    foto.ejecutar(ene, fabrica=fabrica)
+    monkeypatch.setattr(alpha_agente, "leer", lambda fecha: FotoAgente(tuple(ALPHA), False))
+    hecho = formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    assert _inscripciones(fabrica, ene)["alpha"]["pos"]
+    assert any(casa.CIERRE_VIEJO in a for a in hecho["casa"]["alpha"]["avisos"])
+
+
+def test_alpha_pide_el_dia_de_la_foto_de_la_jornada(
+        fabrica, mercado, mundo, monkeypatch) -> None:  # noqa: ANN001
+    ene = mundo["enero"]
+    foto.ejecutar(ene, fabrica=fabrica)
+    pedidos: list[date] = []
+    monkeypatch.setattr(alpha_agente, "leer",
+                        lambda fecha: pedidos.append(fecha) or FotoAgente(tuple(ALPHA), True))
+    formar.ejecutar(ene, fabrica=fabrica, ahora=ENERO)
+    assert pedidos and set(pedidos) == {date(2026, 12, 31)}      # FOTO_FIN: 16:30 ET del 31-dic
 
 
 # ---- los avisos a las cuentas -----------------------------------------------------------------

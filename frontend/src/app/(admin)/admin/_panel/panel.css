@@ -26,19 +26,10 @@ html[data-theme="dark"] .lg .pnl {
   --line: #38383A; --line2: #48484A; --ink: #FFFFFF; --ink2: #C7C7CC; --muted: #8E8E93;
   --good: #5CC98A; --bad: #F08A7E; --accent: #4FA39D; --accent-bg: rgba(79, 163, 157, .16);
 }
-/* Las salas antiguas son oscuras siempre: la barra y la cabecera que las rodean también. */
-.lg .pnl.pnl-vieja, html[data-theme] .lg .pnl.pnl-vieja, html:not([data-theme="light"]) .lg .pnl.pnl-vieja {
-  --bg: #0A0A0A; --surface: #18191B; --surface2: #24272A; --raised: #2A2D31;
-  --line: #26292C; --line2: #3A3E43; --ink: #F3F4F4; --ink2: #C9CDD1; --muted: #9AA1A8;
-  --good: #5CC98A; --bad: #F08A7E; --accent: #4FA39D; --accent-bg: rgba(79, 163, 157, .16);
-  color-scheme: dark;
-}
-
-/* La raíz pinta el fondo; el marco no es .lg entero porque las salas antiguas no deben heredar sus reglas. */
+/* La raíz pinta el fondo del panel entero. */
 .pnl-raiz { --pnl-fondo: #F2F2F7; min-height: 100dvh; background: var(--pnl-fondo); }
 @media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .pnl-raiz { --pnl-fondo: #000000; } }
 html[data-theme="dark"] .pnl-raiz { --pnl-fondo: #000000; }
-.pnl-raiz.vieja { --pnl-fondo: #0A0A0A; }
 .lg.pnl-lg, .lg.pnl-lg > .pnl { display: contents; }
 .pnl-slot { min-width: 0; }
 
@@ -62,7 +53,6 @@ html[data-theme="dark"] .pnl-raiz { --pnl-fondo: #000000; }
 .lg .pnl .pnl-cab.superado { background: color-mix(in srgb, var(--bg) 88%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.6);
   backdrop-filter: blur(20px) saturate(1.6); }
 .lg .pnl .pnl-cab-in { display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; align-items: center; gap: 0; min-height: 44px; max-width: var(--pnl-ancho); margin: 0 auto; }
-.lg .pnl.pnl-vieja .pnl-cab-in { max-width: none; }
 .lg .pnl .pnl-cab-titulo { grid-column: 2; margin: 0; text-align: center; font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.01em;
   color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .2s; }
 .lg .pnl .pnl-cab-titulo.visible { opacity: 1; }
@@ -79,16 +69,12 @@ html[data-theme="dark"] .pnl-raiz { --pnl-fondo: #000000; }
 /* ---- Página nueva: título grande, que cede su sitio a la cabecera al bajar ---- */
 .lg .pnl .pnl-pagina { max-width: var(--pnl-ancho); margin: 0 auto; padding: 0 16px calc(110px + env(safe-area-inset-bottom)); color: var(--ink2); }
 .lg .pnl .pnl-titulo-grande { margin: 4px 0 0; font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); overflow-wrap: anywhere; }
-/* Salas antiguas: su aspecto de siempre; el marco solo les quita el margen del raíl. */
-.adm.pnl-viejo { display: block; min-height: 0; padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 
 /* ---- Escritorio: raíl a la izquierda con las salas y, en Vennett, sus secciones ---- */
 @media (min-width: 1024px) {
   .pnl-slot, .lg .pnl .pnl-cab { margin-left: var(--pnl-rail); }
   .lg .pnl .pnl-cab { padding-inline: 40px; }
   .lg .pnl .pnl-pagina { padding: 0 40px 56px; }
-  .adm.pnl-viejo { padding-bottom: 0; }
-  .lg .pnl.pnl-vieja .pnl-cab-titulo { display: none; }
   .lg .pnl .pnl-barra { left: 0; right: auto; top: 0; bottom: 0; width: var(--pnl-rail); max-width: none; height: auto; margin: 0; padding: 20px 12px;
     display: flex; flex-direction: column; gap: 2px; border-radius: 0; border-right: 1px solid var(--line); background: var(--surface);
     -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; overflow-y: auto; }

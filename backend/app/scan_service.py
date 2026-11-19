@@ -43,50 +43,28 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app import execution_service, foto_service, scan_audit, scan_config, scan_progress
-from app import instruments as instruments_mod
+from app import foto_service, scan_audit, scan_config, scan_progress
 from app import portfolio_service as portfolio
-from app import watchlist as watchlist_mod
-from app.agents import constructor as constructor_mod
 from app.agents import scorer as scorer_mod
 from app.config import settings
-from app.ledger import service as ledger
 from app.llm import deepseek as deepseek_mod
-from app.llm import get_llm
 from app.llm.jev import JevProvider
 from app.llm.trace import LLMTrace
 from app.models import (
-    Proposal,
-    ProposalItem,
-    ProposalOmitted,
     ScanRun,
-    ScanRunChange,
-    ScanRunConstructionItem,
-    ScanRunConstructionOmitted,
     ScanRunFailure,
-    ScanRunFinalist,
-    ScanRunFinalistNews,
     ScanRunIssue,
     ScanRunJevItem,
     ScanRunMacroHeadline,
     ScanRunTiming,
-    Score,
 )
 from app.proceso_hijo import Cancelado
-from app.scan_guardrails import (
-    _aparta_opadas,
-    _flag_constructor_backfill,
-    _lista,
-    _log_funnel,
-)
-from app.scan_llm_stage import _llm_for, _prescore_llm, _sampling_kwargs, _stage_cfg
+from app.scan_llm_stage import _prescore_llm, _sampling_kwargs, _stage_cfg
 from app.scan_persist import (
     _guardar_cost_breakdown,
-    _guardar_news_used,
-    _guardar_trade_items,
     _llm_usage,
 )
-from app.scan_state import _advance_scan_cursor, _memory_store, _scan_cursor
+from app.scan_state import _advance_scan_cursor, _scan_cursor
 from app.screener import fundamentals as fund_mod
 from app.screener import macro as macro_mod
 from app.screener import universe as universe_mod
@@ -191,8 +169,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                        llm_overrides: dict | None = None,
                        reutilizar_ultima_foto: bool = False,
                        modo_universo: str = "nasdaq",
-                       cancel_event: threading.Event | None = None) -> dict:
+                       cancel_event: threading.Event | None = None,
+                       solo_jev: bool = False) -> dict:
     """Escaneo en 2 pasos (pre-score rápido → profundo en finalistas). Persiste y resume.
+
+    `solo_jev=True` es el escaneo mensual de hoy: foto, macro y las notas de Jev de todo el
+    universo, la cartera mecánica de Lambda y su traza; sin capa media, profundo, constructor,
+    propuesta, libro sombra, aprobaciones ni ranking de Alpha. Escribe lo mismo que lee la liga
+    (`scan_runs`, `scan_audit` con las notas y `scan_run_jev_item`).
 
     `decide=False` → escaneo OBSERVATORIO (usado hoy por la "simulación" manual de Alpha,
     banco de pruebas de configuración): puntúa el universo y refresca ranking, watchlist,
@@ -237,25 +221,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     # volvía indistinguible de `settings.mid_model` (mismo string, "deepseek-v4-pro") para
     # cualquier caller que decida QUÉ etapa es mirando el modelo pasado a `get_llm()` (los tests
     # de la capa media, ver `_stub_llms` en `test_capa_media_y_opa.py`).
-    deep_cfg = _stage_cfg(llm_overrides, "deep", None, settings.deep_reasoning_effort)
     prescore_cfg = _stage_cfg(llm_overrides, "prescore", settings.prescore_model,
                               settings.prescore_reasoning_effort,
                               settings.prescore_temperature)
-    mid_cfg = _stage_cfg(llm_overrides, "mid", settings.mid_model, settings.mid_reasoning_effort,
-                        settings.mid_temperature)
-    constructor_cfg = _stage_cfg(llm_overrides, "constructor", None, settings.reasoning_effort)
 
     # Traza de llamadas (ver `app/llm/trace.py`): se acumula en memoria y se vuelca de una vez al
     # final, con el `ScanRun` ya escrito para poder referenciarlo.
     traza = LLMTrace()
-    deep_llm = _llm_for(deep_cfg, "deep", traza)
     prescore_llm = _prescore_llm(prescore_cfg, bool((llm_overrides or {}).get("prescore")), traza)
-    # Capa media (opcional): repuntúa los mejores de cada sector con un modelo mejor que Flash
-    # antes del corte a finalistas. Se crea aquí (como los otros dos) para que su coste entre en
-    # `_llm_usage` aunque no llegue a usarse ninguna vez si `mid_layer` está desactivado.
-    # El interruptor de Alpha (`scan_config.mid_layer_activa`) manda sobre `settings.mid_layer`.
-    capa_media = scan_config.mid_layer_activa(db)
-    mid_llm = _llm_for(mid_cfg, "mid", traza) if capa_media else None
     # sample_size explícito (pruebas) manda; si no, TODO el universo salvo que se desactive.
     if sample_size is not None:
         n = sample_size
@@ -264,13 +237,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     else:
         n = settings.scan_sample_size
 
-    # Alpha sigue las posiciones del agente y los garantizados aunque no sean técnicos.
-    # La watchlist solo da una marca en el ranking, sin acceso garantizado al análisis.
-    held = {p.ticker: p for p in ledger.open_positions(db)}
-    watch = set(watchlist_mod.tickers(db))   # solo para el badge del ranking, no da acceso
-    garantizados = list(settings.always_deep_tickers)
-    always = (list(held.keys())
-             + [t for t in garantizados if t not in held])
+    always: list[str] = []
     # yahoo_symbol por ticker, SOLO para `modo_universo="global_topcap"` -- NASDAQ cotiza pelado,
     # el gather no necesita el mapa (ver `_gather` más abajo).
     tecnicos: set[str] | None = None
@@ -565,7 +532,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     prescored = [r for r in results if r[0].score > 0]
     # Desempate por market cap (criterio del paper): evita que orden de llegada decida frontera.
     prescored.sort(key=lambda x: (-x[0].score, -(x[1].market_cap or 0.0)))
-    siempre = set(held) | set(garantizados)
+    siempre: set[str] = set()
     prescored_tecnico = (portfolio.de_filtro_tecnico(prescored, tecnicos, siempre)
                         if tecnicos is not None else prescored)
     prescored_lambda = portfolio.prescored_lambda(prescored, tecnicos)
@@ -585,221 +552,11 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
                  for motivo, tickers in por_motivo.items()]
         issues.append(f"{len(pre_errors)} pre-score(s) fallidos: " +" · ".join(partes))
 
-    # Finalistas al profundo: top-2/sector (amplitud) ∪ top-15 global + posiciones + watchlist,
-    # truncado a un tope duro. El corte YA NO es ciego al macro (el prescore lo ve entero), así
-    # que deja de colapsar en defensivo-value.
-    data_by_t = {d.ticker: d for _p, d in prescored}
-
-    # Capa media: top-N/sector repuntuados (segunda opinión). El interruptor manda en todo escaneo.
-    mid_scores: dict[str, float] | None = None
-    if capa_media:
-        mid_candidates = portfolio.top_por_sector(prescored_tecnico, settings.mid_per_sector)
-        if len(mid_candidates) > settings.mid_candidates_cap:
-            sectores = {(d.sector or "").strip() for _p, d in prescored_tecnico}
-            issues.append(
-                f"capa media: {len(mid_candidates)} candidatos (más de "
-                f"{settings.mid_candidates_cap}); se recortan a los de mayor pre-score. "
-                f"Sectores distintos vistos: {len(sectores - {''})}.")
-            mid_candidates = mid_candidates[:settings.mid_candidates_cap]
-        elif len(mid_candidates) < settings.mid_candidates_cap:
-            # Relleno top-prescore global (sin duplicar ya entraron por sector).
-            ya = {t for t in mid_candidates}
-            relleno = [p.ticker for p, _d in prescored_tecnico if p.ticker not in ya]
-            mid_candidates += relleno[:settings.mid_candidates_cap - len(mid_candidates)]
-
-        _mid_kw = _sampling_kwargs(mid_cfg)
-
-        def _mid(ticker: str):
-            p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block, **_mid_kw)
-            for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
-                if not p.error:
-                    break
-                time.sleep(_RETRY_BACKOFF_S)
-                p = scorer_mod.mid_prescore(mid_llm, data_by_t[ticker], macro_block, **_mid_kw)
-            scan_progress.tick(ok=not p.error, reason=f"{ticker}: {p.error}" if p.error else None)
-            return p
-
-        _revisar_cancelado(cancel_event)
-        scan_progress.set_stage("mid", total=len(mid_candidates), unit="candidatos")
-        logger.info("Escaneo: iniciando MID (%d candidatos, modelo=%s, reasoning=%s).",
-                   len(mid_candidates), mid_cfg["model"], mid_cfg["reasoning_effort"])
-        t0 = time.monotonic()
-        with ThreadPoolExecutor(max_workers=_MID_WORKERS) as ex:
-            mid_results = list(ex.map(_mid, mid_candidates))
-        timings["mid"] = round(time.monotonic() - t0, 1)
-        logger.info("Escaneo: MID completado en %.1fs.", timings["mid"])
-        # Si falla: nombre conserva pre-score (error de transporte no es veredicto).
-        crudo = {p.ticker: p.score for p, _d in prescored}
-        mid_scores = {p.ticker: (crudo.get(p.ticker, 0.0) if p.error else p.score)
-                      for p in mid_results}
-
-    # Sin capa media (semanal): carril sectorial=2 (garantiza profundo ve cada sector).
-    per_sector = settings.deep_per_sector_mid if mid_scores else settings.deep_per_sector
-    # Carril "watchlist" vacío a propósito: ver el motivo donde se arma `always`.
-    finalists, lanes = portfolio.select_finalists(
-        prescored_tecnico, set(held), (),
-        per_sector, settings.deep_finalists_cap,
-        top_caps=settings.deep_top_caps, mid_scores=mid_scores, tracked=garantizados)
-
-    # 5) PASO 2 — profundo (V4-Pro) + price target en finalistas.
-    # Memoria vectorial solo al final (remember). Tesis previa quitada: cada escaneo juzga desde
-    # cero.
-    store = _memory_store()
-
-    _deep_kw = _sampling_kwargs(deep_cfg)
-
-    def _deep(ticker: str):
-        r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, **_deep_kw)
-        for _ in range(2):   # mismo criterio que el prescore: DOS reintentos, no uno
-            if not r.error:
-                break
-            time.sleep(_RETRY_BACKOFF_S)
-            r = scorer_mod.score(deep_llm, data_by_t[ticker], macro_block, **_deep_kw)
-        return r
-
-    _revisar_cancelado(cancel_event)
-    scan_progress.set_stage("deep", total=len(finalists), unit="finalistas")
-    logger.info("Escaneo: iniciando DEEP (%d finalistas, modelo=%s, reasoning=%s).",
-               len(finalists), deep_cfg["model"] or settings.llm_model,
-               deep_cfg["reasoning_effort"])
-    t0 = time.monotonic()
-    analizados: dict[str, scorer_mod.ScoreResult] = {}
-    with ThreadPoolExecutor(max_workers=_DEEP_WORKERS) as ex:
-        futs = [ex.submit(_deep, t) for t in finalists]
-        cancelado = False
-        for fut in as_completed(futs):
-            if cancel_event is not None and cancel_event.is_set():
-                cancelado = True
-                break
-            res = fut.result()
-            analizados[res.ticker] = res
-            # Score 0 = fallo parseo (profundo puntúa 1-100).
-            scan_progress.tick(ok=res.score > 0,
-                               reason=f"{res.ticker}: {res.error}" if res.error else None)
-        if cancelado:
-            ex.shutdown(wait=False, cancel_futures=True)
-    if cancelado:
-        raise ScanCancelado("Escaneo cancelado por el usuario durante el profundo.")
-    timings["deep"] = round(time.monotonic() - t0, 1)
-    logger.info("Escaneo: DEEP completado en %.1fs.", timings["deep"])
-    # Score 0 = fallo parseo. Cae del ranking y NO llega watchlist (guardarraíl memoria).
-    deep = {t: r for t, r in analizados.items() if r.score > 0}
-    deep_caidos = sorted(set(analizados) - set(deep))
-    if deep_caidos:
-        detalle = ", ".join(
-            f"{t}[{(analizados[t].error or '?').split(':')[0]}]" for t in deep_caidos)
-        issues.append("Informe profundo no parseable tras reintento (fuera del ranking): "
-                      + detalle)
-
-    price_map = {d.ticker: d.price for _p, d in prescored if d.price}
-    instr_prices = instruments_mod.prices()        # {} si el allowlist UCITS está vacío
-    price_map.update(instr_prices)
-    mcap_map = {t: (data_by_t[t].market_cap or 0.0) for t in deep}
-    # score_map: profundo para finalistas, pre-score para resto (watchlist/display), ambos enteros.
-    score_map = {p.ticker: (deep[p.ticker].score if p.ticker in deep else round(p.score))
-                 for p, _d in prescored}
-
-    # Última salida limpia: lo de aquí en adelante empieza a persistir de verdad (Score, memoria,
-    # ScanRun...). Cancelar después de este punto ya no evita nada.
-    _revisar_cancelado(cancel_event)
-
-    # 6) Leaderboard: DECISIÓN reemplaza total; OBSERVATORIO refresca solo hoy-profundos. Las
-    # noticias se congelan en los dos casos (`_guardar_news_used`), un observatorio es traza igual.
-    # Foto prev ranking/watchlist para detectar novedades (qué entra/sale) en informe.
-    prev_ranking = {s.ticker for s in db.query(Score).all()}
-    prev_watch = set(watchlist_mod.tickers(db))
-    refreshed = 0
-    if decide:
-        db.query(Score).delete()
-        for ticker, d in deep.items():
-            data = data_by_t[ticker]
-            score_row = Score(
-                ticker=ticker, sector=data.sector, score=d.score,
-                headline=d.headline, report=d.report,
-                price=data.price, market_cap=data.market_cap,
-                held=ticker in held, on_watchlist=ticker in watch,  # provisional: resella al final
-                under_acquisition=d.under_acquisition,
-            )
-            db.add(score_row)
-            db.flush()   # necesita el id para las noticias hermanas
-            _guardar_news_used(db, score_row.id, data.news)
-    else:
-        existing = {s.ticker: s for s in db.query(Score).all()}
-        for ticker, d in deep.items():
-            row = existing.get(ticker)
-            if row is None:
-                continue                       # nombre nuevo del semanal: no entra al ranking
-            data = data_by_t[ticker]
-            row.score, row.headline, row.report = d.score, d.headline, d.report
-            row.price, row.market_cap = data.price, data.market_cap
-            row.sector = data.sector
-            row.under_acquisition = d.under_acquisition
-            _guardar_news_used(db, row.id, data.news)
-            refreshed += 1
-    db.commit()
-    if store:                                      # guarda las tesis nuevas para recordarlas luego
-        for t, d in deep.items():
-            try:
-                # Informe COMPLETO, no un corte a 400 chars: `MemoryStore.remember()` trocea y
-                # embebe por ventanas (ver `memory/store.py`), ya no hace falta cortar aquí.
-                store.remember(f"{d.headline} {d.report}", kind="thesis", ticker=t)
-            except Exception:
-                pass
-    # Watchlist SIN alimentar: no está en el paper y ya no da acceso al profundo (ver `always`).
-    # El módulo y la tabla se quedan: lo guardado sigue viéndose, pero deja de crecer.
-
-    # 7) SELECCIÓN fiel al paper: top-N por SCORE PROFUNDO, desempate por MARKET CAP.
-    #    (La convicción del constructor solo pondera; no re-selecciona.)
-    #    Antes del corte se apartan las opadas (ver `_aparta_opadas`).
-    selected = portfolio.select_top(
-        _aparta_opadas(list(deep.values()), issues),
-        mcap_map, settings.min_buy_score, settings.select_count)
-    constructor_llm = None
-    if not selected and not held:
-        floor = settings.min_buy_score
-        reason = (f"Ningún finalista alcanza el suelo de score ({floor})" if floor > 0
-                  else "No se analizó ningún nombre")
-        construction = constructor_mod.ConstructionResult(
-            cash_pct=100.0, positions=[], summary=f"{reason}. 100% en caja.",
-        )
-    else:
-        # Informe COMPLETO por candidato, no un titular — fiel a Exhibit 2E ("we have the
-        # following reports for the stocks that were scored the highest").
-        candidates_text = portfolio.candidates_text(
-            selected, {t: d.sector for t, d in data_by_t.items()}, mcap_map)
-        candidates_text += instruments_mod.prompt_block(instr_prices)  # UCITS ('' si vacío)
-        valid = {r.ticker for r in selected} | set(instr_prices)
-        scan_progress.set_stage("constructor")
-        logger.info("Escaneo: iniciando CONSTRUCTOR (%d candidatos, modelo=%s, reasoning=%s).",
-                   len(selected), constructor_cfg["model"] or settings.llm_model,
-                   constructor_cfg["reasoning_effort"])
-        t0 = time.monotonic()
-        # Instancia SEPARADA (no `deep_llm`): el constructor lleva su propio reasoning (ver
-        # config.py). Se crea aquí, justo antes de usarse, para no alterar el ORDEN de las
-        # llamadas a `get_llm()` que usan los tests para distinguir prescore/mid/deep.
-        constructor_llm = _llm_for(constructor_cfg, "constructor", traza)
-        construction = constructor_mod.construct(
-            constructor_llm, candidates_text, macro_block,
-            settings.max_positions, settings.max_position_pct, valid, settings.min_positions,
-            **_sampling_kwargs(constructor_cfg),
-        )
-        construction = portfolio.finalize_full_invest(
-            construction, selected, settings.min_positions, settings.max_positions,
-            settings.max_position_pct)
-        timings["constructor"] = round(time.monotonic() - t0, 1)
-        logger.info("Escaneo: CONSTRUCTOR completado en %.1fs.", timings["constructor"])
-        _flag_constructor_backfill(construction, issues)
-
-    # 8) Trades con aritmética exacta (la cartera que PROPONDRÍA hoy; solo se persiste al decidir).
-    high52_map = {t: d.high_52w for t, d in data_by_t.items()}
-    items = portfolio.build_trades(db, construction, held, price_map, score_map, high52_map)
-    macro_line = construction.summary
-
     # Cartera de Jev: sombra sin dinero, calculada en todo escaneo y sin llamadas.
+    _revisar_cancelado(cancel_event)
     jev_cartera: list = []
     if es_jev:
-        opadas = {t for t, r in deep.items() if r.under_acquisition is True}
-        jev_cartera = portfolio.cartera_jev(prescored_lambda, opadas, settings.jev_portfolio_n,
+        jev_cartera = portfolio.cartera_jev(prescored_lambda, set(), settings.jev_portfolio_n,
                                             settings.jev_max_por_industria)
         if len(jev_cartera) < settings.jev_portfolio_n:
             issues.append(f"Cartera Jev incompleta: {len(jev_cartera)} de "
@@ -809,86 +566,14 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     audit_at = None
     try:
         audit_at = scan_audit.record(
-            db, prescored=prescored, failed=failed, finalists=finalists,
-            deep=deep, selected=selected, construction=construction,
-            pre_errors=pre_errors, deep_errors=deep_caidos, decide=decide,
-            lanes=lanes, mid_scores=mid_scores, tecnicos=tecnicos,
+            db, prescored=prescored, failed=failed, pre_errors=pre_errors, decide=decide,
+            tecnicos=tecnicos,
             jev_cartera={p.ticker for p, _d in jev_cartera} if es_jev else None)
     except Exception:
         logger.exception("No se pudo escribir la traza de auditoría (no aborta el escaneo).")
 
-    modo = "decisión" if decide else "observatorio"
-    cadence = f"{modo}/full" if n is None else f"{modo}/muestra {n}"
-    _log_funnel(cadence, sample, prescored, failed, finalists, data_by_t, selected,
-                construction, instr_prices)
+    cadence = "jev/full" if n is None else f"jev/muestra {n}"
 
-    # 9) DECISIÓN (mensual o manual): persistir la propuesta, ejecutar la sombra y proponer a
-    #    la real. El escaneo observatorio termina antes de este bloque: el libro conserva la
-    #    cartera del último decidido para que cada elección viva su mes entero.
-    if decide:
-        prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_line)
-        db.add(prop)
-        db.flush()   # necesita el id para los items/omitted hermanos
-        _guardar_trade_items(db, ProposalItem, "proposal_id", prop.id, items)
-        for o in construction.omitted:
-            db.add(ProposalOmitted(proposal_id=prop.id, ticker=o.ticker, reason=o.reason))
-        db.commit()
-        # Sombra: se ejecuta SOLA, sin botones — dinero simulado, cero riesgo. Ventas antes que
-        # compras (execute_proposal_all lo garantiza) para que la caja se libere primero. Un
-        # fallo aquí NUNCA debe tirar el escaneo (los datos ya están persistidos y a salvo).
-        try:
-            exec_result = execution_service.execute_proposal_all(db)
-            logger.info("Auto-ejecución sombra: %s", exec_result["message"])
-            issues.extend(f"Sombra, item saltado: {s}" for s in exec_result["skipped"])
-        except Exception as exc:  # noqa: BLE001 — el motivo va al informe del escaneo
-            logger.exception("Fallo en la auto-ejecución del libro sombra (no aborta el escaneo).")
-            issues.append(f"Auto-ejecución del libro sombra falló: {exc}")
-        # Real: cada trade propuesto queda PENDIENTE de tu Sí/No (push best-effort). El agente
-        # jamás ejecuta solo — ni siquiera en dry-run.
-        try:
-            from app import approvals as approvals_mod
-            approvals_mod.create_from_items(db, items, macro_line)
-        except Exception as exc:  # noqa: BLE001 — el motivo va al informe del escaneo
-            logger.exception("No se pudieron crear las aprobaciones del modo real.")
-            issues.append(f"No se pudieron crear las aprobaciones de Alpha: {exc}")
-    else:
-        logger.info("Escaneo observatorio: ranking, watchlist y memoria al día; la cartera "
-                    "(sombra y real) no se toca — la decisión es mensual.")
-    # La watchlist es "lo que VIGILO y no tengo": lo que esté en cartera sale de ella (el update
-    # del paso 5 pudo re-meter posiciones re-analizadas; tras decidir, también lo recién comprado).
-    watchlist_mod.drop(db, {p.ticker for p in ledger.open_positions(db)})
-
-    # Novedades vs el escaneo anterior — van al informe (el panel las pinta en su línea).
-    # OJO: se compara contra la composición FINAL de la tabla (no contra `deep`): en
-    # observatorio el conjunto de tickers no cambia (solo se refrescan valores de filas ya
-    # existentes), así que sale vacío de forma natural. Comparar contra `deep` habría anunciado
-    # "entra/sale" para nombres que en realidad ni se añadieron ni se borraron de Score.
-    changes: list[str] = []
-    final_ranking = {s.ticker for s in db.query(Score).all()}
-    entran = sorted(final_ranking - prev_ranking)
-    salen = sorted(prev_ranking - final_ranking)
-    if entran or salen:
-        partes = ([f"entran {_lista(entran)}"] if entran else []) \
-            + ([f"salen {_lista(salen)}"] if salen else [])
-        changes.append(f"Ranking ({len(deep)} a fondo): " + " · ".join(partes))
-    watch_now = set(watchlist_mod.tickers(db))
-    # El badge del ranking (`held` y `on_watchlist`) se estampó ANTES de ejecutar los trades de
-    # este escaneo y de actualizar/limpiar la watchlist, así que iba un escaneo por detrás
-    # (marcaba en seguimiento nombres ya comprados o ya caducados, y no en cartera lo que este
-    # mismo escaneo acababa de comprar). Se re-sella contra el estado REAL de después: `held`
-    # llevaba el mismo desfase que `on_watchlist` y solo este último se corregía.
-    held_now = {p.ticker for p in ledger.open_positions(db)}
-    for s in db.query(Score).all():
-        s.on_watchlist = s.ticker in watch_now
-        s.held = s.ticker in held_now
-    db.commit()
-
-    w_in = sorted(watch_now - prev_watch)
-    w_out = sorted(prev_watch - watch_now)
-    if w_in or w_out:
-        partes = ([f"entra {_lista(w_in)}"] if w_in else []) \
-            + ([f"sale {_lista(w_out)}"] if w_out else [])
-        changes.append(f"Watchlist ({len(watch_now)} vigilados): " + " · ".join(partes))
 
     # La ventana rotatoria avanza AL FINAL, con el escaneo ya analizado, auditado y decidido: si
     # revienta a mitad, esta franja no se consume y le vuelve a tocar en la siguiente pasada.
@@ -898,8 +583,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     timings["total"] = round(time.monotonic() - t_scan_inicio, 1)
     logger.info("Escaneo: TOTAL %.1fs. Por fase: %s", timings["total"],
                ", ".join(f"{fase}={dur}s" for fase, dur in timings.items() if fase != "total"))
-    coste = _llm_usage(prescore=prescore_llm, mid=mid_llm,
-                       profundo=deep_llm, constructor=constructor_llm)
+    coste = _llm_usage(prescore=prescore_llm)
     # NO se relee el saldo al terminar: DeepSeek liquida con retraso y la resta salía a menos de
     # la mitad de lo real (medido: $0,04 al acabar vs $0,10 minutos después, con $0,103 estimados
     # por tokens). Se guarda el saldo de ANTES; la resta contra el `saldo_antes` del escaneo
@@ -916,16 +600,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     } if _confs else None
     result = {
         "universe": universo_info,
-        "scanned": len(sample), "prescored": len(prescored), "deep": len(deep),
-        # Solo cuenta en observatorio; en decisión el ranking se reemplaza entero (None).
-        "refreshed": None if decide else refreshed,
+        "scanned": len(sample), "prescored": len(prescored),
         "confianza_prescore": confianza,
-        "watchlist": len(watchlist_mod.tickers(db)),
-        "proposed": len([i for i in items if i["action"] != "mantener"]),
-        "positions": len(construction.positions),
-        "decided": decide,
-        # coste con `by_stage` además de `by_model` (ver `_llm_usage`) — `mid_llm` puede ser None
-        # (desactivada), se tolera igual que a un FakeLLM sin `usage`.
         "cost": coste,
         "outlook": macro.get("datos") or "",
         "jev_macro": jev_macro,
@@ -938,55 +614,30 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         "timings": timings,
     }
     try:
-        # Fila HISTÓRICA (nunca se pisa) y además el informe de `/scan/report`. `finalists`/
-        # `construction`: recuperación completa, decida o no — `Proposal` solo existe al decidir.
-        pre_map = {p.ticker: p.score for p, _d in prescored}
-        selected_set = {r.ticker for r in selected}
-        funded_map = {p.ticker: p.weight_pct for p in construction.positions}
-        finalists_detail = [
-            {
-                "ticker": t, "sector": data_by_t[t].sector,
-                "prescore": pre_map.get(t), "price": data_by_t[t].price,
-                "market_cap": data_by_t[t].market_cap,
-                "mid_score": (mid_scores or {}).get(t),
-                "deep_score": deep[t].score if t in deep else None,
-                "high_52w": data_by_t[t].high_52w,
-                "headline": deep[t].headline if t in deep else None,
-                # Informe completo: `Score` se pisa en cuanto ese ticker se re-analiza, esta
-                # fila no — es el archivo de verdad de esa fecha.
-                "report": deep[t].report if t in deep else None,
-                "selected": t in selected_set, "funded": t in funded_map,
-                "weight_pct": funded_map.get(t),
-                "error": analizados[t].error if t in deep_caidos else None,
-                "under_acquisition": deep[t].under_acquisition if t in deep else None,
-            }
-            for t in finalists
-        ]
+        # Fila HISTÓRICA del escaneo de Jev (la que lee `/scan/report`): sin profundo ni cartera.
         failures_detail = (
             [{"ticker": t, "etapa": "gather", "error": e, "raw": None} for t, e in gather_errors]
             + [{"ticker": p.ticker, "etapa": "prescore", "error": p.error, "raw": p.raw}
                for p, _d in pre_errors]
-            + [{"ticker": t, "etapa": "profundo", "error": analizados[t].error,
-                "raw": analizados[t].raw} for t in deep_caidos]
         )
         coste = result["cost"]
         run = ScanRun(
-            cadence=cadence, decide=decide, refreshed=result["refreshed"],
+            cadence=cadence, decide=decide, refreshed=None,
             regime=macro.get("regime") or "",
             vix=macro.get("vix"), outlook=macro.get("datos") or "", jev_macro=jev_macro,
             universe_fuente=universo_info["fuente"], universe_at=universo_info["at"],
             universe_dias=universo_info["dias"], universe_size=universo_info["size"],
             universe_sobre_suelo=universo_info.get("sobre_suelo"),
             counter_scanned=len(sample), counter_prescored=len(prescored),
-            counter_deep=len(deep), counter_selected=len(selected),
-            counter_positions=len(construction.positions),
+            counter_deep=0, counter_selected=0, counter_positions=0,
             cost_calls=coste["calls"], cost_prompt_tokens=coste["prompt_tokens"],
             cost_completion_tokens=coste["completion_tokens"],
             cost_cache_hit_tokens=coste["cache_hit_tokens"],
             cost_cache_miss_tokens=coste["cache_miss_tokens"], cost_peak_calls=coste["peak_calls"],
             cost_usd=coste["cost_usd"], cost_cache_hit_ratio=coste["cache_hit_ratio"],
             saldo_antes_usd=coste.get("saldo_antes_usd"),
-            construction_cash_pct=construction.cash_pct, construction_summary=construction.summary,
+            construction_cash_pct=100.0,
+            construction_summary="Escaneo de Jev: sin cartera de Alpha.",
             macro_wiki_events=macro.get("wiki_events_text") or "",
             macro_wiki_scheduled=macro.get("wiki_scheduled_text") or "",
             foto_id=_foto_de_los_datos(datos_ok),
@@ -1002,8 +653,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
             db.add(ScanRunTiming(scan_run_id=run.id, fase=fase, segundos=segundos))
         for i, texto in enumerate(issues):
             db.add(ScanRunIssue(scan_run_id=run.id, posicion=i, texto=texto))
-        for i, texto in enumerate(changes):
-            db.add(ScanRunChange(scan_run_id=run.id, posicion=i, texto=texto))
         for i, j in enumerate(result["jev_cartera"]):
             db.add(ScanRunJevItem(scan_run_id=run.id, posicion=i, ticker=j["ticker"],
                                   industry=(j["industry"] or "")[:64], score=j["score"],
@@ -1011,19 +660,6 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         for f in failures_detail:
             db.add(ScanRunFailure(scan_run_id=run.id, ticker=f["ticker"], etapa=f["etapa"],
                                   error=f["error"], raw=f["raw"]))
-        finalist_rows = []
-        for i, f in enumerate(finalists_detail):
-            row = ScanRunFinalist(scan_run_id=run.id, posicion=i, **f)
-            db.add(row)
-            finalist_rows.append(row)
-        db.flush()   # necesita el id de cada finalista para colgarle sus noticias
-        for row in finalist_rows:
-            for j, texto in enumerate(data_by_t[row.ticker].news or []):
-                db.add(ScanRunFinalistNews(scan_run_finalist_id=row.id, posicion=j, texto=texto))
-        _guardar_trade_items(db, ScanRunConstructionItem, "scan_run_id", run.id, items)
-        for o in construction.omitted:
-            db.add(ScanRunConstructionOmitted(scan_run_id=run.id, ticker=o.ticker,
-                                              reason=o.reason))
         db.commit()
         scan_run_id = run.id
     except Exception:
@@ -1052,144 +688,3 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
     return result
 
 
-def recheck(db: Session) -> dict:
-    """Re-comprobación del top: re-corre SOLO la construcción sobre los nombres ya analizados a
-    fondo (report != ''), reutilizando sus informes/scores/targets guardados y aplicando el suelo
-    ACTUAL. No re-escanea el universo → instantáneo y casi gratis (1 llamada de construcción)."""
-    llm = get_llm(reasoning_effort=settings.reasoning_effort)   # solo construcción
-    deep = (db.query(Score).filter(Score.report != "").order_by(Score.score.desc()).all())
-    if not deep:
-        raise ValueError("No hay análisis profundo previo; lanza un escaneo primero.")
-
-    floor = settings.min_buy_score
-    held = {p.ticker: p for p in ledger.open_positions(db)}
-    price_map = {r.ticker: r.price for r in deep if r.price}
-    mcap_map = {r.ticker: (r.market_cap or 0.0) for r in deep}
-    score_map = {r.ticker: r.score for r in deep}
-    # Mismo guardarraíl que el escaneo: `recheck` reconstruye sobre informes ya guardados, sin
-    # esto una opada apartada volvería a entrar. Filas antiguas con el campo a NULL no se apartan.
-    issues_recheck: list[str] = []
-    selected = portfolio.select_top(
-        _aparta_opadas(deep, issues_recheck), mcap_map, floor, settings.select_count)
-    macro_block = macro_mod.bloque_macro(macro_mod.get_macro(db))
-
-    if not selected and not held:
-        reason = (f"Ningún nombre del top alcanza el suelo ({floor})" if floor > 0
-                  else "No hay nombres analizados")
-        construction = constructor_mod.ConstructionResult(
-            cash_pct=100.0, positions=[], summary=f"{reason}. 100% en caja.")
-    else:
-        candidates_text = portfolio.candidates_text(
-            selected, {r.ticker: r.sector for r in selected}, mcap_map)
-        valid = {r.ticker for r in selected}
-        construction = constructor_mod.construct(
-            llm, candidates_text, macro_block,
-            settings.max_positions, settings.max_position_pct, valid, settings.min_positions)
-        construction = portfolio.finalize_full_invest(
-            construction, selected, settings.min_positions, settings.max_positions,
-            settings.max_position_pct)
-        _flag_constructor_backfill(construction, issues_recheck)
-
-    items = portfolio.build_trades(db, construction, held, price_map, score_map)
-    prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=construction.summary)
-    db.add(prop)
-    db.flush()
-    _guardar_trade_items(db, ProposalItem, "proposal_id", prop.id, items)
-    for o in construction.omitted:
-        db.add(ProposalOmitted(proposal_id=prop.id, ticker=o.ticker, reason=o.reason))
-    db.commit()
-    try:
-        from app import approvals as approvals_mod
-        approvals_mod.create_from_items(db, items, construction.summary)
-    except Exception:
-        logger.exception("No se pudieron crear las aprobaciones del modo real.")
-    return {"eligible": len(selected), "positions": len(construction.positions),
-            "proposed": len([i for i in items if i["action"] != "mantener"]),
-            "issues": issues_recheck,
-            "cost": _llm_usage(constructor=llm)}  # 1 llamada de construcción
-
-
-def redeep(db: Session) -> dict:
-    """Re-analiza a FONDO (V4-Pro) solo los nombres ya profundizados, con el MACRO ACTUAL.
-
-    Reutiliza el prescore del universo (NO re-escanea los ~1.400) → barato y rápido. Se usa
-    cuando se corrige un dato macro y hay que refrescar las notas sin repetir el escaneo entero.
-    Re-puntúa limpio (sin inyectar la tesis previa, que se generó con el dato malo).
-    """
-    deep_rows = db.query(Score).filter(Score.report != "").all()
-    if not deep_rows:
-        raise ValueError("No hay análisis profundo previo; lanza un escaneo primero.")
-    tickers = [r.ticker for r in deep_rows]
-    held = {p.ticker: p for p in ledger.open_positions(db)}
-    watch = set(watchlist_mod.tickers(db))
-
-    deep_llm = get_llm(reasoning_effort=settings.deep_reasoning_effort)
-    macro_block = macro_mod.bloque_macro(macro_mod.get_macro(db))   # macro recién calculado
-
-    def _one(ticker: str):
-        data, _err = fund_mod.gather(ticker, db=db)
-        if data is None:
-            return None
-        return data, scorer_mod.score(deep_llm, data, macro_block)   # re-eval limpia, sin prior
-
-    data_by_t: dict = {}
-    results: dict = {}
-    with ThreadPoolExecutor(max_workers=_DEEP_WORKERS) as ex:
-        for out in ex.map(_one, tickers):
-            if out is not None:
-                data, res = out
-                data_by_t[res.ticker] = data
-                results[res.ticker] = res
-
-    db.query(Score).delete()
-    for t, r in results.items():
-        d = data_by_t[t]
-        score_row = Score(ticker=t, sector=d.sector, score=r.score, headline=r.headline,
-                          report=r.report, price=d.price, market_cap=d.market_cap,
-                          held=t in held, on_watchlist=t in watch,
-                          under_acquisition=r.under_acquisition)
-        db.add(score_row)
-        db.flush()
-        _guardar_news_used(db, score_row.id, d.news)
-    db.commit()
-
-    mcap_map = {t: (data_by_t[t].market_cap or 0.0) for t in results}
-    price_map = {t: data_by_t[t].price for t in results if data_by_t[t].price}
-    score_map = {t: r.score for t, r in results.items()}
-    issues_redeep: list[str] = []
-    selected = portfolio.select_top(
-        _aparta_opadas(list(results.values()), issues_redeep),
-        mcap_map, settings.min_buy_score, settings.select_count)
-    constructor_llm = None
-    if not selected and not held:
-        construction = constructor_mod.ConstructionResult(
-            cash_pct=100.0, positions=[], summary="Sin candidatos tras re-análisis. 100% caja.")
-    else:
-        candidates_text = portfolio.candidates_text(
-            selected, {t: d.sector for t, d in data_by_t.items()}, mcap_map)
-        valid = {r.ticker for r in selected}
-        constructor_llm = get_llm(reasoning_effort=settings.reasoning_effort)
-        construction = constructor_mod.construct(
-            constructor_llm, candidates_text, macro_block,
-            settings.max_positions, settings.max_position_pct, valid, settings.min_positions)
-        construction = portfolio.finalize_full_invest(
-            construction, selected, settings.min_positions, settings.max_positions,
-            settings.max_position_pct)
-        _flag_constructor_backfill(construction, issues_redeep)
-
-    items = portfolio.build_trades(db, construction, held, price_map, score_map)
-    macro_line = construction.summary
-    prop = Proposal(cash_target_pct=construction.cash_pct, macro_summary=macro_line)
-    db.add(prop)
-    db.flush()
-    _guardar_trade_items(db, ProposalItem, "proposal_id", prop.id, items)
-    db.commit()
-    try:
-        from app import approvals as approvals_mod
-        approvals_mod.create_from_items(db, items, macro_line)
-    except Exception:
-        logger.exception("No se pudieron crear las aprobaciones del modo real.")
-    return {"redeep": len(results), "positions": len(construction.positions),
-            "proposed": len([i for i in items if i["action"] != "mantener"]),
-            "issues": issues_redeep,
-            "cost": _llm_usage(profundo=deep_llm, constructor=constructor_llm)}

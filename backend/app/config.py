@@ -264,6 +264,9 @@ class Settings(BaseSettings):
     indexnow_clave: str = "9a99ebf1dbda43628328bdb9e66d32bb"
     # Clave con la que el servicio del agente deja avisos del admin; vacía apaga la ruta.
     agente_clave_servicio: str = ""
+    # Conexión de solo lectura a la base del agente (rol `vennett_lectura`): de ella sale la cartera
+    # con la que juega la casa Alpha. Vacía, Alpha juega en caja y la jornada lo avisa.
+    agente_lectura_url: str = ""
 
     @property
     def cors_origins_list(self) -> list[str]:

@@ -25,6 +25,9 @@ from app.precios import REFERENCIA, fecha_mercado
 logger = logging.getLogger(__name__)
 
 CORTE_N = 10  # Cut boundary: N worst admitted vs N best rejected.
+# Un escaneo solo de Jev no tiene profundo: «¿predice la nota?» mira una muestra repartida a lo
+# largo de todas las notas (miles de series de precios serían demasiado para una lectura).
+MUESTRA_NOTAS = 300
 
 _TTL = 900
 _cache: dict = {}
@@ -93,6 +96,20 @@ def _posicion_jev(r: ScanAudit, ret: float | None) -> dict:
     }
 
 
+def _muestra_de_notas(db, at) -> list[ScanAudit]:  # noqa: ANN001
+    """Hasta `MUESTRA_NOTAS` nombres puntuados de un escaneo, a intervalos regulares de la nota más
+    alta a la más baja: así la muestra cubre toda la escala y no solo las puntas."""
+    filas = list(db.execute(
+        select(ScanAudit)
+        .where(ScanAudit.scan_at == at, ScanAudit.prescore.is_not(None),
+               ScanAudit.price.is_not(None))
+        .order_by(ScanAudit.prescore.desc(), ScanAudit.ticker)).scalars())
+    if len(filas) <= MUESTRA_NOTAS:
+        return filas
+    paso = len(filas) / MUESTRA_NOTAS
+    return [filas[int(i * paso)] for i in range(MUESTRA_NOTAS)]
+
+
 def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
     """Cohorts with returns (newest first); names always included.
 
@@ -117,9 +134,14 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
         select(ScanAudit).where(ScanAudit.scan_at.in_(fechas),
                                 ScanAudit.jev_funded.is_(True))).scalars())
 
+    # Escaneos solo de Jev (sin ningún nombre en el profundo): su «¿predice?» sale de una muestra.
+    con_profundo = {r.scan_at for r in deep_rows}
+    muestra_by_scan = {at: _muestra_de_notas(db, at) for at in fechas if at not in con_profundo}
+
     tickers = ({r.ticker for r in deep_rows}
                | {r.ticker for rs in fuera_by_scan.values() for r in rs}
-               | {r.ticker for r in jev_rows} | {REFERENCIA})
+               | {r.ticker for r in jev_rows} | {REFERENCIA}
+               | {r.ticker for rs in muestra_by_scan.values() for r in rs})
     desde = min(fecha_mercado(at) for at in fechas) - timedelta(days=7)
     series = _cierres_ajustados(sorted(tickers), desde)
 
@@ -146,6 +168,11 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
         pares = [{"ticker": r.ticker, "score": r.deep_score, "ret": _ret(r),
                   "funded": bool(r.funded)}
                  for r in validos if r.deep_score is not None and _ret(r) is not None]
+        muestra = muestra_by_scan.get(at, [])
+        if muestra:   # solo Jev: la nota es el prescore y «fondeada» es estar en la cartera de Lambda
+            pares = [{"ticker": r.ticker, "score": r.prescore, "ret": _ret(r),
+                      "funded": bool(r.jev_funded)}
+                     for r in muestra if _ret(r) is not None]
 
         # Cut boundary (same metric both sides: prescore); N best rejected vs N worst admitted.
         dentro = sorted((r for r in validos if r.prescore is not None),
@@ -163,7 +190,8 @@ def outcomes(db, limit: int = 8) -> list[dict]:  # noqa: ANN001
             "at": utc_iso(at),
             # From trace flag, not inferred; construction also recorded in observatories. NULL =
             # observatory.
-            "mode": "decisión" if any(r.decide for r in cohorte) else "observatorio",
+            "mode": "decisión" if any(r.decide for r in (cohorte or muestra)) else "observatorio",
+            "tipo": "jev" if muestra else "completo",
             "days": max(0, (hoy - at.replace(tzinfo=None)).days),
             "groups": {
                 "cartera": _grupo(cartera),

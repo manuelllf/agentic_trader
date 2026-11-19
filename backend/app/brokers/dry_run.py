@@ -65,7 +65,7 @@ class DryRunBroker:
         )
 
     def fx_conversions_for(self, broker_order_id: str) -> list[FxFill]:
-        # No se simula: dry-run solo ve caja USD (ver `approvals._eur_usd_rate`), así que nunca
+        # No se simula: dry-run solo ve caja USD , así que nunca
         # hay una compra que dispare auto-FX de verdad que reconciliar aquí.
         return []
 

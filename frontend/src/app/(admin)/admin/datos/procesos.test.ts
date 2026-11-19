@@ -13,6 +13,10 @@ describe("textoHorario", () => {
     const e: EntradaHorario = { proceso: "global", automatico: true, dias_semana: "*", dia_mes: "1", horas: "3", minuto: "0", zona: "UTC" };
     expect(textoHorario("global", e, true, t, "en")).toContain('"cuando":"pnl_datos_dia_mes{\\"dia\\":\\"1\\"}"');
   });
+  it("el escaneo de Jev dice el último día de bolsa, no los días 24 a 31 en que salta el trabajo", () => {
+    const e: EntradaHorario = { proceso: "escaneo", automatico: true, dias_semana: "mon-fri", dia_mes: "24-31", horas: "16", minuto: "45", zona: "America/New_York" };
+    expect(textoHorario("escaneo", e, true, t, "es")).toBe('pnl_datos_horario_escaneo{"horas":"16:45","zona":"pnl_datos_zona_ny"}');
+  });
   it("fundamentales y poda son solo a mano, y sin scheduler no hay nada automático", () => {
     expect(textoHorario("fund", undefined, true, t, "es")).toBe("pnl_datos_solo_a_mano");
     expect(textoHorario("poda", undefined, false, t, "es")).toBe("pnl_datos_solo_a_mano");

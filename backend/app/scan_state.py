@@ -26,7 +26,10 @@ def informe(db: Session) -> dict | None:
            .order_by(ScanRunJevItem.posicion).all())
     return {
         "at": utc_iso(run.scan_at),
-        "mode": "decisión" if run.decide else "observatorio",
+        # «jev» es el escaneo de las notas de Jev; `decide` dice si es el oficial del mes o una prueba.
+        "mode": "jev" if (run.cadence or "").startswith("jev") else
+                "decisión" if run.decide else "observatorio",
+        "decide": run.decide,
         "error": run.error, "issues": run.issues, "changes": [c.texto for c in changes],
         # Reventado: sin cifras del embudo ni coste (a 0 parecerían medidas reales).
         "universe": None if fallo else run.universe,
@@ -69,11 +72,3 @@ def _advance_scan_cursor(db: Session, step: int) -> None:
     db.commit()
 
 
-def _memory_store():
-    """Singleton de memoria vectorial; None si faltan deps o falla (es una mejora, no requisito)."""
-    try:
-        from app import memory
-        return memory.get_store()
-    except Exception:
-        logger.warning("Memoria vectorial no disponible — se omite.")
-        return None

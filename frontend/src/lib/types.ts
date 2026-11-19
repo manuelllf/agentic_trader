@@ -61,150 +61,6 @@ export interface DemoRunOverrides {
   constructor?: StageLLMOverride;
 }
 
-export interface ScoreRow {
-  id: number;
-  created_at: string;
-  ticker: string;
-  sector: string;
-  score: number; // 1,00-100,00 (dos decimales); en pantalla siempre vía `fmtScore`
-  headline: string;
-  report: string;
-  price: number | null;
-  held: boolean;
-  on_watchlist: boolean;
-}
-
-export type TradeAction = "comprar" | "ampliar" | "mantener" | "recortar" | "vender";
-
-export interface ProposalItem {
-  ticker: string;
-  action: TradeAction;
-  score: number | null;
-  target_weight_pct: number;
-  price: string | null;
-  target_value: string;
-  target_shares: number;
-  delta_shares: number;
-  thesis: string;
-  edge: string;
-  risk: string;
-}
-
-export interface Proposal {
-  id: number;
-  created_at: string;
-  cash_target_pct: number;
-  macro_summary: string;
-  items: ProposalItem[];
-  /** Candidatos seleccionados que el constructor NO fondeó, con el motivo en una línea.
-   *  Fondear 5 de 15 obliga a dejar 10 fuera: esto distingue criterio de pattern-matching. */
-  omitted?: { ticker: string; reason: string }[];
-}
-
-// Sin sesión, el backend anonimiza cada posición (label + P&L, sin ticker ni importes) para no
-// regalar la cartera del método — de ahí que casi todo aquí sea opcional según haya sesión o no.
-export interface PerfPosition {
-  ticker?: string;
-  label?: string;
-  quantity?: string;
-  avg_cost?: string;
-  price?: string;
-  value?: string;
-  cost_basis?: string;
-  unrealized_pnl: string;
-  realized_pnl?: string;
-  dividends?: string;       // cobrados por la posición abierta (netos en el libro real)
-  pnl_pct?: number;         // con dividendos
-  unrealized_pct?: number;
-}
-
-export interface Performance {
-  since: string | null;
-  cost_basis: string;
-  market_value: string;
-  portfolio_return_pct: number;   // toda la vida del libro, ponderada por tiempo (la curva)
-  open_return_pct?: number;       // solo las posiciones abiertas tras la última rotación
-  spy_return_pct: number | null;
-  spy_ref: number | null;    // precio del SPY en el minuto de la primera compra (persistido)
-  spy_last: number | null;   // último precio del SPY
-  alpha_pct: number | null;
-  positions: PerfPosition[];
-}
-
-export interface ExecuteResult {
-  ok: boolean;
-  ticker: string;
-  side: "buy" | "sell";
-  quantity: string;
-  price: string;
-  message: string;
-  ledger: LedgerSnapshot;
-}
-
-export interface WatchItem {
-  ticker: string;
-  score: number;
-  thesis: string;
-  last_seen: string;
-}
-
-// ---- Alpha (cuenta IBKR · aprobar/rechazar) ----
-
-export type ApprovalStatus =
-  | "pending" | "executed" | "working" | "rejected" | "failed" | "expired";
-
-export interface Approval {
-  id: number;
-  created_at: string | null;
-  decided_at: string | null;
-  status: ApprovalStatus;
-  ticker: string;
-  sector: string;
-  action: TradeAction;
-  target_weight_pct: number;
-  score: number | null;
-  est_price: string | null;
-  thesis: string;
-  edge: string;
-  risk: string;
-  macro_summary: string;
-  requested_quantity: string | null;
-  quantity: string | null;
-  fill_price: string | null;
-  result_msg: string;
-  order_ref: string;
-  broker_order_id: string | null;
-}
-
-export interface ApprovalsResponse {
-  pending: Approval[];
-  history: Approval[];
-}
-
-export interface BrokerStatus {
-  mode: "dry-run" | "live";
-  live: boolean;
-  detail: string;
-}
-
-export interface RealPosition extends Position {
-  price: string;
-}
-
-export interface RealSummary {
-  cash: { eur: string; usd: string };   // caja PROPIA del agente, nunca el saldo mezclado de IBKR
-  positions_value: string;
-  equity: string;
-  realized_pnl: string;
-  unrealized_pnl: string;
-  positions: RealPosition[];
-  performance: Performance;
-  broker: BrokerStatus;
-  pending_count: number;
-}
-
-// ---- Cartera personal IBKR (intocable para el agente) ----
-
 export interface PersonalPosition {
   ticker: string;
   description: string;
@@ -226,20 +82,6 @@ export interface PersonalSummary {
 }
 
 // ---- Curva histórica (cierres diarios; índice base 100 ponderado por tiempo) ----
-
-export interface HistoryPoint {
-  date: string;             // YYYY-MM-DD (día de mercado)
-  equity?: string;          // ausente en la curva real sin sesión (doble nivel)
-  index: number;            // cartera, base 100 — los flujos no cuentan como rentabilidad
-  spy_index: number | null; // S&P 500, base 100 el mismo día
-}
-
-export interface EquityHistory {
-  book: "shadow" | "real";
-  series: HistoryPoint[];
-}
-
-// ---- Portada pública (teaser de ambas salas) ----
 
 export interface Overview {
   shadow: {
@@ -333,3 +175,15 @@ export interface ExplorerTickerRow {
   exchange: string | null;
 }
 export interface ExplorerTickers { items: ExplorerTickerRow[]; total: number }
+
+export interface ScanFull {
+  at: string;
+  cadence: string;
+  decide: boolean;
+  regime: string;
+  vix: number | null;
+  outlook: string;
+  macro_calendario: string;
+  macro_eventos: string;
+  macro_titulares: { fuente: string; texto: string }[];
+}

@@ -8,7 +8,6 @@ from test_escaneo_trazas import _FAKE_REPLY, FakeLLM, _gather_stub, _stub_common
 
 from app import scan_service
 from app.agents.scorer import PrescoreResult
-from app.api.routes_scan import scan_full
 from app.db import Base
 from app.models import ScanAudit, ScanRun
 
@@ -31,11 +30,7 @@ def _preparar(monkeypatch):
     monkeypatch.setattr(scan_service.settings, "mid_layer", True)
     monkeypatch.setattr(scan_service, "_prescore_llm",
                         lambda *a: scan_service.JevProvider(api_key="fake", stage="prescore"))
-    monkeypatch.setattr(scan_service.ledger, "open_positions", lambda db: [SimpleNamespace(
-        ticker="HELD", quantity=Decimal("1"), avg_cost=Decimal("100"))])
     monkeypatch.setattr(scan_service.deepseek_mod, "account_balance_usd", lambda *a: None)
-    monkeypatch.setattr(scan_service.execution_service, "execute_proposal_all",
-                        lambda *a, **kw: {"message": "fake", "executed": 0, "skipped": []})
     monkeypatch.setattr(scan_service.universe_mod, "tickers_elegibles",
                         lambda db: ["FUERA", "HUMA", "ASTS", "MSFT", "AAA"])
     notas = {"FUERA": 100, "HUMA": 99, "ASTS": 98, "BTC-USD": 97,
@@ -68,12 +63,6 @@ def test_decision_puntua_elegibles_y_filtra_alpha_lambda_y_auditoria(db, monkeyp
     assert llamadas == [["MSFT", "AAA"]]
     assert [p["ticker"] for p in result["jev_cartera"]] == ["MSFT", "AAA"]
     assert not any(i.startswith("Jev puntuó") for i in db.query(ScanRun).one().issues)
-    finalistas = {f["ticker"]: f for f in scan_full(db=db)["scan"]["finalists"]}
-    assert finalistas["AAA"]["pasa_filtro_tecnico"] is True
-    assert finalistas["BTC-USD"]["pasa_filtro_tecnico"] is False
-    db.query(ScanAudit).delete()
-    db.commit()
-    assert all(f["pasa_filtro_tecnico"] is None for f in scan_full(db=db)["scan"]["finalists"])
 
 
 @pytest.mark.parametrize("decide,sample_size", [(False, None), (False, 1), (True, 1)])

@@ -2,12 +2,10 @@ import { browserText } from "../i18n/browser";
 // Cliente HTTP hacia el backend FastAPI.
 import { supabase, tokenSesion } from "./liga/supabase";
 import { browserLocale } from "../i18n/locale";
-import type { FunnelScan } from "./scan";
 import type {
-  AppConfig, Approval, ApprovalsResponse, DemoRunOverrides, DemoStatus, EquityHistory,
+  DemoRunOverrides, DemoStatus, LedgerSnapshot,
   ExplorerContar, ExplorerFiltros, ExplorerOpciones, ExplorerTickers,
-  LedgerSnapshot, Macro, Overview, Performance, PersonalSummary, Proposal, RealSummary,
-  ScoreRow, WatchItem,
+  PersonalSummary, ScanFull,
 } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -16,7 +14,7 @@ const TIMEOUT_MS = 15_000;
 // DuckDB entero, llamadas reales a un LLM de razonamiento, levantar el scraper de Yahoo) --
 // el timeout de 15s pensado para lecturas normales los corta a mitad y sale como "falló" cuando
 // en realidad el backend sigue trabajando y termina guardando el resultado igual (bug real,
-// visto en vivo con `sync-analytics`, y con la misma forma en `recheck`/`redeep`: ninguno de
+// visto en vivo con `sync-analytics`, y con la misma forma que el antiguo `recheck`/`redeep`: ninguno de
 // los dos usaba esto y ambos disparan un LLM real). 90s da margen de verdad sin dejar un botón
 // colgado para siempre si el backend está de verdad caído.
 const TIMEOUT_SYNC_MS = 90_000;
@@ -173,15 +171,17 @@ export async function logout() {
 export const probarResumenLiga = (tipo: "mensual") =>
   post<{ enviados: number }>("/liga/admin/resumenes/prueba", { tipo }, 90_000);
 
-export const getLedger = () => get<LedgerSnapshot>("/ledger");
 
 // Query params: decide=false for full universe without proposing. The switches (mid layer,
 // macro in Jev) apply the same to every scan. overrides in body only (simulation config).
 export const runDemo = (opts?: {
   decide?: boolean; overrides?: DemoRunOverrides;
   reutilizarUltimaFoto?: boolean; modoUniverso?: "nasdaq" | "global_topcap";
+  /** El escaneo de las notas de Jev (sin profundo ni cartera de Alpha). */
+  soloJev?: boolean;
 }) => {
   const params = new URLSearchParams();
+  if (opts?.soloJev) params.set("solo_jev", "true");
   if (opts?.decide === false) params.set("decide", "false");
   if (opts?.reutilizarUltimaFoto) params.set("reutilizar_ultima_foto", "true");
   if (opts?.modoUniverso === "global_topcap") params.set("modo_universo", "global_topcap");
@@ -191,15 +191,7 @@ export const runDemo = (opts?: {
   );
 };
 export const getDemoStatus = () => get<DemoStatus>("/demo/status");
-// Cada botón cancela SOLO el suyo -- el backend además comprueba que lo que corre coincide
-// (`pipeline.cancel(decide=...)`), esto es solo para no poder ni pulsar el botón equivocado.
-export const cancelObservatorio = () =>
-  post<{ cancelled: boolean } & DemoStatus>("/demo/cancel-observatorio", undefined);
-export const cancelDecision = () =>
-  post<{ cancelled: boolean } & DemoStatus>("/demo/cancel-decision", undefined);
 
-export const getMacro = () => get<Macro>("/macro");
-export const getConfig = () => get<AppConfig>("/config");
 
 // Config por etapa PERSISTIDA del escaneo con decisión (cron mensual + botón "Analizar y
 // decidir"). `overrides` vacío = usa los defaults de producción (`AppConfig.llm_defaults`).
@@ -209,37 +201,26 @@ export const getScanDecideConfig = () =>
 // `Partial`: un `{}` borra la clave y vuelve a los defaults de producción; el backend sanea.
 export const putScanDecideConfig = (overrides: Partial<DemoRunOverrides>) =>
   put<{ overrides: DemoRunOverrides }>("/scan/decide-config", { overrides });
-// Interruptor de la capa media: persistido y válido para cron, decisión y observatorio.
-export const getScanMidLayer = () => get<{ enabled: boolean }>("/scan/mid-layer");
-export const putScanMidLayer = (enabled: boolean) =>
-  put<{ enabled: boolean }>("/scan/mid-layer", { enabled });
 // "Macro en Jev": el prescore ve datos + eventos + titulares (on) o solo datos (off).
 export const getScanJevMacro = () => get<{ enabled: boolean }>("/scan/jev-macro");
 export const putScanJevMacro = (enabled: boolean) =>
   put<{ enabled: boolean }>("/scan/jev-macro", { enabled });
-export const getScores = () => get<ScoreRow[]>("/scores");  // default del backend: TODO lo profundo
-export const getProposal = () => get<Proposal | null>("/proposal");
-export const getWatchlist = () => get<WatchItem[]>("/watchlist");
-export const getPerformance = () => get<Performance>("/performance");
-export const getOverview = () => get<Overview>("/overview");
-/** Curva histórica (cierres diarios). La sombra es pública; la real sin sesión llega sin equity. */
-export const getHistory = (book: "shadow" | "real" = "shadow") =>
-  get<EquityHistory>(`/history?book=${book}`);
+
+export const getLedger = () => get<LedgerSnapshot>("/ledger");
 
 // ---- Alpha ----
-export const getReal = () => get<RealSummary>("/real");
 /** Cambio EUR→USD indicativo (el libro vive en USD; tú aportas en €). */
 export const getFx = () => get<{ pair: string; rate: number | null; asof: string | null }>("/fx");
+/** Cambio EUR→USD indicativo (el libro vive en USD; tú aportas en €). */
 
-export const allocateReal = (amount: number, note = "", currency: "USD" | "EUR" = "USD") =>
-  post<RealSummary>("/real/allocate", { amount, note, currency });
-export const getApprovals = () => get<ApprovalsResponse>("/approvals");
 
 /** Persistent scan report: mode, counters, cost, issues. Survives deploys unlike /demo/status.
  *  Written by cron and manual scans. */
 export interface ScanReport {
   at: string;
-  mode: "decisión" | "observatorio" | null;   // null = falló antes de saberse el modo
+  mode: "jev" | "decisión" | "observatorio" | null;   // null = falló antes de saberse el modo
+  /** Si fue el escaneo oficial del mes (designa la foto de la liga) y no una prueba. */
+  decide?: boolean;
   error: string | null;                        // != null → el escaneo entero falló
   issues: string[];
   changes?: string[];                          // novedades vs el escaneo anterior (ranking/watchlist)
@@ -273,65 +254,6 @@ export interface JevPosicion {
 }
 export const getScanReport = () => get<{ report: ScanReport | null }>("/scan/report");
 
-/** Embudo de los últimos escaneos (traza de auditoría). Doble nivel: sin sesión llegan solo
- *  los agregados por etapa y sector — cómo se comporta el sistema, sin decir qué nombres. */
-export const getScanFunnel = (limit = 8) =>
-  get<{ scans: FunnelScan[] }>(`/scan/funnel?limit=${limit}`);
-
-/** Full scan record: thesis, finalists, and portfolio. Single source for reconstruction after completion.
- *  Protected (reveals tickers and theses). Unlike /scan/report which only has counters. */
-export interface ScanFullFinalist {
-  ticker: string;
-  pasa_filtro_tecnico: boolean | null;
-  sector: string;
-  prescore: number | null;
-  price: number | null;
-  market_cap: number | null;
-  mid_score: number | null;
-  deep_score: number | null;
-  high_52w: number | null;
-  headline: string | null;
-  selected: boolean;
-  funded: boolean;
-  weight_pct: number | null;
-  error: string | null;
-}
-export interface ScanFullPosition {
-  ticker: string;
-  action: string;
-  score?: number | null;
-  target_weight_pct?: number;
-  price?: string | null;
-  high_52w?: number | null;
-  thesis?: string;
-  edge?: string;
-  risk?: string;
-}
-export interface ScanFull {
-  at: string;
-  cadence: string;
-  decide: boolean;
-  regime: string;
-  vix: number | null;
-  outlook: string;
-  // Resto del macro que vio el profundo/constructor: Wikipedia (calendario, 7 días) y titulares.
-  macro_calendario?: string;
-  macro_eventos?: string;
-  macro_titulares?: { fuente: string; texto: string }[];
-  universe: ScanReport["universe"];
-  counters: Record<string, number>;
-  cost: { calls: number; cost_usd: number } | null;
-  issues: string[];
-  finalists: ScanFullFinalist[];
-  construction: {
-    cash_pct: number;
-    summary: string;
-    items: ScanFullPosition[];
-    omitted: { ticker: string; reason: string }[];
-  };
-}
-export const getScanFull = (at?: string) =>
-  get<{ scan: ScanFull | null }>(`/scan/full${at ? `?at=${encodeURIComponent(at)}` : ""}`);
 
 /** Outcomes by group (held, selected, discarded, Jev shadow, S&P): returns, pairs, and cut
  *  frontier. Without session: anonymized pairs and edges, no Jev names. */
@@ -348,6 +270,8 @@ export interface OutcomeName {
 export interface OutcomeScan {
   at: string;
   mode: "decisión" | "observatorio";
+  /** `jev`: sin profundo; sus pares score↔retorno son una muestra del prescore de todo el universo. */
+  tipo?: "jev" | "completo";
   days: number;
   groups: {
     cartera: OutcomeStats;
@@ -377,37 +301,6 @@ export interface OutcomeBook {
 }
 export const getScanOutcomes = (limit = 8) =>
   get<{ scans: OutcomeScan[]; book: OutcomeBook | null }>(`/scan/outcomes?limit=${limit}`);
-/** Un recuerdo guardado: la tesis que el LLM escribió sobre un ticker en un escaneo pasado.
- *  `distance` solo llega en modo semántico (menor = más parecido); en modo ticker no aplica.
- *  `n_tesis` también solo en modo semántico: cuántas tesis guardadas tiene ESA empresa en total. */
-export interface MemoryItem {
-  ticker: string;
-  kind: string;
-  text: string;
-  created_at: string;
-  distance?: number;
-  n_tesis?: number;
-}
-export interface MemorySearchResult {
-  mode: "ticker" | "semantic" | "vacio";
-  items: MemoryItem[];
-  error?: string;
-}
-/** Buscador de la memoria: un ticker exacto trae su historia cronológica, texto libre trae las
- *  tesis parecidas. Es lo único que queda de escaneos pasados — la tabla de scores se reescribe
- *  en cada decisión mensual. */
-export const searchMemory = (q: string, limit = 20) =>
-  get<MemorySearchResult>(`/memory/search?q=${encodeURIComponent(q)}&limit=${limit}`);
-
-/** Re-comprobación del top: reconstruye la cartera sobre los ya analizados a fondo con el suelo
- *  actual, sin re-escanear el universo. Dispara una llamada real de construcción -- timeout
- *  largo (ver `TIMEOUT_SYNC_MS`), no el de 15s de una lectura normal. */
-export const recheck = () => post<Record<string, unknown>>("/recheck", undefined, TIMEOUT_SYNC_MS);
-/** Re-analiza a fondo (V4-Pro) los nombres ya profundizados con el macro ACTUAL, sin re-escanear
- *  el universo. Para refrescar tras corregir un dato macro. Varias llamadas reales en paralelo --
- *  manda la más lenta, timeout largo por el mismo motivo que `recheck`. */
-export const redeep = () => post<Record<string, unknown>>("/redeep", undefined, TIMEOUT_SYNC_MS);
-
 /** Historia de UN ticker a través de los escaneos (¿es estable el criterio?). Protegido entero. */
 export interface ScanAuditEntry {
   at: string;
@@ -417,6 +310,9 @@ export interface ScanAuditEntry {
   price: number | null;
   weight_pct: number | null;
 }
+export const getScanFull = (at?: string) =>
+  get<{ scan: ScanFull | null }>(`/scan/full${at ? `?at=${encodeURIComponent(at)}` : ""}`);
+
 export const fetchScanAudit = (ticker: string) =>
   get<{ ticker: string; scans: ScanAuditEntry[] }>(`/scan/audit/${encodeURIComponent(ticker)}`);
 
@@ -424,10 +320,6 @@ export const fetchScanAudit = (ticker: string) =>
 export const fetchAnalyticsCosteEtapa = (scanRunId?: number) =>
   get<{ items: Record<string, unknown>[] }>(
     `/analytics/coste-etapa${scanRunId != null ? `?scan_run_id=${scanRunId}` : ""}`,
-  );
-export const fetchAnalyticsConfianzaPrescore = (scanRunId?: number) =>
-  get<{ items: Record<string, unknown>[] }>(
-    `/analytics/confianza-prescore${scanRunId != null ? `?scan_run_id=${scanRunId}` : ""}`,
   );
 export const fetchAnalyticsScans = () =>
   get<{ items: { id: number; at: string; cadence: string }[] }>("/analytics/scans");
@@ -491,22 +383,11 @@ export const getPodaPrevia = () => get<{ previa: PodaPrevia; estado: PodaEstado 
 export const startPoda = () => post<PodaEstado>("/admin/poda");
 export const getPodaEstado = () => get<PodaEstado>("/admin/poda/estado");
 
-export const approveTrade = (id: number) => post<Approval>(`/approvals/${id}/approve`);
-export const rejectTrade = (id: number) => post<Approval>(`/approvals/${id}/reject`);
-export const reconcileApprovals = () => post<{ reconciled: number }>("/approvals/reconcile");
 
 // Los endpoints de mantenimiento del backend (/admin/seed, /admin/seed-memory,
 // /admin/memory-status) siguen vivos, pero se usan a mano (migración puntual por consola):
 // la UI ya no los llama y sus clientes se retiraron de aquí.
 
-export interface ShadowReset {
-  ok: boolean;
-  deleted: { positions: number; trades: number; snapshots: number };
-  cash_after: string;   // caja del sombra tras el reinicio (= capital conservado)
-}
-
-/** DESTRUCTIVO (solo libro sombra): borra posiciones/operaciones/curva; conserva el capital. */
-export const resetShadow = () => post<ShadowReset>("/admin/reset-shadow");
 
 export interface UniverseSnapshotResult {
   ok: boolean;
@@ -555,9 +436,6 @@ export interface ScanProgress {
   last_fail: string | null;
 }
 
-/** Progreso en vivo de la foto/escaneo que esté corriendo ahora mismo — para la barra de
- *  avance mientras `startFoto` trabaja en segundo plano. */
-export const fetchScanProgress = () => get<ScanProgress>("/scan/progress");
 
 export interface UniversoGlobalOpciones {
   synced_at: string | null;

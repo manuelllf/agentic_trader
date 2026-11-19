@@ -1,7 +1,9 @@
 // Procesos de datos de Vennett > Datos: tipos de lo que cuenta el backend y textos derivados.
 
-export type ProcesoId = "foto" | "global" | "fund" | "fx" | "analitica" | "poda";
+export type ProcesoId = "foto" | "global" | "fund" | "fx" | "analitica" | "poda" | "escaneo";
+/** Los procesos gratis de la lista «Procesos». El escaneo de Jev, el único que cuesta, va aparte. */
 export const PROCESOS: readonly ProcesoId[] = ["foto", "global", "fund", "fx", "analitica", "poda"];
+export const ESCANEO: ProcesoId = "escaneo";
 
 export interface EntradaHorario {
   proceso: ProcesoId;
@@ -54,5 +56,7 @@ export function textoHorario(id: ProcesoId, e: EntradaHorario | undefined, activ
     : e.dias_semana === "mon-fri" ? t("pnl_datos_laborables")
     : !e.dias_semana || e.dias_semana === "*" ? t("pnl_datos_cada_dia") : e.dias_semana;
   const zona = e.zona ? (ZONAS[e.zona] ? t(ZONAS[e.zona]) : e.zona) : "";
+  // El trabajo mensual salta cada día laborable del 24 al 31, pero solo actúa el último día de bolsa.
+  if (id === "escaneo") return t("pnl_datos_horario_escaneo", { horas, zona });
   return t("pnl_datos_horario", { cuando, horas, zona });
 }
