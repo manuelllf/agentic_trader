@@ -81,8 +81,9 @@
 .blog-publico .blog-markdown a{color:var(--accent)}
 .blog-publico .blog-markdown blockquote{font-size:20px;line-height:25px;font-weight:600;color:var(--accent);border-left:3px solid var(--accent);margin:24px 0;padding:2px 0 2px 14px}
 .blog-publico .blog-markdown pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface);padding:16px;border-radius:10px}
-.blog-publico .blog-markdown table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse}
-.blog-publico .blog-markdown th,.blog-publico .blog-markdown td{border:1px solid var(--line);padding:8px}
+.blog-publico .blog-markdown table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse;font-size:15px;line-height:20px}
+.blog-publico .blog-markdown th,.blog-publico .blog-markdown td{border:1px solid var(--line);padding:8px 10px;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+.blog-publico .blog-markdown th:first-child,.blog-publico .blog-markdown td:first-child{text-align:left}
 .blog-publico .firma-autor{margin-top:20px;padding:12px 16px;border-radius:10px;background:var(--surface);font-size:15px;line-height:20px;color:var(--muted)}
 .blog-publico .firma-autor a{color:var(--accent);text-decoration:none}
 
