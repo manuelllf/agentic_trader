@@ -138,6 +138,10 @@ class Settings(BaseSettings):
     # Cartera mecánica de Jev (sombra sin dinero): top N por nota, tope por industria.
     jev_portfolio_n: int = 5
     jev_max_por_industria: int = 2
+    # Noticias por empresa (Google News): ventana de días, máximo de titulares y ritmo global.
+    noticias_ventana_dias: int = 14
+    noticias_max: int = 8
+    noticias_rps: float = 4.0
     # A.5.4: el prescore explica en 3-8 palabras qué campo pesó más. Medido el 23-ago (flash/none,
     # mismo ticker/macro): pedirlo cambia la nota de forma consistente y sistemática (+4,24 pts en
     # dos tiradas idénticas) pese a ir DESPUÉS del score en el JSON — contamina justo lo que el

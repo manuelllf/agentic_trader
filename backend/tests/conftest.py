@@ -13,6 +13,19 @@ def _sin_espera_de_reintento_del_gather(monkeypatch) -> None:  # noqa: ANN001
 
 
 @pytest.fixture(autouse=True)
+def _sin_red_en_noticias(monkeypatch) -> None:  # noqa: ANN001
+    """Ningún test sale a Google News: sin respuesta simulada, las noticias fallan (404, sin
+    reintentos) y devuelven []."""
+    from types import SimpleNamespace
+
+    from app.screener import noticias
+
+    monkeypatch.setattr(noticias.httpx, "get",
+                        lambda *a, **kw: SimpleNamespace(status_code=404, content=b""))
+    monkeypatch.setattr(noticias, "_dormir", lambda s: None)
+
+
+@pytest.fixture(autouse=True)
 def _claves_de_ia_de_prueba(monkeypatch) -> None:  # noqa: ANN001
     """Ningún test depende del `.env` de quien lo corre: las claves son falsas, así que una llamada
     real a un proveedor fallaría en vez de gastar. Los tests de «sin clave» las vacían a mano."""

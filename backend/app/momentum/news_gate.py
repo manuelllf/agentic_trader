@@ -20,7 +20,7 @@ import httpx
 
 from app.config import settings
 from app.llm import get_llm
-from app.screener import fundamentals, yahoo_scraper
+from app.screener import noticias
 
 logger = logging.getLogger(__name__)
 
@@ -93,25 +93,13 @@ def _finnhub_news(ticker: str, desde: date, hasta: date) -> list[str]:
         return []
 
 
-def _noticias_para(ticker: str, desde: date, hasta: date) -> list[str]:
-    """Yahoo (scraper propio, ya usado por el ranker fundamental) primario; Finnhub de respaldo
-    cuando hace falta acotar por fecha y el scraper no trajo nada."""
+def _noticias_para(ticker: str, nombre: str, desde: date, hasta: date) -> list[str]:
+    """Google News acotado al tramo desde el último pico; Finnhub de respaldo si no trae nada."""
     t0 = time.monotonic()
-    logger.info("Gate %s: sesión del scraper de Yahoo (crumb/consentimiento)...", ticker)
-    scraper = fundamentals._scraper_session()
-    logger.info("Gate %s: sesión del scraper resuelta en %.1fs (%s).", ticker,
-               time.monotonic() - t0, "ok" if scraper else "sin scraper, cae a Finnhub")
-    if scraper is not None:
-        s, _crumb = scraper
-        try:
-            t1 = time.monotonic()
-            noticias = yahoo_scraper._noticias(s, ticker)
-            logger.info("Gate %s: noticias de Yahoo en %.1fs.", ticker, time.monotonic() - t1)
-            if noticias:
-                return noticias
-        except Exception:
-            logger.warning("Scraper de Yahoo sin noticias para %s.", ticker, exc_info=True)
-    return _finnhub_news(ticker, desde, hasta)
+    lista = noticias.titulares(ticker, nombre, desde=desde, hasta=hasta)
+    logger.info("Gate %s: %d noticia(s) de Google News en %.1fs.", ticker, len(lista),
+                time.monotonic() - t0)
+    return lista or _finnhub_news(ticker, desde, hasta)
 
 
 @dataclass(frozen=True)
@@ -139,8 +127,9 @@ def evaluar(ticker: str, nombre: str, *, ath: float, entry_date: date, entry_pri
     # el LLM hasta que saltaba el techo duro de 90s).
     t0 = time.monotonic()
     logger.info("Gate %s: pidiendo noticias...", ticker)
-    noticias = _noticias_para(ticker, desde, date.today())
-    logger.info("Gate %s: %d noticia(s) en %.1fs.", ticker, len(noticias), time.monotonic() - t0)
+    lista_noticias = _noticias_para(ticker, nombre, desde, date.today())
+    logger.info("Gate %s: %d noticia(s) en %.1fs.", ticker, len(lista_noticias),
+                time.monotonic() - t0)
     # Modelo/proveedor vía `get_llm()` (no `settings.llm_model`): ese ajuste es el default de
     # Alpha, pero cada escaneo de Alpha puede pisarlo con su propio modelo por etapa (pro, flash,
     # Qwen, lo que sea, ver "Configurar" en la sala). Omega usa su propio selector, independiente
@@ -154,9 +143,9 @@ def evaluar(ticker: str, nombre: str, *, ath: float, entry_date: date, entry_pri
                  provider=provider, enable_thinking=False, timeout=45.0)
     t1 = time.monotonic()
     logger.info("Gate %s: llamando a %s...", ticker, provider)
-    raw = llm.chat(SYSTEM, _user_prompt(ticker, nombre, noticias, ath=ath, entry_date=entry_date,
-                                        entry_price=entry_price, caida_pct=caida_pct),
-                   temperature=0.0)
+    prompt = _user_prompt(ticker, nombre, lista_noticias, ath=ath, entry_date=entry_date,
+                          entry_price=entry_price, caida_pct=caida_pct)
+    raw = llm.chat(SYSTEM, prompt, temperature=0.0)
     logger.info("Gate %s: respuesta de %s en %.1fs.", ticker, provider, time.monotonic() - t1)
     try:
         data = json.loads(raw)

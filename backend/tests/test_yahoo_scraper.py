@@ -131,19 +131,15 @@ def _qs_payload(*, sector="Technology", industry="Software", short_name="Acme Co
     }
 
 
-_NEWS_PAYLOAD = {
-    "data": {"tickerStream": {"stream": [
-        {"content": {"title": "Acme sube tras resultados",
-                     "summary": "La compañía reportó ingresos por encima de lo esperado."}},
-    ]}}
-}
+def test_gather_scraper_construye_namedata_con_exito(monkeypatch) -> None:
+    pedidas = []
 
+    def _titulares(ticker, nombre, **kw):
+        pedidas.append((ticker, nombre))
+        return ["2026-11-20 Acme sube tras resultados - Reuters"]
 
-def test_gather_scraper_construye_namedata_con_exito() -> None:
-    fake = _FakeSession(
-        gets=[_FakeResponse(status_code=200, json_data=_qs_payload())],
-        posts=[_FakeResponse(status_code=200, json_data=_NEWS_PAYLOAD)],
-    )
+    monkeypatch.setattr(yahoo_scraper.noticias, "titulares", _titulares)
+    fake = _FakeSession(gets=[_FakeResponse(status_code=200, json_data=_qs_payload())])
 
     data, motivo = yahoo_scraper.gather_scraper(fake, "crumb123", "ACME")
 
@@ -157,8 +153,8 @@ def test_gather_scraper_construye_namedata_con_exito() -> None:
     assert data.price == 123.45
     assert "P/E (forward): 15.20" in data.fundamentals_text
     assert "52w range $80.00-$150.00" in data.technical_text
-    assert len(data.news) == 1
-    assert "Acme sube tras resultados" in data.news[0]
+    assert pedidas == [("ACME", "Acme Corp")]
+    assert data.news == ["2026-11-20 Acme sube tras resultados - Reuters"]
 
 
 def test_gather_scraper_sin_datos_no_lanza_y_no_reintenta(monkeypatch) -> None:

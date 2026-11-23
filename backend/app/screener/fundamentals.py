@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 
 import yfinance as yf
 
-from app.screener import yahoo_scraper
+from app.screener import noticias, yahoo_scraper
 
 logger = logging.getLogger(__name__)
 
@@ -565,32 +565,6 @@ def _earnings_text(info: dict) -> str:
     return f"{etiqueta} earnings report: {cuando}{estimado}"
 
 
-def _recorta_palabra(texto: str, max_chars: int) -> str:
-    """Recorta texto sin partir palabra, añade "…" si hubo corte."""
-    if len(texto) <= max_chars:
-        return texto
-    corte = texto[:max_chars].rsplit(" ", 1)[0]
-    return f"{corte}…"
-
-
-def _news(yt: yf.Ticker, max_items: int = 8) -> list[str]:
-    """Titulares + resumen (Exhibit 2A: "headlines with summaries"). Recortado a 300
-    chars/palabra."""
-    out: list[str] = []
-    try:
-        for item in (yt.news or [])[:max_items]:
-            content = item.get("content") or {}
-            title = item.get("title") or content.get("title")
-            if not title:
-                continue
-            summary = item.get("summary") or content.get("summary")
-            texto = f"{title.strip()} — {summary.strip()}" if summary else title.strip()
-            out.append(_recorta_palabra(texto, 300))
-    except Exception:
-        pass
-    return out
-
-
 # Backoff SOLO ante 429 (rate-limit real): un timeout/HTTP 5xx no se beneficia de esperar y ya
 # cae a yfinance abajo. Medido en local (24-ago-2026): a partir de 6 hilos el 429 llega en racha
 # sostenida, no aislado -- 2 reintentos cortos separan un pico puntual de un bloqueo real (que
@@ -678,7 +652,7 @@ def gather(ticker: str, db=None, yahoo_symbol: str | None = None,  # noqa: ANN00
             fundamentals_text=_fundamentals_text(info, db=db),
             technical_text=_technical_text(info, numero_finito(price)),
             market_cap=numero_finito(mcap),
-            news=_news(yt),
+            news=noticias.titulares(ticker, info.get("longName") or info.get("shortName")),
             earnings_text=_earnings_text(info),
             name=info.get("shortName", ""),
             fundamentales_crudos=_valores_crudos(info, db),

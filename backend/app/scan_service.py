@@ -67,6 +67,7 @@ from app.scan_persist import (
 from app.scan_state import _advance_scan_cursor, _scan_cursor
 from app.screener import fundamentals as fund_mod
 from app.screener import macro as macro_mod
+from app.screener import noticias as noticias_mod
 from app.screener import universe as universe_mod
 from app.screener import universe_global
 
@@ -373,6 +374,7 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         scan_progress.set_stage("gather", total=len(sample), unit="tickers")
         logger.info("Escaneo: iniciando GATHER (%d nombres).", len(sample))
         t0 = time.monotonic()
+        noticias_mod.reiniciar()
         gathered = _run_gather(sample)
         t_ultimo_gather = time.monotonic()      # fin del gather Y arranque del reloj del cooldown
         timings["gather"] = round(t_ultimo_gather - t0, 1)
@@ -395,6 +397,8 @@ def run_scan_and_store(db: Session, sample_size: int | None = None,
         failed = [t for t, d, _e in gathered if d is None]  # gather sin datos, tras el reintento
         if failed:
             issues.append(f"{len(failed)} nombre(s) sin datos de mercado: " + ", ".join(failed))
+        if aviso_noticias := noticias_mod.incidencia():
+            issues.append(aviso_noticias)
         # Motivo real por ticker (antes se tragaba entero) — va a `ScanRun.failures` con el resto.
         gather_errors = [(t, e) for t, d, e in gathered if d is None and e]
         datos_ok = [d for _t, d, _e in gathered if d is not None]

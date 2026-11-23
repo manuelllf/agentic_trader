@@ -31,6 +31,8 @@ from typing import TYPE_CHECKING
 
 from curl_cffi import requests as creq
 
+from app.screener import noticias
+
 if TYPE_CHECKING:
     from app.screener.fundamentals import NameData
 
@@ -41,7 +43,6 @@ logger = logging.getLogger(__name__)
 # resultados y los datos "financieros" (targets de analistas, márgenes, cash, deuda...).
 MODULES = ("financialData,quoteType,defaultKeyStatistics,assetProfile,summaryDetail,"
            "calendarEvents,price")
-NEWS_URL = "https://finance.yahoo.com/xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin"
 
 
 class TransportError(Exception):
@@ -98,47 +99,6 @@ def _sin_raw(valor: object) -> object:
     if isinstance(valor, dict) and "raw" in valor:
         return valor["raw"]
     return valor
-
-
-def _news_desde_stream(stream: list[dict], max_items: int = 8) -> list[str]:
-    """Titular + resumen desde los items crudos del XHR de noticias — mismo criterio que
-    `fundamentals._news()` (titular solo es menos informativo que titular+resumen), pero leyendo
-    la respuesta HTTP directa en vez de `yf.Ticker.news`. Reutiliza `_recorta_palabra` (import
-    perezoso: evita el ciclo, `fundamentals` importa este módulo a nivel de módulo)."""
-    from app.screener.fundamentals import _recorta_palabra
-
-    out: list[str] = []
-    for item in (stream or [])[:max_items]:
-        content = item.get("content") or item
-        title = content.get("title") or item.get("title")
-        if not title:
-            continue
-        summary = content.get("summary") or item.get("summary")
-        texto = f"{title.strip()} — {summary.strip()}" if summary else title.strip()
-        out.append(_recorta_palabra(texto, 300))
-    return out
-
-
-def _noticias(s: creq.Session, ticker: str, max_items: int = 8) -> list[str]:
-    """Titulares recientes vía `NEWS_URL`. NO fatal (mismo criterio que `fundamentals._news()`):
-    sin noticias el nombre se sigue analizando, solo con esa sección vacía."""
-    try:
-        r = s.post(NEWS_URL, json={"serviceConfig": {"snippetCount": max_items, "s": [ticker]}},
-                   timeout=15)
-        if r.status_code != 200:
-            return []
-        payload = r.json()
-        # Confirmado leyendo el propio yfinance (`base.py::get_news()`, mismo endpoint): la
-        # respuesta anida el stream bajo "tickerStream", no bajo "main". Con la clave equivocada
-        # esto no rompe nada (try/except lo traga) — simplemente vuelve "" en cada noticia,
-        # invisible sin comprobarlo contra la forma real de la respuesta.
-        stream = ((payload.get("data") or {}).get("tickerStream") or {}).get("stream") or []
-        # Yahoo mete anuncios en el mismo stream (campo "ad" no vacío); yfinance los descarta
-        # con el mismo criterio antes de devolver la lista.
-        stream = [item for item in stream if not item.get("ad")]
-        return _news_desde_stream(stream, max_items)
-    except Exception:
-        return []
 
 
 def tasas_de_cambio(s: creq.Session, crumb: str, divisas: list[str]) -> dict[str, float]:
@@ -233,7 +193,7 @@ def gather_scraper(s: creq.Session, crumb: str, ticker: str,
     if not (info.get("sector") or info.get("marketCap") or info.get("shortName")):
         return None, "sin sector/marketCap/shortName en quoteSummary (vacío o deslistado)"
 
-    news = _noticias(s, q)
+    news = noticias.titulares(ticker, info.get("longName") or info.get("shortName"))
 
     price = info.get("currentPrice") or info.get("regularMarketPrice")
     mcap = info.get("marketCap")

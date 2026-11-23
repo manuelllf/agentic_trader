@@ -137,9 +137,11 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
     breaker para peticiones de verdad, no solo deja de contar."""
     from app import scan_service
     from app.screener import fundamentals as fund_mod
+    from app.screener import noticias
 
     nombres = _tickers(db, alcance, limite, countries=countries, exchanges=exchanges)
     fund_mod._GATHER_PACE_S = scan_service._GATHER_PACE_S
+    noticias.reiniciar()
     scan_progress.reset()
     scan_progress.set_stage("foto", total=len(nombres), unit="tickers")
     inicio = datetime.now(UTC)
@@ -211,6 +213,10 @@ def capturar(db, alcance: str = "nasdaq", limite: int | None = None,  # noqa: AN
         logger.warning("Foto (%s) CORTADA: %s", alcance, motivo_corte[0])
     logger.info("Foto %d (%s, %s): %d/%d nombres capturados en %.0fs.",
                foto_id, alcance, estado, stats["ok"], len(nombres), dur)
+    if aviso_noticias := noticias.incidencia():
+        logger.warning("Foto (%s): %s", alcance, aviso_noticias)
+    else:
+        logger.info("Foto (%s), noticias: %s", alcance, noticias.resumen())
     if categorias:
         logger.info("Foto (%s), fallos por tipo: %s",
                     alcance, ", ".join(f"{k}={v}" for k, v in categorias.most_common()))
