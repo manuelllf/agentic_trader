@@ -155,7 +155,8 @@ def test_tickers_vigilados_une_sin_duplicados(sesion_agente: Session) -> None:
     s = sesion_agente
     _con_posicion(s, "BBB")
     s.add_all([Seguimiento(ticker="AAA", motivo="m"), Seguimiento(ticker="BBB", motivo="m"),
-               Seguimiento(ticker="CCC", motivo="m", hasta=date(2026, 11, 20))])
+               Seguimiento(ticker="CCC", motivo="m", desde=date(2026, 11, 1),
+                           hasta=date(2026, 11, 20))])
     assert tareas.tickers_vigilados(s) == ["AAA", "BBB"]
 
 
@@ -559,6 +560,35 @@ def test_recuperar_perdidas_llama_solo_lo_que_falta(
                         estado="hecha"))
     servicio.recuperar_perdidas(ahora)
     assert llamadas == []
+
+
+def test_recuperar_perdidas_reclama_la_tarea_que_murio_en_curso(
+        base_real: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    llamadas: list = []
+    monkeypatch.setattr(servicio, "correr", lambda t, f, a: llamadas.append((t, f)) or True)
+    with base.sesion() as s:
+        s.add_all([Ejecucion(tarea=t.value, fecha_ny=D1, estado="hecha")
+                   for t in (Tarea.VIGIA_PREVIO, Tarea.EJECUCION, Tarea.PREPARACION)])
+        s.add(Ejecucion(tarea=Tarea.DESPERTAR.value, fecha_ny=D1, estado="en_curso",
+                        empezada=_ahora(D1, 9, 0) - timedelta(hours=3)))
+    servicio.recuperar_perdidas(_ahora(D1, 18, 0))
+    assert (Tarea.DESPERTAR, D1) in llamadas
+    with base.sesion() as s:
+        fila = s.execute(text(
+            "select estado, error from agente.ejecuciones where tarea = 'despertar'")).one()
+    assert fila.estado == "fallida" and fila.error.startswith("interrumpida")
+    # Marcada así, el reintento único la admite.
+    with base.sesion() as s:
+        assert tareas.reclamar(s, Tarea.DESPERTAR, D1) is not None
+
+
+def test_liberar_huerfanas_respeta_las_recientes(base_real: None) -> None:
+    with base.sesion() as s:
+        s.add(Ejecucion(tarea=Tarea.DESPERTAR.value, fecha_ny=D1, estado="en_curso"))
+    with base.sesion() as s:
+        assert tareas.liberar_huerfanas(s) == 0
+    with base.sesion() as s:
+        assert s.execute(text("select estado from agente.ejecuciones")).scalar_one() == "en_curso"
 
 
 def test_planificador_un_trabajo_por_tarea() -> None:

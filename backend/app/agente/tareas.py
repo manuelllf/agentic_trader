@@ -28,6 +28,8 @@ DescargarExtendido = Callable[[list[str], Franja, date], dict[str, Extendido]]
 
 PREFIJO_REINTENTO = "reintento: "
 MAX_ERROR = 2000
+MINUTOS_HUERFANA = 90
+ERROR_HUERFANA = "interrumpida: el proceso murió antes de terminar"
 DIAS_HISTORIA = 400
 DIAS_EJECUCION = 10
 
@@ -50,6 +52,16 @@ def reclamar(s: Session, tarea: Tarea, fecha: date) -> Ejecucion | None:
         return None
     return s.execute(select(Ejecucion).where(Ejecucion.id == id_)
                      .execution_options(populate_existing=True)).scalar_one()
+
+
+def liberar_huerfanas(s: Session) -> int:
+    """Pasa a `fallida` las tareas que llevan demasiado `en_curso`: su proceso murió sin
+    terminarlas. Así el reintento único las puede reclamar."""
+    r = cast(CursorResult, s.execute(text(
+        "update agente.ejecuciones set estado = 'fallida', terminada = now(), error = :e "
+        "where estado = 'en_curso' and empezada < now() - make_interval(mins => :m)"),
+        {"e": ERROR_HUERFANA, "m": MINUTOS_HUERFANA}))
+    return r.rowcount
 
 
 def terminar(s: Session, ej: Ejecucion, error: str | None) -> None:

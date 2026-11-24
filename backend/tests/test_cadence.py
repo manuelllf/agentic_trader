@@ -1,5 +1,5 @@
-"""Cadencia de decisión: `decide=False` es OBSERVATORIO (aprende sin tocar libros), usado hoy
-por la simulación manual de Alpha; el cron programado (mensual único) siempre decide."""
+"""Cadencia del escaneo: `decide=False` es OBSERVATORIO (la simulación manual) y el cron
+programado (mensual único) siempre decide. Ninguno de los dos toca libros ni propuestas."""
 
 from __future__ import annotations
 
@@ -17,8 +17,6 @@ from app import (
     scan_state,
 )
 from app.db import Base
-from app.ledger import service as ledger
-from app.models import BOOK_SHADOW, Approval, Proposal
 
 
 @pytest.fixture
@@ -47,13 +45,7 @@ class FakeLLM:
         return self._reply
 
 
-_FAKE_REPLY = (
-    '{"score": 90, "headline": "tesis", "report": "informe", "target_price": 150.0, '
-    '"under_acquisition": false, '
-    '"cash_pct": 0, "positions": [{"ticker": "AAA", "weight_pct": 100, '
-    '"thesis": "t", "edge": "e", "risk": "r"}], "summary": "cartera concentrada", '
-    '"regime": "neutral", "outlook": "estable", "favored_sectors": [], "avoided_sectors": []}'
-)
+_FAKE_REPLY = '{"score": 90}'
 
 
 def _stub_universo(monkeypatch, symbols: list[str]) -> None:
@@ -69,14 +61,12 @@ def _stub_universo(monkeypatch, symbols: list[str]) -> None:
 
 
 def _stub_scan(monkeypatch) -> None:
-    """El pipeline entero baratamente stubeado (mismo patrón que test_autoexec)."""
-    from app import tracking
+    """El pipeline entero baratamente stubeado."""
     from app.screener import fundamentals as fund_mod
     from app.screener import macro as macro_mod
     from app.screener.fundamentals import NameData
 
     monkeypatch.setattr(scan_llm_stage, "get_llm", lambda *a, **k: FakeLLM(_FAKE_REPLY))
-    monkeypatch.setattr(scan_service.settings, "always_deep_tickers", [])  # ver test_escaneo_trazas
     monkeypatch.setattr(scan_service.time, "sleep", lambda s: None)  # sin la pausa del reintento
     _stub_universo(monkeypatch, ["AAA"])
     monkeypatch.setattr(fund_mod, "gather", lambda t, db=None, hist=None, **kw: (NameData(
@@ -86,97 +76,6 @@ def _stub_scan(monkeypatch) -> None:
     monkeypatch.setattr(macro_mod, "get_macro", lambda db=None: {
         "regime": "neutral", "vix": 15.0, "datos": "VIX 15.0.",
     })
-    monkeypatch.setattr(tracking, "live_prices", lambda _tickers: {"AAA": 100.0})
-    monkeypatch.setattr(scan_service.settings, "max_position_pct", 100.0)
-    monkeypatch.setattr(scan_service.settings, "min_positions", 1)
-
-
-def test_observatory_scan_learns_without_touching_books(db, monkeypatch) -> None:
-    """decide=False: refresca el conocimiento (ranking) pero NO inventa propuesta, NO toca la
-    sombra y NO crea aprobaciones para la real."""
-    _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
-    # El ranking visible es el de la última DECISIÓN: sin una previa no hay qué refrescar, así
-    # que se siembra una fila (como si viniera de un escaneo decidido anterior).
-    db.add(models.Score(ticker="AAA", sector="Technology", score=1))
-    db.commit()
-
-    result = scan_service.run_scan_and_store(db, sample_size=5, decide=False)
-
-    assert result["decided"] is False
-    assert db.query(models.Score).one().score == 90               # el ranking SÍ se refrescó
-    assert db.query(Proposal).count() == 0                       # sin propuesta nueva
-    assert db.query(Approval).count() == 0                       # cero propuestas a la real
-    assert ledger.open_positions(db, BOOK_SHADOW) == []          # la sombra ni se ejecutó
-
-
-def test_observatory_scan_preserves_decided_portfolio(db, monkeypatch) -> None:
-    """Un observatorio DESPUÉS de una decisión no pisa nada: la cartera sombra y la propuesta
-    decidida sobreviven intactas (cada elección vive su mes)."""
-    _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
-    scan_service.run_scan_and_store(db, sample_size=5)           # decisión: compra AAA
-    pos_before = {p.ticker for p in ledger.open_positions(db, BOOK_SHADOW)}
-    prop_id = db.query(Proposal).one().id
-    assert pos_before == {"AAA"}
-
-    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
-
-    assert {p.ticker for p in ledger.open_positions(db, BOOK_SHADOW)} == pos_before
-    assert db.query(Proposal).one().id == prop_id                # la propuesta decidida sigue
-
-
-def test_observatorio_actualiza_coincidencia_sin_borrar_el_resto(db, monkeypatch) -> None:
-    """El observatorio ya NO pisa el ranking de la última decisión: los nombres que hoy no se
-    re-analizan sobreviven intactos, y el que sí coincide se refresca con los datos nuevos."""
-    from app import watchlist as watchlist_mod
-
-    _stub_scan(monkeypatch)
-    _stub_universo(monkeypatch, ["AAA", "BBB"])
-    ledger.allocate(db, 1000)
-    scan_service.run_scan_and_store(db, sample_size=5)          # decisión: ranking = {AAA, BBB}
-    assert {s.ticker for s in db.query(models.Score).all()} == {"AAA", "BBB"}
-    watchlist_mod.drop(db, {"BBB"})   # BBB deja de arrastrarse: el próximo escaneo no la re-analiza
-
-    _stub_universo(monkeypatch, ["AAA"])
-    otra_reply = _FAKE_REPLY.replace('"score": 90', '"score": 77')
-    monkeypatch.setattr(scan_llm_stage, "get_llm", lambda *a, **k: FakeLLM(otra_reply))
-    result = scan_service.run_scan_and_store(db, sample_size=5, decide=False)
-
-    rows = {s.ticker: s for s in db.query(models.Score).all()}
-    assert set(rows) == {"AAA", "BBB"}          # BBB sigue en el ranking, intacta
-    assert rows["BBB"].score == 90              # no se tocó: no coincidió con los profundos de hoy
-    assert rows["AAA"].score == 77              # sí se refrescó
-    assert result["refreshed"] == 1
-
-
-def test_decision_sigue_reemplazando_el_ranking_entero(db, monkeypatch) -> None:
-    """Una DECISIÓN conserva el comportamiento de siempre: borra la tabla Score entera y la
-    reescribe solo con los profundos de ESTE escaneo — a diferencia del observatorio, que
-    conserva lo que no coincide."""
-    _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
-    # Fila de un escaneo previo que ya no aparece en el universo de este escaneo.
-    db.add(models.Score(ticker="ZZZ", sector="Old", score=50))
-    db.commit()
-
-    result = scan_service.run_scan_and_store(db, sample_size=5)     # decisión: universo = {AAA}
-
-    assert {s.ticker for s in db.query(models.Score).all()} == {"AAA"}   # ZZZ desapareció
-    assert result["refreshed"] is None            # no aplica: fue reemplazo total, no refresco
-
-
-def test_default_scan_decides_both_books(db, monkeypatch) -> None:
-    """Sin argumento (escaneo manual / cadencia única): ciclo completo — la sombra se ejecuta
-    y la real recibe sus propuestas."""
-    _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
-
-    result = scan_service.run_scan_and_store(db, sample_size=5)
-
-    assert result["decided"] is True
-    assert db.query(Approval).count() >= 1
-    assert {p.ticker for p in ledger.open_positions(db, BOOK_SHADOW)} == {"AAA"}
 
 
 # ---- informe persistido del escaneo (panel de errores) -----------------------
@@ -186,27 +85,18 @@ def _last_report(db) -> dict:
 
 
 def test_scan_writes_persistent_report(db, monkeypatch) -> None:
-    """Cada escaneo (observatorio y decisión) deja su fila en `scan_runs` con modo, contadores
-    y novedades; con el pipeline stubeado, cero incidencias."""
+    """Cada escaneo (observatorio y decisión) deja su fila en `scan_runs` con su `decide`; con el
+    pipeline stubeado, cero incidencias."""
     _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
 
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)
     rep = _last_report(db)
-    assert rep["mode"] == "observatorio" and rep["error"] is None
-    assert rep["issues"] == [] and rep["deep"] == 1
-    # Sin decisión previa no hay ranking que coincida: nada se refresca y el ranking no lleva
-    # novedades (el observatorio no lo puebla). La watchlist ya no se alimenta.
-    assert rep["refreshed"] == 0
-    assert not any(c.startswith("Ranking") for c in rep["changes"])
-    assert not any("Watchlist" in c for c in rep["changes"])
+    assert rep["mode"] == "jev" and rep["decide"] is False and rep["error"] is None
+    assert rep["issues"] == [] and rep["prescored"] == 1
 
     scan_service.run_scan_and_store(db, sample_size=5)
     rep = _last_report(db)
-    assert rep["mode"] == "decisión" and rep["error"] is None
-    assert rep["refreshed"] is None
-    # la decisión SÍ puebla el ranking (reemplazo total)
-    assert any("Ranking" in c and "entran AAA" in c for c in rep["changes"])
+    assert rep["mode"] == "jev" and rep["decide"] is True and rep["error"] is None
 
 
 def test_scan_report_records_issues(db, monkeypatch) -> None:
@@ -222,27 +112,9 @@ def test_scan_report_records_issues(db, monkeypatch) -> None:
                             fundamentals_text="- P/E: 20", technical_text="RSI 55",
                             market_cap=5e9, news=[],
                         ), None))
-    ledger.allocate(db, 1000)
 
     scan_service.run_scan_and_store(db, sample_size=5, decide=False)
     assert any("BBB" in i and "sin datos" in i for i in _last_report(db)["issues"])
-
-
-def test_scan_report_registra_novedades_del_ranking(db, monkeypatch) -> None:
-    """Entre dos DECISIONES con distinto universo, el informe dice qué ENTRA y qué SALE del
-    ranking — el reemplazo de la tabla Score era mudo y las novedades invisibles. (El
-    observatorio ya no reemplaza la tabla entera, así que esta novedad solo se ve cuando el
-    conjunto del ranking cambia de verdad: una decisión.)"""
-    _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
-    scan_service.run_scan_and_store(db, sample_size=5)          # decisión: ranking = {AAA} (compra)
-    ledger.reset_shadow_book(db)   # libera la posición: el 2º escaneo no arrastra AAA por "held"
-
-    _stub_universo(monkeypatch, ["BBB"])
-    scan_service.run_scan_and_store(db, sample_size=5)          # decisión: ranking = {BBB}
-
-    texto = " ".join(_last_report(db)["changes"])
-    assert "entran BBB" in texto and "salen AAA" in texto
 
 
 # ---- universo: sin foto del cierre no se decide ------------------------------
@@ -254,7 +126,6 @@ def test_decision_se_aborta_sin_foto_del_universo(db, monkeypatch) -> None:
     from app.screener import universe as universe_mod
 
     _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
         ["AAA"], {"fuente": "vivo", "at": None, "dias": None, "size": 1}))
 
@@ -271,7 +142,6 @@ def test_escaneo_se_aborta_con_universo_de_emergencia(db, monkeypatch) -> None:
     from app.screener import universe as universe_mod
 
     _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
     monkeypatch.setattr(universe_mod, "universe_for_scan", lambda db: (
         ["AAA"], {"fuente": "seed", "at": None, "dias": None, "size": 40}))
 
@@ -279,35 +149,7 @@ def test_escaneo_se_aborta_con_universo_de_emergencia(db, monkeypatch) -> None:
         scan_service.run_scan_and_store(db, sample_size=5, decide=False)
 
 
-# ---- memoria del embudo: badge, profundos no parseables y cursor rotatorio ----
-
-def test_la_watchlist_ya_no_se_alimenta(db, monkeypatch) -> None:
-    """No está en el paper y daba acceso garantizado al profundo por puntuar alto en el pasado
-    (que correlaciona con haber subido). La tabla se conserva; deja de crecer."""
-    _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
-    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
-
-    from app import watchlist as watchlist_mod
-    assert watchlist_mod.tickers(db) == []
-
-
-def test_profundo_no_parseable_no_puntua(db, monkeypatch) -> None:
-    """El scorer profundo va de 1 a 100: un 0 solo puede ser fallo de parseo, y se quedaba en el
-    ranking como puntuación legítima."""
-    _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
-    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
-
-    # Solo falla el PROFUNDO: get_llm() sin argumentos es el caro; con modelo, el del pre-score.
-    cero = _FAKE_REPLY.replace('"score": 90', '"score": 0')
-    monkeypatch.setattr(scan_llm_stage, "get_llm",
-                        lambda *a, **k: FakeLLM(_FAKE_REPLY if a else cero))
-    scan_service.run_scan_and_store(db, sample_size=5, decide=False)
-
-    assert db.query(models.Score).count() == 0                 # fuera del ranking
-    assert any("no parseable" in i and "AAA" in i for i in _last_report(db)["issues"])
-
+# ---- cursor rotatorio ----------------------------------------------------------
 
 def test_cursor_rotatorio_no_avanza_si_el_escaneo_revienta(db, monkeypatch) -> None:
     """Avanzaba nada más construir la muestra: un escaneo que reventaba a mitad quemaba su
@@ -315,7 +157,6 @@ def test_cursor_rotatorio_no_avanza_si_el_escaneo_revienta(db, monkeypatch) -> N
     from app.screener import macro as macro_mod
 
     _stub_scan(monkeypatch)
-    ledger.allocate(db, 1000)
     monkeypatch.setattr(macro_mod, "get_macro",
                         lambda db=None: (_ for _ in ()).throw(RuntimeError("boom")))
 
@@ -338,13 +179,11 @@ def test_scan_failure_writes_report(db) -> None:
     assert rep["prescored"] is None and rep["cost"] is None and rep["universe"] is None
 
 
-
-def test_informe_guarda_la_cartera_jev_y_las_novedades(db, monkeypatch) -> None:
-    """Relacional, no JSON: la cartera Jev y las novedades salen de las tablas hijas."""
+def test_informe_sin_jev_no_lleva_cartera(db, monkeypatch) -> None:
+    """Relacional, no JSON: sin prescore de Jev no hay cartera ni filas hijas."""
     from app.models import ScanRunJevItem
 
     _stub_scan(monkeypatch)
     scan_service.run_scan_and_store(db, sample_size=5)
     rep = _last_report(db)
-    assert rep["changes"] and db.query(models.ScanRunChange).count() == len(rep["changes"])
-    assert rep["jev_cartera"] == [] and db.query(ScanRunJevItem).count() == 0   # prescore no Jev
+    assert rep["jev_cartera"] == [] and db.query(ScanRunJevItem).count() == 0

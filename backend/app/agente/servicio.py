@@ -20,7 +20,7 @@ from app.agente import api, base, interruptor, reloj
 from app.agente.config import AgenteSettings, ajustes
 from app.agente.models import Ejecucion, Estado
 from app.agente.reloj import Tarea
-from app.agente.tareas import correr
+from app.agente.tareas import correr, liberar_huerfanas
 from app.mercado.calendario import TZ_NUEVA_YORK, es_dia_de_bolsa
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,10 @@ def crear_planificador(ajustes: AgenteSettings = ajustes) -> BackgroundScheduler
 def recuperar_perdidas(ahora: datetime) -> None:
     """Corre en orden las tareas que debieron hacerse mientras el servicio estaba parado."""
     desde = ahora.astimezone(TZ_NUEVA_YORK).date() - timedelta(days=DIAS_RECUPERACION)
-    with base.sesion() as s:
+    with base.con_actor("agente"), base.sesion() as s:
+        liberadas = liberar_huerfanas(s)
+        if liberadas:
+            logger.warning("%s tareas quedaron en curso tras una caída; se reintentan", liberadas)
         filas = s.execute(select(Ejecucion.tarea, Ejecucion.fecha_ny).where(
             Ejecucion.estado == "hecha", Ejecucion.fecha_ny >= desde)).all()
     hechas = {reloj.clave(Tarea(t), f) for t, f in filas}

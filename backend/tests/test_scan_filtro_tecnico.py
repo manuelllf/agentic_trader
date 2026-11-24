@@ -1,6 +1,3 @@
-from decimal import Decimal
-from types import SimpleNamespace
-
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -26,15 +23,12 @@ def _preparar(monkeypatch):
     _stub_common(monkeypatch, FakeLLM(_FAKE_REPLY), ["AAA", "MSFT"])
     _gather_stub(monkeypatch)
     monkeypatch.setattr(scan_service.settings, "scan_full_universe", True)
-    monkeypatch.setattr(scan_service.settings, "always_deep_tickers", ["BTC-USD"])
-    monkeypatch.setattr(scan_service.settings, "mid_layer", True)
     monkeypatch.setattr(scan_service, "_prescore_llm",
                         lambda *a: scan_service.JevProvider(api_key="fake", stage="prescore"))
     monkeypatch.setattr(scan_service.deepseek_mod, "account_balance_usd", lambda *a: None)
     monkeypatch.setattr(scan_service.universe_mod, "tickers_elegibles",
                         lambda db: ["FUERA", "HUMA", "ASTS", "MSFT", "AAA"])
-    notas = {"FUERA": 100, "HUMA": 99, "ASTS": 98, "BTC-USD": 97,
-             "HELD": 96, "MSFT": 95, "AAA": 90}
+    notas = {"FUERA": 100, "HUMA": 99, "ASTS": 98, "MSFT": 95, "AAA": 90}
     monkeypatch.setattr(scan_service.scorer_mod, "prescore_one",
                         lambda llm, d, *a, **kw: PrescoreResult(
                             ticker=d.ticker, score=notas[d.ticker]))
@@ -49,15 +43,12 @@ def _preparar(monkeypatch):
     return llamadas
 
 
-def test_decision_puntua_elegibles_y_filtra_alpha_lambda_y_auditoria(db, monkeypatch):
+def test_decision_puntua_elegibles_y_la_cartera_solo_toma_los_tecnicos(db, monkeypatch):
     llamadas = _preparar(monkeypatch)
     result = scan_service.run_scan_and_store(db, decide=True)
     filas = {r.ticker: r for r in db.query(ScanAudit).all()}
-    assert result["scanned"] == result["prescored"] == 7
-    assert set(filas) == {"AAA", "MSFT", "HUMA", "ASTS", "FUERA", "HELD", "BTC-USD"}
-    assert {t for t, r in filas.items() if r.reached_deep} == {"AAA", "MSFT", "HELD", "BTC-USD"}
-    assert {t for t, r in filas.items() if r.mid_score is not None} == {
-        "AAA", "MSFT", "HELD", "BTC-USD"}
+    assert result["scanned"] == result["prescored"] == 5
+    assert set(filas) == {"AAA", "MSFT", "HUMA", "ASTS", "FUERA"}
     assert {t for t, r in filas.items() if r.pasa_filtro_tecnico} == {"AAA", "MSFT"}
     assert filas["FUERA"].prescore == 100
     assert llamadas == [["MSFT", "AAA"]]
@@ -66,16 +57,16 @@ def test_decision_puntua_elegibles_y_filtra_alpha_lambda_y_auditoria(db, monkeyp
 
 
 @pytest.mark.parametrize("decide,sample_size", [(False, None), (False, 1), (True, 1)])
-def test_observatorio_y_muestra_conservan_universo_liquido(db, monkeypatch, decide, sample_size):
+def test_observatorio_y_muestra_se_limitan_al_universo_liquido(db, monkeypatch, decide,
+                                                               sample_size):
     _preparar(monkeypatch)
     result = scan_service.run_scan_and_store(db, decide=decide, sample_size=sample_size)
     filas = {r.ticker for r in db.query(ScanAudit).all()}
-    assert "FUERA" not in filas and "HUMA" not in filas and "ASTS" not in filas
-    assert {"BTC-USD", "HELD"} <= filas
-    assert result["scanned"] == (4 if sample_size is None else 2)
+    assert filas <= {"AAA", "MSFT"}
+    assert result["scanned"] == (2 if sample_size is None else 1)
 
 
-def test_global_no_filtra_alpha_y_guarda_marca_nula(db, monkeypatch):
+def test_global_no_filtra_y_guarda_marca_nula(db, monkeypatch):
     llamadas = _preparar(monkeypatch)
     monkeypatch.setattr(scan_service.universe_global, "top_market_cap_usd",
                         lambda db, limite: [("FUERA", "FUERA"), ("MSFT", "MSFT"), ("AAA", "AAA")])
@@ -83,6 +74,6 @@ def test_global_no_filtra_alpha_y_guarda_marca_nula(db, monkeypatch):
                         lambda db: pytest.fail("Global no consulta elegibles"))
     scan_service.run_scan_and_store(db, decide=False, modo_universo="global_topcap")
     filas = db.query(ScanAudit).all()
-    assert len(filas) == 5 and all(r.pasa_filtro_tecnico is None and r.reached_deep for r in filas)
-    assert llamadas == [["FUERA", "BTC-USD", "HELD", "MSFT", "AAA"]]
+    assert len(filas) == 3 and all(r.pasa_filtro_tecnico is None for r in filas)
+    assert llamadas == [["FUERA", "MSFT", "AAA"]]
     assert not any(i.startswith("Jev puntuó") for i in db.query(ScanRun).one().issues)
