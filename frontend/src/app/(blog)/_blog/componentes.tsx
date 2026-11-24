@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Marca } from "@/app/(liga)/_ui/Marca";
 import type { Locale } from "@/i18n/locale";
+import { medioPropio } from "@/lib/blog/imagenes";
 import type { ArticuloResumen } from "@/lib/blog/publico";
 import { SelectorIdioma } from "@/components/SelectorIdioma";
 
@@ -44,11 +45,12 @@ export function Fila({ articulo, idioma, textos }: { articulo: ArticuloResumen; 
   </Link></li>;
 }
 
-type NodoMarkdown = { type: string; alt?: string; value?: string; children?: NodoMarkdown[] };
-function imagenesComoTexto() {
+type NodoMarkdown = { type: string; alt?: string; url?: string; value?: string; children?: NodoMarkdown[] };
+// Solo se muestran los medios de nuestra carpeta (`medioPropio`); cualquier otra imagen queda en su texto alternativo.
+function imagenesAjenasComoTexto() {
   return (arbol: NodoMarkdown) => {
     function recorrer(nodo: NodoMarkdown) {
-      if (nodo.type === "image" || nodo.type === "imageReference") {
+      if (nodo.type === "imageReference" || (nodo.type === "image" && !medioPropio(nodo.url))) {
         nodo.type = "text";
         nodo.value = nodo.alt ?? "";
       }
@@ -58,10 +60,21 @@ function imagenesComoTexto() {
   };
 }
 
+// Imagen o vídeo propios; con título, `![alt](/blog/img/a.png "pie")` lleva su pie. Todo en spans: va dentro de un párrafo.
+function Medio({ src, alt, title }: { src?: string; alt?: string; title?: string }) {
+  const medio = medioPropio(src);
+  if (!medio) return <span>{alt}</span>;
+  const pieza = medio.tipo === "video"
+    ? <video src={medio.src} aria-label={alt} autoPlay muted loop playsInline controls preload="metadata" />
+    // eslint-disable-next-line @next/next/no-img-element -- medios fijos de /public; el SVG animado no pasa por el optimizador
+    : <img src={medio.src} alt={alt ?? ""} loading="lazy" decoding="async" />;
+  return title ? <span className="blog-fig">{pieza}<span className="blog-fig-pie">{title}</span></span> : pieza;
+}
+
 export function Cuerpo({ cuerpo }: { cuerpo: string }) {
-  return <div className="blog-markdown"><ReactMarkdown remarkPlugins={[remarkGfm, imagenesComoTexto]} disallowedElements={["img"]} unwrapDisallowed
+  return <div className="blog-markdown"><ReactMarkdown remarkPlugins={[remarkGfm, imagenesAjenasComoTexto]}
     components={{ a: ({ href, children }) => <a href={href} rel={href && /^(https?:)?\/\//i.test(href) ? "noopener noreferrer" : undefined}>{children}</a>,
-      img: ({ alt }) => <span>{alt}</span> }}
+      img: ({ src, alt, title }) => <Medio src={typeof src === "string" ? src : undefined} alt={alt} title={title} /> }}
   >{cuerpo}</ReactMarkdown></div>;
 }
 

@@ -2,12 +2,25 @@ import { ImageResponse } from "next/og";
 import { notFound } from "next/navigation";
 import type { Locale } from "@/i18n/locale";
 import { loadMessages } from "@/i18n/messages";
+import { rutaTarjeta } from "@/lib/blog/imagenes";
 import { leerPublicado } from "@/lib/blog/publico";
 
-// Imagen para compartir de un artículo: la marca de la sección y el título del artículo.
-export async function imagenDeArticulo(idioma: Locale, slug: string) {
+// Si el artículo trae su tarjeta en /public/blog/img/, esa es su imagen para compartir.
+async function tarjetaPropia(idioma: Locale, slug: string, origen: string) {
+  const ruta = rutaTarjeta(slug, idioma);
+  if (!ruta) return null;
+  const respuesta = await fetch(new URL(ruta, origen), { next: { revalidate: 3600 } }).catch(() => null);
+  const tipo = respuesta?.headers.get("content-type") ?? "";
+  if (!respuesta?.ok || !tipo.startsWith("image/")) return null;
+  return new Response(await respuesta.arrayBuffer(), { headers: { "content-type": tipo, "cache-control": "public, max-age=3600" } });
+}
+
+// Imagen para compartir de un artículo: su tarjeta si la tiene; si no, la marca de la sección y el título.
+export async function imagenDeArticulo(idioma: Locale, slug: string, origen: string) {
   const [articulo, mensajes] = await Promise.all([leerPublicado(slug, idioma).catch(() => null), loadMessages(idioma)]);
   if (!articulo) notFound();
+  const tarjeta = await tarjetaPropia(idioma, slug, origen);
+  if (tarjeta) return tarjeta;
   const seccion = (mensajes as Record<string, string>).blog_seo;
   return new ImageResponse(
     <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", width: "100%", height: "100%",
