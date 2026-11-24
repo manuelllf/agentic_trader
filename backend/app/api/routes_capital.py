@@ -1,4 +1,4 @@
-﻿"""Libro de capital (sleeve sombra): aportar/retirar, rendimiento, curva histórica y el
+"""Libro de capital (sleeve sombra): aportar/retirar, rendimiento, curva histórica y el
 teaser de portada. Ver la regla de doble nivel (auth_optional) en app/api/routes.py."""
 from __future__ import annotations
 

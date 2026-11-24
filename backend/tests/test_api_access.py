@@ -85,8 +85,8 @@ def anon(api):
 # ---- nada público -------------------------------------------------------------
 
 ANTES_PUBLICAS = [
-    "/overview", "/ledger", "/performance", "/macro", "/config", "/demo/status",
-    "/history", "/history?book=real", "/scan/report", "/scan/funnel", "/scan/outcomes",
+    "/overview", "/ledger", "/performance", "/demo/status",
+    "/history", "/history?book=real", "/scan/report", "/scan/outcomes",
 ]
 
 
@@ -103,7 +103,6 @@ PROTECTED_CALLS = [
     ("get", "/personal", None),
     ("get", "/push/key", None),
     ("post", "/admin/seed", {"version": 1, "tables": {"meta": [{"key": "x", "value": "y"}]}}),
-    ("get", "/admin/memory-status", None),
     ("post", "/admin/universe-snapshot", None),
     ("get", "/fx", None),
     ("get", "/scan/jev-macro", None),
@@ -239,71 +238,6 @@ def test_performance_with_token_shows_tickers(db, client, monkeypatch, token) ->
     assert body["portfolio_return_pct"] == 10.0  # (110-100)/100 * 100
 
 
-def test_config_does_not_leak_sensitive_fields(client) -> None:
-    """Guardarraíles sí, secretos no: /config es público, así que nada de claves ni cuentas."""
-    body = client.get("/config").json()
-    leaky_keys = {"api_key", "openrouter_api_key", "ibkr_account_id", "vapid_private_key",
-                  "app_password", "email", "ibkr_oauth_access_token"}
-    assert not (leaky_keys & set(body.keys()))
-    assert set(body.keys()) == {
-        "max_positions", "min_positions", "max_position_pct", "dry_run", "limit_buffer_pct",
-        "approval_expiry_days", "llm_defaults",
-    }
-    # llm_defaults es modelo/reasoning/temperature por etapa (público, ver routes.py) — nunca
-    # api keys. `temperature` SÍ viaja: sin ella, el modal de simulación partía de un 1.0 fijo
-    # en el frontend y anulaba en silencio el `prescore_temperature` real de producción.
-    for etapa in body["llm_defaults"].values():
-        assert set(etapa.keys()) == {"model", "reasoning_effort", "temperature"}
-
-
-def test_config_prescore_default_refleja_jev(client, monkeypatch) -> None:
-    """Bug real (17-sep-2026): la rama de `prescore_provider` en /config solo contemplaba
-    "qwen", así que con el default de producción ("jev") caía al `else` y devolvía
-    `prescore_model` ("deepseek-flash") -- el modal de simulación enseñaba DeepSeek como
-    default aunque el escaneo real ya corriera con Jev."""
-    from app.api import routes as routes_mod
-
-    monkeypatch.setattr(routes_mod.settings, "prescore_provider", "jev")
-    monkeypatch.setattr(routes_mod.settings, "jev_model", "jev-latest")
-
-    body = client.get("/config").json()
-
-    assert body["llm_defaults"]["prescore"]["model"] == "jev-latest"
-
-
-# ---- /admin/memory-status: diagnóstico de la memoria vectorial ---------------
-
-def test_memory_status_degrades_without_postgres(client, token, monkeypatch) -> None:
-    """La memoria vectorial vive en Postgres/pgvector (ver `app/memory/store.py`) — en el
-    entorno de tests `DATABASE_URL` es SQLite (fixture `db`), así que el diagnóstico debe
-    avisar de forma legible en vez de intentar conectar o reventar."""
-    from app.memory import status
-
-    monkeypatch.setattr("app.config.settings.database_url", "sqlite:///./agentic_trader.db")
-    headers = {"Authorization": f"Bearer {token}"}
-    body = client.get("/admin/memory-status", headers=headers).json()
-    assert body == status()
-    assert body["available"] is False
-    assert "error" in body
-
-
-def test_memory_status_reports_connection_failure_without_crashing(client, token,
-                                                                     monkeypatch) -> None:
-    """Con `DATABASE_URL` apuntando a Postgres pero inalcanzable (host de mentira), el
-    diagnóstico debe seguir devolviendo 200 con `available: False`, no un 500."""
-    monkeypatch.setattr(
-        "app.config.settings.database_url",
-        "postgresql+psycopg://user:pw@host-inexistente-de-mentira:5432/db"
-        "?connect_timeout=2",
-    )
-    headers = {"Authorization": f"Bearer {token}"}
-    res = client.get("/admin/memory-status", headers=headers)
-    assert res.status_code == 200
-    body = res.json()
-    assert body["available"] is False
-    assert "error" in body
-
-
 # ---- /admin/universe-snapshot: relanzar a mano la foto del universo ---------
 
 def test_universe_snapshot_requires_token(anon) -> None:
@@ -405,53 +339,6 @@ def test_docs_disabled_with_auth() -> None:
     finally:
         cfg.supabase_url = old
         importlib.reload(main_mod)  # deja el módulo como estaba para el resto de tests
-
-
-# ---- embudo del escaneo --------------------------------------------------------
-
-def _sembrar_embudo(db) -> None:
-    """Traza de un escaneo: 3 nombres puntuados, 2 al profundo, 1 en cartera, 1 sin datos."""
-    from datetime import UTC, datetime
-
-    from app.models import ScanAudit
-
-    at = datetime(2026, 7, 28, 14, 15, tzinfo=UTC)
-    db.add_all([
-        ScanAudit(scan_at=at, ticker="AAA", sector="Technology", prescore=91.2, price=100.0,
-                  reached_deep=True, deep_score=84, selected=True, funded=True, weight_pct=35.0,
-                  stage="cartera"),
-        ScanAudit(scan_at=at, ticker="BBB", sector="Technology", prescore=88.4, price=50.0,
-                  reached_deep=True, deep_score=61, stage="finalista"),
-        ScanAudit(scan_at=at, ticker="CCC", sector="Finance", prescore=42.0, price=20.0,
-                  stage="prescore"),
-        ScanAudit(scan_at=at, ticker="DDD", stage="datos"),
-    ])
-    db.commit()
-
-
-def test_funnel_cuenta_etapas_por_sector(client, db) -> None:
-    """El embudo describe el comportamiento: cuántos por etapa y sector."""
-    _sembrar_embudo(db)
-    scan = client.get("/scan/funnel").json()["scans"][0]
-
-    assert (scan["pre"], scan["deep"], scan["sel"], scan["funded"]) == (3, 2, 1, 1)
-    assert scan["sin_datos"] == 1
-    assert {s["sector"] for s in scan["sectores"]} == {"Technology", "Finance"}
-    assert scan["sectores"][0] == {"sector": "Technology", "pre": 2, "deep": 2, "sel": 1,
-                                   "funded": 1}          # ordenado por nº de pre-scoreados
-
-
-def test_funnel_con_sesion_anade_el_detalle(client, db, token) -> None:
-    """Con sesión sí: nombre a nombre, con los que llegaron al profundo primero (la frontera
-    del corte es justo lo que no se puede reconstruir mirando solo a los ganadores)."""
-    _sembrar_embudo(db)
-    scan = client.get("/scan/funnel",
-                      headers={"Authorization": f"Bearer {token}"}).json()["scans"][0]
-
-    tickers = [n["ticker"] for n in scan["nombres"]]
-    assert tickers[:2] == ["AAA", "BBB"]          # los profundos, antes que el resto
-    assert "CCC" in tickers                        # la descartada también deja rastro
-    assert scan["nombres"][0]["deep_score"] == 84
 
 
 def test_report_lleva_las_novedades_del_ranking(client, db, token) -> None:

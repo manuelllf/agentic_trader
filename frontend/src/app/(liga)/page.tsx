@@ -45,7 +45,7 @@ export default async function Page() {
     { "@context": "https://schema.org", "@type": "Organization", name: "Vennett", url: URL_PUBLICA, sameAs: PERFILES_PUBLICOS },
   ];
   return <>
-    <script dangerouslySetInnerHTML={{ __html: AVISO_SESION }} />
+    <script>{AVISO_SESION}</script>
     <script type="application/ld+json">{escaparJsonLd(datos)}</script>
     <Portada demo={demo} criptico={criptico} boletin={boletin} />
   </>;

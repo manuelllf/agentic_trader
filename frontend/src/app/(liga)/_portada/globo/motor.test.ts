@@ -60,4 +60,28 @@ describe("Globo", () => {
     g.senalar(-1, 3);
     expect(() => g.destruir()).not.toThrow();
   });
+
+  // En el móvil el dedo sobre la bola hacía scroll o recargaba la página en vez de girarla.
+  it("un dedo sobre la bola no deja que el navegador mueva la página; fuera de ella, sí", () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
+    const lienzo = document.createElement("canvas");
+    const caja = document.createElement("div");
+    document.body.append(caja); caja.append(lienzo);
+    const g = new Globo(lienzo, caja, { total: 10, anillos: [], alContar: vi.fn(), alTocar: vi.fn() });
+    // En jsdom el lienzo mide 220 px en (0, 0): centro en 110 y radio de 88.
+    const toque = (x: number, y: number, dedos = 1) => {
+      const ev = new Event("touchstart", { cancelable: true });
+      Object.defineProperty(ev, "touches", { value: Array.from({ length: dedos }, () => ({ clientX: x, clientY: y })) });
+      lienzo.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    };
+    expect(toque(110, 110)).toBe(true);
+    expect(toque(150, 60)).toBe(true);
+    expect(toque(4, 4)).toBe(false);
+    expect(toque(110, 110, 2)).toBe(false);
+    g.destruir();
+    expect(toque(110, 110)).toBe(false);
+  });
 });

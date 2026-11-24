@@ -71,7 +71,7 @@ html[data-con-sesion] .lg .portada { visibility: hidden; }
 .lg .portada .titular { color: var(--h-ink); margin-top: 6px; font-size: 1.75rem; line-height: 2.125rem; font-weight: 700; letter-spacing: -.022em; text-wrap: balance; }
 .lg .portada .titular .num { color: var(--menta); }
 .lg .portada .mapa { flex: 1 1 auto; min-height: 230px; position: relative; margin-top: 8px; }
-.lg .portada .mapa canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: block; touch-action: pan-y; cursor: grab; }
+.lg .portada .mapa canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: block; touch-action: manipulation; cursor: grab; }
 .lg .portada .mapa canvas:active { cursor: grabbing; }
 .lg .portada .ayuda-globo { position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; font-size: .8125rem; line-height: 1.125rem; color: var(--h-muted); transition: opacity .4s; pointer-events: none; }
 .lg .portada .ayuda-globo.fuera { opacity: 0; }

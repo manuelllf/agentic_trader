@@ -82,6 +82,7 @@ export class Globo {
     lienzo.addEventListener("pointermove", this.alMover);
     lienzo.addEventListener("pointerup", this.soltar);
     lienzo.addEventListener("pointercancel", this.alCancelar);
+    lienzo.addEventListener("touchstart", this.alEmpezarToque, { passive: false });
     lienzo.addEventListener("mouseleave", this.alSalir);
     document.addEventListener("visibilitychange", this.alVisibilidad);
     if (typeof IntersectionObserver !== "undefined") {
@@ -318,6 +319,7 @@ export class Globo {
 
   // Arrastrar para girar (con inercia); tocar sin arrastrar elige una empresa.
   private readonly alBajar = (e: PointerEvent): void => {
+    if (e.pointerType === "touch" && !this.sobreLaBola(e.clientX, e.clientY)) return;
     if (!this.primerToque) { this.primerToque = true; this.op.alPrimerToque?.(); }
     const a = this.arrastre;
     a.activo = true; a.x0 = a.x = e.clientX; a.y0 = e.clientY; a.movido = 0; a.ult = performance.now();
@@ -349,6 +351,17 @@ export class Globo {
     if (a.movido < 6) this.tocar(e);
     this.pedir();
   };
+
+  // Un dedo sobre la bola la gira y el navegador no hace scroll ni recarga; fuera de ella, la página se mueve.
+  private readonly alEmpezarToque = (e: TouchEvent): void => {
+    const t = e.touches[0];
+    if (e.touches.length === 1 && t && this.sobreLaBola(t.clientX, t.clientY)) e.preventDefault();
+  };
+
+  private sobreLaBola(x: number, y: number): boolean {
+    const r = this.lienzo.getBoundingClientRect();
+    return Math.hypot(x - r.left - this.cx, y - r.top - this.cy) <= this.R * 1.1;
+  }
 
   private readonly alCancelar = (): void => { this.arrastre.activo = false; };
   private readonly alSalir = (): void => { this.estado.encima = -1; this.pedir(); };
@@ -401,6 +414,7 @@ export class Globo {
     this.lienzo.removeEventListener("pointermove", this.alMover);
     this.lienzo.removeEventListener("pointerup", this.soltar);
     this.lienzo.removeEventListener("pointercancel", this.alCancelar);
+    this.lienzo.removeEventListener("touchstart", this.alEmpezarToque);
     this.lienzo.removeEventListener("mouseleave", this.alSalir);
     clearTimeout(this.tCuenta);
     document.removeEventListener("visibilitychange", this.alVisibilidad);
