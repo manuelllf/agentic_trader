@@ -55,8 +55,9 @@ afterEach(async () => {
 });
 
 describe("LanguageProvider en las páginas públicas con una URL por idioma", () => {
-  it("elegir inglés guarda la elección y va a la versión /en, con su query y sin recargar el catálogo", async () => {
-    const pedir = vi.fn();
+  // Next no vuelve a pintar el layout raíz al ir de / a /en: si el proveedor no cambia el catálogo, la página sigue en español.
+  it("elegir inglés guarda la elección, pone los textos en inglés y va a la versión /en con su query", async () => {
+    const pedir = vi.fn(async () => new Response(JSON.stringify({ common_idioma: "Language" }), { status: 200 }));
     vi.stubGlobal("fetch", pedir);
     document.cookie = "vennett_locale=es; Path=/"; // con elección guardada no se detecta el dispositivo
     window.history.replaceState({}, "", "/liga?vista=tabla");
@@ -64,16 +65,19 @@ describe("LanguageProvider en las páginas públicas con una URL por idioma", ()
     await act(async () => { await contexto?.selectLocale("en"); });
     expect(router.push).toHaveBeenCalledWith("/en/liga?vista=tabla");
     expect(cookie("vennett_locale")).toBe("en");
-    expect(pedir).not.toHaveBeenCalled();
+    expect(pedir).toHaveBeenCalledWith("/api/i18n/catalog/en", expect.anything());
+    expect(contexto?.locale).toBe("en");
     expect(router.refresh).not.toHaveBeenCalled();
   });
 
-  it("elegir español desde la portada en inglés va a la raíz", async () => {
+  it("elegir español desde la portada en inglés pone los textos en español y va a la raíz", async () => {
+    catalogoEs();
     window.history.replaceState({}, "", "/en");
     await montar("en");
     await act(async () => { await contexto?.selectLocale("es"); });
     expect(router.push).toHaveBeenCalledWith("/");
     expect(cookie("vennett_locale")).toBe("es");
+    expect(contexto?.locale).toBe("es");
   });
 
   it("fuera de esas páginas cambia el idioma en el sitio, sin cambiar de URL", async () => {
