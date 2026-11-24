@@ -8,13 +8,13 @@ from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.liga import estrategias
+from app.liga import estrategias, portada_demo
 from app.liga.db import db_anon
 from app.liga.mercado_stats import numero
 from app.liga.motor.calendario import (
@@ -158,3 +158,27 @@ def mercado(response: Response) -> MercadoAprenderOut:
         raise HTTPException(503, "Aún no hay datos del mercado.") from e
     response.headers["Cache-Control"] = "public, max-age=600"
     return datos
+
+
+@router.get("/portada", response_model=portada_demo.PortadaOut)
+def portada(response: Response, idioma: str = "es",
+            db: Session = Depends(db_anon)) -> portada_demo.PortadaOut:
+    try:
+        datos = portada_demo.portada(db, idioma)
+    except Exception as e:
+        raise HTTPException(503, "Aún no hay datos del mercado.") from e
+    response.headers["Cache-Control"] = "public, max-age=600"
+    return datos
+
+
+@router.get("/portada/empresa/{rango}", response_model=portada_demo.EmpresaRango,
+            dependencies=[Depends(db_anon)])
+def portada_empresa(response: Response, rango: int = Path(ge=0)) -> portada_demo.EmpresaRango:
+    try:
+        empresa = portada_demo.empresa_de_rango(rango)
+    except Exception as e:
+        raise HTTPException(503, "Aún no hay datos del mercado.") from e
+    if empresa is None:
+        raise HTTPException(404, "No hay empresa con ese rango.")
+    response.headers["Cache-Control"] = "public, max-age=600"
+    return empresa

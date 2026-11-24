@@ -21,6 +21,7 @@ import { invalidar, obtener } from "@/lib/liga/cache";
 import { useSesionRequerida } from "../_sesion/SesionContext";
 import { miles } from "@/lib/liga/format";
 import { pesosCoherentes } from "@/lib/liga/receta";
+import { tomarIdeaPortada } from "@/lib/liga/ideaPortada";
 import { SegmentoLiga } from "../liga/SegmentoLiga";
 import { PasoRevisar } from "./PasoRevisar";
 import { LecturasModal } from "./LecturasModal";
@@ -324,6 +325,8 @@ export function EditorEstrategia({ estrategiaIdInicial, antes }: { estrategiaIdI
         setVisibilidad(d.visibilidad); setDeclaraPosiciones(d.declara_posiciones);
         setCadaDia1Opcion(d.cada_dia_1);
       }
+      const ideaPortada = estrategiaIdInicial ? null : tomarIdeaPortada();
+      if (ideaPortada) setConvFrase(ideaPortada.slice(0, 300));
       const pasoUrl = new URLSearchParams(window.location.search).get("etapa");
       // Entrar desde Crear o Editar empieza en Idea; los campos del borrador sí se recuperan.
       setEtapa(pasoUrl !== null && /^[0-4]$/.test(pasoUrl) ? Number(pasoUrl) : 0);
