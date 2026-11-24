@@ -1,7 +1,7 @@
 // La página la lee en el servidor: sin `@/lib/api`, que arrastra el cliente de Supabase del navegador.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// Datos de la demo de la portada (GET /aprender/portada): la foto activa con los 7 estilos fijos.
+// Datos de la demo de la portada (GET /liga/aprender/portada): la foto activa con los 7 estilos fijos.
 export type CincoDemo = { ticker: string; nombre: string; rango: number; nota: number };
 export type ReglaDemo = { clave: string; params: Record<string, unknown>; detalle: string };
 export type EstiloDemo = { pasan: number; mapa: string; cinco: CincoDemo[]; reglas: ReglaDemo[] };
@@ -35,7 +35,7 @@ export function normalizarPortada(crudo: PortadaDemo): PortadaDemo {
 /** En el servidor: si la API falla, la portada sale sin demo en vez de romperse. */
 export async function leerPortadaDemo(idioma: "es" | "en"): Promise<PortadaDemo | null> {
   try {
-    const r = await fetch(`${API_URL}/aprender/portada?idioma=${idioma}`, { next: { revalidate: 600 } });
+    const r = await fetch(`${API_URL}/liga/aprender/portada?idioma=${idioma}`, { next: { revalidate: 600 } });
     if (!r.ok) return null;
     const datos = normalizarPortada(await r.json());
     return ORDEN_ESTILOS.every((k) => datos.estilos[k]) ? datos : null;
@@ -47,7 +47,7 @@ export async function leerPortadaDemo(idioma: "es" | "en"): Promise<PortadaDemo 
 /** En el navegador, al tocar una empresa del globo. */
 export async function empresaPorRango(rango: number): Promise<EmpresaRango | null> {
   try {
-    const r = await fetch(`${API_URL}/aprender/portada/empresa/${rango}`);
+    const r = await fetch(`${API_URL}/liga/aprender/portada/empresa/${rango}`);
     return r.ok ? await r.json() : null;
   } catch {
     return null;

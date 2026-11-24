@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { idRegla, normalizarPortada, type PortadaDemo } from "./portada";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { empresaPorRango, idRegla, leerPortadaDemo, normalizarPortada, type PortadaDemo } from "./portada";
 import { guardarIdeaPortada, tomarIdeaPortada } from "./ideaPortada";
 
 function almacen(): Storage {
@@ -29,6 +29,21 @@ describe("reglas de la portada", () => {
     const { semana } = normalizarPortada(crudo);
     expect(semana!.sp).toBe(-8.6);
     expect(semana!.casa[0]).toMatchObject({ rentabilidad: -10.2, dif_sp: -1.6 });
+  });
+});
+
+describe("rutas de la API", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  // El router de la liga monta /aprender bajo /liga: sin el prefijo, la demo no salía en producción.
+  it("la demo y la empresa se piden bajo /liga/aprender", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await leerPortadaDemo("en");
+    await empresaPorRango(14);
+    const rutas = fetchMock.mock.calls.map(([url]) => new URL(String(url)));
+    expect(rutas.map((u) => u.pathname)).toEqual(["/liga/aprender/portada", "/liga/aprender/portada/empresa/14"]);
+    expect(rutas[0].searchParams.get("idioma")).toBe("en");
   });
 });
 
