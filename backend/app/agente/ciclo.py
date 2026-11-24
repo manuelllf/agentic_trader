@@ -9,7 +9,7 @@ import time
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ValidationError, model_validator
 from sqlalchemy import func, select, text
@@ -30,7 +30,15 @@ from app.agente import (
 from app.agente.config import ajustes
 from app.agente.interruptor import EnPausa, Interruptor
 from app.agente.models import Decision as DecisionFila
-from app.agente.models import Estado, Evento, Gasto, LlamadaModelo, PlaybookVersion, Seguimiento
+from app.agente.models import (
+    Estado,
+    Evento,
+    Ficha,
+    Gasto,
+    LlamadaModelo,
+    PlaybookVersion,
+    Seguimiento,
+)
 from app.ledger.money import D
 from app.mercado.calendario import dias_de_bolsa
 
@@ -51,6 +59,7 @@ class Operacion(BaseModel):
     ruptura: str = ""
     prevision_12m: str = ""
     proximo_evento: date | None = None
+    condicion_cumplida: str = ""  # solo ventas: frase de la ficha previa que ya se cumple
 
     @model_validator(mode="after")
     def _con_cantidad(self) -> Operacion:
@@ -399,7 +408,57 @@ def _tiene_ficha(s: Session, ticker: str) -> bool:
                      {"t": ticker}).first() is not None
 
 
-def _violaciones(s: Session, d: Decision, hoy: date) -> list[dict]:
+class FichaPrevia(NamedTuple):
+    contenido: dict
+    certeza: str
+    version: int
+
+
+def _fichas_actuales(s: Session) -> dict[str, FichaPrevia]:
+    """Las fichas tal como están ahora; al empezar el ciclo son lo que el agente escribió antes
+    de hoy."""
+    s.flush()
+    filas = s.execute(text("select ticker, contenido, certeza, version from agente.fichas")).all()
+    return {f.ticker: FichaPrevia(dict(f.contenido), f.certeza, f.version) for f in filas}
+
+
+def _reescritas_de_posiciones(s: Session, previas: dict[str, FichaPrevia],
+                              posee: set[str]) -> set[str]:
+    """Posiciones abiertas cuya ficha cambió en este ciclo."""
+    ahora = _fichas_actuales(s)
+    return {t for t in posee if t in ahora
+            and (t not in previas or previas[t].contenido != ahora[t].contenido)}
+
+
+def _revertir_fichas(s: Session, previas: dict[str, FichaPrevia], tickers: set[str],
+                     ejecucion_id: int | None) -> None:
+    """Una decisión no aprobada no cambia lo que Alpha tiene escrito de lo que ya posee. La
+    redacción rechazada queda en el registro."""
+    for t in sorted(tickers):
+        f = s.get(Ficha, t)
+        previa = previas.get(t)
+        if f is None or previa is None:
+            continue
+        s.add(Evento(origen="ciclo", tipo="ficha_revertida", ticker=t, ejecucion_id=ejecucion_id,
+                     datos={"version_rechazada": f.version, "contenido_rechazado": f.contenido}))
+        f.contenido, f.certeza, f.version = previa.contenido, previa.certeza, previa.version
+    s.flush()
+
+
+def _fichas_del_ciclo(s: Session, previas: dict[str, FichaPrevia],
+                      d: Decision) -> dict[str, dict]:
+    """Para el revisor: la ficha antes y ahora de cada empresa que se vende o que se reescribió."""
+    ahora = _fichas_actuales(s)
+    vendidas = {op.ticker.upper() for op in d.operaciones if op.lado == "venta"}
+    tocadas = {t for t, f in ahora.items() if t in previas and previas[t].contenido != f.contenido}
+    antes = {t: previas[t].contenido if t in previas else None for t in vendidas | tocadas}
+    return {t: {"antes": antes[t], "ahora": ahora[t].contenido if t in ahora else None}
+            for t in sorted(antes)}
+
+
+def _violaciones(s: Session, d: Decision, hoy: date,
+                 previas: dict[str, FichaPrevia] | None = None) -> list[dict]:
+    previas = previas or {}
     cartera = libro.cartera(s, hoy)
     parada = bool(s.execute(select(Estado.parada).where(Estado.id == 1)).scalar())
     out: list[dict] = []
@@ -418,7 +477,10 @@ def _violaciones(s: Session, d: Decision, hoy: date) -> list[dict]:
         else:
             acciones = (op.acciones if op.acciones is not None
                         else limites.acciones_por_importe(op.importe, precio))  # type: ignore[arg-type]
-            vs = limites.comprobar_venta(limites.PropuestaVenta(ticker, acciones), cartera, parada)
+            vs = (limites.comprobar_venta(limites.PropuestaVenta(ticker, acciones), cartera, parada)
+                  + limites.comprobar_condicion_de_venta(
+                      ticker, op.condicion_cumplida,
+                      previas[ticker].contenido if ticker in previas else None))
         out += [{"ticker": ticker, "lado": op.lado, "codigo": v.codigo, "detalle": v.detalle}
                 for v in vs]
     return out
@@ -489,9 +551,13 @@ def _ciclo(s: Session, hoy: date, g: Presupuesto, llm: Any, revisor_llm: Any,  #
                                  despertares.razones_de(s, ctx.ejecucion_id),
                                  despertares.pendientes(s), despertares.topes(s, hoy))
     rastro: list[dict] = []
+    previas = _fichas_actuales(s)
+    posee = set(libro.estado_posiciones(s, hoy))
     d = _bucle(s, g, llm, ctx, base, rastro)
-    viol = _violaciones(s, d, hoy)
-    veredicto, motivo = _juzgar(g, d, viol, filosofia, rastro, revisor_llm)
+    viol = _violaciones(s, d, hoy, previas)
+    reescritas = _reescritas_de_posiciones(s, previas, posee)
+    veredicto, motivo = _juzgar(g, d, viol, filosofia, rastro, revisor_llm,
+                                _fichas_del_ciclo(s, previas, d), bool(reescritas))
 
     if veredicto == "corregir":
         previa = json.dumps(d.model_dump(mode="json"), ensure_ascii=False)
@@ -499,12 +565,18 @@ def _ciclo(s: Session, hoy: date, g: Presupuesto, llm: Any, revisor_llm: Any,  #
                 f"Your previous decision: {previa}\nGive a corrected final decision.")
         try:
             d = _bucle(s, g, llm, ctx, base, rastro, nota)
-            viol = _violaciones(s, d, hoy)
-            veredicto, motivo = _juzgar(g, d, viol, filosofia, rastro, revisor_llm)
+            viol = _violaciones(s, d, hoy, previas)
+            reescritas = _reescritas_de_posiciones(s, previas, posee)
+            veredicto, motivo = _juzgar(g, d, viol, filosofia, rastro, revisor_llm,
+                                        _fichas_del_ciclo(s, previas, d), bool(reescritas))
         except Fallo as exc:
             veredicto, motivo = "rechazada", f"corrección fallida: {exc}"
         if veredicto == "corregir":
             veredicto = "rechazada"
+
+    if veredicto != "aprobada":
+        _revertir_fichas(s, previas, _reescritas_de_posiciones(s, previas, posee),
+                         ctx.ejecucion_id)
 
     propuesta = d.model_dump(mode="json")
     propuesta["violaciones"] = viol
@@ -524,15 +596,17 @@ def _ciclo(s: Session, hoy: date, g: Presupuesto, llm: Any, revisor_llm: Any,  #
 
 
 def _juzgar(g: Presupuesto, d: Decision, viol: list[dict], filosofia: str,
-            rastro: list[dict], revisor_llm: Any) -> tuple[str, str]:  # noqa: ANN401
-    """Límites primero (sin gastar en revisor), luego el revisor salvo que no se opere."""
+            rastro: list[dict], revisor_llm: Any,  # noqa: ANN401
+            fichas: dict[str, dict], reescribe_posicion: bool) -> tuple[str, str]:
+    """Límites primero (sin gastar en revisor), luego el revisor salvo que no se opere ni se
+    reescriba la ficha de algo que se tiene."""
     if viol:
         # Una vuelta de corrección con el motivo exacto; si sigue igual, se rechaza con ese motivo.
         return "corregir", "Límites incumplidos: " + "; ".join(
             f"{v['codigo']}: {v['detalle']}" for v in viol)
-    if d.tipo == "nada":
+    if d.tipo == "nada" and not reescribe_posicion:
         return "aprobada", "Sin operaciones: no requiere revisión"
     datos = [{"tool": r["tool"], "args": r["args"], "resultado": r["resultado"]} for r in rastro]
     medido = Medido(g, revisor_llm, ajustes.modelo_revisor)
     return revisor.revisar({**d.model_dump(mode="json"), "violaciones": viol}, filosofia, datos,
-                           medido)
+                           medido, fichas)

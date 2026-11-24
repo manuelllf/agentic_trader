@@ -14,6 +14,7 @@ from app.agente.limites import (
     alertas_de_cartera,
     apertura_permite_compra,
     comprobar_compra,
+    comprobar_condicion_de_venta,
     comprobar_venta,
     modo,
     puede_gastar_ia,
@@ -294,3 +295,48 @@ def test_alerta_cartera_solo_la_mas_grave():
     pausa = alertas_de_cartera(Cartera(D("50"), (), D("100")))
     assert [(a.codigo, a.ticker) for a in pausa] == [("cartera_pausa", None)]
     assert alertas_de_cartera(Cartera(D("71"), (), D("100"))) == []
+
+
+# --- venta: condición escrita antes de hoy -------------------------------
+
+FICHA_PREVIA = {
+    "salidas": "Vendo si el crecimiento de ingresos cae por debajo del 40% interanual, o si el "
+               "margen operativo baja del 45%.",
+    "ruptura": "Cualquier investigación que derive en nuevas restricciones de exportación o "
+               "sanciones que afecten a ventas en China.",
+}
+
+
+def test_vender_exige_copiar_una_frase_de_la_ficha_previa():
+    cita = "si el margen operativo baja del 45%"
+    assert comprobar_condicion_de_venta("AAA", cita, FICHA_PREVIA) == []
+
+
+def test_la_cita_no_depende_de_mayusculas_ni_de_la_puntuacion():
+    cita = "«CUALQUIER investigación, que derive en nuevas restricciones de exportación»"
+    assert comprobar_condicion_de_venta("AAA", cita, FICHA_PREVIA) == []
+
+
+def test_la_cita_puede_saltarse_tramos_con_puntos_suspensivos():
+    cita = "Cualquier investigación que derive en ... sanciones que afecten a ventas en China"
+    assert comprobar_condicion_de_venta("AAA", cita, FICHA_PREVIA) == []
+
+
+@pytest.mark.parametrize("cita", [
+    "",                                               # sin cita
+    "margen",                                         # una palabra suelta no es una cita
+    "La SEC investiga las cuentas de la empresa",     # no está escrita antes de hoy
+    "si el margen operativo baja ... del 90%",        # un fragmento sí y el otro no
+])
+def test_una_cita_que_no_esta_en_la_ficha_previa_es_violacion(cita):
+    (v,) = comprobar_condicion_de_venta("AAA", cita, FICHA_PREVIA)
+    assert v.codigo == "venta_sin_condicion_escrita" and "AAA" in v.detalle
+
+
+def test_una_frase_de_la_tesis_no_vale_como_condicion():
+    previa = {**FICHA_PREVIA, "tesis": "La caja neta es enorme y la competencia es débil"}
+    assert comprobar_condicion_de_venta("AAA", "La caja neta es enorme y la competencia", previa)
+
+
+def test_sin_ficha_previa_no_hay_nada_que_citar():
+    assert comprobar_condicion_de_venta("AAA", "", None) == []

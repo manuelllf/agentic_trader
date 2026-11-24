@@ -578,3 +578,169 @@ def test_las_llamadas_registradas_no_se_reescriben(sesion_agente: Session) -> No
     with pytest.raises(Exception, match="solo se añaden filas"):
         s.execute(text("update agente.llamadas_modelo set ok = false where ejecucion_id = :e"),
                   {"e": ej_id})
+
+
+# --- ventas: solo por una condición escrita antes de hoy -------------------------------
+
+CITA = "si el margen operativo baja del 45%"
+FICHA_ANTES = {
+    "tesis": "t",
+    "salidas": "Vendo si el crecimiento de ingresos cae por debajo del 40%, o si el margen "
+               "operativo baja del 45%.",
+    "ruptura": "Una investigación que derive en sanciones que afecten a ventas en China.",
+}
+
+
+def _venta(cita: str) -> dict:
+    return {"decision": {
+        "tipo": "operar", "razonamiento": "vendo",
+        "operaciones": [{"ticker": "AAA", "lado": "venta", "acciones": "5", "tesis": "t",
+                         "supuestos": "s", "salidas": "x", "ruptura": "y", "prevision_12m": "p",
+                         "proximo_evento": None, "condicion_cumplida": cita}]}}
+
+
+def _escribir_ficha(contenido: dict, ticker: str = "AAA") -> dict:
+    return {"tool": "card_write",
+            "args": {"ticker": ticker, "content": contenido, "certainty": "confirmada"}}
+
+
+def _ficha_guardada(s: Session, ticker: str = "AAA"):  # noqa: ANN202
+    return _una(s, "select contenido, certeza, version from agente.fichas "
+                   f"where ticker = '{ticker}'")
+
+
+def _con_posicion(s: Session) -> herramientas.Contexto:
+    """AAA en cartera (5 acciones) y su ficha con salidas y ruptura escritas de antes."""
+    ctx = _preparar(s, ficha=False)
+    s.execute(text("insert into agente.fichas (ticker, contenido) "
+                   "values ('AAA', cast(:c as jsonb))"), {"c": json.dumps(FICHA_ANTES)})
+    did = s.execute(text(
+        "insert into agente.decisiones (fecha_ny, tipo, propuesta, razonamiento, modelo) "
+        "values (:f, 'operar', '{}'::jsonb, 'compro', 'm') returning id"),
+        {"f": HOY - timedelta(days=1)}).scalar_one()
+    oid = s.execute(text(
+        "insert into agente.ordenes (decision_id, ticker, lado, acciones, fecha_objetivo, clave, "
+        "estado) values (:d, 'AAA', 'compra', 5, :f, 'k1', 'ejecutada') returning id"),
+        {"d": did, "f": HOY - timedelta(days=1)}).scalar_one()
+    s.execute(text(
+        "insert into agente.ejecutadas (orden_id, ejecutada_en, acciones, precio, comision) "
+        "values (:o, :t, 5, 100, 1)"),
+        {"o": oid, "t": datetime(2026, 11, 16, 14, 35, tzinfo=NY)})
+    return ctx
+
+
+def _escribe_de_verdad(monkeypatch: pytest.MonkeyPatch) -> None:
+    def ejecutar(s, nombre, args, ctx):  # noqa: ANN001
+        if nombre == "card_write":
+            return herramientas._card_write(s, args, ctx)
+        return {"caja": "5000", "posiciones": []}
+    monkeypatch.setattr(herramientas, "ejecutar", ejecutar)
+
+
+def test_venta_sin_condicion_escrita_se_corrige_y_se_rechaza(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _con_posicion(s)
+    agente = Falso([FILOSOFIA, _venta(""), _venta("")])
+    revisor = Falso([])
+    d = _despertar(s, ctx, agente, revisor, sombra=False)
+    assert d is not None
+    assert revisor.llamadas == []                                   # ni se gasta en el revisor
+    assert "venta_sin_condicion_escrita" in agente.llamadas[2][1]   # la corrección sabe por qué
+    fila = _una(s, "select revisor_veredicto, revisor_motivo from agente.decisiones "
+                   "where fecha_ny = '2026-11-17'")
+    assert fila.revisor_veredicto == "rechazada"
+    assert "venta_sin_condicion_escrita" in fila.revisor_motivo
+    assert _una(s, "select count(*) as n from agente.ordenes where lado = 'venta'").n == 0
+
+
+def test_citar_una_frase_escrita_hoy_no_justifica_la_venta(sesion_agente: Session,
+                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """El caso de NVDA: la ficha se reescribió en el mismo ciclo y la venta citó lo nuevo."""
+    s = sesion_agente
+    ctx = _con_posicion(s)
+    _escribe_de_verdad(monkeypatch)
+    hoy = {**FICHA_ANTES, "ruptura": "La SEC abre una investigación contable: tesis rota."}
+    cita = "La SEC abre una investigación contable"
+    agente = Falso([FILOSOFIA, _escribir_ficha(hoy), _venta(cita), _venta(cita)])
+    revisor = Falso([])
+    assert _despertar(s, ctx, agente, revisor, sombra=False) is not None
+    assert revisor.llamadas == []
+    fila = _una(s, "select revisor_veredicto, revisor_motivo from agente.decisiones "
+                   "where fecha_ny = '2026-11-17'")
+    assert fila.revisor_veredicto == "rechazada"
+    assert "venta_sin_condicion_escrita" in fila.revisor_motivo
+    assert _una(s, "select count(*) as n from agente.ordenes where lado = 'venta'").n == 0
+    # La reescritura rechazada se deshace: la ficha vuelve a lo escrito antes de hoy.
+    f = _ficha_guardada(s)
+    assert (f.contenido, f.certeza, f.version) == (FICHA_ANTES, "conjetura", 1)
+    assert "ficha_revertida" in _eventos(s)
+    rechazada = _una(s, "select datos from agente.eventos where tipo = 'ficha_revertida'").datos
+    assert rechazada["contenido_rechazado"]["ruptura"] == hoy["ruptura"]
+
+
+def test_nada_con_ficha_de_una_posicion_reescrita_pasa_por_el_revisor(
+        sesion_agente: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sin operaciones tampoco se reescribe sin que nadie lo mire: era la puerta de atrás."""
+    s = sesion_agente
+    ctx = _con_posicion(s)
+    _escribe_de_verdad(monkeypatch)
+    floja = {**FICHA_ANTES, "ruptura": "Cualquier cosa que preocupe al mercado."}
+    agente = Falso([FILOSOFIA, _escribir_ficha(floja), NADA])
+    revisor = Falso([{"verdict": "reject", "reason": "afloja la ruptura sin hechos nuevos"}])
+    assert _despertar(s, ctx, agente, revisor, sombra=False) is not None
+    assert len(revisor.llamadas) == 1
+    fila = _una(s, "select revisor_veredicto from agente.decisiones where fecha_ny = '2026-11-17'")
+    assert fila.revisor_veredicto == "rechazada"
+    assert _ficha_guardada(s).contenido == FICHA_ANTES
+
+
+def test_reescritura_aprobada_de_una_posicion_se_queda(
+        sesion_agente: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    s = sesion_agente
+    ctx = _con_posicion(s)
+    _escribe_de_verdad(monkeypatch)
+    nueva = {**FICHA_ANTES, "ruptura": "Una sanción firme que afecte a ventas en China."}
+    agente = Falso([FILOSOFIA, _escribir_ficha(nueva), NADA])
+    revisor = Falso([APRUEBA])
+    assert _despertar(s, ctx, agente, revisor, sombra=False) is not None
+    f = _ficha_guardada(s)
+    assert (f.contenido, f.version) == (nueva, 2)
+    assert "ficha_revertida" not in _eventos(s)
+
+
+def test_la_ficha_de_una_empresa_que_no_se_tiene_no_pasa_por_el_revisor(
+        sesion_agente: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    s = sesion_agente
+    ctx = _con_posicion(s)
+    _escribe_de_verdad(monkeypatch)
+    agente = Falso([FILOSOFIA, _escribir_ficha({"tesis": "me interesa"}, "BBB"), NADA])
+    revisor = Falso([])
+    assert _despertar(s, ctx, agente, revisor, sombra=False) is not None
+    assert revisor.llamadas == []
+    assert _ficha_guardada(s, "BBB").contenido == {"tesis": "me interesa"}
+
+
+def test_el_revisor_recibe_la_ficha_de_antes_y_la_de_ahora(sesion_agente: Session,
+                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    s = sesion_agente
+    ctx = _con_posicion(s)
+    _escribe_de_verdad(monkeypatch)
+    hoy = {**FICHA_ANTES, "ruptura": "Condición reescrita hoy, distinta de la de antes."}
+    agente = Falso([FILOSOFIA, _escribir_ficha(hoy), _venta(CITA)])
+    revisor = Falso([APRUEBA])
+    assert _despertar(s, ctx, agente, revisor, sombra=False) is not None
+    usuario = revisor.llamadas[0][1]               # el mensaje completo: sistema y usuario
+    assert "BEFORE today" in usuario
+    assert "antes" in usuario and "ahora" in usuario
+    assert "derive en sanciones" in usuario                 # la ruptura de antes
+    assert "reescrita hoy" in usuario                       # y la de ahora
+    orden = _una(s, "select ticker, estado from agente.ordenes where lado = 'venta'")
+    assert (orden.ticker, orden.estado) == ("AAA", "pendiente")
+
+
+def test_la_compra_no_necesita_condicion_cumplida(sesion_agente: Session) -> None:
+    s = sesion_agente
+    ctx = _preparar(s)
+    assert _despertar(s, ctx, Falso([FILOSOFIA, OPERAR]), Falso([APRUEBA])) is not None
+    fila = _una(s, "select revisor_veredicto from agente.decisiones")
+    assert fila.revisor_veredicto == "aprobada"

@@ -30,8 +30,12 @@ def juzgar(system: str, usuario: str, llm: Any,  # noqa: ANN401
     return veredicto, motivo
 
 
-def revisar(decision: dict, filosofia: str, datos: list[dict], llm: Any) -> tuple[str, str]:  # noqa: ANN401
+def revisar(decision: dict, filosofia: str, datos: list[dict], llm: Any,  # noqa: ANN401
+            fichas: dict[str, dict] | None = None) -> tuple[str, str]:
     usuario = (f"## Written philosophy\n{filosofia}\n\n"
                f"## Decision to review\n{_dump(decision)}\n\n"
+               f"## Cards (fichas) of the companies sold or rewritten in this cycle: "
+               f"\"antes\" is what was written BEFORE today, \"ahora\" is what stands now\n"
+               f"{_dump(fichas) if fichas else 'none'}\n\n"
                f"## Data the manager looked at\n{_dump(datos)}\n")
     return juzgar(prompts.SYSTEM_REVISOR, usuario, llm, admite_corregir=True)

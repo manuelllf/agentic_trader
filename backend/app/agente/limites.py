@@ -2,6 +2,7 @@
 Viven en código y no en el prompt porque pedirlas en el prompt no basta."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_DOWN, Decimal
@@ -224,6 +225,35 @@ def comprobar_venta(p: PropuestaVenta, cartera: Cartera, parada: bool,
             "mas_acciones_que_las_que_hay",
             f"Se piden {p.acciones} acciones y solo hay {pos.acciones}."))
     return v
+
+
+def _normal(texto: str) -> str:
+    """Minúsculas y solo letras y números, para comparar una cita sin que importen comillas,
+    espacios ni puntuación."""
+    return " ".join(re.sub(r"[^\w]+", " ", texto.lower()).split())
+
+
+MIN_CITA = 20  # caracteres normalizados por fragmento: una palabra suelta no es una cita
+
+
+def comprobar_condicion_de_venta(ticker: str, cita: str,
+                                 ficha_previa: dict | None) -> list[Violacion]:
+    """Vender exige copiar una frase de las salidas o de la ruptura de la ficha tal como estaba
+    antes del ciclo: reescribirla hoy y citarla no sirve. Sin ficha previa no hay nada que citar."""
+    if ficha_previa is None:
+        return []
+    escrito = _normal(" ".join(str(ficha_previa.get(k, "")) for k in ("salidas", "ruptura")))
+    # Una cita puede saltarse tramos con puntos suspensivos: cada fragmento tiene que estar escrito.
+    fragmentos = [_normal(f) for f in re.split(r"\.\.\.|…", cita)]
+    fragmentos = [f for f in fragmentos if f]
+    if (not fragmentos or any(len(f) < MIN_CITA for f in fragmentos)
+            or not all(f in escrito for f in fragmentos)):
+        return [Violacion(
+            "venta_sin_condicion_escrita",
+            f"Para vender {ticker}, copia en condicion_cumplida una frase de las salidas o de la "
+            "ruptura de su ficha tal como estaba antes de hoy. Reescribir la ficha hoy no cuenta. "
+            "Si ninguna condición escrita se cumple, no se vende: decide «nada» o «revision».")]
+    return []
 
 
 def apertura_permite_compra(cierre_previo: Decimal, apertura: Decimal,
