@@ -194,12 +194,13 @@ export function Demo({ datos, idioma, k, alElegir, alAbrir }: Props) {
       <div className="h-texto">
         <p className="ceja">{t("portada_ceja")}</p>
         <p className="hoy">{hoy ?? " "}</p>
-        <h1 className="titular" id="titular">{datos
-          ? t.rich("portada_titular", { total: n(datos.total), pasan: n(cuenta), num: (c) => <span className="num">{c}</span> })
-          : t("portada_titular_sin_datos")}</h1>
+        <h1 className="titular" id="titular">{t("portada_promesa")}</h1>
+        <p className="promesa-sub">{datos ? t("portada_promesa_sub", { total: n(datos.total) }) : t("portada_promesa_sub_sin_datos")}</p>
       </div>
 
       {datos && <>
+        {/* La cifra que baja con el escaneo es el título de la demo, no la promesa. */}
+        <h2 className="cifra-demo">{t.rich("portada_titular", { pasan: n(cuenta), num: (c) => <span className="num">{c}</span> })}</h2>
         <div className="lista">
           <ul role="radiogroup" aria-label={t("portada_ideas_elige")}>
             {estilos.map((e, j) => <li key={e.clave}>

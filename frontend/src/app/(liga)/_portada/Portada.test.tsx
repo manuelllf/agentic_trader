@@ -67,7 +67,9 @@ describe("Portada", () => {
   it("mientras se comprueba la sesión ya pinta el contenido, para que el HTML del servidor lo lleve", () => {
     sesion.valor = "cargando";
     const el = pintar();
-    expect(el.querySelector("h1")!.textContent).toBe("De 5.723 empresas, esta idea deja 523 y elige 5.");
+    expect(el.querySelector("h1")!.textContent).toBe("Escribe tu idea. Vennett la pone a prueba contra el S&P 500.");
+    expect(el.querySelector(".promesa-sub")!.textContent).toBe("Cada semana, sobre 5.723 empresas reales. Sin operar y sin dinero real.");
+    expect(el.querySelector(".cifra-demo")!.textContent).toBe("Esta idea deja 523 y elige 5.");
     expect(el.querySelector(".ceja")!.textContent).toBe("Liga de estrategias de inversión en papel");
     sesion.valor = "fuera";
   });
@@ -127,13 +129,16 @@ describe("Portada", () => {
 
   it("sin datos de la demo no hay globo ni ideas, pero sí titular y acción", () => {
     const el = pintar({ demo: null });
-    expect(el.querySelector("h1")!.textContent).toBe("Tu idea de inversión, contra el S&P 500.");
+    expect(el.querySelector("h1")!.textContent).toBe("Escribe tu idea. Vennett la pone a prueba contra el S&P 500.");
+    expect(el.querySelector(".promesa-sub")!.textContent).toBe("Cada semana, sobre miles de empresas reales. Sin operar y sin dinero real.");
+    expect(el.querySelector(".cifra-demo")).toBeNull();
     expect(el.querySelector("canvas")).toBeNull();
     expect(el.querySelector(".boton-h")!.textContent).toBe("Escribir mi idea");
   });
 
-  it("en inglés el titular cambia de forma y de cifras", () => {
+  it("en inglés la promesa y las cifras cambian de forma", () => {
     const el = pintar({ idioma: "en" });
-    expect(el.querySelector("h1")!.textContent).toBe("Out of 5,723 companies, this idea keeps 523 and picks 5.");
+    expect(el.querySelector("h1")!.textContent).toBe("Write your idea. Vennett puts it to the test against the S&P 500.");
+    expect(el.querySelector(".promesa-sub")!.textContent).toBe("Every week, across 5,723 real companies. No trading and no real money.");
   });
 });
