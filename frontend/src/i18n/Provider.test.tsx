@@ -3,12 +3,14 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { guardarIdioma } from "@/lib/liga/api";
+import { cargarDocumento } from "./documento";
 import { LanguageProvider, useLanguage } from "./Provider";
 import type { Locale } from "./locale";
 
 const router = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 vi.mock("@/lib/liga/cache", () => ({ refrescarPresentacion: vi.fn() }));
+vi.mock("./documento", () => ({ cargarDocumento: vi.fn() }));
 vi.mock("@/lib/liga/api", () => ({
   guardarIdioma: vi.fn(async (idioma: Locale): Promise<{ idioma: Locale } | string> => ({ idioma })),
 }));
@@ -55,29 +57,49 @@ afterEach(async () => {
 });
 
 describe("LanguageProvider en las páginas públicas con una URL por idioma", () => {
-  // Next no vuelve a pintar el layout raíz al ir de / a /en: si el proveedor no cambia el catálogo, la página sigue en español.
-  it("elegir inglés guarda la elección, pone los textos en inglés y va a la versión /en con su query", async () => {
-    const pedir = vi.fn(async () => new Response(JSON.stringify({ common_idioma: "Language" }), { status: 200 }));
-    vi.stubGlobal("fetch", pedir);
+  // Navegando dentro de Next, / y /en comparten datos: salía la página en un idioma y el crucigrama en el otro.
+  it("elegir inglés guarda la elección y carga entera la versión /en, con su query", async () => {
     document.cookie = "vennett_locale=es; Path=/"; // con elección guardada no se detecta el dispositivo
     window.history.replaceState({}, "", "/liga?vista=tabla");
     await montar("es");
     await act(async () => { await contexto?.selectLocale("en"); });
-    expect(router.push).toHaveBeenCalledWith("/en/liga?vista=tabla");
+    expect(cargarDocumento).toHaveBeenCalledExactlyOnceWith("/en/liga?vista=tabla");
     expect(cookie("vennett_locale")).toBe("en");
-    expect(pedir).toHaveBeenCalledWith("/api/i18n/catalog/en", expect.anything());
-    expect(contexto?.locale).toBe("en");
+    expect(cookie("vennett_visitor_locale")).toBe("en");
+    expect(router.push).not.toHaveBeenCalled();
     expect(router.refresh).not.toHaveBeenCalled();
   });
 
-  it("elegir español desde la portada en inglés pone los textos en español y va a la raíz", async () => {
-    catalogoEs();
+  it("elegir español desde la portada en inglés carga la raíz", async () => {
     window.history.replaceState({}, "", "/en");
     await montar("en");
     await act(async () => { await contexto?.selectLocale("es"); });
-    expect(router.push).toHaveBeenCalledWith("/");
+    expect(cargarDocumento).toHaveBeenCalledExactlyOnceWith("/");
     expect(cookie("vennett_locale")).toBe("es");
-    expect(contexto?.locale).toBe("es");
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it("con sesión, el idioma se guarda en la cuenta antes de salir de la página", async () => {
+    document.cookie = "vennett_locale=es; Path=/";
+    window.history.replaceState({}, "", "/como-funciona");
+    await montar("es");
+    await act(async () => contexto?.setAccount({ id: "u6", locale: "es" }));
+    await act(async () => { await contexto?.selectLocale("en"); });
+    expect(guardarIdioma).toHaveBeenCalledWith("en", "u6");
+    expect(vi.mocked(guardarIdioma).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(cargarDocumento).mock.invocationCallOrder[0]);
+    expect(cookie("vennett_visitor_locale")).toBeUndefined();
+  });
+
+  it("si la cuenta no lo guarda, la elección queda en el dispositivo y se cambia igual", async () => {
+    document.cookie = "vennett_locale=es; Path=/";
+    window.history.replaceState({}, "", "/como-funciona");
+    await montar("es");
+    await act(async () => contexto?.setAccount({ id: "u7", locale: "es" }));
+    vi.mocked(guardarIdioma).mockResolvedValueOnce("sin conexión");
+    await act(async () => { await contexto?.selectLocale("en"); });
+    expect(cookie("vennett_visitor_locale")).toBe("en");
+    expect(cargarDocumento).toHaveBeenCalledWith("/en/como-funciona");
   });
 
   it("fuera de esas páginas cambia el idioma en el sitio, sin cambiar de URL", async () => {

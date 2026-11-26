@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, us
 import { LOCALE_CHANGED, LOCALE_COOKIE, normalizeLocale, idiomaAlEntrar, idiomaDeRuta,
   deviceLocale, readCookie, VISITOR_COOKIE, type Locale } from "./locale";
 import { esRutaTraducible, rutaEnIdioma } from "./rutas";
+import { cargarDocumento } from "./documento";
 
 type Account = { id: string; locale: Locale | null };
 type LanguageContext = {
@@ -17,10 +18,14 @@ type LanguageContext = {
 };
 const Context = createContext<LanguageContext | null>(null);
 
-function writeLocale(locale: Locale, visitor = false) {
+function saveCookies(locale: Locale, visitor: boolean) {
   const security = location.protocol === "https:" ? "; Secure" : "";
   document.cookie = `${LOCALE_COOKIE}=${locale}; Path=/; Max-Age=31536000; SameSite=Lax${security}`;
   if (visitor) document.cookie = `${VISITOR_COOKIE}=${locale}; Path=/; Max-Age=31536000; SameSite=Lax${security}`;
+}
+
+function writeLocale(locale: Locale, visitor = false) {
+  saveCookies(locale, visitor);
   document.documentElement.lang = locale;
   navigator.serviceWorker?.controller?.postMessage({ type: "VENNETT_LOCALE", locale });
 }
@@ -61,7 +66,7 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
   }, [initialLocale, initialMessages]);
 
   // Solo la elección del usuario se guarda en cookies; el idioma del dispositivo es un punto de partida.
-  const applyLocale = useCallback(async (next: Locale, { visitor, persist, destino }: { visitor: boolean; persist: boolean; destino?: string }) => {
+  const applyLocale = useCallback(async (next: Locale, { visitor, persist }: { visitor: boolean; persist: boolean }) => {
     const ticket = ++revision.current;
     setLoading(true);
     setFailure(false);
@@ -82,7 +87,7 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
       if (ticket !== revision.current) return;
       refrescarPresentacion();
       window.dispatchEvent(new CustomEvent(LOCALE_CHANGED, { detail: { locale: next } }));
-      transition(() => { if (destino) router.push(destino); else router.refresh(); });
+      transition(() => router.refresh());
     } catch {
       if (ticket === revision.current) setFailure(true);
     } finally {
@@ -90,22 +95,37 @@ export function LanguageProvider({ locale: initialLocale, messages: initialMessa
     }
   }, [router]);
 
-  const selectLocale = useCallback(async (next: Locale) => {
-    const { pathname, search, hash } = window.location;
-    // La página pública tiene una URL por idioma y se va a la otra versión. El layout raíz no se vuelve
-    // a pintar al navegar, así que el catálogo nuevo lo pone el proveedor antes de ir.
-    const destino = esRutaTraducible(pathname) ? `${rutaEnIdioma(pathname, next)}${search}${hash}` : undefined;
-    await applyLocale(next, { visitor: account.current === null, persist: true, destino });
-    // Con sesión, la elección va al perfil: una anterior de la portada ya no vale.
-    if (account.current) clearVisitorLocale();
-    if (!account.current || normalizeLocale(readCookie(LOCALE_COOKIE, document.cookie)) !== next) return;
+  // Con sesión, la elección va al perfil: una anterior de la portada ya no vale.
+  const saveInAccount = useCallback(async (next: Locale) => {
+    if (!account.current) return;
+    clearVisitorLocale();
+    if (normalizeLocale(readCookie(LOCALE_COOKIE, document.cookie)) !== next) return;
     const owner = account.current.id;
     const { guardarIdioma } = await import("@/lib/liga/api");
     const result = await guardarIdioma(next, owner);
     if (account.current?.id !== owner) return;
-    if (typeof result === "string") { setFailure(true); return; }
+    // Si falla, la elección se conserva en el dispositivo y se reintenta en la próxima carga.
+    if (typeof result === "string") { saveCookies(next, true); setFailure(true); return; }
     account.current = { id: owner, locale: next };
-  }, [applyLocale]);
+  }, []);
+
+  const selectLocale = useCallback(async (next: Locale) => {
+    const { pathname, search, hash } = window.location;
+    if (!esRutaTraducible(pathname)) {
+      await applyLocale(next, { visitor: account.current === null, persist: true });
+      await saveInAccount(next);
+      return;
+    }
+    // Next trata `/` y `/en` como una sola página y al navegar mezcla sus datos: la otra se carga entera.
+    saveCookies(next, account.current === null);
+    setLoading(true);
+    try {
+      await saveInAccount(next);
+    } finally {
+      setLoading(false);
+      cargarDocumento(`${rutaEnIdioma(pathname, next)}${search}${hash}`);
+    }
+  }, [applyLocale, saveInAccount]);
 
   const setAccount = useCallback((next: Account | null) => {
     const previous = account.current;
